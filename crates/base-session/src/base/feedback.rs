@@ -87,6 +87,28 @@ pub(crate) async fn send_feedback_to_entity(
     entity_id: u32,
     text: &str,
 ) -> FeedbackOutcome {
+    let payload = serialize_on_player_communication(FEEDBACK_SPEAKER, 0, CHAN_FEEDBACK, text);
+    send_player_method(
+        ctx,
+        addr,
+        entity_id,
+        method_idx::ON_PLAYER_COMMUNICATION,
+        &payload,
+    )
+    .await
+}
+
+/// Send one reliable client method on the player entity `entity_id` to the
+/// session at `addr`: the transport under every feedback line, and the send
+/// the tell path uses for `onPlayerCommunication` to the recipient and
+/// `onTellSent` to the sender. Failures are logged here.
+pub async fn send_player_method(
+    ctx: &FeedbackCtx<'_>,
+    addr: SocketAddr,
+    entity_id: u32,
+    method_index: u16,
+    payload: &[u8],
+) -> FeedbackOutcome {
     let session = {
         let Ok(clients) = ctx.connected.lock() else {
             return FeedbackOutcome::NoSession;
@@ -102,29 +124,30 @@ pub(crate) async fn send_feedback_to_entity(
         tracing::debug!(
             %addr,
             entity_id,
+            method_index,
             reason = "no_session",
-            "feedback line dropped: client disconnected first",
+            "player method dropped: client disconnected first",
         );
         return FeedbackOutcome::NoSession;
     };
 
-    let payload = serialize_on_player_communication(FEEDBACK_SPEAKER, 0, CHAN_FEEDBACK, text);
     let packet = build_player_entity_method_packet(
         &key,
         seq,
         &acks,
         entity_id,
-        method_idx::ON_PLAYER_COMMUNICATION,
-        &payload,
+        method_index,
+        payload,
         version,
     );
     if let Err(e) = ctx.transport.send_to(&packet, addr).await {
         tracing::warn!(
             %addr,
             entity_id,
+            method_index,
             reason = "send_error",
             error = %e,
-            "feedback line send failed",
+            "player method send failed",
         );
         return FeedbackOutcome::SendError;
     }

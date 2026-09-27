@@ -166,6 +166,15 @@ pub struct ConnectedClientState {
     /// and the Python reference (`python/base/Chat.py::getSpeakerFlags`)
     /// only checks `accessLevel > 0` and `dndMessage is not None`.
     pub dnd_message: Option<String>,
+    /// AFK auto-reply. `Some(_)` while the player is away: a tell to them is
+    /// still delivered, and the sender gets this text back on the tell
+    /// channel. Set/cleared by `chatSetAFKMessage` (0xC3) with the same
+    /// empty-or-1-char-clears rule as DND; not a speaker flag.
+    pub afk_message: Option<String>,
+    /// This character's contact-list Ignore list, cached for the tell path
+    /// (D-SS15). Loaded at `onClientReady` and reloaded after every Ignore
+    /// change; see [`contact_list::ignore`].
+    pub ignore: contact_list::ignore::IgnoreCache,
     pub char_list_sent: bool,
     pub world_entry_sent: bool,
     pub pending_player_entity_id: Option<u32>,

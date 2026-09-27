@@ -469,6 +469,23 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
+    // Cache this character's Ignore list on the session (tells) and push it
+    // to the cell entity (spatial chat), D-SS15. Here, after InitPlayerState,
+    // so every world entry re-seeds it: gate travel creates a fresh cell
+    // entity whose set would otherwise be empty.
+    super::super::contact_list::ignore::resync_ignore_cache(
+        super::super::contact_list::ignore::IgnoreSyncCtx {
+            db_pool,
+            connected,
+            cell_tx,
+        },
+        addr,
+        pending.player_id,
+        entity_id,
+        "world_entry",
+    )
+    .await;
+
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.
     // Runs after the list-push so the player is fully set up before watchers
