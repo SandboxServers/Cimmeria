@@ -41,7 +41,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 use sqlx::PgPool;
 
 use super::access::{lock_actor, OrgLockMiss};
-use super::open::org_vault_bag_info;
+use super::open::{org_label, org_vault_bag_info};
 use crate::mercury::method_idx;
 
 /// The largest Team vault (D-BV14).
@@ -104,7 +104,7 @@ impl ExpandRefusal {
         }
     }
 
-    fn feedback(self, s: &Snapshot) -> String {
+    fn feedback(self, s: &Snapshot, scope: VaultScope) -> String {
         let slots = s.vault_slots.unwrap_or(0);
         let price = s.price.unwrap_or(0);
         let cash = s.org_cash.unwrap_or(0);
@@ -119,7 +119,10 @@ impl ExpandRefusal {
             ExpandRefusal::NotInOrg
             | ExpandRefusal::Lock(
                 OrgLockMiss::NotAMember | OrgLockMiss::NoSuchOrg | OrgLockMiss::WrongOrgType,
-            ) => format!("orgvaultexpand: you are not in a Team. {tail}"),
+            ) => format!(
+                "orgvaultexpand: you are not in a {}. {tail}",
+                org_label(scope)
+            ),
             ExpandRefusal::CommandVaultFixed => {
                 format!("orgvaultexpand: a Command vault is fixed at 100 slots. {tail}")
             }
@@ -447,5 +450,5 @@ async fn reject(
         error,
         "expand_rejected: nothing bought -- the GM sees a chat line saying why"
     );
-    actor.send_line(&refusal.feedback(&s)).await;
+    actor.send_line(&refusal.feedback(&s, req.scope)).await;
 }

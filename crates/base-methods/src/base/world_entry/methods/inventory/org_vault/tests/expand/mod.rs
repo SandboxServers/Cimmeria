@@ -11,6 +11,13 @@
 //! cleaned up by exact name key, their cash log and event rows first. The
 //! prices are the seeded `resources.bank_expansion_price` rows (100 a step).
 //! Skip when `DATABASE_URL` is unset.
+//!
+//! Not tested here: a missing or zero price (`price_missing`). The price
+//! table is shared seed data (`resources.bank_expansion_price`, one row per
+//! step, every one 100), so a test that removed a row would race every
+//! other test reading it; the refusal is the same `filter(p > 0)` shape as
+//! BV-05's guarded `price_missing`, and the cash log's `amount > 0` CHECK
+//! stops a free step even without it.
 
 mod purchase;
 mod refusals;

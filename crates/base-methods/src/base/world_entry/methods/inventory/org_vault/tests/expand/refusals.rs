@@ -131,6 +131,15 @@ async fn no_team_and_database_failures_are_refused() {
         0,
         "orgvaultexpand: you are not in a Team. Nothing was charged."
     ));
+    fx.clear_sends();
+    fx.expand(0, VaultScope::Command, None).await;
+    assert!(
+        fx.saw_text(
+            0,
+            "orgvaultexpand: you are not in a Command. Nothing was charged."
+        ),
+        "the line names the scope the GM typed"
+    );
 
     let broken = Some(Arc::new(unreachable_pool()));
     for (db_pool, reason) in [(broken, "query_failed"), (None, "db_unavailable")] {
@@ -163,5 +172,122 @@ async fn no_team_and_database_failures_are_refused() {
         ));
     }
     drop(capture);
+    fx.teardown().await;
+}
+
+/// The leader leaves while the purchase waits on the organization lock:
+/// the transaction holding the lock deletes the leader's member row, and
+/// the member-delete trigger promotes the other member. (The Leader rank
+/// moves only that way; `org_member_before_update` refuses a direct
+/// demotion.) The purchase reads membership and rank only once it has the
+/// lock, so it sees the change: `not_a_member`, nothing charged. Fails if
+/// they are read before the lock (from the unlocked membership lookup,
+/// say).
+#[tokio::test]
+async fn a_leader_who_leaves_while_the_purchase_waits_buys_nothing() {
+    use std::time::{Duration, Instant};
+
+    let pool = require_db_or_skip!();
+    let fx = Fx::new(&pool, 7, 2).await;
+    let team = fx.org(OrgType::Team, 0, &[1], 500).await;
+    fx.online(0);
+
+    let mut gate = pool.begin().await.unwrap();
+    let gate_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *gate)
+        .await
+        .unwrap();
+    sqlx::query("SELECT 1 FROM sgw_organizations WHERE org_id = $1 FOR UPDATE")
+        .bind(team)
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    let capture = LogCapture::install();
+    let release = async {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let held: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+            )
+            .bind(gate_pid)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            if held >= 1 {
+                break;
+            }
+            assert!(Instant::now() < deadline, "the purchase never parked");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        sqlx::query("DELETE FROM sgw_organization_members WHERE org_id = $1 AND player_id = $2")
+            .bind(team)
+            .bind(fx.player(0))
+            .execute(&mut *gate)
+            .await
+            .unwrap();
+        gate.commit().await.unwrap();
+    };
+    tokio::time::timeout(Duration::from_secs(20), async {
+        tokio::join!(fx.expand(0, VaultScope::Team, Some(40)), release)
+    })
+    .await
+    .expect("the purchase hung past 20 s");
+
+    assert_eq!(fx.state(team).await, (40, 500));
+    one(
+        &fx,
+        &capture,
+        "expand_rejected",
+        Level::WARN,
+        0,
+        &[("reason", "not_a_member"), ("org_id", &team.to_string())],
+    );
+    let leader: i16 = sqlx::query_scalar(
+        "SELECT rank FROM sgw_organization_members WHERE org_id = $1 AND player_id = $2",
+    )
+    .bind(team)
+    .bind(fx.player(1))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(leader, 8, "the other member was promoted");
+    assert!(fx.cash_log(team).await.is_empty());
+    fx.teardown().await;
+}
+
+/// D-BV33: the entity id the cell named now belongs to **another**
+/// character's session (the buyer gated and the id was reused). The
+/// purchase itself commits (the leader asked for it), but nothing reaches
+/// that other session: neither the buyer's `onBagInfo` nor the line. Each
+/// dropped send logs `bank_feedback_send_failed reason=no_client_address`.
+/// Fails if the replies are addressed by entity id.
+#[tokio::test]
+async fn a_recycled_entity_id_receives_nothing() {
+    let pool = require_db_or_skip!();
+    let fx = Fx::new(&pool, 8, 2).await;
+    let team = fx.org(OrgType::Team, 0, &[], 500).await;
+    // Character 1's session now plays character 0's old entity id.
+    let mut s = test_default_connected_client_state();
+    s.active_player_id = Some(fx.player(1));
+    s.player_entity_id = Some(fx.entity(0));
+    s.listed_online = true;
+    fx.connected.lock().unwrap().insert(fx.addr(1), s);
+    fx.entity_to_addr
+        .lock()
+        .unwrap()
+        .insert(fx.entity(0), fx.addr(1));
+
+    let capture = LogCapture::install();
+    fx.expand(0, VaultScope::Team, Some(40)).await;
+    assert_eq!(fx.state(team).await, (50, 400), "the purchase commits");
+    assert!(
+        fx.typed.filter_to(fx.addr(1)).is_empty(),
+        "the other character's session gets nothing"
+    );
+    let dropped = bank_rows(&capture, "bank_feedback_send_failed");
+    assert_eq!(dropped.len(), 2, "{dropped:#?}");
+    assert!(dropped
+        .iter()
+        .all(|d| d.has_field("reason", "no_client_address")));
     fx.teardown().await;
 }
