@@ -85,7 +85,7 @@ Classify before you design.
 ## Where project state lives
 
 - Status and gaps: [`docs/project-status.md`](../project-status.md), [`docs/gap-analysis.md`](../gap-analysis.md). Not `docs/architecture/migration-roadmap.md`, which describes the deprecated C++ tree.
-- **Update the status docs once per campaign, in its close-out or release packet.** Per-packet progress goes in the campaign's own ledger under `docs/analysis/<campaign>/`. Why: on 2026-09-27 nearly every rebase conflict came from parallel packets each editing the same rows and totals in `gap-analysis.md` and `project-status.md`, not from code.
+- **Update the status docs once per campaign, in its close-out or release packet.** Per-packet progress goes in the campaign's own ledger under `docs/analysis/<campaign>/`. Why: on 2026-09-27 most rebase conflicts came from shared docs rather than code, with parallel packets each editing the same status rows and totals.
 - Long-running campaigns keep their own ledgers and resume notes under `docs/analysis/` (for example `docs/analysis/castle-rebuild/handoffs/`). Read the newest resume note before continuing one.
 - **A ledger that says "not started" does not mean nobody is on it.** Before dispatching workers for a ledgered campaign, look for campaign branches and worktrees created or committed in the last few hours (`git worktree list`, `git log --since`), and ask whether another session owns the work. A packet that was dispatched minutes ago looks exactly like an abandoned one: a clean worktree at `main`'s head.
 - Playtest reports: `docs/analysis/playtests/`.
