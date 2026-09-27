@@ -25,7 +25,7 @@ pub enum CraftVerb {
     /// `spendAppliedSciencePoints(INT32 aDisciplineSeqId)` (95).
     Spend { discipline_id: i32 },
     /// `craft(INT32 aCraftId, ARRAY<ItemID> aItems, INT32 aQuantity)` (96).
-    /// `items` are inventory instance ids, one per component type (C-31).
+    /// `items` are inventory instance ids, one per component type.
     Craft {
         blueprint_id: i32,
         items: Vec<i32>,

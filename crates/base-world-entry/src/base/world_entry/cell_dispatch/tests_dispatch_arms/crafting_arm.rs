@@ -1,5 +1,5 @@
 //! The `Crafting` arm: every request is logged at `crafting` and answered
-//! with a visible line on the player's own client (D-CR14).
+//! with a visible line on the player's own client.
 //!
 //! Revert-verifier: removing the arm's call, or the `reject` send inside
 //! `handle_craft_request`, leaves the player's address with no packet and
