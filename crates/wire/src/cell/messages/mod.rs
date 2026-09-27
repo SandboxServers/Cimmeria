@@ -11,8 +11,8 @@
 //! - `lab` — the live-research-lab read-only query contract (`LabQuery`).
 //! - `org_cell_to_base` / `org_base_to_cell` — the nested organization
 //!   enums carried by `CellToBaseMsg::Org` and `BaseToCellMsg::Org`.
-//! - `bank_cell_to_base` — the nested bank enum carried by
-//!   `CellToBaseMsg::Bank`.
+//! - `bank_cell_to_base` / `bank_base_to_cell` — the nested bank enums
+//!   carried by `CellToBaseMsg::Bank` and `BaseToCellMsg::Bank`.
 //! - `chat_cell_to_base` — the nested chat enum carried by
 //!   `CellToBaseMsg::Chat`.
 //! - `duel_base_to_cell` — the nested duel enum carried by
@@ -24,6 +24,7 @@
 //! - `loot_grant` — `LootGrantSource` and `GrantRefusal`, the loot-grant
 //!   round trip that returns a refused item to its corpse.
 
+mod bank_base_to_cell;
 mod bank_cell_to_base;
 mod base_to_cell;
 mod cell_to_base;
@@ -41,7 +42,8 @@ pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
     StationChangeCause, StationSet,
 };
-pub use bank_cell_to_base::{BankCellToBase, BankSubject};
+pub use bank_base_to_cell::BankBaseToCell;
+pub use bank_cell_to_base::{BankCellToBase, BankSubject, ExpandTrigger};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
 pub use chat_cell_to_base::{ChatCellToBase, MAX_MUTE_MINUTES};

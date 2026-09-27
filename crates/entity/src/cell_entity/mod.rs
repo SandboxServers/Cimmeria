@@ -79,7 +79,7 @@ pub use pending_cast::PendingCast;
 pub use pet::{PetBuff, PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;
-pub use vault_session::{VaultCloseReason, VaultScope, VaultSession};
+pub use vault_session::{ExpansionOffer, VaultCloseReason, VaultScope, VaultSession};
 
 #[cfg(test)]
 mod tests;

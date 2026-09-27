@@ -89,6 +89,22 @@ pub struct VaultSession {
     pub space_id: u32,
     /// When the vault was opened (server-local clock).
     pub opened_at: std::time::Instant,
+    /// The Expand dialog's offer (BV-05), set when the base's offer arrives
+    /// and taken by the first answer, so one offer buys at most one step.
+    /// It dies with the session.
+    pub expansion_offer: Option<ExpansionOffer>,
+}
+
+/// What the Expand dialog offered: the vault size it was offered at and
+/// the price the player was shown (BV-05). The purchase matches both, so a
+/// replay buys nothing and the player is never charged a price they were
+/// not shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExpansionOffer {
+    /// `sgw_player.bank_slots` when the base quoted.
+    pub from_slots: i16,
+    /// `bank_expansion_price.price_naquadah` of the step, as quoted.
+    pub price: i32,
 }
 
 impl super::CellEntity {
@@ -126,6 +142,7 @@ mod tests {
             banker_id,
             space_id: 1,
             opened_at: std::time::Instant::now(),
+            expansion_offer: None,
         }
     }
 

@@ -117,3 +117,80 @@ async fn team_banker_click_is_refused_with_feedback() {
     assert_eq!(methods, vec![ON_PLAYER_COMMUNICATION], "{sent:?}");
     assert!(mgr.get_entity(PLAYER).unwrap().vault_session.is_none());
 }
+
+/// Every bank message the dispatcher sent.
+async fn choose(
+    mgr: &mut SpaceManager,
+    dialog_id: i32,
+    button_id: i32,
+) -> Vec<crate::cell::messages::BankCellToBase> {
+    let (tx, mut rx) = mpsc::channel(64);
+    let mut args = dialog_id.to_le_bytes().to_vec();
+    args.extend_from_slice(&button_id.to_le_bytes());
+    assert!(
+        dispatch(
+            PLAYER,
+            crate::cell::cell_methods::player::DIALOG_BUTTON_CHOICE,
+            &args,
+            &tx,
+            mgr,
+            &ChainEngine::new()
+        )
+        .await
+    );
+    let mut out = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::Bank(b) = msg {
+            out.push(b);
+        }
+    }
+    out
+}
+
+/// BV-05 smoke through the wire dispatcher: after a Banker click and the
+/// base's offer, `dialogButtonChoice(60110, 8)` reaches the purchase path
+/// with the offered size and an open verdict, once. A forged choice for the
+/// Expand dialog that was never shown is stopped by the #479 gate before
+/// the purchase path. Fails if the dialog id is not routed (the choice
+/// would go to the content engine and send no `Expand`).
+#[tokio::test]
+async fn the_expand_dialog_answer_reaches_the_purchase_path_once() {
+    use crate::cell::messages::BankCellToBase;
+    use cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_ID;
+
+    let (mut mgr, banker) = stage([3.0, 0.0, 0.0], INT_BANKER, VaultScope::Personal);
+    mgr.get_entity_mut(PLAYER).unwrap().player_id = Some(42);
+
+    // Not offered yet: the gate drops it.
+    assert!(choose(&mut mgr, VAULT_EXPAND_DIALOG_ID, 8).await.is_empty());
+
+    click(&mut mgr, banker).await;
+    let (tx, _rx) = mpsc::channel(64);
+    crate::cell::interactions::offer_vault_expansion(PLAYER, 42, banker, 40, 100, &tx, &mut mgr)
+        .await;
+    // The dialog is quarantined (#943), so the offer only records; show it
+    // as a served dialog would, which is what records the #479 offer.
+    let shown = cimmeria_entity::cell_entity::ExpansionOffer {
+        from_slots: 40,
+        price: 100,
+    };
+    crate::cell::interactions::show_expand_offer(PLAYER, banker, shown, &tx, &mut mgr).await;
+
+    let sent = choose(&mut mgr, VAULT_EXPAND_DIALOG_ID, 8).await;
+    let [BankCellToBase::Expand {
+        player_id,
+        offer,
+        vault,
+        ..
+    }] = sent.as_slice()
+    else {
+        panic!("one Expand: {sent:?}");
+    };
+    assert_eq!(*player_id, 42);
+    assert_eq!(offer.map(|o| (o.from_slots, o.price)), Some((40, 100)));
+    assert!(vault.opens_personal_vault(), "{vault:?}");
+    assert_eq!(vault.banker_id(), Some(banker));
+
+    // The offer was one-shot at the gate too: a replayed choice is dropped.
+    assert!(choose(&mut mgr, VAULT_EXPAND_DIALOG_ID, 8).await.is_empty());
+}

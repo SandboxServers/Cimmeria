@@ -28638,11 +28638,18 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- NPC and not the player.
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60104, 200005, 'Gate Mail. I can send you a test mail with a stack of Health Slappacks and 50 naquadah. Open your mail afterwards to take them. One mail every 10 minutes.', 843, 0);
 
+-- Bank and Vault campaign, BV-05: the Expand vault offer's one screen. The
+-- bank owns screen ids 200010-200019. Speaker 0: the same dialog is spoken
+-- by any Banker, and by the GM's own entity after .bank. The price is not
+-- in the text because it lives in bank_expansion_price; the offer's chat
+-- line names it.
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60110, 200010, 'Vault expansion. I can add 10 slots to your vault, up to 100 in all. The price of the next 10 slots is in your chat window.', 0, 0);
+
 --
 -- TOC entry 3309 (class 0 OID 0)
 -- Dependencies: 310
 -- Name: dialog_screens_screen_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200005, true);
+SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200010, true);
 

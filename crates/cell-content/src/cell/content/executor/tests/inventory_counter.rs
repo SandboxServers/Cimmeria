@@ -68,6 +68,7 @@ async fn remove_item_takes_the_vault_verdict_only_by_instance() {
         banker_id: None,
         space_id,
         opened_at: std::time::Instant::now(),
+        expansion_offer: None,
     });
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();

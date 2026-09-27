@@ -4,6 +4,7 @@
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_ID;
 use tokio::sync::mpsc;
 
 /// Handle `dialogButtonChoice(dialog_id, button_id)`. Args are the raw
@@ -64,6 +65,16 @@ pub(super) async fn handle_dialog_button_choice(
     // detector BEFORE the chain runs: a follow-up the chain displays now is
     // the player moving on, not a dialog replaced before it could be read.
     crate::cell::playtest_friction::dialog_answered(entity_id, dialog_id);
+
+    // The Banker's Expand dialog (BV-05) buys vault space; it has no chain.
+    // Passing the gate above only proves the dialog was shown: the purchase
+    // path re-checks the vault session, the proximity, the cash and the
+    // ceiling itself.
+    if dialog_id == VAULT_EXPAND_DIALOG_ID {
+        crate::cell::interactions::answer_vault_expansion(entity_id, button_id, tx, space_mgr)
+            .await;
+        return;
+    }
 
     let player_id = space_mgr
         .get_entity(entity_id)

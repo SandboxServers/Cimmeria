@@ -1,7 +1,8 @@
 //! Opening the personal vault: at a Banker, and for GM `.bank`.
 //!
 //! A successful open records the [`VaultSession`], logs the `bank`
-//! `vault_session_opened` event (DEBUG) and sends `onVaultOpen` (106).
+//! `vault_session_opened` event (DEBUG), sends `onVaultOpen` (106) and
+//! asks the base for an expansion quote (BV-05).
 //! Every refusal goes through [`super::reject_vault_open`].
 
 use std::time::Instant;
@@ -12,6 +13,7 @@ use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope, VaultSession}
 use cimmeria_wire::cell::client_methods::player::ON_VAULT_OPEN;
 use cimmeria_wire::cell::vault::build_vault_open_args;
 
+use super::expand::request_expansion_quote;
 use super::rejection::{reject_vault_open, VaultOpenReject};
 use super::{interact_range, InteractRangeFail};
 use crate::cell::messages::CellToBaseMsg;
@@ -172,6 +174,7 @@ async fn open_personal_vault(
         banker_id,
         space_id,
         opened_at: Instant::now(),
+        expansion_offer: None,
     });
     tracing::debug!(
         target: "bank",
@@ -208,6 +211,9 @@ async fn open_personal_vault(
              the session is open but the player sees no vault window"
         );
     }
+    // BV-05: offer the next expansion. A GM session's dialog speaks
+    // through the GM's own entity.
+    request_expansion_quote(entity_id, banker_id.unwrap_or(entity_id), tx, space_mgr).await;
     true
 }
 

@@ -72,6 +72,7 @@ mod tests {
             banker_id: Some(100_001),
             space_id: 1,
             opened_at: std::time::Instant::now(),
+            expansion_offer: None,
         });
         mgr
     }

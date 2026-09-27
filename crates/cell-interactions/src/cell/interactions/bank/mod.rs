@@ -30,7 +30,14 @@
 //! `vault_session_opened` and `vault_session_closed` (DEBUG) and
 //! `vault_open_rejected` (WARN). The info spans `bank.banker_interact` and
 //! `bank.console_open` wrap the two entry points.
+//!
+//! # Expansion
+//!
+//! Every personal open also asks the base for an expansion quote; below
+//! 100 slots the player is offered a one-button Expand dialog, whose answer
+//! buys one +10 step on the base (BV-05, D-BV02). See [`expand`].
 
+mod expand;
 mod open;
 mod rejection;
 
@@ -39,6 +46,10 @@ use cimmeria_entity::cell_entity::VaultCloseReason;
 use super::dispatch::{interact_range, InteractRangeFail};
 use crate::cell::space_manager::{log_vault_session_closed, SpaceManager};
 
+pub use expand::{
+    answer_vault_expansion, gm_expand_vault, offer_vault_expansion, refuse_non_gm_expand,
+    show_expand_offer,
+};
 pub use open::{open_vault_at_banker, open_vault_gm, reject_banker_out_of_range};
 pub use rejection::{reject_vault_open, VaultOpenReject};
 
@@ -59,6 +70,8 @@ pub fn pin_interaction_target(space_mgr: &mut SpaceManager, entity_id: u32, targ
     }
 }
 
+#[cfg(test)]
+mod expand_tests;
 #[cfg(test)]
 mod telemetry_tests;
 #[cfg(test)]

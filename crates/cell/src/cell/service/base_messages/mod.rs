@@ -31,6 +31,7 @@ use super::super::{chat, dispatch, spawner};
 
 mod ability_granted;
 mod bandolier;
+mod bank;
 mod gm_spawn;
 mod ignore;
 mod inventory_events;
@@ -516,6 +517,8 @@ pub(super) async fn handle_base_message(
         }
 
         BaseToCellMsg::Org(org_msg) => org::handle(org_msg, tx, space_mgr).await,
+
+        BaseToCellMsg::Bank(bank_msg) => bank::handle(bank_msg, tx, space_mgr).await,
 
         BaseToCellMsg::Duel(duel_msg) => {
             super::super::duel::challenge::handle(duel_msg, tx, space_mgr).await;

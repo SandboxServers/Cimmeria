@@ -1,5 +1,6 @@
 //! `BaseToCellMsg` — messages sent from BaseApp to CellApp.
 
+use super::bank_base_to_cell::BankBaseToCell;
 use super::data::SavedMission;
 use super::duel_base_to_cell::DuelBaseToCell;
 use super::lab::{LabQuery, LabQueryResult};
@@ -459,6 +460,11 @@ pub enum BaseToCellMsg {
     /// Duel traffic. One nested enum, so the duel packets add variants in
     /// `duel_base_to_cell.rs` instead of here (work-packets.md § Messages).
     Duel(DuelBaseToCell),
+
+    /// Bank and vault traffic (the vault-expansion offer, BV-05). One
+    /// nested enum, so bank packets add variants in `bank_base_to_cell.rs`
+    /// instead of here.
+    Bank(BankBaseToCell),
 
     /// Replace a player entity's cell-side Ignore set: the character names
     /// on the player's contact-list Ignore list (flags 301), which the base

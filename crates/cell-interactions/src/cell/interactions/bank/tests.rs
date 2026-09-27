@@ -189,6 +189,7 @@ async fn vault_move_allowed_enforces_session_space_and_proximity() {
         banker_id,
         space_id,
         opened_at: std::time::Instant::now(),
+        expansion_offer: None,
     };
     mgr.get_entity_mut(PLAYER).unwrap().vault_session = Some(open(Some(banker), space));
     assert_eq!(allowed(&mgr), Ok(()), "next to the Banker");
@@ -260,6 +261,7 @@ async fn vault_access_maps_every_verdict() {
         banker_id,
         space_id,
         opened_at: std::time::Instant::now(),
+        expansion_offer: None,
     };
 
     assert_eq!(vault_access(PLAYER, &mgr), VaultAccess::NO_SESSION);

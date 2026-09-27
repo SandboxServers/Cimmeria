@@ -8,6 +8,7 @@ mod bandolier_sync;
 mod bandolier_sync_ammo_type;
 mod bandolier_sync_reload;
 mod bandolier_update;
+mod bank;
 mod broadcast_to_witnesses;
 mod create_entity_instance;
 mod disconnect_persist_position;

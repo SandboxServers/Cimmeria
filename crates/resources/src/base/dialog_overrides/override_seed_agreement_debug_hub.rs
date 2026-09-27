@@ -1,6 +1,6 @@
 //! Override-versus-seed agreement for the debug-hub dialogs 60100 and
 //! 60101 (the Castle_CellBlock stasis-room dialog NPC) and 60104 (the Gate
-//! Mail Clerk, SS-U3).
+//! Mail Clerk, SS-U3), plus the Banker's Expand vault offer 60110 (BV-05).
 //!
 //! The two records drift apart silently, and each drift fails differently:
 //!
@@ -24,8 +24,8 @@ use std::path::PathBuf;
 
 use super::{DialogOverride, QUARANTINED_DIALOG_OVERRIDES};
 
-/// The Cimmeria-authored dialogs of the debug hub.
-const HUB_DIALOGS: [u32; 3] = [60100, 60101, 60104];
+/// The Cimmeria-authored dialogs of the debug hub, and the Banker's.
+const HUB_DIALOGS: [u32; 4] = [60100, 60101, 60104, 60110];
 
 /// `CARGO_MANIFEST_DIR` is `<workspace>/crates/resources`.
 fn read_seed(name: &str) -> String {

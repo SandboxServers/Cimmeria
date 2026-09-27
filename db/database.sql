@@ -223,6 +223,7 @@
 \ir resources/Events/Tables/point_sets.sql
 \ir resources/Events/Tables/sequences.sql
 \ir resources/Events/Tables/sequences_nvp.sql
+\ir resources/Items/Tables/bank_expansion_price.sql
 \ir resources/Items/Tables/containers.sql
 \ir resources/Items/Tables/crafting_item_effects.sql
 \ir resources/Items/Tables/item_list_items.sql
@@ -308,6 +309,7 @@
 \ir resources/Events/Seed/point_sets.sql
 \ir resources/Events/Seed/sequences.sql
 \ir resources/Events/Seed/sequences_nvp.sql
+\ir resources/Items/Seed/bank_expansion_price.sql
 \ir resources/Items/Seed/containers.sql
 \ir resources/Items/Seed/crafting_item_effects.sql
 \ir resources/Items/Seed/item_list_items.sql

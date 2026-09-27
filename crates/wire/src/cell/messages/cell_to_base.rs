@@ -854,9 +854,9 @@ pub enum CellToBaseMsg {
     /// they never touch `MailOp`, which the mail packets own.
     MailGm(MailGmCellToBase),
 
-    /// Bank and vault traffic (the GM `.bankdump` today). One nested enum,
-    /// so bank packets add variants in `bank_cell_to_base.rs` instead of
-    /// here.
+    /// Bank and vault traffic (the GM `.bankdump`, the vault expansion).
+    /// One nested enum, so bank packets add variants in
+    /// `bank_cell_to_base.rs` instead of here.
     Bank(BankCellToBase),
 
     /// A content chain's `send_system_mail` action (SS-U3): one system mail
