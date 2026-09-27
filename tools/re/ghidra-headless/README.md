@@ -17,8 +17,8 @@ It covers static analysis only. For anything on the running client, use the x64d
 
 ## Before you start
 
-- **Ghidra** 12.0.4. On the maintainer workstation it is installed at `C:\ghidra_12.0.4_PUBLIC`; `analyzeHeadless.bat` is in its `support\` folder.
-- **An analyzed project.** The script opens the existing Ghidra project `SGW` in the client's `Stargate Worlds-QA\Working\binaries` folder with `-noanalysis`, so auto-analysis must already have been run there from the GUI. The client is not in git.
+- **Ghidra** 12.0.4. The command below uses `C:\ghidra_12.0.4_PUBLIC`, the default install path: adjust it to yours. `analyzeHeadless.bat` is in its `support\` folder.
+- **An analyzed project.** The script opens the existing Ghidra project `SGW` in your client's `<SGW client>\Working\binaries` folder with `-noanalysis`, so auto-analysis must already have been run there from the GUI. The client is not in git.
 - **No other Ghidra holding the project.** Close the GUI's copy of the project first (see the lock caveat below).
 
 ## Run it
@@ -26,14 +26,14 @@ It covers static analysis only. For anything on the running client, use the x64d
 From PowerShell or Git Bash (Windows paths either way, since this calls a `.bat`):
 
 ```bat
-C:\ghidra_12.0.4_PUBLIC\support\analyzeHeadless.bat "<client>\Stargate Worlds-QA\Working\binaries" SGW ^
+C:\ghidra_12.0.4_PUBLIC\support\analyzeHeadless.bat "<SGW client>\Working\binaries" SGW ^
   -process SGW.exe -noanalysis -readOnly ^
   -scriptPath <repo>\tools\re\ghidra-headless ^
   -postScript Probe.java D:<addr> X:<addr> S:<text> FNSUB:<substr> VT:<addr>,<n> FINDPTR:<addr> ^
   > probe-out.txt 2>&1
 ```
 
-Replace `<client>` with your client install root and `<repo>` with your Cimmeria checkout. Addresses are hex (`0x00a5c150`). Everything after `Probe.java` is a token list, processed in order.
+Replace `<SGW client>` with your client's `Stargate Worlds-QA` folder, the Ghidra path with your install, and `<repo>` with your Cimmeria checkout. Addresses are hex (`0x00a5c150`). Everything after `Probe.java` is a token list, processed in order.
 
 The script's output lands in the redirected file with each line prefixed `INFO  Probe.java>`. Every token prints a header line starting with `===`, so `grep "=== "` finds your sections.
 

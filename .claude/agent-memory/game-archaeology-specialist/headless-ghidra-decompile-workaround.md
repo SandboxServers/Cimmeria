@@ -51,10 +51,13 @@ template above or from old scratchpad copies.
 3. Invoke from Git Bash (or PowerShell — use Windows-style paths either way since this is calling a
    `.bat`):
 
+   Placeholders: `<ghidra>` is the Ghidra install (default install path `C:\ghidra_12.0.4_PUBLIC`,
+   adjust to yours), `<SGW client>` is your client's `Stargate Worlds-QA` folder, and `<repo>` is
+   your Cimmeria checkout.
+
 ```bash
-cd "/c/Users/Steve/source/projects/SGW/Stargate Worlds-QA/Working/binaries"
-/c/ghidra_12.0.4_PUBLIC/support/analyzeHeadless.bat \
-  "C:\\Users\\Steve\\source\\projects\\SGW\\Stargate Worlds-QA\\Working\\binaries" SGW \
+"<ghidra>/support/analyzeHeadless.bat" \
+  "<SGW client>\\Working\\binaries" SGW \
   -process SGW.exe -noanalysis -readOnly \
   -scriptPath "<repo>\\tools\\re\\ghidra-headless" \
   -postScript Probe.java D:0x00441630 X:0x00441630 N:0x00443c10 S:CookedDataDialogs \
