@@ -47,12 +47,16 @@
 //!   per-class export bodies.
 //! - [`cover_fixtures`] — cover-node actors (`SGWSpecCoverNode`,
 //!   `StaticMeshActor.CoverNodeArray`).
+//! - [`kismet_fixtures`] — Matinee and Kismet objects that drive an
+//!   `InterpActor`.
 //! - [`chunk_fixtures`] — composes the above into whole `.umap` chunks
 //!   and a matching [`cimmeria_upk_objects::PackageIndex`].
 
 pub mod chunk_fixtures;
 // Added by NA21: SGWSpecCoverNode / CoverNodeArray actors.
 pub mod cover_fixtures;
+// Added by NA40: SeqAct_Interp / InterpData / SeqVar_Object chains.
+pub mod kismet_fixtures;
 pub mod model_payload;
 pub mod names;
 pub mod package_bytes;
@@ -68,6 +72,7 @@ pub use chunk_fixtures::{
     COMPONENT_PROPS_OFFSET,
 };
 pub use cover_fixtures::{CoverComponentSpec, CoverMarker};
+pub use kismet_fixtures::{GroupSpec, MoveKeys};
 pub use model_payload::{ModelPayload, NodeSpec, SurfSpec};
 pub use names::NameTable;
 pub use package_bytes::PackageBuilder;

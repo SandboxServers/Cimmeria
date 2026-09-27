@@ -36,6 +36,7 @@ pub mod cover;
 pub mod coverage;
 pub mod floor_probe;
 pub mod geometry;
+pub mod interp_actor;
 pub mod nav_components;
 pub mod nav_roundtrip;
 pub mod nav_tiled;
@@ -181,18 +182,15 @@ pub struct ExtractOptions<'a> {
     /// Implied by `skip_terrain`: without terrain there is no evidence
     /// that anything is buried, so nothing is dropped either way.
     pub keep_hull_caps: bool,
-    /// Walk `InterpActor` exports as `StaticMeshActor`-shaped geometry.
-    /// Default `false` — opt-in. `KActor` and `FracturedStaticMeshActor`
-    /// are always walked regardless of this flag; see
-    /// [`staticmesh::MESH_ACTOR_CLASSES`]'s doc for why `InterpActor` is
-    /// the one gated: in this content it is disproportionately doors,
-    /// gates, lifts and elevators, and a mover's cooked pose is its
-    /// design-time resting state (usually closed), not necessarily
-    /// where a player experiences it at runtime. Baking a closed door
-    /// into a `.nav` seals the doorway. See
-    /// `docs/engine/navmesh-build-pipeline.md` §11 for which maps were
-    /// built with this on.
-    pub include_interp_actors: bool,
+    /// How `InterpActor` exports are treated. The default,
+    /// [`interp_actor::InterpActorMode::Classify`], bakes each one only
+    /// when [`interp_actor::classify`] includes it; `Off` reproduces a
+    /// pre-NA36 extraction. `KActor` and `FracturedStaticMeshActor` are
+    /// always walked; see [`staticmesh::MESH_ACTOR_CLASSES`]'s doc for
+    /// why `InterpActor` is the one gated, and
+    /// `docs/engine/navmesh-build-pipeline.md` §12 for which maps were
+    /// built how.
+    pub interp_actors: interp_actor::InterpActorMode,
 }
 
 /// Collapse `.` and `..` textually. No filesystem access, so it cannot
@@ -294,7 +292,7 @@ pub fn extract_map_with_report(
         skip_terrain,
         skip_bsp,
         keep_hull_caps,
-        include_interp_actors,
+        interp_actors,
     } = opts;
     let mut terrain_totals = terrain::TerrainStats::default();
     let (mut bsp_models_failed, mut bsp_triangles) = (0usize, 0usize);
@@ -354,7 +352,7 @@ pub fn extract_map_with_report(
     let mut report = MapCoverage {
         map_name,
         chunks_filtered_out: enumerated - chunks.len(),
-        include_interp_actors,
+        interp_actors,
         ..Default::default()
     };
 
@@ -392,7 +390,7 @@ pub fn extract_map_with_report(
             &pkg,
             index,
             &mut archetype_cache,
-            include_interp_actors,
+            interp_actors,
         );
         // Tag the soup with a group so NavBuilder can debug-print which
         // chunk a triangle came from. `Chunk_*` keeps it distinct from
@@ -496,6 +494,10 @@ pub fn extract_map_with_report(
             prefab_packages_opened: extraction.prefab_packages_opened,
             class_census,
         };
+        for mut record in std::mem::take(&mut extraction.interp_actors) {
+            record.chunk = row.chunk.clone();
+            report.interp_actor_records.push(record);
+        }
 
         if !row.sources_balance() {
             // A source pushed into the soup without tallying. Every

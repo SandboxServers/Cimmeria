@@ -725,6 +725,10 @@ NA28 meshes and their numbers are in
 
 ## 11. Mesh-actor class gap: InterpActor / KActor / FracturedStaticMeshActor (NA36, 2026-09-25)
 
+> **Superseded for `InterpActor` by §12 (NA40).** The opt-in flag below is
+> gone: every `InterpActor` is now classified per actor, and
+> `--include-interp-actors` became `--interp-actors off|classify`.
+
 **The bug.** `staticmesh::collect_static_mesh_instances` (§1.2's walker)
 filtered exports on `class == "StaticMeshActor"` exactly. Three sibling UE3
 classes — `InterpActor` (Matinee-driven movers), `KActor` (rigid-body
@@ -931,9 +935,68 @@ against this fix:
 No row met the "seed Y wrong, high confidence" bar this packet requires
 before touching `db/resources`; none of the open rows were corrected.
 
+## 12. Per-actor InterpActor classification (NA40, 2026-09-26)
+
+§11's switch baked every `InterpActor` or none. NA40 decides per actor, in
+`crates/navmesh-extractor/src/interp_actor/`, and makes that the default
+for both tools (`extract_map extract --interp-actors classify|off`,
+`occluder_extract build --interp-actors classify|off`; `off` is a
+pre-NA36 build).
+
+**Evidence first.** A chunk is its own Kismet level, so its exports hold
+every reference that can move its actors. `kismet_evidence` follows each
+`SeqAct_Interp` through its variable links (link `LinkDesc` = group name,
+`SeqVar_Object.ObjValue` = the actor) to the `InterpData` on its `Data`
+link, and `move_track` reads each group's `InterpTrackMove` keys
+(`PosTrack` / `EulerTrack`, `MoveFrame` relative or world). `classify`
+then decides, first match wins:
+
+| Rule | Verdict |
+|---|---|
+| Mesh name contains `door`, `stargate`, `chevron` or `securitycam` | exclude (`name:*`) |
+| No Kismet reference | include (`kismet:unreferenced`) |
+| A reference other than a Matinee group, an event `Originator` or a `SeqAct_PlaySound` target; an unreadable group; a keyless move track; a track class outside the move / event / sound / material / colour set | undecided |
+| A move track that starts or ends more than 1 cm from the cooked pose | exclude (`matinee:leaves-rest`) |
+| A rotation over 5° | exclude (`matinee:rotates`) |
+| A slide over 50 cm sideways | exclude (`matinee:slides`) |
+| Otherwise | include (`matinee:rest-anchored`) |
+
+Undecided actors are not baked, and the coverage report keeps flagging
+`InterpActor` as a collision risk while any are. Every run writes the
+decisions, with the rule and the evidence, to `<out>/interp_actors.tsv`.
+
+**Result.** Of the 738 `InterpActor`s that resolve a mesh in the 14 maps
+carrying one, 572 are baked (332 ring-transport rings, 211 street lamps,
+22 Humvees, 6 floating lights, a shelf box), 166 are left out (34 doors,
+124 camera heads, 5 radar dishes, 2 fan rotors, a swinging cargo box) and
+none is undecided. Without the name net, evidence alone excludes every
+door and camera head except nine Castle_CellBlock cell doors that no
+Kismet references. The per-actor list is
+[na40-interp-actor-decisions.tsv](../analysis/npc-ai-restoration/evidence/na40-interp-actor-decisions.tsv).
+
+`GLB-RingTransporter00`, NA36's "ring-transport platform", is one ring
+of a five-ring stack. At rest it lies on its platform, 30-34 cm tall,
+inside the 0.6 m climb, so the platforms were already walkable and still
+are.
+
+**Deterministic emit order.** Instances are now grouped in a `BTreeMap`
+before they reach the OBJ. The `HashMap` they used to go through gave the
+same chunk a different triangle order on every run, and NavBuilder gave
+each order different `.nav` bytes. Dakara_E1, Lucia and both Menfa maps
+now rebuild byte-identical with `--interp-actors off`; the maps whose
+committed files came from a `HashMap` order do not.
+
+**Rebuilds.** Harset, Dakara_E1, Menfa_Light, Menfa_Dark, Tollana,
+Agnos, Beta_Site_Evo_1 and Lucia were rebuilt (`.nav` and `.occ`); Castle
+and Castle_CellBlock got a new `.occ` only, because their `InterpActor`s
+change nothing in the `.nav` and any rebuild of it loses a seeded probe.
+Probe tables and the occluder comparison: the
+[NA40 worknote](../analysis/npc-ai-restoration/worknotes/na40-static-interp-actors.md).
+
 ## Cross-references
 
 - [data/spaces/README.md](../../data/spaces/README.md) — per-world parameters, validation and containment mode
+- [NA40 worknote](../analysis/npc-ai-restoration/worknotes/na40-static-interp-actors.md) — the per-actor `InterpActor` classifier, its verdicts and the rebuilds
 - [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md) — where Castle's probes land, the mirrored-instance fix, and what is still split
 - [castle-extraction-measurements.md](castle-extraction-measurements.md) — what the extractor recovers from Castle, per source and per class
 - [navbuilder-recast-limits.md](navbuilder-recast-limits.md) — rebuilding NavBuilder, Recast's four index limits, the Castle parameter table

@@ -14,6 +14,7 @@
 use std::path::PathBuf;
 
 use cimmeria_navmesh_extractor::floor_probe::{report as probe_report, AxisMapping, ProbeConfig};
+use cimmeria_navmesh_extractor::interp_actor::InterpActorMode;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ExtractArgs {
@@ -28,13 +29,10 @@ pub(crate) struct ExtractArgs {
     /// `<hex8>o.obj` file in the per-chunk directory breaks
     /// NavBuilder's chunked build (and NavBuilder still exits 0).
     pub combined: Option<PathBuf>,
-    /// Walk `InterpActor` exports as geometry. Default `false` — see
-    /// `staticmesh::MESH_ACTOR_CLASSES`'s doc: in this content
-    /// `InterpActor` is disproportionately doors, gates, lifts and
-    /// elevators, and baking a mover's cooked (often closed) pose into
-    /// a `.nav`/`.occ` risks sealing a doorway or blocking sight
-    /// through one that is actually open at runtime.
-    pub include_interp_actors: bool,
+    /// `--interp-actors off|classify`, default `classify` (NA40): bake
+    /// each `InterpActor` only when the chunk's Kismet shows it never
+    /// leaves its cooked pose. `off` reproduces a pre-NA36 extraction.
+    pub interp_actors: InterpActorMode,
 }
 
 impl ExtractArgs {
@@ -51,6 +49,10 @@ impl ExtractArgs {
         self.classes
             .clone()
             .unwrap_or_else(|| self.out.join("coverage_classes.tsv"))
+    }
+    /// The `InterpActor` decision log, always next to the OBJs.
+    pub fn interp_actors_path(&self) -> PathBuf {
+        self.out.join("interp_actors.tsv")
     }
 }
 
@@ -103,7 +105,14 @@ impl Args {
             return positional_extract(argv).map(Some);
         }
 
-        let mut flags = Flags::collect(&argv[1..], &["--include-interp-actors"])?;
+        if argv.iter().any(|a| a == "--include-interp-actors") {
+            return Err(
+                "--include-interp-actors was replaced by --interp-actors off|classify \
+                        (NA40; classify is the default)"
+                    .to_string(),
+            );
+        }
+        let mut flags = Flags::collect(&argv[1..])?;
         let parsed = match mode.as_str() {
             "extract" => Args::Extract(ExtractArgs {
                 cooked_root: flags.take_required_path("--cooked-root")?,
@@ -114,7 +123,10 @@ impl Args {
                 report: flags.take_path("--report"),
                 classes: flags.take_path("--classes"),
                 combined: flags.take_path("--combined"),
-                include_interp_actors: flags.take_bool("--include-interp-actors"),
+                interp_actors: match flags.take("--interp-actors") {
+                    None => InterpActorMode::default(),
+                    Some(v) => InterpActorMode::parse(&v)?,
+                },
             }),
             "probe" => {
                 let mappings = match flags.take("--mapping") {
@@ -176,38 +188,25 @@ fn positional_extract(argv: &[String]) -> Result<Args, String> {
         report: None,
         classes: None,
         combined: None,
-        include_interp_actors: false,
+        interp_actors: InterpActorMode::default(),
     }))
 }
 
 /// `--flag value` pairs, consumed by name so an unrecognised flag can be
-/// reported instead of silently ignored. A caller-supplied allowlist of
-/// bare (value-less) boolean flags is tracked separately in `bools`, so
-/// most flags still get the strict "must have a value, no repeats"
-/// treatment while a handful of true/false switches (like
-/// `--include-interp-actors`) don't need `true`/`false` spelled out.
+/// reported instead of silently ignored.
 #[derive(Debug, Default)]
 struct Flags {
     pairs: Vec<(String, String)>,
-    bools: std::collections::HashSet<String>,
 }
 
 impl Flags {
-    fn collect(rest: &[String], bool_flags: &[&str]) -> Result<Self, String> {
+    fn collect(rest: &[String]) -> Result<Self, String> {
         let mut pairs: Vec<(String, String)> = Vec::new();
-        let mut bools: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut i = 0;
         while i < rest.len() {
             let key = &rest[i];
             if !key.starts_with("--") {
                 return Err(format!("expected a --flag, got {key:?}"));
-            }
-            if bool_flags.contains(&key.as_str()) {
-                if !bools.insert(key.clone()) {
-                    return Err(format!("{key} given more than once"));
-                }
-                i += 1;
-                continue;
             }
             let Some(value) = rest.get(i + 1) else {
                 return Err(format!("{key} needs a value"));
@@ -221,7 +220,7 @@ impl Flags {
             pairs.push((key.clone(), value.clone()));
             i += 2;
         }
-        Ok(Self { pairs, bools })
+        Ok(Self { pairs })
     }
 
     fn take(&mut self, key: &str) -> Option<String> {
@@ -251,18 +250,10 @@ impl Flags {
         }
     }
 
-    /// `true` iff `key` was present in `bool_flags` on the command line.
-    fn take_bool(&mut self, key: &str) -> bool {
-        self.bools.remove(key)
-    }
-
     /// Error on anything left over — a typo'd flag must not be silently
     /// dropped when the whole point of the tool is measurement.
     fn finish(self) -> Result<(), String> {
         if let Some((k, _)) = self.pairs.first() {
-            return Err(format!("unrecognised flag {k:?}"));
-        }
-        if let Some(k) = self.bools.iter().next() {
             return Err(format!("unrecognised flag {k:?}"));
         }
         Ok(())
@@ -347,8 +338,12 @@ mod tests {
         // No whole-map OBJ unless asked: one in the per-chunk dir kills
         // NavBuilder's chunked build while it still exits 0.
         assert_eq!(a.combined, None);
-        // NA36 follow-up: InterpActor is opt-in, off by default.
-        assert!(!a.include_interp_actors);
+        // NA40: InterpActors are classified per actor by default.
+        assert_eq!(a.interp_actors, InterpActorMode::Classify);
+        assert_eq!(
+            a.interp_actors_path(),
+            PathBuf::from("/tmp/out/interp_actors.tsv")
+        );
     }
 
     #[test]
@@ -371,7 +366,8 @@ mod tests {
             "/tmp/c.tsv",
             "--combined",
             "/tmp/whole/castle.obj",
-            "--include-interp-actors",
+            "--interp-actors",
+            "off",
         ]))
         .unwrap()
         .unwrap();
@@ -382,15 +378,12 @@ mod tests {
         assert_eq!(a.report_path(), PathBuf::from("/tmp/r.tsv"));
         assert_eq!(a.classes_path(), PathBuf::from("/tmp/c.tsv"));
         assert_eq!(a.combined, Some(PathBuf::from("/tmp/whole/castle.obj")));
-        assert!(a.include_interp_actors);
+        assert_eq!(a.interp_actors, InterpActorMode::Off);
     }
 
     #[test]
-    fn include_interp_actors_is_a_bare_flag_default_off_no_repeats() {
-        // Bare (no value) is the whole point: an operator should not
-        // have to remember `true`/`false` for a flag whose entire
-        // purpose is "did you actually mean to do this".
-        let off = Args::parse(&argv(&[
+    fn interp_actors_takes_off_or_classify_and_the_na36_flag_is_gone() {
+        let base = [
             "extract",
             "--cooked-root",
             "/c",
@@ -400,68 +393,26 @@ mod tests {
             "/o",
             "--index",
             "/i",
-        ]))
-        .unwrap()
-        .unwrap();
-        let Args::Extract(off) = off else {
+        ];
+        let with = |extra: &[&str]| {
+            let mut v: Vec<&str> = base.to_vec();
+            v.extend_from_slice(extra);
+            Args::parse(&argv(&v))
+        };
+
+        let Some(Args::Extract(off)) = with(&["--interp-actors", "off"]).unwrap() else {
             panic!("wrong mode")
         };
-        assert!(!off.include_interp_actors);
+        assert_eq!(off.interp_actors, InterpActorMode::Off);
 
-        let on = Args::parse(&argv(&[
-            "extract",
-            "--cooked-root",
-            "/c",
-            "--map",
-            "M",
-            "--out",
-            "/o",
-            "--index",
-            "/i",
-            "--include-interp-actors",
-        ]))
-        .unwrap()
-        .unwrap();
-        let Args::Extract(on) = on else {
-            panic!("wrong mode")
-        };
-        assert!(on.include_interp_actors);
+        // A typo is an error, not a silent default: the tool measures.
+        let err = with(&["--interp-actors", "on"]).unwrap_err();
+        assert!(err.contains("off") && err.contains("classify"), "{err}");
 
-        // A value after it is rejected: it takes none, so the next
-        // token must be read as the next flag, and a bare word there
-        // is an error.
-        let err = Args::parse(&argv(&[
-            "extract",
-            "--cooked-root",
-            "/c",
-            "--map",
-            "M",
-            "--out",
-            "/o",
-            "--index",
-            "/i",
-            "--include-interp-actors",
-            "true",
-        ]))
-        .unwrap_err();
-        assert!(err.contains("--flag"), "{err}");
-
-        // Given twice is a repeat, exactly like any other flag.
-        let err = Args::parse(&argv(&[
-            "extract",
-            "--cooked-root",
-            "/c",
-            "--map",
-            "M",
-            "--out",
-            "/o",
-            "--index",
-            "/i",
-            "--include-interp-actors",
-            "--include-interp-actors",
-        ]))
-        .unwrap_err();
-        assert!(err.contains("more than once"), "{err}");
+        // NA36's bare flag would otherwise read as "unrecognised"; the
+        // error names its replacement instead.
+        let err = with(&["--include-interp-actors"]).unwrap_err();
+        assert!(err.contains("--interp-actors"), "{err}");
     }
 
     #[test]

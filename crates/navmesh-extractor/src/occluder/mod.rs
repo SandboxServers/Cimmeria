@@ -35,6 +35,7 @@ use std::path::Path;
 use cimmeria_upk_objects::PackageIndex;
 
 use crate::geometry::Triangle as UeTriangle;
+use crate::interp_actor::{self, InterpActorMode};
 use crate::{bsp, chunk_id, staticmesh, terrain, umap};
 
 /// A triangle in BigWorld metres (`[x, y up, z]` per vertex).
@@ -70,6 +71,11 @@ pub struct WalkStats {
     pub bsp_triangles: usize,
     pub terrain_parse_failures: usize,
     pub bsp_models_failed: usize,
+    /// `InterpActor` decisions (NA40): baked, left out on evidence,
+    /// left out undecided.
+    pub interp_actors_included: usize,
+    pub interp_actors_excluded: usize,
+    pub interp_actors_undecided: usize,
 }
 
 impl WalkStats {
@@ -82,16 +88,16 @@ impl WalkStats {
 /// Walk every chunk of `map_dir` and call `visit` with its triangles.
 ///
 /// `index = None` is the extractor's degraded mode: terrain and BSP only.
-/// `include_interp_actors` — default `false`, opt-in — is the same knob
-/// `ExtractOptions` uses for the `.nav` side: doors, gates, lifts and
-/// elevators are disproportionately `InterpActor` in this content, and
-/// baking one's cooked (usually closed) pose into an `.occ` can block
+/// `interp_actors` is the same knob `ExtractOptions` uses for the `.nav`
+/// side: a door baked in its cooked (closed) pose into an `.occ` blocks
 /// line of sight through an opening a player can actually see and shoot
-/// through. See `staticmesh::MESH_ACTOR_CLASSES`'s doc.
+/// through, so each `InterpActor` is baked only when
+/// `interp_actor::classify` includes it. See
+/// `staticmesh::MESH_ACTOR_CLASSES`'s doc.
 pub fn for_each_chunk(
     map_dir: &Path,
     index: Option<&PackageIndex>,
-    include_interp_actors: bool,
+    interp_actors: InterpActorMode,
     mut visit: impl FnMut(&ChunkTriangles),
 ) -> crate::Result<WalkStats> {
     let mut stats = WalkStats::default();
@@ -105,8 +111,12 @@ pub fn for_each_chunk(
             &pkg,
             index,
             &mut archetype_cache,
-            include_interp_actors,
+            interp_actors,
         );
+        let (included, excluded, undecided) = interp_actor::tally(&extraction.interp_actors);
+        stats.interp_actors_included += included;
+        stats.interp_actors_excluded += excluded;
+        stats.interp_actors_undecided += undecided;
         let sm_end = extraction.soup.triangle_count();
         let terrain_stats = terrain::collect_terrain_triangles(&pkg, &mut extraction.soup);
         let terrain_end = extraction.soup.triangle_count();
