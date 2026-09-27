@@ -26,7 +26,9 @@ use super::record_decision_outcome;
 ///    dwell. The next tick observes `not close` against the new
 ///    target index and queues movement.
 /// 6. **`nav_path` empty + NOT close to target** → pathfind to the
-///    current target waypoint and push the result into `nav_path`.
+///    current target waypoint and push the result into `nav_path`. With
+///    no usable route, [`super::path_failure::UnroutedMove`] slides the
+///    NPC across the mesh toward it or holds (NA41).
 ///    Also clears `patrol_dwell_until` — leaving a `Some(past)` here
 ///    would cause the re-arrival from a knockback to skip the
 ///    dwell.
@@ -83,9 +85,10 @@ pub(super) async fn npc_ai_patrol(
         }
     };
 
-    // Empty-path drop fires BEFORE the Patrol broadcast so the wire
-    // doesn't see a Patrol byte for an NPC that's about to leave
-    // the state. The drop also broadcasts None to clear the cache.
+    // Empty-path drop fires BEFORE the Patrol movement type is recorded,
+    // so `last_movement_type` never reads Patrol for an NPC that leaves the
+    // state this tick. The drop records None to clear the cache. Nothing
+    // goes on the wire either way (NA10).
     if path_empty {
         super::set_ai_state(
             space_mgr,
@@ -100,10 +103,9 @@ pub(super) async fn npc_ai_patrol(
         return;
     }
 
-    // Broadcast Patrol movement-type. Dedup'd against
-    // `last_movement_type` — subsequent Patrol ticks are no-ops on
-    // the wire (the cache stays Some(Patrol) until a state
-    // transition clears it).
+    // Record the Patrol movement type in the `last_movement_type` cache
+    // (telemetry only; the client animates from velocity, NA10). The cache
+    // stays Some(Patrol) until a state transition clears it.
     crate::cell::abilities::broadcast_movement_type(
         npc_id,
         Some(MobMovementType::Patrol),
@@ -205,42 +207,56 @@ pub(super) async fn npc_ai_patrol(
             std::time::Instant::now(),
         );
         let (path, status) = (routed.waypoints, routed.status);
-        if path.as_ref().is_none_or(|p| p.len() <= 1) {
-            // Previously silent. The `else` arm below pushes the raw
-            // waypoint and the NPC walks to it through whatever
-            // geometry is in the way, with no log at any level — the
-            // 2026-09-18 Castle "NPCs cut through walls" shape.
-            let reason = super::path_failure::PathFailReason::classify(
-                space_mgr,
-                npc_id,
-                status,
-                path.as_deref(),
-            );
-            super::path_failure::report_path_failure(
-                space_mgr,
-                super::path_failure::PathFailure {
-                    npc_id,
-                    state: "patrol",
-                    decision_outcome: "patrol_no_path",
-                    from: npc_pos,
-                    to: waypoint,
-                    reason,
-                    fallback: super::path_failure::PathFallback::DirectWaypoint,
-                    target_id: None,
-                },
-                std::time::Instant::now(),
-            );
-        }
-        let path = path.unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.patrol_dwell_until = None;
-            if path.len() > 1 {
+        }
+        match path {
+            Some(path) if path.len() > 1 => {
                 // Skip the first entry (start position). Detour returns
                 // a straight-path that includes both endpoints.
-                super::replace_nav_path_on(npc, path.into_iter().skip(1));
-            } else {
-                // Pathfind failed or returned a single point — direct push.
-                super::replace_nav_path_on(npc, [waypoint]);
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    super::replace_nav_path_on(npc, path.into_iter().skip(1));
+                }
+            }
+            path => {
+                // No usable route. A meshed world slides toward the waypoint
+                // across the mesh or holds; only a meshless one walks the
+                // straight line (NA41). The old raw push walked the NPC
+                // through walls (the 2026-09-18 Castle shape).
+                let reason = super::path_failure::PathFailReason::classify(
+                    space_mgr,
+                    npc_id,
+                    status,
+                    path.as_deref(),
+                );
+                let unrouted =
+                    super::path_failure::UnroutedMove::plan(space_mgr, npc_id, npc_pos, waypoint);
+                super::path_failure::report_path_failure(
+                    space_mgr,
+                    super::path_failure::PathFailure {
+                        npc_id,
+                        state: "patrol",
+                        decision_outcome: "patrol_no_path",
+                        from: npc_pos,
+                        to: waypoint,
+                        reason,
+                        fallback: unrouted.fallback(),
+                        target_id: None,
+                    },
+                    std::time::Instant::now(),
+                );
+                let held = unrouted.is_hold();
+                unrouted.apply(space_mgr, npc_id);
+                if held {
+                    // Nothing to walk toward this waypoint: skip it, or the
+                    // NPC would retry it and hold here forever. A waypoint
+                    // it cannot reach is one it would not have reached by
+                    // walking through the wall either.
+                    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                        let len = npc.patrol_path.len().max(1);
+                        npc.patrol_next_index = (npc.patrol_next_index + 1) % len;
+                    }
+                }
             }
         }
         // patrol_continue covers both "walking the current waypoint"

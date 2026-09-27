@@ -16,6 +16,9 @@
 //!   - routes toward the nearest on-mesh point when the **target** is off the
 //!     mesh, so a GM on unmeshed props does not freeze every chaser;
 //!   - clears the stale route when a repath comes back **degenerate**;
+//!   - faces the target whenever it stands still for want of a route
+//!     (degenerate, or no route with nothing left to walk), so a holding
+//!     chaser does not keep its last leg's heading (NA41);
 //!   - stops [`policy::stop_distance`] short of the target, never inside it.
 //! - [`cover_slot`] is the leg to a cover slot (NA22). None of the target
 //!   rules above apply to it: the NPC stands on the slot, and a slot it
@@ -362,6 +365,9 @@ async fn plan(
             // take it. Drop the stale route rather than walking on toward
             // where the target used to be (audit S10), and hold here.
             super::stop_npc_movement(space_mgr, step.npc_id, super::StopReason::RepathDegenerate);
+            // Standing still, so no movement leg sets the yaw: face the
+            // target, or the NPC keeps the heading of its last leg (NA41).
+            super::fight::face_target(space_mgr, step.npc_id, from, step.target_pos);
             if let Some(npc) = space_mgr.get_entity_mut(step.npc_id) {
                 npc.leash.chase_route = Some(ChaseRoute {
                     goal,
@@ -386,7 +392,15 @@ async fn plan(
             super::note_outcome("no_path");
             let reason = PathFailReason::for_missing_path(space_mgr, step.npc_id, status);
             // `fight` does not enqueue the raw target as a direct waypoint:
-            // the chaser stands still, or keeps walking a stale route.
+            // the chaser stands still, or keeps walking a stale route. One
+            // standing still turns to face the target instead of keeping
+            // its last leg's yaw (NA41); a stale route's leg sets the yaw.
+            if space_mgr
+                .get_entity(step.npc_id)
+                .is_some_and(|npc| npc.nav_path.is_empty())
+            {
+                super::fight::face_target(space_mgr, step.npc_id, from, step.target_pos);
+            }
             report(
                 space_mgr,
                 step,

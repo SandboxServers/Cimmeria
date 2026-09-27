@@ -90,6 +90,7 @@ mod follow_resume;
 mod leash_reset;
 mod leash_walk;
 mod melee_reach;
+mod no_route;
 mod occluder_los;
 mod occluder_los_eye_heights;
 mod off_mesh_sentry;

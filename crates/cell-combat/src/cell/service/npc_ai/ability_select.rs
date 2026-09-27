@@ -243,9 +243,11 @@ fn point_away_from(
 /// [`point_away_from`] picks the direction; the navmesh then slides the NPC
 /// from where it stands toward that point with Detour's `moveAlongSurface`.
 /// The slide stops at a wall or ledge instead of passing through it, and the
-/// result sits on the floor of the storey the NPC is on. Without a navmesh,
-/// or with the NPC off it, the raw point is used, which is still at the
-/// NPC's own height.
+/// result sits on the floor of the storey the NPC is on. Without a navmesh
+/// the raw point is used, which is still at the NPC's own height. With a
+/// navmesh the NPC is off, there is no step: `None`, which the step-back
+/// treats as cornered, instead of the raw point through whatever is behind
+/// it (NA41).
 pub(super) fn step_back_waypoint_on_mesh(
     space_mgr: &SpaceManager,
     npc_id: u32,
@@ -254,11 +256,11 @@ pub(super) fn step_back_waypoint_on_mesh(
     distance: f32,
 ) -> Option<cimmeria_common::Vector3> {
     let raw = point_away_from(npc_pos, target_pos, distance)?;
-    Some(
-        space_mgr
-            .move_along_navmesh(npc_id, &npc_pos, &raw)
-            .unwrap_or(raw),
-    )
+    match space_mgr.move_along_navmesh(npc_id, &npc_pos, &raw) {
+        Some(slid) => Some(slid),
+        None if space_mgr.space_has_navmesh(npc_id) => None,
+        None => Some(raw),
+    }
 }
 
 /// The pre-NA32 min-range backup point, `min_range + 1.0` from the target.

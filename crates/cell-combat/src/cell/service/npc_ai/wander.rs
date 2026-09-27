@@ -52,9 +52,9 @@ pub(super) async fn npc_ai_wander(
             None => return,
         };
 
-    // Zero-radius drop fires BEFORE the Wander broadcast so the wire
-    // doesn't see a Wander byte for an NPC that's about to leave
-    // Wander this same tick.
+    // Zero-radius drop fires BEFORE the Wander movement type is recorded,
+    // so `last_movement_type` never reads Wander for an NPC that leaves
+    // Wander this tick. Nothing goes on the wire either way (NA10).
     if radius <= 0.0 {
         super::set_ai_state(
             space_mgr,
@@ -172,7 +172,8 @@ pub(super) async fn npc_ai_wander(
         spawn
     };
     // The candidate carries the spawn's Y, which is only right on flat
-    // ground; the no-route fallback below walks straight to it (audit M5).
+    // ground; the meshless no-route fallback below walks straight to it
+    // (audit M5).
     let target = space_mgr.snap_to_navmesh(npc_id, &target).unwrap_or(target);
 
     let routed = super::path_request::request_path(
@@ -188,41 +189,46 @@ pub(super) async fn npc_ai_wander(
         std::time::Instant::now(),
     );
     let (path, status) = (routed.waypoints, routed.status);
-    if path.as_ref().is_none_or(|p| p.len() <= 1) {
-        // Previously silent — see `patrol.rs` for the same shape, and
-        // for why the `Option` survives until after classification.
-        let reason = super::path_failure::PathFailReason::classify(
-            space_mgr,
-            npc_id,
-            status,
-            path.as_deref(),
-        );
-        super::path_failure::report_path_failure(
-            space_mgr,
-            super::path_failure::PathFailure {
-                npc_id,
-                state: "wander",
-                decision_outcome: "wander_no_path",
-                from: npc_pos,
-                to: target,
-                reason,
-                fallback: super::path_failure::PathFallback::DirectWaypoint,
-                target_id: None,
-            },
-            std::time::Instant::now(),
-        );
-    }
-    let path = path.unwrap_or_default();
+    // Clear the dwell deadline now that we're starting the next hop. The
+    // next arrival (`nav_empty` again) will see `wander_next_at = None` and
+    // re-stamp from the arrival branch above. A hold below arrives at once,
+    // so the NPC dwells where it stands and then samples a fresh point.
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-        // Clear the dwell deadline now that we're starting the next
-        // hop. The next arrival (`nav_empty` again) will see
-        // `wander_next_at = None` and re-stamp from the arrival
-        // branch above.
         npc.wander_next_at = None;
-        if path.len() > 1 {
-            super::replace_nav_path_on(npc, path.into_iter().skip(1));
-        } else {
-            super::replace_nav_path_on(npc, [target]);
+    }
+    match path {
+        Some(path) if path.len() > 1 => {
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                super::replace_nav_path_on(npc, path.into_iter().skip(1));
+            }
+        }
+        path => {
+            // No usable route: slide across the mesh or hold on a meshed
+            // world, straight line only on a meshless one (NA41). See
+            // `patrol.rs` for why the `Option` survives until here.
+            let reason = super::path_failure::PathFailReason::classify(
+                space_mgr,
+                npc_id,
+                status,
+                path.as_deref(),
+            );
+            let unrouted =
+                super::path_failure::UnroutedMove::plan(space_mgr, npc_id, npc_pos, target);
+            super::path_failure::report_path_failure(
+                space_mgr,
+                super::path_failure::PathFailure {
+                    npc_id,
+                    state: "wander",
+                    decision_outcome: "wander_no_path",
+                    from: npc_pos,
+                    to: target,
+                    reason,
+                    fallback: unrouted.fallback(),
+                    target_id: None,
+                },
+                std::time::Instant::now(),
+            );
+            unrouted.apply(space_mgr, npc_id);
         }
     }
     // Picked a fresh waypoint and queued the path — the next tick
