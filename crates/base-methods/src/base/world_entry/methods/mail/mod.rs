@@ -28,15 +28,15 @@ use super::super::super::ConnectedClientState;
 use crate::cell::messages::MailOp;
 use crate::mercury::build_player_entity_method_packet;
 
-mod gm;
 mod claim;
 mod cod;
+mod gm;
 mod headers;
 mod read;
 mod return_;
 mod send;
-mod take;
 pub mod system;
+mod take;
 
 pub use gm::handle_mail_gm;
 pub use system::{

@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Mail System
 
 > **Last updated**: 2026-09-27
-> **Status**: Read side implemented (headers / body / delete / archive), player sending with text (social-systems SS-M1) and with cash, an item or COD attached, held in escrow (SS-M2). Taking attachments, paying COD and return-to-sender are still stubs until SS-M3.
+> **Status**: Read side implemented (headers / body / delete / archive), player sending with text (social-systems SS-M1) and with cash, an item or COD attached, held in escrow (SS-M2), and taking cash, taking the item, paying COD and return-to-sender (SS-M3). New-mail notification and expiry are SS-M4.
 
 ## Overview
 
@@ -42,13 +42,35 @@ Delivery then runs in the same transaction as a text send, with these steps adde
 2. After the recipient checks pass, the item must be in the sender's main bag (the same allowlist trade uses, so equipped, bandolier, mission, crafting, vault and buyback items are refused), not bound, and at least as large as the quantity asked for. A failure is `MAILRESULT_ItemNotAvailable`. Vault items (containers 17-20) and buyback items (16) get their own reason and feedback line: the owner's rule (2026-09-27, Bank campaign) is that vendors, trade, crafting and mail see only the backpack.
 3. The sender pays 25 naquadah postage plus the gift cash, in one conditional `UPDATE`. A COD sender pays the postage only. If the balance cannot cover it, the send is `MAILRESULT_NotEnoughCash` and nothing is written. The postage is a sink (D-SS02).
 4. The mail row is inserted with `cash` (the gift or the COD price) and, for COD, `MAIL_COD` in `flags`.
-5. The item moves into escrow in `sgw_gate_mail_item`. A whole stack moves as the row itself, keeping its instance id. For part of a stack, the sender's row is decremented and the split-off quantity gets a fresh id from `sgw_inventory_item_id_seq`. Every instance column is kept. The item leaves `sgw_inventory`, so it appears in neither player's bags until SS-M3's take moves it back (D-SS08). Whatever mail puts back into an inventory (a take, a return, a COD delivery) lands in the backpack, never a vault container (owner rule, 2026-09-27).
+5. The item moves into escrow in `sgw_gate_mail_item`. A whole stack moves as the row itself, keeping its instance id. For part of a stack, the sender's row is decremented and the split-off quantity gets a fresh id from `sgw_inventory_item_id_seq`. Every instance column is kept. The item leaves `sgw_inventory`, so it appears in neither player's bags until a take moves it back (D-SS08). Whatever mail puts back into an inventory (a take, a return, a COD delivery) lands in the backpack, never a vault container (owner rule, 2026-09-27).
 
 Any failure rolls the whole send back: the balance, the stack, the mail and escrow stay as they were, and the player gets `sendMailResult` plus a feedback line naming the reason. After a commit the sender's client gets `onCashChanged` with the balance read inside the transaction. For an item it also gets `onRemoveItem` when the whole row left the bag, then the full `onUpdateItem` list.
 
 The recipient's `onMailHeaderInfo` carries the cash on the header, `MAIL_COD` in the header flags, and one `MessageAttachment` per mail that holds an item (see [MessageAttachment](#messageattachment)).
 
 `deleteMailMessage` refuses a mail that still holds an item, gift cash or an unpaid COD price. The row and its escrow row are left unchanged, no `onMailHeaderRemove` is sent, and a feedback line tells the player to take the attachment or return the mail first. Deleting such a mail would destroy the escrowed value, because the escrow row cascades with its mail. Mail with nothing attached deletes as before. The client's own UI never runs this check; it relies on the server.
+
+### Taking attachments, paying COD, returning (SS-M3)
+
+Four cell methods act on one mail: `takeCashFromMailMessage` (CM 49), `takeItemFromMailMessage` (CM 50), `payCODForMailMessage` (CM 51) and `returnMailMessage` (CM 47). The cell forwards each to the base with the caller's `player_id` from its own entity; the only thing taken from the payload is the mail id. Each runs in one transaction (`crates/base-methods/src/base/world_entry/methods/mail/`, `take.rs`, `cod.rs`, `return_.rs`), and each takes its locks in the same order (`claim.rs`):
+
+1. the caller's inventory advisory locks (the same keys and order as the send, crafting and the move path);
+2. the mail row, `FOR UPDATE`, found by `mail_id` **and** the caller's `character_id`, so nobody can act on another player's mail;
+3. the escrow row and any inventory rows;
+4. `sgw_player` rows, `FOR UPDATE`, ascending.
+
+Two requests for one mail (a double click, or take-cash and take-item in one bundle) queue on the mail row, and the second re-reads it after the first commits. Every write is also conditional on the state it was decided on, with the changed-row count checked.
+
+- **Take cash.** Refused while the mail is an unpaid COD: its `cash` is the price, not a gift. Otherwise `cash` is zeroed and the owner credited, once. A credit that would take the balance past `i32::MAX` is refused and the cash stays in the mail. The client gets `onCashChanged` and the refreshed header.
+- **Take item.** Refused while the mail is an unpaid COD. The server chooses the destination: the first free slot of the caller's main bag (`INV_MAIN`), reserved under the bag's advisory lock. `ContainerId` and `SlotId` are never read, because the shipped client fills them with uninitialised stack ([`mail-wire-formats.md`](../reverse-engineering/findings/mail-wire-formats.md) M-Q5). An item never goes to a vault or any other container. A full bag leaves the item in escrow and says so. The escrow row is restored into `sgw_inventory` with its instance id and every instance column, then deleted. The client gets the full inventory list and the refreshed header.
+- **Pay COD.** The price is read from the stored mail. The payer is debited; `MAIL_COD` is cleared and `cash` zeroed in the same statement, so the price can never be taken as gift cash and the delete guard (which keys on `cash = 0`) works once the item is taken. `cod_paid` is set, so the paid mail can no longer be returned: the item is the buyer's, and the seller already has the price. The price is delivered to the sender as a new mail carrying the cash, so it arrives whether the sender is online or not. That payment mail is server mail: `sender_id` is NULL (so it cannot be returned), `sender_name` is the payer's stored name, the subject is "COD payment: " and the original subject, and it is exempt from the mailbox cap (D-SS03). The item is then taken with an ordinary take (D-SS09). If the COD's sender no longer exists (their character was deleted, and the foreign key set `sender_id` NULL), paying cancels the COD instead: nothing is charged, the price is zeroed, and the item becomes an ordinary take. Without that, the item would be stranded, because nobody could be paid and nobody returned to.
+- **Return.** Allowed for a mail that is not archived, has not been returned already, is not a paid COD, and has a player sender (D-SS10). The mail is re-addressed to the stored `sender_id`, never to `sender_name`. The returner becomes its sender, `returned` is set so it can never bounce back, it arrives unread with a fresh `sent_time`, and an unpaid COD is cancelled with its price zeroed. The escrow row is keyed by `mail_id`, so the item travels with the mail. The returner's client drops the header.
+
+After a take or a payment the client gets `onMailHeaderRemove` and then `onMailHeaderInfo` with that one mail as it now stands. The client upserts headers by id (M-Q7) and fills the attachment fields only from an attachment row, so removing first guarantees that a taken item's icon does not linger.
+
+Archiving an unpaid COD is refused ("Pay for or return this COD delivery before archiving it."), and the mail stays in the inbox: archived mail can be neither returned nor expired, so an archived unpaid COD would otherwise strand the seller's item for good. A paid COD archives normally.
+
+Every refusal answers with a feedback line on the first press and logs `mail.op_refused` with its `reason`. A request naming a mail the caller does not own also removes that stale header from the caller's list.
 
 ### Server and GM mail (SS-U1)
 
@@ -78,15 +100,15 @@ The GM tools use the same writer (see [commands](../commands.md)):
 | Request mail headers | DONE | `requestMailHeaders` → `MailOp::RequestHeaders` → `SELECT … FROM sgw_gate_mail` → `onMailHeaderInfo` (CM 76). Only the requested list: `bArchive` 0 returns inbox mail, 1 archived mail |
 | Read mail body | DONE | `requestMailBody` → `MailOp::RequestBody` → `onMailRead` (CM 78); also stamps `read_time` on first read, owner-scoped. `ToText` is the recipient's stored name |
 | Delete mail | DONE | `deleteMailMessage` → `MailOp::Delete` → `onMailHeaderRemove` (CM 77). A mail that still holds an item, gift cash or an unpaid COD is refused with a feedback line and kept (SS-M2) |
-| Archive mail | DONE | `archiveMailMessage` → `MailOp::Archive` → `onMailHeaderRemove` (CM 77) |
+| Archive mail | DONE | `archiveMailMessage` → `MailOp::Archive` → `onMailHeaderRemove` (CM 77). An unpaid COD is refused with a feedback line and stays in the inbox (SS-M3): archived mail cannot be returned and never expires, so it would strand the seller's item |
 | Server-generated mail | DONE | `send_system_mail` / `send_system_mail_tx` (SS-U1): cash, a minted item or a server-held instance, no postage, no COD, not returnable. See [Server and GM mail](#server-and-gm-mail-ss-u1) |
 | GM mail tools | DONE | `.mail`, `.mailbox`; `.mail_expire` refused until SS-M4 |
 | Send mail (player compose) | DONE (text only) | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
 | Cash, item or COD attachment on send | DONE | One recipient; 25 naquadah postage; item into escrow (`sgw_gate_mail_item`); one transaction. See [Sending with an attachment](#sending-with-an-attachment-ss-m2) |
-| Return to sender | STUB | `returnMailMessage` logs `UNIMPLEMENTED` |
-| Cash attachment claim | STUB | `takeCashFromMailMessage` logs `UNIMPLEMENTED` (the `cash` column is populated and read back in headers) |
-| Item attachment claim | STUB | `takeItemFromMailMessage` logs `UNIMPLEMENTED`. The item waits in `sgw_gate_mail_item` (SS-M3) |
-| Cash On Delivery | STUB | `payCODForMailMessage` logs `UNIMPLEMENTED` |
+| Return to sender | DONE | `returnMailMessage` (CM 47) → `MailOp::Return`. To the stored `sender_id`, once; not archived or server mail; COD cancelled. See [Taking attachments](#taking-attachments-paying-cod-returning-ss-m3) |
+| Cash attachment claim | DONE | `takeCashFromMailMessage` (CM 49) → `MailOp::TakeCash`. Once; never from an unpaid COD; overflow-checked |
+| Item attachment claim | DONE | `takeItemFromMailMessage` (CM 50) → `MailOp::TakeItem`. First free main-bag slot chosen by the server; the client's container and slot are ignored; a full bag keeps the item in escrow |
+| Cash On Delivery | DONE | `payCODForMailMessage` (CM 51) → `MailOp::PayCod`. Stored price; the payment is mailed to the sender |
 | New mail notification | STUB | `onNewMail`, `notifyPlayersOfNewMail` not wired |
 | Multiple recipients | DONE | Up to 10 per text mail, de-duplicated; one row each |
 | Send result feedback | DONE | `sendMailResult` (CM 79) answers every send, flood-limited ones included, with `FailedRecipients`. A feedback line with the reason follows every refusal, except that the flood line is sent at most once every 5 seconds |
@@ -122,7 +144,7 @@ The GM tools use the same writer (see [commands](../commands.md)):
 | `returnMailMessage` | YES | MailId | Return to sender |
 | `requestMailBody` | YES | MailId | Fetch body text |
 | `takeCashFromMailMessage` | YES | MailId | Claim cash attachment |
-| `takeItemFromMailMessage` | YES | MailId, ContainerId, SlotId | Claim item attachment. ContainerId and SlotId are garbage in the shipped client (`mail-wire-formats.md` M-Q5). **Planned (SS-M3, not yet implemented; the handler is still a stub):** the server will ignore them and place the item in the caller's first free main slot |
+| `takeItemFromMailMessage` | YES | MailId, ContainerId, SlotId | Claim item attachment. ContainerId and SlotId are garbage in the shipped client (`mail-wire-formats.md` M-Q5), so the server ignores them and places the item in the caller's first free main-bag slot (SS-M3) |
 | `payCODForMailMessage` | YES | MailId | Pay COD fee |
 | `onNewMail` | NO | (none) | Server notification of new mail |
 
@@ -235,7 +257,9 @@ CREATE TABLE sgw_gate_mail (
     read_time    integer NOT NULL,   -- unix epoch seconds; 0 = unread
     flags        integer DEFAULT 0 NOT NULL,
     item_id      integer,
-    sender_name  character varying(128) NOT NULL
+    sender_name  character varying(128) NOT NULL,
+    returned     boolean DEFAULT false NOT NULL,  -- SS-M3: returned once, never again
+    cod_paid     boolean DEFAULT false NOT NULL   -- SS-M3: a paid COD is the buyer's; never returned
 );
 ```
 
@@ -257,11 +281,9 @@ It is a standalone table, not `INHERITS (sgw_inventory_base)`, so no inventory q
 
 ## Remaining Work
 
-1. **Attachment claim (SS-M3)** — `takeItemFromMailMessage` / `takeCashFromMailMessage` still log `UNIMPLEMENTED`, so an attachment sent today stays in escrow until SS-M3 lands. Per `mail-wire-formats.md` M-Q5, `ContainerId`/`SlotId` on `takeItemFromMailMessage` carry uninitialized client stack garbage and must never be interpreted — always place into the caller's first free main slot
-2. **RecipientFlags** — the vault and organization aliases are refused until the Bank and organizations campaigns land them
-3. **COD flow (SS-M3)** — `payCODForMailMessage` debits the recipient and mails the price to the sender (D-SS09)
-4. **New-mail notification and expiry (SS-M4)**
-5. **Rate limiting** — the `lastMailGetTime` throttle on header requests is not implemented
+1. **RecipientFlags** — the vault and organization aliases are refused until the Bank and organizations campaigns land them
+2. **New-mail notification and expiry (SS-M4)** — a sender is not told when a payment or a returned mail arrives; it shows on their next header request
+3. **Rate limiting** — the `lastMailGetTime` throttle on header requests is not implemented
 
 ## Related Docs
 
