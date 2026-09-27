@@ -1,8 +1,8 @@
 //! Castle_CellBlock stasis-room debug hub — chain-replay guards for the five
 //! chains in `db/resources/Content/Seed/debug_hub_chains.sql`.
 //!
-//! * 7001-7003: the dialog round trip. Click the NPC, dialog 100100 opens;
-//!   its button fires 7002, which opens 100101; closing 100101 (-1) fires
+//! * 7001-7003: the dialog round trip. Click the NPC, dialog 60100 opens;
+//!   its button fires 7002, which opens 60101; closing 60101 (-1) fires
 //!   7003, which speaks a confirmation line into chat.
 //! * 7004-7005: the Livewire round trip. Click the terminal, Livewire
 //!   starts; the win fires 7005, which speaks a confirmation line.
@@ -160,11 +160,11 @@ fn bark_text(call: &(u32, u16, Vec<u8>)) -> (String, String) {
     (speaker, text)
 }
 
-/// Chain 7001: clicking the dialog NPC opens 100100, spoken by that NPC.
+/// Chain 7001: clicking the dialog NPC opens 60100, spoken by that NPC.
 /// The click's `target_entity_id` names the speaker, so the frame's
 /// EntityId must be the NPC, not the player.
 #[tokio::test]
-async fn debug_hub_dialog_npc_click_opens_dialog_100100_as_the_npc() {
+async fn debug_hub_dialog_npc_click_opens_dialog_60100_as_the_npc() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7001).await;
 
@@ -183,14 +183,14 @@ async fn debug_hub_dialog_npc_click_opens_dialog_100100_as_the_npc() {
     let resolved = engine.resolve_event(&event, &ctx);
     assert_eq!(
         resolved.actions,
-        vec![(7001, Action::DisplayDialog { dialog_id: 100100 })],
-        "chain 7001 must resolve exactly one display_dialog 100100",
+        vec![(7001, Action::DisplayDialog { dialog_id: 60100 })],
+        "chain 7001 must resolve exactly one display_dialog 60100",
     );
 
     let mut mgr = staged_space(&pool).await;
     let calls = execute(resolved, &mut mgr).await;
     assert_eq!(calls.len(), 1, "one onDialogDisplay; got {calls:?}");
-    assert_eq!(dialog_display(&calls[0]), (NPC_EID as i32, 100100));
+    assert_eq!(dialog_display(&calls[0]), (NPC_EID as i32, 60100));
 
     // Another NPC's tag fires nothing.
     let mut wrong = ExecutionContext::new();
@@ -207,25 +207,25 @@ async fn debug_hub_dialog_npc_click_opens_dialog_100100_as_the_npc() {
     assert!(engine.resolve_event(&event, &wrong).actions.is_empty());
 }
 
-/// Chain 7002: 100100's button opens 100101. The choice event carries no
+/// Chain 7002: 60100's button opens 60101. The choice event carries no
 /// NPC, so the speaker comes from the player's `last_interaction_target`
-/// pin; with it the frame names the NPC. If 100101 ever lost its speaker
+/// pin; with it the frame names the NPC. If 60101 ever lost its speaker
 /// (every screen speaker 0) it would become a monologue and bind the
 /// player instead, and this fails.
 #[tokio::test]
-async fn debug_hub_dialog_button_opens_dialog_100101_through_the_pin() {
+async fn debug_hub_dialog_button_opens_dialog_60101_through_the_pin() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7002).await;
 
-    let resolved = choose(&engine, 100100, 8);
+    let resolved = choose(&engine, 60100, 8);
     assert_eq!(
         resolved.actions,
-        vec![(7002, Action::DisplayDialog { dialog_id: 100101 })],
-        "chain 7002 must resolve exactly one display_dialog 100101",
+        vec![(7002, Action::DisplayDialog { dialog_id: 60101 })],
+        "chain 7002 must resolve exactly one display_dialog 60101",
     );
     assert!(
-        choose(&engine, 100101, 8).actions.is_empty(),
-        "chain 7002 keys on dialog 100100 only"
+        choose(&engine, 60101, 8).actions.is_empty(),
+        "chain 7002 keys on dialog 60100 only"
     );
 
     let mut mgr = staged_space(&pool).await;
@@ -234,10 +234,10 @@ async fn debug_hub_dialog_button_opens_dialog_100101_through_the_pin() {
         .last_interaction_target = Some(NPC_EID);
     let calls = execute(resolved, &mut mgr).await;
     assert_eq!(calls.len(), 1, "one onDialogDisplay; got {calls:?}");
-    assert_eq!(dialog_display(&calls[0]), (NPC_EID as i32, 100101));
+    assert_eq!(dialog_display(&calls[0]), (NPC_EID as i32, 60101));
 }
 
-/// Chain 7003: closing 100101 (the client sends -1 for a button-less
+/// Chain 7003: closing 60101 (the client sends -1 for a button-less
 /// dialog) speaks the confirmation line from screen 200003 to the player.
 /// The line is read from the seeded `dialog_screens` row, so this also
 /// pins that the row says what the hub doc promises.
@@ -246,11 +246,11 @@ async fn debug_hub_dialog_close_confirms_in_chat() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7003).await;
 
-    let resolved = choose(&engine, 100101, -1);
+    let resolved = choose(&engine, 60101, -1);
     assert_eq!(resolved.actions.len(), 1, "chain 7003: one npc_bark");
     assert!(
-        choose(&engine, 100100, -1).actions.is_empty(),
-        "chain 7003 keys on dialog 100101 only"
+        choose(&engine, 60100, -1).actions.is_empty(),
+        "chain 7003 keys on dialog 60101 only"
     );
 
     let mut mgr = staged_space(&pool).await;

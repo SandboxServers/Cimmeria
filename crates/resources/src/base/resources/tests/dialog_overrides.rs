@@ -84,48 +84,48 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
         .expect("dialogs must appear in the returned map");
     assert_eq!(
         ids.as_slice(),
-        &[3995u32, 3996u32, 100100u32, 100101u32, 100104u32],
+        &[3995u32, 3996u32, 60100u32, 60101u32, 60104u32],
         "overridden_elements must name every regenerated dialog id (the two \
          mission-622 corpses and the three debug-hub dialogs) in ascending order",
     );
 
     // The debug-hub dialogs are absent from the PAK, like 3996, so both are
-    // inserted. 100100 must carry its one button to the client: without it
+    // inserted. 60100 must carry its one button to the client: without it
     // the round trip's first dialog_choice can never be sent.
-    let d100100 = std::str::from_utf8(
+    let d60100 = std::str::from_utf8(
         dialogs
             .elements
-            .get(&100100)
-            .expect("debug-hub dialog 100100 must be inserted"),
+            .get(&60100)
+            .expect("debug-hub dialog 60100 must be inserted"),
     )
     .unwrap();
     assert!(
-        d100100.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send my choice\">"),
-        "100100 must ship its Generic 1 button; got: {d100100}",
+        d60100.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send my choice\">"),
+        "60100 must ship its Generic 1 button; got: {d60100}",
     );
-    let d100101 = std::str::from_utf8(
+    let d60101 = std::str::from_utf8(
         dialogs
             .elements
-            .get(&100101)
-            .expect("debug-hub dialog 100101 must be inserted"),
+            .get(&60101)
+            .expect("debug-hub dialog 60101 must be inserted"),
     )
     .unwrap();
     assert!(
-        !d100101.contains("<Buttons"),
-        "100101 must stay button-less so its close sends -1; got: {d100101}",
+        !d60101.contains("<Buttons"),
+        "60101 must stay button-less so its close sends -1; got: {d60101}",
     );
     // SS-U3: the Gate Mail Clerk's dialog must ship its button, or the
     // player can never ask for the mail.
-    let d100104 = std::str::from_utf8(
+    let d60104 = std::str::from_utf8(
         dialogs
             .elements
-            .get(&100104)
-            .expect("the Gate Mail Clerk's dialog 100104 must be inserted"),
+            .get(&60104)
+            .expect("the Gate Mail Clerk's dialog 60104 must be inserted"),
     )
     .unwrap();
     assert!(
-        d100104.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send me a mail\">"),
-        "100104 must ship its Generic 1 button; got: {d100104}",
+        d60104.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send me a mail\">"),
+        "60104 must ship its Generic 1 button; got: {d60104}",
     );
 }
 

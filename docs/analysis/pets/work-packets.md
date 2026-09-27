@@ -245,7 +245,7 @@ No summon ability, commands or AI.
   - `.pet dismiss`, `.pet stance <0-2>`, `.pet info` (owner, stance, lists, AI state, distance, last teleport);
   - `.pet list`;
   - `.giveability <id>`, which reuses the `AbilityGranted` mirror and is marked non-persistent in its feedback.
-- **Debug hub pet trainer** in the Castle Cellblock stasis room: template 350-369 range (e.g. 360 "Pet Trainer"), spawn 450, trainer list offering 1643-1645, 1652, 1654 and 2826. Follow the authoring traps note. Its dialog ids go above 100100, clear of #846's.
+- **Debug hub pet trainer** in the Castle Cellblock stasis room: template 350-369 range (e.g. 360 "Pet Trainer"), spawn 450, trainer list offering 1643-1645, 1652, 1654 and 2826. Follow the authoring traps note. Its dialog ids go above 60104 and must stay at or below 65535 (a cooked dialog id above 65535 crashes the client on map load), clear of #846's.
 - Update `docs/content/debug-hub.md`, including its "cannot test" row.
 
 **Acceptance:**

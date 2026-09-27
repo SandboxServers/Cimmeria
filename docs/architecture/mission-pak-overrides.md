@@ -155,7 +155,7 @@ What makes dialogs different from missions: the server's `displayDialog` path ca
 
 ### Two override kinds
 
-**Full regeneration** — `DialogOverride`, in `crates/resources/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible.
+**Full regeneration** — `DialogOverride`, in `crates/resources/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible. A new dialog id must be at most 65535 (`MAX_COOKED_ELEMENT_ID`): overrides of 100100 and 100101 crashed the client on map load, so Cimmeria-authored dialogs use 60100-60199. `every_cooked_override_element_id_fits_in_16_bits` enforces the bound for every category; see `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
 
 **Patch** — `DialogPatch`, in `crates/resources/src/base/dialog_overrides/patch.rs`. Parses the entry the client already shipped, edits only what the plan names, and re-emits. Use it for one of the 5,405 dialogs the game shipped. Restating tens of screens of voiced dialogue in a Rust source file to move one button is a transcription error waiting to happen; a patch cannot make that mistake, because it never retypes the text.
 

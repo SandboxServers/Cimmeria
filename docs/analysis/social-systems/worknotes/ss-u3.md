@@ -29,7 +29,7 @@
 - **Loader rejects, never defaults.** `sender` and `subject` are required one-line 1-128 characters, `body` at most 1,000, `cash` 0 to `i32::MAX`, `qty >= 1` and only with `item_id`, `cooldown_secs >= 1`. A bad row is dropped with a warn naming the chain, the `npc_bark` rule: otherwise every press would be refused for an authoring mistake.
 - **Clerk identity.** No shipped moniker says "Mail Clerk" and new `texts.sql` ids never render, so the clerk shows "Sgt. Harriman" (26715) with template 58's Walter Harriman look and speaker 843. The dialog text and the mail's sender say "Gate Mail Clerk". Talk cursor `INT_NonAStoryMissionAvaliable` (134217728), the hub dialog NPC's bit; without a bit the client never sends the click.
 - **Contents.** 5 x item 2893 Health Slappack TC1 (max stack 10, so a take can merge with the crate's drops) and 50 naquadah. The packet said "a stack"; 5 is a half stack, chosen so both a fresh slot and a merge are testable. Deviation from plain intent: none beyond that choice.
-- **Ids.** Template 390 and spawn 490 (391-399 / 491-499 stay reserved). Chains 7010-7011 in the hub's 7001-7099 range; dialog 100104, screen 200005, button row 200001 (the next free ids after the hub's; no in-flight branch uses them, checked across every unmerged remote branch). The seed footers for `dialogs`, `dialog_screens` and `dialog_screen_buttons` were raised to the new maxima. The `spawnlist` footer is already MAX-based on `main` and was not touched. The `entity_templates` footer on `main` is still the fixed `304`; CR-11 (#909) replaces it with the MAX-based form with a 399 floor, and this branch does not touch it, so the merge keeps CR-11's line.
+- **Ids.** Template 390 and spawn 490 (391-399 / 491-499 stay reserved). Chains 7010-7011 in the hub's 7001-7099 range; dialog 60104, screen 200005, button row 200001 (the next free ids after the hub's; no in-flight branch uses them, checked across every unmerged remote branch). The seed footers for `dialogs`, `dialog_screens` and `dialog_screen_buttons` were raised to the new maxima. The `spawnlist` footer is already MAX-based on `main` and was not touched. The `entity_templates` footer on `main` is still the fixed `304`; CR-11 (#909) replaces it with the MAX-based form with a 399 floor, and this branch does not touch it, so the merge keeps CR-11's line.
 
 ## Clerk placement (for the crafting coordinator)
 
@@ -74,10 +74,10 @@ SigNoz (Logs):
 
 - **Loader (unit):** `convert_send_system_mail_full_row`, `convert_send_system_mail_defaults`, `convert_send_system_mail_rejects_bad_params` (14 shapes).
 - **Executor, type 12:** `send_system_mail_refuses_a_non_player_entity`, `send_system_mail_warns_when_cell_to_base_channel_closed`.
-- **Chain replay, type 6 (live DB):** `mail_clerk_click_opens_dialog_100104_as_the_clerk`, `mail_clerk_button_sends_exactly_one_mail` (the packet's replay test: exactly one `ContentSystemMail`, full struct equality, and the trigger negative is proven non-vacuous).
+- **Chain replay, type 6 (live DB):** `mail_clerk_click_opens_dialog_60104_as_the_clerk`, `mail_clerk_button_sends_exactly_one_mail` (the packet's replay test: exactly one `ContentSystemMail`, full struct equality, and the trigger negative is proven non-vacuous).
 - **Base, live DB (type 3, 5, 12):** `content_mail_sends_once_then_refuses_inside_the_cooldown` (the packet's cooldown test: one mail and escrow row, the feedback lines, `mail.system_sent`, the WARN with `reason=cooldown` and the ids), `content_mail_cooldown_outlives_the_mail_and_expires_on_time` (delete the mail, 599 s refused with 1 s left, 600 s sends), `content_mail_claim_rolls_back_with_a_refused_mail`, `content_mail_concurrent_presses_write_one_mail`, `content_mail_refusals_answer_the_player` (missing player, no pool), `content_mail_wait_text_rounds_up`.
 - **Seed guards (live DB):** `debug_hub_spawns_sit_inside_the_stasis_room` (extended), `mail_clerk_template_carries_its_role_fields`, `mail_clerk_dialog_has_one_screen_and_one_button`, `debug_hub_npcs_answer_a_click_with_their_own_interaction` (clicks the clerk; the hub count is now 7).
-- **Non-DB seed/override:** the debug-hub override agreement tests cover 100104; `apply_dialog_overrides_regenerates_existing_and_inserts_new` pins 100104 and its button.
+- **Non-DB seed/override:** the debug-hub override agreement tests cover 60104; `apply_dialog_overrides_regenerates_existing_and_inserts_new` pins 60104 and its button.
 
 Sentinels: accounts and players `0x7300_5300`-`0x7300_5331`, entities `0x7300_5390`-`0x7300_5394`, `0x7300_53FE` (a missing player), `0x7300_53FF` (a missing item type). Cleanup by exact account id; the cooldown rows cascade with the player.
 
@@ -120,7 +120,7 @@ Committed first (`0046a6f61`, `f4855a05f`, `1bf896fcd`, the shas before the reba
 ## Known gaps
 
 1. **No `onNewMail`** (SS-M4): an online player learns of the mail from the feedback line, and sees it when the mailbox is next opened.
-2. **Not checked in the client:** the clerk's position, the Harriman composite in the stasis room, and that dialog 100104 draws its button (the override is generated the same way as 100100's).
+2. **Not checked in the client:** the clerk's position, the Harriman composite in the stasis room, and that dialog 60104 draws its button (the override is generated the same way as 60100's).
 3. **One cooldown per chain, not per NPC or per item.** Two chains that should share a limit need a `cooldown_key` param, which this packet did not add (no second user yet).
 4. **SS-UAT step 6 cannot run** until SS-M4: `.mail_expire` is still a refusal.
 

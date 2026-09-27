@@ -8611,14 +8611,14 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (100002, 8, 100012, 2, 'Accept');
 
--- NEW CONTENT (debug hub): the one button of dialog 100100, on its FINAL
+-- NEW CONTENT (debug hub): the one button of dialog 60100, on its FINAL
 -- screen (200001) so a player who pages to the end always has something to
 -- press. Type 4 (Generic 1) draws the authored text and brings no inert
 -- Decline, as type 2 (Accept) would. Clicking it sends ButtonID 8.
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200000, 8, 200001, 4, 'Send my choice');
 
 -- Social-systems campaign, SS-U3: the Gate Mail Clerk's button, on dialog
--- 100104's only (so final) screen. Generic 1 (type 4), ButtonID 8; chain 7011
+-- 60104's only (so final) screen. Generic 1 (type 4), ButtonID 8; chain 7011
 -- fires on the choice.
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200001, 8, 200005, 4, 'Send me a mail');
 
