@@ -343,7 +343,7 @@ Telemetry: emit `org_cash_transfer` for the payment and `expand`/`expand_rejecte
 
 ## BV-10 org close-out and release 2
 
-**Status: Review** (this PR, branch `docs/bank-vault-bv10-closeout`, docs only). Update the docs and `docs/gameplay/organization-system.md`, extend the UAT checklist, and post `/release` (D-BV11) once it merges.
+**Status: Review** (PR #968, branch `docs/bank-vault-bv10-closeout`, docs only). Update the docs and `docs/gameplay/organization-system.md`, extend the UAT checklist, and post `/release` (D-BV11) once it merges.
 
 As built: the ledger, the decisions D-BV36 to D-BV47, the [UAT checklist](handoffs/session-resume.md#uat-checklist) steps 15 to 25 with their SigNoz queries, the bank section of [unified-uat.md](../../guides/unified-uat.md#bank-and-vault), the known gaps, `docs/gap-analysis.md` §12 and §23, `docs/project-status.md`, the two gameplay docs, and the `bank` rows of `observability.md`.
 

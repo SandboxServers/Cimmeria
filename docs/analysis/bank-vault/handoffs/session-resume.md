@@ -21,7 +21,7 @@
 | BV-10a | Done | #960 (`07f27ce19`) | The Team Banker (371/471) and Command Banker (372/472) in the debug hub |
 | BV-08 | Done | #963 (`acb43359c`) | Org cash: treasury deposits and withdrawals, the cash log |
 | BV-09 | Done | #966 (`6d7d43149`) | Team vault expansion from the treasury, GM `.orgvaultexpand`, leader only |
-| BV-10 | Review | this PR | Org close-out docs and UAT steps 15-25. The coordinator posts `/release` after it merges (release 2) |
+| BV-10 | Review | #968 | Org close-out docs and UAT steps 15-25. The coordinator posts `/release` after it merges (release 2) |
 
 Coordinator: session cimmeria-79 (formerly cimmeria-97), worktree `.claude/worktrees/bank-ledger`. Worker rules: `%TEMP%\cimmeria-castle\BANK-WORKER-RULES.md`.
 
