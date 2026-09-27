@@ -641,6 +641,11 @@ pub struct CellEntity {
     /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
     pub last_interaction_target: Option<u32>,
 
+    /// The open vault window, if any (player entities only). Set by the
+    /// Banker arm and `.bank`; see the `vault_session` module for when it
+    /// ends; [`Self::pin_interaction_target`] clears it on a re-pin.
+    pub vault_session: Option<super::VaultSession>,
+
     /// Dialogs offered to this player and not yet answered, oldest first —
     /// the `dialogButtonChoice` server-authority precondition. Private on
     /// purpose; see the `offered_dialogs` module for the rules and the

@@ -246,7 +246,8 @@ impl SpaceManager {
         e.speaker_id = record.speaker_id;
         e.event_set_id = record.event_set_id;
         e.interaction_type_flags = record.interaction_type;
-        e.interaction_type = static_interaction_for_flags(record.interaction_type);
+        e.interaction_type =
+            static_interaction_for_flags(record.interaction_type, record.vault_scope);
         e.entity_flags = record.flags as u64;
         e.faction = record.faction.unwrap_or(0) as u8;
         e.alignment = record.alignment.unwrap_or(0) as u8;
@@ -358,7 +359,22 @@ const INT_VENDOR_MASK: i64 = {
 };
 
 /// The static interaction a template's `interaction_type` bits give an NPC
-/// at spawn: `Vendor` for any `INT_Vendor*` bit, otherwise none.
+/// at spawn: `Banker { scope }` for `INT_BANKER`, else `Vendor` for any
+/// `INT_Vendor*` bit, otherwise none.
+///
+/// # Banker precedence (bank-vault BV-02, D-BV09)
+///
+/// `INT_BANKER` wins over the vendor bits when a template carries both. The
+/// banker bit names exactly one role, while the nine vendor bits are store
+/// tabs that a quest giver can carry as decoration (`INT_VendorMission`), so
+/// the explicit role is the safer reading. No seeded template carries both.
+/// `vault_scope` is read only here, and only under `INT_BANKER`.
+///
+/// This only orders the two *static* types. The paths that run before the
+/// static dispatch still answer first, whatever the bits say: a template
+/// with a `trainer_ability_list_id` opens its trainer, an `interact_tag` /
+/// `interact_template` chain or a per-player dialog bind claims the click,
+/// and an `INT_DHD` prop opens the DHD. A Banker must carry none of those.
 ///
 /// Before this, nothing ever set `NpcInteractionType::Vendor`, so the
 /// store-open arm of `handle_interact` was unreachable and a vendor-only
@@ -370,16 +386,21 @@ const INT_VENDOR_MASK: i64 = {
 /// keep `static_interaction_sets` in step with the bits (template 25 lists
 /// 7505 with no vendor bit), so it is not a safe source here.
 ///
-/// Only Vendor is derived. A trainer is recognised by its
+/// Only Banker and Vendor are derived. A trainer is recognised by its
 /// `trainer_ability_list_id` (`template_trainer_lists`), a dialog by its
 /// chains or dialog-set binds, and loot is set when the NPC dies. Only the
 /// death path overwrites the value, and the respawn tick does not restore
-/// it, so a template with a vendor bit must not be killable (faction 10).
+/// it, so a template with a banker or vendor bit must not be killable
+/// (faction 10).
 pub(crate) fn static_interaction_for_flags(
     interaction_type_flags: i64,
+    vault_scope: cimmeria_entity::cell_entity::VaultScope,
 ) -> Option<cimmeria_entity::cell_entity::NpcInteractionType> {
-    (interaction_type_flags & INT_VENDOR_MASK != 0)
-        .then_some(cimmeria_entity::cell_entity::NpcInteractionType::Vendor)
+    use cimmeria_entity::cell_entity::NpcInteractionType;
+    if interaction_type_flags & cimmeria_entity::interaction_flags::INT_BANKER != 0 {
+        return Some(NpcInteractionType::Banker { scope: vault_scope });
+    }
+    (interaction_type_flags & INT_VENDOR_MASK != 0).then_some(NpcInteractionType::Vendor)
 }
 
 /// Whether a spawned NPC takes cover (NA22). The template's

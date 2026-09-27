@@ -64,6 +64,7 @@ mod pet;
 mod state_flags;
 mod system_options;
 mod tree_progress;
+mod vault_session;
 mod weapon_action;
 mod witness_aoi;
 
@@ -78,6 +79,7 @@ pub use pending_cast::PendingCast;
 pub use pet::{PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;
+pub use vault_session::{VaultScope, VaultSession};
 
 #[cfg(test)]
 mod tests;
@@ -95,6 +97,9 @@ pub enum NpcInteractionType {
     Trainer { archetype_id: i32 },
     /// Lootable entity — opens `onLootDisplay`.
     Loot,
+    /// Banker — opens the vault of `scope` (`onVaultOpen` for `Personal`).
+    /// Derived at spawn from `INT_BANKER` plus `entity_templates.vault_scope`.
+    Banker { scope: VaultScope },
 }
 
 /// An item in a dead NPC's loot list, ready for display to players.

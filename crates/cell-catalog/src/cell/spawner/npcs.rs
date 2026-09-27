@@ -45,7 +45,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                COALESCE(t.move_speed, 0.6) AS move_speed, \
                t.leash_distance, t.aggro_radius, t.assist_radius, s.aggression_override, \
-               t.use_cover, \
+               t.use_cover, t.vault_scope, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -75,58 +75,62 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
 
     let records = rows
         .iter()
-        .map(|r| SpawnRecord {
-            spawn_id: r.get("spawn_id"),
-            world_name: r.get("world_name"),
-            x: r.get("x"),
-            y: r.get("y"),
-            z: r.get("z"),
-            heading: r.get("heading"),
-            tag: r.get("tag"),
-            template_id: r.get("template_id"),
-            template_name: r.get("template_name"),
-            class: r.get("class"),
-            static_mesh: r.get("static_mesh"),
-            body_set: r.get("body_set"),
-            components: r.get("components"),
-            flags: r.get("flags"),
-            interaction_type: r.get("interaction_type"),
-            event_set_id: r.get("event_set_id"),
-            level: r.get("level"),
-            alignment: r.get("alignment"),
-            faction: r.get("faction"),
-            name_id: r.get("name_id"),
-            speaker_id: r.get("speaker_id"),
-            static_interaction_sets: r.get("static_interaction_sets"),
-            has_dynamic_properties: r.get("has_dynamic_properties"),
-            loot_table_id: r.get("loot_table_id"),
-            is_stationary: r.get("is_stationary"),
-            ability_ids: r.get::<Vec<i32>, _>("ability_ids"),
-            respawn_secs: normalize_respawn_secs(
-                r.try_get::<Option<i32>, _>("respawn_secs").ok().flatten(),
-            ),
-            patrol_path: r
-                .try_get::<Option<i32>, _>("patrol_path_id")
-                .ok()
-                .flatten()
-                .and_then(|id| patrol_points.get(&id).cloned())
-                .unwrap_or_default(),
-            patrol_point_delay_secs: r.get::<f32, _>("patrol_point_delay"),
-            wander_radius: r.get::<f32, _>("wander_radius"),
-            wander_min_dwell_secs: r.get::<f32, _>("wander_min_dwell_secs"),
-            wander_max_dwell_secs: r.get::<f32, _>("wander_max_dwell_secs"),
-            follow_min_distance: r.get::<f32, _>("follow_min_distance"),
-            follow_max_distance: r.get::<f32, _>("follow_max_distance"),
-            move_speed: r.get::<f32, _>("move_speed"),
-            leash_distance: normalize_leash_distance(r.get::<Option<f32>, _>("leash_distance")),
-            aggro_radius: normalize_aggro_radius(r.get::<Option<f32>, _>("aggro_radius")),
-            assist_radius: normalize_aggro_radius(r.get::<Option<f32>, _>("assist_radius")),
-            aggression_override: normalize_aggression_override(
-                r.get::<Option<i16>, _>("aggression_override"),
-            ),
-            use_cover: r.get::<Option<bool>, _>("use_cover"),
+        .map(|r| -> Result<SpawnRecord, sqlx::Error> {
+            let vault_scope = super::templates::decode_vault_scope(r)?;
+            Ok(SpawnRecord {
+                spawn_id: r.get("spawn_id"),
+                world_name: r.get("world_name"),
+                x: r.get("x"),
+                y: r.get("y"),
+                z: r.get("z"),
+                heading: r.get("heading"),
+                tag: r.get("tag"),
+                template_id: r.get("template_id"),
+                template_name: r.get("template_name"),
+                class: r.get("class"),
+                static_mesh: r.get("static_mesh"),
+                body_set: r.get("body_set"),
+                components: r.get("components"),
+                flags: r.get("flags"),
+                interaction_type: r.get("interaction_type"),
+                event_set_id: r.get("event_set_id"),
+                level: r.get("level"),
+                alignment: r.get("alignment"),
+                faction: r.get("faction"),
+                name_id: r.get("name_id"),
+                speaker_id: r.get("speaker_id"),
+                static_interaction_sets: r.get("static_interaction_sets"),
+                has_dynamic_properties: r.get("has_dynamic_properties"),
+                loot_table_id: r.get("loot_table_id"),
+                is_stationary: r.get("is_stationary"),
+                ability_ids: r.get::<Vec<i32>, _>("ability_ids"),
+                respawn_secs: normalize_respawn_secs(
+                    r.try_get::<Option<i32>, _>("respawn_secs").ok().flatten(),
+                ),
+                patrol_path: r
+                    .try_get::<Option<i32>, _>("patrol_path_id")
+                    .ok()
+                    .flatten()
+                    .and_then(|id| patrol_points.get(&id).cloned())
+                    .unwrap_or_default(),
+                patrol_point_delay_secs: r.get::<f32, _>("patrol_point_delay"),
+                wander_radius: r.get::<f32, _>("wander_radius"),
+                wander_min_dwell_secs: r.get::<f32, _>("wander_min_dwell_secs"),
+                wander_max_dwell_secs: r.get::<f32, _>("wander_max_dwell_secs"),
+                follow_min_distance: r.get::<f32, _>("follow_min_distance"),
+                follow_max_distance: r.get::<f32, _>("follow_max_distance"),
+                move_speed: r.get::<f32, _>("move_speed"),
+                leash_distance: normalize_leash_distance(r.get::<Option<f32>, _>("leash_distance")),
+                aggro_radius: normalize_aggro_radius(r.get::<Option<f32>, _>("aggro_radius")),
+                assist_radius: normalize_aggro_radius(r.get::<Option<f32>, _>("assist_radius")),
+                aggression_override: normalize_aggression_override(
+                    r.get::<Option<i16>, _>("aggression_override"),
+                ),
+                use_cover: r.get::<Option<bool>, _>("use_cover"),
+                vault_scope,
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(records)
 }

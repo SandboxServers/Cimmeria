@@ -23,6 +23,9 @@
 //! - [`live_db_use_cover`]: live-DB guards that `entity_templates.use_cover`
 //!   (NA22) and the Cover Stance effect rows load as seeded, and that a
 //!   seeded guard spawns holding its seeded cover slot.
+//! - [`live_db_vault_scope`]: live-DB guards that `entity_templates.vault_scope`
+//!   (bank-vault BV-02) defaults to `personal`, rejects an unknown scope, and
+//!   reaches a spawned Banker.
 //!
 //! The Harset template guards (`harset/`) drive the NPC AI's ability
 //! selector, so they are `cimmeria-cell-combat`'s `cell::spawner_tests`; the
@@ -34,6 +37,7 @@ mod live_db_assist;
 mod live_db_eye_heights;
 mod live_db_leash_distance;
 mod live_db_use_cover;
+mod live_db_vault_scope;
 mod spawn_behaviour_row;
 mod spawn_grounding;
 mod spawn_records;
