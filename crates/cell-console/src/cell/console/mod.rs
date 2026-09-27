@@ -47,6 +47,7 @@
 //! - [`pet`] — pet UAT tools (`.pet summon|dismiss|stance|info|list`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
 //! - [`aggro`] — the GM's own proximity-aggro switch (`.aggro on|off`).
+//! - [`bank`] — the GM's vault shortcut (`.bank`).
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
@@ -71,6 +72,7 @@
 //! in `docs/commands.md`.
 
 mod aggro;
+mod bank;
 mod bookmark;
 // The chat interceptor that routes a GM's `.`-lines here, and the native
 // `gm*` cell methods (SGWGmPlayer, index 109+). Both call into the console,

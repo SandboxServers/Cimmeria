@@ -89,6 +89,14 @@ pub async fn handle_chat_message(
             console::handle_console_command(entity_id, text, tx, space_mgr, engine).await;
             return;
         }
+        // `.bank` is the documented way to open the vault for UAT, so its
+        // refusal also points the player at a Banker and logs on the `bank`
+        // target (bank-vault BV-02); the generic refusal below would do
+        // neither.
+        if console::bank::is_bank_command(text) {
+            console::bank::refuse_non_gm(entity_id, tx).await;
+            return;
+        }
         // A non-GM line that names a registered command is refused, not
         // broadcast: a player (or a GM demoted mid-session) typing
         // `.giveability 2826` must not echo the command to everyone nearby,

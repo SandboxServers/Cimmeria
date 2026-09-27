@@ -20,6 +20,7 @@
 
 use super::{spec, Spec, Target};
 
+mod bank;
 mod entity_authoring;
 mod maintenance;
 mod meta;
@@ -48,6 +49,7 @@ const GROUPS: &[&[Spec]] = &[
     patrol::SPECS,
     social::SPECS,
     pet::SPECS,
+    bank::SPECS,
 ];
 
 /// Total registered commands across every family.
