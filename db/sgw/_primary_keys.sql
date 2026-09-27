@@ -140,5 +140,5 @@ ALTER TABLE ONLY sgw_organization_members
 --
 
 ALTER TABLE ONLY sgw_organization_events
-    ADD CONSTRAINT sgw_organization_events_pkey PRIMARY KEY (event_id);
+    ADD CONSTRAINT sgw_organization_events_pkey PRIMARY KEY (org_event_id);
 

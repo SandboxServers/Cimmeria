@@ -62,5 +62,5 @@ CREATE UNIQUE INDEX sgw_organization_members_one_leader_idx ON sgw_organization_
 -- (the character-delete handler) or in id order (the startup sweep).
 --
 
-CREATE INDEX sgw_organization_events_unexported_idx ON sgw_organization_events USING btree (tx_id, event_id) WHERE exported_at IS NULL;
+CREATE INDEX sgw_organization_events_unexported_idx ON sgw_organization_events USING btree (tx_id, org_event_id) WHERE exported_at IS NULL;
 

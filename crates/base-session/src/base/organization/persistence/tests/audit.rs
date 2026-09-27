@@ -1,6 +1,6 @@
 //! The member-delete trigger's audit rows (`sgw_organization_events`) and
-//! their export to the `org` log target: exactly once, by whichever path
-//! reaches the row first.
+//! their export to the `org` log target: logged, then stamped, by whichever
+//! path reaches the row first; a stamped row is never logged again.
 
 use cimmeria_entity::organization::{OrgRank, OrgType};
 use tracing::Level;
@@ -16,7 +16,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 async fn audit_rows(pool: &PgPool, org_id: i32) -> Vec<(String, String, i32, Option<i32>, bool)> {
     sqlx::query_as(
         "SELECT event, reason, from_player_id, to_player_id, exported_at IS NOT NULL \
-         FROM sgw_organization_events WHERE org_id = $1 ORDER BY event_id",
+         FROM sgw_organization_events WHERE org_id = $1 ORDER BY org_event_id",
     )
     .bind(org_id)
     .fetch_all(pool)
@@ -160,9 +160,36 @@ async fn startup_sweep_exports_rows_a_bare_delete_left() {
     assert!(log.has_field("from_account_id", &fx.account_id.to_string()));
     drop(capture);
 
+    let id = swept.iter().find(|r| r.org_id == org).unwrap().org_event_id;
+    assert!(
+        log.has_field("org_event_id", &id.to_string()),
+        "dedup key on the event"
+    );
+
     assert!(audit_rows(&pool, org).await[0].4, "stamped");
     let again = sweep_unexported(&pool).await.unwrap();
-    assert!(again.iter().all(|r| r.org_id != org), "exported once");
+    assert!(
+        again.iter().all(|r| r.org_id != org),
+        "a stamped row is not re-sent"
+    );
+
+    // At least once: a crash after the log but before the stamp commits
+    // leaves the row unstamped, and the next sweep sends it again with the
+    // same org_event_id for queries to deduplicate on.
+    sqlx::query("UPDATE sgw_organization_events SET exported_at = NULL WHERE org_event_id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let resent = sweep_unexported(&pool).await.unwrap();
+    assert_eq!(
+        resent
+            .iter()
+            .filter(|r| r.org_id == org)
+            .map(|r| r.org_event_id)
+            .collect::<Vec<_>>(),
+        vec![id]
+    );
 
     teardown(&pool, &fx).await;
 }

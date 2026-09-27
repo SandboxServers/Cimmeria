@@ -3,8 +3,8 @@
 --
 -- The trigger (org_member_after_delete, _functions.sql) runs inside
 -- Postgres, where tracing cannot see it. Each promotion, disband or
--- memberless result it produces is written here, and Rust exports the row
--- to the `org` log target exactly once, stamping exported_at:
+-- memberless result it produces is written here, and Rust logs the row to
+-- the `org` log target and then stamps exported_at:
 --
 --   - organization::character_delete::delete_character exports the rows its
 --     own transaction produced right after it commits (INFO);
@@ -12,6 +12,10 @@
 --     transaction (DEBUG, since the caller may still roll back);
 --   - a startup sweep (organization::audit) exports anything left
 --     unstamped, such as a bare DELETE from psql or a test (INFO).
+--
+-- Delivery is at least once: a crash after the log and before the stamp
+-- commits re-sends the row at the next startup. Every exported event
+-- carries org_event_id so queries can drop duplicates.
 --
 -- event: leader_changed | disbanded | left_memberless.
 -- reason: character_deleted (the sgw_player row was gone when the trigger
@@ -27,7 +31,7 @@
 --
 
 CREATE TABLE sgw_organization_events (
-    event_id bigint NOT NULL DEFAULT nextval('sgw_organization_events_event_id_seq'),
+    org_event_id bigint NOT NULL DEFAULT nextval('sgw_organization_events_org_event_id_seq'),
     org_id integer NOT NULL,
     event character varying(32) NOT NULL,
     reason character varying(32) NOT NULL,

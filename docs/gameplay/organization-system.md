@@ -96,7 +96,7 @@ Everything logs on the `org` target (catalog row in [observability.md](../archit
 
 - Each persistence function logs a DEBUG `event` named after itself on success, with `org_id`, `player_id` where there is one, `rows_affected`, and the before and after values of a rank (`from_rank`, `to_rank`), a mask (`from_mask`, `to_mask`) or a text (`from_units`, `to_units`; never the text).
 - Each typed refusal logs exactly one WARN, with the function as `event` and the `OrgStoreError` reason as `reason`.
-- The member-delete trigger runs inside Postgres, where tracing cannot see it. It writes each promotion, disband or memberless result to `sgw_organization_events`, with the deleted member's and the new leader's player and account ids captured at delete time (member rows keep an `account_id` copy for this). Rust logs each row exactly once and stamps `exported_at`:
+- The member-delete trigger runs inside Postgres, where tracing cannot see it. It writes each promotion, disband or memberless result to `sgw_organization_events`, with the deleted member's and the new leader's player and account ids captured at delete time (member rows keep an `account_id` copy for this). Rust logs each row and then stamps `exported_at`. Delivery is at least once: a crash between the log and the stamp re-sends the row at the next startup, so every exported event carries `org_event_id` for deduplication.
   - the character delete logs its own rows at INFO right after it commits (`source = character_delete`);
   - `remove_member` logs its rows at DEBUG inside its transaction (`source = in_transaction`);
   - a sweep at base startup logs anything still unstamped, such as a bare `DELETE` from psql (`source = startup_sweep`).

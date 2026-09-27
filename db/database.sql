@@ -377,7 +377,7 @@
 \ir sgw/Players/Sequences/sgw_characters_character_id_seq.sql
 \ir sgw/Social/Sequences/sgw_contact_list_list_id_seq.sql
 \ir sgw/Organizations/Sequences/sgw_organizations_org_id_seq.sql
-\ir sgw/Organizations/Sequences/sgw_organization_events_event_id_seq.sql
+\ir sgw/Organizations/Sequences/sgw_organization_events_org_event_id_seq.sql
 
 -- Tables
 \ir sgw/Accounts/Tables/account.sql

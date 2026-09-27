@@ -10,7 +10,8 @@
 //! first, in `org_id` order, so the trigger only re-takes locks the
 //! transaction already holds. After the commit it exports the audit rows
 //! the trigger wrote (`audit::export_committed`), so each promotion or
-//! disband reaches the `org` log target once.
+//! disband reaches the `org` log target (at least once; `audit` explains
+//! the dedup key).
 
 use sqlx::PgPool;
 
