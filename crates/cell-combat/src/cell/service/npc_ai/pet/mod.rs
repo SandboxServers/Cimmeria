@@ -94,9 +94,32 @@ pub(in crate::cell) fn live_owner(
     Ok(owner)
 }
 
-/// Whether the pet `target` refuses threat from `attacker`: something its
-/// owner could not attack ([`combat::player_may_attack`]: a player, another
-/// pet, a non-hostile NPC), or anything at all while Passive (D-PT09). A
+/// Why a pet may not fight `target` on behalf of `owner`, or `None` when it
+/// may. The one rule every pet seam applies (stance picks, targets kept,
+/// threat accepted, the owner combat mirror):
+///
+/// - `target_not_combatant`: not a combatant mob. Only an `SGWMob` fights; an
+///   `SGWBeing` (class 0x01) is a non-combatant prop or story actor even with
+///   a hostile faction (`combat::generate_threat` refuses it too), and
+///   players and pets are never a pet's targets today.
+/// - `target_not_hostile`: its owner could not attack it
+///   ([`combat::player_may_attack`], the #444 rule, the seam duels widen).
+pub(in crate::cell) fn fight_refusal(
+    owner: &CellEntity,
+    target: &CellEntity,
+) -> Option<&'static str> {
+    if target.is_player || target.class_id != crate::mercury::SGWMOB_CLASS_ID {
+        return Some("target_not_combatant");
+    }
+    if !combat::player_may_attack(owner, target) {
+        return Some("target_not_hostile");
+    }
+    None
+}
+
+/// Whether the pet `target` refuses threat from `attacker`: something it may
+/// not fight ([`fight_refusal`]: a player, another pet, a being, a
+/// non-hostile NPC), or anything at all while Passive (D-PT09). A
 /// friendly player's hit or a content chain aiming threat at a pet never
 /// turns the pet on them. `None` to accept, else the `reason`.
 /// `combat::generate_threat` asks before it adds threat or preempts the pet
@@ -113,7 +136,7 @@ pub(in crate::cell) fn threat_refusal(
     let owner = live_owner(space_mgr, target.entity_id.0 as u32, pet.owner_id).ok();
     let attacker = space_mgr.get_entity(attacker_id);
     match (owner, attacker) {
-        (Some(o), Some(a)) if combat::player_may_attack(o, a) => None,
+        (Some(o), Some(a)) if fight_refusal(o, a).is_none() => None,
         _ => Some("attacker_not_hostile"),
     }
 }
@@ -326,11 +349,16 @@ fn not_worth_fighting(
     owner: Option<&CellEntity>,
     now: std::time::Instant,
 ) -> Option<&'static str> {
-    // Something its owner could not attack: a player, a pet, or an NPC that
-    // is not hostile (content turned it friendly mid-fight, or it reached the
-    // threat list some other way). The #444 rule, via the shared predicate.
-    if owner.is_none_or(|o| !combat::player_may_attack(o, mob)) {
+    // Something the pet may not fight: not a combatant mob, or an NPC its
+    // owner could not attack (content turned it friendly mid-fight, or it
+    // reached the threat list some other way). Checked every pet turn before
+    // the fight handler's `select_target`, so a target that stopped being
+    // fightable is dropped before the pet acts on it.
+    let Some(o) = owner else {
         return Some("target_not_hostile");
+    };
+    if let Some(why) = fight_refusal(o, mob) {
+        return Some(why);
     }
     let owner_pos = owner.map(|o| o.position);
     if matches!(

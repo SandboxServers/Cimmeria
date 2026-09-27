@@ -69,10 +69,10 @@ fn fightable(mob: &CellEntity) -> bool {
 /// nothing qualifies.
 ///
 /// Candidates are the mobs (class `SGWMob`) in the pet's space: never a
-/// player, another pet, or a being. Every rule also requires that the owner
-/// could attack the mob itself ([`combat::player_may_attack`], the #444
-/// rule): a pet never fights a vendor, a quest giver or a neutral NPC, even
-/// one a content chain set fighting its owner. The Aggressive scan uses the
+/// player, another pet, or a being. Every rule also applies
+/// [`super::fight_refusal`]: a combatant mob its owner could attack itself
+/// (the #444 rule), so a pet never fights a vendor, a quest giver or a
+/// neutral NPC, even one a content chain set fighting its owner. The Aggressive scan uses the
 /// NPC acquisition gate (`aggro_gates::same_room`: floor band, radius, line
 /// of sight failing closed where a navmesh exists).
 pub(super) fn pick_engagement(
@@ -98,7 +98,7 @@ pub(super) fn pick_engagement(
         .npc_ids_in_space_of(pet_id)
         .into_iter()
         .filter_map(|id| space_mgr.get_entity(id))
-        .filter(|m| fightable(m) && combat::player_may_attack(owner, m))
+        .filter(|m| fightable(m) && super::fight_refusal(owner, m).is_none())
         .collect();
     // Nearest first; the id breaks ties so the pick is deterministic.
     mobs.sort_by(|a, b| {

@@ -166,3 +166,37 @@ async fn aggressive_scan_fails_closed_on_unknown_line_of_sight() {
         None
     );
 }
+
+/// An `SGWBeing` (class 0x01) is a non-combatant even with the hostile
+/// faction: a fighting pet drops it the turn it finds it on its threat list,
+/// before the fight handler's target selection acts on it.
+#[tokio::test]
+async fn a_fighting_pet_drops_a_being_even_with_a_hostile_faction() {
+    let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
+    add_mob(&mut mgr, MOB, [14.0, 0.0, 10.0], HOSTILE);
+    tick(&mut mgr).await;
+    let _ = generate_threat(&mut mgr, MOB, pet, 50.0, AggroCause::Damage);
+    assert_eq!(state(&mgr, pet), AiState::Fighting, "precondition");
+    mgr.get_entity_mut(MOB).unwrap().class_id = 0x01;
+
+    let logs = LogCapture::install();
+    tick(&mut mgr).await;
+
+    assert!(!mgr.get_entity(pet).unwrap().threat_list.contains_key(&MOB));
+    let row = pets_ai_row(&logs, "pet_target_dropped").expect("drop row");
+    assert!(row.has_field("reason", "target_not_combatant"), "{row:?}");
+}
+
+/// Nor does a pet take threat from a being, whatever its faction.
+#[tokio::test]
+async fn a_pet_refuses_threat_from_a_being() {
+    let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
+    add_mob(&mut mgr, MOB, [14.0, 0.0, 10.0], HOSTILE);
+    mgr.get_entity_mut(MOB).unwrap().class_id = 0x01;
+    tick(&mut mgr).await;
+
+    let _ = generate_threat(&mut mgr, MOB, pet, 50.0, AggroCause::Damage);
+
+    assert_eq!(state(&mgr, pet), AiState::Follow);
+    assert!(mgr.get_entity(pet).unwrap().threat_list.is_empty());
+}

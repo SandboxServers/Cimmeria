@@ -107,7 +107,7 @@ pub(super) async fn sync_owner_combat(
             space_mgr.get_entity(m).is_some_and(|e| {
                 e.threat_list.contains_key(&pet_id)
                     && !combat::is_dead_state(e.state_field)
-                    && combat::player_may_attack(owner, e)
+                    && super::fight_refusal(owner, e).is_none()
             })
         })
         .collect();
