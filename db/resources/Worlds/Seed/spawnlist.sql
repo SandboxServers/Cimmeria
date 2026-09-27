@@ -914,5 +914,5 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- `.savespawn` seed SQL) never takes a used or reserved id. Raise the floor
 -- when a new block is reserved above 499; live_db_spawnlist_sequence.rs
 -- guards it. Same form as the crafting CR-11 footers.
-SELECT setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), 499));
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), 499), true);
 
