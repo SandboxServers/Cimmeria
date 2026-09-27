@@ -2,6 +2,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
+use cimmeria_wire::cell::cell_methods::organization::decode_on_organization_creation;
+
 use super::constants::*;
 
 pub async fn dispatch(
@@ -59,7 +61,29 @@ pub async fn dispatch(
         }
 
         ORG_CREATION => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: onOrganizationCreation");
+            // `onOrganizationCreation(WSTRING aOrganizationName)`. The name
+            // used to be dropped (audit A-02); the pending-creation check,
+            // D-ORG10 validation and the forward to the base are ORG-05's.
+            match decode_on_organization_creation(args) {
+                Ok(name) => tracing::info!(
+                    target: "org",
+                    event = "org.cell_method_unimplemented",
+                    entity_id,
+                    method_index,
+                    method = "onOrganizationCreation",
+                    text_units = name.encode_utf16().count(),
+                    "UNIMPLEMENTED: onOrganizationCreation"
+                ),
+                Err(e) => tracing::warn!(
+                    target: "org",
+                    event = "org.cell_method_malformed",
+                    entity_id,
+                    method_index,
+                    reason = e.reason(),
+                    error = %e,
+                    "organization cell method payload did not decode"
+                ),
+            }
             true
         }
 
@@ -116,5 +140,41 @@ pub async fn dispatch(
         }
 
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tracing::Level;
+
+    use super::*;
+    use crate::test_support::{make_space_manager_with_player, LogCapture};
+
+    /// CM 94 carries only the name (audit A-09). It used to be ignored
+    /// entirely; the dispatcher now decodes it: "SG-1" is four units.
+    #[tokio::test]
+    async fn org_creation_decodes_the_name() {
+        let capture = LogCapture::install();
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+        let args = [4, 0, 0, 0, 0x53, 0, 0x47, 0, 0x2D, 0, 0x31, 0];
+        assert!(dispatch(1, ORG_CREATION, &args, &tx, &mut mgr).await);
+        let ev = capture
+            .find_message(Level::INFO, "UNIMPLEMENTED: onOrganizationCreation")
+            .expect("decoded creation log");
+        assert_eq!(ev.target, "org");
+        assert!(ev.has_field("text_units", "4"), "{:?}", ev.fields);
+    }
+
+    #[tokio::test]
+    async fn org_creation_rejects_a_forged_length() {
+        let capture = LogCapture::install();
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+        let args = [0x10, 0, 0, 0, 0x53, 0];
+        assert!(dispatch(1, ORG_CREATION, &args, &tx, &mut mgr).await);
+        assert!(capture
+            .find_event(Level::WARN, "did not decode", "truncated")
+            .is_some());
     }
 }
