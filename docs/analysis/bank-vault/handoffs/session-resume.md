@@ -51,4 +51,4 @@ Run on the colo after release 1, as a GM, with a fresh character. At anything od
 
 The org-vault steps are added by BV-10.
 
-After the UAT, the coordinator reads SigNoz for `bank` events (`vault_open`, `move_rejected reason=…`, `expand`) and for the `.bug` bookmarks.
+After the UAT, the coordinator reads SigNoz for `bank` events from the [telemetry catalog](../work-packets.md#contract-fixed-by-this-ledger) (`vault_session_opened`, `move_accepted`, `move_rejected reason=…`, `expand`, `expand_rejected reason=…`) and for the `.bug` bookmarks.

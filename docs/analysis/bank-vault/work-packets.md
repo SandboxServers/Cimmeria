@@ -80,7 +80,7 @@ pub enum VaultScope { Personal, Team, Command }
 | `grant_rejected` | warn | BV-01 | `reason`, `type_id`, `quantity`, `container` |
 | `resync_item_missing` | warn | BV-01 | `reason`, `item_id` (negative log: the refusal resync found no owned row) |
 | `vault_session_opened` | debug | BV-02 | `scope`, `banker_id` or `gm_override=true`, `space_id`, `distance` |
-| `vault_session_closed` | debug | BV-02 | `reason` (`space_change`, `logout`, `re_pin`), `scope`, open duration |
+| `vault_session_closed` | debug | BV-02 | `reason` (`space_change`, `logout`, `re_pin`), `scope`, `open_ms` (milliseconds since the session opened) |
 | `vault_open_rejected` | warn | BV-02 | `reason` (`out_of_range`, `org_vault_not_available`, `not_gm`, `banker_missing`), `banker_id`, `distance` |
 | `move_accepted` | debug | BV-03 | `item_id`, `type_id`, `quantity`, source and target container and slot, `stack_before`/`stack_after` for the source and target, `bank_slots` |
 | `use_rejected` | warn | BV-03 | `reason` (`container_not_accessible`), `item_id`, `container` |
@@ -158,7 +158,7 @@ Scope:
 
 - Add `vault_scope` to `entity_templates`.
 - Add `NpcInteractionType::Banker { scope }`, derived in `static_interaction_for_flags`.
-- Add `crates/cell-interactions/src/cell/interactions/bank.rs`. It checks distance, pins the Banker, sets `vault_session`, sends `onVaultOpen(banker_id, banker_pos)`, and logs `bank vault_open`.
+- Add `crates/cell-interactions/src/cell/interactions/bank.rs`. It checks distance, pins the Banker, sets `vault_session`, sends `onVaultOpen(banker_id, banker_pos)`, and emits the catalog event `vault_session_opened`.
 - Team and Command scopes send an error reply with feedback until Wave 4.
 - Add a GM-gated `.bank` console command that opens the personal vault anywhere, with a session whose `banker_id` is `None`.
 - Clear the session on a space change, logout and re-pin.
