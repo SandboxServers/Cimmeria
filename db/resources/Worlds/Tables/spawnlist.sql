@@ -30,6 +30,15 @@ CREATE TABLE spawnlist (
     -- `.path_assign` console command.
     patrol_path_id integer,
     patrol_point_delay real,
+    -- Per-spawn aggression override, an `EMobAggressionLevel` (NA13):
+    -- 1 HOSTILE, 2 SUSPICIOUS, 3 NEUTRAL, 4 FRIENDLY, 5 DEFAULT. NULL → the
+    -- faction reaction table decides (players react as faction 3, so a
+    -- faction-10 template is HOSTILE and aggroes on sight). Set it where a
+    -- content chain, not proximity, must start the fight: the chain's
+    -- `set_aggression` replaces it at runtime. Python `aggressionOverride`.
+    aggression_override smallint,
+    CONSTRAINT spawnlist_aggression_override_level
+        CHECK (aggression_override IS NULL OR aggression_override BETWEEN 1 AND 5),
     CONSTRAINT spawnlist_respawn_secs_min_3
         CHECK (respawn_secs IS NULL OR respawn_secs >= 3),
     -- `patrol_point_delay` is a per-waypoint dwell in seconds; a negative

@@ -27,12 +27,19 @@
 //! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session` and the launcher upload endpoints at `/api/telemetry/upload-{chunk,bundle}`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
 //! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload endpoint URL handed back to the launcher in the dev-session response. The default works when the launcher and server share a host; cross-host deployments MUST override (e.g. to a public LAN URL, or through the Cloudflare Tunnel). See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
 //! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
+//! | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | Fixed window the dev-session mint/refresh quotas below are counted over. |
+//! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints allowed per peer address per window on `/api/auth/dev-session`; over quota returns 429 + `Retry-After`. `0` disables. Note that a whole team behind one NAT or reverse proxy shares one bucket — raise it there. |
+//! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints allowed per `install_id` per window. A speed bump for a launcher stuck relaunching, not a boundary: `install_id` is caller-supplied. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token allowed per peer address per window on `/api/auth/dev-session/refresh`. Charged only after the token verifies. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window; over it returns 429. Kept apart from the valid-token counter so junk cannot lock launchers out. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | Longest a single minted session may be extended by chained refreshes, measured from the original mint. Past it, refresh returns 401 and the launcher mints a fresh session. |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP collector endpoint (e.g. `http://otel-collector:4317`). Unset ⇒ OTLP exporter disabled; logs and Mercury packet events never leave the process via OTLP. See [docs/operations/signoz-deployment.md](../../../docs/operations/signoz-deployment.md). |
 //! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` (default) or `http/protobuf`. |
 //! | `OTEL_SERVICE_NAME` | `cimmeria-server` | Shown as `service.name` in SigNoz's service map. |
-//! | `OTEL_RESOURCE_ATTRIBUTES` | unset | Comma-separated `k=v` resource attrs piped onto every span. Common: `deployment.environment=colo,service.namespace=cimmeria`. Note: `deployment.environment` is also defaulted from `CIMMERIA_DEPLOY_ENV` below; this env var overrides it via the SDK's resource merge. |
+//! | `OTEL_RESOURCE_ATTRIBUTES` | unset | Comma-separated `k=v` resource attrs piped onto every span. Common: `service.namespace=cimmeria`. It does **not** override `deployment.environment`, `cimmeria.deploy_env`, `host.name` or `service.version`: the server sets those explicitly (see `CIMMERIA_DEPLOY_ENV` below), and an explicit builder attribute wins the SDK's resource merge. |
 //! | `OTEL_TRACES_SAMPLER` | `always_on` | `always_on`, `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
-//! | `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` on every span/log/metric resource. Typical values: `dev`, `staging`, `colo`. SigNoz dashboards split aggregates on this so colo production data isn't polluted by dev-laptop noise. |
+//! | `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` **and** `cimmeria.deploy_env` on every span/log/metric resource. Typical values: `dev`, `staging`, `colo`. SigNoz dashboards split aggregates on this so colo production data isn't polluted by dev-laptop noise. The same resource also carries `host.name` (the OS hostname) and `service.version` (the build's commit, see `CIMMERIA_GIT_SHA`). |
+//! | `CIMMERIA_GIT_SHA` | unset | **Build time only**, read by `crates/server/build.rs`, never at runtime. Becomes the OTLP `service.version` resource attribute. The container build sets it from the `CIMMERIA_GIT_SHA` Docker build arg (`release-container.yml` passes `github.sha`); a source build falls back to `git rev-parse HEAD`, then `unknown`. |
 //! | `CIMMERIA_LAB_MCP_BIND` | unset | Bind address for the live-research-lab MCP endpoint (issue #687), e.g. `127.0.0.1:8451`. **No default** — the endpoint stays OFF unless this *and* `CIMMERIA_LAB_MCP_TOKEN` are both set. It runs on its OWN `TcpListener`, never on the admin API router (which defaults to loopback but still has no auth until JWT lands). Keep it off player-facing interfaces. |
 //! | `CIMMERIA_LAB_MCP_TOKEN` | unset | Shared bearer token for the lab MCP endpoint. Must be **≥32 bytes** or the endpoint logs an error and refuses to start. Every request must present `Authorization: Bearer <token>` (constant-time compared). |
 //!
@@ -94,30 +101,21 @@ async fn main() {
     let login_buffer = LoginEventBuffer::new();
 
     // OTLP exporter (optional — requires OTEL_EXPORTER_OTLP_ENDPOINT).
-    // Three layers come back: a trace layer (spans + span events), a
-    // log layer for the high-signal `cimmeria-server` index (auth,
-    // content, combat, missions), and a separate log layer for the
-    // high-noise `cimmeria-network` index (mercury_packet, bundle
-    // decode, cell-arms dispatch, tick-sync heartbeats). The split is
-    // resource-tagged at the OTLP provider level — see
-    // `otel::is_network_noise_target` for the routing predicate. The
-    // guard is bound at this scope so it drops *after* the
-    // orchestrator's stop_all returns, flushing all three in-flight
-    // batches on clean shutdown.
-    let (otel_trace_layer, otel_log_layer, otel_network_log_layer, _otel_guard) = match otel::init()
-    {
-        Some((trace, log, network, guard)) => (Some(trace), Some(log), Some(network), Some(guard)),
-        None => (None, None, None, None),
+    // Four layers come back: spans, plus one log layer per SigNoz log
+    // index — `cimmeria-server` (high-signal), `cimmeria-network` (wire
+    // noise at DEBUG/INFO) and `cimmeria-trace` (every TRACE row the
+    // log files keep, firehoses sampled). The split is resource-tagged
+    // at the OTLP provider level; the routing table is in
+    // `logging/filters.rs`. The guard is bound at this scope so it drops
+    // *after* the orchestrator's stop_all returns, flushing every
+    // in-flight batch on clean shutdown.
+    let (otel_layers, _otel_guard) = match otel::init() {
+        Some((layers, guard)) => (Some(layers), Some(guard)),
+        None => (None, None),
     };
 
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = logging::init_logging(
-        log_tx.clone(),
-        log_buffer.clone(),
-        otel_trace_layer,
-        otel_log_layer,
-        otel_network_log_layer,
-    );
+    let _guards = logging::init_logging(log_tx.clone(), log_buffer.clone(), otel_layers);
 
     tracing::trace!(pid = std::process::id(), "Process spawned");
 
@@ -196,7 +194,11 @@ async fn main() {
         }
     };
     tokio::spawn(async move {
-        if let Err(e) = axum::serve(admin_listener, admin_router).await {
+        // Connect info is required, not decorative: the dev-session
+        // mint and refresh endpoints quota-limit by peer address and
+        // fail the request without it.
+        let service = admin_router.into_make_service_with_connect_info::<std::net::SocketAddr>();
+        if let Err(e) = axum::serve(admin_listener, service).await {
             tracing::error!("Admin API server error: {e}");
         }
     });

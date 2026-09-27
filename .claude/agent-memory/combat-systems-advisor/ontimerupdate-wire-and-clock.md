@@ -1,6 +1,6 @@
 ---
 name: ontimerupdate-wire-and-clock
-description: onTimerUpdate (client method 12) canonical 21-byte layout, the absolute BigWorldTimeComplete semantics, and every emit path in the Rust tree
+description: onTimerUpdate (client method 12) canonical 21-byte layout, the client game clock (ticks / hertz), absolute BigWorldTimeComplete semantics, and every emit path in the Rust tree
 metadata:
   type: project
 ---
@@ -20,6 +20,8 @@ BigWorldTimeComplete 17..21.
 
 `serialize_timer_update` takes a `secondary_id` since #744. `EffectSet_HandleOnTimerUpdate`
 (type 5) keys the active-effect entry on `SecondaryId`; python sends `instance.effect.id` there.
+Type-2 starts go through `build_cooldown_timer_args(id, source, secs, now)` (#718), which
+writes `SecondaryId = 0` and `BigWorldTimeComplete = now + secs`.
 
 Timer type constants (`crates/entity/src/abilities/defs.rs:66-69`):
 `TIMER_ABILITY_WARMUP = 1`, `TIMER_ABILITY_COOLDOWN = 2`, `TIMER_DURATION_EFFECT = 5`,
@@ -55,39 +57,42 @@ client anchors on `TICK_SYNC` specifically is an inference, not documented evide
 `CooldownManager_HandleOnTimerUpdate` gate: `if SourceID != this->entityId { return; }` — a zero
 or wrong SourceID silently discards for types 0–3.
 
-## Server game clock (corrected 2026-09-25; #718 rework)
+## Server game clock (fixed by CR-02, 2026-09-26)
 
-C++ reference is the evidence (`deprecated/cpp/src/baseapp/cell_manager.cpp:198`,
-`mercury/sgw/client_handler.cpp:44-63,478-489`, `entity/base_py_util.cpp:176`):
+The client's clock is `TICK_SYNC.gameTime / hertz` seconds (`FUN_00c6e220` ->
+`FUN_00dd6c60`; handlers `0x00dd62a0` hertz, `0x00dd6d00` tickSync, `0x00dd6820`
+setGameTime, which keeps only the low 16 bits). `tickRate` in TICK_SYNC is **ms per
+tick**. So UPDATE_FREQ=10 + tickRate=100 + a 10 Hz loop advancing 1 per send always
+agreed; an older version of this note called it "10x slow", which was wrong (PR
+#718's first draft built a 100-ticks-per-second clock on that misreading; its rework and
+CR-02 #864 both use 10 ticks/s, and #718 now only adds the type-2 builder).
 
-- `tick_rate` (config `100`) is **milliseconds per tick**. `ticks() = elapsed_ms / tick_rate` → 10/s.
-- `UPDATE_FREQUENCY_NOTIFICATION = 1000 / tick_rate = 10`; `TICK_SYNC = {ticks, tick_rate}`.
-- Login writes the **same server-wide** `ticks()` into `TICK_SYNC` and `SET_GAME_TIME`; heartbeat keeps sending it.
-- `getGameTime() = ticks * tick_rate / 1000` seconds.
+The real defect was a per-session epoch: each session counted from 0 at its login.
+Now `crates/wire/src/mercury/game_clock/` holds one server-wide epoch; login and every
+heartbeat send `game_ticks()`, and every timer start sends
+`game_time_secs() + duration`. Details and evidence:
+`docs/reverse-engineering/findings/system-protocol-wire-formats.md` "The client game clock".
 
-My earlier note here claimed a "10x clock-rate lie" (tickRate=100 as ticks/s vs a 10 Hz counter).
-**That was wrong** — a per-100 ms `+1` under tickRate 100 is the correct rate; the real defects were
-the per-session zero origin and the zero login seed. The trap is the reverse: driving the counter at
-100/s under tickRate 100 runs the client clock 10x fast. Since #718, `crates/services/src/base/game_time.rs`
-owns `TICK_INTERVAL_MS`, `UPDATE_FREQUENCY_HZ`, `game_time_tick()`, `game_time_secs()`, and
-`build_time_sync` takes the tick.
+## Every emit path in the Rust tree (as of CR-02, 2026-09-26)
 
-## Emit paths after #718 / #744
+| Site | Type | `BigWorldTimeComplete` sent |
+|---|---|---|
+| `cell-combat/.../use_ability/handle.rs` (`build_cooldown_timer_args`) | 2 | `game_time_secs() + cooldown + warmup` |
+| `cell-combat/.../use_ability/warmup/mod.rs` | 1 | `game_time_secs() + warmup` |
+| `cell-combat/.../use_ability/warmup/interrupt.rs` | 1, 2 | `0.0` (clear) |
+| `cell-combat/.../player/world/reload.rs` (`build_cooldown_timer_args`) | 2 | `game_time_secs() + warmup + cooldown` |
+| `cell-combat/.../effects/pulsing/register.rs` | 5 | `game_time_secs() + duration` |
+| `cell-combat/.../effects/pulsing/tick.rs`, `channel_cancel.rs` | 5 | `0.0` (clear) |
+| `cell-console/.../console/net.rs` `.net_timer` | caller | `game_time_secs() + total` |
 
-| Site | Type | SecondaryId | `BigWorldTimeComplete` |
-|---|---|---|---|
-| `use_ability/handle.rs` (`build_cooldown_timer_args`) | 2 | 0 | now + cooldown |
-| `player/world/reload.rs` | 2 | 0 | now + warmup + cooldown |
-| `effects/pulsing/register.rs` | 5 | effect_id | now + duration |
-| `pulsing/tick.rs`, `pulsing/channel_cancel.rs` (clears) | 5 | effect_id | 0.0 |
-| `console/net.rs` `.net_timer` | caller | caller | now + totalTime |
-
-Still missing vs python: the per-`monikerId` type-8 `CategoryCooldown` packet, and cooldown `TotalTime`
-excludes warmup in the ability path. Type-5 `SourceID` is the invoker in Rust, the effect carrier in python.
+Client behaviour worth knowing: `CooldownManager` (`FUN_00c6d1c0`) clamps
+`complete - clock` to 0, and the `EffectSet` handler (`0x00e09160`) creates a new
+effect entry only when `clock < complete`, so a past expiry draws no icon at all.
+Type 8 (category cooldown, one per `monikerId`) is still never sent.
 
 ## Wire-log decoders
 
-`crates/services/src/wire_log/decoders/generated.rs` is generated by
+`crates/wire-log/src/wire_log/decoders/generated.rs` is generated by
 `tools/wire_decoder_codegen.py` from the markdown table in
 `docs/protocol/client-method-dispatch-table.md` (line-anchored regex
 `^\|\s*(\d+)\s*\|\s*`([^`]+)`\s*\|\s*`([^`]*)`\s*\|?`). That doc table is the schema source of

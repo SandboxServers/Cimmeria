@@ -67,3 +67,31 @@ and fall back to a name-based lookup for the numeric form.
 **Better than a 17-way test:** a services-side constructor taking `(entity_id,
 &SpaceManager)` that builds the ctx *and* populates, so omission is unrepresentable. Not
 done in H07 only because packet H04 was editing the same lines.
+
+## `content_triggers.once` is DEAD - the gate is your only fire-once mechanism
+
+Found authoring DU-07 (Marsh bark chains 1176-1178), re-verified in current code.
+`once` is read out of the DB into `DbTriggerRow.once` (`loader/mod.rs`,
+`cell/content/engine_loader.rs`), and `convert_trigger` never looks at it again: `Chain`
+has no such field and `ChainEngine` keeps no firing history. So `once = true` on shipped
+chains 1008 and 1044 is **inert**, and any comment claiming it fires once is wrong.
+
+**How to apply:** "fires at most once per run" has to come from a mission/step/objective
+condition that some *co-firing* chain closes on the same edge. Write `false` in the
+column so you do not encode a guarantee that does not exist, and name in the comment
+which chain shuts the gate. Watch for gates that never close: `mission_status X eq
+active` on an edge where nothing completes X is a gate in name only - prefer the
+`step_status` of the step an `advance_step` on that same edge retires. Do NOT gate on the
+step being advanced *to*: `advance_step` re-sets the new step unconditionally, so that
+gate re-opens on a repeat. Co-gated pairs (bark 1178 beside accept 1083) need a comment
+on BOTH rows plus a test that walks all three states, or a one-sided edit re-opens it
+silently.
+
+## `Condition::Counter` is a vacuous guard on most events
+
+`conditions/mod.rs` reads `counter_<name>` with `.unwrap_or(0)`, and `fire_enter_region`
+/ `fire_exit_region` / `fire_teleport_in` (`event_dispatch/region.rs`) populate world +
+mission + archetype context but **never** call `populate_counters_context`. So
+`counter foo eq 0` on a region chain reads 0 forever and always passes - it looks like a
+tightener and is not. Same family as [[sqlx-chain-id-is-i32-vacuous-guards]] and
+[[chain-replay-trigger-param-vacuity]].

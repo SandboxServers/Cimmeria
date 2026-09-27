@@ -44,19 +44,17 @@ pub fn serialize_timer_update(
     buf
 }
 
-/// Build the `onTimerUpdate` args for an ability-cooldown start.
+/// Build the `onTimerUpdate` args for a cooldown start (type 2), for the
+/// ability cooldown and the weapon-reload cooldown alike.
 ///
-/// `expire_time` (wire field `BigWorldTimeComplete`) is an **absolute**
-/// time in the server's tickSync game-time domain — `now_secs +
-/// cooldown_secs` — not a relative offset. The client's cooldown handler
-/// (`CooldownManager_HandleOnTimerUpdate`) classifies a timer as active
-/// or expired by comparing that value against its own view of the same
-/// domain, so a `0.0` (or an absolute value from a different clock, e.g.
-/// uptime while tickSync stays pinned low) either never shows a bar or
-/// wedges one "on cooldown" for the rest of the session.
+/// `BigWorldTimeComplete` is **absolute** on the game clock the client was
+/// given at login: `now_secs + cooldown_secs`. The client's cooldown
+/// manager shows `complete - clock`, clamped to 0, so a `0.0` or a relative
+/// `cooldown_secs` shows no bar. One builder keeps every type-2 sender on
+/// that rule (#271).
 ///
 /// `now_secs` is injected so the wire shape is testable without a clock;
-/// production passes `base::game_time::game_time_secs()`.
+/// production passes `mercury::game_clock::game_time_secs()`.
 pub fn build_cooldown_timer_args(
     ability_id: i32,
     source_id: i32,
@@ -121,35 +119,32 @@ mod tests {
         assert!((total_time - 5.0).abs() < f32::EPSILON);
     }
 
-    /// `build_cooldown_timer_args` must emit `expireTime = now + cooldown`
-    /// **in absolute form** — the `BigWorldTimeComplete` field the client's
-    /// cooldown handler compares against its tickSync-derived game time.
-    /// Reverting to the old hardcoded `0.0` (or to a relative `cooldown`
-    /// offset) trips this test: `expireTime` lives at bytes 17..21 of the
-    /// 21-byte payload.
+    /// `build_cooldown_timer_args` emits `BigWorldTimeComplete = now +
+    /// cooldown` at bytes 17..21 and keeps `TotalTime` the duration.
+    /// Reverting the expiry to `0.0` or to the relative `cooldown` trips it.
     #[test]
     fn build_cooldown_timer_args_emits_absolute_expire_time() {
         let data = build_cooldown_timer_args(597, 100, 5.0, 12345.0);
         assert_eq!(data.len(), 21);
-        let id = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        assert_eq!(id, 597);
+        assert_eq!(i32::from_le_bytes(data[0..4].try_into().unwrap()), 597);
         assert_eq!(data[4], TIMER_ABILITY_COOLDOWN as u8);
-        let total = f32::from_le_bytes([data[13], data[14], data[15], data[16]]);
+        assert_eq!(i32::from_le_bytes(data[5..9].try_into().unwrap()), 100);
+        assert_eq!(i32::from_le_bytes(data[9..13].try_into().unwrap()), 0);
+        let total = f32::from_le_bytes(data[13..17].try_into().unwrap());
         assert_eq!(total, 5.0, "TotalTime must stay the duration");
-        let expire = f32::from_le_bytes([data[17], data[18], data[19], data[20]]);
+        let expire = f32::from_le_bytes(data[17..21].try_into().unwrap());
         assert_eq!(
             expire, 12350.0,
             "BigWorldTimeComplete must be absolute (now + cooldown), not 0.0 or a relative offset"
         );
     }
 
-    /// Same wire shape must hold for cooldowns whose duration is not a
-    /// whole number of seconds — the absolute field is a plain float sum.
+    /// A cooldown that is not a whole number of seconds carries into the
+    /// absolute field as a plain float sum.
     #[test]
     fn build_cooldown_timer_args_handles_fractional_cooldown() {
         let data = build_cooldown_timer_args(7, 1, 0.5, 1000.0);
-        assert_eq!(data.len(), 21);
-        let expire = f32::from_le_bytes([data[17], data[18], data[19], data[20]]);
+        let expire = f32::from_le_bytes(data[17..21].try_into().unwrap());
         assert!(
             (expire - 1000.5).abs() < f32::EPSILON,
             "fractional cooldown must be carried into BigWorldTimeComplete: {expire}"

@@ -8,7 +8,7 @@ metadata:
 > **Status 2026-09-19 — still true.** Re-verified on `main`: `npc_ai/leash.rs:49` is still
 > `npc.position = spawn_pos;` with no `write_position`, no velocity reset and no `target:` on the log.
 
-**Block on sight.** `crates/services/src/cell/service/npc_ai/leash.rs:48-50`:
+**Block on sight.** `crates/cell-combat/src/cell/service/npc_ai/leash.rs:48-50`:
 
 ```rust
 if let (None, Some(spawn_pos)) = (npc.follow_target_id, npc.spawn_position) {

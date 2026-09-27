@@ -1,20 +1,20 @@
 ---
-applyTo: "crates/services/**/*.rs"
+applyTo: "crates/services/**/*.rs,crates/cell/**/*.rs,crates/cell-*/**/*.rs,crates/base/**/*.rs,crates/base-*/**/*.rs,crates/wire/**/*.rs"
 ---
 
 # Rust services review rules
 
-`crates/services` houses the cell-side and base-side server logic. Each side has a separate message loop and they communicate via `CellToBaseMsg` / `BaseToCellMsg` channels.
+The cell-side and base-side server logic lives in the crates split out of `crates/services`, which is now a thin facade (see `docs/architecture/services-crate-split.md`). Each side has a separate message loop and they communicate via `CellToBaseMsg` / `BaseToCellMsg` channels.
 
 ## Cell vs base split
 
-- **Cell** (`crates/services/src/cell/`) — entity state, content engine, AoI, NPC AI, abilities. One cell per space.
-- **Base** (`crates/services/src/base/`) — client connection lifecycle, world entry, client-method dispatch, persistence, witness broadcasts to the connected client.
-- They communicate by enum messages (`crates/services/src/cell/messages/`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
+- **Cell** (the cell-track crates: `crates/cell/`, `crates/cell-world/`, `crates/cell-combat/`, `crates/cell-content/`, `crates/cell-interactions/`, `crates/cell-methods/`, `crates/cell-console/`, with `cell-catalog` and `cell-cover` below them) — entity state, content engine, AoI, NPC AI, abilities. One cell per space.
+- **Base** (the base-track crates: `crates/base/`, `crates/base-world-entry/`, `crates/base-methods/`, `crates/base-session/`) — client connection lifecycle, world entry, client-method dispatch, persistence, witness broadcasts to the connected client.
+- They communicate by enum messages (`crates/wire/src/cell/messages/`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
 
 ## Content engine actions
 
-Every action type in `Action` (see `crates/content-engine/src/actions.rs`) needs an executor arm in `crates/services/src/cell/content/executor.rs`. Stubs that only log are a known footgun — they make a chain *look* like it's running while doing nothing. If you spot a stub arm during review, ask whether the calling chain actually expects the side effect.
+Every action type in `Action` (see `crates/content-engine/src/actions.rs`) needs an executor arm in `crates/cell-content/src/cell/content/executor/mod.rs`. Stubs that only log are a known footgun — they make a chain *look* like it's running while doing nothing. If you spot a stub arm during review, ask whether the calling chain actually expects the side effect.
 
 Existing stubs to watch for: `Action::RemoveItem` (logs only — see content-chain rules), `Action::IncrementCounter`, `Action::ResetCounter`. Newer additions should either implement fully or be flagged with a `tracing::warn!` so silent no-ops are visible in logs.
 
@@ -22,18 +22,17 @@ Existing stubs to watch for: `Action::RemoveItem` (logs only — see content-cha
 
 When sending a `CellToBaseMsg::EntityMethodCall` or building a base→client packet:
 
-- Confirm `method_index` against `docs/protocol/client-method-dispatch-table.md`. Indices live in `crates/services/src/mercury/method_idx.rs` — prefer a named constant over a literal.
+- Confirm `method_index` against `docs/protocol/client-method-dispatch-table.md`. Indices live in `crates/wire/src/mercury/mod.rs` — prefer a named constant over a literal.
 - Confirm byte layout against `entities/defs/*.def`. Endianness is little-endian; vectors are 3×f32; strings use `write_wstring` (length-prefixed UTF-16).
 - Engine-level base messages (`BASEMSG_*` in `mercury/mod.rs`) are handled by the BigWorld client *before* user code runs — use them for authoritative state changes (`FORCED_POSITION` for teleport, etc.). Method-index-dispatched messages (0xBD prefix) hit user code and may be ignored under certain client states (e.g., `BSF_MovementLock`).
 
-## Build memory
+## Builds
 
-A full link of `cimmeria-services` can use ~47 GB RAM. The workspace's `[profile.dev.package."*"]` strips dependency debug info to bring this down to ~8 GB, but you still need to:
+Builds run natively on Windows on the toolchain `rust-toolchain.toml` pins; the build rules are in `CLAUDE.md` ("Build rules"), and the reasons in `docs/architecture/build-system.md`.
 
-1. Iterate with `cargo check -p cimmeria-services` — fast (~1.5s), low memory.
-2. Never run multiple `cargo`/`rustc` processes concurrently — `pkill -f rustc` first.
-3. Workspace builds for final validation only, with `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor` to skip the Tauri linker.
-4. `CARGO_BUILD_JOBS=2` is set in `.bashrc` to cap parallel codegen.
+1. Iterate with `cargo check -p <crate>` on the crate you changed. `cimmeria-services` is a small facade over the split crates, so `-p cimmeria-services` doesn't cover them.
+2. Agent and worker `cargo` calls go through the build lane, `tools/build-lane/lane.sh`, which limits how many builds run on the machine at once.
+3. Workspace builds for final validation only, with the six `--exclude` flags CI uses (`.github/workflows/test.yml`), under `lane.sh --exclusive`.
 
 ## File caps
 
@@ -51,6 +50,6 @@ Default to none. Only when the **why** is non-obvious: hidden constraint, subtle
 
 ## Reference
 
-- `crates/services/src/cell/ring_transport/runtime.rs` is a good example of how to dispatch FSM `Effect`s into wire `CellToBaseMsg`s.
-- `crates/services/src/base/world_entry/cell_dispatch.rs` shows the base-side handler pattern for a `CellToBaseMsg` variant.
+- `crates/cell-content/src/cell/ring_transport/dispatch.rs` is a good example of how to dispatch FSM `Effect`s into wire `CellToBaseMsg`s.
+- `crates/base-world-entry/src/base/world_entry/cell_dispatch/mod.rs` shows the base-side handler pattern for a `CellToBaseMsg` variant.
 - Reference Python in `python/cell/` and `python/common/` is the behaviour spec — read it for any new feature port.

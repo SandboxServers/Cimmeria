@@ -25,7 +25,7 @@ The recent direction is informative: each addition has shipped with seed data, e
 
 ## Tier 1 — wire what's already defined
 
-These variants exist in the `Action` / `Condition` enum and are accepted by the loader, but [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm — they fall through to `debug!("Unhandled")` no-ops. Wiring them is mostly executor work, not engine work.
+These variants exist in the `Action` / `Condition` enum and are accepted by the loader, but [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs) has no match arm — they fall through to `debug!("Unhandled")` no-ops. Wiring them is mostly executor work, not engine work.
 
 **Three of these are not roadmap items but live bugs**: `launch_ability` (3 seeded rows), `qr_combat_damage` (2), and `fail_objective` (1) are already authored into the shipped seed and silently do nothing every time they resolve. See §1.4. `move_entity` was the fourth and shipped in issue #613.
 
@@ -42,7 +42,7 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 
 | | |
 |---|---|
-| Status today | Action variants and trigger variant defined. No loader arm either — `start_timer` / `cancel_timer` / an `OnTimer` `event_type` cannot be named from seed. No executor arm. No `fire_timer_*` site in [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/). |
+| Status today | Action variants and trigger variant defined. No loader arm either — `start_timer` / `cancel_timer` / an `OnTimer` `event_type` cannot be named from seed. No executor arm. No `fire_timer_*` site in [event_dispatch/](../../crates/cell-content/src/cell/content/event_dispatch/). |
 | Effort | Medium (M) — needs a per-cell tick loop or per-entity `tokio::time::sleep` task, plus persistence story (timers across logout?). |
 | Unlocks | Timed objectives ("defuse in 30s"). Wave-spawn delays. Daily-reset scaffolding (paired with §3.2). Escort-fail-on-pause patterns. Timed buff cleanup if §1.1 doesn't already drive it. |
 | Why | Several SGW missions in the bomb-defusal/escape-sequence pattern need this. There's no good Rust-side substitute that an authored chain could call into without reinventing the dispatcher. |
@@ -61,7 +61,7 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 | | |
 |---|---|
 | Status today | All three have loader arms ([loader/action.rs](../../crates/content-engine/src/loader/action.rs)) and are **used by shipped seed data** — 3 / 2 / 1 rows respectively. None has an executor arm, so all 6 rows resolve, emit a `debug!`, and do nothing. `move_entity` (5 rows) was the fourth entry here until issue #613 wired it. |
-| Effort | Small (S) each. `LaunchAbility` calls into `crate::cell::abilities`; `QrCombatDamage` calls the existing damage-apply path; `FailObjective` mirrors the `CompleteObjective` handler in [executor/mission.rs](../../crates/services/src/cell/content/executor/mission.rs). |
+| Effort | Small (S) each. `LaunchAbility` calls into `crate::cell::abilities`; `QrCombatDamage` calls the existing damage-apply path; `FailObjective` mirrors the `CompleteObjective` handler in [executor/mission.rs](../../crates/cell-content/src/cell/content/executor/mission.rs). |
 | Unlocks | Nothing new — it makes already-authored content work. Scripted ability fires, scripted damage, and objective-fail branches are all currently silent no-ops in Castle_CellBlock and SGC_W1. |
 | Why | This is the highest-value remaining Tier 1 entry because the content authoring is already done and merged. `move_entity` shipped on exactly this rationale in issue #613. Unlike §1.1–§1.3 it needs no new seed data, no new design, and no dependency on an unshipped system. Each one should ship with a chain-replay guard asserting the action reaches its handler. |
 
@@ -137,7 +137,7 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 
 | | |
 |---|---|
-| Need | `Action::MoveWaypoint` does an instant position write today ([executor/world/mod.rs:330](../../crates/services/src/cell/content/executor/world/mod.rs#L330) — no path interpolation; the `speed` field is parsed by the loader and then ignored by the executor). There's no `OnNpcArrived` trigger. So "escort the prisoner to the rings" can only fire on the player's region cross, not on the NPC's actual arrival. |
+| Need | `Action::MoveWaypoint` does an instant position write today ([executor/world/mod.rs:330](../../crates/cell-content/src/cell/content/executor/world/mod.rs#L330) — no path interpolation; the `speed` field is parsed by the loader and then ignored by the executor). There's no `OnNpcArrived` trigger. So "escort the prisoner to the rings" can only fire on the player's region cross, not on the NPC's actual arrival. |
 | Engine surface | First, real path interpolation (Rust gameplay code, not engine). Then `Trigger::OnNpcArrived { entity_tag, region_key }` fired from the path-completion callback. |
 | Effort | Large (L) — path interpolation is the real work. The engine surface is small once that lands. |
 | Unlocks | Escort missions where the NPC actually escorts (movement events not fake-tied to player position). "Wait for NPC to finish speaking" beats. |
@@ -156,7 +156,7 @@ These sound tempting but belong elsewhere. Documenting them here so the conversa
 | **Ability cooldowns / GCDs** | Sub-second precision; queryable from input handler before any chain fires. Belongs in `Stat`-backed cooldown timers in the entity, not `Action::StartTimer`. |
 | **Pathfinding** | Deterministic Rust running every tick. The engine's `MoveWaypoint` does instant teleport on purpose; if escort movement matters, build the pather Rust-side and surface a single `Trigger::OnNpcArrived`. |
 | **Loot-roll RNG** | `Action::RollLootTable` is in the enum but unhandled, and that's fine. Loot tables need server-authoritative randomness with anti-dupe checks; expose only the *result* of a roll back into chains, not the rolling itself. |
-| **Inventory layout / equip rules** | `Action::SetActiveSlot` is a thin client poke ([executor/mod.rs:366-397](../../crates/services/src/cell/content/executor/mod.rs#L366-L397)). Resist `Action::SwapInventorySlot`, `Action::EnforceLoadoutRules` — those have invariants that need Rust enforcement. |
+| **Inventory layout / equip rules** | `Action::SetActiveSlot` is a thin client poke ([executor/mod.rs:366-397](../../crates/cell-content/src/cell/content/executor/mod.rs#L366-L397)). Resist `Action::SwapInventorySlot`, `Action::EnforceLoadoutRules` — those have invariants that need Rust enforcement. |
 | **Reward-selection UI ("pick 1 of 3")** | This is a UI flow with a server callback, not a content-engine primitive. The flow is: player picks reward → client sends choice → server reads it and emits the granted item. Adding a chain trigger for "reward chosen" is reasonable; modeling the picker as engine state is not. |
 
 The litmus test: **if it needs to run at frame rate, hold invariants under concurrent mutation, or do math the engine can't validate, it stays in Rust.** The engine is glue between gameplay-code-defined events and gameplay-code-defined effects. It should be thin, declarative, and slow-path.
@@ -172,7 +172,7 @@ From the persistence audit. Each is small, each pays off as content scales.
 | Index `content_triggers (event_type, event_key)` | Editor and `load_single_chain_for_test` queries scan it; trivial to add |
 | `UNIQUE (chain_id, event_type, event_key)` on `content_triggers` | Prevents accidental duplicate rows from producing double-fire after a flubbed migration |
 | Index each `content_*` table on `chain_id` | Editor queries filter by it; PG doesn't auto-index FK columns |
-| Filter `enabled = false` chains in the loader (`WHERE enabled = true` in [engine_loader.rs:51](../../crates/services/src/cell/content/engine_loader.rs#L51)) | Nicety, **not** a correctness fix. The boot `SELECT` has no `WHERE` clause, so disabled chains are loaded and registered — but `enabled` is honored in memory at resolve time ([chain.rs:256](../../crates/content-engine/src/chain.rs#L256), and [chain.rs:138](../../crates/content-engine/src/chain.rs#L138) for `fire_event`), so they never match or execute. Filtering in SQL would just stop carrying dead chains in the bucket |
+| Filter `enabled = false` chains in the loader (`WHERE enabled = true` in [engine_loader.rs:51](../../crates/cell-content/src/cell/content/engine_loader.rs#L51)) | Nicety, **not** a correctness fix. The boot `SELECT` has no `WHERE` clause, so disabled chains are loaded and registered — but `enabled` is honored in memory at resolve time ([chain.rs:256](../../crates/content-engine/src/chain.rs#L256), and [chain.rs:138](../../crates/content-engine/src/chain.rs#L138) for `fire_event`), so they never match or execute. Filtering in SQL would just stop carrying dead chains in the bucket |
 | Add `created_at`/`updated_at` to `content_chains` | Migration drift between environments is currently invisible |
 | `content_action_params` JSON Schema registry keyed on `action_type` | Lets the editor validate authoring; lets CI fail on a typo'd `"ammount"` before it ships |
 | CHECK constraints on `_type` discriminators (against a curated list) | Surface silent-drop case at INSERT time, not at boot |

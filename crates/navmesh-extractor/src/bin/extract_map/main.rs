@@ -8,7 +8,7 @@
 //!
 //! extract_map extract --cooked-root <DIR> --map <NAME> --out <DIR> --index <CACHE>
 //!                     [--chunk-filter <SUBSTR>] [--report <TSV>] [--classes <TSV>]
-//!                     [--combined <OBJ>]
+//!                     [--combined <OBJ>] [--interp-actors <M>]
 //!
 //! extract_map probe   --obj-dir <DIR> [--mapping all|<LABEL>[,<LABEL>…]]
 //!                     [--points <TSV>] [--report <TSV>] [--detail <TSV>]
@@ -47,6 +47,7 @@ USAGE:
   extract_map <cooked-root> <map-name> <out-dir> <index-path>      (shorthand)
   extract_map extract --cooked-root <DIR> --map <NAME> --out <DIR> --index <CACHE>
                       [--chunk-filter <SUBSTR>] [--report <TSV>] [--classes <TSV>]
+                      [--combined <OBJ>] [--interp-actors <M>]
   extract_map probe   --obj-dir <DIR> [--mapping all|<LABEL>[,<LABEL>...]]
                       [--points <TSV>] [--report <TSV>] [--detail <TSV>]
                       [--below <F>] [--above <F>] [--neighbourhood <F>]
@@ -63,6 +64,14 @@ extract:
                         it MUST NOT be inside --out: NavBuilder chunked mode
                         globs *.obj and dies (exit 0, no output) on a file
                         whose stem is not <hex8>o.
+  --interp-actors <M>   `classify` (default) or `off`. classify walks every
+                        InterpActor and bakes one only when the chunk's
+                        Kismet shows it never leaves its cooked pose; doors,
+                        Stargate parts and camera heads are never baked.
+                        Undecided actors are left out and reported as a
+                        collision risk. Decision log: <out>/interp_actors.tsv.
+                        off reproduces a pre-NA36 build. See
+                        docs/engine/navmesh-build-pipeline.md §12.
 
 probe:
   --obj-dir <DIR>       Directory of <chunkid>o.obj files (an extract --out).

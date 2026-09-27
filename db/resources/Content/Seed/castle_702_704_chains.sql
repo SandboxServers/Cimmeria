@@ -37,7 +37,7 @@
 -- Packet CA05 (Castle map recon and story-actor authoring) owns the
 -- spawnlist rows, entity templates and point sets these chains name. Until
 -- CA05 lands, the region triggers below reference `point_sets.name` rows
--- that are not seeded, and `crates/content-engine/tests/interact_tag_linter.rs
+-- that are not seeded, and `crates/content-engine/tests/it/interact_tag_linter.rs
 -- ::every_chain_region_key_matches_a_seeded_point_set` fails for exactly
 -- those two keys. That is an expected cross-packet integration gap, not a
 -- typo in this file. The contracted names, byte-exact:
@@ -84,7 +84,7 @@
 --
 -- `set_interaction_type` is GLOBAL on the entity, not per player: the arm
 -- mutates `CellEntity::interaction_type_flags` and fans the new value to
--- every witness (crates/services/src/cell/content/executor/world/mod.rs:19-65),
+-- every witness (crates/cell-content/src/cell/content/executor/world/mod.rs:19-65),
 -- and docs/content/interaction-flags.md:190 says so explicitly. In an
 -- instanced zone (the Castle_CellBlock precedent) that is harmless. In
 -- Castle, which is persistent and shared, it means:
@@ -132,11 +132,12 @@
 -- ESCORT REPAIR, and why the cell actor's `!` outlives mission 702.
 --
 -- `AiState::Follow` is preemptable into Fighting by any threat
--- (`combat/threat/aggro.rs`), and `npc_ai_leash` ends at `AiState::Idle`
--- and never returns to Follow (`npc_ai/leash.rs`). One stray point of
--- splash damage to Zuritska on the way to Level 5 ends the escort
--- permanently; GC1b-0 stops the actor being teleported back to the cell, but
--- nothing restarts the follow.
+-- (`combat/threat/aggro.rs`). When this was written `npc_ai_leash` ended at
+-- `AiState::Idle` and never returned to Follow, so one stray point of
+-- splash damage to Zuritska on the way to Level 5 ended the escort
+-- permanently. Since NA42 the leash returns a follower to Follow while its
+-- leader is still in the space, so the click below is now a backstop (a
+-- leader that left and came back, or a follow cleared some other way).
 --
 -- The repair is a click. Chain 1302 (`interact_tag Castle_Zuritska_Cell`
 -- gated on 704 step 2405) re-issues `set_follow_target`, which means the
@@ -568,12 +569,13 @@ VALUES
 --
 -- RECONSTRUCTION, and the reason it exists: `AiState::Follow` is
 -- preemptable into Fighting by any threat (`combat/threat/aggro.rs`), and
--- `npc_ai_leash` ends at `AiState::Idle` and never returns to Follow
--- (`npc_ai/leash.rs`). One stray point of splash damage to Zuritska on the
--- way down to Level 5 therefore ends the escort permanently. GC1b-0 stops
--- the actor being teleported back to the cell, but nothing restarts the follow.
--- Before this chain the only re-fire was 1296 on `player_loaded`, i.e. the
--- player had to relog.
+-- before NA42 `npc_ai_leash` ended at `AiState::Idle` and never returned to
+-- Follow. One stray point of splash damage to Zuritska on the way down to
+-- Level 5 therefore ended the escort permanently. Before this chain the only
+-- re-fire was 1296 on `player_loaded`, i.e. the player had to relog. NA42
+-- makes the leash resume Follow itself, so this chain is now a harmless
+-- backstop: re-issuing `set_follow_target` on an actor that is already
+-- following the clicking player changes nothing but a fresh route.
 --
 -- The click is the "follow me again" affordance, which is why chain 1263 no
 -- longer clears the cell actor's `!` and chain 1291 clears it instead: the
@@ -656,7 +658,7 @@ VALUES
 --     still active for both, so this chain resolves twice and emits two
 --     `StartMinigame` messages, each carrying `on_victory_chains: [1293]`.
 --     The guard is the minigame registry: `MinigameRegistry::register`
---     (crates/services/src/minigame/session.rs) returns `None` when
+--     (crates/minigame/src/minigame/session.rs) returns `None` when
 --     `sessions` already holds an entry for the entity, so the second
 --     launch never becomes a session and can never report a victory. Its
 --     own test `duplicate_session_rejected` pins that.

@@ -12,7 +12,7 @@ both files before trusting a filename in a handoff packet.
 
 ## GM tail index → def-line offset counting convention
 
-`crates/services/src/cell/cell_methods/gm/mod.rs` constants are commented
+`crates/cell-console/src/cell/console/gm/mod.rs` constants are commented
 as `def line N. Offset K` where `index = 109 + K`, K counting *every*
 `<Exposed/>` method in `SGWGmPlayer.def` document order starting at 0 for
 `gmMissionAssign` (line 65) — including ones with no Rust handler yet.
@@ -40,7 +40,7 @@ and rubber-bands the entity back.
 
 Reference implementation: `CellEntity::movement_unrestricted` (issue:
 onPhysics/#gmsetfly/#gmsetghost, PR native-onphysics-fly-ghost),
-`crates/services/src/cell/cell_methods/gm/physics.rs`.
+`crates/cell-console/src/cell/console/gm/physics.rs`.
 
 ## Any validator bypass that skips Layer 1 must keep the is_finite() gate unconditional
 

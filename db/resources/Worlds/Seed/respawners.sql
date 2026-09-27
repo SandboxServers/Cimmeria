@@ -7,7 +7,7 @@
 -- World 8 (Castle) rows 1-4 shipped with pos (0,0,0) in the recovered data:
 -- the names survived, the coordinates did not. Dying anywhere in Castle put
 -- the player at the world origin, because `resolve_respawn_target`
--- (crates/services/src/cell/cell_methods/player/combat/respawn.rs) found a
+-- (crates/cell-interactions/src/cell/respawn/mod.rs) found a
 -- matching row and returned its zeros — the safe fallbacks below it were
 -- unreachable precisely because the rows existed. See
 -- docs/analysis/castle-rebuild/audit.md defect B1 and decision D-CA11.
@@ -27,9 +27,9 @@
 -- likely as floor (and `unstuck` is still unimplemented). Nearest authored
 -- actor is the Castle_DHD prop (spawnlist 2, 806.27/55.10/517.24) at ~7.6
 -- units; every NPC is >= 7.8 away. Proximity to the faction-1 Jaffa is safe
--- as seeded: NPC auto-aggro requires `aggression > 0`, which no seeded
--- template sets (it is only raised by the `set_aggression` content action or
--- the GM console).
+-- as seeded: since NA13 an NPC aggroes on sight only when it is HOSTILE to
+-- players (its spawn's `aggression_override`, else the faction reaction
+-- table), and faction 1 reacts FRIENDLY to players (faction 3).
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (1, 8, 'Checkpoint Alpha Respawn', 800, 55.2099991, 513);
 
 -- RECONSTRUCTION, provisional until in-client UAT.
@@ -110,9 +110,10 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (21, 68, 'Command Center Respawn', 0, 0.355, -20);
 
 -- PLACEMENT PL-A-02, provisional until a playtest.
--- Row 20: world 57 Harset. The gate plaza, 3 m west of the gate arrival pin
--- (stargates.stargate_id = 3) so a hub death returns the player to the same
--- place a traveller arrives. Evidence: MAP-GEOMETRY + MAP-LANDMARK.
+-- Row 20: world 57 Harset. The gate plaza, 3 m west of where the gate
+-- arrival pin (stargates.stargate_id = 3) stood until NA29 dropped it, so a
+-- hub death returns the player beside the gate; travellers now arrive on the
+-- gate row itself, about 9 m east on the dais. Evidence: MAP-GEOMETRY + MAP-LANDMARK.
 --   * (-8.0, 34.0) is interior to navmesh component 187 — the 24,770 m^2 hub
 --     component — and so is every sample on the 0.6 m and 1.2 m rings around
 --     it (37/37). That matters more here than for the gate pin: this row is

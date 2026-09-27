@@ -4,7 +4,9 @@
 -- Data for Name: entity_templates; Type: TABLE DATA; Schema: resources; Owner: -
 --
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (4, NULL, 'MOB_CA_DroneTank.BS_MOB_DroneFlyer', '{MOB_CA_DroneTank.MOB_DroneFlyer00}', 0, 0, 570, 1, 0, 10, 7599, NULL, NULL, NULL, 'Prisoner retrieval unit', 'mob', NULL, NULL, NULL, NULL, 2, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
+-- NA43 (handoff §13-14): the Castle SMG hostiles 146, 148, 169, 170 and 171 carry ability set 3 (559 Automatic Weapon Auto Attack, item 21's ranged binding) like template 24, and the Castle drone 145 carries set 2 (221 Energy Shock) like template 4. With no set they fell back to 592 Pistol Shot and played the pistol animation holding an SMG or a drone body. 34/35 stay NULL: set 4 brings 710's zero-damage melee, an owner decision. Guard: spawner/tests/npc_ability_animation.rs.
+-- NA22 (audit C5): `use_cover` set on the Cellblock and Castle combat templates. Ranged guards take cover (their ability sets 1/3 and the default Pistol Shot are ranged); the two prisoner retrieval unit drones do not (template 4 spawns stationary). Every other template stays NULL, the runtime default rule (docs/architecture/cover-system.md).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (4, NULL, 'MOB_CA_DroneTank.BS_MOB_DroneFlyer', '{MOB_CA_DroneTank.MOB_DroneFlyer00}', 0, 0, 570, 1, 0, 10, 7599, NULL, NULL, NULL, 'Prisoner retrieval unit', 'mob', NULL, NULL, NULL, NULL, 2, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, false);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (13, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Wooden crate', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
@@ -38,7 +40,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (30, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,AR_H_SGC.AR_HM_ST1_ST103,NPC_Jaffa.AR_JM_Tealc_Hands_BC,NPC_Jaffa.AR_JM_Tealc_Head_BC,BS_JaffaMale.BS_JM_Base_Boots00_00,BS_JaffaMale.BS_JM_Base_Legs00_00,BS_JaffaMale.BS_JM_Base_Torso00_00}', 0, 0, 570, 1, 0, 1, 7908, NULL, NULL, NULL, 'Teal''c', 'mob', NULL, NULL, NULL, NULL, NULL, 'Bullet_Default', NULL, 0, 0, 0, NULL, '{}', NULL, 2316, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (15, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_Pistol_1A}', 0, 0, 570, 1, 0, 10, 6961, NULL, NULL, NULL, 'Cellblock Guard', 'mob', NULL, NULL, NULL, NULL, 1, 'Bullet_Default', 2, 0, 0, -256076032, 55, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (15, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_Pistol_1A}', 0, 0, 570, 1, 0, 10, 6961, NULL, NULL, NULL, 'Cellblock Guard', 'mob', NULL, NULL, NULL, NULL, 1, 'Bullet_Default', 2, 0, 0, -256076032, 55, '{}', NULL, NULL, true, NULL, NULL, true);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (8, 'WP-Human.WP_SMG_1A', 'GLB_Components.WorldObject_Small', NULL, 4, 32, NULL, NULL, NULL, NULL, 7553, NULL, NULL, NULL, 'SMG-1A', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
@@ -258,13 +260,13 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (147, 'Ga-Props.GA-PuzzleStation00', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, NULL, NULL, NULL, 7722, NULL, NULL, NULL, 'Castle - Access Panel', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (146, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 7417, NULL, NULL, NULL, 'NID Guard - Castle outside', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -65536, -16777216, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (146, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 7417, NULL, NULL, NULL, 'NID Guard - Castle outside', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, -65536, -16777216, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, true);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (150, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_05,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 0, 570, 50, 0, 1, NULL, NULL, NULL, NULL, 'HumanMale - Not For Use', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -65536, -16777216, -52773120, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (145, NULL, 'MOB_CA_DroneTank.BS_MOB_DroneFlyer', '{MOB_CA_DroneTank.MOB_DroneFlyer00}', 0, 0, 570, 1, 0, 10, 6968, NULL, NULL, NULL, 'Prisoner retrieval unit - Castle', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (145, NULL, 'MOB_CA_DroneTank.BS_MOB_DroneFlyer', '{MOB_CA_DroneTank.MOB_DroneFlyer00}', 0, 0, 570, 1, 0, 10, 6968, NULL, NULL, NULL, 'Prisoner retrieval unit - Castle', 'mob', NULL, NULL, NULL, NULL, 2, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, false);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (148, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 7417, NULL, NULL, NULL, 'NID Guard - Castle inside', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (148, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 7417, NULL, NULL, NULL, 'NID Guard - Castle inside', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL, true);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (151, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Lucia.AR_HM_LB1_LH100,AR_H_Lucia.AR_hm_LL1_LK100,AR_H_Lucia.AR_HM_LL1_LL100,AR_H_Lucia.AR_HM_LT1_LT101LS100,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_05,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 0, 570, 1, 0, 10, 7912, NULL, NULL, NULL, 'Lucian - Blue Faction Scientist', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -65536, -16777216, -52773120, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
@@ -339,14 +341,19 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   name_id 7586 -- beyond the packet's stated three columns, flagged in
 --                  worknotes/H11.md. `onNameIdUpdate` is only sent when
 --                  `name_id` is Some and non-zero
---                  (crates/services/src/mercury/aoi/create.rs:211-218), so
+--                  (crates/wire/src/mercury/aoi/create.rs:211-218), so
 --                  the hub Petbe currently renders with no display name at
 --                  all. 7586 is `DN_npc_mg_Petbe_Harset_Fac_fg` -> 'Petbe'.
 -- `ability_set_id` deliberately left NULL: an NPC that must never fight does
 -- not need an attack ability. The staff set is on template 221.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (163, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH100,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_FaceHair_01,BS_JaffaMale.BS_JM_FacePaint_01,BS_JaffaMale.BS_JM_Hair_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_08,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, NULL, 42, 0, 1, 7586, NULL, NULL, NULL, 'Petbe', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -627017216, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (24, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 7417, NULL, NULL, NULL, 'NID Guard', 'mob', NULL, NULL, NULL, NULL, 3, 'Bullet_Default', 2, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL);
+-- Template 24 'NID Guard' (every Castle_CellBlock guard): assist_radius 26
+-- (D-NA09 UAT tuning, colo 2026-09-26). The three Barracks guards stand
+-- 13.1, 19.3 and 25.0 u apart in one room; at the 10 u default a shot
+-- guard rallied nobody. Line of sight still keeps the corridor guards
+-- apart (tests/npc_ai/assist_barracks.rs).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover, assist_radius) VALUES (24, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 7417, NULL, NULL, NULL, 'NID Guard', 'mob', NULL, NULL, NULL, NULL, 3, 'Bullet_Default', 2, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL, true, 26);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (164, 'GA-Props.GA-MerchantBasket05', 'GLB_Components.WorldObject_Small', '{}', 0, 0, NULL, 1, 0, 1, NULL, '', NULL, NULL, 'Merchant Basket (Giving The Walls Ears)', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
@@ -418,7 +425,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- 'NID Interrogator Romney' -- the shipped *unique mob* display name for this exact
 -- character ("Ms" = mission, "Mb" = mob, "Uni" = unique, "_3" = tier). Objective text
 -- 14017 ('Locate NID Interrogator Romney in the Castle.') corroborates the string.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (169, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6962, NULL, NULL, NULL, 'Castle_Romney', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (169, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6962, NULL, NULL, NULL, 'Castle_Romney', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL, true);
 
 -- RECONSTRUCTION: Castle_Muelbach (D-CA06) -- hostile female per objective 2799
 -- (mission_objectives.sql:6629, ORIGINAL_DATA: "(Option #2) Warden Muelbach will
@@ -432,7 +439,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- at UAT M4.
 -- name_id 6965 is ORIGINAL_DATA: texts.sql moniker `DN_Mb_Castle_Warden_Uni_4` =
 -- 'Warden Muelbach', a byte-exact match for objective 2799's wording.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (170, NULL, 'BS_HumanFemale.BS_HumanFemale', '{AR_H_SGC.AR_HM_SL1_SL100,AR_H_SGC.AR_HM_ST1_ST100,BS_HumanFemale.BS_HF_Base_Boots00_00,BS_HumanFemale.BS_HF_Base_Hands00_00,BS_HumanFemale.BS_HF_Base_Legs00_00,BS_HumanFemale.BS_HF_Base_Torso00_00,BS_HumanFemale.BS_HF_Head_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6965, NULL, NULL, NULL, 'Castle_Muelbach', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (170, NULL, 'BS_HumanFemale.BS_HumanFemale', '{AR_H_SGC.AR_HM_SL1_SL100,AR_H_SGC.AR_HM_ST1_ST100,BS_HumanFemale.BS_HF_Base_Boots00_00,BS_HumanFemale.BS_HF_Base_Hands00_00,BS_HumanFemale.BS_HF_Base_Legs00_00,BS_HumanFemale.BS_HF_Base_Torso00_00,BS_HumanFemale.BS_HF_Head_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6965, NULL, NULL, NULL, 'Castle_Muelbach', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL, true);
 
 -- RECONSTRUCTION: Castle_BravoOfficer (D-CA06) -- hostile, verbatim clone of template 146
 -- (NID Guard - Castle outside) per packet scope, x3 via spawnlist (N=3 default, see
@@ -442,7 +449,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- at Checkpoint Bravo may have a Control Crystal.", mission_objectives.sql:6625) -- so
 -- these are Officers, not the generic 'NID Guard' (7417) this row first reused, and the
 -- moniker's own `_St_4-5` tier band matches a step-2416 encounter.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (171, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6966, NULL, NULL, NULL, 'Castle_BravoOfficer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -65536, -16777216, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover) VALUES (171, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6966, NULL, NULL, NULL, 'Castle_BravoOfficer', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, -65536, -16777216, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, true);
 
 -- RECONSTRUCTION: Castle_SurrenderGuard (D-CA06) -- non-hostile variant of template 148
 -- (speaker 1093, see audit.md "Static World 8 spawns" table). Same body/appearance as
@@ -513,9 +520,12 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- (cell/cell_methods/player/interaction/interact.rs:44-46). Nothing in the
 -- content executor can change an entity's faction at runtime. So an NPC that is
 -- talked to in one mission and killed in another needs TWO templates; see 216/222
--- (Grogan), 217/223 (Dawson) and 163/221 (Petbe). Faction 10 alone does not make
--- a mob attack on sight -- the AI tick admits an Idle NPC only when
--- `aggression > 0` -- so the chain's `set_aggression` still starts every fight.
+-- (Grogan), 217/223 (Dawson) and 163/221 (Petbe). Since NA13 faction 10 DOES
+-- make a mob attack on sight (the faction reaction table reads it HOSTILE to
+-- players, within its aggro radius and line of sight). A mob a chain must
+-- start instead needs `aggression_override = 3` on its spawn row (or the
+-- `spawn_entity` action's `"aggression": 3`) and a `set_aggression 1`
+-- in the chain.
 --
 -- `loot_table_id` is NULL on every row (spec L-01: no invented loot).
 -- Vendor and trainer list columns are NULL on every row: GH2 owns them.
@@ -541,15 +551,16 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   30% health trigger needs 665 damage).
 -- faction 10 is MANDATORY, not a flavour choice: `useAbility` rejects a
 --   player single-target ability whenever `target.faction != HOSTILE_FACTION`
---   (crates/services/src/cell/abilities/use_ability/handle.rs:223-237), and no
+--   (crates/cell-combat/src/cell/abilities/use_ability/handle.rs:223-237), and no
 --   executor arm can change faction at runtime (`ModifyProperty` has no arm,
 --   there is no `set_faction`). At faction 1 the duel's
 --   `entity_health_below Rinla_Malac:30` trigger could never fire.
 --   Consequence for H21: right-click on an alive faction-10 NPC is rerouted
 --   to auto-attack (interaction/interact.rs:44-46), so Mala'c's challenge
 --   dialog must be chain-driven (`add_dialog_set` / `display_dialog`), never
---   right-click. Aggression stays 0 at spawn; the chain's `set_aggression`
---   starts the fight.
+--   right-click. NA13: faction 10 is hostile on sight, so the H21 spawn must
+--   carry a NEUTRAL override (`"aggression": 3`) for the chain's
+--   `set_aggression` to be what starts the fight.
 -- INFERRED: components cloned from template 159 (Praxis Jaffa Lieuternant);
 --   no art assignment for Mala'c survives.
 -- `is_stationary` is a spawnlist column, not a template column -- H21 sets it
@@ -866,10 +877,269 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (248, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_WallTerminal', NULL, 4, 0, NULL, 1, 0, 1, 2695, NULL, NULL, NULL, 'Harset Monitoring Device Anchor', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
 --
+-- NEW CONTENT (debug hub): templates 300-304, the five debug-hub NPCs in the
+-- Castle_CellBlock stasis room (spawnlist 400-404, docs/content/debug-hub.md).
+-- Each one exercises exactly one server system, so a failure points at that
+-- system. Templates 23 and 25 are deliberately left as they were. The ids
+-- start at 300, not at the first free id, because the Harset rebuild reserves
+-- 200-299 (docs/analysis/harset-rebuild/work-packets.md) and its template
+-- tests count that whole block.
+--
+-- `interaction_type` is the runtime `interaction_type_flags` value
+-- (spawn.rs), so each row carries the one bit that gives the client its
+-- cursor. `name_id` reuses a moniker the client PAK already ships: a new
+-- texts.sql id can never render, and NULL ships a nameless NPC.
+--
+
+-- NEW CONTENT (debug hub): vendor-only NPC. Buy list 1, sell/repair/recharge
+--   list 2, the same lists as template 25. INT_VendorGeneral (65536) is what
+--   routes the click to the store: spawn.rs derives the Vendor interaction
+--   from any INT_Vendor* bit. No trainer list, so the trainer check that
+--   answers template 25's click cannot claim this one.
+-- moniker 8010 `DN_npc_ven_BasicEquipQuartermaste_Harset_JaffaTier0MissionTo`
+--   ('Basic Equipment Quartermaster').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (300, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Boots00_00,BS_HumanMale.BS_HM_Base_Hands00_00,BS_HumanMale.BS_HM_FaceHair_01,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Head_02,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 65536, 570, 1, 0, 1, 8010, NULL, NULL, NULL, 'Debug Hub - Vendor', 'mob', 1, 2, 2, 2, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): ability-trainer-only NPC. Trainer list 1 offers
+--   every tree node (trainer_abilities.sql). A right-click opens the trainer
+--   through `template_trainer_lists`, and the pin that click writes is the
+--   one AT-08's respec gate (`resetMyAbilities`, cell method 72) checks.
+--   INT_Trainer (128) gives the trainer cursor.
+-- moniker 20186 `DN_npc_trn_Global_Trainer` ('Archetype Skills Trainer').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (301, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Ablative.AR_HM_AT3_AT300,AR_H_Ballistic00.AR_HM_BG3_BG300,NPC_Human.NPC_HM_Marsh_Head_BC,AR_H_Ablative.AR_HM_AL3_AL300AH300}', 0, 128, 570, 1, 0, 1, 20186, NULL, NULL, NULL, 'Debug Hub - Trainer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', 1, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): dialog NPC. Clicking him fires chain 7001
+--   (debug_hub_chains.sql), which opens dialog 60100; its button and dialog
+--   60101's close each fire a `dialog_choice` chain. No mission.
+--   INT_NonAStoryMissionAvaliable (134217728) gives the talk cursor and the
+--   side-quest "?"; without a bit the client never sends the click.
+-- moniker 7412 `DN_npc_Int_BetaE1_KhenmerFa_AirmanLance` ('Airman Lance');
+--   speaker 754 is the same Airman Lance, and the dialog screens use it.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (302, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_04}', 0, 134217728, 570, 1, 0, 1, 7412, NULL, NULL, NULL, 'Debug Hub - Dialog', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, 754, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): Livewire minigame terminal. Clicking it fires chain
+--   7004, which starts Livewire; the win fires chain 7005. The
+--   INT_MinigameLivewire bit (256) is permanent on purpose: the terminal is
+--   reusable, so there is no set/clear lifecycle as on a mission console.
+-- moniker 7550 `DN_Ob_Sc_HumanScreen_Cellblock_SecurityTerminal` ('Terminal'),
+--   the same name and mesh as template 19.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (303, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_WallTerminal', NULL, 4, 256, NULL, 1, 0, 1, 7550, NULL, NULL, NULL, 'Debug Hub - Livewire Terminal', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): loot crate. Loot is only rolled when a mob dies
+--   (loot_drop.rs), so the crate is a killable faction-10 mob: shoot it, then
+--   right-click the corpse for loot table 3 (every entry at probability 1, so
+--   the corpse always carries loot) and use Loot All. The spawn row respawns
+--   it after 30 s.
+-- Faction 10 is what lets the player damage it. It is not a threat: the spawn
+--   row sets NEUTRAL aggression (no proximity aggro) and is_stationary, and
+--   ability set 6 holds only 710 'Staff Melee AA', whose effect deals no
+--   damage. It still turns to face the player and swings at melee range when
+--   hit. An empty set would fall back to 592 Pistol Shot, which does damage.
+--   Level 1 = 250 HP; a GM `.kill` goes through the same death path.
+-- moniker 7054 `DN_Ob_Ms_Human_Castle_Crate` ('Crate').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (304, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, 1, 0, 10, 7054, NULL, NULL, NULL, 'Debug Hub - Loot Crate', 'mob', NULL, NULL, NULL, NULL, 6, NULL, 3, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+--
+-- NEW CONTENT (debug hub, crafting): templates 310-314, four crafting
+-- stations and a crafting supplies vendor in the Castle_CellBlock stasis room
+-- (spawnlist 410-414, docs/content/debug-hub.md). The crafting campaign owns
+-- templates 310-329 (docs/analysis/crafting/).
+--
+-- A station is any entity whose `flags` carry an ENTITYFLAG_Craft_* bit; the
+-- cell's 1 Hz station tick reports every one within 5 units to the base,
+-- which names it as the machine in onUpdateCraftingOptions (140). Each
+-- station carries all four bits, Craft 2048 | Research 4096 | RevEng 8192 |
+-- Alloying 16384, so any one of them opens every crafting page. The
+-- remaining 4 (ENTITYFLAG_DoNotDrop) and the mesh, body set, faction and
+-- level copy template 19, the Cellblock terminal prop that already renders
+-- in this world. The names are the client's own station monikers.
+--
+-- interaction_type is 0 on purpose. The INT_Machine_* bits (56-60) would give
+-- a machine cursor and minimap icon, but nothing on the server answers a
+-- click on one, and a cursor that does nothing breaks the rule that every
+-- click gets feedback. The station works by proximity, not by a click: stand
+-- next to it and open the crafting window (J).
+--
+-- moniker 27180 `DN_Cft_Ob_CraftingStation_BM_001` ('BioMedical Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (310, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27180, NULL, NULL, NULL, 'Debug Hub - BioMedical Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- moniker 27182 `DN_Cft_Ob_CraftingStation_Elec_001` ('Electronics Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (311, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27182, NULL, NULL, NULL, 'Debug Hub - Electronics Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- moniker 27184 `DN_Cft_Ob_CraftingStation_Pow_001` ('Power Systems Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (312, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27184, NULL, NULL, NULL, 'Debug Hub - Power Systems Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- moniker 27186 `DN_Cft_Ob_CraftingStation_Mat_001` ('Materials Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (313, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27186, NULL, NULL, NULL, 'Debug Hub - Materials Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub, crafting): crafting supplies vendor. Buy list 310
+--   sells everything the crafting UAT recipes need at 1 naquadah each (see
+--   item_list_items.sql). A purchase lands in the main bag (1), where the
+--   crafting verbs, Blueprint items and Paradigm Guides all accept it; a
+--   Field Crafting Tool counts only once the player moves it to the crafting
+--   bag (15). No sell, repair or recharge list: this vendor only sells.
+--   INT_VendorGeneral (65536) routes the click to the store, as on 300.
+-- moniker 27239 `DN_npc_ven_OmegaSite_CommonCraftingMat` ('Common Materials
+--   Components'), a crafting vendor name the client ships; no moniker says
+--   'Crafting Supplies'.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (314, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Boots00_00,BS_HumanMale.BS_HM_Base_Hands00_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Head_04,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 65536, 570, 1, 0, 1, 27239, NULL, NULL, NULL, 'Debug Hub - Crafting Supplies', 'mob', 310, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Pets campaign (docs/analysis/pets/): templates 350-359 are pets (360-369 are
+-- the campaign's placed NPCs, see template 360 below). A pet
+-- template is class 'pet', carries ENTITYFLAG_Pet (1024), has no loot table
+-- and is never placed in spawnlist: resources.pet_summons names it and the
+-- summon ability spawns it next to its owner. Guards:
+-- crates/cell-catalog/src/cell/spawner/tests/live_db_pet_summons.rs.
+-- 350 "Summoned Straegis Fighter" (2826 Summon Straegis): the Straegis Fighter
+--   (78) body, component, animation event set 570 and skin tint. 78 itself is a
+--   faction-10 mob no spawnlist row has ever placed, so this is the first
+--   creature (MOB_) body our server spawns.
+--   name_id 27377 'Summoned Straegis Fighter': the pet's own moniker 28894
+--   DN_Pet_Straegis_Tier_1 has empty text and would leave a blank nameplate.
+--   flags 1024 = ENTITYFLAG_Pet. No NoPetLeveling (8): with it the summon
+--   keeps the template's level, and this L50 capstone pet would spawn at
+--   level 1 (PT-11). Pets gain no XP of their own whatever the flag (D-PT02
+--   sends kill XP to the owner). level 1 is a placeholder the summon
+--   overwrites with the owner's level; a GM or content spawn of this
+--   template gets 250 HP. faction 1 is friendly (78 is hostile 10; the
+--   summon applies the owner's faction, D-PT06). ability set 350 (see
+--   ability_set_abilities.sql). move_speed 0.9 keeps pace with a running
+--   player, as the Col Marsh escort (10) does. use_cover false so the cover
+--   scorer never parks the pet, whatever faction it takes. respawn_secs NULL:
+--   a pet never respawns on its own.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (350, NULL, 'MOB_StraegisFighter.BS_MOB_StraegisFighter', '{MOB_StraegisFighter.MOB_StraegisFighter00_00}', 1024, 0, 570, 1, 0, 1, 27377, NULL, NULL, NULL, 'Summoned Straegis Fighter', 'pet', NULL, NULL, NULL, NULL, 350, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+
+-- PT-11, the rest of the Goa'uld Servant Lord roster (D-PT13 order). Same
+-- shape as 350 (class 'pet', faction 1, no loot, no respawn, move_speed 0.9,
+-- use_cover false, level 1 placeholder, flags 1024 = ENTITYFLAG_Pet alone,
+-- so the summon gives the pet its owner's level, D-PT02).
+-- Each name_id is the pet's own DN_Pet_*_Tier_1 moniker, which has text.
+-- Guards: crates/cell-catalog/src/cell/spawner/tests/live_db_pet_roster.rs.
+-- 351 "Jaffa Soldier" (1643 Summon Jaffa): a copy of 160 Praxis Jaffa Guard,
+--   the Jaffa body and AR_J_Praxis armour already proven in Harset. No WP-*
+--   component, like 160 (the staff is mimed). name 8087
+--   DN_Pet_Jaffa_Tier_1. Ability set 351.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (351, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 1024, 0, 570, 1, 0, 1, 8087, NULL, NULL, NULL, 'Jaffa Soldier', 'pet', NULL, NULL, NULL, NULL, 351, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+-- 352 "Jaffa Prime" (1645 Summon Prime): a copy of 159 Praxis Jaffa
+--   Lieutenant, whose torso piece adds the shoulder armour. name 28892
+--   DN_Pet_Prime_Tier_1. Ability set 352.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (352, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 1024, 0, 570, 1, 0, 1, 28892, NULL, NULL, NULL, 'Jaffa Prime', 'pet', NULL, NULL, NULL, NULL, 352, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+-- 353 "Lo'Taur Servant" (1644 Summon Lo'taur): no seeded template wears the
+--   AR_G_Underlings servant dress, so this one is composed. The body is the
+--   bare Goa'uld male of 211 Ashrak Assassin (face, hands, legs, torso and
+--   skin tint; boots and hair dropped because the servant pieces fill
+--   those slots). The dress is the male Underling set from
+--   AR_G_Underlings.upk: body armour (UT1_UT100, no pauldron), dress
+--   (UL1_US100), feet (UB1_UH100), bracers (UG1_UB100), plus the slave
+--   headwrap (SH1_SH100). Every piece has a body_components row for
+--   BS_GoauldMale and exists in the shipped package; the composite has never
+--   been rendered, so UAT checks it. No weapon: the Lo'taur kit is heals.
+--   name 28891 DN_Pet_Lo'Taur_Tier_1. Ability set 353.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (353, NULL, 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Underlings.AR_GM_UT1_UT100,AR_G_Underlings.AR_GM_UL1_US100,AR_G_Underlings.AR_GM_UB1_UH100,AR_G_Underlings.AR_GM_UG1_UB100,AR_G_Underlings.AR_GM_SH1_SH100,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Head_00,BS_GoauldMale.BS_GM_Legs_00,BS_GoauldMale.BS_GM_Torso_00}', 1024, 0, 570, 1, 0, 1, 28891, NULL, NULL, NULL, 'Lo''Taur Servant', 'pet', NULL, NULL, NULL, NULL, 353, NULL, NULL, 0, 0, -1772406528, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+
+-- Pets campaign, PT-07: 360-369 are pet-campaign NPCs, not pets (350-359 are the
+-- pets). They are ordinary placed NPCs, so they are class 'mob' without
+-- ENTITYFLAG_Pet, and the pet guards in live_db_pet_summons.rs cover 350-359.
+-- 360 'Pet trainer' in the stasis-room debug hub (spawn 450, docs/content/debug-hub.md).
+--   Trainer list 350 offers the Goa'uld Servant Lord pet nodes: 2826 Summon Straegis,
+--   then 1643/1644/1645/1652/1654 for the later pets. The ability-tree gates still
+--   apply (archetype tree, level, prerequisites, spend), so only a Goa'uld sees a
+--   trainable row, and 2826 needs level 50; UAT uses the GM `.giveability 2826`.
+--   INT_Trainer (128) gives the trainer cursor; the trainer check answers the click
+--   through template_trainer_lists. No vendor lists, no dialog, no ability set.
+--   Body: Prisoner 329's (template 17, spawn 6 in this world) Praxis-armoured
+--   Goa'uld, a look this server already spawns. Event set 570 as templates 300-302.
+-- moniker 8000 `DN_npc_trn_TBD_Harset_Goa'uldAdvancedSkills` ('Goa'uld Advanced
+--   Skills'), shipped in the client's TextStrings.pak. No moniker says 'Pet Trainer'.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (360, NULL, 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL101,AR_G_Praxis.AR_GM_PT1_PT101,AR_G_Praxis.AR_GM_PT1_PT106,BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Torso_00,NPC_Goauld.NPC_GM_Letha_Head_BC}', 0, 128, 570, 1, 0, 1, 8000, NULL, NULL, NULL, 'Debug Hub - Pet Trainer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -1772406528, NULL, '{}', 350, NULL, true, NULL, NULL, NULL);
+
+-- Bank and Vault campaign, BV-04: templates 370-389 are the bank campaign's
+-- placed NPCs (docs/analysis/bank-vault/).
+-- 370 'Storage Officer', the debug hub's Banker (spawn 470,
+--   docs/content/debug-hub.md). A right-click opens the personal vault:
+--   INT_Banker (2) gives the bank cursor and makes spawn.rs derive
+--   NpcInteractionType::Banker, and vault_scope 'personal' picks the
+--   personal vault (BV-02, D-BV09). Nothing may answer the click before the
+--   Banker arm, so no trainer list, no vendor lists or bits, no dialog, no
+--   chain tag, no DHD bit. Faction 1, not 10: a death would overwrite the
+--   Banker interaction with Loot and the respawn tick never restores it.
+--   Body: template 170's SGC-uniformed human female without the SMG, a look
+--   this server already spawns in world 12 (A-34 allows a human or terminal
+--   body; no terminal static mesh for a standing banker is verified).
+--   Event set 570 as templates 300-302.
+-- moniker 29462 `DN_npc_OmegaSite_Banker` ('Storage Officer'), shipped in the
+--   client's TextStrings.pak, the Omega Site banker's own name.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, vault_scope) VALUES (370, NULL, 'BS_HumanFemale.BS_HumanFemale', '{AR_H_SGC.AR_HM_SL1_SL100,AR_H_SGC.AR_HM_ST1_ST100,BS_HumanFemale.BS_HF_Base_Boots00_00,BS_HumanFemale.BS_HF_Base_Hands00_00,BS_HumanFemale.BS_HF_Base_Legs00_00,BS_HumanFemale.BS_HF_Base_Torso00_00,BS_HumanFemale.BS_HF_Head_00}', 0, 2, 570, 1, 0, 1, 29462, NULL, NULL, NULL, 'Debug Hub - Banker', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL, 'personal');
+-- BV-10a: 371 'Team Banker' and 372 'Command Banker', the debug hub's org
+--   Bankers (spawns 471 and 472, docs/content/debug-hub.md). A right-click
+--   asks the base for the clicking player's Team (371) or Command (372) vault
+--   and opens it for a member (onTeamVaultOpen 107 / onCommandVaultOpen 108,
+--   BV-07); anyone else is told they are in no Team or Command. The role
+--   columns are 370's, with vault_scope 'team' / 'command': INT_Banker (2)
+--   only, faction 1, no trainer list, vendor lists, dialog, chain tag or DHD
+--   bit, since anything that runs before the Banker arm would claim the click.
+--   Bodies, both looks this server already spawns in world 12: 371 wears
+--   template 15's SGC Cellblock Guard uniform without the pistol, 372 the
+--   plain crew look of template 314 (CraftHub_Supplies). Distinct bodies are
+--   what tells the three Bankers apart in the client, since they share a name.
+-- moniker 29462 `DN_npc_OmegaSite_Banker` ('Storage Officer') for both, as
+--   370: no client-shipped moniker names a Team or Command banker (the
+--   TextStrings DN_npc_ rows with Bank or Storage in the name are 29462 and
+--   Harset's 29463 'Storage Lotaur'), and a new moniker cannot render. The
+--   `name` column, which the client never sees, says which is which.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, vault_scope) VALUES (371, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01}', 0, 2, 570, 1, 0, 1, 29462, 'Team Banker', NULL, NULL, 'Debug Hub - Team Banker', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL, 'team');
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, vault_scope) VALUES (372, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Boots00_00,BS_HumanMale.BS_HM_Base_Hands00_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Head_04,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 2, 570, 1, 0, 1, 29462, 'Command Banker', NULL, NULL, 'Debug Hub - Command Banker', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL, 'command');
+
+-- Social-systems campaign, SS-U3: 390-399 are the campaign's placed NPCs; 391-399
+-- stay reserved.
+-- 390 'Gate Mail Clerk' in the stasis-room debug hub (spawn 490,
+--   docs/content/debug-hub.md). Clicking him fires chain 7010
+--   (debug_hub_chains.sql), which opens dialog 60104; its one button fires chain
+--   7011, whose `send_system_mail` action mails the clicking player a stack of
+--   Health Slappacks and 50 naquadah, at most once per 10 minutes per player.
+--   INT_NonAStoryMissionAvaliable (134217728) gives the talk cursor, as on the
+--   hub's dialog NPC (302); without a bit the client never sends the click.
+--   Body, head and speaker are template 58's Walter Harriman (SGC_W1), a look the
+--   server already spawns; level 1 and no ability set, so he cannot fight.
+-- moniker 26715 `DN_npc_int_Harriman_SGCW1` ('Sgt. Harriman'), shipped in the
+--   client's TextStrings.pak. No moniker says 'Mail Clerk'; the dialog and the
+--   mail's sender name say it instead. Speaker 843 is 'Sgt. Harriman'.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (390, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,NPC_Human.NPC_HM_WalterHarriman_Head_BC}', 0, 134217728, 570, 1, 0, 1, 26715, NULL, NULL, NULL, 'Debug Hub - Gate Mail Clerk', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 843, true, NULL, NULL, NULL);
+
+-- Organizations campaign, ORG-05: templates 330-349 are the campaign's placed
+-- NPCs (docs/analysis/organizations/); 332-349 stay reserved.
+-- 330 and 331 'Organization Registrar', the stasis-room debug hub's Team and
+--   Command registrars (spawns 430 and 431, docs/content/debug-hub.md). A
+--   right-click opens the founding dialog (launchOrganizationCreation) once the
+--   base finds the player eligible. The registrar is recognised by seed data
+--   alone: INT_Organization (64), which also gives the client its organization
+--   cursor, plus static_interaction_sets naming the type, 7447 for a Team and
+--   7448 for a Command. Those are the 2009 server's
+--   INTERACTION_OrganizationRegisterTeam / ...Command interaction set maps
+--   (deprecated/python/common/Constants.py). Nothing may answer the click
+--   before the registrar arm, so no trainer list, no vendor lists or bits, no
+--   dialog, no chain tag, no DHD or Banker bit. Faction 1 and no ability set,
+--   so they cannot fight or die.
+--   Bodies: 330 wears template 302's SGC uniform, 331 template 301's armour,
+--   looks this server already spawns in world 12. Event set 570 as templates
+--   300-302.
+-- moniker 29068 `DN_npc_reg_OmegaSite_TeamCommandRegistrar` ('Organization
+--   Registrar'), shipped in the client's TextStrings.pak: the Omega Site
+--   registrar's own name, which serves both types.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (330, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_04}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Debug Hub - Team Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7447}', NULL, NULL, true, NULL, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (331, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Ablative.AR_HM_AT3_AT300,AR_H_Ballistic00.AR_HM_BG3_BG300,NPC_Human.NPC_HM_Marsh_Head_BC,AR_H_Ablative.AR_HM_AL3_AL300AH300}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Debug Hub - Command Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7448}', NULL, NULL, true, NULL, NULL, NULL);
+
+--
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210
 -- Name: entity_templates_template_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('entity_templates_template_id_seq', 248, true);
+-- Past every seeded row and every reserved campaign template block (Harset
+-- 200-299, debug hub 300-304, crafting 310-329, organizations 330-349, pets
+-- 350-369, bank 370-389, social 390-399), and never lowered, so a row
+-- inserted without a template_id never takes a seeded or reserved id. Raise
+-- the floor when a block is reserved above 399; live_db_seed_sequences.rs
+-- guards it.
+SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 399), true);
 

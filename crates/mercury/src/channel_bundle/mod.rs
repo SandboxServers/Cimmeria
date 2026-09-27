@@ -23,7 +23,7 @@
 //! Subsequent same-entity messages in the same bundle hit the client's
 //! HOLD-FOR-TRANSACTION path and are **silently dropped**. The existing
 //! deliberate two-bundle split in
-//! [`crates/services/src/base/world_entry/map_loaded.rs`] exists for
+//! [`crates/base-world-entry/src/base/world_entry/map_loaded.rs`] exists for
 //! exactly this reason — combining `CELL_PLAYER` (which creates the player
 //! entity) with same-entity `BeingAppearance` in one bundle dropped the
 //! appearance message.
@@ -51,7 +51,7 @@
 //! packet with the channel's TX window via
 //! `Channel::register_sent_packet`. This matches the channel's existing
 //! shadow-register flow (see
-//! [`crates/services/src/base/helpers.rs`]'s `shadow_register_reliable_send`).
+//! [`crates/base-session/src/base/helpers/mod.rs`]'s `shadow_register_reliable_send`).
 //!
 //! A per-channel auto-accumulator (every send appends to the same
 //! channel-owned bundle, flushed on tick boundary) would re-introduce the

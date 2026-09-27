@@ -2,19 +2,19 @@
 title: "Trade System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Trade System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 > **Status**: Implemented and wired end-to-end. Not yet verified with two live clients.
 
 ## Overview
 
 The trade system enables direct player-to-player item and currency exchange through a proposal-based trade window. Each player builds a proposal (items + cash), then both parties lock and confirm. The system uses version tracking to prevent race conditions and a three-state lock machine (None -> Locked -> LockedAndConfirmed) to ensure both parties agree before executing.
 
-The Rust implementation lives in [`crates/services/src/cell/cell_methods/player/trade/`](../../crates/services/src/cell/cell_methods/player/trade/). Session state hangs off the two `CellEntity`s (`trade_partner_entity_id` + `trade_proposal`); the atomic swap happens base-side, where the cell hands the to-be-executed proposals over as `CellToBaseMsg::ExecuteTrade` and the base wraps the whole exchange in a single sqlx transaction ([`base/world_entry/methods/trade/execute/`](../../crates/services/src/base/world_entry/methods/trade/execute/)).
+The Rust implementation lives in [`crates/cell-methods/src/cell/cell_methods/player/trade/`](../../crates/cell-methods/src/cell/cell_methods/player/trade/). Session state hangs off the two `CellEntity`s (`trade_partner_entity_id` + `trade_proposal`); the atomic swap happens base-side, where the cell hands the to-be-executed proposals over as `CellToBaseMsg::ExecuteTrade` and the base wraps the whole exchange in a single sqlx transaction ([`base/world_entry/methods/trade/execute/`](../../crates/base-methods/src/base/world_entry/methods/trade/execute/)).
 
 ## Wire Methods
 
@@ -42,6 +42,9 @@ The real client method names are `onTradeState` / `onTradeResults`. An earlier r
 | Disconnect teardown | DONE | `cancel_trade_on_disconnect` closes the session with `Cancelled` |
 | Range gate | DONE | `partners_in_range` enforces `MAX_INTERACT_DISTANCE = 5.0`, the same gate as vendor / dialog interactions |
 | Negative-cash guard | DONE | Base rejects a proposal carrying negative cash before the swap |
+| Source bags | DONE | The backpack (1) and the crafting bag (15); everything else is refused. See [Which items can be traded](#which-items-can-be-traded) |
+| Destination bag | DONE | Chosen per item from its `container_sets`; a full destination bag refuses the whole trade |
+| Refusal feedback | DONE | Every refusal is `onTradeResults(Cancelled)` to both players (the only failure code the client's window closes on) plus a feedback line to each naming the cause |
 | Entity method wiring | DONE | Methods 104–107 dispatch through `player/dispatch.rs` |
 | Remote item detail | PARTIAL | The cell does not own full inventory state (base does), so `onTradeState` pads the partner's `RemoteTradeProposal` with sentinel-bearing `InvItem` stubs rather than real item detail — see `trade/wire.rs:stub_inv_items_for` |
 | Two-client verification | UNVERIFIED | Covered by unit + validation tests; no recorded live playtest with two connected clients |
@@ -103,11 +106,45 @@ Both sides reach LockedAndConfirmed
   v
 Base (world_entry/methods/trade/execute/):
   |-> Reject if either proposal carries negative cash
-  |-> Single sqlx transaction: move items both ways, adjust both cash balances
+  |-> Single sqlx transaction:
+  |     advisory locks (both players, lower player_id first: keys 0, 1, 15)
+  |     -> offered item rows (owner, bound, source bag)
+  |     -> destination bag rows (slot reservation)
+  |     -> sgw_player rows, ascending (cash check)
+  |     -> move items both ways, adjust both cash balances
   |-> Success: onTradeResults(Completed) to both
-  |-> Failure: asymmetric per-side result codes
-     (NoLocalCash / NoRemoteCash / NoLocalSpace / NoRemoteSpace)
+  |-> Failure: onTradeResults(Cancelled) to both, plus a feedback line
+     to each player naming the cause (the cell already ended the session
+     before the hand-off, so both can trade again at once)
 ```
+
+The lock order is the shared inventory order (`crates/base-session/src/base/crafting/inventory_locks.rs`): every advisory lock, then inventory rows, then player rows. Crafting completions, vendor purchase, sale and buyback, the move path, item use and gate mail take the player-wide key 0 first too, so a trade and any of them on the same player wait for each other instead of deadlocking. The live-DB guard is `trade::tests::crafting_bag::trade_and_crafting_completion_on_one_player_serialize`.
+
+## Which items can be traded
+
+The server decides this from the item rows; the wire carries only instance ids.
+
+| Source | Tradeable | Why |
+|--------|-----------|-----|
+| Backpack (1) | Yes | |
+| Crafting bag (15) | Yes | Crafting components (`container_sets` `{17,15}`) live here and cannot sit in the backpack. Owner decision 2026-09-27 (crafting campaign); mail took the same rule |
+| Mission bag (2), bandolier (3), equipment (4-14) | No | Unequip or unload first. Trading equipped gear would strip it while the cell keeps its stats |
+| Buyback (16) | No | Only the seller may buy it back |
+| Vaults (17-20) | No | Reachable only through a banker |
+
+Bound items are refused from any bag. An item whose type has no `resources.items` row is refused rather than placed by guesswork.
+
+Each item lands in the recipient's bag given by its `container_sets`, with the bag it came from as the request (`item_placement::grant_container`, the rule grants use):
+
+- a crafting component goes to the crafting bag, from either bag;
+- a backpack item goes to the backpack;
+- an item that lists no carried bag (a `{2}` mission type) keeps the bag it was traded from, as before.
+
+Slots are reserved per recipient and bag, lowest free slot first. Slots the recipient is trading away in the same bag count as free. The backpack holds 40, the crafting bag 100. A destination bag without room refuses the whole trade; it never spills into the other bag. Items are moved, not merged into the recipient's existing stacks.
+
+After the commit both players get a full inventory update, which also refreshes their crafting options when a Field Crafting Tool entered or left a crafting bag.
+
+A traded component that a queued craft named is caught when the craft completes: the completion re-checks ownership and refuses with `component_missing`. The station and tool gate is checked only when a craft is requested, so a Field Crafting Tool traded away still covers crafts already in the queue.
 
 ## Trade Result Codes
 
@@ -116,11 +153,15 @@ Base (world_entry/methods/trade/execute/):
 | Value | Name | Meaning |
 |-------|------|---------|
 | 1 | `Completed` | Trade successful — **also sent on a user-initiated cancel** |
-| 2 | `Cancelled` | Disconnect, distance-break, or atomic-commit failure |
-| 3 | `NoLocalSpace` | You don't have inventory space |
-| 4 | `NoRemoteSpace` | Partner doesn't have inventory space |
-| 5 | `NoLocalCash` | You don't have enough cash |
-| 6 | `NoRemoteCash` | Partner doesn't have enough cash |
+| 2 | `Cancelled` | Disconnect, distance-break, or any atomic-commit refusal (space, cash, untradeable item, server fault) |
+| 3 | `NoLocalSpace` | Not sent: the client ignores it |
+| 4 | `NoRemoteSpace` | Not sent: the client ignores it |
+| 5 | `NoLocalCash` | Not sent: the client ignores it |
+| 6 | `NoRemoteCash` | Not sent: the client ignores it |
+
+The shipped client acts on only two of these. `Trade.lua` `TradeMod.onTradeResult` (client `Content/UI/Core/Trade/Trade.lua:305-315`) closes the window and prints "Trade Completed" or "Trade Cancelled" for 1 and 2, and has no branch for 3-6: no line, and the window stays open and locked. `Trade.int` has no space or cash string either. Evidence: [trade-result-client-handling.md](../reverse-engineering/findings/trade-result-client-handling.md).
+
+So every refusal sends `Cancelled` (2) to both players, and the cause follows as a feedback line to each: "Trade cancelled: your crafting bag does not have room ..." / "... your trade partner's crafting bag does not have room ...", the same pair for the backpack, "you do not have the naquadah you offered" / "your trade partner does not have the naquadah they offered", and "one of the items you offered cannot be traded" / "... your trade partner offered ..." for a bound, untradeable-bag or unknown-type item. A server fault, a missing item or a duplicated instance gets only the client's own "Trade Cancelled". The abort reason stays in the telemetry (`trade.refused` `reason`, `trade_swaps_total{outcome}`).
 
 ## Wire-Format Traps
 
@@ -142,7 +183,8 @@ Two quirks the implementation preserves byte-for-byte, both of which cause silen
 2. **Remote item detail** — `onTradeState` currently pads the partner-facing proposal with sentinel `InvItem` stubs because the cell doesn't hold full inventory state; the partner therefore can't see real item detail in the trade window
 3. **Proposal rate limiting** — version monotonicity rejects replay but does not cap throughput; a malicious client can spam `tradeUpdateProposal` and force an `onTradeState` broadcast per message. A per-session minimum interval is deferred (see the note in `trade/handlers.rs`)
 4. **Combat / busy-state gate** — distance is enforced, but nothing blocks opening a trade mid-combat
-5. **Trade logging** — no audit trail for GM review
+5. **Trade logging** — every committed move logs `trade.item_moved` (bags and slots before and after) and every refusal `trade.refused`, but there is no GM-facing audit view
+6. **Native result handler not live-traced** — the client's native `onTradeResults` handler is believed to forward the code to Lua unchanged; see the open item in [trade-result-client-handling.md](../reverse-engineering/findings/trade-result-client-handling.md)
 
 ## Related Docs
 

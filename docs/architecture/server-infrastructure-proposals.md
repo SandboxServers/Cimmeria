@@ -43,7 +43,7 @@ The pieces that exist today: the base service reaps idle channels on a
 **60-second inactivity timeout**, and the disconnect path already carries a
 structured `disconnect_reason` (`"client_disconnect"`, `"inactivity_timeout"`,
 `"duplicate_login"`, `"send_error"`, `"logoff"`) that every call site pins — see
-[`crates/services/src/base/helpers/mod.rs`](../../crates/services/src/base/helpers/mod.rs).
+[`crates/base-session/src/base/helpers/mod.rs`](../../crates/base-session/src/base/helpers/mod.rs).
 Duplicate-login prevention runs at character select. What is missing is any
 notion of a session that is *temporarily* gone rather than over.
 
@@ -103,8 +103,51 @@ it is still warn-only for exactly this reason, and that has worked out well
 enough to copy. See [movement-validation.md](movement-validation.md).
 
 The cell message loop ticks at 100 ms
-([`crates/services/src/cell/service/message_loop.rs`](../../crates/services/src/cell/service/message_loop.rs)),
+([`crates/cell/src/cell/service/message_loop.rs`](../../crates/cell/src/cell/service/message_loop.rs)),
 so 10 Hz is your measurement resolution.
+
+### Status: chat implemented (SS-00, 2026-09-27)
+
+The social-systems campaign built the limiter with three deliberate
+differences from the proposal above (decisions D-SS14 and D-SS21 in
+`docs/analysis/social-systems/README.md`):
+
+- **On the base, not the cell tick.** Chat, tells and duel challenges reach
+  the base first, and a mail send reaches it as `MailOp::Send` before any SQL
+  runs, so the check happens where the request arrives and a dropped action
+  never crosses to the cell. The clock is the caller's `Instant`, so there is
+  no 10 Hz resolution limit.
+- **Enforced from day one.** No human types faster than the chat limit, so
+  the warn-only phase is skipped; SigNoz's `rate_limit.exceeded` count tells
+  us if that is wrong.
+- **Slower chat.** Burst 5, then one line a second, not 5 per second with a
+  burst of 10: five lines a second is still a flood to the reader.
+
+| Category | Burst | Refill | Wired by |
+|---|---|---|---|
+| `chat` (every player channel, tells included) | 5 | 1 per second | SS-00, `sendPlayerCommunication` |
+| `mail_send` | 3 | 1 per 10 seconds | SS-M1 |
+| `duel_challenge` | 2 | 1 per 15 seconds | SS-D1 |
+
+Every number is project policy, not recovered data, and lives in one file,
+`crates/base-session/src/base/rate_limit/limits.rs`. Each session carries a
+`PlayerRateState` (one integer token bucket per category, created full on
+first use) on `ConnectedClientState::rate_limits`, so the buckets die with the
+session. `PlayerRateState::check(category, now)` returns `Allowed` or
+`Limited { notify }`. An over-limit action is dropped; when `notify` is true
+(at most once per 5 seconds per category) the caller sends the category's
+feedback line through `base::feedback::send_feedback_line`, and
+`rate_limit::log_exceeded` logs `rate_limit.exceeded` with the `category` at
+WARN (DEBUG for the silent drops between notifies). GameMaster (access level
+2) and above skip the chat bucket only.
+
+The chat path checks the bucket **before** the D-SS12 text rules (255 UTF-16
+units and the D-ORG10 character rules, through `org_text::validate`), so a
+refused line also costs a token and a client cannot turn a stream of bad
+packets into a stream of feedback packets.
+
+Still open: ability-use attempts, trade requests and login attempts have no
+bucket.
 
 ---
 

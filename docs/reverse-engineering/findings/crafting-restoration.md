@@ -5,7 +5,7 @@
 > **Confidence**: HIGH (binary RTTI + Python reference + Rust codebase cross-checked)
 > **Sources**: Ghidra `SGW.exe` decompilation; `deprecated/python/cell/Crafter.py`;
 >   `deprecated/python/cell/commands/Crafting.py`; `crates/entity/src/crafting.rs`;
->   `crates/services/src/base/crafting/`; `docs/reverse-engineering/findings/crafting-state-machine.md`;
+>   `crates/base-session/src/base/crafting/`; `docs/reverse-engineering/findings/crafting-state-machine.md`;
 >   `docs/reverse-engineering/findings/crafting-wire-formats.md`
 > **Tracking issue**: replaces #53
 
@@ -48,10 +48,23 @@ consumer — no client-side state machine.
 
   | Value | Name | Notes |
   |---|---|---|
-  | 1 | CraftBlueprint | blueprint at `this+0x38` |
+  | 1 | CraftBlueprint | |
   | 2 | CraftResearch | shares static empty placeholder (no blueprint) |
   | 4 | CraftReverseEng | shares static empty placeholder (no blueprint) |
-  | 8 | CraftAlloy | blueprint at `this+0x10` |
+  | 8 | CraftAlloy | |
+
+  **Correction (2026-09-26, CR-E1, audit C-61):** the offsets this table previously listed
+  (`this+0x38`/`this+0x10`) as "blueprint" storage for `CraftBlueprint`/`CraftAlloy` were
+  mislabelled, copying the same error the pre-existing Ghidra `PRE_COMMENT` on
+  `Crafting_isCraftTypeAllowed` (`0x00e465d0`) carried. `Crafting_isCraftTypeAllowed` actually
+  returns `this+0x38`/`this+0x40`/`this+0x48`/`this+0x50` for cases 1/8/2/4 respectively, and
+  those four offsets hold the **(tool, machine) `CraftingInfo` pairs that message 140
+  (`onUpdateCraftingOptions`) populates**, not a client-side known-blueprints cache. The Ghidra
+  comment has been corrected accordingly. See
+  [crafting-client-ui.md §2](crafting-client-ui.md#2-craftingoptions-140-unpacker-chain-and-the-c-61-correction-q2)
+  for the full unpacker chain and evidence trail. The real known-blueprints accessor is the
+  separate `Crafting_getKnownBlueprints` @ `0x00e46830`, whose own internal offsets were not
+  re-derived by this correction.
 
 ## Wire messages
 

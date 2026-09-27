@@ -1,0 +1,9 @@
+//! Tests for the ability-tree catalog and `evaluate_train`.
+
+mod catalog_live_db;
+mod predicate;
+mod seed_live_db;
+mod seed_reachability_live_db;
+mod spend_gates;
+mod trainer_gates;
+mod tree_info;

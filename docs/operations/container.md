@@ -86,7 +86,8 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `PROTOCOL_DIGEST` | (compiled-in) | 32-char hex digest sent in the auth response — only override if you're testing protocol changes |
 | `MERCURY_ENCRYPTION_VERSION` | `1` | Server-wide Mercury wire-encryption version. `1` = legacy (the only version unpatched clients understand); `2` = modernized. No per-client negotiation. |
 | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | Poll interval for hot-reloading the auth TLS cert/key on change (e.g. a Let's Encrypt renewal). `0` disables. Only active when the TLS listener is configured. |
-| `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` on every span/log/metric. Set to `colo` on a colo box so its data doesn't mix with dev-laptop noise. |
+| `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` and `cimmeria.deploy_env` on every span/log/metric. Set to `colo` on a colo box so its data doesn't mix with dev-laptop noise. `OTEL_RESOURCE_ATTRIBUTES` cannot override either. |
+| `CIMMERIA_GIT_SHA` | `unknown` | **Build argument, not a runtime variable.** Baked in by `crates/server/build.rs` as the OTLP `service.version` resource attribute. `release-container.yml` passes `github.sha` and `pr-container.yml` the PR head SHA; a source build falls back to `git rev-parse HEAD`. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP collector endpoint. Unset ⇒ exporter disabled. [`docker/compose.yml`](../../docker/compose.yml) sets this to the bundled SigNoz collector. See [signoz-deployment.md](signoz-deployment.md). |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` or `http/protobuf`. |
 | `OTEL_SERVICE_NAME` | `cimmeria-server` | `service.name` in SigNoz's service map. |

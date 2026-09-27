@@ -8,8 +8,8 @@
     its precompiled header (deprecated/cpp/src/stdafx.hpp) needs Boost
     (python/asio/thread), SOCI, TinyXML and unified_kernel.lib, none of which
     setup.ps1 provisions. NavBuilder itself uses none of them - only a logger
-    and three Boost.uBLAS names - so this script compiles the five nav_builder
-    sources plus Recast's sources straight into one exe with `cl`, putting
+    and three Boost.uBLAS names - so this script compiles every nav_builder/*.cpp
+    source plus Recast's sources straight into one exe with `cl`, putting
     deprecated/cpp/src/nav_builder/standalone/ first on the include path so
     its stdafx.hpp shim wins.
 

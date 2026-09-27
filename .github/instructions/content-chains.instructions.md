@@ -97,15 +97,39 @@ Check the button type against the window as well: `DUIST_DefaultBlurb` can
 only draw More Info (1) and Accept (2); `DUIST_DefaultDialog` can only draw
 Accept (2) and Generic 1-3 (4, 5, 6); `DUIST_DefaultTutorial` draws none.
 
-## Inventory consumption
+`DUIST_DefaultRadio` and `DUIST_DefaultRealization` are the same window as
+`DUIST_DefaultDialog` and take the same button types. Two more review points
+the tables above do not cover:
 
-`UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, mission objects) must include an explicit `remove_item` action. This is the correct pattern for `item_use`-triggered chains:
+- **"Final screen" means the highest `dialog_screens.index`, not the highest
+  `screen_id`.** The two agree for every dialog shipping today, which is
+  exactly why the wrong one is easy to write.
+- **Do not key a `dialog_choice` chain on a Tutorial or a type-0
+  (`DUIST_None`) dialog.** Tutorial never draws a cooked button, so the player
+  has nothing to click and nothing can fire the chain.
+
+[`crates/content-engine/tests/it/dialog_button_linter/mod.rs`](../../crates/content-engine/tests/it/dialog_button_linter/mod.rs)
+enforces all of the above against the Castle and Castle_CellBlock chain seeds,
+alongside
+[`interact_tag_linter.rs`](../../crates/content-engine/tests/it/interact_tag_linter.rs)
+for the interaction-type rule at the top of this file. Both parse the seed
+directly and need no database.
+
+## Inventory consumption (`item_use` / `remove_item` pairing)
+
+`UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, slappacks, mission objects) must include an explicit `remove_item` action. Reusable tools (radios, worn equipment, disguises) must omit it.
+
+Full pattern guide, worked examples, and the baseline audit table: [`docs/content/consumable-via-onitemuse-pattern.md`](../../docs/content/consumable-via-onitemuse-pattern.md).
+
+Regression lint: `crates/content-engine/tests/it/onitemuse_remove_item_pairing.rs` walks every `item_use` chain in seed data. New chains must add the item id to `KNOWN_CONSUMABLES` or `KNOWN_REUSABLES` in that test — unknown ids fail CI with *"add to one of the two lists"*.
+
+Consumable shape:
 
 ```sql
 (chain_id, 'remove_item', <design_id>, NULL, '{"qty": 1}', 0, 0),
 ```
 
-`Action::RemoveItem` routes through `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack (ordered by `container_id, slot_id` to prefer the main bag over the bandolier) and applies the full wire-update sequence. Non-consumable items (radios, multi-step "use on target" objectives) simply omit the `remove_item` action.
+`Action::RemoveItem` routes through `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack (ordered by `container_id, slot_id` to prefer the main bag over the bandolier) and applies the full wire-update sequence.
 
 ## Auto-generated `space_*_chains.sql` (chain IDs 5xxx)
 
@@ -155,6 +179,12 @@ castle_706_708_chains.sql    Mission 706:  1321-1340
 Allocation source: [docs/analysis/castle-rebuild/work-packets.md](../../docs/analysis/castle-rebuild/work-packets.md)
 "Worker Input And Ownership". `1200` is left unused as a gap between the
 two zones' blocks; effect chains start at 2001.
+
+### Stasis-room debug hub — `debug_hub_chains.sql` (7001-7099)
+
+The Castle_CellBlock debug NPCs ([docs/content/debug-hub.md](../../docs/content/debug-hub.md)).
+No mission, no conditions, and the cursor bits are permanent template
+defaults, so the interact chains are allowlisted in `interact_tag_linter.rs`.
 
 ## Linked references
 

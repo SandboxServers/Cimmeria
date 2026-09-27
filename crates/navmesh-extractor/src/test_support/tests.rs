@@ -8,6 +8,7 @@
 //! (a byte count from the module docs, a decoded vertex position, a
 //! resolved class name).
 
+use crate::interp_actor::InterpActorMode;
 use std::path::Path;
 
 use cimmeria_upk::{Package, PropValue};
@@ -267,6 +268,7 @@ fn a_static_mesh_actor_resolves_through_a_real_package_index() {
         &pkg,
         Some(&index),
         &mut crate::staticmesh::ArchetypeCache::default(),
+        InterpActorMode::Off,
     );
     assert_eq!(extraction.actors_total, 1);
     assert_eq!(extraction.actors_resolved, 1, "{:?}", extraction.skips);
@@ -291,6 +293,7 @@ fn an_archetype_stub_actor_is_counted_but_not_resolved() {
         &pkg,
         None,
         &mut crate::staticmesh::ArchetypeCache::default(),
+        InterpActorMode::Off,
     );
     assert_eq!(walk.actors_total, 1);
     assert_eq!(walk.archetype_actors, 1, "export Archetype must be set");

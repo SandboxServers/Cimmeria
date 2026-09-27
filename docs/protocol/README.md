@@ -14,7 +14,7 @@ Wire formats, Mercury messaging, and client-server protocol documentation.
 | [login-handshake.md](login-handshake.md) | Auth flow: challenge, shard key, server select, baseAppLogin binary format | Complete |
 | [position-updates.md](position-updates.md) | Entity movement and volatile property updates; avatarUpdate variants, packed formats | Complete |
 | [message-dispatch-table.md](message-dispatch-table.md) | Mercury message dispatch table: message id → handler mapping | Complete |
-| [client-method-dispatch-table.md](client-method-dispatch-table.md) | SGWPlayer client-method dispatch table (server → client), by method index | Complete |
+| [client-method-dispatch-table.md](client-method-dispatch-table.md) | Client-method dispatch table (server → client), by method index — SGWPlayer (primary/reference table), plus SGWMob and SGWPet (each their own, separate index space) | Complete |
 | [cell-method-dispatch-table.md](cell-method-dispatch-table.md) | SGWPlayer exposed CellMethod dispatch table (client → cell), by method index | Complete |
 | [sgwplayer-base-method-dispatch-table.md](sgwplayer-base-method-dispatch-table.md) | SGWPlayer exposed BaseMethod dispatch table (client → base), by method index | Complete |
 | [client-verified-wire-formats.md](client-verified-wire-formats.md) | Wire formats verified byte-exact against the live client | Complete |
@@ -27,7 +27,7 @@ See also: [../architecture/mission-pak-overrides.md](../architecture/mission-pak
 ## Key References
 
 - **BigWorld source**: `external/engines/BigWorld-Engine-2.0.1/` (if present)
-- **Cimmeria Rust implementation** (active): `crates/mercury/`, `crates/services/src/auth/`, `crates/services/src/base/`, `crates/services/src/cell/`
+- **Cimmeria Rust implementation** (active): `crates/mercury/`, `crates/auth/src/auth/`, `crates/base/`, `crates/base-*/`, `crates/services/src/cell/`
 - **Legacy C++ implementation** (historical, not extended): `deprecated/cpp/src/` (`mercury/`, `authentication/`, `baseapp/`, `cellapp/`)
 - **Entity definitions**: `entities/defs/` — define the property/method contract
 - **Existing docs**: `docs/connection-flow.md`, `docs/network-messages.md`

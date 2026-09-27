@@ -191,6 +191,8 @@ client handler differs:
 - `OnChunk` `FUN_00ddb220` — **discards wire Y** (FLT_MAX sentinel), uses the chunk height map
 - `OnGround` `FUN_00ddb830` — **discards wire Y**, uses a terrain ray-cast
 
+> **Correction (2026-09-24, NPC AI audit M6):** the two bullets above are wrong, and so is the "switch to `0x18`" recommendation that follows. The sentinel is `-13000.0f`, not `FLT_MAX`, and `BW_client_entity_manager_6` (`0x00dd1859`) replaces it with the actor's current client height. There is no ray-cast or height-map query. Sending `0x18` would pin every NPC at its creation height. Keep `0x10` and ground NPCs on the server. Also, `get_navmesh_height` returned the wrong storey on multi-level meshes until the storey-aware query from NA01. See [spec.protocol.position-updates §1.2.2](../../../drafts/spec/position-updates.md#122-position-type-semantics) and [audit M4 and M6](../../npc-ai-restoration/audit.md#2-symptom-3-npcs-float-and-walk-into-the-air). The text is kept as the playtest record.
+
 We send FullPos, so the client renders our Y exactly and cannot correct us. Reinforcing:
 `ABigWorldEntity` disables UE3 collision (`CollisionResponseFlags = 0xFFFFC004`,
 `docs/reverse-engineering/findings/entity-creation-wire-formats.md:640`), and neither

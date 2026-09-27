@@ -8,7 +8,7 @@ last_updated: 2026-06-18
 # Dev `.`-Console Channel (ADR)
 
 > **Status**: Adopted in issue #523. Implemented in
-> `crates/services/src/cell/console/` + `crates/services/src/base/console_authoring.rs`.
+> `crates/cell-console/src/cell/console/` + `crates/base-session/src/base/console_authoring/mod.rs`.
 > **Confidence**: High for the channel/dispatch/auth and the read-only +
 > authoring families; medium for the seed-commit Discord hook (designed, not yet
 > wired) and the server/maintenance family (intentionally divergent — see below).
@@ -37,11 +37,26 @@ server can intercept it before broadcast. This is the analogue of the
 `cell::chat::handle_chat_message` intercepts, in its `CHAN_SAY` arm, any text
 starting with `.` **when the sender's `CellEntity::access_level >= GameMaster`**.
 A GM's `.`-line is routed to the console dispatcher and **not** broadcast (it
-never appears in other players' chat); a non-GM's `.`-text falls through to
-normal chat. Authorization is on the server-side `access_level` (sourced from
+never appears in other players' chat). A non-GM's `.`-line whose first word
+names a registered command is consumed too and answered with a single
+"is a GM command" feedback line (pets campaign PT-07): a player, or a GM demoted
+mid-session, typing `.giveability 2826` must not echo it to everyone nearby, and
+the press needs visible feedback. The gate and the dispatcher share one lookup
+(`dispatch::find_command`). The refusal is one DEBUG line with
+`reason = "not_gm"` and the sender's identity, on `pets.command` for `.pet` and
+on the `cell::console::dispatch` module target for every other command. It is
+not a playtest-friction line, whose streak detector is a WARN a player could
+raise by typing, so players cannot flood the WARN stream. Any other non-GM `.`-text falls through to normal chat. Authorization is on the server-side `access_level` (sourced from
 `account.accesslevel` at login, never a client byte) — the same trust model as
 `cell::dispatch::gm_gate`. Every accepted command is logged at `info` for the
 CAT-N audit trail (#473).
+
+`.bank` is refused ahead of that generic refusal, by `console::bank::refuse_non_gm`
+(bank-vault BV-02): its line ("`.bank` needs GM access. Visit a Banker to open
+your vault.") points the player at a Banker, because the bank campaign documents
+`.bank` as the UAT route to the vault, and it logs `vault_open_rejected
+reason=not_gm` at WARN on the `bank` target, so a bank question is answerable
+from that one target.
 
 ### 2. Registry-driven dispatch
 
@@ -124,6 +139,8 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 | Search (`searchitem`/`mission`/`template`) | **Done** — search runs base-side (`CellToBaseMsg::ConsoleSearch`, parameterized `ILIKE ... ESCAPE '\'` with `%`/`_`/`\` in the query escaped to match literally, plus explicit truncation feedback at the 25-result cap). |
 | Roster (`players`, `listabilities`) | **Done** — `players` lists every online player across every loaded space on this CellApp (not cell-local); no "in transition" (connected-but-unplaced) tracking exists cell-side. `listabilities` resolves a player's known ability ids to names via the startup-loaded ability catalog. |
 | Grants (`givecash`, `givexp`) | **Done** — both route through the shared `GrantCash`/`GrantXP` base sinks with `gm_feedback_to: Option<u32>` (P05) separating the DB/UI recipient (the selected target) from the GM feedback recipient (the caller); rejected requests still get immediate cell-side feedback, while successful grants have no optimistic cell-side line and wait for the base's post-commit confirmation instead. |
+| Ability grant (`giveability`) | **Done** (pets campaign PT-07) — the subject is the selected player in the caller's space, else the caller (the fallback is named in feedback). Persisted through the base: `CellToBaseMsg::GmGrantAbility` → one guarded `UPDATE` appending to `sgw_player.abilities` only (never `trained_abilities`, so a respec keeps it and refunds nothing; a second grant matches 0 rows) → `BaseToCellMsg::GmAbilityGranted`, which mirrors the known set and sends `onKnownAbilitiesUpdate` plus the trainer re-send. The base re-checks that the subject's session still plays the character, and sends the GM line only while the GM's entity still plays the GM's character. Only the console builds the message; the base does not re-check GM rights. |
+| Pets (`pet summon\|dismiss\|stance\|info\|list`) | **Done** (pets campaign PT-07, UAT tooling) — `summon` resolves a `pet_summons` ability first, else a cached template, and refuses a dead caller. It spawns through `spawn_pet_from_template` with no warmup, and only then dismisses the caller's current pet (one per owner, D-PT04), in the same order as PT-03's summon, so a failed spawn keeps the old pet. `dismiss` and `stance` act only on the caller's own pets: each of `pets_of(caller)` must pass the `owned_pet` guard, which also checks the caller is the player who summoned it (entity ids are reused), and no client-supplied pet id is used; `stance` accepts only `EPetStance` 0-2 and sends `onPetStanceUpdate` to the owner only (`WitnessEntityMethod`). `info` reads the selected pet of any owner, else the caller's; `list` covers the caller's space. Mutations log on `pets.command`. |
 | Travel (`gotoxyz`, `goto`, `summon`, `gotolocation`) | **Done** — two mechanisms behind one decision. A destination in the subject's *current* space is an authoritative same-space snap reusing the native `gmGotoXYZ`/`gmSummon` path (`update_entity_position` + `note_authorized_teleport`, then `TeleportPlayer` gated on `is_player`); an NPC subject has no client to snap but is still seen at its new position through the normal AoI witness broadcast. A destination in a *different* space goes through `cell::space_transfer::transfer_player_to_space` (validate → flush → checked enqueue → teardown), which is players-only per D15 — an NPC subject is refused with an explicit reason rather than half-transferred. `goto`/`summon` resolve the named player with `SpaceManager::find_online_player_by_name` (online, exact, case-sensitive, CellApp-wide per D05) and use that player's **actual instance id**, so `.goto` into an instanced world joins the target's copy of the map rather than allocating a fresh one; `.gotolocation` uses D15's first/default loaded instance, except when the named world is the subject's own, where their current instance is kept to avoid a gratuitous loading screen. Legacy's GM strings (`Player.py:298-365`) are emitted verbatim; the duplicate-name refusal is new wording with no legacy equivalent. All feedback goes to the calling GM (D03), never the moved entity. |
 | Placement (`location`, `rotation`) | **Done** — dual-mode read/set of the selected spawnable's position and orientation: no args reports, a complete three-tuple sets, and a partial (1- or 2-arg) tuple is rejected with no mutation (legacy gated its write on `z is not None` and silently reported instead — corrected per D02). `location` reuses `.gotoxyz`'s snap abstraction (`update_entity_position` + `note_authorized_teleport`, then `TeleportPlayer` for a player target) but restores `direction` afterwards, because `update_entity_position` overwrites facing from its `[i8; 3]` parameter. `rotation` writes `direction` as `[pitch, yaw, roll]` radians directly — `direction.y` is yaw, matching `pack_angle(direction[1])` and legacy's persisted `heading`. `BASEMSG_FORCED_POSITION` carries no orientation field, so `rotation` on a player target is server-side and witness-visible only, with no camera snap; witnesses see both commands' effects on the next AoI tick via `EntityMoved`. |
 | Stat dumps (`stats`, `primarystats` … `stealthstats`) | **Done** — read `CellEntity::stats`. |
@@ -131,11 +148,12 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 | Entity inspection (`info`, `facing`, `combatinfo`) | **Done** (`info`/`facing`) / **Partial** (`combatinfo`) — `info`/`facing` are read-only queries against `CellEntity` fields and legacy `SGWSpawnableEntity` geometry; `combatinfo` checks template/ability-set presence but omits legacy's weapon-presence and ability-type-bucket checks (no per-template weapon or per-ability-type concept exists yet — see the P02 handoff). |
 | Entity authoring (`tag`, `name`, …) | **In-memory** — mutate `CellEntity`; appearance edits re-broadcast for players, surface on next AoI entry for NPCs. Pair with `.savespawn` to persist. |
 | Net/AI debug (`net_seq`, `net_speak`, `threaten`, …) | **Done** — serialize the existing client method (`onSequence`/`onTimerUpdate`/`onMapInfo`/`onClientChallenge`) or poke the threat/follow/dialog systems. `debug_controller` is a no-op (no Rust debug controller). |
-| Crafting (`learndiscipline`, `forgetdiscipline`) | **Done** via `GrantExpertise`. `allcraft` is a pointer (no consolidated blueprint-grant path cell-side). |
+| Crafting (`learndiscipline`, `forgetdiscipline`, `allcraft`, `craftkit`, `learnblueprint`) | **Done**. The discipline commands go through `GrantExpertise`; `allcraft` sends `CellToBaseMsg::GmAllCraft`, and the base re-checks the caller's access level, persists every paradigm at 7, every discipline at 100 and every blueprint, pushes 136/138/139, and turns on "craft anywhere" for the target's session (crafting campaign CR-05, D-CR17). `craftkit` and `learnblueprint` send `CellToBaseMsg::GmCraftGrant`; the base re-checks the access level, validates the blueprint against the crafting catalog, grants the kit through the crafting transaction or saves the blueprint under the player-row lock, and answers the GM (CR-11). |
 | Mission gaps (`missionfail`) | **Done**. `missionrewards` is a **preview** (reward dispatch tracked in #310). |
 | Spawn lifecycle (`spawn`, `despawn`) | **Done** — `.spawn <templateId>` places one entity at the caller's exact position and facing via the existing `GmSpawnNpc` → `GmSpawnNpcReady` round-trip (the round-trip's message gained a `heading` field; the native `gmSpawnByCmd` keeps sending `0.0` since its wire signature carries no rotation). Feedback is deliberately deferred to the real creation result — the enqueue is silent, the base reports an unknown template, and the cell reports the new NPC id only once the spawn actually took; legacy's pre-creation "Spawning entity of type…" line is not ported. `.despawn` destroys the selected NPC through `SpaceManager::despawn_npc`, which fans `LeftAoI` out to every observing player immediately and scrubs the witness sets (rather than waiting for the next AoI tick to notice), and reports the real notified-observer count. It is NPC-only twice over: the spec is `Target::Mob` and the primitive independently refuses a player — legacy registered `.despawn` as `SGWSpawnableEntity`, which `SGWPlayer` derives from, so the legacy command could destroy a logged-in player. Neither command touches `resources.spawnlist`; that is `.savespawn` / `.delspawn`. |
 | Spawn authoring (`savespawn`/`delspawn`/`spawnrandom`/`respawnall`) | **Done** — record→confirm + live write; `spawnrandom` reuses the `GmSpawnNpc` round-trip; `respawnall` is a runtime reset. |
 | Patrol authoring (`path_*`) | **Done** — see above. |
+| Bank (`bank`) | **Done** (new in Rust; bank-vault BV-02, D-BV03) — opens the GM's own personal vault anywhere: a vault session with no Banker (moves skip the proximity check) and `onVaultOpen` addressed to the GM's own entity and position. Any later `interact` ends the session. A non-GM's `.bank` is refused with a line, not broadcast (see §1). |
 | Server/maint (`save`/`reloadmap`/`reloadres`/`removerespawner`/`loglevel`/`logclient`) | **Divergent** — the Rust server handles these differently (incremental persistence, startup resource loading, env/`RUST_LOG` log level). Each reports the real mechanism rather than faking a no-op. Runtime log-level reload + resource hot-reload are future work. |
 
 ## Alternatives considered
@@ -158,5 +176,5 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 - New `SpaceManager` fields: `authoring_changes`, `autosave_spawns`,
   `patrol_authoring` (all ephemeral, server-side).
 - Follow-ups: wire the Discord `SeedAuthored` sink; runtime log-level reload
-  (`loglevel`) + resource hot-reload (`reloadres`); a consolidated `allcraft`
-  base grant; mission reward dispatch (#310, unblocks `missionrewards`).
+  (`loglevel`) + resource hot-reload (`reloadres`); mission reward dispatch
+  (#310, unblocks `missionrewards`).

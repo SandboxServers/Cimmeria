@@ -113,7 +113,7 @@ pub(super) enum IngestError {
 impl IntoResponse for IngestError {
     fn into_response(self) -> Response {
         let status = match &self {
-            IngestError::Auth(e) => return e.clone_status_response(),
+            IngestError::Auth(e) => return e.to_response(),
             IngestError::MissingAuth => StatusCode::UNAUTHORIZED,
             IngestError::TooLarge(_, _) => StatusCode::PAYLOAD_TOO_LARGE,
             IngestError::Gzip(_) | IngestError::Zip(_) | IngestError::Multipart(_) => {
@@ -122,35 +122,5 @@ impl IntoResponse for IngestError {
             IngestError::Ndjson { .. } => StatusCode::BAD_REQUEST,
         };
         (status, self.to_string()).into_response()
-    }
-}
-
-// ── Helpers on AuthError for IntoResponse forwarding ─────────────────
-
-impl AuthError {
-    /// Clone the AuthError's status + body into a Response. The
-    /// dev_session AuthError already implements IntoResponse but it
-    /// consumes self; we want to reuse the same status mapping
-    /// without taking ownership in IngestError::into_response.
-    fn clone_status_response(&self) -> Response {
-        let (status, body) = match self {
-            AuthError::SecretMissing | AuthError::SecretTooShort { .. } => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            AuthError::KillSwitchActive => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-            AuthError::BadPayload(_) | AuthError::BadSignature => {
-                (StatusCode::UNAUTHORIZED, self.to_string())
-            }
-            AuthError::Expired { .. } => (StatusCode::UNAUTHORIZED, self.to_string()),
-            AuthError::Json(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-        };
-        let mut resp = (status, body).into_response();
-        if matches!(self, AuthError::KillSwitchActive) {
-            resp.headers_mut().insert(
-                axum::http::header::RETRY_AFTER,
-                axum::http::HeaderValue::from_static("60"),
-            );
-        }
-        resp
     }
 }

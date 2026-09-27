@@ -1,6 +1,6 @@
 # Project Rules and Gotchas
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-27
 > **Audience**: Contributors and their agents, before proposing an approach
 > **Type**: Reference
 
@@ -16,6 +16,8 @@ Each entry says what to do and why. Build commands, the pre-PR checklist, the te
 - **Quote the whole decompiled function, not the block that supports your theory.** The costliest wrong claim in this repo's history came from a snippet that stopped one block short of the code that contradicted it.
 - **Cite a Ghidra address for every binary claim**, and tag confidence per [`docs/reverse-engineering/evidence-standards.md`](../reverse-engineering/evidence-standards.md).
 - **`deprecated/` shows original intent, not client truth.** Use `deprecated/python/` and the `.def` files to find features that were designed but never wired. Do not copy a legacy behavior that makes the client feel broken.
+- **The seed data is a reconstruction, not 2009 data.** `db/resources/` (split from the legacy monolithic dump) is Project Giza's approximation, built largely by turning the client's cooked packages into tables. CME's own server database was never released, and the legacy Python server is a Giza-era emulator too. Never call seed rows or the legacy dump "original", "retail" or "2009". A missing link there, such as an ability with no event set or an NPC with no kit, means Giza's extraction didn't recover it, not that the game lacked it. Reconstruct it from client evidence and label the result as reconstruction. Worked example: [`ability-animation-links.md`](../reverse-engineering/findings/ability-animation-links.md).
+- **The legacy server never had working gate travel.** For stargates, DHDs, dialing, wormholes and travel cinematics, derive behaviour and timing from the client only: its handlers, `onSequence` and CME event ids, the Kismet rigs in cooked maps and prefabs, and the DHD UI Lua. Treat the legacy gate code as a hint at best. This is why D-CA20 in [`castle-rebuild`](../analysis/castle-rebuild/README.md) superseded the "as the 2009 server did" framing of D-CA10.
 
 ## Protocol traps
 
@@ -40,7 +42,7 @@ Classify before you design.
 
 - **GM gameplay commands use the client's native `/` console.** The client consumes every `/` command locally and emits `gm*` cell-method calls, so `/` lines never reach the server as chat. **Do not build a server-side `/`-chat parser.** It cannot work against the real client.
 - **The client learns a player is a GM only from the entity class.** `accessLevel` is `CELL_PRIVATE` and never replicated, so GMs enter the world as `SGWGmPlayer` (`0x03`). The server still authorizes every GM call against its own `access_level`, never a client-asserted value. See [`docs/architecture/gm-cell-method-gating.md`](../architecture/gm-cell-method-gating.md).
-- **Commands with no native slash binding go through the `.`-console** (`crates/services/src/cell/console/`), which intercepts `.`-prefixed say-chat from GMs. See [`docs/architecture/dev-console-channel.md`](../architecture/dev-console-channel.md).
+- **Commands with no native slash binding go through the `.`-console** (`crates/cell-console/src/cell/console/`), which intercepts `.`-prefixed say-chat from GMs. See [`docs/architecture/dev-console-channel.md`](../architecture/dev-console-channel.md).
 - **Authoring commands (`savespawn`, `path_*`) emit seed SQL for a human to commit.** They apply in memory and to the live database so the GM sees the result, but the durable artifact is SQL for `db/resources/`, emitted through one choke point (`cell/console/seed.rs`) to the server log, never shown in game. Deploys rebuild the database from seeds, so a live-only write is lost.
 
 ## Database and content
@@ -52,9 +54,15 @@ Classify before you design.
 
 ## Build and CI
 
-- **CI floats on stable Rust; the repo has no `rust-toolchain` pin.** Every gating job in `test.yml` uses `dtolnay/rust-toolchain@stable`, so CI clippy is often newer than yours and `-D warnings` fails on lints your local version does not have (seen: `unnecessary_sort_by`, `ptr_arg`, `doc_lazy_continuation`). Before pushing Rust changes, run clippy on current stable: `rustup toolchain install stable --profile minimal` (or a specific version side by side), then `cargo +<version> clippy -p <crates> --all-targets -- -D warnings`. Clippy stops at the first failing target, so rerun until it exits 0.
-- **The build-memory rules in `CLAUDE.md` apply per machine, not per worktree.** One `cargo` at a time includes agents running in parallel. See [`development-workflow.md`](development-workflow.md).
+- **The toolchain is pinned; bump it on purpose.** `rust-toolchain.toml` pins Rust 1.98.1, and every CI workflow installs that version through `.github/actions/rust-toolchain`, so local clippy is CI's clippy. This replaces the old gotcha: CI used to float on stable, its clippy ran ahead of yours, and the workaround was a side-by-side `cargo +<version> clippy`. Don't do that anymore. Bump the version in its own PR: change the file, run the pre-PR checklist, and fix the new lints in that PR. Clippy stops at the first failing target, so rerun until it exits 0.
+- **Builds are Windows-native.** The WSL cross-compile and its memory rules (the ~47 GB link, `pkill -f rustc`, `CARGO_BUILD_JOBS=2`) are retired. The 47 GB figure predates `rust-lld` on Windows. See [`docs/architecture/build-system.md`](../architecture/build-system.md).
+- **The build lane is per machine, not per worktree.** Every agent or worker `cargo` call that compiles goes through `tools/build-lane/lane.sh`, including agents running in parallel in separate worktrees. See [`development-workflow.md`](development-workflow.md#build-through-the-lane).
+- **sccache and `CARGO_INCREMENTAL=1` don't mix.** sccache refuses to run when `CARGO_INCREMENTAL` is set to anything but `0`. The lane drops sccache for such a job; a direct `cargo` call with sccache as `RUSTC_WRAPPER` fails. Leave `CARGO_INCREMENTAL` unset: the dev profile already builds workspace crates incrementally.
+- **Don't run `tools/build-hygiene/sweep.ps1` while anything builds.** cargo-sweep can delete files a running build is about to use.
 - **A PR with merge conflicts gets no CI run at all.** Merge `main` first.
+- **Never hand-edit a generated block.** Counts that PRs used to bump by hand (workspace test totals, the inventory threshold, the RE findings count, the gap-analysis totals, the docs count) and the crate graph sit between `<!-- gen:NAME -->` / `<!-- /gen:NAME -->` or `crate-graph` markers and belong to [`tools/docs-gen/regen.py`](../../tools/docs-gen/README.md). The `regen-docs` workflow reruns it on `main` after every merge and commits the result, so a PR never needs to. Run `python tools/docs-gen/regen.py` locally to see the numbers, and commit its output only when your PR adds the marker. Why: two PRs that both bump one number conflict with each other, and a CI gate on a stale count failed PRs whose only fault was that `main` had moved.
+- **Don't stack PRs.** Open every PR against `main`. PRs here are squash-merged, often in quick succession, and releases build from `main`. When #751 was squash-merged, #752 (stacked on it) then merged into its now-dead base branch instead of `main`, and the release went out without it; it had to be re-landed as #753.
+- **Replacing a data file? Run the tests of every crate that loads it.** Grep the whole workspace for the file name, not just the crate you touched. Swapping `data/spaces/castle_cellblock.nav` (#694) broke `nav_roundtrip_castle_cellblock` in the navmesh-extractor crate, which pins the shipped file's header.
 - **Two doc-side CI jobs block a merge**, unlike markdownlint, which only warns: `figure-sources-in-sync` (a figure source under `docs/drafts/spec/figures/sources/` committed without its re-rendered SVG) and `figure-style-lint`. Both fire on changes under `docs/drafts/spec/`. Run `tools/check-figure-sources.sh` and `tools/lint-figure-style.sh` before pushing any change there, including a text-only edit to a draft chapter.
 - **`tools/lint-md.sh <file>` is slow** because the config glob still walks the whole tree. Calling `markdownlint-cli2 --no-globs <files>` directly finishes in seconds.
 
@@ -64,18 +72,21 @@ Classify before you design.
 - **Scripts that rewrite files must open them in binary mode** and write UTF-8 explicitly. Python's default text mode on Windows converts both the encoding and the line endings.
 - **Git Bash rewrites arguments that start with `/` or contain `:.`** into Windows paths. This breaks `gh ... --body "/release"` and `git show <ref>:.github/...`. Use PowerShell, `--body-file`, or `MSYS_NO_PATHCONV=1`.
 - **Revert-verification wipes uncommitted work.** Commit (or make a WIP commit) before you `git checkout` a file to prove a guard fails.
-- **Removing a worktree that has an `external/` junction:** remove the junction first. See [`development-workflow.md`](development-workflow.md).
+- **Retire worktrees with `tools/build-lane/rm-worktree.sh`, the day the PR merges.** It unlinks the `external/` junction first; a hand-rolled recursive delete can follow the junction and empty the real `external/`. Leaving merged worktrees around is not harmless either: their target dirs filled the Dev Drive on 2026-09-26 and stopped every lane build. See [`development-workflow.md`](development-workflow.md#retire-it-when-its-pr-merges).
 
 ## Client assets and RE tooling
 
 - **The game client is not in the repo.** `game/sgw/` is a placeholder. Map recon, prefab positions, navmesh extraction, and any `crates/upk-objects` or `crates/navmesh-extractor` work needs your own copy of the client; point the tool at its `SGWGame/CookedPC/` directory. Do not conclude that assets are missing because the repo does not contain them.
 - **The client ships no `.nav` files.** The ones under `data/spaces/` are original server assets.
-- **Breakpoints on a live, server-connected `SGW.exe` must not pause it.** A paused client stalls its network thread, Mercury keepalive times out, and the server disconnects it. In x64dbg use a logging breakpoint: `SetBreakpointCondition <addr>, 0`, `SetBreakpointLogCondition <addr>, 1`, `SetBreakpointLog <addr>, "<text with {expr} captures>"`, `SetBreakpointFastResume <addr>, 1`. Since the breakpoint never stops, encode the registers and stack slots you want into the log text.
+- **Breakpoints on a live, server-connected `SGW.exe` must not pause it.** A paused client stalls its network thread, Mercury keepalive times out, and the server disconnects it. In x64dbg use a logging breakpoint: `SetBreakpointCondition <addr>, 0`, `SetBreakpointLogCondition <addr>, 1`, `SetBreakpointLog <addr>, "<text with {expr} captures>"`. The zero condition alone keeps it from pausing. **Leave fast resume off** (`SetBreakpointFastResume <addr>, 0`, the default): with it on, a breakpoint whose condition doesn't break performs "no GUI, plugin, logging or any other action" ([x64dbg docs](https://help.x64dbg.com/en/latest/commands/conditional-breakpoint-control/SetBreakpointFastResume.html)), so the log never fires. This was also confirmed live in [`black-market-client-window-patch.md`](../reverse-engineering/findings/black-market-client-window-patch.md). Since the breakpoint never stops, encode the registers and stack slots you want into the log text.
 - **Client-side instrumentation is written from scratch.** `AteraLoader.exe` and `AtreaRL.dll` are third-party. [`docs/technical/atrealoader-exe.md`](../technical/atrealoader-exe.md) and [`atrearl-loader.md`](../technical/atrearl-loader.md) are references for what to hook, not code to extend, wrap, or ship. Depending on the output of `AtreaFixASLR.bat` (an `SGW.exe` with ASLR cleared) is fine.
 - **MCP servers are per-machine.** `.mcp.json` is ignored by git. Copy [`.mcp.json.example`](../../.mcp.json.example) and follow [`docs/guides/re-toolchain-setup.md`](../guides/re-toolchain-setup.md) for Ghidra, x64dbg, and the docs RAG server.
 
 ## Where project state lives
 
 - Status and gaps: [`docs/project-status.md`](../project-status.md), [`docs/gap-analysis.md`](../gap-analysis.md). Not `docs/architecture/migration-roadmap.md`, which describes the deprecated C++ tree.
+- **Update the status docs once per campaign, in its close-out or release packet.** Per-packet progress goes in the campaign's own ledger under `docs/analysis/<campaign>/`. Why: on 2026-09-27 most rebase conflicts came from shared docs rather than code, with parallel packets each editing the same status rows and totals.
 - Long-running campaigns keep their own ledgers and resume notes under `docs/analysis/` (for example `docs/analysis/castle-rebuild/handoffs/`). Read the newest resume note before continuing one.
+- **A ledger that says "not started" does not mean nobody is on it.** Before dispatching workers for a ledgered campaign, look for campaign branches and worktrees created or committed in the last few hours (`git worktree list`, `git log --since`), and ask whether another session owns the work. A packet that was dispatched minutes ago looks exactly like an abandoned one: a clean worktree at `main`'s head.
 - Playtest reports: `docs/analysis/playtests/`.
+- Agent-written project memory, dated and sourced but not yet verified to `docs/` standard: `.claude/agent-memory/<agent>/` for subagents and `.claude/agent-memory/main-session/` for top-level sessions. See [`development-workflow.md`](development-workflow.md#project-memory).

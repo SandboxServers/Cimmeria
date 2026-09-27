@@ -99,6 +99,12 @@ pub struct AbilityManager {
     /// the immediate-fire-on-enable path.
     pub last_fired_ability_id: Option<i32>,
 
+    /// The auto-cycle loop has already told the player it has no line of
+    /// sight (NA31). The loop sends `onErrorCode 39` once when its target
+    /// goes behind a wall, then waits silently, armed, until the line
+    /// clears; this resets as soon as it does.
+    pub auto_cycle_los_notified: bool,
+
     /// Next unique effect sequence ID.
     pub effect_sequence_id: i32,
 }
@@ -114,6 +120,7 @@ impl AbilityManager {
             auto_cycle: false,
             auto_cycle_ability_id: None,
             last_fired_ability_id: None,
+            auto_cycle_los_notified: false,
             effect_sequence_id: 1,
         }
     }
@@ -259,6 +266,14 @@ impl AbilityManager {
                 total_duration: duration,
             },
         );
+    }
+
+    /// Drop one ability's cooldown. Returns whether one was running.
+    ///
+    /// Used by the warmup interrupt, which refunds the cooldown the launch
+    /// charged (python `AbilityManager.interruptAbility`).
+    pub fn clear_ability_cooldown(&mut self, ability_id: i32) -> bool {
+        self.ability_cooldowns.remove(&ability_id).is_some()
     }
 
     /// Start cooldowns for an ability and its moniker groups.

@@ -1,6 +1,10 @@
 //! Phase 1.2 — StaticMesh + StaticMeshActor extraction.
 //!
-//! For each `StaticMeshActor` export in a chunk `.umap`:
+//! For each [`MESH_ACTOR_CLASSES`] export in a chunk `.umap` (the
+//! `StaticMeshActor`-shaped family: `StaticMeshActor` itself, plus
+//! NA36's `KActor` / `FracturedStaticMeshActor`, and `InterpActor`
+//! unless the mode is [`InterpActorMode::Off`] — see
+//! [`is_mesh_actor_class`]):
 //!
 //! 1. Read the actor's tagged properties to recover its transform
 //!    (`Location` / `Rotation` / `DrawScale` / `DrawScale3D`) and the
@@ -47,7 +51,7 @@
 pub mod archetype;
 pub mod mesh_ref;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use cimmeria_upk::Package;
@@ -55,6 +59,7 @@ use cimmeria_upk_objects::{deserialize_static_mesh, PackageIndex, StaticMesh};
 
 use crate::coverage::{SkipReason, SkipTally};
 use crate::geometry::TriangleSoup;
+use crate::interp_actor::{self, InterpActorMode, InterpActorRecord, MotionEvidence};
 use crate::transform::{transform_triangles, ActorTransform};
 use crate::{ExtractError, Result};
 
@@ -71,6 +76,11 @@ pub struct StaticMeshInstance {
     /// The owning actor's debug-friendly name — used as the OBJ group
     /// label so a human reviewer can map a group back to its `.umap`.
     pub actor_name: String,
+    /// 0-based index of the actor's export in its chunk package. Object
+    /// names repeat across a chunk (`InterpActor` with different name
+    /// numbers), so this is what ties an instance back to Kismet
+    /// references, which point at exports by index.
+    pub export_index: usize,
     /// The cross-package mesh reference (`(package_name, object_name)`).
     pub mesh_ref: (String, String),
     /// Per-instance world transform.
@@ -105,6 +115,9 @@ pub struct ActorWalk {
     pub prefab_outer_actors: u64,
     /// Prefab packages this chunk had to open to follow archetypes.
     pub prefab_packages_opened: u64,
+    /// One record per `InterpActor` that resolved a mesh and was
+    /// classified (NA40). `chunk` is left empty for the caller.
+    pub interp_actors: Vec<InterpActorRecord>,
 }
 
 /// Per-chunk extraction result.
@@ -140,6 +153,8 @@ pub struct ChunkExtraction {
     pub triangles_via_archetype: usize,
     /// Prefab packages opened while walking this chunk's archetypes.
     pub prefab_packages_opened: u64,
+    /// The walk's `InterpActor` decisions (NA40).
+    pub interp_actors: Vec<InterpActorRecord>,
 }
 
 /// Walk every `StaticMeshActor` in a chunk and produce its triangle soup.
@@ -147,11 +162,21 @@ pub struct ChunkExtraction {
 /// `index` may be `None`, in which case the extractor logs how many
 /// actors it would have processed and returns an empty soup. This is the
 /// degraded mode used in CI when the cooked asset bundle isn't on the
-/// runner.
-pub fn extract_chunk(chunk_path: &Path, index: Option<&PackageIndex>) -> Result<ChunkExtraction> {
+/// runner. `interp_actors` — see [`MESH_ACTOR_CLASSES`]'s doc — picks
+/// which `InterpActor`s are baked.
+pub fn extract_chunk(
+    chunk_path: &Path,
+    index: Option<&PackageIndex>,
+    interp_actors: InterpActorMode,
+) -> Result<ChunkExtraction> {
     let pkg = Package::open(chunk_path)?;
     let mut cache = ArchetypeCache::default();
-    Ok(extract_chunk_from_package(&pkg, index, &mut cache))
+    Ok(extract_chunk_from_package(
+        &pkg,
+        index,
+        &mut cache,
+        interp_actors,
+    ))
 }
 
 /// [`extract_chunk`] against an already-open package.
@@ -169,8 +194,9 @@ pub fn extract_chunk_from_package(
     pkg: &Package,
     index: Option<&PackageIndex>,
     cache: &mut ArchetypeCache,
+    interp_actors: InterpActorMode,
 ) -> ChunkExtraction {
-    let walk = collect_static_mesh_instances(pkg, index, cache);
+    let walk = collect_static_mesh_instances(pkg, index, cache, interp_actors);
 
     let mut result = ChunkExtraction {
         actors_total: walk.actors_total as usize,
@@ -178,13 +204,20 @@ pub fn extract_chunk_from_package(
         archetype_actors: walk.archetype_actors,
         prefab_outer_actors: walk.prefab_outer_actors,
         prefab_packages_opened: walk.prefab_packages_opened,
+        interp_actors: walk.interp_actors,
         ..Default::default()
     };
 
     // Group instances by mesh reference so we only decode each unique
     // mesh once per chunk — a chunk often has dozens of instances of the
     // same archway / floor tile / wall section.
-    let mut by_mesh: HashMap<(String, String), Vec<StaticMeshInstance>> = HashMap::new();
+    //
+    // A BTreeMap, not a HashMap: the grouping order is the order the
+    // triangles reach the OBJ, and a single-mesh NavBuilder build is not
+    // indifferent to input order. With a HashMap two extractions of the
+    // same chunk wrote the same triangles in a different order, and the
+    // same NavBuilder turned them into different `.nav` bytes (NA40).
+    let mut by_mesh: BTreeMap<(String, String), Vec<StaticMeshInstance>> = BTreeMap::new();
     for inst in walk.instances {
         by_mesh.entry(inst.mesh_ref.clone()).or_default().push(inst);
     }
@@ -358,13 +391,71 @@ fn load_static_mesh(
         .map_err(|e| decode_failed(ExtractError::Other(format!("StaticMesh deserialize: {e}"))))
 }
 
-/// Walk every `StaticMeshActor` in `pkg` and produce one instance per
-/// actor whose `StaticMeshComponent.StaticMesh` reference can be
-/// recovered from the tagged-property stream.
+/// Export classes the walker treats as `StaticMeshActor`-shaped: a
+/// cooked actor whose tagged-property block carries `Location` /
+/// `Rotation` / `DrawScale` / `DrawScale3D` and a `StaticMeshComponent`
+/// object reference, optionally gated by `bCollideActors`.
+///
+/// UE3's `AInterpActor`, `AKActor` and `AFracturedStaticMeshActor` all
+/// derive from `AStaticMeshActor` and add no new placement or mesh-ref
+/// properties of their own (Matinee-driven movers, rigid-body physics
+/// props, and destructible meshes respectively) — so the same resolver
+/// walks them unchanged. NA36 (Harset raised-platform navmesh gap):
+/// `Harset-*` chunks carry 31 `InterpActor` exports with real collision
+/// meshes that a class filter of `StaticMeshActor` alone drops on the
+/// floor entirely (not even into `SkipReason` — the walker's `for`
+/// loop never visits them), leaving zero geometry under platforms built
+/// from movers. `StaticMeshCollectionActor` is a deliberate exclusion:
+/// it owns an *array* of `StaticMeshComponent`s rather than one, so it
+/// needs its own walk and is tracked as a remaining gap in
+/// `coverage::COLLISION_BEARING_CLASSES`.
+///
+/// **`InterpActor` is walked unless the mode is
+/// [`InterpActorMode::Off`], and baked only when
+/// [`interp_actor::classify`] includes it.** `KActor` and
+/// `FracturedStaticMeshActor` are always walked: nothing in the
+/// shipped 2009 content actually moves them (zero exports across all
+/// 23 cooked maps, per NA36's census), and they are otherwise ordinary
+/// static props. `InterpActor` is different in kind: it is UE3's
+/// Matinee-driven-mover class, and a mover's cooked `Location`/pose is
+/// its *design-time* pose — for a door, usually closed. Baking a closed
+/// door into `.nav` seals the doorway; baking it into `.occ` blocks
+/// line of sight through an opening a player can actually see and
+/// shoot through. NA36 gated the whole class behind a flag; NA40
+/// replaced the flag with a per-actor decision grounded in the chunk's
+/// Kismet (which Matinee groups drive the actor, and whether their move
+/// tracks ever leave the cooked pose), with a mesh-name safety net for
+/// doors, Stargate parts and camera heads. See the
+/// [`interp_actor`] module and `docs/engine/navmesh-build-pipeline.md`
+/// §12.
+pub const MESH_ACTOR_CLASSES: &[&str] = &["StaticMeshActor", "KActor", "FracturedStaticMeshActor"];
+
+/// Classes walked unless the mode is [`InterpActorMode::Off`], and
+/// then baked per actor — see [`MESH_ACTOR_CLASSES`]'s doc for why
+/// `InterpActor` is not unconditional.
+pub const CLASSIFIED_MESH_ACTOR_CLASSES: &[&str] = &["InterpActor"];
+
+/// Is `class` one the walker treats as `StaticMeshActor`-shaped for this
+/// run? `interp_actors` gates [`CLASSIFIED_MESH_ACTOR_CLASSES`]; the
+/// classes in [`MESH_ACTOR_CLASSES`] are unconditional.
+pub fn is_mesh_actor_class(class: &str, interp_actors: InterpActorMode) -> bool {
+    MESH_ACTOR_CLASSES.contains(&class)
+        || (interp_actors != InterpActorMode::Off && CLASSIFIED_MESH_ACTOR_CLASSES.contains(&class))
+}
+
+/// Walk every [`MESH_ACTOR_CLASSES`] export in `pkg` — plus
+/// [`CLASSIFIED_MESH_ACTOR_CLASSES`] unless `interp_actors` is
+/// [`InterpActorMode::Off`] — and produce one instance per actor whose
+/// `StaticMeshComponent.StaticMesh` reference can be recovered from the
+/// tagged-property stream.
 ///
 /// Actors with a missing or dangling mesh reference are tallied by
 /// reason into [`ActorWalk::skips`]; the sum of `instances.len()` and
-/// `skips.total()` always equals `actors_total`.
+/// `skips.total()` always equals `actors_total`. An `InterpActor` the
+/// classifier leaves out is tallied as
+/// [`SkipReason::InterpActorExcluded`] or
+/// [`SkipReason::InterpActorUndecided`], after its mesh resolved, and
+/// every classified actor gets an [`ActorWalk::interp_actors`] record.
 ///
 /// `index` is needed only to follow prefab archetypes; with `None` a
 /// stub component stays a [`SkipReason::ArchetypeStubComponent`] skip,
@@ -373,16 +464,21 @@ pub fn collect_static_mesh_instances(
     pkg: &Package,
     index: Option<&PackageIndex>,
     cache: &mut ArchetypeCache,
+    interp_actors: InterpActorMode,
 ) -> ActorWalk {
     let mut walk = ActorWalk::default();
+    // Built on the first InterpActor that resolves a mesh: most chunks
+    // have none, and the Kismet walk reads every sequence object.
+    let mut evidence: Option<MotionEvidence> = None;
     // Prefab packages opened for *this* chunk only. Dropped on return,
     // so peak memory is one chunk's prefab working set rather than every
     // prefab package the map touches; `cache` is what stops that from
     // costing repeat opens.
     let mut open = archetype::OpenPrefabs::default();
 
-    for export in &pkg.exports {
-        if pkg.export_class_name(export) != "StaticMeshActor" {
+    for (export_index, export) in pkg.exports.iter().enumerate() {
+        let class = pkg.export_class_name(export);
+        if !is_mesh_actor_class(class, interp_actors) {
             continue;
         }
         walk.actors_total += 1;
@@ -478,9 +574,34 @@ pub fn collect_static_mesh_instances(
             }
             other => other,
         };
+        if let (Ok(mesh_ref), true) = (&resolved, CLASSIFIED_MESH_ACTOR_CLASSES.contains(&class)) {
+            let motion = evidence
+                .get_or_insert_with(|| MotionEvidence::collect(pkg))
+                .for_export(export_index);
+            let decision = interp_actor::classify(&motion, &mesh_ref.1, xf.location);
+            let skip = match &decision {
+                interp_actor::Decision::Include(_) => None,
+                interp_actor::Decision::Exclude(_) => Some(SkipReason::InterpActorExcluded),
+                interp_actor::Decision::Undecided(_) => Some(SkipReason::InterpActorUndecided),
+            };
+            walk.interp_actors.push(InterpActorRecord {
+                chunk: String::new(),
+                actor: display_name(export),
+                export_index,
+                mesh: mesh_ref.1.clone(),
+                location: xf.location,
+                decision,
+                evidence: interp_actor::evidence_line(&motion),
+            });
+            if let Some(reason) = skip {
+                walk.skips.add(reason);
+                continue;
+            }
+        }
         match resolved {
             Ok(mesh_ref) => walk.instances.push(StaticMeshInstance {
                 actor_name: export.object_name.clone(),
+                export_index,
                 mesh_ref,
                 transform: xf,
                 from_archetype,
@@ -492,6 +613,15 @@ pub fn collect_static_mesh_instances(
 
     walk.prefab_packages_opened = open.opened() as u64;
     walk
+}
+
+/// `Name_N` the way the editor shows it: an FName's stored number is
+/// the suffix plus one, and 0 means no suffix.
+fn display_name(export: &cimmeria_upk::ExportEntry) -> String {
+    match export.object_name_num {
+        n if n > 0 => format!("{}_{}", export.object_name, n - 1),
+        _ => export.object_name.clone(),
+    }
 }
 
 /// Run the per-mesh + per-transform → triangle pipeline against
@@ -511,5 +641,9 @@ pub fn build_chunk_soup(instances: &[(StaticMesh, ActorTransform, String)]) -> T
 
 #[cfg(test)]
 mod archetype_walk_tests;
+#[cfg(test)]
+mod emit_order_tests;
+#[cfg(test)]
+mod mesh_actor_class_tests;
 #[cfg(test)]
 mod tests;

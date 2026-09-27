@@ -1,0 +1,246 @@
+//! Simple inventory operations that forward to the base service:
+//! remove / list / move / use / repair. These handlers parse args, look up
+//! the player_id, and send a CellToBaseMsg — they do not touch entity state
+//! directly.
+
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::{vault_access, SpaceManager};
+use cimmeria_content_engine::chain::ChainEngine;
+use tokio::sync::mpsc;
+
+/// Resolve the player_id for an inventory op. We refuse to silently default
+/// to 0 (would either no-op or hit a sentinel row).
+pub(super) fn resolve_player_id(entity_id: u32, op: &str, space_mgr: &SpaceManager) -> Option<i32> {
+    match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(id) => Some(id),
+        None => {
+            tracing::warn!(
+                entity_id,
+                op,
+                "inventory op dropped: entity has no player_id"
+            );
+            None
+        }
+    }
+}
+
+pub(super) async fn handle_remove_item(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    if args.len() >= 6 {
+        let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+        let quantity = i16::from_le_bytes([args[4], args[5]]) as i32;
+        tracing::debug!(entity_id, item_id, quantity, "removeItem");
+        if let Some(player_id) = resolve_player_id(entity_id, "removeItem", space_mgr) {
+            if let Err(e) = tx
+                .send(CellToBaseMsg::RemoveInventoryItem {
+                    entity_id,
+                    player_id,
+                    item_id,
+                    quantity,
+                    // The `removeItem` inventory method is a player-initiated
+                    // drop, not a GM command — no GM feedback line.
+                    notify_gm: false,
+                    vault: vault_access(entity_id, space_mgr),
+                })
+                .await
+            {
+                tracing::error!(
+                    entity_id, player_id, item_id, quantity, error = %e,
+                    "RemoveInventoryItem send to base failed"
+                );
+            }
+        }
+    } else {
+        tracing::warn!(
+            entity_id,
+            args_len = args.len(),
+            "removeItem: truncated args"
+        );
+    }
+}
+
+pub(super) async fn handle_list_items(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    tracing::debug!(entity_id, "listItems");
+    if let Some(player_id) = resolve_player_id(entity_id, "listItems", space_mgr) {
+        if let Err(e) = tx
+            .send(CellToBaseMsg::ListInventoryItems {
+                entity_id,
+                player_id,
+            })
+            .await
+        {
+            tracing::error!(
+                entity_id, player_id, error = %e,
+                "ListInventoryItems send to base failed"
+            );
+        }
+    }
+}
+
+pub(super) async fn handle_move_item(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    if args.len() >= 16 {
+        let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+        let target_container_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+        let wire_slot_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+        let quantity = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
+        // Wire slot IDs are 1-indexed (matching the legacy convention in
+        // `SGWPlayer.py:2157` `moveItem(itemId, targetBag, targetSlot - 1, quantity)`).
+        // Translate to the 0-indexed server slot before forwarding to base —
+        // the base handler operates entirely in server-internal indexing.
+        // Saturating subtraction so a forged `i32::MIN` doesn't panic in
+        // debug builds — the resulting `i32::MIN` still fails base-side
+        // range validation.
+        let target_slot_id = wire_slot_id.saturating_sub(1);
+        tracing::debug!(
+            entity_id,
+            item_id,
+            target_container_id,
+            wire_slot_id,
+            target_slot_id,
+            quantity,
+            "moveItem"
+        );
+        if let Some(player_id) = resolve_player_id(entity_id, "moveItem", space_mgr) {
+            if let Err(e) = tx
+                .send(CellToBaseMsg::MoveInventoryItem {
+                    entity_id,
+                    player_id,
+                    item_id,
+                    target_container_id,
+                    target_slot_id,
+                    quantity,
+                    // Taken per move: a fresh session and Banker-proximity
+                    // check (D-BV05). The base consults it only when the
+                    // move touches the vault.
+                    vault: vault_access(entity_id, space_mgr),
+                })
+                .await
+            {
+                tracing::error!(
+                    entity_id, player_id, item_id,
+                    target_container_id, target_slot_id, quantity,
+                    error = %e,
+                    "MoveInventoryItem send to base failed"
+                );
+            }
+        }
+    } else {
+        tracing::warn!(entity_id, args_len = args.len(), "moveItem: truncated args");
+    }
+}
+
+pub(super) async fn handle_use_item(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    _engine: &ChainEngine,
+) {
+    if args.len() >= 8 {
+        // The wire `aItemID` is the inventory instance id (per
+        // SGWInventoryManager.def), not the item design id. Forward to base
+        // for atomic consume; base looks up the type_id and, on commit
+        // success, fires `BaseToCellMsg::ItemUsed { type_id, ... }` back so
+        // the cell can fire `OnItemUse` with the design id. This gates
+        // mission progression on actual consumption.
+        let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+        let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+        tracing::info!(entity_id, item_id, target_id, "useItem");
+
+        if refuse_while_dead(entity_id, item_id, tx, space_mgr).await {
+            return;
+        }
+
+        if let Some(player_id) = resolve_player_id(entity_id, "useItem", space_mgr) {
+            if let Err(e) = tx
+                .send(CellToBaseMsg::UseInventoryItem {
+                    entity_id,
+                    player_id,
+                    item_id,
+                    target_id,
+                    vault: vault_access(entity_id, space_mgr),
+                })
+                .await
+            {
+                tracing::error!(
+                    entity_id, player_id, item_id, target_id, error = %e,
+                    "UseInventoryItem send to base failed -- item not consumed"
+                );
+            }
+        }
+    } else {
+        tracing::warn!(entity_id, args_len = args.len(), "useItem: truncated args");
+    }
+}
+
+/// `ERRORCODE_SYSTEM_Ability` — the only `EErrorCodeSystem` token.
+const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
+/// `CONDITION_FEEDBACK_NotLiving` (`entities/defs/enumerations.xml`).
+const CONDITION_FEEDBACK_NOT_LIVING: u16 = 14;
+
+/// A dead player cannot use an item (NA24, UAT-1 A): a medkit used during the
+/// Defeat Window healed the corpse to full HEALTH, and the NPC that had just
+/// killed it read the healed HEALTH as "alive" and kept the corpse as its
+/// target through the respawn. Refused with the legacy `@mustBeAlive` reply,
+/// `onErrorCode(ERRORCODE_SYSTEM_Ability, 0, CONDITION_FEEDBACK_NotLiving)`
+/// (`SGWBeing.py:19`, applied to `SGWPlayer.useItem`), so the press is not
+/// silent. Returns `true` when refused.
+async fn refuse_while_dead(
+    entity_id: u32,
+    item_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> bool {
+    let dead = space_mgr
+        .get_entity(entity_id)
+        .is_some_and(|e| crate::cell::combat::is_dead_state(e.state_field));
+    if !dead {
+        return false;
+    }
+    tracing::info!(
+        entity_id,
+        item_id,
+        "useItem refused: player is dead (onErrorCode NotLiving)"
+    );
+    let mut err = Vec::with_capacity(7);
+    err.push(ERRORCODE_SYSTEM_ABILITY);
+    err.extend_from_slice(&0i32.to_le_bytes());
+    err.extend_from_slice(&CONDITION_FEEDBACK_NOT_LIVING.to_le_bytes());
+    if let Err(e) = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: crate::cell::client_methods::player::ON_ERROR_CODE,
+            args: err,
+        })
+        .await
+    {
+        tracing::warn!(entity_id, error = %e, "useItem: NotLiving feedback send failed");
+    }
+    true
+}
+
+pub(super) async fn handle_repair_item_request(entity_id: u32, args: &[u8]) {
+    if args.len() >= 8 {
+        let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+        let repair_ratio = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+        tracing::info!(
+            entity_id,
+            item_id,
+            repair_ratio,
+            "UNIMPLEMENTED: repairItemRequest"
+        );
+    }
+}

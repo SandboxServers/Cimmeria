@@ -27,6 +27,8 @@ extern "C" {
         ndetail_verts: i32,
         detail_tris: *const u8,
         ndetail_tris: i32,
+        tile_x: i32,
+        tile_y: i32,
         out_data: *mut *mut u8,
         out_data_size: *mut i32,
     ) -> i32;
@@ -34,6 +36,14 @@ extern "C" {
     pub fn detour_free_data(data: *mut u8);
 
     pub fn detour_create_navmesh(data: *const u8, data_size: i32) -> *mut c_void;
+    pub fn detour_create_tiled_navmesh(
+        orig: *const f32,
+        tile_width: f32,
+        tile_height: f32,
+        max_tiles: i32,
+        max_polys: i32,
+    ) -> *mut c_void;
+    pub fn detour_add_tile(mesh: *mut c_void, data: *const u8, data_size: i32) -> u32;
     pub fn detour_free_navmesh(handle: *mut c_void);
 
     pub fn detour_create_query(mesh: *mut c_void, max_nodes: i32) -> *mut c_void;
@@ -107,8 +117,22 @@ extern "C" {
 /// Detour status flag: operation failed.
 pub const DT_FAILURE: u32 = 1 << 31;
 
+/// Detour status detail flag: the query did not reach the end location and
+/// returned its best guess (`DetourStatus.h`). `findPath` sets it when the
+/// goal polygon is on another mesh island; the corridor then ends at the
+/// polygon nearest the goal on the start's island.
+pub const DT_PARTIAL_RESULT: u32 = 1 << 6;
+
 /// Check if a dtStatus indicates failure.
 #[inline]
 pub fn dt_status_failed(status: u32) -> bool {
     status & DT_FAILURE != 0
+}
+
+/// Check if a dtStatus carries [`DT_PARTIAL_RESULT`]. A partial result is a
+/// *success* (`dt_status_failed` is false), which is why checking only the
+/// failure bit accepted island-edge paths silently (audit S8).
+#[inline]
+pub fn dt_status_partial(status: u32) -> bool {
+    status & DT_PARTIAL_RESULT != 0
 }

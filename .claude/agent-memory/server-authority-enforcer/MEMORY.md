@@ -47,9 +47,19 @@
 
 ## Per-PR review findings
 
-- [trade-container-whitelist.md](trade-container-whitelist.md) — Trade swap must whitelist source containers (INV_MAIN only) — blacklist-only is a dupe-strip exploit
-- [advisory-lock-namespaces.md](advisory-lock-namespaces.md) — `pg_advisory_xact_lock(player_id, ns)` namespace assignments across vendor/trade — divergence is deadlock surface, not correctness
+- [trade-container-whitelist.md](trade-container-whitelist.md) — Trade swap must whitelist source containers (backpack + crafting bag since 2026-09-27) — blacklist-only is a dupe-strip exploit
+- [exploit_bind_on_acquire_unenforced.md](exploit_bind_on_acquire_unenforced.md) — BoA item flag never applied (grants insert bound=false); trade and mail move BoA items
+- [exploit_buyback_moveitem_source.md](exploit_buyback_moveitem_source.md) — moveItem never checks source container; 16->bag is free buyback; whitelist 1-15 fix drafted 2026-09-25
+- [advisory-lock-namespaces.md](advisory-lock-namespaces.md) — Advisory keys + row lock order per inventory/cash writer; trade row order unsorted (ABBA vs ascending paths)
 - [pattern-checked-alloc-size.md](pattern-checked-alloc-size.md) — Canonical helper for count*stride bounds + overflow checks on attacker-influenced binary input
 - [pr-426-navmesh-extractor.md](pr-426-navmesh-extractor.md) — Build-time navmesh parser hardened with checked_alloc_size; pattern worth reusing for header-driven Vec allocation
 - [pr-427-crafting-phase1.md](pr-427-crafting-phase1.md) — Phase 1 dispatch+persist; no mutation surface yet; Phase 2 is where the real adversarial review lands
 - [open-followup-runtime-navmesh-load.md](open-followup-runtime-navmesh-load.md) — NavMesh::load in cimmeria-entity has the same unguarded count*stride pattern; worth a follow-up issue
+- [project_crafting_induction_review_2026-09-27.md](project_crafting_induction_review_2026-09-27.md) — CR06 induction/tx: trade lock-order cycle, qty<=0 fail-open, world_name never updated on gate travel
+- [project_mail_escrow_ss_m2.md](project_mail_escrow_ss_m2.md) — SS-M2 escrow + SS-M3 take/COD/return cleared; residual: archived unpaid COD strands escrow, buyback lock inversion
+- [reference_duel_harm_gate.md](reference_duel_harm_gate.md) — Duel harm gate authority (SS-D2) + side paths that skip it: pulses, auto-cycle, pet defend sweep, launch same-space
+- [reference_org_lock_authority.md](reference_org_lock_authority.md) — ORG-02 authority map: authz-by-convention gap, no leader UPDATE guard, at-most-once audit export
+- [project_mail_expiry_ss_m4_review.md](project_mail_expiry_ss_m4_review.md) — SS-M4 expiry/quarantine cleared shape; no GM release, archive-storage question
+- [project_bank_vault_bv03_review.md](project_bank_vault_bv03_review.md) — BV-03 vault moves: cleared verdict/TOCTOU shape, three fixed findings, bank_slots grow-only invariant for BV-05
+- [project_bank_vault_bv05_review.md](project_bank_vault_bv05_review.md) — BV-05 vault expansion: size- and price-keyed single UPDATE cleared; entity-keyed sends + ignored button_id fixed
+- [project_bank_vault_bv07_review.md](project_bank_vault_bv07_review.md) — BV-07 org vaults: cleared authz shape; cross-org snap-back leak; KEY SHARE-before-advisory deadlock vs vendor/trade

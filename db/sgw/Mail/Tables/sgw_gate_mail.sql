@@ -14,7 +14,30 @@ CREATE TABLE sgw_gate_mail (
     read_time integer NOT NULL,
     flags integer DEFAULT 0 NOT NULL,
     item_id integer,
-    sender_name character varying(128) DEFAULT ''::character varying NOT NULL
+    sender_name character varying(128) DEFAULT ''::character varying NOT NULL,
+    -- Social-systems SS-M3 (D-SS10): set when the mail was returned to its
+    -- sender. A returned mail cannot be returned again, so a return never
+    -- loops; SS-M4's expiry quarantines instead of re-returning it.
+    returned boolean DEFAULT false NOT NULL,
+    -- Social-systems SS-M3: set when the recipient paid the COD. The item
+    -- is then the recipient's: a paid COD cannot be returned (the seller
+    -- would get the item and the price), and SS-M4's expiry must never
+    -- return it (it takes the quarantine path instead).
+    cod_paid boolean DEFAULT false NOT NULL,
+    -- Social-systems SS-M4 (D-SS04): epoch seconds after which the expiry
+    -- sweep takes the mail, set at insert to sent_time + 30 days (the
+    -- client's own 720-hour Expires constant) and reset by a return. NULL
+    -- never expires: archiving clears it, and quarantine clears it.
+    expires_at integer,
+    -- Social-systems SS-M4 (D-SS04 path 3): an expired mail that could not
+    -- go back to a sender (already returned, a paid COD, system mail) but
+    -- still holds an item or gift cash. Kept with its escrow row, never
+    -- deleted; hidden from the mailbox list, the D-SS03 cap and every
+    -- player op, for a GM to recover by id.
+    quarantined boolean DEFAULT false NOT NULL,
+    -- Social-systems SS-M1: a mail never carries negative cash; the send path
+    -- refuses it first, and this is the backstop.
+    CONSTRAINT sgw_gate_mail_cash_nonnegative_chk CHECK ((cash >= 0))
 );
 
 --

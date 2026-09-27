@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **Stale since NA13 (2026-09-25):** the `aggression` field and "faction 10 alone never aggroes" claims below are superseded; see [[faction-derived-aggro-na13]].
+
 > **Status 2026-09-19 — a dated snapshot.** These thirteen findings were verified against the
 > 2026-09-18 playtest and code; several fixes merged the next day (#677, #680, #682, #709).
 > Re-verified since: item 10 (leash is a raw field write) is **still true**. Item 12's "no
@@ -91,7 +93,7 @@ the set count — possible last-set/fallback lookup bug.
 **9. Respawn works and is exact.** Castle hostiles: `respawn_secs = 120`,
 measured death→respawn deltas 120.2–120.9 s. Snaps to `spawn_pos`, clears
 `state_field` and `interaction_flags`, restores HP, notifies witnesses. Note
-`crates/services/src/cell/combat/threat/player_combat.rs::clear_dead_npc_from_all_player_threat`
+`crates/cell-combat/src/cell/combat/threat/player_combat.rs::clear_dead_npc_from_all_player_threat`
 now exists — **#92 has landed**, contrary to older notes.
 
 **10. Leash never walks home and never restores heading.** *(Correction 2026-09-24: the "client never learns" part is WRONG — `space_manager/aoi.rs:228-241` emits `EntityMoved` for every in-AoI entity every AoI tick from raw `position`, so the snap IS relayed as UPDATE_AVATAR. Real defects: grid not updated, `nav_path` not cleared so the NPC walks back out along stale chase waypoints, stale velocity. See [[leash-and-fight-exit-traps]].)* `leash.rs:48` writes

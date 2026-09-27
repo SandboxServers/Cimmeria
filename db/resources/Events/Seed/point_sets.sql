@@ -172,7 +172,7 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- Cylinder rows carry ONE point and a radius; the loader expands them.
 --
 -- Names carry the world prefix and a dot so the cross-file region-key
--- linter (crates/content-engine/tests/interact_tag_linter.rs) sees them.
+-- linter (crates/content-engine/tests/it/interact_tag_linter.rs) sees them.
 --
 -- TWO NAMES FROM THE H15 LIST ARE DELIBERATELY NOT HERE. `Harset.Bar` and
 -- `Harset.HoldingPens` have no landmark, no actor, no telemetry and no

@@ -5682,7 +5682,7 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 -- Cimmeria-introduced steps. The matching client-side rows are injected into
 -- `_622` inside `CookedDataMissions.pak` at server startup by
--- [`crates/services/src/base/mission_overrides.rs`] and shipped to the
+-- [`crates/resources/src/base/mission_overrides.rs`] and shipped to the
 -- client via the per-key `InvalidKeys` channel of `onVersionInfo`.
 -- Display text + step/objective ids + index must agree with the override XML.
 --
@@ -5831,7 +5831,7 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 -- Cimmeria-introduced step. The matching client-side row is injected into
 -- `_641` inside `CookedDataMissions.pak` at server startup by
--- [`crates/services/src/base/mission_overrides.rs`].
+-- [`crates/resources/src/base/mission_overrides.rs`].
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (80641, 641, false, 1, false, 'Equip the P90 from your inventory.', 1);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (3563, 641, false, 1, false, 'Speak to Col. Marsh.', 2);

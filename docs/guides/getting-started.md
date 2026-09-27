@@ -2,9 +2,10 @@
 title: Getting Started
 type: tutorial
 audience: new contributors, first-time setup
-last_updated: 2026-07-25
+last_updated: 2026-09-26
 companion_docs:
   - ../building.md
+  - ../architecture/build-system.md
   - ../troubleshooting.md
   - ../../bootstrap/README.md
   - ../../CONTRIBUTING.md
@@ -33,18 +34,18 @@ You'll need:
 
 | Requirement | Where to get it | Why |
 |---|---|---|
-| **Windows 11** (or Windows 10 with WSL2) | — | The server targets Windows; the game client is Windows-only. |
+| **Windows 11** (or Windows 10) | — | The server targets Windows and you build it natively there; the game client is Windows-only. There is no WSL build path. |
 | **PowerShell 7+** | [PowerShell/PowerShell](https://github.com/PowerShell/PowerShell) | The bootstrap is a PowerShell script. PowerShell 7 ships with Windows 11. Check with `pwsh --version`. |
-| **Rust stable** | [rustup.rs](https://rustup.rs) | `cargo build` needs it. The setup script enforces a stable toolchain. |
+| **Rust (rustup)** | [rustup.rs](https://rustup.rs) | `cargo build` needs it. You don't pick a version: [`rust-toolchain.toml`](../../rust-toolchain.toml) pins Rust 1.98.1, rustup picks it up automatically, and CI uses the same one. The setup script installs rustup if it's missing. |
 | **Visual Studio Build Tools** (MSVC) | [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) | Cargo needs the MSVC linker on Windows. Install the "Desktop development with C++" workload. |
 | **Git** | [git-scm.com](https://git-scm.com) | Obviously. |
 | **Node.js 22+** *(optional)* | [nodejs.org](https://nodejs.org) | Only needed if you pass `-WithAdmin` to build the Tauri admin panel. |
 | **Docker Desktop** *(optional)* | [docker.com](https://www.docker.com/products/docker-desktop) | Only needed if you pass `-UseDocker` to run PostgreSQL in a container instead of locally. |
 | **The Stargate Worlds client** | See [`game/sgw/README.md`](../../game/sgw/README.md) | You need the game's data files to actually connect a client. |
 
-Disk space: about **1 GB** for the Cargo target directory, PostgreSQL binaries, and dependency cache.
+Disk space: plan on **15 GB or more** for build output. A cold debug build of the workspace plus two rebuilds left a 14.2 GB target directory when the maintainers measured it in September 2026. PostgreSQL and the dependency cache come on top.
 
-> **Working in WSL?** Reading the WSL build-memory rules in [`CLAUDE.md`](../../CLAUDE.md) is mandatory before your first full build — the link step can consume ~47 GB RAM without care. The mitigations are simple but you need to know about them.
+> **Building often, or running AI agents in parallel?** Read "Build rules" in [`CLAUDE.md`](../../CLAUDE.md) before you do: agents build through a shared build lane, and an optional Windows Dev Drive makes builds faster. The details are in [`../agents/development-workflow.md`](../agents/development-workflow.md#builds-worktrees-and-test-databases).
 
 ---
 
@@ -164,21 +165,23 @@ The full LAN-setup details are in [`multiplayer.md`](../multiplayer.md).
 You've verified the server runs. Now verify your build can also run the tests CI runs — this is the loop you'll use during every PR.
 
 ```powershell
-# Fast iteration check (1.5s, <2 GB RAM):
-cargo check -p cimmeria-services
+# Fast iteration check: name the crate you changed. cimmeria-services is
+# only a facade now; the server's code lives in about 20 crates.
+cargo check -p cimmeria-cell
 
-# Full workspace check (skip the GUI apps so the linker doesn't OOM on WSL,
-# and the Windows-only client-telemetry cdylib):
+# Full workspace check (skip the GUI apps, the Windows-only client-telemetry
+# and client-patches cdylibs and the lab supervisor: the same seven crates CI
+# skips):
 cargo check --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
-  --exclude cimmeria-client-telemetry
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Run the test suite (no live DB needed):
 cargo nextest run --profile=ci --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
-  --exclude cimmeria-client-telemetry
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 ```
 
 If you don't have nextest installed yet: `cargo install cargo-nextest --locked`.
@@ -187,7 +190,7 @@ Live-DB tests (the ones that need a running PostgreSQL) self-skip via `require_d
 
 ```powershell
 $env:DATABASE_URL = "postgres://w-testing:w-testing@localhost:5433/sgw"
-cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+tools/test-live-db.ps1
 ```
 
 The full pre-PR checklist (formatting, clippy, build, tests, doctests, lint scripts) is in [`CLAUDE.md`](../../CLAUDE.md) → "Pre-PR checklist." CI runs it exactly — if you skip it locally, the PR will round-trip.
@@ -235,7 +238,8 @@ You have a working dev environment. Here are the next steps depending on what yo
 
 [`troubleshooting.md`](../troubleshooting.md) covers the common ones:
 
-- WSL build OOM
+- `sccache: incremental compilation is prohibited`
+- A new worktree that won't build (`external/` not junctioned)
 - PostgreSQL won't start (port in use, pgdata version mismatch)
 - `DATABASE_URL` not set
 - Client can't connect (`BASE_EXTERNAL`, port table, AtreaRL setup)

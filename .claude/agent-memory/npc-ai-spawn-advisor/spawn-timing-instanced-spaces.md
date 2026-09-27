@@ -7,7 +7,7 @@ metadata:
 
 # Instanced-space NPC spawn timing (confirmed)
 
-`crates/services/src/cell/service/base_messages/mod.rs`:
+`crates/cell/src/cell/service/base_messages/mod.rs`:
 
 - `BaseToCellMsg::CreateEntity` (instanced world) → `space_mgr.create_entity` →
   **immediately** `spawner::spawn_instance_npcs_from_records(...)` (mod.rs:73).

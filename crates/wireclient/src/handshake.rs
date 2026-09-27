@@ -17,7 +17,7 @@
 //!   first_req_offset = 0                           (footer)
 //!
 //!   The 2-byte gap at body[7..9] matches the server's parser at
-//!   `crates/services/src/base/login.rs::parse_baseapp_login` (reads
+//!   `crates/base/src/base/login/mod.rs::parse_baseapp_login` (reads
 //!   `account_id` from `body[9..13]` at line 218, not body[7..11]). The
 //!   gap is observable in any captured `baseAppLogin` byte dump — e.g.
 //!   `00 19 00 25 9d 01 00 [00 00] 01 00 00 00 14 …`.
@@ -221,6 +221,10 @@ pub fn parse_baseapp_reply(
 }
 
 // ── Inbound: time sync triple (seq=2) ───────────────────────────────────────
+
+/// The first reliable sequence the server sends on the channel after the
+/// phase-3 handshake: the reply took seq 1 and the time-sync bundle seq 2.
+pub const FIRST_CHANNEL_SEQ: u32 = 3;
 
 /// Decoded `tickSync` snapshot from the server's seq=2 reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

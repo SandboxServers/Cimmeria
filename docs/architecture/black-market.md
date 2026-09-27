@@ -53,7 +53,7 @@ decided cell-side.
 | Cell method | Name | Payload | Handling |
 |---|---|---|---|
 | 61 | `BMSearch` | `BMSearchOptions` (11 fields, variable) | `CellToBaseMsg::BMSearch` |
-| 62 | `BMCreateAuction` | `INT32 itemInstanceId, INT32 startingPrice, INT32 buyoutPrice, UINT8 auctionLength` — **13 bytes** | `CellToBaseMsg::BMCreateAuction` |
+| 62 | `BMCreateAuction` | `INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice` — **13 bytes**, `.def` order. The branch decodes `item, starting, buyout, length`, which is wrong: see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4 | `CellToBaseMsg::BMCreateAuction` |
 | 63 | `BMPlaceBid` | `INT32 sequenceId, INT32 bidAmount` — 8 bytes | `CellToBaseMsg::BMPlaceBid` |
 | 64 | `BMCancelAuction` | `INT32 sequenceId` — 4 bytes | `CellToBaseMsg::BMCancelAuction` |
 | 65 | `BMStartWatchingItem` | `INT32 itemDefId` | logged `UNIMPLEMENTED`, no state |
@@ -68,7 +68,7 @@ the base-side routing arms in
 |---|---|---|---|
 | 90 | `onBMOpen` | `INT32 entityId` (the auctioneer NPC) | content-engine `Action::OpenBlackMarket` |
 | 91 | `onBMError` | `INT32 errorId` | every rejection branch of create / bid / cancel |
-| 92 | `onBMAuctions` | `UINT32 count`, `count ×AuctionItem`, `INT32 view`, `INT32 total` | search |
+| 92 | `onBMAuctions` | `UINT32 count`, `count ×AuctionItem`, `INT32 totalResults`, `INT32 clientKey` (`.def` order; `clientKey` is the view the client asked for, echoed back). The branch sends `view, total` with `view` taken from `sortId`, which is wrong: see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4 | search |
 | 93 | `onBMAuctionRemove` | `INT32 sequenceId` | cancel, expiry sweep |
 | 94 | `onBMAuctionUpdate` | one `AuctionItem` | create, bid |
 | 95 | `onBMWatchedItemsUpdate` | `ARRAY<INT32>` | never (watch list unimplemented) |
@@ -77,8 +77,8 @@ Serializers are in
 `base/black_market/wire.rs`;
 the send wrappers in
 `base/black_market/send.rs`.
-Indices are pinned in `crates/services/src/mercury/mod.rs` (`method_idx`)
-and `crates/services/src/cell/client_methods/black_market.rs`.
+Indices are pinned in `crates/wire/src/mercury/mod.rs` (`method_idx`)
+and `crates/wire/src/cell/client_methods/black_market.rs`.
 
 **Names are narrow `STRING`** (4-byte LE length prefix + UTF-8 body), not
 `WSTRING`/UTF-16 as most other SGW social systems use. This is

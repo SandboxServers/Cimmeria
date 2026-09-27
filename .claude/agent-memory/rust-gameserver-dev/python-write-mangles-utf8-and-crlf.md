@@ -49,5 +49,56 @@ Two follow-on traps:
 CRLF/LF slip does not produce a spurious git diff — the compile failure is
 the symptom that matters, not the diff.
 
+## Git Bash shell tools have the same CRLF trap (2026-09-26)
+
+- **`sed -i` strips every CR** from each file it is handed, including
+  files with no match. Use `sed -b -i` (binary mode) to keep CRLF. In `-b`
+  mode the line still ends in `\r`, so a `...foo$` anchor never matches:
+  drop the `$` or use the Edit tool for anchored multi-line edits (the
+  Edit tool preserves CRLF).
+- **`grep -c $'\r$'` reports 0 on a CRLF file** (msys grep eats the CR).
+  Count instead: `tr -cd '\r' < f | wc -c` vs `tr -cd '\n' < f | wc -c`;
+  equal means all-CRLF. `unix2dos -q f` repairs a file a tool flattened.
+- **`cargo fmt` can write a CRLF file back as LF** after an edit; recheck
+  endings after formatting.
+- **`git stash` + `git stash pop` turns staged `git mv` renames into
+  unstaged deletes plus staged adds.** Content survives, but the index
+  shape does not; don't stash mid-move, re-stage with `git add -A <dir>`.
+
+## Backslashes do not survive an inline `python - <<'PY'` command
+
+The Bash tool rewrites `\\` to `\` in the command text before bash sees it,
+quoted heredoc or not. An anchor that ends a line with a Rust string
+continuation (`trace,\` then newline) therefore reaches Python as a line
+continuation, the anchor silently loses its newlines, and the replace
+finds nothing (seen 2026-09-26 on `filters.rs` and `test.yml`).
+
+**How to apply:** for any edit whose anchor contains a backslash, write the
+script to the scratchpad with the Write tool and run it, using raw strings;
+or use the Edit tool directly. In a raw string, never put the backslash
+right before the closing quotes: `r"""…\"""` is a SyntaxError (the `\"`
+escapes the quote). End the anchor one character earlier or include the
+trailing newline.
+
 Related: [[revert-verification-loses-uncommitted-fmt]],
 [[tooling-filter-and-path-traps]].
+
+## A `python - <<'EOF'` heredoc eats Rust string continuations
+
+Seen 2026-09-27 (SS-M3): Rust source pasted into a Python triple-quoted
+string inside a Bash-tool heredoc lost every `\` + newline string
+continuation. The SQL literals came out as one line full of runs of spaces,
+and a feedback string gained five spaces mid-sentence. It still compiled,
+so only a byte-exact test caught it. Write the edit script to a file with
+the Write tool and run `python <file>`, then grep the diff for
+`"[^"]*      ` (a quoted run of spaces) before committing.
+
+## Heredoc text piped to `python script.py` arrives as cp1252 (2026-09-27)
+
+Seen on ORG-05: a scratchpad replace helper that read its old/new blocks
+from stdin (`python helper.py FILE <<'EOF' ... EOF`) decoded stdin with the
+locale code page. A block containing `→` or `—` then never matched the UTF-8
+file ("found 0 times"), and a NEW block containing `—` was written as the
+mojibake `â€”`, which still compiles inside a doc comment. Fix: start the
+helper with `sys.stdin.reconfigure(encoding="utf-8")`, and before
+committing grep the branch diff for `â€` / `Ã`.

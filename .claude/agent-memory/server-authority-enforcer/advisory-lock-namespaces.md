@@ -1,27 +1,23 @@
 ---
 name: advisory-lock-namespaces
-description: PostgreSQL pg_advisory_xact_lock namespace assignments across the inventory / cash mutation paths — keep them consistent
+description: pg_advisory_xact_lock key assignments and lock ORDER across inventory/cash writers (vendor, move, crafting, trade, mail); where the orders still diverge
 metadata:
   type: reference
 ---
 
-Multiple paths in `crates/services/src/base/world_entry/methods/` take `pg_advisory_xact_lock(player_id, ns)` to serialize themselves against concurrent mutations on the same player. The choice of `ns` matters because PG treats `(key1, key2)` advisory locks as independent — two paths with different `ns` values do NOT block each other at the advisory layer (only the row-level FOR UPDATE locks save you, and only on rows they both touch).
+`pg_advisory_xact_lock(player_id, key)`: PG treats each `(player, key)` pair as an independent lock, so two paths only serialize if they share a key.
 
-As of PR #438:
+State as of 2026-09-27 (PR #912 review):
 
-| Path | Advisory key | Namespace |
+| Path | Keys taken | Row order after the advisory locks |
 |---|---|---|
-| Vendor stack (sell, purchase, recharge, repair, slot reserve) | player_id | container_id (typically `INV_MAIN=1`) |
-| Trade `atomic_swap` (PR #438) | player_id | `0` |
+| Inventory move | `(p,0)` then `(p,target)` then `(p,source)` | inventory rows |
+| Vendor purchase | `(p,0)`, later `(p,bag)` | inventory rows -> `sgw_player` -> bag key |
+| Crafting (`take_inventory_locks`) | `(p,0)` then bags sorted | inventory rows -> `sgw_player` |
+| Trade `atomic_swap` | `(lo,1)`, `(hi,1)` (INV_MAIN) | `sgw_player` p1 then p2 (**unsorted**) -> item rows |
+| Mail send with item (SS-M2) | `take_inventory_locks(sender,[1])` | item row -> `sgw_player` rows ascending |
+| Mail send, text or cash-only | none | `sgw_player` rows ascending |
 
-This is a divergence — they don't block each other. Correctness is preserved by the row-level FOR UPDATE on `sgw_inventory` rows (both paths take it), but the deadlock surface widens: trade and vendor can lock in different orders (trade does naquadah-first, vendor does items-first) and the resulting ABBA gets resolved by PG's deadlock detector with a noisy `Cancelled` to the trade clients.
+Known divergence: trade locks the two player rows in p1/p2 order, not ascending, and before item rows. Against any path that locks the same two player rows ascending WITHOUT first holding one of trade's advisory keys (text mail, cash-only mail), a trade whose p1 has the higher id deadlocks; PG aborts one side. Availability only, no corruption. Fix candidates: sort trade's `read_naquadah_for_update` by lo/hi, or have every attached mail take the sender's advisory keys.
 
-**How to apply:** when reviewing any new inventory mutation that uses `pg_advisory_xact_lock(player_id, X)`, check what `X` is and confirm it matches the convention for the path. If trade gets fixed to use `(player_id, 1)` (INV_MAIN container_id), expect a third namespace to emerge soon for some other reason — document it here.
-
-Recommendation in the trade review: standardize trade on `(player_id, 1)` so it serializes against vendor on the same container, OR adopt `(player_id, FIXED_TRADE_NS)` and document the assignment table.
-
-Lock acquisition order matters for deadlock avoidance:
-- Vendor: items FOR UPDATE → naquadah FOR UPDATE.
-- Trade: advisory → naquadah FOR UPDATE → items FOR UPDATE.
-
-These should converge to a single order.
+**How to apply:** for any new writer, list its advisory keys and its row order, and check each pair of writers that can touch the same two players for an ABBA. The shared order the codebase converged on is documented in `crates/base-session/src/base/crafting/inventory_locks.rs`.

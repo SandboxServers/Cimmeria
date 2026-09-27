@@ -19,7 +19,7 @@ handler, start from this snapshot rather than re-discovering the wire surface.
 - `sendPlayerCommunication` (base method `0xC2`, `dispatch.rs:77-156`) — the
   ONLY chat path that broadcasts. Server-authoritative speaker_name +
   speaker_flags (from session `access_level` / `dnd_message`). Cell-side
-  broadcast at `cell/chat.rs` filters channel to SAY/EMOTE/YELL only.
+  broadcast at `cell/console/chat.rs` filters channel to SAY/EMOTE/YELL only.
   **Gaps:** no rate limit, no text length cap, no ignore-list filter, no
   profanity filter. → CAT-L-01.
 - `chatSetDNDMessage` (base method `0xC4`, `dispatch.rs:191-233`) — stores
@@ -63,9 +63,9 @@ handler, start from this snapshot rather than re-discovering the wire surface.
 
 ### Key dispatch entry points (for incremental re-audit)
 
-- Base layer: `crates/services/src/base/dispatch.rs:dispatch_sgw_player_base_method`
+- Base layer: `crates/base/src/base/dispatch/mod.rs::dispatch_sgw_player_base_method`
   — handles msg_id 0xC0..=0xD8 range. Catch-all warn arm at `dispatch.rs:333-346`.
-- Cell layer: `crates/services/src/cell/dispatch/router.rs:dispatch_cell_method`
+- Cell layer: `crates/cell/src/cell/dispatch/router.rs:dispatch_cell_method`
   — routes by `method_index` through inheritance order. Catch-all warn arm at
   `router.rs:101-106`.
 - Slash-command layer (separate path): `crates/commands/src/registry.rs` +

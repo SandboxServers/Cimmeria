@@ -101,7 +101,7 @@ spawns, 38 DB missions), Lucia (892 tiles, 11 transporters), Omega_Site (5 beam 
 
 All 1,040 missions have `reward_xp = 0` and `reward_naq = 0`. But every mission has a
 level (1-50), `giveExperience()` is fully implemented, and reward fields are loaded from
-DB and paid out on completion. The placeholder XP table covers 20 levels (MAX_LEVEL = 20).
+DB and paid out on completion. The XP table covers 50 levels (MAX_LEVEL = 50): levels 1-20 are the placeholder Python values, levels 21-50 are PROJECT FINAL v2 values (ability-trees AT-07), not retail data.
 
 **What is needed:** Extend XP table to 50 levels. Define XP/Naquadah reward formulas
 based on mission level. SQL UPDATE to populate all 1,040 missions.
@@ -317,7 +317,7 @@ Server-side formulas are not in the client binary. Any values are guesswork.
 
 Current XP table covers 20 levels with placeholder values (irregular -- L12 requires
 less per-level than L11). Missions span L1-50, implying a 50-level game.
-`giveExperience()` works with multi-level-up. MAX_LEVEL = 20.
+`giveExperience()` works with multi-level-up. MAX_LEVEL = 50, one training point per level (PROJECT FINAL v2, AT-07).
 
 **What is missing:** XP table for levels 21-50, corrected L1-20 curve, XP-per-kill
 formulas, XP modifiers (group bonus, rest), level-50 progression.
@@ -340,12 +340,12 @@ use `qrCombatDamage()`. Effect NVP values: HealthDamage 8-25, FocusDamage 80-250
 per damage type, level-based ability scaling, diminishing returns, cover system modifiers.
 
 **Since landed** (this section previously listed these as missing): cone/AoE targeting is
-implemented at [crates/services/src/cell/abilities/cone_aoe/](../../crates/services/src/cell/abilities/cone_aoe/)
+implemented at [crates/cell-combat/src/cell/abilities/cone_aoe/](../../crates/cell-combat/src/cell/abilities/cone_aoe/)
 (geometry, fan-out, flag categories, tests), and channeled abilities are driven by the
 `is_channeled` / `pulse_count` columns through
-[cell/effects/pulsing/](../../crates/services/src/cell/effects/pulsing/). Nine effect
+[cell/effects/pulsing/](../../crates/cell-combat/src/cell/effects/pulsing/). Nine effect
 scripts are registered in
-[cell/effects/registry.rs](../../crates/services/src/cell/effects/registry.rs) —
+[cell/effects/registry.rs](../../crates/cell-world/src/cell/effects/registry.rs) —
 `HealHealth`, `HealFocus`, `MeleeDamage`, `MeleePhysicalDamage`, `AbsorbShield`, `Stun`,
 `Suppression`, `RangedPhysicalDamage`, `RangedEnergyDamage`.
 
@@ -538,7 +538,7 @@ implementation from the wire format documentation inward.
 | **Contact Lists** | Medium | 6 methods, all `pass` | contact-list-wire-formats.md | Friend/ignore list, online status |
 | **Groups** | Medium | All methods empty | group-wire-formats.md | SGWPlayerGroupAuthority empty shell |
 
-> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/services/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/services/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/services/src/cell/cell_methods/organization.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/services/src/cell/client_methods/contact_list.rs)). **Black Market** is implemented but unmerged (see the row above). **Groups** and **PvP / Dueling** remain unimplemented. Read the effort estimates as historical.
+> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/base-methods/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/cell-interactions/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/cell-methods/src/cell/cell_methods/organization.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/wire/src/cell/client_methods/contact_list.rs)). **Black Market** is implemented but unmerged (see the row above). **Groups** and **PvP / Dueling** remain unimplemented. Read the effort estimates as historical.
 
 ---
 
@@ -607,7 +607,7 @@ The table below is corrected against that split.
 > two ways, both gated server-side on the player's `access_level` rather than a
 > shared secret: the client's native `/`-commands (see
 > [commands.md](../commands.md)) and the `.`-prefixed dev console
-> ([dispatch.rs:19](../../crates/services/src/cell/console/dispatch.rs#L19),
+> ([dispatch.rs:19](../../crates/cell-console/src/cell/console/dispatch.rs#L19),
 > [dev-console-channel ADR](../architecture/dev-console-channel.md)). Nothing
 > needs to be set to enable them.
 

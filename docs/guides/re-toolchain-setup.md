@@ -1,7 +1,7 @@
 ---
 type: how-to
 audience: New Cimmeria contributors setting up the reverse-engineering toolchain (Ghidra MCP + x64dbg MCP + Claude Code)
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 prerequisites: [Windows 10/11, PowerShell 7+, ~10 GB free disk]
 companion_docs:
   - reverse-engineering-with-claude.md
@@ -169,7 +169,7 @@ If a server is missing, re-read its section above. The most common failure is a 
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `mcp__ghidra__*` tools missing | Ghidra not open, plugin not started, or wrong port in `.mcp.json` | Open Ghidra, start the plugin, match the port |
+| `mcp__ghidra__*` tools missing | Ghidra not open, plugin not started, or wrong port in `.mcp.json` | Open Ghidra, start the plugin, match the port. For read-only static work you can skip the bridge entirely: see the headless probe under "What this enables" |
 | `mcp__ghidra__*` calls return "connection refused" | Plugin bound to a different port than configured (Windows iphlpsvc reservation) | Check the bound port in Ghidra's console; update `GHIDRA_MCP_URL` |
 | Ghidra status dialog says "port 8089" but the bridge can't connect | Known upstream display bug: dialog shows configured, not bound port | Trust the console output, not the dialog |
 | `mcp__x64dbg__*` tools missing | x64dbg not launched, plugin not installed, or wrong venv path in `.mcp.json` | Launch `x96dbg.exe`, confirm `x64dbg-automate` is in Plugins menu, verify `.venvs/x64dbg-mcp/Scripts/x64dbg-automate-mcp.exe` exists |
@@ -183,6 +183,7 @@ If a server is missing, re-read its section above. The most common failure is a 
 With all three MCPs wired, Claude Code can:
 
 - Run static analysis through Ghidra: decompile, follow xrefs, rename functions, extract strings, dump structs — see [`docs/reverse-engineering/`](../reverse-engineering/) for the methodology and [`docs/guides/reading-decompiled-code.md`](reading-decompiled-code.md) for interpreting output.
+- Run read-only static analysis **without** the Ghidra GUI or MCP bridge: [`tools/re/ghidra-headless/`](../../tools/re/ghidra-headless/README.md) is a `GhidraScript` you run through `analyzeHeadless.bat -noanalysis -readOnly` against the analyzed `SGW` project (decompile, xrefs, string and function-name search, vtable dumps). It needs only the Ghidra install, not the plugin or `.mcp.json`.
 - Run dynamic analysis through x64dbg: set log breakpoints, read memory, attach to the live SGW process — see [`docs/guides/sgw-live-debugging.md`](sgw-live-debugging.md) for the techniques and gotchas.
 - Search the Cimmeria knowledge graph: code, docs, entity defs, findings — through the cloud-hosted `cimmeria-rag` server.
 - Structurally verify a reconstruction against the binary with the [`/re-verify`](../../.claude/commands/re-verify.md) slash command, which pairs Ghidra MCP ground truth with the LLM-free parity engine at [`tools/re_parity.py`](../../tools/re_parity.py). No extra setup beyond the MCPs above and a Python 3 on PATH — the engine is pure Python with no network calls. Details in the workflow doc. **Note:** as of 2026-07-25 neither file is on `main` yet, so a fresh `main` checkout won't have them.
@@ -205,6 +206,7 @@ The workflow that puts them together — when to invoke which agent, how to hand
 - [docs/guides/live-research-lab.md](live-research-lab.md) — the Live Research Lab rulebook + operating manual
 - [docs/architecture/live-research-lab.md](../architecture/live-research-lab.md) — the Live Research Lab ADR
 - [docs/reverse-engineering/toolchain/install-ghidra-mcp.md](../reverse-engineering/toolchain/install-ghidra-mcp.md) — Ghidra MCP reference
+- [tools/re/ghidra-headless/README.md](../../tools/re/ghidra-headless/README.md) — headless Ghidra probe, no GUI or MCP bridge
 - [docs/guides/sgw-live-debugging.md](sgw-live-debugging.md) — manual x32dbg techniques and the pybag warning
 - [docs/guides/reading-decompiled-code.md](reading-decompiled-code.md) — interpret Ghidra output
 - [docs/reverse-engineering/evidence-standards.md](../reverse-engineering/evidence-standards.md) — confidence tiers, citation grammar

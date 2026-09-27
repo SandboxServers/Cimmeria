@@ -280,6 +280,8 @@ fixed).
 
 Two independent channels drive what the client shows:
 
+> **Corrected 2026-09-25 (NA10):** item 1 is wrong. No server-to-client movement-type message exists, and witness method 1 is `onSequence`. The `setMovementType` broadcast reached clients as a truncated `onSequence` and has been removed. Only item 2, velocity, drives what the client shows. See [npc-movement-pathfinding.md §11](../../../reverse-engineering/findings/npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver).
+
 1. **`setMovementType`** (SGWBeing method 1) selects the mob animation set. `broadcast_movement_type`
    (`abilities/messaging.rs:201-257`) is compare-and-set, so a value goes on the wire **only when it changes**.
    `None` clears the cache and sends **nothing** (`:243-256`). `EMobMovementType` has no idle or stop value

@@ -44,7 +44,7 @@ Container IDs are integers 1–20. They are transmitted on the wire inside `InvI
 | 19 | `INV_TEAM_BANK` | — | Team/guild bank |
 | 20 | `INV_COMMAND_BANK` | — | Command bank |
 
-**Evidence**: `crates/entity/src/inventory.rs` constants; slot counts from `crates/services/src/base/resources.rs` `item_allows_container` table.
+**Evidence**: `crates/entity/src/inventory.rs` constants; slot counts from `crates/resources/src/base/resources/mod.rs` `item_allows_container` table.
 
 **Equipment slots**: Container IDs 4–14 correspond to the 11 equipment body slots. Each has capacity 1 (single item). Moving an item to one of these containers via `moveItem` constitutes an equip operation. The server validates that the item's `itemType` permits the target container via the `item_allows_container` check in `move_/mod.rs`.
 
@@ -92,7 +92,7 @@ When the player right-clicks an item to equip it and the target equipment slot i
 3. Moves new item to target slot
 4. Sends two `onUpdateItem` events — one for each moved item
 
-The swap logic lives in `crates/services/src/base/world_entry/methods/inventory/move_/mod.rs`. Issue #240 tracks a bug where right-click swap puts the swapped-out item into an inconsistent slot; the binary confirms both items should be resolved in a single transaction.
+The swap logic lives in `crates/base-methods/src/base/world_entry/methods/inventory/move_/mod.rs`. Issue #240 tracks a bug where right-click swap puts the swapped-out item into an inconsistent slot; the binary confirms both items should be resolved in a single transaction.
 
 ---
 
@@ -167,7 +167,7 @@ Header:  0xA9  (0x80 | 41)
 Payload: 4B BagId (i32 LE) + 4B SlotId (i32 LE)
 ```
 
-**Server side** (`crates/services/src/cell/cell_methods/inventory/bandolier.rs`):
+**Server side** (`crates/cell-combat/src/cell/cell_methods/inventory/bandolier.rs`):
 - Receives 1-indexed `SlotId`
 - Converts: `wire_slot_id.saturating_sub(1)` → 0-indexed
 - Updates active slot in player state

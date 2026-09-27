@@ -213,6 +213,7 @@
 \ir resources/Entities/Tables/blueprints_components.sql
 \ir resources/Entities/Tables/entity_templates.sql
 \ir resources/Entities/Tables/monikers.sql
+\ir resources/Entities/Tables/pet_summons.sql
 \ir resources/Entities/Tables/resource_types.sql
 \ir resources/Entities/Tables/resource_versions.sql
 \ir resources/Events/Tables/event_sets.sql
@@ -222,7 +223,9 @@
 \ir resources/Events/Tables/point_sets.sql
 \ir resources/Events/Tables/sequences.sql
 \ir resources/Events/Tables/sequences_nvp.sql
+\ir resources/Items/Tables/bank_expansion_price.sql
 \ir resources/Items/Tables/containers.sql
+\ir resources/Items/Tables/crafting_item_effects.sql
 \ir resources/Items/Tables/item_list_items.sql
 \ir resources/Items/Tables/item_list_prices.sql
 \ir resources/Items/Tables/item_lists.sql
@@ -296,6 +299,7 @@
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/entity_templates.sql
 \ir resources/Entities/Seed/monikers.sql
+\ir resources/Entities/Seed/pet_summons.sql
 \ir resources/Entities/Seed/resource_types.sql
 \ir resources/Entities/Seed/resource_versions.sql
 \ir resources/Events/Seed/event_sets.sql
@@ -305,7 +309,9 @@
 \ir resources/Events/Seed/point_sets.sql
 \ir resources/Events/Seed/sequences.sql
 \ir resources/Events/Seed/sequences_nvp.sql
+\ir resources/Items/Seed/bank_expansion_price.sql
 \ir resources/Items/Seed/containers.sql
+\ir resources/Items/Seed/crafting_item_effects.sql
 \ir resources/Items/Seed/item_list_items.sql
 \ir resources/Items/Seed/item_list_prices.sql
 \ir resources/Items/Seed/item_lists.sql
@@ -347,6 +353,7 @@
 \ir resources/Content/Seed/harset_opcore_chains.sql
 \ir resources/Content/Seed/harset_space_chains.sql
 \ir resources/Content/Seed/sgc_w1_chains.sql
+\ir resources/Content/Seed/debug_hub_chains.sql
 
 \ir resources/_foreign_keys.sql
 
@@ -371,17 +378,28 @@
 \ir sgw/Mail/Sequences/sgw_gate_mail_mail_id_seq.sql
 \ir sgw/Players/Sequences/sgw_characters_character_id_seq.sql
 \ir sgw/Social/Sequences/sgw_contact_list_list_id_seq.sql
+\ir sgw/Organizations/Sequences/sgw_organizations_org_id_seq.sql
+\ir sgw/Organizations/Sequences/sgw_organization_events_org_event_id_seq.sql
+\ir sgw/Organizations/Sequences/sgw_organization_vault_log_log_id_seq.sql
 
 -- Tables
 \ir sgw/Accounts/Tables/account.sql
 \ir sgw/Inventory/Tables/sgw_inventory_base.sql
 \ir sgw/Inventory/Tables/sgw_inventory.sql
 \ir sgw/Mail/Tables/sgw_gate_mail.sql
+\ir sgw/Mail/Tables/sgw_gate_mail_item.sql
 \ir sgw/Missions/Tables/sgw_mission.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Players/Tables/sgw_player_discipline_expertise.sql
+\ir sgw/Players/Tables/sgw_player_content_cooldown.sql
 \ir sgw/Social/Tables/sgw_contact_list.sql
 \ir sgw/Social/Tables/sgw_contact_list_member.sql
+\ir sgw/Organizations/Tables/sgw_organizations.sql
+\ir sgw/Organizations/Tables/sgw_organization_ranks.sql
+\ir sgw/Organizations/Tables/sgw_organization_members.sql
+\ir sgw/Organizations/Tables/sgw_organization_events.sql
+\ir sgw/Organizations/Tables/sgw_organization_vault_items.sql
+\ir sgw/Organizations/Tables/sgw_organization_vault_log.sql
 \ir sgw/Shards/Tables/shards.sql
 \ir sgw/Audit/Tables/login_audit.sql
 \ir sgw/Outbox/Tables/cell_event_outbox.sql
@@ -389,6 +407,8 @@
 \ir sgw/_sequence_ownership.sql
 
 \ir sgw/_primary_keys.sql
+
+\ir sgw/_functions.sql
 
 -- Seed data
 \ir sgw/Accounts/Seed/account.sql
@@ -403,4 +423,6 @@
 \ir sgw/_foreign_keys.sql
 
 \ir sgw/_indexes.sql
+
+\ir sgw/_triggers.sql
 

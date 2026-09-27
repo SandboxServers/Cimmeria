@@ -927,7 +927,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3210, 2264, 0, 'Knockdown', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3211, 967, 0, 'Heal 20% of target''s Health pool', 0, 1, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Heal Pet: Health', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3211, 967, 0, 'Heal 20% of target''s Health pool', 0, 1, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Heal Pet: Health', 0, NULL, 'HealPetHealth');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3214, 2266, 0, 'Template setup for Effect abilities', 0, 528, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Effect on Target', 0, NULL, NULL);
 
@@ -2061,7 +2061,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 ', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Long', NULL, 'TCM_Group', true, false, 'Health Regen Increase', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4121, 2839, 0, 'Accuracy +400
-', 0, 21, 'set:CoreWidgets image:IconMissing', 1, 60, 'Long', NULL, 'TCM_Single', true, false, 'Pet Accuracy: +400', 0, NULL, NULL);
+', 0, 21, 'set:CoreWidgets image:IconMissing', 1, 60, 'Long', NULL, 'TCM_Single', true, false, 'Pet Accuracy: +400', 0, NULL, 'PetStatBuff');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4138, 2847, 0, 'Pulsing Psionic Damage
 -300 F -30 H
@@ -2086,7 +2086,7 @@ Secondary Target
 Mechanical Sequence', 2, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', NULL, 'TCM_AERadius', true, false, 'Mechanical Type Check', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4220, 2824, 0, 'Toggled: +100 Accuracy
--100 Defense', 0, 341, 'set:CoreWidgets image:IconMissing', 1, 0, 'Long', NULL, 'TCM_AERadius', true, false, 'Accuracy Buff / Defense Debuff', 0, NULL, NULL);
+-100 Defense', 0, 341, 'set:CoreWidgets image:IconMissing', 1, 0, 'Long', NULL, 'TCM_AERadius', true, false, 'Accuracy Buff / Defense Debuff', 0, NULL, 'PetStatBuff');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4276, 1685, 5, 'Secondary
 -500F / -50F
@@ -2959,7 +2959,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1741, 1450, 0, 'Single Target
 +100 CoverAccuracy', 0, 524305, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1742, 1451, 0, 'Remove Stance Moniker', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Remove Stance', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1742, 1451, 0, 'Remove Stance Moniker', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Remove Stance', 0, NULL, 'RemoveCoverStance');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1743, 1452, 0, 'Single Target
 +200 CoverDefense: 15 seconds', 0, 21, 'set:CoreWidgets image:IconMissing', 1, 15, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, NULL);
@@ -4420,7 +4420,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3229, 2273, 0, 'Flags player for Minigame Success of the Tablet on Investigate Menfa mission', 0, 4096, 'set:CoreWidgets image:IconMissing', 1, 1, NULL, NULL, 'TCM_Single', false, false, 'Flag Player', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3230, 968, 0, '+5%
-15 Ticks', 0, 23, 'set:CoreWidgets image:IconMissing', 15, 1, NULL, NULL, 'TCM_Single', true, false, 'Heal', 0, NULL, NULL);
+15 Ticks', 0, 23, 'set:CoreWidgets image:IconMissing', 15, 1, NULL, NULL, 'TCM_Single', true, false, 'Heal', 0, NULL, 'HealPetHealth');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3231, 970, 0, 'Focus -200
 Health -20', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Draw Fire Damage', 0, NULL, NULL);
@@ -4613,7 +4613,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3349, 2338, 0, '+10% Health
 10 Ticks', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 10, NULL, NULL, 'TCM_Single', true, false, 'Kelnorim Heal', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3350, 1207, 0, 'Turret Full Heal: +100% Health', 0, 21, 'set:CoreWidgets image:IconMissing', 10, 0.5, NULL, NULL, 'TCM_Single', true, false, 'Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3350, 1207, 0, 'Turret Full Heal: +100% Health', 0, 21, 'set:CoreWidgets image:IconMissing', 10, 0.5, NULL, NULL, 'TCM_Single', true, false, 'Heal', 0, NULL, 'HealPetHealth');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3351, 2341, 0, 'Intimidation Effect', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Intimidation Effect', 0, NULL, NULL);
 
@@ -5444,7 +5444,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4118, 2838, 0, 'uploading picture', 0, 4192, 'set:CoreWidgets image:IconMissing', 1, 3, NULL, NULL, 'TCM_Single', true, false, '3s Induction Bar', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4119, 2839, 0, '60 Seconds', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 60, NULL, NULL, 'TCM_Single', true, false, 'Pet Death Timer', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4119, 2839, 0, '60 Seconds', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 60, NULL, NULL, 'TCM_Single', true, false, 'Pet Death Timer', 0, NULL, 'PetDeathTimer');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4120, 2840, 0, 'Starts dialog for Minigame Success of the Wall of the 13th Hour on mission to Ihpet on Ihpet Crater', 0, 4096, 'set:CoreWidgets image:IconMissing', 1, 1, NULL, NULL, 'TCM_Single', false, false, 'Start Dialog', 0, NULL, NULL);
 
@@ -6104,7 +6104,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Remove Engaged State', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Conversation Mini-Game Start', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4565, 1451, 0, 'Single Target
-+100 CoverDefense', 0, 85, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, NULL);
++100 CoverDefense', 0, 85, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, 'CoverStance');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4566, 1180, 0, 'Single Target
 Fear: 20 Seconds', 0, 76, 'set:CoreWidgets image:IconMissing', 20, 1, NULL, NULL, 'TCM_Single', true, false, 'Induce Panic: Alien Fear', 0, NULL, NULL);
@@ -6827,7 +6827,14 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4967, 3362, 0, 'Stealth Effect', 0, 1360, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'VFX Exit Stealth', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4968, 2852, 0, 'Pet Summon Speed increase', 0, 524288, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Pet Summon Speed increase', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4968, 2852, 0, 'Pet Summon Speed increase', 0, 524288, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Pet Summon Speed increase', 0, NULL, 'PetSummonSpeed');
+
+-- Pets PT-08 (D-PT17): 1650 Lord's Concentration ships with no effects
+-- ("Increases Interrupt Resist of all Pets"). This server-only effect gives
+-- each of the caster's pets +50 interruptRes for 30 s (the magnitude of
+-- 1362 "+50% to Interruption Resistance"; the duration is the ability's
+-- 30 s cooldown). Magnitude: effect_nvps 353.
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (350, 1650, 0, 'Interrupt Resistance +50 on all pets, 30 seconds', 0, 21, 'set:CoreWidgets image:IconMissing', 1, 30, 'Medium', NULL, 'TCM_Group', true, false, 'Pet Interrupt Resistance', 0, NULL, 'PetStatBuff');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4969, 3363, 0, 'Stealth rating +100', 0, 116, 'set:CoreWidgets image:IconMissing', 10, 0.5, NULL, NULL, 'TCM_Single', true, false, 'Stealth rating +100', 0, NULL, NULL);
 

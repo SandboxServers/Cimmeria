@@ -1,0 +1,83 @@
+//! Player progression: crafting / discipline grants (category E,
+//! `console/crafting.rs`), the mission gaps (`console/mission.rs`), and the
+//! cash / XP grants (`console/give.rs`).
+
+use super::{spec, Spec, Target};
+
+pub(super) const SPECS: &[Spec] = &[
+    // ── E. crafting / discipline ───────────────────────────────────────────
+    spec(
+        "allcraft",
+        0,
+        0,
+        Target::Player,
+        "Every paradigm at 7, discipline at 100 and blueprint, plus craft anywhere, for the target",
+    ),
+    spec(
+        "learndiscipline",
+        1,
+        2,
+        Target::Player,
+        "Learn/raise a discipline (disciplineId [expertise])",
+    ),
+    spec(
+        "forgetdiscipline",
+        1,
+        1,
+        Target::Player,
+        "Forget a discipline (disciplineId)",
+    ),
+    spec(
+        "craftkit",
+        1,
+        2,
+        Target::Player,
+        "Grant the target a blueprint's component set 1 (blueprintId [count 1-10])",
+    ),
+    spec(
+        "learnblueprint",
+        1,
+        1,
+        Target::Player,
+        "Teach the target one blueprint (blueprintId)",
+    ),
+    // ── Mission gaps ───────────────────────────────────────────────────────
+    spec(
+        "missionfail",
+        1,
+        1,
+        Target::Player,
+        "Force-fail a mission on the target (designId)",
+    ),
+    spec(
+        "missionrewards",
+        1,
+        1,
+        Target::Player,
+        "Preview a mission's reward set (designId)",
+    ),
+    // ── Player grants ──────────────────────────────────────────────────────
+    spec(
+        "givecash",
+        1,
+        1,
+        Target::Player,
+        "Grant naquadah to the target (amount)",
+    ),
+    spec(
+        "givexp",
+        1,
+        1,
+        Target::Player,
+        "Grant experience to the target (amount)",
+    ),
+    // Pets campaign PT-07: persisted through the base, like a trainer
+    // purchase but without the cost or the respec provenance.
+    spec(
+        "giveability",
+        1,
+        1,
+        Target::None,
+        "Grant an ability, saved to the character (abilityId; selected player, else you)",
+    ),
+];

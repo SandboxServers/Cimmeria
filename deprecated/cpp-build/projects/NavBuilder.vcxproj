@@ -259,11 +259,19 @@
     <ClCompile Include="..\src\nav_builder\chunk.cpp" />
     <ClCompile Include="..\src\nav_builder\mesh.cpp" />
     <ClCompile Include="..\src\nav_builder\mesh_exporter.cpp" />
+    <ClCompile Include="..\src\nav_builder\recast_pipeline.cpp" />
+    <ClCompile Include="..\src\nav_builder\tile_seam_filter.cpp" />
+    <ClCompile Include="..\src\nav_builder\tiled_builder.cpp" />
+    <ClCompile Include="..\src\nav_builder\xrc_writer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\nav_builder\chunk.hpp" />
     <ClInclude Include="..\src\nav_builder\mesh.hpp" />
     <ClInclude Include="..\src\nav_builder\mesh_exporter.hpp" />
+    <ClInclude Include="..\src\nav_builder\recast_pipeline.hpp" />
+    <ClInclude Include="..\src\nav_builder\tile_seam_filter.hpp" />
+    <ClInclude Include="..\src\nav_builder\tiled_builder.hpp" />
+    <ClInclude Include="..\src\nav_builder\xrc_writer.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

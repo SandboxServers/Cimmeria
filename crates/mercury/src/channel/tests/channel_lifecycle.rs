@@ -383,6 +383,137 @@ fn registered_packet_is_acked_and_samples_rto_normally() {
     );
 }
 
+// ── NA39: cross-task registration order vs. allocation order ──────
+//
+// The services layer reserves a reliable sequence number (an atomic
+// fetch-add under a briefly-held, *different* lock than `Channel`'s) and
+// only calls `register_sent_packet` after the async socket send
+// completes. That gap is wide enough for a second, genuinely concurrent
+// task targeting the same witness (base's recv-loop, a `tokio::spawn`ed
+// fan-out, cell's witness dispatch) to reserve a LATER sequence and still
+// win the race to register first. These tests pin that `register_sent_packet`
+// tolerates arriving in a different order than the sequence numbers were
+// allocated in — see `crates/services/src/base/helpers/mod.rs`'s
+// `send_to_witness_reliable` for the real call site this models, and
+// `docs/analysis/npc-ai-restoration/worknotes/na39-cross-task-ordering.md`.
+
+/// Two packets register in the REVERSE of their sequence order (seq=2
+/// arrives at `register_sent_packet` before seq=1 — e.g. entity B's
+/// CREATE_ENTITY, seq=1, loses the race to encrypt+send to a concurrent,
+/// unrelated reliable send for the same witness that grabbed seq=2 and
+/// registered first). A cumulative ack for seq=1 only (seq=2 not yet
+/// acked) must still drain seq=1.
+///
+/// Before the fix, `register_sent_packet` did a blind `push_back`, so
+/// `tx_window` became `[2, 1]` — non-monotonic. `process_acks`'s
+/// cumulative drain only inspects the front and stops at the first
+/// "not yet covered" entry: `covered(front=2)` against `ack_seq=1` is
+/// false, so the loop breaks immediately and seq=1 is never popped even
+/// though it was legitimately acked. Reverted, this test fails with
+/// `tx_window` still containing both entries.
+#[test]
+fn register_sent_packet_tolerates_out_of_order_registration() {
+    let mut ch = Channel::new(test_addr());
+
+    let mut pkt2 = test_packet();
+    pkt2.sequence = 2;
+    ch.register_sent_packet(pkt2, bytes::Bytes::from_static(b"two"))
+        .unwrap();
+
+    let mut pkt1 = test_packet();
+    pkt1.sequence = 1;
+    ch.register_sent_packet(pkt1, bytes::Bytes::from_static(b"one"))
+        .unwrap();
+
+    // Sorted on insert regardless of registration order.
+    assert_eq!(
+        ch.tx_window
+            .iter()
+            .map(|e| e.packet.sequence)
+            .collect::<Vec<_>>(),
+        vec![1, 2],
+        "tx_window must stay ordered by sequence, not registration order"
+    );
+
+    // Ack covers seq=1 only — seq=2 is still in flight.
+    ch.process_acks(1).unwrap();
+    let remaining: Vec<u32> = ch.tx_window.iter().map(|e| e.packet.sequence).collect();
+    assert_eq!(
+        remaining,
+        vec![2],
+        "an out-of-order-registered but already-acked lower sequence must \
+         still drain — got {remaining:?}"
+    );
+}
+
+/// Same hazard, one level up: three sequences register out of order
+/// (2, 3, then 1 — modeling a third concurrent send's seq=3 winning the
+/// race against both the create (1) and the cascade (2) it should have
+/// followed). A full cumulative ack must still drain everything.
+#[test]
+fn register_sent_packet_sorts_three_out_of_order_registrations() {
+    let mut ch = Channel::new(test_addr());
+
+    for seq in [2u32, 3, 1] {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::new()).unwrap();
+    }
+
+    assert_eq!(
+        ch.tx_window
+            .iter()
+            .map(|e| e.packet.sequence)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3],
+        "tx_window must be sorted by sequence after out-of-order registration"
+    );
+
+    ch.process_acks(3).unwrap();
+    assert!(
+        ch.tx_window.is_empty(),
+        "cumulative ack covering all three must drain them regardless of \
+         registration order, got {:?}",
+        ch.tx_window
+            .iter()
+            .map(|e| e.packet.sequence)
+            .collect::<Vec<_>>()
+    );
+}
+
+/// The `unsent_packets` overflow queue is drained front-only by
+/// `process_acks` too (see its doc comment), so it needs the same
+/// sorted-insert guarantee once the TX window is full.
+#[test]
+fn register_sent_packet_sorts_unsent_queue_overflow() {
+    let mut ch = Channel::new(test_addr());
+
+    // Fill the TX window so subsequent registrations overflow into
+    // `unsent_packets`.
+    for seq in 0..consts::TX_WINDOW_SIZE as u32 {
+        let mut pkt = test_packet();
+        pkt.sequence = seq + 100; // clear of the overflow seqs below
+        ch.register_sent_packet(pkt, bytes::Bytes::new()).unwrap();
+    }
+    assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
+
+    // Overflow registrations arrive out of order.
+    for seq in [202u32, 201, 200] {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::new()).unwrap();
+    }
+
+    assert_eq!(
+        ch.unsent_packets
+            .iter()
+            .map(|e| e.packet.sequence)
+            .collect::<Vec<_>>(),
+        vec![200, 201, 202],
+        "unsent_packets must stay sorted by sequence despite out-of-order registration"
+    );
+}
+
 // ── Adaptive RTO integration ──────────────────────────────────────
 
 use super::rto::RtoConfig;

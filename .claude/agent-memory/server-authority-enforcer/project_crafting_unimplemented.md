@@ -9,29 +9,29 @@ CAT-F (Crafting / R&D / Training) audit complete on 2026-05-31. Trust posture:
 
 **TrainAbility (method 77)** — fully implemented, well-validated.
 - Cell side: archetype-tree membership + level + prereqs + already-known guard,
-  at `crates/services/src/cell/cell_methods/player/vendor.rs:491`.
+  at `crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs:36`.
 - Base side: atomic `UPDATE … WHERE training_points > 0 AND NOT (abilities @>
-  ARRAY[$1])` at `crates/services/src/base/world_entry/methods/progression/mod.rs:456`.
+  ARRAY[$1])` at `crates/base-methods/src/base/world_entry/methods/progression/mod.rs:456`.
 - **BUT** missing trainer-NPC interaction state + distance check — Python
   required `self.trainerEntity != None` AND `distanceTo(trainerEntity) <=
   MAX_INTERACT_DISTANCE`; Rust dropped both. Filed as CAT-F-01 Medium. Fix:
   add `trainer_entity: Option<u32>` on entity, parallel to `vendor_entity`,
-  set by `try_open_trainer` at `crates/services/src/cell/interactions/trainer.rs:55`.
+  set by `try_open_trainer` at `crates/cell-interactions/src/cell/interactions/trainer.rs:55`.
 
 **The other five RPCs** — all stubs:
 - `spendAppliedSciencePoints` (95), `craft` (96), `research` (97),
   `reverseEngineer` (98), `alloying` (99), `respecCrafting` (100) — all in
-  `crates/services/src/cell/cell_methods/player/crafting.rs:23-86`. All
+  `crates/cell-methods/src/cell/cell_methods/player/crafting.rs:23-86`. All
   return `true` (handled) with `tracing::info!(... "UNIMPLEMENTED")`.
 - Persistence layer EXISTS:
-  - `crates/services/src/base/crafting/persistence.rs` — load/save round-trip
+  - `crates/base-session/src/base/crafting/persistence.rs` — load/save round-trip
     with `RowNotFound` guard on save; `applied_science_points`,
     `discipline_ids`, `blueprint_ids`, `racial_paradigm_levels`,
     `expertise[]` all persisted.
   - `crates/entity/src/crafting.rs` — `CraftingState` struct + serializer for
     `onUpdateDiscipline` (method 136).
 - World-entry already sends `onUpdateKnownCrafts` from server-authoritative
-  `blueprint_ids` at `crates/services/src/mercury/world_data/map_loaded.rs:375`.
+  `blueprint_ids` at `crates/wire/src/mercury/world_data/map_loaded.rs:375`.
 
 **Wire shapes (from `entities/defs/SGWPlayer.def` lines 911-948, Ghidra-confirmed):**
 - `spendAppliedSciencePoints(INT32 aDisciplineSeqId)` — method 95

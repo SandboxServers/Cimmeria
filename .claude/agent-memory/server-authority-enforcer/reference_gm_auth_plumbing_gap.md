@@ -8,14 +8,14 @@ metadata:
 ## The systemic GM-auth plumbing gap in Cimmeria
 
 `access_level` lives ONLY on `ConnectedClientState.access_level`
-(`crates/services/src/base/mod.rs:117`). Sourced from
+(`crates/base-session/src/base/mod.rs:145`). Sourced from
 `account.accesslevel` DB column via
 `crates/services/src/auth/handlers.rs:486-488`. Today consumed by
 exactly ONE site: the chat dispatch's `SPEAKER_GM` bit computation
-in `crates/services/src/base/dispatch.rs:131-133`.
+in `crates/base/src/base/dispatch/chat.rs:86-87`.
 
 The cell-method dispatch entry point at
-`crates/services/src/cell/dispatch/router.rs:33` has signature
+`crates/cell/src/cell/dispatch/router.rs:33` has signature
 `(entity_id, method_index, args, tx, space_mgr, engine)` — NO
 caller-identity parameter beyond entity_id. None of the per-
 interface dispatchers (`cell_methods::being::dispatch`,
@@ -53,7 +53,7 @@ remembers to. This is structural.
 
 ### Related concern: entity-class hardcode
 
-`crates/services/src/base/world_entry/play_character.rs:89-94`
+`crates/base-world-entry/src/base/world_entry/play_character.rs:89-94`
 forces `class_id = 0x02 (SGWPlayer)` regardless of access_level.
 The TODO says: "Until we build a separate SGWGmPlayer index
 table, always use SGWPlayer (0x02) regardless of access_level."

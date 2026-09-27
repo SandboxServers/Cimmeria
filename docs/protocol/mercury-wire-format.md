@@ -208,6 +208,71 @@ enumerates:
 So an implementation that only handles 0/2/4 is sufficient for SGW traffic, but
 it is not the full contract the client will accept.
 
+#### The over-length escape
+
+`lengthParam` fixes the width of the *inline* field: it is a property of the
+message type, so a `WORD_LENGTH` message always writes two bytes. What is
+value-dependent is what those bytes mean once the payload stops fitting.
+
+`compressLength @ ghidra://SGW.exe@0x0158b120` writes the inline field and then
+compares the length against that width's maximum -- `0xFF`, `0xFFFF`, `0xFFFFFF`
+for `lengthParam` 1, 2, 3. On overflow it hands off to the escape writer at
+`ghidra://SGW.exe@0x0158acc0`, whose opening loop fills **every byte of the
+inline field with `0xFF`** and then streams the real length into the message
+body as a 32-bit little-endian value:
+
+```text
+[msg_id][0xFF x lengthParam][u32 LE real length][payload]
+```
+
+`lengthParam == 4` is exempt. That arm writes the `u32` and returns with no
+bounds test, so `DWORD_LENGTH` never escalates.
+
+The read side mirrors it: `expandLength @ ghidra://SGW.exe@0x0158b770` reads the
+inline field, and on the over-length path falls through to a second reader
+(debug string `"expandLength( %s ): Received a message longer than normal
+length"`) that seeks past `lengthParam + 1` bytes and assembles a 32-bit
+little-endian length one byte at a time.
+
+A saturated length field is therefore a **sentinel, not a value**. A reader that
+takes `0xFFFF` on a `WORD_LENGTH` message literally starts the next message four
+bytes early and mis-frames the rest of the bundle; a writer that clamps an
+over-long payload to `0xFFFF` emits the sentinel without the field that is
+supposed to follow it, which is the same corruption from the other side.
+
+#### What Cimmeria implements
+
+`CONSTANT_LENGTH` and `WORD_LENGTH`, plus one hand-written `DWORD_LENGTH`
+emitter. Widths 1 and 3 and the escape above are not implemented.
+
+| Direction | Site | Widths handled |
+|---|---|---|
+| Inbound, per-`msg_id` table | `read_client_message_payload` in `crates/base/src/base/connect_loop/encrypted/mod.rs` | `CONSTANT` per message; `WORD` for `0x07` and for the wildcard, which covers every entity method |
+| Inbound, the readers themselves | `read_constant_payload` / `read_word_length_payload` in `crates/base/src/base/connect_loop/mod.rs` | 0 and 2 |
+| Outbound, generic bundle encoder | `Bundle::encode` in `crates/mercury/src/bundle.rs` | 2 only |
+| Outbound, `BASEMSG_REPLY_MESSAGE` | `build_connect_reply` in `crates/wire/src/mercury/protocol/session.rs` | 4, written by hand |
+
+No entry in `ClientMessageList` declares `DWORD_LENGTH`, so the inbound
+wildcard's `WORD_LENGTH` assumption holds for every message a client can send,
+and no SGW message declares width 1 or 3. Width alone therefore cannot mis-frame
+anything on this wire today. The escape is the remaining exposure, and it is
+reachable only by a payload at or above 65535 bytes.
+
+#### Message id `0x00` means different things per direction
+
+The two tables are indexed independently, and `0x00` is not the same message in
+each. Reading a length type off the wrong table is an easy mistake to make here.
+
+| Direction | Table | `0x00` | `0x01` |
+|---|---|---|---|
+| Client to server | `ClientMessageList` | `BASEAPP_LOGIN`, `WORD_LENGTH` | `AUTHENTICATE`, `WORD_LENGTH` |
+| Server to client | `ServerMessageList` | `AUTHENTICATE`, `DWORD_LENGTH` | `bandwidthNotification`, `CONSTANT` |
+
+So "`AUTHENTICATE` is `DWORD_LENGTH`" is true only server-to-client. The
+per-frame `AUTHENTICATE` a client sends is `0x01` and is `WORD_LENGTH`. Both
+tables are in
+[deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp](../../deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp).
+
 ### Entity Messages
 
 Entity messages represent RPC calls to entity methods. In Cimmeria they are
@@ -244,7 +309,7 @@ whether an entity ID is on the wire:
 - Method indices 61+: `messageId = 0xBD` (extended), followed by `entityId`
   (uint32) then `index - 61` (uint8)
 
-Decoder: [crates/services/src/base/connect_loop/cell_arms.rs](../../crates/services/src/base/connect_loop/cell_arms.rs)
+Decoder: [crates/base/src/base/connect_loop/cell_arms.rs](../../crates/base/src/base/connect_loop/cell_arms.rs)
 — the `0xBD` arm reconstructs `sub_index + 61`, the direct arm computes
 `id - 0x80`, and both strip the 4-byte entity ID first.
 
@@ -253,7 +318,7 @@ Decoder: [crates/services/src/base/connect_loop/cell_arms.rs](../../crates/servi
 - `messageId = 0xC0 + index`, with no entity ID prefix
 
 Decoder: the `sgw_player_base` constants in
-[crates/services/src/base/dispatch/mod.rs](../../crates/services/src/base/dispatch/mod.rs)
+[crates/base/src/base/dispatch/mod.rs](../../crates/base/src/base/dispatch/mod.rs)
 (`CHAT_JOIN = 0xC0` at index 0 … `PERF_STATS = 0xDD` at index 29). Full table:
 [sgwplayer-base-method-dispatch-table.md](sgwplayer-base-method-dispatch-table.md).
 
@@ -514,6 +579,21 @@ The `BaseChannel` manages `BundleUnpacker` instances in its `unpackers_` vector:
 2. **Fragmented reliable packet**: The channel searches `unpackers_` for an existing unpacker with the same `firstFragmentId`. If none exists, a new one is created and stored.
 3. **Completion trigger**: When an unpacker is complete AND the receive window head matches the unpacker's first fragment, the bundle is processed.
 4. **Ordered delivery**: `processBufferedMessages()` walks the receive window from the head. For each contiguous packet/bundle at the window head, it processes the bundle and slides the window forward.
+
+### Receive Ordering: SGW Client and Rust Server
+
+The SGW client orders its **reliable** stream and delivers **unreliable** packets on arrival. Evidence from `SGW.exe` (NA38):
+
+| Step | Address | Behaviour |
+|------|---------|-----------|
+| Split on `FLAG_RELIABLE` (`0x10`) | `Nub::processFilteredPacket` `0x01580ad4` | Reliable packets go to the receive window; unreliable ones go through `FUN_0158bb50`, a dedup check against `ChannelInternal+0x128`, and are processed immediately |
+| Receive window | `UnAckedHandler::queueAckForPacket` `0x0158cba0` | Queue the ACK. At `seq == inSeqAt` (`+0x50`), advance and chain every packet already buffered behind it. Ahead within the window, buffer the packet in the slot table at `+0x40` (mask `+0x44`) and deliver nothing (`"Buffering packet #%d above #%d"`, `0x01b1a040`). Behind `inSeqAt`, or already buffered, drop it |
+| `inSeqAt` start | `ChannelInternal` ctor `0x0158c7b0` | `0x10000000` (`SEQ_NULL`); the first reliable sequence received is adopted |
+| Window size | `Channel` ctor `0x01576bf0` | `0x200` (512) at `Channel+0x2c`, copied to `ChannelInternal+0x30` |
+| Early movement for an unknown entity | `EntityManager::onEntityMoveWithError` `0x00dd1650` | Latest position stored in the pending-entity map at `EntityManager+0x30`; the create handler (`0x00dd2270`) uses it |
+| Early method or property for an unknown entity | `0x00dd2b80`, `0x00dd29d0` | Message copied into a per-id buffer at `EntityManager+0x3c` |
+
+So a lost `CREATE_ENTITY` delays the reliable cascade behind it until the retransmit arrives; it never reorders it. The Rust `Channel::receive_parsed` (`crates/mercury/src/channel/rx_order.rs`) implements the same gate with `RX_WINDOW_SIZE = 512`. The server runs it on every client packet. Like the client, it adopts the first reliable sequence the peer sends. It differs from the client in one way: a packet beyond the window is not acked, so the sender retransmits it. A stall watchdog (`Channel::check_rx_stall`) warns when one gap blocks delivery for more than 2 s. It never skips the gap. The 64-packet receive window in the table below is the deprecated C++ server's value.
 
 ## Channels
 

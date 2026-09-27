@@ -23,7 +23,7 @@ This document covers the engine end-to-end: architecture, vocabulary, execution 
 A trigger / condition / action chain runtime, split across two crates:
 
 - **[crates/content-engine/](../../crates/content-engine/)** — pure data crate. Defines `Chain`, `Trigger`, `Condition`, `Action`, `ExecutionContext`, and `ChainEngine`. No game state, no DB, no networking. Unit-testable in isolation.
-- **[crates/services/src/cell/content/](../../crates/services/src/cell/content/)** — the bridge. Loads chains from PostgreSQL at boot, fires events from real `CellEntity` state, and dispatches resolved actions back to the cell service as `CellToBaseMsg` traffic.
+- **[crates/cell-content/src/cell/content/](../../crates/cell-content/src/cell/content/)** — the bridge. Loads chains from PostgreSQL at boot, fires events from real `CellEntity` state, and dispatches resolved actions back to the cell service as `CellToBaseMsg` traffic.
 
 The boundary exists so the engine stays declarative. Chain authors write SQL rows; engineers write executor handlers. Neither has to think about the other's layer.
 
@@ -76,16 +76,16 @@ Implementation status (2026-09-18): **shipped and driving Castle_CellBlock and S
 
 This crate does not depend on `cimmeria-services`, `cimmeria-base`, or `tokio` runtime types. Its full dep set is `cimmeria-common`, `cimmeria-entity`, `serde`, `serde_json`, `thiserror`, `tracing` ([Cargo.toml:9-15](../../crates/content-engine/Cargo.toml#L9-L15)).
 
-### Bridge ([crates/services/src/cell/content/](../../crates/services/src/cell/content/))
+### Bridge ([crates/cell-content/src/cell/content/](../../crates/cell-content/src/cell/content/))
 
 | File | Owns |
 |---|---|
-| [mod.rs](../../crates/services/src/cell/content/mod.rs) | Public re-exports for the rest of the cell service |
-| [engine_loader.rs](../../crates/services/src/cell/content/engine_loader.rs) | `build_engine` — runs the four boot SQL queries |
-| [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) | `fire_<event>` factory functions, grouped by family: `cover.rs`, `dialog.rs`, `interaction.rs`, `inventory.rs`, `lifecycle.rs`, `mission.rs`, `region.rs` |
-| [executor/](../../crates/services/src/cell/content/executor/) | `execute_actions` — the `match action { ... }` in [mod.rs](../../crates/services/src/cell/content/executor/mod.rs), forwarding to per-family handlers (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `spawn/`, `counter.rs`, `transport.rs`, `black_market.rs`) |
-| [mission_context.rs](../../crates/services/src/cell/content/mission_context.rs) | Populators: write mission/counter/stat state into `ExecutionContext` |
-| [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/) | Live-DB regression guards that pin chain behavior, one module per mission/feature (`mission_622.rs`, `mission_638.rs`, …, `black_market.rs`, `cover_demo.rs`) |
+| [mod.rs](../../crates/cell-content/src/cell/content/mod.rs) | Public re-exports for the rest of the cell service |
+| [engine_loader.rs](../../crates/cell-content/src/cell/content/engine_loader.rs) | `build_engine` — runs the four boot SQL queries |
+| [event_dispatch/](../../crates/cell-content/src/cell/content/event_dispatch/) | `fire_<event>` factory functions, grouped by family: `cover.rs`, `dialog.rs`, `interaction.rs`, `inventory.rs`, `lifecycle.rs`, `mission.rs`, `region.rs` |
+| [executor/](../../crates/cell-content/src/cell/content/executor/) | `execute_actions` — the `match action { ... }` in [mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs), forwarding to per-family handlers (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `spawn/`, `counter.rs`, `transport.rs`, `black_market.rs`) |
+| [mission_context.rs](../../crates/cell-content/src/cell/content/mission_context.rs) | Populators: write mission/counter/stat state into `ExecutionContext` |
+| [chain_replay_tests/](../../crates/cell-content/src/cell/content/chain_replay_tests/) | Live-DB regression guards that pin chain behavior, one module per mission/feature (`mission_622.rs`, `mission_638.rs`, …, `black_market.rs`, `cover_demo.rs`) |
 
 The bridge owns every effect (channel sends, `space_manager` mutations, log lines). The engine never produces a side effect — it only resolves which actions the bridge should run.
 
@@ -113,7 +113,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnCustomEvent { event_name }` | Generic invoke escape hatch / synthetic for triggerless chains |
 | `OnPlayerLoaded { world_name? }` | Player completes mapLoaded |
 | `OnDialogOpen { dialog_id }` | Server sent `onDialogDisplay` |
-| `OnDialogChoice { dialog_id }` | Player clicked a dialog button. **Server-gated**: the `DialogButtonChoice` handler rejects the event unless `CellEntity::open_dialog_id == dialog_id` (the dialog was actually displayed to this player via `send_dialog_display`); a forged/replayed choice for an un-opened `dialog_id` is dropped with a `warn!` and never fires the chain (CAT-J-01 / #479). |
+| `OnDialogChoice { dialog_id }` | Player clicked a dialog button. **Server-gated**: the `DialogButtonChoice` handler rejects the event unless `dialog_id` is in `CellEntity::offered_dialog_ids` — the bounded set of dialogs actually displayed to this player via `send_dialog_display`. A valid choice removes the id (one-shot), so a forged or replayed choice is dropped with a `warn!` and never fires the chain (CAT-J-01 / #479, widened to a set by DU-08 because the client evicts an open dialog and answers it late). |
 | `OnInteractTag { entity_tag }` | Right-click on tagged NPC/object |
 | `OnInteractTemplate { template_name }` | Right-click on entity from named template |
 | `OnItemUse { item_id }` | Player double-clicked inventory item |
@@ -160,7 +160,7 @@ This is the trigger-side mirror of the action-side gap catalogued below, and it 
 
 `enter_region` is an **edge** event. The client reports a volume crossing once, and a chain gated on a step that is not yet active sees that edge, fails its gate, and never gets another one until the player physically leaves and comes back. The 2026-09-18 Castle playtest lost objective 2484 to this ordering race, and the Harset seed lanes found four more instances of the same shape.
 
-The server closes the `enter_region` half of it. Whenever a mission step activates — `Action::AcceptMission` / `Action::AdvanceMission` (first step), `Action::AdvanceStep`, `gmMissionAssign`, `gmMissionAdvance` — every client-hinted region of the player's world that contains the player's **server-known** position is re-fired through the normal trigger path. Implementation: [`content::event_dispatch::step_activation`](../../crates/services/src/cell/content/event_dispatch/step_activation/mod.rs). Log line: `reason = "already_inside_on_step_activation"`, plus a `region_replay` entry in the player journal that a `.bug` report picks up.
+The server closes the `enter_region` half of it. Whenever a mission step activates — `Action::AcceptMission` / `Action::AdvanceMission` (first step), `Action::AdvanceStep`, `gmMissionAssign`, `gmMissionAdvance` — every client-hinted region of the player's world that contains the player's **server-known** position is re-fired through the normal trigger path. Implementation: [`content::event_dispatch::step_activation`](../../crates/cell-content/src/cell/content/event_dispatch/step_activation/mod.rs). Log line: `reason = "already_inside_on_step_activation"`, plus a `region_replay` entry in the player journal that a `.bug` report picks up.
 
 What an author needs to know:
 
@@ -171,7 +171,7 @@ What an author needs to know:
 - **Content chains only.** Ring-transporter forwarding and `REGION_FLAG_STARGATE` passage hang off the same client call but are sequenced by the dispatch arm in `cell_methods::player::world`, *after* `fire_enter_region`. A replay never starts a ring transport and never carries a player through a gate.
 - **Bounded.** A replayed chain can itself advance a step, which activates another step, which replays again. A depth cap plus a per-activation visited set of `(entity, mission, step)` triples stops the recursion; a refusal is a `warn!` naming `replay_depth_exceeded` or `step_already_replayed`, which reads as "this chain is looping".
 
-**`player_entered_cover` replays too.** It is the same edge from a different source — the 1 Hz cover-detection tick rather than a client hint — and objective 2484 was this form. On 2026-09-20 it reproduced on the colo: the Ambernol vial sits inside the med-station desk's 5 m cover radius (set 1381), so the tick spent the enter edge 1.4 s before picking the vial up activated step 2144, chains 1132 / 1133 failed their step gate, and the player stood on the "take cover" marker with the drone dead and nothing happening. The same step-activation hook now re-fires `player_entered_cover` for each cover set the player is in. Implementation: [`step_activation::cover_replay`](../../crates/services/src/cell/content/event_dispatch/step_activation/cover_replay.rs). Log line: `step-activation cover replay: matched` with the same `reason`, plus a `cover_replay` journal entry. It differs from the region form in one way:
+**`player_entered_cover` replays too.** It is the same edge from a different source — the 1 Hz cover-detection tick rather than a client hint — and objective 2484 was this form. On 2026-09-20 it reproduced on the colo: the Ambernol vial sits inside the med-station desk's 5 m cover radius (set 1381 then, 1200001 since the NA21 cover re-extraction), so the tick spent the enter edge 1.4 s before picking the vial up activated step 2144, chains 1132 / 1133 failed their step gate, and the player stood on the "take cover" marker with the drone dead and nothing happening. The same step-activation hook now re-fires `player_entered_cover` for each cover set the player is in. Implementation: [`step_activation::cover_replay`](../../crates/cell-content/src/cell/content/event_dispatch/step_activation/cover_replay.rs). Log line: `step-activation cover replay: matched` with the same `reason`, plus a `cover_replay` journal entry. It differs from the region form in one way:
 
 - **It replays from the detection table, not from position.** A set in the table has already had its enter edge; a set the player walked into since the last tick has not, and the tick delivers that one itself with the step already active. Replaying only the table's sets covers exactly the edges that cannot recur and never races the tick into a double fire. Containment is still re-checked against the server-known position before each fire, so a player who walked out since the last tick is not credited.
 
@@ -183,7 +183,7 @@ The mission-gated-only rule, the `world` / `archetype` rule and the recursion bo
 
 Abandoning a mission returns it to not-active with the player already past every edge that set the scene up. The offer gate reopens and the `player_loaded` chain that paints the offer has no edge left to fire, and whatever dialog-set binding the mission installed is stranded on its NPC — abandoning Harset's mission 1324 in the Command Center leaves Ba'al with a stale marker that replays the council dialog on click. Both self-heal on the next world transition, which is why the gap went unreported for so long.
 
-`OnMissionAbandoned` closes it. The dispatcher lives beside `fire_mission_accepted` / `fire_mission_completed` in [`content::event_dispatch::mission`](../../crates/services/src/cell/content/event_dispatch/mission.rs) and follows the same contract: world, archetype and mission context are populated **after** the mutation, so a repaint chain carries the offer chain's own `mission_status <id> eq not_active` gate verbatim. Populating before the removal would leave the status `active` and every repaint chain would fail closed.
+`OnMissionAbandoned` closes it. The dispatcher lives beside `fire_mission_accepted` / `fire_mission_completed` in [`content::event_dispatch::mission`](../../crates/cell-content/src/cell/content/event_dispatch/mission.rs) and follows the same contract: world, archetype and mission context are populated **after** the mutation, so a repaint chain carries the offer chain's own `mission_status <id> eq not_active` gate verbatim. Populating before the removal would leave the status `active` and every repaint chain would fail closed.
 
 Authoring notes:
 
@@ -216,9 +216,9 @@ Defined at [conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L
 
 ### Actions — *side effects*
 
-Defined at [actions.rs:20-323](../../crates/content-engine/src/actions.rs#L20-L323). **`Action::execute` is a stub** ([actions.rs:363-376](../../crates/content-engine/src/actions.rs#L363-L376)); only `TriggerChain` self-executes. Everything else is dispatched by [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs).
+Defined at [actions.rs:20-323](../../crates/content-engine/src/actions.rs#L20-L323). **`Action::execute` is a stub** ([actions.rs:363-376](../../crates/content-engine/src/actions.rs#L363-L376)); only `TriggerChain` self-executes. Everything else is dispatched by [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs).
 
-An action has to clear **two** hurdles to do anything. It needs a match arm in [loader/action.rs](../../crates/content-engine/src/loader/action.rs) (otherwise no `content_actions` row can name it) *and* a match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) (otherwise it resolves and then falls through to a `debug!` no-op at [mod.rs:453-455](../../crates/services/src/cell/content/executor/mod.rs#L453-L455)). The table below is the authoritative catalog; the "Seed rows" column counts `content_actions` rows across [db/resources/Content/Seed/](../../db/resources/Content/Seed/) as of 2026-07-25.
+An action has to clear **two** hurdles to do anything. It needs a match arm in [loader/action.rs](../../crates/content-engine/src/loader/action.rs) (otherwise no `content_actions` row can name it) *and* a match arm in [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs) (otherwise it resolves and then falls through to a `debug!` no-op at [mod.rs:453-455](../../crates/cell-content/src/cell/content/executor/mod.rs#L453-L455)). The table below is the authoritative catalog; the "Seed rows" column counts `content_actions` rows across [db/resources/Content/Seed/](../../db/resources/Content/Seed/) as of 2026-07-25.
 
 #### Authorable and executed
 
@@ -233,6 +233,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `add_dialog` | `AddDialog` | 10 |
 | `add_dialog_set` | `AddDialogSet` | 6 |
 | `remove_dialog_set` | `RemoveDialogSet` | 2 |
+| `npc_bark` | `NpcBark` | 3 |
 | `add_item` | `GrantItem` | 14 |
 | `remove_item` | `RemoveItem` | 2 |
 | `grant_xp` | `GrantXP` | 0 |
@@ -259,6 +260,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `launch_ability` | `LaunchAbility` | 3 |
 | `apply_effect` | `ApplyEffect` | 1 |
 | `grant_stargate_address` | `GrantStargateAddress` | 1 |
+| `send_system_mail` | `SendSystemMail` | 1 |
 
 > An `open_black_market` / `OpenBlackMarket` action exists on the unmerged
 > `feat/571-black-market-phase1` branch (PR #586) and is **not** on `main`. It is
@@ -267,7 +269,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 
 `launch_ability` and `apply_effect` do **not** route through the combat
 pipeline. They call a separate server-authoritative entry point,
-[`cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
+[`cell/content/effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs),
 which goes straight to the effect layer. `handle_use_ability` is the *client*
 entry point and rejects a scripted debuff three ways — the caster has not
 trained the ability, a self-target trips the friendly-fire gate, and the path
@@ -281,7 +283,7 @@ for the full rationale and the constraints that must not be widened.
 player's stargate address book. `target_id` is
 `resources.stargates.stargate_id` — the address itself, not a world id and
 not the repeating `address_origin` glyph. The executor arm
-([`executor/stargate.rs`](../../crates/services/src/cell/content/executor/stargate.rs))
+([`executor/stargate.rs`](../../crates/cell-content/src/cell/content/executor/stargate.rs))
 does three things per grant: appends to the acting player's in-memory
 `CellEntity::known_stargates` (which is what the dial handler enforces
 against), sends the client `updateStargateAddress` (client method 66, the
@@ -351,6 +353,124 @@ A victory chain needs no `content_triggers` row; the loader gives a
 triggerless chain a never-firing `OnCustomEvent` placeholder so it stays
 reachable only through `on_victory_chains`.
 
+##### `npc_bark` params
+
+A **bark** is a companion line spoken into the triggering player's chat
+window with no window to close — Col. Marsh's "Let's move out!" while the
+player keeps moving and firing. It exists because the client has no
+non-modal dialog path at all: its lowest screen type (`DUIST_None`, 0) is
+registered to the modal Blurb window under a "TEMP HACK" comment, and every
+other type registers the same modal `DialogWin`. A companion line sent as a
+dialog stops the player dead.
+
+Barks ride the one non-modal text route the client honours,
+`onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)` (client method
+28 — [dispatch table](../protocol/client-method-dispatch-table.md)), through
+the **same serializer the chat broadcaster uses**
+([`cell/console/chat/`](../../crates/cell-console/src/cell/console/chat/mod.rs)). Deliberately not
+`system_message`, whose wire format is still unknown and whose earlier
+attempt at method 28 produced garbled `"[] says"` chat (§10).
+
+`target_id` and `target_key` are both unused. Three params:
+
+| Param | Required | Meaning |
+|---|---|---|
+| `screen_id` | **yes** | A `resources.dialog_screens` row. The executor resolves the line text server-side, so an author names the shipped 2009 line by id and never retypes it |
+| `speaker` | **yes** | The name the chat window prefixes the line with. Explicit rather than a `speakers` lookup because the bark screens carry `speaker_id = 0` |
+| `channel` | no (defaults to `say`) | `EChannel` name, case-insensitive. **Only `say` is accepted.** `CHAN_splash` is not: its native trigger has never been traced |
+
+All three are **rejected, not defaulted through** — a bad row is dropped at
+load with a `warn!` naming the chain. The failure modes here are not "the
+line is missing" but "the line is visibly wrong": a blank `speaker` renders
+as the client's empty-name prefix, the server channel (8) opens the client's
+modal "Server Message" prompt, and an id the client has no channel for (7)
+shows nothing.
+
+The line goes to the **triggering player only** — not the say-chat witness
+fan-out and not the sender echo. A bark is per-player mission feedback;
+fanning it out would speak one player's escort line into a stranger's chat
+window in a shared world.
+
+Three executor refusals, each a `warn!` with a stable `reason`
+([executor/bark.rs](../../crates/cell-content/src/cell/content/executor/bark.rs)),
+all of which send nothing at all:
+
+1. **`screen_not_cached`** — no `dialog_screens` row for that `screen_id`,
+   or the startup cache failed to load.
+2. **`empty_text`** — the row exists but its text is blank.
+3. **`actor_not_player`** — the chain fired from an NPC, so "the triggering
+   player" is undefined and method 28 resolves to no client address.
+
+The text catalogue is `SpaceManager::dialog_screen_text`, loaded once at cell
+startup by `spawner::load_dialog_screen_text` (13,467 rows; `screen_id` is
+globally unique). It is a startup cache for the same reason
+`spawn_entity` caches `entity_templates`: the executor has no DB pool at
+action time, and a cell→base round trip mid-chain would break the chain's
+ordered action list.
+
+##### `send_system_mail` params
+
+Mails the chain's player one **system mail** (social-systems SS-U3): no
+sender character, so it can never be returned, and the cash and the item are
+minted, not taken from anyone. The base writes it through the one writer
+every server mail uses (`mail::system`, SS-U1), so the player takes the cash
+and the item from the mail window like any other attachment. The first user
+is the Gate Mail Clerk in the stasis-room debug hub (chain 7011,
+[debug-hub.md](debug-hub.md#gate-mail-clerk-template-390)).
+
+`target_id` and `target_key` are unused. Every param is in `params`:
+
+| Param | Required | Meaning |
+|---|---|---|
+| `sender` | **yes** | The name shown as the sender. One line, 1-128 characters |
+| `subject` | **yes** | One line, 1-128 characters |
+| `body` | no (empty) | Up to 1,000 characters |
+| `cash` | no (0) | Naquadah, `0` to `2147483647` |
+| `item_id` | no | A `resources.items` id, minted into the mail's escrow row |
+| `qty` | no (1) | Stack size of the item, at least 1. The writer refuses more than the item's `max_stack_size` |
+| `cooldown_secs` | no | At least 1. Each player gets at most one mail from this chain per window |
+
+A bad value drops the row at load with a `warn!` naming the chain, the same
+reject-not-default rule as `npc_bark`: the base would refuse the same mail
+on every firing, and the player would be told about an authoring mistake.
+`qty` without `item_id` is also rejected.
+
+The cell does not write the mail. The executor arm
+([`executor/mail.rs`](../../crates/cell-content/src/cell/content/executor/mail.rs))
+sends the base one `CellToBaseMsg::ContentSystemMail` carrying the player's
+ids from the cell entity. The base
+([`mail/content.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/content.rs))
+then runs one transaction:
+
+1. locks the player's `sgw_player` row;
+2. with `cooldown_secs`, claims the cooldown in `sgw_player_content_cooldown`
+   (key `send_system_mail/<chain_id>`) with one conditional upsert that
+   succeeds only when the last claim is at least `cooldown_secs` old;
+3. writes the mail.
+
+The claim and the mail commit together. A refused mail leaves the previous
+claim in place, and deleting the mail after taking its attachments does not
+reopen the window. The window also survives a relog and a server restart.
+
+This is the one content verb with a built-in per-player limit, and it needs
+one, because the "Idempotency" rule in
+[extend-the-content-engine.md](../guides/extend-the-content-engine.md) is
+about re-runs of one chain, and a dialog button can be pressed again. Author
+a `cooldown_secs` on any chain a player can re-trigger at will.
+
+Every firing sends the player one feedback line. A sent mail names the mail
+id and what it carries. A refusal gives the time left on the cooldown ("You
+can ask again in 7 minutes", rounded up), or the reason. Telemetry:
+
+| Event | Target | Level | When |
+|---|---|---|---|
+| `content.send_system_mail` `outcome=requested` | `content` | INFO | the cell forwarded the firing |
+| `content.send_system_mail` `outcome=sent` | `content` | INFO | the base committed the mail; carries `mail_id`, `item_id`, `cooldown_key` |
+| `mail.system_sent` | `mail` | INFO | the writer's own row, after the commit |
+| `content.send_system_mail` `reason=...` | `content` | WARN | nothing sent: `cooldown` (with `last_used_at`, `remaining_secs`), `no_player`, `base_channel_closed`, `no_db_pool`, or the writer's reason (`unknown_item_type`, `recipient_not_found`, ...) |
+
+Each row carries `entity_id`, `account_id`, `player_id` and `chain_id`.
+
 #### Entity-lifecycle verbs
 
 `spawn_entity` instantiates an `entity_templates` row into the **acting player's current space**. The seed row never names a space, because a chain authored for a per-player instance cannot know which instance the firing player is in — so the space is read off the triggering entity.
@@ -362,18 +482,18 @@ reachable only through `on_victory_chains`.
 | `params.x` / `.y` / `.z` | Mandatory and finite. A missing or `NaN` coordinate drops the action rather than spawning at the world origin |
 | `params.heading` | Optional, defaults to `0.0` |
 | `params.is_stationary` | Optional. No template column exists, so absent means `false`, not "inherit" |
-| `params.aggression` | Optional, same reasoning — absent means `0` |
+| `params.aggression` | Optional `EMobAggressionLevel` override (1 hostile ... 5 default; `0`, the pre-NA13 "passive", is neutral). Absent means the faction reaction decides, so a faction-10 template is hostile on sight (NA13). A value outside 0-5 is ignored with `reason = "invalid_aggression"` |
 | `params.allow_shared` | Optional. `true` opts out of the shared-world refusal below |
 | `params.respawn_secs` | **Not a parameter.** A row that supplies it still loads and still spawns; the loader warns once (`respawn_secs_not_honoured`) — see below |
 
-Four refusals, each with a `warn!` carrying a stable `reason` ([executor/spawn/mod.rs](../../crates/services/src/cell/content/executor/spawn/mod.rs)):
+Four refusals, each with a `warn!` carrying a stable `reason` ([executor/spawn/mod.rs](../../crates/cell-content/src/cell/content/executor/spawn/mod.rs)):
 
 1. **`actor_not_player`** — the acting entity is an NPC, so "the acting player's space" is undefined. Cover-node and NPC-death chains fire this way.
 2. **`template_not_cached`** — the template id is not in the cell-side `entity_templates` cache. The cache is populated at startup precisely so the spawn is synchronous: a cell-to-base round trip would break the ordering of the `set_aggression` / `add_dialog_set` actions that follow a spawn in the same chain.
 3. **`shared_world_refused`** — the acting player's world is not instanced and `allow_shared` is not `true`. This is the guardrail behind the campaign rule "mission-scoped hostile NPCs go into the player's own instance, never into the shared hub".
 4. **`tag_already_live`** — an entity with that tag is already in this space. Relog-restore chains re-fire their step's actions by design, so a second spawn with the same tag is a no-op rather than a second NPC. The lookup matches **dead** entities too: a corpse still holds its tag, and resurrecting an NPC the player already killed would re-open completed content.
 
-`respawn_secs` is forced to `None` regardless of the template column ([space_manager/spawn.rs:106-118](../../crates/services/src/cell/space_manager/spawn.rs#L106-L118)). The respawn tick keys on `(ai_state, respawn_at)` and has no instance-lifetime awareness, so a revived mission NPC would re-fire its `entity_dead_tag` chain and complete a kill objective twice. Content spawns are always one-shot, so `Action::SpawnEntity` carries no respawn field at all — a `respawn_secs` param is dropped at load with a single `warn!` (`reason = "respawn_secs_not_honoured"`) rather than warning on every fire. The row is not rejected: a mission NPC that appears without respawn beats one that never appears.
+`respawn_secs` is forced to `None` regardless of the template column ([space_manager/spawn.rs:106-118](../../crates/cell-world/src/cell/space_manager/spawn.rs#L106-L118)). The respawn tick keys on `(ai_state, respawn_at)` and has no instance-lifetime awareness, so a revived mission NPC would re-fire its `entity_dead_tag` chain and complete a kill objective twice. Content spawns are always one-shot, so `Action::SpawnEntity` carries no respawn field at all — a `respawn_secs` param is dropped at load with a single `warn!` (`reason = "respawn_secs_not_honoured"`) rather than warning on every fire. The row is not rejected: a mission NPC that appears without respawn beats one that never appears.
 
 One more warn worth recognising in a log: **`aggressive_spawn_faction_zero`**. Auto-aggro compares the NPC's faction against the player's, and players are always faction 0, so a hostile template with `faction = 0` or `NULL` never attacks. The fix is in the `entity_templates` row, not the chain.
 
@@ -385,7 +505,7 @@ Because the idempotence guard is per-tag, **wave content needs one tag per spawn
 
 #### Authorable but NOT executed — seeded rows that silently no-op
 
-These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 4 seeded rows are currently dead.
+These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 4 seeded rows are currently dead.
 
 | Seed verb | `Action` variant | Seed rows | Consequence |
 |---|---|---|---|
@@ -409,8 +529,8 @@ See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
 End-to-end trace, using `OnItemUse(2893)` (Health Slappack) as the worked example.
 
-1. **Gameplay observes the event.** Player double-clicks the Slappack. `crate::cell::content::fire_item_use(...)` is called from [base_messages/mod.rs](../../crates/services/src/cell/service/base_messages/mod.rs).
-2. **The bridge builds an `ExecutionContext`.** [event_dispatch/inventory.rs:28](../../crates/services/src/cell/content/event_dispatch/inventory.rs#L28):
+1. **Gameplay observes the event.** Player double-clicks the Slappack. `crate::cell::content::fire_item_use(...)` is called from [base_messages/inventory_events.rs](../../crates/cell/src/cell/service/base_messages/inventory_events.rs#L118).
+2. **The bridge builds an `ExecutionContext`.** [event_dispatch/inventory.rs:28](../../crates/cell-content/src/cell/content/event_dispatch/inventory.rs#L28):
    - sets `item_id`, `instance_id`
    - calls `populate_mission_context` — writes every `mission_<id>_status`, `mission_<id>_step_<step>_status`, and `counter_<name>` from the source `CellEntity`
    - calls `populate_stats_context` — writes `stat_<id>_cur` / `stat_<id>_max` for every stat on the entity
@@ -422,9 +542,9 @@ End-to-end trace, using `OnItemUse(2893)` (Health Slappack) as the worked exampl
      - `chain.conditions.iter().all(|c| c.evaluate(ctx))` — all-AND
      - on full match, pushes `(chain.id, action.clone())` for each of the chain's actions onto `ResolvedActions.actions`
    - `params` is cloned forward only when ≥1 chain matched ([chain.rs:277-279](../../crates/content-engine/src/chain.rs#L277-L279) — defer-clone optimization landed in commit `a51a10d`)
-5. **Bridge executes.** `executor::execute_actions(resolved, …)` ([executor/mod.rs:59](../../crates/services/src/cell/content/executor/mod.rs#L59)). For chain 4001, the action sequence is `ChangeStat { stat_id: 7, amount: Some(500) }` then `RemoveItem { item_id: 2893, count: 1 }`.
-   - `ChangeStat` ([executor/stats.rs:14](../../crates/services/src/cell/content/executor/stats.rs#L14)) mutates `entity.stats.get_mut(7).change(500)`, drains dirty stats, sends `CellToBaseMsg::EntityMethodCall { method_index: ON_STAT_UPDATE, args: payload }`.
-   - `RemoveItem` ([executor/inventory.rs:149](../../crates/services/src/cell/content/executor/inventory.rs#L149)) reads the forwarded `instance_id` param; routes to `RemoveInventoryItem` (by-instance) when present, falls back to `RemoveInventoryItemByType` otherwise. The instance plumbing is what fixes the bandolier-stack-mismatch bug from PR #214.
+5. **Bridge executes.** `executor::execute_actions(resolved, …)` ([executor/mod.rs:59](../../crates/cell-content/src/cell/content/executor/mod.rs#L59)). For chain 4001, the action sequence is `ChangeStat { stat_id: 7, amount: Some(500) }` then `RemoveItem { item_id: 2893, count: 1 }`.
+   - `ChangeStat` ([executor/stats.rs:14](../../crates/cell-content/src/cell/content/executor/stats.rs#L14)) mutates `entity.stats.get_mut(7).change(500)`, drains dirty stats, sends `CellToBaseMsg::EntityMethodCall { method_index: ON_STAT_UPDATE, args: payload }`.
+   - `RemoveItem` ([executor/inventory.rs:149](../../crates/cell-content/src/cell/content/executor/inventory.rs#L149)) reads the forwarded `instance_id` param; routes to `RemoveInventoryItem` (by-instance) when present, falls back to `RemoveInventoryItemByType` otherwise. The instance plumbing is what fixes the bandolier-stack-mismatch bug from PR #214.
 6. **BaseApp persists and forwards.** Drains `CellToBaseMsg`s, runs the corresponding `UPSERT`s and Mercury writes.
 
 The contract between engine and bridge is `ResolvedActions` ([chain.rs:235-238](../../crates/content-engine/src/chain.rs#L235-L238)):
@@ -440,7 +560,7 @@ The forwarded `params` map is load-bearing — it carries trigger-time state (mo
 
 ### How `display_dialog` finds its speaker
 
-`onDialogDisplay` carries a wire `EntityId` that the client uses as its portrait-lookup key, so `display_dialog` has to decide who is speaking. [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) resolves it in this order:
+`onDialogDisplay` carries a wire `EntityId` that the client uses as its portrait-lookup key, so `display_dialog` has to decide who is speaking. [executor/dialog.rs](../../crates/cell-content/src/cell/content/executor/dialog/mod.rs) resolves it in this order:
 
 1. **Monologue dialogs win outright.** If every screen of the dialog has `speaker_id = 0` (the dialog is in the monologue cache), the player's own id is bound and any NPC in scope is ignored. That renders as inner thought, which is what narration is for.
 2. **`params["target_entity_id"]`** — stamped by `fire_interact_tag` / `fire_interact_template`, so it is present only for the chain fired directly off the click.
@@ -450,7 +570,7 @@ Otherwise the action warns and returns without emitting a frame, because binding
 
 **Why the monologue check is first and not a fallback.** `last_interaction_target` is sticky — it holds the last NPC the player clicked and is never cleared. So for any monologue fired after an interact, which is every minigame victory chain and most `dialog_choice` follow-ups, an NPC is always resolvable. Checked later, the NPC would always win, and the client would show that NPC delivering lines the author wrote as the player's own narration. `Castle.py` makes the same call explicitly: its monologue displays pass `displayDialog(None, …)`.
 
-The pin is written in two places, and both matter: `interactions::dispatch::handle_interact` writes it on the default interaction path, and [cell_methods/player/interaction/interact.rs](../../crates/services/src/cell/cell_methods/player/interaction/interact.rs) writes it *before* the content-chain dispatch. The second write is the load-bearing one for content authors. `handle_interact` runs only when no chain claimed the interact, so without it a chain-handled NPC left the pin stale and **any follow-up chain displaying an NPC-speaker dialog silently never opened** — only monologues survived, via source 3. The pin is deliberately not written on the hostile-NPC combat reroute, so attacking something cannot make it the next dialog's speaker.
+The pin is written in two places, and both matter: `interactions::dispatch::handle_interact` writes it on the default interaction path, and [cell_methods/player/interaction/interact.rs](../../crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs) writes it *before* the content-chain dispatch. The second write is the load-bearing one for content authors. `handle_interact` runs only when no chain claimed the interact, so without it a chain-handled NPC left the pin stale and **any follow-up chain displaying an NPC-speaker dialog silently never opened** — only monologues survived, via source 3. The pin is deliberately not written on the hostile-NPC combat reroute, so attacking something cannot make it the next dialog's speaker.
 
 Practical consequence when authoring: a `display_dialog` on a non-`interact_tag` trigger works as long as the player reached that chain through an interact with the NPC you want on screen. A dialog with NPC speakers fired from a trigger that follows no interact at all (a bare `player_loaded`, a region entry, a timer) still has no speaker to resolve and will warn.
 
@@ -462,10 +582,10 @@ All content tables live in the `resources` schema. Read-only at runtime.
 
 | Table | Rows represent | Key columns | Read by |
 |---|---|---|---|
-| `resources.content_chains` | Chain header | `chain_id`, `description`, `scope_type` ∈ `{mission,space,effect,global}`, `scope_id`, `enabled`, `priority` | [engine_loader.rs:50-65](../../crates/services/src/cell/content/engine_loader.rs#L50-L65) |
-| `resources.content_triggers` | Event binding | `chain_id` (FK), `event_type`, `event_key`, `scope`, `once`, `sort_order` | [engine_loader.rs:67-82](../../crates/services/src/cell/content/engine_loader.rs#L67-L82) |
-| `resources.content_conditions` | Gate predicate | `chain_id`, `condition_type`, `target_id`, `target_key`, `operator`, `value`, `sort_order` | [engine_loader.rs:84-100](../../crates/services/src/cell/content/engine_loader.rs#L84-L100) |
-| `resources.content_actions` | Side effect | `chain_id`, `action_type`, `target_id`, `target_key`, `params jsonb`, `delay_ms`, `sort_order` | [engine_loader.rs:102-118](../../crates/services/src/cell/content/engine_loader.rs#L102-L118) |
+| `resources.content_chains` | Chain header | `chain_id`, `description`, `scope_type` ∈ `{mission,space,effect,global}`, `scope_id`, `enabled`, `priority` | [engine_loader.rs:50-65](../../crates/cell-content/src/cell/content/engine_loader.rs#L50-L65) |
+| `resources.content_triggers` | Event binding | `chain_id` (FK), `event_type`, `event_key`, `scope`, `once`, `sort_order` | [engine_loader.rs:67-82](../../crates/cell-content/src/cell/content/engine_loader.rs#L67-L82) |
+| `resources.content_conditions` | Gate predicate | `chain_id`, `condition_type`, `target_id`, `target_key`, `operator`, `value`, `sort_order` | [engine_loader.rs:84-100](../../crates/cell-content/src/cell/content/engine_loader.rs#L84-L100) |
+| `resources.content_actions` | Side effect | `chain_id`, `action_type`, `target_id`, `target_key`, `params jsonb`, `delay_ms`, `sort_order` | [engine_loader.rs:102-118](../../crates/cell-content/src/cell/content/engine_loader.rs#L102-L118) |
 | `resources.content_counters` | Editor metadata only | `counter_id`, `chain_id`, `counter_name`, `target_value`, `reset_on` | **Not read by engine.** Used only by the admin-api editor CRUD. |
 
 Schema source: [db/resources/Content/Tables/](../../db/resources/Content/Tables/).
@@ -476,7 +596,7 @@ The `params jsonb` column is the catch-all for new action fields. Every new fiel
 
 ### What's stored but NOT in these tables
 
-- **Per-player mission state** — `sgw_mission` (player_id, mission_id, status, current_step_id, completed_step_ids[], …). Loaded by the world-entry path in [base/world_entry/methods/missions.rs](../../crates/services/src/base/world_entry/methods/missions.rs), not by `engine_loader`. The engine reads it via `CellEntity.missions` after the populator runs.
+- **Per-player mission state** — `sgw_mission` (player_id, mission_id, status, current_step_id, completed_step_ids[], …). Loaded by the world-entry path in [base/world_entry/methods/missions.rs](../../crates/base-methods/src/base/world_entry/methods/missions.rs), not by `engine_loader`. The engine reads it via `CellEntity.missions` after the populator runs.
 - **Counter state** — in-memory only on `CellEntity.counters: HashMap<String, i32>` ([cell_entity/mod.rs:290](../../crates/entity/src/cell_entity/mod.rs#L290)). **Not persisted; lost on logout.** Counter design assumes the completion threshold is reachable in one session. See §8.
 - **Inventory, stats, abilities, effects** — all live on `CellEntity` and persist via the existing per-domain save paths. The engine consumes them via populators.
 
@@ -484,7 +604,7 @@ The `params jsonb` column is the catch-all for new action fields. Every new fiel
 
 ## 6. Boot-time loading
 
-`build_engine(db_pool: Option<&PgPool>) -> ChainEngine` at [engine_loader.rs:19-44](../../crates/services/src/cell/content/engine_loader.rs#L19-L44):
+`build_engine(db_pool: Option<&PgPool>) -> ChainEngine` at [engine_loader.rs:19-44](../../crates/cell-content/src/cell/content/engine_loader.rs#L19-L44):
 
 1. If `db_pool` is `None`, log warn and return empty `ChainEngine`. Server runs without content.
 2. Otherwise call `load_chains_from_db(pool)`.
@@ -510,13 +630,13 @@ When a chain action mutates **player** state, persistence is **not** the engine'
 
 | Action | Persistence path |
 |---|---|
-| `AcceptMission`, `CompleteMission`, `AdvanceStep`, `CompleteObjective`, `AbandonMission` | Routes through `crate::cell::missions::*` → emits `CellToBaseMsg::MissionUpdate` → BaseApp `UPSERT sgw_mission` at [missions.rs:103-127](../../crates/services/src/base/world_entry/methods/missions.rs#L103-L127) |
+| `AcceptMission`, `CompleteMission`, `AdvanceStep`, `CompleteObjective`, `AbandonMission` | Routes through `crate::cell::missions::*` → emits `CellToBaseMsg::MissionUpdate` → BaseApp `UPSERT sgw_mission` at [missions.rs:103-127](../../crates/base-methods/src/base/world_entry/methods/missions.rs#L103-L127) |
 | `FailObjective` | **Nothing — no executor arm.** The `fail_objective` seed verb loads but the action no-ops. See §3 |
 | `GrantItem`, `RemoveItem` | `CellToBaseMsg::GrantItem` / `RemoveInventoryItem` / `RemoveInventoryItemByType` → BaseApp inventory write |
 | `ChangeStat` | Mutates `CellEntity.stats`; persistence rides existing player save |
 | `IncrementCounter`, `ResetCounter` | **Not persisted.** In-memory `CellEntity.counters` only |
 
-The chain itself never touches a persistence table. Trace example: chain 1087 fires on `entity_dead_tag` `MessHall_Guard1`, condition `mission_status 681 eq active` passes → action `complete_mission 681` runs → `complete_mission_direct` mutates `MissionInstance` on the cell entity → emits `CellToBaseMsg::MissionUpdate { mission_id: 681, status: 2, repeats: bumped, ... }` over the outbox → BaseApp dequeues, runs the `UPSERT` ([missions.rs:103](../../crates/services/src/base/world_entry/methods/missions.rs#L103)).
+The chain itself never touches a persistence table. Trace example: chain 1087 fires on `entity_dead_tag` `MessHall_Guard1`, condition `mission_status 681 eq active` passes → action `complete_mission 681` runs → `complete_mission_direct` mutates `MissionInstance` on the cell entity → emits `CellToBaseMsg::MissionUpdate { mission_id: 681, status: 2, repeats: bumped, ... }` over the outbox → BaseApp dequeues, runs the `UPSERT` ([missions.rs:103](../../crates/base-methods/src/base/world_entry/methods/missions.rs#L103)).
 
 ---
 
@@ -536,15 +656,15 @@ pub counters: HashMap<String, i32>,
 
 ### Lifecycle
 
-- **Mutation.** `Action::IncrementCounter` and `Action::ResetCounter` mutate `entity.counters` directly at [executor/counter.rs:19](../../crates/services/src/cell/content/executor/counter.rs#L19) and [:46](../../crates/services/src/cell/content/executor/counter.rs#L46). Increment uses `saturating_add` ([counter.rs:29](../../crates/services/src/cell/content/executor/counter.rs#L29)). Reset *removes* the entry ([counter.rs:54](../../crates/services/src/cell/content/executor/counter.rs#L54)) — not zeros it.
-- **Read into ctx.** `populate_counters_context` ([mission_context.rs:37-41](../../crates/services/src/cell/content/mission_context.rs#L37-L41)) writes `counter_<name>` into `ExecutionContext.params` for every entry. Called from `populate_mission_context`, so every mission-aware dispatcher gets counters automatically.
-- **Read in chains.** `Condition::Counter` reads `counter_<name>` ([conditions.rs:246-254](../../crates/content-engine/src/conditions.rs#L246-L254)). Missing key → 0. The zero-elision invariant is: **genuinely-zero counters MUST populate explicitly** so `Counter == 0` distinguishes them from "never-incremented." Pinned by `populate_counters_context_writes_counter_keys` at [mission_context.rs:228-251](../../crates/services/src/cell/content/mission_context.rs#L228-L251).
+- **Mutation.** `Action::IncrementCounter` and `Action::ResetCounter` mutate `entity.counters` directly at [executor/counter.rs:19](../../crates/cell-content/src/cell/content/executor/counter.rs#L19) and [:46](../../crates/cell-content/src/cell/content/executor/counter.rs#L46). Increment uses `saturating_add` ([counter.rs:29](../../crates/cell-content/src/cell/content/executor/counter.rs#L29)). Reset *removes* the entry ([counter.rs:54](../../crates/cell-content/src/cell/content/executor/counter.rs#L54)) — not zeros it.
+- **Read into ctx.** `populate_counters_context` ([mission_context.rs:37-41](../../crates/cell-content/src/cell/content/mission_context.rs#L37-L41)) writes `counter_<name>` into `ExecutionContext.params` for every entry. Called from `populate_mission_context`, so every mission-aware dispatcher gets counters automatically.
+- **Read in chains.** `Condition::Counter` reads `counter_<name>` ([conditions.rs:246-254](../../crates/content-engine/src/conditions.rs#L246-L254)). Missing key → 0. The zero-elision invariant is: **genuinely-zero counters MUST populate explicitly** so `Counter == 0` distinguishes them from "never-incremented." Pinned by `populate_counters_context_writes_counter_keys` at [mission_context.rs:228-251](../../crates/cell-content/src/cell/content/mission_context.rs#L228-L251).
 
 ### The hidden ordering invariant
 
 `a51a10d` fixed a bug where increment chains (1085, 1086, 1092, 1093) and completion chains (1087, 1094) lived at the same priority on the same `OnEntityDeath` trigger. Equal-priority ordering inside a `chains_by_trigger` bucket is undefined — so a completion chain's `ResetCounter` could fire before the increment chain on the same kill, leaving the next mission with a stale non-zero counter.
 
-The fix bumped increment chains to priority 1; completion chains stay at 0; the bucket sort is descending. **Conditions evaluate before any sibling action in the same trigger pass executes** — so a "kill N" completion chain whose condition reads `counter` sees the **pre-increment** value. Hence the documented `counter >= target - 1` pattern at [executor/counter.rs:9-18](../../crates/services/src/cell/content/executor/counter.rs#L9-L18): the chain fires on the kill that brings the counter to N, not after.
+The fix bumped increment chains to priority 1; completion chains stay at 0; the bucket sort is descending. **Conditions evaluate before any sibling action in the same trigger pass executes** — so a "kill N" completion chain whose condition reads `counter` sees the **pre-increment** value. Hence the documented `counter >= target - 1` pattern at [executor/counter.rs:9-18](../../crates/cell-content/src/cell/content/executor/counter.rs#L9-L18): the chain fires on the kill that brings the counter to N, not after.
 
 ### Limitations
 
@@ -568,10 +688,10 @@ Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs:43-58](
 | **Relog-restore (state)** | — | — | — | `sgw_mission` → `MissionManager` at world-entry; engine plays no part. Per-objective status round-trips as of #657: the row carries the current step's objective roster and every completed objective id, and hydration rebuilds `hidden` / `optional` from `resources.mission_objectives`, so `ObjectiveStatus` gates survive a relog |
 | **Relog-restore (world)** | `OnPlayerLoaded` | `StepStatus eq active` for the active step | `SetInteractionType` (re-paint quest-glow / Ring icons) | none (in-memory only — interaction flags don't persist on the entity) |
 
-Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/):
+Worked example chains in [chain_replay_tests/](../../crates/cell-content/src/cell/content/chain_replay_tests/):
 
 - **Mission 622 "Arm Yourself"** — chains 1001 (region-accept), 1003 (dialog-complete + reward).
-- **Mission 638 "Prisoner 329"** — chains 1011/1012 (archetype-routed dialog) — pinned by `assert_region_enter_resolves_dialog_set` ([chain_replay_tests/mission_638.rs](../../crates/services/src/cell/content/chain_replay_tests/mission_638.rs)).
+- **Mission 638 "Prisoner 329"** — chains 1011/1012 (archetype-routed dialog) — pinned by `assert_region_enter_resolves_dialog_set` ([chain_replay_tests/mission_638.rs](../../crates/cell-content/src/cell/content/chain_replay_tests/mission_638.rs)).
 - **Mission 681 "Mess Hall"** — chains 1085/1086 (increment counter on each guard), 1087 (complete on threshold).
 - **Health Slappack consumable** — chain 4001 (`OnItemUse(2893)` + `StatBelowMax 7` → `ChangeStat amount=500` + `RemoveItem 2893`).
 
@@ -608,28 +728,28 @@ Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/co
 | Trigger filter mismatch | `trace!` at [chain.rs:144-150](../../crates/content-engine/src/chain.rs#L144-L150) — only visible at trace level |
 | Condition fails | `trace!` at [chain.rs:163-169](../../crates/content-engine/src/chain.rs#L163-L169) |
 | Action `Error` result | `warn!` at [chain.rs:201-209](../../crates/content-engine/src/chain.rs#L201-L209) |
-| `RemoveItem` channel send fails | `error!` at [executor/inventory.rs:226](../../crates/services/src/cell/content/executor/inventory.rs#L226) — explicitly loud because mission progress depends on the consume |
-| `ChangeStat` source entity missing | `warn!` at [executor/stats.rs:37](../../crates/services/src/cell/content/executor/stats.rs#L37) |
-| `display_dialog` cannot resolve a speaker | `warn!` ("no NPC entity id in chain params or last_interaction_target") at [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) + **no frame emitted**, so the dialog silently never opens for the player. Means the chain reached an NPC-speaker dialog with no interact in its history; see the resolution order in §4. Not reachable for monologue dialogs. |
-| Empty engine on startup | `warn!` ("No DB pool available") or `error!` ("Failed to load") at [engine_loader.rs:33-41](../../crates/services/src/cell/content/engine_loader.rs#L33-L41) — server runs without content |
+| `RemoveItem` channel send fails | `error!` at [executor/inventory.rs:226](../../crates/cell-content/src/cell/content/executor/inventory.rs#L226) — explicitly loud because mission progress depends on the consume |
+| `ChangeStat` source entity missing | `warn!` at [executor/stats.rs:37](../../crates/cell-content/src/cell/content/executor/stats.rs#L37) |
+| `display_dialog` cannot resolve a speaker | `warn!` ("no NPC entity id in chain params or last_interaction_target") at [executor/dialog.rs](../../crates/cell-content/src/cell/content/executor/dialog/mod.rs) + **no frame emitted**, so the dialog silently never opens for the player. Means the chain reached an NPC-speaker dialog with no interact in its history; see the resolution order in §4. Not reachable for monologue dialogs. |
+| Empty engine on startup | `warn!` ("No DB pool available") or `error!` ("Failed to load") at [engine_loader.rs:33-41](../../crates/cell-content/src/cell/content/engine_loader.rs#L33-L41) — server runs without content |
 
-The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` site in [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) are the production observability story. Every action execution emits an `info!` with `chain_id`, the action params, and entity. Tracing-grep for `Content:` to scope to executor activity.
+The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` site in [event_dispatch/](../../crates/cell-content/src/cell/content/event_dispatch/) are the production observability story. Every action execution emits an `info!` with `chain_id`, the action params, and entity. Tracing-grep for `Content:` to scope to executor activity.
 
 ### Defined-but-unhandled actions
 
-Eleven `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all:
+Eleven `Action` variants have **no match arm in [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all:
 
 `RemoveEffect`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`.
 
 Three of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows), `remove_effect` (1), `fail_objective` (1). Those 4 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
 
-`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03, and `grant_stargate_address` was added whole in Harset H55. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
+`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03, and `grant_stargate_address` was added whole in Harset H55. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
 
 Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
 
 Biggest functional impacts: **no chain can strip an effect, schedule a timer, or deal scripted damage today.** See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
-**`SystemMessage` wire format is still unresolved** (issue #268). The arm at [executor/mod.rs:275-287](../../crates/services/src/cell/content/executor/mod.rs#L275-L287) carries the reasoning: an earlier implementation routed the message id through `onPlayerCommunication` (method 28), which produced garbled `"[] says"` chat spam and client freezes, so it was reduced to an `info!`. Finding the correct client method for localized string-id display (possibly `onErrorCode` or a UI-specific method) still needs RE.
+**`SystemMessage` wire format is still unresolved** (issue #268). The arm at [executor/mod.rs:275-287](../../crates/cell-content/src/cell/content/executor/mod.rs#L275-L287) carries the reasoning: an earlier implementation routed the message id through `onPlayerCommunication` (method 28), which produced garbled `"[] says"` chat spam and client freezes, so it was reduced to an `info!`. Finding the correct client method for localized string-id display (possibly `onErrorCode` or a UI-specific method) still needs RE. For plain NPC speech that needs no localized string id, use `npc_bark` instead — it reaches the client today.
 
 ---
 
@@ -653,7 +773,7 @@ Biggest functional impacts: **no chain can strip an effect, schedule a timer, or
 
 ### `chain_replay_tests/` — live-DB regression guards
 
-[chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/) loads a specific chain ID from the live seeded DB through the same `build_chains_from_rows` pipeline as production, registers it in a fresh `ChainEngine`, and fires synthetic `TriggerEvent`s with hand-seeded `ExecutionContext`s. Skips cleanly when `DATABASE_URL` is unset via `require_db_or_skip!`.
+[chain_replay_tests/](../../crates/cell-content/src/cell/content/chain_replay_tests/) loads a specific chain ID from the live seeded DB through the same `build_chains_from_rows` pipeline as production, registers it in a fresh `ChainEngine`, and fires synthetic `TriggerEvent`s with hand-seeded `ExecutionContext`s. Skips cleanly when `DATABASE_URL` is unset via `require_db_or_skip!`.
 
 What it pins:
 - mission-status gate semantics (chain 3026 — eq/active/completed leaves; lines 31-163)
@@ -664,11 +784,11 @@ What it pins:
 What it catches: SQL seed drift, condition removals, archetype/op flips, action-list shape changes.
 What it misses: anything that depends on executor side effects (does `RemoveItem` actually remove? does `MissionUpdate` actually persist?). Those need executor unit tests + live-DB integration tests separately.
 
-Two modules are the exception, and are scoped by **action verb** rather than by mission: [sgc_w1_move_entity.rs](../../crates/services/src/cell/content/chain_replay_tests/sgc_w1_move_entity.rs) and [grant_xp.rs](../../crates/services/src/cell/content/chain_replay_tests/grant_xp.rs). Both push the resolved actions on through `executor::execute_actions` and assert on the emitted `CellToBaseMsg`, because a resolve-only test cannot distinguish a wired executor arm from the `other =>` catch-all — exactly the gap that let `move_entity`’s five seeded rows no-op undetected. `grant_xp` has no seed rows, so its module inserts a sentinel chain (id `0x7000_5000`) and deletes it by exact id before asserting.
+Two modules are the exception, and are scoped by **action verb** rather than by mission: [sgc_w1_move_entity.rs](../../crates/cell-content/src/cell/content/chain_replay_tests/sgc_w1_move_entity.rs) and [grant_xp.rs](../../crates/cell-content/src/cell/content/chain_replay_tests/grant_xp.rs). Both push the resolved actions on through `executor::execute_actions` and assert on the emitted `CellToBaseMsg`, because a resolve-only test cannot distinguish a wired executor arm from the `other =>` catch-all — exactly the gap that let `move_entity`’s five seeded rows no-op undetected. `grant_xp` has no seed rows, so its module inserts a sentinel chain (id `0x7000_5000`) and deletes it by exact id before asserting.
 
 ### `interact_tag_linter.rs` — boot-free seed-file lint
 
-[interact_tag_linter.rs](../../crates/content-engine/tests/interact_tag_linter.rs) parses seed SQL files line-by-line (no DB, no engine boot) for two invariants:
+[interact_tag_linter.rs](../../crates/content-engine/tests/it/interact_tag_linter.rs) parses seed SQL files line-by-line (no DB, no engine boot) for two invariants:
 
 1. Every `interact_tag` trigger has a matching `set_interaction_type` action **somewhere in the same file** for the same NPC tag, modulo an explicit allowlist with reason comments. Catches the bug class where the chain triggers but no `INT_*` bit is set, so the client renders the entity as scenery and never sends the click.
 2. Within a single chain SQL file, every world prefix uses consistent case. The runtime resolver does case-sensitive string match, so `Castle_CellBlock.Region9` vs `Castle_Cellblock.Region9` silently never fires. Caught chain 1073's typo.

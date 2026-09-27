@@ -26,13 +26,26 @@ int detour_build_navmesh_data(
     const unsigned int* detailMeshes, int ndetailMeshes,
     const float* detailVerts, int ndetailVerts,
     const unsigned char* detailTris, int ndetailTris,
+    // Tile grid position; 0, 0 for a single-tile mesh.
+    int tileX, int tileY,
     // Output: caller must free with detour_free_data
     unsigned char** outData, int* outDataSize);
 
 void detour_free_data(unsigned char* data);
 
 // ── Navmesh + query lifecycle ───────────────────────────────────────────
+// Single-tile mesh: dtNavMesh::init(data) derives the tile grid from the
+// one tile. The data is copied.
 DetourNavMeshHandle detour_create_navmesh(const unsigned char* data, int dataSize);
+// Multi-tile mesh: an empty dtNavMesh sized for `maxTiles` tiles of at most
+// `maxPolys` polygons each, with tile (0, 0) at `orig`. Tiles are added with
+// detour_add_tile. Returns null when Detour refuses the parameters (tile +
+// poly bits past the 22 a 32-bit dtPolyRef leaves).
+DetourNavMeshHandle detour_create_tiled_navmesh(const float orig[3], float tileWidth, float tileHeight,
+    int maxTiles, int maxPolys);
+// Adds one tile built by detour_build_navmesh_data. The data is copied;
+// the caller still frees its buffer. Returns the dtStatus of addTile.
+dtStatus detour_add_tile(DetourNavMeshHandle mesh, const unsigned char* data, int dataSize);
 void detour_free_navmesh(DetourNavMeshHandle handle);
 
 DetourQueryHandle detour_create_query(DetourNavMeshHandle mesh, int maxNodes);

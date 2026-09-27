@@ -9,12 +9,42 @@ metadata:
 
 GM action handlers confirm results to the GM via `onPlayerCommunication`
 (method index **28**, `crate::mercury::method_idx::ON_PLAYER_COMMUNICATION`) on
-chat channel **CHAN_FEEDBACK = 8**, speaker "SYSTEM", flags 0.
+chat channel **CHAN_FEEDBACK = 9**, speaker "SYSTEM", flags 0.
+
+(Was 8 when this note was first written. It was changed because the client only
+registers the channels in the base's `DEFAULT_CHAT_CHANNELS` and an
+*unregistered* channel falls back to its **red unknown-channel splash popup**;
+9 is the registered `tell` channel. Reasoning is in `gm_feedback.rs:14-22`.)
+
+## Method 28 is the one non-modal text route — and its constants are a mess
+
+Verified 2026-09-21 while adding the `npc_bark` content action (DU-03). Three
+separate facts worth having before touching anything method-28 shaped:
+
+1. **The serializer exists FOUR times** — `cell/console/chat.rs`
+   (`serialize_on_player_communication`, now `pub(crate)` so
+   `cell/content/executor/bark.rs` reuses it), `cell/console/gm/feedback.rs`
+   (private copy), and an inline `write_wstring`-based build in
+   `cell/console/net.rs`. Wire shape is WSTRING speaker (u32 UTF-16 code-unit
+   count + N×2B LE), UINT8 SpeakerFlags, UINT8 Channel, WSTRING text. Reuse
+   `cell::chat::serialize_on_player_communication`; do not add a fifth.
+2. **`cell/console/chat.rs`'s channel constants diverge from
+   `entities/defs/enumerations.xml` for every channel ≥7.** The `.def` is
+   `CHAN_server=8, CHAN_feedback=9, CHAN_tell=10, CHAN_splash=11`; `chat.rs` is
+   `CHAN_SERVER=7, CHAN_FEEDBACK=9, CHAN_TELL=9, CHAN_SPLASH=10`. The feedback
+   value is a deliberate, documented client-reality override; `CHAN_SPLASH=10`
+   looks like a plain off-by-one against canon and has no reader today. **Only
+   `CHAN_say = 0` is agreed by both sources** — trust nothing else without
+   re-verifying in the client.
+3. **`Action::SystemMessage` is a log-only stub and must stay that way.** An
+   earlier attempt routed its message id through method 28 and produced garbled
+   `"[] says"` chat plus client freezes. An empty speaker WSTRING is what causes
+   that, which is why `npc_bark` rejects a blank `speaker` at load.
 
 Two delivery helpers (the wire serializer is duplicated in both — precedent for
 duplicating small serializers across cell/base):
 
-- **Cell-side**: `crate::cell::cell_methods::gm::feedback::send_gm_feedback(entity_id, &str, tx)`
+- **Cell-side**: `crate::cell::console::gm::feedback::send_gm_feedback(entity_id, &str, tx)`
   — emits a `CellToBaseMsg::EntityMethodCall{ method_index: 28 }` that the base
   relays to the entity's own client. `pub(crate)` so the cell `GmSpawnNpcReady`
   handler can use it too. Used for pre-dispatch rejections AND cell-confirmed
@@ -91,3 +121,17 @@ line were silently misrouted to the wrong client.
 - `npc_ai::stationary_no_los_or_range_emits_structured_decision_log` is a
   pre-existing parallel-only flake (global tracing `LogCapture` race); passes in
   isolation and under `--test-threads=1`. Not caused by feedback changes.
+
+## Player-facing (non-GM) feedback: CHAN_feedback via the shared serializer
+
+The line that reaches a player's chat is the legacy `feedback()` shape:
+method 28, speaker `SYSTEM`, flags 0, `CHAN_FEEDBACK` (9). Coordinator
+direction (crafting CR-01, from CR-E1): build it with the canonical
+`cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK}`
+and send with `send_to_witness_reliable`, as
+`base::crafting::feedback::{feedback_text_args, reject}` does, rather than
+reusing the GM helper's private serializer copy. `onErrorCode` rendering is
+unresolved, so it is only ever a secondary after the text. No vendor text
+rejection helper exists. A byte-exact test builds the expected packet with
+`build_player_entity_method_packet(&[0;32], 0, &[], id, 28, ..)` against a
+`test_default_connected_client_state` session.

@@ -22,6 +22,7 @@ env:
     --exclude cimmeria-scene-editor
     --exclude sgw-launcher
     --exclude cimmeria-client-telemetry
+    --exclude cimmeria-client-patches
     --exclude cimmeria-lab
   # Pinned to keep CI byte-identical with what setup.ps1 hydrates locally
   # (bootstrap/CimmeriaBootstrap/Data/Dependencies.psd1). Bumping requires
@@ -37,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/rust-toolchain
         with:
           components: rustfmt
       - name: cargo fmt
@@ -54,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/rust-toolchain
         with:
           components: clippy
       - name: install clang + mold
@@ -82,7 +83,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: build-lane job log tests
+        run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
+      - name: docs-gen tests
+        run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
+      - uses: ./.github/actions/rust-toolchain
+      # Generated doc blocks (test counts, crate graph, ...) are regenerated on
+      # main by regen-docs.yml after the merge, so a stale block never fails a PR.
+      # This only lists what the merge will change.
+      - name: generated doc blocks (informational)
+        run: |
+          python3 tools/docs-gen/regen.py --check \
+            || echo "::notice::regen-docs will update the generated doc blocks listed above after this merges"
+      # crates/workspace-hack unifies third-party features so `-p` builds reuse
+      # the workspace's dependency artifacts (docs/architecture/build-system.md
+      # §6). Fail when a dependency change didn't regenerate it: fix with
+      # `cargo hakari generate && cargo hakari manage-deps --yes`.
+      - name: install cargo-hakari
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
+      - name: workspace-hack is current
+        run: |
+          cargo hakari generate --diff
+          cargo hakari manage-deps --dry-run
+          cargo hakari verify
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
       - name: hydrate external/recast
@@ -119,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
       - name: install nextest
@@ -160,6 +185,12 @@ jobs:
   # actually fire in this job — the prior `test` job's
   # require_db_or_skip! short-circuits without DATABASE_URL.
   #
+  # tools/test-live-db.sh holds the list of crates with live-DB tests and
+  # runs all of them in one nextest invocation, so a crate split out of
+  # cimmeria-services cannot silently drop out of this job (#615). The job
+  # name still says `-p cimmeria-services` so a required status check keyed
+  # on it keeps matching; the split's final wave renames it.
+  #
   # The `ci-live-db` profile in .config/nextest.toml serialises every
   # test (threads-required = "num-test-threads"). Some live-DB tests share
   # sentinel id ranges in resources.* and collide under parallel
@@ -187,7 +218,7 @@ jobs:
       DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
         run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
       - name: install nextest
@@ -210,7 +241,7 @@ jobs:
         with:
           shared-key: test-live-db
       - name: cargo nextest run (live DB)
-        run: cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+        run: bash tools/test-live-db.sh
       - name: upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v7
@@ -224,8 +255,9 @@ jobs:
   # Coverage report. Same matrix as the test + test-live-db jobs combined,
   # instrumented under cargo-llvm-cov. Two passes share counter data via
   # `--no-report`: the workspace pass picks up unit + non-DB integration
-  # coverage, the second pass runs `-p cimmeria-services --lib` against a
-  # live Postgres so the require_db_or_skip! guards actually count.
+  # coverage, the second pass runs the live-DB crates' lib tests
+  # (tools/test-live-db.sh --llvm-cov) against a live Postgres so the
+  # require_db_or_skip! guards actually count.
   # `cargo llvm-cov report` then merges them into one HTML/cobertura/summary.
   #
   # Both passes drive nextest under llvm-cov so a single test execution
@@ -259,7 +291,7 @@ jobs:
       DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/rust-toolchain
         with:
           components: llvm-tools-preview
       - name: install clang + mold + psql
@@ -296,10 +328,8 @@ jobs:
         run: |
           cargo llvm-cov --no-report nextest \
             --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
-      - name: services live-DB pass
-        run: |
-          cargo llvm-cov --no-report nextest \
-            --profile=ci-live-db -p cimmeria-services --lib
+      - name: live-DB pass
+        run: bash tools/test-live-db.sh --llvm-cov
       - name: render reports
         run: |
           mkdir -p target/coverage

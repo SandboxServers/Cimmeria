@@ -10828,6 +10828,37 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100011, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Sandbox Ba''al Test Mission Accept');
 
+-- NEW CONTENT (debug hub): the stasis-room dialog NPC (template 302) and the
+-- two chat-line holders the debug-hub chains bark from. None of these is in
+-- the client PAK: the client draws 60100 and 60101 from DIALOG_OVERRIDES in
+-- crates/resources/src/base/dialog_overrides/mod.rs, whose text must match
+-- dialog_screens.sql character for character. 60102 and 60103 are never
+-- displayed; `npc_bark` reads their screen text (chains 7003 and 7005).
+-- Cimmeria-authored dialog ids live in 60100-60199: an override id above
+-- 65535 crashes the client on map load. Renumbered from 100100-100104; see
+-- docs/reverse-engineering/findings/cooked-dialog-override-crash.md.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60100, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - dialog round trip A');
+
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60101, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - dialog round trip B');
+
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60102, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - dialog bark holder (never displayed)');
+
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60103, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - Livewire bark holder (never displayed)');
+
+-- Social-systems campaign, SS-U3: the Gate Mail Clerk (template 390). One
+-- screen, one Generic 1 button; the button fires chain 7011, which sends the
+-- test mail. Drawn by the client from DIALOG_OVERRIDES like 60100.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60104, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - Gate Mail Clerk');
+
+-- Bank and Vault campaign, BV-05: the Banker's Expand vault offer (D-BV02).
+-- The bank owns dialog ids 60110-60119. One screen, one Generic 1 button.
+-- The server shows it beside onVaultOpen while bank_slots < 100, and routes
+-- its answer to the purchase path (crates/cell-interactions bank/expand.rs),
+-- not to a content chain. Its cooked-data override is defined but held in
+-- QUARANTINED_DIALOG_OVERRIDES (not served) until the Cimmeria-override
+-- map-load crash (#943) is explained, so the client shows no dialog yet.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60110, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Banker - Expand vault');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309

@@ -14,6 +14,7 @@
 use std::path::PathBuf;
 
 use cimmeria_navmesh_extractor::floor_probe::{report as probe_report, AxisMapping, ProbeConfig};
+use cimmeria_navmesh_extractor::interp_actor::InterpActorMode;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ExtractArgs {
@@ -28,6 +29,10 @@ pub(crate) struct ExtractArgs {
     /// `<hex8>o.obj` file in the per-chunk directory breaks
     /// NavBuilder's chunked build (and NavBuilder still exits 0).
     pub combined: Option<PathBuf>,
+    /// `--interp-actors off|classify`, default `classify` (NA40): bake
+    /// each `InterpActor` only when the chunk's Kismet shows it never
+    /// leaves its cooked pose. `off` reproduces a pre-NA36 extraction.
+    pub interp_actors: InterpActorMode,
 }
 
 impl ExtractArgs {
@@ -44,6 +49,10 @@ impl ExtractArgs {
         self.classes
             .clone()
             .unwrap_or_else(|| self.out.join("coverage_classes.tsv"))
+    }
+    /// The `InterpActor` decision log, always next to the OBJs.
+    pub fn interp_actors_path(&self) -> PathBuf {
+        self.out.join("interp_actors.tsv")
     }
 }
 
@@ -96,6 +105,13 @@ impl Args {
             return positional_extract(argv).map(Some);
         }
 
+        if argv.iter().any(|a| a == "--include-interp-actors") {
+            return Err(
+                "--include-interp-actors was replaced by --interp-actors off|classify \
+                        (NA40; classify is the default)"
+                    .to_string(),
+            );
+        }
         let mut flags = Flags::collect(&argv[1..])?;
         let parsed = match mode.as_str() {
             "extract" => Args::Extract(ExtractArgs {
@@ -107,6 +123,10 @@ impl Args {
                 report: flags.take_path("--report"),
                 classes: flags.take_path("--classes"),
                 combined: flags.take_path("--combined"),
+                interp_actors: match flags.take("--interp-actors") {
+                    None => InterpActorMode::default(),
+                    Some(v) => InterpActorMode::parse(&v)?,
+                },
             }),
             "probe" => {
                 let mappings = match flags.take("--mapping") {
@@ -168,6 +188,7 @@ fn positional_extract(argv: &[String]) -> Result<Args, String> {
         report: None,
         classes: None,
         combined: None,
+        interp_actors: InterpActorMode::default(),
     }))
 }
 
@@ -317,6 +338,12 @@ mod tests {
         // No whole-map OBJ unless asked: one in the per-chunk dir kills
         // NavBuilder's chunked build while it still exits 0.
         assert_eq!(a.combined, None);
+        // NA40: InterpActors are classified per actor by default.
+        assert_eq!(a.interp_actors, InterpActorMode::Classify);
+        assert_eq!(
+            a.interp_actors_path(),
+            PathBuf::from("/tmp/out/interp_actors.tsv")
+        );
     }
 
     #[test]
@@ -339,6 +366,8 @@ mod tests {
             "/tmp/c.tsv",
             "--combined",
             "/tmp/whole/castle.obj",
+            "--interp-actors",
+            "off",
         ]))
         .unwrap()
         .unwrap();
@@ -349,6 +378,41 @@ mod tests {
         assert_eq!(a.report_path(), PathBuf::from("/tmp/r.tsv"));
         assert_eq!(a.classes_path(), PathBuf::from("/tmp/c.tsv"));
         assert_eq!(a.combined, Some(PathBuf::from("/tmp/whole/castle.obj")));
+        assert_eq!(a.interp_actors, InterpActorMode::Off);
+    }
+
+    #[test]
+    fn interp_actors_takes_off_or_classify_and_the_na36_flag_is_gone() {
+        let base = [
+            "extract",
+            "--cooked-root",
+            "/c",
+            "--map",
+            "M",
+            "--out",
+            "/o",
+            "--index",
+            "/i",
+        ];
+        let with = |extra: &[&str]| {
+            let mut v: Vec<&str> = base.to_vec();
+            v.extend_from_slice(extra);
+            Args::parse(&argv(&v))
+        };
+
+        let Some(Args::Extract(off)) = with(&["--interp-actors", "off"]).unwrap() else {
+            panic!("wrong mode")
+        };
+        assert_eq!(off.interp_actors, InterpActorMode::Off);
+
+        // A typo is an error, not a silent default: the tool measures.
+        let err = with(&["--interp-actors", "on"]).unwrap_err();
+        assert!(err.contains("off") && err.contains("classify"), "{err}");
+
+        // NA36's bare flag would otherwise read as "unrecognised"; the
+        // error names its replacement instead.
+        let err = with(&["--include-interp-actors"]).unwrap_err();
+        assert!(err.contains("--interp-actors"), "{err}");
     }
 
     #[test]

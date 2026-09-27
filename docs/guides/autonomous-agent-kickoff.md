@@ -220,7 +220,7 @@ Always, locally:
 - `cargo fmt --all -- --check`
 - `cargo clippy -p <each touched crate> --all-targets -- -D warnings`
 - `cargo nextest run -p <each touched crate>`
-- if `cimmeria-services` changed: `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib`
+- if a crate with live-DB tests changed: `tools/test-live-db.sh`
   with `DATABASE_URL` pointing at your container
 - if any `.md` changed, from your worktree root:
   `/home/derek/code_stuff/Cimmeria/node_modules/.bin/markdownlint-cli2 --no-globs <files>`

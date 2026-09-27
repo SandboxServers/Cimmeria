@@ -20,7 +20,7 @@ The handshake has three layers; each owns a distinct server-authority property.
   AES session key (random 32B), ticket (random 10B → 20 hex chars).
 
 ## Phase 3 — UDP baseAppLogin (msg 0x00, flags 0x41)
-- `crates/services/src/base/login/mod.rs`
+- `crates/base/src/base/login/mod.rs`
   - `parse_baseapp_login` — wire decode; `_account_id` from body[9..13] is
     DISCARDED — trusted account_id comes from the ticket map, not the wire.
   - `handle_login` — consume ticket, evict duplicate-account session, register
@@ -29,9 +29,9 @@ The handshake has three layers; each owns a distinct server-authority property.
   account_id + access_level carried from the ticket.
 
 ## Phase 4 — encrypted game packets
-- `crates/services/src/base/connect_loop/encrypted/mod.rs::handle_encrypted_datagram`
+- `crates/base/src/base/connect_loop/encrypted/mod.rs::handle_encrypted_datagram`
   - decrypt → parse → dispatch bundle.
-- `crates/services/src/base/connect_loop/account_arms.rs::dispatch_base_method`
+- `crates/base/src/base/connect_loop/account_arms.rs::dispatch_base_method`
   - 0xC2 logOff, 0xC3 createCharacter, 0xC4 playCharacter, 0xC5 deleteCharacter,
     0xC6 requestCharacterVisuals, 0xC7 onClientVersion.
 - Once `player_entity_id` is Some on ConnectedClientState, the 0xC2..0xC7 range
@@ -49,7 +49,7 @@ The handshake has three layers; each owns a distinct server-authority property.
   of truth (account vs sgw_player), authorization uses account.
 
 ## Static / server-only derivations from CharDefId on createCharacter
-- `crates/services/src/base/chardef.rs::chardef_lookup` — (alignment, archetype,
+- `crates/resources/src/base/chardef.rs::chardef_lookup` — (alignment, archetype,
   gender, bodyset, starting_world, pos_x/y/z). Client cannot spoof these.
 - `resources.char_creation_visgroups` + `_choices` — visual options, validated
   per group (VIS_Optional vs VIS_Forced).

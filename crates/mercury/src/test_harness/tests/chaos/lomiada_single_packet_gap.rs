@@ -40,19 +40,24 @@ async fn lomiada_single_packet_gap_recovers_via_retransmit() {
             .unwrap();
     }
 
-    // B receives 9 of 10 in arrival order (the 3rd is missing).
-    let bundles_before_retx = session.b.recv_n_bundles(9, Duration::from_secs(1)).await;
+    // Nine of the ten reach B, but only the two ahead of the gap are
+    // delivered. packet-3..packet-9 wait in B's receive window behind the
+    // missing packet-2, as the SGW client's `queueAckForPacket` holds them
+    // (NA38). The generous wait lets all nine datagrams land first.
+    let bundles_before_retx = session
+        .b
+        .recv_n_bundles(10, Duration::from_millis(300))
+        .await;
+    let before: Vec<&[u8]> = bundles_before_retx.iter().map(|b| b.as_ref()).collect();
     assert_eq!(
-        bundles_before_retx.len(),
-        9,
-        "B must receive 9 of 10 sends (the 3rd was dropped pre-retx)"
+        before,
+        vec![b"packet-0".as_slice(), b"packet-1".as_slice()],
+        "only the packets ahead of the gap may be delivered before the retransmit"
     );
-    let payloads_before: std::collections::HashSet<Vec<u8>> =
-        bundles_before_retx.iter().map(|b| b.to_vec()).collect();
-    let missing = b"packet-2".to_vec(); // 0-indexed: the 3rd send is index 2
-    assert!(
-        !payloads_before.contains(&missing),
-        "packet-2 must be absent pre-retransmit (proof the drop fired)"
+    assert_eq!(
+        session.b.channel.lock().unwrap().rx_window.len(),
+        8,
+        "the gap slot plus the seven packets buffered behind it"
     );
 
     // A's TX window still holds all 10 (no acks back yet).
@@ -73,25 +78,26 @@ async fn lomiada_single_packet_gap_recovers_via_retransmit() {
         "RTO past + tick must produce at least one retransmit"
     );
 
-    // B observes the retransmits (the harness pushes each wire
-    // arrival to the inbox; dedup happens at the channel layer in
-    // production but the harness is wire-faithful).
-    let after_retx = session
+    // The retransmitted packet-2 fills the gap and releases everything
+    // behind it, in sequence order. The retransmitted copies of packets B
+    // already had are dropped as duplicates, so each payload is
+    // delivered exactly once.
+    let after_retx = session.b.recv_n_bundles(8, Duration::from_secs(1)).await;
+    let after: Vec<Vec<u8>> = after_retx.iter().map(|b| b.to_vec()).collect();
+    let expected: Vec<Vec<u8>> = (2..10u32)
+        .map(|i| format!("packet-{i}").into_bytes())
+        .collect();
+    assert_eq!(
+        after, expected,
+        "the retransmit must release packet-2..packet-9 in sequence order"
+    );
+    let extra = session
         .b
-        .recv_n_bundles(a_actions.retransmits.len(), Duration::from_secs(1))
+        .recv_n_bundles(1, Duration::from_millis(100))
         .await;
-
-    // The originally-missing payload must be among what B received
-    // across both phases.
-    let mut all_received: std::collections::HashSet<Vec<u8>> = payloads_before;
-    for b in after_retx.iter() {
-        all_received.insert(b.to_vec());
-    }
     assert!(
-        all_received.contains(&missing),
-        "the originally-dropped packet must arrive via retransmit; \
-         distinct payloads seen by B: {}",
-        all_received.len(),
+        extra.is_empty(),
+        "retransmitted duplicates must not be delivered twice; got {extra:?}"
     );
 
     // Safety: channel state stays inside the spec'd bounds.

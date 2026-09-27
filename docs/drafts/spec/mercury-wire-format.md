@@ -86,7 +86,7 @@ This section distills the seven V5 finding docs that together canonize the Mercu
 
 ![Mercury crate module architecture — lib.rs, packet/, bundle, codec, channel, transport, encryption, unpacker, unified](figures/mercury-01-module-architecture.svg)
 
-*Figure 1: the Rust crate that mirrors the Mercury wire format — `transport.rs` owns the send-side `UdpSocket` wrapper, `codec.rs` runs encode/decode, `encryption.rs` applies the AES-256-CBC + HMAC-MD5 filter, and `packet/`, `bundle.rs`, and `channel/` carry the wire-format invariants from this chapter. (The diagram art is awaiting a re-render to match the deletion of the orphan `nub.rs` registry; the per-session tick loop lives in `crates/services/src/base/tick_sync.rs` and the bridge contract — `TickActions` and the tick-driver ordering — now sits in `channel/mod.rs`.)*
+*Figure 1: the Rust crate that mirrors the Mercury wire format — `transport.rs` owns the send-side `UdpSocket` wrapper, `codec.rs` runs encode/decode, `encryption.rs` applies the AES-256-CBC + HMAC-MD5 filter, and `packet/`, `bundle.rs`, and `channel/` carry the wire-format invariants from this chapter. (The diagram art is awaiting a re-render to match the deletion of the orphan `nub.rs` registry; the per-session tick loop lives in `crates/base-session/src/base/tick_sync.rs` and the bridge contract — `TickActions` and the tick-driver ordering — now sits in `channel/mod.rs`.)*
 
 A Mercury packet is the contents of a single UDP datagram. The on-wire layout is three concatenated regions:
 
@@ -147,6 +147,9 @@ A non-fragmented unreliable position-update packet — flags byte `0x28` (`0x20 
 > **Note:** Diagram bit assignments lag the chapter — to be re-rendered with corrected DSL.
 
 The flags byte is the gate for the entire packet shape. Eight bits, mapped exactly to stock BigWorld's low byte:
+
+> [!WARNING]
+> Bits 5 to 7 in this table, and the worked examples above and below that use them (`0xB8`, `0x28`), do not match the binary. `docs/audits/mercury-rust-conformance-2026-05-15.md` §11.1 found this, and NA38's decompile of `Nub::processFilteredPacket` (`ghidra://SGW.exe@0x01580ad4`) confirms it. Bit 6 (`0x40`) makes the reader pop the 4-byte sequence ID. Bit 7 (`0x80`) takes the error path. The wire fragment flag is `0x20`. The constants in `crates/mercury/src/packet/mod.rs` are correct. A non-fragmented, sequenced, unreliable position packet is therefore `0x48`, and a reliable one is `0x58`. The rest of this table needs rewriting against the binary.
 
 | Bit | Mask | Flag | Triggers (on send) | Triggers (on receive) |
 |----:|------|---|---|---|
@@ -525,7 +528,7 @@ The queue is bookkeeping for retransmit; the on-wire bytes go out at register ti
 
 This is a server-only mechanism — no change to the wire format, the ack bitmap, or the client's behavior. The 32-slot cap remains in §1.7 R-rules; the queue is the implementation answer to "what does the server do between the cap and the inactivity-timeout reap."
 
-Cell-driven AoI traffic during the pre-`onClientReady` world-entry window is additionally **deferred upstream** by `services::base::deferred_aoi` so it never pressures the queue at all — see `crates/services/src/base/deferred_aoi.rs` for the buffer semantics. The Mercury-layer queue catches whatever the upstream gate let through (mostly the post-`onClientReady` flush burst itself, and any unrelated reliable traffic colliding with it).
+Cell-driven AoI traffic during the pre-`onClientReady` world-entry window is additionally **deferred upstream** by `services::base::deferred_aoi` so it never pressures the queue at all — see `crates/base-session/src/base/deferred_aoi.rs` for the buffer semantics. The Mercury-layer queue catches whatever the upstream gate let through (mostly the post-`onClientReady` flush burst itself, and any unrelated reliable traffic colliding with it).
 
 ### 1.8 Message dispatch
 
@@ -1856,6 +1859,12 @@ R11 through R16 are not "extra" requirements; they document what the client *act
 | Sequence ID outside window in either direction (far-out) | `"Sequence number #%d is way out of window #%d!"` at `0x01b19f90`[^unacked-queue-ack] | Warning log; not immediately fatal (no disconnect from this path alone) |
 | Range-check failure (negative delta wrap) | `"Got out-of-range incoming seq #%d (inSeqAt: #%d)"` at `0x01b19e78`[^unacked-queue-ack] | Range-check rejection at the entry of the function |
 
+**Scope of the reorder: reliable packets only (NA38).** `Nub::processFilteredPacket` (`ghidra://SGW.exe@0x01580ad4`) calls `queueAckForPacket` only for packets with `FLAG_IS_RELIABLE` (`0x10`) on a channel. When the call returns a chain (the packet was the next expected one, plus any buffered packets it unblocked), the caller processes the chain in sequence order. When it returns nothing, the packet was buffered or dropped. Unreliable packets skip the window: `FUN_0158bb50` checks them against the separate dedup structure at `ChannelInternal+0x128`, and they are processed on arrival. Two more constants bound the window. `inSeqAt` (`+0x50`) starts at `0x10000000` in the `ChannelInternal` constructor (`ghidra://SGW.exe@0x0158c7b0`), and `queueAckForPacket` adopts the first reliable sequence it sees. The window size at `+0x30` is copied from `Channel+0x2c`, which the `Channel` constructor (`ghidra://SGW.exe@0x01576bf0`) sets to `0x200` (512). The ACK is queued before the window checks, so the client acks even a packet it then drops as far out of window.
+
+A peer's entity messages that arrive before its `CREATE_ENTITY` are not lost either. `EntityManager::onEntityMoveWithError` (`ghidra://SGW.exe@0x00dd1650`, `ServerMessageHandler` vtable slot `0x019ce99c`) stores the latest position for an unknown id in the pending-entity map at `EntityManager+0x30`. The create handler (`ghidra://SGW.exe@0x00dd2270`, slot `0x019ce98c`) erases that record and passes it to the new entity. The method and property handlers (`0x00dd2b80`, `0x00dd29d0`) copy an unknown entity's message into a per-id buffer at `+0x3c`; the replay of that buffer was not traced.
+
+[Cimmeria server-side note: `Channel::receive_parsed` (`crates/mercury/src/channel/rx_order.rs`) is this gate. The server runs it on every client packet. Like the client, it adopts the peer's first reliable sequence; the `castle_cellblock_head` capture shows the client starting at seq 0 with flags `0x58`, but the server does not rely on that. The loopback/wireclient harness runs it too. Unlike the client, it does not ack a packet beyond the window, so the sender retransmits it. `Channel::check_rx_stall` warns when one gap blocks delivery for more than 2 s. It never skips the gap, because the client never does.]
+
 The client tolerates reorder *within* the window and discards *below* it; far-out-of-window only warns. None of these is a hard disconnect — the disconnect-on-sequence happens at the higher-level "packet with sequence number outside valid range" path enumerated in the R1–R10 rows above (`"Dropping packet due to receiving a packet with sequence number outside valid range"`), which fires when the 28-bit space itself is violated (`seq_id == 0x10000000`).
 
 **R13 — Fragment reassembly: arrival-triggered abandonment, no periodic sweep.** Earlier drafts of this chapter (and the embedded note in `figures/mercury-11-fragment-reassembly-sequence.svg`) claimed a 30-second timer-driven stale sweep at the receiver. **No such timer was found in the binary.** The only stale-abandonment paths are:
@@ -2572,4 +2581,4 @@ N/A — pending Section 1 review. Derived from Sections 1–3; will name the Rus
 
 ## Section 5 — Actual implementation in Rust
 
-N/A — pending Section 1 review. Catalogues current Rust state in `crates/mercury/` and `crates/services/src/mercury/`, flags divergences from Section 4. The known item to verify before authoring: the `encryption.rs` doc-comment that says "OpenSSL" — should say "RustCrypto" (and the implementation it's emulating uses CryptoPP, not OpenSSL).
+N/A — pending Section 1 review. Catalogues current Rust state in `crates/mercury/` and `crates/wire/src/mercury/`, flags divergences from Section 4. The known item to verify before authoring: the `encryption.rs` doc-comment that says "OpenSSL" — should say "RustCrypto" (and the implementation it's emulating uses CryptoPP, not OpenSSL).

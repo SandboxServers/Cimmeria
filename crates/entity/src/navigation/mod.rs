@@ -4,10 +4,13 @@
 //! NavBuilder), converts them into Detour navmesh tiles, and delegates all
 //! pathfinding and spatial queries to the real Detour C++ library.
 //!
-//! The XRC format stores a single-tile Recast polygon mesh with detail
-//! triangulation. We parse the binary format, pass the raw arrays through
-//! `dtCreateNavMeshData` via our C wrapper, then init a `dtNavMesh` and
-//! `dtNavMeshQuery` for runtime queries.
+//! The XRC format stores Recast polygon meshes with detail triangulation:
+//! one for the whole map, or — the tiled `XRCT` layout, for maps too big
+//! for one `rcPolyMesh` — one per tile. We parse the binary format, pass
+//! each mesh's raw arrays through `dtCreateNavMeshData` via our C wrapper,
+//! add the tile(s) to one `dtNavMesh`, and init a `dtNavMeshQuery` for
+//! runtime queries. Detour links neighbouring tiles itself, so every query
+//! below works across tile borders unchanged.
 //!
 //! Reference: `src/cellapp/entity/navigation.cpp` (C++ server implementation)
 //! Reference: `tools/SceneEditor/src/commands/navmesh.rs` (XRC parser)
@@ -15,21 +18,35 @@
 //! Module layout:
 //!
 //! - [`xrc`] — XRC binary-reader helpers and the header sanity caps.
-//! - [`load`] — `NavMesh::load`: parse + Detour tile construction.
+//! - [`load`] — `NavMesh::load`: layout detection, the single-mesh parse,
+//!   Detour mesh construction.
+//! - [`load_tiled`] — the tiled `XRCT` layout.
+//! - [`poly_block`] — one poly-mesh block, shared by both layouts, and its
+//!   conversion to a Detour tile.
 //! - [`fingerprint`] — which mesh this is ([`NavMeshFingerprint`]).
 //! - [`verdict`] — why a containment test said what it said
 //!   ([`PointVerdict`], [`NavGate`]).
 //! - [`line_of_sight`] — the line-of-sight raycast and its three-state
 //!   result.
+//! - [`path`] — `find_path` and its typed [`PathOutcome`] (which Detour
+//!   stage failed, whether the corridor was partial, how far each end
+//!   snapped).
+//! - [`surface`] — `move_along_surface`, a wall-respecting slide that ends
+//!   on the floor.
 //! - this module — the [`NavMesh`] handle and the rest of its query API.
 
 mod fingerprint;
 mod line_of_sight;
 mod load;
+mod load_tiled;
+mod path;
+mod poly_block;
+mod surface;
 mod verdict;
 mod xrc;
 
-pub use line_of_sight::LineOfSight;
+pub use line_of_sight::{LineOfSight, LosProbe, STATIONARY_ATTACK_VERTICAL_BAND};
+pub use path::{PathOutcome, PathStatus};
 
 use std::ffi::c_void;
 
@@ -390,6 +407,28 @@ impl NavMesh {
         None
     }
 
+    /// The closest point on the mesh to `pos` that lies within `radius`
+    /// horizontally and `half_height` vertically, or `None`.
+    ///
+    /// For recovering a mover the pathfinder's tight start box rejects (an
+    /// NPC hovering, sunk, or a step off the edge) and for routing toward a
+    /// destination the loose `±3` box misses (a GM standing on unmeshed
+    /// props). The box is searched as Detour does, then the answer is held to
+    /// the horizontal *radius*, so a corner of the box does not stretch the
+    /// reach by `sqrt(2)`.
+    pub fn nearest_point_within(
+        &self,
+        pos: &Vector3,
+        radius: f32,
+        half_height: f32,
+    ) -> Option<Vector3> {
+        let (_, p) = self.find_nearest_poly_with_extents(pos, &[radius, half_height, radius])?;
+        // Detour admits any polygon whose bounds overlap the box, and its
+        // closest point can lie outside the box: hold the answer to it.
+        let (dx, dz) = (p.x - pos.x, p.z - pos.z);
+        (dx * dx + dz * dz <= radius * radius && (p.y - pos.y).abs() <= half_height).then_some(p)
+    }
+
     /// Find the closest valid navmesh position to the given point.
     pub fn get_nearest_point(&self, pos: &Vector3) -> Vector3 {
         self.find_nearest_poly(pos).map(|(_, p)| p).unwrap_or(*pos)
@@ -437,110 +476,6 @@ impl NavMesh {
             Some(height)
         }
     }
-
-    /// Find a path from `start` to `end` across the navigation mesh.
-    ///
-    /// Returns a sequence of world-space waypoints forming a walkable path,
-    /// or `None` if no path exists. Uses Detour's A* pathfinder followed
-    /// by straight-path simplification.
-    pub fn find_path(&self, start: &Vector3, end: &Vector3) -> Option<Vec<Vector3>> {
-        let start_pos = [start.x, start.y, start.z];
-        let end_pos = [end.x, end.y, end.z];
-
-        // Find start polygon (tight extents — entity should be on a poly)
-        let mut start_ref: u32 = 0;
-        let mut start_pt = [0.0f32; 3];
-        let status = unsafe {
-            detour_ffi::detour_find_nearest_poly(
-                self.query,
-                start_pos.as_ptr(),
-                START_EXTENTS.as_ptr(),
-                &mut start_ref,
-                start_pt.as_mut_ptr(),
-            )
-        };
-        if dt_status_failed(status) || start_ref == 0 {
-            tracing::warn!(?start, "NavMesh::find_path: no start poly for position");
-            return None;
-        }
-
-        // Find end polygon (loose extents — destination may be approximate)
-        let mut end_ref: u32 = 0;
-        let mut end_pt = [0.0f32; 3];
-        let status = unsafe {
-            detour_ffi::detour_find_nearest_poly(
-                self.query,
-                end_pos.as_ptr(),
-                DEST_EXTENTS.as_ptr(),
-                &mut end_ref,
-                end_pt.as_mut_ptr(),
-            )
-        };
-        if dt_status_failed(status) || end_ref == 0 {
-            tracing::warn!(?end, "NavMesh::find_path: no end poly for position");
-            return None;
-        }
-
-        // Find polygon corridor via A*
-        let mut poly_path = vec![0u32; MAX_POLY_PATH as usize];
-        let mut path_count: i32 = 0;
-        let status = unsafe {
-            detour_ffi::detour_find_path(
-                self.query,
-                start_ref,
-                end_ref,
-                start_pt.as_ptr(),
-                end_pt.as_ptr(),
-                poly_path.as_mut_ptr(),
-                &mut path_count,
-                MAX_POLY_PATH,
-            )
-        };
-        if dt_status_failed(status) || path_count == 0 {
-            tracing::debug!(?start, ?end, "NavMesh::find_path: no poly path found");
-            return None;
-        }
-
-        // Convert polygon corridor to straight-line waypoints
-        let mut straight_path = vec![0.0f32; (MAX_STRAIGHT_PATH * 3) as usize];
-        let mut straight_count: i32 = 0;
-        let status = unsafe {
-            detour_ffi::detour_find_straight_path(
-                self.query,
-                start_pt.as_ptr(),
-                end_pt.as_ptr(),
-                poly_path.as_ptr(),
-                path_count,
-                straight_path.as_mut_ptr(),
-                &mut straight_count,
-                MAX_STRAIGHT_PATH,
-            )
-        };
-        if dt_status_failed(status) || straight_count == 0 {
-            tracing::debug!(
-                ?start,
-                ?end,
-                "NavMesh::find_path: straight path failed, returning endpoints"
-            );
-            // Fallback: return direct start→end (Detour found a poly path
-            // but couldn't straighten it — shouldn't happen normally)
-            return Some(vec![
-                Vector3::new(start_pt[0], start_pt[1], start_pt[2]),
-                Vector3::new(end_pt[0], end_pt[1], end_pt[2]),
-            ]);
-        }
-
-        let mut waypoints = Vec::with_capacity(straight_count as usize);
-        for i in 0..straight_count as usize {
-            waypoints.push(Vector3::new(
-                straight_path[i * 3],
-                straight_path[i * 3 + 1],
-                straight_path[i * 3 + 2],
-            ));
-        }
-
-        Some(waypoints)
-    }
 }
 
 impl std::fmt::Debug for NavMesh {
@@ -557,6 +492,8 @@ impl std::fmt::Debug for NavMesh {
     }
 }
 
+#[cfg(test)]
+mod line_of_sight_policy_tests;
 #[cfg(test)]
 mod line_of_sight_tests;
 #[cfg(test)]

@@ -93,11 +93,11 @@ the runtime offsets are memory layout after initialization.
 These two layouts describe the client binary's `AbilityType`; they are not a Rust memory layout that
 Cimmeria maps or reads by offset. Cimmeria has two separate ability-data paths:
 
-- `crates/services/src/base/resources/mod.rs` loads category 2 (`CookedDataAbilities.pak`) as
-  `elementId -> raw XML bytes`. `crates/services/src/base/cooked_data.rs` sends those bytes through the existing cooked-data
+- `crates/resources/src/base/resources/mod.rs` loads category 2 (`CookedDataAbilities.pak`) as
+  `elementId -> raw XML bytes`. `crates/base-session/src/base/cooked_data.rs` sends those bytes through the existing cooked-data
   resource-fragment protocol so the client can populate its own PAK/runtime structures.
 - `crates/entity/src/abilities/defs.rs` defines Cimmeria's named-field `AbilityDef`. The startup loader
-  `crates/services/src/cell/spawner/abilities.rs::load_ability_defs` selects named columns from
+  `crates/cell-catalog/src/cell/spawner/abilities.rs::load_ability_defs` selects named columns from
   `resources.abilities` and constructs `AbilityDef`; `SpaceManager::ability_defs` then supplies that
   value to server-side ability handlers. Effect target-collection data is loaded separately into the
   named-field `EffectDef` from `resources.effects`.
@@ -232,7 +232,7 @@ All five handlers subscribe to the **same** `Event_NetIn_TimerUpdate` signal. Th
 | 11 | `\v` | MissionSet — mission completion timer | same |
 | 12 | `\f` | GameBeing — weapon reload | `GameBeing_HandleOnTimerUpdate_Reload` (0x00e02380) |
 | 13 | `\r` | GameBeing — deployment reload | same |
-| 14 | `\x0E` | GameProxyPlayer — BigWorld time-complete | `SGWBeing_onBigWorldTimeComplete` (0x00dec9e0) |
+| 14 | `\x0E` | GameProxyPlayer — duel countdown (`ETimerUpdateType.DuelTimer`), raises `Event_UI_DuelTimerStart` | `SGWBeing_onBigWorldTimeComplete` (0x00dec9e0) |
 | 16 | `\x10` | SGW::Crafting — crafting job timer | `FUN_00e47800` (0x00e47800) |
 
 **Note on types 4, 7, 8**: `CooldownManager_HandleOnTimerUpdate` has NO type-based early-return — it processes
@@ -328,11 +328,13 @@ Wrapper: `FUN_00dfb2a0` (GameProxyPlayer path) / `FUN_00dfaaf0` (SGWMob path).
 1. Computes `delta = (float)(BigWorldTimeComplete - currentBWTime)`.
 2. Clamps delta to 0.0f if negative.
 3. `scalable_malloc(4)` → stores delta as a float.
-4. Publishes via `FUN_00dfdcb0` (CME emit for a BW-time-remaining signal).
+4. Publishes via `FUN_00dfdcb0`, which queues `Event_UI_DuelTimerStart` (RTTI of the event node
+   built in `0x00df57c0`: type descriptor `0x01e0da40`, vtable `0x019d52d0`).
 
-**Purpose**: Converts the server's absolute "BigWorld time complete" timestamp into a client-local
-float countdown (seconds remaining). Used for zone timers, match timers, and event countdowns that
-are driven by BigWorld server time rather than entity-specific cooldown logic.
+**Purpose**: the duel countdown. `ETimerUpdateType.DuelTimer = 14`, and the float it emits is the
+`Event_UI_DuelTimerStart(duration)` the Lua shows as splash numbers (`Duel.lua`). **Corrected
+2026-09-27 (SS-D2)**: this section used to call it a generic zone or match timer; the byte trace is in
+`duel-wire-formats.md`'s SS-D2 section. The function name is a Ghidra auto-label, kept for continuity.
 
 ### SGW::Crafting_HandleOnTimerUpdate (0x00e47800) — NEW (W-misc-gaps)
 
@@ -397,6 +399,32 @@ for the client to route it to the right entity's cooldown state.
 Ensure the `SourceID` field is always populated with the entity's BigWorld entity ID when sending
 `onTimerUpdate` timer types 0–3. An empty or zero `SourceID` will cause the cooldown handler to silently
 discard the update.
+
+> **Verified in Cimmeria**: 2026-09-19 (audit tracked by issue #272)
+>
+> Every cooldown-type `onTimerUpdate` emit path that exists in `crates/services` today populates
+> `SourceID` with the source entity's BigWorld entity ID, so the client's `SourceID == local entityId`
+> gate passes for player-self cooldowns.
+>
+> | Emit path | `Type` | `SourceID` passed | Routing | Client outcome |
+> |---|---|---|---|---|
+> | `cell/abilities/use_ability/handle.rs` `handle_use_ability` | `TIMER_ABILITY_COOLDOWN` (2) | the ability user's `entity_id` | `send_entity_method` — player to own client, NPC to AoI witnesses | player-self: passes; NPC: discarded on the witness client by design (the cooldown bar is local-player-only) |
+> | `cell/cell_methods/player/world/reload.rs` `handle_reload` | `TIMER_ABILITY_COOLDOWN` (2) | the reloading player's `entity_id` | direct `EntityMethodCall` to the player's own base | passes |
+> | `cell/console/net.rs` `.net_timer` (GM command) | caller-supplied | the caller's entity ID | direct to caller | passes |
+>
+> - No sender exists for `TIMER_ABILITY_WARMUP` (1) or `TIMER_CATEGORY_COOLDOWN` (8) today, so no
+>   further cooldown-type path is in scope. The type-8 absence is a parity gap, not just an absence:
+>   `AbilityManager.py` sends a second `onTimerUpdate` per `monikerId` with `CategoryCooldown`, and its
+>   `TotalTime` is `abilityCooldown + abilityWarmup`, not the cooldown alone.
+> - `cell/service/base_messages/player_init/mod.rs` deliberately wipes all cooldowns on world entry and
+>   sends no per-ability timers, so login has nothing to verify.
+> - Original-server parity: `deprecated/python/cell/AbilityManager.py` sends `AbilityCooldown` (2) and
+>   `CategoryCooldown` (8) with `ent.entityId` as `SourceID` — the semantics Cimmeria implements.
+> - The `.net_timer` GM command used to hand-roll a 17-byte buffer without `SecondaryId`; #734 (#719)
+>   restored the 21-byte `SGWBeing.def` layout. `SourceID` was in the right slot either way.
+> - **Scope**: this note verifies the `SourceID` *field value* only. The per-type semantic labels in
+>   the timer-type table above are inferred (the binary handler has no type-based early return); they
+>   are not re-verified here.
 
 ### Issue — ConfirmEffect must use "aEffectId" and "aAccepted" field names
 

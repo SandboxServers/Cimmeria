@@ -93,6 +93,48 @@ CREATE TABLE entity_templates (
     -- Set this column on templates that need to keep pace with (or
     -- catch up to) a player, e.g. escort/companion NPCs.
     move_speed real,
+    -- Leash radius in world units, measured from the NPC's own position to
+    -- its spawn point (horizontal distance; NA12 / D-NA03 / D-NA09).
+    -- NULL → the runtime default `cell::combat::LEASH_DISTANCE` (50).
+    -- An NPC more than this far from spawn (plus a 5-unit hysteresis
+    -- band) gives up the fight and walks home. Set it on templates that
+    -- should chase further (bosses) or give up sooner (sentries).
+    leash_distance real,
+    -- Proximity-aggro radius in world units (NA13 / D-NA01 / D-NA09),
+    -- horizontal distance from the NPC. NULL → the runtime default
+    -- `cell::combat::DEFAULT_AGGRO_RADIUS` (18). An Idle NPC that is hostile
+    -- to players (its spawn's `aggression_override`, else the faction
+    -- reaction) engages a player inside this radius, within 4 u of its
+    -- height and in navmesh line of sight.
+    aggro_radius real,
+    -- Assist radius in world units (NA14 / D-NA04 / D-NA09), horizontal
+    -- distance from this NPC to a same-faction NPC that has just engaged.
+    -- NULL → the runtime default `cell::combat::DEFAULT_ASSIST_RADIUS` (10).
+    -- A hostile Idle / patrolling / wandering NPC inside this radius of a
+    -- neighbour that enters Fighting from damage or proximity, within 4 u of
+    -- its height and in navmesh line of sight, joins on the same target.
+    -- Assist does not chain. A deviation from legacy, which had no assist.
+    assist_radius real,
+    CONSTRAINT entity_templates_assist_radius_positive
+        CHECK (assist_radius IS NULL OR assist_radius > 0.0),
+    CONSTRAINT entity_templates_aggro_radius_positive
+        CHECK (aggro_radius IS NULL OR aggro_radius > 0.0),
+    -- Whether the NPC takes cover in combat (NA22; the client's
+    -- `SGWMob.def` `useCover`). NULL -> the runtime default: a hostile
+    -- (`faction = 10`) NPC does. A stationary NPC or a prop never does,
+    -- and a melee-only NPC is skipped at fight time, whatever this says.
+    -- See docs/architecture/cover-system.md.
+    use_cover boolean,
+    -- Which vault a Banker opens (bank-vault D-BV09): the personal vault
+    -- (container 17), or the Team (19) or Command (20) organization vault.
+    -- Read only when `interaction_type` carries INT_BANKER (bit value 2);
+    -- every other template ignores it. The legacy EInteractionType banker
+    -- numbering is not used. See docs/content/interaction-flags.md.
+    vault_scope text DEFAULT 'personal' NOT NULL,
+    CONSTRAINT entity_templates_vault_scope_known
+        CHECK (vault_scope IN ('personal', 'team', 'command')),
+    CONSTRAINT entity_templates_leash_distance_positive
+        CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive
         CHECK (move_speed IS NULL OR move_speed > 0.0),
     CONSTRAINT entity_templates_respawn_secs_min_3

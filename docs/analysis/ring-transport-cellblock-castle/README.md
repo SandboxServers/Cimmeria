@@ -1,7 +1,8 @@
 # CellBlock → Castle Ring Transport: Audit and Client-Patch Feasibility
 
 **Date:** 2026-09-19
-**Status:** Feasibility only. No patcher, seed change or client file has been produced.
+**Status:** Phase 0 passed in-client on 2026-09-19 (see [Phase 0 status](#phase-0-status)). Phase 1 is built and awaiting its in-client test (see [Phase 1 status](#phase-1-status)). Phases 2–3 are not started. The audit and plan below were written on 2026-09-19 as a feasibility study, before either phase ran.
+**Last updated:** 2026-09-25
 **Trigger:** external handoff `01_RING_TRANSPORT_CLAUDE_INSTRUCTIONS.zip` (baseline `f661a97d`), which asks for mission 688's instant `cross_world_teleport` to be replaced with a full Ring Transporter ceremony.
 
 ## Summary

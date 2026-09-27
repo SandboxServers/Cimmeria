@@ -84,6 +84,14 @@ COPY tools ./tools
 
 ENV CARGO_INCREMENTAL=0
 
+# Git commit baked into the binary as the OTLP `service.version` resource
+# attribute (crates/server/build.rs). `.git` is not in the build context, so
+# the release workflow passes the SHA in; a local `docker build` without the
+# arg ships "unknown". Declared this late so a new SHA only invalidates the
+# cargo layer, which every commit rebuilds anyway.
+ARG CIMMERIA_GIT_SHA=unknown
+ENV CIMMERIA_GIT_SHA=${CIMMERIA_GIT_SHA}
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build -p cimmeria-server --release \
@@ -195,7 +203,7 @@ COPY --from=builder --chown=cimmeria:cimmeria /tmp/cimmeria-server /opt/cimmeria
 COPY --chown=cimmeria:cimmeria data/cache  /opt/cimmeria/data/cache
 COPY --chown=cimmeria:cimmeria data/spaces /opt/cimmeria/data/spaces
 # CellService reads these two XMLs at startup (entities_dir defaults to
-# "entities" relative to CWD; see crates/services/src/cell/service/mod.rs).
+# "entities" relative to CWD; see crates/cell/src/cell/service/mod.rs).
 # Everything else under entities/ — entities.xml, custom_*.xml, defs/ — is
 # build-time-only input for crates/defs/build/ and is already baked into
 # the binary, so it doesn't ship in the runtime image.

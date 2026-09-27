@@ -1,0 +1,434 @@
+//! Parse / validate / route one GM `.`-console line.
+//!
+//! [`handle_console_command`] is the channel entry point called from
+//! [`crate::cell::console::chat`]; [`resolve_target`] enforces the per-command target
+//! contract and [`exec`] routes a validated command to its family handler.
+
+use cimmeria_content_engine::chain::ChainEngine;
+use tokio::sync::mpsc;
+
+use super::registry::{Spec, Target, COMMANDS};
+use super::send_gm_feedback;
+use super::{
+    aggro, bank, bookmark, crafting, duel, entity, give, give_ability, mail, mission, net, org,
+    org_create, patrol, pet, placement, query, seed, server, social, spawn, squad, stats, travel,
+};
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
+
+/// Parse, validate, and dispatch one GM `.`-console line.
+///
+/// `text` is the raw chat body including the leading `.`. The caller is already
+/// confirmed `access_level >= GameMaster` by the channel gate in
+/// [`crate::cell::console::chat`]. Every accepted command is logged at `info` for the
+/// audit trail; validation failures reply to the GM via [`feedback`] and abort.
+pub async fn handle_console_command(
+    caller_id: u32,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
+) {
+    let body = text.strip_prefix('.').unwrap_or(text);
+    let parts: Vec<&str> = body.split_whitespace().collect();
+    let Some(&name) = parts.first() else {
+        send_gm_feedback(caller_id, "Empty command. Try .help", tx).await;
+        return;
+    };
+    let args: Vec<&str> = parts[1..].to_vec();
+
+    let Some(spec) = find_command(name) else {
+        send_gm_feedback(
+            caller_id,
+            &format!("Unknown command: .{name} (try .help)"),
+            tx,
+        )
+        .await;
+        crate::cell::playtest_friction::console_rejected(caller_id, name, "unknown_command");
+        return;
+    };
+
+    if args.len() < spec.min {
+        send_gm_feedback(
+            caller_id,
+            &format!(
+                ".{name}: not enough arguments (got {}, need at least {})",
+                args.len(),
+                spec.min
+            ),
+            tx,
+        )
+        .await;
+        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_few_args");
+        return;
+    }
+    if args.len() > spec.max {
+        send_gm_feedback(
+            caller_id,
+            &format!(
+                ".{name}: too many arguments (got {}, at most {})",
+                args.len(),
+                spec.max
+            ),
+            tx,
+        )
+        .await;
+        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_many_args");
+        return;
+    }
+
+    // Resolve + validate the selected target (if the command requires one).
+    let target_id = match resolve_target(caller_id, spec, space_mgr) {
+        Ok(t) => t,
+        Err(msg) => {
+            send_gm_feedback(caller_id, &format!(".{name}: {msg}"), tx).await;
+            crate::cell::playtest_friction::console_rejected(caller_id, name, "bad_target");
+            return;
+        }
+    };
+
+    // Audit trail: log only AFTER the command passes arg-count + target
+    // validation, so the "accepted" event marks commands we actually dispatch
+    // (not malformed/wrong-target ones rejected above). Record both the caller
+    // and their server-side `access_level` so the audit line attributes the
+    // command to a privilege level, not just an entity id. Command args may
+    // contain names/positions but never secrets, so logging the name + count
+    // (not the raw text) is the right privacy/observability balance — mirrors
+    // the chat.send span policy.
+    let access_level = space_mgr
+        .get_entity(caller_id)
+        .map(|e| e.access_level)
+        .unwrap_or(0);
+    // Stable identity for the audit trail. `access_level` used to be the only
+    // way to guess WHICH GM ran a command — matching level values between a
+    // login line and this one, then correlating by wall clock. That breaks the
+    // moment two GMs are online, and `entity_id` can't stand in for identity
+    // because it's a recycled per-space slot. Log the account directly.
+    let id = space_mgr.player_identity(caller_id);
+    tracing::info!(
+        entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        access_level,
+        command = name,
+        argc = args.len(),
+        "GM .-console command accepted"
+    );
+
+    // Discord gm-channel audit trail. Attribute to the caller's cached name
+    // (threaded in via InitPlayerState); fall back to the entity id if the
+    // name isn't cached yet. Args are name/position tokens, never secrets —
+    // the same privacy balance as the audit log above.
+    let gm_name = space_mgr
+        .get_entity(caller_id)
+        .and_then(|e| e.character_name.clone())
+        .unwrap_or_else(|| format!("entity:{caller_id}"));
+    cimmeria_discord::emit_gm_command(gm_name, format!(".{name}"), args.join(" "));
+
+    exec(name, caller_id, &args, target_id, tx, space_mgr, engine).await;
+}
+
+/// The registered command named `name`, matched exactly. The one lookup
+/// both this dispatcher and the chat channel's non-GM refusal use, so the
+/// two can never disagree about what counts as a console command.
+pub(crate) fn find_command(name: &str) -> Option<&'static Spec> {
+    COMMANDS.iter().find(|c| c.name == name)
+}
+
+/// The registered command a `.`-line names, if any: its first
+/// whitespace-separated word after the `.`.
+pub(crate) fn command_named_by(text: &str) -> Option<&'static Spec> {
+    let body = text.strip_prefix('.')?;
+    find_command(body.split_whitespace().next()?)
+}
+
+/// The channel gate's answer to a non-GM `.`-line: when `text` names a
+/// registered command, tell the sender it is a GM command and return `true`
+/// (the line is consumed, never broadcast). Returns `false` for any other
+/// `.`-text, which stays ordinary chat.
+///
+/// The arguments are neither echoed nor logged. The refusal is one DEBUG
+/// line with `reason = "not_gm"` and the sender's identity, never a WARN, so
+/// a player cannot flood the WARN stream by typing commands.
+pub(crate) async fn refuse_non_gm_command(
+    entity_id: u32,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> bool {
+    let Some(spec) = command_named_by(text) else {
+        return false;
+    };
+    // Not `playtest_friction::console_rejected`: its streak detector is a
+    // "GM hunting for a command" WARN, and a player must not be able to raise
+    // it by typing. `.pet` refusals join the other pet commands on
+    // `pets.command`; the rest use the console's module-path target.
+    let id = space_mgr.player_identity(entity_id);
+    let access_level = space_mgr.get_entity(entity_id).map(|e| e.access_level);
+    if spec.name == "pet" {
+        tracing::debug!(
+            target: "pets.command",
+            decision_outcome = "gm_refused",
+            reason = "not_gm",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            access_level,
+            command = spec.name,
+            "non-GM .-console command refused"
+        );
+    } else {
+        tracing::debug!(
+            decision_outcome = "refused",
+            reason = "not_gm",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            access_level,
+            command = spec.name,
+            "non-GM .-console command refused"
+        );
+    }
+    send_gm_feedback(
+        entity_id,
+        &format!(".{} is a GM command; you do not have GM rights", spec.name),
+        tx,
+    )
+    .await;
+    true
+}
+
+/// Resolve the caller's current target and validate it against `spec.target`.
+///
+/// - For [`Target::None`] commands, returns the caller's current target if it's
+///   set and resolvable (legacy `findEntity(targetId) if targetId else None`),
+///   else `None`. A bad/cross-space current target is simply dropped to `None`
+///   rather than failing — these commands don't depend on it.
+/// - For typed commands, a target is **required**: returns `Err(msg)` (with a
+///   GM-facing reason) when there is no current target, it doesn't resolve, it's
+///   in another space, or it's the wrong type.
+fn resolve_target(
+    caller_id: u32,
+    spec: &Spec,
+    space_mgr: &SpaceManager,
+) -> Result<Option<u32>, String> {
+    let caller_space = space_mgr.get_entity(caller_id).map(|e| e.space_id.0);
+    let current = space_mgr
+        .get_entity(caller_id)
+        .and_then(|e| e.current_target_id)
+        .filter(|&id| id > 0)
+        .and_then(|id| u32::try_from(id).ok());
+
+    if spec.target == Target::None {
+        // Optional: pass the current target through only if it resolves in the
+        // caller's space; otherwise None.
+        let resolved =
+            current.filter(|&id| space_mgr.get_entity(id).map(|e| e.space_id.0) == caller_space);
+        return Ok(resolved);
+    }
+
+    let Some(target_id) = current else {
+        return Err("a target is required for this command".to_string());
+    };
+    let Some(target) = space_mgr.get_entity(target_id) else {
+        return Err(format!("targeted entity {target_id} is unknown"));
+    };
+    if Some(target.space_id.0) != caller_space {
+        return Err(format!("targeted entity {target_id} is in another space"));
+    }
+    if !spec.target.matches(target) {
+        return Err(format!("expected {} as a target", spec.target.label()));
+    }
+    Ok(Some(target_id))
+}
+
+/// Route a validated command to its family handler. The big match mirrors
+/// `gm::dispatch`; each arm receives only the params it needs.
+#[allow(clippy::too_many_lines)]
+#[cfg_attr(not(any(test, feature = "test-support")), allow(unreachable_pub))]
+pub async fn exec(
+    name: &str,
+    caller_id: u32,
+    args: &[&str],
+    target_id: Option<u32>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
+) {
+    match name {
+        "help" => query::help(caller_id, args, tx).await,
+        // authoring commit workflow
+        "seedconfirm" => seed::confirm(caller_id, tx, space_mgr).await,
+        "seedpending" => seed::pending(caller_id, tx, space_mgr).await,
+        "seedcancel" => seed::cancel(caller_id, tx, space_mgr).await,
+        // D. search / query
+        "searchitem" => query::search_item(caller_id, args, tx, space_mgr).await,
+        "searchmission" => query::search_mission(caller_id, args, tx, space_mgr).await,
+        "searchtemplate" => query::search_template(caller_id, args, tx, space_mgr).await,
+        "players" => query::players(caller_id, tx, space_mgr).await,
+        "listabilities" => {
+            query::list_abilities(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // I. entity / combat inspection
+        "info" => query::info(caller_id, args, target_id, tx, space_mgr).await,
+        "facing" => {
+            query::facing(
+                caller_id,
+                target_id.expect("Target::Spawnable guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        "combatinfo" => {
+            query::combat_info(
+                caller_id,
+                target_id.expect("Target::Mob guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // F. stat dumps
+        "stats" | "primarystats" | "speedstats" | "armorstats" | "qrstats" | "absorbstats"
+        | "stealthstats" => {
+            stats::show(
+                name,
+                caller_id,
+                target_id.expect("Target::Being guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // A. entity authoring
+        "tag" | "name" | "alignment" | "nameid" | "staticmesh" | "bodyset" | "eventset"
+        | "interactiontype" | "lookat" | "visible" | "setcombatant" | "unsetcombatant"
+        | "addcomponent" | "delcomponent" | "adddialog" | "removedialog" | "dynamicupdate" => {
+            entity::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
+        }
+        // H. net / debug
+        "net_seq" | "net_seqto" | "net_seqfrom" | "net_timer" | "net_mapinfo" | "net_speak"
+        | "net_dialog" | "net_challenge" | "debug_velocity" | "debug_controller"
+        | "debug_follow" | "threaten" | "aggression" => {
+            net::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
+        }
+        "aggro" => aggro::toggle(caller_id, args, tx, space_mgr).await,
+        "bank" => bank::open(caller_id, tx, space_mgr).await,
+        "bankdump" => bank::dump(caller_id, args, tx, space_mgr).await,
+        "bankexpand" => bank::expand(caller_id, tx, space_mgr).await,
+        // E. crafting
+        "allcraft" | "learndiscipline" | "forgetdiscipline" | "craftkit" | "learnblueprint" => {
+            crafting::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
+        }
+        // Mission gaps
+        "missionfail" => mission::fail(caller_id, args, target_id, tx, space_mgr).await,
+        "missionrewards" => mission::rewards(caller_id, args, target_id, tx, space_mgr).await,
+        // Player grants
+        "givecash" => {
+            give::give_cash(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        "givexp" => {
+            give::give_xp(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        "giveability" => {
+            give_ability::give_ability(caller_id, target_id, args, tx, space_mgr).await
+        }
+        // Pets campaign PT-07
+        "pet" => pet::dispatch(caller_id, args, target_id, tx, space_mgr).await,
+        // Playtest bookmark
+        "bug" => bookmark::bug(caller_id, target_id, args, tx, space_mgr).await,
+        // Travel
+        "gotoxyz" => travel::goto_xyz(caller_id, target_id, args, tx, space_mgr).await,
+        "goto" | "summon" | "gotolocation" | "gotospace" => {
+            travel::dispatch(name, caller_id, target_id, args, tx, space_mgr).await
+        }
+        // J. placement (position / orientation)
+        "location" | "rotation" => {
+            placement::dispatch(
+                name,
+                caller_id,
+                target_id.expect("Target::Spawnable guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // K. stat setters
+        "speed" => {
+            stats::set_speed(
+                caller_id,
+                target_id.expect("Target::Being guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // Social: the GM broadcast and the chat mutes
+        "announce" => social::announce(caller_id, args, tx, space_mgr).await,
+        // Social: duel GM tools (SS-U2)
+        "duel_status" => duel::duel_status(caller_id, args, tx, space_mgr).await,
+        "duel_end" => duel::duel_end(caller_id, args, tx, space_mgr).await,
+        "mute" => social::mute(caller_id, args, tx, space_mgr).await,
+        "unmute" => social::unmute(caller_id, args, tx, space_mgr).await,
+        // Social: mail GM tools (SS-U1)
+        "mail" => mail::mail(caller_id, args, tx, space_mgr).await,
+        "mailbox" => mail::mailbox(caller_id, args, tx, space_mgr).await,
+        "mail_expire" => mail::mail_expire(caller_id, args, tx, space_mgr).await,
+        // Squads (ORG-04)
+        "squad_invite" | "squad_join" | "squad_info" => {
+            squad::dispatch(name, caller_id, args, tx, space_mgr).await
+        }
+        // Teams and Commands (ORG-06, ORG-07)
+        "org_disband" => org::disband(caller_id, args, tx, space_mgr).await,
+        "org_join" => org::join(caller_id, args, tx, space_mgr).await,
+        "org_rank" => org::rank(caller_id, args, tx, space_mgr).await,
+        "org_info" => org::info(caller_id, args, tx, space_mgr).await,
+        "org_list" => org::list(caller_id, tx, space_mgr).await,
+        "org_set_perms" => org::set_perms(caller_id, args, tx, space_mgr).await,
+        // Organizations (ORG-05)
+        "org_create" => org_create::org_create(caller_id, args, tx, space_mgr).await,
+        // G. server / maintenance
+        "save" | "reloadmap" | "reloadres" | "removerespawner" | "loglevel" | "logclient" => {
+            server::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
+        }
+        // B. spawn lifecycle + authoring
+        "spawn" | "despawn" | "savespawn" | "delspawn" | "autosavespawn" | "respawnall"
+        | "spawnrandom" => {
+            spawn::dispatch(name, caller_id, args, target_id, tx, space_mgr, engine).await
+        }
+        // C. patrol authoring
+        "path_add" | "path_show" | "path_clear" | "path_assign" | "path_unassign"
+        | "path_set_seq" | "path_clear_seq" | "path_set_tp" | "path_clear_tp"
+        | "path_set_tp_seq" | "path_set_tp_delay" => {
+            patrol::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
+        }
+        other => {
+            // Unreachable in practice — every COMMANDS entry has an arm above,
+            // pinned by `tests::every_spec_is_dispatched`.
+            send_gm_feedback(caller_id, &format!(".{other}: not implemented"), tx).await;
+        }
+    }
+}

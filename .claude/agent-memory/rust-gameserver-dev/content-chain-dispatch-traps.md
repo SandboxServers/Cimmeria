@@ -70,7 +70,7 @@ inert `OnCustomEvent { "__direct_invoke_<id>" }` so it lands in
 
 Player **death does not scrub it**: `resolve_respawn_target` matches a
 respawner by world name, and a same-world respawn takes the in-place
-branch (`cell_methods/player/combat/respawn.rs`) which never destroys the
+branch (`cell/respawn/mod.rs`) which never destroys the
 entity. Only the cross-world respawn branch destroys. So don't assume
 "death cancels the timer" — check which branch the world takes.
 
@@ -93,8 +93,11 @@ trigger on their `dialog_choice`. The client evidently sends
 inference from shipped precedent, **not** a client observation — worth a
 UAT confirmation before hanging a mission tail off one.
 
-Note `handle_dialog_button_choice` gates on `open_dialog_id` (#479), so a
-unit test driving it must set that pin first.
+Note `handle_dialog_button_choice` gates on the player's `offered_dialog_ids`
+set (#479, widened by DU-08 on 2026-09-21), so a unit test driving it must call
+`entity.offer_dialog(id)` first. The button-less close IS confirmed now: Ghidra
+`FUN_00d249c0` sends `ButtonId = 0xFFFFFFFF` on discard iff the dialog has zero
+cooked buttons, and a buttoned dialog sends nothing when evicted.
 
 ## Seeing it in a test
 

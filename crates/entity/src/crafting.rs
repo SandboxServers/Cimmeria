@@ -8,7 +8,7 @@
 //! activity mutators stubbed (those land in Phase 2/3).
 //!
 //! Persistence lives in the services crate (see
-//! `crates/services/src/base/crafting/persistence.rs`); the entity crate is
+//! `crates/base-session/src/base/crafting/persistence/`); the entity crate is
 //! sqlx-free by design.
 
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ use std::collections::HashMap;
 pub struct CraftingState {
     /// Disciplines the player has unlocked, in insertion order. Parallel to
     /// `sgw_player.discipline_ids` (a Postgres `integer[]`). Persistence
-    /// lives in `crates/services/src/base/crafting/persistence.rs` —
+    /// lives in `crates/base-session/src/base/crafting/persistence/` —
     /// `load_crafting_state` reads the array verbatim, so reload order is
     /// whatever order was on the row when last saved. (The parallel
     /// expertise rows in `sgw_player_discipline_expertise` are loaded
@@ -65,14 +65,22 @@ pub struct CraftingState {
 
     /// Racial paradigm levels, keyed by paradigm id. Discipline unlocks
     /// gate on `racial_paradigm_levels[discipline.racial_paradigm_id] >=
-    /// discipline.racial_paradigm_level`. Initial value for every paradigm
-    /// on character creation is 1 (Python `Crafter.__init__`).
+    /// discipline.racial_paradigm_level`. A paradigm with no stored level
+    /// gets its [`DEFAULT_RACIAL_PARADIGM_LEVELS`] entry, not Python's
+    /// all-ones, under which no real root discipline was learnable.
     ///
     /// `i8` matches the wire encoding of `onUpdateRacialParadigmLevel`
-    /// (method 138, payload `INT32 paradigmId, INT8 level`). The Python
-    /// source caps levels at 5, so `i8` is comfortably oversized.
+    /// (method 138, payload `INT32 paradigmId, INT8 level`). Levels top out
+    /// at 10 (the Racial Paradigm Guide item text).
     pub racial_paradigm_levels: HashMap<i32, i8>,
 }
+
+/// Starting racial-paradigm levels, `(paradigm id, level)` in id order:
+/// Common (1) at 5, so the four root disciplines,
+/// which need Common 5, are learnable; Human, Goa'uld, Asgard and Ancient
+/// (2-5) at 1. The `sgw_player.racial_paradigm_levels` column default in
+/// `db/sgw/Players/Tables/sgw_player.sql` is the same list as an array.
+pub const DEFAULT_RACIAL_PARADIGM_LEVELS: [(i32, i8); 5] = [(1, 5), (2, 1), (3, 1), (4, 1), (5, 1)];
 
 impl CraftingState {
     /// Empty default state. New characters get this until their first
@@ -98,6 +106,34 @@ impl CraftingState {
     pub fn set_expertise(&mut self, discipline_id: i32, value: i32) {
         let clamped = value.clamp(0, 100);
         self.expertise.insert(discipline_id, clamped);
+    }
+
+    /// Give every paradigm with no stored level its starting level
+    /// ([`DEFAULT_RACIAL_PARADIGM_LEVELS`]); a stored level is kept as it is.
+    /// Characters created before these defaults have an empty array, and a
+    /// shorter array leaves the later paradigms unset, so applying this on
+    /// load covers both without a migration. After it, all five paradigms
+    /// have a level: the login sync sends a 138 for each (a missing one would
+    /// leave the client's value from before the relog), the discipline
+    /// gate never reads an unset paradigm as 0, and a save writes the full
+    /// array. Returns whether any starting level was filled in.
+    pub fn apply_default_paradigm_levels(&mut self) -> bool {
+        let mut applied = false;
+        for (paradigm_id, level) in DEFAULT_RACIAL_PARADIGM_LEVELS {
+            if let std::collections::hash_map::Entry::Vacant(slot) =
+                self.racial_paradigm_levels.entry(paradigm_id)
+            {
+                slot.insert(level);
+                applied = true;
+            }
+        }
+        applied
+    }
+
+    /// Whether the player knows `discipline_id`: it is in `discipline_ids`.
+    /// A stray expertise row alone does not count.
+    pub fn knows_discipline(&self, discipline_id: i32) -> bool {
+        self.discipline_ids.contains(&discipline_id)
     }
 }
 
@@ -138,6 +174,45 @@ mod tests {
         assert!(s.blueprint_ids.is_empty());
         assert_eq!(s.applied_science_points, 0);
         assert!(s.racial_paradigm_levels.is_empty());
+    }
+
+    /// An empty map gets Common 5 and the other four at 1.
+    #[test]
+    fn default_paradigm_levels_fill_an_empty_map() {
+        let mut fresh = CraftingState::new();
+        assert!(fresh.apply_default_paradigm_levels());
+        assert_eq!(fresh.racial_paradigm_levels.len(), 5);
+        assert_eq!(fresh.racial_paradigm_levels[&1], 5, "Common starts at 5");
+        for paradigm_id in 2..=5 {
+            assert_eq!(fresh.racial_paradigm_levels[&paradigm_id], 1);
+        }
+    }
+
+    /// A partial map keeps its stored levels and gets the starting level for
+    /// every paradigm it lacks, so all five are always present.
+    #[test]
+    fn default_paradigm_levels_fill_the_gaps_of_a_partial_map() {
+        let mut stored = CraftingState::new();
+        stored.racial_paradigm_levels.insert(2, 7);
+        stored.racial_paradigm_levels.insert(4, 0);
+        assert!(stored.apply_default_paradigm_levels());
+        let mut levels: Vec<(i32, i8)> = stored
+            .racial_paradigm_levels
+            .iter()
+            .map(|(&id, &level)| (id, level))
+            .collect();
+        levels.sort_unstable();
+        assert_eq!(levels, [(1, 5), (2, 7), (3, 1), (4, 0), (5, 1)]);
+
+        let mut complete = stored.clone();
+        assert!(
+            !complete.apply_default_paradigm_levels(),
+            "a full map fills nothing"
+        );
+        assert_eq!(
+            complete.racial_paradigm_levels,
+            stored.racial_paradigm_levels
+        );
     }
 
     #[test]

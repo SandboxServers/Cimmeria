@@ -136,6 +136,28 @@ Adds raw data to bundle. `(this, void* data, size_t length)`. Copies data into c
 | `0x0158b770` | `InterfaceElement__expandLength` | Read variable-length header |
 | `0x0158b120` | `InterfaceElement__compressLength_write` | Write length (1/2/3/4 byte) |
 
+**Verified against the Rust implementation, 2026-09-19.**
+
+The width of the inline length field comes from `lengthParam` at `this+4`, which
+is a property of the `InterfaceElement` -- not of the payload. `expandLength`
+(`0x0158b770`) switches on it for widths 1, 2, 3 and 4 and rejects anything else
+(`"Unhandled variable message length"`). There is, separately, a value-dependent
+escape: `compressLength_write` (`0x0158b120`) tests the length against that
+width's maximum for widths 1/2/3 and, on overflow, calls `compressLength`
+(`0x0158acc0`), which fills the inline field with `0xFF` bytes and streams a
+32-bit little-endian length into the message body; the matching reader is the
+second `expandLength` (`"Received a message longer than normal length"`). Width 4
+has no such test and never escalates.
+
+Cimmeria implements `CONSTANT_LENGTH` and `WORD_LENGTH`, plus one hand-written
+`DWORD_LENGTH` emitter for `BASEMSG_REPLY_MESSAGE`; widths 1 and 3 and the escape
+are absent. Because no SGW message declares width 1 or 3 and no client-to-server
+message declares `DWORD_LENGTH`, no mis-frame is reachable from the width switch
+alone. The escape is reachable only above 65535 bytes. Full comparison, with the
+per-direction table of which Rust site handles which width, is in
+[../../protocol/mercury-wire-format.md](../../protocol/mercury-wire-format.md)
+under "Message Length Types".
+
 ### UnAckedHandler (Reliability)
 
 | Address | Function | Description |
@@ -406,6 +428,25 @@ Full list in checkpoint at `docs/reverse-engineering/v5-campaign/worker-mercury-
 1. **`+0x170`/`+0x174`** in ChannelInternal ctor — two additional timeout-style fields initialized but not observed in checkAndSendNubException. Possibly fragment reassembly timeouts.
 2. **`TagsMessage` vfunc_0** at `0x01587fe0` — dtor slot already renamed in prior session; full vftable not recovered (5 slots visible, exact layout uncertain).
 3. **`PidMessage` / `ResetMessage` / `QueryInterfaceMessage`** read paths — not observed in batch 2 decompiles; may be in `0x0158d400+` range which was outside scope.
+
+---
+
+## Receive Ordering (NA38, 2026-09-25)
+
+The client orders its reliable stream itself. The unreliable stream is delivered on arrival. All addresses are from the NA38 Ghidra pass.
+
+| Function | Address | Finding |
+|---|---|---|
+| `Nub::processFilteredPacket` (tail) | `0x01580ad4` | Pops the ack list (`flags & 0x04`) and the 4-byte sequence ID (`flags & 0x40`, stored at packet `+0x44`). Rejects `flags & 0x80`. Then: not reliable (`flags & 0x10` clear) → `FUN_0158bb50` dedup, then process now. Reliable → `queueAckForPacket`; process the returned chain in order, or return 0 if the packet was buffered |
+| `UnAckedHandler::queueAckForPacket` | `0x0158cba0` | Queues the ACK (`FUN_0157ac40` on `+0x9c`) for any in-range sequence. At `seq == inSeqAt` (`+0x50`) it advances and chains the buffered packets from the slot table (`+0x40`, mask `+0x44`, count `+0x48`). Ahead within `+0x30` it buffers. Otherwise it drops |
+| `FUN_0158bb50` | `0x0158bb50` | Unreliable dedup: looks the sequence up in the structure at `+0x128`, counts a new one at `+0x158`, and prunes to `[seq - window, seq - window/2]` |
+| `ChannelInternal` ctor | `0x0158c7b0` | `+0x50 = 0x10000000` (`inSeqAt` = `SEQ_NULL`, adopted from the first reliable packet); `+0x30` = window, copied from `Channel+0x2c` |
+| `Channel` ctor | `0x01576bf0` | `Channel+0x2c = 0x200`: a 512-packet receive window |
+| `EntityManager::onEntityMoveWithError` | `0x00dd1650` | Unknown id → latest position, direction, space and vehicle stored in the map at `EntityManager+0x30` (`BW__unknown_00dd5120`) |
+| create handler (`ServerMessageHandler` slot `0x019ce98c`) | `0x00dd2270` | New id → reads and erases the `+0x30` record and hands it to entity construction (`BW_client_entity_manager_7`) |
+| method / property handlers (slots `0x019ce998` / `0x019ce994`) | `0x00dd2b80` / `0x00dd29d0` | Unknown id → message copied into a per-id buffer at `EntityManager+0x3c`. Replay at create time not traced |
+
+Implication: a lost reliable packet delays everything behind it on that channel until the retransmit arrives, and never reorders it. Cimmeria's `Channel::receive_parsed` implements the same gate for the server and the test harness. See `docs/protocol/mercury-wire-format.md` §"Receive Ordering".
 
 ---
 

@@ -1,0 +1,400 @@
+//! NavMesh-backed spatial queries: line-of-sight, pathfinding, position
+//! validation, and surface-height sampling.
+//!
+//! All queries are scoped to the space containing the requested entity. If
+//! the space has no navmesh loaded, LoS / validity calls conservatively
+//! return `true` (no obstruction) and pathfinding / height return `None`.
+
+use cimmeria_common::Vector3;
+use cimmeria_entity::navigation::PointVerdict;
+
+use cimmeria_entity::navigation::{LineOfSight, PathOutcome};
+
+use super::cover_sight::NpcSight;
+use super::SpaceManager;
+
+impl SpaceManager {
+    /// Check line-of-sight between two entities in the same space.
+    ///
+    /// `true` unless the navmesh positively reports a boundary between them.
+    /// No navmesh, an entity that is not in the space, and an endpoint the
+    /// mesh does not cover all count as clear: see [`Self::line_of_sight`].
+    pub fn has_line_of_sight(&self, entity_a: u32, entity_b: u32) -> bool {
+        self.line_of_sight(entity_a, entity_b).is_clear_or_unknown()
+    }
+
+    /// Three-state line of sight between two entities in the same space.
+    ///
+    /// [`LineOfSight::Unknown`] covers every case where the navmesh cannot
+    /// answer: no space, no navmesh loaded, an entity missing from the space,
+    /// or an endpoint further from the mesh than the projection box reaches.
+    /// Every answer that is not clear is reported through the sampled
+    /// `npc_ai.los` row (one per pair per 5 s), with the ray endpoints: an
+    /// unknown on a meshed world means a spawn or a player is standing
+    /// somewhere the mesh does not cover (9 of the 13 stationary Harset mobs
+    /// against `harset.nav`), and that used to read as "blocked" and silence
+    /// the NPC for good.
+    ///
+    /// Where the space has an occluder (NA27) the answer comes from it,
+    /// eye to eye ([`super::eye_height`]), and `Unknown` means an endpoint
+    /// off the occluder's grid.
+    pub fn line_of_sight(&self, entity_a: u32, entity_b: u32) -> LineOfSight {
+        use crate::cell::service::npc_ai::detectors::los::{self, LosSource};
+        let Some(space) = self
+            .entity_space
+            .get(&entity_a)
+            .and_then(|sid| self.spaces.get(sid))
+        else {
+            return LineOfSight::Unknown;
+        };
+        let (Some(a), Some(b)) = (space.entities.get(&entity_a), space.entities.get(&entity_b))
+        else {
+            return LineOfSight::Unknown;
+        };
+        if let Some(occ) = &space.occluder {
+            let (ea, eb) = (self.eye_height_of(a), self.eye_height_of(b));
+            let probe = super::occluder_probe(occ, a.position, ea, b.position, eb);
+            los::report(
+                self,
+                entity_a,
+                entity_b,
+                a.position,
+                b.position,
+                &probe,
+                LosSource::Occluder {
+                    hash: occ.short_hash(),
+                    eye_height: ea,
+                    target_eye_height: eb,
+                },
+                "npc",
+                std::time::Instant::now(),
+            );
+            return probe.result;
+        }
+        self.navmesh_line_of_sight(entity_a, entity_b)
+    }
+
+    /// [`Self::line_of_sight`] from the navmesh ray alone, whether or not
+    /// the space has an occluder. The attack check's fallback when the
+    /// occluder answers `Unknown` (an endpoint outside its trimmed area).
+    pub fn navmesh_line_of_sight(&self, entity_a: u32, entity_b: u32) -> LineOfSight {
+        use crate::cell::service::npc_ai::detectors::los::{self, LosSource};
+        let Some(space) = self
+            .entity_space
+            .get(&entity_a)
+            .and_then(|sid| self.spaces.get(sid))
+        else {
+            return LineOfSight::Unknown;
+        };
+        let (Some(a), Some(b)) = (space.entities.get(&entity_a), space.entities.get(&entity_b))
+        else {
+            return LineOfSight::Unknown;
+        };
+        let Some(navmesh) = &space.navmesh else {
+            return LineOfSight::Unknown;
+        };
+        let probe = navmesh.line_of_sight_probe(&a.position, &b.position);
+        los::report(
+            self,
+            entity_a,
+            entity_b,
+            a.position,
+            b.position,
+            &probe,
+            LosSource::Navmesh(navmesh.short_hash()),
+            "npc",
+            std::time::Instant::now(),
+        );
+        probe.result
+    }
+
+    /// Whether a fighting NPC may fire at `target` this tick, as far as line
+    /// of sight goes.
+    ///
+    /// A mobile attacker gets [`Self::has_line_of_sight`]. A stationary one
+    /// gets [`LineOfSight::permits_stationary_attack`]: a navmesh `Blocked`
+    /// on the NPC's own storey does not stop it firing, because the mesh
+    /// cannot see over furniture and the NPC cannot walk around it (NA16,
+    /// audit S11: the Find Ambernol drone and the med-station desk;
+    /// decision D-NA11). A mobile NPC at its cover slot looks from the
+    /// slot's peek point (NA23, D-NA12; [`Self::npc_line_of_sight`]).
+    ///
+    /// In a space with an occluder (NA27, D-NA13) none of that applies: the
+    /// occluder's eye-to-eye verdict decides ([`AttackLosPolicy::Occluder`]).
+    /// Only when it answers `Unknown` (an endpoint outside the area it was
+    /// trimmed to) do the navmesh rules above decide instead.
+    pub fn attack_line_of_sight(&self, npc_id: u32, target_id: u32, is_stationary: bool) -> bool {
+        let mut sight = self.npc_line_of_sight(npc_id, target_id);
+        if sight.los == LineOfSight::Unknown && self.space_has_occluder(npc_id) {
+            sight = self.npc_navmesh_sight(npc_id, target_id);
+            return self
+                .navmesh_attack_los_policy(npc_id, target_id, is_stationary, sight)
+                .permits();
+        }
+        self.attack_los_policy(npc_id, target_id, is_stationary, sight)
+            .permits()
+    }
+
+    /// Which attack line-of-sight rule applies to an already-computed
+    /// verdict. Pure: it runs no ray, so the `npc_ai.tick` row can label the
+    /// verdict it already has without a second sampled probe. A bare
+    /// [`LineOfSight`] is a verdict from the NPC's own position.
+    pub fn attack_los_policy(
+        &self,
+        npc_id: u32,
+        target_id: u32,
+        is_stationary: bool,
+        sight: impl Into<NpcSight>,
+    ) -> AttackLosPolicy {
+        let sight = sight.into();
+        // Collision geometry sees over furniture and cover props, so none of
+        // the navmesh workarounds applies: no stationary relaxation (D-NA11
+        // is retired where an occluder exists) and no peek point. An
+        // `Unknown` (off the occluder's grid) takes the navmesh rules.
+        if sight.los != LineOfSight::Unknown && self.space_has_occluder(npc_id) {
+            return AttackLosPolicy::Occluder(sight.los == LineOfSight::Clear);
+        }
+        self.navmesh_attack_los_policy(npc_id, target_id, is_stationary, sight)
+    }
+
+    /// The navmesh attack rules (NA16 / NA23): strict for a mobile NPC, the
+    /// peek-point verdict for one in cover, the same-storey relaxation for a
+    /// stationary one.
+    fn navmesh_attack_los_policy(
+        &self,
+        npc_id: u32,
+        target_id: u32,
+        is_stationary: bool,
+        sight: NpcSight,
+    ) -> AttackLosPolicy {
+        let NpcSight { los, origin } = sight;
+        // An NPC standing at its cover slot looked from the slot's peek
+        // point, past the prop: the verdict is strict from there, so a wall
+        // beyond the cover still stops the shot (NA23, D-NA12). NA22 skipped
+        // the check here, and a guard in cover shot a player through two
+        // walls (UAT-1). Stationary NPCs never take cover.
+        if !is_stationary && origin.from_cover() {
+            return AttackLosPolicy::CoverPeek(los.is_clear_or_unknown());
+        }
+        if !is_stationary {
+            return AttackLosPolicy::Strict(los.is_clear_or_unknown());
+        }
+        if los != LineOfSight::Blocked {
+            return AttackLosPolicy::Stationary;
+        }
+        let dy = match (self.get_entity(npc_id), self.get_entity(target_id)) {
+            (Some(npc), Some(target)) => target.position.y - npc.position.y,
+            // `line_of_sight` already answered Unknown for a missing entity.
+            _ => 0.0,
+        };
+        if los.permits_stationary_attack(dy) {
+            AttackLosPolicy::StationaryRelaxed
+        } else {
+            AttackLosPolicy::StationaryOtherStorey
+        }
+    }
+
+    /// Whether the space containing `entity_id` has a navmesh loaded.
+    ///
+    /// `has_line_of_sight`, `find_path` and `is_position_valid` all fail open
+    /// without one, so callers that report those results need this to tell
+    /// "clear" from "unknown".
+    pub fn space_has_navmesh(&self, entity_id: u32) -> bool {
+        self.entity_space
+            .get(&entity_id)
+            .and_then(|sid| self.spaces.get(sid))
+            .is_some_and(|s| s.navmesh.is_some())
+    }
+
+    /// Find a path between two positions within the space containing `entity_id`.
+    /// Returns waypoints or `None` if no path exists or no navmesh is loaded.
+    /// A partial corridor is returned as a path, as it always was — use
+    /// [`Self::find_path_outcome`] to see which it was.
+    pub fn find_path(
+        &self,
+        entity_id: u32,
+        start: &Vector3,
+        end: &Vector3,
+    ) -> Option<Vec<Vector3>> {
+        self.find_path_outcome(entity_id, start, end)?
+            .into_waypoints()
+    }
+
+    /// The typed result of a path query: which Detour stage decided, whether
+    /// the corridor was partial, and how far each end snapped. `None` when
+    /// the entity is in no space or the space has no navmesh.
+    pub fn find_path_outcome(
+        &self,
+        entity_id: u32,
+        start: &Vector3,
+        end: &Vector3,
+    ) -> Option<PathOutcome> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        Some(navmesh.find_path(start, end))
+    }
+
+    /// Check if a position is on walkable navmesh in the space containing `entity_id`.
+    pub fn is_position_valid(&self, entity_id: u32, pos: &Vector3) -> bool {
+        let space_id = match self.entity_space.get(&entity_id) {
+            Some(&sid) => sid,
+            None => return true,
+        };
+        let space = match self.spaces.get(&space_id) {
+            Some(s) => s,
+            None => return true,
+        };
+        match &space.navmesh {
+            Some(nm) => nm.is_point_valid(pos),
+            None => true,
+        }
+    }
+
+    /// Why [`Self::is_position_valid`] answered the way it did, for the
+    /// space containing `entity_id`.
+    ///
+    /// `None` means there is **no navmesh in this space** — which is not
+    /// the same as "the point is off the mesh". `is_position_valid` fails
+    /// open there and returns `true`, so a caller logging a diagnosis has
+    /// to be able to say "there was nothing to check against" rather than
+    /// reporting a gate it never evaluated.
+    pub fn diagnose_point(&self, entity_id: u32, pos: &Vector3) -> Option<PointVerdict> {
+        let space_id = *self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        Some(space.navmesh.as_ref()?.diagnose_point(pos))
+    }
+
+    /// Short content hash of the navmesh loaded for the space containing
+    /// `entity_id`, or `None` in a meshless space.
+    ///
+    /// Every navmesh-decision log line carries this so a session can be
+    /// tied to the mesh build it ran on — see
+    /// [`cimmeria_entity::navigation::NavMeshFingerprint`].
+    pub fn navmesh_short_hash(&self, entity_id: u32) -> Option<&str> {
+        let space_id = *self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        Some(space.navmesh.as_ref()?.short_hash())
+    }
+
+    /// Sample the navmesh surface height under `(x, z)` on the storey nearest
+    /// `y_ref`, in the space containing `entity_id`.
+    ///
+    /// Returns `None` if no navmesh is loaded, or if no walkable surface lies
+    /// within the jump tolerance of `y_ref` — see
+    /// [`cimmeria_entity::navigation::NavMesh::get_height_near`]. A `None`
+    /// for a loaded mesh can mean the entity is floating, not that it is
+    /// off-mesh.
+    pub fn get_navmesh_height(&self, entity_id: u32, x: f32, y_ref: f32, z: f32) -> Option<f32> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.get_height_near(x, y_ref, z)
+    }
+
+    /// `pos` moved onto the nearest navmesh polygon within Detour's
+    /// destination box (±3 on every axis), in the space containing
+    /// `entity_id`.
+    ///
+    /// For endpoints that come from content or seeds rather than from the
+    /// pathfinder: patrol waypoints, investigate POIs, wander candidates. A
+    /// raw endpoint an NPC can never stand on keeps the "arrived?" check
+    /// false forever, and a straight-line fallback toward it leaves the NPC
+    /// hovering or buried at the end. The ±3 box stays under half the
+    /// smallest storey gap on a shipped mesh (~7.9 u on `castle_cellblock`),
+    /// so it cannot move a point onto another floor.
+    ///
+    /// `None` when no navmesh is loaded or no polygon is in the box; callers
+    /// keep the raw point then.
+    pub fn snap_to_navmesh(&self, entity_id: u32, pos: &Vector3) -> Option<Vector3> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.find_nearest_poly(pos).map(|(_, p)| p)
+    }
+
+    /// The closest navmesh point to `pos` within `radius` horizontally and
+    /// `half_height` vertically, in the space containing `entity_id`. See
+    /// [`cimmeria_entity::navigation::NavMesh::nearest_point_within`].
+    ///
+    /// `None` when no navmesh is loaded or nothing is that close.
+    pub fn nearest_navmesh_point_within(
+        &self,
+        entity_id: u32,
+        pos: &Vector3,
+        radius: f32,
+        half_height: f32,
+    ) -> Option<Vector3> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.nearest_point_within(pos, radius, half_height)
+    }
+
+    /// Slide from `from` toward `to` along the walkable surface, stopping at
+    /// walls, and return the grounded end point. See
+    /// [`cimmeria_entity::navigation::NavMesh::move_along_surface`].
+    ///
+    /// `None` when no navmesh is loaded or `from` is not on it.
+    pub fn move_along_navmesh(
+        &self,
+        entity_id: u32,
+        from: &Vector3,
+        to: &Vector3,
+    ) -> Option<Vector3> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.move_along_surface(from, to)
+    }
+}
+
+/// The attack line-of-sight rule that decided a fight tick (NA16, D-NA11).
+/// Logged on the `npc_ai.tick` row as `los_policy`, so a row that reads
+/// `los=blocked` while the NPC fires says why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttackLosPolicy {
+    /// A mobile NPC: the navmesh verdict as is (`Blocked` holds and paths
+    /// toward the target). Carries whether it permits the shot.
+    Strict(bool),
+    /// A stationary NPC whose verdict was `Clear` or `Unknown`: fires.
+    Stationary,
+    /// A stationary NPC whose navmesh verdict was `Blocked` on its own
+    /// storey: fires anyway, because the mesh cannot see over furniture.
+    StationaryRelaxed,
+    /// A stationary NPC whose navmesh verdict was `Blocked` with the target
+    /// outside the same-floor band: holds.
+    StationaryOtherStorey,
+    /// A mobile NPC at its cover slot, whose ray started at the slot's peek
+    /// point past the prop (NA23, D-NA12). Strict from there: carries
+    /// whether it permits the shot. `los=blocked` with it is a wall past the
+    /// cover, or a slot with no peek point on the mesh.
+    CoverPeek(bool),
+    /// The space has a collision-geometry occluder (NA27, D-NA13): its
+    /// eye-to-eye verdict as is, for mobile, stationary and in-cover NPCs
+    /// alike. Carries whether it permits the shot.
+    Occluder(bool),
+}
+
+impl AttackLosPolicy {
+    /// Whether this rule lets the NPC fire.
+    pub fn permits(self) -> bool {
+        match self {
+            Self::Strict(ok) | Self::CoverPeek(ok) | Self::Occluder(ok) => ok,
+            Self::Stationary | Self::StationaryRelaxed => true,
+            Self::StationaryOtherStorey => false,
+        }
+    }
+
+    /// Stable label for the `los_policy` log field.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Strict(_) => "strict",
+            Self::Stationary => "stationary",
+            Self::StationaryRelaxed => "stationary_relaxed",
+            Self::StationaryOtherStorey => "stationary_other_storey",
+            Self::CoverPeek(_) => "cover_peek",
+            Self::Occluder(_) => "occluder",
+        }
+    }
+}

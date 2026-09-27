@@ -2,7 +2,7 @@
 title: "Stat System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-25
 ---
 
 # Stat System
@@ -33,7 +33,7 @@ Stats are implemented via the `Stat` class in `deprecated/python/cell/SGWBeing.p
 | Level-based stat scaling | NOT IMPL | Stats are template-initialized only |
 | Derived stat calculation | NOT IMPL | No formula for stat interdependencies |
 | Stat caps per level | NOT IMPL | Only template min/max bounds |
-| Item stat bonuses | PARTIAL | `inventoryAdjustments` property exists |
+| Item stat bonuses | NOT IMPL | Equipped items do not modify stats. `inventoryAdjustments` is declared only in `entities/defs/interfaces/SGWInventoryManager.def` (a `CELL_PRIVATE` Python dict); nothing in `crates/` references it |
 
 ## Stat Class (deprecated/python/cell/SGWBeing.py)
 

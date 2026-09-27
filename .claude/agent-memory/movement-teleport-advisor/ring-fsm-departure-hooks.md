@@ -6,7 +6,7 @@ metadata:
 ---
 
 Found 2026-09-17 reviewing the H02 (Harset ring FSM timeouts) design against
-`crates/services/src/cell/ring_transport/`.
+`crates/cell-content/src/cell/ring_transport/`.
 
 **`SpaceManager::destroy_entity` is sync with no `tx`, and that is deliberate.**
 The codebase's established answer for "a subsystem needs async cleanup when a
@@ -20,8 +20,8 @@ in two places. Copy this shape; do not add a queue.
 
 **Player-departure `destroy_entity` sites (need the hook) vs the one that must not:**
 departures are `base_messages/lifecycle.rs` (x2), `gate_travel.rs`,
-`cell_methods/gm/travel.rs`, `content/executor/transport.rs`,
-`cell_methods/player/combat/respawn.rs`. The exception is
+`console/gm/travel.rs`, `content/executor/transport.rs`,
+`cell/respawn/mod.rs`. The exception is
 `ring_transport/dispatch.rs` `Effect::TeleportCrossWorld`, which calls
 `destroy_entity` **as part of a legitimate ring handoff** — hooking it would make
 the destination ring treat its own arriving passenger as a dropped player.

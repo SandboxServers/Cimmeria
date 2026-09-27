@@ -36,9 +36,11 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
   on the same server that mints them. No cross-service secret
   synchronization (the prior Cimmeria-MCP write path required mirror
   copies of the secret in two repos; that's gone).
-- v1 trusts any caller of `/api/auth/dev-session`. Tokens are scoped
-  to `telemetry.write` and single-session — the worst an attacker can
-  do is upload garbage telemetry. Account-bound auth is a v2 concern.
+- Minting needs no credential: the `sub` claim is the caller's own
+  `install_id`, so anyone who can reach the admin port can mint.
+  Account-bound auth is a v2 concern and needs a launcher-side
+  handshake. What bounds the damage meanwhile is not authentication
+  but three limits — see [Mint and refresh limits](#mint-and-refresh-limits).
 
 ## Component map
 
@@ -55,7 +57,7 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking child.wait()` — game-exit signal without burning an async worker. |
 | `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
 | `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
-| `crates/admin-api/src/routes/dev_session.rs` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify). |
+| `crates/admin-api/src/routes/dev_session/` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify), quota tables. |
 | `crates/admin-api/src/routes/telemetry/` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` so the OTLP layer ships it to SigNoz. |
 
 ## Session lifecycle
@@ -104,11 +106,80 @@ token   = payload || "." || sig
 ```
 
 `iss` = `"cimmeria-server"`. `sub` = install_id. `sid` = session_id.
-`exp` − `iat` = 8 hours. `scope` = `["telemetry.write"]`.
+`scope` = `["telemetry.write"]`.
+
+`iat` is the **original mint** time and survives every refresh, so
+`exp` − `iat` is 8 hours only on a freshly minted token and shrinks
+across a refresh chain. That is deliberate: it is what makes the
+chain bounded. The launcher's proactive-refresh policy
+(`should_refresh`) uses its own locally recorded issue time and never
+reads this claim, so nothing client-side depends on the difference.
 
 8-byte URL-safe base64-no-pad on both segments. Constant-time
 signature comparison via `Hmac::verify_slice` defends against timing
 oracles.
+
+## Mint and refresh limits
+
+Three things stand in for the authentication the mint endpoint does
+not have.
+
+**Scope.** A minted token carries only `telemetry.write`, and
+`verify_bearer` in `crates/admin-api/src/routes/telemetry/handlers.rs`
+refuses a token without it. The scope is checked at ingest rather
+than assumed from the mint path, so narrowing what a token may do
+stays a one-line change on the server.
+
+**Quotas.** Mint and refresh are counted per peer address, and mint
+additionally per `install_id`, over a fixed window. Refresh verifies
+the token before charging its counter, and counts tokens that fail
+verification on a separate, tighter counter, so junk sent from an
+address shared with real launchers cannot lock them out. Over quota
+returns 429 with a `Retry-After` the launcher's back-off path already
+honours. Defaults and env-var names are in
+[telemetry.md](../operations/telemetry.md#mint-and-refresh-quotas).
+
+Two properties are worth stating because they shaped the
+implementation:
+
+- **The per-IP quota is the load-bearing control; the per-`install_id`
+  one is a speed bump.** `install_id` is chosen by the caller, so an
+  attacker rotates it. The IP counter is charged before `install_id`
+  is validated, which is what makes rotation pointless from one
+  address. (A body that fails JSON extraction is rejected by the
+  framework before the handler runs and is not charged; no token is
+  issued on that path.)
+- **The counter store cannot grow.** Both keys are caller-supplied, so
+  a map keyed on either would be its own memory-exhaustion vector.
+  The store is instead a fixed 4096-slot array indexed by
+  `hash(key) % N`, and two keys that land on the same slot share its
+  counter. Resetting the slot on a key change instead would let a
+  caller holding two colliding addresses (two IPv6 /64s, say) alternate
+  them and reset its own counter on every request. The hash is SipHash
+  with a per-process random seed, so a collision cannot be picked or
+  precomputed; what remains is an unaimable ~1-in-4096 chance that two
+  live callers share a bucket. IPv6 keys fold to the /64 prefix,
+  because a single host is routinely handed a whole /64.
+- **Caller metadata is checked before it is logged.** `machine_id`,
+  `branch`, `git_sha` and `launcher_version` reach the INFO mint line,
+  and the plain `fmt` log sinks do not escape them, so a value with a
+  control character (or longer than 256 bytes) is refused with 400.
+  Both routes also cap the request body at 8 KiB, because the JSON
+  body is parsed before any quota is charged.
+
+Behind a reverse proxy (a Cloudflare Tunnel, say) every request
+arrives from the proxy, so the per-IP quota degenerates to a global
+cap. No forwarded-for header is read: an unconditional read would let
+any caller set its own quota key. Operators fronting the admin port
+should raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` accordingly.
+
+**Bounded refresh chain.** `refresh` preserves the original `iat` and
+refuses once the session passes `CIMMERIA_TELEMETRY_MAX_SESSION_SECS`
+(24 h by default), clamping the last token's `exp` to the deadline
+rather than overshooting it. Without this, each refresh granted a
+fresh full TTL and one leaked token could be walked forward forever.
+At the cap the launcher sees a 401 on refresh and mints a fresh
+session, the same path it already takes for an expired token.
 
 ## Backpressure + queue overflow
 

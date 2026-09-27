@@ -23,7 +23,7 @@ The first instinct is to grant the weapon directly to bandolier (`container_id =
 - **Bandolier ammo desync.** The freshly-granted weapon ended up in the bandolier with stale or zero ammo metadata, because the grant path didn't run the ammo-replenishment branch that the manual-equip path runs. Players couldn't fire.
 - **Fire-animation broken.** The active-weapon-slot pointer stayed on the previous slot (often empty), so the client's animation rig treated the player as unarmed even though the weapon icon showed in the bandolier.
 
-Both bugs disappear if the weapon is granted to the **backpack** (`container_id = 1`) and the player drops it into the bandolier themselves — that path is the one the inventory move handler covers in detail (`crates/services/src/base/world_entry/methods/inventory/move_/mod.rs`), and it's exhaustively guarded by the inventory-move regression suite.
+Both bugs disappear if the weapon is granted to the **backpack** (`container_id = 1`) and the player drops it into the bandolier themselves — that path is the one the inventory move handler covers in detail (`crates/base-methods/src/base/world_entry/methods/inventory/move_/mod.rs`), and it's exhaustively guarded by the inventory-move regression suite.
 
 So: don't force-equip. Direct the player to do it.
 
@@ -43,7 +43,7 @@ When the player loots / interacts to acquire the weapon:
 
 ### 2. `MissionOverride` row
 
-Add an entry to `MISSION_OVERRIDES` in `crates/services/src/base/mission_overrides.rs` so the client's mission UI renders the new step's display text. Use `insert_after_step_id = <previous step id>` — see the [XML-index gotcha](../architecture/mission-pak-overrides.md#the-xml-index-gotcha) for why placement matters. The matching seed rows go in `db/resources/Missions/Seed/mission_steps.sql` and `mission_objectives.sql`.
+Add an entry to `MISSION_OVERRIDES` in `crates/resources/src/base/mission_overrides.rs` so the client's mission UI renders the new step's display text. Use `insert_after_step_id = <previous step id>` — see the [XML-index gotcha](../architecture/mission-pak-overrides.md#the-xml-index-gotcha) for why placement matters. The matching seed rows go in `db/resources/Missions/Seed/mission_steps.sql` and `mission_objectives.sql`.
 
 ### 3. Equip chain (new trigger)
 
@@ -55,7 +55,7 @@ When the player drops the weapon into the bandolier:
 | Condition | `step_status` of the new "Equip the X" step must be `active` (the step gates the chain so it only fires once, in the right context) |
 | Actions | Whatever the original chain was going to do — `advance_step` to the next step, `play_sequence`, `complete_mission`, etc. |
 
-The `item_equipped` trigger fires from `crates/services/src/cell/service/base_messages/mod.rs` whenever a bandolier-targeted move lands. See [docs/content/extending-the-engine.md](extending-the-engine.md) for the trigger plumbing.
+The `item_equipped` trigger fires from `crates/cell/src/cell/service/base_messages/inventory_events.rs` whenever a bandolier-targeted move lands. See [docs/content/extending-the-engine.md](extending-the-engine.md) for the trigger plumbing.
 
 ## Worked example: mission 622 (Frost pistol)
 
@@ -72,7 +72,7 @@ The `item_equipped` trigger fires from `crates/services/src/cell/service/base_me
 
 `MissionOverride { mission_id: 622, insert_after_step_id: 2113, … StepID="80622" … }` adds the "Equip the pistol from your inventory." step at XML index 1 (between the existing step 2113 at index 0 and the closing tag).
 
-This is the **terminal completion** variant — the equip step's chain ends the mission. Step references: `db/resources/Content/Seed/castle_cellblock_chains.sql:50-105`, `crates/services/src/base/mission_overrides.rs:74-90`. Regression tests at `crates/services/src/cell/content/chain_replay_tests/mission_622.rs` (chains 1003, 1004).
+This is the **terminal completion** variant — the equip step's chain ends the mission. Step references: `db/resources/Content/Seed/castle_cellblock_chains.sql:50-105`, `crates/resources/src/base/mission_overrides.rs:74-90`. Regression tests at `crates/cell-content/src/cell/content/chain_replay_tests/mission_622.rs` (chains 1003, 1004).
 
 ## Worked example: mission 641 (P90)
 
@@ -89,7 +89,7 @@ This is the **terminal completion** variant — the equip step's chain ends the 
 
 `MissionOverride { mission_id: 641, insert_after_step_id: 2121, … StepID="80641" … }` adds "Equip the P90 from your inventory." between step 2121 (index 0) and the existing step 3563 (now at index 2). The placement is load-bearing — see [the XML-index gotcha](../architecture/mission-pak-overrides.md#the-xml-index-gotcha) for what happens when the new step lands at the tail instead.
 
-This is the **intermediary step** variant — the equip step is not the end of the mission, just a gate before talking to Col. Marsh. Step references: `db/resources/Content/Seed/castle_cellblock_chains.sql:560-615`, `crates/services/src/base/mission_overrides.rs:91-109`. Regression tests at `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` (chains 1055, 1066).
+This is the **intermediary step** variant — the equip step is not the end of the mission, just a gate before talking to Col. Marsh. Step references: `db/resources/Content/Seed/castle_cellblock_chains.sql:560-615`, `crates/resources/src/base/mission_overrides.rs:91-109`. Regression tests at `crates/cell-content/src/cell/content/chain_replay_tests/mission_641.rs` (chains 1055, 1066).
 
 ## When to use the pattern
 
@@ -102,7 +102,7 @@ Use it whenever:
 Don't use it for:
 
 - Quest items that never get equipped (letters, keys, Ambernol vials). Grant those directly to mission inventory (`container_id = 2`) — there's no equip path to break.
-- Pre-equipped starter gear at character creation. That path goes through the `BAG_FILL_ORDER` constant in [`crates/services/src/base/resources.rs`](../../crates/services/src/base/resources/mod.rs) and is its own thing.
+- Pre-equipped starter gear at character creation. That path goes through the `BAG_FILL_ORDER` constant in [`crates/resources/src/base/resources/mod.rs`](../../crates/resources/src/base/resources/mod.rs) and is its own thing.
 
 ## Cross-links
 

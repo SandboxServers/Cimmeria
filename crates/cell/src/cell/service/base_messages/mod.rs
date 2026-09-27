@@ -1,0 +1,542 @@
+//! Dispatch handler for `BaseToCellMsg` variants — the per-message logic that
+//! the cell loop runs on each inbound base message.
+//!
+//! [`handle_base_message`] is a thin `match` that delegates each variant to a
+//! handler in a submodule grouped by variant family:
+//! - [`lifecycle`] — `CreateEntity` / `DestroyEntity` / `ConnectEntity` /
+//!   `DisconnectEntity`
+//! - [`movement`] — `EntityMove` (client-authoritative position update + snap-back)
+//! - [`player_init`] — `InitPlayerState` (mission/ability/bandolier restore)
+//! - [`ability_granted`] — `AbilityGranted` (hotbar refresh + trainer resend)
+//! - [`respec`] — `AbilitiesReset` (trainer respec mirror + burst, AT-08)
+//! - [`inventory_events`] — `InventoryItemMoveApplied` / `InventoryItemRemoved` /
+//!   `InventoryItemGranted` / `ItemUsed`
+//! - [`bandolier`] — `UpdateBandolierItem` + `SyncBandolierItems` (weapon display)
+//! - [`minigame`] — `MinigameResult`
+//! - [`gm_spawn`] — `GmSpawnNpcReady`
+//! - [`request_entity_update`] — `RequestEntityUpdate`
+//! - `LootGrantRefused` goes straight to `cell::interactions` (the item goes
+//!   back on its corpse)
+//! - [`org`] — `Org` (organization traffic: the squad invite and kick)
+//! - [`bank`] — `Bank` (the Team and Command vault grant, BV-07)
+//! - `Duel` goes straight to `cell::duel::challenge` (SS-D1)
+//! - [`ignore`] — `UpdateIgnoreList` (the Ignore set spatial chat reads, SS-C1)
+
+use tokio::sync::mpsc;
+
+use cimmeria_content_engine::chain::ChainEngine;
+
+use super::super::messages::{BaseToCellMsg, CellToBaseMsg};
+use super::super::space_manager::SpaceManager;
+use super::super::{chat, dispatch, spawner};
+
+mod ability_granted;
+mod bandolier;
+mod bank;
+mod gm_spawn;
+mod ignore;
+mod inventory_events;
+mod lab_console;
+mod lab_query;
+pub(in crate::cell::service) mod lifecycle;
+mod minigame;
+mod movement;
+mod org;
+pub(crate) mod player_init;
+mod request_entity_update;
+mod respec;
+
+#[cfg(test)]
+mod tests;
+
+/// Handle a single message from BaseApp.
+pub(super) async fn handle_base_message(
+    msg: BaseToCellMsg,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
+    spawn_records: &[spawner::SpawnRecord],
+) {
+    match msg {
+        BaseToCellMsg::CreateEntity {
+            entity_id,
+            world_name,
+            position,
+            rotation,
+            destination_space_id,
+            account_id,
+            player_id,
+            reply_tx,
+        } => {
+            lifecycle::handle_create_entity(
+                entity_id,
+                world_name,
+                position,
+                rotation,
+                destination_space_id,
+                account_id,
+                player_id,
+                reply_tx,
+                tx,
+                space_mgr,
+                spawn_records,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::DestroyEntity { entity_id } => {
+            lifecycle::handle_destroy_entity(entity_id, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::ConnectEntity { entity_id } => {
+            lifecycle::handle_connect_entity(entity_id, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::DisconnectEntity { entity_id } => {
+            lifecycle::handle_disconnect_entity(entity_id, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::EntityMove {
+            entity_id,
+            claimed_space_id,
+            position,
+            direction,
+            velocity,
+        } => {
+            movement::handle_entity_move(
+                entity_id,
+                claimed_space_id,
+                position,
+                direction,
+                velocity,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::CellMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine)
+                .await;
+        }
+
+        BaseToCellMsg::ChatMessage {
+            entity_id,
+            speaker_name,
+            speaker_flags,
+            channel,
+            text,
+        } => {
+            chat::handle_chat_message(
+                entity_id,
+                &speaker_name,
+                speaker_flags,
+                channel,
+                &text,
+                tx,
+                space_mgr,
+                engine,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::InitPlayerState {
+            entity_id,
+            player_id,
+            account_id,
+            world_name,
+            archetype_id,
+            saved_missions,
+            abilities,
+            active_bandolier_slot,
+            bandolier_items,
+            system_options,
+            state_field,
+            access_level,
+            known_stargates,
+            tree_progress,
+            level,
+            character_name,
+            body_set,
+        } => {
+            // Cache the display name on the cell entity so cell-side seams (GM
+            // `.`-console audit, mission/death/respawn Discord emits) can
+            // attribute events to a name — the cell has no other source for it.
+            // Set here rather than threaded through `handle_init_player_state`
+            // to keep that function under the argument-count lint; the entity
+            // already exists (created by the prior `ConnectEntity`).
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.character_name = character_name;
+                // Re-assert the account half of the stable log-correlation
+                // identity. `CreateEntity` already stamped it; this is the
+                // belt-and-braces path for any create route that didn't, so a
+                // session can never reach in-world play with un-attributable
+                // logs. Only the account half needs re-asserting here:
+                // `handle_init_player_state` below already stamps
+                // `player_id` unconditionally, and `account_id` is the one
+                // field not threaded into its signature — which, like
+                // `character_name`, is at the argument-count lint ceiling.
+                entity.account_id = Some(account_id);
+                // Address book for the dial gate (CAT-O-01). Stamped here
+                // rather than threaded into `handle_init_player_state` for
+                // the same reason as `character_name`: that signature is at
+                // the `too_many_arguments` ceiling. Assigned unconditionally
+                // so a gate arrival — which replays world entry against the
+                // freshly-learned list — overwrites the pre-travel snapshot
+                // instead of leaving the old one in place.
+                entity.known_stargates = known_stargates;
+                // Body set, for the line-of-sight eye height (NA31). Only NPC
+                // AoI data reads `body_set` on the wire side, so setting it on
+                // a player changes no packet.
+                if body_set.is_some() {
+                    entity.body_set = body_set;
+                }
+                // Same reason as `known_stargates`: stamped here, not
+                // threaded into the argument-capped handler below.
+                entity.tree_progress = tree_progress;
+                // The trainer's level gate reads this. Before AT-03 nothing
+                // stamped a player's level, so every player trained as
+                // level 1. `max(1)` keeps a corrupt row from reading as 0.
+                entity.level = level.max(1) as u32;
+            } else {
+                // The entity should already exist (ConnectEntity precedes
+                // InitPlayerState). If it doesn't, the name cache silently
+                // fails and every cell-side emit for this player degrades to
+                // `entity:<id>` — surface the ordering bug rather than hiding it.
+                tracing::warn!(
+                    entity_id,
+                    account_id,
+                    player_id,
+                    "InitPlayerState: entity absent when caching character_name -- \
+                     ConnectEntity ordering bug; cell-side emits will fall back to entity id"
+                );
+            }
+            player_init::handle_init_player_state(
+                entity_id,
+                player_id,
+                world_name,
+                archetype_id,
+                saved_missions,
+                abilities,
+                active_bandolier_slot,
+                bandolier_items,
+                system_options,
+                state_field,
+                access_level,
+                tx,
+                space_mgr,
+                engine,
+            )
+            .await;
+            // A gate arrival re-creates the player: re-send their squad
+            // (ORG-03). After the handler above, which stamps `player_id`.
+            super::super::cell_methods::organization::squad::on_world_entry(
+                entity_id, player_id, tx, space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::AdvanceRingDestination {
+            entity_id,
+            region_id,
+        } => {
+            // Cross-world ring transport: the destination ring has been
+            // sitting in `RemoteLoadWait` since the source ring's
+            // `Effect::TeleportCrossWorld` fired. Now that the player has
+            // finished loading on this world (base-side `onClientReady`
+            // ack), advance the destination FSM by recording the load —
+            // `mark_player_loaded` (called inside
+            // `handle_remote_player_loaded`) triggers the same
+            // all-players-loaded / remote-warmup / cooldown chain the
+            // same-world path runs synchronously after
+            // `Effect::TeleportPlayer`.
+            super::super::ring_transport::handle_remote_player_loaded(
+                region_id, entity_id, tx, space_mgr, engine,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::ReloadContentEngine => {}
+
+        BaseToCellMsg::BroadcastToWitnesses {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            crate::cell::abilities::send_entity_method_to_witnesses(
+                entity_id,
+                method_index,
+                args,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::LabConsoleExec {
+            entity_id,
+            line,
+            reply_tx,
+        } => {
+            lab_console::handle_lab_console_exec(entity_id, line, reply_tx, tx, space_mgr, engine)
+                .await;
+        }
+
+        BaseToCellMsg::LabQuery { query, reply_tx } => {
+            // Read-only: pass an immutable borrow so the handler cannot mutate
+            // simulation state.
+            lab_query::handle_lab_query(query, reply_tx, space_mgr);
+        }
+
+        BaseToCellMsg::MinigameResult {
+            entity_id,
+            result_code,
+            on_victory_chains,
+        } => {
+            minigame::handle_minigame_result(
+                entity_id,
+                result_code,
+                on_victory_chains,
+                tx,
+                space_mgr,
+                engine,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::UpdateBandolierItem {
+            entity_id,
+            slot_id,
+            item,
+            make_active,
+        } => {
+            bandolier::handle_update_bandolier_item(
+                entity_id,
+                slot_id,
+                item,
+                make_active,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::SyncBandolierItems {
+            entity_id,
+            active_bandolier_slot,
+            bandolier_items,
+        } => {
+            bandolier::handle_sync_bandolier_items(
+                entity_id,
+                active_bandolier_slot,
+                bandolier_items,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::InventoryItemMoveApplied {
+            entity_id,
+            item_id,
+            type_id,
+            source_container_id,
+            target_container_id,
+            swapped_item_id,
+        } => {
+            inventory_events::handle_inventory_item_move_applied(
+                entity_id,
+                item_id,
+                type_id,
+                source_container_id,
+                target_container_id,
+                swapped_item_id,
+                tx,
+                space_mgr,
+                engine,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::InventoryItemRemoved {
+            entity_id,
+            item_id,
+            source_container_id,
+        } => {
+            inventory_events::handle_inventory_item_removed(
+                entity_id,
+                item_id,
+                source_container_id,
+            );
+        }
+
+        BaseToCellMsg::InventoryItemGranted {
+            entity_id,
+            item_id,
+            container_id,
+            slot_id,
+            quantity,
+        } => {
+            inventory_events::handle_inventory_item_granted(
+                entity_id,
+                item_id,
+                container_id,
+                slot_id,
+                quantity,
+            );
+        }
+
+        BaseToCellMsg::AbilityGranted {
+            entity_id,
+            ability_id,
+            training_points,
+            tree_points_spent,
+        } => {
+            ability_granted::handle_ability_granted(
+                ability_granted::Granted {
+                    entity_id,
+                    ability_id,
+                    training_points,
+                    tree_points_spent,
+                },
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::ProgressionChanged {
+            entity_id,
+            level,
+            training_points,
+        } => {
+            ability_granted::handle_progression_changed(
+                entity_id,
+                level,
+                training_points,
+                space_mgr,
+            );
+        }
+
+        BaseToCellMsg::TrainingPointsGranted {
+            entity_id,
+            training_points,
+        } => {
+            ability_granted::handle_training_points_granted(
+                entity_id,
+                training_points,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::GmAbilityGranted {
+            entity_id,
+            player_id,
+            ability_id,
+        } => {
+            ability_granted::handle_gm_ability_granted(
+                entity_id, player_id, ability_id, tx, space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::AbilitiesReset {
+            entity_id,
+            player_id,
+            outcome,
+        } => {
+            respec::handle_abilities_reset(entity_id, player_id, outcome, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::ItemUsed {
+            entity_id,
+            instance_id,
+            type_id,
+            target_id,
+        } => {
+            inventory_events::handle_item_used(
+                entity_id,
+                instance_id,
+                type_id,
+                target_id,
+                tx,
+                space_mgr,
+                engine,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::RequestEntityUpdate {
+            witness_id,
+            entity_ids,
+        } => {
+            request_entity_update::handle(witness_id, entity_ids, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::GmSpawnNpcReady {
+            record,
+            space_id,
+            requester_entity_id,
+        } => {
+            gm_spawn::handle_gm_spawn_npc_ready(
+                record,
+                space_id,
+                requester_entity_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::LootGrantRefused {
+            entity_id,
+            player_id,
+            source,
+            design_id,
+            quantity,
+            container_id,
+            reason,
+        } => {
+            crate::cell::interactions::handle_loot_grant_refused(
+                entity_id,
+                player_id,
+                source,
+                design_id,
+                quantity,
+                container_id,
+                reason,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::Org(org_msg) => org::handle(org_msg, tx, space_mgr).await,
+
+        BaseToCellMsg::Bank(bank_msg) => bank::handle(bank_msg, tx, space_mgr).await,
+
+        BaseToCellMsg::Duel(duel_msg) => {
+            super::super::duel::challenge::handle(duel_msg, tx, space_mgr).await;
+        }
+        BaseToCellMsg::UpdateIgnoreList {
+            entity_id,
+            player_id,
+            account_id,
+            version,
+            ignore_names,
+        } => ignore::handle(
+            entity_id,
+            player_id,
+            account_id,
+            version,
+            ignore_names,
+            space_mgr,
+        ),
+    }
+}

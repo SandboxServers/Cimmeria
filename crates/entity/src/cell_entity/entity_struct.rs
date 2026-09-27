@@ -20,8 +20,8 @@ use crate::missions::MissionManager;
 use crate::stats::StatList;
 
 use super::{
-    ActiveEffectInstance, AiState, BandolierItem, LootItem, MobMovementType, NpcInteractionType,
-    SystemOptions,
+    ActiveEffectInstance, AiState, BandolierItem, LeashState, LootItem, MobMovementType,
+    NpcInteractionType, SystemOptions, TreeProgress,
 };
 
 /// The cell-side half of a game entity.
@@ -61,7 +61,7 @@ pub struct CellEntity {
     /// locally and instantly regardless of any server round-trip — this
     /// flag exists purely so the validator stops flagging the GM's now-
     /// unrestricted movement (off-navmesh, out-of-bounds, over-speed) as a
-    /// violation. See `crate::cell::cell_methods::gm::physics` for the
+    /// violation. See `cimmeria_cell_console::cell::console::gm::physics` for the
     /// wire-polarity mapping and `docs/architecture/movement-validation.md`
     /// for the bypass design.
     ///
@@ -120,6 +120,13 @@ pub struct CellEntity {
     /// Discord emits) can attribute events to a name rather than a bare
     /// entity id. `None` for NPCs and until `InitPlayerState` arrives.
     pub character_name: Option<String>,
+
+    /// The squad this player is in (ORG-03). Stands in for the `squad`
+    /// `CELL_PUBLIC` property, which is never sent to clients (audit A-19).
+    /// A mirror of the cell's `SquadRegistry`, which is authoritative: set
+    /// and cleared with membership, and re-stamped on every world entry
+    /// because gate travel re-creates the entity.
+    pub squad_id: Option<i32>,
 
     /// Mission tracking for player entities.
     pub missions: MissionManager,
@@ -420,6 +427,10 @@ pub struct CellEntity {
     /// callers that don't care about kill credit (NPC AI fire, etc.).
     pub last_aoe_deaths: Vec<u32>,
 
+    /// An ability launched with a positive warmup, waiting for the cell's
+    /// warmup tick to fire or interrupt it (AT-10). See [`super::PendingCast`].
+    pub pending_cast: Option<super::PendingCast>,
+
     /// Pulsing effects currently active on this entity (DoT, HoT,
     /// timed debuffs). Each instance carries its own scheduling, so
     /// the per-cell `effect_pulse_tick` walks this Vec to fire due
@@ -435,7 +446,13 @@ pub struct CellEntity {
     /// the runtime (`Idle`, `Fighting`, `Leashing`, `Dead`). The other
     /// variants are entry points for future content hooks and AI tick
     /// extensions.
-    pub ai_state: AiState,
+    ///
+    /// Private on purpose: read it with [`CellEntity::ai_state`]. Every
+    /// write must go through the services-side transition helper
+    /// (`cell::service::npc_ai::transition::set_ai_state`), which emits the
+    /// `npc_ai.transition` row and counter; a raw field write would leave a
+    /// hole in the per-NPC state timeline (audit gap T8).
+    pub(super) ai_state: AiState,
     /// Threat list: entity_id → accumulated threat value.
     pub threat_list: HashMap<u32, f32>,
     /// Position where this NPC was spawned (for leashing).
@@ -448,6 +465,9 @@ pub struct CellEntity {
     /// and without this snapshot the respawn would lose the original
     /// heading.
     pub spawn_direction: Option<Vector3>,
+    /// Leash radius override, walk-home timer, lost-target timer and the
+    /// post-reset re-aggro window (NA12). See [`LeashState`].
+    pub leash: LeashState,
     /// Ticks until next AI action (count-down from ai tick interval).
     pub ai_cooldown_ticks: u32,
     /// Deadline for the next AI fight tick on this NPC, in service-local
@@ -473,35 +493,23 @@ pub struct CellEntity {
     /// Pin this NPC to its spawn position. AI will attack when the target
     /// is in range + LOS but never pathfind. Loaded from `spawnlist.is_stationary`.
     pub is_stationary: bool,
-    /// NPC behavior-aggression level. `0` = passive (only fights back when
-    /// threatened, the default). `≥1` = hostile-on-sight (the AI idle tick
-    /// scans the NPC's witnesses for opposing-faction players and seeds
-    /// threat to wake the NPC up). Set by the `set_aggression` content
-    /// action when a mission chain wants an NPC to start hunting — e.g.,
-    /// chain 1032 flips the Castle_CellBlock prisoner-retrieval drone to
-    /// `1` when the player grabs the Ambernol vial. Persists across kills
-    /// so a stationary drone re-aggros the next player who walks in.
+    /// Aggression override and proximity-aggro radius (NA13). The level
+    /// follows `EMobAggressionLevel` (1 = hostile); `None` means the faction
+    /// reaction table decides. See [`super::AggroProfile`].
+    pub aggro: super::AggroProfile,
+    /// Last `MobMovementType` recorded for this NPC. `None` = nothing
+    /// recorded yet, or the last state entry cleared it (Idle / Dead /
+    /// Despawning). **Nothing reaches the client**: there is no
+    /// server-to-client movement-type message, and the client animates
+    /// NPC gait from `EntityMoved` velocity (NA10, #779). The value is
+    /// kept for telemetry (`movement.movement_type`) and the `.bug`
+    /// bookmark's `last_movement_type` field.
     ///
-    /// Distinct from any UI-layer aggression-override (nameplate color);
-    /// this field drives combat behavior, not the friend/foe indicator.
-    pub aggression: i32,
-    /// Last `MobMovementType` broadcast to AoI witnesses via
-    /// `setMovementType`. `None` = nothing broadcast yet (initial state)
-    /// or last broadcast was a "clear" (entering Idle / Dead /
-    /// Despawning). Cached so re-entering the same state from the AI
-    /// tick doesn't re-spam the wire — only state *changes* fan out.
-    ///
-    /// **Ownership**: this cache is written exclusively by
-    /// [`cell::abilities::messaging::broadcast_movement_type`]. The two
-    /// legitimate call sites are (a) the NPC AI tick, which broadcasts
-    /// on every state transition (Fighting entry, Leashing entry,
-    /// Idle entry), and (b) the inbound `setMovementType` cell-method
-    /// handler, which routes the inbound byte through the same helper
-    /// so the dedup is consistent in both directions. **Server-side
-    /// callers that want to set a movement type must go through the
-    /// helper, not write this field directly** — direct writes bypass
-    /// the AoI broadcast and the dedup, producing a server-thinks-A /
-    /// client-thinks-B divergence.
+    /// **Ownership**: written only by
+    /// [`cell::abilities::messaging::broadcast_movement_type`], which
+    /// dedups and logs each change. Its callers are the NPC AI state
+    /// entries and the inbound `setMovementType` cell-method handler.
+    /// Write through the helper, not directly, so the change is logged.
     ///
     /// Server-side only; never persisted, never restored across login.
     pub last_movement_type: Option<MobMovementType>,
@@ -559,7 +567,7 @@ pub struct CellEntity {
     pub patrol_point_delay_secs: f32,
     /// Wander radius in world units. `0.0` → NPC doesn't wander.
     /// Positive values opt the NPC into `AiState::Wander` from
-    /// Idle when it has no patrol_path and no positive aggression.
+    /// Idle when it has no patrol_path and is not hostile on sight.
     /// Loaded from `entity_templates.wander_radius`.
     pub wander_radius: f32,
     /// Random-dwell lower bound between successive wander hops,
@@ -633,23 +641,16 @@ pub struct CellEntity {
     /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
     pub last_interaction_target: Option<u32>,
 
-    /// The `dialog_id` of the dialog currently displayed to this player, or
-    /// `None` when no dialog is open. Set when `onDialogDisplay` is sent
-    /// (`cell::interactions::send_dialog_display`, the single choke point all
-    /// display paths route through), validated and cleared on
-    /// `DIALOG_BUTTON_CHOICE`.
-    ///
-    /// This is the server-side "is dialog X open for player Y?" precondition
-    /// the `DialogButtonChoice` handler checks before firing an
-    /// `OnDialogChoice` content chain. Without it, a forged choice packet for
-    /// any discovered `dialog_id` drives the chain's actions (GrantXP,
-    /// GrantItem, AcceptMission, Teleport, …) with no precondition
-    /// (CAT-J-01 / #479). Mirrors python `SGWPlayer.displayedDialogs`
-    /// (`deprecated/python/cell/SGWPlayer.py`): set on `displayDialog`,
-    /// `del`'d on `dialogButtonChoice`. A single slot suffices — SGW content
-    /// is strictly sequential (display → choice → display), never
-    /// overlapping dialogs.
-    pub open_dialog_id: Option<i32>,
+    /// The open vault window, if any (player entities only). Set by the
+    /// Banker arm and `.bank`; see the `vault_session` module for when it
+    /// ends; [`Self::pin_interaction_target`] clears it on a re-pin.
+    pub vault_session: Option<super::VaultSession>,
+
+    /// Dialogs offered to this player and not yet answered, oldest first —
+    /// the `dialogButtonChoice` server-authority precondition. Private on
+    /// purpose; see the `offered_dialogs` module for the rules and the
+    /// accessors that enforce them.
+    pub(super) offered_dialog_ids: VecDeque<i32>,
 
     /// Entity ID of the currently-open vendor (only for player entities).
     pub vendor_entity: Option<u32>,
@@ -731,6 +732,18 @@ pub struct CellEntity {
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
 
+    /// Character names this player ignores: the base's contact-list Ignore
+    /// list (flags 301), pushed by `BaseToCellMsg::UpdateIgnoreList` after
+    /// `InitPlayerState` and on every change. Spatial chat skips a witness
+    /// whose set holds the speaker's name (D-SS15, one-directional). Empty
+    /// for NPCs and until the first push; never persisted on the cell.
+    pub ignore_names: HashSet<String>,
+
+    /// The `UpdateIgnoreList` version `ignore_names` came from. A push with
+    /// a version at or below this is stale and dropped. 0 until the first
+    /// push, so a fresh entity (gate travel) takes any version.
+    pub ignore_version: u64,
+
     /// Per-session client option state populated by `updateSystemOptions`
     /// (player method index 93). Defaults to `SystemOptions::default()` on
     /// entity construction, then overwritten by either of two paths:
@@ -747,4 +760,16 @@ pub struct CellEntity {
     /// new server-synced options is mechanical — see
     /// [`SystemOptions::apply`].
     pub system_options: SystemOptions,
+
+    /// Ability-tree provenance (`sgw_player.trained_abilities`,
+    /// `tree_points_spent`), stamped by `InitPlayerState`.
+    pub tree_progress: TreeProgress,
+    /// When this player's last respec went to the base (AT-08). A press
+    /// within `RESPEC_RETRY_WINDOW` of it is dropped, which bounds the base
+    /// round trips a spamming client can cause.
+    pub respec_requested_at: Option<std::time::Instant>,
+    /// Pet state (`SGWPet`, class 0x05); `None` for every non-pet. See `pet.rs`.
+    pub pet: Option<Box<super::PetState>>,
+    /// The crafting stations last reported to the base.
+    pub crafting_stations: super::CraftingStationState,
 }

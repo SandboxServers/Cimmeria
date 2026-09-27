@@ -5,6 +5,14 @@ metadata:
   type: feedback
 ---
 
+> **Fixed 2026-09-26 for the committed lane.** `tools/build-lane/lane.sh`
+> (the lane moved into the repo in the build overhaul) ends with `exit $rc`,
+> so it passes cargo's status through, and
+> `tools/build-lane/test_lane_stats.py` pins that (`exit 3` in, `3` out).
+> What follows describes the old untracked `%TEMP%/cimmeria-castle/lane.sh`.
+> Grepping the captured file is still good practice, because of the two
+> capture traps at the end.
+
 `lane.sh` (the two-slot build semaphore under
 `%TEMP%/cimmeria-castle/`) prints `[lane] released (exit N)` with cargo's
 real status and then **exits 0 itself**. A `run_in_background` Bash call

@@ -1,11 +1,12 @@
 //! Extraction-coverage accounting — "how much of this map did we
 //! actually recover, and what did we leave on the floor?"
 //!
-//! Three walkers feed the soup: `StaticMeshActor` (Phase 1.2,
-//! including prefab archetypes), `Terrain` (1.3) and BSP `Model`
-//! (1.4). Classes outside that set — `Polys`, `ModelComponent`,
-//! `InterpActor`, `KActor`, `FracturedStaticMeshActor`,
-//! `StaticMeshCollectionActor` — are still silently ignored. Before
+//! Three walkers feed the soup: `StaticMeshActor` (Phase 1.2, including
+//! prefab archetypes and — NA36 — the `KActor`/`FracturedStaticMeshActor`
+//! siblings, unconditionally, plus `InterpActor` when opted in),
+//! `Terrain` (1.3) and BSP `Model` (1.4). Classes outside that set —
+//! `Polys`, `ModelComponent`, `StaticMeshCollectionActor`, and
+//! `InterpActor` when not opted in — are still silently ignored. Before
 //! deciding whether a given map's navmesh is worth building, you need
 //! the numbers: how many actors resolved, why the rest didn't, how the
 //! triangles split by source, and how much collision-bearing geometry
@@ -35,188 +36,10 @@ use std::path::Path;
 
 use cimmeria_upk::Package;
 
-/// Why a `StaticMeshActor` produced no triangles.
-///
-/// Ordered from "earliest in the resolution chain" to "latest" so a TSV
-/// reader can see how far each actor got before falling out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SkipReason {
-    /// The actor's tagged-property block carries no `StaticMeshComponent`
-    /// object reference at all.
-    NoComponentRef,
-    /// The `StaticMeshComponent` reference points outside the export
-    /// table, at an import, or at a zero-length export.
-    ComponentUnreadable,
-    /// The component parsed but has **no `StaticMesh` property**, and no
-    /// [`cimmeria_upk_objects::PackageIndex`] was available to follow
-    /// its archetype. This is the archetype-stub shape described in the
-    /// `staticmesh` module doc: a cooked component holding only
-    /// per-instance overrides, with the real mesh reference living in
-    /// the prefab archetype's component in another package.
-    ///
-    /// With an index supplied this reason no longer fires — the stub is
-    /// resolved by `staticmesh::archetype`, or falls into one of the
-    /// five `Archetype*` reasons below.
-    ArchetypeStubComponent,
-    /// The stub's `Archetype` is 0, points at a local export we could
-    /// not read, or is an import whose outer chain never reaches a root
-    /// package — so there is no `(package, path)` to look up.
-    ArchetypeUnrooted,
-    /// The archetype's owning package is not in the supplied
-    /// [`cimmeria_upk_objects::PackageIndex`], or failed to open.
-    ArchetypePackageNotFound,
-    /// The archetype's package opened but holds no export at the
-    /// template's dotted outer path.
-    ArchetypeExportNotFound,
-    /// The archetype chain revisited a path, or exceeded
-    /// [`crate::staticmesh::archetype::MAX_ARCHETYPE_DEPTH`] hops.
-    ArchetypeChainLoop,
-    /// The chain terminated at a template that has neither a
-    /// `StaticMesh` property nor a further archetype to climb to.
-    ArchetypeNoMesh,
-    /// The actor's **own** `Archetype` (the chain that supplies
-    /// `bCollideActors`, distinct from the component chain above) is
-    /// non-zero but could not be followed.
-    ///
-    /// The actor is skipped rather than emitted, because the
-    /// alternative is assuming UE3's `bCollideActors = true` default
-    /// for a template that may well have said `false` — and the
-    /// component chain can resolve a mesh perfectly well on its own, so
-    /// the extractor would happily emit geometry nothing collides with.
-    /// On Castle that shape is 26 prefabs' worth of weather cards
-    /// sitting in doorways; emitting them split the exterior navmesh.
-    ActorArchetypeUnreadable,
-    /// `CollideActors` is explicitly `false` on the component or,
-    /// through UE3 property inheritance, on its archetype. The mesh is
-    /// rendered but nothing collides with it, so rasterising it would
-    /// put a wall or a floor in the navmesh that the player walks
-    /// straight through.
-    CollisionDisabled,
-    /// The component has a `StaticMesh` property but it is a `None`-ref
-    /// (object index 0).
-    NullMeshRef,
-    /// The mesh reference is an import whose outer chain never terminates
-    /// in a root package, or a package-local export we can't key on.
-    UnresolvableMeshRef,
-    /// The `(package, object)` key is absent from the supplied
-    /// [`cimmeria_upk_objects::PackageIndex`].
-    MeshNotInIndex,
-    /// The mesh was found in the index but the `StaticMesh` decoder
-    /// errored on its bytes.
-    MeshDecodeFailed,
-    /// The mesh decoded cleanly but `collision_triangles()` came back
-    /// empty — no kDOP tree and no LOD0 index buffer.
-    MeshNoCollision,
-    /// No `PackageIndex` was supplied (degraded mode). Every actor lands
-    /// here; the walk still reports `actors_total`.
-    NoPackageIndex,
-}
+use crate::interp_actor::InterpActorMode;
 
-impl SkipReason {
-    /// Every variant, in declaration order. Used for deterministic TSV
-    /// column ordering and for the `merge` / `total` loops.
-    pub const ALL: [SkipReason; 16] = [
-        SkipReason::NoComponentRef,
-        SkipReason::ComponentUnreadable,
-        SkipReason::ArchetypeStubComponent,
-        SkipReason::ArchetypeUnrooted,
-        SkipReason::ArchetypePackageNotFound,
-        SkipReason::ArchetypeExportNotFound,
-        SkipReason::ArchetypeChainLoop,
-        SkipReason::ArchetypeNoMesh,
-        SkipReason::ActorArchetypeUnreadable,
-        SkipReason::CollisionDisabled,
-        SkipReason::NullMeshRef,
-        SkipReason::UnresolvableMeshRef,
-        SkipReason::MeshNotInIndex,
-        SkipReason::MeshDecodeFailed,
-        SkipReason::MeshNoCollision,
-        SkipReason::NoPackageIndex,
-    ];
-
-    /// Stable snake_case identifier — used verbatim as a TSV column head.
-    pub fn column(self) -> &'static str {
-        match self {
-            SkipReason::NoComponentRef => "skip_no_component_ref",
-            SkipReason::ComponentUnreadable => "skip_component_unreadable",
-            SkipReason::ArchetypeStubComponent => "skip_archetype_stub_component",
-            SkipReason::ArchetypeUnrooted => "skip_archetype_unrooted",
-            SkipReason::ArchetypePackageNotFound => "skip_archetype_package_not_found",
-            SkipReason::ArchetypeExportNotFound => "skip_archetype_export_not_found",
-            SkipReason::ArchetypeChainLoop => "skip_archetype_chain_loop",
-            SkipReason::ArchetypeNoMesh => "skip_archetype_no_mesh",
-            SkipReason::ActorArchetypeUnreadable => "skip_actor_archetype_unreadable",
-            SkipReason::CollisionDisabled => "skip_collision_disabled",
-            SkipReason::NullMeshRef => "skip_null_mesh_ref",
-            SkipReason::UnresolvableMeshRef => "skip_unresolvable_mesh_ref",
-            SkipReason::MeshNotInIndex => "skip_mesh_not_in_index",
-            SkipReason::MeshDecodeFailed => "skip_mesh_decode_failed",
-            SkipReason::MeshNoCollision => "skip_mesh_no_collision",
-            SkipReason::NoPackageIndex => "skip_no_package_index",
-        }
-    }
-
-    fn slot(self) -> usize {
-        match self {
-            SkipReason::NoComponentRef => 0,
-            SkipReason::ComponentUnreadable => 1,
-            SkipReason::ArchetypeStubComponent => 2,
-            SkipReason::ArchetypeUnrooted => 3,
-            SkipReason::ArchetypePackageNotFound => 4,
-            SkipReason::ArchetypeExportNotFound => 5,
-            SkipReason::ArchetypeChainLoop => 6,
-            SkipReason::ArchetypeNoMesh => 7,
-            SkipReason::ActorArchetypeUnreadable => 8,
-            SkipReason::CollisionDisabled => 9,
-            SkipReason::NullMeshRef => 10,
-            SkipReason::UnresolvableMeshRef => 11,
-            SkipReason::MeshNotInIndex => 12,
-            SkipReason::MeshDecodeFailed => 13,
-            SkipReason::MeshNoCollision => 14,
-            SkipReason::NoPackageIndex => 15,
-        }
-    }
-}
-
-/// Fixed-slot counter over [`SkipReason`].
-///
-/// A plain array rather than a `HashMap` so iteration order is the
-/// declaration order of [`SkipReason::ALL`] and a row always has the same
-/// columns whether or not a reason fired.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SkipTally {
-    counts: [u64; SkipReason::ALL.len()],
-}
-
-impl SkipTally {
-    /// Record one skipped actor.
-    pub fn add(&mut self, reason: SkipReason) {
-        self.add_n(reason, 1);
-    }
-
-    /// Record `n` skipped actors at once — the mesh-load stage fails a
-    /// whole instance group in one go.
-    pub fn add_n(&mut self, reason: SkipReason, n: u64) {
-        self.counts[reason.slot()] += n;
-    }
-
-    /// Count for one reason.
-    pub fn get(&self, reason: SkipReason) -> u64 {
-        self.counts[reason.slot()]
-    }
-
-    /// Sum across all reasons.
-    pub fn total(&self) -> u64 {
-        self.counts.iter().sum()
-    }
-
-    /// Accumulate another tally into this one.
-    pub fn merge(&mut self, other: &SkipTally) {
-        for (dst, src) in self.counts.iter_mut().zip(other.counts.iter()) {
-            *dst += *src;
-        }
-    }
-}
+mod skip;
+pub use skip::{SkipReason, SkipTally};
 
 /// How much of a given export class the extractor actually turns into
 /// triangles.
@@ -262,6 +85,19 @@ impl DecodeStatus {
 /// - `PrefabInstance` — the container is still ignored, but its actors
 ///   are separately exported as `StaticMeshActor` and now resolve
 ///   through `staticmesh::archetype`, so it is no longer a gap.
+/// - `KActor` / `FracturedStaticMeshActor` — NA36. Both derive from
+///   `AStaticMeshActor` and share its placement + `StaticMeshComponent`
+///   shape, so `staticmesh::collect_static_mesh_instances` walks them
+///   through [`staticmesh::MESH_ACTOR_CLASSES`] alongside
+///   `StaticMeshActor` itself, unconditionally.
+/// - `InterpActor` — NA36, classified per actor since NA40: see
+///   [`decode_status`]'s doc. Not listed in this table; handled as a
+///   special case.
+/// - `PrefabInstance` — the container is still ignored, but its actors
+///   are separately exported as `StaticMeshActor` and now resolve
+///   through `staticmesh::archetype`, so it is no longer a gap.
+///   `StaticMeshCollectionActor` is deliberately NOT here — it owns an
+///   array of components, not one, and needs its own walk.
 const DECODE_STATUS: &[(&str, DecodeStatus)] = &[
     ("StaticMeshActor", DecodeStatus::Decoded),
     ("StaticMeshComponent", DecodeStatus::ViaOwner),
@@ -271,10 +107,29 @@ const DECODE_STATUS: &[(&str, DecodeStatus)] = &[
     ("Brush", DecodeStatus::ViaOwner),
     ("BlockingVolume", DecodeStatus::ViaOwner),
     ("PrefabInstance", DecodeStatus::ViaOwner),
+    ("KActor", DecodeStatus::Decoded),
+    ("FracturedStaticMeshActor", DecodeStatus::Decoded),
 ];
 
-/// What the extractor does with `class`.
-pub fn decode_status(class: &str) -> DecodeStatus {
+/// What the extractor does with `class`, **for this run**.
+///
+/// `InterpActor` is a special case, not a table lookup: it is walked
+/// unless the run's [`InterpActorMode`] is `Off`, and then baked per
+/// actor by `interp_actor::classify` (NA40). So `decode_status` answers
+/// "was InterpActor walked this run", not "can the code walk it" —
+/// pass the mode the extraction itself used
+/// ([`MapCoverage::interp_actors`] carries it for a report already
+/// produced). Whether the walk left anything *undecided* is a separate
+/// question the class census answers from the
+/// [`SkipReason::InterpActorUndecided`] tally. Every other class is a
+/// straight table lookup and ignores the argument.
+pub fn decode_status(class: &str, interp_actors: InterpActorMode) -> DecodeStatus {
+    if class == "InterpActor" {
+        return match interp_actors {
+            InterpActorMode::Classify => DecodeStatus::Decoded,
+            InterpActorMode::Off => DecodeStatus::NotDecoded,
+        };
+    }
     DECODE_STATUS
         .iter()
         .find(|(c, _)| *c == class)
@@ -304,11 +159,22 @@ pub fn decode_status(class: &str) -> DecodeStatus {
 /// - `BlockingVolume` — invisible collision-only brush; pure navmesh
 ///   input with no render mesh.
 /// - `InterpActor` / `KActor` / `FracturedStaticMeshActor` — movers and
-///   physics props that DO own a `StaticMeshComponent` but are not class
-///   `StaticMeshActor`, so the walker's class filter drops them. Still
-///   genuine gaps.
+///   physics props that own a `StaticMeshComponent` but are not class
+///   `StaticMeshActor`. NA36: `staticmesh::MESH_ACTOR_CLASSES` now
+///   walks `KActor` and `FracturedStaticMeshActor` through the same
+///   resolver unconditionally, so `decode_status` reports them
+///   `Decoded` and `collision_risk` reads `no`. `InterpActor` is
+///   classified per actor (NA40; a mover's cooked pose is not
+///   necessarily its runtime one), so its `collision_risk` reads `yes`
+///   when this run's mode was `Off`, or when the classifier left any of
+///   them undecided. Kept in this list (rather than dropped, the way
+///   `StaticMeshActor` itself is not listed here) so the per-chunk
+///   export-count column stays visible regardless.
 /// - `StaticMeshCollectionActor` — UE3's cooked batching actor; holds
-///   an array of components rather than one. Still a genuine gap.
+///   an array of components rather than one. Still a genuine gap; see
+///   `docs/engine/navmesh-build-pipeline.md` §11 for the NA36 23-map
+///   census of how much geometry this and the other still-skipped
+///   classes account for.
 /// - `PrefabInstance` — the prefab container; its actors resolve
 ///   through the archetype chain, so it is no longer a risk.
 pub const COLLISION_BEARING_CLASSES: &[&str] = &[
@@ -490,6 +356,15 @@ pub struct MapCoverage {
     pub elapsed_secs: f64,
     /// Size of the combined map-level OBJ, 0 if none was written.
     pub combined_obj_bytes: u64,
+    /// How this run treated `InterpActor` exports
+    /// (`ExtractOptions::interp_actors`). Carried onto the report so
+    /// [`Self::write_class_census_into`] can answer "was InterpActor
+    /// actually walked this run", not just "can the code walk it" — see
+    /// [`decode_status`]'s doc.
+    pub interp_actors: InterpActorMode,
+    /// Every classified `InterpActor`, with the chunk filled in — the
+    /// decision log `extract_map` writes next to the coverage TSV.
+    pub interp_actor_records: Vec<crate::interp_actor::InterpActorRecord>,
 }
 
 impl MapCoverage {
@@ -619,15 +494,23 @@ impl MapCoverage {
         // Biggest first; ties broken by name so the file is reproducible.
         rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
 
+        let interp_undecided = self
+            .chunks
+            .iter()
+            .map(|c| c.skips.get(SkipReason::InterpActorUndecided))
+            .sum::<u64>();
         writeln!(w, "class\texports\tchunks_present\tdecoded\tcollision_risk")?;
         for (class, exports, chunks_present) in rows {
-            let status = decode_status(class);
+            let status = decode_status(class, self.interp_actors);
             // A risk is a class that could carry collision AND that
             // nothing reads — not merely "is not StaticMeshActor".
             // `ViaOwner` counts as read: the geometry reaches the soup,
-            // just through a different export.
-            let risk =
-                COLLISION_BEARING_CLASSES.contains(&class) && status == DecodeStatus::NotDecoded;
+            // just through a different export. An InterpActor the
+            // classifier could not decide on is read but not baked, so
+            // it is still a hole.
+            let risk = COLLISION_BEARING_CLASSES.contains(&class)
+                && (status == DecodeStatus::NotDecoded
+                    || (class == "InterpActor" && interp_undecided > 0));
             writeln!(
                 w,
                 "{class}\t{exports}\t{chunks_present}\t{}\t{}",

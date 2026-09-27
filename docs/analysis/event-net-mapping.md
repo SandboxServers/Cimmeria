@@ -570,8 +570,8 @@ These have `register_NetOut_*` or `register_NetIn_*` functions AND corresponding
 | `onMailRead` | `onMailRead` | SGWMailManager | 00d7cdc0 |
 | `onSendMailResult` | `onSendMailResult` | SGWMailManager | 00d7d060 |
 | `onVaultOpen` | `onVaultOpen` | SGWInventoryManager | 00d7e560 |
-| `onTeamVaultOpen` | `onTeamVaultOpen` | SGWInventoryManager | 00d7eaa0 |
-| `onCommandVaultOpen` | `onCommandVaultOpen` | SGWInventoryManager | 00d7ed40 |
+| `onTeamVaultOpen` | `onTeamVaultOpen` | SGWInventoryManager | 00d7e800 |
+| `onCommandVaultOpen` | `onCommandVaultOpen` | SGWInventoryManager | 00d7eaa0 |
 | `onStoreOpen` | `onStoreOpen` | SGWInventoryManager | 00d7ed40 |
 | `onStoreUpdate` | `onStoreUpdate` | SGWInventoryManager | 00d7efe0 |
 | `onStoreClose` | `onStoreClose` | SGWInventoryManager | 00d7f280 |

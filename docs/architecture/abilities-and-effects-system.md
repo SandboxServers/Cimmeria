@@ -1,6 +1,6 @@
 # Abilities + Effects System
 
-> **Last updated**: 2026-09-18
+> **Last updated**: 2026-09-27
 > **Audience**: Engineers touching combat / abilities / effects on the cell
 > **Type**: ADR + reference
 > **Owner**: Combat systems
@@ -26,7 +26,7 @@ This doc captures **what** was decided and **why**, with pointers to the code th
 
 **Reversibility:** Adding `on_pulse_begin` / `on_pulse_end` later is additive — existing scripts get default-empty impls, no migration. **Trapdoors:** none.
 
-**Code:** [`crates/services/src/cell/effects/mod.rs`](../../crates/services/src/cell/effects/mod.rs) — trait definition + `dispatch_by_name` / `dispatch_on_remove` helpers.
+**Code:** [`crates/cell-world/src/cell/effects/mod.rs`](../../crates/cell-world/src/cell/effects/mod.rs) — trait definition + `dispatch_by_name` / `dispatch_on_remove` helpers. The synchronous layer (trait, context, registry, scripts) is in `cimmeria-cell-world` because the spawn-time cover hold runs Cover Stance through it; the async pulsing scheduler ([`effects/pulsing/`](../../crates/cell-combat/src/cell/effects/pulsing/)) is combat's, in `cimmeria-cell-combat`, whose `cell::effects` re-exports the synchronous layer beside it; `cimmeria-services` re-exports that module at the same path ([services-crate-split.md](services-crate-split.md)).
 
 ### 2. Active-effect storage on the target, not the source
 
@@ -41,7 +41,7 @@ Alternative considered: storage-on-source with target_ids in the instance. Rejec
 
 **Reversibility:** Switching to source-side storage would require a single-pass migration of the `active_effects` field; both queries stay O(N) just over different sets. Not a permanent commitment.
 
-**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (`ActiveEffectInstance` struct + `active_effects` field), [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (`ActiveEffectInstance` struct + `active_effects` field), [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 3. Refcount lifecycle via existing `state_flag_counts`
 
@@ -57,7 +57,7 @@ The PR initially added a separate `movement_lock_reasons: HashSet<(u32, i32)>` f
 
 **Reversibility:** Already the simpler design — no commitment to walk back.
 
-**Code:** [`crates/entity/src/cell_entity/state_flags.rs`](../../crates/entity/src/cell_entity/state_flags.rs), `Stun::on_apply` / `on_remove` in [`crates/services/src/cell/effects/scripts.rs`](../../crates/services/src/cell/effects/scripts.rs).
+**Code:** [`crates/entity/src/cell_entity/state_flags.rs`](../../crates/entity/src/cell_entity/state_flags.rs), `Stun::on_apply` / `on_remove` in [`crates/cell-world/src/cell/effects/scripts.rs`](../../crates/cell-world/src/cell/effects/scripts.rs).
 
 ### 4. Stacking semantics: same-source refresh, multi-source stack
 
@@ -67,7 +67,7 @@ The PR initially added a separate `movement_lock_reasons: HashSet<(u32, i32)>` f
 
 **Reversibility:** Trapdoor — content authored to assume same-source stacking would break if the rule changes. None of our seed currently assumes this either way, so we're free to revise. Document the rule clearly so content authors don't drift.
 
-**Code:** `register_active_effect` in [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** `register_active_effect` in [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 5. Pulsing model: initial pulse + N-1 follow-ups
 
@@ -82,7 +82,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Reversible — could move the initial pulse into the tick loop by setting `next_pulse_at = now` and skipping the synchronous fire. Would defer first damage by up to 100ms (one tick), which is noticeable in playtest.
 
-**Code:** [`crates/services/src/cell/abilities/damage_apply/mod.rs`](../../crates/services/src/cell/abilities/damage_apply/mod.rs) (initial pulse), [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs) (registration + tick).
+**Code:** [`crates/cell-combat/src/cell/abilities/damage_apply/mod.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/mod.rs) (initial pulse), [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs) (registration + tick).
 
 ### 6. Channel cancellation triggers
 
@@ -102,11 +102,11 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Per-trigger thresholds (0.5m, 60 pulses) are tunable. Adding new cancel triggers is additive. Removing existing ones risks breaking content authored to rely on them.
 
-**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs) (`cancel_channels_from_attacker`, `cancel_channels_for_invoker_ability`, `channel_interrupt_on_movement_tick`).
+**Code:** [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs) (`cancel_channels_from_attacker`, `cancel_channels_for_invoker_ability`, `channel_interrupt_on_movement_tick`).
 
 ### 7. AF_CHANNEL_ALLOWS_MOVEMENT default = 0 (cancel-on-move)
 
-**Decision:** The new `AF_CHANNEL_ALLOWS_MOVEMENT = 16384` ability flag defaults to 0 (off) across every authored ability. Operators flip it per-ability as content arrives that should be movement-tolerant.
+**Decision:** The Cimmeria-side `AF_CHANNEL_ALLOWS_MOVEMENT` ability flag (bit 20, `1 << 20`) defaults to 0 (off) across every authored ability. Operators flip it per-ability as content arrives that should be movement-tolerant. It was first defined as 16384 (bit 14), but that bit is the client's `EAbilityFlags::SpeedPet` (`entities/defs/enumerations.xml:51`), which the seed sets on the 14 summon abilities. So those summons were exempt from the warmup move interrupt until pets PT-03 moved the flag above the client enum's highest token (`PetCommand` = 65536). No seed row sets bit 20.
 
 **Why:** Cancel-on-move is the safe default — players who walk away from a channel expect it to stop. The inverse default would silently let channels persist across movement events the player doesn't realise are happening, which is a bug shape ("why is my buff still ticking after I rezoned?"). Opt-in to movement-tolerant via flag flip.
 
@@ -130,7 +130,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Adding new TCM values is additive — add a fourth route. Re-routing existing TCMs is risky (changes content behaviour).
 
-**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs), [`crates/services/src/cell/abilities/dispatch.rs`](../../crates/services/src/cell/abilities/dispatch.rs).
+**Code:** [`crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs`](../../crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs), [`crates/cell-combat/src/cell/abilities/dispatch/mod.rs`](../../crates/cell-combat/src/cell/abilities/dispatch/mod.rs).
 
 ### 9. Absorption pool drain: elemental-specific first, generic catch-all second
 
@@ -146,7 +146,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Drain order is per-damage-type table inside `drain_absorption_pools`; trivially swapped. Changing the HEALTH-only rule means understanding the FOCUS-drain content semantics first.
 
-**Code:** [`crates/services/src/cell/combat/damage/pipeline.rs`](../../crates/services/src/cell/combat/damage/pipeline.rs) — `drain_absorption_pools` + `calculate_damage`.
+**Code:** [`crates/cell-combat/src/cell/combat/damage/pipeline.rs`](../../crates/cell-combat/src/cell/combat/damage/pipeline.rs) — `drain_absorption_pools` + `calculate_damage`.
 
 ### 10. Script-name dispatch over flag-bit dispatch for effect categories
 
@@ -160,7 +160,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Could route flags into the dispatcher later (add a "if flags & EF_STUN, also run Stun" path) without breaking script_name routing.
 
-**Code:** [`crates/services/src/cell/effects/registry.rs`](../../crates/services/src/cell/effects/registry.rs).
+**Code:** [`crates/cell-world/src/cell/effects/registry.rs`](../../crates/cell-world/src/cell/effects/registry.rs).
 
 ### 11. Channel-interrupt distance = 0.5m
 
@@ -172,7 +172,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Single constant, no schema commitment.
 
-**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 12. Channel safety cap = 60 pulses
 
@@ -182,7 +182,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Single constant.
 
-**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 13. CellEntity.last_aoe_deaths: per-attacker scratchpad for AoE kill credit
 
@@ -194,7 +194,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Reversible — switch to a return-type if a batching refactor surfaces the race.
 
-**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (field), [`crates/services/src/cell/abilities/use_ability/mod.rs`](../../crates/services/src/cell/abilities/use_ability/mod.rs) (stash + drain).
+**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (field), [`crates/cell-combat/src/cell/abilities/use_ability/mod.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/mod.rs) (stash + drain).
 
 ### 14. cone geometry: X/Z planar, ignoring Y
 
@@ -204,7 +204,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Per-ability flag could add Y-bound checking later. Backward-compatible (default behaviour stays the same).
 
-**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs) (`collect_cone_targets`).
+**Code:** [`crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs`](../../crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs) (`collect_cone_targets`).
 
 ### 15. Pulse tick cadence = 100ms (piggyback on AoI tick)
 
@@ -214,13 +214,13 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Could split into a separate tick with its own cadence if effect frequency becomes a bottleneck. No content depends on the cadence — pulses fire at `pulse_duration` intervals regardless of how often the tick runs.
 
-**Code:** [`crates/services/src/cell/service/message_loop.rs`](../../crates/services/src/cell/service/message_loop.rs).
+**Code:** [`crates/cell/src/cell/service/message_loop.rs`](../../crates/cell/src/cell/service/message_loop.rs).
 
 ### 16. Content-initiated effects use a separate entry point, not `handle_use_ability`
 
 **Decision:** Content chains that apply an ability or an effect
 (`Action::LaunchAbility`, `Action::ApplyEffect`) call
-[`cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
+[`cell/content/effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs),
 which resolves the effect defs and calls `dispatch_by_name` +
 `register_active_effect` directly. They do **not** route through
 `cell::abilities::use_ability::handle_use_ability`.
@@ -263,22 +263,24 @@ factor the *effect-application tail* of `handle_use_ability` into a shared
 function that both call — not to route content back through the gated front
 door.
 
-**Code:** [`crates/services/src/cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
-dispatched from [`executor/mod.rs`](../../crates/services/src/cell/content/executor/mod.rs).
+**Code:** [`crates/cell-content/src/cell/content/effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs),
+dispatched from [`executor/mod.rs`](../../crates/cell-content/src/cell/content/executor/mod.rs).
 
 ### 17. `entity_health_below` samples at the damage seams and drains at the engine holders
 
 **Decision:** `pct_before` is sampled inside the two health-application seams —
-[`abilities/damage_apply`](../../crates/services/src/cell/abilities/damage_apply/) (single
+[`abilities/damage_apply`](../../crates/cell-combat/src/cell/abilities/damage_apply/) (single
 target, AoE secondary, cone secondary, and the effect scripts it dispatches) and
-[`effects/pulsing/tick.rs`](../../crates/services/src/cell/effects/pulsing/tick.rs)
+[`effects/pulsing/tick.rs`](../../crates/cell-combat/src/cell/effects/pulsing/tick.rs)
 (`fire_pulse`) — by
-[`combat::note_pre_damage_health`](../../crates/services/src/cell/combat/damage_credit.rs),
-which queues it on the `SpaceManager`. The callers that *do* hold a `&ChainEngine` drain the
-queue immediately after the hit via `content::fire_pending_health_below`: the kill-credit
-wrapper, the `useAbilityOnGroundTarget` handler, the pulse tick, and a per-tick safety drain
-in the cell message loop. The pure percentage arithmetic lives in
-[`cell/combat/health_threshold.rs`](../../crates/services/src/cell/combat/health_threshold.rs).
+[`combat::note_pre_damage_health`](../../crates/cell-combat/src/cell/combat/damage_credit.rs),
+which queues it on the `SpaceManager`. The queue is drained immediately after the hit by
+`content::fire_pending_health_below`: the kill-credit wrapper and the pulse tick reach it
+through `ContentEvents::pending_health_below` (combat takes `&dyn ContentEvents`, and the
+cell passes `EngineEvents(&engine)`; services-crate-split.md §2E), and the
+`useAbilityOnGroundTarget` handler and a per-tick safety drain in the cell message loop call
+it directly. The pure percentage arithmetic lives in
+[`cell/combat/health_threshold.rs`](../../crates/cell-world/src/cell/combat/health_threshold.rs).
 
 **Why a queue rather than a threaded handle.** The trigger needs three things at once: the
 target's health on **both** sides of the hit, the attacking player as the acting entity, and
@@ -341,7 +343,7 @@ clock.
 surrender survives everything the *server* re-delivers on its own cadence, and changes
 nothing about what a player does deliberately. A pulse is on the automatic side by the same
 definition
-[`combat::is_auto_cycle_target_valid`](../../crates/services/src/cell/combat/auto_cycle.rs)
+[`combat::is_auto_cycle_target_valid`](../../crates/cell-combat/src/cell/combat/auto_cycle.rs)
 uses for the auto-fire loop: the deliberate act was applying the effect, and every tick
 after it is the scheduler's. So the two guards are one rule applied at two seams, and
 neither of them touches a direct hit.
@@ -376,7 +378,7 @@ doc comment; deleting both restores the pre-H08 behaviour and fails
 
 ### 19. Every death resolves through one function, including an effect script's killing blow
 
-**Decision:** [`abilities::death::resolve_death`](../../crates/services/src/cell/abilities/death/mod.rs)
+**Decision:** [`abilities::death::resolve_death`](../../crates/cell-combat/src/cell/abilities/death/mod.rs)
 is the only place a death happens. It owns the kill-site state mutations, the ordered wire
 burst, the threat drain, the death animation, kill XP, and the player Defeat Window.
 `damage_apply` calls it twice per hit — once for direct damage, once as a sweep after the
@@ -398,7 +400,7 @@ arm. Loot, XP, the `BSF_InCombat` clear and the auto-cycle stop were all 1.5 s l
 death event and the death transition were credited to different shots.
 
 **Why the sweep sits in `damage_apply` and not in the scripts.** A script holds
-`&mut SpaceManager` through a synchronous [`EffectContext`](../../crates/services/src/cell/effects/mod.rs)
+`&mut SpaceManager` through a synchronous [`EffectContext`](../../crates/cell-world/src/cell/effects/mod.rs)
 and cannot await the wire burst. Pushing lethality handling into each script would also mean
 every future HEALTH-touching script has to remember it — the same omission that produced
 this bug, re-armed nine times over. The sweep is unconditional rather than gated on "did a
@@ -434,47 +436,290 @@ the GM path `false`, so an admin command cannot mint levels.
 both together; on its own it cannot isolate the AI filter, because the death it
 resolves also stamps `AiState::Dead`.)
 
-### 20. Timer expiries are absolute on one server-wide game clock
+### 20. A player's targeted ability needs line of sight at fire time (NA31, D-NA14)
 
-**Decision:** every `onTimerUpdate` start carries `BigWorldTimeComplete = now + duration`,
-where `now` is [`base::game_time::game_time_secs`](../../crates/services/src/base/game_time.rs).
-That covers the ability cooldown (`handle_use_ability`), the weapon-reload cooldown
-(`handle_reload`), the effect-duration start (`pulsing/register.rs`), and the GM `.net_timer`.
-The effect-duration clears still send `0.0`. The clock the client compares against is the
-same counter: the login bundle's `TICK_SYNC.gameTime` and `SET_GAME_TIME`
-(`build_time_sync`) and every heartbeat `TICK_SYNC` all carry `game_time_tick()`.
+**Decision:** `handle_use_ability` runs `fire_los::refuse_without_line_of_sight` straight
+after the range check. The check covers a player attacker using an ability aimed at another
+entity (`target_type_id` not `TargetSelf` or `TargetGround`) in a world with a
+collision-geometry occluder. When the eye ray and every tolerance ray are blocked, the
+ability is refused with `onErrorCode(0, ability_id, 39)`. The tolerance rays are the target
+one tick back, the shooter one tick ahead, and 0.35 m to each side of the target. The
+refusal comes before the holster queue, the cooldown and the ammo check, so a refused shot
+costs nothing.
 
-**Why:** this is the C++ reference server's model, not an inference. `CellManager::ticks()`
-is milliseconds since start divided by `tick_rate`, and `tick_rate` (`100`) is
-*milliseconds per tick*. `ClientHandler::onConnected` writes that one counter into both
-`TICK_SYNC` and `SET_GAME_TIME`, and `ClientHandler::gameTick` keeps sending it. The Python
-`getGameTime()` is `ticks * tick_rate / 1000`, and `AbilityManager.py` sends
-`getGameTime() + cooldown` (and an effect's `completeTime`) as `BigWorldTimeComplete`.
-The client computes the time left as `BigWorldTimeComplete - now`
-(`ability-resolution-pipeline.md`), so the expiry and the client's clock have to be on the
-same counter.
+**Why these limits:** the navmesh ray reads furniture as walls (NA16), so no occluder, or an
+eye off its grid, never refuses. NPC launches are not re-checked, because the fight tick
+checked them in the same tick. Ground-target and AoE collection are unchanged: they aim at a
+point or a volume, not an entity's eyes. The gameplay rules are in
+[combat-system.md](../gameplay/combat-system.md#fire-time-line-of-sight).
 
-Before this, the three pieces were inconsistent. Login seeded every client at tick `0`, each
-session's heartbeat counted up from its own `0`, and expiries were `0.0` (cooldowns) or the
-bare duration (effects). Because each session's clock also started at `0`, the relative
-effect times only looked right early in a session. All three move together; changing one
-without the others breaks the rest. For example, a global heartbeat with a zero login seed
-makes the client's clock jump.
+**Reversibility:** High. The gate is one `if` in `handle.rs` and one pre-gate in the
+auto-cycle tick. Removing it fails `a_shot_through_the_hallway_walls_is_refused_with_error_39`.
 
-**Trap:** `tickRate` is milliseconds per tick, not ticks per second. If the counter advanced
-100 times a second while the field still said `100`, the client's clock would run 10 times
-too fast and every absolute expiry would already have passed when it arrived.
-`ticks_to_secs` is the one conversion; `TICK_INTERVAL_MS` and `UPDATE_FREQUENCY_HZ` are the
-only copies of the rate.
+### 21. Warmup is a pending cast per caster, fired by the 100 ms tick (AT-10)
 
-**Not verified in the live client.** The wire values match the reference server, but no
-playtest has confirmed cooldown bars or buff icons against a running `SGW.exe`.
+**Decision:** `handle_use_ability` is the launch half of a cast. It validates, charges the
+cooldown for `cooldown + warmup`, and sends the cooldown timer. With a zero warmup it then
+calls `fire::fire_cast` in the same pass, and the wire is unchanged from before AT-10. With a
+positive warmup it sends `Ability_Begin` and the `AbilityWarmup` (type 1) timer, and parks a
+`PendingCast` on the caster (`CellEntity.pending_cast`, indexed by
+`SpaceManager.pending_casts`). `warmup::warmup_tick` runs every AoI tick. It interrupts a
+caster that has moved, re-validates each cast whose warmup has expired, and fires it through
+the same `fire_cast`: ammo, `Ability_End`, channel cancel, damage, cone fan-out, auto-reload.
+Each of those runs once per cast, in the fire phase. NPC casters use the same path, and the
+NPC fight tick holds while its NPC is casting. A ground-target cast parks its ground point
+with the primary, and its secondaries are collected when it fires.
 
-**Reversibility:** High. Guards: `time_sync_seeds_client_clock_with_server_ticks`,
-`self_target_commit_emits_absolute_cooldown_expire_time`,
-`handle_reload_timer_expires_on_the_game_clock`,
-`duration_effect_timers_carry_effect_id_and_absolute_expiry`,
-`ticks_convert_at_ms_per_tick`.
+One primitive, `warmup::interrupt_pending_cast`, cancels a warmup. It refunds the cooldown
+and sends the player a zeroed warmup timer and a zeroed cooldown timer, then sends
+`Ability_Interrupt` (1002) to the caster and witnesses. It also stops the auto-cycle loop if
+the interrupted ability is the loop's. The triggers are:
+
+| Trigger | Source | Where |
+|---|---|---|
+| Caster death | python `onDead` → `interruptAbility` | `death::apply_death_transition`, beside the channel cancel |
+| Active bandolier slot change | python `onBandolierSlotChange` | `handle_request_active_slot_change`, when the slot differs |
+| Caster moves ≥ 0.5 m (planar), unless `AF_CHANNEL_ALLOWS_MOVEMENT` | channel rule (decision 11); `SGWAbilityManager.def` pairs `lastWarmUpInterruptTime` with `lastChannelInterruptTime` | `warmup_tick` |
+| Caster in another space (whatever the flag) | Rust addition | `warmup_tick` |
+| At fire: a player's active-slot weapon is not the one it launched with | python `onBandolierSlotChange` also covered "the active item was swapped/removed" | `warmup_tick` |
+| At fire: target gone, dead, in another space, or no longer a valid target (#444) | Rust addition | `warmup_tick` |
+| At fire: target beyond range (sends `onErrorCode` 42) | Rust addition, the launch's own check | `warmup_tick` |
+| At fire: no line of sight for a player (sends `onErrorCode` 39) | Rust addition, decision 20 | `warmup_tick` |
+| At fire: a player's weapon is reloading or short of ammo | Rust addition | `warmup_tick` |
+
+A second launch while a cast warms up is refused silently, whatever the ability. Python
+`canUseAbility` refused while `currentAbility` was set.
+
+**Why:** Python (`AbilityInstance.launch` / `afterWarmup` / `interrupt`) is the only
+reference for the split, and it is followed where it speaks: the cooldown starts at launch
+and covers the warmup, ammo is spent at the fire, and the speed stats shorten the warmup.
+Death and slot change interrupt, the cooldown is refunded, and the cancel is the zeroed
+warmup timer plus `Ability_Interrupt`. Python's `afterWarmup` re-checked nothing and applied
+the effects to a dead or distant target. The fire-time checks are the conservative
+server-authoritative choice: a cast the launch would refuse is refused at the fire, with the
+same error codes. The zeroed cooldown timer is an addition, because python refunded the
+server cooldown without telling the client. The loop stop is an addition too, because
+without it a refunded auto-cycle ability relaunches on the next tick. A stun does not
+interrupt: nothing in python or in the Rust launch path gates on a stun, and a stun is only
+`BSF_MOVEMENT_LOCK`, which ring transport and death also set.
+
+**Reversibility:** High for the triggers: each is one call. The launch/fire split itself is
+load-bearing. `warmup_damage_waits_for_the_warmup_and_lands_once` fails if the fire goes back
+into the launch pass, and `zero_warmup_wire_is_unchanged` pins the zero-warmup bytes.
+
+**Code:** [`use_ability/handle.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/handle.rs)
+(launch), [`use_ability/fire.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/fire.rs)
+(fire), [`use_ability/warmup/`](../../crates/cell-combat/src/cell/abilities/use_ability/warmup/mod.rs)
+(park, tick, interrupt), [`dispatch/mod.rs`](../../crates/cell-combat/src/cell/abilities/dispatch/mod.rs)
+(`fire_ground_cast_after_warmup`). Evidence and test list:
+[AT-10 worknote](../analysis/ability-trees/worknotes/at10.md).
+
+### 22. Timer expiries are absolute on one server-wide game clock (CR-02)
+
+**Decision:** Every `onTimerUpdate` that starts a timer sends
+`BigWorldTimeComplete = game_clock::game_time_secs() + duration`: the ability cooldown
+(`TotalTime = cooldown + warmup`), the warmup timer, the reload timer, the duration-effect
+timer and `.net_timer`. The two cooldown (type 2) senders, the ability and the reload, share
+`cimmeria_entity::abilities::build_cooldown_timer_args`, so they cannot drift apart
+(#718). A timer that clears sends `0.0`. The clock lives in
+[`crates/wire/src/mercury/game_clock/`](../../crates/wire/src/mercury/game_clock/mod.rs): one
+epoch pinned at server start, 10 ticks per second, and the same tick count in the login
+bundle (`TICK_SYNC`, `SET_GAME_TIME`) and in every heartbeat.
+
+**Why:** The client's game clock is `TICK_SYNC.gameTime / hertz` seconds, and its cooldown,
+effect, reload and crafting handlers all compare `BigWorldTimeComplete` against it
+([system-protocol-wire-formats.md](../reverse-engineering/findings/system-protocol-wire-formats.md#the-client-game-clock)).
+Before CR-02 each session counted ticks from its own login and the login bundle sent 0, so
+no absolute expiry could mean the same thing to two clients, and the senders passed 0.0 (no
+cooldown shown) or the relative duration (no effect icon once the clock passed it). Python
+sent `Atrea.getGameTime() + duration` (`AbilityManager.py:605`, `Net.py:93`). The epoch is
+server start, not Unix time, because the field is an `f32`.
+
+**Reversibility:** High per sender, one expression each. The clock's rate is pinned by
+`declared_frequency_tick_period_and_send_interval_agree` and the byte-exact time-sync tests.
+
+**Known limits:** the client's clock runs about one tick ahead of the server's, so a client
+cooldown ends up to 0.1 s early. A server restart resets the clock; never persist an
+absolute expiry. Category (type 8) cooldown timers are still not sent. Evidence and test
+list: [CR-02 worknote](../analysis/crafting/worknotes/cr-02.md).
+
+### 23. A pet summon is a player cast with a `pet_summons` row, diverted at launch and fire (pets PT-03)
+
+**Decision:** A player ability with a `resources.pet_summons` row (`SpaceManager::pet_summons`)
+summons a pet. It rides the ordinary cast of decision 21, with three diversions in
+[`use_ability/summon.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/summon.rs):
+
+- **Launch.** Straight after the weapon redirect, the client's `target_id` is replaced by 0.
+  The summon is a Self ability, so the client's target plays no part in it. With target 0
+  the #444 target-validity gate never sees the cast. The gate itself is unchanged, so any
+  other ability aimed at the caster still fails there. Two refusals run before the cooldown
+  is charged: the summon must be in the trained set (a weapon grant does not count), and its
+  template must be in the startup cache. Each sends `onErrorCode` plus a `CHAN_FEEDBACK`
+  chat line.
+- **Warmup.** The spawn timer is the ability's own warmup, scaled by the caster's
+  `speedPet` stat (111) when the ability has `SpeedPet` (16384), like the other speed flags
+  (D-PT10). Every decision-21 interrupt applies. An interrupted warmup never reaches the
+  fire, so nothing spawns.
+- **Fire.** `fire::fire_cast` diverts to `fire_summon` before any ammo, channel or damage
+  step. `fire_summon` re-checks that the pet can be spawned before it touches the current
+  pet (caster alive, in a space, template cached). A refusal plays `Ability_Interrupt` and
+  sends the feedback pair, and the cooldown stays charged. Otherwise it calls
+  `spawn_pet_from_template` first. A spawn that still fails answers exactly like a refusal
+  (`Ability_Interrupt`, the feedback pair, the cooldown stays charged), and the owner keeps
+  its current pet. A spawn that succeeds plays `Ability_End`, despawns the owner's oldest
+  pets down to `max_active - 1` (D-PT04, counting every pet the owner had before the spawn),
+  and queues the target VFX.
+
+The summon's phase sequences carry TargetID = caster, as python's
+`targetId or ent.entityId` did. The target VFX is event set 1122 `Effect_Init` (2000),
+sequence 2293. It is an `onSequence` on the pet, with source = owner, target = pet and
+`InstanceId` 0, which is how python played an effect sequence on its target. It waits on the
+pet registry
+([`pets/arrival.rs`](../../crates/cell-world/src/cell/pets/arrival.rs)) until the owner
+witnesses the pet. The drain runs after the AoI tick and sends the VFX to the pet's
+witnesses, so it can never reach a client ahead of the pet's CREATE_ENTITY. It is dropped
+after 2 s, and `forget_pet` scrubs it on every teardown path. It is also dropped when the
+owner's entity id now belongs to a player who is not the pet's summoner
+(`PetRegistry::summoner_matches`, #870). It is counted and logged as sent only when at least
+one witness send succeeds. A summon carries `Deactivate_AutoCycle` and
+`DoNotActivate_AutoCycle`, so it is not stashed as the last-fired ability, and a later
+`setAutoCycle(1)` press cannot re-fire it. Neither flag lets any ability arm the loop:
+1024 clears it, and 512 leaves it as it was (python passed `autoCycle = False`,
+`SGWPlayer.py:1177`).
+
+**Why:** The 2009 data never linked a summon to a template. The summon abilities carry no
+effects, and the editor's "Spawn Mob" effects name no template (pets audit A-26), so there
+is no effect script to run. Keying on the ability id keeps the damage pipeline and the #444
+gate untouched, which is what the packet asked for. Discarding the target is safer than
+rejecting it: a Self ability legitimately arrives with 0 or with the caster's own id. The
+VFX waits for the intro because a client cannot play a sequence on an entity it has not
+created.
+
+**Consequences:** `AF_CHANNEL_ALLOWS_MOVEMENT` used to be bit 14, which is the client's
+`SpeedPet`, so every seeded summon warmed up immune to the move interrupt. It is now bit 20
+(decision 7). NPC casters never summon, because `player_summon` answers only for players.
+
+**Code:** [`use_ability/summon.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/summon.rs),
+the hooks in `handle.rs`, `fire.rs` and `sequence.rs`, and
+[`pets/arrival.rs`](../../crates/cell-world/src/cell/pets/arrival.rs). Tests are in
+`use_ability/tests/summon.rs` and `pets/tests/arrival.rs`; the evidence and the
+regression proofs are in the [PT-03 worknote](../analysis/pets/worknotes/pt-03.md).
+
+### 24. One hostility rule for every gate; a duel partner is the only player target (social systems SS-D2)
+
+**Decision:** `combat::player_may_attack(attacker, target, &duels)` (`crates/cell-world/src/cell/combat/aggression.rs`) is the single rule for what a player may damage. An NPC target must be a hostile-faction non-pet, as before. A player target is admitted only when `DuelRegistry::can_harm` says the two are an engaged duel pair, in the same space. The four hostility gates all call it: the single-target launch (`use_ability/handle.rs`), the warmup re-check at fire (`use_ability/warmup/tick.rs`), and the ground-AoE and cone collectors (`dispatch/mod.rs`, `cone_aoe/geometry.rs`). The two collectors scan `combat::area_candidates` (every NPC, plus the caster's engaged partner) and filter with `combat::may_hit_in_area`, which is `player_may_attack` for a player caster and the historical hostile-faction rule for an NPC caster.
+
+**Why:** the gates had drifted into four inline copies of "hostile NPC only" (audit A-42), so a duel had to widen all four or leak through one. A candidate scan that adds only the partner means no filter mistake can reach a bystander. The client's PvP flag (`onEntityProperty(4, v)`, decision D-SS23) is never read back: a stuck flag cannot make anyone attackable.
+
+**Consequences:** NPC-versus-player and pet targeting are unchanged; a pet never joins its owner's duel: `pet::fight_refusal` uses the no-duel form, `player_may_attack_pve`, which is also the NPC half of `player_may_attack`. Player-on-player damage creates no threat, so the duel supplies its own combat source (`cell::duel::combat`). The effect pulse does not re-run the rule, so the duel's single end (`duel::end_engaged`) strips every active effect the partner's engaged entity invoked on each duelist, with the normal `on_remove` and zero timer; an auto-cycle loop on a player the caster may no longer harm is cleared. Partner damage is non-lethal since SS-D3 (decision 26), with the clamp in the pulse seam as well.
+
+**Code and tests:** `aggression.rs`, the four gates above, `crates/cell-world/src/cell/duel/`. `use_ability/tests/duel_gate.rs` (`duel_partner_damage_allowed_at_all_four_gates`, `bystander_untouchable_during_duel`) fails when any one gate is reverted; the proof is in the [SS-D2 worknote](../analysis/social-systems/worknotes/ss-d2.md).
+
+### 25. Owner abilities that act on a pet are diverted to the owner's pet, and their state lives on the pet (pets PT-08)
+
+**Decision:** An ability with an effect whose `script_name` is a pet script (`PetStatBuff`,
+`PetDeathTimer`, `HealPetHealth`; `effects::pet_scripts::acts_on_owner_pet`) acts on the
+caster's pet, never on the client's target. It rides the cast of decision 21 with the same
+three diversions as decision 23, in
+[`use_ability/owner_pet/`](../../crates/cell-combat/src/cell/abilities/use_ability/owner_pet/mod.rs):
+
+- **Launch.** The client's `target_id` is replaced by 0, so the #444 gate never sees the cast
+  and stays as strict for every other ability. The pet comes from
+  `SpaceManager::owner_pet_targets`
+  ([`pets/owner_target.rs`](../../crates/cell-world/src/cell/pets/owner_target.rs)): the
+  registry's pets of the caster, each kept only when the summon-time identity says the caster
+  summoned it (`PetRegistry::summoner_matches`), it is alive, and it is in the caster's
+  space. A bare owner id is never enough. With no such pet the press is refused before the
+  cooldown is charged, with `onErrorCode` plus a `CHAN_FEEDBACK` line: 190
+  `EntityDoesNotHavePet` for no pet, a pet in another space or a reused owner id, 14
+  `NotLiving` for a dead pet, and 133 `EffectMonikerOnEntity` for To The Death pressed while
+  it already runs.
+- **Warmup.** The ability's own, with every decision-21 interrupt.
+- **Fire.** `fire::fire_cast` diverts to `fire_owner_pet` before any ammo or damage step. The
+  pet is resolved again. A refusal plays `Ability_Interrupt` and sends the feedback pair, and
+  the cooldown stays charged. Otherwise `Ability_End` plays with TargetID = the pet, and each
+  pet script runs with source = owner and target = pet. A `TCM_Single` effect lands on one
+  pet; any other collection method lands on every pet the owner has out (one today, D-PT04).
+  A pulsing effect (Repair Turret: Regenerate) is registered on the pet, invoked by the owner.
+  The pet's dirty stats go to its witnesses. Nothing enters the damage pipeline, threat or
+  kill credit.
+
+The state these abilities leave is on the pet, not in `active_effects`:
+
+- **Buff ledger.** `register_active_effect` never registers a `pulse_count = 1` row, which is
+  what the seed gives Holy Warrior (4220), To The Death (4121) and Lord's Concentration
+  (350). `PetStatBuff` writes a `PetBuff` on `PetState::buffs` instead
+  ([`pets/buffs.rs`](../../crates/cell-world/src/cell/pets/buffs.rs)). It records the delta
+  each stat really moved, and removal takes back exactly that, as python's `statChanges` did
+  (`AbilityManager.py:438-441`). Re-applying the same effect replaces it; it never stacks.
+- **Bounds widen, a deliberate deviation.** `DEFENSE` and `INTERRUPT_RES` default to `[0, 0]`,
+  so python's clamp would drop Holy Warrior's -100 Defense and Lord's Concentration's +50. The
+  ledger widens that one pet's bound to admit the delta.
+- **Toggle.** For an ability with `Toggled` (8, `AF_TOGGLED`), `PetStatBuff` takes the buff
+  off when the pet has it and puts it on with no expiry when it has not. The owner gets a chat
+  line with the new state ("Holy Warrior is on."), because the Ability window shows none.
+- **Expiry and To The Death.** `owner_pet_tick` runs every AoI tick after the pet sweep. It
+  takes expired buffs off, then kills each pet whose `PetState::doomed_at` has passed through
+  `kill_npc_out_of_band(pet, pet, attacker_is_player = false, grant_xp = false)`, after
+  zeroing its HEALTH. The kill pays nobody: no XP, no mission `EntityDeath` (only the
+  kill-credit wrappers raise it), and a pet has no loot table. The corpse then follows the
+  pet path of D-PT08. 4119 "Pet Death Timer" (`PetDeathTimer`) arms the doom; 4122 "Pet
+  Death" has no script, because a script cannot await the death resolver. A re-cast while the
+  pet is doomed is refused, another deliberate deviation: python's refresh would restart the
+  60 s timer, and with a 30 s cooldown the +400 Accuracy would never end.
+- **Passives.** An `EF_AlwaysPersist` (524288) effect whose script is a passive script
+  (`pet_scripts::is_passive_script`, today only `PetSummonSpeed`) holds while its ability is
+  known. [`effects/passives.rs`](../../crates/cell-world/src/cell/effects/passives.rs) runs it
+  at `InitPlayerState`, `AbilityGranted` and `GmAbilityGranted` (the GM `.giveability` mirror),
+  and runs its `on_remove` at `AbilitiesReset`.
+  Heed Our Calling (2852 -> 4968) sets the owner's `speedPet` to its base plus 100, so a
+  `SpeedPet` summon's warmup scales to 0 (D-PT10). The stat is server-side only: the passive
+  leaves it clean, so no burst changes.
+
+Holy Warrior's 4087 "Stance Removal" is "Remove Effect of moniker EFFECT_Stance", the
+mutual-exclusion half every player stance carries. No player stance effect is active on this
+server, and the seed links no effect to that moniker, so it has no script and removes nothing.
+
+**Why:** The 2009 rows carry no `script_name` and no NVPs for these effects, so the scripts and
+magnitudes are seed edits, each the number in the effect's own description
+(`effect_nvps` 350-357). Keying the redirect on the scripts keeps it data-driven: a new
+pet-acting ability is wired by naming the script on its effect. Keeping the state on the pet
+means a despawn, a replacing summon or the owner's death (which despawns the pet) clears it,
+and the owner carries no "buff on" flag. Lord's Concentration (1650) shipped with no effect at
+all; effect 350 is server-only, and pets D-PT17 records its magnitude and duration as a
+greenfield decision.
+
+**Consequences:** Nothing reads `INTERRUPT_RES` yet. The server has no damage-driven warmup
+interrupt (decision 21), so Lord's Concentration changes a stat that will matter only once
+one lands. The Repair Turret heals redirect to whatever pet the owner has, which is a
+Servant Lord pet until turrets exist (PT-12). Repair Turret: Restoration (1214, revive) is not
+wired. The scripts are in their own file, `effects/pet_scripts.rs`, because `scripts.rs` is
+over the file cap.
+
+**Code:** [`use_ability/owner_pet/`](../../crates/cell-combat/src/cell/abilities/use_ability/owner_pet/mod.rs)
+(launch, fire, tick, feedback), the hooks in `handle.rs`, `fire.rs` and `sequence.rs`,
+[`effects/pet_scripts.rs`](../../crates/cell-world/src/cell/effects/pet_scripts.rs),
+[`effects/passives.rs`](../../crates/cell-world/src/cell/effects/passives.rs),
+[`pets/buffs.rs`](../../crates/cell-world/src/cell/pets/buffs.rs) and
+[`pets/owner_target.rs`](../../crates/cell-world/src/cell/pets/owner_target.rs). Tests are in
+`use_ability/owner_pet/tests/`, `pets/tests/owner_buffs.rs` and
+`base_messages/tests/passive_abilities.rs`; the evidence and the regression proofs are in the
+[PT-08 worknote](../analysis/pets/worknotes/pt-08.md).
+
+### 26. Duel-partner damage is held at 1 HP in both damage seams (social systems SS-D3, D-SS20)
+
+**Decision:** `cimmeria_cell_world::cell::duel::clamp_partner_lethal(mgr, attacker, target, source)` runs wherever a player's HEALTH is written by an attacker, before anything reads it for a death and before the stat flush:
+
+- `apply_damage_to_target` (`damage_apply/mod.rs`), after the direct damage (so `target_died` sees 1) and again after the effect scripts (so the effect-driven death sweep sees 1);
+- `fire_pulse` (`effects/pulsing/tick.rs`), after both the script and the NVP branch and after the surrender floor.
+
+When the attacker and the target are an engaged duel's engaged entities and HEALTH is at or below 0, HEALTH becomes 1 and the hit is returned. The caller ends the duel with `duel::finish_clamped` (`EDUEL_DEFEAT_Health`, the clamped duelist losing) only after the rest of the resolution has run: in `apply_damage_to_target` at the very end, after the pulsing effects are registered, and in `fire_pulse` after the flush. `effect_pulse_tick` skips a due instance that an earlier pulse in the same tick removed.
+
+**Why:** D-SS20 makes duels non-lethal, and a lethal duel would send duel kills down the loot and XP path. The pulse never re-checks hostility (decision 24), so a clamp only in `damage_apply` would let a partner's DoT kill. Ending the duel at once would strip the partner's effects and end `can_harm` before a script bleed or a newly registered DoT from the same hit had been clamped, and those would then kill after the duel. Ending last means the end's `strip_from` removes everything the hit registered.
+
+**Consequences:** Damage from anyone else is untouched: a third party can still kill a duelist, and `resolve_death` reports that death to the duel (`duel::on_death`). A clamped duelist never reaches `resolve_death`: no corpse, loot, XP, Defeat Window or respawn. The client is told 1 HP, never 0. The pulse's `still_active` check also closes an older window, in which a channel cancel between awaits let a removed instance fire from the tick's snapshot. `apply_damage_to_target` re-runs the harm gate for player-on-player damage before anything else (PR #924 review): a multi-hit ability (two cones) collects its targets up front, so without the re-check the second cone would land on the ex-partner after the first had ended the duel. The gate (`player_may_attack`) also requires the exact engaged entities (`DuelRegistry::can_harm_entities`), the same pair the clamp keys on, so every hit the gate admits is one the clamp covers. A duelist already at 0 HP when a partner hit lands (a third-party DoT, which kills no player today) is raised to 1 by the clamp; accepted in review.
+
+**Code and tests:** `crates/cell-world/src/cell/duel/paths.rs`, the two seams above, `death/mod.rs`. `use_ability/tests/duel_nonlethal.rs` (`lethal_partner_hit_clamps_to_one_hp`, `lethal_partner_bleed_clamps_to_one_hp`, `no_loot_xp_or_corpse_after_a_clamped_end`, `third_party_kill_is_normal_death`); the proof is in the [SS-D3 worknote](../analysis/social-systems/worknotes/ss-d3.md).
 
 ## Cross-cutting follow-ups
 

@@ -1,0 +1,401 @@
+//! `handle_respawn` — the same-world in-place reanchor burst vs. the
+//! cross-world GateTravel branch, and the cell-entity state each leaves
+//! behind. Split out of the monolithic `combat/tests.rs` (CA00); test
+//! bodies are unchanged.
+
+use super::super::handle_respawn;
+use super::make_mgr_with_player;
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::spawner::RespawnerDef;
+use cimmeria_entity::stats::{FOCUS, HEALTH};
+use tokio::sync::mpsc;
+
+/// Same-world `handle_respawn` keeps the cell entity (and instance)
+/// alive and sends an in-place burst that re-creates only the local
+/// pawn actor — no `RESET_ENTITIES` (which would reset client-side
+/// kismet state like the stasis-room door).
+///
+/// Burst contract (in order):
+///   1. `onEndAidWait` — close Defeat Window
+///   2. `onStatUpdate` — refreshed HEALTH/FOCUS to the HUD
+///   3. `onStateFieldUpdate(0)` — clears BSF_Dead / BSF_MovementLock /
+///      dead-cursor visuals on the owning client
+///   4. `ReanchorPlayer` — VIEWPORT_INFO + CREATE_CELL_PLAYER +
+///      FORCED_POSITION (re-creates the cell-side pawn actor; clears
+///      ragdoll without touching other client entities)
+///
+/// Cell entity also: HEALTH/FOCUS reset to max, state flags cleared
+/// with refcounts, cooldowns cleared, position snapped.
+///
+/// Negative pins:
+///   - No `GateTravel` (would destroy the cell entity and tear down
+///     the whole instance — kismet reset).
+///   - No `TeleportPlayer` (FORCED_POSITION-only, doesn't re-create
+///     the pawn actor — wouldn't clear ragdoll).
+///   - No `onSequence` Entity_Spawn (cooked kismet has no
+///     `SeqEvent_EntitySpawn → TermRagdoll` wiring; this is dead weight).
+#[tokio::test]
+async fn handle_respawn_same_world_emits_in_place_burst_with_reanchor() {
+    use crate::cell::combat::{BSF_DEAD, BSF_MOVEMENT_LOCK};
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    let original_space_id = mgr.get_entity(1).unwrap().space_id.0 as u32;
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        if let Some(h) = e.stats.get_mut(HEALTH) {
+            h.update(0, 1, 100);
+            h.clear_dirty();
+        }
+        if let Some(f) = e.stats.get_mut(FOCUS) {
+            f.update(0, 0, 50);
+            f.clear_dirty();
+        }
+        e.set_state_flag(BSF_DEAD);
+        e.set_state_flag(BSF_MOVEMENT_LOCK);
+        assert!(
+            !e.state_flag_counts.is_empty(),
+            "fixture sanity: counters should be populated before respawn"
+        );
+        e.abilities
+            .start_ability_cooldown(592, std::time::Duration::from_secs(60));
+    }
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_respawn(1, -1, &tx, &mut mgr).await;
+
+    // Cell entity SURVIVES.
+    let entity = mgr.get_entity(1).expect(
+        "same-world respawn must keep the cell entity alive — destroying it tears down the \
+         instance and resets client-side kismet (doors, completed encounters)",
+    );
+    assert_eq!(
+        entity.space_id.0 as u32, original_space_id,
+        "respawn must keep the entity in its original instanced space"
+    );
+    assert_eq!(
+        entity.stats.get(HEALTH).unwrap().cur,
+        100,
+        "HEALTH must be restored to max in place"
+    );
+    assert_eq!(
+        entity.stats.get(FOCUS).unwrap().cur,
+        50,
+        "FOCUS must be restored to max in place"
+    );
+    assert_eq!(entity.state_field, 0, "state_field must be cleared");
+    assert!(
+        entity.state_flag_counts.is_empty(),
+        "respawn must clear the per-flag refcount map — a raw state_field=0 would leave \
+         stale counters that the next ref-counted unset would interpret as still-positive"
+    );
+    assert!(
+        !entity.abilities.is_on_cooldown(592),
+        "respawn must clear ability cooldowns"
+    );
+    assert_eq!(
+        [entity.position.x, entity.position.y, entity.position.z],
+        [-334.231, 73.472, -228.026],
+        "respawn must snap entity to spawn point"
+    );
+
+    // Track message order.
+    let mut end_aid_wait_at: Option<usize> = None;
+    let mut stat_update_at: Option<usize> = None;
+    let mut state_field_clear_at: Option<usize> = None;
+    let mut reanchor_at: Option<usize> = None;
+    let mut saw_gate_travel = false;
+    let mut saw_teleport_player = false;
+    let mut saw_onsequence = false;
+    let mut captured_pos: Option<[f32; 3]> = None;
+    let mut captured_space_id: Option<u32> = None;
+
+    let mut idx: usize = 0;
+    while let Ok(m) = rx.try_recv() {
+        match m {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                args,
+            } => {
+                if method_index == crate::mercury::method_idx::ON_END_AID_WAIT
+                    && end_aid_wait_at.is_none()
+                {
+                    end_aid_wait_at = Some(idx);
+                } else if method_index == crate::mercury::method_idx::ON_STAT_UPDATE
+                    && stat_update_at.is_none()
+                {
+                    // serialize_dirty body must contain the refreshed HEALTH/FOCUS,
+                    // not a count-prefix-only empty body. The HUD refresh is the
+                    // practical reason this exists.
+                    assert!(
+                        args.len() > 4,
+                        "onStatUpdate must carry the refreshed HEALTH/FOCUS payload"
+                    );
+                    stat_update_at = Some(idx);
+                } else if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                    assert_eq!(args.len(), 4, "onStateFieldUpdate carries u32");
+                    let new_state = u32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    if new_state == 0 && state_field_clear_at.is_none() {
+                        state_field_clear_at = Some(idx);
+                    }
+                } else if method_index == crate::mercury::method_idx::ON_SEQUENCE {
+                    saw_onsequence = true;
+                }
+            }
+            CellToBaseMsg::ReanchorPlayer {
+                entity_id: 1,
+                space_id,
+                position,
+                rotation,
+            } => {
+                assert_eq!(rotation, [0.0; 3]);
+                captured_pos = Some(position);
+                captured_space_id = Some(space_id);
+                if reanchor_at.is_none() {
+                    reanchor_at = Some(idx);
+                }
+            }
+            CellToBaseMsg::GateTravel { .. } => saw_gate_travel = true,
+            CellToBaseMsg::TeleportPlayer { .. } => saw_teleport_player = true,
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    // Negative pins: the wrong primitives must not fire.
+    assert!(
+        !saw_gate_travel,
+        "same-world respawn must NOT emit GateTravel — that destroys the cell entity and \
+         tears down the instance, resetting kismet state"
+    );
+    assert!(
+        !saw_teleport_player,
+        "same-world respawn must NOT emit TeleportPlayer — FORCED_POSITION alone doesn't \
+         re-create the pawn actor and so doesn't clear ragdoll"
+    );
+    assert!(
+        !saw_onsequence,
+        "respawn must NOT emit onSequence Entity_Spawn — cooked kismet has no \
+         SeqEvent_EntitySpawn → TermRagdoll wiring; the message is dead weight"
+    );
+
+    // Positive pins.
+    let end_aid_idx = end_aid_wait_at.expect("respawn must emit onEndAidWait");
+    let stat_idx = stat_update_at.expect("respawn must emit onStatUpdate (HUD refresh)");
+    let state_idx = state_field_clear_at.expect("respawn must emit onStateFieldUpdate(0)");
+    let reanchor_idx = reanchor_at.expect(
+        "respawn must emit CellToBaseMsg::ReanchorPlayer — this is the load-bearing piece \
+         that re-creates the pawn actor and clears ragdoll without RESET_ENTITIES",
+    );
+
+    // Ordering: onEndAidWait → onStatUpdate → onStateFieldUpdate → ReanchorPlayer.
+    // ReanchorPlayer must be last so the pawn re-creation runs after the
+    // owning client has cleared dead state.
+    assert!(end_aid_idx < stat_idx);
+    assert!(stat_idx < state_idx);
+    assert!(
+        state_idx < reanchor_idx,
+        "onStateFieldUpdate(0) (msg #{state_idx}) must precede ReanchorPlayer \
+         (msg #{reanchor_idx}) so the dead/movement-lock state lifts before the pawn \
+         actor is re-created"
+    );
+
+    assert_eq!(
+        captured_pos,
+        Some([-334.231, 73.472, -228.026]),
+        "ReanchorPlayer must carry the resolved spawn position"
+    );
+    assert_eq!(
+        captured_space_id,
+        Some(original_space_id),
+        "ReanchorPlayer must carry the entity's existing space_id — re-issuing \
+         CREATE_CELL_PLAYER for a different space would corrupt the client's space tables"
+    );
+}
+
+/// Cross-world respawn (respawner in a different world from where the
+/// player died) falls through to the gate-travel path because the
+/// player is leaving the space anyway. The instance teardown is
+/// unavoidable in that case — same-world preservation only matters
+/// when staying in the same world.
+#[tokio::test]
+async fn handle_respawn_cross_world_falls_back_to_gate_travel() {
+    let mut mgr = make_mgr_with_player("Agnos_test");
+    // Register a respawner in a DIFFERENT world so the resolved target
+    // doesn't match the entity's current world.
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 7,
+        world_name: "Castle_CellBlock".to_string(),
+        name: "Castle Hub".to_string(),
+        pos: [10.0, 20.0, 30.0],
+    });
+
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_respawn(1, 7, &tx, &mut mgr).await;
+
+    // Cross-world means destroy the cell entity (gate-travel will
+    // re-create it on the new world).
+    assert!(
+        mgr.get_entity(1).is_none(),
+        "cross-world respawn must destroy the cell entity (gate-travel pattern)"
+    );
+
+    let mut saw_gate_travel = false;
+    let mut saw_reanchor = false;
+    let mut captured_world: Option<String> = None;
+    while let Ok(m) = rx.try_recv() {
+        match m {
+            CellToBaseMsg::GateTravel {
+                target_world_name, ..
+            } => {
+                saw_gate_travel = true;
+                captured_world = Some(target_world_name);
+            }
+            CellToBaseMsg::ReanchorPlayer { .. } => {
+                saw_reanchor = true;
+            }
+            _ => {}
+        }
+    }
+
+    assert!(
+        saw_gate_travel,
+        "cross-world respawn must emit GateTravel (the player is leaving the space anyway)"
+    );
+    assert!(
+        !saw_reanchor,
+        "cross-world respawn must NOT emit ReanchorPlayer — that's the same-world-only path"
+    );
+    assert_eq!(
+        captured_world.as_deref(),
+        Some("Castle_CellBlock"),
+        "GateTravel must target the respawner's world"
+    );
+}
+
+/// Same-world respawn must dispatch `ListInventoryItems` AFTER
+/// `ReanchorPlayer` so the client's bag panel repopulates.
+///
+/// Bug shape this guards (play-session report 2026-05-25): the
+/// `CREATE_BASE_PLAYER` inside the reanchor re-instantiates the
+/// client-side pawn actor; the new pawn's `InventoryComponent` is
+/// empty. The bandolier visual survives because it's part of the
+/// cached `BeingAppearance.ComponentList` replayed alongside, but
+/// `sgw_inventory` rows (Frost's Letter, slappack, anything in the
+/// main bag) live in a separate `onUpdateItem` snapshot the server
+/// only pushes when the client asks via `listItems`. On initial
+/// login the client asks; on respawn it doesn't. Without this
+/// push the bag stays empty until relog AND subsequent pickups
+/// silently no-op against an empty cache.
+///
+/// Cross-world respawn doesn't need the push — it falls through to
+/// `GateTravel`, which re-runs the full world-entry handshake and
+/// the client invokes `listItems` of its own accord. The negative
+/// pin in `handle_respawn_cross_world_falls_back_to_gate_travel`
+/// already covers that branch.
+#[tokio::test]
+async fn handle_respawn_same_world_dispatches_list_inventory_after_reanchor() {
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    if let Some(e) = mgr.get_entity_mut(1) {
+        if let Some(h) = e.stats.get_mut(HEALTH) {
+            h.update(0, 1, 100);
+            h.clear_dirty();
+        }
+    }
+
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_respawn(1, -1, &tx, &mut mgr).await;
+
+    let mut reanchor_at: Option<usize> = None;
+    let mut list_inventory_at: Option<usize> = None;
+    let mut list_inventory_player_id: Option<i32> = None;
+    let mut list_inventory_entity_id: Option<u32> = None;
+
+    let mut idx: usize = 0;
+    while let Ok(m) = rx.try_recv() {
+        match m {
+            CellToBaseMsg::ReanchorPlayer { entity_id: 1, .. } if reanchor_at.is_none() => {
+                reanchor_at = Some(idx);
+            }
+            CellToBaseMsg::ListInventoryItems {
+                entity_id,
+                player_id,
+            } if list_inventory_at.is_none() => {
+                list_inventory_at = Some(idx);
+                list_inventory_entity_id = Some(entity_id);
+                list_inventory_player_id = Some(player_id);
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    let reanchor_idx = reanchor_at.expect(
+        "fixture sanity: same-world respawn must emit ReanchorPlayer (covered by the \
+         primary burst-shape test; this assertion is just to anchor the ordering check)",
+    );
+    let list_idx = list_inventory_at.expect(
+        "play-session regression: same-world respawn must follow ReanchorPlayer with a \
+         ListInventoryItems snapshot — without it the client's bag panel renders empty \
+         after respawn until relog (slappack / mission items / Frost's Letter vanish, \
+         subsequent pickups silently no-op against the empty cache)",
+    );
+
+    assert!(
+        reanchor_idx < list_idx,
+        "ordering: ReanchorPlayer (#{reanchor_idx}) must precede ListInventoryItems \
+         (#{list_idx}) so the client's pawn-recreate hook fires first; the inventory \
+         snapshot lands on the freshly-instantiated pawn, not the ragdoll about to be \
+         torn down"
+    );
+
+    assert_eq!(
+        list_inventory_entity_id,
+        Some(1),
+        "ListInventoryItems must carry the respawning entity's id so the base-side \
+         dispatcher routes the onUpdateItem snapshot to the right client session"
+    );
+    assert_eq!(
+        list_inventory_player_id,
+        Some(100),
+        "ListInventoryItems must carry the persistent player_id (read from \
+         space_mgr.get_entity(...).player_id) — that's the key the inventory \
+         table is sharded by, NOT the entity_id"
+    );
+}
+
+/// Same-world respawn must clear `threatened_mobs` so the
+/// `BSF_IN_COMBAT ↔ threatened_mobs.is_empty()` invariant survives.
+/// `clear_all_state_flags` zeroes `state_field` but threatened_mobs
+/// is a separate HashSet; without an explicit clear the player
+/// respawns with stale entries from the mobs that killed them,
+/// leaving the OOC holster timer permanently disarmed (it only
+/// arms when `exit_player_combat` drops the set to empty) and the
+/// `needs_unholster_queue` gate permanently false (it requires
+/// `threatened_mobs.is_empty()`). Cross-world respawn destroys
+/// the entity so the set is implicitly cleared there.
+#[tokio::test]
+async fn handle_respawn_same_world_clears_threatened_mobs() {
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    if let Some(e) = mgr.get_entity_mut(1) {
+        if let Some(h) = e.stats.get_mut(HEALTH) {
+            h.update(0, 1, 100);
+            h.clear_dirty();
+        }
+        // Player died with two mobs aggroed.
+        e.threatened_mobs.insert(50);
+        e.threatened_mobs.insert(51);
+    }
+
+    let (tx, _rx) = mpsc::channel(16);
+    handle_respawn(1, -1, &tx, &mut mgr).await;
+
+    let entity = mgr
+        .get_entity(1)
+        .expect("cell entity survives same-world respawn");
+    assert!(
+        entity.threatened_mobs.is_empty(),
+        "same-world respawn must clear threatened_mobs so the invariant \
+         `BSF_IN_COMBAT ↔ !threatened_mobs.is_empty()` holds — leaving stale \
+         entries makes the OOC holster timer never arm and breaks \
+         `needs_unholster_queue`"
+    );
+}

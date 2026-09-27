@@ -1,9 +1,11 @@
 //! XRC binary-format reader helpers and header sanity caps.
 //!
-//! The XRC format stores a single-tile Recast polygon mesh with detail
-//! triangulation. These helpers parse the little-endian scalar fields and
-//! bound every header count against a documented maximum before it can
-//! drive an allocation in [`super::NavMesh::load`].
+//! The XRC formats store Recast polygon meshes with detail triangulation
+//! (one for the map, or one per tile). These helpers parse the
+//! little-endian scalar fields and bound every header count against a
+//! documented maximum before it can drive an allocation in
+//! [`super::NavMesh::load`]. The caps below are the single-mesh ones; a
+//! tile's tighter caps live in [`super::load_tiled`].
 
 use std::io::Read as IoRead;
 
@@ -19,6 +21,12 @@ pub(super) fn read_u32(r: &mut impl IoRead) -> std::io::Result<u32> {
     let mut buf = [0u8; 4];
     r.read_exact(&mut buf)?;
     Ok(u32::from_le_bytes(buf))
+}
+
+pub(super) fn read_i32(r: &mut impl IoRead) -> std::io::Result<i32> {
+    let mut buf = [0u8; 4];
+    r.read_exact(&mut buf)?;
+    Ok(i32::from_le_bytes(buf))
 }
 
 pub(super) fn read_u16(r: &mut impl IoRead) -> std::io::Result<u16> {
@@ -156,6 +164,30 @@ pub(super) fn check_count(
         });
     }
     Ok(value)
+}
+
+/// Reject a `.nav` for a structural reason that is not a plain "count
+/// over its cap" — a bad tiled-format version, a tile that claims more
+/// polygons than the header said any tile has, a poly-ref budget Detour
+/// would refuse. Same negative log and error type as [`check_count`], so
+/// every rejected file reads the same way in the logs.
+pub(super) fn reject(
+    field: &'static str,
+    value: u64,
+    reason: &'static str,
+) -> cimmeria_common::CimmeriaError {
+    tracing::error!(
+        target: "navmesh.load",
+        field = field,
+        value,
+        reason = reason,
+        "rejected malformed .nav -- space will be navmesh-less"
+    );
+    cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
+        field,
+        value,
+        reason,
+    }
 }
 
 /// Compute `count * stride` as `usize`, failing with a descriptive error

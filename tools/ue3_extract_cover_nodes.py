@@ -2,6 +2,21 @@
 """
 SGW Cover Node Extractor
 ========================
+
+SUPERSEDED (NA21, 2026-09-25). The seeds in db/resources/AI/Seed/ are no
+longer produced by this script. They come from the Rust `cover_extract`
+binary (crates/navmesh-extractor/src/bin/cover_extract.rs), which reads the
+world-space `SGWSpecCoverNode` / `CoverNodeArray` cover baked into each
+map's .umap chunks — see docs/engine/cover-extraction.md and
+docs/reverse-engineering/findings/cover-world-placement.md.
+
+The .pak corpus this script decodes is a library of per-PREFAB templates
+(`_AN-Bench00-15-15`, ...): its positions are prefab-local offsets, not
+world positions, so loading them as world cover (as the seeds did until
+NA21) put every node at the wrong place in every world. The script is kept
+as the only decoder for that format, for a future prefab-instance pass.
+Do NOT point --out-dir at db/resources/AI/Seed: its output has no
+`world_id` / `width` columns and would clobber the extracted seeds.
 Parses `covernodes_*.pak` files (the binary cover-node prefab archives
 shipped with the SGW client cache) and emits PostgreSQL seed SQL plus a
 JSON manifest describing what was found and any merge conflicts.

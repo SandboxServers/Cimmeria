@@ -10,11 +10,24 @@
 // ── Ability flags (from python/Atrea/enums.py) ────────────────────────────
 
 pub const AF_USE_WEAPON_RANGE: u32 = 4;
+/// `Toggled` (`entities/defs/enumerations.xml` `EAbilityFlags`): the
+/// ability is switched on by one press and off by the next. The server
+/// honours it for the owner pet buffs (pets PT-08, 2824 Holy Warrior).
+pub const AF_TOGGLED: u32 = 8;
 pub const AF_RESPONSE: u32 = 16;
+/// `DoNotActivate_AutoCycle`: the ability never starts or joins the
+/// auto-cycle loop (python `SGWPlayer.py:1177`).
+pub const AF_DO_NOT_ACTIVATE_AUTO_CYCLE: u32 = 512;
 pub const AF_DEACTIVATE_AUTO_CYCLE: u32 = 1024;
 pub const AF_SPEED_GRENADE: u32 = 2048;
 pub const AF_SPEED_DEPLOY: u32 = 4096;
 pub const AF_SPEED_ATTACK: u32 = 8192;
+/// `SpeedPet` (`entities/defs/enumerations.xml` `EAbilityFlags`): the warmup
+/// scales by the caster's `speedPet` stat (111), like the three flags above.
+/// The seed sets it on the 14 summon abilities (Goa'uld 1643-1645, 2825,
+/// 2826 and the 3491-3497 copies; turrets 962-966) and nowhere else (pets
+/// campaign D-PT10).
+pub const AF_SPEED_PET: u32 = 16384;
 /// Channelled abilities normally cancel when the channeller moves more
 /// than `CHANNEL_INTERRUPT_DISTANCE` from their channel-start position.
 /// Setting this flag exempts the ability — useful for "channels while
@@ -22,9 +35,11 @@ pub const AF_SPEED_ATTACK: u32 = 8192;
 ///
 /// Default for every authored ability today is 0 (cancel-on-move). Flip
 /// the bit per-ability as content lands that should be movement-tolerant.
-/// Reserved bit 14 — not in any python reference; original game's
-/// canonical name unknown, this is the Cimmeria-side name.
-pub const AF_CHANNEL_ALLOWS_MOVEMENT: u32 = 16384;
+/// Cimmeria-side bit, not in the client's `EAbilityFlags` (whose highest
+/// token is `PetCommand` = 65536). It used to be bit 14, which is the
+/// client's `SpeedPet`: every seeded summon then warmed up immune to the
+/// move interrupt (pets campaign PT-03). Bit 20 is clear on every seed row.
+pub const AF_CHANNEL_ALLOWS_MOVEMENT: u32 = 1 << 20;
 
 // ── Target types ──────────────────────────────────────────────────────────
 
@@ -60,6 +75,12 @@ pub const EF_MENTAL_RESIST_ROLL: u32 = 64; // category: target rolls resist
 pub const EF_SUPPRESSION: u32 = 76; // category: movement slow + accuracy debuff
 pub const EF_EXTRA_DAMAGE: u32 = 512; // category: bonus damage on second pulse
 pub const EF_DOT: u32 = 516; // category: damage-over-time (pulses)
+/// `EF_AlwaysPersist` (`entities/defs/enumerations.xml` `EEffectFlag`, a
+/// real client bit, unlike the category values above): the effect of a
+/// passive ability, held for as long as the ability is known. The server
+/// applies such an effect when the ability is learned and removes it when
+/// the ability is unlearned (pets PT-08, 4968 "Pet Summon Speed increase").
+pub const EF_ALWAYS_PERSIST: u32 = 524_288;
 
 // ── Timer types (sent via onTimerUpdate) ──────────────────────────────────
 

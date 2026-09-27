@@ -21,6 +21,30 @@
 //! either endpoint cannot be projected, and the caller chooses the policy.
 //! The cell's `SpaceManager::has_line_of_sight` treats unknown as clear,
 //! which is what it already does for a space with no navmesh at all.
+//!
+//! ## `Blocked` is not "a wall" (NPC AI restoration NA16, audit S11/S15)
+//!
+//! A fourth instance of the same bug had both endpoints on the mesh. The
+//! Find Ambernol drone (spawn 10, `castle_cellblock`) held fire at 12-16 m
+//! in 17 of 19 recorded fights. The drone and the player stand on the same
+//! floor (Y 65.6). Between them is the waist-high med-station desk the vial
+//! sits on, whose top is about 1 m above the floor. Recast cuts furniture
+//! out of the walkable surface like any other obstacle, so the desk is a
+//! hole in the mesh. The ray hits the hole's edge and reads `Blocked`,
+//! although a unit at eye height sees straight over it.
+//!
+//! The navmesh has no heights for its holes, so it cannot tell a desk from
+//! a wall. Measured against the extracted collision geometry (1.5 m eye
+//! heights, 4,000 same-storey pairs 4-30 m apart around the Cellblock
+//! guard rooms): 269 of the 601 `Blocked` verdicts (45%) were clear, and
+//! 5 of the 3,399 `Clear` verdicts were blocked. `Clear` is reliable and
+//! `Blocked` is a coin flip. Two navmesh-only heuristics were tried and
+//! rejected: "the walking path is nearly straight", and "the ray only
+//! crosses a small hole you can walk around". Each turned between 16% and
+//! 70% of the real walls transparent, and neither cleared every drone
+//! position. [`LineOfSight::permits_stationary_attack`] is the narrow
+//! policy that shipped. A real occluder needs the collision geometry,
+//! which is a follow-up.
 
 use cimmeria_common::Vector3;
 
@@ -42,7 +66,39 @@ pub enum LineOfSight {
     Unknown,
 }
 
+/// A line-of-sight answer with the endpoints it was computed between.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LosProbe {
+    pub result: LineOfSight,
+    /// The start as projected onto the mesh; `None` when it could not be.
+    pub from: Option<[f32; 3]>,
+    /// The end as projected onto the mesh; `None` when it could not be.
+    pub to: Option<[f32; 3]>,
+    /// Where a blocked ray stopped. `None` unless `result` is `Blocked`.
+    pub hit: Option<[f32; 3]>,
+}
+
+impl LosProbe {
+    fn unknown(from: Option<[f32; 3]>, to: Option<[f32; 3]>) -> Self {
+        Self {
+            result: LineOfSight::Unknown,
+            from,
+            to,
+            hit: None,
+        }
+    }
+}
+
 impl LineOfSight {
+    /// Stable label for logs: `clear`, `blocked`, `unknown_off_mesh`.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Blocked => "blocked",
+            Self::Unknown => "unknown_off_mesh",
+        }
+    }
+
     /// The policy for combat and targeting: only a positive "blocked" denies
     /// line of sight. "Unknown" counts as clear, matching a space that has no
     /// navmesh loaded. Denying on unknown makes any NPC standing off the mesh
@@ -51,7 +107,40 @@ impl LineOfSight {
     pub fn is_clear_or_unknown(self) -> bool {
         !matches!(self, Self::Blocked)
     }
+
+    /// The attack policy for an NPC that is already fighting and **cannot
+    /// move** (`is_stationary`). `dy` is the target's Y minus the NPC's.
+    ///
+    /// `Clear` and `Unknown` permit the shot, as in
+    /// [`Self::is_clear_or_unknown`]. `Blocked` permits it only when the
+    /// target is within [`STATIONARY_ATTACK_VERTICAL_BAND`] of the NPC's
+    /// height. The band is the storey guard, so a turret still does not
+    /// shoot through a floor at the level below.
+    ///
+    /// Why the stationary case differs from a mobile NPC: a mobile NPC that
+    /// reads `Blocked` paths toward its target and gets a clear line within
+    /// a few steps, so a false `Blocked` costs it a short walk. A stationary
+    /// NPC cannot step around a desk, so a false `Blocked` silences it for
+    /// the whole fight. On the same storey, 45% of navmesh `Blocked`
+    /// verdicts are false (see the module docs). The cost of this policy is
+    /// that a turret that is already fighting can shoot through a real wall
+    /// on its own storey. Only a few dozen seeded spawns are stationary.
+    /// Aggro (D-NA08) and mobile NPCs keep the strict verdict.
+    pub fn permits_stationary_attack(self, dy: f32) -> bool {
+        match self {
+            Self::Clear | Self::Unknown => true,
+            // `<=` on a NaN is false, so a non-finite height fails closed.
+            Self::Blocked => dy.abs() <= STATIONARY_ATTACK_VERTICAL_BAND,
+        }
+    }
 }
+
+/// How far above or below a stationary attacker a target can be before a
+/// navmesh `Blocked` is taken at face value. This is D-NA09's proposed
+/// same-floor band (4 u). It is well under the smallest storey gap on the
+/// rebuilt `castle_cellblock` mesh (about 7.9 u, pinned in
+/// `navigation/tests/height.rs`).
+pub const STATIONARY_ATTACK_VERTICAL_BAND: f32 = 4.0;
 
 impl NavMesh {
     /// Line of sight from `start` to `end`, distinguishing "blocked" from
@@ -64,16 +153,39 @@ impl NavMesh {
     /// points, so a flyer hovering over the floor or a player on an unmeshed
     /// crate still gets a real answer.
     pub fn line_of_sight(&self, start: &Vector3, end: &Vector3) -> LineOfSight {
+        self.line_of_sight_probe(start, end).result
+    }
+
+    /// [`Self::line_of_sight`] plus the geometry that decided it: the
+    /// projected endpoints the ray was actually cast between and, when
+    /// blocked, where it stopped. This is the evidence a `npc_ai.los` row
+    /// needs (audit T9). No eye height is added to either endpoint: the ray
+    /// runs along the walkable surface between the two projected points.
+    pub fn line_of_sight_probe(&self, start: &Vector3, end: &Vector3) -> LosProbe {
         let Some((start_ref, projected_start)) = self.project_start(start) else {
-            return LineOfSight::Unknown;
+            return LosProbe::unknown(None, None);
         };
         let Some((_, projected_end)) = self.project_to_polygon(end, &DEST_EXTENTS) else {
-            return LineOfSight::Unknown;
+            return LosProbe::unknown(Some(projected_start), None);
         };
-        if self.ray_reaches(start_ref, &projected_start, &projected_end) {
-            LineOfSight::Clear
-        } else {
-            LineOfSight::Blocked
+        let (reached, t) = self.ray_cast_t(start_ref, &projected_start, &projected_end);
+        let hit = (!reached).then(|| {
+            let t = t.clamp(0.0, 1.0);
+            [
+                projected_start[0] + (projected_end[0] - projected_start[0]) * t,
+                projected_start[1] + (projected_end[1] - projected_start[1]) * t,
+                projected_start[2] + (projected_end[2] - projected_start[2]) * t,
+            ]
+        });
+        LosProbe {
+            result: if reached {
+                LineOfSight::Clear
+            } else {
+                LineOfSight::Blocked
+            },
+            from: Some(projected_start),
+            to: Some(projected_end),
+            hit,
         }
     }
 
@@ -123,6 +235,11 @@ impl NavMesh {
     /// `true` when Detour's raycast travels from `start` (on `start_ref`) to
     /// `end` without hitting a mesh boundary.
     fn ray_reaches(&self, start_ref: u32, start: &[f32; 3], end: &[f32; 3]) -> bool {
+        self.ray_cast_t(start_ref, start, end).0
+    }
+
+    /// The raycast plus Detour's hit parameter `t` along `start -> end`.
+    fn ray_cast_t(&self, start_ref: u32, start: &[f32; 3], end: &[f32; 3]) -> (bool, f32) {
         let mut hit_normal = [0.0f32; 3];
         let mut t: f32 = 0.0;
         let result = unsafe {
@@ -136,7 +253,7 @@ impl NavMesh {
             )
         };
         // result == 1 means the ray reached `end` unblocked.
-        result == 1
+        (result == 1, t)
     }
 
     /// Find a polygon containing or near `pos`; return its ref and the

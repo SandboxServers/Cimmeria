@@ -11,7 +11,7 @@ metadata:
 
 The root enabler is structural: `update_entity_position` is *deliberately* unchecked so ring transport, respawn, content teleport, NPC movement and GM travel can place an entity anywhere. Nothing validated that the resulting position was one the client could legally occupy, and `last_valid` is read straight off the cell entity. Same state reaches an ordinary player via a stale persisted `sgw_player` row on reconnect or authored-but-unreachable content coordinates.
 
-**How to apply:** any new snap-back / forced-position correction path must answer "what if the target is also invalid?". The seam that now does this is `SpaceManager::reject_outcome` in `crates/services/src/cell/space_manager/client_move.rs` (split out of `entities.rs`), which resolves every hard reject into one of three outcomes:
+**How to apply:** any new snap-back / forced-position correction path must answer "what if the target is also invalid?". The seam that now does this is `SpaceManager::reject_outcome` in `crates/cell-world/src/cell/space_manager/client_move.rs` (split out of `entities.rs`), which resolves every hard reject into one of three outcomes:
 
 - `Rejected` — target sound, budget intact → ordinary correction.
 - `Recovered` — target **unusable** *and* a sound safe point exists → relocate there (nearest navmesh point / nearest world respawner / AABB clamp), write it through, `note_authorized_teleport`, snap the client *there*.

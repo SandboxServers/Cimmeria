@@ -49,7 +49,7 @@ These set the "verb" on the right-click cursor. Set when an NPC becomes interact
 
 | Bit | Mask | Constant | Use for |
 |-----|------|----------|---------|
-| 1 | `2` | `INT_Banker` | Banker NPC right-click → bank UI |
+| 1 | `2` | `INT_Banker` | Banker NPC right-click → vault window (see [Bankers](#bankers)) |
 | 2 | `4` | `INT_Auction` | Auction-house NPC |
 | 3 | `8` | `INT_Pvp` | PvP queue NPC |
 | 4 | `16` | `INT_Dhd` | Dial-Home Device (stargate) |
@@ -64,9 +64,21 @@ These set the "verb" on the right-click cursor. Set when an NPC becomes interact
 
 **Pitfall**: a hackable switch needs its specific minigame bit (`256` for Livewire, `512` for Activate, etc.). Use whichever matches the `start_minigame` action's `target_key` in the same chain.
 
+#### Bankers
+
+On the server, `INT_Banker` on a template's `interaction_type` makes the spawned NPC a Banker, and the template's `vault_scope` column says which vault it opens: `personal` (the default), `team` or `command` (`static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs`). `vault_scope` is ignored without the banker bit.
+
+- A **personal** Banker opens the player's own vault (container 17): a right-click within the interact distance sends `onVaultOpen` and opens a vault session pinned to that Banker. The open path is in [the inventory system doc](../gameplay/inventory-system.md#opening-the-vault).
+- A **team** or **command** Banker is refused with a chat line ("The Team vault is not available yet.") until the organization vaults land.
+- A click on any Banker from beyond the interact distance is refused with a chat line too, unlike other NPCs, whose too-far clicks stay silent.
+- **Precedence.** `INT_Banker` wins over the vendor bits (bits 13-21) on a template that carries both. Anything that answers a click before the static interaction still answers first: a `trainer_ability_list_id`, an `interact_tag` / `interact_template` chain, a per-player dialog bind, and `INT_Dhd`. A Banker should carry none of those, and should not be killable (faction 10), because a death overwrites the interaction with loot and the respawn tick does not restore it.
+- Like the vendor derivation, it runs at spawn only: OR-ing `INT_Banker` in later with `set_interaction_type` changes the cursor but does not open a vault.
+
 ### 2. Vendor sub-categories — bits 13-21
 
 Vendor NPCs OR multiple of these together to advertise their stock filter. The client decides which tab to show in the vendor UI.
+
+On the server, any of these bits on a template's `interaction_type` makes the spawned NPC a vendor: a right-click opens the store built from the template's `buy_item_list` / `sell_item_list` / `repair_item_list` / `recharge_item_list` (`static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs`). The derivation happens at spawn only, so a vendor bit OR'd in later by `set_interaction_type` changes the cursor but does not open a store. Worked example: the stasis-room debug vendor, template 300 ([debug-hub.md](debug-hub.md)).
 
 | Bit | Mask | Constant |
 |-----|------|----------|
@@ -101,7 +113,7 @@ These draw the floating quest icon over an NPC's head. Always paired: set the ne
 
 ### 4. Quest world objects, loot, machines, attack — bits 30+
 
-These are mostly used for environmental items (containers, corpses, machines, loot drops). Bits 53-63 are at the high end of the UINT64 — be careful in JSON, JavaScript can't represent them precisely; the chain executor in [`crates/services/src/cell/content/executor/world/`](../../crates/services/src/cell/content/executor/world/) reads them as `i64` so only bits 0-62 are usable.
+These are mostly used for environmental items (containers, corpses, machines, loot drops). Bits 53-63 are at the high end of the UINT64 — be careful in JSON, JavaScript can't represent them precisely; the chain executor in [`crates/cell-content/src/cell/content/executor/world/`](../../crates/cell-content/src/cell/content/executor/world/) reads them as `i64` so only bits 0-62 are usable.
 
 | Bit | Mask | Constant | Use for |
 |-----|------|----------|---------|
@@ -186,8 +198,8 @@ After loading new chain SQL, the easiest sanity check is:
 ## Gotchas
 
 - **Tag mismatch**: bit-set fails silently when the spawn's `tag` differs from `target_key` by even one character. The classic cellblock had `Preparation_ColMarshr` (extra `r`); the seed SQL fixes it to `Preparation_ColMarsh`.
-- **AoI window**: a chain that fires `set_interaction_type` before the entity is in the player's AoI defers the update until the entity enters AoI. See [`crates/services/src/cell/content/executor/`](../../crates/services/src/cell/content/executor/) — search for `deferring InteractionType to AoI create`.
-- **Per-player vs broadcast**: dialog-driven interaction sets are per-player ([dialog_set_map flow in executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs)); `set_interaction_type` is global on the entity. If two players are on different mission steps and need different cursors on the same NPC, you need a per-player override (see `add_dialog_set` action), not raw flag bits.
+- **AoI window**: a chain that fires `set_interaction_type` before the entity is in the player's AoI defers the update until the entity enters AoI. See [`crates/cell-content/src/cell/content/executor/`](../../crates/cell-content/src/cell/content/executor/) — search for `deferring InteractionType to AoI create`.
+- **Per-player vs broadcast**: dialog-driven interaction sets are per-player ([dialog_set_map flow in executor/dialog.rs](../../crates/cell-content/src/cell/content/executor/dialog/mod.rs)); `set_interaction_type` is global on the entity. If two players are on different mission steps and need different cursors on the same NPC, you need a per-player override (see `add_dialog_set` action), not raw flag bits.
 - **A per-player indicator needs no dialog.** A `dialog_set_maps` row with `dialog_id IS NULL` is an interaction-only bind: `add_dialog_set` pushes its flags and the click opens nothing. This is the per-player counterpart to `set_interaction_type`, and it is how the original content raises a mission indicator on a shared-world NPC — `Castle.py`'s `addDialog(149, 3062)` sets bit 24 (`INT_AStoryMissionActive`) on Sgt. Gerschon for the one player who has mission 701 pending. The pushed payload is the merged flags alone; the row's dialog id, when it has one, stays server-side. See [content-engine.md](content-engine.md#actions--side-effects).
 - **Bit 63**: `INT_MissionLoot` is the sign bit of `i64` and cannot be set as a positive integer in PostgreSQL `bigint`. Live with it until the field is widened.
 

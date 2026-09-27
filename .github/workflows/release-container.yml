@@ -133,6 +133,11 @@ jobs:
           push: false
           load: true
           tags: ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
+          # OTLP `service.version` (crates/server/build.rs). Must match the
+          # push pass below exactly, or that pass misses the cache and
+          # recompiles.
+          build-args: |
+            CIMMERIA_GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # No `provenance` / `sbom` here — incompatible with `load: true`.
@@ -166,6 +171,8 @@ jobs:
           push: true
           tags: |
             ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
+          build-args: |
+            CIMMERIA_GIT_SHA=${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

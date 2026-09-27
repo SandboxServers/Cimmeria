@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-File: `crates/services/src/cell/space_manager/entities.rs`
+File: `crates/cell-world/src/cell/space_manager/entities.rs`
 
 ## `destroy_entity(entity_id)` (sync, no tx)
 

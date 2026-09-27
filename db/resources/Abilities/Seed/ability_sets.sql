@@ -12,7 +12,7 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (3, 'NID guard (SM
 
 -- Harset rebuild packet H11 (defect H-B8): before these two rows, every
 -- template without an `ability_set_id` fell back to `NPC_DEFAULT_ABILITY = 592`
--- (Pistol Shot, crates/services/src/cell/combat/threat/aggro.rs:19) -- Jaffa and
+-- (Pistol Shot, crates/cell-combat/src/cell/combat/threat/aggro.rs:19) -- Jaffa and
 -- Goa'uld NPCs firing a Tau'ri pistol.
 --
 -- H11 gave each of these sets exactly one ability, because
@@ -25,7 +25,7 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (3, 'NID guard (SM
 --
 -- Membership rule, unchanged by H09: an ability needs a non-NULL `event_set_id`,
 -- which is what gates the Ability_Begin/Ability_End `onSequence` broadcast
--- (crates/services/src/cell/abilities/use_ability/handle.rs:524). An ability with
+-- (crates/cell-combat/src/cell/abilities/use_ability/handle.rs:524). An ability with
 -- a NULL one deals damage and plays no animation -- which rules out 594 Strike,
 -- 540 Staff Strike, 479 Staff Blast, 1482 Ground Blast and 1768 Double Blast.
 --
@@ -40,11 +40,30 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (4, 'Jaffa staff a
 
 INSERT INTO ability_sets (ability_set_id, description) VALUES (5, 'Goa''uld ribbon device ability set');
 
+-- NEW CONTENT (debug hub): set 6 holds only 710 'Staff Melee AA'. Used by the
+-- debug-hub loot crate (template 304), a faction-10 target that must never
+-- hurt the new characters who shoot it. Set 4 is NOT that: its primary is
+-- 584 'Staff Auto Attack', a 30 m ranged attack whose effect 646 deals
+-- HealthDamage 25. An empty set is not that either: it falls back to 592
+-- Pistol Shot.
+INSERT INTO ability_sets (ability_set_id, description) VALUES (6, 'Debug hub loot crate: zero-damage melee only');
+
+-- Pets campaign (docs/analysis/pets/): pet ability sets use ids 350-369,
+-- matching the pet templates, so they cannot collide with the low ids other
+-- content takes. Set 350 is the Straegis pet (template 350): 221 Energy Shock
+-- as the repeatable primary and 1156 Straegis: Disengage as the fallback.
+INSERT INTO ability_sets (ability_set_id, description) VALUES (350, 'Straegis pet: Energy Shock + Disengage');
+-- PT-11: sets 351-353 are the Jaffa, Prime and Lo'taur pets (templates
+-- 351-353). See ability_set_abilities.sql for what each ability does today.
+INSERT INTO ability_sets (ability_set_id, description) VALUES (351, 'Jaffa pet: staff (set 4) + Double Blast');
+INSERT INTO ability_sets (ability_set_id, description) VALUES (352, 'Jaffa Prime pet: staff (set 4) + Focus Degeneration');
+INSERT INTO ability_sets (ability_set_id, description) VALUES (353, 'Lo''taur pet: heals and buffs');
+
 --
 -- TOC entry 3306 (class 0 OID 0)
 -- Dependencies: 185
 -- Name: ability_sets2_ability_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('ability_sets2_ability_set_id_seq', 5, true);
+SELECT pg_catalog.setval('ability_sets2_ability_set_id_seq', 6, true);
 

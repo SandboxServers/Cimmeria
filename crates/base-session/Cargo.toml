@@ -1,0 +1,55 @@
+[package]
+name = "cimmeria-base-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The BaseApp's per-connection session layer for the Cimmeria server emulator: the connected-client state, the per-session send helpers, the deferred-AoI buffer, the durable base->cell outbox, tick sync, cooked-data delivery and the session-scoped handlers (contact list, crafting, GM spawn and feedback, console authoring)"
+
+# Split out of cimmeria-services (wave B1 of
+# docs/architecture/services-crate-split.md), the bottom of the base track:
+# base-methods, base-world-entry and base build on it, so it must never depend
+# on a service crate. The module tree keeps its old nesting under a `base::`
+# skeleton, and cimmeria-services re-exports each module and type at its old
+# path.
+[dependencies]
+# The Base<->Cell messages and the services-side packet builders.
+cimmeria-wire = { workspace = true }
+# The GM-spawn handler builds its `SpawnRecord` with the spawner's template
+# SELECT and row mapper, shared with the cell's startup cache.
+cimmeria-cell-catalog = { workspace = true }
+# Cooked-data delivery serves the resource cache.
+cimmeria-resources = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+cimmeria-mercury = { workspace = true }
+# The player-disconnect and Mercury-timeout notifications.
+cimmeria-discord = { workspace = true }
+# `mercury_rx_stalls_total` and the crafting persistence counters.
+cimmeria-observability = { workspace = true }
+tokio = { workspace = true }
+# The crafting verbs' rolls, behind the injectable `CraftRng` seam.
+rand = { workspace = true }
+sqlx = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# Exposes `test_fixtures` (`test_default_connected_client_state`) to other
+# crates' tests. cimmeria-services turns it on through its [dev-dependencies];
+# a production build never sees it.
+test-support = []
+
+[dev-dependencies]
+# The outbox payload round-trip tests.
+serde_json = { workspace = true }
+# Generic test helpers: the live-DB gate (`require_db_or_skip!`), `LogCapture`
+# and the `TestTransport` re-export, from the `#[cfg(test)] mod test_support`
+# shim in lib.rs. Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# `testing::install` / `counter_total`: the crafting counter-emission tests.
+cimmeria-observability = { workspace = true, features = ["testing"] }

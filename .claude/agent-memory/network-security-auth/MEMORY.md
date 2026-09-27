@@ -7,6 +7,7 @@
 - [admin-api-jsonwebtoken-unused.md](admin-api-jsonwebtoken-unused.md) — `jsonwebtoken` has ZERO call sites; the real dev-session token is hand-rolled HMAC-SHA256 in `dev_session.rs`. Read before triaging any JWT advisory/bump.
 - [password-storage-argon2id.md](password-storage-argon2id.md) — Phase 2a argon2id storage (server half) in `auth/credentials.rs`: dual-column schema, TLS-gated plaintext (`TlsConn` marker + `tls_marker_layer`), opportunistic on-login migration. Partly closes the "plain-HTTP SOAP" High and the "non-constant-time password comparison" Medium (argon2id verify is constant-time for migrated accounts; legacy SHA-1 compare remains).
 - [worktree-build-gotchas.md](worktree-build-gotchas.md) — building/testing `cimmeria-services` from a worktree: junction `external/` in, and ignore 3 `cell/` log-capture tests that only fail under parallel `cargo test`.
+- [baseapp-login-retry-train.md](baseapp-login-retry-train.md) — 300 ms train of 41-byte "ciphertext length 25" decrypt failures = client re-sending plaintext baseAppLogin after acking the reply; client-side, unresolved (colo 2026-09-26).
 - [player-id-zero-sentinel-trap.md](player-id-zero-sentinel-trap.md) — `player_id: 0` is a DB-failure sentinel that reaches `PendingClientReadyInfo`; any fail-closed check keyed on it silently denies for the whole session after a DB blip. Read before adding an authorization read in `client_ready.rs`.
 
 Inline-content section status:
@@ -20,7 +21,7 @@ Inline-content section status:
 
 ### Key Files
 - `crates/services/src/auth.rs` -- SOAP login (Phase 1+2), credential validation, session/ticket management
-- `crates/services/src/base.rs` -- Mercury UDP (Phase 3+), encrypted channel, tick-sync, entity lifecycle
+- `crates/base/src/base/` (connect loop, login) and `crates/base-session/src/base/tick_sync.rs` -- Mercury UDP (Phase 3+), encrypted channel, tick-sync, entity lifecycle
 - `crates/services/src/orchestrator.rs` -- Service wiring, DB pool distribution
 - `crates/common/src/config.rs` -- ServerConfig defaults
 - NOTE: `auth.rs` is now a directory `crates/services/src/auth/` (mod/service/handlers/credentials/tls/cert_watcher). Phase 1 TLS termination (#566): `tls.rs` (TlsCertStore = arc-swap ServerConfig + LiveTls{config,leaf_cert_der}, reload seam), `cert_watcher.rs` (mtime-poll hot-reload, `auth_tls_reload_interval_secs` default 30 / env AUTH_TLS_RELOAD_INTERVAL_SECS / 0 disables). credentials.rs = argon2id + plaintext-over-TLS gate (Phase 2 server half).

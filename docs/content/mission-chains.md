@@ -145,7 +145,7 @@ These 5 missions run in parallel with the main chain after the Mess Hall. All ar
 
 **Live data-driven shape (sequenced loot split, chains 1003–1007)** [CONFIRMED]
 
-The loot is split across the two stasis-room corpses (Cpl. Frost = letter, the NID Guard = pistol) and **sequenced Frost → Guard**: the Guard corpse is not searchable until the player searches Frost. A corpse only opens a dialog when its template has an entry in the player's `available_interactions` (`crates/services/src/cell/interactions/dispatch.rs`), so the gate is simply *which `add_dialog_set` has run*. Chain 1001 (mission accept) binds only Frost (5229 → template 14); chain 1003 binds the Guard (5230 → template 21) on the Frost search. An intermediate step **80623** ("Search the NID Guard's body…") sits between 2113 and the equip step so the sequencing survives a relog — login-restore chains 1006/1007 re-apply the bindings per active step (interaction bindings are not persisted).
+The loot is split across the two stasis-room corpses (Cpl. Frost = letter, the NID Guard = pistol) and **sequenced Frost → Guard**: the Guard corpse is not searchable until the player searches Frost. A corpse only opens a dialog when its template has an entry in the player's `available_interactions` (`crates/cell-interactions/src/cell/interactions/dispatch/`), so the gate is simply *which `add_dialog_set` has run*. Chain 1001 (mission accept) binds only Frost (5229 → template 14); chain 1003 binds the Guard (5230 → template 21) on the Frost search. An intermediate step **80623** ("Search the NID Guard's body…") sits between 2113 and the equip step so the sequencing survives a relog — login-restore chains 1006/1007 re-apply the bindings per active step (interaction bindings are not persisted).
 
 The Cimmeria runtime no longer force-equips the pistol; it routes the grant through the player's manual equip path to keep the bandolier ammo / fire-animation state consistent. See [docs/content/equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) for the rationale and [docs/architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) for how the new steps reach the client UI.
 
@@ -158,13 +158,15 @@ Step indices (XML order, which the client uses for sequential progression): `211
 | 1004 | `item_equipped('55')` | `step_status(622, 80622) = 'active'` | `play_sequence(10000)` (open stasis door); `complete_mission(622)` |
 | 1006 | `player_loaded('Castle_CellBlock')` | `step_status(622, 2113) = 'active'` | `add_dialog_set(5229 → template 14)` — re-bind Frost on login |
 | 1007 | `player_loaded('Castle_CellBlock')` | `step_status(622, 80623) = 'active'` | `add_dialog_set(5230 → template 21)` — re-bind Guard on login |
+| 1008 | `enter_region('Castle_CellBlock.Region8')` (once) | — | `set_aggression(ArmYourself_NIDGuard, 1)`; `generate_threat(1000)` — the first-guard ambush |
+| 1009 | `player_loaded('Castle_CellBlock')` | `mission_status(622) = 'completed'` | `set_aggression(ArmYourself_NIDGuard, 1)` — re-arm the guard for a player who relogs past Region8 into a fresh instance (the guard is seeded NEUTRAL and 1008 is an entry edge) |
 | 1121 | `dialog_open('3995')` (Frost body) | `step_status(622, 2113) = 'active'` AND `mission_status(1360) = 'not_active'` | `accept_mission(1360)` — Frost's Letter |
 
-Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the pistol from your inventory.") are **not** in the canonical PAK. They're added by two `MissionOverride` entries for mission 622 (`insert_after_step_id: 2113` then `insert_after_step_id: 80623`) in `crates/services/src/base/mission_overrides.rs`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (steps 80623, 80622) and `mission_objectives.sql` (objectives 90623, 90622). The Guard's search dialog 3996 is a Cimmeria dialog shipped via a `CookedDataDialogs.pak` override (`crates/services/src/base/dialog_overrides.rs`). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (chains 1001–1007, 1121). Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_622.rs`, `mission_1360.rs`.
+Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the pistol from your inventory.") are **not** in the canonical PAK. They're added by two `MissionOverride` entries for mission 622 (`insert_after_step_id: 2113` then `insert_after_step_id: 80623`) in `crates/resources/src/base/mission_overrides.rs`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (steps 80623, 80622) and `mission_objectives.sql` (objectives 90623, 90622). The Guard's search dialog 3996 is a Cimmeria dialog shipped via a `CookedDataDialogs.pak` override (`crates/resources/src/base/dialog_overrides/mod.rs`). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (chains 1001–1009, 1121). Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_622.rs`, `mission_1360.rs`.
 
 **Mission 1360 — Frost's Letter (C04, new content)** [CONFIRMED]
 
-`ArmYourself.py` grants the letter item (3730) but never accepted a mission for it — mission 1360 is spec-optional new content (decision D-CB03, answered: accept; see `docs/analysis/castle-cellblock-rebuild/README.md#decision-answers` and `work-packets.md#c04`). Chain 1121 is a sibling to chain 1003 (identical trigger and step gate) rather than an extension of it, so 1360's own `mission_status = 'not_active'` offer-guard condition doesn't also gate Frost's unrelated item-grant/Guard-unlock/step-advance actions. Mission 1360's step 4037 ("Find a way to get Cpl. Frost's Letter to his family") stays active for the rest of the zone; step 4038 ("Give Cpl. Frost's Letter to Col. Marsh") is Castle-side and out of scope for this chain (tracked under the Castle-side handoff, C09). Mission state persistence across the eventual Cellblock → Castle cross-world hop (chain 1109's `cross_world_teleport`) is covered by a live-DB round-trip test, `frosts_letter_accept_round_trips_cell_to_base_to_db` in `crates/services/src/base/world_entry/methods/missions/tests.rs`, rather than by anything specific to the teleport path itself — `cross_world_teleport` does not touch mission state; missions are rebuilt on the far side from `sgw_mission` via the same `InitPlayerState` restore path an ordinary relog uses.
+`ArmYourself.py` grants the letter item (3730) but never accepted a mission for it — mission 1360 is spec-optional new content (decision D-CB03, answered: accept; see `docs/analysis/castle-cellblock-rebuild/README.md#decision-answers` and `work-packets.md#c04`). Chain 1121 is a sibling to chain 1003 (identical trigger and step gate) rather than an extension of it, so 1360's own `mission_status = 'not_active'` offer-guard condition doesn't also gate Frost's unrelated item-grant/Guard-unlock/step-advance actions. Mission 1360's step 4037 ("Find a way to get Cpl. Frost's Letter to his family") stays active for the rest of the zone; step 4038 ("Give Cpl. Frost's Letter to Col. Marsh") is Castle-side and out of scope for this chain (tracked under the Castle-side handoff, C09). Mission state persistence across the eventual Cellblock → Castle cross-world hop (chain 1109's `cross_world_teleport`) is covered by a live-DB round-trip test, `frosts_letter_accept_round_trips_cell_to_base_to_db` in `crates/services/src/mission_round_trip_tests.rs`, rather than by anything specific to the teleport path itself — `cross_world_teleport` does not touch mission state; missions are rebuilt on the far side from `sgw_mission` via the same `InitPlayerState` restore path an ordinary relog uses.
 
 **Link to next**: Mission 622 does NOT explicitly call `missions.accept(638)`. The link is handled by the space script -- when the player enters `Castle_Cellblock.Region2`, mission 638 is accepted if not already active. [CONFIRMED -- `Castle_CellBlock.py` line 338-348]
 
@@ -225,6 +227,13 @@ Both branches converge: both call `displayDialog(None, 2298)`, `missions.accept(
 **Entity tags**: `329_CellDoorButton`
 
 **Dialog IDs**: 5021, 2300, 5020, 2299, 2298
+
+**Zero-button dialogs**: 2300, 5021 and 5020 never had a `dialog_screen_buttons` row, and
+packet DU-02a stripped 2299's five Accept buttons to match. All four now advance only
+through the close path, which the 2009 client reports as `dialogButtonChoice(id, -1)` when
+and only when the dialog carries no button at all. **Adding a button to any of them
+silently breaks the chain that keys on it** unless the button sits on the dialog's final
+screen. See [dialog-ui-client-contract.md](dialog-ui-client-contract.md).
 
 **Minigames**: Livewire (cell door hack)
 
@@ -308,7 +317,7 @@ if status == Constants.MISSION_Active:
 
 **Live data-driven shape (step 2144 dual-objective gate, C05, new gameplay requirement)**
 
-Cimmeria deliberately diverges from step 3 above: step 2144 does not advance on the drone's death alone. It requires **both** objective 2482 (kill the drone) and objective 2484 (take cover at the med-station desk, cover_set 1381) before advancing to step 2343 — a requirement the original 2009 script never had (`entity.dead.tag` was its only trigger for this step). Both objectives are `is_optional = false` in `mission_objectives.sql`.
+Cimmeria deliberately diverges from step 3 above: step 2144 does not advance on the drone's death alone. It requires **both** objective 2482 (kill the drone) and objective 2484 (take cover at the med-station desk, cover_set 1200001 — the extracted desk set; it was the hand-authored 1381 until NA21) before advancing to step 2343 — a requirement the original 2009 script never had (`entity.dead.tag` was its only trigger for this step). Both objectives are `is_optional = false` in `mission_objectives.sql`.
 
 Four chains implement the AND-gate, split to route around `cell::missions::complete_objective`'s auto-complete-mission check (completing every required objective through that path ends the mission immediately, skipping step 2343 — the same trap `mission_688.rs`'s chains 1107/1109 document for step 2356):
 
@@ -316,10 +325,10 @@ Four chains implement the AND-gate, split to route around `cell::missions::compl
 |---|---|---|---|
 | 1033 | `entity_dead_tag('ArmYourself_PrisonerRetrievalUnit')` | cover (2484) not completed, kill (2482) not completed | `complete_objective(639, 2482)` |
 | 1131 | `entity_dead_tag('ArmYourself_PrisonerRetrievalUnit')` | cover (2484) already completed | `advance_step(639, 2343)` (implicitly completes 2482) |
-| 1132 | `player_entered_cover(1381)` | kill (2482) not completed, cover (2484) not completed | `complete_objective(639, 2484)`, `play_sequence(10014)` (hide the TakeCoverIndicator) |
-| 1133 | `player_entered_cover(1381)` | kill (2482) already completed | `advance_step(639, 2343)` (implicitly completes 2484), `play_sequence(10014)` |
+| 1132 | `player_entered_cover(1200001)` | kill (2482) not completed, cover (2484) not completed | `complete_objective(639, 2484)`, `play_sequence(10014)` (hide the TakeCoverIndicator) |
+| 1133 | `player_entered_cover(1200001)` | kill (2482) already completed | `advance_step(639, 2343)` (implicitly completes 2484), `play_sequence(10014)` |
 
-Chains 1033/1132 each check their own target objective isn't already completed (not just the other one), so re-entering cover or a repeat death event doesn't resend `play_sequence(10014)` or re-run a no-op completion. Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (search `Mission 639 (C03 addition`). Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_639_cover.rs` (per-chain positive/negative cases for all four chains, plus both full kill/cover orderings end to end).
+Chains 1033/1132 each check their own target objective isn't already completed (not just the other one), so re-entering cover or a repeat death event doesn't resend `play_sequence(10014)` or re-run a no-op completion. Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (search `Mission 639 (C03 addition`). Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_639_cover.rs` (per-chain positive/negative cases for all four chains, plus both full kill/cover orderings end to end).
 
 ---
 
@@ -426,6 +435,13 @@ self.n154_var_Player.missions.accept(641)
 
 **Dialog IDs**: 5023 (Jaffa), 3999 (Human), 3998 (completion)
 
+**Zero-button dialogs**: DU-02a stripped every button from 4001, 5022, 3999 and 5023, so
+all four fire their chain from the close path (`dialogButtonChoice(id, -1)`). 3999 was
+broken before that: its "Receive Item" buttons stopped on screen 96258, two screens short
+of the final 96260, so a player who read Marsh's second briefing to the end had nothing to
+press and chain 1058 never fired. The label was always misleading — item 21 is granted by
+chain 1055's `add_item` on the `Preparation_SMG1A` locker interact, never by the dialog.
+
 **Minigames**: Livewire (terminal hack)
 
 **Live data-driven shape (chains 1055 + 1066)** [CONFIRMED]
@@ -437,7 +453,7 @@ Same equip-from-inventory shape as mission 622, but the equip step is an **inter
 | 1055 | `interact_tag('Preparation_SMG1A')` | `step_status(641, 2121) = 'active'` | Grant P90 (item 21) → backpack (container 1); clear locker highlight; `advance_step(641, 80641)` |
 | 1066 | `item_equipped('21')` | `step_status(641, 80641) = 'active'` | `advance_step(641, 3563)` (talk to Marsh); re-set Marsh's mission-available marker |
 
-Step 80641 ("Equip the P90 from your inventory.") is added by `MissionOverride { mission_id: 641, insert_after_step_id: 2121 }` in `crates/services/src/base/mission_overrides.rs:91-109`. Server-side seed rows: `mission_steps.sql` (step 80641, with index reordering for the existing 3563/3564 to keep XML order in sync) and `mission_objectives.sql` (objective 90641). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql:560-615`. Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` (4 chain-replay tests covering 1055 / 1066, plus chain 1051 acceptance).
+Step 80641 ("Equip the P90 from your inventory.") is added by `MissionOverride { mission_id: 641, insert_after_step_id: 2121 }` in `crates/resources/src/base/mission_overrides.rs:91-109`. Server-side seed rows: `mission_steps.sql` (step 80641, with index reordering for the existing 3563/3564 to keep XML order in sync) and `mission_objectives.sql` (objective 90641). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql:560-615`. Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_641.rs` (4 chain-replay tests covering 1055 / 1066, plus chain 1051 acceptance).
 
 **Link to next**: Explicitly calls `missions.complete(641)` and `missions.accept(680)` on Livewire victory. [CONFIRMED]
 
@@ -470,13 +486,13 @@ self.n35_var_Player.missions.accept(680)
 **Triggers**:
 - `entity.interact.tag::Preparation_RingSwitch` -- use the ring transporter switch
 - `teleport::in` (regionId 3) -- teleport arrival
-- `client_hinted_region::Castle_Cellblock.Region9` -- entering the mess hall
+- `client_hinted_region::Castle_Cellblock.Region9` -- entering the corridor outside the topside ring room; the Mess Hall itself is Region3
 
 **Mission flow**:
 1. Player interacts with `Preparation_RingSwitch` when step 2344 is active:
    - Interact with ring transporter region 2 (teleport player)
 2. Player arrives via teleport (regionId 3): advance to step 2345
-3. Player enters Region9 (Mess Hall): if mission 681 is not active, accept mission 681
+3. Player enters Region9 (the ring-room corridor, on the way to the Mess Hall): if mission 681 is not active, accept mission 681
 
 **Entity tags**: `Preparation_RingSwitch`
 
@@ -516,7 +532,7 @@ if args['entering']:
 **Triggers**:
 - `entity.dead.tag::MessHall_Guard1` -- guard 1 killed
 - `entity.dead.tag::MessHall_Guard2` -- guard 2 killed
-- `client_hinted_region::Castle_Cellblock.Region9` -- leaving the mess hall
+- `client_hinted_region::Castle_Cellblock.Region9` -- leaving the corridor outside the topside ring room; the Mess Hall itself is Region3
 
 **Mission flow**:
 1. Kill counter initialized to 0, target = 2
@@ -861,7 +877,7 @@ directions on purpose:
   and ignores any NPC in scope. See
   [content-engine.md §4](content-engine.md) for the full resolution order.
 
-**Tests**: `crates/services/src/cell/content/chain_replay_tests/mission_701/`
+**Tests**: `crates/cell-content/src/cell/content/chain_replay_tests/mission_701/`
 (live-DB chain-replay, split `arrival.rs` / `body.rs` / `restore.rs`, plus
 `persistence.rs` for the world-hop invariant).
 
@@ -1265,7 +1281,7 @@ if status == Constants.MISSION_Not_Active:
 > 4621. Tracked as issues #334 / #605. **PR #605 adds the missing seed row but
 > is not merged as of 2026-07-25**, so the blocker is still live on `main`.
 > Note the server side does not gate this: `UseInventoryItem` never consults
-> `items_event_sets` ([use_instance.rs](../../crates/services/src/base/world_entry/methods/inventory/core/use_instance.rs)),
+> `items_event_sets` ([use_instance.rs](../../crates/base-methods/src/base/world_entry/methods/inventory/core/use_instance.rs)),
 > so the fix is purely a seed-data one.
 
 **Entity tags**: `SGC_W1_JaffaBomb`, `SGCW1_AirmanBody`, `SGC_W1_NaqBomb`, `SGC_W1_ElevatorButton2`

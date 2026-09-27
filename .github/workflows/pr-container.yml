@@ -73,6 +73,10 @@ jobs:
           push: false
           load: true
           tags: cimmeria-server:pr-${{ github.event.pull_request.number || 'dispatch' }}
+          # OTLP `service.version` (crates/server/build.rs). The PR head, not
+          # the synthetic merge commit; falls back to github.sha on dispatch.
+          build-args: |
+            CIMMERIA_GIT_SHA=${{ github.event.pull_request.head.sha || github.sha }}
           # Share the cache scope with release-container.yml so warm
           # builds skip the Rust compile entirely.
           cache-from: type=gha

@@ -3,7 +3,7 @@
 # These raise two defaults that don't fit the shape of this codebase:
 #
 # - `too-many-arguments-threshold` (default 7) — handlers in
-#   `crates/services/src/base/world_entry/methods/` take socket, connected
+#   `crates/base-methods/src/base/world_entry/methods/` take socket, connected
 #   map, entity_to_addr map, db_pool, cell_tx, plus the call's own
 #   parameters. The natural API has 8–13 args; refactoring every handler
 #   into a context struct is a separate architectural change. 14 is one

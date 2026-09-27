@@ -2,12 +2,12 @@
 title: "Ability System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-26
 ---
 
 # Ability System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-26
 > **Status**: Implemented — direct-target, cone, AoE, ground-target, and channeled abilities all work. Remaining gaps: chain targeting, the combo/response system, and pre-launch ability conditions.
 
 ## Overview
@@ -21,20 +21,21 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Single-target ability launch | DONE | `TargetSelf`, `TargetTarget` |
-| Ability warmup timer | DONE | Speed modifiers applied (grenade, deploy, attack) |
+| Ability warmup timer | DONE | AT-10 (2026-09-26). A warmup ability sends `Ability_Begin` and fires after the warmup, not at launch. The speed stats (grenade, deploy, attack) shorten it. See [Warmup in the Rust server](#warmup-in-the-rust-server) |
 | Ability cooldown timer | DONE | Moniker-based shared cooldowns |
 | Effect dispatch on resolve | DONE | Effects applied to all collected targets |
 | Auto-cycle (auto-attack) | DONE | Re-fires ability on cooldown expiry |
-| Ability interruption | DONE | Cancels warmup, resets cooldown |
+| Ability interruption | DONE | AT-10. Death, a bandolier slot change, moving 0.5 m, and fire-time target, range, line-of-sight and ammo checks. Refunds the cooldown |
 | Ammo consumption | DONE | `requiredAmmo`, `consumeAmmo()` |
 | Weapon range check | DONE | `UseWeaponRange` flag uses equipped weapon range |
-| Position/facing check | DONE | Front/flank/rear mask validation |
+| Position/facing check | NOT IMPL (Rust) | Python validated the front/flank/rear mask. Rust `AbilityDef` has no `positions` field and `handle_use_ability` checks no facing |
 | Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |
 | AoE / cone targeting | DONE | `cell/abilities/cone_aoe/` — geometry, flag categories, and witness fan-out |
-| Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |
+| Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch/mod.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |
 | Channeled abilities | DONE | Channel pulsing and cancellation in `cell/effects/pulsing/`, with the `AF_CHANNEL_ALLOWS_MOVEMENT` movement gate |
 | Kismet sequences (begin, end) | DONE | `Ability_Begin` (1000) and `Ability_End` (1001) emitted from `use_ability/handle.rs` |
-| Kismet sequences (interrupt, failed) | NOT IMPL | `Ability_Interrupt` (1002) and `Ability_Failed` (1003) are never emitted, despite interruption itself working |
+| Kismet sequence (interrupt) | DONE | `Ability_Interrupt` (1002) is sent when a warmup is interrupted (AT-10) |
+| Kismet sequence (failed) | NOT IMPL | `Ability_Failed` (1003) is never emitted. Python never sent it either |
 | Chain targeting | NOT IMPL | |
 | Combo / response system | NOT IMPL | `Response` flag modifies cooldown only |
 | Ability conditions | NOT IMPL | Pre-launch condition checks from ability data |
@@ -99,6 +100,45 @@ AbilityManager.useAbility()
             |-> abilityFinished()
 ```
 
+### Warmup in the Rust server
+
+The Rust server keeps the same split (AT-10). `handle_use_ability`
+(`cell/abilities/use_ability/handle.rs`) is the launch. It validates the cast,
+starts the cooldown for `cooldown + warmup`, and sends the cooldown timer. Then:
+
+- **Warmup = 0:** the cast fires in the same pass (`use_ability/fire.rs`). It
+  spends the ammo, sends `Ability_End`, and applies the damage. The wire is the
+  same as before AT-10.
+- **Warmup > 0:** it sends `Ability_Begin` and an `AbilityWarmup` (type 1)
+  `onTimerUpdate` to the player, then parks the cast on the caster. The cell's
+  100 ms warmup tick fires it through the same fire path when the warmup
+  expires. The ammo is spent then, not at launch.
+
+A player or NPC has one cast in its warmup at a time. A second `useAbility`
+during the warmup is refused and sends nothing, as python refused a launch
+while `currentAbility` was set. An NPC holds still while it casts.
+
+A warmup is interrupted, and the cast never fires, when:
+
+- the caster dies;
+- the caster changes its active bandolier slot;
+- the caster moves 0.5 m or more from where it started, unless the ability
+  has `AF_CHANNEL_ALLOWS_MOVEMENT` (the channel rule), or ends up in another
+  space;
+- at the moment it would fire, the target is gone, dead, in another space or
+  no longer hostile; the target is out of range (`onErrorCode` 42); a player
+  has no line of sight (`onErrorCode` 39); a player's active weapon is not
+  the one the cast started with; or a player's weapon is reloading or short
+  of ammo.
+
+An interrupt refunds the cooldown. It sends the player a zeroed warmup timer
+and a zeroed cooldown timer, then sends `Ability_Interrupt` to the caster and
+its witnesses. If the interrupted ability was the auto-cycle ability, the
+loop stops. Python interrupted on death and on a slot change only, and
+re-checked nothing when the warmup ended. The other triggers are
+server-authoritative additions. The design record is decision 21 of
+[abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md#21-warmup-is-a-pending-cast-per-caster-fired-by-the-100-ms-tick-at-10).
+
 ## Targeting Modes
 
 | Mode | Constant | Status | Description |
@@ -131,6 +171,96 @@ AbilityManager.useAbility()
 3. Sending `onTimerUpdate` (method 12) so the client renders the cooldown bar.
 
 The warmup deadline gates **magazine refill timing**: a 100 ms `reload_completion_tick` checks `reload_complete_at` and calls `refill_active_slot()` (sets `current_ammo = clip_size`) when the deadline elapses. The fire-path does not promote pending refills — it only reads the current ammo. See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full sequence.
+
+## Ability Trees and Training
+
+Each archetype's training tree is `resources.archetype_ability_tree`. It is read once per server process into `AbilityTreeCatalog` (`crates/cell-catalog/src/ability_tree/`), joined to `resources.abilities.training_cost`. The cell (trainer window and purchase gate) and the base (player load) share that one snapshot through `ability_tree::shared_catalog`. Beyond the original six columns, each node carries `required_branch_points` (default 0), `skill_point_cost` (default 1), `is_branch_root`, `is_capstone`, `branch_name` and `project_status`. The table is keyed on `(archetype, tree_index, ability_index)` and unique on `(archetype, ability_id)`; one ability can sit in several archetypes' trees.
+
+The `onAbilityTreeInfo` message (client method 141) that world entry sends is built from the same catalog by `ability_tree::tree_info`: three branches by `tree_index`, each in catalog order (`tree_index, ability_index`), which is the order the trainer uses. There is no per-player query and no tree hard-coded in Rust. An archetype with no rows gets three empty branches and one `abilities event=tree_missing reason=archetype_has_no_tree` WARN. For the seeded archetypes the bytes are unchanged from the earlier per-player query.
+
+The tree and trainer seeds are the owner's EMULATOR FINAL v2 level-50 workbook, generated by `tools/ability_trees/generate_seed.py` (see [its README](../../tools/ability_trees/README.md)); never edit the two seed files by hand. The seed holds 439 nodes (419 distinct abilities, 19 of them shared between archetypes) in 21 branches: Soldier 72, Commando 64, Scientist 59, Archaeologist 65, Asgard 66, Goa'uld 62 and Shol'va 51. The workbook's Free Jaffa / Shol'va tree maps to `ARCHETYPE_Sholva` only, so `ARCHETYPE_Jaffa` has no tree (decision D-AT04). Each branch has one root (node 1, no prerequisites) and one capstone that unlocks at level 50. `resources.trainer_abilities` debug list 1 (the Interaction Debug NPC, template 25) offers every node. The live-DB tests in `ability_tree::tests::seed_live_db` pin these counts and the trainer-to-tree match against a fresh `db/database.sql`.
+
+Whether a player may train a node is decided in one place, `evaluate_train`. The trainer window's `trainable` byte (`onTrainerOpen`) and the `trainAbility` purchase gate both call it, so a node the window enables is always a node the server accepts. Its gates run in order: the ability exists, the player is a loaded character, the ability is not already known (a silent no-op), it is in the player's archetype tree, the player meets its level and prerequisites, the archetype-wide spend reaches its `required_branch_points` (`SpendGate`), and the player's training points cover its `skill_point_cost` (`NotEnoughPoints`). Gate families live one per file under `ability_tree/gates/`.
+
+The spend gate counts trainer points spent **across the archetype**, not per branch (decision D-AT01 in [the ability-tree campaign](../analysis/ability-trees/README.md)): counted per branch, no branch can open past its root. Prerequisites, which always sit in the node's own branch, keep a node on its branch path. Only trainer purchases count as spend, so a starter ability satisfies a prerequisite but opens no spend gate.
+
+A purchase the cell accepts is sent to the base as `CellToBaseMsg::TrainAbility` with the node's cost and branch. The base runs **one** `UPDATE` on `sgw_player` (`progression/train_ability.rs`): it appends the ability to `abilities` and `trained_abilities`, subtracts the cost from `training_points` and adds it to `tree_points_spent`, guarded by `training_points >= cost AND NOT (abilities @> ARRAY[id])`. A double-click or replayed packet matches no row, so it debits once. The four fields move together or not at all. `AbilityGranted` returns both counters, and the cell then sends, in order: `onKnownAbilitiesUpdate`, `onEntityProperty(GENERICPROPERTY_TrainingPoints, n)` (the point counter; the level-up bundle uses the same builder), and, while a trainer is pinned, the `onTrainerOpen` re-send.
+
+The cell mirrors the trainer gates' inputs in `CellEntity::tree_progress` (`trained_abilities`, `tree_points_spent`, `training_points`) and `CellEntity::level`. All four are loaded at world entry by the `onClientReady` SELECT. `AbilityGranted` updates the purchase fields, `BaseToCellMsg::ProgressionChanged` (sent by `handle_grant_xp` after a level-up persists) updates the level and points, and `BaseToCellMsg::TrainingPointsGranted` (sent after a GM `gmGiveTrainingPoints` grant persists) updates the points and also sends the client counter and the pinned-trainer re-send. Before AT-03, nothing set a player's cell level, so every player trained as level 1.
+
+A purchased node whose `resources.abilities.training_cost` is 0 logs `abilities event=train_raw_cost_zero` at WARN. The purchase still goes ahead at `skill_point_cost`; the source value is never rewritten.
+
+### Trainer authority
+
+A purchase must happen at a trainer (AT-04). Before AT-04, a forged `trainAbility` trained from anywhere. The trainer gates in `ability_tree/gates/trainer.rs` run after the node and spend gates. They read the player's pinned `last_interaction_target`, which the cell resolves into a `TrainerPin` (`cell/interactions/trainer_authority.rs`). The pin must:
+
+- be set;
+- resolve to an entity that still exists;
+- have a template listed in `template_trainer_lists`;
+- be a trainer whose list offers this ability to the player's archetype;
+- still pass `interact_target_in_range`: the same space, and within `MAX_INTERACT_DISTANCE` (5).
+
+The trainer window computes its `trainable` byte with the same pin. A player who walks out of range and then triggers a re-send therefore sees every node greyed out, which matches what a purchase would get.
+
+`interact_target_in_range` now also rejects a target in another space. Positions are per-space coordinates, and `SpaceManager::get_entity` searches every space. Without the check, a trainer in another space at nearby coordinates counted as in range, and so did any `interact` target.
+
+### Rejection feedback
+
+A rejected purchase sends `onErrorCode` (121) with `SystemID 0` (`ERRORCODE_SYSTEM_Ability`), `InstanceID` set to the ability id, and the `ErrorCodeID` below (`cell/cell_methods/player/vendor/train_feedback.rs`). When the pin is a live trainer, `onTrainerOpen` is re-sent after it.
+
+| Rejection | `ErrorCodeID` | Fit |
+|---|---|---|
+| Not in the archetype's tree | 6 `NotSpecifiedArchetype` | Exact |
+| Level too low | 9 `LevelGreaterThanOrEqual` | Close |
+| Missing prerequisite | 167 `EntityDoesNotHaveAbility` | Exact |
+| No trainer pinned, trainer despawned, pin not a trainer, not offered here, out of range | 43 `OutsideDistanceCheck` | Close |
+| Not enough training points, spend gate (AT-03) | 35 `StatValueLessThan` | Reused: the 2009 enum has no token for either |
+| Already known | none: silent | The client already renders the node as known |
+| Unknown ability id, no player id, no archetype | none: silent | A legitimate client cannot send these. They are logged at WARN |
+
+The mapping comes from AT-E1 ([ability-trainer-ui.md](../reverse-engineering/findings/ability-trainer-ui.md) §2). Whether the client renders `onErrorCode` at all is **unresolved**: no client Lua consumes it. The trainer re-send is the feedback the player is known to see, so every coded rejection is followed by one. The re-send is skipped for the silent rows, so a forging client gets no free `onTrainerOpen` build per packet.
+
+### Respec
+
+The trainer window's Respec button calls `respecAbilities()`, which sends cell method 72 `resetMyAbilities` with no arguments (AT-E1 Q5). Since AT-08 the server implements it; before, it only logged `UNIMPLEMENTED`.
+
+The cell checks two things (`cell/cell_methods/player/vendor/respec.rs`):
+
+- The player's pin must be a live trainer that is still within `interact_target_in_range`. This is the same `trainer_pin` a purchase uses, but the trainer's offered list does not matter.
+- Something must be trainer-bought (`tree_progress`).
+
+It then sends `CellToBaseMsg::ResetAbilities` with the price, `RESPEC_COST_NAQUADAH` = 1000 (decision D-AT10). The same constant fills `onTrainerOpen`'s `CostToRespec` field, so the window shows what the respec charges.
+
+The base runs **one** `UPDATE` on `sgw_player` (`progression/respec.rs`). It is guarded by `naquadah >= cost` and "`tree_points_spent > 0` or `trained_abilities` is not empty", and it does the following:
+
+- removes every id in `trained_abilities` from `abilities`, keeping the order of the rest, so starter and quest grants survive;
+- adds `tree_points_spent` back to `training_points`, which is the exact refund because only trainer purchases count as spend (D-AT03);
+- sets `tree_points_spent = 0` and `trained_abilities = '{}'`;
+- subtracts the price from `naquadah`.
+
+A replayed respec finds nothing trainer-bought, so it matches no row and charges nothing. When the guard holds the row back, a read-only `SELECT` decides which refusal to report.
+
+The base answers with `BaseToCellMsg::AbilitiesReset`, which carries a `RespecOutcome`. On `Reset`, the cell mirrors the row: it drops the refunded abilities, clears `tree_progress` and sets the points. A warmup in progress on a refunded ability is interrupted (reason `ability_unlearned`, AT-10), and its interrupt frames go out first. The cell then sends, in order:
+
+1. `onKnownAbilitiesUpdate`;
+2. `onEntityProperty(GENERICPROPERTY_TrainingPoints, n)`;
+3. `onCashChanged(naquadah)`;
+4. while a trainer is pinned, the `onTrainerOpen` re-send, which shows the branch roots as buyable again.
+
+Every refused respec gets feedback on the first press: `onErrorCode` with `SystemID 0` and `InstanceID 0` (a respec names no ability), then the pinned trainer's re-send (`cell/interactions/respec_feedback.rs`).
+
+| Refusal | Decided by | `ErrorCodeID` | Fit |
+|---|---|---|---|
+| No trainer pinned, trainer despawned, pin not a trainer, out of range | cell | 43 `OutsideDistanceCheck` | Close, as for purchases |
+| Nothing trainer-bought (includes a replay) | cell, or base when the two race | 167 `EntityDoesNotHaveAbility` | Reused: the player has none of the abilities a respec removes |
+| Too little naquadah | base | 35 `StatValueLessThan` | Reused: the enum has no currency token |
+| Entity is not a loaded character | cell | none: silent | A legitimate client cannot send this. It is logged at WARN |
+
+A first press with nothing trainer-bought gets feedback too: the button looks enabled, so the project's first-press rule applies. Because the trainer gate runs first, only a player standing at a trainer can trigger the re-send.
+
+A press within 1 second of the last forwarded respec (`RESPEC_RETRY_WINDOW`) is dropped without an answer. The earlier press's answer is still on its way, so the dropped press is not a first press. The window stops a double-click from showing the success burst and then "nothing trained". It also limits the base to one row-locking `UPDATE` per player per second, which matters because the cell cannot see the naquadah balance. `AbilitiesReset` names the character that was reset, and the cell ignores the message if the entity id now belongs to another character.
+
+**The hotbar.** The client keeps its action-bar bindings in a per-character Lua saved variable (`GActionProfiles`, declared as a `<CharacterVariable>` in `ActionButtons.toc` and written to `Documents/My Games/.../SGWGame/<account>/<character>/ActionButtons - Saved Vars.lua`). No server method, property or table carries it, so the server cannot strip refunded abilities from it. The only server-held list the bar draws from is `sgw_player.abilities`, which the respec `UPDATE` strips, and `onKnownAbilitiesUpdate` re-sends it. A button still bound to a refunded ability stays on the bar until the player clears it. Pressing it is refused with `onErrorCode(0, ability_id, 167 EntityDoesNotHaveAbility)` (`use_ability/handle.rs`, `send_not_known_feedback`). Before AT-08 that refusal was silent. An ability id with no server definition stays silent, because a legitimate client cannot send one, and so do NPC casters. The action bar has no server hook. A client Lua patch that clears it would be an owner decision. AT-E1 found no client-side cleanup either ([ability-trainer-ui.md](../reverse-engineering/findings/ability-trainer-ui.md) §5).
 
 ## Data References
 

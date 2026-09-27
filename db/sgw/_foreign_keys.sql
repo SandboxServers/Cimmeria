@@ -23,6 +23,18 @@ ALTER TABLE ONLY sgw_gate_mail
     ADD CONSTRAINT sgw_gate_mail_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE SET NULL;
 
 --
+-- Social-systems SS-M2: the escrowed item goes with its mail. CASCADE so a
+-- character deletion (which cascades the mail) is not blocked; the player's
+-- own deleteMailMessage refuses attached mail in the application.
+--
+
+ALTER TABLE ONLY sgw_gate_mail_item
+    ADD CONSTRAINT sgw_gate_mail_item_mail_id_fkey FOREIGN KEY (mail_id) REFERENCES sgw_gate_mail(mail_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+ALTER TABLE ONLY sgw_gate_mail_item
+    ADD CONSTRAINT sgw_gate_mail_item_type_id_fkey FOREIGN KEY (type_id) REFERENCES resources.items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
 -- TOC entry 2685 (class 2606 OID 63891)
 -- Name: sgw_inventory_character_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
@@ -75,6 +87,16 @@ ALTER TABLE ONLY sgw_player_discipline_expertise
     ADD CONSTRAINT sgw_player_discipline_expertise_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
 --
+-- Name: sgw_player_content_cooldown_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Content-action cooldowns (SS-U3); a deleted character takes its rows with
+-- it.
+--
+
+ALTER TABLE ONLY sgw_player_content_cooldown
+    ADD CONSTRAINT sgw_player_content_cooldown_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
 -- Name: sgw_contact_list_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 -- ON DELETE CASCADE ensures all lists (and via FK below, all members) are
@@ -92,3 +114,69 @@ ALTER TABLE ONLY sgw_contact_list
 ALTER TABLE ONLY sgw_contact_list_member
     ADD CONSTRAINT sgw_contact_list_member_list_id_fkey FOREIGN KEY (list_id) REFERENCES sgw_contact_list(list_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
+
+--
+-- Name: sgw_organization_ranks_org_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Composite, so the rank row's org_type copy (which the per-type rank CHECK
+-- reads) always equals its organization's type.
+--
+
+ALTER TABLE ONLY sgw_organization_ranks
+    ADD CONSTRAINT sgw_organization_ranks_org_fkey FOREIGN KEY (org_id, org_type) REFERENCES sgw_organizations(org_id, org_type) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_organization_members_org_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Composite, so the member's org_type copy (which UNIQUE (player_id,
+-- org_type) needs) always equals its organization's type.
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_org_fkey FOREIGN KEY (org_id, org_type) REFERENCES sgw_organizations(org_id, org_type) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_organization_vault_items_org_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Composite, so a vault row's org_type copy (which the container CHECK
+-- reads) always equals its organization's type. ON DELETE RESTRICT, never
+-- CASCADE (D-BV18): deleting an organization never deletes its vault. See
+-- the table header in sgw_organization_vault_items.sql.
+--
+
+ALTER TABLE ONLY sgw_organization_vault_items
+    ADD CONSTRAINT sgw_organization_vault_items_org_fkey FOREIGN KEY (org_id, org_type) REFERENCES sgw_organizations(org_id, org_type) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+ALTER TABLE ONLY sgw_organization_vault_items
+    ADD CONSTRAINT sgw_organization_vault_items_type_id_fkey FOREIGN KEY (type_id) REFERENCES resources.items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
+-- Name: sgw_organization_members_rank_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- A member's rank must be one of the organization's rank rows, so rank 0,
+-- and a rank the type does not use, is refused. NO ACTION on delete: a
+-- rank row that members hold cannot be deleted on its own (that would
+-- silently drop the members). A disband still works, because the check
+-- runs at the end of the statement, after the members cascade from
+-- sgw_organizations has run too (disband_cascades_ranks_and_members).
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_rank_fkey FOREIGN KEY (org_id, rank) REFERENCES sgw_organization_ranks(org_id, rank) ON UPDATE RESTRICT;
+
+--
+-- Name: sgw_organization_members_player_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- A member row goes with its character. The member-delete trigger then
+-- promotes a new leader or disbands the organization (D-ORG12).
+--
+-- Composite on (player_id, account_id), so the member's account_id copy
+-- (which the trigger's audit rows need after the character is gone) cannot
+-- differ from the character's. ON UPDATE RESTRICT, not CASCADE: a character
+-- never changes account, and the member row's BEFORE UPDATE trigger refuses
+-- an account_id change anyway, so a cascade could only ever fail. Moving a
+-- character between accounts would have to leave its organizations first.
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_player_fkey FOREIGN KEY (player_id, account_id) REFERENCES sgw_player(player_id, account_id) ON UPDATE RESTRICT ON DELETE CASCADE;

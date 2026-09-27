@@ -1,62 +1,49 @@
 ---
 name: advance-step-vs-complete-objective
-description: advance_step force-completes the current step's objectives server-side but never emits onObjectiveUpdate(COMPLETED) for them; complete_objective does. Also: MissionUpdate persists the STEP id in active_objective_ids.
+description: advance_step force-completes the current step's objectives AND (since ~2026-09-19) sends their COMPLETED ticks with real flags; complete_objective can auto-complete the mission; H50 persistence fixed. Turn-in objective shape.
 metadata:
   type: project
 ---
 
-# `advance_step` vs `complete_objective` (verified 2026-09-18)
+# `advance_step` vs `complete_objective` (re-verified 2026-09-26)
 
-`crates/services/src/cell/missions/progression.rs`.
+`crates/cell-content/src/cell/missions/progression.rs`.
 
-## `advance_step(entity, mission, new_step)` does:
+## `advance_step(entity, mission, new_step)`
 
-1. Collects every `active_objectives` entry with `status != STATUS_COMPLETED`
-   and calls `mission.complete_objective(oid)` on each — sets `STATUS_COMPLETED`
-   **and** pushes into `completed_objectives`. So **yes, it force-completes**.
-2. Pushes the old `current_step_id` onto `completed_steps`, sets the new one,
-   loads the new step's objectives from `space_mgr.get_step_objectives`.
-3. Wire: `onStepUpdate(old, COMPLETED)`, `onStepUpdate(new, ACTIVE)`, and
-   `onObjectiveUpdate(new_obj, ACTIVE)` per new objective.
+1. Force-completes every open objective of the old step and sends
+   `onObjectiveUpdate(oid, COMPLETED, hidden, optional)` for each, BEFORE the
+   step frames. (The 2026-09-18 version of this note said it sent no ticks —
+   that was fixed; do not re-report it.)
+2. Pushes old step to `completed_steps`, loads new step objectives.
+3. Does NOT run the all-required-done auto-complete, which is why chains use
+   it to leave a step whose last required objective would otherwise end the
+   mission (688 chain 1107 → 80688; 622 → 80622).
 
-**What it never sends: `onObjectiveUpdate(old_objective_id, COMPLETED)`.**
-`complete_objective` *does* send that tick. `advance_step` completes the old
-objectives and activates a new step; `complete_objective` can complete the whole
-mission when it finishes the required active objectives. Every chain condition
-reads server state — so **no chain logic is lost by never authoring
-`complete_objective`**. The only exposure is cosmetic: if the
-client's quest-log renders per-objective rows and does not clear them on
-`onStepUpdate(COMPLETED)`, the prior step's line lingers un-ticked. UAT the
-first step transition of any newly ported multi-step mission; if the line
-lingers, fix `advance_step` to emit the ticks — do not paper over it by adding
-`complete_objective` actions to the chain.
+## `complete_objective`
 
-`complete_objective` also auto-completes the whole mission when every
-non-optional `active_objectives` entry is COMPLETED.
+Flips one objective and auto-completes the whole mission when every
+non-optional `active_objectives` entry is COMPLETED (vacuous on an
+all-optional step). Completing an OPTIONAL objective while a required one is
+open is safe (688/4647, flank 2725/2731).
 
-`complete_mission` → `complete_mission_direct` completes all active objectives
-*and* emits their COMPLETED ticks, then `MissionInstance::complete()`. Those
-objective updates hardcode `hidden` and `optional` to `false`.
+## `complete_mission` (turn-in shape)
 
-## Persistence gap (route to database-persistence)
+`complete_mission_direct` force-completes the final step's objectives. This
+is the canonical Atrea shape — `missions.complete(622)` in ArmYourself.py
+closes step objective 90622 without ever completing it. Most Cellblock
+final-step objectives (90622, 4444, 2716, 2463, 5209, 4118, 2724, 2726-2730,
+2733, 90688) have NO `complete_objective` anywhere; only CompleteMission can
+close them. `ChainEngine::has_objective_completer(m, o)` tells the two apart;
+the `objective_never_completed` friction signal reports only objectives that
+have a completer.
 
-Both `accept_or_advance` and `advance_step` in
-`crates/services/src/cell/content/executor/mission.rs` send
-`CellToBaseMsg::MissionUpdate` with:
+A finished mission keeps its final step's objectives in `active_objectives`
+(status COMPLETED) and is persisted with `current_step_id = NULL` — expected,
+not a data gap (restore only WARNs for an ACTIVE mission on an unseeded step).
 
-- `active_objective_ids: vec![step_id]` — the **step** id in the objective list
-- `completed_objective_ids: vec![]` — always empty
-- `completed_step_ids: vec![]` — **also always empty, in all three arms**
+## Persistence
 
-So neither `completed_objectives` nor `completed_steps` is durably persisted
-through the chain path.
-
-**Correction (2026-09-18):** an earlier version of this note claimed
-`step_status` was unaffected. Only half true. `step_status X eq active`
-survives (derives from `current_step_id`, which *is* persisted);
-`step_status X eq completed` does NOT — `populate_mission_context`'s
-completed-step loop reads `mission.completed_steps`, hydrated from
-`saved.completed_step_ids`, which the executor always writes as `[]`.
-
-**Until H50 lands: do not author `objective_status ... eq completed` OR
-`step_status ... eq completed` conditions that must survive a relog.**
+H50 landed: `MissionUpdate` carries real objective ids, completed objectives
+and completed steps. `objective_status … eq completed` and
+`step_status … eq completed` survive a relog.

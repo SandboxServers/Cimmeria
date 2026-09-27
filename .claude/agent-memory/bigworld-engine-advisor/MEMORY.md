@@ -11,6 +11,10 @@ All five topic files have been triaged per #264 step 4. Bucket tags below each l
 
 ## Topic files
 
+- [na38-client-orders-reliable-stream.md](na38-client-orders-reliable-stream.md) - **[NEW 2026-09-25]** Client orders reliable packets (512 window, adopts first seq), delivers unreliable on arrival, caches early msgs for unknown ids.
+- [interface-element-length-escape.md](interface-element-length-escape.md) - **[NEW 2026-09-19]** Mercury length fields escalate on value: an all-0xFF sentinel in the inline field plus a 4-byte real length in the body. Ghidra-cited.
+- [message-id-00-direction-split.md](message-id-00-direction-split.md) - **[NEW 2026-09-19]** msg 0x00 is BASEAPP_LOGIN inbound and AUTHENTICATE outbound; REPLY_MESSAGE 0xFF borrows the server AUTHENTICATE (DWORD) descriptor.
+
 - [protocol-comparison.md](protocol-comparison.md) — **[PROMOTE → spec.protocol.mercury-wire-format]** — stock-vs-SGW wire divergences; mostly V5-confirmed, two items flagged for verification before promotion (rotation order, instanceID-vs-spaceID wording).
 - [aoi-entity-introduction.md](aoi-entity-introduction.md) — **[PROMOTE → spec.world.world-entry]** — createOnClient property cascade for NPC AoI entry; V5-confirmed.
 - [cache-stamp-system.md](cache-stamp-system.md) — **[PROMOTE → spec.engine.cooked-data-pipeline + spec.world.world-entry]** — two-system breakdown (entity cache stamps + cooked-data versioning); V5-confirmed.
@@ -44,7 +48,7 @@ V5-confirmed against `findings/mercury-protocol-internals.md`. ENABLE_ENTITIES 8
 
 ### Known Bugs in Rust Rewrite — **[RE-VERIFY]**
 
-- **RESOURCE_FRAGMENT length prefix**: the path reference `mercury_ext.rs line 495` is stale — the file was refactored into `crates/services/src/mercury/protocol/resources.rs`. The u16 length-prefix fact itself is V5-confirmed and the fix has shipped (test `resource_fragment_uses_u16_length_prefix` guards it).
+- **RESOURCE_FRAGMENT length prefix**: the path reference `mercury_ext.rs line 495` is stale — the file was refactored into `crates/wire/src/mercury/protocol/resources.rs`. The u16 length-prefix fact itself is V5-confirmed and the fix has shipped (test `resource_fragment_uses_u16_length_prefix` guards it).
 
 ### Rotation Order Inconsistency in C++ Reference — **[RE-VERIFY]**
 
@@ -110,10 +114,10 @@ Sub-slot encoding details: now confirmed in `findings/entity-property-sync.md` (
 
 - Entity types: `crates/common/src/types.rs`
 - Mercury packet builder: `crates/mercury/src/packet.rs`
-- Encrypted message builders: `crates/services/src/mercury/protocol/` (the prior `mercury_ext.rs` was split)
-- BaseApp handler: `crates/services/src/base.rs`
-- Cooked data handler: `crates/services/src/base/cooked_data.rs`
-- Version info builder: `crates/services/src/mercury/protocol/` (resources / version-info submodule)
+- Encrypted message builders: `crates/wire/src/mercury/protocol/` (the prior `mercury_ext.rs` was split)
+- BaseApp handler: `crates/base/src/base/` (service, connect loop, login, dispatch)
+- Cooked data handler: `crates/base-session/src/base/cooked_data.rs`
+- Version info builder: `crates/wire/src/mercury/protocol/` (resources / version-info submodule)
 
 ### Python Game Logic
 

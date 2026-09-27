@@ -40,6 +40,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Entity-property-sync OQ-1 CLOSED](entity-property-sync-oq1.md) — **[PROMOTE → spec.protocol.entity-property-sync §1.15 OQ-1 + OQ-X + F1 + G39]** — 0x3C/0x3D thresholds are server-side only; client uses UE3 FArchive uint32_t via FNetworkPropertyChange__vfunc_0 @ 0x015652d0. (Earlier sub-claim that 0x00dd0bb0 was misnamed as RemoveEntityListener has been retracted — Ghidra name is correct per audit Appendix E.)
 
+## NPC aggression broadcast (NA33, 2026-09-25)
+
+- [SGWMob aggression ClientMethod indices + legacy wire bug](npc-aggression-broadcast-na33.md) — **[PROMOTE → docs/reverse-engineering/findings/npc-aggression-broadcast.md DONE]** — `onAggressionOverrideUpdate`/`Cleared` = flat indices 27/28 (Lootable has 0 client methods); legacy `setAggression` used a client-dead `onEntityProperty`, only `createOnClient` used the working ClientMethod.
+
 ## Auto-cycle / auto-fire system (2026-05-20)
 
 - [Auto-cycle system findings](auto-cycle-findings.md) — **[PROMOTE → spec.combat.auto-cycle or doc-reference from gameplay/combat-system.md]** — Full wire path confirmed: cell method 83, 2-byte payload, server-driven loop, `BSF_AutoCycling` bit 1, cooldown-expiry re-fire pattern. Implementation gap identified.
@@ -71,9 +75,18 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [SGWHomeless full recovery](sgwhomeless-full-recovery.md) — **[PROMOTE → docs/reverse-engineering/findings/atrea-editor.md §SGWHomeless]** — Complete v5 RE: 30 CME subscriptions confirmed, all handler VAs, singleton at `0x01ef23fc` (CORRECTS prior `cme-anomalies-resolved.md`), GLevel ToD/Wind/Weather layout, Ghidra renames applied.
 
+## Stargate dial/travel timing (NA35, 2026-09-25)
+
+- [Stargate dial and travel timing](stargate-dial-travel-timing-na35.md) — **[PROMOTE → spec.gate-travel.dhd-and-stargate]** — deprecated Python is not gate-travel evidence; DHD dial is single-shot and server-invisible per-chevron (chevron broadcast needs a client patch); `GATE_DIAL_DURATION`/`onStargatePassage`/crossing-hold fixed 2026-09-25 (`907c187a`).
+
 ## Recurring RE-table failure modes
 
 - [RTTI table shifts + RVA/VA traps](rtti-table-shift-and-rva-va-traps.md) — one-row shifts in contiguous RTTI tables (blank trailing cell is the tell); Atrea config mixes RVAs with VAs in one column.
+
+## Cooked-dialog override crash (2026-09-27, unnumbered)
+
+- [Cooked-dialog override crash — dialog ids 100100/100101](cooked-dialog-override-crash-na-unnumbered.md) — client crash on map load; >65535 element-key hypothesis **REFUTED** by same-day live headless-Ghidra decompile of the actual category-5 instantiations; root cause open, new lead is novel `SpeakerID=754`.
+- [Headless-Ghidra decompile workaround](headless-ghidra-decompile-workaround.md) — **[USE THIS FIRST for any live RE need]** — `analyzeHeadless.bat` + a custom `GhidraScript` gives decompile/xref/string-search with no GUI and no MCP bridge, sidestepping the ToolSearch tools/list_changed gap entirely; recipe, gotchas, and the N:/X: triage pattern for template-instantiated functions.
 
 ## Phase −0.5 maintenance notes (2026-05-13)
 

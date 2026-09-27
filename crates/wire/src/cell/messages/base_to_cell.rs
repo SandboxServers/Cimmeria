@@ -1,0 +1,490 @@
+//! `BaseToCellMsg` — messages sent from BaseApp to CellApp.
+
+use super::bank_base_to_cell::BankBaseToCell;
+use super::data::SavedMission;
+use super::duel_base_to_cell::DuelBaseToCell;
+use super::lab::{LabQuery, LabQueryResult};
+use super::org_base_to_cell::OrgBaseToCell;
+
+/// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
+/// lines the command produced (decoded from the single-recipient
+/// `onPlayerCommunication` sends, in emit order, possibly empty); on failure,
+/// a human-readable reason — today only the access-level gate the in-world
+/// `.`-console path also enforces ("acting entity is not a GM / is unknown").
+///
+/// This is the reply payload the live-research-lab MCP `server_console_exec`
+/// tool awaits (issue #687).
+pub type LabConsoleResult = Result<Vec<String>, String>;
+
+/// Messages sent from BaseApp to CellApp.
+// Cannot derive Debug because oneshot::Sender doesn't implement Debug.
+// Manual impl would be possible but not worth the boilerplate.
+pub enum BaseToCellMsg {
+    /// Create a cell entity in the named world at the given position/rotation.
+    /// The `reply_tx` oneshot returns the resolved `space_id` so the caller
+    /// can `.await` it before building the world-entry wire packet.
+    ///
+    /// `destination_space_id` requests an *exact* already-loaded instance
+    /// (carried through from `CellToBaseMsg::GateTravel`). It is re-validated
+    /// on arrival — a stale/foreign id degrades to the by-world-name
+    /// resolution rather than failing the create, because leaving the entity
+    /// in no space at all is the worse outcome.
+    CreateEntity {
+        entity_id: u32,
+        world_name: String,
+        position: [f32; 3],
+        rotation: [f32; 3],
+        destination_space_id: Option<u32>,
+        /// Owning account for a player entity, from the base session's
+        /// `ConnectedClientState::account_id`. Carried here (rather than
+        /// waiting for `InitPlayerState`) so the cell entity is identity-
+        /// stamped from birth: every cell log for this session — including
+        /// the pre-`onClientReady` window and the fresh entity a gate-travel
+        /// creates in the destination world — can name the account. `None`
+        /// for server-spawned entities that have no account (NPCs).
+        account_id: Option<u32>,
+        /// The `sgw_player.player_id` being played, from
+        /// `ConnectedClientState::active_player_id`. Same rationale as
+        /// `account_id`: `InitPlayerState` re-asserts it, but that arrives
+        /// only after `onClientReady`, which is too late for the world-entry
+        /// movement and lifecycle logs. `None` for NPCs.
+        player_id: Option<i32>,
+        reply_tx: tokio::sync::oneshot::Sender<u32>,
+    },
+
+    /// Destroy a cell entity (player left, entity despawned).
+    DestroyEntity { entity_id: u32 },
+
+    /// Mark an entity as having a client controller (player).
+    /// Sent after world entry packets are delivered to the client.
+    ConnectEntity { entity_id: u32 },
+
+    /// Remove client controller from an entity (player disconnected).
+    DisconnectEntity { entity_id: u32 },
+
+    /// Client position/movement update forwarded from `avatarUpdateExplicit`.
+    EntityMove {
+        entity_id: u32,
+        /// Space id the client claims it is in (payload[0..4] of the 0x03
+        /// packet). The authoritative write always uses the server's
+        /// `entity_space` binding, never this value — it exists only so
+        /// the cell can warn on a server↔client space divergence
+        /// (CAT-B-06), which surfaces gate-travel / instance-reset races.
+        claimed_space_id: u32,
+        position: [f32; 3],
+        direction: [i8; 3],
+        velocity: [f32; 3],
+    },
+
+    /// Client→server cell entity method call forwarded from BaseApp.
+    ///
+    /// `method_index` is the flattened EXPOSED CellMethod index for the
+    /// SGWPlayer entity type (0 = setTargetID, 1 = setMovementType, etc.).
+    /// `args` contains the raw method arguments (after entity_id extraction).
+    CellMethodCall {
+        entity_id: u32,
+        method_index: u16,
+        args: Vec<u8>,
+    },
+
+    /// Chat message from a player, forwarded from BaseApp for spatial distribution.
+    ///
+    /// The CellService broadcasts to witnesses based on channel type:
+    /// say/emote (nearby), yell (wider range).
+    ChatMessage {
+        entity_id: u32,
+        speaker_name: String,
+        speaker_flags: u8,
+        channel: u8,
+        text: String,
+    },
+
+    /// Initialize player state after world entry (missions, etc.).
+    /// Sent after ConnectEntity so the CellService can populate per-player data.
+    InitPlayerState {
+        entity_id: u32,
+        player_id: i32,
+        /// Owning `account.account_id` for the session. Re-asserted here
+        /// (it is also sent on `CreateEntity`) so a cell entity that somehow
+        /// reached `InitPlayerState` without the create-time stamp — a
+        /// future create path that forgets it, or a re-init on an existing
+        /// entity — still ends up identity-stamped. Paired with `player_id`
+        /// it is the stable log correlator per
+        /// `docs/architecture/instrumentation-discipline.md` §Rule 5.
+        account_id: u32,
+        world_name: String,
+        /// Player archetype id from `sgw_player.archetype`. Drives any
+        /// archetype-keyed lookups on the cell side — currently the
+        /// `Item_Equip`/`Item_Unequip`/`Item_Reload`/`Item_Use` event
+        /// set resolution (`ARCHETYPE_ITEM_EVENT_SETS` in the python
+        /// source) via `cimmeria_services::cell::spawner::archetype_item_event_set`.
+        /// Without this, the cell entity's `archetype_id` stays `None`
+        /// and the reload animation lookup falls through silently —
+        /// see follow-up notes.
+        archetype_id: i32,
+        /// Saved missions loaded from DB, to be restored before content engine fires.
+        saved_missions: Vec<SavedMission>,
+        /// Player's known ability IDs (from sgw_player.abilities column).
+        abilities: Vec<i32>,
+        /// Active bandolier slot from `sgw_player.bandolier_slot` (0-based).
+        active_bandolier_slot: i32,
+        /// Bandolier slot contents loaded from `sgw_inventory` + `resources.items`.
+        bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
+        /// Server-synced client options from `sgw_player.auto_reload` and
+        /// `sgw_player.reload_on_activate`. Populates `CellEntity::system_options`
+        /// so the auto-reload and reload-on-activate triggers honour the
+        /// player's saved preferences instead of falling back to defaults.
+        system_options: cimmeria_entity::cell_entity::SystemOptions,
+        /// Persisted user-preference state bits from `sgw_player.state_field`
+        /// (today: `BSF_AutoCycling` only — see `PERSISTED_STATE_FIELD_MASK`).
+        /// The handler masks again on restore, ORs the bits onto
+        /// `CellEntity::state_field`, re-arms `abilities.auto_cycle`, and
+        /// re-broadcasts `onStateFieldUpdate` so the client's button
+        /// highlight survives the relog. (#412)
+        state_field: u32,
+        /// Account access level (0=Player … 4=Developer) from the login
+        /// session (`ConnectedClientState.access_level`, itself sourced from
+        /// the `account.accesslevel` DB column). Stored on
+        /// `CellEntity::access_level` so the cell-method GM gate can reject
+        /// `gm*`/debug methods from non-privileged callers. Authoritative
+        /// server-side value — never client-supplied. (#475 / CAT-N-03)
+        access_level: u32,
+        /// Stargate addresses this character has unlocked, from
+        /// `sgw_player.known_stargates`. Stored on
+        /// `CellEntity::known_stargates` so `handle_dial_gate` can refuse a
+        /// dial to an address the player was never given (CAT-O-01, the 2009
+        /// check at `deprecated/python/cell/SGWPlayer.py:2060-2064`).
+        /// Authoritative server-side value — never client-supplied.
+        known_stargates: Vec<i32>,
+        /// `sgw_player.trained_abilities` + `tree_points_spent`, stamped
+        /// onto `CellEntity::tree_progress`. Ride the same SELECT as
+        /// `known_stargates`.
+        tree_progress: cimmeria_entity::cell_entity::TreeProgress,
+        /// `sgw_player.level`, from the same SELECT. Stamped onto
+        /// `CellEntity::level`, which the trainer's level gate reads;
+        /// without it every player trains as level 1.
+        level: i32,
+        /// The selected character's display name, sourced from the base
+        /// `ConnectedClientState.player_name`. Cached on
+        /// `CellEntity::character_name` so cell-side seams (the `.`-console
+        /// GM audit trail, mission/death/respawn notifications) can attribute
+        /// events to a name instead of a bare entity id — the cell otherwise
+        /// has no name for a player. `None` only if the base session somehow
+        /// reached world entry without a cached name.
+        character_name: Option<String>,
+        /// The character's body set (`sgw_player.bodyset`, e.g.
+        /// `BS_JaffaMale.BS_JaffaMale`). Stored on `CellEntity::body_set` so
+        /// line of sight uses the body set's eye height (NA31). `None` when
+        /// the row could not be read; the player then gets the 1.5 m default.
+        body_set: Option<String>,
+    },
+
+    /// Update one bandolier slot after a runtime item grant.
+    ///
+    /// BaseApp persists inventory changes and sends the client inventory update,
+    /// while CellApp owns combat state. This keeps the cell-side weapon cache in
+    /// sync without waiting for relog/world entry.
+    UpdateBandolierItem {
+        entity_id: u32,
+        slot_id: i32,
+        item: cimmeria_entity::cell_entity::BandolierItem,
+        make_active: bool,
+    },
+
+    /// Replace the whole cell-side bandolier cache after inventory move/remove.
+    SyncBandolierItems {
+        entity_id: u32,
+        active_bandolier_slot: i32,
+        bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
+    },
+
+    /// Inventory move committed in BaseApp after DB validation.
+    ///
+    /// CellApp uses the source/target transition to fire item equip/unequip
+    /// event abilities only after the move is known to have persisted.
+    /// `item_id` is the inventory instance row id (per `sgw_inventory.item_id`);
+    /// `type_id` is the item design id, needed by content chains keyed on
+    /// `item_equipped::<type_id>`.
+    InventoryItemMoveApplied {
+        entity_id: u32,
+        item_id: i32,
+        type_id: i32,
+        source_container_id: i32,
+        target_container_id: i32,
+        swapped_item_id: Option<i32>,
+    },
+
+    /// Inventory item instance was fully removed after DB validation.
+    InventoryItemRemoved {
+        entity_id: u32,
+        item_id: i32,
+        source_container_id: i32,
+    },
+
+    /// Inventory item was granted and persisted in BaseApp.
+    InventoryItemGranted {
+        entity_id: u32,
+        item_id: i32,
+        container_id: i32,
+        slot_id: i32,
+        quantity: i32,
+    },
+
+    /// Base confirmed a trainer purchase: the one `UPDATE` appended the
+    /// ability to `sgw_player.abilities` and `trained_abilities`, debited
+    /// the node's cost and added it to `tree_points_spent`. Sent in
+    /// response to [`crate::cell::messages::CellToBaseMsg::TrainAbility`]
+    /// only; no other grant path uses it.
+    ///
+    /// On receipt, the cell mirrors all three onto the entity, then sends
+    /// `onKnownAbilitiesUpdate`, the training-point property, and (with a
+    /// trainer pinned) the `onTrainerOpen` re-send.
+    AbilityGranted {
+        entity_id: u32,
+        ability_id: i32,
+        /// `sgw_player.training_points` after the debit (`RETURNING`).
+        training_points: i32,
+        /// `sgw_player.tree_points_spent` after the increment (`RETURNING`).
+        tree_points_spent: i32,
+    },
+
+    /// The base persisted a level-up: the character's new level and
+    /// training points. Sent by `handle_grant_xp` after its `UPDATE`
+    /// commits, so the cell's trainer gates (level, `NotEnoughPoints`) read
+    /// the same values the base debits against instead of the
+    /// world-entry snapshot.
+    ProgressionChanged {
+        entity_id: u32,
+        level: i32,
+        training_points: i32,
+    },
+
+    /// The base persisted a GM training-point grant
+    /// ([`crate::cell::messages::CellToBaseMsg::GrantTrainingPoints`]).
+    /// `training_points` is the `RETURNING` value. Unlike
+    /// `ProgressionChanged`, nothing else told the client, so the cell
+    /// mirrors the points, sends the counter property and (with a trainer
+    /// pinned) re-sends `onTrainerOpen`.
+    TrainingPointsGranted {
+        entity_id: u32,
+        training_points: i32,
+    },
+
+    /// The base persisted a GM ability grant
+    /// ([`crate::cell::messages::CellToBaseMsg::GmGrantAbility`]). The cell
+    /// mirrors the ability into the known set (not into
+    /// `trained_abilities`) and sends `onKnownAbilitiesUpdate`, plus the
+    /// trainer re-send while a trainer is pinned. `player_id` is the
+    /// character the base wrote; the cell ignores the message when
+    /// `entity_id` now plays another character.
+    GmAbilityGranted {
+        entity_id: u32,
+        player_id: i32,
+        ability_id: i32,
+    },
+
+    /// The base's answer to
+    /// [`crate::cell::messages::CellToBaseMsg::ResetAbilities`]. On
+    /// `Reset` the cell drops the refunded abilities, clears its tree
+    /// progress and sends the respec burst. On a refusal it sends the
+    /// rejection feedback. Either way the row is already final.
+    ///
+    /// `player_id` is the character the base reset. The cell ignores the
+    /// message when `entity_id` now belongs to another character (a relog
+    /// that reused the id while the `UPDATE` ran).
+    AbilitiesReset {
+        entity_id: u32,
+        player_id: i32,
+        outcome: crate::ability_tree::RespecOutcome,
+    },
+
+    /// Inventory item was used by the player (in response to
+    /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).
+    /// The cell fires the `OnItemUse` content event with `type_id` (item
+    /// design id) so chains conditioned on `item_use::<type_id>` can run.
+    ///
+    /// `instance_id` is the inventory row id the client clicked — passed
+    /// through so the chain context can record which exact instance
+    /// initiated the use. `Action::RemoveItem` reads this to remove
+    /// THAT specific stack rather than the player's first-by-type
+    /// instance, which is the difference between "consume the slappack
+    /// you clicked" and "consume the leftmost slappack in the bag."
+    ///
+    /// Note: base does NOT consume the item before sending this — chains
+    /// decide via `Action::RemoveItem`. The historical comment about
+    /// "consumption tx" pre-dated the chain-decides-consumption design.
+    ItemUsed {
+        entity_id: u32,
+        instance_id: i32,
+        type_id: i32,
+        target_id: i32,
+    },
+
+    /// Cross-world ring transport: signal the destination cell that a
+    /// player has finished loading on the new world and the destination
+    /// ring's FSM should advance out of `RemoteLoadWait`. Sent by base's
+    /// `handle_client_ready` after a `GateTravel` whose
+    /// `destination_ring_id` field was `Some(_)` — i.e. only for
+    /// `Effect::TeleportCrossWorld` flows, not stargate dial.
+    AdvanceRingDestination { entity_id: u32, region_id: i32 },
+
+    /// Reload the content engine from the database (triggered by admin API / Content Editor).
+    ReloadContentEngine,
+
+    /// Fan a base-built entity-method call on `entity_id` out to every player
+    /// currently witnessing it (never to `entity_id`'s own client).
+    ///
+    /// For state the base owns but other players render: the
+    /// `BeingAppearance` rebuilt on equip / holster / bandolier change, the
+    /// level bumped by an XP grant. The cell owns the witness sets, so the
+    /// base sends the finished args here and the cell re-emits one
+    /// `CellToBaseMsg::WitnessEntityMethod` per observer.
+    BroadcastToWitnesses {
+        entity_id: u32,
+        method_index: u16,
+        args: Vec<u8>,
+    },
+
+    /// Run a GM `.`-console line on behalf of `entity_id` and return the
+    /// captured feedback output instead of sending it to the player as chat.
+    ///
+    /// Backs the live-research-lab MCP `server_console_exec` tool (issue #687)
+    /// and follows the [`Self::CreateEntity`] request/reply precedent: the
+    /// caller (the lab-mcp endpoint, base-side) awaits `reply_tx` for the
+    /// [`LabConsoleResult`].
+    ///
+    /// The GM access-level gate that `cimmeria_cell_console::cell::console::chat`
+    /// applies to in-world `.`-console input is re-applied here to the acting
+    /// entity — a non-GM (or unknown) `entity_id` is rejected with `Err(_)`,
+    /// never executed.
+    /// Authorization is on the server-side `access_level` (from
+    /// `account.accesslevel`), never a client-asserted byte.
+    ///
+    /// Side-effecting messages the command emits (spawn round-trips,
+    /// teleports, witness fan-out, …) are forwarded to base exactly as the
+    /// in-world path would; only the single-recipient GM feedback lines are
+    /// captured into the reply.
+    LabConsoleExec {
+        entity_id: u32,
+        line: String,
+        reply_tx: tokio::sync::oneshot::Sender<LabConsoleResult>,
+    },
+
+    /// Read-only live-state snapshot for the live-research-lab MCP endpoint
+    /// (issue #688, phase 5). Answered *between ticks* by the cell loop reading
+    /// its owned `SpaceManager` — the same request/reply shape as
+    /// [`Self::CreateEntity`] and [`Self::LabConsoleExec`].
+    ///
+    /// **Read-only invariant.** The handler
+    /// (`cell::service::base_messages::lab_query`) takes `&SpaceManager` and
+    /// only copies out primitives into a [`LabQueryResult`]; it must never
+    /// mutate simulation state. Result sizes are bounded
+    /// ([`crate::cell::messages::LAB_ENTITY_QUERY_CAP`] entities per query) so a
+    /// snapshot can't stall the tick.
+    LabQuery {
+        query: LabQuery,
+        reply_tx: tokio::sync::oneshot::Sender<LabQueryResult>,
+    },
+
+    /// Minigame result callback (forwarded from BaseApp after minigame server reports).
+    MinigameResult {
+        entity_id: u32,
+        result_code: u8,
+        on_victory_chains: Vec<i64>,
+    },
+
+    /// Client→server `requestEntityUpdate` (msg `0x07`): the client believes it
+    /// is missing or has stale state for one or more entities and is asking the
+    /// server to re-emit them. This is the canonical recovery path when a
+    /// `createEntity` (`0x09`) for an NPC gets dropped on the wire past the
+    /// 20-retry lifetime cap — otherwise the NPC stays permanently invisible
+    /// on that client.
+    ///
+    /// The cell re-emits a synthetic `CellToBaseMsg::EnteredAoI` for each
+    /// requested `entity_id` that is currently in `witness_id`'s AoI. Entities
+    /// not in the witness's witness set are dropped silently — the client must
+    /// not be able to probe arbitrary entity ids.
+    RequestEntityUpdate {
+        witness_id: u32,
+        entity_ids: Vec<u32>,
+    },
+
+    /// Base resolved a `gmSpawnByCmd` template into a `SpawnRecord` and is
+    /// handing it back to the cell to spawn. Response to
+    /// [`crate::cell::messages::CellToBaseMsg::GmSpawnNpc`] — the round-trip
+    /// exists because the base owns the DB pool at command time and can query
+    /// `resources.entity_templates` to build the record. (The cell *does* now
+    /// hold a startup template cache — `SpaceManager::spawn_templates`, added
+    /// for the content engine's `spawn_entity`, whose ordered action list
+    /// cannot tolerate an async round-trip. This GM path keeps the round-trip:
+    /// a live query reflects `entity_templates` edits without a restart, which
+    /// is what an authoring command wants.) The cell allocates
+    /// an NPC id and calls `spawn_npc_from_record_in_space(id, &record,
+    /// space_id)`; AoI fanout handles client visibility on the next tick, so no
+    /// extra send is needed. `record.x/y/z` already carry the computed spawn
+    /// position from the original command.
+    ///
+    /// `record` is boxed because `SpawnRecord` is ~380 bytes — large enough
+    /// that carrying it inline would balloon every `BaseToCellMsg` variant
+    /// (clippy `large_enum_variant`). Boxing keeps the channel cheap to move.
+    ///
+    /// `requester_entity_id` is the GM entity that issued `gmSpawnByCmd`. The
+    /// cell carries it through so it can send the *definitive* "spawned npc
+    /// <id>" feedback line to the GM only after `spawn_npc_from_record_in_space`
+    /// actually succeeds (the cell is the layer that knows the new NPC id and
+    /// whether the spawn took).
+    GmSpawnNpcReady {
+        record: Box<crate::cell::spawn_record::SpawnRecord>,
+        space_id: u32,
+        requester_entity_id: u32,
+    },
+
+    /// A loot grant the base refused before anything committed. The cell
+    /// puts the item back on `source.corpse_id` and tells the looter.
+    LootGrantRefused {
+        entity_id: u32,
+        player_id: i32,
+        source: super::LootGrantSource,
+        design_id: i32,
+        quantity: i32,
+        /// The container the grant was going to (after the fall-through).
+        container_id: i32,
+        reason: super::GrantRefusal,
+    },
+
+    /// Organization traffic (Squads, Teams, Commands). One nested enum, so
+    /// organization packets add variants in `org_base_to_cell.rs` instead
+    /// of here (work-packets.md § Messages).
+    Org(OrgBaseToCell),
+
+    /// Duel traffic. One nested enum, so the duel packets add variants in
+    /// `duel_base_to_cell.rs` instead of here (work-packets.md § Messages).
+    Duel(DuelBaseToCell),
+
+    /// Bank and vault traffic (the vault-expansion offer, BV-05; the Team
+    /// and Command vault grant, BV-07). One nested enum, so bank packets add
+    /// variants in `bank_base_to_cell.rs` instead of here.
+    Bank(BankBaseToCell),
+
+    /// Replace a player entity's cell-side Ignore set: the character names
+    /// on the player's contact-list Ignore list (flags 301), which the base
+    /// owns (D-SS15). Sent after `InitPlayerState` on every world entry
+    /// (gate travel included, so a fresh cell entity is re-seeded) and after
+    /// every change to the Ignore list (`chatIgnore` or the contact-list UI).
+    /// Spatial chat reads it to skip a witness that ignores the speaker; it
+    /// hides nobody from anyone's AoI.
+    UpdateIgnoreList {
+        entity_id: u32,
+        /// `sgw_player.player_id` of the owner. The cell applies the set only
+        /// to an entity that still belongs to this player.
+        player_id: i32,
+        /// The owner's account, for the cell's log rows: on the
+        /// `entity_missing` path there is no entity to read it from.
+        account_id: u32,
+        /// The base's resync version for this player, increasing per
+        /// session. Pushes from different base tasks can arrive out of
+        /// order; the cell keeps the highest version it has applied.
+        version: u64,
+        ignore_names: std::collections::HashSet<String>,
+    },
+}

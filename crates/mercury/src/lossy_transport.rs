@@ -1,13 +1,20 @@
 //! A [`BidirectionalTransport`] wrapper that applies seeded
 //! filters to the underlying transport:
 //!
-//! - **Send side**: drop / latency / duplicate (full coverage).
-//! - **Recv side**: drop / latency. Duplicate is not honored on
-//!   recv — the wrapper would need to buffer a recently-delivered
-//!   packet to re-deliver it on the next call, which would change
-//!   the recv-API timing semantics. Use send-side duplicate from
-//!   the peer wrapper to simulate duplicates the receiver
-//!   observes.
+//! - **Send side**: drop / latency+jitter / duplicate / reorder (full
+//!   coverage — `reorder_buffer_size` mirrors
+//!   `test_harness::policy::NetworkPolicy`'s multi-packet reorder buffer:
+//!   hold N sends, flush in reverse arrival order when full).
+//! - **Recv side**: drop / latency+jitter. Duplicate and reorder are not
+//!   honored on recv — the wrapper would need to buffer recently-delivered
+//!   packets to re-deliver/reshuffle them on a later call, which would
+//!   change the recv-API timing semantics. Use send-side duplicate/reorder
+//!   from the peer wrapper to simulate what the receiver observes.
+//! - **Deterministic burst drop**: [`LossyTransport::drop_next_sends`]
+//!   forces the next N sends to drop unconditionally, independent of
+//!   `drop_per_thousand` — for tests that need to hit one specific packet
+//!   (e.g. "the reliable bundle carrying a specific AoI introduction")
+//!   rather than relying on a probabilistic roll to eventually land on it.
 //!
 //! Production code never reaches for this — it's exposed under the
 //! `test-support` feature for services-layer chaos integration
@@ -28,6 +35,7 @@
 
 use std::io;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -67,12 +75,27 @@ pub enum LossyProfile {
 pub struct LossyConfig {
     /// One-way latency to inject before each send/recv completion.
     pub latency: Duration,
+    /// Additional random latency on top of `latency`, uniformly
+    /// distributed in `[0, jitter]`, redrawn per packet. `Duration::ZERO`
+    /// (the default via [`Self::new`]) disables jitter — every packet
+    /// gets exactly `latency`. Combined with `reorder_buffer_size`,
+    /// variable per-packet delay is what lets sends complete (and thus
+    /// land on the wire) out of their original order without an
+    /// explicit reorder buffer.
+    pub jitter: Duration,
     /// Probabilistic drop, expressed as `(numerator, 1000)` — e.g.
     /// `5` = 0.5%. Clamped to `[0, 1000]` at construction.
     pub drop_per_thousand: u32,
     /// Probabilistic duplicate (emit twice), same encoding.
     /// Clamped to `[0, 1000]` at construction.
     pub duplicate_per_thousand: u32,
+    /// Send-side reorder: hold up to `N` sends, then flush all of them
+    /// (including the one that filled the buffer) in **reverse arrival
+    /// order**. `0` (the default via [`Self::new`]) disables reordering.
+    /// Mirrors `test_harness::policy::NetworkPolicy::reorder_buffer_size`.
+    /// Only meaningful on the send side — see the module doc for why recv
+    /// doesn't support it.
+    pub reorder_buffer_size: u32,
     /// RNG seed for deterministic replay across runs.
     pub rng_seed: u64,
 }
@@ -92,8 +115,10 @@ impl LossyConfig {
     ) -> Self {
         Self {
             latency,
+            jitter: Duration::ZERO,
             drop_per_thousand: drop_per_thousand.min(MAX_PER_THOUSAND),
             duplicate_per_thousand: duplicate_per_thousand.min(MAX_PER_THOUSAND),
+            reorder_buffer_size: 0,
             rng_seed,
         }
     }
@@ -118,6 +143,20 @@ impl LossyConfig {
         self.rng_seed = seed;
         self
     }
+
+    /// Add jitter: `[0, jitter]` extra random delay redrawn per packet on
+    /// top of the base `latency`. Returns a new config.
+    pub fn with_jitter(mut self, jitter: Duration) -> Self {
+        self.jitter = jitter;
+        self
+    }
+
+    /// Enable send-side reordering: hold up to `size` sends, flush
+    /// reversed once full. `0` disables. Returns a new config.
+    pub fn with_reorder_buffer(mut self, size: u32) -> Self {
+        self.reorder_buffer_size = size;
+        self
+    }
 }
 
 /// [`BidirectionalTransport`] wrapper that applies a [`LossyConfig`]
@@ -131,6 +170,27 @@ pub struct LossyTransport {
     recv_config: LossyConfig,
     send_rng: Mutex<ChaCha20Rng>,
     recv_rng: Mutex<ChaCha20Rng>,
+    /// Send-side reorder buffer, keyed by destination address: each
+    /// destination accumulates its own held packets independently and
+    /// flushes (reversed) once *its own* bucket reaches
+    /// `send_config.reorder_buffer_size`. Per-destination bucketing
+    /// matters on a transport that multiplexes several peers through one
+    /// socket (the real `BaseService` case) -- a single shared buffer
+    /// would hold up one client's handshake reply behind an unrelated
+    /// client's traffic (or vice versa), which isn't what network
+    /// reordering does on a real wire (each flow reorders independently).
+    reorder_buffer: Mutex<std::collections::HashMap<SocketAddr, Vec<Vec<u8>>>>,
+    /// Deterministic burst-drop counter, decremented on every send
+    /// attempt regardless of the probabilistic `drop_per_thousand` roll.
+    /// See [`Self::drop_next_sends`].
+    send_drop_next: AtomicU32,
+    /// Deterministic, destination-filtered burst-drop: `(addr, remaining,
+    /// min_len)`. Only sends to `addr` of at least `min_len` bytes are
+    /// affected, decrementing `remaining`; sends to any other address, or
+    /// smaller sends to `addr` (e.g. a tickSync keepalive interleaved with
+    /// whatever real traffic the test is targeting), pass through
+    /// untouched. See [`Self::drop_next_sends_to`].
+    send_drop_next_to: Mutex<Option<(SocketAddr, u32, usize)>>,
 }
 
 impl LossyTransport {
@@ -158,7 +218,67 @@ impl LossyTransport {
             recv_config: recv,
             send_rng,
             recv_rng,
+            reorder_buffer: Mutex::new(std::collections::HashMap::new()),
+            send_drop_next: AtomicU32::new(0),
+            send_drop_next_to: Mutex::new(None),
         }
+    }
+
+    /// Arm a deterministic burst drop: the next `n` send attempts **to any
+    /// destination** are dropped unconditionally (no RNG roll), independent
+    /// of `drop_per_thousand`. Each dropped send decrements the counter by
+    /// one. On a transport multiplexing several peers (like the real
+    /// `BaseService` socket, one send call per outbound datagram to
+    /// whichever client it's addressed to), this hits whatever the very
+    /// next N sends happen to be -- fine when nothing else is expected to
+    /// be in flight, imprecise otherwise. Prefer
+    /// [`Self::drop_next_sends_to`] when the target needs to be a specific
+    /// peer.
+    pub fn drop_next_sends(&self, n: u32) {
+        self.send_drop_next.fetch_add(n, Ordering::SeqCst);
+    }
+
+    /// Arm a deterministic, destination-filtered burst drop: the next `n`
+    /// send attempts **whose destination is `addr` and whose length is at
+    /// least `min_len` bytes** are dropped unconditionally; sends to any
+    /// other address, or shorter sends to `addr`, are unaffected. Use this
+    /// to guarantee a *specific* packet to a *specific* witness is lost
+    /// (e.g. "the next thing ≥50 bytes the server sends to witness A is
+    /// B's `CREATE_ENTITY`") without also catching unrelated same-address
+    /// traffic that happens to be in flight at the same moment -- on a
+    /// live `BaseService`, a connected client keeps receiving small
+    /// periodic tickSync/keepalive packets (well under typical AoI-message
+    /// sizes) whether or not the scenario the test cares about has fired
+    /// yet, so an unfiltered "next N sends to this address" can spend its
+    /// budget on a keepalive instead of the packet the test is actually
+    /// targeting. `min_len = 0` disables the size filter (matches every
+    /// size). Overwrites any previously-armed targeted drop (only one
+    /// target at a time).
+    pub fn drop_next_sends_to(&self, n: u32, addr: SocketAddr, min_len: usize) {
+        *self
+            .send_drop_next_to
+            .lock()
+            .expect("send_drop_next_to poisoned") = Some((addr, n, min_len));
+    }
+
+    /// Flush any packets currently held in the send-side reorder buffer
+    /// (across **every** destination), each destination's held packets in
+    /// reverse arrival order (the same order an auto-flush on a full
+    /// per-destination bucket would use). Call this at test teardown so a
+    /// partially-full buffer doesn't silently swallow held packets —
+    /// mirrors `test_harness::LoopbackPeer::flush_reorder_buffer`.
+    pub async fn flush_reorder_buffer(&self) -> io::Result<()> {
+        let drained: std::collections::HashMap<SocketAddr, Vec<Vec<u8>>> = {
+            let mut buf = self.reorder_buffer.lock().expect("reorder_buffer poisoned");
+            std::mem::take(&mut *buf)
+        };
+        for (addr, mut held) in drained {
+            held.reverse();
+            for bytes in held {
+                self.inner.send_to(&bytes, addr).await?;
+            }
+        }
+        Ok(())
     }
 
     fn should_drop(config: &LossyConfig, rng: &mut ChaCha20Rng) -> bool {
@@ -174,12 +294,68 @@ impl LossyTransport {
         }
         rng.random_range(0..1000u32) < config.duplicate_per_thousand
     }
+
+    /// `latency + [0, jitter]`, redrawing the jitter component from `rng`
+    /// each call. Zero jitter returns exactly `latency` with no RNG draw.
+    fn effective_latency(config: &LossyConfig, rng: &mut ChaCha20Rng) -> Duration {
+        if config.jitter.is_zero() {
+            return config.latency;
+        }
+        let jitter_nanos = config.jitter.as_nanos().min(u64::MAX as u128) as u64;
+        let extra = if jitter_nanos == 0 {
+            0
+        } else {
+            rng.random_range(0..=jitter_nanos)
+        };
+        config.latency + Duration::from_nanos(extra)
+    }
 }
 
 #[async_trait]
 impl Transport for LossyTransport {
     async fn send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
-        let (drop_this, duplicate, latency) = {
+        // Deterministic drops take priority over the probabilistic roll --
+        // a test that armed `drop_next_sends`/`drop_next_sends_to` wants a
+        // guarantee, not another coin flip. Destination-filtered first:
+        // it's the more specific request when both happen to be armed.
+        let forced_drop_targeted = {
+            let mut targeted = self
+                .send_drop_next_to
+                .lock()
+                .expect("send_drop_next_to poisoned");
+            match *targeted {
+                Some((target_addr, remaining, min_len))
+                    if target_addr == addr && remaining > 0 && bytes.len() >= min_len =>
+                {
+                    let next = remaining - 1;
+                    *targeted = if next > 0 {
+                        Some((target_addr, next, min_len))
+                    } else {
+                        None
+                    };
+                    true
+                }
+                _ => false,
+            }
+        };
+
+        let forced_drop_global = !forced_drop_targeted
+            && self
+                .send_drop_next
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                    if n > 0 {
+                        Some(n - 1)
+                    } else {
+                        None
+                    }
+                })
+                .is_ok();
+
+        let forced_drop = forced_drop_targeted || forced_drop_global;
+
+        let (drop_this, duplicate, latency) = if forced_drop {
+            (true, false, self.send_config.latency)
+        } else {
             let mut rng = self.send_rng.lock().expect("send_rng poisoned");
             let drop_this = Self::should_drop(&self.send_config, &mut rng);
             let duplicate = if !drop_this {
@@ -187,7 +363,8 @@ impl Transport for LossyTransport {
             } else {
                 false
             };
-            (drop_this, duplicate, self.send_config.latency)
+            let latency = Self::effective_latency(&self.send_config, &mut rng);
+            (drop_this, duplicate, latency)
         };
 
         if !latency.is_zero() {
@@ -195,8 +372,45 @@ impl Transport for LossyTransport {
         }
 
         if drop_this {
+            tracing::debug!(
+                target: "mercury.lossy_transport",
+                %addr,
+                len = bytes.len(),
+                forced_targeted = forced_drop_targeted,
+                forced_global = forced_drop_global,
+                "LossyTransport dropped an outbound send"
+            );
             // Mimic a wire-side drop: return success on the byte
             // count (kernel's view) but never put bytes on the wire.
+            return Ok(bytes.len());
+        }
+
+        if self.send_config.reorder_buffer_size > 0 {
+            // Bucketed by destination: only `addr`'s own held packets
+            // count toward `addr`'s flush threshold, and only `addr`'s
+            // bucket is drained. See the field doc on `reorder_buffer` for
+            // why this matters on a multiplexed (multi-client) transport.
+            let to_flush: Option<Vec<Vec<u8>>> = {
+                let mut buckets = self.reorder_buffer.lock().expect("reorder_buffer poisoned");
+                let bucket = buckets.entry(addr).or_default();
+                bucket.push(bytes.to_vec());
+                if bucket.len() as u32 >= self.send_config.reorder_buffer_size {
+                    Some(std::mem::take(bucket))
+                } else {
+                    None
+                }
+            };
+            if let Some(mut held) = to_flush {
+                // Reverse arrival order, matching NetworkPolicy's
+                // multi-packet reorder contract.
+                held.reverse();
+                for held_bytes in &held {
+                    self.inner.send_to(held_bytes, addr).await?;
+                }
+            }
+            // The caller's own bytes were queued (and possibly already
+            // flushed) above -- report success as if the OS accepted the
+            // write, matching the drop-path's "kernel's view" convention.
             return Ok(bytes.len());
         }
 
@@ -237,15 +451,17 @@ impl BidirectionalTransport for LossyTransport {
         // Realistic loss (≤10%) is unaffected.
         for _ in 0..MAX_RECV_DROP_LOOPS {
             let (n, addr) = self.inner.recv_from(buf).await?;
-            let drop_this = {
+            let (drop_this, latency) = {
                 let mut rng = self.recv_rng.lock().expect("recv_rng poisoned");
-                Self::should_drop(&self.recv_config, &mut rng)
+                let drop_this = Self::should_drop(&self.recv_config, &mut rng);
+                let latency = Self::effective_latency(&self.recv_config, &mut rng);
+                (drop_this, latency)
             };
             if drop_this {
                 continue;
             }
-            if !self.recv_config.latency.is_zero() {
-                tokio::time::sleep(self.recv_config.latency).await;
+            if !latency.is_zero() {
+                tokio::time::sleep(latency).await;
             }
             return Ok((n, addr));
         }
@@ -301,8 +517,10 @@ mod tests {
             inner,
             LossyConfig {
                 latency: Duration::ZERO,
+                jitter: Duration::ZERO,
                 drop_per_thousand: 500, // 50%
                 duplicate_per_thousand: 0,
+                reorder_buffer_size: 0,
                 rng_seed: 42,
             },
         );
@@ -445,6 +663,256 @@ mod tests {
         assert!(
             matches!(result, Ok(Err(_))),
             "100% recv-side drop must yield Err (asymmetric drop direction working)"
+        );
+    }
+
+    #[test]
+    fn with_jitter_and_with_reorder_buffer_are_builders() {
+        let cfg = LossyConfig::new(Duration::ZERO, 0, 0, 0)
+            .with_jitter(Duration::from_millis(10))
+            .with_reorder_buffer(3);
+        assert_eq!(cfg.jitter, Duration::from_millis(10));
+        assert_eq!(cfg.reorder_buffer_size, 3);
+        // Defaults from `new` alone are zero -- no jitter, no reorder.
+        let plain = LossyConfig::new(Duration::ZERO, 0, 0, 0);
+        assert_eq!(plain.jitter, Duration::ZERO);
+        assert_eq!(plain.reorder_buffer_size, 0);
+    }
+
+    #[tokio::test]
+    async fn drop_next_sends_forces_exact_count_then_resumes() {
+        // Zero probabilistic loss so only the deterministic counter can
+        // cause a drop.
+        let receiver = make_inner(0);
+        let recv_addr = receiver.local_addr().unwrap();
+        let sender_inner = make_inner(0);
+        let lossy =
+            LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
+
+        lossy.drop_next_sends(3);
+
+        for i in 0..3u32 {
+            let n = lossy
+                .send_to(format!("dropped-{i}").as_bytes(), recv_addr)
+                .await
+                .unwrap();
+            assert!(
+                n > 0,
+                "forced-drop send still reports the kernel's-view byte count"
+            );
+        }
+        // The 4th send must land -- the counter is exhausted.
+        lossy.send_to(b"survivor", recv_addr).await.unwrap();
+
+        let mut buf = [0u8; 64];
+        let (len, _) =
+            tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                .await
+                .expect("the 4th send must be delivered")
+                .unwrap();
+        assert_eq!(&buf[..len], b"survivor");
+
+        // Nothing else arrives -- the 3 forced drops never hit the wire.
+        let timed_out =
+            tokio::time::timeout(Duration::from_millis(100), receiver.recv_from(&mut buf))
+                .await
+                .is_err();
+        assert!(
+            timed_out,
+            "exactly 3 sends must have been dropped, not fewer"
+        );
+    }
+
+    #[tokio::test]
+    async fn drop_next_sends_to_only_affects_the_targeted_destination() {
+        // Two distinct receivers -- the targeted drop must hit only the
+        // one it names, leaving traffic to the other receiver untouched
+        // even when sends to both are interleaved.
+        let receiver_a = make_inner(0);
+        let addr_a = receiver_a.local_addr().unwrap();
+        let receiver_b = make_inner(0);
+        let addr_b = receiver_b.local_addr().unwrap();
+        let sender_inner = make_inner(0);
+        let lossy =
+            LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
+
+        lossy.drop_next_sends_to(1, addr_a, 0);
+
+        // Interleave: to B first (must land), then to A (must drop), then
+        // to B again (must land) -- proves the filter doesn't just drop
+        // "whatever's next" globally.
+        lossy.send_to(b"to-b-1", addr_b).await.unwrap();
+        lossy.send_to(b"to-a-dropped", addr_a).await.unwrap();
+        lossy.send_to(b"to-b-2", addr_b).await.unwrap();
+
+        let mut buf = [0u8; 64];
+        for expected in [b"to-b-1".as_slice(), b"to-b-2".as_slice()] {
+            let (len, _) =
+                tokio::time::timeout(Duration::from_millis(500), receiver_b.recv_from(&mut buf))
+                    .await
+                    .expect("sends to B must be unaffected by the A-targeted drop")
+                    .unwrap();
+            assert_eq!(&buf[..len], expected);
+        }
+        let timed_out =
+            tokio::time::timeout(Duration::from_millis(100), receiver_a.recv_from(&mut buf))
+                .await
+                .is_err();
+        assert!(timed_out, "the targeted send to A must have been dropped");
+    }
+
+    #[tokio::test]
+    async fn drop_next_sends_to_min_len_skips_smaller_sends() {
+        // A `min_len` filter must let a short "keepalive"-shaped send pass
+        // through untouched and instead wait for a send at least that
+        // long, still to the same address -- this is what lets a test
+        // target "the next *substantial* packet to this witness" without
+        // an interleaved small periodic send (tickSync, in the real
+        // server) spending the armed drop's budget first.
+        let receiver = make_inner(0);
+        let recv_addr = receiver.local_addr().unwrap();
+        let sender_inner = make_inner(0);
+        let lossy =
+            LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
+
+        lossy.drop_next_sends_to(1, recv_addr, 50);
+
+        lossy.send_to(b"short", recv_addr).await.unwrap(); // 5 bytes, under min_len -- must land
+        lossy.send_to(&[b'x'; 64], recv_addr).await.unwrap(); // 64 bytes, at/over min_len -- must drop
+        lossy.send_to(b"survivor", recv_addr).await.unwrap(); // budget exhausted -- must land
+
+        let mut buf = [0u8; 128];
+        let (len, _) =
+            tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                .await
+                .expect("the short send must pass the size filter and land")
+                .unwrap();
+        assert_eq!(&buf[..len], b"short");
+
+        let (len, _) =
+            tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                .await
+                .expect("the survivor send must land once the budget is exhausted")
+                .unwrap();
+        assert_eq!(&buf[..len], b"survivor");
+
+        // The 64-byte send never arrives -- it was the one dropped.
+        let timed_out =
+            tokio::time::timeout(Duration::from_millis(100), receiver.recv_from(&mut buf))
+                .await
+                .is_err();
+        assert!(timed_out, "the 64-byte send must have been the one dropped");
+    }
+
+    #[tokio::test]
+    async fn reorder_buffer_flushes_in_reverse_arrival_order() {
+        let receiver = make_inner(0);
+        let recv_addr = receiver.local_addr().unwrap();
+        let sender_inner = make_inner(0);
+        let cfg = LossyConfig::new(Duration::ZERO, 0, 0, 0).with_reorder_buffer(3);
+        let lossy = LossyTransport::new_symmetric(sender_inner, cfg);
+
+        // Nothing is on the wire yet -- all 3 are held until the buffer fills.
+        lossy.send_to(b"first", recv_addr).await.unwrap();
+        lossy.send_to(b"second", recv_addr).await.unwrap();
+        let mut buf = [0u8; 64];
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), receiver.recv_from(&mut buf))
+                .await
+                .is_err(),
+            "buffer isn't full yet -- nothing should have been sent"
+        );
+
+        // The 3rd send fills the buffer and flushes all 3, reversed:
+        // arrival order was first, second, third -> wire order third,
+        // second, first.
+        lossy.send_to(b"third", recv_addr).await.unwrap();
+
+        let mut order = Vec::new();
+        for _ in 0..3 {
+            let (len, _) =
+                tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                    .await
+                    .expect("held packets must flush once the buffer fills")
+                    .unwrap();
+            order.push(String::from_utf8_lossy(&buf[..len]).to_string());
+        }
+        assert_eq!(order, vec!["third", "second", "first"]);
+    }
+
+    #[tokio::test]
+    async fn flush_reorder_buffer_drains_a_partial_buffer() {
+        let receiver = make_inner(0);
+        let recv_addr = receiver.local_addr().unwrap();
+        let sender_inner = make_inner(0);
+        // Buffer size 5, but we only ever send 2 -- without an explicit
+        // flush these would never reach the wire.
+        let cfg = LossyConfig::new(Duration::ZERO, 0, 0, 0).with_reorder_buffer(5);
+        let lossy = LossyTransport::new_symmetric(sender_inner, cfg);
+
+        lossy.send_to(b"a", recv_addr).await.unwrap();
+        lossy.send_to(b"b", recv_addr).await.unwrap();
+        lossy.flush_reorder_buffer().await.unwrap();
+
+        let mut buf = [0u8; 64];
+        let mut order = Vec::new();
+        for _ in 0..2 {
+            let (len, _) =
+                tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                    .await
+                    .expect("explicit flush must deliver the partial buffer")
+                    .unwrap();
+            order.push(String::from_utf8_lossy(&buf[..len]).to_string());
+        }
+        assert_eq!(
+            order,
+            vec!["b", "a"],
+            "explicit flush also reverses arrival order"
+        );
+    }
+
+    #[tokio::test]
+    async fn jitter_widens_delivery_latency_within_bounds() {
+        // Deterministic seed -- pin that the observed latency never
+        // exceeds latency + jitter, and that jitter actually moves the
+        // needle (not always the minimum).
+        let receiver = make_inner(0);
+        let recv_addr = receiver.local_addr().unwrap();
+        let sender_inner = make_inner(0);
+        let base = Duration::from_millis(5);
+        let jitter = Duration::from_millis(20);
+        let cfg = LossyConfig::new(base, 0, 0, 7).with_jitter(jitter);
+        let lossy = LossyTransport::new_symmetric(sender_inner, cfg);
+
+        let mut latencies = Vec::new();
+        for i in 0..8u32 {
+            let start = std::time::Instant::now();
+            lossy
+                .send_to(format!("j-{i}").as_bytes(), recv_addr)
+                .await
+                .unwrap();
+            latencies.push(start.elapsed());
+        }
+
+        for lat in &latencies {
+            assert!(
+                *lat >= base,
+                "observed latency {lat:?} must be at least the base latency {base:?}"
+            );
+            assert!(
+                // Generous scheduling slack -- this asserts the jitter
+                // computation is bounded, not tight real-time delivery;
+                // a loaded CI/dev box can add tens of ms of scheduler
+                // noise on top of the sleep itself.
+                *lat <= base + jitter + Duration::from_millis(200),
+                "observed latency {lat:?} must not exceed base+jitter by more than scheduling slack"
+            );
+        }
+        let distinct: std::collections::HashSet<_> =
+            latencies.iter().map(|d| d.as_millis()).collect();
+        assert!(
+            distinct.len() > 1,
+            "jitter must vary the observed latency across sends, got {latencies:?}"
         );
     }
 }

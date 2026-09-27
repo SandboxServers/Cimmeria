@@ -36,13 +36,13 @@ This creates a 2 x 4 x 4 = 32 message matrix. Only the variant with sufficient p
 
 ### Position Encodings
 
-**UPDATED (2026-03-05)**: Ghidra RE confirmed that FullPos, OnChunk, and OnGround all use the SAME wire size (3 x float32 = 12 bytes). The difference is in handler interpretation: OnChunk and OnGround ignore the Y float and derive it from terrain/chunk height. See [Position Movement Wire Formats](../reverse-engineering/findings/position-movement-wire-formats.md) for field-level details.
+**UPDATED (2026-03-05)**: Ghidra RE confirmed that FullPos, OnChunk, and OnGround all use the SAME wire size (3 x float32 = 12 bytes). The difference is in handler interpretation: OnChunk and OnGround ignore the Y float and substitute the sentinel `-13000.0f` (`DAT_019d1a44`), and `EntityManager::onEntityMove` (`0x00dd1859`) then keeps the entity's current client height. Neither variant ray-casts or reads terrain height. **Corrected 2026-09-24:** this paragraph used to say the client derives Y from terrain or chunk height; the canon is [spec.protocol.position-updates §1.2.2](../drafts/spec/position-updates.md#122-position-type-semantics). See [Position Movement Wire Formats](../reverse-engineering/findings/position-movement-wire-formats.md) for field-level details.
 
 | Type | Format | Size | Description |
 |------|--------|------|-------------|
 | `FullPos` | 3 x float32 | 12 bytes | Full 3D position (X, Y, Z all used) |
-| `OnChunk` | 3 x float32 | 12 bytes | X, Z used; Y IGNORED (client uses chunk height) |
-| `OnGround` | 3 x float32 | 12 bytes | X, Z used; Y IGNORED (client uses terrain height) |
+| `OnChunk` | 3 x float32 | 12 bytes | X, Z used; Y IGNORED (client keeps its current height) |
+| `OnGround` | 3 x float32 | 12 bytes | X, Z used; Y IGNORED (client keeps its current height) |
 | `NoPos` | (none) | 0 bytes | No position change |
 
 ### Direction Encodings
@@ -305,7 +305,7 @@ Each angle is quantized to 256 steps over the full circle (2*pi radians), giving
 
 The SGW client sends positions as **raw 3x float32** (12 bytes) for the client-to-server path. There is no evidence of PackedXYZ/PackedXZ/PackedXHZ compression in the client-to-server send path (`addMove`). The position is written directly as 3 consecutive 32-bit floats.
 
-For server-to-client avatar updates, all three position types (FullPos/OnChunk/OnGround) use the SAME 3x float32 encoding (12 bytes). The "OnChunk" and "OnGround" handlers simply ignore the Y float and derive height from the terrain/chunk system. This was confirmed by decompiling the handler functions (see [Position Movement Wire Formats](../reverse-engineering/findings/position-movement-wire-formats.md)).
+For server-to-client avatar updates, all three position types (FullPos/OnChunk/OnGround) use the SAME 3x float32 encoding (12 bytes). The "OnChunk" and "OnGround" handlers ignore the Y float, write the `-13000.0f` sentinel, and the client keeps the entity's current height. There is no terrain or chunk query (corrected 2026-09-24, see [spec.protocol.position-updates §1.2.2](../drafts/spec/position-updates.md#122-position-type-semantics)). This was confirmed by decompiling the handler functions (see [Position Movement Wire Formats](../reverse-engineering/findings/position-movement-wire-formats.md)).
 
 ### Velocity Packing in addMove
 

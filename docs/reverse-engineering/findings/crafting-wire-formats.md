@@ -91,6 +91,19 @@ Crafting methods are defined directly on `SGWPlayer.def` — there is no separat
 
 **Total wire size**: 1B header = **1 byte**
 
+### `onUpdateRacialParadigmLevel` — Racial Paradigm Level Update
+
+| Field | Type | Size | Notes |
+|-------|------|------|-------|
+| `aRacialParadigmId` | `INT32` | 4B | Racial paradigm ID |
+| `aLevel` | `INT8` | 1B | Current level (signed) |
+
+**Argument payload**: 5 bytes. **SGWPlayer client method index**: 138. Transport framing is additional.
+
+**Confidence: HIGH for the schema and method index**, verified on 2026-09-19 from [SGWPlayer.def](../../../entities/defs/SGWPlayer.def) and the [canonical client dispatch table](../../protocol/client-method-dispatch-table.md). Existing binary RTTI evidence confirms the VCrafting subscription at `0x00e45a60`; this audit adds no emitter/constructor decompilation or packet-capture verification.
+
+The Rust source audit found no runtime sender or paradigm progression path. See the [runtime audit](crafting-state-machine.md#rust-runtime-audit-2026-09-19) for persistence/login coverage and verification limits. This schema does not imply that level changes currently reach the client.
+
 ### `onUpdateKnownCrafts` — Known Recipe List
 
 | Field | Type | Wire Encoding | Notes |
@@ -137,13 +150,17 @@ Crafting methods are defined directly on `SGWPlayer.def` — there is no separat
 
 | Property | Type | Flags | Notes |
 |----------|------|-------|-------|
-| `craftingEntityFlags` | `INT32` | `CELL_PRIVATE` | Crafting entity state flags |
+| `craftingEntityFlags` | `PYTHON` | `CELL_PRIVATE` | Crafting entity state flags |
 | `craftingOptions` | `PYTHON` | `CELL_PRIVATE` | Available crafting options |
 | `craftTimer` | `INT32` | `CELL_PRIVATE` | Active craft timer |
 | `craftQueue` | `PYTHON` | `CELL_PRIVATE` | Queued craft operations |
 | `numRespecCrafting` | `INT32` | `CELL_PRIVATE` | Number of crafting respecs used |
 
 All crafting properties are `CELL_PRIVATE` — none synced to client via property updates.
+
+**Correction (2026-09-26, CR-E1, audit C-62):** `craftingEntityFlags` was previously typed
+`INT32` here; `entities/defs/SGWPlayer.def:325-329` declares it `PYTHON` (default `{}`), matching
+`craftingOptions`. Both are dict-shaped, not a flat integer bitfield.
 
 ---
 

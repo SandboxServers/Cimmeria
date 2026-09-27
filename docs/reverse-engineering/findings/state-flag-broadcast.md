@@ -116,7 +116,7 @@ The `bStateField` property is marked `CELL_PUBLIC` in the `.def`, meaning the se
 
 ### Server-side implementation (Cimmeria)
 
-`crates/services/src/cell/combat/threat.rs`:
+`crates/cell-combat/src/cell/combat/threat.rs`:
 
 ```rust
 // Enter: NPC threatens player
@@ -156,7 +156,7 @@ Three caller sites for BSF_InCombat changes:
 
 ### Fix for #219
 
-In `threat.rs`, replace `EntityMethodCall` with `send_entity_method` (or equivalent witness fanout). `send_entity_method` in `crates/services/src/cell/abilities/mod.rs` already fans out to all AoI witnesses via `WitnessEntityMethod`. No new mechanism is needed — only the call site changes.
+In `threat.rs`, replace `EntityMethodCall` with `send_entity_method` (or equivalent witness fanout). `send_entity_method` in `crates/cell-combat/src/cell/abilities/mod.rs` already fans out to all AoI witnesses via `WitnessEntityMethod`. No new mechanism is needed — only the call site changes.
 
 ---
 
@@ -166,7 +166,10 @@ Two independent bugs with the same root cause pattern: `onStateFieldUpdate` sent
 
 ### Bug A: AoI entry hardcodes `state_field = 0`
 
-**Location**: `crates/services/src/mercury/aoi/create.rs` (lines 175–181)
+> [!NOTE]
+> **Status (2026-09-26): fixed for both entity kinds.** Player ghosts carry their live `state_field` through `PlayerAoIData` (`mercury/aoi/player_ghost.rs`). NPCs now carry it through `NpcAoIData::from_entity` (`cell/messages/data.rs`) together with live HEALTH/FOCUS, and the NPC cascade in `mercury/aoi/create.rs` sends them instead of `0` and a template 100/100. Colo evidence: a dead guard that re-entered a reanchored player's AoI was rebuilt standing and alive (Castle_CellBlock, Hallway01_Guard 100162, 2026-09-26 02:34:53). Guards: `mercury/aoi/npc_live_state_tests.rs`, `cell/space_manager/tests/aoi_npc_corpse.rs`. The text below is the original analysis.
+
+**Location**: `crates/wire/src/mercury/aoi/create.rs` (lines 175–181)
 
 ```rust
 // 12. onStateFieldUpdate(0) — alive state   ← HARDCODED ZERO — BUG #232
@@ -184,7 +187,7 @@ Function `build_create_entity_cascade` takes no `state_field` parameter. A witne
 
 ### Bug B: Respawn state-clear not broadcast to witnesses
 
-**Location**: `crates/services/src/cell/cell_methods/player/combat/respawn.rs`
+**Location**: `crates/cell-interactions/src/cell/respawn/mod.rs`
 
 ```rust
 // Clear state flags (includes BSF_Dead)
@@ -200,9 +203,9 @@ crate::cell::abilities::send_entity_method(
 ).await;
 ```
 
-Wait — `send_entity_method` in `crates/services/src/cell/abilities/mod.rs` fans to witnesses. Re-reading: this call IS through `send_entity_method`, not `EntityMethodCall` directly. The code above needs verification against the actual `send_entity_method` implementation.
+Wait — `send_entity_method` in `crates/cell-combat/src/cell/abilities/mod.rs` fans to witnesses. Re-reading: this call IS through `send_entity_method`, not `EntityMethodCall` directly. The code above needs verification against the actual `send_entity_method` implementation.
 
-**Confirmed**: `send_entity_method` in `crates/services/src/cell/abilities/messaging.rs` routes by entity type:
+**Confirmed**: `send_entity_method` in `crates/cell-combat/src/cell/abilities/messaging.rs` routes by entity type:
 - Player entity → `EntityMethodCall` (owning client only)
 - NPC/ghost entity → `WitnessEntityMethod` fan to all witnesses
 
@@ -212,7 +215,7 @@ Since the respawning entity is a player, Bug B is **confirmed**: the respawn `on
 
 ### Death burst ordering (confirmed correct, for reference)
 
-`crates/services/src/cell/abilities/death.rs` sends in this order:
+`crates/cell-combat/src/cell/abilities/death.rs` sends in this order:
 1. `onTargetUpdate(0)` to attacker (if player)
 2. BSF_InCombat clear for affected players (via threat tracking)
 3. Loot generation + `INTERACTION_TYPE` update for NPC
@@ -243,7 +246,7 @@ There is no `TEST EBX, 0x100` (which would be needed for bit 8). BSF_Holster cha
 
 ### Server-side implementation (Cimmeria)
 
-`crates/services/src/cell/cell_methods/combatant.rs`:
+`crates/cell-methods/src/cell/cell_methods/combatant.rs`:
 
 ```rust
 REQUEST_HOLSTER_WEAPON => {
@@ -279,7 +282,7 @@ Replace `EntityMethodCall` with `send_entity_method` (witness fan variant) in th
 
 ### Issue #219 — BSF_InCombat witness broadcast
 
-**File**: `crates/services/src/cell/combat/threat.rs`
+**File**: `crates/cell-combat/src/cell/combat/threat.rs`
 
 `send_entity_method` routes to `EntityMethodCall` for players, so it does NOT reach witnesses. The fix requires iterating `space_mgr.get_witnesses_of(player_entity_id)` and sending `WitnessEntityMethod` for each witness. Extract this into a helper (e.g., `send_player_method_to_witnesses`) that mirrors the NPC arm of `send_entity_method`.
 
@@ -287,7 +290,7 @@ Alternatively, extend `send_entity_method` to accept a flag indicating AoI fanou
 
 ### Issue #232 — AoI entry hardcoded zero
 
-**File**: `crates/services/src/mercury/aoi/create.rs`
+**File**: `crates/wire/src/mercury/aoi/create.rs`
 
 ```rust
 // Before:
@@ -307,7 +310,7 @@ Pass `entity.state_field` at all call sites. The XOR-delta handler is idempotent
 
 ### Issue #249 — BSF_Holster witness broadcast
 
-**File**: `crates/services/src/cell/cell_methods/combatant.rs`
+**File**: `crates/cell-methods/src/cell/cell_methods/combatant.rs`
 
 In the `REQUEST_HOLSTER_WEAPON` arm and `SET_CROUCHED` arm:
 - `send_entity_method` will NOT work because it routes players to `EntityMethodCall` (owning client only). Use the witness-fanout helper described under #219 instead.
@@ -322,7 +325,7 @@ In the `REQUEST_HOLSTER_WEAPON` arm and `SET_CROUCHED` arm:
 
 2. **`FUN_00e7b4c0` full behavior**: Only known to be the weapon-animation handler for bit 3 and bit 8. Full decompilation would confirm whether it also handles the weapon holster visual (hiding the mesh) or only the animation state machine transition. LOW priority — the broadcast fix is needed regardless.
 
-3. **`BSF_AutoCycling` semantics**: Bit 1 is in the enum but has no corresponding server-side constant in `crates/services/src/cell/combat/state.rs`. Not set by any server code found. May be a client-only flag set by the auto-attack cycle; if so, `onStateFieldUpdate` for it is driven by a client→server→broadcast round-trip not yet traced.
+3. **`BSF_AutoCycling` semantics**: Bit 1 is in the enum but has no corresponding server-side constant in `crates/cell-combat/src/cell/combat/state.rs`. Not set by any server code found. May be a client-only flag set by the auto-attack cycle; if so, `onStateFieldUpdate` for it is driven by a client→server→broadcast round-trip not yet traced.
 
 4. **`BSF_Walking` source**: No server code found that sets bit 7. Likely driven by movement input processing or avatar update messages rather than a dedicated server signal. May be client-authoritative.
 

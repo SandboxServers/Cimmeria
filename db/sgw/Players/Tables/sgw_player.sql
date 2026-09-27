@@ -32,7 +32,11 @@ CREATE TABLE sgw_player (
     interaction_maps player_interaction_map[],
     training_points integer DEFAULT 0 NOT NULL,
     discipline_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
-    racial_paradigm_levels integer[] DEFAULT '{}'::integer[] NOT NULL,
+    -- Starting levels: Common (paradigm 1) at 5, the other four at
+    -- 1; index i holds paradigm i+1. Mirrors DEFAULT_RACIAL_PARADIGM_LEVELS in
+    -- crates/entity/src/crafting.rs. The crafting load gives a stored empty
+    -- array the same levels (characters created before these defaults).
+    racial_paradigm_levels integer[] DEFAULT '{5,1,1,1,1}'::integer[] NOT NULL,
     applied_science_points integer DEFAULT 0 NOT NULL,
     blueprint_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
     known_respawners integer[] DEFAULT '{}'::integer[] NOT NULL,
@@ -47,16 +51,29 @@ CREATE TABLE sgw_player (
     reload_on_activate boolean DEFAULT false NOT NULL,
     -- Persisted user-preference bits of the cell entity's `state_field`
     -- bitmask. Only bits in PERSISTED_STATE_FIELD_MASK
-    -- (crates/services/src/cell/combat/state.rs) are ever written —
+    -- (crates/cell-combat/src/cell/combat/state.rs) are ever written —
     -- today that's BSF_AutoCycling (1 << 1) alone. Transient combat
     -- bits (BSF_Dead, BSF_InCombat, BSF_MovementLock) are masked out
     -- on write so a relog is always a clean combat slate. (#412)
     state_field integer DEFAULT 0 NOT NULL,
+    -- Ability-tree provenance. trained_abilities lists trainer purchases
+    -- only (a subset of abilities); tree_points_spent is the archetype-wide
+    -- spend that opens later tree nodes. Existing characters start at
+    -- '{}' / 0: nothing is revoked or backfilled.
+    trained_abilities integer[] DEFAULT '{}'::integer[] NOT NULL,
+    tree_points_spent integer DEFAULT 0 NOT NULL,
+    -- Personal vault (container 17) size. Every player starts at 40 and
+    -- expands in steps of 10 up to the container's ceiling of 100
+    -- (bag_max_slots in crates/entity/src/inventory.rs). onBagInfo declares
+    -- container 17 at this size, at world entry and on resync (D-BV06).
+    bank_slots smallint DEFAULT 40 NOT NULL,
+    CONSTRAINT bank_slots_sanity CHECK (((bank_slots >= 40) AND (bank_slots <= 100) AND ((bank_slots % 10) = 0))),
+    CONSTRAINT tree_points_spent_sanity CHECK ((tree_points_spent >= 0)),
     CONSTRAINT alignment_sanity CHECK (((alignment >= 0) AND (alignment <= 5))),
     CONSTRAINT archetype_sanity CHECK (((archetype >= 0) AND (archetype <= 8))),
     CONSTRAINT bandolier_slot_sanity CHECK (((bandolier_slot >= 0) AND (bandolier_slot <= 3))),
     CONSTRAINT gender_sanity CHECK (((gender >= 1) AND (gender <= 3))),
-    CONSTRAINT level_sanity CHECK (((level >= 0) AND (level <= 20))),
+    CONSTRAINT level_sanity CHECK (((level >= 0) AND (level <= 50))),
     CONSTRAINT skin_color_sanity CHECK (((skin_color_id >= 0) AND (skin_color_id <= 15)))
 );
 

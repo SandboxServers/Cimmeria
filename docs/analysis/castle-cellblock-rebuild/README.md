@@ -117,6 +117,8 @@ Persona files may carry stale claims about the content engine; the executor arm 
 
 ## Validation And UAT Gates
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#castle-cellblock-tutorial).
+
 Tests must fail when the seed rows or executor arm are removed. Chain-replay tests assert exact resolved action lists for both the matching and the adjacent non-matching state. Executor arms need a unit test on the side effect. Live-DB tests use `require_db_or_skip!` and serialized execution.
 
 | Milestone | User-assisted in-client acceptance; all pending |

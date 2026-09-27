@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-`SpaceManager::destroy_entity` (crates/services/src/cell/space_manager/entities.rs)
+`SpaceManager::destroy_entity` (crates/cell-world/src/cell/space_manager/entities.rs)
 removes the entity from its space and grid and forgets its movement-validator
 clock. It does **not** touch state that lives on *another* entity and points
 back at this one.

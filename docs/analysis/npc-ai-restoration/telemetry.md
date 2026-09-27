@@ -1,7 +1,7 @@
 # NPC AI Telemetry Plan
 
 > Type: reference and how-to. Audience: packet workers (NA00-NA03) and whoever debugs a live session.
-> Updated: 2026-09-24. Companions: [audit](audit.md) section 5, [work packets](work-packets.md), [instrumentation discipline](../../architecture/instrumentation-discipline.md), [negative-logging convention](../../architecture/negative-logging-convention.md), [movement validation](../../architecture/movement-validation.md) (and `movement-telemetry.md` once PR #726 lands), [observability ADR](../../architecture/observability.md).
+> Updated: 2026-09-26 (NA44). Companions: [audit](audit.md) section 5, [work packets](work-packets.md), [instrumentation discipline](../../architecture/instrumentation-discipline.md), [negative-logging convention](../../architecture/negative-logging-convention.md), [movement validation](../../architecture/movement-validation.md) (and `movement-telemetry.md` once PR #726 lands), [observability ADR](../../architecture/observability.md).
 
 ## Goal
 
@@ -11,13 +11,13 @@ After the NA0x telemetry packets, the owner can play one colo session and answer
 - Why is this NPC standing still? Is its velocity stale, is its path empty, is it off the mesh, did its path fail and at which stage, or is it parked Idle?
 - Is this NPC in the air? How far is it from the floor under it right now?
 - Did this NPC consider cover? Which node did it pick, and if none, why not?
-- What did the client actually receive for this NPC (position, velocity, movement type)?
+- What did the client actually receive for this NPC (position and velocity; no movement type exists on the wire, see NA10)?
 
 The telemetry packets ship **before** the behaviour packets, so every behaviour fix can be compared before and after against live data.
 
 ## Conventions every new event follows
 
-- Use a dotted `target:` under `npc_ai.*`, `movement.npc`, `cover.*` or `wire.out.*`. **Add each new target to `OTEL_FILTER` in `crates/server/src/logging.rs` at the level it emits, and extend `otel_filter_exports_the_debug_level_aoi_seams` to pin it.** A target left out of the filter inherits `info` and its DEBUG rows never reach SigNoz. That is gap T1, and it has already happened once with `aoi.create_emit`.
+- Use a dotted `target:` under `npc_ai.*`, `movement.npc`, `cover.*` or `wire.out.*`. **Add each new target to `OTEL_FILTER` in `crates/server/src/logging/filters.rs` at the level it emits, and extend `otel_filter_exports_the_debug_level_aoi_seams` to pin it.** A target left out of the filter inherits `info` and its DEBUG rows never reach SigNoz. That is gap T1, and it has already happened once with `aoi.create_emit`.
 - Every NPC row carries `npc_id, tag, template_id, world, space_id`. `world` is the only approved metric label; ids stay fields (instrumentation discipline, rule 4).
 - Rows for a player-visible stuck or wrong state are WARN, throttled per `(npc_id, kind)` with a `suppressed = N` count. An **unthrottled** counter sits beside each one, as the negative-logging convention requires.
 - Transitions are DEBUG with an `event=` field. Steady-state samples are DEBUG and rate-limited.
@@ -31,7 +31,9 @@ The telemetry packets ship **before** the behaviour packets, so every behaviour 
 | Resource attributes `host.name`, `cimmeria.deploy_env` (from `CIMMERIA_DEPLOY_ENV`, already set on the colo) and `service.version` (git SHA baked in at build time) | OTLP resource builder in `crates/server/src/otel*.rs`; env-var table in `crates/server/src/main.rs` | T2 |
 | Log the navmesh fingerprint in the first NPC-AI row per space (already in `movement.navmesh navmesh_loaded`), so a session joins to its mesh | existing | |
 
-Check the SigNoz volume budget before raising `wire.out.avatar_update`: it samples 1 in 100 sends today, which is fine at colo scale.
+Check the SigNoz volume budget before raising `wire.out.avatar_update`: it samples 1 in 101 sends (1 in 100 before NA25), which is fine at colo scale.
+
+**NA25, file parity (2026-09-25).** Owner decision: whatever reaches the `logs/*.log` files also reaches SigNoz. TRACE rows now go to a third SigNoz service, `cimmeria-trace`, whose filter is derived from the file-layer table; DEBUG and above keep their NA00 routing. Two consequences for NPC AI work. First, `movement.navmesh` `advisory_off_mesh_accepted` (TRACE) fires for the first time, throttled to one row per player per 500 ms, and is the record of where players leave an advisory world's mesh. Second, the AoI position firehose stays whole in `world_entry.log` while SigNoz keeps only the `wire.out.avatar_update` sample, which now carries `sampled_1_in` and `suppressed`. A new target must still be named in `OTEL_FILTER` for its DEBUG rows to reach SigNoz; if it also lands in a file, `logging/parity_tests.rs` fails until it is. See [observability ADR](../../architecture/observability.md), "Log indexes and parity with the log files".
 
 ## 2. New and changed events
 
@@ -58,38 +60,54 @@ Check the SigNoz volume budget before raising `wire.out.avatar_update`: it sampl
 |---|---|---|---|
 | `movement.npc` `event=step` (existing) | DEBUG sampled | Fix `ground_y` to use the storey-aware query from NA01 | add `y_source` (`lerp, clamp, clamp_miss`), `leg_len, leg_dy, ai_state` |
 | `movement.npc` `event=ground_deviation` | WARN, 5 s per NPC | Any step or snap with `abs(y - ground_y) > 0.3` on a meshed world | `ground_y, dy, y_source, leg_len, leg_dy, wp_xyz`. Counter `npc_ground_deviation_total{world,dir}`. It becomes the regression tripwire once NA11 lands. |
-| `npc_ai.tick` (existing) | DEBUG | Add `vx, vy, vz`, `movement_type_sent` (the last value actually put on the wire; the cache reads None after a clear that sent nothing), and three-state `los` (`clear, blocked, unknown`) in place of `has_los` | |
-| `movement.npc` `event=animating_without_path` | WARN, 10 s per NPC | Last sent movement type is not idle-equivalent while `nav_path` is empty for 2 AI ticks | `movement_type_sent, ai_state` |
-| `movement.npc` `event=stale_velocity` | WARN, 10 s per NPC | Velocity non-zero while the position has not changed for 3 movement ticks (300 ms) | `velocity, nav_path_len, ai_state, movement_type`. This is the running-in-place detector (S1). |
+| `npc_ai.tick` (existing) | DEBUG | Add `vx, vy, vz` and three-state `los` (`clear, blocked, unknown`) in place of `has_los`. **As built (NA02):** no `movement_type_sent` — see the next row | |
+| ~~`movement.npc` `event=animating_without_path`~~ | — | **Folded into `stale_velocity` (NA02).** NA10's Ghidra pass showed there is no server-to-client movement-type message: `broadcast_movement_type` was sending a truncated `onSequence`, and the client animates NPC movement from velocity alone. Re-based on velocity this event is "non-zero velocity, empty path, not moving", which is `stale_velocity` with `path_state = empty`. Query `event = 'stale_velocity' AND path_state = 'empty'` | |
+| `movement.npc` `event=stale_velocity` | WARN, 10 s per NPC | Velocity non-zero while the position has not changed for 3 movement ticks (300 ms) | `vx, vy, vz, speed, still_ticks, path_state` (`empty`, `stalled`), `nav_path_len, ai_state, movement_type` (the dedup cache, for NA10's before/after). This is the running-in-place detector (S1). **As built:** the counter counts episodes, not ticks. |
 | `npc_ai` `event=npc_off_mesh` | WARN, 30 s per NPC | AI tick on a meshed world where `diagnose_point(npc.position)` is invalid | `gate, horizontal_dist, dy, last_move_source` (`path, fallback, leash, backup, content, spawn`) |
-| `npc_ai.path` `event=request` | DEBUG | Every AI `find_path` | `state, from, to, target_is_gm, status` (`ok, partial, no_start_poly, no_end_poly, no_corridor, straighten_failed`), `start_snap_dy, end_snap_dist, n_waypoints, max_leg_dy, end_to_target_dist` |
-| `npc_ai.path_fail` (existing) | WARN | Add the reasons `partial, no_start_poly, no_end_poly, no_corridor`; fix the fight message that claims a straight-line fallback | |
-| `npc_ai` `event=stuck` | WARN, 15 s per NPC | Fighting and chasing (a path exists and the target is out of range) while `npc_to_target` has not shrunk for 3 AI ticks | `npc_to_target` history, `nav_path_len, has_los, next_wp` |
+| `npc_ai.path` `event=request` | DEBUG | Every AI `find_path` | `state, from, to, target_is_gm, status` (`ok, partial, no_start_poly, no_end_poly, no_corridor, straighten_failed`), `start_snap_dy, end_snap_dist, n_waypoints, max_leg_dy, end_to_target_dist`. **As built:** non-`ok` statuses are always logged; `ok` is sampled once per NPC per 10 s (`suppressed`); the counter is unthrottled |
+| `npc_ai.path_fail` (existing) | WARN | Add the reasons `partial, no_start_poly, no_end_poly, no_corridor`; fix the fight message that claims a straight-line fallback | **As built:** `partial` rows have their own throttle window and their own counter, `npc_path_partial_total{world,state}`; `npc_path_fail_total` counts routes with no usable path only |
+| `npc_ai` `event=stuck` | WARN, 15 s per NPC | Fighting and chasing (a path exists and the target is out of range) while `npc_to_target` has not shrunk for 3 AI ticks | `npc_to_target_history, nav_path_len, los, next_wp, decision_outcome`. **As built:** "chasing" is the fight's out-of-range branch (`chase, hold_no_repath, repath_degenerate, no_path`) with a non-empty path, except `no_path`, which counts with or without one; "shrunk" means by at least 0.5 |
 | `spawner.npc_behaviour` `event=spawn_off_mesh` | WARN, once per spawn_id | Spawn on a meshed world fails the find_path start box (±0.5), not just `is_point_valid` | `gate, horizontal_dist, dy, snapped_y` |
-| Remove or demote the two unthrottled `NavMesh::find_path: no start/end poly` warnings | | They are superseded by `npc_ai.path` | |
+| Remove or demote the two unthrottled `NavMesh::find_path: no start/end poly` warnings | | They are superseded by `npc_ai.path` | **Done (NA02): removed.** `NavMesh::find_path` now returns a typed `PathOutcome` and logs nothing itself |
 
 ### 2.3 What the client received (NA02)
 
 | Target / event | Level | Fields |
 |---|---|---|
-| `wire.out.avatar_update` (existing, now exported) | DEBUG, 1 in 100 | add `movement_type` and `npc_moved_since_last` (bool) |
-| `wire.out.movement_type` | DEBUG | Every `setMovementType` broadcast: `npc_id, movement_type, reason` |
-| `wire.out.forced_position` | DEBUG | Every NPC snap sent as a forced position (leash fallback, content move) |
+| `wire.out.avatar_update` (existing, now exported) | DEBUG, 1 in 100 | add `npc_moved_since_last` (bool; absent for players). **As built (NA02):** no `movement_type` field — the client animates from velocity, and no movement-type message exists |
+| ~~`wire.out.movement_type`~~ | — | **Dropped (NA02).** There is no server-to-client movement-type message (NA10 Ghidra evidence); NA10 suppresses the truncated `onSequence` `broadcast_movement_type` was sending; movement-type changes are logged server-side as `movement.movement_type outcome=suppressed\|cleared` |
+| `wire.out.forced_position` | DEBUG | Every forced position sent. **As built (NA02):** logged at the one send site (`teleport.rs`); every row today is a player snap, because no NPC snap — the leash included — is sent as a forced position |
 
 ### 2.4 Line of sight (NA02)
 
 `npc_ai.los` `event=blocked`, DEBUG and sampled once per (npc, target) per 5 s: `from_xyz` and `to_xyz` including the eye heights used, `result` (`clear, blocked, unknown_off_mesh`), `hit_xyz`. This closes T9 and gives S11 its evidence.
 
+**As built (NA02):** emitted for every result that is not `clear` (so `result` is `blocked` or `unknown_off_mesh`), with `ray_from` / `ray_to` (the projected points the ray was cast between) and `eye_height_used = 0.0` — the navmesh ray adds no eye height at all. It replaces the unsampled `movement.navmesh reason=los_unknown_off_mesh` row.
+
 ### 2.5 Cover (NA02; extended by NA22)
 
 | Target / event | Level | When | Fields |
 |---|---|---|---|
-| `npc_ai` `decision_outcome=no_cover` | DEBUG | Replaces the silent `NoCover => {}` arm | `reason` (`use_cover_false, stationary, no_candidate_in_radius, reserve_lost, in_range_no_better_slot`), `candidates_scanned, search_radius` |
-| `cover.selection` `event=picked` / `event=rejected` | DEBUG, sampled | Scoring | `chunk_id, node_id, score` and score components; top 3 rejected with their reasons |
-| `cover.coverage` `event=space_summary` | INFO at space load; WARN when 0 | Per space: nodes inside the space bounds and inside navmesh coverage | `nodes_in_bounds, nodes_on_mesh, sets_in_bounds`. This one line would have caught C1 in under a second. |
+| `npc_ai` `decision_outcome=no_cover` | DEBUG | Replaces the silent `NoCover => {}` arm | **As built:** sampled once per NPC per 10 s; `use_cover_false` and `stationary` are not logged (the spawn row records both). `reason` (`no_candidate_in_radius, reserve_lost, in_range_no_better_slot`, plus `no_world` (the space has no `resources.worlds` id, so no cover index) and the defensive `index_miss`), `candidates_scanned, reserved_skipped, search_radius, cover_nodes_loaded` |
+| `cover.selection` `event=picked` / `event=rejected` | DEBUG, sampled | Scoring | `chunk_id, node_id, score` and score components; top 3 rejected with their reasons. **As built:** components are `move_dist, threat_dist` (the two inputs that vary); rejected `reason` is `reserved` or `lower_score`; ≤ 1 set of rows / 10 s per NPC |
+| `cover.coverage` `event=space_summary` | INFO once the space has its NPCs; WARN when unusable | Per space: the cover nodes of its world and how many stand on its navmesh | **As built (NA02, after NA21):** `world_id, nodes_in_world, nodes_on_mesh, sets_in_world, cover_npcs`. On the mesh means `get_height_near` around the node's own Y finds a floor within 1.0. WARN `reason = no_usable_cover` when a meshed space has cover-seeking NPCs (`use_cover`, not stationary) and no usable node. NA21 replaced the prefab-local seed with extracted world-space nodes, so the planned "bounds + on mesh" test and NA02's interim prefab-local heuristic are gone; Castle_CellBlock now reads 236 nodes, 211 on the mesh, 58 sets, INFO |
 | `cover.state` `event=enter` / `event=leave` | DEBUG | NPC reaches or leaves a reserved slot | `chunk_id, node_id, pose, reason` (`arrived, flanked, target_lost, leash, death`) |
 
+### 2.6 Spawn and bookmark identity (NA44)
+
+The external handoff of 2026-09-26 (§2, §25 "Spawn") found the spawn row short of the common fields and silent about what an NPC fights with. See [the validation ledger](evidence/handoff-2026-09-26-validation.md).
+
+| Target | Level | Fields added |
+|---|---|---|
+| `spawner.npc_behaviour` (the resolved-behaviour row) | DEBUG | `world`, `space_id` (the common set above), `ability_ids` (sorted), `event_set_ids` (each ability's event set, same order; `0` = NULL or no loaded definition, so that attack plays no fire animation), `weapon_visual` (the first `WP` template component; NPCs never set the player-side field) |
+| `playtest.bookmark.entity` | INFO | `ability_ids`, `weapon_visual` (same rule, or the player's bandolier weapon), `current_target_id` (the selected target; NPCs aim at `threat_top_id`, so it reads `0` for them) |
+
+A guard that holds an SMG but lists `ability_ids = [592]` is on the Pistol Shot fallback: its template has no ability set. That is the Castle hostile finding in the ledger (templates 145, 146, 148, 169, 170, 171).
+
 ## 3. Live-session runbook
+
+> [!NOTE]
+> The operator version of this section is [docs/operations/npc-ai-telemetry-runbook.md](../../operations/npc-ai-telemetry-runbook.md) (NA03). Use it after a play session: it maps each question below to a saved view and a dashboard panel. The table here stays as the design record the views were built from.
 
 Run these in SigNoz (logs explorer, `service.name = 'cimmeria-server'`, and `cimmeria.deploy_env = 'colo'` once NA00 lands) after a play session. Start from a `.bug <note>` bookmark: its `playtest.bookmark.entity` rows give the NPC ids near the player at that moment.
 
@@ -103,15 +121,8 @@ Run these in SigNoz (logs explorer, `service.name = 'cimmeria-server'`, and `cim
 | Who is stuck? | `event IN ('stuck','npc_off_mesh','idle_parked')` and `target = 'npc_ai.leash' AND event = 'loop'` |
 | Does this map have usable cover? | `target = 'cover.coverage'` at startup |
 | Why no cover in this fight? | `decision_outcome = 'no_cover' AND npc_id = N`, group by `reason` |
-| What did the client see? | `target LIKE 'wire.out.%' AND npc_id = N` |
+| What did the client see? | `target = 'wire.out.avatar_update' AND entity_id = N` (the avatar sample keys on `entity_id`, not `npc_id`); `npc_moved_since_last = false` beside a non-zero `vx`/`vz` is running in place |
 
 The helper scripts in [evidence/signoz/](evidence/signoz/) condense SigNoz JSON pulls into one line per event. SigNoz MCP results over about 25k tokens land in a tool-results file. Run the scripts over that file; do not read it raw.
 
-NA03 turns the table above into saved views and one "NPC AI health" dashboard with these panels:
-
-- aggro by cause;
-- transitions per reason;
-- `stale_velocity`, `ground_deviation`, `stuck`, `idle_parked` and leash-loop counts per world;
-- path status mix;
-- cover coverage per space;
-- `no_cover` reasons.
+**As built (NA03):** each row above is a Logs Explorer view named `NPC AI — <question>` under the `npc-ai` category, and the **Cimmeria — NPC AI health** dashboard carries the planned panels (aggro by cause, transitions per reason, the detector counters per world, the path status mix, cover coverage per space, `no_cover` reasons) plus idle-unticked, AI decisions by outcome and aggro-scan rejections. Two views differ from the table: the timeline also includes `npc_ai.path_fail`, and the client view does not filter on `npc_moved_since_last` until a build that emits it has run. Filters, ids and the dashboard JSON export: [operations/signoz/npc-ai-views.md](../../operations/signoz/npc-ai-views.md).

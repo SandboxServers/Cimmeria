@@ -2,7 +2,7 @@
 title: "Spawn System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-25
 ---
 
 # Spawn System
@@ -10,8 +10,8 @@ last_updated: 2026-07-25
 ## Status: Implemented (IM)
 
 Spawning is confirmed working in-game — NPCs and world objects appear in Castle
-Cellblock and are interactable. The Rust implementation lives in
-[`crates/services/src/cell/spawner/`](../../crates/services/src/cell/spawner/), split by
+Cellblock and are interactable. The Rust loaders live in
+[`crates/cell-catalog/src/cell/spawner/`](../../crates/cell-catalog/src/cell/spawner/), split by
 what is being spawned or loaded: `npcs.rs`, `regions.rs`, `respawners.rs`,
 `stargates.rs`, `dialogs.rs`, `loot.rs`, `missions.rs`, and `abilities.rs` (which also
 builds the `(event_set_id, event_id) → sequence_id` lookup). Respawn is handled by a
@@ -19,13 +19,22 @@ builds the `(event_set_id, event_id) → sequence_id` lookup). Respawn is handle
 entity template, minimum 3s) and promotes Dead NPCs back to Idle, restoring HP, focus,
 state flags, interaction type, and facing.
 
+Two of those file names invite a misreading ([#62](https://github.com/SandboxServers/Cimmeria/issues/62)).
+`regions.rs` loads GenericRegion trigger volumes (`resources.point_sets` of type
+`AreaSet`) that the client hit-tests and reports, for mission and content triggers.
+`respawners.rs` loads the player respawn points offered in the Defeat Window
+(`resources.respawners`, chosen through `callForAid`). Neither is a `SpawnRegion` or
+`SpawnSet`, and neither does population control: there are no population caps, set
+cooldowns, weighted spawn tables, or region/set activation anywhere in `crates/services`.
+
 **The architecture below is not what was built.** The original design used two
 server-only BigWorld entities (`SGWSpawnRegion`, `SGWSpawnSet`) communicating by
 base-to-base mailbox RPC; both were empty stubs in the Python server, and the Rust
 implementation spawns directly from the cell rather than reconstructing that entity
 pair. The sections that follow document the original design intent — reconstructed
 from property names, method signatures, and DB schema — and are retained because the
-DB schema they describe is still the data source.
+`spawn_sets` and `spawn_points` tables they describe are still in the schema (both are
+empty in the seed; live spawns come from `resources.spawnlist`).
 
 ---
 
@@ -370,7 +379,7 @@ spawn point itself may encode the template directly via `spawn_table_name` in
 
 ## NPC Ability Bucket and Selection
 
-`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/services/src/cell/spawner/npcs.rs`](../../crates/services/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
+`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/cell-catalog/src/cell/spawner/npcs.rs`](../../crates/cell-catalog/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
 
 Examples:
 
@@ -378,7 +387,7 @@ Examples:
 - Template 15 (Cellblock Guard) → `ability_set_id = 1` → `[579]` NID guard pistol.
 - Templates without an `ability_set_id` (most props, statics) → fall back to `NPC_DEFAULT_ABILITY = 592` and rely on `class_id` filtering to keep the AI tick from firing on non-mobs.
 
-At fight-tick time, [`crates/services/src/cell/service/npc_ai/mod.rs`](../../crates/services/src/cell/service/npc_ai/mod.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `deprecated/python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
+At fight-tick time, [`crates/cell-combat/src/cell/service/npc_ai/mod.rs`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `deprecated/python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
 
 Per-ability cooldown state lives on `CellEntity::abilities.ability_cooldowns` (the `AbilityManager` keyed by `ability_id` → `CooldownEntry { expires_at }`). The leash tick (`npc_ai_leash`) calls `clear_all_cooldowns()` when the NPC returns to spawn, so a leashed-and-re-aggrod NPC starts a fresh cooldown window.
 

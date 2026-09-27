@@ -49,6 +49,10 @@
 //!   for the three packets that establish encryption.
 //! - [`session_trace`] — deserialisable trace types matching the JSONL
 //!   output of `tools/pcap_to_session.py`.
+//! - [`sparbot`] — the duel test partner (SS-U2): the duel wire builders,
+//!   the bot's state machine and its keep-alive loop. The `sparbot` binary
+//!   runs it; `GameSession::enter_world` is the world-entry sequence it and
+//!   the integration tests share.
 //! - [`Client`] — top-level driver; today it stitches auth → handshake;
 //!   future phases add the entity mirror, step driver, combat enforcement,
 //!   and the Castle Cellblock script.
@@ -58,11 +62,17 @@
 //! `docs/architecture/wireclient.md` for the phased rollout.
 
 pub mod auth;
+pub mod bundle;
 pub mod error;
 pub mod handshake;
+pub mod session;
 pub mod session_trace;
+pub mod sparbot;
+
+mod world_entry;
 
 mod client;
 
 pub use client::Client;
 pub use error::{Error, Result};
+pub use session::GameSession;

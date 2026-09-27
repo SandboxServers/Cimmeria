@@ -1,6 +1,6 @@
 ---
 name: npc-broadcast-facing-and-grounding
-description: Block on sight — pack_angle saturates negative yaw to due north, and we only ever send the FullPos avatar variant so the client never floor-snaps NPCs
+description: NPC broadcast facing/grounding notes — pack_angle north-snap fixed in #677; the "send OnGround 0x18 to ground NPCs" idea is WRONG (corrected 2026-09-24), 0x18 keeps the client's current height; defect 3 (movement-type broadcast drives animation) is WRONG too (NA10, corrected 2026-09-26)
 metadata:
   type: reference
 ---
@@ -11,13 +11,34 @@ metadata:
 > on `main`: `BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR = 0x10` is the only variant sent, so the
 > client never grounds NPCs. Defect 3 (movement type not broadcast on path start/stop) was not
 > re-verified. Line numbers are as of 2026-09-18.
+>
+> **Correction 2026-09-24 (NPC AI audit M4 and M6).** Defect 2's conclusion is **wrong**. OnGround
+> (`0x18`) does not ground anything: `FUN_00ddb830` writes `DAT_019d1a44` = **-13000.0f** (bytes
+> `00 20 4b c6`, not FLT_MAX) into Y, and `BW_client_entity_manager_6` (`0x00dd1859`) replaces a
+> sentinel component with the actor's **current client Location**. There is no ray-cast and no height
+> map. Sending `0x18` would pin every NPC at its creation height. Keep `0x10` and ground NPCs on the
+> server. Also, `get_navmesh_height` is not ground truth before NA01 (PR #774): it searched around
+> world Y = 0 and returned the wrong storey on multi-level meshes. Evidence:
+> `docs/analysis/npc-ai-restoration/evidence/npc-ground-audit.md` §B. The text below is kept as history.
+>
+> **Correction 2026-09-26 (NA10 #779, NA44).** Defect 3 is **wrong** as well, and it is the likely
+> source of the external handoff's §7 "send `setMovementType` at leg start" claim. There is **no
+> server-to-client movement-type message**. `setMovementType` is a client-to-server cell method only
+> (`SGWBeing.def`, `<Exposed/>`), and the client has no NetIn receiver for it. `FUN_00deb660` is the GM
+> `SGWGmPlayer.onShowPath` path visualiser, not an animation FSM. The old broadcast went to witnesses as
+> method index 1, which is `onSequence` on every NPC type, so it was a truncated Kismet trigger.
+> The client animates NPC gait from the `EntityMoved` velocity; stop an NPC by sending zero velocity
+> (`npc_ai::stop_npc_movement`). `broadcast_movement_type` now only records `last_movement_type` for
+> telemetry. Evidence: `docs/reverse-engineering/findings/npc-movement-pathfinding.md` §11,
+> `docs/analysis/npc-ai-restoration/evidence/handoff-2026-09-26-validation.md`. The
+> [[castle-has-no-navmesh]] link below is stale too: `castle.nav` shipped in #709.
 
 Three independent defects in the NPC position broadcast, all confirmed 2026-09-18 from the colo
 playtest. They compose into the long-standing "NPCs face the wrong way, walk up the air, moonwalk"
 report, so fixing one alone will not make the symptom go away.
 
 **1. `pack_angle` saturates the negative half-circle to due north.**
-`crates/services/src/mercury/aoi/mod.rs:47-50` is `(radians / SCALE) as u8`. Rust's float→int `as`
+`crates/wire/src/mercury/aoi/mod.rs:47-50` is `(radians / SCALE) as u8`. Rust's float→int `as`
 is **saturating** (1.45+), so any negative quotient becomes `0u8`. NPC yaw is `dx.atan2(dz)`
 (`cell/service/ticks/npc_movement.rs:103`, `:110`, `:156`) with range `(-π, π]`, so **yaw in
 `(-π, 0)` → byte 0 → due north**; `(0, π]` → `0..128` correct. The doc comment claims it "Matches
@@ -47,7 +68,7 @@ flying/swimming NPCs. The `physics` byte is separately hardcoded `0x01` (`update
 `aoi/tests.rs:207`) and the PHYS_* value table is **undocumented** — worth an RE pass at
 `FUN_00ddb830` / the `sentPhysics_` compare.
 
-**3. Animation and translation are decoupled channels.** The client picks mob animation from the
+**3. (WRONG, see the 2026-09-26 correction above.) Animation and translation are decoupled channels.** The client picks mob animation from the
 `setMovementType` byte (SGWBeing method 1, client FSM `FUN_00deb660`), **not** from velocity or
 position deltas — `crates/entity/src/cell_entity/mod.rs:180-190`. `npc_movement_tick` never calls
 `broadcast_movement_type`; only the AI-state handlers do, and `messaging.rs:226-231` dedups identical

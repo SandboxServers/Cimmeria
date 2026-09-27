@@ -18,7 +18,7 @@ The `ContactListManager` interface is defined in `entities/defs/interfaces/Conta
 
 Two internal base methods (`sendEventToPlayers` and `sendLoginStatusMessages`) handle server-side event broadcasting -- these are never called by the client.
 
-The Rust implementation splits across the two services. The six inbound cell methods (indices 55–60) live in [`crates/services/src/cell/cell_methods/contact_list/mod.rs`](../../crates/services/src/cell/cell_methods/contact_list/mod.rs) — they parse the wire payload, resolve `player_id`, and forward to the base via `CellToBaseMsg`. The base side ([`crates/services/src/base/contact_list/`](../../crates/services/src/base/contact_list/)) owns all DB mutations, the client echo responses, and the presence fanout.
+The Rust implementation splits across the two services. The six inbound cell methods (indices 55–60) live in [`crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs`](../../crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs) — they parse the wire payload, resolve `player_id`, and forward to the base via `CellToBaseMsg`. The base side ([`crates/base-session/src/base/contact_list/`](../../crates/base-session/src/base/contact_list/)) owns all DB mutations, the client echo responses, and the presence fanout.
 
 ## Implementation Status
 
@@ -135,7 +135,7 @@ The two system lists every character gets on first login use fixed monikers:
 | Friends | 300 |
 | Ignore | 301 |
 
-See `ensure_system_lists` in [`base/contact_list/persistence/mod.rs`](../../crates/services/src/base/contact_list/persistence/mod.rs). Player-created lists carry whatever moniker the client sends. The server stores and echoes the value without interpreting it; contact-event delivery is driven by list *membership*, not by flags.
+See `ensure_system_lists` in [`base/contact_list/persistence/mod.rs`](../../crates/base-session/src/base/contact_list/persistence/mod.rs). Player-created lists carry whatever moniker the client sends. The server stores and echoes the value without interpreting it; contact-event delivery is driven by list *membership*, not by flags.
 
 ## Relationship to Chat System
 
@@ -167,7 +167,7 @@ The original design stored contact lists in the `contactLists` CELL_PRIVATE PYTH
 ## Remaining Work
 
 1. **GateTravel `dataValue` id-space** -- the server sends the destination `world_id` from `resources.worlds`, which the client passes to `getWorldInfo(value).Name`. The exact id-space has not been confirmed by send-and-observe in playtest.
-2. **Ignore-list enforcement** -- membership in the `Ignore` system list is stored and synced, but nothing yet consults it to suppress tells or chat.
+2. **Ignore-list enforcement** -- done (SS-C1, 2026-09-27): the `Ignore` system list (flags 301) is cached on the base session and the cell entity, a tell from an ignored player is refused ("X is not accepting your messages."), and their say, emote and yell are withheld. It is one-directional and hides nobody from anyone's AoI (D-SS15). `chatIgnore` (0xC5) edits the same list, so `/ignore` and the contact-list window stay in step. Mail sends and duel challenges to a player who ignores the sender are refused from the same list, with the same sentence (SS-M1, SS-D1). See [chat-system.md](chat-system.md#tells-and-ignore).
 
 ## Related Docs
 

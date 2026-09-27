@@ -1,0 +1,77 @@
+[package]
+name = "cimmeria-base"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The BaseApp service for the Cimmeria server emulator: the Mercury UDP listener and receive loop, the Phase 3 login handshake, the SGWPlayer base-method dispatch (chat, log-off) and character creation"
+
+# Split out of cimmeria-services (wave B4 of
+# docs/architecture/services-crate-split.md), the top of the base track: it
+# builds on base-world-entry, and only the services facade builds on it, so it
+# must never depend on a service crate above it, the cell's included. The
+# module tree keeps its old nesting under a `base::` skeleton, and
+# cimmeria-services re-exports `base::BaseService` at its old path.
+[dependencies]
+# World entry, the CellToBase dispatch and the character list, which the
+# connect loop, the character creator and `BaseService` call.
+cimmeria-base-world-entry = { workspace = true }
+# The session types, the send helpers, tick sync, the outbox, cooked-data
+# delivery and the contact list's login fan-out.
+cimmeria-base-session = { workspace = true }
+# The Base<->Cell messages, the services-side packet builders and the
+# firehoses.
+cimmeria-wire = { workspace = true }
+# The decoded `wire.in` stream the receive loop logs inbound messages to.
+cimmeria-wire-log = { workspace = true }
+# The minigame session registry `BaseService` owns.
+cimmeria-minigame = { workspace = true }
+# The pending-login handoff from the auth service, the client-IP check and
+# credential redaction.
+cimmeria-auth = { workspace = true }
+# The cooked-data resource cache, the CharDef table and the bag layout.
+cimmeria-resources = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+# `STARTING_TRAINING_POINTS` for a new character.
+cimmeria-game = { workspace = true }
+cimmeria-mercury = { workspace = true }
+# The login, logout, character-created and wire-format-error notifications.
+cimmeria-discord = { workspace = true }
+# `squad_actions_total` for a squad call that never reached the cell.
+cimmeria-observability = { workspace = true }
+tokio = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# Opt-in seam for services-layer chaos integration tests that need to
+# inject a `LossyTransport` in place of the real UDP socket inside a live
+# `BaseService` (as opposed to the in-process handler unit tests, which use
+# `TestTransport` via `[dev-dependencies]`'s own `test-support` re-pull
+# below). Off by default so production builds never link `lossy_transport`
+# or its RNG state. cimmeria-services forwards its own `chaos-testing`
+# feature here, which is how `cimmeria-wireclient`'s live-DB chaos tests turn
+# it on: `cimmeria-services = { path = "../services", features =
+# ["chaos-testing"] }`. See docs/architecture/network-chaos-testing.md and
+# `BaseService::set_transport_override`.
+chaos-testing = ["cimmeria-mercury/test-support"]
+
+[dev-dependencies]
+# Re-pull mercury with the `test-support` feature so the receive-order tests
+# can use `cimmeria_mercury::test_transport::TestTransport` (the recording
+# UDP fake) in place of a real socket. Additive over the `[dependencies]`
+# entry above: it only activates the extra feature for the test build. See
+# docs/architecture/transport-trait.md.
+cimmeria-mercury = { workspace = true, features = ["test-support"] }
+# Generic test helpers: the live-DB gate (`require_db_or_skip!`), `LogCapture`
+# and the `TestTransport` re-export, from the `#[cfg(test)] mod test_support`
+# shim in lib.rs. Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# `test_default_connected_client_state`, re-exported from the same shim.
+cimmeria-base-session = { workspace = true, features = ["test-support"] }
+# The recording meter (`testing::install`, `counter_total`).
+cimmeria-observability = { workspace = true, features = ["testing"] }

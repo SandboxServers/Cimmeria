@@ -1,0 +1,467 @@
+//! Ability trainer open — `onTrainerOpen` (flat method index 113).
+//!
+//! Trainer NPC interaction: detect a trainer at interact time, build the
+//! per-player trainable ability list, and send `onTrainerOpen` so the client
+//! opens the trainer UI.
+//!
+//! A trainer is any NPC whose `entity_templates.trainer_ability_list_id` is
+//! non-NULL. The seed has exactly one (template_id=25, "Interaction
+//! Debug NPC", `trainer_ability_list_id=1`). More are Phase 7 content.
+//!
+//! Per-archetype filtering: `trainer_abilities` is keyed by
+//! `(list_id, archetype_id)` so a single trainer can offer different abilities
+//! to a Soldier vs a Commando vs an Asgard. Today the only seeded list has
+//! Commando-only entries — Soldiers/Asgard/etc. interacting with the debug
+//! trainer get an empty list back, which the client handles gracefully (no
+//! abilities shown but UI still opens).
+//!
+//! Trainable filter: `crate::ability_tree::evaluate_train`, the same
+//! predicate `trainAbility` uses (mirrors Python
+//! `AbilityTrainer.canTrainAbility`): the ability exists, isn't already
+//! known, is in the player's archetype tree, and the player meets its level
+//! and prerequisites. The predicate's trainer-authority gates (AT-04) read
+//! this trainer as the pin, so a player who has walked out of range sees
+//! every node greyed, exactly as a purchase would be refused.
+//!
+//! Wire (verified against pcap + python):
+//!   `INT32 TrainerID, UINT32 count, [N × (INT32 abilityID + UINT8 trainable)], INT32 CostToRespec`
+//!
+//! References:
+//! - `deprecated/python/cell/interactions/AbilityTrainer.py`
+//! - `docs/protocol/client-method-dispatch-table.md:248` (method 113)
+//! - `entities/defs/SGWPlayer.def:1194-1198`, `entities/defs/alias.xml:417-422`
+
+use tokio::sync::mpsc;
+
+use crate::ability_tree::{evaluate_train, TrainContext, TrainReject, RESPEC_COST_NAQUADAH};
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
+
+/// If the target entity is a trainer NPC, build the per-player ability list
+/// and send `onTrainerOpen`. Returns `true` when the trainer flow handled the
+/// interact (i.e., the caller should NOT fall through to the dialog/template
+/// chain dispatcher). Returns `false` when:
+/// - The target's template_id isn't in `template_trainer_lists`
+/// - The interacting entity isn't a player with a known archetype
+/// - The target entity doesn't exist
+///
+/// This is the canonical single-source-of-truth path. The previous
+/// `dispatch.rs` `NpcInteractionType::Trainer { archetype_id }` arm was
+/// dead code (never assigned anywhere in production) that called a stub
+/// fabricating a list from `archetype_ability_tree` directly with no
+/// per-known-ability filtering — now removed.
+pub async fn try_open_trainer(
+    player_entity_id: u32,
+    target_entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> bool {
+    // Identify the trainer's list_id via template lookup. The two
+    // `outcome` labels below split intentionally distinct failure modes:
+    //
+    // - `entity_no_template` — the target entity has no `template_id`.
+    //   Spawn / setup bug. Should be near-zero in steady state.
+    // - `not_a_trainer` — the target has a template_id but it isn't in
+    //   `template_trainer_lists`. Expected high-volume fall-through
+    //   path: every non-trainer NPC interaction lands here.
+    //
+    // Collapsing both into `no_template` would drown the rare setup
+    // bug in the expected fall-through traffic. See review of #482.
+    let trainer_template_id = match space_mgr
+        .get_entity(target_entity_id)
+        .and_then(|t| t.template_id)
+    {
+        Some(t) => t,
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "entity_no_template",
+            );
+            return false;
+        }
+    };
+    let list_id = match space_mgr.template_trainer_lists.get(&trainer_template_id) {
+        Some(&id) => id,
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "not_a_trainer",
+            );
+            return false; // not a trainer — fall through to other interact paths
+        }
+    };
+
+    // Player must have an archetype to query the right ability list.
+    // Same split rationale as above: `player_missing` is an entity-
+    // lifecycle issue (player entity wasn't found at all), `no_archetype`
+    // is a state issue (player entity exists but archetype_id is unset).
+    let player = match space_mgr.get_entity(player_entity_id) {
+        Some(p) => p,
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "player_missing",
+            );
+            return false;
+        }
+    };
+    let player_archetype = match player.archetype_id {
+        Some(a) => a,
+        None => {
+            tracing::warn!(
+                player_entity_id,
+                target_entity_id,
+                "trainer interact: player has no archetype_id — skipping"
+            );
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "no_archetype",
+            );
+            return false;
+        }
+    };
+
+    // Lookup the abilities this trainer offers to this archetype.
+    let offered: Vec<i32> = space_mgr
+        .trainer_abilities
+        .get(&(list_id, player_archetype))
+        .cloned()
+        .unwrap_or_default();
+    if offered.is_empty() {
+        tracing::warn!(
+            target: "abilities",
+            event = "trainer_empty_offering",
+            player_entity_id,
+            trainer_entity_id = target_entity_id,
+            trainer_template_id,
+            list_id,
+            archetype_id = player_archetype,
+            "Trainer has no abilities for this archetype — content gap"
+        );
+        cimmeria_observability::counter!(
+            "trainer_opens_total",
+            "outcome" => "empty_offering",
+        );
+        // Continue — the UI still opens with an empty list. The
+        // counter fires here AND `opened` does NOT below, so the
+        // empty-offering branch is tracked separately.
+    }
+
+    // For each offered ability, `trainable` is 1 exactly when a
+    // `trainAbility` for it would be forwarded: both sides call
+    // `evaluate_train`. The client enables the Train button from this byte
+    // alone, so a disagreement is a button that does nothing when pressed.
+    //
+    // Both callers pass the player's pin as `target_entity_id` (`interact`
+    // pins it just before calling here; the re-sends read it back), so the
+    // trainer gates see the same trainer a purchase would.
+    let pin = super::trainer_pin(
+        space_mgr,
+        player_entity_id,
+        Some(target_entity_id),
+        Some(player_archetype),
+    );
+    let entries: Vec<(i32, u8)> = offered
+        .iter()
+        .map(|&ability_id| {
+            let ctx = TrainContext {
+                catalog: &space_mgr.ability_tree_catalog,
+                ability_id,
+                ability_exists: space_mgr.ability_defs.contains_key(&ability_id),
+                player_id: player.player_id,
+                archetype_id: Some(player_archetype),
+                level: player.level as i32,
+                known: &player.abilities,
+                tree_points_spent: player.tree_progress.tree_points_spent,
+                training_points: player.tree_progress.training_points,
+                trainer: pin,
+            };
+            let trainable = match evaluate_train(&ctx) {
+                Ok(_) => 1,
+                Err(TrainReject::NotInArchetypeTree) => {
+                    tracing::warn!(
+                        target: "abilities",
+                        event = "trainer_offered_unbound",
+                        player_entity_id,
+                        trainer_entity_id = target_entity_id,
+                        list_id,
+                        archetype_id = player_archetype,
+                        ability_id,
+                        "Trainer offers ability not in player's archetype tree — \
+                         content gap (trainer_abilities row without matching \
+                         archetype_ability_tree entry)"
+                    );
+                    0
+                }
+                Err(_) => 0,
+            };
+            (ability_id, trainable)
+        })
+        .collect();
+
+    // Wire layout: INT32 TrainerID, ARRAY<TrainerAbility> Abilities,
+    // INT32 CostToRespec. TrainerAbility = FIXED_DICT { INT32 abilityID,
+    // UINT8 trainable } — serialized as 5 bytes per entry, no marker.
+    let mut args = Vec::with_capacity(4 + 4 + entries.len() * 5 + 4);
+    args.extend_from_slice(&(target_entity_id as i32).to_le_bytes()); // TrainerID
+    args.extend_from_slice(&(entries.len() as u32).to_le_bytes()); // ARRAY count
+    for (ability_id, trainable) in &entries {
+        args.extend_from_slice(&ability_id.to_le_bytes());
+        args.push(*trainable);
+    }
+    // CostToRespec: the price `resetMyAbilities` charges (D-AT10, AT-08).
+    args.extend_from_slice(&RESPEC_COST_NAQUADAH.to_le_bytes());
+
+    let send_result = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id: player_entity_id,
+            method_index: crate::mercury::method_idx::ON_TRAINER_OPEN,
+            args,
+        })
+        .await;
+
+    match send_result {
+        Ok(()) => {
+            tracing::info!(
+                target: "abilities",
+                event = "trainer_open",
+                player_entity_id,
+                trainer_entity_id = target_entity_id,
+                trainer_template_id,
+                list_id,
+                archetype_id = player_archetype,
+                offered = entries.len(),
+                trainable_count = entries.iter().filter(|(_, t)| *t == 1).count(),
+                "Sent onTrainerOpen"
+            );
+            // Only emit `opened` for non-empty offerings — the
+            // empty-offering branch already counted itself above.
+            // This way the rate "opened ÷ (opened + empty_offering)"
+            // measures content-completeness.
+            if !entries.is_empty() {
+                cimmeria_observability::counter!(
+                    "trainer_opens_total",
+                    "outcome" => "opened",
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!(
+                target: "abilities",
+                event = "trainer_open_send_failed",
+                player_entity_id,
+                trainer_entity_id = target_entity_id,
+                trainer_template_id,
+                error = %e,
+                "Failed to send onTrainerOpen — cell→base channel closed"
+            );
+        }
+    }
+
+    true
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::ability_tree::{AbilityTreeCatalog, TreeNode};
+    use crate::cell::space_manager::SpaceManager;
+    use tokio::sync::mpsc;
+
+    pub(crate) fn make_mgr_with_trainer_and_player() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+
+        mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+            p.archetype_id = Some(2);
+            p.level = 1;
+            p.tree_progress.training_points = 1;
+        }
+
+        // Within MAX_INTERACT_DISTANCE (5): the trainer gate re-checks range.
+        mgr.spawn_npc(200, "W", [3.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(t) = mgr.get_entity_mut(200) {
+            t.template_id = Some(25);
+        }
+        mgr.template_trainer_lists.insert(25, 1);
+        mgr.trainer_abilities.insert((1, 2), vec![597, 646, 641]);
+        crate::test_support::seed_ability_defs(&mut mgr, &[597, 646, 641]);
+        mgr.ability_tree_catalog = AbilityTreeCatalog::from_nodes([
+            TreeNode::with_defaults(2, 1, 597, 1, vec![]),
+            TreeNode::with_defaults(2, 1, 646, 1, vec![]),
+            TreeNode::with_defaults(2, 1, 641, 5, vec![]),
+        ]);
+
+        mgr
+    }
+
+    #[tokio::test]
+    async fn non_trainer_target_returns_false() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
+        // Within MAX_INTERACT_DISTANCE (5): the trainer gate re-checks range.
+        mgr.spawn_npc(200, "W", [3.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(t) = mgr.get_entity_mut(200) {
+            t.template_id = Some(99);
+        }
+        let (tx, _rx) = mpsc::channel(8);
+        let handled = try_open_trainer(1, 200, &tx, &mgr).await;
+        assert!(!handled, "non-trainer template must fall through");
+    }
+
+    #[tokio::test]
+    async fn trainer_sends_on_trainer_open_with_offered_abilities() {
+        let mgr = make_mgr_with_trainer_and_player();
+        let (tx, mut rx) = mpsc::channel(8);
+        let handled = try_open_trainer(1, 200, &tx, &mgr).await;
+        assert!(handled, "trainer interact must be handled");
+
+        let msg = rx.try_recv().expect("must send onTrainerOpen");
+        match msg {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                args,
+            } => {
+                assert_eq!(entity_id, 1, "method targets the player entity");
+                assert_eq!(method_index, crate::mercury::method_idx::ON_TRAINER_OPEN);
+                assert_eq!(
+                    i32::from_le_bytes([args[0], args[1], args[2], args[3]]),
+                    200
+                );
+                assert_eq!(u32::from_le_bytes([args[4], args[5], args[6], args[7]]), 3);
+                assert_eq!(
+                    i32::from_le_bytes([args[8], args[9], args[10], args[11]]),
+                    597
+                );
+                assert_eq!(args[12], 1, "597 must be trainable");
+                assert_eq!(
+                    i32::from_le_bytes([args[13], args[14], args[15], args[16]]),
+                    646
+                );
+                assert_eq!(args[17], 1, "646 must be trainable");
+                assert_eq!(
+                    i32::from_le_bytes([args[18], args[19], args[20], args[21]]),
+                    641
+                );
+                assert_eq!(args[22], 0, "641 must NOT be trainable at level 1");
+                assert_eq!(
+                    i32::from_le_bytes([args[23], args[24], args[25], args[26]]),
+                    1000
+                );
+            }
+            _ => panic!("expected EntityMethodCall"),
+        }
+    }
+
+    /// Already-known ability filter regression.
+    /// An ability that the player already has in `entity.abilities` must
+    /// appear in the trainer list with `trainable=0`. Without this guard
+    /// the client UI would show the ability as available — the DB UPDATE's
+    /// `NOT (abilities @> ARRAY[...])` clause on the base side would
+    /// reject the second grant, but the UI would still suggest it's
+    /// available (bad UX).
+    #[tokio::test]
+    async fn already_known_ability_shows_untrainable() {
+        let mut mgr = make_mgr_with_trainer_and_player();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(597);
+        }
+        let (tx, mut rx) = mpsc::channel(8);
+        try_open_trainer(1, 200, &tx, &mgr).await;
+        let msg = rx.try_recv().unwrap();
+        if let CellToBaseMsg::EntityMethodCall { args, .. } = msg {
+            assert_eq!(
+                args[12], 0,
+                "already-known ability must show as untrainable"
+            );
+        } else {
+            panic!("expected EntityMethodCall");
+        }
+    }
+
+    #[tokio::test]
+    async fn player_without_archetype_skips() {
+        let mut mgr = make_mgr_with_trainer_and_player();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.archetype_id = None;
+        }
+        let (tx, _rx) = mpsc::channel(8);
+        let handled = try_open_trainer(1, 200, &tx, &mgr).await;
+        assert!(!handled, "missing archetype must skip trainer flow");
+    }
+
+    /// Regression guard for the `trainer_opens_total{outcome=...}` label
+    /// split (PR #483 review).
+    ///
+    /// The two "player not available" paths share the same return value
+    /// (`!handled`) but emit *different* metric labels:
+    ///
+    /// - `outcome=player_missing` when the player entity isn't in
+    ///   SpaceManager at all (lifecycle bug).
+    /// - `outcome=no_archetype` when the player entity exists but
+    ///   `archetype_id` is unset (state bug), and is accompanied by a
+    ///   `tracing::warn!` carrying "player has no archetype_id".
+    ///
+    /// Without the metric collector we can't read counter values from a
+    /// unit test, but the warn line is path-specific — its presence
+    /// pins the `no_archetype` branch, its absence pins the
+    /// `player_missing` branch. Bug shape this catches: a refactor that
+    /// collapses the two branches back into a single `no_archetype`
+    /// counter would silently lose the diagnostic split — the warn
+    /// would still fire on the no-archetype path but would also fire
+    /// on the player-missing path, tripping the second assertion below.
+    #[tokio::test]
+    async fn outcome_split_player_missing_vs_no_archetype() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        // Path A: player entity has no archetype_id — must warn.
+        {
+            let capture = LogCapture::install();
+            let mut mgr = make_mgr_with_trainer_and_player();
+            if let Some(p) = mgr.get_entity_mut(1) {
+                p.archetype_id = None;
+            }
+            let (tx, _rx) = mpsc::channel(8);
+            let handled = try_open_trainer(1, 200, &tx, &mgr).await;
+            assert!(!handled);
+            assert!(
+                capture
+                    .find_message(Level::WARN, "player has no archetype_id")
+                    .is_some(),
+                "no_archetype path must emit the path-specific warn — \
+                 without it the outcome label split has regressed",
+            );
+        }
+
+        // Path B: player entity doesn't exist at all — must NOT warn
+        // (this path is silent-counter only).
+        {
+            let capture = LogCapture::install();
+            let mgr = make_mgr_with_trainer_and_player();
+            let (tx, _rx) = mpsc::channel(8);
+            // entity_id 9999 doesn't exist in `mgr`.
+            let handled = try_open_trainer(9999, 200, &tx, &mgr).await;
+            assert!(!handled);
+            assert!(
+                capture
+                    .find_message(Level::WARN, "player has no archetype_id")
+                    .is_none(),
+                "player_missing path must NOT emit the no_archetype warn \
+                 — a regression here means the two outcome labels are \
+                 firing from a single shared branch",
+            );
+        }
+    }
+}

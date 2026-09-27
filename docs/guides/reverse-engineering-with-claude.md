@@ -1,7 +1,7 @@
 ---
 type: how-to
 audience: Cimmeria contributors using Claude Code (or any LLM agent) to drive reverse-engineering work
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 prerequisites: [re-toolchain-setup.md completed and MCPs reachable]
 companion_docs:
   - re-toolchain-setup.md
@@ -168,6 +168,7 @@ The MCP bridges are convenient but not omnipotent. Reach for the manual flow whe
 
 - **pybag (the Ghidra MCP debugger plugin) freezes SGW.** This is a known compatibility issue documented in [`sgw-live-debugging.md`](sgw-live-debugging.md). For dynamic analysis on SGW, use x32dbg manually (or via the x64dbg-automate MCP) — never pybag.
 - **You need to halt-break on a hot function.** Hot functions (cursor target tracking, animation ticks) disconnect the client when paused. Log breakpoints are the answer; an agent can drive them via the x64dbg-automate MCP, but you should read the technique in `sgw-live-debugging.md` first so you can spot when the agent picks a hot BP location.
+- **The Ghidra MCP tools are unreachable from your session** (Ghidra's GUI is closed, or the session never discovered the bridge's tools). For read-only static work, run the headless probe in [`tools/re/ghidra-headless/`](../../tools/re/ghidra-headless/README.md) through `analyzeHeadless.bat -noanalysis -readOnly`: decompile, xrefs, string and function-name search, vtable dumps. It batches many lookups per run, and its string search is the quick way to find native event subscribers from RTTI type-name strings ([cme-event-signal.md](../reverse-engineering/findings/cme-event-signal.md)). Its raw pointer scan (`FINDPTR`) gives false positives on RTTI Complete Object Locator chains, so treat those hits as leads.
 - **The decompile is garbled.** Some functions have control-flow that the decompiler mis-renders. Read the disassembly directly (`mcp__ghidra__disassemble_function`) and walk it yourself; pattern-matching agents struggle with mangled output.
 - **The investigation is broader than one or two sessions.** Long-running campaigns (like the V5 campaign that produced 19 findings docs) need human curation across sessions — agent memory helps, but the campaign's shape is yours to maintain.
 
@@ -219,6 +220,7 @@ Bad shape: "use the specialist to research and implement and document and verify
 - [docs/guides/live-research-lab.md](live-research-lab.md) — the Live Research Lab rulebook (the "ask the running game" path)
 - [docs/architecture/live-research-lab.md](../architecture/live-research-lab.md) — the Live Research Lab ADR
 - [docs/guides/re-toolchain-setup.md](re-toolchain-setup.md) — get the MCPs working in the first place
+- [tools/re/ghidra-headless/README.md](../../tools/re/ghidra-headless/README.md) — headless Ghidra probe for when the MCP bridge is unavailable
 - [docs/guides/sgw-live-debugging.md](sgw-live-debugging.md) — manual dynamic-analysis techniques, pybag warning
 - [docs/guides/reading-decompiled-code.md](reading-decompiled-code.md) — interpret Ghidra output
 - [docs/reverse-engineering/evidence-standards.md](../reverse-engineering/evidence-standards.md) — confidence tiers and citation grammar

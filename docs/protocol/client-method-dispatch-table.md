@@ -1,22 +1,33 @@
 ---
-title: "SGWPlayer Client Method Dispatch Table (Server → Client)"
+title: "Client Method Dispatch Table (Server → Client): SGWPlayer, SGWMob, SGWPet"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
-# SGWPlayer Client Method Dispatch Table (Server → Client)
+# Client Method Dispatch Table (Server → Client): SGWPlayer, SGWMob, SGWPet
 
-> **Last updated**: 2026-07-25
+> This reference covers three entity types' server→client method dispatch: the full 157-method
+> **SGWPlayer** table below is the primary/reference table (and the one
+> [`tools/wire_decoder_codegen.py`](../../tools/wire_decoder_codegen.py) parses — see its own
+> section-boundary note); the **SGWMob** and **SGWPet** tables further down are each a much
+> smaller, separate index space layered on top of the shared `SGWSpawnableEntity`/`SGWBeing`/
+> `SGWCombatant` prefix (their own method indices reuse small numbers that collide with
+> SGWPlayer's at the same index — they are a different entity type's dispatch table, not an
+> extension of SGWPlayer's).
+>
+> **Last updated**: 2026-09-27 — added the SGWPet table (pets campaign PT-E1)
+> **Previously**: 2026-09-25 — added the SGWMob table (NA33)
 > **Verified**: 2026-07-25 — all 157 index/name pairs re-derived from
 > `entities/defs/` by replaying the BigWorld flattening rule, and diffed
 > against both this table and the constants in
-> `crates/services/src/cell/client_methods/`. Zero mismatches in either
+> `crates/wire/src/cell/client_methods/`. Zero mismatches in either
 > direction.
 > **Total methods**: 157 (indices 0–156)
 > **Encoding**: Methods 0–60 use direct wire encoding (`msg_id = 0x80 + index`);
 > methods 61+ use extended encoding (`msg_id = 0xBD`, sub-byte = `index - 61`).
-> **Entity type**: SGWPlayer (class_id = 0x02)
+> **Entity type**: SGWPlayer (class_id = 0x02) — see the SGWMob and SGWPet sections below for
+> their own entity types and class_ids.
 
 ---
 
@@ -32,7 +43,7 @@ chain (root → leaf), the parser processes:
 This means interface methods always come before the entity's own methods at each
 level. The full parse order for SGWPlayer is:
 
-```text
+```
 SGWEntity (0 own, 0 interfaces with client methods)
   └─ SGWSpawnableEntity (12 own methods)
        └─ SGWBeing (1 own method)
@@ -100,7 +111,7 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 18 | `onTopSpeedUpdate` | `FLOAT TopSpeed` |
 | 19 | `onStateFieldUpdate` | `INT32 bStateField` |
 
-`BigWorldTimeComplete` (method 12) is an **absolute** time on the server game clock, not a relative offset: seconds = `gameTime * tickRate / 1000`, where `gameTime` is the server-wide tick counter the client is seeded with by `SET_GAME_TIME` at login and kept on by `TICK_SYNC`, and `tickRate` is milliseconds per tick (`100`). Starts are emitted as `now + duration` for cooldowns (type 2, ability and weapon reload) and effect durations (type 5), matching `AbilityManager.py`; the effect-duration clear sends `0.0`. See `crates/services/src/base/game_time.rs` and [`ability-resolution-pipeline.md`](../reverse-engineering/findings/ability-resolution-pipeline.md).
+`onTimerUpdate.BigWorldTimeComplete` is an absolute time on the client's game clock, `TICK_SYNC.gameTime / hertz` seconds ([system-protocol-wire-formats.md](../reverse-engineering/findings/system-protocol-wire-formats.md#the-client-game-clock)). Senders use `game_clock::game_time_secs() + duration` (`crates/wire/src/mercury/game_clock/`). The client shows `complete - clock`, clamped to 0, so `0.0` clears a timer, and the effect handler (type 5) creates no icon for an expiry already in the past.
 
 ### SGWCombatant (interface) — 6 methods, indices 20–25
 
@@ -153,6 +164,8 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 49 | `onOrganizationRankUpdate` | `INT32 aOrganizationId, ARRAY<INT32> aRankIds, ARRAY<INT32> aRankFlags` |
 | 50 | `onOrganizationRankNameUpdate` | `INT32 aOrganizationId, ARRAY<INT32> aRankIds, ARRAY<WSTRING> aRankNames` |
 | 51 | `onSquadLootType` | `INT32 aOrganizationId, INT32 aLootType` |
+
+Every method in this block has an argument serializer, `build_on_<method>`, in [`crates/wire/src/cell/client_methods/organization/builders.rs`](../../crates/wire/src/cell/client_methods/organization/builders.rs), typed on the `cimmeria_entity::organization` models and pinned byte for byte in `organization/tests.rs` (organizations campaign ORG-01). `RosterInfo` is `entities/defs/alias.xml:27-36`: `WSTRING name, UINT8 level, UINT8 archetype, UINT8 rank, WSTRING note, WSTRING officerNote`, with no online flag. `ARRAY` is a `u32` count and the elements. The indices are also in `mercury::method_idx`, re-exported from `client_methods::organization` so the two tables cannot drift. Sent today: 34-40 and 51 for squads (ORG-03, ORG-04); for Teams and Commands, 35, 37, 38, 43-45 and 48-50 in the state push (ORG-05, ORG-06), 36 and 39 on a leave or disband (ORG-06), 34, 36, 37, 39 and 40 on an invite, join, kick or rank change (ORG-07), and 45-47, 49 and 50 when a MOTD, note, officer note, rank mask or rank name changes (ORG-08; 47 only to members whose rank holds `OfficerNotes`, and as a visibility sync when that changes). 41 and 42 are never sent (no strike-team feature).
 
 ### MinigamePlayer (interface) — 13 methods, indices 52–64
 
@@ -304,6 +317,41 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 155 | `onPlayMovie` | `WSTRING MovieName, UINT8 FullScreen` |
 | 156 | `onCancelMovie` | `WSTRING MovieName, INT32 EntityId` |
 
+`onErrorCode` (121), `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) have serializers in [`crates/wire/src/cell/client_methods/player.rs`](../../crates/wire/src/cell/client_methods/player.rs) (`build_on_error_code`, `build_on_organization_creation_result`, `build_launch_organization_creation`), each with a byte test. 134 and 135 go out with the extended encoding (sub-slot 73 and 74). Since ORG-05 the cell sends 135 when an eligible player right-clicks an organization registrar, and the base sends 134 for every named creation: `(1, 0)` on success, or `(0, RetCode)` on a refusal. The `Result` and `RetCode` values are project policy, not recovered data (`org_creation_ret_code` in `player.rs`; [organization-system.md § Creation](../gameplay/organization-system.md#creation-org-05)).
+
+#### Crafting payloads (112, 136-140)
+
+The server-side serializers are in `crates/wire/src/crafting/client_methods.rs`, each byte-exact tested. Integers are little-endian; an `ARRAY` is a `u32` element count followed by the elements.
+
+| Index | Argument bytes |
+|-------|----------------|
+| 112 | `i32 CostToRespec` (4 bytes) |
+| 136 | `i32 aDisciplineSeqId, i32 aExpertise` (8 bytes) |
+| 137 | none (0 bytes) |
+| 138 | `i32 aRacialParadigmId, i8 aLevel` (5 bytes) |
+| 139 | `u32 count, count × i32 blueprint id` |
+| 140 | `CraftingOptions`: four `CraftingInfo`, each `u32 n, n × i32 items` then `u32 m, m × i32 entities` |
+| 7 (ASP) | `onEntityProperty(i32 2, i32 total)`: `GENERICPROPERTY_AppliedSciencePoints`, always the unspent total |
+
+Where the server sends them: the `mapLoaded` bundle carries 139 and the ASP property from the `sgw_player` row. After the `onClientReady` burst, `base/crafting/sync/` sends one reliable bundle with 136 per known discipline, 138 per racial paradigm (all five), 139 and the ASP property ([crafting CR-03](../analysis/crafting/work-packets.md#cr-03)). Learning a discipline (95) answers with 136 and the ASP property; the GM ASP grant answers with the ASP property.
+
+`CraftingOptions` is a `FIXED_DICT`, which goes on the wire as its fields in declaration order with no header. The order in [`entities/defs/alias.xml`](../../entities/defs/alias.xml) (`CraftingOptions`, `CraftingInfo`) is:
+
+| Offset (all lists empty) | Field |
+|---|---|
+| 0 | `crafting.items` |
+| 4 | `crafting.entities` |
+| 8 | `research.items` |
+| 12 | `research.entities` |
+| 16 | `reverseEngineering.items` |
+| 20 | `reverseEngineering.entities` |
+| 24 | `alloying.items` |
+| 28 | `alloying.entities` |
+
+The server sends one tool id (`items`, an inventory instance id) and one machine id (`entities`, a station entity id, or the player's own id under `.allcraft`'s "craft anywhere") per section at most, because the client keeps only the last id of each array (CR-E1 Q2). It is sent after every `onClientReady` and then on change; see [gameplay/crafting-system.md](../gameplay/crafting-system.md) "Stations, tools and crafting options".
+
+With every list empty the payload is 32 zero bytes, which disables every crafting tab. `items` names usable tools (item ids) and `entities` usable machines (entity ids); the client keeps only the last id of each list ([crafting audit C-35](../analysis/crafting/audit.md)). The order above comes from the def file; the client unpacker (`0x00e49180` → `0x00e47250`) has not yet been checked against it (crafting packet CR-E1, question 2).
+
 ---
 
 ## Wire Encoding
@@ -319,6 +367,84 @@ The boundary at 61 is computed by the engine from the total method count:
 `numSubSlots = ceil((157 - 63) / 255) = 1`, `begSubSlot = 62 - numSubSlots = 61`.
 
 ---
+
+## SGWMob Client Method Dispatch Table
+
+> **Added**: 2026-09-25 (NA33). **Entity type**: SGWMob (`class_id = 0x04`).
+> **Total methods**: 29 (indices 0-28), all under any plausible idbase (62),
+> so every method uses **direct** wire encoding: `msg_id = 0x80 + index`.
+> Full evidence trail: [`docs/reverse-engineering/findings/npc-aggression-broadcast.md`](../reverse-engineering/findings/npc-aggression-broadcast.md).
+
+SGWMob's inheritance chain is `SGWEntity → SGWSpawnableEntity → SGWBeing →
+SGWMob`, with `SGWMob` implementing `Lootable`:
+
+```
+SGWSpawnableEntity (12 own methods)
+  └─ SGWBeing (1 own method)
+       ├─ Implements: SGWBeing-interface (8), SGWAbilityManager (0), SGWCombatant (6)
+       └─ SGWMob (2 own methods)
+            └─ Implements: Lootable (0 client methods — entities/defs/interfaces/Lootable.def
+                            has an empty <ClientMethods/> block)
+```
+
+Indices 0-26 are **identical** to the SGWPlayer table above (see the
+"SGWSpawnableEntity own", "SGWBeing (interface)", "SGWCombatant (interface)"
+and "SGWBeing (entity own)" sections — same tables apply verbatim, since
+that prefix is a property of the shared ancestor classes, not the leaf
+entity). SGWMob's own methods begin at index 27, immediately after the
+shared prefix, because `Lootable` contributes no client methods:
+
+| Index | Method | Args |
+|-------|--------|------|
+| 0-11 | *(SGWSpawnableEntity own — see SGWPlayer table above)* | — |
+| 12-19 | *(SGWBeing interface — see SGWPlayer table above)* | — |
+| 20-25 | *(SGWCombatant interface — see SGWPlayer table above)* | — |
+| 26 | *(SGWBeing own: `BeingAppearance` — see SGWPlayer table above)* | — |
+| 27 | `onAggressionOverrideUpdate` | `INT8 aAggressionLevel` |
+| 28 | `onAggressionOverrideCleared` | *(none)* |
+
+**Do not reuse the SGWPlayer method_idx constants for SGWMob traffic past
+index 26** — from 27 the two entity types diverge (SGWPlayer continues into
+`Communicator`/`OrganizationMember`/etc.), and the numeric ranges collide
+(SGWPlayer's `Communicator` interface is also indices 27-33). Always pair a
+method index with the correct entity's `class_id` at the call site; see
+`crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE`/
+`ON_AGGRESSION_OVERRIDE_CLEARED` in `crates/wire/src/mercury/mod.rs`.
+
+Ghidra evidence: the client registers both handlers as a pair through
+`MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` /
+`...Cleared` at `0x00d31cd0`; the Update handler at `0x00d31bd0` reads the
+`aAggressionLevel` INT8 argument and stores it at `GameMob + 0x16c`.
+
+## SGWPet Client Method Dispatch Table
+
+> **Added**: 2026-09-27 (pets campaign packet PT-E1). **Entity type**: SGWPet (`class_id = 0x05`).
+> **Total methods**: 32 (indices 0-31), all under `IDBASE_NPC_DEFAULT` (62), so every method
+> uses **direct** wire encoding: `msg_id = 0x80 + index`.
+> Full evidence trail: [`docs/reverse-engineering/findings/pet-client-contract.md`](../reverse-engineering/findings/pet-client-contract.md).
+
+SGWPet's inheritance chain is `SGWEntity → SGWSpawnableEntity → SGWBeing → SGWMob → SGWPet`.
+`SGWPet.def` has no `<Implements>` block, so its own 3 `<ClientMethods>` are appended directly
+after the SGWMob prefix documented above (indices 0-28):
+
+| Index | Method | Args |
+|-------|--------|------|
+| 0-28 | *(SGWMob prefix — see the SGWMob table above)* | — |
+| 29 | `onPetAbilityList` | `ARRAY<INT32> aAbilityList` |
+| 30 | `onPetStanceList` | `ARRAY<INT8> aStanceList` |
+| 31 | `onPetStanceUpdate` | `INT8 aStance` |
+
+Direct encoding: `0x9D` (29), `0x9E` (30), `0x9F` (31).
+
+The indices (29/30/31) rest on the `.def` parse order plus the BigWorld flattening rule (see
+"BigWorld Flattening Rule" above), not on anything decoded from the handlers themselves.
+Separately, Ghidra evidence confirms *handler identity*, not the index values: each handler's
+internal property-list lookup key matches its `.def` `<ArgName>` string exactly —
+`GamePet__OnPetAbilityListChanged` (`0x00d39eb0`) keys on `"aAbilityList"`,
+`GamePet__OnPetStanceListChanged` (`0x00d3a070`) keys on `"aStanceList"`,
+`GamePet__OnPetStanceUpdateChanged` (`0x00d3a260`) keys on `"aStance"` — i.e. this confirms
+which method each decompiled handler implements, not that the flattening rule assigned it the
+number claimed above.
 
 ## Derivation
 

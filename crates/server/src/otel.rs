@@ -4,7 +4,7 @@
 //!
 //! # SigNoz service split
 //!
-//! The OTLP log signal is split across **two** providers, each tagged
+//! The OTLP log signal is split across **three** providers, each tagged
 //! with its own `service.name` resource:
 //!
 //! - **`cimmeria-server`** — the high-signal index. Auth, content
@@ -16,10 +16,13 @@
 //!   dispatch, tick-sync heartbeats. Operators query this index when
 //!   chasing wire-level issues; it never drowns the main view at
 //!   normal severity.
+//! - **`cimmeria-trace`** — every TRACE-level row that reaches an on-disk
+//!   log file, plus the custom-target TRACE rows and the 1-in-N samples of
+//!   the per-packet firehoses (NA25). The other two indexes never receive
+//!   TRACE, so no record is indexed twice.
 //!
-//! Routing is target-based via [`is_network_noise_target`] composed
-//! with a severity carve-out in `crates/server/src/main.rs`. See that
-//! file's `init_logging` for the layer composition.
+//! Routing is by level plus [`is_network_noise_target`]; the filters and the
+//! routing table live in `crates/server/src/logging/filters.rs`.
 //!
 //! # Architecture
 //!
@@ -63,7 +66,21 @@
 //! | `OTEL_SERVICE_NAME` | Defaults to `cimmeria-server`. Shows up in SigNoz's service map. |
 //! | `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated `k=v` pairs piped through to every event. Common keys: `deployment.environment`, `service.namespace`. |
 //! | `OTEL_TRACES_SAMPLER` | `always_on` (default), `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
-//! | `CIMMERIA_DEPLOY_ENV` | Default `"dev"`. Sets `deployment.environment` on every signal — overridable by `OTEL_RESOURCE_ATTRIBUTES`. |
+//! | `CIMMERIA_DEPLOY_ENV` | Default `"dev"`. Sets `deployment.environment` and `cimmeria.deploy_env` on every signal. |
+//!
+//! # Deploy identity
+//!
+//! Every provider's resource carries (see [`identity_attributes`]):
+//!
+//! - `deployment.environment` and `cimmeria.deploy_env` — from
+//!   `CIMMERIA_DEPLOY_ENV` (`colo` on the colo, `dev` elsewhere);
+//! - `host.name` — the machine (or container) hostname;
+//! - `service.version` — the git commit baked in at build time by
+//!   `crates/server/build.rs` (`CIMMERIA_GIT_SHA` in the container build,
+//!   `git rev-parse HEAD` otherwise, `"unknown"` when neither is available).
+//!
+//! Without these a colo row and a dev-laptop row were indistinguishable and
+//! no row could be tied to a build (audit gap T2).
 //!
 //! All env vars match the OpenTelemetry SDK spec — pinned so the
 //! standard `opentelemetry-otlp` crate reads them directly without us
@@ -82,12 +99,22 @@ use opentelemetry_sdk::Resource;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::Registry;
 
-/// Composed return type for [`init`] — the trace layer (spans) and the
-/// log layers (root-level events, split into a high-signal stream and a
-/// high-noise network stream) flow through different SDK paths, so
-/// `main()` adds them all to the layered subscriber when present.
+/// The span layer and one log layer per SigNoz log index. `init_logging`
+/// gives each its own filter.
 pub type OtelTraceLayer = OpenTelemetryLayer<Registry, SdkTracer>;
 pub type OtelLogLayer = OpenTelemetryTracingBridge<SdkLoggerProvider, SdkLogger>;
+
+/// Everything [`init`] hands to `init_logging`.
+pub struct OtelLayers {
+    /// Spans (`tracing::span!`) and the events inside them.
+    pub trace: OtelTraceLayer,
+    /// `service.name = cimmeria-server`.
+    pub server_log: OtelLogLayer,
+    /// `service.name = cimmeria-network`.
+    pub network_log: OtelLogLayer,
+    /// `service.name = cimmeria-trace`.
+    pub trace_log: OtelLogLayer,
+}
 
 /// Default service name for the high-signal index (auth, content,
 /// combat, missions, etc.).
@@ -108,6 +135,45 @@ const DEFAULT_SERVICE_NAME: &str = "cimmeria-server";
 /// predicate.
 const NETWORK_SERVICE_NAME: &str = "cimmeria-network";
 
+/// Service name for the TRACE-level index (NA25). Parity with the on-disk
+/// files: every TRACE row a `logs/*.log` layer keeps is exported here, and
+/// only here. Query `service.name = 'cimmeria-trace'`.
+const TRACE_SERVICE_NAME: &str = "cimmeria-trace";
+
+/// Git commit this binary was built from, or `"unknown"`. Set by
+/// `crates/server/build.rs`.
+pub const BUILD_SHA: &str = env!("CIMMERIA_BUILD_SHA");
+
+/// Resource attributes that identify *which deployment and which build*
+/// emitted a signal. Shared by every provider (both log indexes, traces and
+/// metrics) so a query can filter on them whichever signal it starts from.
+///
+/// Explicit builder attributes win over `OTEL_RESOURCE_ATTRIBUTES` in the
+/// SDK's resource merge, so these are authoritative.
+fn identity_attributes(
+    deploy_env: &str,
+    host_name: &str,
+    version: &str,
+) -> Vec<opentelemetry::KeyValue> {
+    use opentelemetry::KeyValue;
+    vec![
+        KeyValue::new("deployment.environment", deploy_env.to_string()),
+        KeyValue::new("cimmeria.deploy_env", deploy_env.to_string()),
+        KeyValue::new("host.name", host_name.to_string()),
+        KeyValue::new("service.version", version.to_string()),
+    ]
+}
+
+/// This host's name, or `"unknown"` if the OS will not say.
+fn host_name() -> String {
+    let name = gethostname::gethostname().to_string_lossy().into_owned();
+    if name.is_empty() {
+        "unknown".to_string()
+    } else {
+        name
+    }
+}
+
 /// True if `target` (which OTel surfaces as `scope_name`) is a
 /// high-volume wire-level event that should land in the
 /// `cimmeria-network` index rather than `cimmeria-server`.
@@ -121,29 +187,38 @@ const NETWORK_SERVICE_NAME: &str = "cimmeria-network";
 ///   — explicit `target = "mercury.*"` strings in
 ///   `crates/mercury/src/instrumentation.rs`, `channel/mod.rs`,
 ///   `transport.rs`. Per-packet wire-level instrumentation.
-/// - `cimmeria_services::base::connect_loop::encrypted` —
+/// - `cimmeria_base::base::connect_loop::encrypted` —
 ///   bundle/decrypt DEBUG logs that fire per inbound packet.
-/// - `cimmeria_services::base::connect_loop::cell_arms` — cell-method
-///   dispatch debug logs.
-/// - `cimmeria_services::base::tick_sync` — tick-sync heartbeats and
-///   retransmit RTO notices.
+/// - `cimmeria_base::base::connect_loop::cell_arms` — cell-method
+///   dispatch debug logs. Both were `cimmeria_services::base::connect_loop::…`
+///   until wave B4 of the crate split moved the connect loop to
+///   `cimmeria-base`.
+/// - `cimmeria_base_session::base::tick_sync` — tick-sync heartbeats and
+///   retransmit RTO notices. It was `cimmeria_services::base::tick_sync`
+///   until wave B1 of the crate split moved it to `cimmeria-base-session`.
+///
+/// `cimmeria_mercury::` is the transport crate only. The services-side packet
+/// builders in `cimmeria_wire::mercury` (moved out of `cimmeria-services` in
+/// wave W3a of the crate split) share the module name but log per map load
+/// and per appearance or tint call, not per datagram, so they stay in
+/// `cimmeria-server` as they did before the move.
 pub fn is_network_noise_target(target: &str) -> bool {
     target.starts_with("mercury.")
-        || target == "cimmeria_services::base::connect_loop::encrypted"
-        || target == "cimmeria_services::base::connect_loop::cell_arms"
-        || target.starts_with("cimmeria_services::base::tick_sync")
+        || target == "cimmeria_base::base::connect_loop::encrypted"
+        || target == "cimmeria_base::base::connect_loop::cell_arms"
+        || target.starts_with("cimmeria_base_session::base::tick_sync")
         || target.starts_with("cimmeria_mercury::")
 }
 
-/// Initialize the OTLP exporters and return the pair of tracing layers
-/// that ship events through them. Returns `None` (silently) when
+/// Initialize the OTLP exporters and return the tracing layers that ship
+/// events through them. Returns `None` (silently) when
 /// `OTEL_EXPORTER_OTLP_ENDPOINT` is unset — telemetry is opt-in.
 ///
 /// The returned [`OtelGuard`] must be held for the lifetime of the
 /// process — dropping it shuts down both providers, flushing the
 /// in-flight batches to the collector. Without this flush, the last
 /// few seconds of telemetry before a clean shutdown are lost.
-pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)> {
+pub fn init() -> Option<(OtelLayers, OtelGuard)> {
     let endpoint = match env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         Ok(v) if !v.is_empty() => v,
         _ => {
@@ -174,12 +249,11 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     let service_name =
         env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| DEFAULT_SERVICE_NAME.to_string());
     let deploy_env = env::var("CIMMERIA_DEPLOY_ENV").unwrap_or_else(|_| "dev".to_string());
+    let host = host_name();
+    let identity = identity_attributes(&deploy_env, &host, BUILD_SHA);
     let resource = Resource::builder()
         .with_service_name(service_name.clone())
-        .with_attribute(opentelemetry::KeyValue::new(
-            "deployment.environment",
-            deploy_env.clone(),
-        ))
+        .with_attributes(identity.clone())
         .build();
     // High-noise wire-level events ride a separate provider with
     // `service.name = cimmeria-network`. Same deployment.environment
@@ -189,10 +263,14 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     // predicate; the per-layer filter is applied in `main.rs`.
     let network_resource = Resource::builder()
         .with_service_name(NETWORK_SERVICE_NAME)
-        .with_attribute(opentelemetry::KeyValue::new(
-            "deployment.environment",
-            deploy_env.clone(),
-        ))
+        .with_attributes(identity.clone())
+        .build();
+    // TRACE rows get a third service for the same reason: their volume is
+    // an order of magnitude above everything else, and an operator asks for
+    // them explicitly.
+    let trace_resource = Resource::builder()
+        .with_service_name(TRACE_SERVICE_NAME)
+        .with_attributes(identity)
         .build();
     // OTEL_RESOURCE_ATTRIBUTES is parsed by `opentelemetry_sdk` itself
     // when present, so we don't need to manually split-and-merge it
@@ -255,77 +333,20 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
 
     let trace_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
-    // ── Log exporter (root-level events) ──────────────────────────────
-    let log_exporter_result = match protocol.as_str() {
-        "http/protobuf" | "http" => opentelemetry_otlp::LogExporter::builder()
-            .with_http()
-            .with_endpoint(&endpoint)
-            .build(),
-        _ => opentelemetry_otlp::LogExporter::builder()
-            .with_tonic()
-            .with_endpoint(&endpoint)
-            .build(),
-    };
-
-    let log_exporter = match log_exporter_result {
-        Ok(e) => e,
-        Err(err) => {
-            // Fail-loud and bail entirely — the bridge layer type isn't
-            // trivially constructable as a no-op, so partial telemetry
-            // (traces only) would require keeping a parallel "log layer
-            // is `Option<...>`" path through the rest of init. Cleaner
-            // to ship full-or-nothing and let the operator fix config.
-            eprintln!("[otel] Log exporter init failed ({err}); telemetry will not ship");
-            return None;
-        }
-    };
-
-    let logger_provider = SdkLoggerProvider::builder()
-        .with_batch_exporter(log_exporter)
-        .with_resource(resource.clone())
-        .build();
+    // ── Log exporters (root-level events), one per SigNoz log index ──
+    //
+    // Same OTLP endpoint, different `service.name` resource, so SigNoz shows
+    // each as its own service. Routing happens in the per-layer filters that
+    // `init_logging` puts on the bridges. Each provider costs one batch
+    // exporter and one channel — small against the volume it isolates.
+    let logger_provider = log_provider(&protocol, &endpoint, resource.clone(), "Log")?;
+    let network_logger_provider =
+        log_provider(&protocol, &endpoint, network_resource, "Network log")?;
+    let trace_logger_provider = log_provider(&protocol, &endpoint, trace_resource, "Trace log")?;
 
     let log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
-
-    // ── Network log exporter (high-noise wire-level events) ───────────
-    //
-    // Same OTLP endpoint, different `service.name` resource. SigNoz
-    // groups by service.name so this stream surfaces as its own
-    // service (`cimmeria-network`) without affecting the main
-    // `cimmeria-server` view. Routing happens via the per-layer
-    // FilterFn applied in `main.rs` — events whose target matches
-    // `is_network_noise_target` go to this bridge; everything else
-    // goes through the `log_layer` above.
-    //
-    // We pay the cost of a second batch exporter + gRPC channel; that
-    // overhead is small compared to the volume of mercury_packet
-    // events we're routing.
-    let network_log_exporter_result = match protocol.as_str() {
-        "http/protobuf" | "http" => opentelemetry_otlp::LogExporter::builder()
-            .with_http()
-            .with_endpoint(&endpoint)
-            .build(),
-        _ => opentelemetry_otlp::LogExporter::builder()
-            .with_tonic()
-            .with_endpoint(&endpoint)
-            .build(),
-    };
-
-    let network_log_exporter = match network_log_exporter_result {
-        Ok(e) => e,
-        Err(err) => {
-            // Same fail-loud rationale as the primary log exporter.
-            eprintln!("[otel] Network log exporter init failed ({err}); telemetry will not ship");
-            return None;
-        }
-    };
-
-    let network_logger_provider = SdkLoggerProvider::builder()
-        .with_batch_exporter(network_log_exporter)
-        .with_resource(network_resource)
-        .build();
-
     let network_log_layer = OpenTelemetryTracingBridge::new(&network_logger_provider);
+    let trace_log_layer = OpenTelemetryTracingBridge::new(&trace_logger_provider);
 
     // ── Metrics exporter (counters + histograms) ──────────────────────
     //
@@ -376,21 +397,62 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     };
 
     eprintln!(
-        "[otel] Streaming to {endpoint} (protocol={protocol}, signals=traces+logs{metrics}, deployment.environment={deploy_env})",
+        "[otel] Streaming to {endpoint} (protocol={protocol}, signals=traces+logs{metrics}, deployment.environment={deploy_env}, host.name={host}, service.version={BUILD_SHA})",
         metrics = if meter_provider.is_some() { "+metrics" } else { "" },
     );
 
     Some((
-        trace_layer,
-        log_layer,
-        network_log_layer,
+        OtelLayers {
+            trace: trace_layer,
+            server_log: log_layer,
+            network_log: network_log_layer,
+            trace_log: trace_log_layer,
+        },
         OtelGuard {
             tracer_provider,
             logger_provider,
             network_logger_provider,
+            trace_logger_provider,
             meter_provider,
         },
     ))
+}
+
+/// Build one batch-exporting logger provider for `resource`.
+///
+/// `None` on exporter failure, and [`init`] then ships nothing at all: the
+/// bridge layer has no cheap no-op form, so partial telemetry would need an
+/// `Option` threaded through every layer. Full-or-nothing, loudly — the
+/// operator fixes the config. `eprintln!` because the subscriber is not
+/// installed yet.
+fn log_provider(
+    protocol: &str,
+    endpoint: &str,
+    resource: Resource,
+    label: &str,
+) -> Option<SdkLoggerProvider> {
+    let exporter = match protocol {
+        "http/protobuf" | "http" => opentelemetry_otlp::LogExporter::builder()
+            .with_http()
+            .with_endpoint(endpoint)
+            .build(),
+        _ => opentelemetry_otlp::LogExporter::builder()
+            .with_tonic()
+            .with_endpoint(endpoint)
+            .build(),
+    };
+    match exporter {
+        Ok(e) => Some(
+            SdkLoggerProvider::builder()
+                .with_batch_exporter(e)
+                .with_resource(resource)
+                .build(),
+        ),
+        Err(err) => {
+            eprintln!("[otel] {label} exporter init failed ({err}); telemetry will not ship");
+            None
+        }
+    }
 }
 
 /// RAII guard — when dropped, flushes the in-flight batches to the
@@ -405,6 +467,8 @@ pub struct OtelGuard {
     /// batches must flush before the gRPC channel closes or the last
     /// wire-level packets get dropped on a clean shutdown.
     network_logger_provider: SdkLoggerProvider,
+    /// Third logger provider, for the `cimmeria-trace` index.
+    trace_logger_provider: SdkLoggerProvider,
     /// `None` when the metric exporter failed to construct — traces +
     /// logs still flush on shutdown, metrics path was never wired so
     /// nothing to drain.
@@ -437,85 +501,12 @@ impl Drop for OtelGuard {
         if let Err(e) = self.network_logger_provider.shutdown() {
             eprintln!("[otel] Network logger shutdown flush failed: {e}");
         }
+        if let Err(e) = self.trace_logger_provider.shutdown() {
+            eprintln!("[otel] Trace logger shutdown flush failed: {e}");
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    // OTEL env-var reads contend on a single process-global state, so
-    // serialise the test cases that touch them. `unwrap_or_else` on
-    // PoisonError keeps a panicking test from cascading into the next.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    /// Without `OTEL_EXPORTER_OTLP_ENDPOINT`, `init()` must return
-    /// `None` rather than failing — telemetry is opt-in.
-    ///
-    /// Note: we intentionally do NOT have a paired "with endpoint set,
-    /// init returns Some" test. The OTLP exporter builder (tonic-based)
-    /// needs a live tokio runtime at construction time; in a sync test
-    /// without `#[tokio::test]` the builder panics inside hyper-util.
-    /// The realistic init path is exercised by booting cimmeria-server
-    /// with `OTEL_EXPORTER_OTLP_ENDPOINT` set against a live SigNoz
-    /// (smoke test, not unit).
-    #[test]
-    fn init_returns_none_when_endpoint_unset() {
-        let _lock = ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
-        assert!(init().is_none(), "no endpoint → no layer");
-    }
-
-    /// Network-noise routing predicate — pinned for the routing logic
-    /// in `main.rs`. Add to [`is_network_noise_target`] when a new
-    /// high-volume scope appears, then add it here.
-    ///
-    /// A regression that broadens this predicate (e.g., starts matching
-    /// `cimmeria_services::base::*`) would silently route auth/world-
-    /// entry/content events into the network index, hiding them from
-    /// the operator's primary triage view. Pin every accepted prefix
-    /// AND a few high-signal scopes that MUST remain in cimmeria-server.
-    #[test]
-    fn is_network_noise_target_matches_explicit_wire_scopes() {
-        // Accepted (route to cimmeria-network):
-        assert!(is_network_noise_target("mercury.packet"));
-        assert!(is_network_noise_target("mercury.retransmit"));
-        assert!(is_network_noise_target("mercury.backpressure"));
-        assert!(is_network_noise_target(
-            "cimmeria_services::base::connect_loop::encrypted"
-        ));
-        assert!(is_network_noise_target(
-            "cimmeria_services::base::connect_loop::cell_arms"
-        ));
-        assert!(is_network_noise_target(
-            "cimmeria_services::base::tick_sync"
-        ));
-        assert!(is_network_noise_target("cimmeria_mercury::session"));
-    }
-
-    #[test]
-    fn is_network_noise_target_does_not_match_high_signal_scopes() {
-        // Rejected (stay in cimmeria-server):
-        assert!(!is_network_noise_target(
-            "cimmeria_services::auth::handlers"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::cell::abilities::use_ability"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::cell::content::executor::dialog"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::base::world_entry::methods::inventory::grant"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::base::dispatch"
-        ));
-        // Empty / arbitrary string — defaults to "not noise" (server).
-        assert!(!is_network_noise_target(""));
-        assert!(!is_network_noise_target("unknown"));
-    }
-}
+#[path = "otel_tests.rs"]
+mod tests;

@@ -32,13 +32,17 @@
 
 pub mod bsp;
 pub mod chunk_id;
+pub mod cover;
 pub mod coverage;
 pub mod floor_probe;
 pub mod geometry;
+pub mod interp_actor;
 pub mod nav_components;
 pub mod nav_roundtrip;
+pub mod nav_tiled;
 pub mod obj;
 pub mod obj_slab;
+pub mod occluder;
 pub mod staticmesh;
 pub mod terrain;
 /// Synthetic UE3 package fixtures. Behind `test-support` so nothing
@@ -178,6 +182,15 @@ pub struct ExtractOptions<'a> {
     /// Implied by `skip_terrain`: without terrain there is no evidence
     /// that anything is buried, so nothing is dropped either way.
     pub keep_hull_caps: bool,
+    /// How `InterpActor` exports are treated. The default,
+    /// [`interp_actor::InterpActorMode::Classify`], bakes each one only
+    /// when [`interp_actor::classify`] includes it; `Off` reproduces a
+    /// pre-NA36 extraction. `KActor` and `FracturedStaticMeshActor` are
+    /// always walked; see [`staticmesh::MESH_ACTOR_CLASSES`]'s doc for
+    /// why `InterpActor` is the one gated, and
+    /// `docs/engine/navmesh-build-pipeline.md` §12 for which maps were
+    /// built how.
+    pub interp_actors: interp_actor::InterpActorMode,
 }
 
 /// Collapse `.` and `..` textually. No filesystem access, so it cannot
@@ -279,6 +292,7 @@ pub fn extract_map_with_report(
         skip_terrain,
         skip_bsp,
         keep_hull_caps,
+        interp_actors,
     } = opts;
     let mut terrain_totals = terrain::TerrainStats::default();
     let (mut bsp_models_failed, mut bsp_triangles) = (0usize, 0usize);
@@ -338,6 +352,7 @@ pub fn extract_map_with_report(
     let mut report = MapCoverage {
         map_name,
         chunks_filtered_out: enumerated - chunks.len(),
+        interp_actors,
         ..Default::default()
     };
 
@@ -371,8 +386,12 @@ pub fn extract_map_with_report(
         let exports_total = pkg.exports.len() as u64;
 
         // Phase 1.2: StaticMesh extraction.
-        let mut extraction =
-            staticmesh::extract_chunk_from_package(&pkg, index, &mut archetype_cache);
+        let mut extraction = staticmesh::extract_chunk_from_package(
+            &pkg,
+            index,
+            &mut archetype_cache,
+            interp_actors,
+        );
         // Tag the soup with a group so NavBuilder can debug-print which
         // chunk a triangle came from. `Chunk_*` keeps it distinct from
         // the reserved `Terrain_*` prefix NavBuilder skips.
@@ -475,6 +494,10 @@ pub fn extract_map_with_report(
             prefab_packages_opened: extraction.prefab_packages_opened,
             class_census,
         };
+        for mut record in std::mem::take(&mut extraction.interp_actors) {
+            record.chunk = row.chunk.clone();
+            report.interp_actor_records.push(record);
+        }
 
         if !row.sources_balance() {
             // A source pushed into the soup without tallying. Every

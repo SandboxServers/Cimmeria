@@ -22,6 +22,7 @@ This is the acceptance pass for everything the Castle Cellblock rebuild campaign
 | GC1b-0 | Engine: an NPC can follow a player; Marsh `move_speed` raised to 0.9 units/tick | #646 |
 | GC1b-1 | Marsh rides the rings to region 3 (chain 1173) | #655 |
 | GC1b-2 | Marsh follows the player topside; follow cleared at the Straegis scene (chains 1174/1175) | #655 |
+| DU-07 | Three of Col. Marsh's dialog-5019 combat lines spoken as non-modal chat barks on the escort route (chains 1176/1177/1178) | pending |
 
 Not covered, because it is not built: **GC1c** (lockdown energy field), **GC3** (mission-completion XP). See [Known limitations](#known-limitations--not-validated).
 
@@ -541,6 +542,48 @@ This is the highest-risk scenario in the guide. **Read the [Known risks](#known-
 
 **Server evidence:** `logs\content.log`, `fire_teleport_in: matched` `region_id=3`, then `Content: move waypoint` (DEBUG, `entity_tag=Preparation_ColMarsh`, `destination=-91.689003,45.1879997,-161.533005`, `chain_id=1173`) and `Content: set follow target` (`use_player=true`, `chain_id=1174`). For the invisibility risk, grep `logs\server.log` for `aoi.create_send_failed` — fields `witness_id`, `entity_id`, `phase` (`create_base` or `cascade`) and `reason` (`entity_to_addr_miss` / `client_disconnected` / `send_error`). If Marsh is invisible and that warning never fires, the drop is downstream of those seams and is worth a fresh note on issue #582.
 
+### T32 — Marsh's combat barks (DU-07)
+
+**Packets:** DU-07 (needs DU-03's `npc_bark` action). **Chains:** 1176, 1177, 1178.
+
+Three of Col. Marsh's companion lines from dialog **5019** are now spoken as **chat lines**, not dialogs. A bark opens no window, pauses nothing, and goes only to you. This scenario runs across the whole topside route, so run it alongside [T28](#t28--marsh-rides-the-rings-and-follows-you-topside-gc1b-1-gc1b-2), [T14](#t14--mess-hall-681) and [T15](#t15--the-hallway-chain-682-686) rather than as a separate lap.
+
+**Preconditions:** mission 680 on step **2344**, in the Preparation room, at the ring switch. Open the chat window and keep it visible for the whole run.
+
+**Steps and what to expect, in order:**
+
+1. **Ride the rings.** Right-click `Preparation_RingSwitch`, then land at ring region 3.
+   Expect one chat line, immediately on arrival:
+   > **Col. Marsh:** Let's move out!
+2. **Walk on to the Mess Hall.** Cross into `Castle_Cellblock.Region3` — the room with the long table and the two `MessHall_Guard` NPCs, about 70 units past the ring pad and a level down.
+   Expect one chat line as you cross the threshold, *before* the fight:
+   > **Col. Marsh:** I'll draw their fire! Take a flanking position behind that table.
+3. **Fight through to Hallway05.** Clear the Mess Hall and Hallway01-04, then cross into `Castle_Cellblock.Region5`, where the two `Hallway05_Guard` NPCs are.
+   Expect one chat line as you cross:
+   > **Col. Marsh:** Flank their position while I draw their fire!
+
+**The thing this scenario actually tests — check each explicitly:**
+
+- **No window opens.** Not a dialog, not a blurb, not a tutorial box. If any window appears, the line went through `display_dialog` and the packet is broken.
+- **You never stop moving.** Fire, sprint, reload while the line lands. Nothing should interrupt you.
+- **The line reads as chat, from a named speaker.** It should render with the speaker prefix **"Col. Marsh"**, in the same channel as ordinary `/say` chat. A blank prefix, `[]`, or a raw id instead of the name is a bug — record exactly what you see.
+- **The text is the 2009 line, word for word.** The server resolves it from the shipped dialog data, so a paraphrase means something rewrote a `dialog_screens` row.
+
+**Must NOT happen:**
+
+- **Dialog 5019 opening as a window, at any point.** It is still permanently excluded — screens 96355-96357 are the out-of-scope "Future Self" time-travel content and a dialog cannot be shown in part. Barks bypass it; they do not unlock it.
+- **A fourth line.** "Crouch down when you're in cover!" (screen 96353) is deliberately unauthored — there is no placed cover data in either room for it to hang on. If you hear it, something wired it to an unrelated event.
+- **Any Future Self line** ("I don't have much time…", "We never found out who controlled the Straegis…", "O'Neill better convince those pinheads at the Pentagon…"). None of these should ever reach you.
+- **A line repeating.** The ring-arrival line (chain 1176) and the second flank line (chain 1178) fire at most once per run of their mission; the Mess Hall line (chain 1177) has the one repeat window described below. Specifically: ride the rings once and walk back and forth across each threshold a few times. The Mess Hall line has one accepted repeat window — if you back out of the room and charge in again *before killing a guard*, you will hear it a second time. That is known and accepted (the engine has no fire-once primitive; see the seed comment). Once a guard is dead, it must stay silent.
+- **A line after Marsh is gone.** After the Straegis scene ([T16/T17](#t16--t17--the-straegis-attack-scene-c08b-gc1a-gc1b-2)) Marsh is despawned; walk the whole route again from Region6 onward and confirm none of the three speaks.
+- **A line at the wrong moment.** The Mess Hall cue must land at the *Mess Hall*, not at the ring pad. The two rooms are about 70 units apart; if you hear lines 1 and 2 within a second of each other, the region binding is wrong.
+
+**Relog check — run this one, it is the acceptance condition.** Log out anywhere on the topside route and back in. **No bark may fire on login**, in any state. Barks are moment cues and are deliberately not replayed; hearing all three at once on a relog is the failure this checks for. Then continue the route: a threshold you have already crossed stays silent, and one you have not yet crossed still speaks when you reach it.
+
+**Caveat you will probably notice, and should not file as a new bug:** Marsh himself may not be standing anywhere near you when lines 2 and 3 land. The escort's follow behaviour is a separate, pre-existing problem tracked from [T28](#t28--marsh-rides-the-rings-and-follows-you-topside-gc1b-1-gc1b-2) and the Known limitations below. Record *where he actually was* for each line — that is useful evidence for the escort, not for the barks.
+
+**Server evidence:** `logs\content.log`, one `Content: npc bark` row per line, at INFO, carrying `screen_id`, `speaker`, `channel` and `chain_id`. Expect `screen_id=96351 chain_id=1176`, then `96352`/`1177`, then `96354`/`1178`. If a chain matched but you heard nothing, grep `logs\server.log` for `screen_not_cached`, `empty_text` and `actor_not_player` — the executor refuses on all three and speaks nothing, and the `reason` field names which.
+
 ### T14 — Mess Hall (681)
 
 **Chains:** 1073, 1085, 1086, 1087.
@@ -549,7 +592,7 @@ This is the highest-risk scenario in the guide. **Read the [Known risks](#known-
 
 **Steps:**
 
-1. Walk into `Castle_Cellblock.Region9` (the Mess Hall).
+1. Walk into `Castle_Cellblock.Region9` (the corridor outside the topside ring room), then on into the Mess Hall (`Region3`).
 2. Kill `MessHall_Guard1` at `(-96.25, 34.59, -91.59)` and `MessHall_Guard2` at `(-95.89, 34.59, -98.81)`.
 
 **Expected:**
@@ -810,6 +853,95 @@ This is not a separate playthrough — it is the discipline of logging out and b
 
 ---
 
+## Milestone M5 — Dialog chrome (DU-02a)
+
+### T30 — Twelve dialogs lose their redundant buttons
+
+**Packet:** DU-02a. **Chains:** 1019, 1053, 1054, 1058, 1059, 1151, 1152, 1154, 1161, 1171, 1172.
+
+The 2009 client decides whether a closed dialog reports anything by counting its
+buttons: zero buttons means the close sends `dialogButtonChoice(id, -1)`, any button
+means the close sends nothing at all. Twelve Cellblock dialogs shipped one navigation
+button repeated across most of their screens, which bought nothing and suppressed that
+close event. All twelve now carry none, so every one of them is closed with the title-bar
+**X**, with **Done** on the last screen, or with **Decline** — and all three do the same
+thing.
+
+There is **no new button to press anywhere in this scenario**. What you are checking is
+that the absence of one breaks nothing, and that 3999 stops being a dead end.
+
+**Preconditions:** a character that can reach mission 641's second briefing. Run the
+3999 half as Tau'ri and the 5023 half as Jaffa.
+
+**Steps and expected:**
+
+| # | Do this | Expect |
+|---|---|---|
+| 1 | Reach step 3563, right-click Col. Marsh, and **page all the way to the last screen** of dialog 3999 (Tau'ri) or 5023 (Jaffa), then press **Done**. | Step advances to **3564** "Use the Terminal to open the remaining Stasis Pods.", Marsh's indicator clears and the Preparation terminal gains the Livewire wrench cursor. On 3999 this is the fix: before DU-02a the last two screens had no button and Done did nothing, so a player who read to the end was stuck. |
+| 2 | Start mission 641's first briefing (4001 Tau'ri / 5022 Jaffa) and close it on **screen one** with the **X**. | Mission **641** is accepted exactly as if you had paged to the end — same as clicking Accept used to do, because that Accept was on screen one as well. The P90 locker lights up and Marsh's indicator clears. |
+| 3 | Same for dialog **2299** (mission 638's Human "agree to escape") — close it on screen one with the X. | Dialog 2298 shows, mission **639** is accepted and **638** completes. |
+| 4 | Let blurbs **2305** (after 640), **4000** (after 641) and **2518** (after 688) appear, and look at the button row. | **No Accept, no Decline, no More Info.** Only the title-bar X. Closing one does nothing else — none of the three is keyed to a chain. |
+| 5 | Reach the Straegis aftermath and let dialogs **2516** and **5859** appear. | Same: no buttons. These two have their own scenario, [T31](#t31--the-straegis-aftermath-and-the-first-eviction-close), because 5859 evicts 2516 half a second after it opens. |
+| 6 | Reach the pre-ring-travel beat and close dialog **2309**. | Same. |
+
+**Must NOT happen:**
+
+- Any of the twelve still showing an Accept, Decline, More Info or "Receive Item" button.
+  If one does, the startup patch did not reach the client — check `logs\server.log` for
+  `Applied Cimmeria dialog patch` and for a `dialog patch skipped` warning naming the id.
+- Mission 641 or 639 being accepted **twice**, or step 3564 advancing twice, from closing
+  the same dialog again.
+- An item arriving when you finish 3999 or 5023. The old "Receive Item" label never
+  granted anything: the SMG comes from the locker (chain 1055), which you have already
+  picked up and equipped before either dialog can open.
+
+### T31 — The Straegis aftermath, and the first eviction close
+
+**Packet:** DU-02a. **Chains:** 1161, 1172.
+
+Run this straight after T16 / T17. Chain 1161 plays the Straegis Matinee and shows
+narration **2516** about ten seconds in; chain 1172 shows the "Without Marsh" blurb
+**5859** half a second after that. Both are now button-less.
+
+**Steps:**
+
+1. Let Marsh be taken and watch the scene through without touching anything.
+2. Watch the two dialogs arrive.
+3. Close whatever is still on screen.
+4. Grep `logs\content.log` for `fire_dialog_choice`.
+
+**Expected:**
+
+- Narration **2516** appears, then the **"Find a way out of the Cellblock. Without
+  Marsh."** blurb **5859** replaces it. Neither shows Accept, Decline or More Info.
+- **No unexpected chain fires.** The only `fire_dialog_choice` lines should be
+  `no chains matched` at debug. Nothing is keyed on 2516 or 5859 — verified against every
+  `dialog_choice` trigger in `db/resources/Content/Seed/`, all eleven files.
+- Mission **680** is active and the quest log reads "Find a way out of the Castle!"
+
+**Must NOT happen:** any mission accepted, completed or advanced by closing either dialog.
+
+**Expected warning, not a failure.** Because the client holds one dialog at a time, 5859
+**evicts** 2516. Now that 2516 has no button, that eviction sends `(2516, -1)` — the first
+shipped eviction close. The server has already re-pinned to 5859, so it rejects that choice
+with a `warn!` in `logs\server.log`. It is correct behaviour on today's code and it costs
+nothing: no chain keys 2516. Packet DU-08 replaces the single open-dialog pin with a set
+and the warning goes away. Record it if you see it; do not file it.
+
+**Pre-existing timing defect, for the owner, not a DU-02a bug.** 2516 is fifty words of
+narration and you get about **half a second** of it before 5859 takes the screen. You
+cannot read it. That was already true before this packet — the eviction happens either
+way, it was simply silent — so nothing here made it worse, and no change in this packet can
+make it better. The fix is a larger `delay_ms` on chain 1172, or dropping 2516 and letting
+5859 stand alone. **If you want to read 2516, that is a content decision someone has to
+make.** Note on this row whether you saw any of 2516 at all.
+
+**Server evidence:** `logs\content.log`. For step 1, grep `fire_dialog_choice: matched`
+and confirm `dialog_id=3999 button_id=-1` (or `5023`) followed by the step advance. A
+`button_id` of 70 means the client is still drawing the old button.
+
+---
+
 ## Results
 
 Fill this in as you go. "Blocked" means you could not reach the scenario.
@@ -833,6 +965,7 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 | T27 — Marsh's pre-departure line (GC1a) | | |
 | T28 — Marsh rings + follows topside (GC1b) | | |
 | T29 — Flank objectives 2725 / 2731 (C06, PR #671) | | |
+| T32 — Marsh's combat barks (DU-07) | | |
 | T14 — Mess Hall (681) | | |
 | T15 — Hallway chain (682-686) | | |
 | T16 / T17 — Straegis scene (C08b + GC1a) | | |
@@ -841,6 +974,10 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 | T20 — Armory + blurb 2518 (C07) | | |
 | T21 / T22 — Castle arrival, 1360 intact | | |
 | T23 — Relog safety sweep | | |
+| T30 — 3999 read to the end, then Done (DU-02a) | | |
+| T30 — 4001 / 2299 closed with X on screen one | | |
+| T30 — the five blurbs show no buttons at all | | |
+| T31 — Straegis aftermath, 2516 then 5859, no chain fires | | |
 
 ## Known limitations / not validated
 
@@ -855,7 +992,9 @@ These are expected absences. Do not file them as bugs from this pass.
 - **`system_message` does not render** — the executor arm is a stub with the wire format unresolved (issue #268). Chain 1013's message 5040 on Region2 entry will not appear.
 - **No ring ceremony on the Cellblock → Castle exit.** Deliberate: neither platform has a wired ring prefab, so chain 1109 does a direct cross-world teleport. Prerelease known issue.
 - **Straegis scene is camera-only.** No rift creature, no blood decal, no data disc — none has a recovered actor, event id, template or item id.
-- **No escort restore across relog.** Marsh's ring-hop reposition and follow state are not restored on login (T28). Documented gap awaiting a coordinator decision.
+- **No escort restore across relog.** Marsh's ring-hop reposition and follow state are not restored on login (T28). Documented gap awaiting a coordinator decision. It has one extra symptom now that [T32](#t32--marshs-combat-barks-du-07)'s barks exist: after such a relog the barks still fire correctly, but they are attributed to a Marsh who is back in the Preparation room. The lines are right; his position is the known gap.
+- **Screen 96353, "Crouch down when you're in cover!", is not authored.** The only trigger that means "the player is in cover" needs a cover set placed in world space, and the sole world-space-correct set in the game is the tutorial med-station desk (C05's hand-seeded 1381). Nothing exists for the Mess Hall or Hallway05. This is deferred, not abandoned: hand-seeding a Mess Hall cover set the way C05 seeded 1381 would make this line *and* C06's flank objectives reachable together.
+- **Dialog 5019 is still never displayed.** DU-07 delivers three of its screens as barks; the dialog itself stays excluded because its last three screens are out-of-scope "Future Self" content.
 - **Symbiote Loss (ability 1926 / effect 2480) is out of scope.** Never wired in the shipped build; the ability has a placeholder name. Jaffa players will not lose a symbiote.
 - **Stasis Sickness Stage 2 (ability 1373) is out of scope** — it needs an engine timer primitive that does not exist.
 - **Stasis pods are not driven server-side.** Whether they visibly open after the terminal hack is entirely client Kismet.

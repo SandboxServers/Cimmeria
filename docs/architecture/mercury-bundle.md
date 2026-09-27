@@ -24,7 +24,7 @@ HOLD-FOR-TRANSACTION path and are silently dropped. Cross-entity batching is
 safe; same-entity-after-CREATE batching is not.
 
 Caller-owned, not channel-owned: the existing deliberate two-bundle split in
-[base/world_entry/map_loaded.rs](../../crates/services/src/base/world_entry/map_loaded.rs)
+[base/world_entry/map_loaded.rs](../../crates/base-world-entry/src/base/world_entry/map_loaded.rs)
 exists because the transaction-state hazard demands that the bundle-boundary
 decision sits with the caller, not with a per-channel auto-accumulator.
 
@@ -33,10 +33,10 @@ decision sits with the caller, not with a per-channel auto-accumulator.
 - **Layer A**: `ChannelBundle` lives in `crates/mercury` with 11 wire-format
   tests. ✅
 - **Layer A.5**: `send_bundle_to_witness_reliable` bridge in
-  [base/helpers/mod.rs](../../crates/services/src/base/helpers/mod.rs) ties the
+  [base/helpers/mod.rs](../../crates/base-session/src/base/helpers/mod.rs) ties the
   bundle to the session UDP socket + Channel TX-window registration. ✅
 - **Layer B (conservative slice for #356)**: the AoI EnteredAoI burst in
-  [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/services/src/base/world_entry/cell_dispatch/deferred_flush.rs)
+  [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs)
   now bundles into 2 cross-entity bundles (phase-1, phase-2) instead of
   2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
   (was 56 pre-bundle). ✅
@@ -44,7 +44,8 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   28-NPC burst budget). ✅
 - **#360 follow-up — world_entry_appearance migration**: the
   `handle_on_client_ready` 11-packet burst (1 BeingAppearance + 1 onEntityTint
-  + 8 onChatJoined + 1 onPlayerCommunication welcome) and the
+  + 8 onChatJoined + 1 onPlayerCommunication welcome; SS-C4 later dropped
+  the 8 onChatJoined, so the bundle now holds 3 messages) and the
   `resend_appearance_after_cinematic` 2-packet pair now ride a single
   `ChannelBundle` each. Safe per the rule below: every message in both
   bursts targets the player's own entity_id, which was created in
@@ -111,7 +112,7 @@ are dropped. The transaction releases at the end of the bundle, and the same
 messages in a subsequent bundle apply normally.
 
 **Evidence**: the comment block at
-[base/world_entry/map_loaded.rs lines 66-79](../../crates/services/src/base/world_entry/map_loaded.rs#L66)
+[base/world_entry/map_loaded.rs lines 66-79](../../crates/base-world-entry/src/base/world_entry/map_loaded.rs#L66)
 documents this directly:
 
 > Previously we combined everything into one fragmented bundle, which caused
@@ -182,7 +183,7 @@ goes through `crate::packet::build_fragmented_bundle` which:
   an R4 violation, killing reliable delivery for the whole bundle).
 
 Byte-equivalence with the standalone-packet builders is pinned by tests in
-[crates/services/src/mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
+[crates/wire/src/mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs)
 (`compose_create_entity_base_body_matches_build_create_entity_base_body`
 and the cascade variant).
 
@@ -209,7 +210,7 @@ reservation, then `finalize()` runs without further mutation — so the
 estimate reflects the exact post-drain state at reservation time and
 no TOCTOU window opens between estimate and finalize. The contract is
 guarded by a `debug_assert!` (the post-finalize check in
-[base/helpers/mod.rs](../../crates/services/src/base/helpers/mod.rs)) and by
+[base/helpers/mod.rs](../../crates/base-session/src/base/helpers/mod.rs)) and by
 the boundary-case test
 `estimated_packet_count_matches_finalize_at_fragment_boundary_with_acks`
 in [crates/mercury/src/channel_bundle/mod.rs](../../crates/mercury/src/channel_bundle/mod.rs).
@@ -231,7 +232,7 @@ For a Castle_CellBlock instance with 28 NPCs:
 | **56 reliable packets** | **~11 reliable packets** |
 
 Regression-guarded at "≤ 15 packets" in
-[base/world_entry/cell_dispatch/tests.rs](../../crates/services/src/base/world_entry/cell_dispatch/tests.rs)
+[base/world_entry/cell_dispatch/tests.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/tests.rs)
 (`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`) with
 comfortable headroom for cascade-payload growth.
 
@@ -240,7 +241,7 @@ appearance / chat / welcome burst on every world entry:
 
 | Pre-bundle | Post-bundle |
 |---:|---:|
-| 1 × BeingAppearance + 1 × onEntityTint + 8 × onChatJoined + 1 × welcome | 1 same-entity bundle, ~700 B body, 1 packet |
+| 1 × BeingAppearance + 1 × onEntityTint + 8 × onChatJoined + 1 × welcome | 1 same-entity bundle, 1 packet (3 messages since SS-C4, which stopped registering built-in chat channels) |
 | **11 reliable packets** | **1 reliable packet** |
 
 Plus the `resend_appearance_after_cinematic` 2-packet pair (BeingAppearance
@@ -259,6 +260,8 @@ Progression (`handle_grant_xp`) collapses every grant into one packet:
 | Single-level grant | 5 | 1 |
 | Max-level catch-up (19 levels) | 41 | 1 |
 
+A grant that raises the level also earns Applied Science Points, and their new total follows the bundle as one more packet (the crafting sync's `push_asp`, which logs its own failed send), so a level-up grant is two packets and a no-level grant stays at one.
+
 Teleport (`handle_teleport_player`) collapses the engine-snap + load-hint
 handshake:
 
@@ -270,13 +273,14 @@ Safe per the transaction-state rule because the player entity was created
 in `handle_map_loaded`'s prior bundle and its transaction released at the
 prior bundle's end-of-frame; this bundle is exclusively post-transaction
 property/method updates. Regression-guarded by
-`on_client_ready_burst_bundles_to_single_packet` (pins `num_messages =
-2 + DEFAULT_CHAT_CHANNELS.len() + 1` and `estimated_packet_count() == 1`)
+`on_client_ready_burst_bundles_to_single_packet` (pins `num_messages ==
+3` and `estimated_packet_count() == 1`; `on_client_ready_burst_registers_no_built_in_channel`
+pins that no `onChatJoined` is in it)
 and `appearance_resend_bundle_collapses_to_single_packet` (pins
 `num_messages == 2` and `estimated_packet_count() == 1`) — both in
-[base/world_entry_appearance/mod.rs](../../crates/services/src/base/world_entry_appearance/mod.rs).
+[base/world_entry_appearance/mod.rs](../../crates/base-world-entry/src/base/world_entry_appearance/mod.rs).
 Plus the entity-method byte-equivalence guard at
-[mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
+[mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs)
 (`channel_bundle_append_entity_method_matches_build_entity_method_packet_body` —
 covers both direct and extended encodings via ON_PLAY_MOVIE = 155).
 
@@ -292,18 +296,18 @@ When migrating another call family (the issue's deferred list):
    `build_<thing>_packet` into a `compose_<thing>_body() -> Vec<u8>` that
    omits framing + encryption, then have `build_*` call it + add framing.
    Mirror the pattern from
-   [mercury/aoi/create.rs](../../crates/services/src/mercury/aoi/create.rs)
+   [mercury/aoi/create.rs](../../crates/wire/src/mercury/aoi/create.rs)
    (`compose_create_entity_base_body` / `compose_create_entity_cascade_body`).
 3. **Add a byte-equivalence regression guard** comparing `compose_*` output
    against the decrypted body portion of the standalone `build_*` packet.
    Mirror the pattern in
-   [mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs).
+   [mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs).
 4. **Migrate the caller** to build a `ChannelBundle`, append composed
    bodies, and send via `send_bundle_to_witness_reliable`. Keep
    non-burst-shaped one-off sends on `send_to_witness_reliable`.
 5. **Add a burst-shape regression guard** asserting the new packet count is
    below the pre-migration count. Mirror the pattern in
-   [cell_dispatch/tests.rs](../../crates/services/src/base/world_entry/cell_dispatch/tests.rs).
+   [cell_dispatch/tests.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/tests.rs).
 
 ## What did NOT change
 

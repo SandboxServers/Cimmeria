@@ -1,6 +1,6 @@
 # ADR: Mercury loopback session harness (Tier 2)
 
-> **Last updated**: 2026-05-24
+> **Last updated**: 2026-09-25
 > **Audience**: Engineers writing tests for the Mercury protocol layer
 > (retransmit, fragmentation, keepalive, encryption, RTO), and anyone
 > building on top of `crates/mercury/` for end-to-end work
@@ -152,6 +152,85 @@ counter is non-zero. The receiver-side outcome is identical to a
 wire-side drop; the sender-side RTO / retransmit consequences are
 also identical because the channel still has the entry pending in
 its TX window.
+
+### Receive path: in-order delivery (NA38)
+
+Each peer's recv pump feeds every parsed packet through
+`Channel::receive_parsed`
+([`channel/rx_order.rs`](../../crates/mercury/src/channel/rx_order.rs)),
+the same gate the server's client sessions use. It mirrors the SGW
+client's `UnAckedHandler::queueAckForPacket`
+(`ghidra://SGW.exe@0x0158cba0`):
+
+- Reliable packets are delivered in sequence order. A packet ahead of a
+  gap waits in the receive window (512 slots, the client's size) until
+  the retransmit fills the gap. Then everything behind it is released
+  in order.
+- A reliable duplicate, whether already delivered or already buffered,
+  is dropped but still acked.
+- A reliable packet beyond the window is dropped and **not** acked, so
+  the sender retransmits it.
+- Unreliable packets are delivered on arrival, even behind a gap.
+- Released fragments go to the per-channel `FragmentAssembler`.
+
+So `recv_n_bundles` returns what the real client's message handlers
+would see, not raw wire-arrival order. A test that needs wire-level
+arrival (duplicate counts, for example) should send unreliably, as
+`duplicate_flood` does, or read the `NetworkPolicy` counters.
+
+Harness peers anchor their receive side at seq 0, because every
+`Channel` starts `next_tx_seq` at 0. The wireclient `GameSession`
+re-anchors at 3, the first sequence after the phase-3 reply (1) and
+the time-sync bundle (2). Both starts are certain. An unanchored
+`Channel` adopts the first reliable sequence it sees, which is how the
+client's `inSeqAt` starts. The server's client sessions use that mode
+too, because nothing guarantees a client starts at 0.
+
+`LoopbackPeer::tick` also runs the receive-stall watchdog
+(`Channel::check_rx_stall`) and returns its report in
+`TickActions::rx_stall` on the ticks where it warns: a gap blocking
+delivery for more than `consts::RX_STALL_WARN_MS` (2 s).
+
+One gap is left: the client also dedups unreliable packets (a separate
+structure at `ChannelInternal+0x128`). The harness does not model that
+dedup.
+
+### Send path: TX-window registration order (NA39)
+
+`Channel::register_sent_packet` — the services layer's entry point for
+mirroring a legacy-path reliable send into the channel's retransmit
+bookkeeping — used to `push_back` onto `tx_window`/`unsent_packets`
+unconditionally, on the documented (but previously unenforced)
+assumption that callers always register in the sequence order they
+allocated in.
+
+That assumption does not hold across tasks. The services layer reserves
+a sequence number with an atomic fetch-add under one lock
+(`ConnectedClientState::next_seq`,
+[`crates/base-session/src/base/helpers/mod.rs`](../../crates/base-session/src/base/helpers/mod.rs))
+and only calls back into `Channel` (a *different* lock) after the async
+socket send completes. A second, genuinely concurrent task targeting the
+same witness — base's recv-loop, a `tokio::spawn`ed fan-out (contact-list
+presence, level-up), or cell's witness dispatch draining `cell_rx` — can
+reserve a later sequence and still win the race to register first.
+`process_acks`'s cumulative-ACK drain only inspects `tx_window`'s front
+and stops at the first not-yet-covered entry (see its doc comment); an
+out-of-order higher sequence parked at the front silently blocks the
+drain of an already-acked lower sequence sitting behind it, and that
+entry never leaves the window.
+
+`register_sent_packet` now inserts at the position that keeps both
+deques sorted by sequence (`channel_core::insert_tx_entry_sorted`,
+using the same 28-bit modular comparator `process_acks` drains with),
+so the invariant holds regardless of registration order. See
+`crates/mercury/src/channel/tests/channel_lifecycle.rs`'s
+`register_sent_packet_tolerates_out_of_order_registration` and its two
+neighbors, and
+[`docs/analysis/npc-ai-restoration/worknotes/na39-cross-task-ordering.md`](../analysis/npc-ai-restoration/worknotes/na39-cross-task-ordering.md)
+for the full investigation. This is a `Channel`-internal fix — no
+harness API changed, and `LoopbackPeer` was never affected (it drives
+`send_packet`, not `register_sent_packet`, so its own `next_tx_seq`
+allocation and TX-window insertion were always the same call).
 
 ### Encryption integration
 

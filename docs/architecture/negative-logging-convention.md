@@ -1,6 +1,6 @@
 # Negative-Logging Convention
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-26
 > **Status**: Convention adopted in issue #304 PR1 (2026-05-24). Applies to
 > every new patch that touches an expectation seam.
 
@@ -41,7 +41,7 @@ and `expected` as paired structured fields so a single ops query
 ### Pattern C — Witness / lookup misses logged at `trace!`
 
 The `send_to_witness` family in
-[`crates/services/src/base/helpers/mod.rs`](../../crates/services/src/base/helpers/mod.rs)
+[`crates/base-session/src/base/helpers/mod.rs`](../../crates/base-session/src/base/helpers/mod.rs)
 historically logged AoI packet drops at `trace!`, making them
 invisible without `RUST_LOG=trace`. **Fix**: upgrade to `warn!` for the
 entity-to-addr miss (player-visible bug) and `debug!` for the
@@ -72,7 +72,7 @@ entity in Harset.
 | Throttle state is keyed by entity and released in `destroy_entity` | Bounded by the live entity population, and a recycled `entity_id` must not inherit a predecessor's open window — that would swallow the first reject of a fresh session, the exact row Pattern D exists to protect |
 
 The shared primitive is `LogThrottle` in
-[`crates/services/src/cell/space_manager/movement_telemetry/`](../../crates/services/src/cell/space_manager/movement_telemetry/mod.rs),
+[`crates/cell-world/src/cell/space_manager/movement_telemetry/`](../../crates/cell-world/src/cell/space_manager/movement_telemetry/mod.rs),
 parameterised on the window so each caller picks its own
 (`movement.validation_reject` uses 1 s against a 10 Hz packet rate;
 `npc_ai.path_fail` uses 5 s against the AI tick). Reuse it rather than
@@ -115,7 +115,7 @@ A third, cheap: state is released on `destroy_entity`.
 
 Never log a credential value in full, at any level: this covers SIDs, tickets, session keys, passwords and password hashes, and raw request bodies that carry them. Disk logs, the admin `/ws/logs` stream and SigNoz all keep what they receive, and a harvested SID or ticket is enough to hijack a pending login ([#440](https://github.com/SandboxServers/Cimmeria/issues/440)).
 
-Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/services/src/credential_redaction.rs`:
+Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/auth/src/credential_redaction.rs`:
 
 ```rust
 tracing::debug!(ticket_prefix = %CredentialPrefix(&ticket), "Phase 2 generated session credentials");
@@ -234,6 +234,214 @@ login. Expect a high benign rate on `ticket_ip_mismatch` and never harden
 Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
 Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
 logging the credential.
+
+## NPC attack-animation seams (NA43)
+
+An NPC attack that cannot resolve its Ability_End `onSequence` still
+deals its damage, so the player takes hits from a guard that never
+visibly fires. `cell/abilities/use_ability/sequence.rs` WARNs on target
+`abilities.sequence` (`event = "ability_end"`) for **NPC attackers
+only**. Most player abilities have no event set (1851 of the 1886
+seeded), so the same condition on a player click is not a defect. The
+WARN fires when the cast fires (`use_ability/fire.rs`), which for a
+warmup ability is the warmup tick, not the launch (AT-10).
+
+| `outcome` | Seam | Fields |
+|---|---|---|
+| `no_ability_def` | the ability has no loaded `resources.abilities` row | `source_id`, `target_id`, `ability_id`, `suppressed` |
+| `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
+| `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
+| `no_witnesses` | the Ability_End went out to zero AoI witnesses | same, plus `sequence_id` |
+
+This is a Pattern D seam with one deliberate difference: the throttle
+(`SpaceManager::ability_sequence_log`, 60 s window) is keyed by
+**ability id**, not entity. The first three outcomes are facts about a
+seed row, and every NPC firing that ability repeats the same fact. The
+state is bounded by the ability table, so nothing is released in
+`destroy_entity`. The success rows (`ability_begin`, `ability_end`,
+`ability_interrupt`, at DEBUG) carry `witness_count`.
+
+Ability_Begin and Ability_Interrupt are deliberately not WARN seams. A
+missing Begin leaves only the charge unanimated, and the Ability_End
+WARN names the same seed row when the shot fires. An interrupted cast
+deals no damage, so a missing Interrupt is not a hit from an invisible
+attacker.
+
+The guards are `use_ability/tests/sequence.rs` (each WARN, the NPC-only
+scope, and the burst and independence throttle guards),
+`use_ability/tests/sequence_phases.rs` (the WARN rides the Ability_End
+into the warmup tick; Interrupt never WARNs) and
+`service/tests/npc_ai/attack_sequence.rs` (`witness_count = 2` on a real
+fight tick). The seed side is linted by the live-DB
+`spawner/tests/npc_ability_animation.rs`.
+
+## Encrypted-channel decrypt rejects
+
+A datagram from a registered session that fails to decrypt is dropped
+and the session stays up. The legacy C++ `EncryptionFilter` did the
+same, and a teardown here would let anyone who can spoof the client's
+source address end the session with one garbage datagram. The seam is
+`base/connect_loop/encrypted/decrypt_reject.rs`, and it logs at `warn!`:
+
+| `reason` | Meaning | Fields |
+|---|---|---|
+| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len` |
+| `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `raw_len`, `error` |
+
+These rows carry `reason`, never `disconnect_reason`. That field is kept
+for rows that report a real teardown, such as `session.end` and
+`Client entities cleaned up`. A per-session disconnect query must not
+count dropped datagrams.
+
+## Pet command seams (PT-04)
+
+The owner's pet commands (cell methods 88-90, `cell_methods/player/pet/`) carry a client-supplied pet id. The ownership guard (CAT-C-11 / #462) resolves it through `SpaceManager::owned_pet`, which logs every mismatch once on target `pets.command` at `debug!` (`event = "ownership_rejected"`, `reason`, the caller as `caller_id` plus its `account_id` / `player_id`). DEBUG, because a client can name any id at will. The handler adds no second row, but the refusal is never silent: the caller also gets `onErrorCode`.
+
+| `reason` | Meaning | `onErrorCode` |
+|---|---|---|
+| `not_owner` | The id is another player's pet. `owner_id` names the real owner | 236 `IsNotPetOwner` |
+| `not_a_pet` | The id is an NPC, a player, or nothing | 236 |
+| `pet_gone` | The registry still lists the pet, but its entity is gone (the teardown sweep has not run) | 190 `DoesNotHavePet` |
+| `owner_identity_mismatch` | The caller holds the owner's entity id but is not the player who summoned the pet: the id was reused before the sweep (#870) | 236 |
+
+Refusals after the guard use the same target. Two stay at WARN because an operator should see them: `ability_not_in_list` for an ability the server has a definition for (a stale bar or a seed bug), and `cast_refused` (a cast every pre-check passed but `handle_use_ability` still refused). Everything else logs at DEBUG. That covers ordinary play (a cooldown, a friendly or out-of-range target, a wall in the way, a slot 4 or 5 from the small pet bar) and values only a forged packet sends (an ability id with no definition, a target in another space, a bad toggle value). The split follows `useAbility`'s not-known path, which logs undefined ids at DEBUG so a client cannot flood the WARN index. Each refusal also sends the owner an `onErrorCode` paired with a `CHAN_FEEDBACK` chat line (`pets::order_feedback_text`: the shipped client has no Lua consumer for `onErrorCode`, AT-E1), or re-sends the pet bar or stance. The target rule is the pet AI's (`npc_ai::pet::fight_refusal`), so a refused target logs `target_not_combatant` (a player, pet or SGWBeing) or `target_not_hostile` (fails `combat::player_may_attack`). The full list is in [observability.md](observability.md) (`pets.command`).
+
+`malformed_args` is a WARN and is not throttled. A flood of short packets writes one row per packet; a Pattern D throttle keyed by `(player_id, reason)` is the follow-up if that shows up in practice.
+
+Every `pets.command` row the handlers write carries `owner_id` (the caller's entity id) and the owner's `account_id` / `player_id` from `SpaceManager::player_identity`. `player/pet/tests/telemetry.rs` pins each `reason`, its level and those identity fields in one table-driven `LogCapture` test, and the guard's `ownership_rejected` rows in a second one.
+
+The guards are in `cell_methods/player/pet/tests/guard.rs`. They cover another player's pet, an NPC id, a nonexistent id, a negative id, a stale registry entry and a reused owner entity id, for each command, and they fail when the `owned_pet` call is removed, weakened to "is a pet", or narrowed to the registry map without the per-pet summoner check (worknote `docs/analysis/pets/worknotes/pt-04.md`).
+
+## Bank move and grant refusals (BV-01)
+
+Target `bank`, all WARN. Each refusal carries the player-activity pair
+(`account_id`, `player_id`) plus `entity_id`, so "player X tried to move Y
+at time T and it failed" is answerable from SigNoz alone.
+
+| `event` (also the message prefix) | `reason` | Fields |
+|---|---|---|
+| `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable` (the vault reasons are in the BV-03 section) | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
+| `move_resync_skipped` | `refused_item_not_owned` (the refused move named an item the player does not own: a forged packet), `lock_timeout` (the move lock or the item's row lock could not be taken; an unlocked resend could overtake a concurrent write, so the client keeps its optimistic position until the next update of that item), `resync_read_failed` | `account_id` (when it was read before the failure), `player_id`, `entity_id`, `item_id` |
+| `move_rejected` (infrastructure) | `move_lock_begin_failed`, `move_lock_failed` (the move lock or the item's row lock), `refusal_context_query_failed`, `move_lock_release_failed` | `player_id`, `entity_id`, `item_id`; `account_id` only on `move_lock_release_failed`, the one failure after the account is read |
+| `grant_rejected` | `grant_into_storage_container` | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `target_container_id` |
+| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id`, `entity_id`, `type_id`, `target_container_id` (no `account_id`: that is what failed to load) |
+
+The item fields of `move_rejected` are read at refusal time under the
+per-player move lock and the item's row lock, so they are the item's
+committed position, and they are omitted (not zero) when the player does
+not own the item. The `LogCapture` guards are in
+`inventory/move_/allowlist_tests.rs`, `refusal_resync_tests.rs` and
+`refusal_infra_tests.rs` (the infrastructure reasons, injected with an
+unreachable pool or a lock held under a short `lock_timeout`), and
+`inventory/grant/vault_guard_tests.rs`. `resync_read_failed` and
+`move_lock_release_failed` have no guard: each needs the connection to
+fail after both locks were taken on it, which nothing can inject.
+
+## Vault open refusals and send seams (BV-02)
+
+Target `bank`, WARN, on the cell. Every row carries `account_id` and
+`player_id` (omitted, not zeroed, when the cell does not know them) and
+`entity_id`. Each refusal also sends the player a `CHAN_FEEDBACK` chat line,
+because `onErrorCode` has no Lua consumer in the shipped client (AT-E1).
+
+| `event` | `reason` | Fields |
+|---|---|---|
+| `vault_open_rejected` | `out_of_range` (a Banker click from beyond the interact distance, or from another space), `not_gm` (`.bank` from a player), `banker_missing` (the Banker vanished between the range gate and the arm) | `banker_id`, `distance` (absent when the Banker is in another space or gone) |
+| `vault_open_send_failed` | `base_channel_closed` (the `onVaultOpen` send to the base failed: the session is open but the window never appeared) | `banker_id`, `error` |
+| `bank_feedback_send_failed` | `base_channel_closed` (a refusal line could not be queued) | `error` |
+
+A lookup miss on the player's own entity is `vault_open_rejected` with
+`reason = player_entity_missing`, `entity_id` and `banker_id`, and no
+`account_id` or `player_id`, which are read from the entity that is missing
+(BV-02 logged it on the crate's own target; BV-03 moved it under `bank` so a
+query on the target finds every open refusal). The `LogCapture`
+guards are in `cell-interactions` `cell/interactions/bank/telemetry_tests.rs`
+(one per reason and seam) and `cell-console` `console/tests/bv02_bank.rs`
+(`not_gm`).
+
+## Team and Command vault open refusals (BV-07)
+
+Target `bank`, WARN. `org_vault_open_rejected` carries `reason`, `org_id`
+(when known), `org_type`, `scope`, `banker_id`, and on the base
+`space_id` and `distance`. Each reason with a player to tell also sends a
+`CHAN_FEEDBACK` line.
+
+| Side | `reason` | Meaning |
+|---|---|---|
+| base | `not_in_org` | the player is in no Team or Command of that type |
+| base | `not_a_member`, `no_such_org`, `wrong_org_type`, `player_missing` | the check under the organization lock failed |
+| base | `player_unknown` | the cell sent no `player_id` |
+| base | `open_query_failed` | a database error, logged at ERROR with it first |
+| base | `cell_channel_closed` | the grant could not reach the cell; no window opens |
+| cell | `banker_not_pinned`, `out_of_range`, `banker_missing` | the grant arrived after the player moved on |
+| cell | `stale_entity`, `player_entity_missing` | the entity is another character, or gone; no line |
+
+A refused Team or Command vault move is `org_move_rejected` (WARN,
+`bank`), with the reasons listed in `docs/gameplay/inventory-system.md`
+§ "Moving items in and out of a Team or Command vault", a line, and a
+snap-back under the move's locks; `move_lock_begin_failed` and
+`move_lock_failed` mean the snap-back was skipped. A committed move whose
+vault rows could not be read back is `org_move_resync_failed
+reason=vault_read_failed`. Guards: `base-methods`
+`inventory/org_vault/tests/moves.rs`, one per reason.
+
+A closed base channel on the cell's request is `vault_open_send_failed
+reason=base_channel_closed` with the `scope`. The `LogCapture` guards are
+`cell-interactions` `bank/org_open_tests.rs` and `bank/telemetry_tests.rs`,
+and `base-methods` `inventory/org_vault/tests/open.rs`.
+
+## Vault moves, use and removal (BV-03)
+
+Target `bank`. The cell attaches a vault verdict to every forwarded
+inventory request (`VaultAccess`); the base logs what it did with it. Every
+bank refusal also sends a `CHAN_FEEDBACK` line before the snap-back.
+
+| `event` | Level | `reason` | Fields |
+|---|---|---|---|
+| `move_rejected` | WARN | the verdict's label: `no_vault_session`, `banker_out_of_range`, `banker_gone`, `banker_other_space`, `vault_session_other_space`, `player_missing`, `vault_scope_mismatch`; and `target_slot_beyond_bank_slots`, `mission_item_not_bankable`, `item_not_allowed_in_container`, `split_onto_occupied_slot` | the BV-01 fields, plus `vault_end` (`source` or `target`), `banker_id`, `distance`, `gm_override`, and `bank_slots` on the slot refusal |
+| `move_accepted` | DEBUG | none (success) | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `kind`, source and target container and slot, `source_stack_before`/`after`, `target_stack_before`/`after`, `bank_slots`, `banker_id`, `distance`, `gm_override` |
+| `use_rejected` | WARN | `container_not_accessible` (a use or removal of an item in buyback, the org vaults, or the personal vault without an open verdict) | `account_id`, `player_id`, `entity_id`, `item_id`, `container`, `op` (`use` or `remove`), `vault_reason`, `banker_id` |
+| `use_rejected` (infrastructure) | WARN | `account_lookup_failed` | `player_id`, `entity_id`, `item_id` (no `account_id`: that is what failed to load) |
+| `bank_feedback_send_failed` | WARN | `no_client_address` (a refusal line had no session address to go to) | `player_id`, `entity_id`, `item_id` |
+
+The `LogCapture` guards are in `inventory/move_/vault_move_tests.rs`,
+`vault_move_shape_tests.rs`, `vault_refusal_tests.rs` and
+`allowlist_tests.rs` (every `move_rejected` reason the base produces, and
+`move_accepted`), and `inventory/core/access_tests.rs` (`use_rejected`, its
+infrastructure reason with an unreachable pool, and `no_client_address`).
+The verdict labels the base passes through are each pinned where they are
+made, in `cell-interactions` `bank/tests.rs`
+(`vault_access_maps_every_verdict`); `vault_scope_mismatch` in the `wire` and
+`container_policy` unit tests.
+
+## Grant and loot hand-back seams
+
+Target `inventory`. A loot pickup takes the item off the corpse before the
+base writes it to the looter's inventory, so every way the grant can fail
+is a seam: the item goes back on the corpse, or its loss is logged.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `grant_refused` | INFO | `container_full`, `database_error`, `not_grantable_container` (the grant resolved to buyback, 16) | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `container_id` |
+| `grant_outcome_unknown` | WARN | `commit_outcome_unknown` | as `grant_refused` |
+| `lookup_failed` | WARN | (`phase = placement`) | `player_id`, `entity_id`, `type_id`, `requested_container_id`, `error` |
+| `loot_restored` | INFO | the refusal: `storage_only`, `container_full`, `no_database`, `database_error` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `container_id`, `reflagged` |
+| `loot_restore_failed` | WARN | `corpse_gone`, `corpse_changed`, `index_taken` (cell); `cell_channel_closed` (base) | as `loot_restored`, plus `refusal` |
+| `loot_restore_skipped` | WARN | `commit_outcome_unknown` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty` |
+| `loot_grant_send_failed` | WARN | `restored`, or the restore miss | `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `restored` |
+| `feedback_send_failed` | WARN | `send_error` | `account_id`, `player_id`, `entity_id` |
+
+Only a refusal raised before the commit is handed back. A `COMMIT` that
+failed with a server error rolled back and is handed back too; one that
+failed without an answer (I/O, a closed pool) may have landed, so the item
+stays off the corpse (`loot_restore_skipped`) rather than risk a second
+copy. The `LogCapture` guards are in `inventory/grant/fall_through_tests.rs`,
+`inventory/grant/loot_refusal_tests.rs`, `vendor/purchase/tests.rs` and the
+cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
+`loot_restore_skipped`, `lookup_failed` and `feedback_send_failed` have no
+`LogCapture` guard: each needs a connection or channel to fail at one
+exact step, which nothing can inject; the commit classification itself is
+unit-tested (`persist::tests`).
 
 ## Related
 

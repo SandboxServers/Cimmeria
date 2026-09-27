@@ -1,0 +1,366 @@
+//! Area-of-Interest computation.
+//!
+//! Each tick, we walk every player in every space and diff their previous
+//! witness set against the current set of nearby entities. The resulting
+//! `EnteredAoI` / `LeftAoI` / `EntityMoved` events are forwarded to the
+//! BaseService for client dispatch.
+
+use std::collections::HashSet;
+
+use cimmeria_common::EntityId;
+
+use super::super::messages::CellToBaseMsg;
+use super::SpaceManager;
+
+impl SpaceManager {
+    /// Compute AoI changes for all players across all spaces.
+    ///
+    /// Returns a list of `CellToBaseMsg` events: `EnteredAoI`, `LeftAoI`, `EntityMoved`.
+    pub fn compute_aoi_changes(&mut self) -> Vec<CellToBaseMsg> {
+        let mut events = Vec::new();
+        // Iterate by id (not `values_mut`) so the per-player body can re-borrow
+        // `self.spaces` through the shared helper.
+        let space_ids: Vec<u32> = self.spaces.keys().copied().collect();
+        for space_id in space_ids {
+            let player_ids: Vec<u32> = match self.spaces.get(&space_id) {
+                Some(s) if !s.players.is_empty() => s.players.iter().copied().collect(),
+                _ => continue,
+            };
+            for player_id in player_ids {
+                self.compute_player_aoi(space_id, player_id, &mut events);
+            }
+        }
+        events
+    }
+
+    /// Compute AoI changes for a **single** player immediately, without waiting
+    /// for the next AoI tick.
+    ///
+    /// Called from the `ConnectEntity` handler so a newly-connected player is
+    /// introduced to every entity already in range right away. Without this,
+    /// the `tokio::select!` in the cell loop can run an AoI tick *before*
+    /// `connect_entity` adds the player to `space.players` — that tick hits the
+    /// `space.players.is_empty()` guard in [`Self::compute_aoi_changes`] and
+    /// skips the whole space, leaving NPCs that were spawned during instance
+    /// creation (e.g. the Castle_CellBlock stasis-room corpses) un-introduced
+    /// until a later tick or a relog. Updating the witness set here makes the
+    /// follow-up ticks idempotent (no double `EnteredAoI`).
+    pub fn compute_aoi_changes_for_player(&mut self, player_id: u32) -> Vec<CellToBaseMsg> {
+        let mut events = Vec::new();
+        if let Some(space_id) = self.entity_space.get(&player_id).copied() {
+            self.compute_player_aoi(space_id, player_id, &mut events);
+        }
+        events
+    }
+
+    /// Per-player AoI diff: pushes `EnteredAoI` / `LeftAoI` / `EntityMoved`
+    /// events for `player_id` in `space_id` onto `events`, then refreshes the
+    /// player's witness set. Shared by [`Self::compute_aoi_changes`] (the tick)
+    /// and [`Self::compute_aoi_changes_for_player`] (the connect path).
+    fn compute_player_aoi(
+        &mut self,
+        space_id: u32,
+        player_id: u32,
+        events: &mut Vec<CellToBaseMsg>,
+    ) {
+        let Some(space) = self.spaces.get_mut(&space_id) else {
+            return;
+        };
+        {
+            let (player_pos, aoi_radius, player_interactions) = match space.entities.get(&player_id)
+            {
+                Some(e) => (e.position, e.aoi_radius, e.available_interactions.clone()),
+                None => return,
+            };
+
+            // Query the grid for nearby entities
+            let candidates = space.space.get_entities_in_range(&player_pos, aoi_radius);
+
+            // Filter to actual AoI: all entities in range (players + NPCs)
+            let mut current_aoi: HashSet<u32> = HashSet::new();
+            for candidate_eid in &candidates {
+                let cid = candidate_eid.0 as u32;
+                if cid == player_id {
+                    continue; // skip self
+                }
+                // Exact distance check
+                if let Some(other) = space.entities.get(&cid) {
+                    // A player's cell entity exists from `CreateEntity`, long
+                    // before its client has loaded the map. Keep it out of
+                    // everyone's AoI until it can be introduced as a player —
+                    // see `CellEntity::is_introducible`. Skipping (rather
+                    // than introducing a placeholder) matters because the
+                    // witness set below is what makes introduction one-shot.
+                    if !other.is_introducible() {
+                        continue;
+                    }
+                    let dist_sq = player_pos.distance_squared_to(&other.position);
+                    if dist_sq <= aoi_radius * aoi_radius {
+                        current_aoi.insert(cid);
+                    }
+                }
+            }
+
+            // Get previous witness set
+            let previous_aoi: HashSet<u32> = match space.entities.get(&player_id) {
+                Some(e) => e.witnesses.iter().map(|eid| eid.0 as u32).collect(),
+                None => return,
+            };
+
+            // Entered AoI: in current but not in previous
+            for &eid in &current_aoi {
+                if !previous_aoi.contains(&eid) {
+                    if let Some(other) = space.entities.get(&eid) {
+                        // Stable AoI-enter log — `aoi.entity_enter` event
+                        // name lets SigNoz answer "did entity X enter
+                        // player Y's view?" without grepping for the
+                        // EnteredAoI message text.
+                        tracing::debug!(
+                            target: "aoi.entity_enter",
+                            witness_id = player_id,
+                            entity_id = eid,
+                            space_id = space.space_id,
+                            is_player = other.is_player,
+                            "AoI: entity entered witness view"
+                        );
+                        let npc_data = if !other.is_player {
+                            Some(super::super::messages::NpcAoIData::from_entity(other))
+                        } else {
+                            None
+                        };
+                        let player_data = other
+                            .is_player
+                            .then(|| super::super::messages::PlayerAoIData::from_entity(other));
+                        events.push(CellToBaseMsg::EnteredAoI {
+                            witness_id: player_id,
+                            entity_id: eid,
+                            space_id: space.space_id,
+                            class_id: other.class_id,
+                            position: [other.position.x, other.position.y, other.position.z],
+                            direction: [other.direction.x, other.direction.y, other.direction.z],
+                            level: other.level,
+                            npc_data,
+                            player_data,
+                        });
+
+                        // ── createOnClient: replay an active aggression override ──
+                        //
+                        // Python `SGWMob.createOnClient` only sent
+                        // `onAggressionOverrideUpdate` when `aggressionOverride is
+                        // not None` (`deprecated/python/cell/SGWMob.py:36-41`) — a
+                        // faction-derived (no-override) mob sends nothing, matching
+                        // legacy exactly. Without this replay, a late joiner (or a
+                        // player who was already out of range) never learns an NPC
+                        // was armed/disarmed before they arrived; the AoI-enter path
+                        // is the only place a brand-new witness gets it. NA33:
+                        // docs/reverse-engineering/findings/npc-aggression-broadcast.md.
+                        if !other.is_player {
+                            if let Some(level) = other.aggro.override_level {
+                                events.push(CellToBaseMsg::WitnessEntityMethod {
+                                    witness_id: player_id,
+                                    entity_id: eid,
+                                    method_index:
+                                        crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE,
+                                    args: vec![level.level()],
+                                    entity_is_player: false,
+                                });
+                            }
+                        }
+
+                        // ── createOnClient: an engaged duelist's PvP flag (SS-D2) ──
+                        //
+                        // The flag is sent when the duel engages, to the duelists
+                        // and their witnesses at that moment. A player who comes
+                        // into range mid-duel gets it here, after the create, or
+                        // their client would show the duelist unflagged until the
+                        // end. The flag is presentation only (D-SS23).
+                        if let Some(msg) =
+                            crate::cell::duel::pvp_flag_on_enter(&self.duels, player_id, other)
+                        {
+                            events.push(msg);
+                        }
+
+                        // ── createOnClient: a pet's owner-only lists (PT-01) ──
+                        //
+                        // `onPetAbilityList` / `onPetStanceList` /
+                        // `onPetStanceUpdate`, to the owner only; empty for any
+                        // other witness or entity, and for a player who only
+                        // reused the owner's entity id. The same helper runs on
+                        // the `requestEntityUpdate` re-emit, so both intro paths
+                        // agree.
+                        if let Some(witness) = space.entities.get(&player_id) {
+                            events.extend(crate::cell::pets::pet_create_on_client_events(
+                                witness, other, &self.pets,
+                            ));
+                        }
+
+                        // ── dynamicUpdate: standalone InteractionType update ──
+                        //
+                        // In the C++ server, createOnClient() sends InteractionType
+                        // with the entity's BASE flags (often 0). Then dynamicUpdate()
+                        // fires and sends InteractionType with the MERGED per-player
+                        // flags as a separate message. The client treats this as a
+                        // state change that enables right-click interaction.
+                        //
+                        // Reference: src/cellapp/base_client.cpp:455-458
+                        if other.has_dynamic_properties {
+                            if let Some(tmpl_id) = other.template_id {
+                                if let Some(entries) = player_interactions.get(&tmpl_id) {
+                                    let base = other.interaction_type_flags;
+                                    let merged =
+                                        base | entries.iter().fold(0i64, |acc, &(_, _, f)| acc | f);
+                                    if merged != base {
+                                        tracing::info!(
+                                            player_id,
+                                            entity_id = eid,
+                                            template_id = tmpl_id,
+                                            base,
+                                            merged,
+                                            "AoI: dynamicUpdate InteractionType (base→merged)"
+                                        );
+                                    }
+                                    events.push(CellToBaseMsg::WitnessEntityMethod {
+                                        witness_id: player_id,
+                                        entity_id: eid,
+                                        method_index: crate::mercury::method_idx::INTERACTION_TYPE,
+                                        args: (merged as u64).to_le_bytes().to_vec(),
+                                        entity_is_player: other.is_player,
+                                    });
+
+                                    // Make the client recompute the NPC's interactability.
+                                    // `onDuelEntitiesRemove` (152) ERASES the id from the
+                                    // local player's duel-entity set (`GamePlayer+0x16c`),
+                                    // a no-op for an NPC that was never in it, then forces
+                                    // the per-entity interaction-flags recompute. That
+                                    // recompute is what makes the NPC clickable; the set
+                                    // itself is never read by the interactability check
+                                    // (SS-E1 D-Q5, `duel-wire-formats.md`). So the duel's
+                                    // own 151/153 cannot affect this. Must arrive AFTER
+                                    // CREATE_ENTITY so the client can find the entity.
+                                    events.push(CellToBaseMsg::EntityMethodCall {
+                                        entity_id: player_id,
+                                        method_index: 152, // onDuelEntitiesRemove
+                                        args: (eid as i32).to_le_bytes().to_vec(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Left AoI: in previous but not in current
+            for &eid in &previous_aoi {
+                if !current_aoi.contains(&eid) {
+                    tracing::debug!(
+                        target: "aoi.entity_leave",
+                        witness_id = player_id,
+                        entity_id = eid,
+                        space_id = space.space_id,
+                        "AoI: entity left witness view"
+                    );
+                    events.push(CellToBaseMsg::LeftAoI {
+                        witness_id: player_id,
+                        entity_id: eid,
+                    });
+                }
+            }
+
+            // Entity moved: in both, send position updates to this witness
+            // (BaseApp can diff to skip no-ops if position unchanged)
+            for &eid in &current_aoi {
+                if previous_aoi.contains(&eid) {
+                    if let Some(other) = space.entities.get(&eid) {
+                        events.push(CellToBaseMsg::EntityMoved {
+                            witness_id: player_id,
+                            entity_id: eid,
+                            space_id: space.space_id,
+                            position: [other.position.x, other.position.y, other.position.z],
+                            direction: [other.direction.x, other.direction.y, other.direction.z],
+                            velocity: other.velocity,
+                            npc_moved_since_last: (!other.is_player)
+                                .then(|| self.npc_detectors.moved_last_tick(eid))
+                                .flatten(),
+                        });
+                    }
+                }
+            }
+
+            // Update the witness set
+            if let Some(entity) = space.entities.get_mut(&player_id) {
+                entity.witnesses = current_aoi.iter().map(|&id| EntityId(id as i32)).collect();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Entity ids introduced (`EnteredAoI`) to `witness` in this event batch.
+    fn entered_for(events: &[CellToBaseMsg], witness: u32) -> Vec<u32> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                CellToBaseMsg::EnteredAoI {
+                    witness_id,
+                    entity_id,
+                    ..
+                } if *witness_id == witness => Some(*entity_id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Regression guard for the `ConnectEntity` ↔ AoI-tick race: an AoI tick
+    /// that runs before `connect_entity` must NOT introduce anything (the
+    /// player isn't in `space.players` yet), and the connect-path AoI compute
+    /// must introduce every in-range NPC immediately — with no double-introduce
+    /// on the following tick.
+    #[test]
+    fn connect_introduces_aoi_without_waiting_for_tick() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+
+        // Player created but NOT connected (mirrors the window after
+        // CreateEntity but before ConnectEntity is processed).
+        let player = 1u32;
+        mgr.create_entity(player, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        // Two near-colocated corpses in range (the stasis-room shape).
+        let body1 = mgr.allocate_npc_id();
+        mgr.spawn_npc(body1, "Agnos", [5.0, 0.0, 5.0], [0.0; 3])
+            .unwrap();
+        let body2 = mgr.allocate_npc_id();
+        mgr.spawn_npc(body2, "Agnos", [6.0, 0.0, 6.0], [0.0; 3])
+            .unwrap();
+
+        // 1. The racing tick: player not yet in space.players → space skipped.
+        let pre = mgr.compute_aoi_changes();
+        assert!(
+            entered_for(&pre, player).is_empty(),
+            "no introductions before connect (space.players empty)"
+        );
+
+        // 2. Connect → immediate introduction of both bodies (the fix).
+        mgr.connect_entity(player);
+        let on_connect = mgr.compute_aoi_changes_for_player(player);
+        let mut entered = entered_for(&on_connect, player);
+        entered.sort_unstable();
+        assert!(
+            entered.contains(&body1) && entered.contains(&body2),
+            "both bodies must be introduced on connect, got {entered:?}"
+        );
+
+        // 3. Idempotent: the next full tick must NOT re-introduce them.
+        let next = mgr.compute_aoi_changes();
+        assert!(
+            entered_for(&next, player).is_empty(),
+            "no double-introduction on the following tick"
+        );
+    }
+}

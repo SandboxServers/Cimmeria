@@ -381,7 +381,7 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 
 | Address | Function | Notes |
 |---------|----------|-------|
-| `0x00dec9e0` | `SGWBeing_onBigWorldTimeComplete` | Event_NetIn_TimerUpdate type 14 (0x0E); reads BigWorldTimeComplete double + SourceID; emits float countdown |
+| `0x00dec9e0` | `SGWBeing_onBigWorldTimeComplete` | Event_NetIn_TimerUpdate type 14 (0x0E, `DuelTimer`); reads BigWorldTimeComplete float + SourceID; emits `Event_UI_DuelTimerStart(seconds remaining)` via `0x00dfdcb0` (SS-D2, `duel-wire-formats.md`) |
 | `0x00d26380` | `FUN_00d26380` | DialogController Event_NetIn_TimerUpdate handler; type 6 (0x06); drives NPC interaction timer UI |
 | `0x00d26ee0` | `FUN_00d26ee0` | MemberCallback<DialogController, Event_NetIn_TimerUpdate> ctor |
 | `0x00d26850` | `FUN_00d26850` | DialogController constructor; registers handler FUN_00d26380 |
@@ -1171,7 +1171,7 @@ Auto-respawn (method 70 RESPAWN): client sends with no args after TimeToAid expi
 
 No binary evidence of per-player respawner unlock gating found in SGW.exe (issue #233 open). Current implementation uses global `Vec<RespawnerDef>` filtered only by `world_name`.
 
-Server-side priority (from `crates/services/src/cell/cell_methods/player/combat/respawn.rs`):
+Server-side priority (from `crates/cell-interactions/src/cell/respawn/mod.rs`):
 1. Explicit `respawner_id > 0` from CALL_FOR_AID
 2. First `RespawnerDef` matching entity's world
 3. Castle default: `"Castle_CellBlock"` at `[-334.231, 73.472, -228.026]`
@@ -1205,7 +1205,17 @@ Cross-world: `CellToBaseMsg::GateTravel` — full instance teardown.
 
 ## Cover System
 
-See [`findings/cover-system.md`](findings/cover-system.md) for full analysis.
+See [`findings/cover-system.md`](findings/cover-system.md) for full analysis, and
+[`findings/cover-world-placement.md`](findings/cover-world-placement.md) (NA20, 2026-09-24)
+for where Castle/Castle_CellBlock's actual placed cover nodes live: **not**
+`covernodes_*.pak`, and not `CA-Prebuilt.upk`/`GA-Arch.upk` (a case-insensitive
+string scan of both files for `covernode` returns zero hits — that premise was
+wrong). The real per-level data is `ASGWSpecCoverNode` actors and
+`StaticMeshActor.CoverNodeArray` groups baked directly into the `.umap` chunks,
+already in absolute UE3 world space (4,024 nodes across the two maps, no
+owner-transform composition needed for either pattern found). This does not
+change `USGWCoverNodeComponent_SpawnCoverNode` below, which is likely the
+separate prefab-pak pipeline (unreconciled — see the finding's Open Questions).
 
 ### Cover Weight Event Handlers (Client → Server)
 
@@ -1340,28 +1350,32 @@ See [`findings/npc-movement-pathfinding.md`](findings/npc-movement-pathfinding.m
 
 Key finding: No dedicated CME move-emitter functions exist. Server streams position via BigWorld avatarUpdate wire (msg 0x10–0x2F / 0x30–0x31). Client receives via `onEntityMoveWithError`, converts BW→UE3 (×100 + axis swap), and renders via `GameEntityBase::ApplyTransform` with optional physics interpolation.
 
-**Server gap (Cimmeria)**: `npc_ai_leash()` snaps NPC to spawn instantly without sending `movementType=2` + waypath. `npc_movement_tick()` sends raw AoI position updates without `movementType=1` (CombatAdvance) + path payload.
+**Server gap (Cimmeria)**: `npc_ai_leash()` snaps NPC to spawn instantly without sending `movementType=5` (Leash) + waypath. `npc_movement_tick()` sends raw AoI position updates without `movementType=1` (CombatAdvance) + path payload.
 
 ### Wire-to-UE3 conversion (confirmed in 0x00dd1650)
 
 | Constant | Address | Value |
 |----------|---------|-------|
 | `BW_TO_UE3_SCALE` | `0x018cad90` | `100.0f` (BW meters → UE3 cm) |
-| Position sentinel | `DAT_019d1a44` | FLT_MAX / ∞ ("use current component") |
+| Position sentinel | `DAT_019d1a44` | `-13000.0f`, bytes `00 20 4b c6` ("use current component"; corrected 2026-09-24 from FLT_MAX) |
 
 Axis swap: `UE3_X = BW_Z × 100`, `UE3_Y = BW_X × 100`, `UE3_Z = BW_Y × 100`
 
 ### AI Movement FSM (7 states — jump table 0x00dec018 inside 0x00deb660)
 
+> **Corrected 2026-09-25:** `0x00deb660` is the `GameProxyPlayer` handler for `Event_NetIn_onShowPath` (GM path debug), not an NPC animation FSM. The table below is only its per-type label. See [`findings/npc-movement-pathfinding.md`](findings/npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver) §11.
+
 | State | Index | Name |
 |-------|-------|------|
 | CoverAdvance | 0 | Move toward cover node |
 | CombatAdvance | 1 | Move toward combat target |
-| Leash | 2 | Return to spawn point |
-| Patrol | 3 | Follow patrol route |
-| Follow | 4 | Follow player/squad leader |
-| Wander | 5 | Random idle wander |
+| Patrol | 2 | Follow patrol route |
+| Follow | 3 | Follow player/squad leader |
+| Wander | 4 | Random idle wander |
+| Leash | 5 | Return to spawn point |
 | Avoid | 6 | Obstacle/collision avoidance |
+
+Corrected 2026-09-24: Leash is case 5 (`0x00debad0`), Patrol is case 2 (`0x00debb04`), matching `EMobMovementType`. See [`findings/npc-movement-pathfinding.md`](findings/npc-movement-pathfinding.md) §3.
 
 ### NPC Movement Functions
 
@@ -1369,17 +1383,17 @@ Axis swap: `UE3_X = BW_Z × 100`, `UE3_Y = BW_X × 100`, `UE3_Z = BW_Y × 100`
 |---------|----------|-------|
 | `0x00dd1650` | `EntityManager::onEntityMoveWithError` | Wire → UE3 coordinate conversion; BW→UE3 scale + axis swap + sentinel handling; delegates to ApplyTransform |
 | `0x00dd19e0` | `GameEntityManager_UpdateControlledEntityTransform` | Player-controlled entity transform push |
-| `0x00deb660` | `MovementTypeSwitch` | 7-state AI FSM dispatcher; 610 instructions; jump table at `0x00dec018`. Too large to decompile (timeout). Key debug strings inside: "is moving to cover", "is making a combat advance", "is leashing" |
-| `0x00dec018` | AI movement jump table | Cases 0–6 for the 7 movement states |
-| `0x00deaaf0` | `onPositionUpdate` | BigWorld position update callback. Also **allocates new UE3 actors** for path waypoint visualization (not just updates position) |
-| `0x00dec040` | `PathDestroy` | Fires on path completion/cancellation; destroys path-visualization actors by `wcsicmp` name match |
+| `0x00deb660` | `GameProxyPlayer` `onShowPath` handler (was "MovementTypeSwitch") | GM path visualiser for `SGWGmPlayer.onShowPath(aEntityId, aMovementType, aPath)`; registered via `CallbackImpl<Event_NetIn_onShowPath>` (2026-09-25). The movement type only picks the debug label and colour. Jump table at `0x00dec018` |
+| `0x00dec018` | `onShowPath` label jump table | Cases 0–6 → per-`EMobMovementType` debug string |
+| `0x00deaaf0` | `GameProxyPlayer` `onShowCommandWaypoints` handler (was "onPositionUpdate") | Allocates UE3 actors for path-waypoint visualisation; registered via `CallbackImpl<Event_NetIn_onShowCommandWaypoints>` |
+| `0x00dec040` | `GameProxyPlayer` `onDisableShowPath` handler (was "PathDestroy") | Destroys path-visualisation actors by `wcsicmp` name match; registered via `CallbackImpl<Event_NetIn_onDisableShowPath>` |
 | `0x00dec6d0` | `onSquadList` | Squad-member path data receiver |
-| `0x00dec9e0` | `onBigWorldTimeComplete` | BigWorld time-sync callback |
+| `0x00dec9e0` | `onBigWorldTimeComplete` | Duel countdown: `onTimerUpdate` type 14 → `Event_UI_DuelTimerStart` (SS-D2; not a time-sync callback) |
 | `0x00dedf30` | `TickUpdate` | Per-tick movement advance (advances entity along waypath) |
 | `0x00def320` | `ApplyTargetChange` | Target acquisition / heading update |
 | `0x00df08c0` | `TargetIDReceiver` | CME NetIn target-id event receiver |
 | `0x00df3550` | `RegionUpdate` | BigWorld space/region change callback |
-| `0x00df3ab0` | `SGWBeing_RegisterCallbacks` | Registers TickUpdate + onPositionUpdate + MovementTypeSwitch + PathDestroy + RegionUpdate for SGWBeing |
+| `0x00df3ab0` | `SGWBeing_RegisterCallbacks` | Registers TickUpdate, RegionUpdate and the GM path-debug handlers (`onShowCommandWaypoints`, `onShowPath`, `onDisableShowPath`); the callbacks are `GameProxyPlayer` members (2026-09-25) |
 | `0x00df3cc0` | `SGWMob_RegisterCallbacks` | Identical callback set to SGWBeing (confirmed by decompile) |
 | `0x00e68a30` | `GameEntityBase::ApplyTransform` | Routes to: Path A (direct write, force flag), Path B (vehicle interpolator at entity+0xe4), Path C (physics interpolator at entity+0x1d0) |
 | `0x00e688c0` | `EntityVisibilityManager` | Distance-cull / LOD management for entities |
@@ -1531,6 +1545,20 @@ Task primitive type names (KillCount, CollectItem, VisitRegion, TalkToNpc, UseOb
 The `onTaskUpdate` handler (`FUN_00d194b0`) reads `Count` as INT32 via `FUN_00e3cba0`, but `alias.xml` defines `MissionTaskStatus.count` as INT8. **Potential wire-format mismatch — verify Rust serializer encoding.**
 
 ---
+
+## Ability Trainer UI (AT-E1, ability-trees campaign, 2026-09-25)
+
+Native Lua bindings behind `Content/UI/Core/Ability/Ability.lua`. Full writeup: `docs/reverse-engineering/findings/ability-trainer-ui.md`.
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x00aa2ac0` / `0x00ad8700` | `getTrainingTreeCount` shim / inner | Returns outer-array size of the `+0x8c → +0x50` ability-tree cache |
+| `0x00aa2ba0` / `0x00add0a0` | `getTrainableList` shim / inner | Walks the tree cache's inner array in stored (tree) order — not the trainer's offered-list order |
+| `0x00aa2c20` / `0x00add1b0` | `getTrainableInfo` shim / inner | Joins the `+0x8c → +0x3c` trainer-offered map with the client's own known-abilities lookup; writes no Lua field when the id isn't in the trainer map (confirms hidden-not-greyed) |
+| `0x00aa2ca0` / `0x00ad8720` | `buyTrainable` shim / sender | |
+| `0x00aa2d80` / `0x00aeacd0` | `respecAbilities` shim / sender | Zero-argument cell method 72 `resetMyAbilities` call |
+| `0x00c66ad0` | `GameEntityManager::instance()` | Asserts against `.\Src\GameEntityManager.cpp`; singleton is `g_EntityManager` at `0x01ef244c` (already listed above) |
+| `0x00d77f00` / `0x00d77fe0` | `register_NetIn_onErrorCode` / CME emit-info stub | Registration/RTTI only — **not** the behavioral handler; no native `onErrorCode` listener was located (UNRESOLVED, see finding doc) |
 
 ## How to Update
 
@@ -1736,6 +1764,21 @@ See [`findings/stargate-dhd-state-machine.md`](findings/stargate-dhd-state-machi
 | `0x00cf5440` | MemberCallback vfunc_3: **VCommunicator** × onDHDReply | DHD NPC reply — NOT GateTravel |
 | `0x00df7900` | MemberCallback vfunc_3: **VGameProxyPlayer** × onRingTransporterList | Ring transporter destinations |
 
+### Stargate dial/travel timing (NA35 session, 2026-09-25)
+
+See `docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md` for full analysis. Legacy-Python-derived timing claims in D-CA10 are superseded by this session's client-binary-only evidence.
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x005682d0` | DHD/Flash external-interface callback dispatcher | `'d'` case `"dialStargateAddress"`: `strtok_s` loop collects 7 glyphs, fires `Event_World_DialStargateAddress` ONCE on completion — no per-glyph network round trip |
+| `0x005682d0` | (same function) `'r'` case `"runStargateEvent"` | `eventId = atoi(param) + 0x17d4` (6100) — confirms `ESequenceEventType` Stargate base and that the DHD UI can trigger any of the 14 Stargate sequence events (6100–6113) itself, client-side, with no server round trip |
+| `0x0056a010` | Event emitter (`Event_World_StargateEvent` ctor + dispatch) | Constructs `CME::EventSignal::NoSubject`-typed payload from the raw int event id; called from `0x005682d0`'s `runStargateEvent` case and from `0x00d2de90` |
+| `0x00d2de90` | Ref-counted release/cleanup helper | Unconditionally fires `0x17e1` (6113, `Stargate_CrossGate`) as its final act, guarded by a flag at `this+0x11` |
+| `0x00e2c810` | `Event_World_StargateEvent` handler, CrossGate-only branch | Gated on `*param_1 == 0xd` (13, CrossGate's index within the 14-event family); walks level-resident `USeqEvent_Stargate` nodes matching `SourceAddressId`/`TargetAddressId` via `0x00d2d8a0`, calls `0x00d2de90` on the matching node |
+| `0x00e2fbd0` | `Event_NetIn_onStargatePassage` RTTI accessor (vfunc_2-ish "get event type") | `return &Event_NetIn_onStargatePassage::RTTI_Type_Descriptor;` — confirms the subscriber-record layout at `0x019d9000`+ |
+| `0x00e30010` | MemberCallback vfunc_3: VGateTravel × `Event_NetIn_onStargatePassage` | Re-confirms `stargate-dhd-state-machine.md`'s row by independent re-decompilation; vfunc_5 invoke (the actual handler body) NOT located this session — open question |
+| `0x019d9000` | Subscriber-record array (`.data`) | 28-byte stride: `[+0x00]` shared vtable `0x00ccc040`, `[+0x04]` per-event pointer, `[+0x08]`/`[+0x0C]` shared, `[+0x10]` per-event RTTI-accessor thunk, `[+0x14]` vfunc_3 target (matches known addresses e.g. `0x00e30010`, `0x00e30090`), `[+0x18]` shared `0x00429700` |
+
 ---
 
 ## Loot Generation Pipeline (W-content-mech Session 5 — 2026-05-13)
@@ -1875,6 +1918,30 @@ Full range `[0x01576000, 0x0158efff]` annotated. 145 functions renamed in Ghidra
 |---------|------|-------|
 | `DAT_018d4858` | Mercury global packet count | Atomically maintained by Packet__dtor |
 | `DAT_018cad90` | `BW_TO_UE3_SCALE` | 100.0f — confirmed in world-entry pipeline |
+
+## Render Thread Options / Shadow Resolution (2026-09-21)
+
+Source: [findings/render-thread-options.md](findings/render-thread-options.md). Client-only.
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0057a440` | `RenderThreadOptionManager::UpdateRenderThreadOptions` | Game thread. Reads 8 system options, builds the 16-byte option block, enqueues `UpdateOptions`. `RenderThreadOptions.cpp`. |
+| `0x0057a3b0` | `UpdateOptions` render-command ctor | vtable `0x018403f4` |
+| `0x0057a330` | `UpdateOptions` execute body | Render thread. Copies block; on change calls `UpdateRHI` on `GSceneRenderTargets`. |
+| `0x0057b1e0` | `RenderThreadOptionManager::GetInstance` | Lazy singleton; Ghidra label `FSceneRenderTargets__unknown_0057b1e0` is wrong |
+| `0x0057b160` | `RenderThreadOptionManager` ctor | Subscribes to `Event_Option_Rendering` |
+| `0x0057a2d0`–`0x0057a320` | option-block accessors (`+0`,`+1`,`+2`,`+4`,`+8`,`+0xC`) | `0x0057a300` (min) and `0x0057a310` (max shadow res) have **no xrefs** |
+| `0x0041f620` | launch-time system-options init | `LaunchMisc.cpp`. Reads `ShaderModel` once; valid `{0,3,4,5}`, default 4 → `FUN_00ec48b0` |
+| `0x00950200` | `FSceneRenderTargets::InitDynamicRHI` | Shadow depth RTs gated on `allowDynamicShadows`, sized by `DAT_01e6ea4c` |
+| `0x0094fb50` | `FSceneRenderTargets::GetShadowDepthTextureResolution` | `return DAT_01e6ea4c;` |
+| `0x009dde70` | `FSceneRenderer::CreateProjectedShadow` | Clamps Min/Max shadow res to `GetShadowDepthTextureResolution() - 10` |
+| `0x009de780` | `FSceneRenderer::InitDynamicShadows` | Called from `0x00906ea0` when `ShowFlags & 0x20` and `DAT_01db58f4` |
+| `0x005f5350` | `FRenderResource::UpdateRHI` | `RenderResource.cpp:0x30` |
+| `DAT_01ee2ac8` | `RenderThreadOptionManager::INSTANCE` | 16-byte heap object = render-thread option block |
+| `DAT_01ee6860` | `GSceneRenderTargets` | |
+| `DAT_01e6ea4c` | shadow depth buffer size | Static `0x400` (1024); never written |
+| `DAT_01db58f4` | `allowDynamicShadows` game-thread mirror | |
+| `DAT_01db5900` / `DAT_01db5904` / `DAT_01db5908` | `ppMotionBlur` / `ppDepthOfField` / `ppBloom` mirrors | Forced 0 when `postprocessing` is off |
 
 ---
 

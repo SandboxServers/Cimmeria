@@ -65,7 +65,7 @@ Each entity type defines which components it has via the `.def` file and which P
 |-----------|-------------|--------------|
 | **LoginApp** | Handles initial Mercury-based login | Replaced by AuthenticationServer (SOAP) |
 | **BaseAppMgr** | Assigns players to BaseApps | Simplified; single BaseApp |
-| **BaseApp** | Manages base entities, client proxies | Implemented in `crates/services/src/base/` |
+| **BaseApp** | Manages base entities, client proxies | Implemented in `crates/base/` and the `crates/base-*/` crates |
 | **CellApp** | Spatial simulation, movement, combat | Implemented in `crates/services/src/cell/` |
 | **CellAppMgr** | Manages cell space distribution | Not implemented; single CellApp |
 | **DBMgr** | Database operations (MySQL in BW) | Replaced by direct PostgreSQL via `sqlx` |
@@ -108,7 +108,7 @@ Client <-- Mercury/UDP (encrypted) --> BaseApp
 AuthServer <-- Mercury/TCP --> BaseApp
 ```
 
-In Cimmeria only the client link is on the wire. Auth, base, and cell all run inside the single `cimmeria-server` process (`crates/server/`). The BaseApp↔CellApp hop is a pair of in-process `tokio::mpsc` channels carrying `BaseToCellMsg`/`CellToBaseMsg` (`crates/services/src/cell/service/mod.rs:83-90`), not Mercury/TCP, so it has no wire format to match.
+In Cimmeria only the client link is on the wire. Auth, base, and cell all run inside the single `cimmeria-server` process (`crates/server/`). The BaseApp↔CellApp hop is a pair of in-process `tokio::mpsc` channels carrying `BaseToCellMsg`/`CellToBaseMsg` (`crates/cell/src/cell/service/mod.rs:92-99`), not Mercury/TCP, so it has no wire format to match.
 
 ### Mercury::Nub Threading Model (from SGW.exe RE)
 
@@ -162,7 +162,7 @@ All entity types are defined in `entities/entities.xml` and parsed at startup. E
 - A `.def` file in `entities/defs/` defining properties and methods
 - Optional parent type (inheritance)
 - Optional interface implementations
-- Python scripts, originally in `python/base/` and `python/cell/` (now `deprecated/python/`; Cimmeria implements this logic in Rust under `crates/services/src/base/` and `crates/services/src/cell/`)
+- Python scripts, originally in `python/base/` and `python/cell/` (now `deprecated/python/`; Cimmeria implements this logic in Rust under the base-track crates (`crates/base/`, `crates/base-*/`) and `crates/services/src/cell/`)
 
 ### Entity Type Hierarchy
 

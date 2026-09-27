@@ -2,7 +2,7 @@
 title: "Slash Commands"
 type: reference
 audience: players, GMs, operators
-last_updated: 2026-06-17
+last_updated: 2026-09-27
 ---
 
 # Slash Commands
@@ -58,7 +58,7 @@ Chat channels, emotes, friends, and private messages.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/afk` | Set your AFK auto-reply | ❌ Not yet | `<text>` | `/afk afk, back soon` |
+| `/afk` | Set your AFK auto-reply | 🚧 Server side (social-systems, 2026-09-27), not client-tested. A tell to you while you are away is answered with it | `<text>` | `/afk afk, back soon` |
 | `/ban` | Ban a player from a channel | ❌ Not yet | `<channel> <player>` | `/ban trade Spammer` |
 | `/chat` | Join a chat channel | ❌ Not yet | `<channel>` | `/chat trade` |
 | `/chatjoin` | Join a chat channel | ❌ Not yet | `<channel>` | `/chatjoin trade` |
@@ -67,10 +67,10 @@ Chat channels, emotes, friends, and private messages.
 | `/chatwho` | See who is in a chat channel | ❌ Not yet | none | `/chatwho trade` |
 | `/command` | Talk in command/guild chat | ❌ Not yet | `<text>` | `/command event tonight` |
 | `/csay` | Talk in your current chat channel | ❌ Not yet | <text> | `/csay hi all` |
-| `/dnd` | Set your Do-Not-Disturb auto-reply | ❌ Not yet | `<text>` | `/dnd in a mission` |
+| `/dnd` | Set your Do-Not-Disturb auto-reply | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Your lines carry the DND flag, and a tell to you is answered with the message | `<text>` | `/dnd in a mission` |
 | `/emote` | Perform an emote (spatial) | ✅ Yes | `<text>` — emote text | `/emote waves` |
 | `/friend` | Add a player as a friend | ❌ Not yet | `<player>` | `/friend Sam` |
-| `/ignore` | Ignore a player | ❌ Not yet | `<player>` | `/ignore Spammer` |
+| `/ignore` | Ignore a player | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Their tells, say, emote, yell, mail and duel challenges stop reaching you; they can still see you | `<player>` | `/ignore Spammer` |
 | `/kick` | Kick a player from a channel you own | ❌ Not yet | `<channel> <player>` | `/kick trade Spammer` |
 | `/me` | Perform an emote (spatial) | ✅ Yes | `<text>` — emote text | `/me waves` |
 | `/moderator` | Grant channel moderator status | ❌ Not yet | <channel> <player> | `/moderator trade Sam` |
@@ -81,9 +81,9 @@ Chat channels, emotes, friends, and private messages.
 | `/password` | Set or clear a channel password | ❌ Not yet | `<channel> <password>` | `/password trade s3cret` |
 | `/petition` | File a support petition | ❌ Not yet | `<text>` | `/petition stuck in geometry` |
 | `/say` | Say something in local (spatial) chat | ✅ Yes | `<text>` — the message | `/say hello there` |
-| `/squad` | Talk in squad chat | ❌ Not yet | `<text>` | `/squad regroup` |
+| `/squad` | Talk in squad chat | 🚧 Server side (ORG-04), not client-tested. Reaches every squad member in any space; outside a squad you get "You are not in a squad." | `<text>` | `/squad regroup` |
 | `/team` | Talk in team chat | ❌ Not yet | `<text>` | `/team push left` |
-| `/tell` | Send a private message | ❌ Not yet | `<player> <text>` | `/tell Jack on my way` |
+| `/tell` | Send a private message | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Only to a player who is online; you are told when they are not | `<player> <text>` | `/tell Jack on my way` |
 | `/unban` | Lift a channel ban | ❌ Not yet | `<channel> <player>` | `/unban trade Spammer` |
 | `/unfriend` | Remove a friend | ❌ Not yet | `<player>` | `/unfriend Sam` |
 | `/unmute` | Unmute a player | ❌ Not yet | `<player>` | `/unmute Loud` |
@@ -178,16 +178,17 @@ Challenge other players.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/duel` | Challenge a player to a duel | ❌ Not yet | `<player>` | `/duel Rival` |
-| `/duelforfeit` | Forfeit an active duel | ❌ Not yet | none | `/duelforfeit` |
-| `/duelresponse` | Accept or decline a duel challenge | ❌ Not yet | `<response>` (accept/decline) | `/duelresponse 1` |
+| `/duel` | Challenge a player to a duel | 🚧 Server side (social-systems, 2026-09-27), not client-tested. The target must be within 20 units, in your world and not already dueling | `<player>` | `/duel Rival` |
+| `/duelforfeit` | Forfeit an active duel | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Only once the countdown has finished | none | `/duelforfeit` |
+| `/duelresponse` | Accept or decline a duel challenge | 🚧 Server side (social-systems, 2026-09-27), not client-tested. | `<response>` (accept/decline) | `/duelresponse 1` |
 
-> **Note (2026-07-25):** `/duelforfeit` and `/duelresponse` were previously marked
-> ✅ Yes. The server does receive and dispatch both, but each handler only logs
-> `UNIMPLEMENTED` and returns — no duel state changes
-> ([player/social.rs:92-103](../crates/services/src/cell/cell_methods/player/social.rs#L92-L103)).
-> Reaching a handler is not the same as the handler doing its job. No part of the
-> duel system is implemented server-side.
+> **Duels (2026-09-27).** 1v1 duels are implemented server-side (social-systems
+> SS-D1 to SS-D3): a duel counts down for 5 seconds, then only the two duelists
+> can damage each other. It ends on a forfeit, when one would drop to 0 HP (held
+> at 1 HP instead: duels never kill), on death from anyone else, on logging off,
+> on travel, or after 5 seconds outside the 40-unit duel area. Nothing is won but
+> the line "You won the duel". Squad duels are refused. See
+> [duel-system.md](gameplay/duel-system.md).
 
 ### Crafting
 
@@ -264,7 +265,7 @@ XP, money, items, abilities, and more.
 | `/gmgiveracialparadigmlevels` | Give racial paradigm levels | ❌ Not yet | `<id> <levels>` | `/gmgiveracialparadigmlevels` |
 | `/gmgiverespawner` | Give a player respawner | ❌ Not yet | `<mobId>` | `/gmgiverespawner` |
 | `/gmgivestargateaddress` | Give a stargate address | ❌ Not yet | `<address> <target> <hidden>` | `/gmgivestargateaddress` |
-| `/gmgivetrainingpoints` | Give training points | ❌ Not yet | `<count>` | `/gmgivetrainingpoints` |
+| `/gmgivetrainingpoints` | Give yourself ability-tree training points (the counter updates at once, and an open trainer refreshes) | ✅ Yes | `<count>` (positive int; refused if your total would pass 2147483647) | `/gmgivetrainingpoints 5` |
 | `/gmgivexp` | Give yourself experience | ✅ Yes | `<amount>` (positive int) | `/gmgivexp 5000` |
 | `/gmrechargeitem` | Recharge an item | ✅ Yes | `<itemId...>` | `/gmrechargeitem 8800` |
 | `/gmremoveitem` | Remove a quantity of an inventory item from yourself | ✅ Yes | `<itemId> <quantity>` (both positive) | `/gmremoveitem 8800 1` |
@@ -412,7 +413,7 @@ Combat, AI, and minigame debug switches.
 | `/gmpetinvokecommand` | Give pet a command | ❌ Not yet | `<petId> <command>` | `/gmpetinvokecommand 9001 attack` |
 | `/gmremovebehavioreventset` | Remove a behavior event set | ❌ Not yet | `<id>` | `/gmremovebehavioreventset` |
 | `/gmremoveminigamecontact` | Remove a minigame contact | ❌ Not yet | `<contactId> <target>` | `/gmremoveminigamecontact` |
-| `/gmsendgmshout` | Shout as a GM (space or global) | ❌ Not yet | `<global> <text>` | `/gmsendgmshout` |
+| `/gmshout` | Send a server-channel line to your space or to every online player (`.announce` does the same) | ✅ Yes | `<global> <text>` (how the client splits the typed line is not recovered) | `/gmshout` |
 | `/gmsetringdestination` | Set ring transporter destination | ✅ Yes | `<regionId> <destinationId>` | `/gmsetringdestination 3 7` |
 | `/gmspacequeuedresponse` | Respond to a queued-for-space prompt | ❌ Not yet | `<response>` | `/gmspacequeuedresponse 1` |
 | `/gmspacequeuereadyresponse` | Respond to a space-ready prompt | ❌ Not yet | `<response>` | `/gmspacequeuereadyresponse 1` |
@@ -484,9 +485,10 @@ where a new `/command` can't: the client *eats* unknown `/`-input but *forwards*
 `.`-input.)
 
 **Game-Master only.** A GM's `.`-command is consumed by the server and never
-appears in anyone else's chat. A normal player typing a `.`-message just says it
-in chat like any other text. Auth is checked against your account level
-server-side. Type `.help` (or `.help <word>`) in-game for the live list.
+appears in anyone else's chat. A normal player who types a registered command
+(`.pet`, `.giveability`, ...) gets "is a GM command" back and nobody else sees
+it. Any other `.`-message is ordinary chat. Auth is checked against your account
+level server-side. Type `.help` (or `.help <word>`) in-game for the live list.
 
 ### Database persistence & the seed-commit flow
 
@@ -561,16 +563,32 @@ restart, never written to the DB):**
 | Search | `.searchitem` `.searchmission` `.searchtemplate` `.players` | ✅ Yes |
 | Stat readouts | `.primarystats` `.speedstats` `.armorstats` `.qrstats` `.absorbstats` `.stealthstats` | ✅ Yes |
 | Entity authoring | `.tag` `.name` `.alignment` `.nameid` `.staticmesh` `.bodyset` `.eventset` `.interactiontype` `.lookat` `.visible` `.setcombatant` `.unsetcombatant` `.addcomponent` `.delcomponent` `.adddialog` `.removedialog` `.dynamicupdate` | 🚧 In-memory (pair with `.savespawn`) |
-| Net / AI debug | `.net_seq` `.net_seqto` `.net_seqfrom` `.net_timer` `.net_mapinfo` `.net_speak` `.net_dialog` `.net_challenge` `.debug_velocity` `.debug_controller` `.debug_follow` `.threaten` `.aggression` | ✅ Yes |
-| Crafting | `.learndiscipline` `.forgetdiscipline` `.allcraft` | 🚧 Partly |
+| Net / AI debug | `.net_seq` `.net_seqto` `.net_seqfrom` `.net_timer` `.net_mapinfo` `.net_speak` `.net_dialog` `.net_challenge` `.debug_velocity` `.debug_controller` `.debug_follow` `.threaten` `.aggression` `.aggro` | ✅ Yes. `.aggro off` stops idle mobs noticing you, `.aggro on` restores it, and `.aggro` alone shows it. `.aggression <1-5|0|clear>` sets the selected mob's aggression override (1 hostile, 3 neutral; 0 means passive; `clear` goes back to its faction) |
+| Crafting | `.learndiscipline` `.forgetdiscipline` `.allcraft` `.craftkit` `.learnblueprint` | ✅ Yes. `.allcraft` on a targeted player sets every paradigm to 7, every discipline to 100 and grants every blueprint (saved), and lets that player craft anywhere until logout. `.craftkit <blueprintId> [count]` grants the target the items of the blueprint's component set 1, `count` (1-10, default 1) times over, into the bags the items allow (crafting components land in the crafting bag). `.learnblueprint <blueprintId>` teaches the target one blueprint. Both answer the GM with one line, refusals included |
 | Mission gaps | `.missionfail` `.missionrewards` | ✅ / 🚧 (preview) |
 | Spawn authoring | `.savespawn` `.delspawn` `.autosavespawn` `.respawnall` `.spawnrandom` | ✅ Yes — `.savespawn`/`.delspawn` **write the DB** (commit seed) |
 | Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **write the DB** (commit seed) |
 | Server / maint | `.save` `.reloadmap` `.reloadres` `.removerespawner` `.loglevel` `.logclient` | ❌ Differs (see `.help`) |
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
+| Broadcast | `.announce` | ✅ Yes. `.announce <text>` reaches every online player, `.announce space <text>` only your space instance. Same line as `/gmshout`: your name, the GM flag, the server channel |
+| Chat mutes | `.mute` `.unmute` | ✅ Yes (server side). `.mute <name> <minutes> [reason]` (1 to 10080) stops an online player's chat and tells; they are told for how long, and each refused line says how much is left. `.unmute <name>` lifts it. A mute holds across relog and ends at a server restart. A GM cannot be muted |
+| Grants | `.givecash` `.givexp` `.giveability` | ✅ Yes — `.giveability <abilityId>` gives the selected player (else you) the ability and **saves it to the character**: it survives relog and a trainer respec, costs no points, and refreshes the ability window at once. Pets UAT uses it for Summon Straegis (`.giveability 2826`) |
+| Pets | `.pet summon <templateId\|abilityId>` `.pet dismiss` `.pet stance <0-2>` `.pet info` `.pet list` | ✅ Yes (server side) — `summon` spawns a pet beside you at once, with no warmup, replacing your current pet; an id with a `pet_summons` row (2826) is the summon ability, anything else a template id (350). `stance` is 0 passive, 1 defensive, 2 aggressive. `info` shows the selected pet, else yours: owner, stance, abilities, toggled-off abilities, AI state, distance to its owner, last teleport. `list` shows every pet in your space with its owner. Nothing is saved: pets are per session |
+| Playtest bookmark | `.bug <note>` | ✅ Yes. Snapshots you, your target and every entity within 60 units into SigNoz with your note, so a tester's "this looks wrong" can be found later; see the [telemetry runbook](operations/npc-ai-telemetry-runbook.md#start-from-a-bug-bookmark) |
+| Duels | `.duel_status` `.duel_end` | ✅ Yes. `.duel_status [name]` shows a player's duel or duel challenge (yours with no name): the other player, the duel number, the stage and the seconds left. `.duel_end <name>` ends that duel or challenge in any stage, sends both players "Duel aborted", and starts no challenge cooldown. For a second duelist when testing alone, see `sparbot` in [the wireclient doc](architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing) |
+| Bank | `.bank` `.bankdump` `.bankexpand` | ✅ Yes. `.bank` opens your own personal vault wherever you stand, with no Banker; any later right-click on an NPC closes the session. A player without GM access who types `.bank` is told it needs GM access, and the line is not said aloud. `.bankdump [name]` lists a character's personal vault (container 17) in chat, read-only: one line per item with its slot, name, type id, stack size and item id, and the vault size (`bank_slots`). With no name it lists your own. The name is matched exactly (case-sensitive) against every character, so an offline character works too. A row in a slot past the vault size is flagged `(beyond bank_slots)`, because the client's vault window cannot show it. `.bankexpand` buys one +10 expansion of your own vault at the seeded price (`resources.bank_expansion_price`, 100 naquadah per step), through the same purchase the Banker's Expand dialog uses: it needs your vault open (a `.bank` session, which skips the Banker distance, or a Banker in range), charges your own naquadah, stops at 100 slots, and answers in chat either way. It is the only way to expand a vault while the Banker's dialog is held back (#943). A player without GM access is told it needs GM access, and the line is not said aloud |
+| Mail | `.mail` `.mailbox` `.mail_expire` | ✅ Yes. `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>] [<subject>]` sends yourself (or `<name>`, online or not) a mail with minted cash and a minted item, no postage; the options come first in any order, the first other word starts the subject, and a number right after the type id is the quantity. With `cod <n>` the mail is a COD mail from your character, so the payment comes back to you; it needs an item and no cash. `.mailbox [name]` shows a mailbox's open and archived mail, its system and quarantined mail, what is in escrow and the next expiry. `.mail_expire <mailId>` makes a mail due now and expires it at once as the sweep would (returned, deleted or quarantined) and says which; archived and quarantined mail are refused |
+| Squads | `.squad_invite <name>` `.squad_join <name>` `.squad_info [name]` | ✅ Yes (server side) — `.squad_invite` is `/squadinvite` from you. `.squad_join` puts you straight into that player's squad with no invite, founding one they lead if they have none (you must not be in a squad). `.squad_info` lists your squad, or the named player's: id, size, loot mode, and each member's rank, level and entity. Squads are never saved |
+| Teams and Commands | `.org_disband <orgId>` | ✅ Yes (server side). Disbands a Team or Command, memberless ones included: every online member is told it was disbanded, and you get a line with the member count. Refused while the organization's vault holds anything. The base checks your GM access itself |
+| Teams and Commands | `.org_join <orgId> [player]` | ✅ Yes (saved). Adds an online player (default: you) to a Team or Command at its entry rank (Team Member, Command Initiate), or as Leader when it has no members. Skips the invite and permission checks, but still refuses a player already in an organization of that type. The player gets the organization window and the members see them join. The base checks your GM access itself |
+| Teams and Commands | `.org_rank <player> <rank> [orgId]` | ✅ Yes (saved). Sets a member's rank (online or not), skipping the rank-authority checks; refuses Leader (8) and ranks the type does not use (a Team uses 2, 3 and 8). Without `orgId` it acts on the member's only Team or Command, and asks for the id when they are in both. Online members see the new rank |
+| Teams and Commands | `.org_info [player]` | ✅ Yes (read only). Lists every Team and Command a character (default: you, online or not) belongs to, with the org id, rank and that rank's permission mask in hex. The base checks your GM access itself |
+| Teams and Commands | `.org_list` | ✅ Yes (read only). Lists every Team and Command with its id, member count and leader, oldest first, at most 50 lines |
+| Teams and Commands | `.org_set_perms <orgId> <rank> <mask>` | ✅ Yes (saved). Sets a rank's permission mask (decimal or `0x` hex). Only the bits the type's rank editor shows take your value (12 for a Team, 14 for a Command); the others keep what is stored, and the reply names the bits it ignored. Refuses the Leader rank (it always holds every bit), ranks the type does not use, and an edit that changes nothing. Online members get the new rank table |
+| Organizations | `.org_create <team\|command> <name>` | ✅ Yes (saved) — founds a Team or Command that you lead, without the Organization Registrar. The name is every word after the type. The base re-checks your GM access and applies the same rules as the registrar: the name rules, one Team and one Command per character, and the creation cost (0 for now). You get the organization window and a confirmation line, or the reason it was refused |
 | Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
 
-A few commands (`.debug_controller`, the server/maint family, `.allcraft`) report
+A few commands (`.debug_controller`, the server/maint family) report
 an honest limitation in-game where the Rust server handles the concern
 differently from the legacy Python (incremental persistence, startup resource
 loading, env-based log level). See the
@@ -582,12 +600,12 @@ design and the per-command status.
 ## At a glance
 
 - **266 commands** total -- **105** for everyone, **161** Game-Master only.
-- **64** fully work on our server, **23** are handled by the game itself, **16** partly work, and **163** aren't wired up on our server yet.
-- **44** have an automated test guarding the server behavior.
+- **65** fully work on our server, **23** are handled by the game itself, **23** partly work or work only server-side so far, and **155** aren't wired up on our server yet.
+- **45** have an automated test guarding the server behavior.
 
 > The server side is tested where marked, but a full live-client pass (typing each one in the real game and watching the result) is still pending. Treat ✅ as "the server does the right thing when the command arrives."
 >
-> **Accuracy caveat (2026-07-25):** the ✅/🚧/❌ marks in the `/`-command tables above have **not** been audited handler-by-handler. Two were checked and both were wrong — `/duelforfeit` and `/duelresponse` were marked ✅ but are `UNIMPLEMENTED` stubs (see the Dueling section); the totals here reflect that correction. Expect other rows to be optimistic in the same way, because a command that reaches a dispatch arm can still do nothing. The `.`-console section below **was** verified in full against [console/registry.rs](../crates/services/src/cell/console/registry.rs).
+> **Accuracy caveat (2026-07-25):** the ✅/🚧/❌ marks in the `/`-command tables above have **not** been audited handler-by-handler. Two were checked and both were wrong — `/duelforfeit` and `/duelresponse` were marked ✅ but are `UNIMPLEMENTED` stubs (see the Dueling section); the totals here reflect that correction. Expect other rows to be optimistic in the same way, because a command that reaches a dispatch arm can still do nothing. The `.`-console section below **was** verified in full against [console/registry.rs](../crates/cell-console/src/cell/console/registry.rs).
 
 ## See also
 

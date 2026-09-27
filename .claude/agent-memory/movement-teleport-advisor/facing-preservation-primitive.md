@@ -13,7 +13,7 @@ moved entity's facing to north. Witnesses render it; the moved player sees it
 on their own avatar.
 
 `SpaceManager::update_position_preserving_facing(entity_id, position, velocity)`
-(`crates/services/src/cell/space_manager/entities.rs`, landed 2026-09-17) is the
+(`crates/cell-world/src/cell/space_manager/entities.rs`, landed 2026-09-17) is the
 position-only writer — it never touches `direction`, so the facing survives by
 construction rather than by a capture/restore the caller can forget. Both
 writers share the private `write_position` tail. `update_entity_position` is
@@ -24,7 +24,7 @@ History worth knowing: the capture-then-restore workaround was independently
 copy-pasted at four call sites (`console/placement.rs::location`,
 `console/travel::snap_in_current_space`, `client_move.rs::reject_outcome`'s
 recovery relocation) — and was **missing entirely** from the native `gm*`
-handlers (`cell_methods/gm/travel.rs`: `gmGotoXYZ`, `gmGoto`, `gmSummon`) for
+handlers (`console/gm/travel.rs`: `gmGotoXYZ`, `gmGoto`, `gmSummon`) for
 as long as they existed. A workaround that has to be remembered at each site
 will be forgotten at some site; prefer the primitive that cannot be misused.
 
@@ -35,7 +35,7 @@ still needs an explicit read of the subject's current facing before teardown —
 `update_position_preserving_facing` does not help there.
 
 Regression guard: `native_gm_travel_preserves_facing` in
-`crates/services/src/cell/cell_methods/gm/tests/travel.rs` (verified to fail on
+`crates/cell-console/src/cell/console/gm/tests/travel.rs` (verified to fail on
 revert, one arm per handler). Use a non-zero, non-symmetric facing in any new
 guard — `[0, 0, 0]` still matches after the bug is reintroduced.
 

@@ -36,13 +36,13 @@ Recast wrapper later if it buys anything.
 
 | Phase | Status |
 |---|---|
-| 0 — `.nav` round-trip smoke | **shipped** — see `tests/nav_roundtrip_castle_cellblock.rs` |
+| 0 — `.nav` round-trip smoke | **shipped** — see `tests/it/nav_roundtrip_castle_cellblock.rs` |
 | 1.1 — crate scaffold | **shipped** — modules `chunk_id`, `geometry`, `obj`, `umap`, `nav_roundtrip` |
-| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output) |
-| 1.2b — coverage report + floor probe + CLI | **shipped** — modules `coverage`, `floor_probe`, binary `extract_map`; see `tests/castle_coverage_and_probe.rs` |
-| 1.2c — prefab archetypes + `bCollideActors` | **shipped** — module `staticmesh/archetype`, binary `archetype_census`; see `tests/archetype_castle.rs` |
-| 1.3 — Terrain decoder | **shipped** — module `terrain`, wired into `extract_map`; see `tests/terrain_castle.rs` |
-| 1.4 — BSP `Model` / `Polys` decoder | **shipped** — `cimmeria_upk_objects::model` + module `bsp`, wired into `extract_map`; see `tests/bsp_castle_model_decode.rs`, `tests/bsp_castle_floor_evidence.rs`, `tests/bsp_castle_hull_cap.rs` |
+| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/it/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/it/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output) |
+| 1.2b — coverage report + floor probe + CLI | **shipped** — modules `coverage`, `floor_probe`, binary `extract_map`; see `tests/it/castle_coverage_and_probe.rs` |
+| 1.2c — prefab archetypes + `bCollideActors` | **shipped** — module `staticmesh/archetype`, binary `archetype_census`; see `tests/it/archetype_castle.rs` |
+| 1.3 — Terrain decoder | **shipped** — module `terrain`, wired into `extract_map`; see `tests/it/terrain_castle.rs` |
+| 1.4 — BSP `Model` / `Polys` decoder | **shipped** — `cimmeria_upk_objects::model` + module `bsp`, wired into `extract_map`; see `tests/it/bsp_castle_model_decode.rs`, `tests/it/bsp_castle_floor_evidence.rs`, `tests/it/bsp_castle_hull_cap.rs` |
 | 2 — NavBuilder rebuild + Castle_CellBlock acceptance | follow-up |
 | 3 — Recast tuning (`cs=0.15`, `ch=0.1`, `agentClimb=0.5`) | follow-up |
 | 4 — Roll out to remaining 23 maps | follow-up |
@@ -63,6 +63,8 @@ Recast wrapper later if it buys anything.
   probe uses, so the probe runs against the artifact NavBuilder
   consumes.
 - `nav_roundtrip.rs` — Phase 0 XRC `.nav` reader / writer pair.
+- `nav_tiled.rs` — the tiled `XRCT` `.nav` reader / writer, and
+  `NavFile`, which reads either layout.
 - `transform.rs` — actor-to-world `ActorTransform` math
   (`Location` + UE3 `Rotator` + `DrawScale` + `DrawScale3D`).
 - `staticmesh/` — Phase 1.2 walker. `mod.rs` enumerates
@@ -75,8 +77,10 @@ Recast wrapper later if it buys anything.
 - `bsp/` — Phase 1.4. `mod.rs` classifies and places every `Model`
   export and emits its collision triangles; `hull_cap.rs` holds the
   buried-outer-skin filter and the `TerrainCeiling` it needs.
-- `nav_components.rs` — `.nav` connectivity: flood fill, per-component
+- `nav_components/` — `.nav` connectivity: flood fill, per-component
   stats, and `locate_within`, the tolerance-first probe resolver.
+  `tiled.rs` builds the same graph from a tiled file, linking tile
+  portals with Detour's own test.
 - `coverage/` — per-chunk extraction accounting: skip reasons,
   per-source triangle tallies, archetype/prefab counts, export-class
   census with a per-class `DecodeStatus`, TSV emitters.
@@ -93,6 +97,22 @@ Recast wrapper later if it buys anything.
   much of it Recast would accept as floor, plus a traversal-keyword
   scan over every actor. `geometry.rs` is the area arithmetic, `census.rs`
   the walk, `report.rs` the formatting.
+- `cover/` — world-space cover nodes (`SGWSpecCoverNode` actors and
+  `StaticMeshActor.CoverNodeArray` components): `walk.rs` decodes one
+  package, `grouping.rs` forms cover sets, `sql.rs` renders the seeds.
+  `bin/cover_extract.rs` is the CLI; see
+  [docs/engine/cover-extraction.md](../../docs/engine/cover-extraction.md).
+- `occluder/` — inputs for the `cimmeria-occluder` line-of-sight grid
+  (NA27): `mod.rs` walks a map's chunks in memory and hands each chunk's
+  triangles over in BigWorld metres, split into terrain and StaticMesh
+  plus BSP. `exact.rs` is the exact segment tracer used as ground truth.
+  `sweep.rs` samples navmesh point pairs and scores the occluder and a
+  navmesh ray against the tracer. `bin/occluder_extract/` is the CLI:
+  `build` writes the shipped paged `.occ`, trimmed to the explorable area
+  (`explorable.rs`: the navmesh components holding an entry point),
+  `measure` reports size, RAM, build time and
+  accuracy per cell size, and `probe` prints one segment's verdict.
+  Results: [the NA27 worknote](../../docs/analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).
 - `bin/obj_slab.rs` — column / free-run / level-histogram / slope
   queries over the chunk OBJs. `--levels` is the "is there a staircase
   between these two storeys" question.
@@ -142,7 +162,7 @@ triangles == staticmesh_triangles + terrain_triangles + bsp_triangles
 ```
 
 reported per row as `sources_balanced` and asserted against the bytes
-on disk by `tests/extract_map_castle_cellblock.rs`.
+on disk by `tests/it/extract_map_castle_cellblock.rs`.
 `bsp_hull_cap_triangles` counts faces the hull-cap filter *removed*, so
 it is deliberately outside the sum.
 `probe` writes `probe_mappings.tsv` (mapping ranking) and
@@ -274,16 +294,46 @@ crate; the NavBuilder-side write-up is
   [castle-navmesh-connectivity.md](../../docs/engine/castle-navmesh-connectivity.md)
   §3. The path stays untested against real non-empty data until a map
   turns up that has some.
-- **Non-`StaticMeshActor` classes that own a `StaticMeshComponent`**
-  are still dropped by the walker's class filter: 14 `InterpActor`s in
-  Castle, which the archetype resolver handles unchanged when pointed
-  at them. 11 are security-camera heads, 1 an antenna, 1 a shelf box —
-  and 1 is `GLB-Global:GLB-RingTransporter00` at BigWorld
-  (466.45, 70.06, 991.55), the only Castle actor that sets
-  `bCollideActors` / `bBlockActors` / `bPathColliding` explicitly. A
-  mover's cooked `Location` is its editor-time pose, not necessarily
-  where it rests at runtime, which is why widening the filter is a
-  judgement call rather than an oversight.
+- **Non-`StaticMeshActor` classes that own a `StaticMeshComponent`** —
+  **NA36 (2026-09-25) widened the walker, and then made the risky part
+  opt-in.** `staticmesh::MESH_ACTOR_CLASSES` now includes `KActor` and
+  `FracturedStaticMeshActor` alongside `StaticMeshActor`,
+  unconditionally — both have zero exports across all 23 shipped maps
+  today, but are true `AStaticMeshActor` siblings and cost nothing to
+  support. `InterpActor` is different: `OPT_IN_MESH_ACTOR_CLASSES`
+  gates it behind `ExtractOptions::include_interp_actors` /
+  `--include-interp-actors`, **default off**. The first NA36 pass
+  walked `InterpActor` unconditionally and a same-day follow-up walked
+  it back after a reviewer pointed out the failure mode: **a mover's
+  cooked `Location` is its editor-time pose, not necessarily where it
+  rests at runtime** — a closed door baked into a `.nav` seals the
+  doorway, and baked into a `.occ` blocks sight through an opening a
+  player can actually see through. A 23-map classification of every
+  resolved `InterpActor`'s mesh name
+  (`docs/engine/navmesh-build-pipeline.md` §11) found the risk is real
+  but a minority: 754 `InterpActor`s resolve a mesh across all 23 maps,
+  of which ~51 (7%) are literal doors or a Stargate's rotating chevron
+  mechanism, ~124 (16%) are security-camera heads (ambiguous — the
+  mount is static, only the head plausibly rotates), and the remaining
+  ~579 (77%) are load-bearing static-shaped props: 332
+  `GLB-RingTransporter00` ring-transport platforms alone (players stand
+  on these; Castle's own instance previously had **zero** collision
+  geometry at all), plus streetlamps, floating lights, antennas and
+  parked vehicles. Harset's 31 `InterpActor`s were checked by hand and
+  are all in the safe category, so `harset.nav`/`harset.occ` ship built
+  with the flag on; every other map defaults to off until someone does
+  the same per-map check (see the flag-usage table in
+  [navmesh-build-pipeline.md §11](../../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)).
+  **NA40 (2026-09-26) replaced the flag with a per-actor decision**
+  (`interp_actor` module, `--interp-actors classify|off`, default
+  `classify`): the chunk's Kismet is followed to each actor's Matinee
+  move tracks, an actor is baked only when nothing moves it or every
+  move leaves from and returns to its cooked pose without turning or
+  sliding, and doors, Stargate parts and camera heads are never baked.
+  Undecided actors stay a flagged collision risk, and every run logs its
+  decisions to `interp_actors.tsv`. The "ring-transport platforms" turn
+  out to be the rings, which lie 30-34 cm high on their platforms. See
+  [navmesh-build-pipeline.md §12](../../docs/engine/navmesh-build-pipeline.md#12-per-actor-interpactor-classification-na40-2026-09-26).
 - **`Polys` is never read.** BSP collision comes from `UModel`'s node
   tree, so this is believed correct rather than known correct.
 - **Terrain coordinate cross-check** — the height-vs-known-outdoor-point
@@ -308,7 +358,7 @@ CIMMERIA_PACKAGE_INDEX=/path/to/package_index.bin \
   cargo test -p cimmeria-navmesh-extractor
 ```
 
-`tests/navbuilder_axis_roundtrip.rs` additionally takes
+`tests/it/navbuilder_axis_roundtrip.rs` additionally takes
 `CIMMERIA_NAVBUILDER` (default: the `bin64/NavBuilder_d.exe` reference
 binary found by walking up from the crate). One case in it asserts the
 parameter validation in `deprecated/cpp/src/nav_builder/build_params.hpp`
@@ -318,7 +368,7 @@ tree, which no probe can detect — say so explicitly:
 ```bash
 tools/build-navbuilder.ps1 -Out $TMP/NavBuilder.exe
 CIMMERIA_NAVBUILDER=$TMP/NavBuilder.exe CIMMERIA_NAVBUILDER_FROM_TREE=1 \
-  cargo test -p cimmeria-navmesh-extractor --test navbuilder_axis_roundtrip
+  cargo test -p cimmeria-navmesh-extractor --test it navbuilder_axis_roundtrip
 ```
 
 A skipped test is not a pass, so the walkers are also covered without
@@ -329,9 +379,9 @@ any of that, through the synthetic packages in [`test_support`](src/test_support
 | chain control flow — loops, depth budget, missing package vs missing export, collision veto ordering | `staticmesh/archetype/tests.rs`, against a `fetch` closure | yes |
 | chain over real package bytes — import chain ↔ dotted outer path, both property offsets, cross-package mesh keys | `staticmesh/archetype_walk_tests.rs`, against `test_support::prefab_package` | yes |
 | coverage arithmetic and TSV shape | `coverage/tests.rs` | yes |
-| the cooked SGW shapes themselves | `tests/archetype_castle.rs` | only with the client tree |
+| the cooked SGW shapes themselves | `tests/it/archetype_castle.rs` | only with the client tree |
 
-`tests/archetype_castle.rs` pins `Castle-000a0002` at 147
+`tests/it/archetype_castle.rs` pins `Castle-000a0002` at 147
 archetype-instanced actors → 125 emitted + 22 collision-vetoed, plus
 102 direct actors vetoed, and asserts the balance invariant. Both
 guards were revert-proved: disabling the `bCollideActors` gate fails

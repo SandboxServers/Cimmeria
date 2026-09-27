@@ -31,28 +31,74 @@ pub const INV_AUCTION: i32 = 18;
 pub const INV_TEAM_BANK: i32 = 19;
 pub const INV_COMMAND_BANK: i32 = 20;
 
-/// Default bag sizes from `python/common/Constants.py:142-160`.
-pub const BAG_SIZES: &[(i32, i32)] = &[
-    (INV_MAIN, 40),
-    (INV_MISSION, 100),
-    (INV_BANDOLIER, 4),
-    (INV_HEAD, 1),
-    (INV_FACE, 1),
-    (INV_NECK, 1),
-    (INV_CHEST, 1),
-    (INV_HANDS, 1),
-    (INV_WAIST, 1),
-    (INV_BACK, 1),
-    (INV_LEGS, 1),
-    (INV_FEET, 1),
-    (INV_ARTIFACT1, 1),
-    (INV_ARTIFACT2, 1),
-    (INV_CRAFTING, 100),
-    (INV_BUYBACK, 12),
-    (INV_BANK, 100),
-    (INV_AUCTION, 100),
-    (INV_TEAM_BANK, 100),
-];
+/// Max items per container: the one capacity table.
+///
+/// Values are `BAG_SIZES` in `deprecated/python/common/Constants.py:142-163`. Every
+/// other view of container capacity derives from this function:
+/// [`BAG_SIZES`] (what `onBagInfo` declares) is built from it at compile
+/// time, and `cimmeria_wire::containers::bag_max_slots` re-exports it. It
+/// lives here rather than in `cimmeria-wire` because `cimmeria-wire`
+/// depends on this crate, not the other way round.
+///
+/// Containers 17-20 (bank, auction, Team vault, Command vault) return
+/// their ceiling of 100. For the three vaults that is the most they can
+/// expand to, not the size they have:
+///
+/// - The personal vault (17) is sized per player by `sgw_player.bank_slots`
+///   (see [`Inventory::with_bank_slots`]).
+/// - The Team vault (19) is sized per Team by `sgw_organizations.vault_slots`
+///   (40 to 100, in steps of 10: `Team.lua` `ValidateScrollbar`,
+///   organizations audit A-15; D-BV14) and the Command vault (20) is fixed
+///   at 100. The client derives the visible grid from the declared size.
+///   World entry declares both at the ceiling; opening an org vault
+///   re-sends `onBagInfo` with the Team's own size (see
+///   [`Inventory::with_org_vault_slots`], bank-vault BV-07).
+///
+/// A non-zero capacity does not make a container player-movable: the move
+/// path's allowlist decides that.
+pub const fn bag_max_slots(container_id: i32) -> i32 {
+    match container_id {
+        INV_MAIN => 40,
+        INV_MISSION => 100,
+        INV_BANDOLIER => 4,
+        INV_HEAD..=INV_ARTIFACT2 => 1,
+        INV_CRAFTING => 100,
+        INV_BUYBACK => 12,
+        INV_BANK..=INV_COMMAND_BANK => 100,
+        _ => 0,
+    }
+}
+
+/// Personal vault size of a player who has never expanded it: the
+/// `sgw_player.bank_slots` column default.
+pub const BANK_SLOTS_DEFAULT: i32 = 40;
+
+/// Team vault (19) size of a Team that has never expanded it: the
+/// `sgw_organizations.vault_slots` column default (D-BV14).
+pub const TEAM_VAULT_SLOTS_DEFAULT: i32 = 40;
+
+/// Command vault (20) size: fixed (D-BV14).
+pub const COMMAND_VAULT_SLOTS: i32 = 100;
+
+/// Every container `onBagInfo` declares, with its capacity, in id order.
+///
+/// Derived from [`bag_max_slots`] for ids 1-20, so the two cannot
+/// disagree. Container 17's entry is the ceiling; a player's own
+/// `onBagInfo` replaces it with their `bank_slots`.
+pub const BAG_SIZES: &[(i32, i32)] = &BAG_SIZES_TABLE;
+
+const BAG_SIZES_TABLE: [(i32, i32); INV_COMMAND_BANK as usize] = bag_sizes_table();
+
+const fn bag_sizes_table() -> [(i32, i32); INV_COMMAND_BANK as usize] {
+    let mut table = [(0, 0); INV_COMMAND_BANK as usize];
+    let mut i = 0;
+    while i < table.len() {
+        let bag_id = i as i32 + INV_MAIN;
+        table[i] = (bag_id, bag_max_slots(bag_id));
+        i += 1;
+    }
+    table
+}
 
 // ── Item ────────────────────────────────────────────────────────────────────
 
@@ -138,6 +184,41 @@ impl Inventory {
             bags,
             items: HashMap::new(),
         }
+    }
+
+    /// Declare the personal vault (container 17) at this player's size,
+    /// `sgw_player.bank_slots`, instead of the ceiling.
+    ///
+    /// The value is clamped to `0..=bag_max_slots(INV_BANK)`. The column's
+    /// CHECK constraint already keeps it in 40-100; the clamp only stops a
+    /// hand-edited row from declaring slots the server will never accept.
+    pub fn with_bank_slots(mut self, bank_slots: i32) -> Self {
+        let slots = bank_slots.clamp(0, bag_max_slots(INV_BANK));
+        self.bags.insert(
+            INV_BANK,
+            Bag {
+                bag_id: INV_BANK,
+                slots,
+            },
+        );
+        self
+    }
+
+    /// Declare an org vault (19 or 20) at `slots` instead of the ceiling,
+    /// clamped to `0..=bag_max_slots(container_id)` like
+    /// [`Self::with_bank_slots`]. Any other container is left unchanged.
+    pub fn with_org_vault_slots(mut self, container_id: i32, slots: i32) -> Self {
+        if matches!(container_id, INV_TEAM_BANK | INV_COMMAND_BANK) {
+            let slots = slots.clamp(0, bag_max_slots(container_id));
+            self.bags.insert(
+                container_id,
+                Bag {
+                    bag_id: container_id,
+                    slots,
+                },
+            );
+        }
+        self
     }
 
     /// Serialize bag info for `onBagInfo(ARRAY<BagInfo>)`.
@@ -314,5 +395,113 @@ mod tests {
         assert_eq!(INV_BANDOLIER, 3);
         assert_eq!(INV_CRAFTING, 15);
         assert_eq!(INV_COMMAND_BANK, 20);
+    }
+
+    /// D-BV06: one capacity source. `BAG_SIZES` is what `onBagInfo`
+    /// declares; `bag_max_slots` is what the move and grant paths accept.
+    /// Before BV-01 they were two hand-written tables that disagreed on
+    /// 17-20 (audit A-20, A-21): the client was told about slots the
+    /// server refused.
+    /// An org vault is declared at the size given, clamped to its ceiling;
+    /// no other container can be resized through it (BV-07).
+    #[test]
+    fn with_org_vault_slots_sizes_only_the_org_vaults() {
+        let inv = Inventory::new(0)
+            .with_org_vault_slots(INV_TEAM_BANK, 60)
+            .with_org_vault_slots(INV_COMMAND_BANK, 150)
+            .with_org_vault_slots(INV_MAIN, 5);
+        assert_eq!(inv.get_bag(INV_TEAM_BANK).unwrap().slots, 60);
+        assert_eq!(inv.get_bag(INV_COMMAND_BANK).unwrap().slots, 100);
+        assert_eq!(inv.get_bag(INV_MAIN).unwrap().slots, 40);
+    }
+
+    #[test]
+    fn bag_max_slots_agrees_with_bag_sizes_for_every_container() {
+        assert_eq!(BAG_SIZES.len(), 20, "onBagInfo declares containers 1-20");
+        for container_id in 1..=20 {
+            let declared = BAG_SIZES
+                .iter()
+                .find(|&&(id, _)| id == container_id)
+                .map(|&(_, slots)| slots);
+            assert_eq!(
+                declared,
+                Some(bag_max_slots(container_id)),
+                "container {container_id}: BAG_SIZES and bag_max_slots disagree"
+            );
+        }
+    }
+
+    /// Independent fixture: typed in by hand from `BAG_SIZES` in
+    /// `deprecated/python/common/Constants.py:142-163` (the legacy server's
+    /// table), not derived from `bag_max_slots`, so a wrong edit to the
+    /// table fails here.
+    #[test]
+    fn bag_max_slots_matches_constants_py() {
+        let expected = [
+            (INV_MAIN, 40),
+            (INV_MISSION, 100),
+            (INV_BANDOLIER, 4),
+            (INV_HEAD, 1),
+            (INV_FACE, 1),
+            (INV_NECK, 1),
+            (INV_CHEST, 1),
+            (INV_HANDS, 1),
+            (INV_WAIST, 1),
+            (INV_BACK, 1),
+            (INV_LEGS, 1),
+            (INV_FEET, 1),
+            (INV_ARTIFACT1, 1),
+            (INV_ARTIFACT2, 1),
+            (INV_CRAFTING, 100),
+            (INV_BUYBACK, 12),
+            (INV_BANK, 100),
+            (INV_AUCTION, 100),
+            (INV_TEAM_BANK, 100),
+            (INV_COMMAND_BANK, 100),
+        ];
+        for (container_id, slots) in expected {
+            assert_eq!(
+                bag_max_slots(container_id),
+                slots,
+                "container {container_id}"
+            );
+        }
+        for unknown in [-1, 0, 21, 100] {
+            assert_eq!(bag_max_slots(unknown), 0, "container {unknown}");
+        }
+    }
+
+    #[test]
+    fn with_bank_slots_sets_only_container_17() {
+        let inv = Inventory::new(0).with_bank_slots(60);
+        assert_eq!(inv.get_bag(INV_BANK).unwrap().slots, 60);
+        assert_eq!(inv.bags.len(), BAG_SIZES.len());
+        assert_eq!(inv.get_bag(INV_TEAM_BANK).unwrap().slots, 100);
+        // A hand-edited row cannot declare more than the ceiling.
+        let inv = Inventory::new(0).with_bank_slots(500);
+        assert_eq!(inv.get_bag(INV_BANK).unwrap().slots, 100);
+    }
+
+    /// Wire-format, byte-exact: a default player's `onBagInfo` declares
+    /// containers 1-20 in id order, with the vault (17) at 40. The expected
+    /// sizes are typed in from `deprecated/python/common/Constants.py:142-163`,
+    /// with 17 replaced by the `sgw_player.bank_slots` default.
+    #[test]
+    fn default_player_bag_info_declares_vault_at_40_byte_exact() {
+        let data = Inventory::new(0)
+            .with_bank_slots(BANK_SLOTS_DEFAULT)
+            .serialize_bag_info();
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&20u32.to_le_bytes());
+        let slots: [i32; 20] = [
+            40, 100, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 100, 12, 40, 100, 100, 100,
+        ];
+        for (i, n) in slots.iter().enumerate() {
+            expected.extend_from_slice(&(i as i32 + 1).to_le_bytes());
+            expected.extend_from_slice(&n.to_le_bytes());
+        }
+        assert_eq!(data, expected);
+        // Container 17's entry sits at 4 + 16 * 8 bytes: id 17, then 40.
+        assert_eq!(&data[132..140], &[17, 0, 0, 0, 40, 0, 0, 0]);
     }
 }

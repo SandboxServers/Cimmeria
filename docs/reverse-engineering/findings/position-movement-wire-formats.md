@@ -119,13 +119,15 @@ Unlike `forcedPosition` and `detailedPosition` which use full float32 for all fi
 When present (FullPos/OnChunk/OnGround variants), position is encoded as three float32 values (12 bytes total), the same as in forcedPosition. The position type name (FullPos/OnChunk/OnGround) determines how the CLIENT INTERPRETS the Y value:
 
 - **FullPos**: All three components (X, Y, Z) used directly
-- **OnChunk**: X and Z used; Y replaced with sentinel (client derives Y from chunk height)
-- **OnGround**: X and Z used; Y replaced with sentinel (client derives Y from terrain)
+- **OnChunk**: X and Z used; Y replaced with sentinel (client keeps the entity's current height)
+- **OnGround**: X and Z used; Y replaced with sentinel (client keeps the entity's current height)
 
-**Critical finding**: All three position types use the SAME wire format (3 x float32 = 12 bytes). The difference is purely in the handler function: FullPos handlers read `posY = data[offset+4]`, while OnChunk and OnGround handlers set `posY = SENTINEL` (a constant at `DAT_019d1a44`, likely `FLT_MAX`). The 4 bytes at the Y position offset are present in all variants but ignored by OnChunk/OnGround handlers. Confirmed by decompiling:
+**Critical finding**: All three position types use the SAME wire format (3 x float32 = 12 bytes). The difference is purely in the handler function: FullPos handlers read `posY = data[offset+4]`, while OnChunk and OnGround handlers set `posY = SENTINEL` (a constant at `DAT_019d1a44`, `-13000.0f`). The 4 bytes at the Y position offset are present in all variants but ignored by OnChunk/OnGround handlers. Confirmed by decompiling:
 - `FUN_00ddb0c0` (NoAliasFullPosNoDir): `local_8 = param_1[2]` (uses Y)
 - `FUN_00ddb220` (NoAliasOnChunkYPR): `local_8 = DAT_019d1a44` (ignores Y)
 - `FUN_00ddb830` (NoAliasOnGroundYPR): `local_8 = DAT_019d1a44` (ignores Y)
+
+> **Correction (2026-09-24):** an earlier revision said the sentinel was "likely `FLT_MAX`" and that the client derives Y from chunk height or terrain. Both are wrong. `DAT_019d1a44` holds bytes `00 20 4b c6`, which is `-13000.0f`. `BW_client_entity_manager_6` (`0x00dd1859`) replaces any component equal to the sentinel with the actor's current client `Location`, with no ray-cast or height-map query. See [spec.protocol.position-updates §1.2.2](../../drafts/spec/position-updates.md#122-position-type-semantics) and [npc-ground-audit.md §B](../../analysis/npc-ai-restoration/evidence/npc-ground-audit.md#b-how-the-client-renders-npc-y-ghidra).
 
 When absent (NoPos variants), no position data is sent. The client uses the entity's previous position.
 

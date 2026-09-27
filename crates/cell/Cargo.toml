@@ -1,0 +1,79 @@
+[package]
+name = "cimmeria-cell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The CellApp service for the Cimmeria server emulator: `CellService`, the cell loop that drains the BaseApp's messages and runs the per-frame ticks, the per-message base handlers, and the router that dispatches a client's cell-method call"
+
+# Split out of cimmeria-services (wave C6 of
+# docs/architecture/services-crate-split.md), the top of the cell track: it
+# builds on the cell methods and the GM console, and only the services facade
+# builds on it, so it must never depend on a service crate above it, the
+# base's included. The module tree keeps its old nesting (`cell::service`,
+# `cell::dispatch`), and cimmeria-services re-exports `cell::dispatch` and
+# `cell::CellService` at their old paths.
+[dependencies]
+# The per-interface cell-method dispatchers the router calls in inheritance
+# order.
+cimmeria-cell-methods = { workspace = true }
+# The chat interceptor, the native GM cell methods the router hands the 109+
+# tail to, the GM feedback line and the lab console's command runner.
+cimmeria-cell-console = { workspace = true }
+# The trainer re-open after an ability grant, the gate-dial and crossing ticks
+# and the client-cache resync at login.
+cimmeria-cell-interactions = { workspace = true }
+# The content-chain events the loop and the ticks raise, the deferred content
+# actions, and the missions the relog hydration restores.
+cimmeria-cell-content = { workspace = true }
+# Combat, the NPC AI tick, the auto-cycle, the effect pulsing and the
+# bandolier, reload and holster handlers the ticks and base messages drive.
+cimmeria-cell-combat = { workspace = true }
+# SpaceManager, arrival, cover, the playtest-friction journal and the GM gate.
+cimmeria-cell-world = { workspace = true }
+# The spawner's records and loaders the startup and GM spawn read, and the
+# ability trees.
+cimmeria-cell-catalog = { workspace = true }
+# The Base<->Cell message contract, the Mercury method indices and builders,
+# the client method indices and the player journal.
+cimmeria-wire = { workspace = true }
+# The chain engine the loop loads and every handler threads through.
+cimmeria-content-engine = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+# The movement-validation and NPC respawn counters.
+cimmeria-observability = { workspace = true }
+tokio = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate (`require_db_or_skip!`), `LogCapture` and the source-scan
+# walker, re-exported from the `#[cfg(test)] mod test_support` shim in lib.rs.
+# Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`, `seed_ability_defs`, the occluder
+# and arrival-mesh helpers, the `ContentEvents` fakes) and the test-only hooks
+# (`force_ai_state`, `StepRegionReplayGuard::is_idle`, `resolve_use_cover`).
+# Its feature also turns on `cell::cover::TEST_WORLD_ID` for the cover tests
+# that drive the NPC AI (`service::tests::npc_ai_cover*`, `ticks::cover`).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# The combat test hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,
+# `npc_ai_follow_for_test`, ...) and the shared NPC AI fixtures
+# (`test_fixtures::{npc_detectors, npc_surrender}`) for the service-level NPC
+# AI suite and the detector and surrender tests that drive a tick.
+cimmeria-cell-combat = { workspace = true, features = ["test-support"] }
+# The content hooks (`load_single_chain_for_test`, `execute_actions`,
+# `populate_mission_context`) for the relog-hydration tests in
+# `cell::content_tests`.
+cimmeria-cell-content = { workspace = true, features = ["test-support"] }
+# `console::exec`, for the `.speed` tests in `ticks::npc_movement`, which drive
+# the NPC movement tick after the console command.
+cimmeria-cell-console = { workspace = true, features = ["test-support"] }
+# The paged occluder the NPC AI line-of-sight tests load.
+cimmeria-occluder = { workspace = true }
+# Chain parameters in the relog-hydration tests.
+serde_json = { workspace = true }

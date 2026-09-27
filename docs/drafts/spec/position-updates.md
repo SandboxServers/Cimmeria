@@ -23,6 +23,8 @@ evidence_refs:
     - ghidra://SGW.exe@0x00ddb0c0
     - ghidra://SGW.exe@0x00ddb220
     - ghidra://SGW.exe@0x00ddb830
+    - ghidra://SGW.exe@0x00dd1859
+    - ghidra://SGW.exe@0x019d1a44
     - ghidra://SGW.exe@0x00ddbe40
     - ghidra://SGW.exe@0x00ddc420
     - ghidra://SGW.exe@0x00ddc8e0
@@ -121,8 +123,12 @@ Sanity checks:
 Even though the three "with position" variants (`FullPos`, `OnChunk`, `OnGround`) all carry 12 wire bytes of position, the per-variant handler differs in how it interprets the Y component:
 
 - `FullPos` handlers (e.g. `FUN_00ddb0c0` at `ghidra://SGW.exe@0x00ddb0c0`): read all three floats as-is (`local_8 = param_1[2]`).
-- `OnChunk` handlers (e.g. `FUN_00ddb220` at `ghidra://SGW.exe@0x00ddb220`): discard the wire Y and substitute the sentinel at `DAT_019d1a44` (likely `FLT_MAX`); the client derives Y from the chunk's height map.
-- `OnGround` handlers (e.g. `FUN_00ddb830` at `ghidra://SGW.exe@0x00ddb830`): discard the wire Y and substitute the same sentinel; the client derives Y from terrain ray-cast.
+- `OnChunk` handlers (e.g. `FUN_00ddb220` at `ghidra://SGW.exe@0x00ddb220`): discard the wire Y and substitute the sentinel at `DAT_019d1a44` (`ghidra://SGW.exe@0x019d1a44`). The sentinel is `-13000.0f` (bytes `00 20 4b c6`), BigWorld's classic "on ground" marker, not `FLT_MAX`.
+- `OnGround` handlers (e.g. `FUN_00ddb830` at `ghidra://SGW.exe@0x00ddb830`): discard the wire Y and substitute the same sentinel.
+
+Both then hand the position to `EntityManager::onEntityMove` (`BW_client_entity_manager_6`, from `ghidra://SGW.exe@0x00dd1859`). It compares each component against `-13000.0f` and, on a match, substitutes the actor's current client `Location` component (`actor+0xdc`). There's no terrain ray-cast and no height-map query on this path. So an `OnChunk` or `OnGround` update keeps whatever height the client already holds for the entity. If you send either one for an NPC, you pin it at its create-time height instead of grounding it.
+
+> [!NOTE] **Source-doc override (2026-09-24): the sentinel is `-13000.0f`, and neither `OnChunk` nor `OnGround` grounds the entity.** `position-movement-wire-formats.md` §"Position: 3 x float32 (12 bytes) or absent" calls the sentinel "likely `FLT_MAX`" and says the client derives Y from chunk height or terrain. `npc-movement-pathfinding.md` §1 and §5 and `address-map.md` repeat the `FLT_MAX` value. A read of `DAT_019d1a44` and the sentinel check in `BW_client_entity_manager_6` settle both points. This chapter overrides those docs, and each now carries a correction note. The Ghidra write-up is [npc-ground-audit.md §B](../../analysis/npc-ai-restoration/evidence/npc-ground-audit.md#b-how-the-client-renders-npc-y-ghidra).
 
 The 4 wire bytes at the Y offset are still present in every variant — the difference is purely how the handler consumes them. A reimplementation can always emit the same 12 position bytes regardless of variant; the variant choice is the server's signal to the *client* about how to interpret Y, not a wire-format change.
 
@@ -504,7 +510,7 @@ One row per load-bearing claim. The "Primary V5 source" column is the canonical 
 | 32 variants in `msg_id 0x10 – 0x2F`, all `CONSTANT_LENGTH` | `position-movement-wire-formats.md` §"avatarUpdate Messages (msg_id 0x10-0x2F)" | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants (0x10 - 0x2F)" and §"All 32 Variant Sizes" |
 | 2×4×4 variant matrix (alias × position × direction) | `position-movement-wire-formats.md` §"Encoding Dimensions" | `space-viewport-wire-formats.md` §"All 32 Variant Sizes" |
 | `FullPos / OnChunk / OnGround` share an identical wire layout; differ in handler Y interpretation | `position-movement-wire-formats.md` §"Position: 3 x float32 (12 bytes) or absent" | Handler decompiles at `0x00ddb0c0`, `0x00ddb220`, `0x00ddb830` |
-| `OnChunk` / `OnGround` substitute `DAT_019d1a44` for Y | `position-movement-wire-formats.md` §"avatarUpdate Messages" | Ghidra anchors above |
+| `OnChunk` / `OnGround` substitute `DAT_019d1a44` (`-13000.0f`) for Y, and `onEntityMove` replaces it with the actor's current client height | `position-movement-wire-formats.md` §"avatarUpdate Messages" (sentinel value and Y source overridden, see §1.2.2) | `DAT_019d1a44` bytes `00 20 4b c6`; sentinel check in `BW_client_entity_manager_6` at `ghidra://SGW.exe@0x00dd1859` |
 | Velocity = 5 bytes packed (3 bytes XZ + 2 bytes Y) | `position-movement-wire-formats.md` §"Velocity: 5 bytes (always present)" | `space-viewport-wire-formats.md` §"UPDATE_AVATAR_NO_ALIAS_FULL_POS_YAW_PITCH_ROLL (0x10)" — `packXYZ` |
 | `packXYZ` bit layout (X/Z 11-bit mantissa, Y 15-bit packed) | `position-movement-wire-formats.md` §"Velocity Compression" | `FUN_00de1850` at `ghidra://SGW.exe@0x00de1850` |
 | Direction quantization (`u8` over 256 steps, constant `0.024543693 = 2π/256`) | `position-movement-wire-formats.md` §"Direction" | `space-viewport-wire-formats.md` §"UPDATE_AVATAR_NO_ALIAS_FULL_POS_YAW_PITCH_ROLL"; `DAT_01816a84` |

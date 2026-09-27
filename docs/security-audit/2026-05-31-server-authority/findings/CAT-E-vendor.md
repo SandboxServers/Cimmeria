@@ -245,6 +245,11 @@ the client emit.
 
 ### CAT-E-04 — Buyback price stored in `sgw_inventory.flags`; recoverable independent of vendor identity
 
+**Status**: Open. One side channel is closed: `MoveItem` can no longer
+move a row into or out of INV_BUYBACK (Bank and Vault BV-01, #798), so a
+sold item cannot leave buyback without `buybackItems` charging for it. The
+per-vendor binding and the missing expiry below are unchanged (#464).
+
 **Severity**: Low
 **Class**: Cross-cutting state coupling — buyback queue not bound to the originating vendor
 **Wire surface**: `Event_NetOut_BuybackItems`

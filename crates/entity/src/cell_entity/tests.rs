@@ -95,7 +95,7 @@ fn new_entity_ammo_defaults_empty() {
 #[test]
 fn new_entity_ai_state_defaults_idle() {
     let entity = make_entity();
-    assert_eq!(entity.ai_state, AiState::Idle);
+    assert_eq!(entity.ai_state(), AiState::Idle);
     assert!(entity.threat_list.is_empty());
     assert!(entity.spawn_position.is_none());
     assert_eq!(entity.ai_cooldown_ticks, 0);

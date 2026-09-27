@@ -1,0 +1,67 @@
+[package]
+name = "cimmeria-base-world-entry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The BaseApp's world entry for the Cimmeria server emulator: character list and visuals, play-character, map load, gate travel, reanchor, teleport and the CellToBase message dispatch"
+
+# Split out of cimmeria-services (wave B3 of
+# docs/architecture/services-crate-split.md), the third layer of the base
+# track: it builds on base-methods, and base builds on it, so it must never
+# depend on a service crate above it, the cell's included. The module tree
+# keeps its old nesting under a `base::` skeleton, and cimmeria-services
+# re-exports `base::{world_entry, character}` at their old paths.
+[dependencies]
+# The feature handlers (player load, inventory, vendors, trade, mail,
+# missions, progression), re-exported at `base::world_entry::methods`.
+cimmeria-base-methods = { workspace = true }
+# The session types, the send helpers, the deferred-AoI buffer and the hold
+# record, the contact list, crafting, GM spawn, console authoring, the space
+# registry and the appearance builders.
+cimmeria-base-session = { workspace = true }
+# The Base<->Cell messages, the services-side packet builders, the firehoses,
+# the client-method indices, the player journal and the BSF bits.
+cimmeria-wire = { workspace = true }
+# The decoded `wire.out` stream the AoI dispatch logs outbound methods to.
+cimmeria-wire-log = { workspace = true }
+# The minigame session registry (`StartMinigame`, `MinigameResult`).
+cimmeria-minigame = { workspace = true }
+# Credential redaction for the minigame ticket log line.
+cimmeria-auth = { workspace = true }
+cimmeria-entity = { workspace = true }
+cimmeria-mercury = { workspace = true }
+# The world-entry and world-exit notifications.
+cimmeria-discord = { workspace = true }
+tokio = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+# The Livewire layout seed in `cell_dispatch::minigame`.
+rand = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# Exposes the gate-travel test hooks (`world_entry::{handle_gate_travel,
+# persist_arrival}`) to other crates' tests. cimmeria-services turns it on
+# through its [dev-dependencies] for the gate round trips that also drive the
+# cell's dial handler; a production build never sees it.
+test-support = []
+
+[dev-dependencies]
+# Generic test helpers: the live-DB gate (`require_db_or_skip!`), `LogCapture`
+# and the `TestTransport` re-export, from the `#[cfg(test)] mod test_support`
+# shim in lib.rs. Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# `test_default_connected_client_state`, re-exported from the same shim.
+cimmeria-base-session = { workspace = true, features = ["test-support"] }
+# `progression::persist_purchase`, which the AT-01 hydrate round-trip in
+# `world_entry_appearance::client_ready::player_init_row` drives.
+cimmeria-base-methods = { workspace = true, features = ["test-support"] }
+# `test-util` freezes and advances the clock for the cinematic AoI hold tests
+# (`#[tokio::test(start_paused = true)]` + `tokio::time::advance`).
+tokio = { workspace = true, features = ["test-util"] }
+# The send-failure-injecting `Transport` fakes in the cell-dispatch,
+# enable-entities and map-loaded tests; the trait uses `#[async_trait]`.
+async-trait = { workspace = true }

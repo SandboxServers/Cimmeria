@@ -16,7 +16,7 @@ Chain-id allocation: 622→1001-1010, 638→1011-1030, 639→1031-1040,
 An NPC/corpse with `interaction_type = 0` is made right-clickable purely by
 binding a dialog set to its `template_id` via
 `add_dialog_set(dsm_id, {slot: <template_id>})`. The `add_dialog_set` handler
-(`crates/services/src/cell/content/executor/dialog.rs:119`) stores
+(`crates/cell-content/src/cell/content/executor/dialog/mod.rs:119`) stores
 `(dsm_id, dialog_id, interaction_flags)` into the player's
 `available_interactions[template_id]` and pushes an InteractionType update
 merging the entity base flags with the dialog_set_map's `interaction_flags`.
@@ -58,3 +58,13 @@ client-side dialog bit-clear (`set_interaction_type ~mask`), which stops the
 
 params `{"op": "|"|"~", "mask": N}`. `|` sets bits, `~` clears bits (AND NOT).
 Mirrors python `entity.interactionType | N` / `& ~N`.
+
+## Topside region names (verified 2026-09-25, DU-07 review)
+
+`Castle_Cellblock.Region9` is the small corridor volume just off the topside
+ring pad. It is NOT the Mess Hall. Both `MessHall_Guard` spawns sit in `Region3`,
+and python `spaces/Castle_CellBlock.py` fires the "Level 7: Mess Hall" discovery
+splash on entering Region3. `MessHall.py`/`EscapeTheCellblock.py` do subscribe to
+Region9, but that region is the ring-corridor edge where 680 hands off to 681.
+Older docs labelled Region9 "the mess hall"; `mission-chains.md` was corrected in #772.
+Put any "you're in the Mess Hall" cue on Region3.

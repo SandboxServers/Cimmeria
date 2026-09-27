@@ -5,7 +5,10 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::time::Instant;
 
-use cimmeria_navmesh_extractor::coverage::{MapCoverage, SkipReason, COLLISION_BEARING_CLASSES};
+use cimmeria_navmesh_extractor::coverage::{
+    decode_status, DecodeStatus, MapCoverage, SkipReason, COLLISION_BEARING_CLASSES,
+};
+use cimmeria_navmesh_extractor::interp_actor::{self, InterpActorMode};
 use cimmeria_navmesh_extractor::{extract_map_with_report, ExtractOptions};
 use cimmeria_upk_objects::PackageIndex;
 
@@ -27,6 +30,7 @@ pub(crate) fn run(args: ExtractArgs) -> Result<(), Box<dyn std::error::Error>> {
             index: Some(&index),
             chunk_filter: args.chunk_filter.as_deref(),
             combined_obj: args.combined.as_deref(),
+            interp_actors: args.interp_actors,
             ..Default::default()
         },
     )?;
@@ -35,8 +39,16 @@ pub(crate) fn run(args: ExtractArgs) -> Result<(), Box<dyn std::error::Error>> {
     let classes_path = args.classes_path();
     report.write_tsv(&report_path)?;
     report.write_class_census_tsv(&classes_path)?;
+    let decisions_path = args.interp_actors_path();
+    if report.interp_actors == InterpActorMode::Classify {
+        let mut w = std::io::BufWriter::new(std::fs::File::create(&decisions_path)?);
+        interp_actor::write_decision_log(&mut w, &report.interp_actor_records)?;
+    }
 
     print!("{}", summary(&report, &report_path, &classes_path));
+    if report.interp_actors == InterpActorMode::Classify {
+        println!("         {}", decisions_path.display());
+    }
     Ok(())
 }
 
@@ -104,12 +116,29 @@ fn summary(report: &MapCoverage, report_path: &Path, classes_path: &Path) -> Str
     );
     let _ = writeln!(
         o,
-        "exports: {}   StaticMeshActor: {}   resolved: {} ({:.1}%)",
+        // "mesh actors" = staticmesh::MESH_ACTOR_CLASSES (StaticMeshActor,
+        // KActor, FracturedStaticMeshActor as of NA36, always; plus
+        // InterpActor unless --interp-actors off), not just the literal
+        // StaticMeshActor class.
+        "exports: {}   mesh actors: {}   resolved: {} ({:.1}%)   interp-actors: {}",
         t.exports_total,
         t.actors_total,
         t.actors_resolved,
-        pct(t.actors_resolved, t.actors_total)
+        pct(t.actors_resolved, t.actors_total),
+        report.interp_actors.label(),
     );
+    if report.interp_actors == InterpActorMode::Classify {
+        let (included, excluded, undecided) = interp_actor::tally(&report.interp_actor_records);
+        let _ = writeln!(
+            o,
+            "InterpActor decisions: {included} baked, {excluded} excluded, {undecided} undecided{}",
+            if undecided > 0 {
+                "   *** UNDECIDED ARE NOT BAKED: collision risk, see the decision log ***"
+            } else {
+                ""
+            }
+        );
+    }
     let _ = writeln!(
         o,
         "triangles: {} total = {} StaticMesh + {} Terrain + {} BSP{}",
@@ -163,12 +192,34 @@ fn summary(report: &MapCoverage, report_path: &Path, classes_path: &Path) -> Str
         t.prefab_outer_actors
     );
 
+    // NA36: this used to print every COLLISION_BEARING_CLASSES entry
+    // with a nonzero count, regardless of decode status — which made
+    // Terrain/Model-style "read as owner" classes and (post-NA36)
+    // KActor/FracturedStaticMeshActor read as gaps even though
+    // decode_status() already says they are not. Filter to the classes
+    // the header actually claims: undecoded ones. The InterpActor mode
+    // is threaded through so InterpActor shows as a gap when this run
+    // passed `--interp-actors off`; undecided actors under `classify`
+    // are reported on the decisions line above and in the class census.
     let _ = writeln!(o, "\nundecoded classes present (exports across the map):");
     for class in COLLISION_BEARING_CLASSES {
+        if decode_status(class, report.interp_actors) != DecodeStatus::NotDecoded {
+            continue;
+        }
         let n = t.class_count(class);
         if n > 0 {
             let _ = writeln!(o, "  {class:<34} {n:>8}");
         }
+    }
+    if report.interp_actors == InterpActorMode::Off && t.class_count("InterpActor") > 0 {
+        let _ = writeln!(
+            o,
+            "\nNOTE: {} InterpActor export(s) present but NOT walked \
+             (--interp-actors off). The default, `classify`, bakes the \
+             ones the chunk's Kismet shows never leave their cooked pose; \
+             see docs/engine/navmesh-build-pipeline.md §12.",
+            t.class_count("InterpActor")
+        );
     }
 
     let ranked = report.ranked_by_triangles();

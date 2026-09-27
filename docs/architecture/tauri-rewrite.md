@@ -438,7 +438,7 @@ pub trait SGWPlayerClientMethods {
 | `PACKET_MAX_SIZE` | 1472 bytes | Maximum UDP packet size (MTU-safe) |
 | `HEADER_SIZE` | 4 bytes | Sequence number + flags |
 | `MAX_BODY` | 1348 bytes | Payload after header, footer, encryption overhead |
-| `RX_WINDOW_SIZE` | 64 packets | How many packets we track for out-of-order delivery |
+| `RX_WINDOW_SIZE` | 512 packets | How far ahead of a gap a reliable packet can arrive and still be buffered for in-order delivery (the SGW client's own window, NA38) |
 | `TX_WINDOW_SIZE` | 45 packets | How many unacknowledged packets we allow in flight |
 | `ACK_TIMEOUT` | 700 ms | How long before we resend an unacknowledged packet |
 | `MAX_RETRIES` | 20 | How many times we retry before disconnecting |

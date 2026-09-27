@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **Stale since NA13 (2026-09-25):** the `aggression` field and "faction 10 alone never aggroes" claims below are superseded; see [[faction-derived-aggro-na13]].
+
 # `faction = 10` is a template-only, load-bearing switch (measured 2026-09-17)
 
 `HOSTILE_FACTION = 10` (`cell/combat/mod.rs:21`, mirrors python

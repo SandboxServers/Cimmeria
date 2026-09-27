@@ -1,6 +1,6 @@
 # Navmesh Build Pipeline (UE3 → OBJ → NavBuilder → `.nav`)
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-25 (§10, tiled builds)
 > **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5 and §6 (gap finding and classification) measured on the 144-chunk Castle extraction the same day; the builder reference moved to [navbuilder-recast-limits.md](navbuilder-recast-limits.md) and the Castle connectivity analysis to [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md).
 
 How a cooked UE3 map becomes a `data/spaces/<space>.nav` that
@@ -48,7 +48,7 @@ winding compensation is needed (see §1.3).
 
 ### 1.1 Evidence
 
-*Synthetic round-trip* — [`tests/navbuilder_axis_roundtrip.rs`](../../crates/navmesh-extractor/tests/navbuilder_axis_roundtrip.rs)
+*Synthetic round-trip* — [`tests/it/navbuilder_axis_roundtrip.rs`](../../crates/navmesh-extractor/tests/it/navbuilder_axis_roundtrip.rs)
 authors an L-shaped floor plus a ramp in chunk `0x000a0003` (grid X = 3,
 Z = 10), deliberately asymmetric in all three axes, and runs the real
 `NavBuilder_d.exe`:
@@ -255,6 +255,9 @@ the constant that used to be hard-coded in `builder.cpp`.
 | `detailSampleDist`, `detailSampleMaxError` | `6`, `1` | multiples of `cs` / `ch` |
 | `partition` | `monotone` | `monotone` or `watershed` |
 | `bounds` | — | `minX,minZ,maxX,maxZ` crop, BigWorld metres. Overrides the vertex/chunk bounds union on X and Z; Recast clips triangles to it. Quote it in PowerShell |
+| `tile` | `0` | tile side in cells, `16`–`4096`. `0` writes the single-mesh XRC layout, byte-identical to before; anything else writes the tiled `XRCT` layout (§10) |
+| `threads` | `4` | tiled build workers, `1`–`64`. The output does not depend on it |
+| `seamFilter` | `1` | tiled only: drop the small islands left along tile seams (§10). `0` is for diagnosis |
 
 | Exit | Meaning |
 |---|---|
@@ -554,12 +557,451 @@ vertices, adjacency edges, region ids, and the 24-bit compact-heightfield
 span index), the measured Castle (World 8) parameter table, and what to do
 when a build stops fitting.
 
+## 9. Every world (NA26, 2026-09-25)
+
+All 23 client maps the server creates spaces for (every `entities/spaces.xml`
+world except `SandBox`, which loads a copy of `harset_cmdcenter.nav`) were
+extracted and built with this pipeline. The per-map parameters, sizes,
+component counts, probe results and the old-vs-new telemetry comparison are
+in the provenance table in [data/spaces/README.md](../../data/spaces/README.md);
+that table is the reference, this section is the method.
+
+**Extraction.** `extract_map <cooked-root> <Map> <out>/chunks <index>` per map,
+with the shared `PackageIndex` cache. The biggest map (Lucia, 891 chunks,
+29.6 M triangles, 3.1 GB of OBJ) takes 38 s; all 23 together about 15 GB of
+scratch OBJ. Never commit it.
+
+**Parameters.** The agent is the Castle one for every map
+(`partition=watershed agentHeight=1.8 agentClimb=0.6`, radius 0.6).
+`bounds=` is always passed: at least the chunk grid plus 20 m, because a
+stray skybox or backdrop actor otherwise stretches the heightfield (the
+unclipped Omega_Site_CmdCenter build was 16,347 × 16,347 columns for a
+500 × 300 m map). Then the first rung of this ladder that fits every cap
+([navbuilder-recast-limits.md](navbuilder-recast-limits.md)):
+
+| Rung | `cs` | `minRegionSize` | `maxSimplificationError` |
+|---|---|---|---|
+| 1 | 0.3 | 24 | 1.3 |
+| 2 | 0.3 | 24 | 2.5 |
+| 3 | 0.45 | 16 | 2.5 |
+| 4 | 0.6 | 12 | 2.5 |
+| 5 | 0.6 | 12 | 3.0 |
+| 6 | 0.75 | 10 | 3.0 |
+| 7 | 0.9 | 8 | 3.5 |
+
+`minRegionSize` is a cell count, so it shrinks as `cs` grows to keep the
+smallest kept region near 52 m². Where no rung fits the whole map (Agnos,
+Lucia, Tollana), or only the coarsest does (Beta_Site_Evo_1), the build is
+cropped to the window with the most seeded content and chunk geometry and
+the ladder is re-run on the crop.
+
+**Results.** Every interior and the mid-sized exteriors fit at `cs=0.3`.
+Dakara_E1 and both Menfa maps fit whole only at `cs=0.6`, where a doorway
+narrower than about 2 m can close. The four cropped maps have no mesh
+outside their crop.
+
+**Validation.** Each mesh is probed with the server's own
+`NavMesh::is_point_valid` over the world's seeded spawn, respawner, ring,
+gate and point-set rows, and every replaced mesh is scored against the old
+one on the real player positions in SigNoz's `movement.validation_reject`
+rows (`last_valid_*` as accepted positions, `client_*` as rejected ones,
+round-number teleport points dropped). The `movement.position_sample` rows
+are DEBUG and were not exported, so the accepted set is small.
+
+**A fifth unchecked Recast limit.** `rcSpan` stores heights in 13 bits
+(`RC_SPAN_HEIGHT_BITS`), and rasterization clamps every span to 8,191 cells
+above `bmin.y` without a diagnostic. At `ch=0.2` that is 1,638 m of vertical
+extent. Tollana has one prop at y -1728, so the whole city was clamped onto
+one ceiling and the build "succeeded" with a single 5 km² sheet at y -90.
+NavBuilder now exits 3 when `(bmax.y - bmin.y) / ch > 8191`
+(`tests/it/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`);
+raise `ch` (Tollana ships at `ch=0.3`). `bounds=` does not crop Y.
+
+**Superseded for the big exteriors.** NA28 rebuilt the four cropped maps
+whole and Dakara_E1 and both Menfa maps at `cs=0.3` with the tiled mode in
+§10, so no shipped mesh is cropped any more. The ladder above still describes
+how every other world was built.
+
+## 10. Tiled builds (NA28, 2026-09-25)
+
+Every Recast index cap in
+[navbuilder-recast-limits.md](navbuilder-recast-limits.md) is per
+`rcPolyMesh`. `tile=<cells>` builds one `rcPolyMesh` per tile, so the caps
+apply per tile and a whole outdoor map at `cs=0.3` fits: Beta_Site_Evo_1's
+largest 128-cell tile has 76,159 spans, 540 contour vertices and 512
+adjacency edges, against caps of 16.7 M, 65,534 and 65,535.
+
+```bash
+NavBuilder chunked <chunks> <out.nav> nav partition=watershed agentHeight=1.8 agentClimb=0.6 \
+    cs=0.3 minRegionSize=24 maxSimplificationError=2.5 bounds=<chunk grid + 20 m> tile=128 threads=6
+```
+
+**What the builder does.** It computes the whole-map config exactly as the
+single-mesh build does (bounds, the 13-bit height check, the derived cell
+counts), then follows RecastDemo's `Sample_TileMesh`:
+
+1. Mark triangle walkability once, then bin every triangle into the tiles
+   its XZ box touches, border included. Unwalkable triangles are kept; they
+   are the walls.
+2. Per tile, on `threads` workers: a heightfield of `tile + 2 × border`
+   cells, `border = walkableRadius + 3`, then the same pipeline as a single
+   mesh (`recast_pipeline.cpp`) with `borderSize` passed to the region
+   builder. That makes `rcBuildPolyMesh` mark the edges on the tile's sides
+   as portals (`0x8000 | side`) instead of boundaries. A tile with no
+   triangles or nothing walkable is skipped. Each non-empty tile logs one
+   line: triangles, spans, regions, contour vertices, `nverts`, `npolys`,
+   edges. Recast's own messages carry a `Recast Tile x,y:` prefix.
+3. **Seam filter** (`tile_seam_filter.cpp`). `rcBuildRegions` never drops
+   a small region that touches the tile border, because it cannot see
+   whether the region continues next door. So every small island that
+   straddles a seam survives: Agnos in 128-cell tiles came out with 1,262
+   components under 10 m², against none in the single-mesh build. The
+   filter joins the tiles the way Detour will (below), sums each connected
+   component's compact spans per region (what `rcBuildRegions` measures),
+   and deletes every component under `minRegionSize² × cs²`, the
+   single-mesh threshold. It counts spans rather than polygon area because
+   contour simplification narrows thin walkways, and polygon area would
+   drop walkways the region builder keeps.
+4. Check the poly-ref budget: a 32-bit `dtPolyRef` is salt, tile and
+   polygon index, and `dtNavMesh::init` refuses fewer than 10 salt bits, so
+   `bits(tiles) + bits(largest tile's polygons) ≤ 22`. Beta_Site_Evo_1 is
+   13 + 8. Past it the build exits 3; use bigger tiles.
+5. Write the tiles in row-major order. The file does not depend on the
+   thread count (`tests/it/navbuilder_tiled.rs` builds with 1 and 4 workers
+   and compares bytes).
+
+`tile=0` (the default) runs the old code path. Its output is byte-identical
+to the pre-NA28 builder: Castle_CellBlock, Harset_CmdCenter and SGC, each at
+the defaults and at NA26's parameters, hash the same, and the INFO lines
+match.
+
+**The file.** Detour's usual multi-tile file (RecastDemo's `MSET`) stores
+each tile as the bytes `dtCreateNavMeshData` produced, which is Detour's
+in-memory layout, and `addTile` checks little beyond its magic. The tiled
+XRC layout keeps Recast's arrays on disk instead, so tiles go through the
+same capped, streaming reader as a single mesh and the Detour serialisation
+stays inside the loader:
+
+```text
+"XRCT", version u32 = 1
+agentHeight, agentClimb, agentRadius     3 × f32
+orig                                     3 × f32   dtNavMeshParams::orig
+tileWidth, tileHeight                    2 × f32   metres
+ntiles, maxTilePolys                     2 × u32
+ntiles × { tileX i32, tileY i32, <the single-mesh layout from nverts on> }
+```
+
+A single-mesh file starts with `agentHeight` as an `f32`; `"XRCT"` read that
+way is about 3.4e12, so the loader tells the two apart by the first four
+bytes.
+
+**The loader** (`crates/entity/src/navigation/load_tiled.rs`) checks the
+version, the tile count (at most 65,536), `maxTilePolys` and the poly-ref
+budget before it allocates anything, initialises a `dtNavMesh` from
+`dtNavMeshParams`, then reads each tile under per-tile caps (`nverts`,
+`npolys` ≤ 0xfffe, `nvp` ≤ 6, `npolys` ≤ `maxTilePolys`), builds it with
+`dtCreateNavMeshData` at its `(tileX, tileY)` and adds it. Detour links the
+portal edges of neighbouring tiles itself (`connectExtLinks`), so every
+query in `NavMesh` works across tile borders unchanged. The fingerprint
+hashes the whole file as before and records `tiles`; `bmin`/`bmax` are the
+union of the tiles'. The synthetic two-tile tests in
+`navigation/tests/tiled.rs` cover a path, a height query, a sight line, a
+slide and a recovery across the border, and the same fixture with the
+portal markers removed, which must come back as two islands.
+
+**`nav_inspect`** reads both layouts. For a tiled file
+`NavGraph::from_tiled` links portal edges with Detour's own test: edges on
+facing sides of neighbouring tiles, on the same line within 0.01 m,
+overlapping by more than 0.01 m at each end, with heights crossing or within
+`2 × agentClimb` (`overlapSlabs`). The seam filter uses the same test in
+C++; on Beta_Site_Evo_1 both count 2,332 components before filtering.
+
+**Choosing the tile.** 128 cells at `cs=0.3` is 38.4 m, which puts the
+biggest map (Beta_Site_Evo_1, 4,352 tiles) at 13 tile bits and 8 poly bits.
+Smaller tiles add seam vertices and polygons and use more tile bits; larger
+ones buy nothing, since no tile of a real map comes near a cap. The seven
+NA28 meshes and their numbers are in
+[data/spaces/README.md](../../data/spaces/README.md).
+
+## 11. Mesh-actor class gap: InterpActor / KActor / FracturedStaticMeshActor (NA36, 2026-09-25)
+
+> **Superseded for `InterpActor` by §12 (NA40).** The opt-in flag below is
+> gone: every `InterpActor` is now classified per actor, and
+> `--include-interp-actors` became `--interp-actors off|classify`.
+
+**The bug.** `staticmesh::collect_static_mesh_instances` (§1.2's walker)
+filtered exports on `class == "StaticMeshActor"` exactly. Three sibling UE3
+classes — `InterpActor` (Matinee-driven movers), `KActor` (rigid-body
+physics props) and `FracturedStaticMeshActor` (destructible meshes) — all
+derive from `AStaticMeshActor` and carry the identical placement +
+`StaticMeshComponent` shape (`Location` / `Rotation` / `DrawScale` /
+`DrawScale3D`, an object reference to a `StaticMeshComponent`, optionally
+gated by `bCollideActors`), but the class-name filter dropped them before
+the `for` loop even visited them — not into a [`SkipReason`], invisibly.
+`coverage::COLLISION_BEARING_CLASSES` had already named all three (plus
+`StaticMeshCollectionActor`) as a documented, un-widened gap; this section
+closes it for the three that turned out to have real content.
+
+**Evidence.** Harset's `SigNoz movement.validation_reject` telemetry
+(`docs/analysis/harset-rebuild/placements/data/harset_lastvalid_probes.txt`)
+carries several thousand accepted real-player positions with no matching
+geometry in the NA26/NA28 extraction; `nav_inspect --probes` against the
+shipped `harset.nav` puts 7 of them `OUT OF TOLERANCE`, five clustered
+10 m above ground at `x[9, 47] z[-91, 59]`. `extract_map`'s class census
+(`--classes`) confirmed `Harset` carries 31 `InterpActor` exports, all
+currently `NotDecoded`. The suspicion that this is the same class of gap
+as `Harset_ShieldTower1`'s known-off-mesh spawn 308 (NA29,
+[world57-population-and-regions.md](../../docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md))
+did not hold up once traced further — see "What this fix did *not* fix"
+below.
+
+**The fix, first pass.** `staticmesh::MESH_ACTOR_CLASSES` widened the
+filter to `["StaticMeshActor", "InterpActor", "KActor",
+"FracturedStaticMeshActor"]`, unconditionally; `coverage::DECODE_STATUS`
+marked all three `Decoded`. Nothing else in the resolution chain
+changed — collision-flag gating (`bCollideActors`, the archetype
+`collides()` check) applies identically regardless of class, so a mover
+explicitly marked non-colliding is still (correctly) skipped.
+`StaticMeshCollectionActor` (an array-of-components shape needing its
+own walk) was left out — see the 23-map census below.
+
+**The fix, follow-up: `InterpActor` is opt-in.** A same-day review
+raised the concern this section exists to record: `InterpActor` is
+UE3's Matinee-driven-mover class, and Castle's connectivity notes had
+already flagged its un-extracted doors as `InterpActor`s. A mover's
+cooked `Location`/pose is its design-time *resting* state — usually
+closed for a door — not necessarily where a player experiences it at
+runtime. Unconditionally baking every `InterpActor`'s cooked pose into
+every map's `.nav`/`.occ` risks sealing a doorway shut or blocking line
+of sight through an opening a player can actually see and shoot
+through, the first time one of the other 14 `InterpActor`-carrying maps
+gets rebuilt. `KActor` and `FracturedStaticMeshActor` are unaffected —
+zero shipped instances of either, and neither carries the same
+door/mover connotation as a class.
+
+`staticmesh::MESH_ACTOR_CLASSES` was narrowed back to
+`["StaticMeshActor", "KActor", "FracturedStaticMeshActor"]`
+(unconditional), and `staticmesh::OPT_IN_MESH_ACTOR_CLASSES` (currently
+just `["InterpActor"]`) is walked only when the caller passes
+`ExtractOptions::include_interp_actors: true` (the `.nav` side) or the
+equivalent to `occluder::for_each_chunk` (the `.occ` side) — both
+default `false`. `coverage::decode_status(class, include_interp_actors)`
+now takes the run's flag as a parameter rather than reading a static
+table for `InterpActor`, so `extract_map`'s coverage report correctly
+flags `InterpActor` as an undecoded risk whenever a run does not opt in
+— the whole point is that a future rebuild that forgets the flag is
+warned, not silently told "no risk". CLI flags:
+`extract_map extract --include-interp-actors` (bare, no value) and
+`occluder_extract build --include-interp-actors true` (this tool's
+flags always take an explicit value).
+
+**23-map census (item 2).** Re-running `extract_map`'s class census over
+every cooked map after the fix:
+
+| Class | Maps carrying it | Total exports | Decode status |
+|---|---|---|---|
+| `InterpActor` | 15 of 23 (Agnos 2, Beta_Site_Evo_1 94, Castle 14, Castle_CellBlock 53, Dakara_E1 10, Harset 31, Harset_CmdCenter 1, Login_Map 16, Lucia 359, Menfa_Dark 125, Menfa_Light 50, Omega_Site 4, SGC_W1 22, Sewer_Falls 2, Tollana 182) | 965 | opt-in, off by default |
+| `KActor` | 0 | 0 | n/a — no shipped content, but unconditionally decoded |
+| `FracturedStaticMeshActor` | 0 | 0 | n/a — no shipped content, but unconditionally decoded |
+| `StaticMeshCollectionActor` | 0 | 0 | still `NotDecoded`; nothing to decode |
+
+Since neither `KActor` nor `FracturedStaticMeshActor` occurs anywhere in
+the shipped 2009 client content, their inclusion in `MESH_ACTOR_CLASSES`
+is a no-op today — kept because the classes are true `AStaticMeshActor`
+siblings and cost nothing to support, not because they were observed to
+matter.
+
+**What the 965 `InterpActor`s actually are (item 3, optional).** Of the
+965 exports, 754 resolve a mesh reference successfully (the other 211
+are collision-disabled or otherwise unresolvable, and contribute no
+geometry with the flag on or off). Classifying the 754 by resolved mesh
+name (a scratch tool diffed the walker's output with the flag on vs
+off, per-chunk, across all 23 maps — not part of the shipped tool
+surface):
+
+| Mesh name | Count | Category |
+|---|---:|---|
+| `GLB-RingTransporter00` | 332 | Ring-transport platform — players stand on it; static-shaped despite the class |
+| `HT-StreetLamp00` | 180 | Decorative street lamp |
+| `EM-SecurityCam01_Top` | 124 | Security camera head — **ambiguous**: the mount is static, the head plausibly rotates |
+| `HB-StreetLamp00` | 29 | Decorative street lamp |
+| `HB-Humvee_02` | 19 | Parked vehicle prop |
+| `SGC_Door03` | 12 | **Door** |
+| `EM-Door_Prison00` | 10 | **Door** |
+| `SGC_small_door_00` | 10 | **Door** |
+| `GLB-Stargate_Chevron00` | 7 | **Stargate rotating chevron mechanism** |
+| `GLB-Stargate_Chevron_Light00` | 7 | **Stargate rotating chevron mechanism** |
+| `EM-Antenna00` | 6 | Decorative antenna |
+| `HT-FloatingLight01` | 6 | Decorative floating light |
+| `HB-Humvee_01` | 3 | Parked vehicle prop |
+| `HB-StreetLamp01` | 2 | Decorative street lamp |
+| `LUS-FanRotor00` | 2 | **Rotating fan blade** |
+| `CA-CastleEntrance_Door00` | 1 | **Door** |
+| `CA-CastleEntrance_Door01` | 1 | **Door** |
+| `EM-ShelfBox10` | 1 | Decorative prop |
+| `GLB-Stargate_Spinner00` | 1 | **Stargate rotating mechanism** |
+| `LUS-MetalBox00` | 1 | Decorative prop |
+
+Rolled up: **579 (77%)** are load-bearing static-shaped props (ring
+transporters, lamps, antennas, parked vehicles) with no plausible reason
+to move at runtime; **51 (7%)** are literal doors or a Stargate's
+rotating chevron/spinner mechanism — the exact risk this follow-up
+exists to gate; **124 (16%)** are security-camera heads, genuinely
+ambiguous. So the concern that motivated making `InterpActor` opt-in is
+real (doors are present, confirmed by name) but is a small minority of
+the class's shipped population — most `InterpActor`s in this content are
+static-shaped dressing that happened to be authored with the mover
+class. A future packet enabling `InterpActor` map-by-map should treat
+the door/Stargate-mechanism 51 as needing individual exclusion or manual
+verification, and can likely trust the ring-transporter/lamp/vehicle 579
+categorically.
+
+**Which maps ship built with the flag.** Only Harset's family was
+rebuilt by this packet:
+
+| Map / file | `--include-interp-actors` | Why |
+|---|---|---|
+| `harset.nav` / `harset.occ` | **on** | 31 `InterpActor`s checked by hand (NA36) — all console platforms and static dressing, none named as a door or mechanism in the classification table above |
+| `harset_cmdcenter.nav` (+ `sandbox.nav`) | on, but moot | Its one `InterpActor` contributes no measurable geometry either way — the file rebuilds byte-identical |
+| `harset_market.nav`, `harset_storagerm.nav` | n/a | Zero `InterpActor` exports |
+| All other 22 maps | **not rebuilt by this packet; default off if/when they are** | Not individually checked. Castle, Castle_CellBlock, Beta_Site_Evo_1, Lucia, Menfa_Dark, Menfa_Light, Login_Map, SGC_W1, Tollana, Dakara_E1, Agnos, Sewer_Falls and Omega_Site all carry `InterpActor` exports (see the census table above) and must not be rebuilt with the flag on until someone reviews their specific instances the way NA36 did for Harset |
+
+**Harset rebuild.** `harset.nav`: `nverts` 29,768→29,772, `npolys`
+15,287→15,289, `edges` 42,379→42,385 (31 new `InterpActor` instances,
+mostly collision-disabled or overlapping existing coverage — the net
+change is small; total walkable XZ area moves from 652,905.6 m² to
+652,903.9 m², a normal Recast re-voxelization wobble, not a loss).
+`nav_inspect --probes` against both the 67-row seeded NA26 probe set
+(`probes/Harset.txt`) and the 41-row telemetry-derived
+`harset_lastvalid_probes.txt` gives an **identical** pass/fail set before
+and after (56/67 and 34/41 respectively, same rows failing both times) —
+a strict non-regression, not an improvement, because none of the actual
+`InterpActor` geometry landed under a currently-failing probe.
+`harset.occ` rebuilt from the same fixed extraction; self-check
+(`paged == unpaged`) passes, 210 pages, 3,764,999 bytes (+635 over the
+shipped file). `harset_cmdcenter.nav` (source for both itself and
+`sandbox.nav`) rebuilds **byte-identical** to shipped — its one
+`InterpActor` contributes no measurable geometry — so neither file was
+touched. `harset_market.nav` and `harset_storagerm.nav` carry zero
+instances of any of the four classes and were not rebuilt.
+
+**What this fix did *not* fix.** Two things the packet set out to explain
+turned out to be different problems entirely, confirmed by exhaustive
+`obj_slab` / manual actor-proximity checks against the *fixed* extraction:
+
+- **Five clustered off-mesh telemetry points** (`lv06`, `lv07`, `lv14`,
+  `lv18`, `lv20` — real, frequently-recorded player positions 8-10 m
+  above the only nearby geometry) have **no export of any class** within
+  30 m horizontally at the target height, in any of the chunks covering
+  that area. `obj_slab --at ...,40` (a 40 m vertical half-range) finds
+  only the ground-level plaza floor ~10 m below. This is not an
+  extractor decode gap — nothing decodable is missing an entry, because
+  nothing is there. The leading hypothesis, not confirmed: a genuinely
+  *animated* `InterpActor` (a rising platform) whose cooked pose sits at
+  its resting (ground) height, which a static navmesh bake can never
+  represent at its raised position — exactly the risk the crate's own
+  README already flagged for movers. No `InterpActor` export was found
+  within a useful radius of this cluster to confirm or refute it. Left
+  open for a follow-up with either a live-client `.location` reading at
+  the telemetry coordinates or a Matinee-sequence trace. Two further
+  `nav_inspect` failures against this same probe file (`lv19`, dy
+  +3.30 m; `lv24`, dy +3.42 m) are smaller, at different heights, and
+  were **not** traced further — they may be a different problem
+  entirely and are left for a future packet rather than folded into
+  this hypothesis without evidence.
+- **Spawn 308 (`Harset_ShieldTower1` console, template 243)** is not a
+  missing-class gap either: its `GA-TowTall01` tower prefab **is**
+  present and decoded (a `StaticMeshActor` + `PrefabInstance` sit within
+  3 m horizontally of the seeded XZ, at the seeded height exactly). The
+  problem is that the tower's cooked origin is not its walkable console
+  height — a tall, hillside-mounted compound mesh whose true platform
+  surface needs an in-client `.location` reading to re-pin, exactly as
+  NA29 already concluded. `nav_inspect` confirms `dy=+3.45 m`, unchanged
+  by this fix.
+
+**Seeded-spawn Y audit (item 3).** Cross-referencing every currently
+off-mesh Harset `spawnlist` row
+([B-world57-population-and-regions.md](../../docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md))
+against this fix:
+
+| Spawn | Row | Classification | Action |
+|---|---|---|---|
+| 303, 304, 306, 307, 313 | Jaffa camp, bug baskets, Petbe's search object | Already resolved — made mobile by NA29 against the rebuilt mesh | none |
+| 308 `Harset_ShieldTower1` | Shield tower 1 console | (c) not a decode gap; Y-calibration on a hillside compound mesh | needs a live `.location` reading (NA29's existing recommendation); no seed change with sufficient confidence |
+| 309 `Harset_ShieldTower2` | Shield tower 2 console | Already resolved — repinned to an adjacent terrace by NA29/NA28 | none |
+| 310 `Harset_ShieldTower3` | Shield tower 3 console | Real terrain exists almost exactly at the seeded Y (two overlapping terrain sheets at `y[-31.0,-30.5]` and `y[-29.5,-29.0]`); the 24.61 m navmesh gap is a **connectivity** issue (nearest polygon is a distant, disconnected component), not a wrong seed Y or missing geometry | out of this packet's scope; candidate for NA28-style tiled rebuild follow-up |
+| 311 `Harset_ShieldControls` | Shield controls prop | Already LOW confidence, INFERRED placement; the ledger itself proposes deletion if unconfirmed | no change — owner decision already flagged, not re-litigated here |
+
+No row met the "seed Y wrong, high confidence" bar this packet requires
+before touching `db/resources`; none of the open rows were corrected.
+
+## 12. Per-actor InterpActor classification (NA40, 2026-09-26)
+
+§11's switch baked every `InterpActor` or none. NA40 decides per actor, in
+`crates/navmesh-extractor/src/interp_actor/`, and makes that the default
+for both tools (`extract_map extract --interp-actors classify|off`,
+`occluder_extract build --interp-actors classify|off`; `off` is a
+pre-NA36 build).
+
+**Evidence first.** A chunk is its own Kismet level, so its exports hold
+every reference that can move its actors. `kismet_evidence` follows each
+`SeqAct_Interp` through its variable links (link `LinkDesc` = group name,
+`SeqVar_Object.ObjValue` = the actor) to the `InterpData` on its `Data`
+link, and `move_track` reads each group's `InterpTrackMove` keys
+(`PosTrack` / `EulerTrack`, `MoveFrame` relative or world). `classify`
+then decides, first match wins:
+
+| Rule | Verdict |
+|---|---|
+| Mesh name contains `door`, `stargate`, `chevron` or `securitycam` | exclude (`name:*`) |
+| No Kismet reference | include (`kismet:unreferenced`) |
+| A reference other than a Matinee group, an event `Originator` or a `SeqAct_PlaySound` target; an unreadable group; a keyless move track; a track class outside the move / event / sound / material / colour set | undecided |
+| A move track that starts or ends more than 1 cm from the cooked pose | exclude (`matinee:leaves-rest`) |
+| A rotation over 5° | exclude (`matinee:rotates`) |
+| A slide over 50 cm sideways | exclude (`matinee:slides`) |
+| Otherwise | include (`matinee:rest-anchored`) |
+
+Undecided actors are not baked, and the coverage report keeps flagging
+`InterpActor` as a collision risk while any are. Every run writes the
+decisions, with the rule and the evidence, to `<out>/interp_actors.tsv`.
+
+**Result.** Of the 738 `InterpActor`s that resolve a mesh in the 14 maps
+carrying one, 572 are baked (332 ring-transport rings, 211 street lamps,
+22 Humvees, 6 floating lights, a shelf box), 166 are left out (34 doors,
+124 camera heads, 5 radar dishes, 2 fan rotors, a swinging cargo box) and
+none is undecided. Without the name net, evidence alone excludes every
+door and camera head except nine Castle_CellBlock cell doors that no
+Kismet references. The per-actor list is
+[na40-interp-actor-decisions.tsv](../analysis/npc-ai-restoration/evidence/na40-interp-actor-decisions.tsv).
+
+`GLB-RingTransporter00`, NA36's "ring-transport platform", is one ring
+of a five-ring stack. At rest it lies on its platform, 30-34 cm tall,
+inside the 0.6 m climb, so the platforms were already walkable and still
+are.
+
+**Deterministic emit order.** Instances are now grouped in a `BTreeMap`
+before they reach the OBJ. The `HashMap` they used to go through gave the
+same chunk a different triangle order on every run, and NavBuilder gave
+each order different `.nav` bytes. Dakara_E1, Lucia and both Menfa maps
+now rebuild byte-identical with `--interp-actors off`; the maps whose
+committed files came from a `HashMap` order do not.
+
+**Rebuilds.** Harset, Dakara_E1, Menfa_Light, Menfa_Dark, Tollana,
+Agnos, Beta_Site_Evo_1 and Lucia were rebuilt (`.nav` and `.occ`); Castle
+and Castle_CellBlock got a new `.occ` only, because their `InterpActor`s
+change nothing in the `.nav` and any rebuild of it loses a seeded probe.
+Probe tables and the occluder comparison: the
+[NA40 worknote](../analysis/npc-ai-restoration/worknotes/na40-static-interp-actors.md).
+
 ## Cross-references
 
+- [data/spaces/README.md](../../data/spaces/README.md) — per-world parameters, validation and containment mode
+- [NA40 worknote](../analysis/npc-ai-restoration/worknotes/na40-static-interp-actors.md) — the per-actor `InterpActor` classifier, its verdicts and the rebuilds
 - [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md) — where Castle's probes land, the mirrored-instance fix, and what is still split
 - [castle-extraction-measurements.md](castle-extraction-measurements.md) — what the extractor recovers from Castle, per source and per class
 - [navbuilder-recast-limits.md](navbuilder-recast-limits.md) — rebuilding NavBuilder, Recast's four index limits, the Castle parameter table
 - [crates/navmesh-extractor/README.md](../../crates/navmesh-extractor/README.md) — extractor phases and status
+- [cover-extraction.md](cover-extraction.md) — the same crate's `cover_extract` tool: world-space cover nodes from the chunks, using this axis mapping
 - [ue3-package-format.md](ue3-package-format.md) — the `.umap` container this all starts from
-- `deprecated/cpp/src/nav_builder/` — NavBuilder source (`builder.cpp`, `chunk.cpp`, `mesh.cpp`, `mesh_exporter.cpp`)
+- `deprecated/cpp/src/nav_builder/` — NavBuilder source (`builder.cpp`, `chunk.cpp`, `mesh.cpp`, `mesh_exporter.cpp`; the Recast pipeline in `recast_pipeline.cpp`, the tiled mode in `tiled_builder.cpp` and `tile_seam_filter.cpp`, both file layouts in `xrc_writer.cpp`)
 - `crates/entity/src/navigation/` — runtime loader (Detour FFI)

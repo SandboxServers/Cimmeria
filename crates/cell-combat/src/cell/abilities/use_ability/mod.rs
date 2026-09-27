@@ -1,0 +1,58 @@
+//! The `useAbility(abilityId, targetId)` flow, split along its phases.
+//!
+//! Submodule layout:
+//! - `handle` — the main `handle_use_ability` validate → consume → fire →
+//!   resolve flow (incl. the archetype-default weapon redirect and the
+//!   auto-cycle arm/clear classification).
+//! - `fire_los` — the players-only fire-time line-of-sight gate (NA31).
+//! - `auto_reload` — the post-fire auto-reload trigger (`maybe_trigger_auto_reload`).
+//! - `kill_credit` — `handle_use_ability_with_kill_credit`, the content-engine
+//!   `EntityDeath` wrapper for single-target player-driven casts.
+//! - `weapon_redirect` — the read-only archetype-default → active-weapon
+//!   RANGED ability redirect resolved at the top of the flow.
+//! - `fire` — the post-warmup half of a cast (ammo, `Ability_End`, target
+//!   resolution), run at once for a zero warmup or by the warmup tick.
+//! - `warmup` — the pending cast between `Ability_Begin` and the fire: the
+//!   launch side, the 100 ms tick, and the interrupt (AT-10).
+//! - `summon` — the pet-summon diversions (pets PT-03): the launch refusals,
+//!   and the fire that spawns the pet instead of resolving a target.
+//! - `owner_pet` — owner abilities that act on the owner's pet (pets PT-08):
+//!   the same launch/fire diversions, and the tick that expires pet buffs
+//!   and carries out To The Death.
+//! - `sequence` — the Ability_Begin / Ability_End / Ability_Interrupt
+//!   `onSequence`: shared packing, owner + witnesses routing, and the NPC
+//!   attack-animation WARNs (NA43).
+
+mod auto_reload;
+mod fire;
+mod fire_los;
+mod handle;
+mod kill_credit;
+mod owner_pet;
+mod sequence;
+mod summon;
+mod warmup;
+mod weapon_redirect;
+
+#[cfg(test)]
+mod tests;
+
+// Public re-exports — keep `crate::cell::abilities::use_ability::Foo` paths
+// stable for callers (and `super::*` resolution for `tests`).
+pub use handle::handle_use_ability;
+pub use kill_credit::handle_use_ability_with_kill_credit;
+pub use owner_pet::{is_owner_pet_ability, owner_pet_tick, owner_pet_tick_at};
+
+pub(super) use fire::fire_cast;
+pub use kill_credit::credit_ground_deaths;
+pub(crate) use kill_credit::credited_player;
+#[cfg(test)]
+pub(crate) use warmup::resolve_warmups;
+pub(crate) use warmup::{attach_ground_point, interrupt_pending_cast, is_casting, InterruptReason};
+pub use warmup::{interrupt_unlearned_cast, warmup_tick};
+
+pub use fire_los::{fire_line_of_sight, FireLos};
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use auto_reload::maybe_trigger_auto_reload_for_test;

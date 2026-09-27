@@ -16,7 +16,7 @@
 -- Base: content/harset-wave2 @ 94e65324.
 --
 -- Worknotes: docs/analysis/harset-rebuild/worknotes/H40-H41.md.
--- Replay guards: crates/services/src/cell/content/chain_replay_tests/
+-- Replay guards: crates/cell-content/src/cell/content/chain_replay_tests/
 --   mission_742.rs and mission_1200.rs.
 -- ============================================================
 

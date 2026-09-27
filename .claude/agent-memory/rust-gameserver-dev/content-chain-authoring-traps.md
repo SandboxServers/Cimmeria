@@ -148,3 +148,25 @@ allowlistable) **and** `every_chain_region_key_matches_a_seeded_point_set`,
 which requires each `enter_region` key to byte-match a `point_sets.name` row
 in `db/resources/Events/Seed/point_sets.sql`. The second one fails for any
 chain authored against a region another packet still owns.
+
+## Never trust a prose doc for WHICH region a chain should bind
+
+`docs/content/mission-chains.md` labels `Castle_Cellblock.Region9` "the mess hall" in
+four places. It is not: Region9 is a ~15x17 unit box at the topside ring pad, and the
+Mess Hall is **Region3**, which is the box that actually contains both `MessHall_Guard*`
+spawns. Binding a bark to the doc's region would have put a line about "that table" on
+the ring pad, 70 units and one floor away from the table.
+
+**How to identify a region for real, in this order:**
+1. `db/resources/Events/Seed/point_sets.sql` gives `set_id` + `flags` (1 =
+   client-hinted, i.e. the edge fires at all); `point_set_points.sql` gives the corners -
+   a BoundingBox is 4 rows, and min/max over x/y/z is the volume.
+2. Check which `spawnlist.sql` rows fall inside it. The room is the one holding its NPCs.
+3. Decisive: the original `deprecated/python/cell/spaces/<Space>.py` fires
+   `onSystemCommunication(11, <textId>, '', [])` on ENTERING each named area, and that
+   `textId` resolves in `texts.sql` to `string_<Zone>_Discovery_DisplayName_<Room>`.
+   That is the 2009 build literally naming the room.
+
+Also check enter-vs-exit against the Python: Cimmeria's chain 1073 binds Region9's ENTER
+edge while `MessHall.py` bound its EXIT edge (`if args['entering']: pass / else: ...`).
+Undocumented divergence, so do not assume a shipped chain's edge matches the reference.

@@ -21,6 +21,16 @@
 // <cfloat> so the header stays self-contained for the legacy vcxproj.
 #define NAVBUILDER_FLT_MAX 3.402823466e+38
 
+// Exit codes. 0 = success; every failure path returns one of these.
+enum ExitCode
+{
+	EXIT_OK = 0,
+	EXIT_USAGE = 1,
+	EXIT_INTERNAL_ERROR = 2,
+	EXIT_BUILD_FAILED = 3,
+	EXIT_OUTPUT_NOT_WRITABLE = 4
+};
+
 // Narrow a derived cell count to `int`, refusing what the conversion
 // cannot represent.
 //
@@ -71,6 +81,15 @@ struct BuildParams
 	// Optional horizontal crop, BigWorld metres: minX,minZ,maxX,maxZ.
 	bool hasBounds;
 	float bounds[4];
+	// Tile side in cells; 0 = one rcPolyMesh for the whole map (the XRC
+	// single-mesh layout). Anything else writes the tiled "XRCT" layout,
+	// one rcPolyMesh per tile, so every Recast index cap applies per tile.
+	int tileSize;
+	// Worker threads for the tiled build. The output does not depend on it.
+	int threads;
+	// Tiled only: drop the sub-minRegionSize islands that survive along tile
+	// seams (tile_seam_filter.hpp). 0 keeps them, for diagnosis.
+	bool seamFilter;
 
 	BuildParams()
 		: cs(0.3f), ch(0.2f),
@@ -78,7 +97,7 @@ struct BuildParams
 		slope(45.0f), maxEdgeLen(12.0f), maxSimplificationError(1.3f),
 		minRegionSize(8.0f), mergeRegionSize(20.0f), maxVertsPerPoly(6),
 		detailSampleDist(6.0f), detailSampleMaxError(1.0f),
-		watershed(false), hasBounds(false)
+		watershed(false), hasBounds(false), tileSize(0), threads(4), seamFilter(true)
 	{
 		bounds[0] = bounds[1] = bounds[2] = bounds[3] = 0.0f;
 	}
@@ -97,6 +116,9 @@ struct BuildParams
 			"  detailSampleDist=6 detailSampleMaxError=1   multiples of cs / ch\n"
 			"  partition=monotone|watershed\n"
 			"  bounds=minX,minZ,maxX,maxZ        crop (BigWorld m)\n"
+			"  tile=0                            tile side in cells (16..4096); 0 = single mesh\n"
+			"  threads=4                         tiled build workers (1..64)\n"
+			"  seamFilter=1                      tiled: drop small islands left on tile seams\n"
 			"Exit: 0 ok, 1 usage, 2 internal error, 3 Recast build failed, 4 output not writable\n";
 	}
 
@@ -144,6 +166,10 @@ struct BuildParams
 			<< " partition=" << (watershed ? "watershed" : "monotone");
 		if (hasBounds)
 			s << " bounds=" << bounds[0] << "," << bounds[1] << "," << bounds[2] << "," << bounds[3];
+		// Only in tiled mode, so a single-mesh build logs the same line it
+		// always has.
+		if (tileSize > 0)
+			s << " tile=" << tileSize << " threads=" << threads << " seamFilter=" << (seamFilter ? 1 : 0);
 		return s.str();
 	}
 
@@ -204,6 +230,14 @@ private:
 		else if (key == "maxVertsPerPoly") maxVertsPerPoly = toInt(key, value);
 		else if (key == "detailSampleDist") detailSampleDist = toFloat(key, value);
 		else if (key == "detailSampleMaxError") detailSampleMaxError = toFloat(key, value);
+		else if (key == "tile") tileSize = toInt(key, value);
+		else if (key == "threads") threads = toInt(key, value);
+		else if (key == "seamFilter")
+		{
+			if (value == "1") seamFilter = true;
+			else if (value == "0") seamFilter = false;
+			else throw std::runtime_error("seamFilter must be 0 or 1, got '" + value + "'");
+		}
 		else if (key == "partition")
 		{
 			if (value == "watershed") watershed = true;
@@ -243,6 +277,12 @@ private:
 			throw std::runtime_error("maxVertsPerPoly must be 3..6 (Detour's DT_VERTS_PER_POLYGON is 6)");
 		if (hasBounds && (!(bounds[0] < bounds[2]) || !(bounds[1] < bounds[3])))
 			throw std::runtime_error("bounds must satisfy minX < maxX and minZ < maxZ");
+		// Below 16 cells the walkableRadius + 3 border dwarfs the tile;
+		// above 4096 a tile is no smaller than a whole map.
+		if (tileSize != 0 && (tileSize < 16 || tileSize > 4096))
+			throw std::runtime_error("tile must be 0 (single mesh) or 16..4096 cells");
+		if (threads < 1 || threads > 64)
+			throw std::runtime_error("threads must be 1..64");
 
 		// The derived cell counts are what actually reach Recast, and
 		// every one is a quotient or a square of parameters that are

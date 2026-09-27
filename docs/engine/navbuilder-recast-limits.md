@@ -1,6 +1,6 @@
 # NavBuilder: rebuilding it, and Recast's index limits
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-25 (tiling as the cap mitigation)
 > **Status**: Verified against `bin64/NavBuilder.exe` (rebuilt from
 > `deprecated/cpp/src/nav_builder/`) on the 144-chunk Castle extraction.
 
@@ -22,7 +22,7 @@ its precompiled header (`deprecated/cpp/src/stdafx.hpp`) pulls in Boost
 (python, asio, thread), SOCI and TinyXML, and it links `unified_kernel.lib`
 — none of which `setup.ps1` provisions since the Rust rewrite. NavBuilder
 itself needs only a logger and three Boost.uBLAS names, so the script
-compiles the five `nav_builder/*.cpp` files plus `Recast/Source/*.cpp`
+compiles every `nav_builder/*.cpp` file plus `Recast/Source/*.cpp`
 straight into one exe with `cl` (located through `vswhere`), defining
 `NAVBUILDER_STANDALONE` and putting
 `deprecated/cpp/src/nav_builder/standalone/` first on the include path. That
@@ -51,7 +51,7 @@ are byte-identical with each other, so the 6-polygon difference is the Recast
 version, not floating-point behaviour. Either Recast is fine for production;
 use the snapshot only when you need to diff against the reference binary.
 
-`tests/navbuilder_axis_roundtrip.rs` passes 3/3 against the rebuilt binary
+`tests/it/navbuilder_axis_roundtrip.rs` passes 3/3 against the rebuilt binary
 (`CIMMERIA_NAVBUILDER=<path>`).
 
 ## Recast has four fixed-width index limits, and only one checks itself
@@ -136,6 +136,31 @@ NavBuilder logs the count on every build:
 ```text
 [11:01:49 INFO    ] Heightfield: 13936045 spans over 4458 x 4000 columns (cap 16777215; rcCompactCell::index is 24-bit)
 ```
+
+### A fifth limit: span heights are 13-bit
+
+Found building Tollana (NA26, 2026-09-25). `rcSpan` packs `smin` / `smax`
+into `RC_SPAN_HEIGHT_BITS = 13` bits (`Recast.h:284-297` in v1.6.0), and
+`rasterizeTri` clamps both to `RC_SPAN_MAX_HEIGHT = 8191`
+(`RecastRasterization.cpp:445-446`) with no diagnostic. Every surface more
+than `8191 × ch` above `bmin.y` is flattened onto one ceiling: 1,638 m at the
+default `ch = 0.2`. `bounds=` crops X and Z only, so one deep or tall actor
+anywhere in the map is enough.
+
+Tollana has a prop at y -1728 and its city at y ≈ 0, 10,655 cells apart at
+`ch = 0.2`. The whole-map build at `cs = 0.6` came out as 2,397 verts /
+1,860 polys, every one of them on a flat 5 km² sheet at y -90.2 (exactly
+8,191 cells up), with every spawn off the mesh, and exited 0. NavBuilder now
+checks the extent right after the `Bounds:` line and exits 3:
+
+```text
+[..  FAULT   ] Vertical extent 2131.08 m is 10655 cells at ch=0.20; rcSpan heights are 13-bit (max 8191), so every surface above y=-90.21 would be clamped onto one ceiling. Raise ch.
+```
+
+At `ch = 0.3` the same input is 7,104 cells and builds. Pinned by
+`tests/it/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`
+(a 2 km-deep sliver under the axis fixture), which fails against a binary
+built before the check.
 
 ### An empty poly mesh is now a failure
 
@@ -278,8 +303,24 @@ of cost:
    `bounds=150,550,650,1150` (the interior complex) is 20,743 / 10,152 /
    28,490 at **un-degraded** `maxSimplificationError=1.3 minRegionSize=8`.
    The extractor need not change; Recast clips to the box.
-3. One `.nav` per region of interest, or a tiled Detour mesh — both need
-   server-side loader work and are out of scope here.
+3. **`tile=128`** — build a tiled mesh
+   ([navmesh-build-pipeline.md §10](navmesh-build-pipeline.md#10-tiled-builds-na28-2026-09-25)).
+   Every cap on this page is per `rcPolyMesh`, and a tile is one, so none of
+   them binds on a real map any more: the largest tile of the whole of
+   Beta_Site_Evo_1 at `cs=0.3` has 76,159 spans (0.5 % of the 24-bit cap),
+   540 contour vertices and 512 adjacency edges (under 1 % of the 16-bit
+   caps). What replaces them is the poly-ref budget: tile bits plus poly
+   bits at most 22, which NavBuilder checks and the loader checks again.
+   The 13-bit span height is **not** lifted by tiling, since every tile
+   keeps the whole map's Y range; raise `ch` as before.
+
+The server loads both layouts (`crates/entity/src/navigation/load.rs`
+detects the tiled one by its `XRCT` magic), so this step no longer needs
+loader work. Tiling is not free: seams add vertices and polygons (NA26's
+Beta_Site_Evo_1 crop built tiled has 27,731 polygons against 23,497 in one
+mesh, about 18 % more, and the file grows by the same share), and small
+islands that straddle a seam escape Recast's region filter until
+NavBuilder's seam filter removes them.
 
 Decimating terrain in the extractor does **not** help with the caps: they
 count output contour vertices, which depend on the shape of the walkable

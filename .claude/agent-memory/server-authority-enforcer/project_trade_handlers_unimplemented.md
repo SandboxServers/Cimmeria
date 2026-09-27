@@ -7,7 +7,7 @@ metadata:
 
 All four `<Exposed/>` trade RPCs on `SGWPlayer.def` — `tradeRequest`,
 `tradeRequestCancel`, `tradeUpdateProposal`, `tradeLockState` — dispatch to a
-single `match` block in `crates/services/src/cell/cell_methods/player/social.rs`
+single `match` block in `crates/cell-methods/src/cell/cell_methods/player/social.rs`
 (approximately lines 103–149) that decodes only the leading INT32 header bytes,
 logs `UNIMPLEMENTED: …`, and returns `true` (Handled). No `TradeTransaction`
 struct, no item-lock table, no escrow object, and no `onTradeState` /

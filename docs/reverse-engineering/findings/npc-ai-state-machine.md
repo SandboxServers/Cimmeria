@@ -10,6 +10,8 @@
 
 The client does NOT run AI logic. The server drives all state transitions and sends `aMovementType` + `aPath` to the client. The client renders the resulting movement with debug visualization.
 
+> **Correction (NA10, 2026-09-25):** the `aMovementType` + `aPath` handler is the GM `SGWGmPlayer.onShowPath` path visualiser, not the NPC animation channel. The server sends no movement type for NPCs, and the client animates NPC gait from `EntityMoved` velocity. See [npc-movement-pathfinding.md §11](npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver). The "send `aMovementType`" recommendations below are superseded.
+
 **The server currently only implements "Spawning" and "Fighting" — all 7 movement types need server implementation.**
 
 ---
@@ -18,16 +20,20 @@ The client does NOT run AI logic. The server drives all state transitions and se
 
 Handler: `BigWorld_onRemoteEntityMove_MovementTypeSwitch` at `0x00deb660` (610 instructions)
 
+> **Corrected 2026-09-25:** `0x00deb660` handles `Event_NetIn_onShowPath`, the GM path visualiser. It is not an NPC animation driver, and no server-to-client movement-type message exists. See [`npc-movement-pathfinding.md` §11](npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver).
+
 | Value | Debug String | AI State | Purpose |
 |-------|-------------|----------|---------|
 | 0 | "Entity: %d is moving to cover" | **CoverAdvance** | Move to cover position |
 | 1 | "Entity: %d is making a combat advance" | **CombatAdvance** | Advance toward target in combat |
-| 2 | "Entity: %d is leashing" | **Leash/Return** | Return to spawn point |
-| 3 | "Entity: %d is patroling" | **Patrol** | Follow patrol waypoints |
-| 4 | "Entity: %d is following" | **Follow** | Follow another entity |
-| 5 | "Entity: %d is wandering" | **Wander** | Random movement in area |
+| 2 | "Entity: %d is patroling" | **Patrol** | Follow patrol waypoints |
+| 3 | "Entity: %d is following" | **Follow** | Follow another entity |
+| 4 | "Entity: %d is wandering" | **Wander** | Random movement in area |
+| 5 | "Entity: %d is leashing" | **Leash/Return** | Return to spawn point |
 | 6 | "Entity: %d is avoiding" | **Avoid** | Avoid danger/AoE |
 | >6 | "Entity: %d is performing unknown movement" | **Unknown** | Fallback |
+
+> **Correction (2026-09-24):** an earlier revision listed Leash as 2 and Patrol, Follow and Wander as 3-5. The jump table at `0x00dec018` sends case 5 to `0x00debad0`, which pushes "is leashing" (`0x019d2d2c`), and case 2 to `0x00debb04`, which pushes the patrol string (`0x019d2d5c`). This matches `EMobMovementType` in `entities/defs/enumerations.xml`. Full case map: [npc-movement-pathfinding.md §3](npc-movement-pathfinding.md#3-ai-movement-state-machine).
 
 Each case parses from the server event:
 - `aPath` — waypoint data (list of positions)
@@ -47,6 +53,8 @@ GameEntityBase → GameEntity → GameBeing → GameMob
                                         → GamePet
                             → GamePlayer
 ```
+
+> **Scope: these are C++ factory registration slots, not wire entity type ids.** Do not use this `Index` column on the wire. The wire typeID is the client's `clientIndex`: the `entities/entities.xml` order with `<ServerOnly/>` entries skipped. So `Account` is `0x07` and `SGWDuelMarker` is `6` on the wire (see `docs/protocol/client-verified-wire-formats.md:148`). This table's SGWPlayer at slot 6 already shows the two numberings differ.
 
 | Index | Entity Type | C++ Class | Source |
 |-------|------------|-----------|--------|
@@ -69,7 +77,7 @@ GameEntityBase → GameEntity → GameBeing → GameMob
 |---------|----------|---------|
 | `0x00dedf30` | TickUpdate | Per-frame update, timing |
 | `0x00deaaf0` | onPositionUpdate | Position/movement interpolation |
-| `0x00deb660` | MovementTypeSwitch | **7-state AI movement handler** |
+| `0x00deb660` | MovementTypeSwitch | GM `onShowPath` visualiser (corrected 2026-09-25; not an AI movement handler) |
 | `0x00dec040` | PathDestroy | Path cleanup |
 | `0x00df3550` | RegionUpdate | Region/zone change |
 
@@ -78,7 +86,7 @@ GameEntityBase → GameEntity → GameBeing → GameMob
 ## Aggro/Threat System
 
 ### Aggression Level (GameMob)
-- Handler: `GameMob_onAggressionLevelUpdate` at `0x00d31bd0`
+- Handler: `GameMob_onAggressionLevelUpdate` at `0x00d31bd0`. NA13 (2026-09-25): this is the `Event_NetIn_onAggressionOverrideUpdate` callback (registered by `0x00d31cd0` next to the `onAggressionOverrideCleared` one, RTTI `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>`), reading that method's `aAggressionLevel` INT8. It is not fed by `onEntityProperty(GENERICPROPERTY_MobAggression = 6)`; no client consumer of property type 6 was located. **NA33 (2026-09-25) resolved the "flat index not binary-verified" gap this left open: the SGWMob flat index is 27 (28 for `onAggressionOverrideCleared`), derived structurally (`Lootable` contributes 0 client methods) and cross-checked against the shared SGWPlayer/SGWMob 0-26 prefix — see [npc-aggression-broadcast.md](npc-aggression-broadcast.md).**
 - Property: `aAggressionLevel` (int8) stored at `GameMob + 0x16c`
 - UI class: `UIAggressionLevel` (RTTI `0x01de972c`)
 - Override: `aggressionOverrides` property, `onAggressionOverrideUpdate`/`Cleared` events
@@ -188,7 +196,7 @@ NavMesh: `.cdata/navmesh`, debug via `Event_SlashCmd_ShowNavMesh`
 
 ## Implications for Cimmeria
 
-1. **Implement all 7 movement types.** Server must send `aMovementType` (0-6) + `aPath` (waypoint list) + `aEntityId` to client.
+1. **Implement all 7 movement types.** ~~Server must send `aMovementType` (0-6) + `aPath` (waypoint list) + `aEntityId` to client.~~ Superseded (NA10): the states are server-side only; the server records a movement type for telemetry and sends the client position and velocity, nothing else.
 
 2. **No behavior trees** — use Behavior Events loaded from `CookedBehaviorEvents.pak`. The system is event-driven: emit events → trigger state transitions → send movement updates.
 

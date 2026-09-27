@@ -1,0 +1,66 @@
+[package]
+name = "cimmeria-cell-console"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The cell's GM surfaces for the Cimmeria server emulator: the `.`-console command channel (with the #523 seed-SQL authoring commands), the chat interceptor that routes a GM's `.`-lines to it, and the native `gm*` cell methods"
+
+# Split out of cimmeria-services (wave C5b of
+# docs/architecture/services-crate-split.md). The chat interceptor calls the
+# console, and the console calls the native GM handlers, so the three are one
+# crate (§2H). C5b put it beside cimmeria-cell-methods (the respawn fork both
+# share is cimmeria-cell-interactions'); since ORG-04 it sits one step above,
+# because the `.squad_*` commands call the squad handlers there. The module tree keeps its old nesting (`cell::console`,
+# `cell::console::{chat, gm}`), and cimmeria-services re-exports it at
+# `cell::console` and `cell::chat`.
+[dependencies]
+# Gate travel (the native GM travel handlers), the dialog display
+# (`.net_dialog`), the GM space transfer (`.goto`, `.summon`, `.gotolocation`)
+# and the respawn fork (`gmRespawn`).
+cimmeria-cell-interactions = { workspace = true }
+# The mission journal and the Missionary events the GM mission commands raise.
+cimmeria-cell-content = { workspace = true }
+# Entity-method sends, the out-of-band kill, the aggression overrides and the
+# NPC AI's transitions.
+cimmeria-cell-combat = { workspace = true }
+# SpaceManager, the playtest-friction journal and the GM gate.
+cimmeria-cell-world = { workspace = true }
+# The Base<->Cell message contract, the Mercury method indices, the chat
+# channel ids and the client method indices.
+cimmeria-wire = { workspace = true }
+# The squad handlers the `.squad_*` commands reuse (ORG-04): the invite
+# checks and the join fanout live beside the squad cell methods. The only
+# console -> cell-methods edge; cell-methods never names the console.
+cimmeria-cell-methods = { workspace = true }
+# The chain engine every handler threads through.
+cimmeria-content-engine = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+# The GM-command and forced-mission-failure notifications.
+cimmeria-discord = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+# The playtest bookmark's mission and event snapshot.
+serde_json = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# Exposes the test-only hook `console::exec` to the NPC movement tick's
+# `.speed` tests, which are cimmeria-cell's because they drive the tick.
+# cimmeria-cell turns it on through its [dev-dependencies]; a production build
+# never sees it.
+test-support = []
+
+[dev-dependencies]
+# `LogCapture`, re-exported from the `#[cfg(test)] mod test_support` shim in
+# lib.rs. Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# The spawner's records (`SpawnRecord`, `StargateEntry`, the mission
+# definitions) the GM and console tests seed their `SpaceManager` with.
+cimmeria-cell-catalog = { workspace = true }
+# The pet world fixtures (`watched_pet_world`, `assert_pet_fully_gone`) the
+# pets PT-02 travel call-site tests start from.
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }

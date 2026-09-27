@@ -1,0 +1,688 @@
+//! World-mutation action handlers: interaction-type flags, visibility,
+//! waypoint movement, aggression, threat generation.
+//!
+//! Entity destruction is **not** here: `DestroyTaggedEntity` dispatches
+//! straight to [`super::spawn::despawn_by_tag`] alongside
+//! `DespawnEntity`.
+//!
+//! These all locate a target entity by tag and either flip a flag or push
+//! a state change.
+
+// The NPC AI's state primitives are the world crate's; name them there, not
+// through the combat crate's `npc_ai`, which re-exports them.
+use cimmeria_cell_world::cell::service::npc_ai::{self, AiTransitionReason};
+use tokio::sync::mpsc;
+
+use super::transport;
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
+
+#[cfg(test)]
+mod aggression_log_tests;
+#[cfg(test)]
+mod aggression_wire_tests;
+#[cfg(test)]
+mod tests;
+
+/// `Action::SetInteractionType` — flip an interaction-type bit on the
+/// tagged entity (add / remove / set), broadcasting the new flags to
+/// every witness via `WitnessEntityMethod`.
+pub(super) async fn set_interaction_type(
+    entity_tag: String,
+    operation: String,
+    mask: i64,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+        let new_flags = if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            let old = target.interaction_type_flags;
+            match operation.as_str() {
+                "add" | "|" => target.interaction_type_flags |= mask,
+                "remove" | "~" => target.interaction_type_flags &= !mask,
+                "set" => target.interaction_type_flags = mask,
+                _ => tracing::warn!(%operation, "Unknown interaction type operation"),
+            }
+            tracing::debug!(
+                entity_id, %entity_tag, target_id, %operation, mask,
+                old, new = target.interaction_type_flags, chain_id,
+                "Content: set interaction type"
+            );
+            Some(target.interaction_type_flags)
+        } else {
+            None
+        };
+
+        if let Some(flags) = new_flags {
+            let target_is_player = space_mgr.get_entity(target_id).is_some_and(|e| e.is_player);
+            let witnesses = space_mgr.get_witnesses_of(target_id);
+            for witness_id in witnesses {
+                let _ = tx
+                    .send(CellToBaseMsg::WitnessEntityMethod {
+                        witness_id,
+                        entity_id: target_id,
+                        method_index: crate::mercury::method_idx::INTERACTION_TYPE,
+                        args: (flags as u64).to_le_bytes().to_vec(),
+                        entity_is_player: target_is_player,
+                    })
+                    .await;
+            }
+        }
+    } else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetInteractionType");
+    }
+}
+
+/// `Action::SetAggression` — set the tagged NPC's aggression override
+/// (`EMobAggressionLevel`: 1 hostile ... 5 default; `0`, the pre-NA13
+/// "passive", maps to NEUTRAL — see
+/// [`crate::cell::combat::override_from_content_level`]). The override
+/// beats the faction reaction, so this is how a chain arms a guard seeded
+/// passive (`spawnlist.aggression_override`, NA13) or disarms a hostile
+/// one. The AI's Idle scan acts on HOSTILE only.
+///
+/// The Python flow uses `setAggression` for the *durable behavior bit*
+/// and a separate `threatGenerated` for the *initial threat seed* — see
+/// `python/cell/missions/Castle_CellBlock/FindAmbernol.py:99-103`. Chain
+/// 1032 follows the same pattern: this action sets the behavior, then a
+/// `generate_threat` action focuses the NPC on the player who triggered
+/// the chain. Without that explicit seed the drone would aggro on the
+/// next idle tick anyway (if the player is in range and sight), but the
+/// seed delivers the correct frame ordering.
+///
+/// Python's `setAggression` (`deprecated/python/cell/SGWMob.py:53-60`)
+/// broadcast `GENERICPROPERTY_MobAggression` (`onEntityProperty` type 6) to
+/// the owner and witnesses instead of the `onAggressionOverrideUpdate`
+/// ClientMethod. NA13 found no client consumer of `onEntityProperty` type 6
+/// for `GameMob` — legacy's runtime aggression *change* was invisible on
+/// the client; only `createOnClient`'s conditional
+/// `onAggressionOverrideUpdate` (sent once, at spawn, only when an override
+/// was already seeded) ever reached the player. NA33 (2026-09-25) verified
+/// the ClientMethod index (flat 27 for SGWMob — `Lootable` contributes no
+/// client methods, so SGWMob's own two begin right after the shared 0-26
+/// `SGWBeing` prefix; see `docs/reverse-engineering/findings/npc-aggression-broadcast.md`)
+/// and its handler is live (`GameMob + 0x16c`, Ghidra `0x00d31bd0`). This
+/// broadcasts `onAggressionOverrideUpdate` instead of the dead property —
+/// same client-visible intent `createOnClient` had, finished for the
+/// runtime-change path python never wired it for, no client patch needed.
+///
+/// A tag that matches nothing is a WARN (`event="set_aggression_tag_miss"`):
+/// a mistyped chain tag leaves a guard passive forever, which on the floor
+/// looks exactly like an aggro bug (audit gap T10). An out-of-range level is
+/// a WARN too (`reason="invalid_level"`) and changes nothing.
+pub(super) async fn set_aggression(
+    entity_tag: String,
+    agg_level: i32,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(level) = crate::cell::combat::override_from_content_level(agg_level) else {
+        tracing::warn!(
+            target: "content",
+            event = "set_aggression_invalid_level",
+            reason = "invalid_level",
+            entity_id,
+            tag = %entity_tag,
+            chain_id,
+            agg_level,
+            "Content: set_aggression level is not 0-5 -- the NPC's aggression is unchanged"
+        );
+        return;
+    };
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::warn!(
+            target: "content",
+            event = "set_aggression_tag_miss",
+            reason = "tag_not_found",
+            entity_id,
+            tag = %entity_tag,
+            chain_id,
+            agg_level,
+            "Content: set_aggression matched no entity -- the NPC's aggression is unchanged"
+        );
+        return;
+    };
+    let from = if let Some(target) = space_mgr.get_entity_mut(target_id) {
+        Some(target.aggro.override_level.replace(level))
+    } else {
+        None
+    };
+    if let Some(from) = from {
+        tracing::info!(
+            target: "content",
+            event = "set_aggression",
+            entity_id,
+            tag = %entity_tag,
+            target_id,
+            from = from.map(|l| l.label()).unwrap_or("faction"),
+            to = level.label(),
+            chain_id,
+            "Content: set aggression"
+        );
+        crate::cell::abilities::send_entity_method_to_witnesses(
+            target_id,
+            crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE,
+            vec![level.level()],
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
+}
+
+/// `Action::SetNpcPoi` — push the tagged NPC into `AiState::Investigating`
+/// with the given POI. The NPC pathfinds to the POI on the next AI tick,
+/// dwells `investigate_dwell_secs` (5s default), then returns to Idle.
+///
+/// Threat preemption: a damaged NPC mid-investigate transitions to
+/// Fighting via the standard threat path; the POI persists on the
+/// entity but isn't re-routed back to after the fight ends (content
+/// authors fire a fresh `SetNpcPoi` if needed).
+pub(super) fn set_npc_poi(
+    entity_tag: String,
+    x: f32,
+    y: f32,
+    z: f32,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+        tracing::info!(
+            entity_id, %entity_tag, target_id, x, y, z, chain_id,
+            "Content: set NPC POI (Investigating)"
+        );
+        let world = npc_ai::world_label(space_mgr, target_id);
+        if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            target.poi = Some(cimmeria_common::Vector3::new(x, y, z));
+            npc_ai::set_ai_state_on(
+                target,
+                &world,
+                AiState::Investigating,
+                AiTransitionReason::Content,
+            );
+            // Stop the NPC so the investigate handler paths to the POI
+            // from where it stands rather than continuing toward a stale
+            // patrol/wander waypoint. Explicit even though a state change
+            // stops it too: a new POI on an NPC already investigating is
+            // not a state change, and must still reroute.
+            npc_ai::stop_movement_on(target);
+        }
+    } else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcPoi");
+    }
+}
+
+/// `Action::SetFollowTarget` — set or clear the follow target for a
+/// tagged NPC. When `target_tag` resolves, the NPC transitions to
+/// `AiState::Follow` and maintains the distance band defined by
+/// `follow_min/max_distance`. When `target_tag` is None (or doesn't
+/// resolve), the follow state clears and the NPC returns to Idle.
+///
+/// `use_player: Some(true)` resolves the target to `entity_id` — the
+/// entity that triggered the chain — instead of doing a `target_tag`
+/// lookup, and takes precedence over `target_tag` when set. This is
+/// the only way to point a follow target at a player: player entities
+/// carry no `tag` (tags only come from `spawnlist.tag` at NPC spawn —
+/// see `crates/services/src/cell/spawner/npcs.rs`), so
+/// `find_entity_by_tag` can never resolve one. Most dispatch call
+/// sites (dialog, interaction, mission) pass the triggering player's
+/// own entity_id as `entity_id`; the one exception is
+/// `event_dispatch::cover`'s NPC-triggered chains (`npc_entity_id, 0`)
+/// — guarded below so `use_player` never silently points a follow
+/// target at the wrong (non-player) entity.
+pub(super) fn set_follow_target(
+    entity_tag: String,
+    target_tag: Option<String>,
+    use_player: Option<bool>,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+    let Some(npc_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetFollowTarget");
+        return;
+    };
+    let resolved_target = if use_player.unwrap_or(false) {
+        let triggering_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+        if triggering_is_player {
+            Some(entity_id)
+        } else {
+            tracing::warn!(
+                entity_id, %entity_tag, chain_id,
+                "Content: SetFollowTarget use_player=true but the triggering \
+                 entity is not a player; follow target left unresolved"
+            );
+            None
+        }
+    } else {
+        target_tag
+            .as_deref()
+            .and_then(|tag| space_mgr.find_entity_by_tag(entity_id, tag))
+    };
+    tracing::info!(
+        entity_id, %entity_tag, npc_id, ?target_tag, use_player, ?resolved_target, chain_id,
+        "Content: set follow target"
+    );
+    let world = npc_ai::world_label(space_mgr, npc_id);
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.follow_target_id = resolved_target;
+        // Transition to Follow if a target landed; otherwise drop to
+        // Idle and clear any in-flight nav so the AI tick re-routes
+        // cleanly.
+        let to = if resolved_target.is_some() {
+            AiState::Follow
+        } else {
+            AiState::Idle
+        };
+        npc_ai::set_ai_state_on(npc, &world, to, AiTransitionReason::Content);
+        // Stop even when the state did not change (a new follow target on
+        // an NPC already following), so the AI tick reroutes cleanly.
+        npc_ai::stop_movement_on(npc);
+    }
+}
+
+/// `Action::SetNpcAiState` — push a tagged NPC into a content-reachable
+/// terminal / scripted AI state. See [`Action::SetNpcAiState`] for the
+/// admitted states and the rationale for the subset.
+pub(super) fn set_npc_ai_state(
+    entity_tag: String,
+    state: cimmeria_content_engine::actions::NpcAiStateAction,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_content_engine::actions::NpcAiStateAction;
+    use cimmeria_entity::cell_entity::AiState;
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcAiState");
+        return;
+    };
+    let new_state = match state {
+        NpcAiStateAction::Idle => AiState::Idle,
+        NpcAiStateAction::Despawning => AiState::Despawning,
+        NpcAiStateAction::Submit => AiState::Submit,
+        NpcAiStateAction::Error => AiState::Error,
+    };
+    tracing::info!(
+        entity_id, %entity_tag, target_id, ?state, ?new_state, chain_id,
+        "Content: set NPC AI state"
+    );
+    let world = npc_ai::world_label(space_mgr, target_id);
+    if let Some(npc) = space_mgr.get_entity_mut(target_id) {
+        npc_ai::set_ai_state_on(npc, &world, new_state, AiTransitionReason::Content);
+        // Stop (path and velocity) so the new-state handler can re-route.
+        npc_ai::stop_movement_on(npc);
+    }
+}
+
+/// `Action::GenerateThreat` — push the player's threat level on the tagged
+/// NPC. If a state-flag transition lands (NPC enters combat), broadcast the
+/// new state to the originating player so the in-combat HUD flips.
+pub(super) async fn generate_threat(
+    entity_tag: Option<String>,
+    threat_level: i32,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // Generate threat on the NPC (found by tag) from the player.
+    // If no entity_tag, the threat is on the player entity itself (ignored by combat).
+    if let Some(tag) = &entity_tag {
+        if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, tag) {
+            tracing::info!(
+                entity_id, %tag, target_id, threat_level, chain_id,
+                "Content: generate threat on NPC from player"
+            );
+            if let Some(new_state) = crate::cell::combat::generate_threat(
+                space_mgr,
+                entity_id, // attacker = the player
+                target_id, // target = the NPC
+                threat_level as f32,
+                crate::cell::combat::AggroCause::ContentThreat,
+            ) {
+                // Player just entered combat. `enter_player_combat`
+                // (inside `combat::generate_threat`) flipped
+                // `weapon_holstered = false` via
+                // `sync_holster_to_combat(true)`. We must broadcast
+                // BOTH:
+                //
+                //   - `BeingAppearance` refresh, so the client's
+                //     cached `ComponentList` picks up the now-drawn
+                //     weapon mesh. Without this the client keeps
+                //     rendering the holstered/empty-hand mesh while
+                //     the server thinks the weapon is drawn — fire
+                //     animations play against empty hands and the
+                //     in-combat pose shows no weapon. Pre-fix
+                //     symptom from chain 1032 (Ambernol pickup
+                //     triggers drone aggro): "fists go into combat
+                //     position, player shoots without a weapon,
+                //     fists holster when aggro drops."
+                //
+                //   - `onStateFieldUpdate`, so the in-combat HUD /
+                //     targeting cursor / state-bit-derived UI flips.
+                //
+                // **Order matters**: appearance BEFORE state field.
+                // Both flow through the same client-side state-machine
+                // entry point (`FUN_00e7b4c0`) but only the appearance
+                // path triggers the socket re-attach (`FUN_00e7b7c0`)
+                // that writes the weapon-category byte. If
+                // `BSF_InCombat` flips first, the unholster animation
+                // starts before the weapon mesh is attached — hand
+                // reaches for the holster, grabs air, mesh snaps in
+                // mid-animation (the "splinch" documented in
+                // `apply_damage_to_target` and reproduced here for the
+                // chain-driven aggro path).
+                //
+                // This mirrors the existing belt-and-braces in
+                // `damage_apply::apply_damage_to_target` and the
+                // appearance-only broadcast in
+                // `npc_ai::npc_ai_idle_auto_aggro` (which intentionally
+                // suppresses the state field to avoid the "ghost
+                // combat HUD" carve-out). Three callers of
+                // `combat::generate_threat`; this is the third to
+                // gain the appearance refresh.
+                crate::cell::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+                crate::cell::abilities::send_entity_method(
+                    entity_id,
+                    crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                    new_state.to_le_bytes().to_vec(),
+                    tx,
+                    space_mgr,
+                )
+                .await;
+            }
+        }
+    } else {
+        tracing::debug!(
+            entity_id,
+            threat_level,
+            chain_id,
+            "Content: generate threat (no target tag, skipped)"
+        );
+    }
+}
+
+/// `Action::SetVisible` — show or hide the tagged entity for everyone
+/// currently witnessing it.
+///
+/// # What this used to do, and why it did nothing (H-B5)
+///
+/// It sent one `CellToBaseMsg::EntityMethodCall` addressed to `target_id`.
+/// Base routes that through `entity_to_addr`, which only ever holds *player*
+/// entries — an NPC id resolves to no address and the message is dropped.
+/// Every seeded `set_visible` row was a silent no-op. The old test asserted
+/// only that the message was constructed, so it passed throughout.
+///
+/// # The asymmetry is deliberate
+///
+/// Hide and show use different primitives, mirroring C++
+/// `ClientHandler::leaveAoI(id, deleteEntity=false)` / `enterAoI`
+/// (`client_handler.cpp:507-528`) and matching
+/// [`crate::cell::ring_transport`]'s `send_visible`:
+///
+/// - **Hide** → `BASEMSG_ENTITY_INVISIBLE (0x0B)` per witness. The engine
+///   does not use `onVisible(0)` for hiding; only `0x0B` works.
+/// - **Show** → entity method `onVisible(1)` per witness, via
+///   [`crate::cell::abilities::send_entity_method_to_witnesses`] (which also
+///   carries `entity_is_player` for wire idbase selection).
+///
+/// Unlike the ring helper this does *not* add the target to the audience:
+/// the ring hides a **player** (who must see their own fade), whereas a
+/// content target is an NPC with no client of its own.
+///
+/// # Known gap: not durable across an AoI re-entry
+///
+/// Neither direction is recorded on the entity, and the AoI create cascade
+/// unconditionally appends `onVisible(1)`
+/// (`crates/services/src/mercury/aoi/create.rs`). A witness who leaves and
+/// re-enters AoI — or connects after the hide — therefore sees a
+/// content-hidden entity. Making it durable needs a `hidden` bit on
+/// `CellEntity` that the create cascade consults, which reaches outside this
+/// packet's owned paths; recorded as a gap in the H03 worknote.
+pub(super) async fn set_visible(
+    entity_tag: String,
+    visible: bool,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetVisible");
+        return;
+    };
+
+    if visible {
+        let notified = crate::cell::abilities::send_entity_method_to_witnesses(
+            target_id,
+            crate::mercury::method_idx::ON_VISIBLE,
+            vec![1u8],
+            tx,
+            space_mgr,
+        )
+        .await;
+        tracing::debug!(
+            entity_id, %entity_tag, target_id, visible, witnesses_notified = notified, chain_id,
+            "Content: set visible (show)"
+        );
+        return;
+    }
+
+    let witnesses = space_mgr.get_witnesses_of(target_id);
+    let mut notified = 0usize;
+    for witness_id in &witnesses {
+        match tx
+            .send(CellToBaseMsg::EntityInvisible {
+                witness_id: *witness_id,
+                entity_id: target_id,
+            })
+            .await
+        {
+            Ok(()) => notified += 1,
+            Err(e) => {
+                tracing::warn!(
+                    witness_id = *witness_id, entity_id, %entity_tag, target_id, chain_id,
+                    reason = "set_visible_send_failed",
+                    "SetVisible: cell→base send failed -- this witness keeps seeing \
+                     the entity that content just hid: {e}"
+                );
+            }
+        }
+    }
+    tracing::debug!(
+        entity_id, %entity_tag, target_id, visible, witnesses_notified = notified, chain_id,
+        "Content: set visible (hide)"
+    );
+}
+
+/// `Action::MoveEntity` — reposition either the acting player or a
+/// tagged NPC. One seed verb, two very different mechanisms:
+///
+/// - **`use_player: true`** (seed rows 3007 / 3028, both with
+///   `target_key` NULL) moves the *player* who fired the chain. That has
+///   to go through [`transport::teleport`], which owns the spatial-grid
+///   update, the `note_authorized_teleport` validator reseed, the
+///   `CellToBaseMsg::TeleportPlayer` forced-position snap and the
+///   prev-position anti-camera-snap. `update_entity_position` alone
+///   moves the server's idea of the player and nothing the client sees.
+/// - **`entity_tag`** (rows 3005 / 3009 / 3011) repositions an NPC, which
+///   is exactly [`move_waypoint`]'s job.
+///
+/// `use_player` wins when both are set — the seed never does that, but
+/// "move the player" is the more specific instruction.
+///
+/// The `world` param is a cross-world guard, not a destination selector.
+/// All five seeded rows name the world they are already on, so it
+/// normally resolves to the same-world path; a genuine mismatch on the
+/// player path routes to [`transport::cross_world_teleport`] instead of
+/// silently dropping the avatar at those coordinates on the wrong map.
+/// A mismatch on the NPC path is refused: NPCs have no gate-travel
+/// equivalent, and snapping one to coordinates in a world it isn't in
+/// would place it somewhere arbitrary.
+pub(super) async fn move_entity(
+    entity_tag: Option<String>,
+    destination: [f32; 3],
+    world: Option<String>,
+    use_player: Option<bool>,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if use_player == Some(true) {
+        let current_world = space_mgr.get_entity_world_name(entity_id);
+        // Only a *known* mismatch counts. An unresolvable current world
+        // (entity already gone) falls through to the same-world path,
+        // which fail-softs on the missing entity rather than firing a
+        // gate travel for a player the cell can't see.
+        let cross_world = match (world.as_deref(), current_world.as_deref()) {
+            (Some(want), Some(cur)) => want != cur,
+            _ => false,
+        };
+        if cross_world {
+            // `world` is Some in this branch by construction.
+            let target_world = world.unwrap_or_default();
+            tracing::info!(
+                entity_id, %target_world, ?destination, chain_id,
+                "Content: move_entity crosses worlds -- routing through gate travel"
+            );
+            transport::cross_world_teleport(
+                target_world,
+                destination,
+                entity_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+            return;
+        }
+        // Same-world player move. `transport::teleport` treats its
+        // `space_id` as the *destination* space and warns on a mismatch,
+        // so pass the player's current space to keep it on the
+        // same-space path. `0` is its "unspecified" sentinel and is what
+        // a missing entity degrades to.
+        let space_id = space_mgr
+            .get_entity(entity_id)
+            .map(|e| e.space_id.0)
+            .unwrap_or(0);
+        transport::teleport(space_id, destination, entity_id, chain_id, tx, space_mgr).await;
+        return;
+    }
+
+    let Some(entity_tag) = entity_tag else {
+        tracing::warn!(
+            entity_id,
+            ?destination,
+            chain_id,
+            "MoveEntity: row has neither use_player nor target_key -- nothing moved"
+        );
+        return;
+    };
+
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::warn!(
+            entity_id, %entity_tag, ?destination, chain_id,
+            "MoveEntity: no entity matched tag in the source entity's space -- NPC reposition skipped"
+        );
+        return;
+    };
+
+    if let (Some(want), Some(cur)) = (
+        world.as_deref(),
+        space_mgr.get_entity_world_name(target_id).as_deref(),
+    ) {
+        if want != cur {
+            tracing::warn!(
+                entity_id, %entity_tag, target_id, want_world = %want, current_world = %cur,
+                chain_id,
+                "MoveEntity: cross-world NPC move is not supported -- NPC reposition skipped"
+            );
+            return;
+        }
+    }
+
+    move_waypoint(entity_tag, destination, entity_id, chain_id, tx, space_mgr).await;
+}
+
+/// `Action::MoveWaypoint` — snap the tagged entity to a new position.
+/// No yaw/orientation change; chains call `update_position_preserving_facing`
+/// directly.
+///
+/// The snap is broadcast to the entity's current witnesses immediately as a
+/// per-witness `EntityMoved`, so a scripted reposition is visible on the
+/// next frame rather than whenever the 100ms AoI tick next relays ghost
+/// positions. Witnesses the move drops entirely still get their `LeftAoI`
+/// from that tick, so a long-distance reposition needs no extra fan-out
+/// here. That immediate fan-out deliberately duplicates the AoI tick's own
+/// `EntityMoved` relay; harmless while NPC `UPDATE_AVATAR`/`EntityMoved`
+/// remains unreliable and self-correcting, but it would amplify position
+/// updates if that path ever becomes reliable for NPCs.
+pub(super) async fn move_waypoint(
+    entity_tag: String,
+    destination: [f32; 3],
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        return;
+    };
+    tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
+    let Some(t) = space_mgr.get_entity(target_id) else {
+        return;
+    };
+    let space_id = t.space_id.0 as u32;
+    let direction = [t.direction.x, t.direction.y, t.direction.z];
+    space_mgr.update_position_preserving_facing(target_id, destination, [0.0; 3]);
+    space_mgr
+        .npc_detectors
+        .note_move_source(target_id, npc_ai::detectors::MoveSource::Content);
+    // Authorized server move: reseed the movement-validator clock for
+    // the moved entity (harmless for NPC targets — they never pass
+    // through the client-position validator).
+    space_mgr.note_authorized_teleport(target_id);
+
+    // Broadcast the snap to current witnesses now instead of waiting for
+    // the AoI tick's next pass, so a chain-driven reposition (escort
+    // arrival, tutorial staging) does not hold stale on the client for up
+    // to 100ms. Witness sets are last-tick snapshots, so a witness the
+    // move left behind still gets the snap before its `LeftAoI`, and a
+    // player newly in range gets a full `EnteredAoI` — the tick completes
+    // the picture either way. A failed send only delays the relay by one
+    // tick, but it is still an expectation seam, so log it.
+    let witnesses = space_mgr.get_witnesses_of(target_id);
+    for witness_id in witnesses {
+        if let Err(e) = tx
+            .send(CellToBaseMsg::EntityMoved {
+                witness_id,
+                entity_id: target_id,
+                space_id,
+                position: destination,
+                direction,
+                velocity: [0.0; 3],
+                npc_moved_since_last: None,
+            })
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                witness_id,
+                target_id,
+                chain_id,
+                reason = "move_waypoint_send_failed",
+                "MoveWaypoint: cell→base send failed -- witness holds the stale \
+                 position until the next AoI tick relays it: {e}"
+            );
+        }
+    }
+}

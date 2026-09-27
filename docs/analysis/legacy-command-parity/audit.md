@@ -24,7 +24,7 @@ Signatures omit the dot name, caller and target. Brackets denote optional argume
 | Misc | 11 | 4 | 7 |
 | Total | 116 | 57 | 59 |
 
-Rust has 71 dots, of which 14 are outside this baseline: `seedconfirm`, `seedpending`, `seedcancel`, `path_add`, `path_show`, `path_clear`, `path_assign`, `path_unassign`, `path_set_seq`, `path_clear_seq`, `path_set_tp`, `path_clear_tp`, `path_set_tp_seq`, `path_set_tp_delay`. Preserve them. The overlap is about 49% registration coverage, not 49% full implementation.
+Rust has 72 dots, of which 15 are outside this baseline: `aggro` (NA13, the GM proximity-aggro switch; see [npc-ai.md](../../gameplay/npc-ai.md#gm-switch-aggro-onoff-d-na02)), `seedconfirm`, `seedpending`, `seedcancel`, `path_add`, `path_show`, `path_clear`, `path_assign`, `path_unassign`, `path_set_seq`, `path_clear_seq`, `path_set_tp`, `path_clear_tp`, `path_set_tp_seq`, `path_set_tp_delay`. Preserve them. The overlap is about 49% registration coverage, not 49% full implementation.
 
 ## Console
 
@@ -107,7 +107,7 @@ Legacy: [Entity.py](../../../deprecated/python/cell/commands/Entity.py). Active:
 | `.qrstats` | Yes | `()`; B | source-implemented | V: existing QR set; pin all 19 legacy stat names. | [stats](../../../crates/services/src/cell/console/stats.rs) | [P03](work-packets.md#p03) |
 | `.absorbstats` | Yes | `()`; B | source-implemented | V: existing absorption set; pin all 15 legacy fields. | [stats](../../../crates/services/src/cell/console/stats.rs) | [P03](work-packets.md#p03) |
 | `.stealthstats` | Yes | `()`; B | source-implemented | V: existing five-stat set; selected entity/caller isolation. | [stats](../../../crates/services/src/cell/console/stats.rs) | [P03](work-packets.md#p03) |
-| `.aggression` | Yes | `level`; M | partial | E: aggression field mutation exists; validate enum/range and downstream AI transition. | [net](../../../crates/services/src/cell/console/net.rs) | [P34](work-packets.md#p34) |
+| `.aggression` | Yes | `level`; M | partial | E: NA13 validates the `EMobAggressionLevel` range (1-5, 0 = neutral, `clear` = faction) and the Idle scan honours it; no `onAggressionOverrideUpdate` broadcast yet (unverified SGWMob index). | [net](../../../crates/services/src/cell/console/net.rs) | [P34](work-packets.md#p34) |
 | `.threaten` | Yes | `threat` int; M | partial | E: Rust accepts float and directly adds to threat_list; restore integer contract and threatGenerated-style transition/bookkeeping. | [net](../../../crates/services/src/cell/console/net.rs) | [P34](work-packets.md#p34) |
 | `.combatinfo` | No | `()`; M | absent | W/E: restore template/weapon/ability-set diagnostics and ability-type counts from actual NPC data, not a generic threat summary. | [legacy entity](../../../deprecated/python/cell/commands/Entity.py) | [P02](work-packets.md#p02) |
 

@@ -22,6 +22,40 @@ use crate::unpacker::FragmentAssembler;
 use super::rto::{Rto, RtoConfig};
 use super::state::{ChannelState, RxEntry, TxEntry};
 
+/// True if `a` is sequence-before-or-equal `b` in Mercury's 28-bit modular
+/// sequence space (`SEQUENCE_MASK = 0x0FFF_FFFF`).
+///
+/// Shared by [`Channel::process_acks`]'s cumulative-ACK drain and
+/// [`Channel::register_sent_packet`]'s sorted insert — both need the same
+/// "is this seq at or before that one, allowing for wraparound" comparator.
+/// A plain `a <= b` on the raw `u32`s breaks the moment either operand
+/// wraps past `NULL_SEQUENCE`; masking the difference to the 28-bit half
+/// range (`0x0800_0000`) interprets wraparound correctly. See the
+/// worked example in `process_acks`'s original `covered` closure (NA39).
+fn seq_mod_leq(a: u32, b: u32) -> bool {
+    let a = a & crate::packet::SEQUENCE_MASK;
+    let b = b & crate::packet::SEQUENCE_MASK;
+    let diff = a.wrapping_sub(b) & crate::packet::SEQUENCE_MASK;
+    diff == 0 || diff > 0x0800_0000
+}
+
+/// Insert `entry` into `deque` at the position that keeps it sorted by
+/// `packet.sequence` (oldest/lowest at the front), per [`seq_mod_leq`].
+///
+/// Scans backward from the tail rather than the head: the overwhelming
+/// common case is that sends reach `register_sent_packet` in allocation
+/// order, so the new entry belongs at the back and this is O(1). Only a
+/// genuine cross-task race (see the call sites) pays the O(n) scan, and
+/// `tx_window`/`unsent_packets` are small (32 / 1024 cap) even then.
+fn insert_tx_entry_sorted(deque: &mut VecDeque<TxEntry>, entry: TxEntry) {
+    let seq = entry.packet.sequence;
+    let mut idx = deque.len();
+    while idx > 0 && !seq_mod_leq(deque[idx - 1].packet.sequence, seq) {
+        idx -= 1;
+    }
+    deque.insert(idx, entry);
+}
+
 /// A reliable UDP channel to a single remote peer.
 ///
 /// Manages sliding TX/RX windows, ACK tracking, and retransmission.
@@ -49,14 +83,33 @@ pub struct Channel {
     /// no longer silently un-recoverable.
     pub unsent_packets: VecDeque<TxEntry>,
 
-    /// Inbound packets buffered for ordered delivery.
+    /// Inbound reliable packets buffered for ordered delivery. Slot `i`
+    /// holds sequence `expected_rx_seq + i`. See [`super::rx_order`].
     pub rx_window: VecDeque<Option<RxEntry>>,
 
     /// Next sequence number to assign to an outbound packet.
     pub next_tx_seq: u32,
 
-    /// Next sequence number we expect to receive from the peer.
+    /// Next reliable sequence number we expect to receive from the peer.
+    /// Meaningful once [`Self::rx_anchored`] is true.
     pub expected_rx_seq: u32,
+
+    /// Whether `expected_rx_seq` has been set, by
+    /// [`Self::anchor_rx_seq`] or by adopting the first reliable packet
+    /// (the client's `inSeqAt == SEQ_NULL` start state).
+    pub(super) rx_anchored: bool,
+
+    /// When the current reliable gap started blocking delivery: set when
+    /// a packet is buffered behind a gap, cleared when the window drains.
+    /// Read by [`Self::check_rx_stall`].
+    pub(super) rx_gap_since: Option<Instant>,
+
+    /// When the stall watchdog last warned about the current gap.
+    pub(super) rx_stall_warned_at: Option<Instant>,
+
+    /// Distinct reliable gaps that blocked delivery past
+    /// [`consts::RX_STALL_WARN_MS`] over this channel's life.
+    pub rx_stalls: u64,
 
     /// Socket address of the remote peer.
     pub remote_addr: SocketAddr,
@@ -157,9 +210,14 @@ impl Channel {
             // state. Pre-allocating MAX_UNSENT_PACKETS would waste memory
             // on every channel for a path that fires only under congestion.
             unsent_packets: VecDeque::new(),
-            rx_window: VecDeque::with_capacity(consts::RX_WINDOW_SIZE),
+            // Allocate empty — the window only fills behind a gap.
+            rx_window: VecDeque::new(),
             next_tx_seq: 0,
             expected_rx_seq: 0,
+            rx_anchored: false,
+            rx_gap_since: None,
+            rx_stall_warned_at: None,
+            rx_stalls: 0,
             remote_addr,
             last_sent: now,
             last_received: now,
@@ -252,7 +310,23 @@ impl Channel {
         };
 
         if self.tx_window.len() < consts::TX_WINDOW_SIZE {
-            self.tx_window.push_back(entry);
+            // Sorted insert, not `push_back` (NA39). The services layer
+            // reserves a sequence number (an atomic fetch-add under a
+            // briefly-held, *different* lock) and only calls back in here
+            // after the async socket send completes — a gap wide enough
+            // for a second, genuinely concurrent task (base's recv-loop,
+            // a `tokio::spawn`ed fan-out, cell's witness dispatch) to
+            // reserve a LATER sequence for the same witness and still
+            // win the race to `register_sent_packet`. `push_back` would
+            // then leave `tx_window` non-monotonic, which silently
+            // breaks `process_acks`'s front-only cumulative drain (it
+            // stops at the first "not yet covered" front entry — an
+            // out-of-order higher seq parked at the front blocks the
+            // drain of an already-acked lower seq behind it forever,
+            // starving the TX window over time). Sorting on insert keeps
+            // the "oldest sequence at front" invariant `process_acks`
+            // depends on regardless of registration order.
+            insert_tx_entry_sorted(&mut self.tx_window, entry);
             self.last_sent = now;
             return Ok(());
         }
@@ -273,7 +347,9 @@ impl Channel {
                 entry.packet.sequence,
             )));
         }
-        self.unsent_packets.push_back(entry);
+        // Same sorted-insert rationale as the tx_window branch above —
+        // `process_acks` drains this queue front-only too.
+        insert_tx_entry_sorted(&mut self.unsent_packets, entry);
         // Update `last_sent` even on the queued path — the bytes went out
         // on the wire, so for keepalive-timing purposes the channel was
         // active in the send direction.
@@ -353,69 +429,6 @@ impl Channel {
         Ok(())
     }
 
-    /// Process an inbound packet, inserting it into the RX window.
-    ///
-    /// Returns `Ok(Some(packets))` with any newly in-order packets that
-    /// can be delivered upstream, or `Ok(None)` if we are still waiting
-    /// for earlier sequences.
-    pub fn receive_packet(&mut self, packet: Packet) -> Result<Option<Vec<Packet>>> {
-        let seq = packet.sequence;
-        self.last_received = self.clock.now();
-
-        // Instrument: inbound UDP packet observed. We record EVERY
-        // received packet here — including duplicates and packets
-        // beyond the window — because those are exactly the kind of
-        // anomalies the analytical store needs to surface. Filtering
-        // duplicates out at the record site would hide them in the
-        // SigNoz "incoming packet rate" plot.
-        crate::instrumentation::record_udp_packet(
-            crate::instrumentation::Direction::In,
-            seq,
-            packet.flags.0,
-            packet.body.len(),
-            self.remote_addr,
-        );
-
-        // How far ahead of our expected sequence is this packet?
-        // Wrapping subtraction handles sequence wraparound.
-        let offset = seq.wrapping_sub(self.expected_rx_seq) as usize;
-
-        // Drop if behind expected (duplicate/old) or beyond the window.
-        if offset >= consts::RX_WINDOW_SIZE {
-            // Either a duplicate (seq < expected, wrapping makes offset huge)
-            // or too far ahead to buffer.
-            return Ok(None);
-        }
-
-        // Grow the VecDeque with None slots if needed to reach the offset.
-        while self.rx_window.len() <= offset {
-            self.rx_window.push_back(None);
-        }
-
-        // Insert (ignore duplicates — don't overwrite an already-received slot).
-        if self.rx_window[offset].is_none() {
-            self.rx_window[offset] = Some(RxEntry {
-                packet,
-                received_at: self.last_received,
-            });
-        }
-
-        // Slide the window: drain consecutive Some entries from the front.
-        let mut delivered = Vec::new();
-        while let Some(Some(_)) = self.rx_window.front() {
-            // Front slot is filled — deliver it.
-            let entry = self.rx_window.pop_front().unwrap().unwrap();
-            self.expected_rx_seq = self.expected_rx_seq.wrapping_add(1);
-            delivered.push(entry.packet);
-        }
-
-        if delivered.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(delivered))
-        }
-    }
-
     /// Process acknowledgement information received from the peer.
     ///
     /// Removes acknowledged packets from the TX window and feeds RTT
@@ -454,15 +467,20 @@ impl Channel {
         //                  → STOP (wrong — front IS <= ack post-wrap)
         //     28-bit cmp:  diff = 0x0FFF_FFFD & MASK = 0x0FFF_FFFD;
         //                  0x0FFF_FFFD > 0x0800_0000 = true → DRAIN (correct)
-        let covered = |seq: u32| -> bool {
-            let seq_masked = seq & crate::packet::SEQUENCE_MASK;
-            let diff = seq_masked.wrapping_sub(ack_seq_masked) & crate::packet::SEQUENCE_MASK;
-            diff == 0 || diff > 0x0800_0000
-        };
+        let covered = |seq: u32| -> bool { seq_mod_leq(seq, ack_seq_masked) };
 
         // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
         // The tx_window is ordered by sequence (oldest at front), so we can
         // drain from the front until we hit a sequence beyond the ACK.
+        // That ordering is actively maintained by `register_sent_packet`'s
+        // sorted insert (NA39) — it is NOT simply "callers happen to
+        // register in allocation order". A cross-task race between
+        // sequence reservation (an atomic fetch-add under a different
+        // lock) and this Channel's registration can and does register
+        // out of allocation order in production; without the sorted
+        // insert, a higher out-of-order sequence parked at the front
+        // would block this front-only drain from ever reaching an
+        // already-acked lower sequence sitting behind it.
         while let Some(front) = self.tx_window.front() {
             if covered(front.packet.sequence) {
                 // Drain the entry and — if it was never retransmitted —

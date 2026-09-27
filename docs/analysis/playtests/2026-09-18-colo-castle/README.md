@@ -199,6 +199,8 @@ H1 explains only the latter. `yaw_byte` + `leg_start` telemetry settles it in on
 
 ### 4.5 Animation vs translation (moonwalk)
 
+> **Corrected 2026-09-25 (NPC AI NA10):** the opposite is true. `FUN_00deb660` is the GM `onShowPath` visualiser, no server-to-client movement-type message exists, and the server's `setMovementType` broadcast reached witnesses as a truncated `onSequence`. The client animates from velocity. See [npc-movement-pathfinding.md §11](../../../reverse-engineering/findings/npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver).
+
 The client selects mob animation from the `setMovementType` byte (client FSM `FUN_00deb660`), not from velocity.
 `npc_movement_tick` never broadcasts it, `broadcast_movement_type` dedups identical kinds, and `kind = None` clears
 the cache without sending. An NPC can translate while the client still plays a stationary pose. Already documented

@@ -8,7 +8,7 @@ produced a whole family of shipped bugs. The settled answer:
 
 Evidence (Rust, outbound):
 
-- `crates/services/src/mercury/aoi/{create,update}.rs` pack
+- `crates/wire/src/mercury/aoi/{create,update}.rs` pack
   `pack_angle(direction[1])` as yaw, `[0]` pitch, `[2]` roll —
   unconditionally, for players and NPCs alike.
 - `pack_angle` (`mercury/aoi/mod.rs:47`) divides by `0.024543693` = 2*pi/256,
@@ -27,7 +27,7 @@ Evidence (legacy python, same convention):
 
 ## Known bugs in this family
 
-- `cell/cell_methods/gm/query.rs::handle_show_rotation` reads
+- `cell/console/gm/query.rs::handle_show_rotation` reads
   `d.x.atan2(d.z)` — wrong. Tracked as **P48**.
 - `cell/console/entity.rs::look_at` (`.lookat`) writes a Cartesian unit
   vector `Vector3::new(dx/len, 0.0, dz/len)` — wrong; should be

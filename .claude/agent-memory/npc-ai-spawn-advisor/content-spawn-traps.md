@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **Stale since NA13 (2026-09-25):** the `aggression` field and "faction 10 alone never aggroes" claims below are superseded; see [[faction-derived-aggro-na13]].
+
 # Content-driven spawn traps (verified against main @ 3c1fed6c)
 
 ## 1. faction 0 is an auto-aggro dead zone

@@ -10,6 +10,11 @@ metadata:
 > below about the *mechanism* — `find_path` returning `None`, the raw straight-line fallback with
 > interpolated Y, `is_position_valid` failing open — still applies to every world that has no `.nav`,
 > and the file paths and line numbers are as of 2026-09-18. Re-check them before citing.
+>
+> **Correction 2026-09-24 (NPC AI audit M4 and M6).** Having a mesh did not give the server ground
+> truth: `get_navmesh_height` returned the wrong storey on multi-level meshes until NA01 (PR #774).
+> The closing "FullPos wire variant means the client won't correct Y" line implies another variant
+> would; none does. OnGround keeps the client's current height (see [[npc-broadcast-facing-and-grounding]]).
 
 **`data/spaces/castle.nav` does not exist.** Confirmed from the shipped tree and from colo telemetry
 at `2026-09-18T23:49:37.821Z`: `"No navmesh for space (optional)"`, `world = "Castle"`,

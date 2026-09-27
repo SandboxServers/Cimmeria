@@ -2,3 +2,5 @@
 - [Bible Section-1 evidence discipline](feedback_section1_evidence.md) — Section 1 cites RE only; no Cimmeria implementation, no agent memory; mark inferred-from-stock-BW claims medium.
 - [Bible chapter spine voice](feedback_bible_voice.md) — Conversational second person, present, active; no emoji; backtick identifiers; inline Divergence callouts.
 - [Source-doc override discipline](feedback_source_doc_override.md) — When a chapter contradicts a V5 finding, mark with inline override callout + crosswalk row + cascade to glossary/related docs.
+- [Build-rule copies beyond the doc map](reference_build_rule_copies.md) — Every file that repeats build rules; sweep them all when the toolchain, lane or build flow changes.
+- [Campaign close-out status sweep](reference_campaign_closeout_status_docs.md) — Other gap-analysis sections and message-catalog rows a close-out must touch; recount the matrix by script.

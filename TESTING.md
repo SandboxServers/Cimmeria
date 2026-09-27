@@ -2,11 +2,11 @@
 
 > **Audience**: Engineers writing or reviewing tests in the Cimmeria workspace.
 > **Type**: Reference + how-to.
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
 > **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**. CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` cdylib, leaving **2,691 tests actually gated on every PR**. Of those, 224 are live-DB regression guards (`require_db_or_skip!`, all in `cimmeria-services`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~147 tests at the current 2,936 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace's `#[test]` / `#[tokio::test]` cases are counted by `python tools/extract_tests.py`; the current totals, per crate and gated in CI, are generated into [docs/testing/inventory/README.md](docs/testing/inventory/README.md#workspace-totals). CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`), the Windows-only `cimmeria-client-telemetry` and `cimmeria-client-patches` cdylibs and `cimmeria-lab`, and every other crate's tests are gated on every PR. Among them are the live-DB regression guards (`require_db_or_skip!`, in the crates `tools/test-live-db.sh` lists) and 3 end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (the threshold is in the workspace totals) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate with live-DB tests) against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 
@@ -36,11 +36,11 @@ This guide is the playbook for writing tests that survive review and catch real 
 - Reuse a small `make_state()` / `make_ctx()` helper rather than copying setup. When PR #150 split concurrency tests off, reviewers required reuse of the existing helper, not a parallel one.
 - Cover the negative path: if the code returns early on `connected: empty`, write the test that constructs that empty map and asserts the early-return shape.
 
-**Examples**: `crates/mercury/src/unpacker/` (20 tests, byte-level cursor edge cases); `crates/common/src/math.rs` (14 tests, vector/quaternion math); `crates/services/src/cell/combat/threat/` (27 tests, threat list state machine).
+**Examples**: `crates/mercury/src/unpacker/` (20 tests, byte-level cursor edge cases); `crates/common/src/math.rs` (14 tests, vector/quaternion math); `crates/cell-combat/src/cell/combat/threat/` (27 tests, threat list state machine).
 
 ### 2. Wire-format tests
 
-**Where**: Same module as the serializer; conventionally `crates/mercury/src/**/*.rs` and `crates/services/src/mercury/protocol/tests.rs`.
+**Where**: Same module as the serializer; conventionally `crates/mercury/src/**/*.rs` and `crates/wire/src/mercury/protocol/tests.rs`.
 
 **For**: Anything that produces bytes the BigWorld client must accept. This is the single most "byte-exact" surface in the codebase — the client is unforgiving, and we have no way to renegotiate the protocol.
 
@@ -50,7 +50,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 - Round-trip both directions when the codec is symmetric (`build_x` then `parse_x` then assert equality of the input).
 - Confirm method indices against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def` before writing the test, not after.
 
-**Examples**: `crates/mercury/src/packet/` (24 tests), `crates/services/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/services/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
+**Examples**: `crates/mercury/src/packet/` (24 tests), `crates/base-methods/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/wire/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
 
 ### 3. Live-DB regression guards
 
@@ -59,18 +59,18 @@ This guide is the playbook for writing tests that survive review and catch real 
 **For**: SQL invariants that pure unit tests can't reach — `WHERE` clauses, `rows_affected` shapes, advisory locks, `ON CONFLICT` semantics, the `flags` column's role in vendor buyback, multi-character isolation. **Every Group A regression guard in PRs #143–#175 is this kind.**
 
 **Patterns to follow:**
-- Pick a **positive `0x7000_xxxx` sentinel base** for the module's test ids (e.g., `const TEST_BASE: i32 = 0x7000_0400;` for missions, `0x7000_1000` for character-list, `0x7000_0800` for vendor sell). Each module reserves its own slot in this range; the existing modules document neighbours in a doc-comment so the next contributor can step past them. See `crates/services/src/base/character/mod.rs:288-296` and `crates/services/src/base/world_entry/methods/missions.rs:150-154` for the canonical comment shape.
+- Pick a **positive `0x7000_xxxx` sentinel base** for the module's test ids (e.g., `const TEST_BASE: i32 = 0x7000_0400;` for missions, `0x7000_1000` for character-list, `0x7000_0800` for vendor sell). Each module reserves its own slot in this range; the existing modules document neighbours in a doc-comment so the next contributor can step past them. See `crates/base-world-entry/src/base/character/mod.rs:288-296` and `crates/base-methods/src/base/world_entry/methods/missions/tests.rs:4-6` for the canonical comment shape.
 - The base must fit in `i32` because the `entity_id`/`account_id`/`player_id` columns are `INTEGER`. `0x7000_xxxx` does (it's well below `i32::MAX`); a `u32` like `0xDEAD_0000` wraps to a negative when bound `as i32` and lands in another module's territory — don't reach for high-bit constants.
 - Run serialised. Under nextest the `ci-live-db` profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`, which makes each test claim every available thread; under raw `cargo test`, pass `-- --test-threads=1`. Even within the partitioned-range scheme, some guards share rows in `resources.*` and collide under parallel execution. CI enforces this; local repro must match.
 - Cleanup must `DELETE WHERE <id> = $sentinel` (or `IN (...)` over the exact ids the test inserted), not a range predicate like `WHERE entity_id < 0` or `WHERE account_id BETWEEN base AND base+0xFF`. Range deletes can reach into a sibling module's slot if the partitioning ever drifts.
 - For shared rows (resources.items inserts), use `ON CONFLICT DO NOTHING` so test B's insert doesn't conflict with test A's leftover, and **don't `DELETE` shared rows in cleanup** — let them leak for the next run.
 - **Reproduce the bug shape.** A `handle_grant_cash` regression guard must seed two characters on the same account, grant to one, and assert the other's balance is unchanged. That's the shape the bug took (PR #143). A test that just grants and asserts the credit went through is a happy-path test, not a regression guard.
 
-**Examples**: `crates/services/src/base/world_entry/methods/progression/tests.rs` (PR #143), `crates/services/src/base/world_entry/methods/vendor/sell/tests.rs` (PR #154 — pin the `flags` column's role as buyback unit price), `crates/services/src/base/character/mod.rs` (4 guards on `query_character_list`).
+**Examples**: `crates/base-methods/src/base/world_entry/methods/progression/tests.rs` (PR #143), `crates/base-methods/src/base/world_entry/methods/vendor/sell/tests.rs` (PR #154 — pin the `flags` column's role as buyback unit price), `crates/base-world-entry/src/base/character/mod.rs` (4 guards on `query_character_list`).
 
 ### 4. End-to-end PL/pgSQL smoke tests
 
-**Where**: SQL script in `tools/<feature>_smoke.sql`, embedded into a `#[tokio::test]` in `crates/services/src/base/smoke_tests.rs` via `include_str!`.
+**Where**: SQL script in `tools/<feature>_smoke.sql`, embedded into a `#[tokio::test]` in `crates/base/src/base/smoke_tests.rs` via `include_str!`.
 
 **For**: Whole-stack invariants that span multiple handlers and would still pass each handler's own per-handler tests. Today's three:
 - `vendor_store_smoke.sql` — sell → buyback → grant → purchase round-trip; catches drift between `handle_sell_vendor_items` and `handle_buyback_vendor_items` on the meaning of the `flags` column.
@@ -98,11 +98,11 @@ This guide is the playbook for writing tests that survive review and catch real 
 - For TOCTOU guards on `update_X WHERE type_id = $1`, the racing replacement row must use the **same `type_id`** as the original. A different-`type_id` race doesn't exercise the predicate the bug lives in.
 - Validate `rows_affected() == 1` on staged setup `UPDATE`s. A fixture drift fails loudly at the staging step rather than as a confusing assertion mismatch.
 
-**Examples**: `crates/services/src/base/world_entry/methods/inventory/move_/concurrency_tests.rs` (PR #150, PR #175), `crates/services/src/base/world_entry/methods/inventory/grant/` concurrency tests (PR #145).
+**Examples**: `crates/base-methods/src/base/world_entry/methods/inventory/move_/concurrency_tests.rs` (PR #150, PR #175), `crates/base-methods/src/base/world_entry/methods/inventory/grant/` concurrency tests (PR #145).
 
 ### 6. Chain-replay tests
 
-**Where**: `crates/services/src/cell/content/chain_replay_tests/` (51 tests).
+**Where**: `crates/cell-content/src/cell/content/chain_replay_tests/` (51 tests). A replay that also drives code above the content crate goes in the crate of that code instead, and reaches `load_single_chain_for_test`, `execute_actions` and `populate_mission_context` through `cimmeria-cell-content`'s `test-support` feature: the gate dial in `crates/cell-interactions/` (`cell::gate_travel::tests::stargate_grant_dial`), a client-callable cell method in `crates/cell-methods/` (`cell::cell_methods::mission_abandoned_tests`), a GM cell method in `crates/cell-console/` (`cell::console::gm::mission_abandoned_tests`), the relog hydration in `crates/cell/` (`cell::content_tests`). Only a replay that also drives the base goes in `crates/services/src/cell/content_tests/`.
 
 **For**: Content chains in `db/resources/Content/Seed/space_*_chains.sql` — guarding against converter bugs (auto-generated `accept_mission` where `complete_mission` was meant), shadow conditions, missing `interact_tag`/`set_interaction_type` pairings.
 
@@ -111,6 +111,22 @@ This guide is the playbook for writing tests that survive review and catch real 
 - When the loader rejects a chain for an unknown trigger/action, the replay test must distinguish "row missing" from "row present but skipped" — those have different fixes.
 - **If the thing you changed is an executor arm, resolving is not enough.** A resolve-only replay passes identically whether the executor has a match arm or drops the action in its `other =>` catch-all — that is precisely how `move_entity`’s five seeded rows no-opped in production while the suite stayed green. Push the `ResolvedActions` through `executor::execute_actions` and assert on the emitted `CellToBaseMsg`. See `chain_replay_tests/sgc_w1_move_entity.rs`.
 - **A verb with zero seed rows still gets a replay test.** Insert a sentinel chain (`0x7000_xxxx` chain id, per the live-DB rules above), load it through `load_single_chain_for_test`, then delete by exact id *before* asserting so a failing run cannot leave a live chain registered in the shared DB. See `chain_replay_tests/grant_xp.rs`.
+
+**Seed linters (a no-DB sibling).** Some seed invariants span two tables — or a table and a chain file — and a replay test cannot see them, because the chain loads and resolves perfectly while the *data it points at* is wrong. Those live as modules of the crate's integration-test binary under `crates/content-engine/tests/it/`, parsing the seed SQL directly with no database:
+
+| Linter | Enforces |
+|---|---|
+| [interact_tag_linter.rs](crates/content-engine/tests/it/interact_tag_linter.rs) | Every `interact_tag` chain has a `set_interaction_type` for that tag, every region key byte-matches a `point_sets.name`, every `*_chains.sql` is `\ir`'d from `db/database.sql`. |
+| [dialog_button_linter/](crates/content-engine/tests/it/dialog_button_linter/mod.rs) | A dialog that keys a `dialog_choice` chain has zero buttons or a button on its **final** screen; the never-add-a-button dialogs stay zero-button; every button is one its own window can draw (Blurb 1-2, Dialog/Radio/Realization 2 and 4-6); a chain key is not a Tutorial or type-0 dialog. |
+
+**Patterns to follow:**
+
+- **Assert the scan is not vacuous.** Every rule here is "no violations found", so a parser that silently returns nothing passes all of them. Both linters pin a parsed row count against the raw file (`every_insert_row_in_the_dialog_seeds_is_parsed` compares against the count of `INSERT INTO <table>` occurrences) and name specific rows the scan must find.
+- **Drive the production predicate from the synthetic tests.** Re-implementing the rule in the test body means a loosened rule stays green. Both linters factor the check into a function (`region_key_violations`, `r1_violations`) that the live test and the synthetic guards both call.
+- **An allowlist entry is debt, so make it expire.** `dialog_button_linter` fails on a *stale* entry as well as on an unlisted violator: once a dialog is fixed, its exemption has to be deleted or the suite stays red.
+- **Report the case you cannot judge; never skip it.** A rule that `continue`s past an enum value it does not recognise reports "no violations" on data it never looked at. `dialog_button_linter` reports the unknown window type instead, and reads the `EDialogUIScreenType` labels out of the schema so a new value fails once, loudly, at the point it is added.
+- **A rule with no live violator still needs to be seen failing.** R3 and R4 are green on the whole seed, so their only proof is the synthetic guards driving the production predicate, plus a recorded seed mutation. Write both; "it passes" is not evidence a rule works.
+- **Read the seed the way the loader does.** Dialog ids reach a `dialog_choice` trigger as a quoted `event_key` that the loader `parse()`s; the linter does the same, so a row the loader would reject is not silently linted as valid.
 
 ### 7. C++ legacy + Python script tests
 
@@ -136,7 +152,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - If the handler reads `local_addr()`, construct with `TestTransport::with_local(addr)` — the default is a synthetic `127.0.0.1:0` placeholder.
 - `drain()` consumes the records (a second `drain()` is empty); `clear()` resets without returning; `filter_to(addr)` / `send_count_to(addr)` scope to one recipient.
 
-**Examples**: `crates/services/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `crates/services/src/base/login/` (phase 1→4 ordered sequence), `crates/services/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
+**Examples**: `crates/base-world-entry/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `crates/base/src/base/login/` (phase 1→4 ordered sequence), `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
 
 ### 9. Mercury session tests (loopback harness)
 
@@ -170,14 +186,14 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 ### 10. Network chaos tests
 
-**Where**: `crates/mercury/src/test_harness/tests/chaos/` for protocol-state scenarios; `crates/services/tests/chaos_*.rs` for `LossyTransport` integration; the pcap-replay infrastructure lives at `crates/mercury/src/test_harness/pcap_replay.rs`. Behind the `test-harness` Cargo feature for the L1 scenarios; behind `test-support` for `LossyTransport`.
+**Where**: `crates/mercury/src/test_harness/tests/chaos/` for protocol-state scenarios; `crates/mercury/tests/it/chaos_*.rs` for `LossyTransport` integration; the pcap-replay infrastructure lives at `crates/mercury/src/test_harness/pcap_replay.rs`. Behind the `test-harness` Cargo feature for the L1 scenarios; behind `test-support` for `LossyTransport`.
 
 **For**: Reproducing a real protocol-state recovery shape — single-packet drop mid-stream, burst loss, asymmetric ack loss, sustained probabilistic loss, lossy-socket integration, or a pcap replay of a captured production session. Pins regressions in the Mercury retransmit / TX-window / RTO / inactivity-timeout paths. The lomiada-class regression (a single transatlantic UDP drop that kills the session 60s later because the TX window can't drain) is the canonical bug shape this catches.
 
 **The three layers** (see [docs/architecture/network-chaos-testing.md](docs/architecture/network-chaos-testing.md) for the full ADR):
 
 - **L1 — Channel-level scenarios** under `tests/chaos/`. Use `LoopbackSession` + `NetworkPolicy.drop_at_send_count` / `drop_probability` / `duplicate_next_count` / `reorder_buffer_size` to construct the failure shape. Assert recovery with `peer.recv_n_bundles` + `invariants::all_safety_invariants`.
-- **L2 — `LossyTransport`** wrapping `BidirectionalTransport`. Use `LossyConfig::from_profile(LossyProfile::Transatlantic)` for the canonical "real wire" profile. Integration tests in `crates/services/tests/chaos_*.rs` wrap a real UDP socket and exercise the services-layer recv loop under chaos.
+- **L2 — `LossyTransport`** wrapping `BidirectionalTransport`. Use `LossyConfig::from_profile(LossyProfile::Transatlantic)` for the canonical "real wire" profile, or compose loss/`with_jitter`/`with_reorder_buffer` directly for a bespoke scenario. Integration tests in `crates/mercury/tests/it/chaos_*.rs` wrap a real UDP socket and exercise the services-layer recv loop under chaos; `crates/wireclient/tests/it/two_client_castle_visibility_chaos.rs` wraps a real `BaseService` socket (via the `chaos-testing` feature's `BaseService::set_transport_override` seam) to exercise the full two-client AoI witness-fanout path under loss/jitter/latency and a deterministic targeted drop (`drop_next_sends_to(n, addr, min_len)`).
 - **L3 — Pcap replay** via `PcapReplay::load(...).with_key_from(...)`. Loads a real pcap (e.g. `debug/lomiada-broke-in-hallway02/`), decrypts via the saved session key, yields ordered events. Tests should skip silently if the fixture isn't present so dev environments without `debug/` still pass.
 
 **Patterns to follow:**
@@ -193,31 +209,34 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 **Examples**:
 
 - L1: `crates/mercury/src/test_harness/tests/chaos/lomiada_single_packet_gap.rs` (the canonical recovery shape), `sustained_5pct_loss_60s.rs` (seeded Monte Carlo), `asymmetric_ack_loss.rs` (lomiada-shape silent peer).
-- L2: `crates/services/tests/chaos_lossy_transport_integration.rs` (round-trip through `LossyTransport`, transatlantic-profile loss).
+- L2: `crates/mercury/tests/it/chaos_lossy_transport_integration.rs` (round-trip through `LossyTransport`, transatlantic-profile loss).
 - L3: `crates/mercury/src/test_harness/tests/chaos/replay_lomiada.rs` (real pcap fixture).
 
-### 11. Wire-level replay tests (`cimmeria-wireclient`) — **Phase 1 only; replay not yet built**
+### 11. Wire-level replay tests (`cimmeria-wireclient`) — **Phase 1 + a slice of 1.5/2/4; full replay not yet built**
 
-> **Status check before you rely on this section.** `cimmeria-wireclient` today is a
-> *byte-builder and trace-parser library*, not a replay engine. The crate contains no
-> `UdpSocket`, no `send_to`, and no `recv_from` — `Client::connect()` does not exist,
-> and `Client::from_handshake` is documented in-source as a test-only constructor
-> (`crates/wireclient/src/client.rs:64-67`). `Client::build_login_packet` stops at
-> "produce the bytes"; the doc-comment states the caller does the UDP send and that
-> "Phase 1.5 wires the socket loop" (`crates/wireclient/src/client.rs:56-59`).
-> `Trace::c2s()` / `Trace::s2c()` are plain iterator filters with no consumer.
-> Everything below marked **(planned)** describes the ADR's target state, not shipped
-> behavior. See the [wireclient ADR](docs/architecture/wireclient.md) phase table.
+> **Status check before you rely on this section.** `cimmeria-wireclient` was a
+> pure *byte-builder and trace-parser library* through Phase 1 (no `UdpSocket`, no
+> `Client::connect()`). NA37 (2026-09-25) added a real UDP socket loop
+> (`src/session.rs`'s `GameSession`, reusing `cimmeria_mercury::test_harness::LoopbackPeer`
+> as the client-side Channel driver) plus enough client→server builders and a
+> structural server→client bundle decoder (`src/bundle.rs`) to drive a real two-client
+> world-entry scenario end to end. There is still no semantic behavior-trace decoder
+> (Phase 3), no entity mirror, no Castle Cellblock script driver (Phase 4), and
+> `Trace::c2s()` / `Trace::s2c()` remain plain iterator filters with no replay
+> consumer. See the [wireclient ADR](docs/architecture/wireclient.md) phase table
+> before treating any given phase as shipped.
 
-**Where**: `crates/wireclient/` — 30 tests across 5 files: `src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `tests/auth_smoke.rs` (3), `tests/trace_load.rs` (1). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
+**Where**: `crates/wireclient/` — 32 unit/lib tests across 6 files (`src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `src/bundle.rs` (6)) plus 10 integration tests in one `tests/it/` binary: `tests/it/auth_smoke.rs` (3), `tests/it/trace_load.rs` (1), `tests/it/two_client_castle_visibility.rs` (2, live-DB only), `tests/it/two_client_castle_visibility_chaos.rs` (3, live-DB only), `tests/it/two_client_squad.rs` (1, live-DB only: a squad invite, accept and leave between two clients, using `GameSession::base_method` and `cell_method`). SS-U2 adds `src/sparbot.rs` (6) and `tests/it/sparbot_duel.rs` (3: a no-DB pin of the duel wire against `cimmeria-wire`, a live-DB duel accept, and a 70 s keep-alive run that is `#[ignore]`d for its length). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
 
 **What works today:**
 
-- **SOAP auth Phase 1+2** driven against an in-process `AuthService` — `tests/auth_smoke.rs` covers the happy-path round trip, the Phase 1 `sid` cookie, and the Phase 2 same-`sid` replay rejection.
+- **SOAP auth Phase 1+2** driven against an in-process `AuthService` — `tests/it/auth_smoke.rs` covers the happy-path round trip, the Phase 1 `sid` cookie, and the Phase 2 same-`sid` replay rejection.
 - **Handshake byte builders / parsers** — `src/handshake.rs` builds the unencrypted `baseAppLogin` datagram and parses `connect_reply` / `time_sync`, pinned byte-exactly by 10 unit tests.
 - **JSONL trace load + diff classification** — `src/session_trace.rs` parses the header + event stream and classifies message pairs via `ComparisonPolicy`.
+- **A real UDP session against a real spawned server** — `src/session.rs`'s `GameSession` drives auth → Mercury handshake → character select → world entry (`ENABLE_ENTITIES`/`playCharacter`/`mapLoaded`/`onClientReady`) over an actual `tokio::net::UdpSocket` against a real `Orchestrator` (auth+base+cell), no server-side test seams. `tests/it/two_client_castle_visibility.rs` (**live-DB**, self-skips without `DATABASE_URL`) uses two of these to prove shared-world player-to-player visibility end to end (NA37): `CREATE_ENTITY` + `BEING_APPEARANCE`, movement relay, and leave-on-disconnect, in both arrival orders, plus a negative control for the 100m AoI radius. **Not wired into CI** (the `ci-live-db` run covers the lib tests of the crates in `tools/test-live-db.sh` only) — run manually per the test file's header comment.
+- **Structural bundle decoding** — `src/bundle.rs`'s `decode_bundle` walks a reassembled server→client bundle and extracts msg_id/entity_id/class_id/method_index for each message (not full per-argument semantics — that's still Phase 3).
 
-**What it will catch once Phases 1.5–5 land (planned):**
+**What it will catch once Phases 2 (full)/3/4/5 land (planned):**
 
 - **Wire-path drift** — the server emits an `onCharacterList` body shape the Flash client wouldn't parse; existing wire-format tests pin one serializer at a time but don't catch when the *sequence* would desync the client.
 - **Client-invariant violations (planned — Phase 5)** — the ADR calls for wireclient to enforce equipped-weapon, ammo, range, LOS, and cooldown on its own outbound `useAbility` sends, so the server can't accept a fire no real client could have made. **None of that enforcement is written yet** — there is no stats mirror, entity mirror, or ability gate in the crate.
@@ -228,9 +247,9 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - **Know what `DefaultPolicy` actually compares.** Byte-exact for static msg_ids `0x00`–`0x7F` *and* `0xFF` (`BASEMSG_REPLY_MESSAGE`, deliberately excluded from the drift band). For entity-method msg_ids `0x80`–`0xFE` it compares **body length only** (`crates/wireclient/src/session_trace.rs:292-328`): equal length is reported as `Diff::Drift`, unequal as `Diff::Regression`. A trace diff therefore cannot validate gameplay *content* today. Swap in a custom `ComparisonPolicy` impl if you need more.
 - **The corpus is one 5-event head fixture.** The only trace checked into the repo is `crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl` (6 lines: 1 header + 5 events). The `castle-cellblock-full-run` corpus named in the ADR is **not in the repo** — it is a recording that has to be produced locally. Don't write a test that assumes it exists.
 - **Reuse the dissector.** `tools/pcap_to_session.py` rides on `tools/pcap_dissect.py` so the decoder stays a single source of truth.
-- **The auth + handshake smoke is byte-exact.** SOAP Phase 1+2 and Mercury phase-3 are deterministic and pinned in `crates/wireclient/tests/auth_smoke.rs` plus the handshake unit tests in `handshake.rs`.
+- **The auth + handshake smoke is byte-exact.** SOAP Phase 1+2 and Mercury phase-3 are deterministic and pinned in `crates/wireclient/tests/it/auth_smoke.rs` plus the handshake unit tests in `handshake.rs`.
 
-**Examples**: `crates/wireclient/tests/auth_smoke.rs` (SOAP round-trip against in-process `AuthService`); `crates/wireclient/tests/trace_load.rs` (loads the head fixture); `crates/wireclient/src/handshake.rs` (byte-exact `baseAppLogin` + reply parsers). Follow-up phases land the UDP socket loop and then the Castle Cellblock e2e smoke against a spawned server.
+**Examples**: `crates/wireclient/tests/it/auth_smoke.rs` (SOAP round-trip against in-process `AuthService`); `crates/wireclient/tests/it/trace_load.rs` (loads the head fixture); `crates/wireclient/src/handshake.rs` (byte-exact `baseAppLogin` + reply parsers); `crates/wireclient/tests/it/two_client_castle_visibility.rs` (real two-client shared-world visibility against a spawned `Orchestrator`, live-DB only). Follow-up phases still need: the semantic behavior-trace decoder, the Castle Cellblock script driver, and a `wireclient-e2e` nextest profile / CI wiring for the live-DB test that already exists.
 
 ### 12. Negative-log regression guards
 
@@ -248,12 +267,12 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 - **Install before the action.** `let capture = LogCapture::install();` MUST happen before the function under test runs, so the per-thread subscriber is in place when the log fires.
 - **Pin level AND field.** Use `find_event(Level::WARN, "<message_substr>", "<reason_value>")` to trip on both a level-only revert and a field-removing revert. For paths where the new log doesn't carry a `reason` field, `find_message(Level::WARN, "<substr>")` is the fallback.
-- **Force the failure path.** For `mpsc::Sender::send().await`, drop the receiver before invoking the function (`let (tx, rx) = mpsc::channel(8); drop(rx);`). For `transport.send_to`, supply an inline `FailingTransport` impl (see `crates/services/src/base/world_entry/cell_dispatch/tests.rs` and `enable_entities.rs::tests`). For `rows_affected == 0`, use a live-DB test that binds a non-existent id.
+- **Force the failure path.** For `mpsc::Sender::send().await`, drop the receiver before invoking the function (`let (tx, rx) = mpsc::channel(8); drop(rx);`). For `transport.send_to`, supply an inline `FailingTransport` impl (see `crates/base-world-entry/src/base/world_entry/cell_dispatch/tests.rs` and `enable_entities.rs::tests`). For `rows_affected == 0`, use a live-DB test that binds a non-existent id.
 - **Default `#[tokio::test]` (current_thread).** `LogCapture::install()` PANICS if called inside a `multi_thread` runtime — `set_default` is thread-local, and events on worker threads would be silently dropped. The panic message names the fix.
 - **Treat `reason` values as stable API.** `find_event` matches `reason` by exact string equality. Renaming a value (even a typo fix) trips every guard pinned to the old string — coordinate via the convention doc.
 - **One test per seam.** Don't multiplex unrelated negative paths in one test — when one assertion fails, you want to know which seam broke.
 
-**Examples**: `crates/services/src/base/helpers/` (3× witness-miss WARN + 3× client-disconnect DEBUG), `crates/services/src/base/world_entry/map_loaded.rs::tests::map_loaded_fragment_send_failure_errors_and_logs` (FailAfter transport + state-not-mutated invariant), `crates/services/src/base/world_entry_appearance/` (`on_client_ready_errors_each_cell_tx_send_independently_when_closed` — 3 ERROR sites in one test with closed receiver).
+**Examples**: `crates/base-session/src/base/helpers/` (3× witness-miss WARN + 3× client-disconnect DEBUG), `crates/base-world-entry/src/base/world_entry/map_loaded.rs::tests::map_loaded_fragment_send_failure_errors_and_logs` (FailAfter transport + state-not-mutated invariant), `crates/base-world-entry/src/base/world_entry_appearance/` (`on_client_ready_errors_each_cell_tx_send_independently_when_closed` — 3 ERROR sites in one test with closed receiver).
 
 ---
 
@@ -267,6 +286,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 | An invariant that spans two or more handlers | PL/pgSQL smoke + Rust harness |
 | A race condition or `join!`-of-futures correctness | Concurrency regression guard |
 | Content seed correctness (chains, triggers, action wiring) | Chain-replay test |
+| A seed invariant spanning two tables or a table and a chain file (dialog buttons vs `dialog_choice` keys, `interact_tag` vs `set_interaction_type`) | Seed linter under `crates/content-engine/tests/it/` |
 | A BaseApp handler's outbound fan-out (which addrs, in what order, with which bytes) | Fan-out byte test |
 | Mercury protocol-layer behavior (reliable delivery under loss, fragment reassembly, keepalive cadence, encryption round-trip, RTO convergence) | Mercury session test |
 | A protocol-state recovery shape (single-packet drop in a long stream, burst loss, asymmetric ack loss, sustained probabilistic loss, lossy-socket integration), or a pcap-replay regression against a captured production session | Network chaos test |
@@ -317,7 +337,7 @@ This section is mined from review comments since the test push began. Each item 
 
 ### Sentinel id discipline
 
-- **Reserve a positive `0x7000_xxxx` base per module** and partition the low byte (or low two bytes) for individual tests. Existing reservations include `0x7000_0100` (grant_cash), `0x7000_0200` (move_inventory), `0x7000_0300` (grant_item), `0x7000_0400` (missions), `0x7000_0600` (vendor repair), `0x7000_0800` (vendor sell), `0x7000_0B00` (inventory ammo), `0x7000_1000` (character-list), `0x7000_1200` (purchase_helpers), `0x7000_1300` (vendor recharge). Document the neighbours in a module-doc comment so the next contributor can step past them (`crates/services/src/base/character/mod.rs:288-296` is the canonical shape).
+- **Reserve a positive `0x7000_xxxx` base per module** and partition the low byte (or low two bytes) for individual tests. Existing reservations include `0x7000_0100` (grant_cash), `0x7000_0200` (move_inventory), `0x7000_0300` (grant_item), `0x7000_0400` (missions), `0x7000_0600` (vendor repair), `0x7000_0800` (vendor sell), `0x7000_0B00` (inventory ammo), `0x7000_1000` (character-list), `0x7000_1200` (purchase_helpers), `0x7000_1300` (vendor recharge). Document the neighbours in a module-doc comment so the next contributor can step past them (`crates/base-world-entry/src/base/character/mod.rs:288-296` is the canonical shape).
 - **Sentinels for `INTEGER` columns must fit in `i32` range.** `0x7000_xxxx` does. `0xDEAD_0000` as `u32` wraps to negative when bound `as i32` and lands in another module's territory — don't reach for high-bit constants (PRs #134, #150).
 - **Cleanup must delete by exact id**, not by range. `DELETE WHERE entity_id = $sentinel` (or `IN (...)` over the exact ids the test inserted) beats `DELETE WHERE entity_id BETWEEN base AND base+0xFF` — range deletes can reach into a sibling module's slot if partitioning ever drifts (PRs #154, #163).
 - **Don't share-row `DELETE` in cleanup.** For rows you `INSERT INTO resources.items` to set up the fixture, use `ON CONFLICT DO NOTHING` and let the row leak — otherwise test B's cleanup yanks a row out from under test A (PR #164).
@@ -345,12 +365,14 @@ This section is mined from review comments since the test push began. Each item 
 ### Test-DB hygiene
 
 - **Live-DB tests run against `sgw` loaded from `db/database.sql` in CI**, and against a developer-supplied `DATABASE_URL` locally. The bundled local Postgres binds to **port 5433** (not 5432) — see [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) for setup.
-- **Unset skips; unreachable fails.** `require_db_or_skip!` skips only when `DATABASE_URL` is unset or empty. When it is set but the connection fails, the test panics with "DATABASE_URL set but connect failed: …", because a skip reports as a pass and would hide a whole live-DB run that executed nothing (#615, see [crates/services/src/live_db_gate.rs](crates/services/src/live_db_gate.rs)).
+- **Unset skips; unreachable fails.** `require_db_or_skip!` skips only when `DATABASE_URL` is unset or empty. When it is set but the connection fails, the test panics with "DATABASE_URL set but connect failed: …", because a skip reports as a pass and would hide a whole live-DB run that executed nothing (#615, see [crates/test-support/src/live_db_gate.rs](crates/test-support/src/live_db_gate.rs)).
+- **A crate with live-DB tests must be in the live-DB crate list.** CI runs the live-DB tier through `tools/test-live-db.{sh,ps1}`, which lists the crates to run; a crate missing from it passes CI with every live-DB test skipped. `live_db_wrapper_lists_every_test_support_crate` fails when a crate with a `cimmeria-test-support` dev-dependency is not listed, and when the two scripts disagree.
 
 ### File and module hygiene
 
 - **When a test module pushes the host file past 700 lines**, extract concurrency helpers and multi-threaded tests into a sibling `concurrency_tests.rs` or `tests/` submodule. **Reuse the existing `make_state()` / `make_ctx()` helper** — don't clone setup (PRs #143, #150).
 - **De-duplicate setup** across routing tests. PR #140 review required a `make_ctx()` helper so each test focuses on its routing assertion.
+- **A crate's integration tests build as one binary.** Cargo makes every `.rs` file directly under `tests/` its own crate, and each one links the whole dependency graph again. So a crate with more than one integration test file keeps them as modules of `tests/it/main.rs` (today: `content-engine`, `navmesh-extractor` and `wireclient`). Add a new integration test as a module there and declare it in `main.rs`; a shared helper is one more module, declared once, with no `#![allow(dead_code)]`. Run one module with `cargo test -p <crate> --test it <module>`. `cargo test` runs every module's tests on threads of one process, so a scratch directory needs a per-test name (a tag or the thread id), not just `std::process::id()`, and process-global state (`set_var`, `set_current_dir`, a global subscriber a test asserts on) is shared with every other module. A test that really needs its own process stays a separate binary, with a comment saying why.
 
 ### Comment hygiene
 
@@ -367,36 +389,37 @@ This section is mined from review comments since the test push began. Each item 
 
 ## Running the test suite
 
-### Locally (no DB — covers ~2,520 tests)
+### Locally (no DB)
 
 ```bash
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches \
+  --exclude cimmeria-lab
 # nextest can't run doctests; cimmeria-commands is the only crate
 # with runnable ones today.
 cargo test --doc -p cimmeria-commands
 ```
 
-The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects 2,691 of the workspace's 2,936 tests, of which the 224 live-DB guards self-skip without `DATABASE_URL`.
+The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects the CI-gated tests in the [workspace totals](docs/testing/inventory/README.md#workspace-totals), and the live-DB guards among them self-skip without `DATABASE_URL`.
 
 `cargo test --workspace ...` still works for quick sanity checks if you don't have nextest installed, but CI uses nextest and that's what the JUnit upload to Codecov Test Analytics expects.
 
-### Locally (live DB — adds the 247 `require_db_or_skip!` guards + 3 smokes)
+### Locally (live DB — adds the `require_db_or_skip!` guards + 3 smokes)
 
 Start the bundled Postgres on port 5433 (via `setup.ps1`'s bootstrap), then:
 
 ```bash
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+  tools/test-live-db.sh          # tools/test-live-db.ps1 in PowerShell
 ```
 
-The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready. With `DATABASE_URL` set to a database that can't be reached, the guards fail rather than skip, so a wrong port shows up as red instead of a false green.
+The script runs `cargo nextest run --profile=ci-live-db --lib` once over every crate in its list, and passes extra arguments (a test-name filter, `--no-fail-fast`) through to nextest. It refuses to run without `DATABASE_URL`, because every live-DB test would skip and pass. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready. With `DATABASE_URL` set to a database that can't be reached, the guards fail rather than skip, so a wrong port shows up as red instead of a false green.
 
 ### CI (every PR)
 
-`.github/workflows/test.yml` defines six jobs. Five gate merge: `fmt`, `clippy`, `build`, `test` (workspace, no DB, nextest), `test-live-db` (postgres:17.9 service container, nextest). The sixth, `coverage` (`cargo llvm-cov` over a no-DB workspace pass plus a services live-DB pass), is `continue-on-error: true` — its artifact and summary are advisory, so a coverage-tool flake never blocks a merge. Nextest's JUnit XML output from the `test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
+`.github/workflows/test.yml` defines six jobs. Five gate merge: `fmt`, `clippy`, `build`, `test` (workspace, no DB, nextest), `test-live-db` (postgres:17.9 service container, nextest). The sixth, `coverage` (`cargo llvm-cov` over a no-DB workspace pass plus a live-DB pass through `tools/test-live-db.sh --llvm-cov`), is `continue-on-error: true` — its artifact and summary are advisory, so a coverage-tool flake never blocks a merge. Nextest's JUnit XML output from the `test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
 
 ---
 
@@ -414,7 +437,7 @@ Before opening a PR that adds tests:
 - [ ] No PR/issue numbers in source comments.
 - [ ] Setup helper reused, not cloned.
 - [ ] Reverting the fix makes the test fail (regression-guard test).
-- [ ] Test runs locally serialised against a live DB if applicable (`cargo nextest run --profile=ci-live-db ...`, or `cargo test ... -- --test-threads=1`).
+- [ ] Test runs locally serialised against a live DB if applicable (`tools/test-live-db.sh`, or `cargo test ... -- --test-threads=1`).
 
 ---
 
@@ -422,7 +445,10 @@ Before opening a PR that adds tests:
 
 - [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) — the "no testcontainers, no `sqlx::test`" decision and local setup.
 - [.github/workflows/test.yml](.github/workflows/test.yml) — the canonical CI definition.
-- [crates/services/src/test_support.rs](crates/services/src/test_support.rs) — `require_db_or_skip!` and `test_pool`.
-- [crates/services/src/base/smoke_tests.rs](crates/services/src/base/smoke_tests.rs) — the three end-to-end smokes and their rationale.
+- [crates/test-support/](crates/test-support/) — `cimmeria-test-support`: `require_db_or_skip!`, `test_pool`, `LogCapture`, the `TestTransport` re-export and `source_scan`. Each crate re-exports it from its `crate::test_support` shim next to its own domain fixtures (for example [crates/cell/src/lib.rs](crates/cell/src/lib.rs)).
+- [crates/cell-world/src/test_fixtures/](crates/cell-world/src/test_fixtures/) — the world fixtures every cell crate's tests share: `make_space_manager*`, `seed_ability_defs`, the box-built `occluder_fixtures`, the Castle Cellblock arrival mesh (`test_fixture_mesh`, `test_insert_navmesh_space`), and the `ContentEvents` fakes (`NoContentEvents`, `RecordingContentEvents`) for combat tests that must not pull in the content engine. A crate above `cimmeria-cell-world` gets them, and the cross-crate test hooks (`force_ai_state`, `StepRegionReplayGuard::is_idle`, the detector and throttle `tracked*` counters), by dev-depending on it with `features = ["test-support"]` and re-exporting `test_fixtures::*` from its `test_support` shim.
+- [crates/cell-combat/src/test_fixtures/](crates/cell-combat/src/test_fixtures/) — the combat fixtures shared by a test suite split across crates: `npc_detectors` (the NA02 detector tests) and `npc_surrender` (the H08 surrender guards). Most of each suite is in `cimmeria-cell-combat`; the files that drive a tick of the service loop (`ticks::npc_movement_tick`, `ticks::auto_cycle_tick`) are in `cimmeria-cell` with the loop and import the same fixtures through the combat crate's `test-support` feature, which also exposes its cross-crate test hooks (`npc_ai_tick_for_test`, `resolve_death_for_test`, ...). `source_scan` treats every `test_fixtures` directory as test code. Combat code raises content events through `&dyn ContentEvents`: a combat test passes `NoContentEvents`, or `RecordingContentEvents` to pin which events fire in what order; a test that needs a chain to fire passes `EngineEvents(&engine)` and lives with the content engine.
+- [tools/test-live-db.sh](tools/test-live-db.sh) / [.ps1](tools/test-live-db.ps1) — the live-DB tier: the crate list and the one nextest invocation CI runs.
+- [crates/base/src/base/smoke_tests.rs](crates/base/src/base/smoke_tests.rs) — the three end-to-end smokes and their rationale.
 - [tools/vendor_store_smoke.sql](tools/vendor_store_smoke.sql), [tools/inventory_move_smoke.sql](tools/inventory_move_smoke.sql), [tools/progression_smoke.sql](tools/progression_smoke.sql) — the smoke scripts themselves.
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — review checklist; the testing checklist in this file feeds into it.

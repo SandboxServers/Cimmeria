@@ -1,0 +1,45 @@
+//! Archetype ability trees: the catalog and the single trainability
+//! predicate.
+//!
+//! Both the cell (trainer window, `trainAbility` purchase gate) and the
+//! base (player-load `onAbilityTreeInfo`) read `resources.archetype_ability_tree`.
+//! This module owns the one loader for that table ([`AbilityTreeCatalog`])
+//! and the one function that decides whether a player may train a node
+//! ([`evaluate_train`]).
+//!
+//! **One catalog per process.** Both sides take it from [`shared_catalog`],
+//! and the base builds `onAbilityTreeInfo` from it with [`tree_info`], so the
+//! tree the client is shown and the tree the trainer gates on cannot differ
+//! in content or order.
+//!
+//! **One predicate, two callers.** The trainer's `trainable` byte and the
+//! purchase decision must agree, or the client enables a button whose
+//! click does nothing (the client greys a node purely from that byte).
+//! So `cell/interactions/trainer.rs` computes the byte as
+//! `evaluate_train(..).is_ok()` and `cell/cell_methods/player/vendor/train.rs`
+//! forwards a purchase only on `Ok`. Neither file carries a gate of its own.
+//!
+//! **Adding a gate.** Gates live in `gates/`, one file per family. See
+//! `gates/mod.rs` for the recipe: a new file, its `mod` line, its
+//! entries in `NODE_GATES`, and one [`TrainReject`] variant per reason.
+
+mod catalog;
+mod gates;
+use cimmeria_wire::ability_tree::points_property;
+mod predicate;
+mod shared;
+mod tree_info;
+
+pub use catalog::{AbilityTreeCatalog, TreeNode};
+pub use cimmeria_wire::ability_tree::respec::{
+    respec_error_code_args, RespecOutcome, RESPEC_COST_NAQUADAH, RESPEC_FEEDBACK_NOTHING_TRAINED,
+    RESPEC_FEEDBACK_NOT_AT_TRAINER, RESPEC_FEEDBACK_NOT_ENOUGH_NAQUADAH,
+};
+pub use gates::trainer::TrainerPin;
+pub use points_property::{training_points_property_args, GENERICPROPERTY_TRAINING_POINTS};
+pub use predicate::{evaluate_train, KnownAbilities, TrainContext, TrainPlan, TrainReject};
+pub use shared::shared_catalog;
+pub use tree_info::tree_info;
+
+#[cfg(test)]
+mod tests;
