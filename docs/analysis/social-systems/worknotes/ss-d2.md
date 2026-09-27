@@ -8,7 +8,7 @@
 - **Packet:** SS-D2, the PvP flag and the harm gate.
 - **Decisions in force:** D-SS18 (5 s countdown), D-SS20 (non-lethal end: SS-D3's, not implemented here), D-SS22 (no rewards), D-SS23 (the flag is presentation only; the gate reads the registry), D-SS24 (registry, no `SGWDuelMarker`), D-SS25 (superseded by SS-E1 D-Q5: 151 at the engage and 153 at every end are safe).
 - **Contract change from the coordinator:** the ledger's `combat::player_may_harm` is replaced by widening the pets campaign's `combat::player_may_attack` (PR #896). Done; no parallel predicate exists.
-- **Base:** `origin/main` @ `e0d5cecf7`. Branch `social/d2-pvp-harm-gate`, worktree `.claude/worktrees/ss-d2`. `origin/main` has since moved one commit (`ebad5047a`, crafting CR-08), not rebased onto.
+- **Base:** written on `origin/main` @ `e0d5cecf7`, rebased onto `851d8796b` (crafting CR-08 and CR-09, the social ledger update #907). Branch `social/d2-pvp-harm-gate`, worktree `.claude/worktrees/ss-d2`.
 - **Owned paths (new):**
   - `crates/cell-world/src/cell/duel/{engage.rs, end.rs, combat.rs}`, `crates/cell-world/src/cell/duel/tests/{engage.rs, interactable.rs}`
   - `crates/cell-combat/src/cell/abilities/use_ability/tests/duel_gate.rs`
@@ -120,7 +120,7 @@ Each mutation applied to the working tree, the named tests run, the file restore
 - `docs/reverse-engineering/findings/ability-resolution-pipeline.md`, `docs/reverse-engineering/address-map.md`, `docs/reverse-engineering/findings/npc-movement-pathfinding.md`: type 14 / `0x00dec9e0` relabelled as the duel countdown.
 - `docs/gameplay/duel-system.md`: status, "The engaged duel (SS-D2)", feature rows, RE priority 2.
 - `docs/architecture/abilities-and-effects-system.md`: decision 24, the single hostility rule.
-- `docs/gap-analysis.md` § 27 (Duel start KM → IM; Dueling 6 = 3 IM + 3 KM; totals IM 101, KM 132; the summary percentages recomputed), `docs/project-status.md` Dueling row, `docs/game-systems.md` § Dueling, `docs/protocol/message-catalog.md` (Dueling NetIn 3 of 4).
+- `docs/gap-analysis.md` § 27 (Duel start KM → IM; Dueling 6 = 3 IM + 3 KM; totals, after the rebase onto CR-08/CR-09, IM 104, KM 129; the summary percentages recomputed and checked against the 45 rows), `docs/project-status.md` Dueling row, `docs/game-systems.md` § Dueling, `docs/protocol/message-catalog.md` (Dueling NetIn 3 of 4).
 - The dispatch tables have no status column and their 7, 12, 143, 151-153 rows were already right; unchanged. `duel-restoration.md:50` (audit A-47) was already corrected by SS-E1.
 
 ## Known gaps
@@ -152,7 +152,7 @@ Each mutation applied to the working tree, the named tests run, the file restore
 - Before merging, tell the pets coordinator (cimmeria-b5) about the `warmup/tick.rs`, `pet/mod.rs` and `pet_def_tests.rs` edits above (PR #901 touches `warmup/tick.rs`; the conflict is one condition).
 - `docs/gap-analysis.md` and `docs/project-status.md` totals: other campaigns move the same totals line; recompute from the rows on merge.
 - Ledger: SS-D2 → Review; D-SS23's provisional wording can be settled (the vehicle is `onEntityProperty(4, v)`); SS-E1 D-Q4 and the D-Q1 driver are closed by this packet; SS-D3 should call `duel::end_engaged` and add its reasons to `EndReason`.
-- Branch is on `e0d5cecf7`; `origin/main` has one newer commit (`ebad5047a`) that touches none of these files.
+- The branch is rebased onto `851d8796b`. The only conflict was the gap-analysis totals (crafting moved three rows); resolved by recomputing from the rows.
 
 ## Open questions
 
