@@ -13,8 +13,8 @@
 //! - [`broadcast_minimap_ping`]: cell method 10 for a squad id (ORG-04),
 //!   validated and logged, never fanned out.
 //! - [`on_disconnect`]: the `DisconnectEntity` arm.
-//! - [`gm_invite`], [`gm_join`], [`gm_info`]: the GM console's
-//!   `.squad_invite`, `.squad_join` and `.squad_info` (ORG-04).
+//! - [`gm_invite`], [`gm_join`]: the squad half of the GM console's
+//!   `.squad_invite` and `.squad_join` (ORG-04); the console logs them.
 //! - [`on_world_entry`]: `InitPlayerState`, which re-sends the squad after a
 //!   gate trip re-created the player.
 //!
@@ -45,7 +45,7 @@ mod ping;
 mod telemetry;
 mod world_entry;
 
-pub use gm::{gm_info, gm_invite, gm_join};
+pub use gm::{gm_invite, gm_join, GmOutcome};
 pub use invite::{handle_invite, respond};
 pub use loot::set_loot_mode;
 pub use membership::{handle_kick, leave, on_disconnect};

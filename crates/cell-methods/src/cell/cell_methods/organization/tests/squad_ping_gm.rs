@@ -11,6 +11,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 
 use super::*;
 use crate::test_support::{Captured, LogCapture};
+use squad::GmOutcome;
 
 const SID: i32 = SQUAD_ORG_ID_MIN;
 
@@ -29,17 +30,6 @@ fn ping_row(capture: &LogCaptureGuard) -> Captured {
         .all()
         .into_iter()
         .filter(|c| c.target == "squad" && c.has_field("event", "squad.ping"))
-        .collect();
-    assert_eq!(rows.len(), 1, "{rows:#?}");
-    rows.into_iter().next().unwrap()
-}
-
-/// The single `org.gm_action` row.
-fn gm_row(capture: &LogCaptureGuard) -> Captured {
-    let rows: Vec<_> = capture
-        .all()
-        .into_iter()
-        .filter(|c| c.target == "org" && c.has_field("event", "org.gm_action"))
         .collect();
     assert_eq!(rows.len(), 1, "{rows:#?}");
     rows.into_iter().next().unwrap()
@@ -177,17 +167,25 @@ async fn ping_with_a_base_org_id_is_not_a_squad_ping() {
         .all(|c| !c.has_field("event", "squad.ping")));
 }
 
-/// `.squad_join` on a squadless player founds a squad they lead, with the
-/// GM as a member; both get the whole squad, the GM a confirmation line.
+/// The GM's outcome for a success in `squad_id`.
+fn ok_in(squad_id: i32) -> GmOutcome {
+    GmOutcome {
+        squad_id: Some(squad_id),
+        reason: None,
+    }
+}
+
+/// `gm_join` on a squadless host founds a squad they lead, with the GM as
+/// a member; both get the whole squad, the GM a confirmation line.
 #[tokio::test]
-async fn gm_join_founds_a_squad_with_the_target_leading() {
-    let capture = LogCapture::install();
+async fn gm_join_founds_a_squad_with_the_host_leading() {
     let mut mgr = world(&["Gm", "Sentinel"]);
     let (tx, mut rx) = channel();
 
-    squad::gm_join(11, "Sentinel", &tx, &mut mgr).await;
+    let out = squad::gm_join(11, 12, &tx, &mut mgr).await;
 
     let squad = mgr.squads.squad_for(1).expect("GM is in a squad").clone();
+    assert_eq!(out, ok_in(squad.id()));
     assert_eq!(squad.leader_player_id(), 2);
     assert_eq!(mgr.get_entity(11).unwrap().squad_id, Some(squad.id()));
     assert_eq!(mgr.get_entity(12).unwrap().squad_id, Some(squad.id()));
@@ -210,30 +208,17 @@ async fn gm_join_founds_a_squad_with_the_target_leading() {
     );
     assert_eq!(to(&sent, 11)[4].1, line("You joined Sentinel's squad."));
     assert_eq!(to(&sent, 12)[0].0, ON_ORGANIZATION_JOINED);
-
-    assert_fields(
-        &gm_row(&capture),
-        &[
-            ("action", "gm_squad_join"),
-            ("outcome", "ok"),
-            ("player_id", "1"),
-            ("account_id", &account_of(1).to_string()),
-            ("target_player_id", "2"),
-            ("target_account_id", &account_of(2).to_string()),
-            ("squad_id", &squad.id().to_string()),
-        ],
-    );
 }
 
-/// `.squad_join` on a plain member (not the leader) still brings the GM
-/// in: no handshake, no leader check. The existing members get one [37].
+/// A plain member (not the leader) still brings the GM in: no handshake,
+/// no leader check. The existing members get one [37].
 #[tokio::test]
 async fn gm_join_enters_an_existing_squad_through_any_member() {
     let mut mgr = world(&["Alice", "Bob", "Gm"]);
     let sid = seed_squad(&mut mgr, 11, &[12]);
     let (tx, mut rx) = channel();
 
-    squad::gm_join(13, "Bob", &tx, &mut mgr).await;
+    assert_eq!(squad::gm_join(13, 12, &tx, &mut mgr).await, ok_in(sid));
 
     assert_eq!(mgr.squads.squad_of(3), Some(sid));
     let sent = drain(&mut rx);
@@ -247,54 +232,55 @@ async fn gm_join_enters_an_existing_squad_through_any_member() {
 /// refused, and nothing changes.
 #[tokio::test]
 async fn gm_join_refuses_a_gm_already_in_a_squad() {
-    let capture = LogCapture::install();
     let mut mgr = world(&["Alice", "Bob", "Gm", "Dan"]);
     let sid = seed_squad(&mut mgr, 11, &[12]);
     let own = seed_squad(&mut mgr, 13, &[14]);
     let (tx, mut rx) = channel();
 
-    squad::gm_join(13, "Alice", &tx, &mut mgr).await;
+    let out = squad::gm_join(13, 11, &tx, &mut mgr).await;
 
+    assert_eq!(
+        out,
+        GmOutcome {
+            squad_id: Some(sid),
+            reason: Some("already_in_squad")
+        }
+    );
     assert_eq!(mgr.squads.squad_of(3), Some(own));
     assert_eq!(mgr.squads.squad(sid).unwrap().members().len(), 2);
     assert_eq!(
         to(&drain(&mut rx), 13),
         rejection(sid, "You are already in a squad. Leave it first.")
     );
-    assert_fields(
-        &gm_row(&capture),
-        &[("outcome", "rejected"), ("reason", "already_in_squad")],
-    );
 }
 
-/// An unknown name is refused before anything else.
+/// A host that is not an initialised player is refused.
 #[tokio::test]
-async fn gm_join_refuses_an_unknown_name() {
-    let capture = LogCapture::install();
-    let mut mgr = world(&["Gm"]);
-    let (tx, mut rx) = channel();
-    squad::gm_join(11, "Nobody", &tx, &mut mgr).await;
-    assert_eq!(
-        to(&drain(&mut rx), 11),
-        rejection(0, "No player named Nobody is online.")
-    );
+async fn gm_join_refuses_a_host_that_is_not_a_player() {
+    let mut mgr = world(&["Gm", "Bob"]);
+    mgr.get_entity_mut(12).unwrap().character_name = None;
+    let (tx, _rx) = channel();
+    let out = squad::gm_join(11, 12, &tx, &mut mgr).await;
+    assert_eq!(out.reason, Some("not_a_player"));
     assert_eq!(mgr.squads.squad_count(), 0);
-    assert_fields(
-        &gm_row(&capture),
-        &[("outcome", "rejected"), ("reason", "target_not_found")],
-    );
 }
 
-/// `.squad_invite` sends the target the ordinary invite window, and the
-/// GM row names the target.
+/// `gm_invite` is the `/squadinvite` path: the target gets the ordinary
+/// invite window and the GM the confirmation line.
 #[tokio::test]
 async fn gm_invite_issues_a_real_invite() {
-    let capture = LogCapture::install();
     let mut mgr = world(&["Gm", "Bob"]);
     let (tx, mut rx) = channel();
 
-    squad::gm_invite(11, "Bob", &tx, &mut mgr).await;
+    let out = squad::gm_invite(1, 11, "Bob", &tx, &mut mgr).await;
 
+    assert_eq!(
+        out,
+        GmOutcome {
+            squad_id: None,
+            reason: None
+        }
+    );
     assert_eq!(mgr.squads.pending_for(2, Instant::now()), 1);
     let sent = drain(&mut rx);
     assert_eq!(to(&sent, 12)[0].0, ON_ORGANIZATION_INVITE);
@@ -302,65 +288,23 @@ async fn gm_invite_issues_a_real_invite() {
         to(&sent, 11),
         vec![(28, line("You invited Bob to your squad."))]
     );
-    assert_fields(
-        &gm_row(&capture),
-        &[
-            ("action", "gm_squad_invite"),
-            ("outcome", "ok"),
-            ("target_player_id", "2"),
-        ],
-    );
 }
 
-/// A refused invite carries the invite handler's reason onto the GM row.
+/// A refused invite returns the invite handler's reason.
 #[tokio::test]
-async fn gm_invite_reports_the_invite_refusal() {
+async fn gm_invite_returns_the_invite_refusal() {
     let capture = LogCapture::install();
     let mut mgr = world(&["Gm", "Bob", "Cara"]);
     seed_squad(&mut mgr, 12, &[13]);
     let (tx, _rx) = channel();
 
-    squad::gm_invite(11, "Bob", &tx, &mut mgr).await;
+    let out = squad::gm_invite(1, 11, "Bob", &tx, &mut mgr).await;
 
-    assert_fields(
-        &gm_row(&capture),
-        &[("outcome", "rejected"), ("reason", "already_in_squad")],
-    );
-}
-
-/// `.squad_info` lists the squad: a header, then each member in join order
-/// with rank and whereabouts.
-#[tokio::test]
-async fn gm_info_lists_the_squad() {
-    let capture = LogCapture::install();
-    let mut mgr = world(&["Alice", "Bob", "Gm"]);
-    let sid = seed_squad(&mut mgr, 11, &[12]);
-    let (tx, mut rx) = channel();
-
-    squad::gm_info(13, Some("Bob"), &tx, &mut mgr).await;
-
-    let want = vec![
-        (
-            28,
-            line(&format!("Squad {sid}: 2 members, loot round robin.")),
-        ),
-        (28, line("  Alice (leader, level 12, player 1): entity 11")),
-        (28, line("  Bob (member, level 12, player 2): entity 12")),
-    ];
-    assert_eq!(to(&drain(&mut rx), 13), want);
-    assert_fields(
-        &gm_row(&capture),
-        &[
-            ("action", "gm_squad_info"),
-            ("outcome", "ok"),
-            ("target_player_id", "2"),
-            ("squad_id", &sid.to_string()),
-        ],
-    );
-
-    squad::gm_info(13, None, &tx, &mut mgr).await;
-    assert_eq!(
-        to(&drain(&mut rx), 13),
-        vec![(28, line("Gm is not in a squad."))]
-    );
+    assert_eq!(out.reason, Some("already_in_squad"));
+    assert!(squad_event(
+        &capture,
+        Level::INFO,
+        "squad.invite",
+        "already_in_squad"
+    ));
 }
