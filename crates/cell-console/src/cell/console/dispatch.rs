@@ -405,6 +405,9 @@ pub async fn exec(
         "org_disband" => org::disband(caller_id, args, tx, space_mgr).await,
         "org_join" => org::join(caller_id, args, tx, space_mgr).await,
         "org_rank" => org::rank(caller_id, args, tx, space_mgr).await,
+        "org_info" => org::info(caller_id, args, tx, space_mgr).await,
+        "org_list" => org::list(caller_id, tx, space_mgr).await,
+        "org_set_perms" => org::set_perms(caller_id, args, tx, space_mgr).await,
         // Organizations (ORG-05)
         "org_create" => org_create::org_create(caller_id, args, tx, space_mgr).await,
         // G. server / maintenance

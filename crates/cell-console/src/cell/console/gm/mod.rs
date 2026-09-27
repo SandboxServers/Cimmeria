@@ -26,6 +26,7 @@
 //! - [`world`] — kill / despawn / respawn / set-target.
 //! - [`spawn`] — spawn-by-cmd (cell↔base template round-trip).
 //! - [`query`] — inspection/show + users + test-LOS (report via [`feedback`]).
+//! - [`organizations`] — `gmReloadOrganizations` (forwarded to the base).
 //! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
 //! - [`physics`] — `onPhysics` movement-validator bypass (backs
 //!   `/gmsetfly`, `/gmsetghost`).
@@ -40,6 +41,7 @@ pub mod feedback;
 mod give;
 mod give_training_points;
 mod missions;
+mod organizations;
 mod physics;
 mod query;
 pub(crate) mod shout;
@@ -159,7 +161,12 @@ pub const GM_SHOW_MOB_COUNT: u16 = 128;
 /// FanMMORPG `.info`.
 pub const GM_SHOW_PLAYER: u16 = 131;
 
-// -- Admin / social (166) -----------------------------------------------------
+// -- Admin / social (164, 166) ------------------------------------------------
+/// `gmReloadOrganizations()` — def line 355. Offset 55. Re-sends the caller's
+/// own Team and Command state (the world-entry push); the stock
+/// `/ReloadOrganizations` console binding. Routes through
+/// `OrgCellToBase::GmReload` (ORG-10).
+pub const GM_RELOAD_ORGANIZATIONS: u16 = 164;
 /// `gmUsers()` — def line 363. Offset 57. Lists players in the caller's space
 /// (the stock `/Users` / `/Who` console binding).
 pub const GM_USERS: u16 = 166;
@@ -269,6 +276,10 @@ pub async fn dispatch(
         GM_SPAWN_BY_CMD => spawn::handle_spawn_by_cmd(entity_id, args, tx, space_mgr).await,
         // -- query (report text via the feedback channel) --
         GM_USERS => query::handle_users(entity_id, tx, space_mgr).await,
+        // -- organizations --
+        GM_RELOAD_ORGANIZATIONS => {
+            organizations::handle_reload_organizations(entity_id, tx, space_mgr).await
+        }
         TEST_LOS => query::handle_test_los(entity_id, args, tx, space_mgr).await,
         GM_SHOW_TARGET_LOCATION => {
             query::handle_show_target_location(entity_id, tx, space_mgr).await

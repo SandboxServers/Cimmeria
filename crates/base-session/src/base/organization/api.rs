@@ -125,7 +125,8 @@ pub struct OrgAccess {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemActor<'a> {
     /// A GM command (`.org_join`, `.org_disband`, ...): logged as
-    /// `org.gm_action` with the GM's identity.
+    /// `org.gm_access` with the GM's identity. The command's own result is
+    /// its `org.gm_action` row, written by the handler.
     Gm {
         account_id: Option<i32>,
         player_id: Option<i32>,
@@ -172,7 +173,7 @@ impl OrgAccess {
     /// Lock the organization and act on it with no member's authority: a
     /// GM command or a server path. Holds `Leader` rank and every
     /// permission bit, so the caller must have authorized the GM itself
-    /// (D-ORG13). Logs one INFO `org.gm_action` (a GM) or `system_action`
+    /// (D-ORG13). Logs one INFO `org.gm_access` (a GM) or `system_action`
     /// (the server) with the organization and the actor.
     ///
     /// `Ok(None)` when there is no such organization (WARN `system_access`,
@@ -199,7 +200,7 @@ impl OrgAccess {
                 command,
             } => tracing::info!(
                 target: "org",
-                event = "org.gm_action",
+                event = "org.gm_access",
                 org_id,
                 org_type = header.org_type.name(),
                 account_id,

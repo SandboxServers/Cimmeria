@@ -345,3 +345,63 @@ async fn forwarded_invite_response_from_a_stale_actor_is_dropped() {
         .iter()
         .any(|c| c.has_field("event", "org.invite_response")));
 }
+
+/// ORG-10: `GmInfo`, `GmList`, `GmSetPerms` and `GmReload` each reach their
+/// base handler, which refuses a caller with no GM session (D-ORG13) in its
+/// one `org.gm_action` row, naming the command's `action`.
+#[tokio::test]
+async fn org10_gm_variants_reach_their_handlers() {
+    let msgs = [
+        (
+            OrgCellToBase::GmInfo {
+                player_id: 11,
+                entity_id: 21,
+                target_name: Some("Bo".into()),
+            },
+            "gm_org_info",
+        ),
+        (
+            OrgCellToBase::GmList {
+                player_id: 11,
+                entity_id: 21,
+            },
+            "gm_org_list",
+        ),
+        (
+            OrgCellToBase::GmSetPerms {
+                player_id: 11,
+                entity_id: 21,
+                org_id: 5,
+                rank: 2,
+                mask: 1024,
+            },
+            "gm_org_set_perms",
+        ),
+        (
+            OrgCellToBase::GmReload {
+                player_id: 11,
+                entity_id: 21,
+            },
+            "gm_reload_organizations",
+        ),
+    ];
+    for (msg, action) in msgs {
+        let capture = LogCapture::install();
+        let transport = route(msg).await;
+        assert!(transport.is_empty(), "{action}");
+        let rows: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| c.has_field("event", "org.gm_action"))
+            .collect();
+        assert_eq!(rows.len(), 1, "{action}: {rows:#?}");
+        assert_eq!(rows[0].level, tracing::Level::INFO);
+        assert!(rows[0].has_field("action", action), "{:?}", rows[0].fields);
+        assert!(
+            rows[0].has_field("reason", "not_gm"),
+            "{:?}",
+            rows[0].fields
+        );
+        assert!(rows[0].has_field("player_id", "11"), "{:?}", rows[0].fields);
+    }
+}

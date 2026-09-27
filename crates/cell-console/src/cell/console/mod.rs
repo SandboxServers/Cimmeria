@@ -66,7 +66,8 @@
 //! - [`squad`] — squad tools (`squad_invite`, `squad_join`, `squad_info`),
 //!   routed to the squad handlers in `cimmeria-cell-methods`.
 //! - [`org`] — Team and Command tools (`org_disband`, `org_join`,
-//!   `org_rank`), forwarded to the base.
+//!   `org_rank`, `org_info`, `org_list`, `org_set_perms`), forwarded to the
+//!   base.
 //! - [`org_create`] — `org_create`, founding a Team or Command on the base
 //!   without the registrar (ORG-05).
 //!

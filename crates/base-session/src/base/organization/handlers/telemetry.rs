@@ -80,6 +80,13 @@ pub enum OrgReject {
     /// `.org_rank` without an org id, for a character in a Team and a
     /// Command.
     OrgAmbiguous,
+    // ORG-10: the GM suite.
+    /// `.org_set_perms` on the `Leader` row, which always holds every bit
+    /// (D-ORG08).
+    LeaderRowPinned,
+    /// `.org_set_perms` whose mask, after the D-ORG09 (6) clamp, changes
+    /// nothing.
+    PermissionsUnchanged,
 }
 
 impl OrgReject {
@@ -117,6 +124,8 @@ impl OrgReject {
             OrgReject::InviterMissingPermission => "inviter_missing_permission",
             OrgReject::OrgTypeInvalid => "org_type_invalid",
             OrgReject::OrgAmbiguous => "org_ambiguous",
+            OrgReject::LeaderRowPinned => "leader_row_pinned",
+            OrgReject::PermissionsUnchanged => "permissions_unchanged",
         }
     }
 }
@@ -208,15 +217,52 @@ pub(super) struct ActionRow {
     pub target_rank: Option<u8>,
     /// The rank a rank change or a join assigns.
     pub to_rank: Option<u8>,
+    /// The rank a permission edit names (`.org_set_perms`).
+    pub rank: Option<u8>,
+    /// How many rows a GM listing or re-push covered (`.org_info`,
+    /// `.org_list`, `gmReloadOrganizations`).
+    pub count: Option<usize>,
+    /// A GM command whose own `event` is not `org.gm_action` (`.org_join`,
+    /// `.org_rank`): the row is written twice, once under its event and
+    /// once as the `org.gm_action` audit row (D-ORG13), so every GM
+    /// organization command, refused or not, has exactly one
+    /// `org.gm_action` row with the GM, the target and the result. Only the
+    /// first counts on `org_actions_total`.
+    pub gm_audit: bool,
 }
 
 impl ActionRow {
     /// The `ok` row. `after` names what the action did.
     pub(super) fn ok(&self, after: &'static str) {
+        self.emit(self.event, "ok", None, Some(after));
+        if self.gm_audit {
+            self.emit(GM_ACTION_EVENT, "ok", None, Some(after));
+        }
+        count(self.action, "ok", "none");
+    }
+
+    /// The `rejected` row.
+    pub(super) fn rejected(&self, why: OrgReject) {
+        self.emit(self.event, "rejected", Some(why.reason()), None);
+        if self.gm_audit {
+            self.emit(GM_ACTION_EVENT, "rejected", Some(why.reason()), None);
+        }
+        count(self.action, "rejected", why.reason());
+    }
+
+    fn emit(
+        &self,
+        event: &'static str,
+        outcome: &'static str,
+        reason: Option<&'static str>,
+        after: Option<&'static str>,
+    ) {
         tracing::info!(
             target: "org",
-            event = self.event,
-            outcome = "ok",
+            event,
+            action = self.action,
+            outcome,
+            reason,
             after,
             account_id = self.account_id,
             player_id = self.player_id,
@@ -229,31 +275,14 @@ impl ActionRow {
             actor_rank = self.actor_rank,
             target_rank = self.target_rank,
             to_rank = self.to_rank,
-            "organization action succeeded"
+            rank = self.rank,
+            count = self.count,
+            "organization action {}",
+            if outcome == "ok" { "succeeded" } else { "rejected" }
         );
-        count(self.action, "ok", "none");
-    }
-
-    /// The `rejected` row.
-    pub(super) fn rejected(&self, why: OrgReject) {
-        tracing::info!(
-            target: "org",
-            event = self.event,
-            outcome = "rejected",
-            reason = why.reason(),
-            account_id = self.account_id,
-            player_id = self.player_id,
-            entity_id = self.entity_id,
-            org_id = self.org_id,
-            org_type = self.org_type,
-            target_account_id = self.target_account_id,
-            target_player_id = self.target_player_id,
-            request_id = self.request_id,
-            actor_rank = self.actor_rank,
-            target_rank = self.target_rank,
-            to_rank = self.to_rank,
-            "organization action rejected"
-        );
-        count(self.action, "rejected", why.reason());
     }
 }
+
+/// The `event` of the one audit row every GM organization command writes
+/// (D-ORG13).
+pub(super) const GM_ACTION_EVENT: &str = "org.gm_action";

@@ -12,7 +12,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 };
 
 use super::fanout::{feedback, membership_ended, online_members, send_to_members};
-use super::telemetry::{OrgReject, Row};
+use super::telemetry::{ActionRow, OrgReject};
 use super::OrgCtx;
 use crate::base::organization::api::{OrgAccess, SystemActor};
 use crate::base::organization::persistence::{disband, OrgStoreError};
@@ -65,8 +65,9 @@ pub struct GmCaller {
 /// re-reads the session's access level itself: the message carries no
 /// privilege bit (D-ORG13). Answers the GM on the feedback channel and ends
 /// in one INFO `org.disband` row (`reason` = `not_gm` \| `no_such_org` \|
-/// `vault_not_empty` \| `no_db` \| `db_error`); `OrgAccess::system` adds the
-/// `org.gm_action` audit row once the organization is locked.
+/// `vault_not_empty` \| `no_db` \| `db_error`) and its `org.gm_action`
+/// twin (D-ORG13, ORG-10); `OrgAccess::system` adds the `org.gm_access`
+/// lock audit once the organization is locked.
 #[tracing::instrument(
     name = "org.disband",
     level = "info",
@@ -75,16 +76,17 @@ pub struct GmCaller {
 )]
 pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<usize, OrgReject> {
     let (account_id, access_level) = session_of(ctx, gm);
-    let mut row = Row {
+    let mut row = ActionRow {
         event: "org.disband",
         action: "disband",
         account_id,
         player_id: Some(gm.player_id),
         entity_id: Some(gm.entity_id),
-        org_id,
-        org_type: None,
+        org_id: Some(org_id),
+        gm_audit: true,
+        ..ActionRow::default()
     };
-    let refuse = |row: Row, why: OrgReject, text: String| async move {
+    let refuse = |row: ActionRow, why: OrgReject, text: String| async move {
         row.rejected(why);
         feedback(ctx, gm.entity_id, &text).await;
         Err(why)
