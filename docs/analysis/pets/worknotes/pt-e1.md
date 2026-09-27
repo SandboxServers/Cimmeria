@@ -148,10 +148,14 @@ unaffected.
 - The `dialog-portrait-lookup.md` slot-value discrepancy (§5 of the new finding) is flagged, not
   fixed.
 
-## No code, no tests
+## No runtime code; one tooling fix
 
-This packet is pure static RE plus documentation — no Rust was written, no crate was checked or
-built, no test was run. `PETS-WORKER-RULES.md`'s "regression guard must fail when reverted"
+The RE itself is static analysis plus documentation, and no runtime Rust was written. One tooling
+change came out of the #863 review: `tools/wire_decoder_codegen.py` now stops at the first
+per-entity dispatch section, so the SGWPet rows 30/31 no longer generate duplicate
+`decode_30`/`decode_31` next to SGWPlayer's. It was verified by regenerating
+`crates/wire-log/src/wire_log/decoders/generated.rs` (byte-identical to the committed file after
+`cargo fmt`) and running `cargo check` plus the 24 tests of `cimmeria-wire-log`. `PETS-WORKER-RULES.md`'s "regression guard must fail when reverted"
 requirement does not apply to a documentation-only packet; the closest analogue is that every
 claim in `pet-client-contract.md` cites a specific address and, where a decompiled snippet is
 shown, is directly re-checkable in Ghidra by anyone who doubts it.
@@ -167,7 +171,8 @@ shown, is directly re-checkable in Ghidra by anyone who doubts it.
   (`GamePet__SyncLocalOwnerPetSlots`); traced the ownerID property-change handler chain
   (`GamePet__OnOwnerIdChanged_ValuePushed`, `GameBeing__AddPetId`/`RemovePetId`,
   `GameEntityBase__GetGenericPropertyInt32`); decompiled all three `GamePet__SubscribeEvents`
-  handlers with `.def`-matching property keys to confirm the wire indices and isolate the
+  handlers with `.def`-matching property keys to confirm each handler's identity (the numeric
+  indices 29/30/31 rest on the `.def` declaration order, not on this trace) and isolate the
   three-byte readiness gate; decompiled `GamePet__ctor` directly to correct the byte-offset
   transcription bug. Applied 11 Ghidra renames + 2 plate comments. Searched for a `SpeedPet`
   consumer; came up empty, matching the existing static-RE doc. Wrote
