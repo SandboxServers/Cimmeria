@@ -7,8 +7,9 @@
 
 - **Packet:** SS-M3. Take cash (CM 49), take item (CM 50), pay COD (CM 51), return (CM 47).
 - **Decisions in force:** D-SS09 (COD rules), D-SS10 (return), D-SS03 (server mail is exempt from the cap), D-SS04 (the return path is reused by SS-M4's expiry), D-SS08 (escrow). There is also an owner constraint from the Bank campaign: items leave escrow only into the backpack (`INV_MAIN`), never into vault containers 16-20.
-- **Base:** SS-M2's branch `origin/social/m2-attachments` @ `24b4163d0` (PR #912, not yet on main). Branch `social/m3-take-cod-return`, worktree `.claude/worktrees/ss-m3`. When #912 merges: `git rebase --onto origin/main 24b4163d0`.
-- **Commits:** `1ce41f51c` (schema), `64b34fa6f` (wire and cell forward), `bb8a01c7f` (base ops and tests), `87aa17d9d` (type 11), `f77232c05` (COD with a deleted sender, and the review follow-ups), `9089471a0` (docs), the worknote, then `82010fc78` (the coordinator's decisions: `cod_paid`, and `target_player_id` on SS-M2's send refusals) with its docs.
+- **Base:** `origin/main` @ `23e97ac58` (SS-M2 #912 merged, with SS-C1's mail Ignore wiring). The branch was written on SS-M2's branch @ `24b4163d0` and rebased with `git rebase --onto origin/main 24b4163d0`. Branch `social/m3-take-cod-return`, worktree `.claude/worktrees/ss-m3`.
+- **Commits (after the rebase):** `f272b44a1` (the `returned` column), `a814a9306` (wire and cell forward), `a8742d017` (base ops and tests), `becf1c914` (type 11), `d192c60f7` (COD with a deleted sender, and the review follow-ups), `47b372d59` (docs), `8f889a115` (worknote), `3d658dc8c` (the coordinator's decisions: `cod_paid`, and `target_player_id` on SS-M2's send refusals), `d80a46e4d` (docs), `39269c843` (the server-authority-enforcer's memory notes, carried from the main checkout as the coordinator asked), then the race and `op_failed` tests and the post-rebase docs.
+- **Rebase notes:** the conflicts were the `mod` lists in `mail/tests/mod.rs` and `wireclient/tests/it/main.rs` (both sides kept), and the docs. `docs/gap-analysis.md` and `docs/project-status.md` were reset to main's version under the new owner rule (see "Close-out edits for SS-99"); `mail-system.md` and `observability.md` took main's version and my edits were reapplied on top. `read.rs` had not changed on main, so the move of the header list to `headers.rs` carried over as written.
 - **Owned paths (new):**
   - `crates/base-methods/src/base/world_entry/methods/mail/{claim.rs, take.rs, cod.rs, return_.rs, headers.rs}`
   - `crates/base-methods/src/base/world_entry/methods/mail/tests/{take_live.rs, cod_live.rs, return_live.rs, take_race.rs}`
@@ -150,12 +151,17 @@ All ran from the worktree root, through the lane. The exit codes are the lane's 
 | After `82010fc78`: fmt check, and clippy `-D warnings` on the same five crates | exit 0 |
 | After `82010fc78`: `bash tools/build-lane/live-db-test.sh "::"` | exit 0: 4,304 run, 4,304 passed, 0 skipped (196 s) |
 | After `82010fc78`: the type 11 test (command above) | 1 passed |
+| After the rebase onto `23e97ac58` and the new tests: fmt check, and clippy `-D warnings` on the same five crates | exit 0 |
+| After the rebase: `bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-base-methods -p cimmeria-cell-interactions -p cimmeria-cell-methods -p cimmeria-base-world-entry` | 1,162 run, 1,162 passed |
+| After the rebase: `bash tools/build-lane/live-db-test.sh mail` | 106 run, 106 passed, 0 skipped |
+| After the rebase: `bash tools/build-lane/live-db-test.sh "::"` | exit 0: 4,674 run, 4,674 passed, 0 skipped (223 s) |
 
 ## Tests
 
 - **CAT-G-02:** `take_cash_twice_credits_once`, `take_cash_rejects_cod_mail`, plus `take_cash_refuses_balance_overflow`.
 - **CAT-G-03:** `take_item_twice_moves_once` (also every instance column restored), `take_item_ignores_client_container_and_slot`, `take_item_never_writes_outside_callers_inventory`, `take_item_full_bags_keeps_escrow`.
-- **CAT-G-04 (type 5):** `concurrent_take_cash_and_item_pays_out_once`, `concurrent_pay_cod_and_takes_never_pay_out_the_price`.
+- **CAT-G-04 (type 5):** `concurrent_take_cash_and_item_pays_out_once`, `concurrent_pay_cod_and_takes_never_pay_out_the_price`, and (`return_race.rs`) `concurrent_pay_and_return_exactly_one_wins` (either the payment or the return commits, never both; the item exists once) and `concurrent_take_cash_and_return_move_the_cash_once` (the 500 is credited or returned, not both).
+- **Type 12 `mail.op_failed`:** `take_item_db_failure_logs_op_failed_and_keeps_escrow`. A real failure, not an injected one: the escrowed id already exists in `sgw_inventory` under another character, so the restore hits the key. Feedback, ERROR `mail.op_failed reason=db_error` with the identity fields and `error`, and a full rollback.
 - **CAT-G-05:** `pay_cod_twice_debits_once`, `pay_cod_rejects_insufficient_cash`, `pay_cod_amount_read_from_row`.
 - **Packet acceptance:** `paid_cod_credits_sender_once_by_mail_while_offline`.
 - **Also:** `pay_cod_with_deleted_sender_cancels_cod_and_frees_item`, `pay_cod_refuses_without_item`, `pay_and_return_refuse_another_players_mail`, `payment_subject_is_capped_at_the_column_width`.
@@ -201,7 +207,9 @@ Each batch was applied by a script, then the `mail` live-DB tests were run again
 | cell: the CM 51 arm stops forwarding | `attachment_ops_forward_to_base` |
 | R19 both `cod_paid` gates on return removed | `return_rejects_paid_cod` |
 | R20 the payment stops setting `cod_paid` | `return_rejects_paid_cod` |
-| R21 `target_player_id` dropped from both send refusal rows | `send_rejects_bound_item` |
+| R21 `target_player_id` dropped from both send refusal rows | `send_rejects_bound_item` (rerun after the rebase: still fails) |
+| R22 advisory lock, mail row `FOR UPDATE` and return's `AND NOT cod_paid` removed together | three runs: `concurrent_pay_and_return_exactly_one_wins` failed in 2 (the payment and the return both committed: the seller got the mail back as well as the payment), `concurrent_take_cash_and_return_move_the_cash_once` failed in 2; every run failed at least one. Each test catches the revert only when the unguarded order runs first, so neither alone is a deterministic guard; the deterministic single-layer gates are R12, R19 and R20 |
+| R23 `event = "mail.op_failed"` removed from the `db_error` arm | `take_item_db_failure_logs_op_failed_and_keeps_escrow` |
 
 The layers back each other up, so removing any one of R17's three alone still passes the race test. The single-layer gates are pinned by R1 and R2.
 
@@ -210,12 +218,10 @@ The layers back each other up, so removing any one of R17's three alone still pa
 - `docs/gameplay/mail-system.md`:
   - a new "Taking attachments, paying COD, returning (SS-M3)" section;
   - the status line and implementation rows, the CM 50 row, and the persistence block (`returned`);
-  - remaining work, including the paid-COD return gap.
-- `docs/gap-analysis.md` §24:
-  - the heading, confidence, code list, recent PRs and path forward;
-  - COD IM→NT, and take item, take cash and return KM→NT;
-  - the matrix row 7/1/4/1 → 11/0/1/1 and the totals (NT 71, IM 100, KM 127); the percentages are recomputed.
-- `docs/project-status.md` Mail row; `docs/game-systems.md` Mail section; `docs/known-issues.md` (mail moved out of the stubbed list, which was stale since SS-M1).
+  - `cod_paid` in the persistence block and the return rule;
+  - remaining work.
+- `docs/gap-analysis.md` and `docs/project-status.md`: **not edited** (owner rule, 2026-09-27); see "Close-out edits for SS-99".
+- `docs/game-systems.md` Mail section; `docs/known-issues.md` (mail moved out of the stubbed list, which was stale since SS-M1).
 - `docs/protocol/cell-method-dispatch-table.md` CM 50; `docs/reverse-engineering/findings/mail-wire-formats.md` (`ContainerId`/`SlotId` now ignored, not "planned").
 - `docs/architecture/observability.md`: the `mail` target row with the SS-M3 events.
 
@@ -229,12 +235,12 @@ The layers back each other up, so removing any one of R17's three alone still pa
    - after a take, the attachment icon disappears and the mail stays listed;
    - after a payment, the COD marker clears;
    - a read view that is open is not closed awkwardly by the remove-then-add.
-4. **Tests not written:**
+4. **Tests not written** (the coordinator kept these as documented gaps):
    - the lock-order deadlock scenario (A sends B while B pays A's COD);
-   - return racing take or pay;
    - a payment into a sender's full mailbox (the cap exemption);
-   - LogCapture for `mail.op_failed`;
    - a revert proof for the type 11 test (it is not a CI guard).
+
+   Return racing pay or take, and the `mail.op_failed` LogCapture, are now written (see Tests). The two return-race tests each catch their revert only when the unguarded interleaving happens to run (see Regression proof).
 5. **A unique-slot collision answers `db_error`.** This happens only against an `INV_MAIN` writer that skips the bag's advisory lock. It rolls back and the item stays in escrow, but the player sees the generic line.
 6. **An online sender is not told when a payment or a returned mail arrives** (D-SS11, SS-M4); they see it on the next header request.
 7. **The type 11 test hard-codes 25 postage** (1,275). It must change if D-SS02 changes.
@@ -242,10 +248,24 @@ The layers back each other up, so removing any one of R17's three alone still pa
 
 ## Integration edits for the coordinator
 
-1. **Rebase:** `git rebase --onto origin/main 24b4163d0` once #912 merges. `docs/gap-analysis.md`'s totals are recomputed on top of SS-M2's numbers, so recompute them again if another packet has moved rows since.
+1. **Rebase:** done, onto `23e97ac58`. No gap-analysis or project-status edits are left to conflict.
 2. **work-packets.md contract:**
    - `MailOp::TakeItem` keeps `container_id` and `slot_id` as the contract says, for the log only.
    - SS-M4 should call `return_::return_tx(pool, owner, mail_id, now)` for expiry path 1. It already cancels an unpaid COD with its price zeroed, and refuses returned, archived, paid-COD and system mail.
    - **SS-M4 integration edit (coordinator decision):** a paid, untaken COD (`cod_paid = true`, escrow row present) belongs to its recipient. Expiry must **never** return it: it takes the quarantine path (D-SS04 path 3), like an already-returned mail that still holds an item. `return_tx` refuses it with `cod_paid`, so the sweep must branch on `cod_paid` (or on that refusal) before choosing path 1. SS-M4's quarantine and cap queries read both `returned` and `cod_paid`.
 3. **Local databases need `db/database.sql` re-run** for the new column (`reload-db.sh` does it). The colo rebuilds from the seed on deploy.
-4. **Worktree hygiene (not mine, reported):** the server-authority-enforcer said it wrote its agent-memory note into the **main checkout** (`.claude/agent-memory/server-authority-enforcer/project_mail_escrow_ss_m2.md` and `MEMORY.md`). Those paths were already modified there when this session started.
+4. **Advisor memory:** the server-authority-enforcer wrote its notes into the main checkout. The coordinator's patch is applied in this branch (`39269c843`); the coordinator reverts the main checkout's copies.
+5. **SS-U1 compatibility (confirmed with ss-u1 by message):** system mail has `sender_id` NULL and is not returnable; nothing routes by `source_character_id`; a GM COD (`sender_id` = the GM) pays like a player COD; system cash up to `i32::MAX` meets the take-cash overflow check. The shared files are only `mod` lines in `mail/mod.rs` and `tests/mod.rs`.
+
+## Close-out edits for SS-99
+
+Per the owner rule of 2026-09-27, these status changes are recorded here for SS-99 instead of being edited into `docs/gap-analysis.md` and `docs/project-status.md`:
+
+- **`docs/gap-analysis.md` §24 (Mail):**
+  - Cash on Delivery **IM → NT**: pay (CM 51) debits the stored price, clears the COD with its price zeroed, sets `cod_paid`, and mails the price to the sender; a COD whose sender was deleted is cancelled on pay. Code `mail/cod.rs`. Tests `pay_cod_twice_debits_once`, `pay_cod_rejects_insufficient_cash`, `pay_cod_amount_read_from_row`, `paid_cod_credits_sender_once_by_mail_while_offline`; type 11 `cod_item_round_trip_between_two_clients`.
+  - Take item from mail **KM → NT** (`mail/take.rs`; first free main-bag slot chosen by the server, client container and slot ignored, a full bag keeps the escrow row).
+  - Take cash from mail **KM → NT** (`mail/take.rs`; once, never from an unpaid COD, overflow-checked; type 5 `concurrent_take_cash_and_item_pays_out_once`).
+  - Return to sender **KM → NT** (`mail/return_.rs`; to the stored `sender_id`, once; never archived, server mail or a paid COD).
+  - The §24 heading, confidence (SS-M3 plus one two-client wireclient run), code list (`headers.rs`, `claim.rs` with `take.rs`, `cod.rs`, `return_.rs`), recent PRs and path forward (SS-M4 only).
+  - Matrix row for Mail: NT +4, IM −1, KM −3 relative to whatever main holds at close-out; recompute the totals and percentages from the rows.
+- **`docs/project-status.md` Mail row:** taking cash and items, paying COD (the price reaches the sender by mail, online or not) and return-to-sender landed with SS-M3, not yet client-tested; the row counts move as above.
