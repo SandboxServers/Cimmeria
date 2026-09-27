@@ -20,6 +20,9 @@ const PLAIN_ALLOY: i32 = 90;
 const BROKEN_ALLOY: i32 = 91;
 /// An alloy blueprint that makes nothing (quantity 0).
 const EMPTY_ALLOY: i32 = 92;
+/// An alloy blueprint whose discipline the catalog lacks.
+const ORPHAN_ALLOY: i32 = 93;
+const MISSING_DISCIPLINE: i32 = 999;
 
 const COMPONENT: i32 = 5192; // tier 2
 const PRODUCT: i32 = 5191;
@@ -81,6 +84,10 @@ fn catalog() -> CraftingCatalog {
                 quantity: 0,
                 ..blueprint(EMPTY_ALLOY, true, true)
             },
+            Blueprint {
+                discipline_id: Some(MISSING_DISCIPLINE),
+                ..blueprint(ORPHAN_ALLOY, true, true)
+            },
         ],
         [
             component(ALLOY, COMPONENT),
@@ -88,6 +95,7 @@ fn catalog() -> CraftingCatalog {
             component(PLAIN_ALLOY, COMPONENT),
             component(BROKEN_ALLOY, 7777),
             component(EMPTY_ALLOY, COMPONENT),
+            component(ORPHAN_ALLOY, COMPONENT),
         ],
         [
             (COMPONENT, attrs(2, ItemQuality::Good)),
@@ -414,6 +422,37 @@ fn an_alloy_that_makes_nothing_is_a_catalog_fault() {
         Err(AlloyCheck::Catalog {
             phase: "alloy_product_quantity",
             id: EMPTY_ALLOY
+        })
+    );
+}
+
+/// An unlearned blueprint is `unknown_blueprint` whatever kind it is, so
+/// the answer does not reveal that a non-alloy blueprint exists.
+#[test]
+fn an_unlearned_craft_blueprint_is_unknown_not_not_alloy() {
+    let mut unlearned = state();
+    unlearned.blueprint_ids.retain(|&b| b != CRAFT);
+    assert_eq!(
+        refused(check_with(&unlearned, CRAFT, &singles(1, NORMAL, 10))),
+        CraftReject::UnknownBlueprint {
+            blueprint_id: CRAFT
+        }
+    );
+}
+
+/// A discipline the player lists but the catalog lacks is a data fault:
+/// otherwise the inputs would be taken and the expertise silently skipped.
+#[test]
+fn a_discipline_missing_from_the_catalog_is_a_catalog_fault() {
+    let mut stale = state();
+    stale.discipline_ids.push(MISSING_DISCIPLINE);
+    stale.expertise.insert(MISSING_DISCIPLINE, 1);
+    stale.blueprint_ids.push(ORPHAN_ALLOY);
+    assert_eq!(
+        check_with(&stale, ORPHAN_ALLOY, &singles(1, NORMAL, 10)),
+        Err(AlloyCheck::Catalog {
+            phase: "alloy_discipline",
+            id: ORPHAN_ALLOY
         })
     );
 }

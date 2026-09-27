@@ -162,9 +162,10 @@ pub fn bucket_label(quality: ItemQuality) -> &'static str {
 ///
 /// `held` is every named instance the player owns, wherever it sits;
 /// `component_available` is how many of the blueprint's component the main
-/// and crafting bags hold. Checks, in order: the blueprint exists and is an
-/// alloy, the player knows it and its discipline, the current-tier item,
-/// then each elementary item's ownership, bag and tier, then the counts.
+/// and crafting bags hold. Checks, in order: the blueprint exists and the
+/// player knows it, it is an alloy, its discipline is in the catalog and
+/// known, the current-tier item, then each elementary item's ownership, bag
+/// and tier, then the counts.
 pub fn check_alloy(
     state: &CraftingState,
     catalog: &CraftingCatalog,
@@ -176,11 +177,13 @@ pub fn check_alloy(
     let Some(blueprint) = catalog.blueprint(blueprint_id) else {
         return Err(CraftReject::UnknownBlueprint { blueprint_id }.into());
     };
-    if !blueprint.is_alloy {
-        return Err(CraftReject::NotAlloy { blueprint_id }.into());
-    }
+    // Known before alloy: an unlearned blueprint gets the same answer as a
+    // missing one, whatever kind it is.
     if !state.blueprint_ids.contains(&blueprint_id) {
         return Err(CraftReject::UnknownBlueprint { blueprint_id }.into());
+    }
+    if !blueprint.is_alloy {
+        return Err(CraftReject::NotAlloy { blueprint_id }.into());
     }
     let catalog_fault = |phase| AlloyCheck::Catalog {
         phase,
@@ -189,6 +192,11 @@ pub fn check_alloy(
     let discipline_id = blueprint
         .discipline_id
         .ok_or_else(|| catalog_fault("alloy_discipline"))?;
+    // A discipline the catalog lacks would take the inputs and have its
+    // expertise skipped by the transaction.
+    if catalog.discipline(discipline_id).is_none() {
+        return Err(catalog_fault("alloy_discipline"));
+    }
     if !state.knows_discipline(discipline_id) {
         return Err(CraftReject::DisciplineUnknown {
             blueprint_id,

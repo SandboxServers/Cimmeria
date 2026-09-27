@@ -339,3 +339,45 @@ async fn a_queued_alloy_whose_named_component_was_used_takes_another() {
     assert_eq!(f.expertise().await, 3);
     f.cleanup().await;
 }
+
+/// Elementary items stay pinned to the named stacks, because those stacks
+/// decide the quality consumed. Two alloys queued with the same named Good
+/// stack: the first uses it up, and the second is refused at completion
+/// with a visible line and nothing consumed, although another unnamed Good
+/// stack would meet the count.
+#[tokio::test]
+async fn a_queued_alloy_whose_named_elementaries_were_used_is_refused() {
+    let pool = require_db_or_skip!();
+    assert_seed_shape(&pool).await;
+    let f = Fixture::new(&pool, 7).await;
+    let component = f.stack(COMPONENT, INV_CRAFTING, 0, 1).await;
+    f.stack(COMPONENT, INV_CRAFTING, 1, 1).await;
+    let named = f.stack(GOOD, INV_MAIN, 0, 5).await;
+    let unnamed = f.stack(GOOD, INV_CRAFTING, 2, 5).await;
+    f.alloy(ALLOY, component, &[named]).await;
+    f.alloy(ALLOY, component, &[named]).await;
+    assert_eq!(f.sessions.pending(f.entity_id), 2);
+
+    assert_eq!(f.finish_inductions().await, 1);
+    let before = f.inventory().await;
+    f.transport.clear();
+    assert_eq!(f.finish_inductions().await, 1);
+    assert_eq!(
+        f.inventory().await,
+        before,
+        "the second alloy consumes nothing"
+    );
+    assert!(before.iter().any(|row| row.0 == unnamed && row.2 == 5));
+    let line = f
+        .calls()
+        .iter()
+        .find(|c| c.method == method_idx::ON_PLAYER_COMMUNICATION)
+        .map(feedback_text)
+        .expect("refusal line");
+    assert_eq!(
+        line,
+        "A component is no longer in your inventory. Nothing was used."
+    );
+    assert_eq!(f.expertise().await, 2, "only the first alloy counted");
+    f.cleanup().await;
+}
