@@ -30,6 +30,7 @@ mod chat_squad_refusals;
 mod communicator_unsupported;
 mod crafting_teardown;
 mod duel_challenge;
+mod org_invite_logoff;
 mod org_logoff_presence;
 mod organization;
 mod player_index_logoff;

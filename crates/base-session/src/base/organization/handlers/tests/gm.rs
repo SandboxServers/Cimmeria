@@ -119,3 +119,39 @@ async fn gm_rank_skips_authority_but_not_the_rank_rules() {
     assert_eq!(fx.rank_of(team, 0).await, Some(8));
     fx.teardown().await;
 }
+
+/// Review fix (ORG-07, applied to ORG-06's `.org_disband` too): the GM is
+/// re-read by character **and** entity id. A forwarded GM command whose
+/// entity id now belongs to a session playing another character (a
+/// recycled id) finds no GM, even when that session is a GameMaster's.
+#[tokio::test]
+async fn gm_commands_from_a_recycled_entity_id_are_refused() {
+    use crate::base::organization::handlers::gm_disband;
+
+    let pool = require_db_or_skip!();
+    let fx = Fixture::org07(&pool, 32, 3, &["Org07 Recycled"]).await;
+    let team = fx.org(OrgType::Team, "Org07 Recycled", 0, &[]).await;
+    fx.online(1);
+    let live = fx.gm(1, 2);
+    // The cell named character 2 on character 1's entity.
+    let stale = GmCaller {
+        entity_id: live.entity_id,
+        player_id: fx.player_id(2),
+    };
+    let capture = LogCapture::install();
+    assert_eq!(
+        gm_disband(&fx.ctx(), stale, team).await,
+        Err(OrgReject::NotGm)
+    );
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "org.disband") && c.has_field("reason", "not_gm")));
+    assert_eq!(
+        gm_join(&fx.ctx(), stale, team, None).await,
+        Err(OrgReject::NotGm)
+    );
+    assert!(fx.org_exists(team).await, "nothing was disbanded");
+    assert_eq!(fx.member_ids(team).await, vec![fx.player_id(0)]);
+    fx.teardown().await;
+}

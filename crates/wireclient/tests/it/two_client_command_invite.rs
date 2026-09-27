@@ -27,11 +27,11 @@ use crate::support::{
     start_server, wait_for, wait_for_recording, CASTLE_BASE_POS,
 };
 
-// ORG-07's wireclient sentinels (`0x7000_5300..=0x7000_530F`).
-const ALPHA_ACCOUNT: i32 = 0x7000_5301;
-const BRAVO_ACCOUNT: i32 = 0x7000_5302;
-const ALPHA_PLAYER: i32 = 0x7000_5311;
-const BRAVO_PLAYER: i32 = 0x7000_5312;
+// ORG-07's wireclient sentinels (`0x7000_53F0..=0x7000_53FF`).
+const ALPHA_ACCOUNT: i32 = 0x7000_53F1;
+const BRAVO_ACCOUNT: i32 = 0x7000_53F2;
+const ALPHA_PLAYER: i32 = 0x7000_53F3;
+const BRAVO_PLAYER: i32 = 0x7000_53F4;
 const ALPHA_NAME: &str = "ORG07Alpha";
 const BRAVO_NAME: &str = "ORG07Bravo";
 const COMMAND_NAME: &str = "Org07 Wire Command";

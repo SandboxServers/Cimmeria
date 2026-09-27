@@ -8,7 +8,7 @@
 //! `LogCapture` (type 12). Sentinels for account and player ids, in blocks
 //! of 16: ORG-06 owns `0x7000_4C00..=0x7000_4DFF` (32 blocks, names
 //! `Org06P<n>`, [`Fixture::new`]); ORG-07 owns `0x7000_4F00..=0x7000_4FFF`
-//! and `0x7000_5200..=0x7000_52FF` (32 blocks in all, names `Org07P<n>`,
+//! and `0x7000_5200..=0x7000_53EF` (47 blocks in all, names `Org07P<n>`,
 //! [`Fixture::org07`]). Organizations are
 //! cleaned by exact name key ("Org06 ..." / "Org07 ..." names).
 
@@ -80,12 +80,13 @@ impl Fixture {
         Self::at(pool, BASE, "Org06P", block, n, org_names).await
     }
 
-    /// [`Fixture::new`] in ORG-07's ranges: block `block` (0..32; 0..16 in
-    /// `0x7000_4F00`, 16..32 in `0x7000_5200`), names `Org07P<i>`.
+    /// [`Fixture::new`] in ORG-07's ranges: block `block` (0..47; 0..16 in
+    /// `0x7000_4F00`, 16..47 from `0x7000_5200`), names `Org07P<i>`.
     async fn org07(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
-        assert!((0..32).contains(&block));
-        // Blocks 16..32 sit at 0x7000_5200, which is 48 blocks above
-        // 0x7000_4F00; 0x7000_5000..=0x7000_51FF belongs to other tests.
+        assert!((0..47).contains(&block));
+        // Blocks 16.. sit from 0x7000_5200, which is 48 blocks above
+        // 0x7000_4F00; 0x7000_5000..=0x7000_51FF belongs to other tests,
+        // and 0x7000_53F0..=0x7000_53FF to the ORG-07 wireclient test.
         let slot = if block < 16 { block } else { block + 32 };
         debug_assert_eq!(BASE_ORG07 + 48 * 16, BASE_ORG07_HIGH);
         Self::at(pool, BASE_ORG07, "Org07P", slot, n, org_names).await
