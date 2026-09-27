@@ -26,10 +26,10 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
     serialize_timer_update, AbilityDef, AF_SPEED_ATTACK, AF_SPEED_DEPLOY, AF_SPEED_GRENADE,
-    TIMER_ABILITY_WARMUP,
+    AF_SPEED_PET, TIMER_ABILITY_WARMUP,
 };
 use cimmeria_entity::cell_entity::{CellEntity, PendingCast};
-use cimmeria_entity::stats::{SPEED_ATTACK, SPEED_DEPLOY, SPEED_GRENADE};
+use cimmeria_entity::stats::{SPEED_ATTACK, SPEED_DEPLOY, SPEED_GRENADE, SPEED_PET};
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -51,6 +51,10 @@ pub use tick::warmup_tick;
 /// warmup by `1 - stat / 100` of the matching `speedGrenade` / `speedDeploy`
 /// / `speedAttack` stat. The stats default to 0, so a caster with no bonus
 /// warms up for exactly the seeded time. Never negative.
+///
+/// `SpeedPet` / `speedPet` follows the same rule (pets D-PT10). Python had no
+/// `SpeedPet` arm because it had no summon; the client's flag and stat names
+/// pair it with the other three.
 pub(crate) fn effective_warmup(ability: Option<&AbilityDef>, caster: &CellEntity) -> f32 {
     let Some(def) = ability else {
         return 0.0;
@@ -63,6 +67,7 @@ pub(crate) fn effective_warmup(ability: Option<&AbilityDef>, caster: &CellEntity
         (AF_SPEED_GRENADE, SPEED_GRENADE),
         (AF_SPEED_DEPLOY, SPEED_DEPLOY),
         (AF_SPEED_ATTACK, SPEED_ATTACK),
+        (AF_SPEED_PET, SPEED_PET),
     ] {
         if def.flags & flag != 0 {
             let cur = caster.stats.get(stat).map_or(0, |s| s.cur);

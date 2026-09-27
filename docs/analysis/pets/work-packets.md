@@ -103,7 +103,7 @@ PT-01 is the bottleneck. It is kept to "a pet exists, is introduced to its owner
 
 ### PT-E1
 
-**Status:** Ready. **Scope title:** pet client contract, closing the static gaps. **Agent:** game-archaeology-specialist (Ghidra static; any live check uses non-freezing log breakpoints only).
+**Status:** Integrated (#863). **Scope title:** pet client contract, closing the static gaps. **Agent:** game-archaeology-specialist (Ghidra static; any live check uses non-freezing log breakpoints only).
 **Entries:** [client static RE](research/client-static-re.md) §A, §E, §H; `docs/reverse-engineering/findings/pet-restoration.md`, `pet-wire-formats.md`.
 **Scope:**
 
@@ -116,7 +116,7 @@ PT-01 is the bottleneck. It is kept to "a pet exists, is introduced to its owner
 
 ### PT-01
 
-**Status:** Ready (wire values gated on PT-E1). **Scope title:** the pet exists: entity, wire, registry, spawn, AoI intro, safe teardown. **Agent:** rust-gameserver-dev; advisor aoi-witness-broadcast.
+**Status:** Integrated (#870). **Scope title:** the pet exists: entity, wire, registry, spawn, AoI intro, safe teardown. **Agent:** rust-gameserver-dev; advisor aoi-witness-broadcast.
 **Entries:** the contract above; audit A-02..A-05, A-20..A-24, A-31, A-34.
 **Scope:**
 
@@ -141,7 +141,7 @@ No summon ability, commands or AI.
 
 ### PT-S
 
-**Status:** Ready (D-PT13: Straegis first). **Scope title:** pet seed: the summon table, pet templates, summon VFX. **Agent:** rust-gameserver-dev; advisor npc-ai-spawn-advisor.
+**Status:** Integrated (#865). **Scope title:** pet seed: the summon table, pet templates, summon VFX. **Agent:** rust-gameserver-dev; advisor npc-ai-spawn-advisor.
 **Entries:** audit A-26, A-40..A-45; [content inventory](research/content-inventory.md) §1, §3.
 **Scope:**
 
@@ -157,7 +157,7 @@ No summon ability, commands or AI.
 
 ### PT-02
 
-**Status:** BlockedDependency (PT-01). **Scope title:** owner lifecycle hooks. **Agent:** rust-gameserver-dev; advisor aoi-witness-broadcast.
+**Status:** Integrated (#892). **Scope title:** owner lifecycle hooks. **Agent:** rust-gameserver-dev; advisor aoi-witness-broadcast.
 **Scope:** explicit, immediate handling on every owner path in audit A-31, on top of PT-01's self-healing sweep:
 
 - **Despawn** on logout, death (D-PT08), cross-world respawn, gate travel, space transfer, GM travel, content transport and cross-world ring.
@@ -168,7 +168,7 @@ No summon ability, commands or AI.
 
 ### PT-03
 
-**Status:** BlockedDependency (PT-01, PT-S). **Scope title:** summon via ability. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor; review server-authority-enforcer.
+**Status:** Review (PR #890; its dependencies PT-01, PT-S, PT-02 and PT-06 are merged). **Scope title:** summon via ability. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor; review server-authority-enforcer.
 **Scope:**
 
 - A summon branch in `use_ability/`, ahead of the damage pipeline and the #444 gate, for abilities with a `pet_summons` row.
@@ -222,7 +222,7 @@ No summon ability, commands or AI.
 
 ### PT-06
 
-**Status:** BlockedDependency (PT-01). **Scope title:** kill credit and XP. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor.
+**Status:** Integrated (#889). **Scope title:** kill credit and XP. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor.
 **Scope:**
 
 - One seam: `credit_recipient`, used where `grant_kill_xp` is called and in `kill_credit.rs`.

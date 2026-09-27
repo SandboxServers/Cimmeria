@@ -106,7 +106,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 ### 7. AF_CHANNEL_ALLOWS_MOVEMENT default = 0 (cancel-on-move)
 
-**Decision:** The new `AF_CHANNEL_ALLOWS_MOVEMENT = 16384` ability flag defaults to 0 (off) across every authored ability. Operators flip it per-ability as content arrives that should be movement-tolerant.
+**Decision:** The Cimmeria-side `AF_CHANNEL_ALLOWS_MOVEMENT` ability flag (bit 20, `1 << 20`) defaults to 0 (off) across every authored ability. Operators flip it per-ability as content arrives that should be movement-tolerant. It was first defined as 16384 (bit 14), but that bit is the client's `EAbilityFlags::SpeedPet` (`entities/defs/enumerations.xml:51`), which the seed sets on the 14 summon abilities. So those summons were exempt from the warmup move interrupt until pets PT-03 moved the flag above the client enum's highest token (`PetCommand` = 65536). No seed row sets bit 20.
 
 **Why:** Cancel-on-move is the safe default — players who walk away from a channel expect it to stop. The inverse default would silently let channels persist across movement events the player doesn't realise are happening, which is a bug shape ("why is my buff still ticking after I rezoned?"). Opt-in to movement-tolerant via flag flip.
 
@@ -540,6 +540,68 @@ server start, not Unix time, because the field is an `f32`.
 cooldown ends up to 0.1 s early. A server restart resets the clock; never persist an
 absolute expiry. Category (type 8) cooldown timers are still not sent. Evidence and test
 list: [CR-02 worknote](../analysis/crafting/worknotes/cr-02.md).
+
+### 23. A pet summon is a player cast with a `pet_summons` row, diverted at launch and fire (pets PT-03)
+
+**Decision:** A player ability with a `resources.pet_summons` row (`SpaceManager::pet_summons`)
+summons a pet. It rides the ordinary cast of decision 21, with three diversions in
+[`use_ability/summon.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/summon.rs):
+
+- **Launch.** Straight after the weapon redirect, the client's `target_id` is replaced by 0.
+  The summon is a Self ability, so the client's target plays no part in it. With target 0
+  the #444 target-validity gate never sees the cast. The gate itself is unchanged, so any
+  other ability aimed at the caster still fails there. Two refusals run before the cooldown
+  is charged: the summon must be in the trained set (a weapon grant does not count), and its
+  template must be in the startup cache. Each sends `onErrorCode` plus a `CHAN_FEEDBACK`
+  chat line.
+- **Warmup.** The spawn timer is the ability's own warmup, scaled by the caster's
+  `speedPet` stat (111) when the ability has `SpeedPet` (16384), like the other speed flags
+  (D-PT10). Every decision-21 interrupt applies. An interrupted warmup never reaches the
+  fire, so nothing spawns.
+- **Fire.** `fire::fire_cast` diverts to `fire_summon` before any ammo, channel or damage
+  step. `fire_summon` re-checks that the pet can be spawned before it touches the current
+  pet (caster alive, in a space, template cached). A refusal plays `Ability_Interrupt` and
+  sends the feedback pair, and the cooldown stays charged. Otherwise it calls
+  `spawn_pet_from_template` first. A spawn that still fails answers exactly like a refusal
+  (`Ability_Interrupt`, the feedback pair, the cooldown stays charged), and the owner keeps
+  its current pet. A spawn that succeeds plays `Ability_End`, despawns the owner's oldest
+  pets down to `max_active - 1` (D-PT04, counting every pet the owner had before the spawn),
+  and queues the target VFX.
+
+The summon's phase sequences carry TargetID = caster, as python's
+`targetId or ent.entityId` did. The target VFX is event set 1122 `Effect_Init` (2000),
+sequence 2293. It is an `onSequence` on the pet, with source = owner, target = pet and
+`InstanceId` 0, which is how python played an effect sequence on its target. It waits on the
+pet registry
+([`pets/arrival.rs`](../../crates/cell-world/src/cell/pets/arrival.rs)) until the owner
+witnesses the pet. The drain runs after the AoI tick and sends the VFX to the pet's
+witnesses, so it can never reach a client ahead of the pet's CREATE_ENTITY. It is dropped
+after 2 s, and `forget_pet` scrubs it on every teardown path. It is also dropped when the
+owner's entity id now belongs to a player who is not the pet's summoner
+(`PetRegistry::summoner_matches`, #870). It is counted and logged as sent only when at least
+one witness send succeeds. A summon carries `Deactivate_AutoCycle` and
+`DoNotActivate_AutoCycle`, so it is not stashed as the last-fired ability, and a later
+`setAutoCycle(1)` press cannot re-fire it. Neither flag lets any ability arm the loop:
+1024 clears it, and 512 leaves it as it was (python passed `autoCycle = False`,
+`SGWPlayer.py:1177`).
+
+**Why:** The 2009 data never linked a summon to a template. The summon abilities carry no
+effects, and the editor's "Spawn Mob" effects name no template (pets audit A-26), so there
+is no effect script to run. Keying on the ability id keeps the damage pipeline and the #444
+gate untouched, which is what the packet asked for. Discarding the target is safer than
+rejecting it: a Self ability legitimately arrives with 0 or with the caster's own id. The
+VFX waits for the intro because a client cannot play a sequence on an entity it has not
+created.
+
+**Consequences:** `AF_CHANNEL_ALLOWS_MOVEMENT` used to be bit 14, which is the client's
+`SpeedPet`, so every seeded summon warmed up immune to the move interrupt. It is now bit 20
+(decision 7). NPC casters never summon, because `player_summon` answers only for players.
+
+**Code:** [`use_ability/summon.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/summon.rs),
+the hooks in `handle.rs`, `fire.rs` and `sequence.rs`, and
+[`pets/arrival.rs`](../../crates/cell-world/src/cell/pets/arrival.rs). Tests are in
+`use_ability/tests/summon.rs` and `pets/tests/arrival.rs`; the evidence and the
+regression proofs are in the [PT-03 worknote](../analysis/pets/worknotes/pt-03.md).
 
 ## Cross-cutting follow-ups
 

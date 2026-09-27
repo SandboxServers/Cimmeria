@@ -235,6 +235,8 @@ pub(super) async fn play_ability_sequence(
         return None;
     };
 
+    let target_id =
+        super::summon::phase_sequence_target(space_mgr, entity_id, ability_id, target_id);
     let args = ability_sequence_args(sequence_id, entity_id, target_id, instance_id);
     let witness_count = send_entity_method_to_self_and_witnesses(
         entity_id,

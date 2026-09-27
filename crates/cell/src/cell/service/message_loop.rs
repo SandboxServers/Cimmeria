@@ -151,6 +151,11 @@ pub(super) async fn run_cell_loop(
                 // pet exists.
                 cimmeria_cell_world::cell::pets::pet_owner_sweep(tx, &mut space_mgr).await;
 
+                // A summoned pet's arrival VFX (PT-03), sent once its owner
+                // witnesses it. After the AoI tick, so it follows the pet's
+                // CREATE_ENTITY; returns at once when nothing is queued.
+                cimmeria_cell_world::cell::pets::pet_arrival_tick(tx, &mut space_mgr).await;
+
                 // NPC movement runs every AoI tick (100ms) for smooth pathing
                 super::ticks::npc_movement_tick(&mut space_mgr);
                 // NA02 detectors over every NPC (running in place, ...).

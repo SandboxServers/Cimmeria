@@ -104,6 +104,12 @@ pub(crate) async fn interrupt_pending_cast(
         cooldown_refunded,
         "ability warmup interrupted; the cast did not fire"
     );
+    super::super::summon::log_summon_interrupted(
+        space_mgr,
+        entity_id,
+        pc.ability_id,
+        reason.as_str(),
+    );
 
     if is_player {
         for timer_type in [TIMER_ABILITY_WARMUP, TIMER_ABILITY_COOLDOWN] {

@@ -63,6 +63,9 @@ pub struct PetRegistry {
     /// `ShowPlayer`, which an aborted trip also sends. See
     /// [`PetRegistry::note_owner_moved`] (pets PT-02).
     moved_owners: HashSet<u32>,
+    /// pet entity id -> its summon VFX, waiting for the pet's intro
+    /// (PT-03, [`super::arrival`]).
+    pub(super) arrivals: HashMap<u32, super::arrival::PetArrival>,
 }
 
 impl PetRegistry {
@@ -79,6 +82,7 @@ impl PetRegistry {
     /// Called from `destroy_entity` and `destroy_space`, so every teardown
     /// path scrubs the registry whatever triggered it.
     pub fn forget_pet(&mut self, pet: u32) -> Option<u32> {
+        self.arrivals.remove(&pet);
         let owner = self.owner_of.remove(&pet)?;
         self.summoner.remove(&pet);
         if let Some(list) = self.pets_by_owner.get_mut(&owner) {

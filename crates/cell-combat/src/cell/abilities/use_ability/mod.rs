@@ -14,6 +14,8 @@
 //!   resolution), run at once for a zero warmup or by the warmup tick.
 //! - `warmup` — the pending cast between `Ability_Begin` and the fire: the
 //!   launch side, the 100 ms tick, and the interrupt (AT-10).
+//! - `summon` — the pet-summon diversions (pets PT-03): the launch refusals,
+//!   and the fire that spawns the pet instead of resolving a target.
 //! - `sequence` — the Ability_Begin / Ability_End / Ability_Interrupt
 //!   `onSequence`: shared packing, owner + witnesses routing, and the NPC
 //!   attack-animation WARNs (NA43).
@@ -24,6 +26,7 @@ mod fire_los;
 mod handle;
 mod kill_credit;
 mod sequence;
+mod summon;
 mod warmup;
 mod weapon_redirect;
 
