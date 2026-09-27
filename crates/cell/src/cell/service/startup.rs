@@ -368,6 +368,19 @@ impl CellService {
                     );
                 }
             }
+            // Summon ability → pet template. Not fatal: with no catalog every
+            // summon ability fails as a non-damage ability does today.
+            match spawner::load_pet_summons(pool).await {
+                Ok(catalog) => {
+                    space_mgr.pet_summons = catalog;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to load pet summons: {e} -- no summon ability \
+                         will spawn a pet for this process lifetime"
+                    );
+                }
+            }
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
                     space_mgr.ring_transporters.load(&regions);

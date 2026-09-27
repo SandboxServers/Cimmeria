@@ -459,6 +459,13 @@ ALTER TABLE ONLY paths
     ADD CONSTRAINT paths_pkey PRIMARY KEY (path_id, index);
 
 --
+-- Name: pet_summons_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY pet_summons
+    ADD CONSTRAINT pet_summons_pkey PRIMARY KEY (ability_id);
+
+--
 -- TOC entry 3007 (class 2606 OID 63287)
 -- Name: point_set_points_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace: 
 --

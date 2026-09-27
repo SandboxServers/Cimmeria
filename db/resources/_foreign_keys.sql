@@ -453,6 +453,20 @@ ALTER TABLE ONLY mission_tasks
     ADD CONSTRAINT mission_tasks_objective_id_fkey FOREIGN KEY (objective_id) REFERENCES mission_objectives(objective_id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 --
+-- Name: pet_summons_ability_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY pet_summons
+    ADD CONSTRAINT pet_summons_ability_id_fkey FOREIGN KEY (ability_id) REFERENCES abilities(ability_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: pet_summons_template_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY pet_summons
+    ADD CONSTRAINT pet_summons_template_id_fkey FOREIGN KEY (template_id) REFERENCES entity_templates(template_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
 -- TOC entry 3120 (class 2606 OID 63627)
 -- Name: point_set_points_set_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --
