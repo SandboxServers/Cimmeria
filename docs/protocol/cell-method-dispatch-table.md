@@ -206,7 +206,7 @@ Source: `entities/defs/interfaces/SGWMailManager.def`
 | 47 | returnMailMessage | YES | INT32 mailId |
 | 48 | requestMailBody | YES | INT32 mailId |
 | 49 | takeCashFromMailMessage | YES | INT32 mailId |
-| 50 | takeItemFromMailMessage | YES | INT32 mailId, INT32 containerId, INT32 slotId |
+| 50 | takeItemFromMailMessage | YES | INT32 mailId, INT32 containerId, INT32 slotId (containerId and slotId are uninitialised in the shipped client. The current stub handler only decodes and logs them; the planned SS-M3 handler will ignore them. See `mail-wire-formats.md` M-Q5) |
 | 51 | payCODForMailMessage | YES | INT32 mailId |
 | - | onNewMail | no | |
 

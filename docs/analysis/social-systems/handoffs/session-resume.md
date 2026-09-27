@@ -3,14 +3,15 @@
 > Type: how-to. Audience: any later session and the owner.
 > Updated: 2026-09-27. Companions: [decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
 
-## State: plan written, no packet started
+## State: plan merged (#873); Wave 0 in progress
 
-The plan PR adds this ledger, against `main` @ `09a880ba`. Branches are `social/*`; the id block is entity templates **390-399** and spawns **490-499**.
+The plan merged as #873. Branches are `social/*`; the id block is entity templates **390-399** and spawns **490-499**.
 
 | Packet | Status | PR |
 |---|---|---|
-| Plan | Review | (this PR) |
-| SS-E1, SS-00 | Ready | |
+| Plan | Integrated | #873 |
+| SS-E1 | Integrated | #875 |
+| SS-00 | Writing | |
 | SS-M1, SS-C1, SS-C2, SS-D1 | BlockedDependency (SS-00) | |
 | Everything else | BlockedDependency | |
 
@@ -20,8 +21,10 @@ The run proceeds on the PROPOSED defaults (D-SS01). The owner answered all six o
 
 ## Things a resuming session must not miss
 
-- **The `onDuelEntities*` landmine** (audit A-41, D-SS25). AoI already sends 152 to make NPCs interactable. No duel packet sends 151 or 153 before SS-E1 D-Q5 is answered.
-- **The tell byte** is unknown until ORG-E1 Q5 or SS-E1 C-Q1 answers it. SS-C1 cannot merge without it.
+- **The `onDuelEntities*` hold is lifted** (D-SS25 superseded by SS-E1 D-Q5). 151, 152 and 153 edit a set at `GamePlayer+0x16c` that the client's interactability check never reads, so SS-D2 may send 151 at duel start and 153 at duel end. The comment at `aoi.rs:203-211` has 152's direction backwards; SS-D2 fixes it.
+- **The PvP-flag vehicle is open** (D-SS23). `pvpFlag` (CELL_PUBLIC, ghosting-only in SGW) and `GENERICPROPERTY_PvPFlag` are both candidates; SS-D2 traces which one the client receives. The combat gate never reads a flag.
+- **`MessageAttachment.durability` stays INT32** per `alias.xml` until a capture settles SS-E1's float-read observation.
+- **The tell byte** is 10, from ORG-E1 Q5, which SS-E1 C-Q1 cites. The channel constants still belong to the organizations campaign.
 - **Channel constants belong to the organizations campaign** (D-ORG14, D-SS17).
 - **Two-client tests are type 11 (wireclient) and do not run in CI** (audit A-60). Every packet also needs a CI-run guard.
 

@@ -36,7 +36,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 - `MailOp` (`crates/wire/src/cell/messages/data.rs`) gains `Send(MailSend)`, `TakeCash { mail_id }`, `TakeItem { mail_id, container_id, slot_id }`, `PayCod { mail_id }` and `Return { mail_id }`. `MailSend` holds the decoded, length-checked `CM 44` arguments; the cell does no SQL and no name lookup.
 - Duels follow the organizations pattern: `BaseToCellMsg::Duel(DuelBaseToCell)` and, if a packet needs one, `CellToBaseMsg::Duel(DuelCellToBase)`, each a nested enum in its own file, so later packets add variants without editing `base_to_cell.rs` or `cell_to_base.rs`. Every variant carries `player_id` and `entity_id` from server session state, never from a payload.
 
-**Wire** (`crates/wire`): `EMailFlags` and `EMailResultCodes` constants pinned by a test that **parses `entities/defs/enumerations.xml` and compares each Rust constant with the value it finds there**. A test that asserts a constant against a hard-coded copy of itself (such as `assert_eq!(CONST, 4092)`) does not count, because it would pass if the constant and the test changed together. This follows the organizations convention (`docs/analysis/organizations/work-packets.md:32`) and covers the 4092 and 8196 anomalies (audit A-12); `build_send_mail_result`; a `MessageAttachment` serializer (`alias.xml:103-111`); `build_on_duel_challenge` [143]; the PvP-flag `onEntityProperty(4, v)`; and, only after SS-E1 D-Q5, builders for 151-153. Each has a byte-exact test.
+**Wire** (`crates/wire`): `EMailFlags` and `EMailResultCodes` constants pinned by a test that **parses `entities/defs/enumerations.xml` and compares each Rust constant with the value it finds there**. A test that asserts a constant against a hard-coded copy of itself (such as `assert_eq!(CONST, 4092)`) does not count, because it would pass if the constant and the test changed together. This follows the organizations convention (`docs/analysis/organizations/work-packets.md:32`) and covers the 4092 and 8196 anomalies (audit A-12); `build_send_mail_result`; a `MessageAttachment` serializer (`alias.xml:103-111`); `build_on_duel_challenge` [143]; the PvP-flag serializer for whichever vehicle SS-D2's receiver trace shows the client consumes (`pvpFlag` or `onEntityProperty(4, v)`, SS-E1 D-Q4 left open); and, only after SS-E1 D-Q5, builders for 151-153. Each has a byte-exact test.
 
 **Schema** (`db/sgw/Mail/`, edited in place, no migration):
 
@@ -89,13 +89,22 @@ SS-00 is the bottleneck and is kept small: the index, the limiter, the feedback 
 - The security table in [audit.md § 6](audit.md#6-security-coverage) names the guard for every in-scope finding. Keep the names.
 - Every rejected action gives visible feedback on the first press: `sendMailResult`, a feedback line, a duel text, or a re-send of the true state. A silent drop is a bug.
 - New log targets (`mail`, `chat`, `duel`, `rate_limit`) are registered per the CLAUDE.md `OTEL_FILTER` rules, with its pinning assertion.
+- **Telemetry is first-class (owner rule, 2026-09-27).** Every packet must leave its behaviour debuggable from SigNoz alone. Following [instrumentation discipline](../../architecture/instrumentation-discipline.md), that means:
+  - an info span on each dispatch entrypoint;
+  - a debug `event="..."` on each state transition (mail sent, taken, returned, expired or quarantined; a tell delivered or refused; a duel challenged, engaged or ended, with its end reason);
+  - `account_id` and `player_id` on every player-activity event, with `entity_id` alongside them (rule 5, `instrumentation-discipline.md:203-224`);
+  - when one player acts on another (mail to, a tell to, a duel challenge to, a GM action on), `account_id` and `player_id` name the actor, and the other player gets `target_player_id`, or `subject_player_id` for a GM acting on them (`instrumentation-discipline.md:307-313`);
+  - the correlating ids (`mail_id`, `item_id`, the duel pair);
+  - the before and after values of every cash, item or points change.
+
+  Every refusal carries `reason=`, per the [negative-logging convention](../../architecture/negative-logging-convention.md). Each packet's acceptance includes a type 12 test for its refusal events, and its worknote lists the events added and the SigNoz query that answers "what happened to player X at time T".
 - Each packet updates the docs it owes: `docs/gameplay/mail-system.md`, `chat-system.md`, `contact-list.md` or `duel-system.md`; `docs/protocol/` for any wire message; `docs/gap-analysis.md` §21, §24 or §27; `docs/project-status.md`; and the stale docs listed in [audit.md § 5](audit.md#5-stale-or-wrong-statements-this-ledger-corrects).
 
 ## Wave 0
 
 ### SS-E1: Client evidence
 
-**Status:** Ready. **Writer:** `game-archaeology-specialist`. Static Ghidra and client Lua only; no debugger on the live client (`feedback_x64dbg_nonfreezing_breakpoints`). **Depends:** none. Documentation only.
+**Status:** Integrated (this PR). Verdicts are in `worknotes/ss-e1.md`. **Writer:** `game-archaeology-specialist`. Static Ghidra and client Lua only; no debugger on the live client (`feedback_x64dbg_nonfreezing_breakpoints`). **Depends:** none. Documentation only.
 
 Answer each with an address or file:line and a verdict, into `docs/reverse-engineering/findings/mail-wire-formats.md`, `chat-wire-formats.md` and `duel-wire-formats.md` (and correct `duel-restoration.md:50`, audit A-47):
 
@@ -229,15 +238,15 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-D2: PvP flag and the harm gate
 
-**Status:** BlockedDependency (SS-D1; SS-E1 D-Q4 and D-Q5). **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
+**Status:** BlockedDependency (SS-D1). The PvP-flag vehicle stays open under SS-E1 D-Q4 and is resolved by this packet's receiver trace; D-Q5 is closed. **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
 
 **Scope:**
 
 - The countdown (D-SS18) through the mechanism SS-E1 D-Q1 names, then `Engaged`.
-- `GENERICPROPERTY_PvPFlag = 1` on both duelists, to each and to their witnesses (D-SS23). A witness entering AoI mid-duel receives the current value.
+- **The PvP flag, through whichever vehicle the SS-D2 trace shows the client consumes** (D-SS23 provisional; SS-E1 D-Q4 left open): the dedicated `pvpFlag` property or `GENERICPROPERTY_PvPFlag` via `onEntityProperty(4, …)`. Trace the receiver first, record the evidence in `duel-wire-formats.md`, then set it on both duelists, to each and to their witnesses. A witness entering AoI mid-duel receives the current value. Whichever is chosen, the flag is presentation only; the combat gate reads the duel registry.
 - `combat::player_may_harm` and the four gate sites (audit A-42). Bystanders, NPC-vs-duelist and duelist-vs-NPC behaviour are unchanged.
 - Duels get their own combat source: both duelists are in combat with each other and leave it symmetrically at the end.
-- `onDuelEntities*` only as SS-E1 D-Q5 allows (D-SS25). A type-6 marker only if D-SS24's condition holds.
+- `onDuelEntitiesSet` [151] with both duelists at engage, and `onDuelEntitiesClear` [153] at every end path (D-SS25 superseded by SS-E1 D-Q5). Fix the `aoi.rs:203-211` comment (152 erases). A type-6 marker only if D-SS24's condition holds.
 - Correct `duel-restoration.md:50` if SS-E1 has not.
 
 **Acceptance:** `duel_partner_damage_allowed_at_all_four_gates` and `bystander_untouchable_during_duel` (each fails when any one gate is reverted); the flag fanout (type 8) to both duelists and a witness; a test that an interactable NPC stays interactable after a duel starts and ends (the D-SS25 guard); one wireclient test (type 11) with two duelists and a spectator.
@@ -251,7 +260,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 **Scope:**
 
 - CM 49 take cash, CM 50 take item, CM 51 pay COD and CM 47 return, each one transaction keyed by `mail_id` and the caller's `character_id`, under the invariants in audit § 6 (CAT-G-02 to G-06) and decisions D-SS09 and D-SS10.
-- Take item places into the named container and slot after checking both belong to the caller and the slot is free, or into any free main slot for `(-1, -1)` (SS-E1 M-Q5). Full bags leave the item in escrow and answer with feedback.
+- Take item ignores the client's `ContainerId` and `SlotId` entirely (SS-E1 M-Q5: the shipped client sends uninitialised values) and places the item in the caller's first free main-container slot, chosen by the server. Full bags leave the item in escrow and answer with feedback.
 - After each take the client gets the updated header (or `onMailHeaderRemove` when nothing is left and the client expects that), `onCashChanged` and an inventory update.
 - `returned` column; the COD payment mail to the sender.
 

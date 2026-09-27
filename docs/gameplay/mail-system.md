@@ -82,7 +82,7 @@ A send that reaches at least one recipient is `MAILRESULT_Sent`; `FailedRecipien
 | `returnMailMessage` | YES | MailId | Return to sender |
 | `requestMailBody` | YES | MailId | Fetch body text |
 | `takeCashFromMailMessage` | YES | MailId | Claim cash attachment |
-| `takeItemFromMailMessage` | YES | MailId, ContainerId, SlotId | Claim item attachment |
+| `takeItemFromMailMessage` | YES | MailId, ContainerId, SlotId | Claim item attachment. ContainerId and SlotId are garbage in the shipped client (`mail-wire-formats.md` M-Q5). **Planned (SS-M3, not yet implemented; the handler is still a stub):** the server will ignore them and place the item in the caller's first free main slot |
 | `payCODForMailMessage` | YES | MailId | Pay COD fee |
 | `onNewMail` | NO | (none) | Server notification of new mail |
 
@@ -117,7 +117,24 @@ UINT32 attachmentCount
 
 ### MessageAttachment
 
-Not yet decompiled. The server always writes `attachmentCount = 0` — attachment claim (`takeItemFromMailMessage` / `takeCashFromMailMessage`) is unimplemented, so the client is never given an attachment record to act on.
+Recovered from the client's `onMailHeaderInfo` decode (`mail-wire-formats.md` M-Q4) and
+`entities/defs/alias.xml:103-111`, all fields `INT32`:
+
+```
+INT32 id            -- mail_id; joins the attachment to its header row
+INT32 itemId        -- the item's own inventory-instance id, not a type id (M-Q2)
+INT32 stackSize
+INT32 durability    -- UNRESOLVED: the client's own UI decode reads this as a float even though
+                    --   alias.xml declares INT32; wire stays INT32 per alias.xml until a capture
+                    --   of a non-empty attachment settles it
+INT32 charges
+```
+
+The server always writes `attachmentCount = 0` today — attachment claim
+(`takeItemFromMailMessage` / `takeCashFromMailMessage`) is unimplemented, so the client is never
+given an attachment record to act on. The wire layout above is recovered except for `durability`, whose INT32-versus-float
+representation is still unresolved (the wire follows `alias.xml`'s INT32 until a capture settles
+it); the server-side population of it remains to be built.
 
 ### onMailRead
 
@@ -192,15 +209,15 @@ One row per recipient — a multi-recipient send would fan out to N rows.
 
 ## Data References
 
-- **Custom types**: `MessageHeader` (recovered — see [Wire Format](#wire-format)), `MessageAttachment` (not yet decompiled)
+- **Custom types**: `MessageHeader` (recovered — see [Wire Format](#wire-format)), `MessageAttachment` (recovered — see [Wire Format](#wire-format); `durability`'s INT32-vs-float wire type is the one still-open field)
 - **Database**: `sgw_gate_mail`
 - **Enumerations**: `RecipientFlags` (individual, guild, etc.)
 
 ## Remaining Work
 
 1. **Send path** — `sendMailMessage` is the single largest gap; everything downstream of it (result codes, new-mail notification, multi-recipient fan-out) is blocked on it
-2. **Attachment claim** — `takeItemFromMailMessage` / `takeCashFromMailMessage`, plus the `MessageAttachment` wire format
-3. **Send result codes** — enumerate `ResultCode` values in `sendMailResult`
+2. **Attachment claim (server logic)** — `takeItemFromMailMessage` / `takeCashFromMailMessage` still log `UNIMPLEMENTED`; the `MessageAttachment` wire format itself is recovered (see [Wire Format](#wire-format)). Per `mail-wire-formats.md` M-Q5, `ContainerId`/`SlotId` on `takeItemFromMailMessage` carry uninitialized client stack garbage and must never be interpreted — always place into the caller's first free main slot
+3. **Send result codes** — recovered: `sendMailResult`'s `ResultCode` 0-7 mapping and client-visible text are documented in `mail-wire-formats.md` M-Q1; the server side (`sendMailMessage` validation and emitting `sendMailResult`) is still a stub
 4. **RecipientFlags** — what flags control recipient targeting (individual, guild, etc.)
 5. **COD flow** — how `payCODForMailMessage` transfers cash to the original sender
 6. **Rate limiting** — the `lastMailGetTime` throttle on header requests is not implemented
