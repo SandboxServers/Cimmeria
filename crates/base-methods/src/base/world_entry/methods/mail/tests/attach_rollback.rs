@@ -183,3 +183,52 @@ async fn attached_send_to_full_mailbox_moves_nothing() {
 
     cleanup(&pool, acct).await;
 }
+
+/// D-SS15 with an attachment: the only recipient ignores the sender. The
+/// Ignore check runs under the player-row lock, before the debit and the
+/// escrow move, so the send is `NoRecipients` with the shared "not
+/// accepting" line, and neither the cash nor the item leaves the sender.
+/// Fails when the Ignore check is skipped (the mail, the debit and the
+/// escrow row all happen).
+#[tokio::test]
+async fn attached_send_to_ignoring_recipient_moves_nothing() {
+    let pool = require_db_or_skip!();
+    let (acct, sender, rcpt) = (BASE + 30, BASE + 31, BASE + 32);
+    let type_id = setup(
+        &pool,
+        acct,
+        (sender, "SsmTwoIgnSend"),
+        (rcpt, "SsmTwoIgnRcpt"),
+        500,
+    )
+    .await;
+    let whole = TestItem::main(ITEMS + 30, sender, 0, 1);
+    insert_item(&pool, whole, type_id).await;
+    let list = crate::base::contact_list::ignore::ensure_ignore_list(&pool, rcpt)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO sgw_contact_list_member (list_id, player_name) VALUES ($1, $2)")
+        .bind(list)
+        .bind("SsmTwoIgnSend")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let c = Client::new(0x7300_148C, sender, 54_758, "SsmTwoIgnSend");
+    c.op(
+        MailOp::Send(attached("SsmTwoIgnRcpt", 50, true, whole.item_id, 1)),
+        Some(&pool),
+        Instant::now(),
+    )
+    .await;
+    let r = reply(c.take());
+    assert_eq!(r.code, Some(MailResult::NoRecipients.code()), "{r:?}");
+    assert_eq!(
+        r.lines,
+        vec!["SsmTwoIgnRcpt is not accepting your messages.".to_string()]
+    );
+    assert!(r.cash.is_empty() && r.removed.is_empty() && r.inventory_updates == 0);
+    assert_untouched(&pool, sender, rcpt, 500, &[whole]).await;
+
+    cleanup(&pool, acct).await;
+}

@@ -134,6 +134,16 @@ The Bank campaign's owner decision (vendors, trade, crafting and mail see only t
 - Guard: `send_rejects_banked_item` (live DB, `tests/attach_vault.rs`), all five containers: refused, the specific reason logged, the feedback line, nothing debited, no mail, no escrow, and each item still in its own container. **Proof:** with the container check bypassed it FAILED (the first vault item was mailed, code 0 not 2); restored, it passed. `live-db-test.sh mail` after the change: 75 run, 75 passed.
 - Nothing in SS-M2 puts an item back into an inventory. The return-side rule (a take, a return, a COD delivery lands in the backpack, never 17-20) is SS-M3's; it is written into `mail-system.md` and integration edit 3 below. BV-01's grant guard (#872) is not relied on.
 
+## Rebase onto SS-C1 (#893)
+
+Rebased onto `origin/main` @ `64ffa5431`, after SS-C1 (`f2af64cf4`) wired the mail Ignore seam. Conflicts and how each was merged:
+
+- `send/deliver.rs`: both behaviours kept. The order is now the sender's advisory locks, then the item row, then the player rows `FOR UPDATE`, then SS-C1's `ignoring_sender(conn, sender_name, ids)`, which reads the sender's stored name under that lock, then the cap. Every recipient check (unknown, ignoring, full) runs before the attachment arm, so an attached send to an ignoring recipient ends with nothing written.
+- `send/mod.rs`: SS-C1 changed `failure_line` (the shared `not_accepting_text` for ignoring recipients), which this packet had moved to `send/texts.rs`. SS-C1's version is now in `texts.rs`, and nothing is left behind in `mod.rs`.
+- Docs: `mail-system.md` keeps this packet's step 4 and SS-C1's step 5; `observability.md` keeps SS-C1's `chat` row and this packet's `mail` row; `project-status.md` keeps ORG-03's organizations row and this packet's Mail row; `gap-analysis.md` TOTALS and percentages recomputed from the matrix rows by script (472 / CW 169 / NT 70 / IM 105 / KM 124 / NU 4; every row's columns checked to sum to its total); agent-memory `MEMORY.md` indexes unioned.
+- New guard `attached_send_to_ignoring_recipient_moves_nothing` (live DB, `tests/attach_rollback.rs`): the only recipient ignores the sender; a COD send of a whole item answers `NoRecipients` with "X is not accepting your messages.", and the balance, the item, both mailboxes and escrow are unchanged. **Proof:** with the Ignore result cleared in `deliver` it FAILED (code 0, sent); restored, it passed.
+- After the rebase: `live-db-test.sh mail` 78 run, 78 passed (SS-C1's `send_skips_recipient_who_ignores_the_sender` included).
+
 ## Integration edits for the coordinator
 
 1. `docs/gap-analysis.md`: the TOTALS line and percentages are recomputed on top of `e0d5cecf7`; any packet merged before this one that also moved rows needs them recomputed again.
