@@ -17,3 +17,4 @@ mod support;
 mod trace_load;
 mod two_client_castle_visibility;
 mod two_client_castle_visibility_chaos;
+mod two_client_squad;
