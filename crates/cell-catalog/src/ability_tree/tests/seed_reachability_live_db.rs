@@ -26,6 +26,7 @@ fn ctx<'a>(
     level: i32,
     spent: i32,
     points: i32,
+    offered: &'a [i32],
 ) -> TrainContext<'a> {
     TrainContext {
         catalog,
@@ -37,7 +38,19 @@ fn ctx<'a>(
         known,
         tree_points_spent: spent,
         training_points: points,
+        // At the seeded debug trainer (list 1 offers every node, D-AT06;
+        // `seed_trainer_rows_and_tree_rows_match` proves it), in range, so
+        // only the node and spend gates decide.
+        trainer: TrainerPin::Trainer {
+            offered,
+            in_range: true,
+        },
     }
+}
+
+/// Every node of `arch`, as the debug trainer offers it.
+fn offered_by_debug_trainer(catalog: &AbilityTreeCatalog, arch: i32) -> Vec<i32> {
+    catalog.tree(arch).iter().map(|n| n.ability_id).collect()
 }
 
 /// `target` plus every node it needs through its prerequisites.
@@ -65,6 +78,7 @@ fn reach_at_unlock_level(
     arch: i32,
     target: &TreeNode,
 ) -> Result<(), TrainReject> {
+    let offered = offered_by_debug_trainer(catalog, arch);
     let level = target.level;
     let path = prerequisite_closure(catalog, arch, target.ability_id);
     let mut known = HashSet::new();
@@ -78,6 +92,7 @@ fn reach_at_unlock_level(
             level,
             spent,
             points,
+            &offered,
         )) {
             Ok(_) => return Ok(()),
             Err(TrainReject::SpendGate { .. }) | Err(TrainReject::MissingPrerequisite { .. }) => {}
@@ -93,6 +108,7 @@ fn reach_at_unlock_level(
                     level,
                     spent,
                     points,
+                    &offered,
                 ))
                 .is_ok()
         });
@@ -114,6 +130,7 @@ fn reach_at_unlock_level(
                 level,
                 spent,
                 points,
+                &offered,
             ))
             .map(|_| ());
         };
@@ -160,11 +177,19 @@ async fn seed_every_branch_root_is_trainable_by_a_new_character() {
     let mut roots = 0;
     let mut locked = Vec::new();
     for arch in SEEDED_ARCHETYPES {
+        let offered = offered_by_debug_trainer(&catalog, arch);
         for root in catalog.tree(arch).iter().filter(|n| n.is_branch_root) {
             roots += 1;
-            if let Err(reject) =
-                evaluate_train(&ctx(&catalog, &known, arch, root.ability_id, 1, 0, 1))
-            {
+            if let Err(reject) = evaluate_train(&ctx(
+                &catalog,
+                &known,
+                arch,
+                root.ability_id,
+                1,
+                0,
+                1,
+                &offered,
+            )) {
                 locked.push((arch, root.ability_id, reject));
             }
         }
