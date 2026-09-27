@@ -87,6 +87,16 @@ ALTER TABLE ONLY sgw_player_discipline_expertise
     ADD CONSTRAINT sgw_player_discipline_expertise_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
 --
+-- Name: sgw_player_content_cooldown_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Content-action cooldowns (SS-U3); a deleted character takes its rows with
+-- it.
+--
+
+ALTER TABLE ONLY sgw_player_content_cooldown
+    ADD CONSTRAINT sgw_player_content_cooldown_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
 -- Name: sgw_contact_list_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 -- ON DELETE CASCADE ensures all lists (and via FK below, all members) are

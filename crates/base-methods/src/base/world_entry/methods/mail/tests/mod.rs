@@ -2,8 +2,9 @@
 //! path (`send_live`, `send_limits`, `send_race`), attachments and escrow
 //! (`attach_live`, `attach_race`, SS-M2), the delete guard
 //! (`delete_guard`, SS-M2), the attachment ops (`take_live`, `cod_live`,
-//! `return_live`, `take_race`, `return_race`, SS-M3), and system mail and
-//! the GM tools (`system_live`, `gm_live`, SS-U1).
+//! `return_live`, `take_race`, `return_race`, SS-M3), system mail and
+//! the GM tools (`system_live`, `gm_live`, SS-U1), and the content engine's
+//! `send_system_mail` with its cooldown (`content_live`, SS-U3).
 //!
 //! The live-DB tests assert on SQL side effects and, where the invariant is
 //! what the client is told, on the decoded packets the handler sent.
@@ -17,6 +18,7 @@ mod attach_race;
 mod attach_rollback;
 mod attach_vault;
 mod cod_live;
+mod content_live;
 mod delete_guard;
 mod gm_live;
 mod packets;

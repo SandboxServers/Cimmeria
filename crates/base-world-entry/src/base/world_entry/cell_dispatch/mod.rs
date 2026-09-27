@@ -219,5 +219,17 @@ pub async fn handle_cell_message(
         }
 
         CellToBaseMsg::Bank(bank) => bank_dispatch::route(bank, &ctx).await,
+
+        // The content engine's `send_system_mail` action (SS-U3).
+        CellToBaseMsg::ContentSystemMail(msg) => {
+            super::methods::mail::handle_content_system_mail(
+                msg,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.db_pool,
+            )
+            .await
+        }
     }
 }

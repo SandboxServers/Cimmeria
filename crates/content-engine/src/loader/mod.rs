@@ -14,6 +14,8 @@
 //!   `despawn_entity`), delegated to from `convert_action`'s fallthrough
 //! - [`action_bark`] — the `npc_bark` verb, delegated to from
 //!   `convert_action`'s `"npc_bark"` arm
+//! - [`action_mail`] — the `send_system_mail` verb (SS-U3), delegated to
+//!   from `convert_action`'s `"send_system_mail"` arm
 //!
 //! `mod.rs` keeps the orchestration ([`build_chains_from_rows`]),
 //! the JSON loader, and the public DB row structs.
@@ -29,6 +31,7 @@ use crate::triggers::Trigger;
 
 mod action;
 mod action_bark;
+mod action_mail;
 mod action_spawn;
 mod condition;
 mod trigger;

@@ -12,7 +12,9 @@
 //!   return to sender (SS-M3), sharing the lock order in [`claim`];
 //! - [`system`]: the one writer for server-originated mail (Black Market
 //!   payouts, content actions, GM `.mail`), SS-U1;
-//! - [`gm`]: the GM `.mail` and `.mailbox` tools (SS-U1).
+//! - [`gm`]: the GM `.mail` and `.mailbox` tools (SS-U1);
+//! - [`content`]: the content engine's `send_system_mail` action, behind a
+//!   per-player cooldown (SS-U3).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -30,6 +32,7 @@ use crate::mercury::build_player_entity_method_packet;
 
 mod claim;
 mod cod;
+mod content;
 mod gm;
 mod headers;
 mod read;
@@ -38,6 +41,7 @@ mod send;
 pub mod system;
 mod take;
 
+pub use content::handle_content_system_mail;
 pub use gm::handle_mail_gm;
 pub use system::{
     send_system_mail, send_system_mail_tx, SystemEscrow, SystemItem, SystemMail, SystemMailError,

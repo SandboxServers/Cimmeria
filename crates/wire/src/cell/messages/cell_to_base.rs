@@ -2,6 +2,7 @@
 
 use super::bank_cell_to_base::BankCellToBase;
 use super::chat_cell_to_base::ChatCellToBase;
+use super::content_mail_cell_to_base::ContentSystemMail;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
@@ -840,4 +841,8 @@ pub enum CellToBaseMsg {
     /// so bank packets add variants in `bank_cell_to_base.rs` instead of
     /// here.
     Bank(BankCellToBase),
+
+    /// A content chain's `send_system_mail` action (SS-U3): one system mail
+    /// to the chain's player, behind an optional per-player cooldown.
+    ContentSystemMail(ContentSystemMail),
 }
