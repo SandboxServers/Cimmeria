@@ -8,7 +8,7 @@ last_updated: 2026-09-26
 # Pet System
 
 > **Last updated**: 2026-09-27
-> **Status**: ~30%. Engine support, content and client are complete. A player can summon an owned pet by casting its summon ability (pets campaign PT-03: 2826 Summon Straegis spawns template 350). The server introduces the pet to its owner, tears it down, and keeps it tied to its owner on every owner lifecycle path (PT-01, PT-02). Pet commands and pet AI are still missing (tracked in #570, ledger `docs/analysis/pets/`). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
+> **Status**: ~30%. Engine support, content and client are complete. A player can summon an owned pet by casting its summon ability (pets campaign PT-03: 2826 Summon Straegis spawns template 350). The server introduces the pet to its owner, tears it down, and keeps it tied to its owner on every owner lifecycle path (PT-01, PT-02). The owner commands the pet (PT-04), the pet AI follows and fights (PT-05), and the owner's own pet abilities (Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration, the pet heals) act on it (PT-08). Tracked in #570, ledger `docs/analysis/pets/`. Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Overview
 
@@ -98,6 +98,7 @@ The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). Th
 | Kill credit | DONE (PT-06) | A pet's kill raises the owner's `EntityDeath` (KillCount missions advance); NPC attackers are never credited |
 | Position tracking | DEFINED | `ownerLastPosition`, `petLastPosition`, `lastOwnerPositionCheck` |
 | Pet AI | DONE (PT-05) | Follow, teleport, stances, defend-owner, owner-anchored leash, owner combat state. See [Pet AI](#pet-ai-pt-05) |
+| Owner abilities on the pet | DONE (PT-08) | Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration and the Repair Turret heals act on the owner's pet. See [Owner abilities on pets](#owner-abilities-on-pets-pt-08) |
 | Pet persistence | STUB | `saveToDB` defined but no save logic |
 
 ## Owner commands (PT-04)
@@ -113,6 +114,30 @@ Every command checks ownership first (CAT-C-11 / #462). The pet id in the packet
 | CM 90 `petChangeStance(petId, stance)` | A stance id from the pet's stance list is taken as sent. Any other value is read as a 1-based slot into the list the owner was sent. The small pet bar sends slot numbers (A-07, a bug in the 2009 client). A value that is neither is refused, and the current stance is sent again. On success the stance is set and `onPetStanceUpdate` goes to the owner only. |
 
 The owner may not aim the pet at anything the owner could not attack. `handle_use_ability` applies the #444 target rule to player casters only, so the pet handler applies it for the owner. Every pet-bar click in the shipped UI arrives as CM 88; nothing in the client Lua calls CM 89 (A-06). The stance rules for autonomous engagement belong to PT-05, and an explicit CM 88 order is obeyed whatever the stance.
+
+## Owner abilities on pets (PT-08)
+
+Some of the owner's own abilities act on the owner's pet. The code is in
+`crates/cell-combat/src/cell/abilities/use_ability/owner_pet/`, the effect scripts are in
+`crates/cell-world/src/cell/effects/pet_scripts.rs`, and the design is decision 25 of
+[`abilities-and-effects-system.md`](../architecture/abilities-and-effects-system.md).
+
+| Ability | What the server does |
+|---|---|
+| 2824 Holy Warrior (Toggled, Battle Lord) | The first press gives the pet +100 Accuracy and -100 Defense (effect 4220). The next press takes it off. The owner reads "Holy Warrior is on." or "... off.". Its other effect, 4087 "Stance Removal", would remove the owner's other stance; no player stance exists on this server, so it removes nothing |
+| 2839 To The Death | After its 2 s warmup the pet gets +400 Accuracy for 60 s (4121), and the owner reads "Your pet fights to the death: it dies in 60 seconds.". When the 60 s run out (4119), the Accuracy comes off and the pet dies (4122). The death goes through the normal death resolver: the pet becomes a corpse and is despawned 10 s later (D-PT08). Nobody gets XP or kill credit for it. Casting it again while it runs is refused (`onErrorCode` 133 and "Your pet is already fighting to the death."), so the timer can never be restarted |
+| 2852 Heed Our Calling (passive) | While the owner knows it, the owner's `speedPet` is 100, so a `SpeedPet` summon has no warmup: the summon is instant (D-PT10). It is applied at login and when the ability is trained, and removed by a respec |
+| 1650 Lord's Concentration | After its 2 s warmup every pet the owner has out gets +50 Interrupt Resistance for 30 s. The 2009 data gave this ability no effect; effect 350 and its values are greenfield (D-PT17, PROPOSED). The server has no damage interrupt yet, so the stat has no consumer |
+| 967 / 968 / 1207 Repair Turret: Percentage / Regenerate / Full | Heal the owner's pet: 20% of its max health at once (3211), 5% a second for 15 s (3230), or 10% every 0.5 s for 5 s (3350). These are Robotics turret abilities, so until turrets exist (PT-12) they heal whatever pet the owner has |
+
+How the target is chosen:
+
+- **Never the client's target.** The cast is redirected to the caster's own pet. The pet is looked up in the registry and kept only when the summon-time identity says the caster summoned it (`summoner_matches`), it is alive, and it is in the caster's space. A player given a destroyed owner's entity id cannot act on that owner's pet.
+- **No pet, no cooldown.** With no such pet the press is refused before the cooldown is charged, with `onErrorCode` and a chat line: 190 and "You have no pet to use that on." (no pet, or a reused owner id), 190 and "Your pet is not here." (another space), 14 and "Your pet is dead.". A pet that dies or leaves during a warmup gets the same answer at the fire, after `Ability_Interrupt`, and the cooldown stays charged.
+- **The state is on the pet.** Buffs are kept on the pet's `PetState::buffs`, with the exact stat change each made, so removing one restores the stat. Toggles have no expiry; timed buffs are removed by the owner-pet tick. A despawn, a new summon or the owner's death clears all of it with the pet. `Defense` and `Interrupt Resistance` start at `[0, 0]`; the pet's bound widens so the buff applies (python clamped it away).
+- **Log target `pets.buff`.** Every step is logged there; see [observability.md](../architecture/observability.md).
+
+Not done: Repair Turret: Restoration (1214, revive), and 1646 "Health Heal", which stays a heal on the caster's target (it is also the universal starter, D-AT09). 1647 / 1651 (focus heals) and 1648 / 2831 (Defend Your God) are not wired.
 
 ## Entity Definition (SGWPet.def)
 
