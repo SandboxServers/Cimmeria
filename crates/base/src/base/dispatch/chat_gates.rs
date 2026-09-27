@@ -17,32 +17,14 @@
 use std::net::SocketAddr;
 use std::time::Instant;
 
+use cimmeria_wire::cell::chat::{
+    CHAN_CHAT, CHAN_COMMAND, CHAN_EMOTE, CHAN_FEEDBACK, CHAN_OFFICER, CHAN_SAY, CHAN_SERVER,
+    CHAN_SPLASH, CHAN_SQUAD, CHAN_TEAM, CHAN_TELL, CHAN_YELL,
+};
+
 use super::super::feedback::{send_feedback_line, FeedbackCtx};
 use super::super::mutes::{mute_table, muted_text};
 use super::super::rate_limit::limits::CHAT_EXEMPT_ACCESS_LEVEL;
-
-/// The `EChannel` ids the client sends and renders, from
-/// `entities/defs/enumerations.xml`. The client hardcodes the same literals
-/// (D-ORG14, ORG-E1 Q5). The workspace `CHAN_*` constants still carry the
-/// old server 7 / tell 9 / splash 10 until ORG-09 aligns them (D-SS17), so
-/// the allowlist names its own copies, pinned against the XML by
-/// `echannel_ids_match_enumerations_xml`.
-pub(super) mod echannel {
-    pub(in crate::base::dispatch) const SAY: u8 = 0;
-    pub(in crate::base::dispatch) const EMOTE: u8 = 1;
-    pub(in crate::base::dispatch) const YELL: u8 = 2;
-    pub(in crate::base::dispatch) const TEAM: u8 = 3;
-    pub(in crate::base::dispatch) const SQUAD: u8 = 4;
-    pub(in crate::base::dispatch) const COMMAND: u8 = 5;
-    pub(in crate::base::dispatch) const OFFICER: u8 = 6;
-    pub(in crate::base::dispatch) const SERVER: u8 = 8;
-    pub(in crate::base::dispatch) const FEEDBACK: u8 = 9;
-    pub(in crate::base::dispatch) const TELL: u8 = 10;
-    pub(in crate::base::dispatch) const SPLASH: u8 = 11;
-    /// The first user-created channel id ("Anything starting at CHAN_chat is
-    /// a user-created chat channel").
-    pub(in crate::base::dispatch) const CHAT: u8 = 12;
-}
 
 /// Feedback for a line on a system channel.
 pub(super) const SYSTEM_CHANNEL_TEXT: &str =
@@ -59,16 +41,18 @@ pub(super) struct ChannelRefusal {
     pub text: &'static str,
 }
 
-/// The allowlist itself. `Ok` for a channel a player may speak on.
+/// The allowlist itself. `Ok` for a channel a player may speak on. The ids
+/// are the workspace `CHAN_*` constants, which SS-C4 aligned with
+/// `EChannel` (D-ORG14).
 pub(super) fn check_channel(channel: u8) -> Result<(), ChannelRefusal> {
-    use echannel::*;
     match channel {
-        SAY | EMOTE | YELL | TELL | TEAM | SQUAD | COMMAND | OFFICER => Ok(()),
-        SERVER | FEEDBACK | SPLASH => Err(ChannelRefusal {
+        CHAN_SAY | CHAN_EMOTE | CHAN_YELL | CHAN_TELL | CHAN_TEAM | CHAN_SQUAD | CHAN_COMMAND
+        | CHAN_OFFICER => Ok(()),
+        CHAN_SERVER | CHAN_FEEDBACK | CHAN_SPLASH => Err(ChannelRefusal {
             reason: "system_channel",
             text: SYSTEM_CHANNEL_TEXT,
         }),
-        c if c >= CHAT => Err(ChannelRefusal {
+        c if c >= CHAN_CHAT => Err(ChannelRefusal {
             reason: "user_channel",
             text: USER_CHANNEL_TEXT,
         }),
@@ -139,7 +123,7 @@ pub(super) async fn refuse_if_muted(
         account_id = who.account_id,
         entity_id = who.entity_id,
         channel,
-        tell = channel == echannel::TELL,
+        tell = channel == CHAN_TELL,
         remaining_secs = remaining.as_secs(),
         muted_by_account_id = mute.by_account_id,
         reason = "muted",

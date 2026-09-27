@@ -14,9 +14,10 @@
 //! - no `speaker` → the client renders the empty-name prefix (`[] says`),
 //!   the exact garbling that got the `system_message` stub disconnected
 //!   from method 28 in the first place;
-//! - an unrecognised `channel` → either a channel the client never
-//!   registered (its red unknown-channel splash popup) or `CHAN_splash`,
-//!   whose native trigger has not been traced.
+//! - an unrecognised `channel` → either the server channel, which the
+//!   client shows as a modal "Server Message" prompt (`ChatWindow.lua:160`),
+//!   an id with no client `ChannelMap` entry (7), which shows nothing, or
+//!   `CHAN_splash`, whose native trigger has not been traced.
 
 use tracing::warn;
 

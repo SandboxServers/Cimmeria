@@ -24,7 +24,9 @@
 use std::net::SocketAddr;
 use std::time::Instant;
 
-use cimmeria_wire::cell::chat::{serialize_on_player_communication, serialize_on_tell_sent};
+use cimmeria_wire::cell::chat::{
+    serialize_on_player_communication, serialize_on_tell_sent, CHAN_TELL,
+};
 use cimmeria_wire::cell::client_methods::communicator::{ON_PLAYER_COMMUNICATION, ON_TELL_SENT};
 
 use super::super::contact_list::ignore::{not_accepting_text, session_ignores};
@@ -35,13 +37,6 @@ use super::super::mutes::mute_table;
 use super::super::player_index::{NameLookup, OnlinePlayerIndex};
 use super::speaker_flags;
 use cimmeria_entity::organization::org_text::{validate, TextField};
-
-/// The tell channel byte the client sends and renders. `EChannel` tell is 10
-/// in `enumerations.xml`, and the client hardcodes the same literal (ORG-E1
-/// Q5, D-ORG14; cited by SS-E1 C-Q1). The workspace `CHAN_TELL` constants
-/// still say 9 until ORG-09 aligns them (D-SS17), so this is a local
-/// constant, not a second edit of theirs.
-pub(super) const TELL_CHANNEL: u8 = 10;
 
 /// Feedback for a tell with no target name.
 pub(super) const TELL_NO_TARGET_TEXT: &str = "Who do you want to send a tell to?";
@@ -226,7 +221,7 @@ pub(super) async fn handle_tell(
         return;
     }
 
-    let line = serialize_on_player_communication(sender.name, sender.flags, TELL_CHANNEL, text);
+    let line = serialize_on_player_communication(sender.name, sender.flags, CHAN_TELL, text);
     let (delivered, recipient_eid) = send_to_current_player(
         ctx,
         recipient.addr,
@@ -260,7 +255,7 @@ pub(super) async fn handle_tell(
             let reply = serialize_on_player_communication(
                 &recipient.name,
                 recipient.flags,
-                TELL_CHANNEL,
+                CHAN_TELL,
                 away,
             );
             send_to_current_player(

@@ -401,7 +401,9 @@ pub async fn handle_on_client_ready(
     }
 
     // Bundle the post-onClientReady burst: BeingAppearance resend +
-    // onEntityTint resend + 8× onChatJoined + onPlayerCommunication welcome.
+    // onEntityTint resend + onPlayerCommunication welcome. No onChatJoined:
+    // the client hardcodes every built-in channel (SS-C4, D-ORG14; see the
+    // `world_entry_chat` module doc).
     //
     // **Transaction-state audit** (see
     // [docs/architecture/mercury-bundle.md](../../../docs/architecture/mercury-bundle.md)):
@@ -415,12 +417,12 @@ pub async fn handle_on_client_ready(
     //
     // Pre-bundle: 11 reliable packets (1 appearance + 1 tint + 8 chat-joined
     // + 1 welcome), each consuming a TX-window slot. Post-bundle: 1 reliable
-    // packet (the burst body is ~700 B, well under FRAGMENT_BODY_SIZE=1300),
+    // packet; since SS-C4 it holds 3 messages, well under FRAGMENT_BODY_SIZE,
     // pinned by [`super::builders::tests::on_client_ready_burst_bundles_to_single_packet`].
     //
     // `speaker` resolution mirrors the pre-bundle path: prefer the session's
-    // `player_name`, fall back to "Server" (a real DEFAULT_CHAT_CHANNELS
-    // entry) with a WARN so the unexpected missing-name case stays visible.
+    // `player_name`, fall back to "Server" with a WARN so the unexpected
+    // missing-name case stays visible.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
     let speaker = player_name.as_deref().unwrap_or_else(|| {

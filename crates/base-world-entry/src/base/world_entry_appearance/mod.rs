@@ -18,11 +18,10 @@
 //! Re-exported here so every existing `crate::base::world_entry_appearance::*`
 //! import path stays valid.
 //!
-//! Chat-channel registration helpers (`DEFAULT_CHAT_CHANNELS`, `CHAN_TELL`,
-//! `build_chat_joined_args`, `build_welcome_message_args`) and their
-//! byte-exact tests live in `super::world_entry_chat`. They're used inside
-//! `client_ready::handle_on_client_ready` for the post-`onClientReady`
-//! `ChannelManager.playerLoggedIn` flow.
+//! The welcome-line builder (`build_welcome_message_args`) and its
+//! byte-exact tests live in `super::world_entry_chat`, used inside
+//! `client_ready::handle_on_client_ready`. No chat channel is registered
+//! at login (SS-C4); that module's doc says why.
 
 mod cinematic;
 mod cinematic_aoi_hold;

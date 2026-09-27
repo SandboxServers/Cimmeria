@@ -6,7 +6,15 @@
 //!
 //! Reference: `python/cell/SGWPlayer.py:processPlayerCommunication()`
 
-// ── Channel IDs (from python/Atrea/enums.py EChannel) ─────────────────────
+// ── Channel IDs (`EChannel`, `entities/defs/enumerations.xml`) ─────────────
+//
+// The client compiles every built-in `UIChannel.*` id in as a literal equal
+// to the enum value (D-ORG14, ORG-E1 Q5: `UIChannel.Server` is 8, `.Tell` 10),
+// so these are wire constants, not server choices. They used to follow a
+// drifted python copy (server 7, tell 9, splash 10); 7 is no `EChannel` at
+// all, and the client's `ChatMod.ChannelMap[7]` is nil, so a line on 7 is a
+// client Lua error. Every constant is pinned to the XML by
+// `tests::chan_constants_match_enumerations_xml`.
 
 /// Local say channel — spatial, nearby players.
 pub const CHAN_SAY: u8 = 0;
@@ -22,19 +30,25 @@ pub const CHAN_SQUAD: u8 = 4;
 pub const CHAN_COMMAND: u8 = 5;
 /// Officer channel — guild officers.
 pub const CHAN_OFFICER: u8 = 6;
-/// Server channel — system broadcasts only.
-pub const CHAN_SERVER: u8 = 7;
-/// GM-feedback channel. The client only registers the channels in the base's
-/// `DEFAULT_CHAT_CHANNELS` (say/emote/yell/team/squad/command/server=7/tell=9);
-/// there is **no** dedicated feedback channel, and an *unregistered* channel
-/// (e.g. 8) falls back to the client's red unknown-channel splash popup. So GM
-/// feedback rides the registered `tell` channel (9) — the same channel the
-/// base's inline welcome message uses (`world_entry_chat::CHAN_TELL`).
+/// Server channel — system broadcasts only. The client prints a line on it
+/// in bright red **and** opens a modal "Server Message" prompt
+/// (`ChatWindow.lua:160-162`), so only a broadcast meant to interrupt every
+/// player belongs here (`/gmshout`, `.announce`), never routine feedback.
+pub const CHAN_SERVER: u8 = 8;
+/// Feedback channel — system lines to one player (GM feedback, refusals,
+/// the login welcome). Rendered as an ordinary sky-blue line in the Info
+/// tab, no popup. The legacy welcome (`cell/SGWPlayer.py:541`) used a
+/// literal 9, which is this channel.
 pub const CHAN_FEEDBACK: u8 = 9;
-/// Tell channel — direct player-to-player (handled by BaseApp, not here).
-pub const CHAN_TELL: u8 = 9;
-/// Splash screen channel.
-pub const CHAN_SPLASH: u8 = 10;
+/// Tell channel — direct player-to-player, routed by the base
+/// (`dispatch::tell`). The client's `/tell` sends this id and renders
+/// incoming tells on it.
+pub const CHAN_TELL: u8 = 10;
+/// Splash channel — system splash text. No server path sends it yet.
+pub const CHAN_SPLASH: u8 = 11;
+/// The first user-created channel id ("Anything starting at CHAN_chat is a
+/// user-created chat channel"). This server creates none.
+pub const CHAN_CHAT: u8 = 12;
 
 /// `ESpeakerFlags::SPEAKER_GM` (`entities/defs/enumerations.xml`): the
 /// speaker is staff. Pinned to the def by
@@ -46,8 +60,10 @@ pub const SPEAKER_GM: u8 = 0x01;
 /// [`SPEAKER_GM`], and [`CHAN_SERVER`]. The space scope (cell) and the
 /// global scope (base) both send these bytes, so the two cannot drift.
 ///
-/// The channel is whatever `CHAN_SERVER` holds; the organizations campaign
-/// owns that constant (D-ORG14, D-SS17), and the broadcast follows it.
+/// `CHAN_SERVER` is 8 (SS-C4, D-ORG14). The client shows a line on it in
+/// red and opens its modal "Server Message" prompt, which is what a GM
+/// shout is for. Before SS-C4 this rode 7, which the client has no
+/// `ChannelMap` entry for, so the shout never displayed.
 pub fn serialize_gm_broadcast(speaker: &str, text: &str) -> Vec<u8> {
     serialize_on_player_communication(speaker, SPEAKER_GM, CHAN_SERVER, text)
 }
@@ -187,34 +203,21 @@ mod tests {
         assert_eq!(text_len, 0);
     }
 
-    /// Byte-exact GM broadcast line (SS-C2): speaker "Gm" (2 units),
-    /// SPEAKER_GM, CHAN_SERVER, text "Hi!" (3 units). A drift in the flag
-    /// or the channel byte shows the shout as an ordinary player line, or
-    /// on a channel the client never joined.
+    /// Byte-exact GM broadcast line (SS-C2, SS-C4): speaker "Gm" (2 units),
+    /// SPEAKER_GM, `CHAN_server` = 8, text "Hi!" (3 units). A drift in the
+    /// flag shows the shout as an ordinary player line; a drift in the
+    /// channel byte (the old 7) makes the client call a nil `ChannelMap`
+    /// entry and display nothing.
     #[test]
     fn gm_broadcast_bytes_are_exact() {
         let args = serialize_gm_broadcast("Gm", "Hi!");
         let expected: Vec<u8> = vec![
-            0x02,
-            0x00,
-            0x00,
-            0x00, // speaker char count
-            b'G',
-            0x00,
-            b'm',
-            0x00, // "Gm" UTF-16LE
+            0x02, 0x00, 0x00, 0x00, // speaker char count
+            b'G', 0x00, b'm', 0x00, // "Gm" UTF-16LE
             0x01, // SPEAKER_GM
-            CHAN_SERVER,
-            0x03,
-            0x00,
-            0x00,
-            0x00, // text char count
-            b'H',
-            0x00,
-            b'i',
-            0x00,
-            b'!',
-            0x00, // "Hi!" UTF-16LE
+            0x08, // CHAN_server
+            0x03, 0x00, 0x00, 0x00, // text char count
+            b'H', 0x00, b'i', 0x00, b'!', 0x00, // "Hi!" UTF-16LE
         ];
         assert_eq!(args, expected);
     }
@@ -234,5 +237,207 @@ mod tests {
             .expect("SPEAKER_GM token");
         let v = &token[token.find("<Value>").unwrap() + 7..token.find("</Value>").unwrap()];
         assert_eq!(v.trim().parse::<u8>().unwrap(), SPEAKER_GM);
+    }
+
+    /// Read `EChannel` out of the def and return `(name, value)` pairs in
+    /// file order. Parsed, not copied, so a constant and a test cannot
+    /// drift together.
+    fn echannel_tokens_from_xml() -> Vec<(String, u8)> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../entities/defs/enumerations.xml");
+        let xml = std::fs::read_to_string(&path).expect("read enumerations.xml");
+        let start = xml.find("<EChannel>").expect("EChannel block");
+        let end = start + xml[start..].find("</EChannel>").expect("close tag");
+        xml[start..end]
+            .split("<Token>")
+            .skip(1)
+            .map(|t| {
+                let name = &t[t.find("<Name>").unwrap() + 6..t.find("</Name>").unwrap()];
+                let v = &t[t.find("<Value>").unwrap() + 7..t.find("</Value>").unwrap()];
+                (name.trim().to_string(), v.trim().parse::<u8>().unwrap())
+            })
+            .collect()
+    }
+
+    /// Every `CHAN_*` constant equals its `EChannel` token (D-ORG14, SS-C4),
+    /// and every token has a constant. The client hardcodes the same
+    /// literals, so a constant that drifts from the XML sends a line the
+    /// client files under another channel, or under none.
+    #[test]
+    fn chan_constants_match_enumerations_xml() {
+        let rust: &[(&str, u8)] = &[
+            ("CHAN_say", CHAN_SAY),
+            ("CHAN_emote", CHAN_EMOTE),
+            ("CHAN_yell", CHAN_YELL),
+            ("CHAN_team", CHAN_TEAM),
+            ("CHAN_squad", CHAN_SQUAD),
+            ("CHAN_command", CHAN_COMMAND),
+            ("CHAN_officer", CHAN_OFFICER),
+            ("CHAN_server", CHAN_SERVER),
+            ("CHAN_feedback", CHAN_FEEDBACK),
+            ("CHAN_tell", CHAN_TELL),
+            ("CHAN_splash", CHAN_SPLASH),
+            ("CHAN_chat", CHAN_CHAT),
+        ];
+        let xml = echannel_tokens_from_xml();
+        for (name, value) in &xml {
+            let (_, ours) = rust
+                .iter()
+                .find(|(n, _)| n == name)
+                .unwrap_or_else(|| panic!("EChannel token {name} has no CHAN_* constant"));
+            assert_eq!(ours, value, "{name}: Rust constant vs enumerations.xml");
+        }
+        assert_eq!(
+            rust.len(),
+            xml.len(),
+            "a CHAN_* constant names no EChannel token"
+        );
+    }
+
+    /// No `CHAN_*` constant is 7: `EChannel` skips it, and the client has
+    /// no `ChannelMap` entry for it (`ChatWindow.lua:1297-1312`), so a line
+    /// on 7 is a client Lua error. The id used to be the server channel.
+    #[test]
+    fn no_chan_constant_is_seven() {
+        for c in [
+            CHAN_SAY,
+            CHAN_EMOTE,
+            CHAN_YELL,
+            CHAN_TEAM,
+            CHAN_SQUAD,
+            CHAN_COMMAND,
+            CHAN_OFFICER,
+            CHAN_SERVER,
+            CHAN_FEEDBACK,
+            CHAN_TELL,
+            CHAN_SPLASH,
+            CHAN_CHAT,
+        ] {
+            assert_ne!(c, 7, "7 is not an EChannel id");
+        }
+        assert!(
+            echannel_tokens_from_xml().iter().all(|(_, v)| *v != 7),
+            "enumerations.xml still skips 7"
+        );
+    }
+
+    /// The top-level, comma-separated arguments of the call whose `(` is at
+    /// `open`, skipping string and char literals and line comments so a `,`
+    /// or `)` inside them does not split an argument. `None` if the call
+    /// does not close.
+    fn call_args(src: &str, open: usize) -> Option<Vec<String>> {
+        let bytes = src.as_bytes();
+        let (mut depth, mut i, mut arg_start) = (0usize, open, open + 1);
+        let mut args = Vec::new();
+        while i < bytes.len() {
+            match bytes[i] {
+                b'"' => {
+                    i += 1;
+                    while i < bytes.len() && bytes[i] != b'"' {
+                        i += if bytes[i] == b'\\' { 2 } else { 1 };
+                    }
+                }
+                // A char literal (`'('`, `'\''`); a lifetime has no closing quote.
+                b'\'' if bytes.get(i + 2) == Some(&b'\'') => i += 2,
+                b'\'' if bytes.get(i + 1) == Some(&b'\\') => {
+                    i += 2;
+                    while i < bytes.len() && bytes[i] != b'\'' {
+                        i += 1;
+                    }
+                }
+                b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                    while i < bytes.len() && bytes[i] != b'\n' {
+                        i += 1;
+                    }
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        args.push(src[arg_start..i].trim().to_string());
+                        return Some(args);
+                    }
+                }
+                b',' if depth == 1 => {
+                    args.push(src[arg_start..i].trim().to_string());
+                    arg_start = i + 1;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+
+    fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read_dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|n| n == "target") {
+                    continue;
+                }
+                rust_files(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// No server->client `onPlayerCommunication` names its channel with a
+    /// number (SS-C4). Every call of the one serializer across the
+    /// workspace passes a `CHAN_*` constant or a variable, never a literal,
+    /// so the channel byte always comes from the constants
+    /// `no_chan_constant_is_seven` and `chan_constants_match_enumerations_xml`
+    /// pin. With both, nothing can send the old server id 7. The scan finds
+    /// the serializer's call sites itself; the floor on their count keeps it
+    /// from passing by finding none.
+    #[test]
+    fn no_player_communication_call_uses_a_literal_channel() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut files = Vec::new();
+        rust_files(&crates, &mut files);
+        let needle = "serialize_on_player_communication(";
+        let mut calls = 0;
+        let mut literal = Vec::new();
+        let mut unparsed = Vec::new();
+        for file in &files {
+            let src = std::fs::read_to_string(file).expect("read source");
+            for (at, _) in src.match_indices(needle) {
+                let line_start = src[..at].rfind('\n').map_or(0, |n| n + 1);
+                if src[..at].ends_with("fn ") || src[line_start..at].contains("//") {
+                    continue; // the definition, or a mention in a comment
+                }
+                let Some(args) = call_args(&src, at + needle.len() - 1) else {
+                    unparsed.push(format!("{}: byte {at}", file.display()));
+                    continue;
+                };
+                if args.len() != 4 {
+                    continue; // a `use` list or a doc mention, not a call
+                }
+                calls += 1;
+                let channel = args[2].trim_end_matches("u8").trim();
+                if !channel.is_empty()
+                    && channel
+                        .chars()
+                        .all(|c| c.is_ascii_hexdigit() || c == 'x' || c == '_')
+                    && channel.starts_with(|c: char| c.is_ascii_digit())
+                {
+                    literal.push(format!("{}: channel `{}`", file.display(), args[2]));
+                }
+            }
+        }
+        assert!(
+            unparsed.is_empty(),
+            "calls the scan could not parse: {unparsed:#?}"
+        );
+        assert!(
+            calls >= 20,
+            "found only {calls} serializer calls; the scan is broken"
+        );
+        assert!(
+            literal.is_empty(),
+            "onPlayerCommunication with a literal channel byte, use a CHAN_* constant:\n{}",
+            literal.join("\n")
+        );
     }
 }

@@ -210,6 +210,8 @@ mod tests {
             assert_eq!(got, args, "the GM line, byte for byte");
             // Flag and channel: speaker "Gm" is 4 + 4 bytes.
             assert_eq!(got[8], SPEAKER_GM);
+            // `CHAN_server` = 8 (SS-C4); 7 displays nothing on the client.
+            assert_eq!(got[9], 8);
             assert_eq!(got[9], CHAN_SERVER);
         }
         assert!(test_transport.filter_to(char_select).is_empty());

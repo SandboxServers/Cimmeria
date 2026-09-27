@@ -11,8 +11,6 @@ use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 
 use crate::mercury::{method_idx, write_wstring, SKIN_TINTS};
 
-use super::super::world_entry_chat::{build_chat_joined_args, DEFAULT_CHAT_CHANNELS};
-
 // ── Appearance data builders ────────────────────────────────────────────────
 
 /// Build the BeingAppearance wire args: `[wstring bodyset][u32 count][wstring comp]*`.
@@ -56,12 +54,15 @@ pub fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 ///      transaction-state rationale, and `docs/architecture/mercury-bundle.md`
 ///      for the ADR.)
 ///   2. `onEntityTint` resend     (same reason)
-///   3. `onChatJoined` × N        (channel registration — N = DEFAULT_CHAT_CHANNELS.len())
-///   4. `onPlayerCommunication`   (cosmetic welcome line)
+///   3. `onPlayerCommunication`   (welcome line, `CHAN_FEEDBACK`)
+///
+/// No `onChatJoined`: the client knows every built-in channel without one,
+/// and files any it receives as a user channel (SS-C4; the evidence is in
+/// the `world_entry_chat` module doc). Until SS-C4 this burst carried eight.
 ///
 /// Extracted as a pure builder so the burst-shape regression guard
 /// [`tests::on_client_ready_burst_bundles_to_single_packet`] can pin
-/// `num_messages = 2 + N + 1` and `estimated_packet_count() = 1` against
+/// `num_messages = 3` and `estimated_packet_count() = 1` against
 /// realistic arg sizes — the same composition the handler actually emits
 /// (call-site duplication would let the test and the handler drift).
 pub fn build_on_client_ready_burst_bundle(
@@ -71,34 +72,27 @@ pub fn build_on_client_ready_burst_bundle(
     welcome_args: &[u8],
 ) -> ChannelBundle {
     let mut bundle = ChannelBundle::new(true);
-    bundle.append_entity_method(
-        method_idx::BEING_APPEARANCE,
-        IDBASE_SGW_PLAYER,
-        entity_id,
-        appearance_args,
-    );
-    bundle.append_entity_method(
-        method_idx::ON_ENTITY_TINT,
-        IDBASE_SGW_PLAYER,
-        entity_id,
-        tint_args,
-    );
-    for &(channel_name, channel_id) in DEFAULT_CHAT_CHANNELS {
-        let args = build_chat_joined_args(channel_name, channel_id);
-        bundle.append_entity_method(
-            method_idx::ON_CHAT_JOINED,
-            IDBASE_SGW_PLAYER,
-            entity_id,
-            &args,
-        );
+    for (method_index, args) in
+        on_client_ready_burst_messages(appearance_args, tint_args, welcome_args)
+    {
+        bundle.append_entity_method(method_index, IDBASE_SGW_PLAYER, entity_id, args);
     }
-    bundle.append_entity_method(
-        method_idx::ON_PLAYER_COMMUNICATION,
-        IDBASE_SGW_PLAYER,
-        entity_id,
-        welcome_args,
-    );
     bundle
+}
+
+/// The post-onClientReady burst as `(method_index, args)`, in send order.
+/// [`build_on_client_ready_burst_bundle`] appends exactly these, so a test
+/// can read the method list without decoding the bundle body.
+fn on_client_ready_burst_messages<'a>(
+    appearance_args: &'a [u8],
+    tint_args: &'a [u8],
+    welcome_args: &'a [u8],
+) -> [(u16, &'a [u8]); 3] {
+    [
+        (method_idx::BEING_APPEARANCE, appearance_args),
+        (method_idx::ON_ENTITY_TINT, tint_args),
+        (method_idx::ON_PLAYER_COMMUNICATION, welcome_args),
+    ]
 }
 
 /// Compose the BeingAppearance + onEntityTint resend pair into one bundle.
@@ -252,16 +246,16 @@ mod tests {
     /// slot in the per-channel 32-slot reliable TX window. After the
     /// migration, the burst rides one `ChannelBundle` that finalizes to a
     /// single fragment whenever the body fits inside `FRAGMENT_BODY_SIZE`.
+    /// SS-C4 then dropped the eight `onChatJoined`, leaving three messages.
     ///
     /// Pin two invariants the migration depends on:
-    ///   - `num_messages == 2 + DEFAULT_CHAT_CHANNELS.len() + 1` — every
-    ///     message expected in the burst is appended. A regression that
-    ///     drops one of the methods (or skips the channel loop) fails here
-    ///     before the wire desync reaches the client.
+    ///   - `num_messages == 3` — every message expected in the burst is
+    ///     appended, and nothing else (the old `onChatJoined` loop would
+    ///     make it 11).
     ///   - `estimated_packet_count() == 1` — realistic-sized inputs
     ///     comfortably fit a single fragment. A future regression that
     ///     either bloats one of the appended args past
-    ///     `FRAGMENT_BODY_SIZE - other_messages` OR adds a 9th chat channel
+    ///     `FRAGMENT_BODY_SIZE - other_messages`
     ///     would tip this to 2+ packets and fire here, prompting an
     ///     explicit re-audit of the bundle shape (and potentially a
     ///     transaction-state re-audit if the second fragment lands after
@@ -298,16 +292,12 @@ mod tests {
 
         let bundle = build_on_client_ready_burst_bundle(ENTITY_ID, &appearance, &tint, &welcome);
 
-        // Count check: every burst message must land in the bundle. The
-        // expected number is parameterised on DEFAULT_CHAT_CHANNELS so an
-        // addition to the chat-channel set updates both sides at once.
-        let expected_count = 2 + DEFAULT_CHAT_CHANNELS.len() + 1;
+        // Count check: every burst message lands in the bundle, and no
+        // onChatJoined does (SS-C4).
         assert_eq!(
             bundle.num_messages(),
-            expected_count,
-            "burst must contain BeingAppearance + onEntityTint + N onChatJoined + welcome \
-             (where N = DEFAULT_CHAT_CHANNELS.len() = {})",
-            DEFAULT_CHAT_CHANNELS.len()
+            3,
+            "burst must be BeingAppearance + onEntityTint + welcome, nothing else"
         );
 
         // Single-fragment shape: the burst is small enough that
@@ -318,7 +308,7 @@ mod tests {
         assert!(
             bundle.body_len() < FRAGMENT_BODY_SIZE,
             "burst body ({} B) must fit one fragment (limit {} B) — a regression here \
-             means the chat channel set grew or an arg ballooned, and the migration's \
+             means an arg ballooned, and the migration's \
              single-packet shape needs a re-audit",
             bundle.body_len(),
             FRAGMENT_BODY_SIZE
@@ -327,7 +317,40 @@ mod tests {
             bundle.estimated_packet_count(),
             1,
             "post-bundle burst must collapse to a single reliable packet \
-             (was 11 pre-bundle)"
+             (was 11 pre-bundle, before SS-C4 dropped onChatJoined)"
+        );
+    }
+
+    /// SS-C4 (D-ORG14): the login burst carries no `onChatJoined` for a
+    /// built-in channel. The client hardcodes ids 0-11 and files every
+    /// `onChatJoined` as a user channel with a "You have joined channel"
+    /// line (`ChatWindow.lua:370-386`); the legacy server sent it only for
+    /// ids of 12 and up (`SGWPlayer.py:162-163`). Restoring the old
+    /// eight-channel loop fails here and in the count check above.
+    #[test]
+    fn on_client_ready_burst_registers_no_built_in_channel() {
+        let welcome = build_welcome_message_args("Tester", 7);
+        let methods: Vec<u16> = on_client_ready_burst_messages(b"app", b"tint", &welcome)
+            .iter()
+            .map(|(m, _)| *m)
+            .collect();
+        assert!(
+            !methods.contains(&method_idx::ON_CHAT_JOINED),
+            "onChatJoined in the login burst: {methods:?}"
+        );
+        assert_eq!(
+            methods,
+            vec![
+                method_idx::BEING_APPEARANCE,
+                method_idx::ON_ENTITY_TINT,
+                method_idx::ON_PLAYER_COMMUNICATION,
+            ]
+        );
+        let bundle = build_on_client_ready_burst_bundle(7, b"app", b"tint", &welcome);
+        assert_eq!(
+            bundle.num_messages(),
+            methods.len(),
+            "the bundle appends exactly the listed messages"
         );
     }
 

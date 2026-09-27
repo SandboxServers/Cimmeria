@@ -18,14 +18,14 @@ use crate::mercury::read_wstring;
 
 use super::super::feedback::{send_feedback_line, FeedbackCtx};
 use cimmeria_entity::organization::org_text::{validate, TextField, TextReject};
-use cimmeria_wire::cell::chat::CHAN_SQUAD;
+use cimmeria_wire::cell::chat::{CHAN_SQUAD, CHAN_TELL};
 
 use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_UNITS};
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 use super::chat_gates::{refuse_channel, refuse_if_muted, Speaker};
 use super::speaker_flags;
-use super::tell::{self, TellSender, TELL_CHANNEL};
+use super::tell::{self, TellSender};
 
 const MAX_DND_MESSAGE_CHARS: usize = 128;
 
@@ -216,7 +216,7 @@ pub(super) async fn send_player_communication_at(
     }
 
     // Tells are delivered here, on the base, and never reach the cell.
-    if channel == TELL_CHANNEL {
+    if channel == CHAN_TELL {
         let sender = TellSender {
             addr,
             name: speaker,
