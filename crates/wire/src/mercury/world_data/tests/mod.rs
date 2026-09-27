@@ -6,6 +6,7 @@
 use super::*;
 
 mod ability_tree_info;
+mod bag_info;
 mod bandolier;
 mod entity_encoding;
 mod historical_cellblocks;
@@ -64,6 +65,7 @@ fn sample_player_load_data() -> PlayerLoadData {
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     }
 }
 

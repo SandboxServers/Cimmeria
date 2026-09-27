@@ -69,6 +69,7 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
         ],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -176,6 +177,7 @@ fn build_map_loaded_seeds_active_slot_indicator_from_persisted_slot() {
         )],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,

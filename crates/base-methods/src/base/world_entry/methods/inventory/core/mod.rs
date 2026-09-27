@@ -134,12 +134,39 @@ pub async fn send_full_inventory_resync(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // 1. onBagInfo — declare containers on the fresh InventoryComponent.
-    //    Bag set is identity-per-player (every player has the same set
-    //    of containers, sized by `BAG_SIZES`); we just need the wire
-    //    bytes, no DB lookup required.
+    // One round-trip for the three `sgw_player` fields the bundle needs:
+    // `bank_slots` (container 17's size in onBagInfo), `bandolier_slot`
+    // (onActiveSlotUpdate) and `naquadah` (onCashChanged). If the row is
+    // missing (data corruption on the player_id), log and skip those two;
+    // onBagInfo falls back to the default vault size and the inventory
+    // update still fires so the UI at least shows items.
+    let player_meta: Option<(i32, i32, i16)> = match sqlx::query_as::<_, (i32, i32, i16)>(
+        "SELECT bandolier_slot, naquadah, bank_slots FROM sgw_player WHERE player_id = $1",
+    )
+    .bind(player_id)
+    .fetch_optional(pool.as_ref())
+    .await
     {
-        let inv = cimmeria_entity::inventory::Inventory::new(0);
+        Ok(row) => row,
+        Err(e) => {
+            tracing::warn!(
+                player_id,
+                "send_full_inventory_resync: sgw_player lookup failed: {e}"
+            );
+            None
+        }
+    };
+
+    // 1. onBagInfo — declare containers on the fresh InventoryComponent.
+    //    Every player has the same container set, sized by `BAG_SIZES`,
+    //    except the personal vault (17), which is this player's
+    //    `bank_slots` (D-BV06).
+    {
+        let bank_slots = player_meta.map_or(
+            cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
+            |(_, _, bank_slots)| i32::from(bank_slots),
+        );
+        let inv = cimmeria_entity::inventory::Inventory::new(0).with_bank_slots(bank_slots);
         let bag_info = inv.serialize_bag_info();
         send_to_witness_reliable(
             transport,
@@ -161,28 +188,8 @@ pub async fn send_full_inventory_resync(
         .await;
     }
 
-    // 2. onActiveSlotUpdate + 3. onCashChanged — pull from sgw_player.
-    //    One round-trip for both. If the row is missing (data corruption
-    //    on the player_id), log and skip; the inventory update still
-    //    fires so the UI at least shows items.
-    let player_meta: Option<(i32, i32)> = match sqlx::query_as::<_, (i32, i32)>(
-        "SELECT bandolier_slot, naquadah FROM sgw_player WHERE player_id = $1",
-    )
-    .bind(player_id)
-    .fetch_optional(pool.as_ref())
-    .await
-    {
-        Ok(row) => row,
-        Err(e) => {
-            tracing::warn!(
-                player_id,
-                "send_full_inventory_resync: sgw_player lookup failed: {e}"
-            );
-            None
-        }
-    };
-
-    if let Some((bandolier_slot, naquadah)) = player_meta {
+    // 2. onActiveSlotUpdate + 3. onCashChanged.
+    if let Some((bandolier_slot, naquadah, _)) = player_meta {
         // Wire: `(bag_id:i32, wire_slot:i32)` where wire_slot is the
         // 1-indexed server slot (matches `Bag.py:369` and the live
         // `handle_request_active_slot_change` send shape).

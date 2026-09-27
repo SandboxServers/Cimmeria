@@ -340,10 +340,11 @@ fn build_map_loaded_body_inner(
         append_method!(method_idx::ON_ENTITY_PROPERTY, &args);
     }
 
-    // 21. Inventory: onBagInfo(ARRAY<BagInfo>) — single call with all bags
+    // 21. Inventory: onBagInfo(ARRAY<BagInfo>) — single call with all bags,
+    //     the personal vault (17) at this player's `bank_slots` (D-BV06).
     {
         use cimmeria_entity::inventory::Inventory;
-        let inv = Inventory::new(data.naquadah);
+        let inv = Inventory::new(data.naquadah).with_bank_slots(data.bank_slots);
         let bag_info = inv.serialize_bag_info();
         append_method!(method_idx::ON_BAG_INFO, &bag_info);
     }

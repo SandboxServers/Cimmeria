@@ -60,12 +60,17 @@ fn bag_max_slots_known_containers_match_constants() {
     }
     assert_eq!(bag_max_slots(INV_CRAFTING), 100);
     assert_eq!(bag_max_slots(INV_BUYBACK), 12);
+    // Vault ceilings (Constants.py). A player's own vault size is
+    // `sgw_player.bank_slots`; capacity alone never makes these movable.
+    for container_id in 17..=20 {
+        assert_eq!(bag_max_slots(container_id), 100);
+    }
 }
 
 #[test]
 fn bag_max_slots_out_of_range_returns_zero() {
     assert_eq!(bag_max_slots(0), 0);
-    assert_eq!(bag_max_slots(17), 0);
+    assert_eq!(bag_max_slots(21), 0);
     assert_eq!(bag_max_slots(100), 0);
     assert_eq!(bag_max_slots(-1), 0);
 }

@@ -27,6 +27,9 @@ const TEST_BASE: i32 = 0x7000_0500;
 const SLAPPACK_TYPE_ID: i32 = 2893;
 const TEST_NAQUADAH: i32 = 4242;
 const TEST_BANDOLIER_SLOT: i32 = 2;
+/// Not the column default (40), so the onBagInfo byte pin below proves the
+/// resync read the player's own vault size (D-BV06) rather than a constant.
+const TEST_BANK_SLOTS: i16 = 70;
 
 async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
     let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
@@ -51,15 +54,16 @@ async fn insert_account_player_and_item(pool: &PgPool, account_id: i32, player_i
         "INSERT INTO sgw_player (\
             account_id, player_id, level, alignment, archetype, gender, \
             player_name, extra_name, world_location, bodyset, \
-            pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot\
+            pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot, bank_slots\
          ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
-                   0.0, 0.0, 0.0, 0, $4, $5)",
+                   0.0, 0.0, 0.0, 0, $4, $5, $6)",
     )
     .bind(account_id)
     .bind(player_id)
     .bind(format!("test-{player_id}"))
     .bind(TEST_NAQUADAH)
     .bind(TEST_BANDOLIER_SLOT)
+    .bind(TEST_BANK_SLOTS)
     .execute(pool)
     .await
     .expect("insert player");
@@ -149,7 +153,9 @@ async fn resync_sends_bag_info_active_slot_cash_then_items_in_order() {
     // four packets land at seq 0, 1, 2, 3 in send order.
     let key = [0u8; 32];
 
-    let bag_args = cimmeria_entity::inventory::Inventory::new(0).serialize_bag_info();
+    let bag_args = cimmeria_entity::inventory::Inventory::new(0)
+        .with_bank_slots(i32::from(TEST_BANK_SLOTS))
+        .serialize_bag_info();
     let expected_bag = build_player_entity_method_packet(
         &key,
         0,
@@ -161,7 +167,8 @@ async fn resync_sends_bag_info_active_slot_cash_then_items_in_order() {
     );
     assert_eq!(
         sent[0].1, expected_bag,
-        "packet 0 must be onBagInfo — declares the container set on the new InventoryComponent"
+        "packet 0 must be onBagInfo — declares the container set on the new InventoryComponent, \
+         with the vault (17) at the player's own sgw_player.bank_slots"
     );
 
     const CONTAINER_BANDOLIER: i32 = 3;

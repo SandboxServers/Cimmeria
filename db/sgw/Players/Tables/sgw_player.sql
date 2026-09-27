@@ -62,6 +62,12 @@ CREATE TABLE sgw_player (
     -- '{}' / 0: nothing is revoked or backfilled.
     trained_abilities integer[] DEFAULT '{}'::integer[] NOT NULL,
     tree_points_spent integer DEFAULT 0 NOT NULL,
+    -- Personal vault (container 17) size. Every player starts at 40 and
+    -- expands in steps of 10 up to the container's ceiling of 100
+    -- (bag_max_slots in crates/entity/src/inventory.rs). onBagInfo declares
+    -- container 17 at this size, at world entry and on resync (D-BV06).
+    bank_slots smallint DEFAULT 40 NOT NULL,
+    CONSTRAINT bank_slots_sanity CHECK (((bank_slots >= 40) AND (bank_slots <= 100) AND ((bank_slots % 10) = 0))),
     CONSTRAINT tree_points_spent_sanity CHECK ((tree_points_spent >= 0)),
     CONSTRAINT alignment_sanity CHECK (((alignment >= 0) AND (alignment <= 5))),
     CONSTRAINT archetype_sanity CHECK (((archetype >= 0) AND (archetype <= 8))),

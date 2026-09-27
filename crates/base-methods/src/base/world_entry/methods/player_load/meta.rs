@@ -42,6 +42,7 @@ pub fn default_player_load_data() -> PlayerLoadData {
         // wire defaults in agreement.
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     }
 }
 
