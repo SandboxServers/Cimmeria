@@ -83,7 +83,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | Abilities & Training | 4 | Partial |
 | Stargates | 5 | Partial (~20%) |
 | Minigames | 14 | Not implemented |
-| Dueling | 3 | Partial: challenge and response (SS-D1); forfeit not implemented |
+| Dueling | 3 | All three: challenge and response (SS-D1), forfeit (SS-D3) |
 | Space Queue | 4 | Not implemented |
 | GM Commands | 33 | Partial |
 | GM Give Commands | 15 | Partial |
@@ -289,7 +289,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 |------------|-------------|--------------|-------------|------|
 | `Event_NetOut_DuelChallenge` | 019b4478 | TBD | SGWPlayer.duelChallenge | YES (base 0xD9, SS-D1) |
 | `Event_NetOut_DuelResponse` | 0195fb58 | TBD | SGWPlayer.duelResponse | YES (CM 102, SS-D1) |
-| `Event_NetOut_DuelForfeit` | 019b44a8 | TBD | SGWPlayer.duelForfeit | NO |
+| `Event_NetOut_DuelForfeit` | 019b44a8 | TBD | SGWPlayer.duelForfeit | YES (CM 103, SS-D3) |
 
 ### Pets
 
@@ -467,7 +467,7 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | Crafting | 0 | 6 | 0 | 6 | 0% |
 | Stargates | 1 | 5 | 1 | 8 | 15% |
 | Minigames | 0 | 14 | 0 | 12 | 0% |
-| Dueling | 2 | 3 | 3 | 4 | 71% |
+| Dueling | 3 | 3 | 3 | 4 | 86% |
 | Pets | 0 | 3 | 0 | 3 | 0% |
 | Contact Lists | 6 | 6 | 5 | 5 | 100% |
 | World/Entity | — | — | 13 | 13 | 100% |

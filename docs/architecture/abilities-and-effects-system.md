@@ -609,7 +609,7 @@ regression proofs are in the [PT-03 worknote](../analysis/pets/worknotes/pt-03.m
 
 **Why:** the gates had drifted into four inline copies of "hostile NPC only" (audit A-42), so a duel had to widen all four or leak through one. A candidate scan that adds only the partner means no filter mistake can reach a bystander. The client's PvP flag (`onEntityProperty(4, v)`, decision D-SS23) is never read back: a stuck flag cannot make anyone attackable.
 
-**Consequences:** NPC-versus-player and pet targeting are unchanged; a pet never joins its owner's duel: `pet::fight_refusal` uses the no-duel form, `player_may_attack_pve`, which is also the NPC half of `player_may_attack`. Player-on-player damage creates no threat, so the duel supplies its own combat source (`cell::duel::combat`). The effect pulse does not re-run the rule, so the duel's single end (`duel::end_engaged`) strips every active effect the partner's engaged entity invoked on each duelist, with the normal `on_remove` and zero timer; an auto-cycle loop on a player the caster may no longer harm is cleared. Partner damage is still lethal until SS-D3's 1 HP clamp lands, and that clamp must also sit in the pulse seam.
+**Consequences:** NPC-versus-player and pet targeting are unchanged; a pet never joins its owner's duel: `pet::fight_refusal` uses the no-duel form, `player_may_attack_pve`, which is also the NPC half of `player_may_attack`. Player-on-player damage creates no threat, so the duel supplies its own combat source (`cell::duel::combat`). The effect pulse does not re-run the rule, so the duel's single end (`duel::end_engaged`) strips every active effect the partner's engaged entity invoked on each duelist, with the normal `on_remove` and zero timer; an auto-cycle loop on a player the caster may no longer harm is cleared. Partner damage is non-lethal since SS-D3 (decision 26), with the clamp in the pulse seam as well.
 
 **Code and tests:** `aggression.rs`, the four gates above, `crates/cell-world/src/cell/duel/`. `use_ability/tests/duel_gate.rs` (`duel_partner_damage_allowed_at_all_four_gates`, `bystander_untouchable_during_duel`) fails when any one gate is reverted; the proof is in the [SS-D2 worknote](../analysis/social-systems/worknotes/ss-d2.md).
 
@@ -703,6 +703,21 @@ over the file cap.
 `use_ability/owner_pet/tests/`, `pets/tests/owner_buffs.rs` and
 `base_messages/tests/passive_abilities.rs`; the evidence and the regression proofs are in the
 [PT-08 worknote](../analysis/pets/worknotes/pt-08.md).
+
+### 26. Duel-partner damage is held at 1 HP in both damage seams (social systems SS-D3, D-SS20)
+
+**Decision:** `cimmeria_cell_world::cell::duel::clamp_partner_lethal(mgr, attacker, target, source)` runs wherever a player's HEALTH is written by an attacker, before anything reads it for a death and before the stat flush:
+
+- `apply_damage_to_target` (`damage_apply/mod.rs`), after the direct damage (so `target_died` sees 1) and again after the effect scripts (so the effect-driven death sweep sees 1);
+- `fire_pulse` (`effects/pulsing/tick.rs`), after both the script and the NVP branch and after the surrender floor.
+
+When the attacker and the target are an engaged duel's engaged entities and HEALTH is at or below 0, HEALTH becomes 1 and the hit is returned. The caller ends the duel with `duel::finish_clamped` (`EDUEL_DEFEAT_Health`, the clamped duelist losing) only after the rest of the resolution has run: in `apply_damage_to_target` at the very end, after the pulsing effects are registered, and in `fire_pulse` after the flush. `effect_pulse_tick` skips a due instance that an earlier pulse in the same tick removed.
+
+**Why:** D-SS20 makes duels non-lethal, and a lethal duel would send duel kills down the loot and XP path. The pulse never re-checks hostility (decision 24), so a clamp only in `damage_apply` would let a partner's DoT kill. Ending the duel at once would strip the partner's effects and end `can_harm` before a script bleed or a newly registered DoT from the same hit had been clamped, and those would then kill after the duel. Ending last means the end's `strip_from` removes everything the hit registered.
+
+**Consequences:** Damage from anyone else is untouched: a third party can still kill a duelist, and `resolve_death` reports that death to the duel (`duel::on_death`). A clamped duelist never reaches `resolve_death`: no corpse, loot, XP, Defeat Window or respawn. The client is told 1 HP, never 0. The pulse's `still_active` check also closes an older window, in which a channel cancel between awaits let a removed instance fire from the tick's snapshot.
+
+**Code and tests:** `crates/cell-world/src/cell/duel/paths.rs`, the two seams above, `death/mod.rs`. `use_ability/tests/duel_nonlethal.rs` (`lethal_partner_hit_clamps_to_one_hp`, `lethal_partner_bleed_clamps_to_one_hp`, `no_loot_xp_or_corpse_after_a_clamped_end`, `third_party_kill_is_normal_death`); the proof is in the [SS-D3 worknote](../analysis/social-systems/worknotes/ss-d3.md).
 
 ## Cross-cutting follow-ups
 

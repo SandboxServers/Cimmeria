@@ -129,6 +129,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cimmeria-side-flag-bits-collide-with-client-enums.md](cimmeria-side-flag-bits-collide-with-client-enums.md) — check `enumerations.xml` before inventing a flag bit; AF_CHANNEL_ALLOWS_MOVEMENT was SpeedPet.
 - [crafting-verb-packet-traps.md](crafting-verb-packet-traps.md) — a new crafting verb breaks stub-pinning dispatch tests in base-world-entry; `handle_<verb>_in` test shape; alloy page's 10-slot cap.
 - [owner-pet-effects-and-passives.md](owner-pet-effects-and-passives.md) — self casts apply no effects; pulse_count=1 buffs never register; passives need 3 seams; [0,0] stat bounds.
+- [duel-end-paths-and-travel-scan.md](duel-end-paths-and-travel-scan.md) — SS-D3: travel sites need `duel::on_travel` (scan test); clamp HEALTH first, end the duel last in a damage resolution.
 
 ## Observability
 
