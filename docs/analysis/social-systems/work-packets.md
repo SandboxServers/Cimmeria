@@ -259,7 +259,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 **Scope:**
 
 - CM 49 take cash, CM 50 take item, CM 51 pay COD and CM 47 return, each one transaction keyed by `mail_id` and the caller's `character_id`, under the invariants in audit § 6 (CAT-G-02 to G-06) and decisions D-SS09 and D-SS10.
-- Take item places into the named container and slot after checking both belong to the caller and the slot is free, or into any free main slot for `(-1, -1)` (SS-E1 M-Q5). Full bags leave the item in escrow and answer with feedback.
+- Take item ignores the client's `ContainerId` and `SlotId` entirely (SS-E1 M-Q5: the shipped client sends uninitialised values) and places the item in the caller's first free main-container slot, chosen by the server. Full bags leave the item in escrow and answer with feedback.
 - After each take the client gets the updated header (or `onMailHeaderRemove` when nothing is left and the client expects that), `onCashChanged` and an inventory update.
 - `returned` column; the COD payment mail to the sender.
 
