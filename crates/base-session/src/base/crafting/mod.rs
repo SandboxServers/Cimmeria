@@ -27,6 +27,8 @@
 //! - [`options`]: `onUpdateCraftingOptions` (140) and the per-session
 //!   stations, tools and "craft anywhere" behind it.
 //! - [`allcraft`]: the GM `.allcraft` grant.
+//! - [`inventory_locks`]: the advisory locks every crafting write takes
+//!   on a player's inventory before any row.
 //! - [`session`]: the induction engine. Each player runs one induction at
 //!   a time, with up to [`session::MAX_INDUCTIONS`] held; the client's bar
 //!   is the type-16 timer, and the job runs when it expires.
@@ -34,11 +36,14 @@
 //!   runs at completion (consume inputs, grant products, adjust
 //!   expertise), and the client updates after it.
 //! - [`rng`]: the injectable RNG the rolling verbs use.
+//! - [`item_use`]: using a Blueprint item or a Racial Paradigm Guide.
 
 pub mod allcraft;
 pub mod feedback;
 pub mod gate;
 pub mod handlers;
+pub mod inventory_locks;
+pub mod item_use;
 pub mod options;
 pub mod persistence;
 pub mod request;

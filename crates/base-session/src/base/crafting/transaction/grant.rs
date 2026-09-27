@@ -11,6 +11,7 @@ use sqlx::{Postgres, Transaction};
 use super::failure::{at, expect_rows};
 use super::{CraftApplied, CraftTxError, GrantedStack, CRAFTING_INPUT_BAGS};
 use crate::base::crafting::feedback::CraftReject;
+use crate::base::crafting::inventory_locks::take_inventory_locks;
 use crate::base::crafting::telemetry::JobIds;
 
 /// Where one product goes.
@@ -65,10 +66,6 @@ pub(super) async fn resolve(
     Ok(placements)
 }
 
-/// The advisory-lock key the inventory move path takes for the whole
-/// player before any per-bag lock.
-const PLAYER_WIDE_LOCK: i32 = 0;
-
 /// Take every advisory lock the transaction needs before it locks any row:
 /// first the player-wide lock the move path takes, then the
 /// per-(player, container) lock the grant, vendor and move paths take, for
@@ -88,17 +85,9 @@ pub(super) async fn lock_containers(
 ) -> Result<(), CraftTxError> {
     let mut containers: Vec<i32> = placements.iter().map(|p| p.container_id).collect();
     containers.extend_from_slice(&CRAFTING_INPUT_BAGS);
-    containers.sort_unstable();
-    containers.dedup();
-    for key in std::iter::once(PLAYER_WIDE_LOCK).chain(containers) {
-        sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
-            .bind(player_id)
-            .bind(key)
-            .execute(&mut **tx)
-            .await
-            .map_err(at("lock"))?;
-    }
-    Ok(())
+    take_inventory_locks(tx, player_id, &containers)
+        .await
+        .map_err(at("lock"))
 }
 
 #[derive(sqlx::FromRow)]
