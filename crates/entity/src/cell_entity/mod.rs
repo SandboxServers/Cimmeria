@@ -58,6 +58,7 @@ mod entity_struct;
 mod identity;
 mod leash_state;
 mod offered_dialogs;
+mod pending_cast;
 mod state_flags;
 mod system_options;
 mod tree_progress;
@@ -70,6 +71,7 @@ pub use entity_struct::CellEntity;
 pub use identity::PlayerIdentity;
 pub use leash_state::{ChaseRoute, LeashState};
 pub use offered_dialogs::MAX_OFFERED_DIALOGS;
+pub use pending_cast::PendingCast;
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;
 

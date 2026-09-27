@@ -123,6 +123,17 @@ pub(super) async fn apply_death_transition(
     )
     .await;
 
+    // A cast the dying entity was warming up never fires (python
+    // `AbilityManager.onDead` → `interruptAbility`). Same spot as the
+    // channel cancel, so its interrupt lands before the death sequence.
+    let _ = super::use_ability::interrupt_pending_cast(
+        target_eid,
+        super::use_ability::InterruptReason::CasterDied,
+        tx,
+        space_mgr,
+    )
+    .await;
+
     // 1. Attacker side: clear targeting reticle.
     if attacker_is_player {
         send_entity_method(
