@@ -47,8 +47,11 @@ needed**. This is consistent with SGW's pre-launch cancellation.
 
 ## SGWDuelMarker entity
 
-Inherits `SGWSpawnableEntity`. Client entity-type index **2** (confirmed `FUN_00c67420` registration
-order: Account=0, SGWSpawnableEntity=1, SGWDuelMarker=2, …). entities.xml type id 6.
+Inherits `SGWSpawnableEntity`. Client entity-type index **6**, matching `entities.xml`'s row order
+(SGWSpawnableEntity=0, SGWBeing=1, SGWPlayer=2, SGWGmPlayer=3, SGWMob=4, SGWPet=5,
+SGWDuelMarker=6), per the project's standard "wire typeID = clientIndex" rule. **Corrected
+2026-09-27 (SS-E1, audit A-47)** — the earlier "index 2" reading of `FUN_00c67420`'s registration
+order was wrong; `entities.xml`'s row order is the higher-confidence source.
 Properties (CELL_PRIVATE): `duelDetectorID: CONTROLLER_ID = 0`, `duelEntities: ARRAY<MAILBOX>`.
 CellMethod: `onEntityDefeated(INT32 entity_id)`. 0/1 methods implemented anywhere.
 
@@ -76,14 +79,39 @@ SGWPlayer.def internal cell methods (none implemented): `duelChallenge`, `duelRe
 **PvP flag**: `GENERICPROPERTY_PvPFlag = 4` via `onEntityProperty(4, INT32)`. Current Rust sends `(4,0)`
 at world entry only (`world_data.rs`); no setter to 1 / no duel-time fanout exists.
 
+**Correction 2026-09-27 (SS-E1, D-Q4)**: `SGWPlayer.def` also declares a dedicated `pvpFlag`
+property (`INT8`, default 0, `CELL_PUBLIC`) plus internal cell methods `setPvPFlag(INT8 flagValue,
+INT8 shouldDoStrikeTeamLogic)` and `startPvPTimer(INT8 flagValue, FLOAT timeLength)`. `CELL_PUBLIC`
+means this property auto-syncs via the standard entity-property-change wire path, not the small
+`EGenericProperty` side-channel above. This is very likely the *real* PvP-flag wire mechanism for
+duels, distinct from (and possibly superseding) `GENERICPROPERTY_PvPFlag`/`onEntityProperty`. Not
+resolved: whether the client's generic-property dispatch has a live case for ordinal 4 at all, or
+how client UI reads `pvpFlag` once synced. See `duel-wire-formats.md`'s SS-E1 section for detail.
+
 ## Open questions
 
 1. DuelTimer (type 14) — server-started or pure client countdown? No server dispatch site found.
+   **Partially closed 2026-09-27 (SS-E1, D-Q1)**: the client applies no hardcoded duration constant
+   anywhere between `Event_UI_DuelTimerStart` and the Lua countdown display — whatever float the
+   server sends is shown verbatim. See `duel-wire-formats.md`'s SS-E1 section.
 2. `duelAbort` semantics on decline/timeout/disconnect — no impl anywhere.
 3. Squad-duel scope — can any member challenge, or leader only? (`aSquadDuel` flag client-controlled.)
+   The seeded text moniker 875 ("SVR must be leader to challenge") answers this for squad duels:
+   leader only (see the 2026-09-27 dueling research report §1.9; out of SS-E1's scope, squad duels
+   are deferred).
 4. `duelDetectorID` CONTROLLER_ID — implies a trigger-region arena boundary (→ EDUEL_DEFEAT_Range), always
    0 in practice; likely planned-not-wired.
 5. `sendDuelResponse` byte: confirm 1=accept (standard Lua truthy). → x64dbg.
+6. **`onDuelEntitiesSet`/`Remove`/`Clear` and `GameBeing::isInteractable` — CLOSED 2026-09-27
+   (SS-E1, D-Q5, blocking for SS-D2)**: full decompile in `duel-wire-formats.md`'s SS-E1 section.
+   151 inserts into, 152 erases from, a `GamePlayer`-local `std::set<int32_t>` of duel-entity ids;
+   153 clears it. The interactability computation never reads this set — it is a generic
+   per-target-template + range lookup. Sending 151 at duel start and 153 at duel end is safe and
+   does not affect NPC interactability; `aoi.rs:203-211`'s comment has the add/erase direction
+   backwards and should be corrected.
+7. `GENERICPROPERTY_PvPFlag` vs. the client's actual PvP-flag consumption — **partially closed
+   2026-09-27 (SS-E1, D-Q4)**: see the "PvP flag" correction above. `pvpFlag` is very likely the
+   real wire vehicle, not the generic-property channel; client-side consumption still unconfirmed.
 
 ## Dynamic-analysis needs (x64dbg)
 

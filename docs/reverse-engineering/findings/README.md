@@ -14,13 +14,13 @@ This directory contains 80 per-system reverse engineering findings with evidence
 | `organization-wire-formats.md` | 3 | Squads, guilds, strike teams, roster, ranks | HIGH |
 | `crafting-wire-formats.md` | 3 | Craft, research, reverse engineer, alloy | HIGH |
 | `minigame-wire-formats.md` | 4 | Minigame matchmaking, calls, spectating, helpers | HIGH |
-| `chat-wire-formats.md` | 4 | Chat channels, tells, ignore, friends, GM petitions | HIGH |
-| `mail-wire-formats.md` | 4 | Mail send/receive, attachments, COD, archive | HIGH |
+| `chat-wire-formats.md` | 4 | Chat channels, tells, ignore, friends, GM petitions; SS-E1 client evidence added 2026-09-27 | HIGH |
+| `mail-wire-formats.md` | 4 | Mail send/receive, attachments, COD, archive; SS-E1 client evidence added 2026-09-27 (result-code text, `ItemId` = instance id, 30-day TTL, `MessageAttachment.durability` corrected to FLOAT) | HIGH |
 | `black-market-wire-formats.md` | 4 | Auction search, create, bid, cancel, watch list | HIGH |
 | `contact-list-wire-formats.md` | 4 | Contact lists, members, online/offline events | HIGH |
 | `group-wire-formats.md` | 4 | Group authority, member coordination, mob groups | HIGH |
 | `trade-wire-formats.md` | 4 | Player-to-player trade proposals, lock, confirm | HIGH |
-| `duel-wire-formats.md` | 4 | Duel challenge, response, forfeit, participants | HIGH |
+| `duel-wire-formats.md` | 4 | Duel challenge, response, forfeit, participants; SS-E1 client evidence added 2026-09-27 (blocking `onDuelEntities*`/interactability finding, PvP-flag correction) | HIGH |
 | `pet-wire-formats.md` | 4 | Pet abilities, stances, player-routed commands | HIGH |
 | `entity-types-wire-formats.md` | 4 | Account, SGWEntity, SGWSpawnableEntity, SGWPet | HIGH |
 | `entity-creation-wire-formats.md` | 5 | CREATE_BASE_PLAYER, CREATE_CELL_PLAYER, FORCED_POSITION, VIEWPORT_INFO, entity lifecycle | HIGH |
@@ -74,7 +74,7 @@ This directory contains 80 per-system reverse engineering findings with evidence
 | `crafting-client-ui.md` | CR-E1 | Crafting client UI — respec flow, `CraftingOptions` unpacker chain, feedback visibility, client clock (setters confirmed jointly with CR-02), alloy/research kicker validation; corrects the `0x00e465d0` blueprint-list mislabeling (audit C-61) and `craftingEntityFlags` type (C-62) | HIGH |
 | `crafting-items.md` | CR-E2 | Blueprint-item → blueprint mapping (289 items, cooked-data evidence), Racial Paradigm Guide + Field Crafting Tool cooked-data audit, `useItem` path; Crafting & Applied Science campaign | HIGH (Q2/Q3/wire path) / mixed (Q1 — see doc's per-row confidence table) |
 | `organization-restoration.md` | Restore | Organization / squad / guild — completeness + phased plan; 9-rank + 26-bit permission model, OrgAuthority service (supersedes #68, tracked by #568) | HIGH |
-| `duel-restoration.md` | Restore | Duel system — challenge/arena/PvP-flag lifecycle, SGWDuelMarker entity; never server-implemented originally (supersedes #70, tracked by #569) | HIGH |
+| `duel-restoration.md` | Restore | Duel system — challenge/arena/PvP-flag lifecycle, SGWDuelMarker entity; never server-implemented originally (supersedes #70, tracked by #569); corrected 2026-09-27 (SS-E1: entity type index 2→6 per audit A-47, PvP-flag mechanism) | HIGH |
 | `pet-restoration.md` | Restore | Pet / companion — SGWPet entity, command dispatch, ownership/AoI; includes pet-wire-formats.md corrections (new, tracked by #570) | HIGH |
 | `black-market-restoration.md` | Restore | Black market / auction house — listings/bids/expiry/CoD; CEGUI UI; includes wire-format corrections (supersedes #67, tracked by #571) | HIGH |
 | `black-market-client-window-patch.md` | Restore/Client | Black market **client window** — runtime binary patch (deferred wide-Lua-injection) that opens the BM window; root-causes dropped method 90 (never bound into the dispatch map); owner-confirmed working; full recipe + addresses (tracked by #571 + launcher-integration issue) | HIGH |
