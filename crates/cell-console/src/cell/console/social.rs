@@ -42,10 +42,13 @@ pub(super) async fn announce(
             broadcast(caller_id, scope, &text, "console", tx, space_mgr).await;
         }
         Err(usage) => {
+            let id = space_mgr.player_identity(caller_id);
             tracing::warn!(
                 target: "chat",
                 event = "chat.gm_broadcast_rejected",
                 entity_id = caller_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 source = "console",
                 reason = "no_text",
                 "GM broadcast rejected: .announce had no text",

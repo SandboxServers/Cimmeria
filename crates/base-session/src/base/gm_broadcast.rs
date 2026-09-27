@@ -29,18 +29,34 @@ pub struct GmBroadcastReport {
     pub not_in_world: usize,
 }
 
+/// The GM who sent the broadcast, from the cell's session state. Every
+/// event this module logs carries it (instrumentation-discipline rule 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GmBroadcastActor {
+    pub entity_id: u32,
+    pub player_id: Option<i32>,
+    pub account_id: Option<u32>,
+}
+
 /// Send `args` (a serialized `onPlayerCommunication`) reliably to every
 /// listed online player.
-pub async fn broadcast_to_online_players(ctx: &FeedbackCtx<'_>, args: &[u8]) -> GmBroadcastReport {
+pub async fn broadcast_to_online_players(
+    ctx: &FeedbackCtx<'_>,
+    actor: GmBroadcastActor,
+    args: &[u8],
+) -> GmBroadcastReport {
     let mut report = GmBroadcastReport::default();
 
     // Snapshot the recipients and reserve each one's sequence number under
     // one lock; send after releasing it (never hold the map across await).
-    let targets: Vec<(SocketAddr, u32, [u8; 32], _, u32, Vec<u32>)> = {
+    let targets: Vec<(SocketAddr, i32, u32, [u8; 32], _, u32, Vec<u32>)> = {
         let Ok(clients) = ctx.connected.lock() else {
             tracing::warn!(
                 target: "chat",
                 event = "chat.gm_broadcast_skipped",
+                entity_id = actor.entity_id,
+                account_id = actor.account_id,
+                player_id = actor.player_id,
                 reason = "session_map_poisoned",
                 "GM broadcast not sent: the session map lock is poisoned",
             );
@@ -59,17 +75,25 @@ pub async fn broadcast_to_online_players(ctx: &FeedbackCtx<'_>, args: &[u8]) -> 
             let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
                 & cimmeria_mercury::packet::SEQUENCE_MASK;
             let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-            targets.push((player.addr, entity_id, c.key, c.enc_version, seq, acks));
+            targets.push((
+                player.addr,
+                player.player_id,
+                entity_id,
+                c.key,
+                c.enc_version,
+                seq,
+                acks,
+            ));
         }
         targets
     };
 
-    for (addr, entity_id, key, version, seq, acks) in targets {
+    for (addr, target_player_id, target_entity_id, key, version, seq, acks) in targets {
         let packet = build_player_entity_method_packet(
             &key,
             seq,
             &acks,
-            entity_id,
+            target_entity_id,
             method_idx::ON_PLAYER_COMMUNICATION,
             args,
             version,
@@ -78,8 +102,12 @@ pub async fn broadcast_to_online_players(ctx: &FeedbackCtx<'_>, args: &[u8]) -> 
             tracing::warn!(
                 target: "chat",
                 event = "chat.gm_broadcast_send_failed",
+                entity_id = actor.entity_id,
+                account_id = actor.account_id,
+                player_id = actor.player_id,
+                target_player_id,
+                target_entity_id,
                 %addr,
-                entity_id,
                 reason = "send_error",
                 error = %e,
                 "GM broadcast line send failed for one recipient",
@@ -157,7 +185,12 @@ mod tests {
         };
         let args = serialize_gm_broadcast("Gm", "Server restart in 5 minutes");
 
-        let report = broadcast_to_online_players(&ctx, &args).await;
+        let actor = GmBroadcastActor {
+            entity_id: 9,
+            player_id: Some(5),
+            account_id: Some(6),
+        };
+        let report = broadcast_to_online_players(&ctx, actor, &args).await;
 
         assert_eq!(
             report,

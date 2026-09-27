@@ -79,3 +79,25 @@ async fn announce_without_scope_is_global() {
         other => panic!("expected a global GmBroadcast, got {other:?}"),
     }
 }
+
+/// `.help announce` shows the summary and the argument detail line, like
+/// the other documented commands.
+#[tokio::test]
+async fn help_announce_shows_usage_and_argument_detail() {
+    let (mut mgr, gm, _npc) = setup();
+    let (tx, mut rx) = mpsc::channel(64);
+
+    handle_console_command(gm, ".help announce", &tx, &mut mgr, &ChainEngine::new()).await;
+
+    let lines: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|m| super::decode_feedback(&m))
+        .collect();
+    assert!(
+        lines.iter().any(|l| l.starts_with(".announce: ")),
+        "summary line: {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l.starts_with("    text (str): ")),
+        "argument detail line: {lines:?}"
+    );
+}

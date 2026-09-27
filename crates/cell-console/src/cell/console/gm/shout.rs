@@ -197,7 +197,7 @@ pub(crate) async fn broadcast(
 
     match scope {
         ShoutScope::Global => {
-            forward_to_base(
+            let forwarded = forward_to_base(
                 tx,
                 CellToBaseMsg::Chat(ChatCellToBase::GmBroadcast {
                     entity_id: caller,
@@ -209,6 +209,21 @@ pub(crate) async fn broadcast(
                 "sendGMShout",
             )
             .await;
+            if !forwarded {
+                // The GM saw nothing and nobody else did either: the audit
+                // row above must not be the last word on this shout.
+                tracing::warn!(
+                    target: "chat",
+                    event = "chat.gm_broadcast_send_failed",
+                    entity_id = caller,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
+                    source,
+                    scope = "global",
+                    reason = "base_channel_closed",
+                    "GM broadcast not handed to the base: nobody received it",
+                );
+            }
             None
         }
         ShoutScope::Space => {
@@ -234,7 +249,12 @@ pub(crate) async fn broadcast(
                         target: "chat",
                         event = "chat.gm_broadcast_send_failed",
                         entity_id = caller,
-                        recipient_entity_id = eid,
+                        account_id = id.account_id,
+                        player_id = id.player_id,
+                        target_player_id = space_mgr.get_entity(eid).and_then(|e| e.player_id),
+                        target_entity_id = eid,
+                        source,
+                        scope = "space",
                         reason = "base_channel_closed",
                         "GM broadcast line not handed to the base",
                     );

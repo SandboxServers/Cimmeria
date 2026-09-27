@@ -206,3 +206,60 @@ async fn gm_shout_refusals_send_feedback_and_nothing_else() {
         );
     }
 }
+
+/// Type 12: when the base channel is gone, neither scope may end on the
+/// "accepted" audit row alone. Global logs one
+/// `chat.gm_broadcast_send_failed` for the lost hand-off; space logs one per
+/// lost recipient. Both carry the GM's ids and `reason`; the space row also
+/// names the recipient.
+#[tokio::test]
+async fn gm_shout_base_channel_closed_logs_send_failed() {
+    for (is_global, scope) in [(1u8, "global"), (0u8, "space")] {
+        let mut mgr = two_worlds();
+        let (tx, rx) = mpsc::channel(32);
+        drop(rx);
+        let capture = LogCapture::install();
+
+        assert!(
+            dispatch(
+                GM,
+                GM_SEND_GM_SHOUT,
+                &shout_args(is_global, "hello"),
+                &tx,
+                &mut mgr,
+                &test_engine()
+            )
+            .await
+        );
+
+        let failures: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| {
+                c.level == tracing::Level::WARN
+                    && c.has_field("event", "chat.gm_broadcast_send_failed")
+            })
+            .collect();
+        assert!(
+            !failures.is_empty(),
+            "{scope}: a lost hand-off must log chat.gm_broadcast_send_failed, got {:#?}",
+            capture.all()
+        );
+        for f in &failures {
+            assert!(
+                f.has_field("reason", "base_channel_closed"),
+                "{scope}: {f:?}"
+            );
+            assert!(f.has_field("scope", scope), "{scope}: {f:?}");
+            assert!(f.has_field("account_id", "7"), "{scope}: {f:?}");
+            assert!(f.has_field("player_id", "101"), "{scope}: {f:?}");
+        }
+        if scope == "space" {
+            assert_eq!(failures.len(), 2, "one row per lost recipient (GM + 1)");
+            assert!(failures
+                .iter()
+                .any(|f| f.has_field("target_entity_id", "2")
+                    && f.has_field("target_player_id", "102")));
+        }
+    }
+}

@@ -4,7 +4,7 @@
 //! handlers to this file rather than to `mod.rs`.
 
 use crate::base::feedback::FeedbackCtx;
-use crate::base::gm_broadcast::broadcast_to_online_players;
+use crate::base::gm_broadcast::{broadcast_to_online_players, GmBroadcastActor};
 use crate::cell::messages::ChatCellToBase;
 
 use super::DispatchCtx;
@@ -23,7 +23,12 @@ pub(super) async fn route(msg: ChatCellToBase, ctx: &DispatchCtx<'_>) {
                 transport: ctx.transport,
                 connected: ctx.connected,
             };
-            let report = broadcast_to_online_players(&feedback, &args).await;
+            let actor = GmBroadcastActor {
+                entity_id,
+                player_id,
+                account_id,
+            };
+            let report = broadcast_to_online_players(&feedback, actor, &args).await;
             // The cell logged `chat.gm_broadcast` (actor, scope, text) when
             // it accepted the shout; this is the delivery half, joined on
             // the actor's ids.
