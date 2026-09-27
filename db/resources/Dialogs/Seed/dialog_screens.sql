@@ -28619,11 +28619,25 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100011, 100012, 'Mission accept test', NULL, 0);
 
+-- NEW CONTENT (debug hub): screens for dialogs 100100-100103. Ids start at
+-- 200000 because the client PAK's own screens run up to 120383. Speaker 754
+-- (Airman Lance) is template 302's speaker, so the server binds the NPC as
+-- the speaker; the two bark lines are speaker 0.
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100100, 200000, 'Debug hub dialog test. This is screen one of two. Page forward to reach the button.', 754, 0);
+
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100100, 200001, 'Screen two. The button below sends your choice to the server, and the server answers by opening a second dialog.', 754, 1);
+
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100101, 200002, 'Choice received. This dialog has no buttons, so closing it sends -1 to the server, which answers in your chat window.', 754, 0);
+
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100102, 200003, 'Dialog round trip complete: the button and the close both reached the server.', 0, 0);
+
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100103, 200004, 'Livewire round trip complete: the minigame reported your win to the server.', 0, 0);
+
 --
 -- TOC entry 3309 (class 0 OID 0)
 -- Dependencies: 310
 -- Name: dialog_screens_screen_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 100012, true);
+SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200004, true);
 

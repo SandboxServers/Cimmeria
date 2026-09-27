@@ -40,11 +40,19 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (4, 'Jaffa staff a
 
 INSERT INTO ability_sets (ability_set_id, description) VALUES (5, 'Goa''uld ribbon device ability set');
 
+-- NEW CONTENT (debug hub): set 6 holds only 710 'Staff Melee AA'. Used by the
+-- debug-hub loot crate (template 304), a faction-10 target that must never
+-- hurt the new characters who shoot it. Set 4 is NOT that: its primary is
+-- 584 'Staff Auto Attack', a 30 m ranged attack whose effect 646 deals
+-- HealthDamage 25. An empty set is not that either: it falls back to 592
+-- Pistol Shot.
+INSERT INTO ability_sets (ability_set_id, description) VALUES (6, 'Debug hub loot crate: zero-damage melee only');
+
 --
 -- TOC entry 3306 (class 0 OID 0)
 -- Dependencies: 185
 -- Name: ability_sets2_ability_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('ability_sets2_ability_set_id_seq', 5, true);
+SELECT pg_catalog.setval('ability_sets2_ability_set_id_seq', 6, true);
 

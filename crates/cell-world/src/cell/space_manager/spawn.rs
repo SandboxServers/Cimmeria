@@ -246,6 +246,7 @@ impl SpaceManager {
         e.speaker_id = record.speaker_id;
         e.event_set_id = record.event_set_id;
         e.interaction_type_flags = record.interaction_type;
+        e.interaction_type = static_interaction_for_flags(record.interaction_type);
         e.entity_flags = record.flags as u64;
         e.faction = record.faction.unwrap_or(0) as u8;
         e.alignment = record.alignment.unwrap_or(0) as u8;
@@ -340,6 +341,45 @@ impl SpaceManager {
 
         Ok(space_id)
     }
+}
+
+/// Any `INT_Vendor*` bit (`EInteractionNotificationType` bits 13-21).
+const INT_VENDOR_MASK: i64 = {
+    use cimmeria_entity::interaction_flags::*;
+    INT_VENDOR_ARMOR
+        | INT_VENDOR_WEAPONS
+        | INT_VENDOR_CONSUMABLES
+        | INT_VENDOR_GENERAL
+        | INT_VENDOR_MISSION
+        | INT_VENDOR_CRAFT_BIO
+        | INT_VENDOR_CRAFT_POWER
+        | INT_VENDOR_CRAFT_MATERIALS
+        | INT_VENDOR_CRAFT_ELECTRONICS
+};
+
+/// The static interaction a template's `interaction_type` bits give an NPC
+/// at spawn: `Vendor` for any `INT_Vendor*` bit, otherwise none.
+///
+/// Before this, nothing ever set `NpcInteractionType::Vendor`, so the
+/// store-open arm of `handle_interact` was unreachable and a vendor-only
+/// template dead-ended on a right-click. Keyed on the flag bits, the same
+/// field the DHD dispatch reads (`INT_DHD`), because they are what tells the
+/// client to show the vendor cursor: an NPC that advertises a store opens
+/// one. The python server keyed its `Vendor` handler on the interaction set
+/// map ids in `Constants.STATIC_INTERACTIONS` instead, but the seed does not
+/// keep `static_interaction_sets` in step with the bits (template 25 lists
+/// 7505 with no vendor bit), so it is not a safe source here.
+///
+/// Only Vendor is derived. A trainer is recognised by its
+/// `trainer_ability_list_id` (`template_trainer_lists`), a dialog by its
+/// chains or dialog-set binds, and loot is set when the NPC dies. Only the
+/// death path overwrites the value, and the respawn tick does not restore
+/// it, so a template with a vendor bit must not be killable (faction 10).
+pub(crate) fn static_interaction_for_flags(
+    interaction_type_flags: i64,
+) -> Option<cimmeria_entity::cell_entity::NpcInteractionType> {
+    (interaction_type_flags & INT_VENDOR_MASK != 0)
+        .then_some(cimmeria_entity::cell_entity::NpcInteractionType::Vendor)
 }
 
 /// Whether a spawned NPC takes cover (NA22). The template's

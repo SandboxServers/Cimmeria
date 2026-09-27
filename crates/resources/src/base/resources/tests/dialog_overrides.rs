@@ -84,8 +84,35 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
         .expect("dialogs must appear in the returned map");
     assert_eq!(
         ids.as_slice(),
-        &[3995u32, 3996u32],
-        "overridden_elements must name both dialog ids in ascending order",
+        &[3995u32, 3996u32, 100100u32, 100101u32],
+        "overridden_elements must name every regenerated dialog id (the two \
+         mission-622 corpses and the two debug-hub dialogs) in ascending order",
+    );
+
+    // The debug-hub dialogs are absent from the PAK, like 3996, so both are
+    // inserted. 100100 must carry its one button to the client: without it
+    // the round trip's first dialog_choice can never be sent.
+    let d100100 = std::str::from_utf8(
+        dialogs
+            .elements
+            .get(&100100)
+            .expect("debug-hub dialog 100100 must be inserted"),
+    )
+    .unwrap();
+    assert!(
+        d100100.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send my choice\">"),
+        "100100 must ship its Generic 1 button; got: {d100100}",
+    );
+    let d100101 = std::str::from_utf8(
+        dialogs
+            .elements
+            .get(&100101)
+            .expect("debug-hub dialog 100101 must be inserted"),
+    )
+    .unwrap();
+    assert!(
+        !d100101.contains("<Buttons"),
+        "100101 must stay button-less so its close sends -1; got: {d100101}",
     );
 }
 

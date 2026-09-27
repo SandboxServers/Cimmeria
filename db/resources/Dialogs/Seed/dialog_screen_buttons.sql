@@ -8611,13 +8611,19 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (100002, 8, 100012, 2, 'Accept');
 
+-- NEW CONTENT (debug hub): the one button of dialog 100100, on its FINAL
+-- screen (200001) so a player who pages to the end always has something to
+-- press. Type 4 (Generic 1) draws the authored text and brings no inert
+-- Decline, as type 2 (Accept) would. Clicking it sends ButtonID 8.
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200000, 8, 200001, 4, 'Send my choice');
+
 --
 -- TOC entry 3307 (class 0 OID 0)
 -- Dependencies: 303
 -- Name: dialog_screen_buttons_2_screen_button_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 100002, true);
+SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 200000, true);
 
 --
 -- TOC entry 3308 (class 0 OID 0)

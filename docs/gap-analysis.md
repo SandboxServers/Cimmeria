@@ -483,7 +483,7 @@ last_updated: 2026-09-25
 - **Rust code**: [`crates/cell-interactions/src/cell/interactions/loot.rs`](../crates/cell-interactions/src/cell/interactions/loot.rs) (519 lines incl. tests), [`crates/cell-combat/src/cell/abilities/loot_drop.rs`](../crates/cell-combat/src/cell/abilities/loot_drop.rs) (311 lines), [`crates/game/src/inventory/loot.rs`](../crates/game/src/inventory/loot.rs) (prototype; `instantiate_loot_drop` is still `todo!()` at :77 and unused by the live path)
 - **Recent PRs**: #446 (looter distance re-validated per `lootItem`), #491; since 2026-07-25: #649 (mission 1360 Frost's Letter accepted from the Frost loot dialog — content, not loot mechanics), #638 (`GrantCash` feedback-recipient split touches the loot cash grant)
 - **In-client evidence**: 2026-09-18 colo playtest, [appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 121: 26 lootable kills; Health Slappack rolled on 26/26 (`probability = 1`), naquadah on 17/26 (`probability = 0.8`, 5–50); tester complaint "too many slap-packs" (README line 85) and a looted Slappack used at 00:24:38.
-- **Path forward**: Loot table content (2 tables / 4 loot rows in `db/resources/Loot/Seed/`, table 1 marked DEPRECATED); per-roll debug logging (playtest gap G9); per-player eligibility and group-loot modes after Groups; mission-gated loot.
+- **Path forward**: Loot table content (3 tables / 8 loot rows in `db/resources/Loot/Seed/`, table 1 marked DEPRECATED, table 3 the stasis-room debug crate's); per-roll debug logging (playtest gap G9); per-player eligibility and group-loot modes after Groups; mission-gated loot.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -495,7 +495,7 @@ last_updated: 2026-09-25
 | Per-player eligibility | KM | Groups | -- | No eligibility list anywhere in `crates/` (re-checked 2026-09-25). Looting is gated on distance only (PR #446) |
 | Group loot modes | KM | Groups | -- | No RoundRobin/FreeForAll logic in `crates/` |
 | Mission-gated loot | KM | Missions | -- | No missionId filtering in loot_drop.rs / loot.rs |
-| Loot table content | KM | -- | -- | 2 loot tables, 4 loot rows seeded; one is DEPRECATED. Castle mission items are explicit `add_item` grants by design |
+| Loot table content | KM | -- | -- | 3 loot tables, 8 loot rows seeded; one is DEPRECATED. Table 3 (2026-09-26) is the stasis-room debug crate's, every row at probability 1, for testing cash drops and Loot All ([content/debug-hub.md](content/debug-hub.md)). Castle mission items are explicit `add_item` grants by design |
 
 ### 15. Stores / Vendors --- NT
 
@@ -504,8 +504,8 @@ last_updated: 2026-09-25
 - **Rust code**: [`crates/base-methods/src/base/world_entry/methods/vendor/`](../crates/base-methods/src/base/world_entry/methods/vendor/) — **7,453 lines** across `buyback/`, `paid_recharge/`, `paid_repair/`, `purchase/`, `sell/`, `data/` submodules plus `store.rs`, `repair.rs`, `recharge.rs`, `serializers.rs`
 - **End-to-end smoke**: [`tools/vendor_store_smoke.sql`](../tools/vendor_store_smoke.sql) (server-side PL/pgSQL, no client)
 - **Recent PRs**: #214 (vendor sync), live-DB regression guards across each operation; since 2026-07-25: **#609** (store open/update were emitted on SGWPlayer indices 80/81 — Missionary's `onMissionUpdate`/`onStepUpdate` — and now go out on the correct 109/110; the PR states "the vendor UI could never have worked" and prior manual vendor testing "is void"), #737 (vendor emit path touched by the shared-world AoI change)
-- **Content state**: `item_lists.sql` holds exactly two test lists, and template 25 ("Interaction Debug NPC - DO NOT USE") is the only vendor template. Harset packet H13 removed its only spawn, so **no world spawns a vendor today**; `.spawn 25` is the only route ([harset-rebuild/worknotes/H13.md](analysis/harset-rebuild/worknotes/H13.md) lines 182–190).
-- **Path forward**: First in-client smoke on post-#609 code (`.spawn 25`, open store, buy / sell / buyback / repair / recharge) would move most rows to CW; real vendor lists and placed vendor NPCs (Harset GH2); client-initiated `repairItemRequest` (CM 40) is still a log-only stub (cell/cell_methods/inventory/item_ops.rs:229).
+- **Content state**: `item_lists.sql` holds exactly two test lists. Harset packet H13 removed template 25's only spawn ([harset-rebuild/worknotes/H13.md](analysis/harset-rebuild/worknotes/H13.md) lines 182–190). **Update 2026-09-26 (debug hub):** the Castle_CellBlock stasis room now spawns a vendor-only NPC, template 300, with template 25's lists ([content/debug-hub.md](content/debug-hub.md)). Building it found that nothing ever set `NpcInteractionType::Vendor`, so a template with vendor lists and no trainer list could never open a store. Template 25 only opened one because its trainer list answered the click first. `spawn_npc_from_record_into` now derives Vendor from any `INT_Vendor*` bit. No client run yet.
+- **Path forward**: First in-client smoke on post-#609 code (the stasis-room debug vendor, or `.spawn 300`: open store, buy / sell / buyback / repair / recharge) would move most rows to CW; real vendor lists and placed vendor NPCs (Harset GH2); client-initiated `repairItemRequest` (CM 40) is still a log-only stub (cell/cell_methods/inventory/item_ops.rs:229).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
