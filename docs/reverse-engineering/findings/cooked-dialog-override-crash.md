@@ -207,6 +207,62 @@ Two mitigations worth considering, neither implemented as part of this finding:
   deliberate one-time override (e.g., a temporary flag or a "categories to force-invalidate once"
   list) to use this path without giving up per-key scoping for the categories that don't need it.
 
+### 5. Listing a key in `InvalidKeys` with no follow-up fragment is a clean tombstone, not a hang — with one loose end
+
+Added 2026-09-27, in response to a follow-up question from `dialog-renumber` about whether a
+server-side tombstone cleanup (list `100100`/`100101` in `InvalidKeys` once, without ever pushing
+a fragment for them) is viable as an alternative to asking testers to clear their local cache.
+
+**Answer: the client deletes the entry and does not refetch it.** Two pieces of evidence, both
+already in this repository (no fresh decompile needed):
+
+1. The doc comment on `build_version_info`
+   (`crates/wire/src/mercury/protocol/resources.rs:80-85`) states the client side of this branch
+   "was confirmed to parse `InvalidKeys` as a `PropertyList<long>` and per-key invalidate via the
+   cache element's destructor" — i.e., each listed id gets its cached element object destroyed
+   immediately on receipt of the list, not lazily on some later access. This claim predates this
+   session and this session did not re-derive it from a fresh Ghidra trace, so treat the mechanism
+   ("destructor," specifically) as MEDIUM confidence — but it agrees with point 2, which is a
+   direct behavioral observation, not a decompile claim.
+2. `crates/base-session/src/base/cooked_data.rs:100-107`'s comment on `required_updates` records a
+   **prior real incident on this exact code path**, for the Missions category: "the runtime cache
+   doesn't actually issue [`elementDataRequest`] — it just drops the local entry on `InvalidKeys`
+   and waits for our push. Without this, the client's `Cache.en-US/CookedDataMissions.pak` is left
+   with the entries removed but never replaced — symptom: missions stop being granted." That is the
+   tombstone scenario already having happened once, by accident, in production: entries named in
+   `InvalidKeys` got deleted from the local cache, the client never chased them with a refetch, and
+   the *only* observed consequence was that the deleted data was gone — no hang, no crash, no other
+   reported side effect. This matches the Kismet `invalidate_all` precedent `dialog-renumber`
+   already found for 2026-09-20, but is closer evidence: it is the **per-key** path, the same one a
+   tombstone push for `100100`/`100101` would use, not the blanket `invalidate_all` path.
+
+**The loose end: `RequiredUpdates`.** `handle_version_info_request` sets the wire `RequiredUpdates`
+field to `invalid_keys.len()` (`crates/base-session/src/base/cooked_data.rs:108`), and the client
+stores that count at `ServerSource+0x48` (`cooked-data-pipeline.md` Finding 2/4). The only decrement
+path found in the existing findings is `onCookedDataError`
+(`cooked-data-pipeline.md` Finding 5: "Decrements `this+0x48`... if nonzero"), which fires on a
+server-sent `Event_NetIn_onCookedDataError`, not automatically. A tombstone implementation that adds
+`100100`/`100101` to `InvalidKeys` (so the count is right for the "real" pushes too) but never sends
+either a `resourceFragment` **or** an `onCookedDataError` for those two keys would leave
+`RequiredUpdates` permanently elevated by 2 for that client. The Missions incident above didn't
+report a distinct symptom from this (its bug report was specifically "missions stop being granted,"
+i.e., data absence, not a stuck-loading state), which is *some* evidence `RequiredUpdates` sitting
+nonzero has no other consequence by itself — but that is inferred from a bug report's silence, not
+from tracing what (if anything) gates on `RequiredUpdates == 0`, so treat it as LOW confidence.
+**A conservative tombstone implementation should send `onCookedDataError` for `100100` and
+`100101` explicitly** (categoryID=5, elementKey=each) right after the version-mismatch reply, to
+zero the counter cleanly rather than relying on that gap being harmless.
+
+One more implementation note for whoever builds this: `push_overridden_elements`
+(`crates/base-session/src/base/cooked_data.rs:159-178`) already skips-and-warns on any key its
+`cache.get()` returns `None` for ("element missing from cache, skipping") — which is exactly what
+happens for a removed override id today. If `ResourceCache::overridden_elements()` is extended with
+a small "categories to also tombstone once" list that unions `100100`/`100101` into the `InvalidKeys`
+sent to affected clients without adding them back to `categories[5].elements`, the existing
+skip-on-missing-data branch already does the right thing for the push side — the only new code
+needed is that union, the `onCookedDataError` follow-up above, and (ideally) a way to stop
+advertising the tombstone once telemetry shows no more clients report the old version.
+
 ## What is not confirmed (and could not be confirmed this session)
 
 1. **What code touches Dialog-category elements at `onClientMapLoad`, and whether it iterates the
