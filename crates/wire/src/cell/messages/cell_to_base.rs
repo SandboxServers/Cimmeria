@@ -208,6 +208,22 @@ pub enum CellToBaseMsg {
         tree_index: i32,
     },
 
+    /// Respec (`resetMyAbilities`, AT-08): remove and refund every
+    /// trainer-bought ability, reset the spend, and charge `cost` naquadah,
+    /// all in one guarded `UPDATE`.
+    ///
+    /// The cell has already checked that the player stands at a pinned
+    /// trainer in range. The base decides the rest from the row: whether
+    /// anything is trainer-bought and whether the player can pay. It always
+    /// answers with [`crate::cell::messages::BaseToCellMsg::AbilitiesReset`],
+    /// except when the session no longer plays `player_id`.
+    ResetAbilities {
+        entity_id: u32,
+        player_id: i32,
+        /// Naquadah to charge: `ability_tree::RESPEC_COST_NAQUADAH`.
+        cost: i32,
+    },
+
     /// Grant an item to a player and persist to `sgw_inventory`.
     ///
     /// `notify_gm`: when true, the base sends a definitive GM-feedback line to

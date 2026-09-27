@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg, MailOp};
 
 use super::super::super::ConnectedClientState;
-use super::super::methods::progression::TrainRequest;
+use super::super::methods::progression::{RespecRequest, TrainRequest};
 use super::super::methods::{
     handle_grant_cash, handle_grant_item, handle_grant_xp, handle_mail_request,
     handle_mission_update,
@@ -103,6 +103,24 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                     ability_id,
                     cost,
                     tree_index,
+                },
+                ctx.db_pool,
+                ctx.connected,
+                ctx.cell_tx,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
+        CellToBaseMsg::ResetAbilities {
+            entity_id,
+            player_id,
+            cost,
+        } => {
+            reset_abilities(
+                RespecRequest {
+                    entity_id,
+                    player_id,
+                    cost,
                 },
                 ctx.db_pool,
                 ctx.connected,
@@ -366,6 +384,24 @@ pub(super) async fn train_ability(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     super::super::methods::progression::handle_train_ability(
+        request,
+        db_pool,
+        connected,
+        cell_tx,
+        entity_to_addr,
+    )
+    .await;
+}
+
+/// `CellToBaseMsg::ResetAbilities`.
+pub(super) async fn reset_abilities(
+    request: RespecRequest,
+    db_pool: &Option<Arc<PgPool>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    super::super::methods::progression::handle_reset_abilities(
         request,
         db_pool,
         connected,

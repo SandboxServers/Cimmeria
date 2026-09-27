@@ -13,14 +13,57 @@ async fn missing_entity_returns_false_and_emits_no_packets() {
     assert!(drain(&mut rx).is_empty());
 }
 
+/// An ability id with no server definition (a forged or garbage packet)
+/// stays silent: nothing to tell a legitimate client.
 #[tokio::test]
 async fn entity_without_ability_returns_false() {
     let mut mgr = make_mgr();
     make_player(&mut mgr, 1, [0.0; 3]);
-    // No ability added to the entity.
+    // No ability added to the entity, and no def for id 7.
     let (tx, mut rx) = mpsc::channel(8);
     let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
     assert!(!committed);
+    assert!(drain(&mut rx).is_empty());
+}
+
+/// AT-08: the action bar is client-side, so after a respec a button can
+/// still name a refunded ability. The press used to be refused silently;
+/// it now gets `onErrorCode(0, ability_id, 167 EntityDoesNotHaveAbility)`
+/// and nothing else (project rule: feedback on the first press).
+#[tokio::test]
+async fn player_pressing_a_known_def_they_do_not_know_gets_code_167() {
+    let mut mgr = make_mgr();
+    make_player(&mut mgr, 1, [0.0; 3]);
+    mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+    assert!(!committed);
+    let msgs = drain(&mut rx);
+    assert_eq!(msgs.len(), 1, "exactly the error code: {msgs:?}");
+    match &msgs[0] {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id: 1,
+            method_index,
+            args,
+        } => {
+            assert_eq!(*method_index, method_idx::ON_ERROR_CODE);
+            assert_eq!(args, &vec![0x00, 0x07, 0x00, 0x00, 0x00, 0xA7, 0x00]);
+        }
+        other => panic!("expected onErrorCode, got {other:?}"),
+    }
+}
+
+/// NPC casters have no client: the same refusal stays silent for them.
+#[tokio::test]
+async fn npc_casting_an_ability_it_does_not_know_stays_silent() {
+    let mut mgr = make_mgr();
+    mgr.create_entity(2, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(!handle_use_ability(2, 7, 0, &tx, &mut mgr).await);
     assert!(drain(&mut rx).is_empty());
 }
 

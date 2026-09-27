@@ -121,6 +121,7 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::MissionUpdate { .. }
         | CellToBaseMsg::GrantXP { .. }
         | CellToBaseMsg::TrainAbility { .. }
+        | CellToBaseMsg::ResetAbilities { .. }
         | CellToBaseMsg::GrantItem { .. }
         | CellToBaseMsg::GrantCash { .. }
         | CellToBaseMsg::GrantExpertise { .. }

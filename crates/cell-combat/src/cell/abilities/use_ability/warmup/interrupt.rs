@@ -37,6 +37,8 @@ pub(crate) enum InterruptReason {
     NoLineOfSight,
     /// At fire time a player's weapon was reloading or short of ammo.
     AmmoUnavailable,
+    /// A respec removed the warming ability (AT-08).
+    AbilityUnlearned,
 }
 
 impl InterruptReason {
@@ -49,6 +51,7 @@ impl InterruptReason {
             Self::TargetOutOfRange => "target_out_of_range",
             Self::NoLineOfSight => "no_line_of_sight",
             Self::AmmoUnavailable => "ammo_unavailable",
+            Self::AbilityUnlearned => "ability_unlearned",
         }
     }
 }
@@ -134,4 +137,28 @@ pub(crate) async fn interrupt_pending_cast(
         }
     }
     true
+}
+
+/// Interrupt `entity_id`'s warming cast when a respec has just removed its
+/// ability (AT-08). A parked cast would otherwise fire an ability the
+/// player no longer knows once the warmup expires. Returns whether a cast
+/// was interrupted; sends nothing when the warming ability, if any, is not
+/// in `unlearned`.
+pub async fn interrupt_unlearned_cast(
+    entity_id: u32,
+    unlearned: &[i32],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let warming = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.pending_cast.as_ref())
+        .map(|pc| pc.ability_id);
+    match warming {
+        Some(ability_id) if unlearned.contains(&ability_id) => {
+            interrupt_pending_cast(entity_id, InterruptReason::AbilityUnlearned, tx, space_mgr)
+                .await
+        }
+        _ => false,
+    }
 }

@@ -53,7 +53,9 @@ pub use messaging::{
 pub use resolve::{
     ability_for_active_weapon, ability_for_item, is_ability_granted_by_active_weapon,
 };
-pub use use_ability::{credit_ground_deaths, fire_line_of_sight, warmup_tick, FireLos};
+pub use use_ability::{
+    credit_ground_deaths, fire_line_of_sight, interrupt_unlearned_cast, warmup_tick, FireLos,
+};
 pub use use_ability::{handle_use_ability, handle_use_ability_with_kill_credit};
 pub(crate) use use_ability::{interrupt_pending_cast, is_casting, InterruptReason};
 

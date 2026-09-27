@@ -1,7 +1,9 @@
-//! SGWPlayer vendor cell methods: ability training plus the
-//! purchase / sell / buyback / repair / recharge op group. Dispatch lives
-//! here; the wire decoders, session validation, and training validation
-//! live in the sibling submodules.
+//! SGWPlayer vendor cell methods: ability training, the trainer respec,
+//! plus the purchase / sell / buyback / repair / recharge op group.
+//! Dispatch lives here; the wire decoders, session validation, and training
+//! validation live in the sibling submodules. The respec's method index
+//! (72) sits in the combat range, so `combat::dispatch` calls
+//! [`handle_reset_my_abilities`].
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -9,6 +11,9 @@ use tokio::sync::mpsc;
 
 use super::constants::*;
 
+mod respec;
+#[cfg(test)]
+mod respec_tests;
 mod session;
 mod train;
 mod train_feedback;
@@ -20,6 +25,7 @@ mod train_spend_tests;
 mod train_trainer_agreement;
 mod wire;
 
+pub(crate) use respec::handle_reset_my_abilities;
 use session::{validate_template_id, vendor_context};
 use train::handle_train_ability;
 use wire::{read_i32_array, read_trailing_template_id};

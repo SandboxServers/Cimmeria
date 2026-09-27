@@ -8,6 +8,7 @@
 //! - [`movement`] — `EntityMove` (client-authoritative position update + snap-back)
 //! - [`player_init`] — `InitPlayerState` (mission/ability/bandolier restore)
 //! - [`ability_granted`] — `AbilityGranted` (hotbar refresh + trainer resend)
+//! - [`respec`] — `AbilitiesReset` (trainer respec mirror + burst, AT-08)
 //! - [`inventory_events`] — `InventoryItemMoveApplied` / `InventoryItemRemoved` /
 //!   `InventoryItemGranted` / `ItemUsed`
 //! - [`bandolier`] — `UpdateBandolierItem` + `SyncBandolierItems` (weapon display)
@@ -34,6 +35,7 @@ mod minigame;
 mod movement;
 pub(crate) mod player_init;
 mod request_entity_update;
+mod respec;
 
 #[cfg(test)]
 mod tests;
@@ -403,6 +405,14 @@ pub(super) async fn handle_base_message(
                 training_points,
                 space_mgr,
             );
+        }
+
+        BaseToCellMsg::AbilitiesReset {
+            entity_id,
+            player_id,
+            outcome,
+        } => {
+            respec::handle_abilities_reset(entity_id, player_id, outcome, tx, space_mgr).await;
         }
 
         BaseToCellMsg::ItemUsed {

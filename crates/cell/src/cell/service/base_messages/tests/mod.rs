@@ -20,4 +20,5 @@ mod lab_query;
 mod minigame;
 mod movement;
 mod request_entity_update;
+mod respec_burst;
 mod trade_disconnect;

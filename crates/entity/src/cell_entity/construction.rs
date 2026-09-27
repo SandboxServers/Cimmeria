@@ -125,6 +125,7 @@ impl CellEntity {
             counters: HashMap::new(),
             system_options: SystemOptions::default(),
             tree_progress: TreeProgress::default(),
+            respec_requested_at: None,
         }
     }
 }

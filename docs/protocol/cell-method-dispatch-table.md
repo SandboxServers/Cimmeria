@@ -402,6 +402,7 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | 52 | abandonMission | 0xB4 | Mission abandon |
 | 68 | useAbility | 0xBD+7 | Combat ability use (extended) |
 | 70 | respawn | 0xBD+9 | Death respawn (extended) |
+| 72 | resetMyAbilities | 0xBD+11 | Trainer respec, no args; gated on a pinned trainer in range (AT-08, [ability-system.md](../gameplay/ability-system.md#respec)) |
 | 74 | interact | 0xBD+13 | NPC interaction (extended) |
 | 83 | setAutoCycle | 0xBD+22 | Auto-attack toggle (extended) |
 | 108 | cancelMovie | 0xBD+47 | Cinematic finished (extended) |
