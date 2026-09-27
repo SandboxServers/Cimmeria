@@ -9,6 +9,7 @@
 //! once-per-corpse payout, and the Defeat Window is only meaningful once
 //! the client has flipped the dying player into the dead state.
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -70,7 +71,7 @@ pub(super) async fn send_death_sequence(
 
 /// Grant kill XP for a dead NPC to whoever `attacker_id` credits.
 ///
-/// No-op for player targets â€” PvP pays no XP. The recipient comes from
+/// No-op for player targets — PvP pays no XP. The recipient comes from
 /// [`SpaceManager::credit_recipient`] (pets PT-06, D-PT02): a player is
 /// paid itself, a pet pays its owner scaled by `PetState::transfer_xp`,
 /// and any other NPC attacker pays nobody. Before that seam a pet kill
@@ -117,16 +118,18 @@ pub(super) async fn grant_kill_xp(
         .and_then(|e| e.pet.as_ref())
     {
         // `xp_before` is not logged: the cell holds no XP total. The base's
-        // `progression.grant_xp` span (keyed on the same `entity_id`) is
-        // where the before/after lives.
-        let id = space_mgr.player_identity(recipient);
+        // `progression.grant_xp` span (keyed on the owner's `entity_id`) is
+        // where the before/after lives. The identity is the summon-time
+        // capture, the same one `credit_recipient` just matched.
+        let id = space_mgr.pets.summoner_identity(attacker_id);
         tracing::debug!(
             target: "pets.credit",
             event = "pet_kill_credited",
+            entity_id = attacker_id,
             pet_id = attacker_id,
             owner_id = recipient,
-            account_id = ?id.account_id,
-            player_id = ?id.player_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
             victim_id = target_eid,
             victim_template_id = ?target.template_id,
             victim_level = target.level,
@@ -140,7 +143,7 @@ pub(super) async fn grant_kill_xp(
         .send(CellToBaseMsg::GrantXP {
             entity_id: recipient,
             xp_amount: xp,
-            // Mob-kill XP is not GM-sourced â€” no GM feedback line.
+            // Mob-kill XP is not GM-sourced — no GM feedback line.
             gm_feedback_to: None,
         })
         .await
@@ -165,9 +168,13 @@ pub(super) struct KillXpPayout {
 pub(super) enum NoKillXp {
     /// An ordinary NPC (not a pet) killed an NPC.
     NpcAttacker,
-    /// The attacker is a pet no longer registered to an owner (torn down
-    /// between the hit and the sweep).
-    OwnerGone,
+    /// The attacker is a registered pet whose owner's entity id no longer
+    /// belongs to the summoner. [`SpaceManager::credit_recipient`] already
+    /// logged it (`credit_refused`, WARN), so nothing is logged again.
+    CreditRefused,
+    /// The attacker still carries pet state but the registry already
+    /// dropped it (the teardown gap before the entity goes).
+    PetUnregistered,
     /// The pet's `transfer_xp` is non-finite or not above zero.
     TransferXpInvalid(f32),
     /// The payout rounds to zero XP (a level-0 victim, or a tiny scale).
@@ -178,7 +185,8 @@ impl NoKillXp {
     pub(super) fn reason(self) -> &'static str {
         match self {
             Self::NpcAttacker => "npc_attacker",
-            Self::OwnerGone => "owner_gone",
+            Self::CreditRefused => "credit_refused",
+            Self::PetUnregistered => "pet_unregistered",
             Self::TransferXpInvalid(_) => "transfer_xp_invalid",
             Self::ZeroXp => "zero_xp",
         }
@@ -202,8 +210,10 @@ pub(super) fn kill_xp_payout(
         .and_then(|e| e.pet.as_ref())
         .map(|p| p.transfer_xp);
     let Some(recipient) = space_mgr.credit_recipient(attacker_id) else {
-        return Err(if pet_scale.is_some() {
-            NoKillXp::OwnerGone
+        return Err(if space_mgr.pets.is_pet(attacker_id) {
+            NoKillXp::CreditRefused
+        } else if pet_scale.is_some() {
+            NoKillXp::PetUnregistered
         } else {
             NoKillXp::NpcAttacker
         });
@@ -229,6 +239,7 @@ pub(super) fn kill_xp_payout(
 /// pet's last hit), WARN only for `transfer_xp_invalid`, a data fault no
 /// client can cause. Pet-related rows go on `pets.credit` with the owner's
 /// identity; the plain NPC-kills-NPC row stays on the module target.
+/// `CreditRefused` logs nothing: `credit_recipient` already wrote its WARN.
 fn log_no_kill_xp(
     no_xp: NoKillXp,
     target_eid: u32,
@@ -236,6 +247,9 @@ fn log_no_kill_xp(
     base_xp: u64,
     space_mgr: &SpaceManager,
 ) {
+    if no_xp == NoKillXp::CreditRefused {
+        return;
+    }
     let reason = no_xp.reason();
     let victim = space_mgr.get_entity(target_eid);
     let victim_pet_owner = victim.and_then(|v| v.pet.as_ref()).map(|p| p.owner_id);
@@ -246,9 +260,6 @@ fn log_no_kill_xp(
     // The owner whose support question this row answers: the pet killer's
     // owner, else the dead pet's owner.
     let owner_id = attacker_pet_owner.or(victim_pet_owner);
-    let id = owner_id.map(|o| space_mgr.player_identity(o));
-    let account_id = id.and_then(|i| i.account_id);
-    let player_id = id.and_then(|i| i.player_id);
 
     // A mob finishing a pet is the same `NpcAttacker` outcome, named for
     // the support question it answers.
@@ -264,16 +275,26 @@ fn log_no_kill_xp(
     } else {
         None
     };
+    // The summon-time capture names the player even when the owner id has
+    // been reused; a pet the registry already dropped falls back to whoever
+    // holds the owner id now. Omitted (never 0) when neither is known.
+    let id = match (pet_id, owner_id) {
+        (Some(pet), _) if space_mgr.pets.is_pet(pet) => space_mgr.pets.summoner_identity(pet),
+        (_, Some(owner)) => space_mgr.player_identity(owner),
+        _ => PlayerIdentity::UNKNOWN,
+    };
+    let (account_id, player_id) = (id.account_id, id.player_id);
 
     if let NoKillXp::TransferXpInvalid(transfer_xp) = no_xp {
         tracing::warn!(
             target: "pets.credit",
             event = "kill_xp_not_granted",
             reason,
-            pet_id = ?pet_id,
-            owner_id = ?owner_id,
-            account_id = ?account_id,
-            player_id = ?player_id,
+            entity_id = pet_id,
+            pet_id,
+            owner_id,
+            account_id,
+            player_id,
             victim_id = target_eid,
             base_xp,
             transfer_xp,
@@ -284,10 +305,11 @@ fn log_no_kill_xp(
             target: "pets.credit",
             event = "kill_xp_not_granted",
             reason,
-            pet_id = ?pet_id,
-            owner_id = ?owner_id,
-            account_id = ?account_id,
-            player_id = ?player_id,
+            entity_id = pet_id,
+            pet_id,
+            owner_id,
+            account_id,
+            player_id,
             attacker = attacker_id,
             victim_id = target_eid,
             base_xp,

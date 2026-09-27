@@ -25,21 +25,23 @@ fn only_event(logs: &[Captured], target: &str, event: &str) -> Captured {
     rows.into_iter().next().unwrap()
 }
 
+/// The owner correlators every pet row carries: `owner_id` and the
+/// summoner's `account_id` / `player_id`, recorded as plain values (an
+/// `Option` field is omitted when `None`, never logged as `Some(..)` or 0).
 fn assert_owner_identity(row: &Captured) {
-    assert!(
-        row.has_field("owner_id", &format!("Some({OWNER})"))
-            || row.has_field("owner_id", &OWNER.to_string()),
-        "{row:?}"
-    );
+    assert!(row.has_field("owner_id", &OWNER.to_string()), "{row:?}");
     // `add_pet_owner` sets `account_id = entity_id`.
+    assert!(row.has_field("account_id", &OWNER.to_string()), "{row:?}");
     assert!(
-        row.has_field("account_id", &format!("Some({OWNER})")),
+        row.has_field("player_id", &OWNER_PLAYER_ID.to_string()),
         "{row:?}"
     );
-    assert!(
-        row.has_field("player_id", &format!("Some({OWNER_PLAYER_ID})")),
-        "{row:?}"
-    );
+}
+
+/// Rule 5 correlator: `entity_id` (and `pet_id`) name the pet.
+fn assert_pet(row: &Captured, pet: u32) {
+    assert!(row.has_field("entity_id", &pet.to_string()), "{row:?}");
+    assert!(row.has_field("pet_id", &pet.to_string()), "{row:?}");
 }
 
 /// A pet's kill logs `pet_kill_credited` at DEBUG with the pet, the owner,
@@ -52,8 +54,7 @@ async fn a_pet_kill_logs_pet_kill_credited() {
 
     let row = only_event(&capture.all(), "pets.credit", "pet_kill_credited");
     assert_eq!(row.level, Level::DEBUG);
-    assert!(row.has_field("pet_id", &pet.to_string()), "{row:?}");
-    assert!(row.has_field("owner_id", &OWNER.to_string()), "{row:?}");
+    assert_pet(&row, pet);
     assert!(row.has_field("victim_id", &mob.to_string()), "{row:?}");
     assert!(row.has_field("xp_granted", &MOB_XP.to_string()), "{row:?}");
     assert!(row.has_field("transfer_xp", "1.0"), "{row:?}");
@@ -71,7 +72,7 @@ async fn a_mob_killing_a_pet_logs_npc_killed_pet() {
     let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
     assert_eq!(row.level, Level::DEBUG);
     assert!(row.has_field("reason", "npc_killed_pet"), "{row:?}");
-    assert!(row.has_field("pet_id", &format!("Some({pet})")), "{row:?}");
+    assert_pet(&row, pet);
     assert!(row.has_field("attacker", &mob.to_string()), "{row:?}");
     assert_owner_identity(&row);
 }
@@ -120,16 +121,16 @@ async fn a_bad_transfer_xp_logs_transfer_xp_invalid_at_warn() {
         assert_eq!(row.level, Level::WARN, "transfer_xp = {bad}");
         assert!(row.has_field("reason", "transfer_xp_invalid"), "{row:?}");
         assert!(row.has_field("transfer_xp", &format!("{bad:?}")), "{row:?}");
-        assert!(row.has_field("pet_id", &format!("Some({pet})")), "{row:?}");
+        assert_pet(&row, pet);
         assert_owner_identity(&row);
     }
 }
 
-/// Seam: the pet's owner is gone (the registry dropped it before the sweep
-/// despawned the pet). DEBUG, `reason = owner_gone`, still naming the owner
-/// the pet was summoned by.
+/// Seam: the registry already dropped the pet (the teardown gap before the
+/// entity goes). DEBUG, `reason = pet_unregistered`, still naming the owner
+/// the pet's state points at.
 #[tokio::test]
-async fn an_orphaned_pet_kill_logs_owner_gone() {
+async fn an_unregistered_pet_kill_logs_pet_unregistered() {
     let (mut mgr, pet, mob) = world();
     mgr.pets.forget_pet(pet);
     let capture = LogCapture::install();
@@ -137,7 +138,41 @@ async fn an_orphaned_pet_kill_logs_owner_gone() {
 
     let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
     assert_eq!(row.level, Level::DEBUG);
-    assert!(row.has_field("reason", "owner_gone"), "{row:?}");
-    assert!(row.has_field("pet_id", &format!("Some({pet})")), "{row:?}");
+    assert!(row.has_field("reason", "pet_unregistered"), "{row:?}");
+    assert_pet(&row, pet);
     assert_owner_identity(&row);
+}
+
+/// Seam: the owner's entity id now belongs to another player (id reuse
+/// before the sweep). The kill pays nobody, and the only row is
+/// `credit_recipient`'s `credit_refused` WARN: `grant_kill_xp` must not log
+/// a second `kill_xp_not_granted` row for the same refusal. The row still
+/// names the summoner, not the id's new holder.
+#[tokio::test]
+async fn a_refused_pet_kill_logs_only_credit_refused() {
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(OWNER).unwrap().player_id = Some(OWNER_PLAYER_ID + 1);
+    let capture = LogCapture::install();
+    assert_eq!(kill(&mut mgr, mob, pet).await, vec![], "nobody is paid");
+
+    let logs = capture.all();
+    let refused: Vec<_> = logs
+        .iter()
+        .filter(|c| c.target == "pets.credit" && c.has_field("event", "credit_refused"))
+        .collect();
+    assert!(!refused.is_empty(), "{logs:#?}");
+    let row = refused[0];
+    assert_eq!(row.level, Level::WARN);
+    assert!(
+        row.has_field("reason", "owner_identity_mismatch"),
+        "{row:?}"
+    );
+    assert_pet(row, pet);
+    assert_owner_identity(row);
+    assert!(
+        !logs
+            .iter()
+            .any(|c| c.has_field("event", "kill_xp_not_granted")),
+        "no duplicate row for a refusal credit_recipient already logged: {logs:#?}"
+    );
 }
