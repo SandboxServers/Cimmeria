@@ -170,8 +170,8 @@ fn ten_normal_elementaries_make_the_alloy() {
     assert_eq!(tx.consume, vec![(COMPONENT, 1)]);
     assert_eq!(tx.grant, vec![(PRODUCT, 2)]);
     assert_eq!(tx.expertise, vec![(DISCIPLINE, 1)]);
-    assert_eq!(tx.named_items[0], NamedItem::new(CURRENT, COMPONENT));
-    assert_eq!(tx.named_items.len(), 11);
+    assert_eq!(tx.named_items[0], NamedItem::new(1, NORMAL));
+    assert_eq!(tx.named_items.len(), 10, "the component is not named");
     assert_eq!(
         tx.consume_named,
         (1..=10).map(|id| (id, 1)).collect::<Vec<_>>()
@@ -382,7 +382,7 @@ fn a_blueprint_without_elementary_components_uses_none() {
     let plan = check_with(&state(), PLAIN_ALLOY, &singles(1, NORMAL, 10)).expect("plain alloy");
     assert_eq!(plan.bucket, None);
     assert!(plan.elementary.is_empty());
-    assert_eq!(plan.transaction().named_items.len(), 1);
+    assert!(plan.transaction().named_items.is_empty());
 }
 
 #[test]

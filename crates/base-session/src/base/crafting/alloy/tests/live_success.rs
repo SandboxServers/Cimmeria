@@ -260,3 +260,82 @@ async fn a_named_input_changed_mid_induction_consumes_nothing() {
     }
     f.cleanup().await;
 }
+
+/// A respec (here: the discipline forgotten) during the bar refuses the
+/// queued alloy at completion; nothing is consumed and the player is told.
+#[tokio::test]
+async fn forgetting_the_discipline_during_the_bar_refuses_the_alloy() {
+    let pool = require_db_or_skip!();
+    assert_seed_shape(&pool).await;
+    let f = Fixture::new(&pool, 5).await;
+    let component = f.stack(COMPONENT, INV_CRAFTING, 0, 1).await;
+    let normals = f.singles(NORMAL, 0, 10).await;
+    f.alloy(ALLOY, component, &normals).await;
+    sqlx::query("UPDATE sgw_player SET discipline_ids = '{}' WHERE player_id = $1")
+        .bind(f.player_id)
+        .execute(&pool)
+        .await
+        .expect("forget discipline");
+    let before = f.inventory().await;
+    f.transport.clear();
+    let capture = LogCapture::install();
+
+    assert_eq!(f.finish_inductions().await, 1);
+    assert_eq!(
+        f.inventory().await,
+        before,
+        "nothing consumed, nothing granted"
+    );
+    let calls = f.calls();
+    let methods: Vec<u16> = calls.iter().map(|c| c.method).collect();
+    assert_eq!(
+        methods,
+        vec![
+            method_idx::ON_PLAYER_COMMUNICATION,
+            method_idx::ON_UPDATE_ITEM
+        ],
+        "the line, then the resync"
+    );
+    assert_eq!(
+        feedback_text(&calls[0]),
+        "You must learn the blueprint's discipline first."
+    );
+    let rejected = capture
+        .all()
+        .into_iter()
+        .find(|e| e.target == "crafting" && e.has_field("event", "rejected"))
+        .expect("rejected");
+    assert!(
+        rejected.has_field("reason", "discipline_unknown"),
+        "{rejected:#?}"
+    );
+    assert!(
+        rejected.has_field("player_id", &f.player_id.to_string()),
+        "{rejected:#?}"
+    );
+    f.cleanup().await;
+}
+
+/// Two alloys queued with the same named component: the first uses it,
+/// and the second completes from the other stack of that design, because
+/// the component is consumed by design and not pinned to the named stack.
+#[tokio::test]
+async fn a_queued_alloy_whose_named_component_was_used_takes_another() {
+    let pool = require_db_or_skip!();
+    assert_seed_shape(&pool).await;
+    let f = Fixture::new(&pool, 6).await;
+    let component = f.stack(COMPONENT, INV_CRAFTING, 0, 1).await;
+    f.stack(COMPONENT, INV_CRAFTING, 1, 1).await;
+    let first = f.stack(GOOD, INV_MAIN, 0, 5).await;
+    let second = f.stack(GOOD, INV_MAIN, 1, 5).await;
+    f.alloy(ALLOY, component, &[first]).await;
+    f.alloy(ALLOY, component, &[second]).await;
+    assert_eq!(f.sessions.pending(f.entity_id), 2);
+
+    assert_eq!(f.finish_inductions().await, 1);
+    assert_eq!(f.finish_inductions().await, 1);
+    let types: Vec<i32> = f.inventory().await.iter().map(|row| row.1).collect();
+    assert_eq!(types, vec![PRODUCT; 4], "both alloys made");
+    assert_eq!(f.expertise().await, 3);
+    f.cleanup().await;
+}

@@ -105,11 +105,13 @@ pub struct AlloyPlan {
 
 impl AlloyPlan {
     /// The completion transaction. The component is consumed by design
-    /// (the client names one stack of it, as the craft page does); each
-    /// elementary instance is consumed exactly, because the count the
-    /// client checked is the named stacks' quantities.
+    /// and not named: the client names one stack of it, and a queued alloy
+    /// whose named component an earlier alloy used up still completes
+    /// while the bags hold another. Each elementary instance is named and
+    /// consumed exactly, because the count the client checked is the named
+    /// stacks' quantities.
     pub fn transaction(&self) -> CraftTransaction {
-        let mut named_items = vec![NamedItem::new(self.current_tier_item_id, self.component_id)];
+        let mut named_items = Vec::with_capacity(self.elementary.len());
         let mut consume_named = Vec::with_capacity(self.elementary.len());
         for e in &self.elementary {
             named_items.push(NamedItem::new(e.item_id, e.type_id));
