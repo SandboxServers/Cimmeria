@@ -134,6 +134,20 @@ pub(super) async fn insert_member(
     if member {
         return Err(OrgStoreError::AlreadyMember);
     }
+    // The creation lock of the joining character (ORG-07). Without it, an
+    // invite accepted into a Team while the same character founds a Team
+    // passes `insert_org`'s pre-check and then makes the founding insert
+    // draw an organization id before it fails `AlreadyInType` (ORG-05's
+    // known gap). With it, one of the two waits and the other's pre-check
+    // sees the committed row. Creation already holds this key (it is
+    // re-entrant), and it is taken only after the membership check above,
+    // so a transaction holding this organization only ever waits on a
+    // non-member's key, never a member's (`api` § "Lock order").
+    sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(super::CREATE_LOCK_PLAYER)
+        .bind(player_id)
+        .execute(&mut **tx)
+        .await?;
     let account_id: Option<i32> =
         sqlx::query_scalar("SELECT account_id FROM sgw_player WHERE player_id = $1 FOR KEY SHARE")
             .bind(player_id)

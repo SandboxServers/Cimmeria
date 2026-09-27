@@ -19,7 +19,9 @@
 //! - [`org_vault_is_empty`] is the vault predicate every voluntary disband
 //!   checks (D-ORG20). A stub until the Bank campaign's vault lands.
 //!
-//! `broadcast_to_org` (the fanout primitive) is ORG-07's.
+//! - [`broadcast_to_org`] sends one client method to every online member,
+//!   optionally only those whose rank holds a permission (ORG-07). Call it
+//!   after the commit.
 //!
 //! ## Lock order
 //!
@@ -36,12 +38,25 @@
 //!    `player_id` order, then all their organizations in `org_id` order,
 //!    so two characters in two organizations never lock them out of order.
 //!
-//! The two orders never form a cycle because no transaction holding an
-//! organization waits on the `sgw_player` row of one of that
-//! organization's members: `add_member` checks membership before it takes
-//! the `FOR KEY SHARE` lock on the joining character, so it only waits on
-//! a non-member's row, and kicks and rank changes touch member rows, not
-//! player rows. The Bank locks the acting (online) character's
+//! 3. **Creation** (ORG-05): the founder's creation advisory lock, then the
+//!    name's, then the new organization row, then the founder's
+//!    `sgw_player` row. It never waits on an existing organization row.
+//!    `add_member` takes the joining character's creation lock too (ORG-07),
+//!    after its membership check and before the `FOR KEY SHARE`, so an
+//!    accepted invite and a creation by the same character serialise.
+//!
+//! The orders never form a cycle because no transaction holding an
+//! organization waits on the `sgw_player` row, or the creation lock, of
+//! one of that organization's members: `add_member` checks membership
+//! before it takes either for the joining character, so it only waits on a
+//! non-member's, and kicks and rank changes touch member rows, not player
+//! rows. One reachable exception: an account delete
+//! (`account_before_delete_lock_orgs`) locks every character on the
+//! account, so it can hold a non-member character that an `add_member`
+//! waits on while itself waiting on an organization a sibling character
+//! belongs to. Postgres detects that cycle (40P01) rather than hanging, and
+//! it is reachable only from credential cleanup and tests; a future
+//! account-delete path must drop the account's sessions first. The Bank locks the acting (online) character's
 //! `sgw_player` row after the organization; a character is deleted only
 //! from the character list, never while it is in the world, so that row
 //! is never one a character delete holds. A new path that waits on a
@@ -55,6 +70,8 @@
 
 use cimmeria_entity::organization::{OrgPermission, OrgRank, OrgType, UnknownValue};
 use sqlx::{Postgres, Transaction};
+
+pub use super::handlers::broadcast::broadcast_to_org;
 
 /// One organization row, as [`lock_org`] read it under the lock.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -3,23 +3,31 @@
 //!
 //! Every method is decoded in full by
 //! [`decode_org_cell_method`](cimmeria_wire::cell::cell_methods::organization::decode_org_cell_method)
-//! and then routed on the id it carries (D-ORG05, D-ORG06):
+//! and then routed on the id it carries (D-ORG05, D-ORG06). Each routing
+//! decision logs DEBUG `org.forward` with `route` = `squad`, `base` or
+//! `rejected`:
 //!
 //! - CM 8 `organizationInviteResponse`: a request id with
 //!   `BASE_INVITE_REQUEST_FLAG` clear is a squad invite, answered by
-//!   [`squad`]; a base-issued id goes to [`forward`].
-//! - CM 9 `organizationLeave`: a squad-range org id (or an id that routes
-//!   nowhere, which the squad check then refuses) goes to [`squad`]; a Team
-//!   or Command id is forwarded to the base (ORG-06).
-//! - CM 10 `BroadcastMinimapPing`: like CM 9, a squad-range or unroutable
-//!   id goes to [`squad`] (ORG-04), a Team or Command id to [`forward`].
+//!   [`squad`]; a base-issued id is forwarded to the base (ORG-07).
+//! - CM 9 `organizationLeave` and CM 10 `BroadcastMinimapPing`: a
+//!   squad-range id (or one that routes nowhere, which the squad check then
+//!   refuses) goes to [`squad`]; a Team or Command id is forwarded.
+//! - CM 11 `strikeTeamResponse` and CM 12 `pvpOrganizationLeaveResponse`
+//!   are always refused as unsolicited: no strike-team or PvP-leave request
+//!   is ever issued (CAT-M-16, CAT-M-17).
+//! - CM 13-17 (texts, rank permissions and names): a Team or Command id is
+//!   forwarded; squads have none of these, so any other id gets ORG-01's
+//!   answer.
 //! - CM 18 `squadSetLootMode`: always [`squad`].
-//! - Everything else: [`forward`].
+//! - CM 19 `organizationTransferCash`: a Team or Command id is forwarded as
+//!   `OrgCellToBase::TransferCash` (the Bank campaign's route); anything
+//!   else gets ORG-01's answer.
 //!
 //! Routing is not authorization: [`squad`] still checks that the caller is
-//! in the squad the id names. [`forward`] answers with ORG-01's "not
-//! available yet" until ORG-07 forwards Team and Command calls to the base
-//! (`docs/analysis/organizations/work-packets.md`).
+//! in the squad the id names, and the base checks membership under
+//! ORG-LOCK. Forwarded calls carry this entity's own character, never the
+//! payload's.
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -66,26 +74,39 @@ pub async fn dispatch(
             return true;
         }
     };
+    let base = |org_id: i32| route_org_id(org_id) == Some(OrgRoute::Base);
     match call {
         OrgCellCall::InviteResponse {
             request_id,
             response,
         } if route_invite_request(request_id) != Some(InviteRoute::Base) => {
+            forward::log_squad_route(entity_id, method_index, None);
             squad::respond(entity_id, request_id, response != 0, tx, space_mgr).await;
         }
-        OrgCellCall::Leave { org_id } if route_org_id(org_id) != Some(OrgRoute::Base) => {
+        OrgCellCall::InviteResponse { .. } => {
+            forward::to_base(entity_id, method_index, None, args, tx, space_mgr).await;
+        }
+        OrgCellCall::Leave { org_id } if !base(org_id) => {
+            forward::log_squad_route(entity_id, method_index, Some(org_id));
             squad::leave(entity_id, org_id, tx, space_mgr).await;
         }
-        OrgCellCall::Leave { org_id } => {
-            forward::leave_to_base(entity_id, org_id, args, tx, space_mgr).await;
-        }
-        OrgCellCall::BroadcastMinimapPing { org_id, location }
-            if route_org_id(org_id) != Some(OrgRoute::Base) =>
-        {
+        OrgCellCall::BroadcastMinimapPing { org_id, location } if !base(org_id) => {
+            forward::log_squad_route(entity_id, method_index, Some(org_id));
             squad::broadcast_minimap_ping(entity_id, org_id, location, tx, space_mgr).await;
         }
         OrgCellCall::SquadSetLootMode { loot_mode } => {
+            forward::log_squad_route(entity_id, method_index, None);
             squad::set_loot_mode(entity_id, loot_mode, tx, space_mgr).await;
+        }
+        OrgCellCall::StrikeTeamResponse { org_id, response }
+        | OrgCellCall::PvpLeaveResponse { org_id, response } => {
+            forward::unsolicited(entity_id, method_index, org_id, response, tx, space_mgr).await;
+        }
+        OrgCellCall::TransferCash { org_id, dir } if base(org_id) => {
+            forward::transfer_cash_to_base(entity_id, org_id, dir, tx, space_mgr).await;
+        }
+        other if other.org_id().is_some_and(base) => {
+            forward::to_base(entity_id, method_index, other.org_id(), args, tx, space_mgr).await;
         }
         other => forward::answer(entity_id, method_index, &other, tx).await,
     }

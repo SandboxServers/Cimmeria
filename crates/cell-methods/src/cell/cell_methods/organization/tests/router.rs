@@ -9,24 +9,44 @@ use crate::test_support::{make_space_manager_with_player, LogCapture};
 const NOT_AVAILABLE: &str = "Organizations are not available yet.";
 
 /// CM 13 used to read only the org id; the MOTD `WSTRING` was dropped
-/// (audit A-02). The dispatcher decodes it (two UTF-16 units reach the
-/// DEBUG log) and answers: `onErrorCode` with the org id, then the
-/// feedback line.
+/// (audit A-02). The dispatcher decodes it. Squads have no MOTD, so a
+/// squad-range id is answered here (two UTF-16 units reach the DEBUG log,
+/// with `route = rejected`): `onErrorCode` with the org id, then the
+/// feedback line. A Team or Command id is forwarded to the base (ORG-07)
+/// with the raw arguments.
 #[tokio::test]
-async fn motd_is_decoded_and_answered() {
+async fn motd_is_decoded_and_routed() {
     let capture = LogCapture::install();
-    let mut mgr = make_space_manager_with_player(1);
+    let mut mgr = world(&["Alice"]);
     let (tx, mut rx) = channel();
-    let args = [7, 0, 0, 0, 2, 0, 0, 0, 0x48, 0, 0x69, 0];
-    assert!(dispatch(1, MOTD, &args, &tx, &mut mgr).await);
+    let text = [2u8, 0, 0, 0, 0x48, 0, 0x69, 0];
+    let squad_args = [&SQUAD_ORG_ID_MIN.to_le_bytes()[..], &text].concat();
+    assert!(dispatch(11, MOTD, &squad_args, &tx, &mut mgr).await);
     let ev = capture
         .find_message(Level::DEBUG, "UNIMPLEMENTED: organizationMOTD")
         .expect("decoded MOTD log");
     assert_eq!(ev.target, "org");
     assert!(ev.has_field("text_units", "2"), "{:?}", ev.fields);
+    assert!(ev.has_field("route", "rejected"), "{:?}", ev.fields);
+    assert_eq!(
+        to(&drain(&mut rx), 11),
+        rejection(SQUAD_ORG_ID_MIN, NOT_AVAILABLE)
+    );
 
-    let sent = drain(&mut rx);
-    assert_eq!(to(&sent, 1), rejection(7, NOT_AVAILABLE));
+    let team_args = [&7i32.to_le_bytes()[..], &text].concat();
+    assert!(dispatch(11, MOTD, &team_args, &tx, &mut mgr).await);
+    match rx.try_recv() {
+        Ok(CellToBaseMsg::Org(crate::cell::messages::OrgCellToBase::ForwardCellCall {
+            player_id,
+            entity_id,
+            method_index,
+            args,
+        })) => {
+            assert_eq!((player_id, entity_id, method_index), (1, 11, MOTD));
+            assert_eq!(args, team_args);
+        }
+        other => panic!("expected the MOTD forwarded to the base, got {other:?}"),
+    }
 }
 
 /// Every method 8-19 answers. CM 8 and 18 carry no org id (instance 0);
@@ -114,8 +134,9 @@ async fn leave_routes_on_the_squad_id_boundary() {
     );
 }
 
-/// CM 8 routes on the request id: a base-issued id (bit 29) gets ORG-01's
-/// answer; a cell id reaches the squad handler.
+/// CM 8 routes on the request id: a base-issued id (bit 29) is forwarded
+/// to the base (ORG-07) with the caller's character; a cell id reaches the
+/// squad handler.
 #[tokio::test]
 async fn invite_response_routes_on_the_base_flag() {
     let mut mgr = world(&["Alice"]);
@@ -123,11 +144,99 @@ async fn invite_response_routes_on_the_base_flag() {
     let base_id = BASE_INVITE_REQUEST_FLAG | 1;
     let args = [&base_id.to_le_bytes()[..], &[1]].concat();
     dispatch(11, INVITE_RESPONSE, &args, &tx, &mut mgr).await;
-    assert_eq!(to(&drain(&mut rx), 11), rejection(0, NOT_AVAILABLE));
+    match rx.try_recv() {
+        Ok(CellToBaseMsg::Org(crate::cell::messages::OrgCellToBase::ForwardCellCall {
+            player_id,
+            entity_id,
+            method_index,
+            args: fwd,
+        })) => {
+            assert_eq!(
+                (player_id, entity_id, method_index),
+                (1, 11, INVITE_RESPONSE)
+            );
+            assert_eq!(fwd, args);
+        }
+        other => panic!("expected the response forwarded to the base, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "nothing else is sent");
     let args = [&1i32.to_le_bytes()[..], &[1]].concat();
     dispatch(11, INVITE_RESPONSE, &args, &tx, &mut mgr).await;
     assert_eq!(
         to(&drain(&mut rx), 11),
         rejection(0, "That invitation is no longer valid.")
+    );
+}
+
+/// CAT-M-16: no strike-team request is ever issued, so every
+/// `strikeTeamResponse` (CM 11) is unsolicited: one INFO
+/// `org.strike_team_response` row (`reason = unsolicited`), the refusal
+/// pair, and nothing reaches the base, whatever the id routes to.
+#[tokio::test]
+async fn strike_team_response_rejected_unsolicited() {
+    assert_unsolicited(STRIKE_TEAM_RESPONSE, "org.strike_team_response").await;
+}
+
+/// CAT-M-17: likewise `pvpOrganizationLeaveResponse` (CM 12): no PvP-leave
+/// request is ever issued.
+#[tokio::test]
+async fn pvp_leave_response_rejected_unsolicited() {
+    assert_unsolicited(PVP_LEAVE_RESPONSE, "org.pvp_leave_response").await;
+}
+
+async fn assert_unsolicited(method_index: u16, event: &str) {
+    for org_id in [5, SQUAD_ORG_ID_MIN, 0] {
+        let capture = LogCapture::install();
+        let mut mgr = world(&["Alice"]);
+        let (tx, mut rx) = channel();
+        let args = [&org_id.to_le_bytes()[..], &[1]].concat();
+        assert!(dispatch(11, method_index, &args, &tx, &mut mgr).await);
+        // `drain` panics on anything but a client call, so a forward to the
+        // base fails here.
+        assert_eq!(
+            to(&drain(&mut rx), 11),
+            rejection(org_id, "There is no request to answer."),
+            "CM {method_index}, id {org_id}"
+        );
+        let rows: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| c.has_field("event", event))
+            .collect();
+        assert_eq!(rows.len(), 1, "one outcome row: {rows:#?}");
+        assert_eq!(rows[0].level, Level::INFO);
+        assert!(rows[0].has_field("outcome", "rejected"));
+        assert!(rows[0].has_field("reason", "unsolicited"));
+        assert!(rows[0].has_field("player_id", "1"), "{:?}", rows[0].fields);
+    }
+}
+
+/// CM 19 with a Team or Command id is forwarded as `TransferCash` (the
+/// Bank campaign's route, ORG-API) with the caller's own character; a squad
+/// id is answered on the cell.
+#[tokio::test]
+async fn transfer_cash_routes_to_the_base_as_transfer_cash() {
+    use cimmeria_entity::organization::CashDir;
+    let mut mgr = world(&["Alice"]);
+    let (tx, mut rx) = channel();
+    let args = [&5i32.to_le_bytes()[..], &(-250i32).to_le_bytes()].concat();
+    dispatch(11, TRANSFER_CASH, &args, &tx, &mut mgr).await;
+    match rx.try_recv() {
+        Ok(CellToBaseMsg::Org(crate::cell::messages::OrgCellToBase::TransferCash {
+            player_id,
+            entity_id,
+            org_id,
+            dir,
+        })) => {
+            assert_eq!((player_id, entity_id, org_id), (1, 11, 5));
+            assert_eq!(Some(dir), CashDir::from_wire(-250));
+        }
+        other => panic!("expected TransferCash to the base, got {other:?}"),
+    }
+    let args = [&SQUAD_ORG_ID_MIN.to_le_bytes()[..], &100i32.to_le_bytes()].concat();
+    dispatch(11, TRANSFER_CASH, &args, &tx, &mut mgr).await;
+    assert_eq!(
+        to(&drain(&mut rx), 11),
+        rejection(SQUAD_ORG_ID_MIN, NOT_AVAILABLE)
     );
 }

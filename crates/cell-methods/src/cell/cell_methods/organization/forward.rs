@@ -1,16 +1,20 @@
 //! Organization cell methods that are not squad calls: Team and Command
-//! ids, base-issued invite request ids, and the methods no packet has
-//! implemented yet.
+//! ids and base-issued invite request ids, which go to the base
+//! ([`to_base`], [`transfer_cash_to_base`]); the strike-team and PvP-leave
+//! responses nothing ever asked for ([`unsolicited`]); and squad-range ids
+//! on methods squads do not have, answered with ORG-01's "not available
+//! yet" pair ([`answer`]).
 //!
-//! Each is logged and answered with ORG-01's "not available yet" pair, so
-//! the press is never silent. ORG-07 replaces [`answer`] with a forward to
-//! the base (`OrgCellToBase::ForwardCellCall`); ORG-04 and ORG-08 take their
-//! methods out of here. CM 9 (leave) for a Team or Command id already goes
-//! to the base ([`leave_to_base`], ORG-06).
+//! Every routing decision logs DEBUG `org.forward` with `route` (`squad`,
+//! `base` or `rejected`); a closed base channel is WARN
+//! `org.forward_failed`.
 
 use crate::cell::messages::{CellToBaseMsg, OrgCellToBase};
+use crate::cell::org_creation::count_org_action;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
+
+use cimmeria_entity::organization::CashDir;
 
 use cimmeria_wire::cell::cell_methods::organization::OrgCellCall;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
@@ -43,6 +47,8 @@ pub(super) async fn answer(
     tracing::debug!(
         target: "org",
         event = "org.cell_method_unimplemented",
+        route = "rejected",
+        reason = "not_available",
         entity_id,
         method_index,
         method = call.method_name(),
@@ -55,69 +61,198 @@ pub(super) async fn answer(
     send_unavailable_feedback(entity_id, method_index, instance_id, tx).await;
 }
 
-/// Forward `organizationLeave` (CM 9) for a Team or Command id to the base,
-/// which owns persistent organizations (D-ORG04, D-ORG05). The actor is
-/// this entity's own character, never the payload; the base re-checks it
-/// against the session and membership under ORG-LOCK.
+/// Log the router's `route = squad` decision (the squad handler logs the
+/// outcome).
+pub(super) fn log_squad_route(entity_id: u32, method_index: u16, org_id: Option<i32>) {
+    tracing::debug!(
+        target: "org",
+        event = "org.forward",
+        route = "squad",
+        entity_id,
+        method_index,
+        org_id,
+        "organization cell method routed to the squad handler"
+    );
+}
+
+/// Forward a Team or Command cell method (CM 8 with a base request id, CM
+/// 9, 10 and 13-17 with a base org id) to the base, which owns persistent
+/// organizations (D-ORG04, D-ORG05), as the raw method index and argument
+/// bytes. The actor is this entity's own character, never the payload; the
+/// base re-checks it against the session and authorizes under ORG-LOCK.
 ///
 /// Logs DEBUG `org.forward` with `route = base`. An entity with no
 /// character is answered with the refusal pair and `route = rejected`,
 /// `reason = not_a_player`; a closed base channel is WARN
 /// `org.forward_failed`.
-pub(super) async fn leave_to_base(
+pub(super) async fn to_base(
     entity_id: u32,
-    org_id: i32,
+    method_index: u16,
+    org_id: Option<i32>,
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
     let id = space_mgr.player_identity(entity_id);
     let Some(player_id) = id.player_id else {
-        tracing::debug!(
-            target: "org",
-            event = "org.forward",
-            route = "rejected",
-            reason = "not_a_player",
-            account_id = id.account_id,
-            entity_id,
-            method_index = super::LEAVE,
-            org_id,
-            "organization leave from an entity with no character"
-        );
-        send_unavailable_feedback(entity_id, super::LEAVE, org_id, tx).await;
+        not_a_player(entity_id, method_index, org_id, id.account_id, tx).await;
         return;
     };
     let msg = CellToBaseMsg::Org(OrgCellToBase::ForwardCellCall {
         player_id,
         entity_id,
-        method_index: super::LEAVE,
+        method_index,
         args: args.to_vec(),
     });
+    send_to_base(
+        msg,
+        entity_id,
+        method_index,
+        org_id,
+        id.account_id,
+        player_id,
+        tx,
+    )
+    .await;
+}
+
+/// Forward `organizationTransferCash` (CM 19) for a Team or Command id as
+/// `OrgCellToBase::TransferCash`, the Bank campaign's route (ORG-API). The
+/// base answers it; until the Bank's BV-08 lands, with a refusal.
+pub(super) async fn transfer_cash_to_base(
+    entity_id: u32,
+    org_id: i32,
+    dir: CashDir,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(entity_id);
+    let Some(player_id) = id.player_id else {
+        not_a_player(
+            entity_id,
+            super::TRANSFER_CASH,
+            Some(org_id),
+            id.account_id,
+            tx,
+        )
+        .await;
+        return;
+    };
+    let msg = CellToBaseMsg::Org(OrgCellToBase::TransferCash {
+        player_id,
+        entity_id,
+        org_id,
+        dir,
+    });
+    send_to_base(
+        msg,
+        entity_id,
+        super::TRANSFER_CASH,
+        Some(org_id),
+        id.account_id,
+        player_id,
+        tx,
+    )
+    .await;
+}
+
+/// The refusal for a forward from an entity with no character.
+async fn not_a_player(
+    entity_id: u32,
+    method_index: u16,
+    org_id: Option<i32>,
+    account_id: Option<u32>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    tracing::debug!(
+        target: "org",
+        event = "org.forward",
+        route = "rejected",
+        reason = "not_a_player",
+        account_id,
+        entity_id,
+        method_index,
+        org_id,
+        "organization call from an entity with no character"
+    );
+    send_unavailable_feedback(entity_id, method_index, org_id.unwrap_or(0), tx).await;
+}
+
+async fn send_to_base(
+    msg: CellToBaseMsg,
+    entity_id: u32,
+    method_index: u16,
+    org_id: Option<i32>,
+    account_id: Option<u32>,
+    player_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
     match tx.send(msg).await {
         Ok(()) => tracing::debug!(
             target: "org",
             event = "org.forward",
             route = "base",
-            account_id = id.account_id,
+            account_id,
             player_id,
             entity_id,
-            method_index = super::LEAVE,
+            method_index,
             org_id,
-            "organization leave forwarded to the base"
+            "organization call forwarded to the base"
         ),
         Err(_) => tracing::warn!(
             target: "org",
             event = "org.forward_failed",
-            account_id = id.account_id,
+            account_id,
             player_id,
             entity_id,
-            method_index = super::LEAVE,
+            method_index,
             org_id,
             reason = "cell_to_base_closed",
-            "organization leave could not be forwarded to the base"
+            "organization call could not be forwarded to the base"
         ),
     }
 }
+
+/// `strikeTeamResponse` (CM 11) or `pvpOrganizationLeaveResponse` (CM 12):
+/// the answers to `onStrikeTeamUpdate` [41] and
+/// `onPvPOrganizationLeaveRequest` [42], which this server never sends. So
+/// every one is unsolicited (CAT-M-16, CAT-M-17): refused with one INFO
+/// `org.strike_team_response` / `org.pvp_leave_response` row (`reason =
+/// unsolicited`), counted, answered with the refusal pair, and never
+/// forwarded.
+pub(super) async fn unsolicited(
+    entity_id: u32,
+    method_index: u16,
+    org_id: i32,
+    response: u8,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let (event, action) = if method_index == super::STRIKE_TEAM_RESPONSE {
+        ("org.strike_team_response", "strike_team_response")
+    } else {
+        ("org.pvp_leave_response", "pvp_leave_response")
+    };
+    let id = space_mgr.player_identity(entity_id);
+    tracing::info!(
+        target: "org",
+        event,
+        outcome = "rejected",
+        reason = "unsolicited",
+        route = "rejected",
+        account_id = id.account_id,
+        player_id = id.player_id,
+        entity_id,
+        org_id,
+        response,
+        "organization response refused: nothing asked for it"
+    );
+    count_org_action(action, "rejected", "unsolicited");
+    send_error_and_line(entity_id, method_index, org_id, UNSOLICITED_TEXT, tx).await;
+}
+
+/// The line an unsolicited strike-team or PvP-leave response gets.
+pub(crate) const UNSOLICITED_TEXT: &str = "There is no request to answer.";
 
 /// Answer an organization request the server cannot serve yet, so the press
 /// is not silent: `onErrorCode(ERRORCODE_SYSTEM_Ability, instance_id,

@@ -2,24 +2,28 @@
 //! by type, kick and rank change.
 //!
 //! The organizations campaign fills the behaviour in here, not in `mod.rs`
-//! (`docs/analysis/organizations/work-packets.md`):
+//! (`docs/analysis/organizations/work-packets.md`). The actor's
+//! `account_id`, `player_id` and `entity_id` always come from this session,
+//! never from the payload.
 //!
-//! - **Squads (ORG-03).** Squads live on the cell (D-ORG03), so the base
-//!   resolves nothing: `organizationInviteByType` with type 0 is forwarded
-//!   as `OrgBaseToCell::SquadInvite`, and `organizationKick` with an org id
-//!   in the squad range (D-ORG05) as `OrgBaseToCell::SquadKick`. ORG-E1 Q2:
-//!   the client's `squadInvite` and `squadKick` natives use exactly these
-//!   two methods. The actor's `player_id` and `entity_id` come from this
-//!   session, never from the payload.
+//! - **Squads (ORG-03).** Squads live on the cell (D-ORG03):
+//!   `organizationInviteByType` with type 0 is forwarded as
+//!   `OrgBaseToCell::SquadInvite` once the base's Ignore check passes
+//!   (ORG-07), and `organizationKick` with an org id in the squad range
+//!   (D-ORG05) as `OrgBaseToCell::SquadKick` ([`super::organization_squad`]).
+//!   ORG-E1 Q2: the client's `squadInvite` and `squadKick` natives use
+//!   exactly these two methods.
 //! - **Invite by type above 2** names no organization type and is refused
 //!   (CAT-M-02).
-//! - **Everything else** (Team and Command invites, kicks and rank changes)
-//!   waits for ORG-07 and is answered as below.
+//! - **Teams and Commands (ORG-07).** Every other invite, kick and rank
+//!   change goes to the base-session handlers, which authorize under
+//!   ORG-LOCK (`base::organization::handlers`). Zero and negative ids reach
+//!   them too and are refused as `not_member`.
+//! - **A rank change with a squad id** keeps the "not available yet"
+//!   answer below: whether the client's `/squadpromote` uses 0xD2 is
+//!   unconfirmed (ORG-E1 follow-up 1).
 //!
-//! # Feedback until ORG-07
-//!
-//! Every well-formed call the base cannot serve yet is answered, so the
-//! press is never silent:
+//! # The "not available yet" answer
 //!
 //! 1. `onErrorCode` [121] with `SystemID = ERRORCODE_SYSTEM_Ability` (0,
 //!    the only `EErrorCodeSystem` value), `InstanceID` = the org id (or the
@@ -38,9 +42,13 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use cimmeria_base_session::base::gm_feedback::send_gm_feedback_to_client;
 use cimmeria_base_session::base::helpers::send_to_witness_reliable;
+use cimmeria_base_session::base::organization::handlers::{
+    handle_invite, handle_kick, handle_rank_change, InviteInto, OrgCtx, OrgPlayer,
+};
 use cimmeria_entity::organization::{route_org_id, OrgRoute, OrgType};
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::base::organization::{decode_org_base_method, OrgBaseCall};
@@ -48,12 +56,14 @@ use cimmeria_wire::cell::client_methods::organization::ORG_NOT_AVAILABLE_TEXT;
 use cimmeria_wire::cell::client_methods::player::{
     build_on_error_code, CONDITION_FEEDBACK_INVALID_ENTITY, ERRORCODE_SYSTEM_ABILITY, ON_ERROR_CODE,
 };
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
-use crate::cell::messages::{BaseToCellMsg, OrgBaseToCell};
+use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_player_entity_method_packet;
 
 use super::super::ConnectedClientState;
+use super::organization_squad::forward_squad_call;
 
 /// The line an `organizationInviteByType` with a type above 2 gets.
 pub(super) const UNKNOWN_ORG_TYPE_TEXT: &str = "That is not an organization type.";
@@ -69,31 +79,8 @@ fn instance_id(call: &OrgBaseCall) -> i32 {
     }
 }
 
-/// The squad message a call forwards to the cell, if it is a squad call.
-fn squad_forward(call: &OrgBaseCall, player_id: i32, entity_id: u32) -> Option<OrgBaseToCell> {
-    match call {
-        OrgBaseCall::InviteByType {
-            org_type,
-            player_name,
-        } if *org_type == OrgType::Squad.as_u8() => Some(OrgBaseToCell::SquadInvite {
-            player_id,
-            entity_id,
-            target_name: player_name.clone(),
-        }),
-        OrgBaseCall::Kick {
-            org_id,
-            player_name,
-        } if route_org_id(*org_id) == Some(OrgRoute::Squad) => Some(OrgBaseToCell::SquadKick {
-            player_id,
-            entity_id,
-            org_id: *org_id,
-            target_name: player_name.clone(),
-        }),
-        _ => None,
-    }
-}
-
 /// Decode, route and answer one organization base method.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_org_base_method(
     msg_id: u8,
     payload: &[u8],
@@ -102,6 +89,7 @@ pub(super) async fn handle_org_base_method(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    db_pool: &Option<Arc<PgPool>>,
 ) {
     // The actor comes from this session, never from the payload.
     let (account_id, player_id, entity_id) = {
@@ -171,97 +159,104 @@ pub(super) async fn handle_org_base_method(
                 org_type,
                 "organizationInviteByType names no organization type"
             );
+            cimmeria_observability::counter!(
+                "org_actions_total",
+                "action" => "invite",
+                "outcome" => "rejected",
+                "reason" => "org_type_invalid",
+            );
             reply(UNKNOWN_ORG_TYPE_TEXT).await;
             return;
         }
     }
 
-    let Some(fwd) = squad_forward(&call, actor_player, actor_entity) else {
-        tracing::debug!(
-            target: "org",
-            event = "org.base_method_unimplemented",
-            %addr,
-            msg_id = format_args!("{msg_id:#04x}"),
-            method = call.method_name(),
-            account_id,
-            player_id,
-            entity_id,
-            instance_id = instance_id(&call),
-            "organization base method has no handler yet; answering with feedback"
-        );
-        reply(ORG_NOT_AVAILABLE_TEXT).await;
-        return;
+    let ctx = OrgCtx {
+        db_pool,
+        transport,
+        connected,
+        entity_to_addr,
+        cell_tx,
     };
-    let kind = fwd.kind();
-    let forwarded = match cell_tx {
-        Some(tx) => tx.send(BaseToCellMsg::Org(fwd)).await.is_ok(),
-        None => false,
+    let player = OrgPlayer {
+        account_id,
+        player_id: actor_player,
+        entity_id: actor_entity,
     };
-    if forwarded {
-        tracing::debug!(
-            target: "org",
-            event = "org.squad_forwarded",
-            %addr,
-            account_id,
-            player_id,
-            entity_id,
-            kind,
-            "squad call forwarded to the cell"
-        );
-    } else {
-        tracing::warn!(
-            target: "org",
-            event = "org.squad_forward_failed",
-            %addr,
-            account_id,
-            player_id,
-            entity_id,
-            kind,
-            reason = "cell_unreachable",
-            "squad call could not reach the cell -- answering with feedback"
-        );
-        unreachable_outcome(kind, account_id, player_id, entity_id);
-        reply(ORG_NOT_AVAILABLE_TEXT).await;
+    let squad_id = |org_id: i32| route_org_id(org_id) == Some(OrgRoute::Squad);
+    match call {
+        OrgBaseCall::InviteByType {
+            org_type,
+            ref player_name,
+        } if org_type == OrgType::Squad.as_u8() => {
+            forward_squad_call(&ctx, &player, addr, &call, player_name).await;
+        }
+        OrgBaseCall::Kick {
+            org_id,
+            ref player_name,
+        } if squad_id(org_id) => {
+            forward_squad_call(&ctx, &player, addr, &call, player_name).await;
+        }
+        OrgBaseCall::RankChange { org_id, .. } if squad_id(org_id) => {
+            tracing::debug!(
+                target: "org",
+                event = "org.base_method_unimplemented",
+                %addr,
+                msg_id = format_args!("{msg_id:#04x}"),
+                method = call.method_name(),
+                account_id,
+                player_id,
+                entity_id,
+                instance_id = org_id,
+                "squad rank change has no handler; answering with feedback"
+            );
+            reply(ORG_NOT_AVAILABLE_TEXT).await;
+        }
+        OrgBaseCall::Invite {
+            org_id,
+            ref player_name,
+        } => {
+            let _ = handle_invite(
+                &ctx,
+                &player,
+                InviteInto::Org(org_id),
+                player_name,
+                Instant::now(),
+            )
+            .await;
+        }
+        OrgBaseCall::InviteByType {
+            org_type,
+            ref player_name,
+        } => {
+            // Types 1 and 2 only: 0 is the squad arm, above 2 was refused.
+            let org_type = OrgType::try_from(org_type).expect("checked above");
+            let _ = handle_invite(
+                &ctx,
+                &player,
+                InviteInto::ByType(org_type),
+                player_name,
+                Instant::now(),
+            )
+            .await;
+        }
+        OrgBaseCall::Kick {
+            org_id,
+            ref player_name,
+        } => {
+            let _ = handle_kick(&ctx, &player, org_id, player_name).await;
+        }
+        OrgBaseCall::RankChange {
+            org_id,
+            ref player_name,
+            rank,
+        } => {
+            let _ = handle_rank_change(&ctx, &player, org_id, player_name, rank).await;
+        }
     }
 }
 
-/// The squad action never reached the cell, so the cell logs no outcome
-/// row for it and counts nothing: this is that row and that count, in the
-/// shape of the cell's `Outcome::emit` (`squad/telemetry.rs`) and on the
-/// same `squad_actions_total{action, outcome, reason}` series as
-/// `cimmeria_cell_world::cell::squad::count_action`, which the base cannot
-/// call (it does not depend on the cell crates).
-fn unreachable_outcome(
-    kind: &str,
-    account_id: Option<u32>,
-    player_id: Option<i32>,
-    entity_id: Option<u32>,
-) {
-    let (event, action) = if kind == "squad_kick" {
-        ("squad.kick", "kick")
-    } else {
-        ("squad.invite", "invite")
-    };
-    tracing::info!(
-        target: "squad",
-        event,
-        outcome = "rejected",
-        reason = "cell_unreachable",
-        account_id,
-        player_id,
-        entity_id,
-        "squad action rejected"
-    );
-    cimmeria_observability::counter!(
-        "squad_actions_total",
-        "action" => action,
-        "outcome" => "rejected",
-        "reason" => "cell_unreachable",
-    );
-}
-
 /// `onErrorCode(0, instance_id, 0)` then `text` on the feedback channel.
-async fn answer(
+pub(super) async fn answer(
     instance_id: i32,
     text: &str,
     entity_id: u32,
@@ -293,4 +288,9 @@ async fn answer(
     )
     .await;
     send_gm_feedback_to_client(entity_id, text, transport, connected, entity_to_addr).await;
+}
+
+/// The instance id [`answer`] reports for `call`.
+pub(super) fn answer_instance(call: &OrgBaseCall) -> i32 {
+    instance_id(call)
 }
