@@ -372,6 +372,8 @@ async fn dispatch_client_bundle(
                     addr,
                     cell_tx,
                     entity_to_addr,
+                    transport,
+                    db_pool,
                     "client_disconnect",
                 );
             }

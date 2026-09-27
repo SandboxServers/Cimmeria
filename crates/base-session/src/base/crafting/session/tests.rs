@@ -520,6 +520,9 @@ async fn destroying_the_client_drops_its_crafting_queue() {
         h.addr,
         &None,
         &h.env.entity_to_addr,
+        &(std::sync::Arc::new(crate::test_support::TestTransport::new())
+            as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
+        &None,
         "client_disconnect",
     );
     assert_eq!(global.pending(HOOK_ENTITY), 0);

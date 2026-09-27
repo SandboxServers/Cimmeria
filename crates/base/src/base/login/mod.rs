@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use cimmeria_mercury::transport::Transport;
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -41,6 +42,7 @@ pub(crate) async fn handle_login(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
     enc_version: EncryptionVersion,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let login = {
@@ -130,6 +132,8 @@ pub(crate) async fn handle_login(
                 old_addr,
                 cell_tx,
                 entity_to_addr,
+                transport,
+                db_pool,
                 "duplicate_login",
             );
         }
@@ -251,6 +255,7 @@ pub(crate) async fn handle_login(
         Arc::clone(entity_manager),
         cell_tx.clone(),
         Arc::clone(entity_to_addr),
+        db_pool.clone(),
     ));
 
     Ok(())
@@ -411,6 +416,10 @@ pub(crate) async fn handle_log_off(
         addr,
         cell_tx,
         entity_to_addr,
+        transport,
+        // Account-side logOff is from character select: no character is in
+        // the world, so there is no offline presence to look up.
+        &None,
         "logoff",
     );
 

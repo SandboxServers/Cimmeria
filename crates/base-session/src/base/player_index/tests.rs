@@ -185,6 +185,9 @@ fn destroy_client_entities_leaves_no_listing_for_any_reason() {
             addr(1),
             &None,
             &entity_to_addr,
+            &(std::sync::Arc::new(crate::test_support::TestTransport::new())
+                as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
+            &None,
             reason,
         );
 

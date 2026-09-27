@@ -1,18 +1,30 @@
 //! Organization dispatch arm for `CellToBaseMsg::Org`.
 //!
-//! Every `OrgCellToBase` variant lands here. Nothing sends them yet (ORG-01
-//! only lays the contract), so each arm is a logged no-op; ORG-05 (`Create`),
-//! the Bank campaign (`TransferCash`) and ORG-06/07/08 (`ForwardCellCall`)
-//! replace them. Later packets add their handlers to this file rather than
-//! to `mod.rs`.
+//! Every `OrgCellToBase` variant lands here. ORG-06 serves a forwarded
+//! `organizationLeave` (CM 9) and `GmDisband`; the other arms are logged
+//! no-ops until ORG-05 (`Create`), the Bank campaign (`TransferCash`) and
+//! ORG-07/08 (the rest of `ForwardCellCall`) replace them. Later packets add
+//! their handlers to this file rather than to `mod.rs`.
 
 use std::ops::RangeInclusive;
 
-use cimmeria_wire::cell::cell_methods::organization::decode_org_cell_method;
+use cimmeria_base_session::base::organization::handlers::{
+    gm_disband, handle_leave, resolve_actor, GmCaller, OrgCtx,
+};
+use cimmeria_wire::cell::cell_methods::organization::{decode_org_cell_method, OrgCellCall};
 
 use crate::cell::messages::OrgCellToBase;
 
 use super::DispatchCtx;
+
+fn org_ctx<'a>(ctx: &DispatchCtx<'a>) -> OrgCtx<'a> {
+    OrgCtx {
+        db_pool: ctx.db_pool,
+        transport: ctx.transport,
+        connected: ctx.connected,
+        entity_to_addr: ctx.entity_to_addr,
+    }
+}
 
 /// The OrganizationMember cell methods the cell may forward to the base:
 /// invite response (8) to rank name (17). CM 18 (squad loot mode) never
@@ -21,7 +33,7 @@ use super::DispatchCtx;
 const FORWARDABLE: RangeInclusive<u16> = 8..=17;
 
 /// Route one organization message from the cell.
-pub(super) async fn route(msg: OrgCellToBase, _ctx: &DispatchCtx<'_>) {
+pub(super) async fn route(msg: OrgCellToBase, ctx: &DispatchCtx<'_>) {
     let (player_id, entity_id) = msg.actor();
     let kind = msg.kind();
     match msg {
@@ -65,6 +77,25 @@ pub(super) async fn route(msg: OrgCellToBase, _ctx: &DispatchCtx<'_>) {
                 return;
             }
             match decode_org_cell_method(method_index, &args) {
+                Ok(OrgCellCall::Leave { org_id }) => {
+                    let octx = org_ctx(ctx);
+                    // The cell named the actor from its own entity; confirm
+                    // it is still this session's character in the world.
+                    let Some(player) = resolve_actor(&octx, player_id, entity_id) else {
+                        tracing::warn!(
+                            target: "org",
+                            event = "org.actor_mismatch",
+                            player_id,
+                            entity_id,
+                            method_index,
+                            org_id,
+                            reason = "actor_mismatch",
+                            "forwarded organization call no longer matches a session in the world"
+                        );
+                        return;
+                    };
+                    let _ = handle_leave(&octx, &player, org_id).await;
+                }
                 Ok(call) => tracing::debug!(
                     target: "org",
                     event = "org.forward_unimplemented",
@@ -86,6 +117,17 @@ pub(super) async fn route(msg: OrgCellToBase, _ctx: &DispatchCtx<'_>) {
                     "forwarded organization cell call did not decode"
                 ),
             }
+        }
+        OrgCellToBase::GmDisband { org_id, .. } => {
+            let _ = gm_disband(
+                &org_ctx(ctx),
+                GmCaller {
+                    entity_id,
+                    player_id,
+                },
+                org_id,
+            )
+            .await;
         }
     }
 }

@@ -76,6 +76,7 @@ pub async fn run_tick_loop(
     entity_manager: Arc<Mutex<EntityManager>>,
     cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: Option<Arc<sqlx::PgPool>>,
 ) {
     // Server-side client-gone reap: if the peer sends nothing for 60 s, exit
     // the tick-sync loop and tear down session state. Distinct from UE3 R10's
@@ -193,6 +194,8 @@ pub async fn run_tick_loop(
         addr,
         &cell_tx,
         &entity_to_addr,
+        &transport,
+        &db_pool,
         disconnect_reason,
     );
 }

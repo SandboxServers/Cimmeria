@@ -65,6 +65,7 @@
 //! - [`mail`] — mail GM tools (`mail`, `mailbox`, `mail_expire`).
 //! - [`squad`] — squad tools (`squad_invite`, `squad_join`, `squad_info`),
 //!   routed to the squad handlers in `cimmeria-cell-methods`.
+//! - [`org`] — Team and Command tools (`org_disband`), forwarded to the base.
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -94,6 +95,7 @@ pub mod gm;
 mod mail;
 mod mission;
 mod net;
+mod org;
 mod parse;
 mod patrol;
 mod pet;

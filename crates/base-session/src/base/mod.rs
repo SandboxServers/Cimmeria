@@ -41,6 +41,7 @@ pub mod outbox;
 pub mod player_index;
 pub mod rate_limit;
 pub mod session_identity;
+pub mod session_presence;
 pub mod tick_sync;
 pub mod world_entry_chat;
 

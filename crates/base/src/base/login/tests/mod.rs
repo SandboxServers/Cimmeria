@@ -278,6 +278,7 @@ async fn login_consumes_ticket_and_registers_connected_client_state() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
@@ -367,6 +368,7 @@ async fn login_pushes_discord_player_login_event() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
@@ -434,6 +436,7 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
@@ -514,6 +517,7 @@ async fn login_with_unknown_ticket_does_not_register_state() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
@@ -575,6 +579,7 @@ async fn second_login_for_same_account_evicts_first_session() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
@@ -599,6 +604,7 @@ async fn second_login_for_same_account_evicts_first_session() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
@@ -661,6 +667,7 @@ async fn login_from_different_ip_logs_ticket_ip_mismatch() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
