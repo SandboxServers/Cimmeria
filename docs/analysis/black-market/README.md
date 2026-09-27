@@ -98,7 +98,7 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 | BM-04 | Patch DLL send natives and `CimmeriaBM` registration | BM-03 | PR |
 | BM-05 | UI overlay: Lua store, read-binding replacements, U1–U12, error text | BM-03/04 surface | Overlay files + diff |
 | BM-06 | Launcher: always-inject the patch DLL (with an opt-out), manifest overlay entry, docs | BM-03 | PR; closes #587 |
-| BM-07 | Content and UAT: auctioneer chains (5030/5031 from the branch), seed listings, a UAT checklist, and a `.`-console helper to seed or expire listings | BM-02 | PR + checklist |
+| BM-07 | Content and UAT: the auctioneer template, spawn and chains 5030/5031, seed listings, a UAT checklist, and a `.`-console helper to seed or expire listings. The branch's ids (template 168, spawn 238) now collide with the Castle rebuild. Use the Black Market seed block allocated by the social-systems coordinator: **templates 305–309, spawns 405–409**. Put the chains in `castle_cellblock_chains.sql` with scope `'space', 12` | BM-02 | PR + checklist |
 | BM-08 | Watch list (65/66/95), if D4 says yes | BM-05 | PR |
 
 BM-01, BM-00 and BM-03 can run in parallel. BM-02b waits for the social-systems mail packets; the coordinator (cimmeria-19) will say when SS-M1 and SS-M2 merge. D8 (immediate buyout) shares the same payout path, so it lands with BM-02b.
