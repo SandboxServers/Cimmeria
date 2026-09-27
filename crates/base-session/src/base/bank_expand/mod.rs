@@ -30,6 +30,8 @@ mod sends;
 #[cfg(test)]
 mod quote_tests;
 #[cfg(test)]
+mod refusal_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod wire_tests;
