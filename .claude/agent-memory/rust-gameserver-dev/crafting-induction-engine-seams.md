@@ -19,7 +19,8 @@ Facts from building the crafting induction engine (branch craft/cr06-induction, 
   gate travel; `active_player_id` is the reliable "same character" check.
 - Inventory lock orders differ per path: move takes `pg_advisory_xact_lock(player, 0)` first; grant
   and trade take `(player, bag)` before rows/`sgw_player`; vendor purchase locks rows first. The
-  crafting transaction takes every advisory lock (0, then bags sorted) before `sgw_player FOR UPDATE`.
+  crafting transaction takes every advisory lock (0, then bags sorted) first; since the #897 review it
+  only reads `sgw_player` (no `FOR UPDATE`), and vendor purchase now takes `(player, 0)` first too.
 - `i32::div_ceil` / `i64::div_ceil` are unstable (int_roundings) on the pinned 1.98.1; use the
   unsigned form.
 
