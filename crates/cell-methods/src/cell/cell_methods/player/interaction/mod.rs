@@ -10,6 +10,8 @@ use tokio::sync::mpsc;
 use super::constants::*;
 
 #[cfg(test)]
+mod bank_dispatch_tests;
+#[cfg(test)]
 mod debug_hub_dispatch_tests;
 mod dialog;
 #[cfg(test)]

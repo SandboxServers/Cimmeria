@@ -52,56 +52,99 @@ pub fn interact_target_in_range(
     target_entity_id: u32,
     space_mgr: &SpaceManager,
 ) -> bool {
-    let player_pos = match space_mgr.get_entity(entity_id) {
-        Some(e) => e.position,
-        None => {
+    match interact_range(entity_id, target_entity_id, space_mgr) {
+        Ok(()) => true,
+        Err(InteractRangeFail::PlayerMissing) => {
             tracing::info!(
                 entity_id,
                 target_entity_id,
                 "interact: player entity not found"
             );
-            return false;
+            false
         }
-    };
-    let target_pos = match space_mgr.get_entity(target_entity_id) {
-        Some(e) => e.position,
-        None => {
+        Err(InteractRangeFail::TargetMissing) => {
             tracing::info!(
                 entity_id,
                 target_entity_id,
                 "interact: target entity not found"
             );
-            return false;
+            false
         }
-    };
+        Err(InteractRangeFail::OtherSpace) => {
+            tracing::info!(
+                entity_id,
+                target_entity_id,
+                "interact: target is in another space"
+            );
+            false
+        }
+        Err(InteractRangeFail::TooFar { dist }) => {
+            tracing::info!(
+                entity_id,
+                target_entity_id,
+                dist,
+                max = MAX_INTERACT_DISTANCE,
+                "interact: too far away"
+            );
+            false
+        }
+    }
+}
+
+/// Why [`interact_range`] refused a target.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InteractRangeFail {
+    /// The interacting entity is not in any loaded space.
+    PlayerMissing,
+    /// The target is not in any loaded space.
+    TargetMissing,
+    /// Both exist, in different spaces.
+    OtherSpace,
+    /// Same space, farther apart than `MAX_INTERACT_DISTANCE`.
+    TooFar {
+        /// The distance, in world units.
+        dist: f32,
+    },
+}
+
+/// The interaction range rule itself, with no logging: the target exists,
+/// shares the player's space, and is within `MAX_INTERACT_DISTANCE`.
+///
+/// [`interact_target_in_range`] is this plus its log lines. The vault's
+/// move predicate (`bank::vault_move_allowed`) calls it directly so a vault
+/// check applies exactly the rule the interact that opened the vault did,
+/// and reports its own reason instead of an "interact:" line.
+pub fn interact_range(
+    entity_id: u32,
+    target_entity_id: u32,
+    space_mgr: &SpaceManager,
+) -> Result<(), InteractRangeFail> {
+    let player_pos = space_mgr
+        .get_entity(entity_id)
+        .ok_or(InteractRangeFail::PlayerMissing)?
+        .position;
+    let target_pos = space_mgr
+        .get_entity(target_entity_id)
+        .ok_or(InteractRangeFail::TargetMissing)?
+        .position;
 
     // Positions are per-space coordinates and `get_entity` searches every
     // space, so without this a target in another space at the same
     // coordinates would pass as "in range". That let a client pin a trainer
     // (or fire a chain) in a space it never entered (AT-04 review).
     if space_mgr.get_entity_space_id(entity_id) != space_mgr.get_entity_space_id(target_entity_id) {
-        tracing::info!(
-            entity_id,
-            target_entity_id,
-            "interact: target is in another space"
-        );
-        return false;
+        return Err(InteractRangeFail::OtherSpace);
     }
 
     // Compare squared distances so the common (in-range) path does no
     // sqrt. This runs on every interact, including the right-click spam
     // of ordinary play. The sqrt is paid only on the rejection branch,
-    // where it buys a log line an operator can read in world units.
+    // where it buys a distance an operator can read in world units.
     let dist_sq = player_pos.distance_squared_to(&target_pos);
     if dist_sq > MAX_INTERACT_DISTANCE * MAX_INTERACT_DISTANCE {
-        tracing::info!(
-            entity_id,
-            target_entity_id,
-            dist = dist_sq.sqrt(),
-            max = MAX_INTERACT_DISTANCE,
-            "interact: too far away"
-        );
-        return false;
+        return Err(InteractRangeFail::TooFar {
+            dist: dist_sq.sqrt(),
+        });
     }
-    true
+    Ok(())
 }

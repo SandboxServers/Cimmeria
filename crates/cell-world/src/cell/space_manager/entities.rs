@@ -158,6 +158,24 @@ impl SpaceManager {
         if self.get_entity(entity_id).is_some_and(|e| e.is_player) {
             self.ring_transporters.note_player_gone(entity_id);
         }
+        // A vault session lives on the entity, so a logout, a space change
+        // or a cross-world trip (all of which destroy it) ends the session
+        // by construction (bank-vault D-BV05). Logged so the `bank` target
+        // shows where each session ended.
+        if let Some(session) = self
+            .get_entity(entity_id)
+            .and_then(|e| e.vault_session.as_ref())
+        {
+            tracing::debug!(
+                target: "bank",
+                event = "vault_session_cleared",
+                entity_id,
+                banker_id = session.banker_id,
+                open_secs = session.opened_at.elapsed().as_secs_f32(),
+                reason = "entity_destroyed",
+                "vault_session_cleared: the player's cell entity was destroyed"
+            );
+        }
         // CA10: an armed stargate dial dies with the space membership —
         // without this, `gate_dial_tick` would emit `Stargate_MakeGate`
         // for an entity that is no longer in any space.

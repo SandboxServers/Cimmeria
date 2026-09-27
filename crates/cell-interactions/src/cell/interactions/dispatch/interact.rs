@@ -86,9 +86,9 @@ pub async fn handle_interact(
     // `LookupEntityListenerEntry`, so passing the player's ID there
     // (the prior bug) made the dialog speak as the player. Mirrors
     // python's `SGWPlayer.lastInteractionTarget` write in `interact()`.
-    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
-        player.last_interaction_target = Some(target_entity_id);
-    }
+    //
+    // The pin also ends a vault session pinned to another target (D-BV05).
+    super::super::bank::pin_interaction_target(space_mgr, entity_id, target_entity_id);
 
     // Check per-player available interactions (from add_dialog_set content actions).
     // These take priority over static interaction_type.
@@ -199,6 +199,23 @@ pub async fn handle_interact(
                  entity_templates.trainer_ability_list_id on this NPC's \
                  template instead of using the Trainer interaction tag"
             );
+            None
+        }
+        Some(NpcInteractionType::Banker { scope }) => {
+            tracing::info!(
+                entity_id,
+                target_entity_id,
+                scope = scope.as_str(),
+                "interact: banker → onVaultOpen"
+            );
+            super::super::bank::open_vault_at_banker(
+                entity_id,
+                target_entity_id,
+                scope,
+                tx,
+                space_mgr,
+            )
+            .await;
             None
         }
         Some(NpcInteractionType::Loot) => {
