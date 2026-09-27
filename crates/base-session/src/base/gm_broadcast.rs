@@ -57,6 +57,7 @@ pub async fn broadcast_to_online_players(
                 entity_id = actor.entity_id,
                 account_id = actor.account_id,
                 player_id = actor.player_id,
+                scope = "global",
                 reason = "session_map_poisoned",
                 "GM broadcast not sent: the session map lock is poisoned",
             );
@@ -108,6 +109,7 @@ pub async fn broadcast_to_online_players(
                 target_player_id,
                 target_entity_id,
                 %addr,
+                scope = "global",
                 reason = "send_error",
                 error = %e,
                 "GM broadcast line send failed for one recipient",

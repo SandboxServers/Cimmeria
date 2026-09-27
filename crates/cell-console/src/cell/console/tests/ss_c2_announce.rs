@@ -97,7 +97,44 @@ async fn help_announce_shows_usage_and_argument_detail() {
         "summary line: {lines:?}"
     );
     assert!(
-        lines.iter().any(|l| l.starts_with("    text (str): ")),
+        // Rendered bracketed because the spec's `min` is 0 (so a bare
+        // `.announce` reaches its own usage line); the text says required.
+        lines
+            .iter()
+            .any(|l| l.starts_with("    [text] (str): Required.")),
         "argument detail line: {lines:?}"
+    );
+}
+
+/// Type 12: a bare `.announce` reaches the command's own refusal, not the
+/// generic argc check: the usage line and `chat.gm_broadcast_rejected
+/// reason=no_text` with the GM's ids. Fails if the spec's `min` goes back
+/// to 1 (the argc check answers first and logs no chat event).
+#[tokio::test]
+async fn bare_announce_logs_no_text_and_shows_usage() {
+    let (mut mgr, gm, _npc) = setup();
+    {
+        let e = mgr.get_entity_mut(gm).unwrap();
+        e.account_id = Some(7);
+        e.player_id = Some(70);
+    }
+    let (tx, mut rx) = mpsc::channel(16);
+    let capture = crate::test_support::LogCapture::install();
+
+    handle_console_command(gm, ".announce", &tx, &mut mgr, &ChainEngine::new()).await;
+
+    let row = capture
+        .find_event(tracing::Level::WARN, ".announce had no text", "no_text")
+        .expect("a bare .announce must log chat.gm_broadcast_rejected reason=no_text");
+    assert!(row.has_field("event", "chat.gm_broadcast_rejected"));
+    assert!(row.has_field("account_id", "7"));
+    assert!(row.has_field("player_id", "70"));
+    let lines: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|m| super::decode_feedback(&m))
+        .collect();
+    assert_eq!(
+        lines,
+        vec![".announce: nothing to announce. Usage: .announce [space] <text>".to_string()],
+        "only the command's own usage line"
     );
 }

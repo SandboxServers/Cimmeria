@@ -139,7 +139,7 @@ const SEARCH_TEMPLATE_ARGS: &[ArgSpec] = &[
 const ANNOUNCE_ARGS: &[ArgSpec] = &[arg(
     "text",
     "str",
-    "The line to send to every online player; start it with `space` to reach only your space",
+    "Required. The line to send to every online player; start it with `space` to reach only your space",
 )];
 
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
