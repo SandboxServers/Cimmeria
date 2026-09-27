@@ -70,13 +70,13 @@ SGWPlayer.def internal cell methods (none implemented): `duelChallenge`, `duelRe
    `duelChallenge(challengerMailbox, squadMailboxes)` → `onDuelChallenge` [143] + `Event_UI_DuelTimerStart`.
 2. **Response**: accept/decline → `sendDuelResponse` [102] → `duelResponse`.
 3. **Arena setup**: spawn `SGWDuelMarker`, `registerDuelMarker` + `startDuel` on participants, set
-   `GENERICPROPERTY_PvPFlag=4` to value 1 (fan out to AoI witnesses), `onDuelEntitiesSet` [151].
+   the PvP flag to 1 and fan it out to AoI witnesses (**provisional**: the vehicle, `GENERICPROPERTY_PvPFlag=4` or the `pvpFlag` property, is unresolved; see open question 7), `onDuelEntitiesSet` [151].
 4. **Combat**: PvP flag active; both can damage each other.
 5. **Resolution**: on death/forfeit/teleport/disconnect/range → `duelEntityDefeat(mailbox, reason)` →
    marker `onEntityDefeated` → `onDuelEntitiesRemove` [152] → when empty: `onDuelEntitiesClear` [153] +
    reset PvP flag + destroy marker.
 
-**PvP flag**: `GENERICPROPERTY_PvPFlag = 4` via `onEntityProperty(4, INT32)`. Current Rust sends `(4,0)`
+**PvP flag (provisional; the vehicle is unresolved, see open question 7)**: one candidate is `GENERICPROPERTY_PvPFlag = 4` via `onEntityProperty(4, INT32)`. Current Rust sends `(4,0)`
 at world entry only (`world_data.rs`); no setter to 1 / no duel-time fanout exists.
 
 **Correction 2026-09-27 (SS-E1, D-Q4)**: `SGWPlayer.def` also declares a dedicated `pvpFlag`

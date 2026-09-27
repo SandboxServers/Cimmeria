@@ -242,10 +242,10 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 **Scope:**
 
 - The countdown (D-SS18) through the mechanism SS-E1 D-Q1 names, then `Engaged`.
-- `GENERICPROPERTY_PvPFlag = 1` on both duelists, to each and to their witnesses (D-SS23). A witness entering AoI mid-duel receives the current value.
+- **The PvP flag, through whichever vehicle the SS-D2 trace shows the client consumes** (D-SS23 provisional; SS-E1 D-Q4 left open): the dedicated `pvpFlag` property or `GENERICPROPERTY_PvPFlag` via `onEntityProperty(4, …)`. Trace the receiver first, record the evidence in `duel-wire-formats.md`, then set it on both duelists, to each and to their witnesses. A witness entering AoI mid-duel receives the current value. Whichever is chosen, the flag is presentation only; the combat gate reads the duel registry.
 - `combat::player_may_harm` and the four gate sites (audit A-42). Bystanders, NPC-vs-duelist and duelist-vs-NPC behaviour are unchanged.
 - Duels get their own combat source: both duelists are in combat with each other and leave it symmetrically at the end.
-- `onDuelEntities*` only as SS-E1 D-Q5 allows (D-SS25). A type-6 marker only if D-SS24's condition holds.
+- `onDuelEntitiesSet` [151] with both duelists at engage, and `onDuelEntitiesClear` [153] at every end path (D-SS25 superseded by SS-E1 D-Q5). Fix the `aoi.rs:203-211` comment (152 erases). A type-6 marker only if D-SS24's condition holds.
 - Correct `duel-restoration.md:50` if SS-E1 has not.
 
 **Acceptance:** `duel_partner_damage_allowed_at_all_four_gates` and `bystander_untouchable_during_duel` (each fails when any one gate is reverted); the flag fanout (type 8) to both duelists and a witness; a test that an interactable NPC stays interactable after a duel starts and ends (the D-SS25 guard); one wireclient test (type 11) with two duelists and a spectator.

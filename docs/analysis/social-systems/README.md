@@ -46,7 +46,7 @@ Against `main` @ `09a880ba`. The [audit](audit.md) has the file:line evidence fo
 | GM broadcast | The client ships `/gmshout` and cell method 222 `sendGMShout`; nothing handles it. | SS-C2 |
 | Channel ids | Server 7, tell 9 and splash 10 in code; 8, 10 and 11 in `enumerations.xml`. The organizations campaign owns the fix (D-ORG14). | SS-C4 (with ORG-09) |
 | Duels | CM 102 and 103 are log-only stubs. Base method 0xD9 `sendDuelChallenge` lands in the unhandled catch-all. No duel state, no marker, no PvP flag after world entry. | SS-D1 to SS-D3 |
-| Duel landmine | AoI already sends `onDuelEntitiesRemove` (152) for every interactable NPC, to make it clickable. Sending 151 or 153 as issue #569 plans could break NPC interaction. | SS-E1, SS-D2 |
+| Duel entity set (resolved by SS-E1) | AoI sends `onDuelEntitiesRemove` (152) for interactable NPCs. SS-E1 D-Q5 showed that 151, 152 and 153 only edit a client-side set that the interactability check never reads, so sending 151 at duel start and 153 at duel end is safe (D-SS25 superseded). The `aoi.rs` comment has 152's direction backwards. | SS-D2 (fix the comment) |
 | Hostility gate | Four sites reject player-on-player damage (issue #569 lists three; AT-10 added the warmup site). | SS-D2 |
 | In-game test surface | None for any of the three systems. | SS-U1 to SS-U3 |
 
