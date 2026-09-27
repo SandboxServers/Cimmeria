@@ -10854,7 +10854,9 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 -- The bank owns dialog ids 60110-60119. One screen, one Generic 1 button.
 -- The server shows it beside onVaultOpen while bank_slots < 100, and routes
 -- its answer to the purchase path (crates/cell-interactions bank/expand.rs),
--- not to a content chain. Drawn by the client from DIALOG_OVERRIDES.
+-- not to a content chain. Its cooked-data override is defined but held in
+-- QUARANTINED_DIALOG_OVERRIDES (not served) until the Cimmeria-override
+-- map-load crash (#943) is explained, so the client shows no dialog yet.
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60110, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Banker - Expand vault');
 
 --
