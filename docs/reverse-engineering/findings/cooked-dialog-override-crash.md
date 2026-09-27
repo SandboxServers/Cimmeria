@@ -25,20 +25,22 @@ Sources:
   - crates/base-session/src/base/cooked_data.rs:34-178, crates/wire/src/mercury/protocol/resources.rs:70-120, crates/resources/src/base/mission_overrides.rs:85-117, crates/resources/src/base/resources/mod.rs:195-317, crates/resources/src/base/resources/metadata_bump.rs:81-109
   - SigNoz colo telemetry, 2026-09-27 16:19 UTC deploy and the two subsequent login attempts (summarized by team-lead; not independently queried — signoz MCP was unreachable this session)
 Related findings: cooked-data-pipeline.md, dialog-portrait-lookup.md, dialog-controller-wire-flow.md, world-entry-pipeline.md
-Implementation status: **RE-OPENED, 2026-09-27 (same day).** The >65535 element-key-width
-hypothesis stays REFUTED (see "Verdict" below) — the tester crashed again at 17:52 on build
-`38296335f` (the `#938` renumber to `60100`-`60104`), confirming id value is not it. This finding
-was briefly closed as "not the cause" on the theory that CREATE_BASE_PLAYER/`onClientMapLoad`
-carried a regressed payload instead, but `world-entry-bisect` (a parallel worker) then confirmed
-those bytes are **byte-identical** between the good build (`707950271`) and every bad build back
-to `b22907eb5` — there is no world-entry payload regression. SigNoz also confirms the crashing
-client's on-disk `CookedDataDialogs.pak` still holds `100100`/`100101` (never invalidated by any
-build, `#938` included) and that dialogs are the *only* thing that changed for this client since
-its last good session. **Dialogs are back as the carrier — the open variable is which *content*
-field, not which id.** New candidates per team-lead: nonzero `speaker_id` (754/843, vs. every
-working override's `speaker_id: 0`), a **two-screen** dialog (vs. one screen), `ScreenID`s in the
-`200000`-`200005` range (vs. `96108`-`96109` max previously), and button **type 4**. See "Round 2"
-below for what this session's headless-Ghidra work found and ruled out chasing these.
+Implementation status: **OPEN, 2026-09-27 (same day, after four rounds).** The >65535
+element-key-width hypothesis stays REFUTED (see "Verdict"). Dialogs are confirmed as the carrier
+by process of elimination (the tester crashed again on the `#938` renumbered build; `world-entry-bisect`
+confirmed `CREATE_BASE_PLAYER`/`onClientMapLoad` bytes are byte-identical across builds; SigNoz shows
+the crashing client's cache still holds `100100`/`100101`, never invalidated). The ProxyPlayerBaseCreated
+double-request lead is dead (SigNoz: exactly one category-5 version cycle per session, and the
+control client's harmless repeated re-push proves double-pushing isn't fatal by itself). **Rounds
+2-4 exhaustively traced every CME-event-reachable map-load handler this finding could name —
+`onClientMapLoad` itself, both `Event_Level_PostLoad` subscribers, both `Event_World_Loaded`
+subscribers (one of which, `GameProxyPlayer`'s, is lazily wired from inside `onClientMapLoad`
+itself — a genuinely new finding), and their one-shot follow-ups — and found zero Dialog-category
+touches anywhere in that graph.** Candidates per team-lead (nonzero `speaker_id` 754/843, two
+screens, `ScreenID`s `200000`-`200005`, button type 4) remain unconfirmed against any actual code
+path; two of the four (multi-screen, button type 4) are shape-precedented in the shipped PAK per
+the emitter's own docs, weakening them further. Recommend dynamic tracing (live x64dbg) as the next
+step — static CME-event tracing is exhausted for this incident.
 ```
 
 ## Verdict (2026-09-27, after live headless-Ghidra decompile)
@@ -201,6 +203,65 @@ of `"0"`, `ScreenID`s in the `200000` range instead of `96108`, and a second `<S
 5,405 shipped dialogs and the emitter's own tests, `speaker_id` novelty and the `ScreenID` range are
 the more likely remaining differentiators *if* an eager consumer exists — but this session could not
 locate one.
+
+## Round 4 (2026-09-27, same day): the entire map-load CME event graph is now traced end to end — none of it touches Dialog data
+
+Found the working technique for resolving a `MemberCallback` RTTI accessor to its real handler
+(the vtable-slot arithmetic in Round 3 was a dead end; the fix is: find the accessor's owning
+*constructor* via `PREVFN` on the accessor address — the ctor is always the function immediately
+before it and stamps the class name in its own decompile — then get xrefs to that ctor to find the
+per-event "subscribe" wrapper, then xrefs to *that* wrapper to find the owning class's constructor,
+which lists the real handler as a literal 4th argument, exactly like `DialogController`'s and
+category 5's own constructors do). Applied it to every remaining untraced handler from Round 2/3:
+
+- **`GameAppearanceManager`**: found its source file (`.\Src\GameAppearanceManager.cpp`, string at
+  `0x019e7c90`) and, from the one function referencing it, its two subscribe-wiring functions
+  (`FUN_00e9a140`/`FUN_00e9a210`, near-duplicate ctors for the same six events: `Event_Map_Unloaded`,
+  `Event_Level_PostLoad`, `Event_RenderThread_Started`, `Event_RenderThread_Stopping`,
+  `Event_AppearanceJob_Completed`, `Event_Entity_Destroyed`). Decompiled all six handler bodies
+  (`GameEntity__unknown_00e99b40`, `FUN_00e99f60`, `FUN_00e9a030`, `FUN_00e998c0`, `FUN_00e998d0`,
+  `FUN_00e995a0`): appearance-job completion logging, two paired render-thread flag toggles, a
+  per-entity/per-map appearance-cache list cleanup, and a job-queue drain on unload. **None of the
+  six reads or references anything from the Dialog category — no `SpeakerID`, no portrait/mesh
+  lookup keyed by a cached dialog record.** This directly weakens the "`GameAppearanceManager` +
+  novel `speaker_id`" lead team-lead raised: whichever of these six is actually
+  `Event_Level_PostLoad` (not disambiguated further — the six wrapper calls didn't carry the event
+  name visibly in this pass), none of the six is plausibly an appearance/portrait lookup driven by a
+  cached Dialog's `SpeakerID`.
+- **`Minimap`**: found its constructor (`FUN_00e2aa40`, confirmed by its `Minimap::vftable` stamp)
+  wiring six events (`Event_UI_PreRender`, `Event_Core_SerializeHook`, `Event_Map_Unloaded`,
+  `Event_World_Loaded`, `Event_Player_PawnCreated`, `Event_UI_Unloading`) and positively identified
+  its `Event_World_Loaded` handler as `FUN_00e2a100` (the literal argument to the `Event_World_Loaded`
+  subscribe wrapper `FUN_00e2b2d0`, itself called from the constructor). The handler is four lines:
+  sets two ready-flags and caches a world pointer. **Clean — no Dialog touch.**
+- **`GameProxyPlayer`'s `Event_World_Loaded` handler — genuinely new, previously-undocumented
+  detail: it is not subscribed at construction time at all.** Its `MemberCallback` constructor
+  (`FUN_00df7b10`) is called from `FUN_00dfb310`, the `Event_World_Loaded` subscribe wrapper — and
+  the *only* caller of that wrapper is `GameProxyPlayer::HandleOnClientMapLoad` itself (`FUN_00df27f0`,
+  the very function the Verdict above already decompiled and called clean). The call sits behind a
+  one-time guard (`if ((*(byte*)(this+0xd4) & 4) == 0) { ...subscribe FUN_00deea80 to
+  Event_World_Loaded...; *(this+0xd4) = 4; }`) — the client lazily subscribes to `Event_World_Loaded`
+  on the *first* map load, not before. Decompiled the handler (`FUN_00deea80`): it subscribes a
+  second, one-shot follow-up callback, un-subscribes *itself* from `Event_World_Loaded` (clearing the
+  `+0xd4`/`+0xd8` flags), and posts an internal message (`type=4`) through `FUN_005560d0`. **No Dialog
+  touch.** A sibling lazy subscription in the same guard block (`FUN_00df8c10` → handler
+  `FUN_00de9e60`, gated on `g_pFlashExternalWindowModule`) walks a loaded-package array setting a
+  ready-flag bit and posts a different internal message (`type=5`) — this is Scaleform/Flash UI
+  package bookkeeping, not Dialog data. **No Dialog touch either.**
+
+**This closes out every CME-reachable map-load handler this finding named as untraced.** Combined
+with the Verdict and Round 2/3 results, the full map-load event graph — `onClientMapLoad`'s own
+handler body, both `Event_Level_PostLoad` subscribers, both `Event_World_Loaded` subscribers, and
+the two lazy one-shot follow-ups `GameProxyPlayer` wires from inside `onClientMapLoad` — is now
+traced end to end, and **none of it reads, indexes, or otherwise touches Dialog-category data.**
+Static tracing of the CME event system has been exhausted for this incident without finding an
+eager consumer of the debug-hub dialogs' content. The structural tension flagged in Round 3 stands:
+either the mechanism is not CME-event-driven at all (something else client-side triggered by
+map/level load — UE3 Kismet, an entity/AoI creation side effect, or a direct, non-event function
+call this session hasn't found), or it is not about *content* being read at all. **Recommend dynamic
+tracing (x64dbg attach + breakpoints on `Event_NetIn_DialogDisplay`'s handler and on
+`ZipStorageBase::OpenArchive`/`WriteStreamToFile` during an actual reproduction) as the next step —
+static analysis of the reachable call graph has not found the mechanism.**
 
 ## Summary
 
