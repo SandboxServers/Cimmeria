@@ -112,9 +112,12 @@ async fn vault_scope_check_rejects_an_unknown_value() {
     );
 }
 
-/// The seeded-spawn loader reads the column too, and no seeded template is
-/// a Banker yet (BV-04 adds template 370): every seeded spawn loads
-/// `Personal`. Fails if `load_spawns_from_db` stops selecting the column.
+/// The seeded-spawn loader reads the column too: the debug hub's Team and
+/// Command Bankers (spawns 471 and 472, bank-vault BV-10a) load `Team` and
+/// `Command`, and every other seeded spawn `Personal`. Fails if
+/// `load_spawns_from_db` stops selecting the column (both org Bankers would
+/// load `Personal`), or if another seeded template turns into an org Banker
+/// without this list being updated.
 #[tokio::test]
 async fn seeded_spawns_load_vault_scope() {
     let pool = require_db_or_skip!();
@@ -122,8 +125,15 @@ async fn seeded_spawns_load_vault_scope() {
         .await
         .expect("load_spawns_from_db must select vault_scope");
     assert!(!spawns.is_empty(), "the seed has spawns");
-    assert!(
-        spawns.iter().all(|s| s.vault_scope == VaultScope::Personal),
-        "no seeded template sets a non-personal vault_scope yet"
+    let mut org: Vec<(i32, VaultScope)> = spawns
+        .iter()
+        .filter(|s| s.vault_scope != VaultScope::Personal)
+        .map(|s| (s.spawn_id, s.vault_scope))
+        .collect();
+    org.sort_by_key(|(id, _)| *id);
+    assert_eq!(
+        org,
+        vec![(471, VaultScope::Team), (472, VaultScope::Command)],
+        "only the hub's org Bankers load a non-personal vault_scope"
     );
 }
