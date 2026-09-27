@@ -323,6 +323,11 @@ fn scan_finds_known_targets() {
         ("rate_limit", Level::WARN),
         ("rate_limit", Level::DEBUG),
         ("online_index", Level::DEBUG),
+        // SS-M1: gate mail, in crates/base-methods (the send path and the
+        // read-side misses) and crates/cell-interactions (the CM 44 decode).
+        ("mail", Level::INFO),
+        ("mail", Level::WARN),
+        ("mail", Level::DEBUG),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),

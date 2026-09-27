@@ -1,25 +1,108 @@
+//! Gate mail on the base: the `MailOp` router.
+//!
+//! The cell resolves the caller's `player_id` from its own entity and
+//! forwards `CellToBaseMsg::MailRequest`; everything that touches
+//! `sgw_gate_mail` runs here. One file per family of operations:
+//!
+//! - [`read`]: headers, body, archive and delete;
+//! - [`send`]: `sendMailMessage`, text only until SS-M2.
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::ConnectedClientState;
-use crate::cell::mail;
 use crate::cell::messages::MailOp;
-use crate::mercury::{build_player_entity_method_packet, method_idx};
+use crate::mercury::build_player_entity_method_packet;
+
+mod read;
+mod send;
 
 #[cfg(test)]
 mod tests;
+
+/// Who asked, and how to answer them. Everything here is server state:
+/// the cell resolved `player_id` from its own entity.
+pub(super) struct Caller<'a> {
+    pub(super) entity_id: u32,
+    pub(super) player_id: i32,
+    pub(super) transport: &'a Arc<dyn Transport>,
+    pub(super) connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    pub(super) entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
+}
+
+impl Caller<'_> {
+    /// Send one client method to the caller's own client, reliably.
+    pub(super) async fn send_to_caller(&self, method_index: u16, args: &[u8]) {
+        let entity_id = self.entity_id;
+        send_to_witness_reliable(
+            self.transport,
+            self.connected,
+            self.entity_to_addr,
+            entity_id,
+            |key, version, seq, acks| {
+                build_player_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_index,
+                    args,
+                    version,
+                )
+            },
+        )
+        .await;
+    }
+
+    /// The caller's `account_id` from the session (rule 5 of the
+    /// instrumentation discipline), `None` once the client is gone, so the
+    /// field is omitted rather than logged as a fake 0.
+    pub(super) fn account_id(&self) -> Option<u32> {
+        let addr = self.addr()?;
+        let clients = match self.connected.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        clients.get(&addr).map(|c| c.account_id)
+    }
+
+    /// The caller's client address, if the entity still has one.
+    pub(super) fn addr(&self) -> Option<SocketAddr> {
+        let guard = match self.entity_to_addr.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.get(&self.entity_id).copied()
+    }
+}
+
+/// A [`Caller`] plus the database, for the operations that need one.
+pub(super) struct MailCtx<'a> {
+    pub(super) caller: Caller<'a>,
+    pub(super) pool: &'a PgPool,
+}
+
+impl<'a> Deref for MailCtx<'a> {
+    type Target = Caller<'a>;
+
+    fn deref(&self) -> &Caller<'a> {
+        &self.caller
+    }
+}
 
 /// Handle a mail request from CellService by querying the DB and sending results to the client.
 #[tracing::instrument(
     name = "mail.request",
     level = "info",
     skip_all,
-    fields(entity_id, player_id, op = ?op),
+    fields(entity_id, player_id, op = %op_name(&op)),
 )]
 pub async fn handle_mail_request(
     entity_id: u32,
@@ -30,287 +113,57 @@ pub async fn handle_mail_request(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
 ) {
-    let pool = match db_pool {
-        Some(p) => p,
-        None => {
-            tracing::debug!(entity_id, player_id, "Mail request: no DB pool available");
-            return;
+    let caller = Caller {
+        entity_id,
+        player_id,
+        transport,
+        connected,
+        entity_to_addr,
+    };
+    route(caller, op, db_pool.as_deref(), Instant::now()).await;
+}
+
+/// The router on an explicit clock, so the mail-send bucket can be stepped
+/// exactly in tests.
+pub(super) async fn route(caller: Caller<'_>, op: MailOp, pool: Option<&PgPool>, now: Instant) {
+    // A send takes its rate-limit token before anything else, pool or not
+    // (D-SS14: "before any SQL runs").
+    let op = match op {
+        MailOp::Send(send) => return send::send_mail(&caller, Ok(send), pool, now).await,
+        MailOp::SendRejected(reject) => {
+            return send::send_mail(&caller, Err(reject), pool, now).await;
         }
+        read_op => read_op,
     };
 
-    // Resolve the player_name only when a request arm actually needs it
-    // (RequestBody — the read packet carries the recipient's display
-    // name). Headers / Delete / Archive don't read the name, so doing
-    // the two-mutex lookup unconditionally would impose avoidable lock
-    // contention on the hot list-fetch path.
-    let lookup_player_name = || -> Option<String> {
-        let addr_guard = match entity_to_addr.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        let addr = addr_guard.get(&entity_id).copied();
-        drop(addr_guard);
-        let addr = addr?;
-        let clients = match connected.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        Some(
-            clients
-                .get(&addr)
-                .and_then(|c| c.player_name.clone())
-                .unwrap_or_default(),
-        )
+    let Some(pool) = pool else {
+        tracing::debug!(
+            entity_id = caller.entity_id,
+            player_id = caller.player_id,
+            "Mail request: no DB pool available"
+        );
+        return;
     };
-
+    let ctx = MailCtx { caller, pool };
     match op {
-        MailOp::RequestHeaders { b_archive } => {
-            tracing::debug!(entity_id, player_id, b_archive, "Mail: querying headers");
+        MailOp::RequestHeaders { b_archive } => read::request_headers(&ctx, b_archive).await,
+        MailOp::RequestBody { mail_id } => read::request_body(&ctx, mail_id).await,
+        MailOp::Delete { mail_id } => read::delete(&ctx, mail_id).await,
+        MailOp::Archive { mail_id } => read::archive(&ctx, mail_id).await,
+        // Consumed above.
+        MailOp::Send(_) | MailOp::SendRejected(_) => {}
+    }
+}
 
-            #[derive(sqlx::FromRow)]
-            struct MailRow {
-                mail_id: i32,
-                sender_name: String,
-                sender_id: Option<i32>,
-                subject: String,
-                cash: i64,
-                sent_time: i32,
-                read_time: i32,
-                flags: i32,
-            }
-
-            let rows = match sqlx::query_as::<_, MailRow>(
-                "SELECT mail_id, sender_name, sender_id, subject, cash, sent_time, read_time, flags \
-                 FROM sgw_gate_mail WHERE character_id = $1 ORDER BY mail_id DESC",
-            )
-            .bind(player_id)
-            .fetch_all(pool.as_ref())
-            .await
-            {
-                Ok(rows) => rows,
-                Err(e) => {
-                    tracing::error!(entity_id, player_id, "Mail: header query failed: {e}");
-                    return;
-                }
-            };
-
-            let headers: Vec<mail::MailHeader> = rows
-                .iter()
-                .map(|r| {
-                    let cash = i32::try_from(r.cash).unwrap_or_else(|_| {
-                        tracing::warn!(
-                            mail_id = r.mail_id,
-                            db_cash = r.cash,
-                            "Mail header cash truncated to i32 range"
-                        );
-                        r.cash.clamp(i32::MIN as i64, i32::MAX as i64) as i32
-                    });
-                    mail::MailHeader {
-                        id: r.mail_id,
-                        from_text: r.sender_name.clone(),
-                        from_id: r.sender_id.unwrap_or(0),
-                        subject_text: r.subject.clone(),
-                        cash,
-                        sent_time: r.sent_time as f32,
-                        read_time: r.read_time as f32,
-                        flags: r.flags,
-                    }
-                })
-                .collect();
-
-            tracing::debug!(
-                entity_id,
-                count = headers.len(),
-                "Mail: sending headers to client"
-            );
-
-            let args = mail::serialize_on_mail_header_info(b_archive, &headers);
-            send_to_witness_reliable(
-                transport,
-                connected,
-                entity_to_addr,
-                entity_id,
-                |key, version, seq, acks| {
-                    build_player_entity_method_packet(
-                        key,
-                        seq,
-                        acks,
-                        entity_id,
-                        method_idx::ON_MAIL_HEADER_INFO,
-                        &args,
-                        version,
-                    )
-                },
-            )
-            .await;
-        }
-
-        MailOp::RequestBody { mail_id } => {
-            tracing::debug!(entity_id, mail_id, "Mail: querying body");
-
-            #[derive(sqlx::FromRow)]
-            struct BodyRow {
-                message: String,
-            }
-
-            let row = match sqlx::query_as::<_, BodyRow>(
-                "SELECT message FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2",
-            )
-            .bind(mail_id)
-            .bind(player_id)
-            .fetch_optional(pool.as_ref())
-            .await
-            {
-                Ok(Some(row)) => row,
-                // Distinguish "row missing for this character" (legitimate
-                // permission boundary or stale client request) from "DB
-                // error" (operator-actionable). Folding both into the
-                // same warn string would hide connection failures /
-                // schema mismatches behind a benign-looking message.
-                Ok(None) => {
-                    tracing::warn!(
-                        entity_id,
-                        mail_id,
-                        player_id,
-                        "Mail body not found for this character_id"
-                    );
-                    return;
-                }
-                Err(e) => {
-                    tracing::error!(
-                        entity_id, mail_id, player_id, error = %e,
-                        "Mail body query failed"
-                    );
-                    return;
-                }
-            };
-
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i32;
-            if let Err(e) = sqlx::query(
-                "UPDATE sgw_gate_mail SET read_time = $1 WHERE mail_id = $2 AND read_time = 0",
-            )
-            .bind(now)
-            .bind(mail_id)
-            .execute(pool.as_ref())
-            .await
-            {
-                tracing::warn!(entity_id, mail_id, "Mail: read_time UPDATE failed: {e}");
-            }
-
-            let player_name = match lookup_player_name() {
-                Some(n) => n,
-                None => {
-                    tracing::warn!(entity_id, "Mail: no addr for player name lookup");
-                    return;
-                }
-            };
-            let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
-            send_to_witness_reliable(
-                transport,
-                connected,
-                entity_to_addr,
-                entity_id,
-                |key, version, seq, acks| {
-                    build_player_entity_method_packet(
-                        key,
-                        seq,
-                        acks,
-                        entity_id,
-                        method_idx::ON_MAIL_READ,
-                        &args,
-                        version,
-                    )
-                },
-            )
-            .await;
-        }
-
-        MailOp::Delete { mail_id } => {
-            tracing::debug!(entity_id, mail_id, "Mail: deleting");
-            match sqlx::query("DELETE FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2")
-                .bind(mail_id)
-                .bind(player_id)
-                .execute(pool.as_ref())
-                .await
-            {
-                Ok(r) if r.rows_affected() == 0 => {
-                    tracing::warn!(
-                        entity_id,
-                        player_id,
-                        mail_id,
-                        "Mail: Delete affected 0 rows"
-                    );
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!(entity_id, player_id, mail_id, "Mail: Delete failed: {e}");
-                    return;
-                }
-            }
-
-            let args = mail::serialize_on_mail_header_remove(mail_id);
-            send_to_witness_reliable(
-                transport,
-                connected,
-                entity_to_addr,
-                entity_id,
-                |key, version, seq, acks| {
-                    build_player_entity_method_packet(
-                        key,
-                        seq,
-                        acks,
-                        entity_id,
-                        method_idx::ON_MAIL_HEADER_REMOVE,
-                        &args,
-                        version,
-                    )
-                },
-            )
-            .await;
-        }
-
-        MailOp::Archive { mail_id } => {
-            tracing::debug!(entity_id, mail_id, "Mail: archiving");
-            match sqlx::query(
-                "UPDATE sgw_gate_mail SET flags = flags | 1 WHERE mail_id = $1 AND character_id = $2",
-            )
-            .bind(mail_id)
-            .bind(player_id)
-            .execute(pool.as_ref())
-            .await
-            {
-                Ok(r) if r.rows_affected() == 0 => {
-                    tracing::warn!(entity_id, player_id, mail_id, "Mail: Archive affected 0 rows");
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!(entity_id, player_id, mail_id, "Mail: Archive failed: {e}");
-                    return;
-                }
-            }
-
-            let args = mail::serialize_on_mail_header_remove(mail_id);
-            send_to_witness_reliable(
-                transport,
-                connected,
-                entity_to_addr,
-                entity_id,
-                |key, version, seq, acks| {
-                    build_player_entity_method_packet(
-                        key,
-                        seq,
-                        acks,
-                        entity_id,
-                        method_idx::ON_MAIL_HEADER_REMOVE,
-                        &args,
-                        version,
-                    )
-                },
-            )
-            .await;
-        }
+/// The span's `op` field. A send's `Debug` would carry the whole subject
+/// and body into every span, so each op logs its name and its ids only.
+fn op_name(op: &MailOp) -> String {
+    match op {
+        MailOp::RequestHeaders { b_archive } => format!("request_headers b_archive={b_archive}"),
+        MailOp::RequestBody { mail_id } => format!("request_body mail_id={mail_id}"),
+        MailOp::Delete { mail_id } => format!("delete mail_id={mail_id}"),
+        MailOp::Archive { mail_id } => format!("archive mail_id={mail_id}"),
+        MailOp::Send(send) => format!("send recipients={}", send.recipients.len()),
+        MailOp::SendRejected(reject) => format!("send_rejected reason={}", reject.reason()),
     }
 }

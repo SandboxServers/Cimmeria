@@ -109,3 +109,15 @@ pub const MAX_RANK_NAME_UNITS: usize = 32;
 /// holds every text cap. Provisional until SS-E1 reports the client's own
 /// input limit; it may only go down.
 pub const MAX_CHAT_TEXT_UNITS: usize = 255;
+
+// Gate-mail text caps (social-systems D-SS12), in UTF-16 units like the
+// rest. Project policy, not recovered data; the subject cap matches the
+// `sgw_gate_mail.subject` column (`varchar(128)`).
+
+/// Longest gate-mail subject. A subject may not be blank.
+pub const MAX_MAIL_SUBJECT_UNITS: usize = 128;
+/// Longest gate-mail body.
+pub const MAX_MAIL_BODY_UNITS: usize = 1_000;
+/// Longest recipient name the server reads: `sgw_player.player_name` is
+/// `varchar(64)`, so no longer name can match a character.
+pub const MAX_MAIL_RECIPIENT_UNITS: usize = 64;

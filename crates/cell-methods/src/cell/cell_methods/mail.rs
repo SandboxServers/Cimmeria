@@ -26,7 +26,8 @@ pub async fn dispatch(
             true
         }
         SEND_MAIL_MESSAGE => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: sendMailMessage");
+            tracing::debug!(entity_id, payload_len = args.len(), "sendMailMessage");
+            crate::cell::mail::handle_send_mail(entity_id, args, tx, space_mgr).await;
             true
         }
         ARCHIVE_MAIL_MESSAGE => {

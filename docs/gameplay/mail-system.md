@@ -2,13 +2,13 @@
 title: "Mail System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Mail System
 
-> **Last updated**: 2026-07-25
-> **Status**: Read side implemented (headers / body / delete / archive). Player-to-player *sending* is still a stub; server-generated mail works.
+> **Last updated**: 2026-09-27
+> **Status**: Read side implemented (headers / body / delete / archive) and text-only player sending (social-systems SS-M1). Attachments, COD, taking attachments and return-to-sender are refused or still stubs until SS-M2 and SS-M3.
 
 ## Overview
 
@@ -16,27 +16,40 @@ The mail system enables asynchronous message delivery between players with suppo
 
 The `SGWMailManager` interface in `entities/defs/interfaces/SGWMailManager.def` defines the complete protocol.
 
-The Rust implementation forwards every mail request from the cell to the base, because mail needs database access and the DB pool lives on the BaseApp. [`crates/cell-interactions/src/cell/mail.rs`](../../crates/cell-interactions/src/cell/mail.rs) packages the request as `CellToBaseMsg::MailRequest { op: MailOp }`; [`crates/base-methods/src/base/world_entry/methods/mail/mod.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/mod.rs) runs the query and sends the result straight back to the client.
+The Rust implementation forwards every mail request from the cell to the base, because mail needs database access and the DB pool lives on the BaseApp. [`crates/cell-interactions/src/cell/mail.rs`](../../crates/cell-interactions/src/cell/mail.rs) packages the request as `CellToBaseMsg::MailRequest { op: MailOp }`; [`crates/base-methods/src/base/world_entry/methods/mail/`](../../crates/base-methods/src/base/world_entry/methods/mail/) runs the query and sends the result straight back to the client. `mod.rs` routes each `MailOp`, `read.rs` holds the read side and `send/` the send path.
 
-Note that the *stub* status of `sendMailMessage` applies only to the player-facing compose path. A server-generated mail helper exists — `send_mail_to_player`, used by the Black Market expiry sweep to pay sellers and deliver won items — but it lives on the **unmerged** branch `feat/571-black-market-phase1` (PR #586). On `main` there is no server-generated mail sender, so nothing writes to `sgw_gate_mail` at all and the read path below has no way to acquire rows outside of manual seeding.
+A server-generated mail helper also exists — `send_mail_to_player`, used by the Black Market expiry sweep to pay sellers and deliver won items — but it lives on the **unmerged** branch `feat/571-black-market-phase1` (PR #586). On `main` the player send path below is the only writer of `sgw_gate_mail`.
+
+### Sending a text mail (SS-M1)
+
+`sendMailMessage` (CM 44) is decoded on the cell by `decode_send_mail_message` (`crates/wire/src/cell/cell_methods/mail/`): the declared recipient count is checked against the cap of 10 before any name is read, and the recipient names, subject (1-128 characters) and body (up to 1,000, newlines allowed) must pass the shared text rules. The cell forwards `MailOp::Send`, or `MailOp::SendRejected` with the reason, and the base answers every send with `sendMailResult` (CM 79). The base runs, in order:
+
+1. the mail-send flood limit: 3 sends back to back, then one every 10 seconds. An over-limit send is dropped before anything else runs, but still answered with `MAILRESULT_NoRecipients` (the client shows "Gate-mail message was not sent.") on every press, because the client disables its Send button on each press and only a result tells the player the press did nothing. The explanatory line "You are sending messages too quickly." follows at most once every 5 seconds;
+2. the cell's refusal, if there was one;
+3. alias bits in `RecipientFlags` (vault, team, command): refused until the Bank and organizations campaigns land them;
+4. attachments: cash, COD or an item with two or more recipients is `MAILRESULT_AttachmentsAndMultipleRecipients`; any attachment at all is `MAILRESULT_ItemNotAvailable` until SS-M2;
+5. delivery, in one transaction: each name resolves against every character, online or not (an exact match first, then a case-insensitive one if exactly one character has it), repeats collapse to one copy, and a recipient with 100 or more open (not archived) messages is skipped. The count runs under a `FOR UPDATE` lock on each recipient's player row, so two senders cannot both take the last slot.
+
+A send that reaches at least one recipient is `MAILRESULT_Sent`; `FailedRecipients` names everyone it did not reach, and a feedback line gives the reason for each ("no such character", "more than one character matches", "gate-mail box is full"). A send that reaches nobody is `MAILRESULT_NoRecipients` with the same list and line. The sender's id and the name stored on the sender's own player row go into `sender_id` and `sender_name`. These limits are project policy, not recovered data (social-systems D-SS03, D-SS05, D-SS12 to D-SS14).
 
 ## Implementation Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Request mail headers | DONE | `requestMailHeaders` → `MailOp::RequestHeaders` → `SELECT … FROM sgw_gate_mail` → `onMailHeaderInfo` (CM 76) |
-| Read mail body | DONE | `requestMailBody` → `MailOp::RequestBody` → `onMailRead` (CM 78); also stamps `read_time` on first read |
+| Request mail headers | DONE | `requestMailHeaders` → `MailOp::RequestHeaders` → `SELECT … FROM sgw_gate_mail` → `onMailHeaderInfo` (CM 76). Only the requested list: `bArchive` 0 returns inbox mail, 1 archived mail |
+| Read mail body | DONE | `requestMailBody` → `MailOp::RequestBody` → `onMailRead` (CM 78); also stamps `read_time` on first read, owner-scoped. `ToText` is the recipient's stored name |
 | Delete mail | DONE | `deleteMailMessage` → `MailOp::Delete` → `onMailHeaderRemove` (CM 77) |
 | Archive mail | DONE | `archiveMailMessage` → `MailOp::Archive` → `onMailHeaderRemove` (CM 77) |
 | Server-generated mail | BRANCH ONLY | `send_mail_to_player`, used by the Black Market settlement path. Exists on `feat/571-black-market-phase1` (PR #586), **not on `main`** |
-| Send mail (player compose) | STUB | `sendMailMessage` (CM 44) logs `UNIMPLEMENTED` and drops |
+| Send mail (player compose) | DONE (text only) | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
+| Cash, item or COD attachment on send | REFUSED | `MAILRESULT_ItemNotAvailable` (or `AttachmentsAndMultipleRecipients` with two or more recipients) plus a feedback line, until SS-M2 |
 | Return to sender | STUB | `returnMailMessage` logs `UNIMPLEMENTED` |
 | Cash attachment claim | STUB | `takeCashFromMailMessage` logs `UNIMPLEMENTED` (the `cash` column is populated and read back in headers) |
 | Item attachment claim | STUB | `takeItemFromMailMessage` logs `UNIMPLEMENTED` (the `item_id` column is populated) |
 | Cash On Delivery | STUB | `payCODForMailMessage` logs `UNIMPLEMENTED` |
 | New mail notification | STUB | `onNewMail`, `notifyPlayersOfNewMail` not wired |
-| Multiple recipients | STUB | Depends on the send path |
-| Send result feedback | STUB | `sendMailResult` (CM 79) index is reserved but never emitted |
+| Multiple recipients | DONE | Up to 10 per text mail, de-duplicated; one row each |
+| Send result feedback | DONE | `sendMailResult` (CM 79) answers every send, flood-limited ones included, with `FailedRecipients`. A feedback line with the reason follows every refusal, except that the flood line is sent at most once every 5 seconds |
 
 ## Entity Definition (SGWMailManager.def)
 

@@ -783,31 +783,31 @@ last_updated: 2026-09-25
 | Strike teams | KM | -- | decoded | CM 11; rejected as unsolicited in ORG-07 |
 | PvP org leave | KM | -- | decoded | CM 12; rejected as unsolicited in ORG-07 |
 
-### 24. Mail --- IM (read side only; sending, attachments and COD are stubs)
+### 24. Mail --- NT (plain text send and the read side; attachments, COD and return are refused until SS-M2/M3)
 
-- **Confidence**: HIGH (code read line by line 2026-09-25). **The previous edition over-stated this section.** Send, attachment, take-cash, take-item, return and COD all route to `UNIMPLEMENTED` log lines; only the read side (headers, body, delete, archive) touches the database.
-- **Documentation**: [gameplay/mail-system.md](gameplay/mail-system.md), [reverse-engineering/findings/mail-wire-formats.md](reverse-engineering/findings/mail-wire-formats.md)
-- **Rust code**: [`crates/base-methods/src/base/world_entry/methods/mail/`](../crates/base-methods/src/base/world_entry/methods/mail/) (939 lines: mod.rs 316, tests.rs 623 live-DB), [`crates/cell-interactions/src/cell/mail.rs`](../crates/cell-interactions/src/cell/mail.rs) (412, cell-to-base hop + wire serializers), [`crates/cell-methods/src/cell/cell_methods/mail.rs`](../crates/cell-methods/src/cell/cell_methods/mail.rs) (99, dispatch of cell methods 43-51), [`crates/wire/src/cell/client_methods/mail.rs`](../crates/wire/src/cell/client_methods/mail.rs) (10)
-- **Recent PRs**: none since 2026-07-25
+- **Confidence**: HIGH (code read and live-DB tested 2026-09-27, social-systems SS-M1). Text-only sending works end to end on the server and is refused with a result code and feedback line everywhere it cannot proceed; nothing is confirmed in the client yet.
+- **Documentation**: [gameplay/mail-system.md](gameplay/mail-system.md), [reverse-engineering/findings/mail-wire-formats.md](reverse-engineering/findings/mail-wire-formats.md), [analysis/social-systems/](analysis/social-systems/) (campaign ledger, SS-M1 worknote)
+- **Rust code**: [`crates/base-methods/src/base/world_entry/methods/mail/`](../crates/base-methods/src/base/world_entry/methods/mail/) (`mod.rs` router, `read.rs`, `send/` with `deliver.rs` and `recipients.rs`, `tests/`), [`crates/cell-interactions/src/cell/mail.rs`](../crates/cell-interactions/src/cell/mail.rs) (cell-to-base hop, CM 44 forward), [`crates/cell-methods/src/cell/cell_methods/mail.rs`](../crates/cell-methods/src/cell/cell_methods/mail.rs) (dispatch of cell methods 43-51), [`crates/wire/src/cell/cell_methods/mail/`](../crates/wire/src/cell/cell_methods/mail/) (CM 44 decoder), [`crates/wire/src/cell/mail/`](../crates/wire/src/cell/mail/) (serializers, `sendMailResult`, `EMailFlags` / `EMailResultCodes`)
+- **Recent PRs**: social-systems SS-M1 (plain send, read-side fixes)
 - **Open issues**: #72 (mail: send, receive, attachments, COD)
-- **Note**: nothing on `main` writes to `sgw_gate_mail`. The only server-side sender, the Black Market expiry sweep's `send_mail_to_player`, is on the unmerged `feat/571-black-market-phase1` branch ([game-systems.md](game-systems.md) Mail section agrees).
-- **Path forward**: `sendMailMessage` with sender-side item/cash escrow, then take-item / take-cash, COD payment, return-to-sender, a `bArchive` filter on the header query, and new-mail fanout to an online recipient.
+- **Note**: the send path is the only writer of `sgw_gate_mail` on `main`. The Black Market expiry sweep's `send_mail_to_player` is still on the unmerged `feat/571-black-market-phase1` branch.
+- **Path forward**: SS-M2 (cash and item attachments with escrow, COD), SS-M3 (take cash, take item, pay COD, return), SS-M4 (new-mail notification and expiry). Vault and organization aliases belong to the Bank and organizations campaigns (D-SS07).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Open mailbox (headers) | IM | -- | base/world_entry/methods/mail/mod.rs:67-141 | `SELECT ... FROM sgw_gate_mail WHERE character_id = $1`, then `onMailHeaderInfo`. **The query ignores `b_archive`**, so archived mail still lists in the inbox. Live-DB test `mail_inserted_for_character_b_is_queryable_via_request_headers_select`. Re-verified 2026-09-25 |
-| Read mail body | NT | -- | mail/mod.rs:143-226 | Ownership-checked `SELECT message`, stamps `read_time` once, sends `onMailRead`. Live-DB tests for read-time stamping and cross-character isolation (tests.rs:383-536). Re-verified 2026-09-25 |
-| Send mail | KM | -- | stub | `sendMailMessage` (CM 44) logs `UNIMPLEMENTED` (cell_methods/mail.rs:33-36); no INSERT path exists. The earlier "live-DB tests" note was wrong: the tests seed rows by hand. Re-verified 2026-09-25 |
-| Delete mail | NT | -- | mail/mod.rs:228-268 | Ownership-checked DELETE, zero-row WARN, `onMailHeaderRemove`. Live-DB test `delete_only_affects_target_character_not_account_siblings`. Re-verified 2026-09-25 |
-| Archive mail | IM | -- | mail/mod.rs:270-313 | Sets `flags \| 1` (idempotent, live-DB tested), but the header query never filters on it, so archiving has no visible effect beyond removing the row until the next refresh |
-| Attach item | KM | Send, Inventory | stub | Nothing to attach to: `sendMailMessage` is a stub. Re-verified 2026-09-25 |
-| Attach gold | KM | Send | stub | Same. `cash` is read back in headers but never written by the server |
-| Cash on Delivery | KM | Send, Receive | stub | `payCODForMailMessage` (CM 51) logs `UNIMPLEMENTED` (cell_methods/mail.rs:90-95) |
-| Take item from mail | KM | Inventory | stub | `takeItemFromMailMessage` (CM 50) parses mail/container/slot then logs `UNIMPLEMENTED` (cell_methods/mail.rs:74-88). Re-verified 2026-09-25 |
-| Take cash from mail | KM | -- | stub | `takeCashFromMailMessage` (CM 49) logs `UNIMPLEMENTED` (cell_methods/mail.rs:67-72). Re-verified 2026-09-25 |
-| Return to sender | KM | Send | stub | `returnMailMessage` (CM 47) logs `UNIMPLEMENTED` (cell_methods/mail.rs:52-58) |
-| New mail notification | KM | Send | -- | No fanout when recipient online |
-| Mail expiry/TTL | NU | DB | -- | No TTL in schema |
+| Open mailbox (headers) | NT | -- | mail/read.rs `request_headers` | Owner-scoped `SELECT`, filtered by `bArchive` so the inbox and the archive each get only their own rows (audit A-08, SS-E1 M-Q7). Live-DB guard `request_headers_archive_filter_returns_requested_category` |
+| Read mail body | NT | -- | mail/read.rs `request_body`, `mark_read` | Ownership-checked `SELECT`, stamps `read_time` once through an owner-scoped `UPDATE` (CAT-G-07, `read_time_update_scoped_to_owner`), and `onMailRead.ToText` is the recipient's stored name (CAT-G-08, `mail_read_to_text_is_stored_recipient`) |
+| Send mail | NT | -- | mail/send/ | Text only. Mail-send bucket (burst 3, 1 per 10 s), up to 10 recipients resolved against `sgw_player` (exact, then a unique case fold), de-duplicated, a 100-open-message cap per recipient counted under a `FOR UPDATE` row lock, one row per recipient, `sendMailResult` with `FailedRecipients` plus a feedback line naming each failure. Live-DB, type 5 and type 12 tests in `mail/tests/` |
+| Delete mail | NT | -- | mail/read.rs `delete` | Ownership-checked DELETE, zero-row WARN `reason=not_found_for_owner`, `onMailHeaderRemove`. Live-DB test `delete_only_affects_target_character_not_account_siblings` |
+| Archive mail | NT | -- | mail/read.rs `archive` | Sets `flags \| 1` (idempotent, live-DB tested); the header query now honours it, so an archived mail moves to the archive list |
+| Attach item | KM | SS-M2 | mail/send/mod.rs | Refused: `MAILRESULT_ItemNotAvailable` plus "Gate-mail attachments … are not available yet"; with two or more recipients, `MAILRESULT_AttachmentsAndMultipleRecipients` |
+| Attach gold | KM | SS-M2 | mail/send/mod.rs | Refused as above; negative cash never reaches the database (`send_rejects_negative_cash`, and a `CHECK (cash >= 0)` on `sgw_gate_mail`) |
+| Cash on Delivery | KM | SS-M2, SS-M3 | stub | Sending COD is refused as above; `payCODForMailMessage` (CM 51) still logs `UNIMPLEMENTED` |
+| Take item from mail | KM | SS-M3 | stub | `takeItemFromMailMessage` (CM 50) logs `UNIMPLEMENTED`. Its `ContainerId` / `SlotId` are uninitialised client stack (SS-E1 M-Q5) |
+| Take cash from mail | KM | SS-M3 | stub | `takeCashFromMailMessage` (CM 49) logs `UNIMPLEMENTED` |
+| Return to sender | KM | SS-M3 | stub | `returnMailMessage` (CM 47) logs `UNIMPLEMENTED` |
+| New mail notification | KM | SS-M4 | -- | No fanout when the recipient is online; the recipient sees the mail on the next mailbox refresh |
+| Mail expiry/TTL | NU | SS-M4 | -- | No TTL in schema; the client counts down 720 hours (SS-E1 M-Q3) |
 
 ### 25. Black Market (Auction House) --- KM
 
@@ -1272,7 +1272,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 21 | Chat | 10 | 0 | 3 | 2 | 5 | 0 |
 | 22 | Trading | 8 | 0 | 0 | 8 | 0 | 0 |
 | 23 | Organizations / Guilds | 15 | 0 | 0 | 0 | 15 | 0 |
-| 24 | Mail | 13 | 0 | 2 | 2 | 8 | 1 |
+| 24 | Mail | 13 | 0 | 5 | 0 | 7 | 1 |
 | 25 | Black Market | 10 | 0 | 0 | 0 | 9 | 1 |
 | 26 | Contact Lists | 10 | 10 | 0 | 0 | 0 | 0 |
 | 27 | Dueling | 6 | 0 | 0 | 0 | 6 | 0 |
@@ -1294,22 +1294,22 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **62** | **100** | **136** | **4** |
+| | **TOTALS** | **471** | **169** | **65** | **98** | **135** | **4** |
 
 ### Summary Percentages
 
-Recomputed 2026-09-25 directly from the rows above; the columns sum to the totals line and the totals line sums to 471.
+Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row); the columns sum to the totals line and the totals line sums to 471.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
 | Confirmed Working (CW) | 169 | 35.9% |
-| Needs Test (NT) | 60 | 12.7% |
-| Implemented (IM) | 100 | 21.2% |
-| Known/Missing (KM) | 138 | 29.3% |
+| Needs Test (NT) | 65 | 13.8% |
+| Implemented (IM) | 98 | 20.8% |
+| Known/Missing (KM) | 135 | 28.7% |
 | Needed/Unknown (NU) | 4 | 0.8% |
 
-**Code exists (CW + NT + IM)**: 329 features (69.9%)
-**Missing (KM + NU)**: 142 features (30.1%)
+**Code exists (CW + NT + IM)**: 332 features (70.5%)
+**Missing (KM + NU)**: 139 features (29.5%)
 
 **Tested end-to-end (CW)**: 169 features (35.9%).
 
