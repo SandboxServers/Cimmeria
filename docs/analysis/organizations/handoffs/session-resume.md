@@ -10,20 +10,14 @@ The plan PR adds this ledger and fixes three docs that disagreed with the `.def`
 | Packet | Status | PR |
 |---|---|---|
 | Plan | Review | (this PR) |
-| ORG-E1 | Ready | |
-| ORG-01 | Ready | |
+| ORG-E1 | Writing | |
+| ORG-01 | Writing | |
 | ORG-02, ORG-03 | BlockedDependency (ORG-01) | |
 | ORG-04 to ORG-11 | BlockedDependency | |
 
-## Open owner decisions
+## Owner decisions
 
-Asked on 2026-09-27; see [README.md § Decisions](../README.md#decisions).
-
-1. **D-ORG15**, creation cost. Recommended: free, behind a constant. Blocks nothing (ORG-05 ships the constant at 0).
-2. **D-ORG16**, who sets the squad loot mode. Recommended: the leader only, with visible feedback. ORG-03 ships the recommendation.
-3. **D-ORG18**, Team and Command exclusivity. Recommended: not exclusive, one of each type. ORG-02 enforces the recommendation in the schema.
-
-Vault size (D-ORG17) and the treasury cap (D-ORG19) moved to the Bank campaign (cimmeria-97) with the vaults.
+All three were answered on 2026-09-27, each with the recommendation: D-ORG15 (creation is free, behind a constant), D-ORG16 (the leader alone sets the loot mode) and D-ORG18 (one Squad, one Team and one Command per player). Vault size (D-ORG17) and the treasury cap (D-ORG19) moved to the Bank campaign (cimmeria-97) with the vaults.
 
 ## Other campaigns to coordinate with
 

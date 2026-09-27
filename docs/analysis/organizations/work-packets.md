@@ -10,7 +10,7 @@
 - Rust is pinned to 1.98.1 by `rust-toolchain.toml`. After any dependency change, run `cargo hakari generate && cargo hakari manage-deps --yes` and `python tools/crate-graph/crate_graph.py --check`.
 - Remove a worktree's `external` junction non-recursively (`cmd /c rmdir <wt>\external`) before removing the worktree.
 - Squash-merge on green CI. When a PR's CI predates the current `main`, rebase and re-test first.
-- Initial state: documentation only, against `main` @ `70795027`. No packet has started.
+- Initial state: documentation only, against `main` @ `70795027`. ORG-E1 and ORG-01 started on 2026-09-27 from `95366c59`.
 
 Status vocabulary: **Ready**, **BlockedDependency**, **BlockedDecision**, **Writing**, **Review**, **Integrated**, **UATPending**, **Done**.
 
@@ -182,7 +182,7 @@ Status: **BlockedDependency** (ORG-03). Writer: `rust-gameserver-dev`.
 
 ### ORG-05: Creation and the registrar NPCs
 
-Status: **BlockedDependency** (ORG-02; the hub seed also waits for #846). Writer: `rust-gameserver-dev`. Reviewer: `server-authority-enforcer`. Owner decision: D-ORG15 (the constant defaults to 0 until answered).
+Status: **BlockedDependency** (ORG-02; the hub seed also waits for #846). Writer: `rust-gameserver-dev`. Reviewer: `server-authority-enforcer`. Owner decision D-ORG15: free (the constants are 0).
 
 - An `OrganizationCreation` interaction: `try_open_org_registrar` in `crates/cell-interactions/src/cell/interactions/org_registrar.rs`, called beside `try_open_dhd`. It is keyed on seed data (a template column naming Team or Command, or the `INT_ORGANIZATION` flag plus the type), never on an entity id. It checks distance and eligibility (not already in an organization of that type), records a pending creation keyed by `player_id` with the type, a 5-minute expiry and 3 attempts, and sends `launchOrganizationCreation(type)` [135]. An ineligible player gets feedback instead of a dialog.
 - CM 94 `onOrganizationCreation(name)`: requires the pending creation (the type comes from it, never from the wire), validates the name (D-ORG10), and forwards `OrgCellToBase::Create`. The base re-checks eligibility and runs `create_org`, debiting the D-ORG15 cost in the same transaction, and replies. A rejection uses one attempt; a success, a disconnect or a change of space clears the pending creation. The client gets `onOrganizationCreationResult` [134], then `onOrganizationJoined` [35], the header and the roster (reusing ORG-06's login push).
