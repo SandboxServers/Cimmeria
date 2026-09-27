@@ -147,7 +147,7 @@ Systems with CellMethod dispatch wired but handlers still stubbed (each logs
 - **Organizations** (guilds): still stubbed at the cell surface —
   `onOrganizationCreation`, `organizationLeave`, `organizationMOTD`,
   `organizationNote`, `organizationOfficerNote`, `organizationSetRankName`,
-  `organizationSetRankPermissions`, `organizationTransferCash`,
+  `organizationSetRankPermissions`,
   `organizationInviteResponse`. Schema, the 9-rank/26-permission model, squad
   state, and Team/Command persistence landed on a feature branch (#568) but
   are **not on `main`**.
@@ -163,6 +163,17 @@ No longer stubbed:
   `payCODForMailMessage` and `returnMailMessage` are implemented on the base
   (`crates/base-methods/src/base/world_entry/methods/mail/`). See
   [gameplay/mail-system.md](gameplay/mail-system.md).
+
+- **Organization treasury and vaults** (Bank and Vault BV-07 to BV-09):
+  `organizationTransferCash` (CM 19) moves naquadah between a member's
+  wallet and the Team or Command treasury under the organization lock
+  (`crates/base-session/src/base/org_cash/`). The Team (19) and Command (20)
+  vaults open at their Bankers and take moves
+  (`crates/base-methods/src/base/world_entry/methods/inventory/org_vault/`
+  and `move_/org/`), and a Team's leader can grow its vault from the
+  treasury with GM `.orgvaultexpand`. See
+  [gameplay/organization-system.md](gameplay/organization-system.md#the-treasury-bank-vault-bv-08)
+  and [gameplay/inventory-system.md](gameplay/inventory-system.md#opening-a-team-or-command-vault).
 
 - **Contact list** (friend/ignore): implemented and merged —
   `crates/base-session/src/base/contact_list/`, with login presence push, CM
