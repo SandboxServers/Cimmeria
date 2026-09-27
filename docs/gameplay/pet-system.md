@@ -51,8 +51,8 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 | Cross-world ring | `ring_transport/dispatch.rs` (`TeleportCrossWorld`) | Despawned |
 | Same-world respawn (a GM respawn of a living owner) | `respawn/mod.rs`, after `ReanchorPlayer` | Moved beside the owner |
 | `.goto` / `.summon` / `.gotolocation` in the same space, `.location`, `gmGoto`, `gmGotoXYZ`, `gmSummon` | `console/travel`, `console/placement.rs`, `gm/travel.rs`, after `TeleportPlayer` | Moved beside the owner |
-| Content `teleport` action | `content/executor/transport.rs`, after `TeleportPlayer` | Moved beside the owner |
-| Same-world ring | `ring_transport/dispatch.rs`, at `ShowPlayer` | Moved beside the owner when the owner reappears at the destination, not while the owner is still hidden |
+| Content `teleport` action | `content/executor/transport.rs`, after `TeleportPlayer` | Moved beside the owner, only once the owner's snap is sent |
+| Same-world ring | `ring_transport/dispatch.rs`, at `ShowPlayer` | Moved beside the owner when the owner reappears at the destination, not while the owner is still hidden. Only if the ring's `TeleportPlayer` really went out: an aborted or failed trip leaves the pet where it is, and an abort after the move still brings it |
 | Instanced space torn down | `destroy_space` | Removed with the space; the registry is scrubbed |
 
 - **Despawn** (`on_owner_left`) goes through `despawn_npc`, so every witness gets `LeftAoI` and the witness sets are scrubbed. On travel, disconnect and base destroy the owner itself gets no `LeftAoI`: its client is about to be reset (`RESET_ENTITIES`) or is closing, and a leave queued behind the `GateTravel` would reach the new world's view. On owner death the owner does get it.
