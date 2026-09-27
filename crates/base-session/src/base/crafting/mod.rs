@@ -8,6 +8,9 @@
 //!   request and routes each verb; a verb with no handler yet is answered
 //!   with a "not available yet" line.
 //! - [`spend`]: `spendAppliedSciencePoints`, learning a discipline.
+//! - [`research`] and [`reverse_engineer`]: the `research` and
+//!   `reverseEngineer` inductions; [`induction_verb`] and [`item_lookup`]
+//!   hold what an induction verb does around its own rule.
 //! - [`feedback`]: the rejection path. Every refused request gets a visible
 //!   text line.
 //! - [`sync`]: the owner-only pushes of crafting state to the client (136,
@@ -42,11 +45,15 @@ pub mod allcraft;
 pub mod feedback;
 pub mod gate;
 pub mod handlers;
+pub mod induction_verb;
+pub mod item_lookup;
 pub mod inventory_locks;
 pub mod item_use;
 pub mod options;
 pub mod persistence;
 pub mod request;
+pub mod research;
+pub mod reverse_engineer;
 pub mod rng;
 pub mod session;
 pub mod spend;
@@ -59,3 +66,5 @@ pub mod transaction;
 mod test_packets;
 #[cfg(test)]
 mod test_players;
+#[cfg(test)]
+mod test_verbs;

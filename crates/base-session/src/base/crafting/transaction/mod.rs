@@ -18,6 +18,7 @@
 //! - [`consume`]: the player lock, the named-instance check and consumption
 //!   by design.
 //! - [`grant`]: placing products (stack merge, else free slots).
+//! - [`learn`]: adding the blueprints a plan teaches.
 //! - [`client_sync`]: the post-commit client updates and the resync.
 //! - [`applied`]: what a commit changed, with before and after quantities
 //!   (the `completed` event's fields).
@@ -35,12 +36,13 @@ mod client_sync;
 mod consume;
 mod failure;
 mod grant;
+mod learn;
 mod plan;
 
 #[cfg(test)]
 mod tests;
 
-pub use applied::{ConsumedStack, CraftApplied, ExpertiseChange, GrantedStack};
+pub use applied::{BlueprintsLearned, ConsumedStack, CraftApplied, ExpertiseChange, GrantedStack};
 pub use client_sync::resync_inventory;
 pub use failure::CraftTxError;
 pub use plan::{CraftTransaction, NamedItem};
@@ -86,8 +88,10 @@ async fn apply_in_tx(
 ) -> Result<(CraftApplied, Vec<(i64, CellOutboxPayload)>), CraftTxError> {
     let player_id = ids.player_id;
     // Lock order: advisory locks first (the player-wide move lock, then
-    // each bag), then inventory rows. The player row is read, never
-    // locked. See `grant::lock_containers` and `consume::check_player`.
+    // each bag), then inventory rows. The player row is read, and locked
+    // only by a plan that teaches blueprints, after every inventory row.
+    // See `grant::lock_containers`, `consume::check_player` and
+    // `learn::teach_blueprints`.
     let placements = grant::resolve(tx, &plan.grant).await?;
     grant::lock_containers(tx, player_id, &placements).await?;
     consume::check_player(tx, player_id).await?;
@@ -102,6 +106,9 @@ async fn apply_in_tx(
     }
     for placement in placements {
         grant::place(tx, ids, placement, &mut applied).await?;
+    }
+    if !plan.learn_blueprints.is_empty() {
+        learn::teach_blueprints(tx, ids, &plan.learn_blueprints, &mut applied).await?;
     }
     for &(discipline_id, delta) in &plan.expertise {
         let before: Option<i32> = sqlx::query_scalar(

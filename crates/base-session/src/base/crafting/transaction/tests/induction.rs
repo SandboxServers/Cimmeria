@@ -25,7 +25,7 @@ impl InductionJob for PlanJob {
     fn complete<'a>(self: Box<Self>, done: Completion<'a>) -> JobFuture<'a> {
         Box::pin(async move {
             match apply_craft_transaction(done.env, &done.ids, &self.0).await {
-                Ok(applied) => JobOutcome::Completed(applied.report()),
+                Ok(applied) => JobOutcome::Completed(Box::new(applied.report())),
                 Err(_) => JobOutcome::Failed,
             }
         })
@@ -56,6 +56,7 @@ async fn logout_mid_induction_consumes_nothing() {
         consume: vec![(COMPONENT, 1)],
         grant: vec![(BANK_FIRST_PRODUCT, 1)],
         expertise: vec![],
+        learn_blueprints: vec![],
     };
     let (sessions, scheduler) = engine();
 

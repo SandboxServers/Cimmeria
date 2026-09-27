@@ -45,7 +45,7 @@ impl InductionJob for FakeJob {
     fn complete<'a>(self: Box<Self>, _done: Completion<'a>) -> JobFuture<'a> {
         Box::pin(async move {
             self.log.lock().unwrap().push(self.name);
-            JobOutcome::Completed(JobReport::default())
+            JobOutcome::Completed(Box::default())
         })
     }
 }

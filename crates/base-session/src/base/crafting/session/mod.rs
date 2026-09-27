@@ -95,7 +95,8 @@ pub struct Completion<'a> {
 /// counts `crafting_jobs_total` once from either arm.
 #[derive(Debug, Clone, PartialEq)]
 pub enum JobOutcome {
-    Completed(JobReport),
+    /// Boxed: the report carries every verb's fields, and `Failed` none.
+    Completed(Box<JobReport>),
     /// Refused or rolled back; the job already told the player and logged
     /// why (`rejected` or `persist_failed`).
     Failed,
@@ -118,6 +119,21 @@ pub struct JobReport {
     pub result: Option<&'static str>,
     pub chance: Option<f64>,
     pub roll: Option<f64>,
+    /// The component set a verb used or picked.
+    pub component_set_id: Option<i32>,
+    /// The discipline a research roll was made for.
+    pub discipline_id: Option<i32>,
+    /// The disciplines a research could roll for, comma-separated.
+    pub eligible_disciplines: String,
+    /// The reverse-engineering recovery bias, `min(1, max(expertise, 1) /
+    /// tech competency)`.
+    pub bias: Option<f64>,
+    /// Reverse engineering, per component of the picked set:
+    /// `design_id:roll:recovered/quantity`, comma-separated.
+    pub rolls: String,
+    /// `blueprint_id:known_before→known_after` per blueprint taught,
+    /// comma-separated.
+    pub blueprints_learned: String,
 }
 
 /// The base handles an induction needs after the request that queued it

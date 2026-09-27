@@ -39,6 +39,29 @@ pub struct ExpertiseChange {
     pub after: i32,
 }
 
+/// Blueprints the transaction taught.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlueprintsLearned {
+    /// The blueprints that were not known before, in id order.
+    pub taught: Vec<i32>,
+    /// How many blueprints the player knew before.
+    pub known_before: usize,
+    /// The whole known list after, sorted: what 139 sends.
+    pub blueprint_ids: Vec<i32>,
+}
+
+impl BlueprintsLearned {
+    /// The `blueprints` field of `blueprint_learned`:
+    /// `blueprint_id:known_before→known_after` per blueprint taught.
+    pub fn field(&self) -> String {
+        self.taught
+            .iter()
+            .map(|id| format!("{id}:false→true"))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
 /// What a committed transaction changed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CraftApplied {
@@ -47,6 +70,8 @@ pub struct CraftApplied {
     /// Product stacks, new or merged.
     pub granted: Vec<GrantedStack>,
     pub expertise: Vec<ExpertiseChange>,
+    /// Set only when the plan taught at least one new blueprint.
+    pub blueprints: Option<BlueprintsLearned>,
 }
 
 impl CraftApplied {
@@ -117,6 +142,11 @@ impl CraftApplied {
             consumed: self.consumed_field(),
             granted: self.granted_field(),
             expertise: self.expertise_field(),
+            blueprints_learned: self
+                .blueprints
+                .as_ref()
+                .map(BlueprintsLearned::field)
+                .unwrap_or_default(),
             ..JobReport::default()
         }
     }
@@ -167,6 +197,7 @@ mod tests {
                 before: 98,
                 after: 100,
             }],
+            blueprints: None,
         }
     }
 
@@ -181,6 +212,22 @@ mod tests {
         assert_eq!(report.consumed, a.consumed_field());
         assert_eq!(report.granted, a.granted_field());
         assert_eq!(report.expertise, a.expertise_field());
+        assert_eq!(report.blueprints_learned, "");
+    }
+
+    #[test]
+    fn taught_blueprints_are_listed_before_and_after() {
+        let learned = BlueprintsLearned {
+            taught: vec![1, 7],
+            known_before: 2,
+            blueprint_ids: vec![1, 3, 5, 7],
+        };
+        assert_eq!(learned.field(), "1:false→true,7:false→true");
+        let a = CraftApplied {
+            blueprints: Some(learned),
+            ..CraftApplied::default()
+        };
+        assert_eq!(a.report().blueprints_learned, "1:false→true,7:false→true");
     }
 
     #[test]

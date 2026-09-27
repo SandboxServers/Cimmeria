@@ -124,6 +124,27 @@ pub enum CraftReject {
         type_id: i32,
         container_id: i32,
     },
+    /// The item to research is not flagged researchable.
+    NotResearchable { item_id: i32, type_id: i32 },
+    /// A kicker is not flagged as one, or has no applied science to count
+    /// against.
+    NotKicker { item_id: i32, type_id: i32 },
+    /// A kicker of the researched item's own applied science.
+    KickerSameScience {
+        item_id: i32,
+        type_id: i32,
+        applied_science_id: i32,
+    },
+    /// A second kicker of an applied science that already has one.
+    KickerDuplicateScience {
+        item_id: i32,
+        type_id: i32,
+        applied_science_id: i32,
+    },
+    /// The item to reverse engineer is not flagged reverse-engineerable.
+    NotReverseEngineerable { item_id: i32, type_id: i32 },
+    /// No blueprint with a recipe makes the item.
+    NoBlueprintForItem { item_id: i32, type_id: i32 },
 }
 
 /// The values a refused rule compared, logged as fields of the `rejected`
@@ -154,6 +175,8 @@ pub struct Compared {
     pub available: Option<i64>,
     /// The induction limit a full queue hit.
     pub queue_limit: Option<usize>,
+    /// The applied science a kicker rule compared.
+    pub applied_science_id: Option<i32>,
 }
 
 impl CraftReject {
@@ -195,6 +218,12 @@ impl CraftReject {
             CraftReject::ParadigmAtMax { .. } => "paradigm_max",
             CraftReject::ItemMissing { .. } => "item_missing",
             CraftReject::ItemNotCarried { .. } => "not_carried",
+            CraftReject::NotResearchable { .. } => "not_researchable",
+            CraftReject::NotKicker { .. } => "not_kicker",
+            CraftReject::KickerSameScience { .. } => "kicker_same_science",
+            CraftReject::KickerDuplicateScience { .. } => "kicker_duplicate_science",
+            CraftReject::NotReverseEngineerable { .. } => "not_reverse_engineerable",
+            CraftReject::NoBlueprintForItem { .. } => "no_blueprint_for_item",
         }
     }
 
@@ -287,6 +316,28 @@ impl CraftReject {
             CraftReject::ItemNotCarried { .. } => {
                 "Move that item to your crafting bag to use it.".to_string()
             }
+            CraftReject::NotResearchable { .. } => {
+                "That item cannot be researched. Nothing was used.".to_string()
+            }
+            CraftReject::NotKicker { .. } => {
+                "That item is not a research kicker. Nothing was used.".to_string()
+            }
+            CraftReject::KickerSameScience { .. } => {
+                "Kickers cannot come from the same applied science as the item being researched. \
+                 Nothing was used."
+                    .to_string()
+            }
+            CraftReject::KickerDuplicateScience { .. } => {
+                "Only one kicker per applied science can be used. Nothing was used.".to_string()
+            }
+            CraftReject::NotReverseEngineerable { .. } => {
+                "That item cannot be reverse engineered. Nothing was used.".to_string()
+            }
+            CraftReject::NoBlueprintForItem { .. } => {
+                "No known recipe makes that item, so it cannot be reverse engineered. \
+                 Nothing was used."
+                    .to_string()
+            }
         }
     }
 
@@ -342,6 +393,29 @@ impl CraftReject {
             },
             CraftReject::NoCarriedBagForProduct { design_id } => Compared {
                 design_id: Some(design_id),
+                ..Compared::default()
+            },
+            CraftReject::NotResearchable { item_id, type_id }
+            | CraftReject::NotKicker { item_id, type_id }
+            | CraftReject::NotReverseEngineerable { item_id, type_id }
+            | CraftReject::NoBlueprintForItem { item_id, type_id } => Compared {
+                item_id: Some(item_id),
+                type_id: Some(type_id),
+                ..Compared::default()
+            },
+            CraftReject::KickerSameScience {
+                item_id,
+                type_id,
+                applied_science_id,
+            }
+            | CraftReject::KickerDuplicateScience {
+                item_id,
+                type_id,
+                applied_science_id,
+            } => Compared {
+                item_id: Some(item_id),
+                type_id: Some(type_id),
+                applied_science_id: Some(applied_science_id),
                 ..Compared::default()
             },
             CraftReject::NoStationOrTool { station_mask, .. } => Compared {
@@ -474,6 +548,12 @@ impl CraftReject {
             | CraftReject::ParadigmAtMax { .. }
             | CraftReject::ItemMissing { .. }
             | CraftReject::ItemNotCarried { .. } => None,
+            CraftReject::NotResearchable { .. }
+            | CraftReject::NotKicker { .. }
+            | CraftReject::KickerSameScience { .. }
+            | CraftReject::KickerDuplicateScience { .. }
+            | CraftReject::NotReverseEngineerable { .. }
+            | CraftReject::NoBlueprintForItem { .. } => None,
         }
     }
 }
