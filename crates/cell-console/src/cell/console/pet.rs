@@ -12,10 +12,13 @@
 //! - `.pet info`: the selected pet (any owner, read only), else the caller's.
 //! - `.pet list`: every pet in the caller's space, with its owner.
 //!
-//! The mutating verbs act only on the caller's own pets, found through
-//! `PetRegistry::pets_of(caller)`, so no client-supplied pet id is ever
-//! trusted here. Only `.pet info` reads the selected target, and only to
-//! display it.
+//! The mutating verbs act only on the caller's own pets: each candidate from
+//! `PetRegistry::pets_of(caller)` must also pass `SpaceManager::owned_pet`,
+//! which checks the pet is live and that the caller is the player who
+//! summoned it (entity ids are reused, so the id alone is not ownership). A
+//! pet that fails is left for the teardown sweep. No client-supplied pet id
+//! is ever trusted here. Only `.pet info` reads the selected target, and
+//! only to display it.
 //!
 //! This is a GM tool, not the player path: the summon ability (PT-03) and
 //! the pet-bar commands (PT-04, with the `owned_pet` ownership guard) are the
@@ -195,7 +198,21 @@ async fn summon(
     .await;
 }
 
-/// Despawn every pet `owner` has out. Returns the ids that were despawned;
+/// The pets `caller` really owns: registered to its entity id AND summoned
+/// by the player holding that id now. `owned_pet` logs each refusal once on
+/// `pets.command` (`event = ownership_rejected`); a refused pet belongs to
+/// an earlier holder of the id and the teardown sweep removes it.
+fn owned_pets(caller: u32, space_mgr: &SpaceManager) -> Vec<u32> {
+    space_mgr
+        .pets
+        .pets_of(caller)
+        .into_iter()
+        .filter(|&pet| space_mgr.owned_pet(caller, pet).is_ok())
+        .collect()
+}
+
+/// Despawn every pet `owner` owns, through the shared teardown
+/// (`despawn_pet`, reason `dismissed`). Returns the ids that were despawned;
 /// `despawn_pet` scrubs the registry either way and WARNs on a miss.
 async fn dismiss_all(
     owner: u32,
@@ -203,7 +220,7 @@ async fn dismiss_all(
     space_mgr: &mut SpaceManager,
 ) -> Vec<u32> {
     let mut despawned = Vec::new();
-    for pet_id in space_mgr.pets.pets_of(owner) {
+    for pet_id in owned_pets(owner, space_mgr) {
         let outcome = despawn_pet(space_mgr, pet_id, PetDespawnReason::Dismissed, tx).await;
         if matches!(outcome, DespawnOutcome::Despawned { .. }) {
             despawned.push(pet_id);
@@ -253,7 +270,9 @@ async fn stance(
         refuse(caller_id, "bad_stance", None, text, tx, space_mgr).await;
         return;
     };
-    let Some(pet_id) = space_mgr.pets.pets_of(caller_id).first().copied() else {
+    // `owned_pets` has already run the ownership guard, so the pet is live
+    // and was summoned by this caller.
+    let Some(pet_id) = owned_pets(caller_id, space_mgr).first().copied() else {
         let text = ".pet stance: you have no pet out";
         refuse(caller_id, "no_pet", None, text, tx, space_mgr).await;
         return;
@@ -363,7 +382,7 @@ async fn info(
 ) {
     let subject = target_id
         .filter(|&t| space_mgr.pets.is_pet(t))
-        .or_else(|| space_mgr.pets.pets_of(caller_id).first().copied());
+        .or_else(|| owned_pets(caller_id, space_mgr).first().copied());
     let Some(pet_id) = subject else {
         let text = ".pet info: select a pet, or summon one with .pet summon";
         refuse(caller_id, "no_pet", None, text, tx, space_mgr).await;
@@ -379,9 +398,11 @@ async fn info(
     };
     let owner = pet.owner_id;
     let id = space_mgr.player_identity(caller_id);
-    // Another owner's pet names that owner as the subject (Rule 5).
+    // Another owner's pet names its summoner as the subject (Rule 5): the
+    // identity captured at summon, since the owner's entity id may since
+    // have been reused.
     let subject_player_id = (owner != caller_id)
-        .then(|| space_mgr.player_identity(owner).player_id)
+        .then(|| space_mgr.pets.summoner_identity(pet_id).player_id)
         .flatten();
     tracing::debug!(
         target: "pets.command",

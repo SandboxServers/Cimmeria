@@ -296,6 +296,34 @@ async fn pt07_pet_dismiss_and_stance_never_touch_another_owners_pet() {
     assert_eq!(only_pet_of(&mgr, OTHER), theirs);
 }
 
+/// Entity ids are reused. A GM given the entity id of a player who
+/// summoned a pet (before the sweep removes it) does not own that pet:
+/// `.pet stance` and `.pet dismiss` go through `owned_pet`, which checks
+/// the summoner's identity, not the bare id. The stale pet is left for the
+/// sweep.
+#[tokio::test]
+async fn pt07_pet_verbs_refuse_a_pet_summoned_by_an_earlier_holder_of_the_id() {
+    let mut mgr = pet_world();
+    pet(&mut mgr, GM, None, &["summon", "2826"]).await;
+    let stale = only_pet_of(&mgr, GM);
+    // Entity 1 is now a different character on a different account.
+    let e = mgr.get_entity_mut(GM).unwrap();
+    e.player_id = Some(9001);
+    e.account_id = Some(9002);
+
+    let stance = pet(&mut mgr, GM, None, &["stance", "0"]).await;
+    let dismiss = pet(&mut mgr, GM, None, &["dismiss"]).await;
+
+    assert!(stance_updates(&stance).is_empty());
+    assert_eq!(feedback(&stance), vec![".pet stance: you have no pet out"]);
+    assert_eq!(
+        feedback(&dismiss),
+        vec![".pet dismiss: you have no pet out"]
+    );
+    let state = mgr.get_entity(stale).unwrap().pet.as_deref().unwrap();
+    assert_eq!(state.stance, PetStance::Defensive, "stance untouched");
+}
+
 #[tokio::test]
 async fn pt07_pet_info_reports_owner_stance_lists_ai_and_distance() {
     let mut mgr = pet_world();
