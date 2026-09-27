@@ -158,7 +158,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 - CAT-G-07 and CAT-G-08 (audit A-09, A-10); the `bArchive` filter per SS-E1 M-Q7 (audit A-08).
 - Correct `mail-wire-formats.md` (the result codes and `MessageAttachment`, audit A-06 and A-12) and `gap-analysis.md` §24.
 
-**Acceptance:** `sendMailResult` byte-exact; live-DB tests for delivery to an offline recipient, partial failure (one unknown name, one good), the 10-name cap, the full-mailbox refusal, and `read_time_update_scoped_to_owner`; a type 5 test, `concurrent_sends_respect_mailbox_cap`, in which two senders race to fill a recipient's 100th slot and exactly one succeeds (it fails when the per-recipient lock is removed); `mail_read_to_text_is_stored_recipient`; the enum pins.
+**Acceptance:** `sendMailResult` byte-exact; live-DB tests for delivery to an offline recipient, partial failure (one unknown name, one good), the 10-name cap, the full-mailbox refusal, and `read_time_update_scoped_to_owner`; `mail_send_bucket_rejects_fourth_in_burst` (type 12: with the D-SS14 mail bucket at burst 3, a fourth send in the window is refused with feedback and logs `rate_limit.exceeded category=mail_send`; it fails when the bucket is unwired); `request_headers_archive_filter_returns_requested_category` (live DB: `bArchive` 0 returns only inbox mail and 1 only archived mail, per audit A-08; it fails when the filter is reverted); a type 5 test, `concurrent_sends_respect_mailbox_cap`, in which two senders race to fill a recipient's 100th slot and exactly one succeeds (it fails when the per-recipient lock is removed); `mail_read_to_text_is_stored_recipient`; the enum pins.
 
 ### SS-C1: Tells and Ignore
 
