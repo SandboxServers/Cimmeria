@@ -85,7 +85,7 @@ pub(super) async fn lock_containers(
 ) -> Result<(), CraftTxError> {
     let mut containers: Vec<i32> = placements.iter().map(|p| p.container_id).collect();
     containers.extend_from_slice(&CRAFTING_INPUT_BAGS);
-    take_inventory_locks(&mut **tx, player_id, &containers)
+    take_inventory_locks(tx, player_id, &containers)
         .await
         .map_err(at("lock"))
 }
