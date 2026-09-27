@@ -5,7 +5,10 @@
 //! crafting bag. A grant that takes the first entry tries to put the item
 //! into the bank, which is never a grant target, so the grant is refused.
 //! [`first_player_container`] skips the storage containers and picks the
-//! first bag the player carries.
+//! first bag the player carries. [`grant_container`] applies that to a
+//! grant that asked for a container (loot, content, GM, vendors), and
+//! [`default_grant_container`] is what the cell asks for when nothing
+//! names one.
 
 /// The player's main bag (`INV_Main`).
 pub const INV_MAIN: i32 = 1;
@@ -36,6 +39,63 @@ pub fn first_player_container(container_sets: &[i32]) -> Option<i32> {
         .iter()
         .copied()
         .find(|&c| c == INV_MAIN || c == INV_CRAFTING)
+}
+
+/// The container a grant lands in when its caller asked for `requested`.
+///
+/// - A storage container ([`STORAGE_CONTAINERS`]) is never written by a
+///   grant, so the grant falls through to [`first_player_container`].
+///   `None` means the item lists no carried bag, and the grant is refused.
+/// - A carried bag (1 or 15) is kept when the item may sit there (it is
+///   listed, or the list is empty and the bag is the main bag). Otherwise
+///   [`first_player_container`] picks the bag; an item that lists no
+///   carried bag (a mission item, say) keeps the request.
+/// - Any other container (mission bag, bandolier, equipment slot) is the
+///   caller's explicit choice and is kept.
+///
+/// `({17,15}, 17)` and `({17,15}, 1)` give 15; `({3,1,17}, 1)` gives 1;
+/// `({3,1,17}, 3)` gives 3; `({17}, 17)` gives `None`.
+pub fn grant_container(container_sets: &[i32], requested: i32) -> Option<i32> {
+    if STORAGE_CONTAINERS.contains(&requested) {
+        return first_player_container(container_sets);
+    }
+    if requested != INV_MAIN && requested != INV_CRAFTING {
+        return Some(requested);
+    }
+    let allowed = if container_sets.is_empty() {
+        requested == INV_MAIN
+    } else {
+        container_sets.contains(&requested)
+    };
+    if allowed {
+        return Some(requested);
+    }
+    Some(first_player_container(container_sets).unwrap_or(requested))
+}
+
+/// The container a cell-side grant asks for when nothing names one: the
+/// first `container_sets` entry that is not a storage container.
+///
+/// `{17,15}` gives 15, `{3,1,17}` gives 3 (weapons go to the bandolier),
+/// `{2}` gives 2. An item that lists only storage containers gives its
+/// first entry, so the grant still reaches the base and is refused there.
+/// An empty list gives `None`: the caller's main-bag default applies.
+pub fn default_grant_container(container_sets: &[i32]) -> Option<i32> {
+    container_sets
+        .iter()
+        .copied()
+        .find(|c| !STORAGE_CONTAINERS.contains(c))
+        .or_else(|| container_sets.first().copied())
+}
+
+/// Whether a grant placed at `chosen` passed over a storage container: the
+/// request named one, or the item lists one ahead of `chosen`.
+pub fn skipped_storage(container_sets: &[i32], requested: i32, chosen: i32) -> bool {
+    (STORAGE_CONTAINERS.contains(&requested) && requested != chosen)
+        || container_sets
+            .iter()
+            .take_while(|&&c| c != chosen)
+            .any(|c| STORAGE_CONTAINERS.contains(c))
 }
 
 #[cfg(test)]
@@ -81,5 +141,63 @@ mod tests {
         }
         assert_eq!(first_player_container(&[2]), None);
         assert_eq!(first_player_container(&[17, 3]), None);
+    }
+
+    /// Every caller's request shape for the `{17,15}` component: the old
+    /// cell cache asked for 17, the GM path asks for 1, the new cache asks
+    /// for 15. All three land in the crafting bag.
+    #[test]
+    fn bank_first_component_grant_falls_through_to_the_crafting_bag() {
+        for requested in [17, INV_MAIN, INV_CRAFTING] {
+            assert_eq!(
+                grant_container(&[17, 15], requested),
+                Some(INV_CRAFTING),
+                "request {requested}"
+            );
+        }
+    }
+
+    #[test]
+    fn storage_only_grant_is_refused() {
+        for storage in STORAGE_CONTAINERS {
+            assert_eq!(grant_container(&[storage], storage), None);
+        }
+    }
+
+    /// Weapons: loot asks for the bandolier, the GM path for the main bag;
+    /// both are allowed and kept.
+    #[test]
+    fn allowed_requests_are_kept() {
+        assert_eq!(grant_container(&[3, 1, 17], 3), Some(3));
+        assert_eq!(grant_container(&[3, 1, 17], INV_MAIN), Some(INV_MAIN));
+        assert_eq!(grant_container(&[1, 17], INV_MAIN), Some(INV_MAIN));
+        assert_eq!(grant_container(&[], INV_MAIN), Some(INV_MAIN));
+        assert_eq!(grant_container(&[2], 2), Some(2));
+    }
+
+    /// A mission item given into the main bag keeps the main bag: it lists
+    /// no carried bag to fall through to.
+    #[test]
+    fn carried_request_with_no_carried_bag_listed_is_kept() {
+        assert_eq!(grant_container(&[2], INV_MAIN), Some(INV_MAIN));
+    }
+
+    #[test]
+    fn default_grant_container_skips_storage_only() {
+        assert_eq!(default_grant_container(&[17, 15]), Some(INV_CRAFTING));
+        assert_eq!(default_grant_container(&[3, 1, 17]), Some(3));
+        assert_eq!(default_grant_container(&[2]), Some(2));
+        assert_eq!(default_grant_container(&[1, 7, 17]), Some(INV_MAIN));
+        assert_eq!(default_grant_container(&[17]), Some(17));
+        assert_eq!(default_grant_container(&[]), None);
+    }
+
+    #[test]
+    fn skipped_storage_names_the_fall_through() {
+        assert!(skipped_storage(&[17, 15], 17, 15));
+        assert!(skipped_storage(&[17, 15], INV_MAIN, 15));
+        assert!(skipped_storage(&[17, 15], 15, 15));
+        assert!(!skipped_storage(&[3, 1, 17], 3, 3));
+        assert!(!skipped_storage(&[1, 17], INV_MAIN, INV_MAIN));
     }
 }

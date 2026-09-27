@@ -58,17 +58,19 @@ pub async fn load_loot_tables(
 
 /// Load item → preferred container mappings from `resources.items.container_sets`.
 ///
-/// The `container_sets` column is a PostgreSQL `integer[]`. We pick the first
-/// element as the preferred container for runtime grants (mission items → 2,
-/// weapons → 3, etc.). Items with an empty array are omitted — they default
-/// to INV_Main (1) at the call site.
+/// The `container_sets` column is a PostgreSQL `integer[]`. The preferred
+/// container for runtime grants is its first entry that is not a storage
+/// container ([`crate::item_placement::default_grant_container`]): mission
+/// items → 2, weapons → 3, and the `{17,15}` crafting components → 15, not
+/// the bank. Items with an empty array are omitted — they default to
+/// INV_Main (1) at the call site.
 pub async fn load_item_containers(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<i32, i32>, sqlx::Error> {
     use sqlx::Row;
 
     let rows = sqlx::query(
-        "SELECT item_id, container_sets[1] AS container_id \
+        "SELECT item_id, container_sets \
          FROM resources.items \
          WHERE array_length(container_sets, 1) > 0",
     )
@@ -78,8 +80,11 @@ pub async fn load_item_containers(
     let mut map = std::collections::HashMap::with_capacity(rows.len());
     for r in &rows {
         let item_id: i32 = r.get("item_id");
-        let container_id: i32 = r.get("container_id");
-        map.insert(item_id, container_id);
+        let container_sets: Vec<i32> = r.get("container_sets");
+        if let Some(container_id) = crate::item_placement::default_grant_container(&container_sets)
+        {
+            map.insert(item_id, container_id);
+        }
     }
 
     tracing::info!(count = map.len(), "Loaded item container mappings");

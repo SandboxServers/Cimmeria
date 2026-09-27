@@ -165,36 +165,34 @@ mod live_db {
         }
     }
 
+    /// The cache holds the first non-storage `container_sets` entry: a
+    /// `{17,15}` crafting component maps to the crafting bag (15), not the
+    /// bank that loot and content grants would otherwise ask for, while a
+    /// weapon (`{3,1,17}`) keeps the bandolier and a mission item (`{2}`)
+    /// the mission bag. Projecting `container_sets[1]` again maps the
+    /// component to 17 and fails the first assertion.
     #[tokio::test]
-    async fn load_item_containers_projects_first_element_of_container_sets() {
+    async fn load_item_containers_skips_storage_containers() {
         let pool = require_db_or_skip!();
-        // Pick a seeded item with a non-empty `container_sets` and remember
-        // its first element. The loader's `container_sets[1]` projection
-        // (PostgreSQL is 1-indexed) must round-trip that exact value into
-        // the cached HashMap. A regression that swaps to `container_sets[2]`
-        // or aggregates the array would fail this assertion.
-        let row: Option<(i32, i32)> = sqlx::query_as(
-            "SELECT item_id, container_sets[1] AS first_container \
-             FROM resources.items \
-             WHERE array_length(container_sets, 1) > 0 \
-             ORDER BY item_id \
-             LIMIT 1",
-        )
-        .fetch_optional(&pool)
-        .await
-        .expect("seed query must succeed");
-        let (probe_item_id, expected_first) =
-            row.expect("seed must have at least one row with non-empty container_sets");
-
         let map = load_item_containers(&pool)
             .await
             .expect("load_item_containers must succeed against seeded DB");
         assert!(!map.is_empty(), "non-empty seed → non-empty cache");
-        assert_eq!(
-            map.get(&probe_item_id).copied(),
-            Some(expected_first),
-            "loader must project the FIRST element of container_sets"
-        );
+        for (shape, expected) in [("{17,15}", 15), ("{3,1,17}", 3), ("{2}", 2), ("{1,17}", 1)] {
+            let probe: i32 = sqlx::query_scalar(
+                "SELECT item_id FROM resources.items \
+                 WHERE container_sets = $1::integer[] ORDER BY item_id LIMIT 1",
+            )
+            .bind(shape)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|e| panic!("the seed must hold a {shape} item: {e}"));
+            assert_eq!(
+                map.get(&probe).copied(),
+                Some(expected),
+                "item {probe} with container_sets {shape} must map to {expected}"
+            );
+        }
     }
 
     #[tokio::test]

@@ -438,6 +438,19 @@ pub enum BaseToCellMsg {
         requester_entity_id: u32,
     },
 
+    /// A loot grant the base refused before anything committed. The cell
+    /// puts the item back on `source.corpse_id` and tells the looter.
+    LootGrantRefused {
+        entity_id: u32,
+        player_id: i32,
+        source: super::LootGrantSource,
+        design_id: i32,
+        quantity: i32,
+        /// The container the grant was going to (after the fall-through).
+        container_id: i32,
+        reason: super::GrantRefusal,
+    },
+
     /// Organization traffic (Squads, Teams, Commands). One nested enum, so
     /// organization packets add variants in `org_base_to_cell.rs` instead
     /// of here (work-packets.md § Messages).

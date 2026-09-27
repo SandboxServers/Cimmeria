@@ -1,7 +1,7 @@
 //! Live-DB integration tests for handle_purchase_vendor_items.
 //!
 //! Skip cleanly when DATABASE_URL is unset; against the bundled local
-//! Postgres they exercise the cash-debit + INV_MAIN insert happy path,
+//! Postgres they exercise the cash-debit + inventory insert happy path,
 //! the item-prerequisite consumption path, the insufficient-naquadah
 //! rollback path, and the not-in-buy-list rejection path.
 
@@ -34,6 +34,12 @@ const PURE_CASH_PRICE: i32 = 100;
 pub(super) const ITEM_COST_STORE_INDEX: i32 = 1;
 pub(super) const ITEM_COST_DESIGN_ID: i32 = 5192;
 pub(super) const ITEM_COST_PREREQ_DESIGN_ID: i32 = 55;
+
+/// Both designs vendor 25 sells here (5228, 5192) are `{17,15}` crafting
+/// components, so a purchase puts them in the crafting bag, the first
+/// carried bag they list. A purchase that still granted into the main bag
+/// fails every count below.
+pub(super) const INV_CRAFTING: i32 = 15;
 
 pub(super) async fn cleanup(pool: &PgPool, entity_id: i32, account_id: i32, player_id: i32) {
     // Delete the outbox rows the test enqueues so a shared live DB
@@ -177,7 +183,7 @@ pub(super) fn make_state(
 }
 
 /// Happy path: a pure-cash purchase debits the player's naquadah by
-/// the per-line price and inserts one INV_MAIN row containing the
+/// the per-line price and inserts one crafting-bag row containing the
 /// granted design. Catches a future regression where the cash UPDATE
 /// commits but the inventory INSERT silently no-ops (the prior bug
 /// shape that motivated the rows_affected == 1 guard in mod.rs).
@@ -194,6 +200,7 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
 
     let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
+    let capture = crate::test_support::LogCapture::install();
 
     handle_purchase_vendor_items(
         entity_id as u32,
@@ -210,12 +217,32 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
     .await;
 
     assert_eq!(
-        count_in_container(&pool, player_id, INV_MAIN, PURE_CASH_DESIGN_ID).await,
+        count_in_container(&pool, player_id, INV_CRAFTING, PURE_CASH_DESIGN_ID).await,
         1,
-        "purchase must produce exactly one INV_MAIN row of the granted design",
+        "purchase must produce exactly one crafting-bag row of the granted design",
     );
+    let event = capture
+        .find_message(tracing::Level::INFO, "grant_container_chosen")
+        .expect("a purchase logs grant_container_chosen per line");
+    assert_eq!(event.target, "inventory");
+    for (key, value) in [
+        ("account_id", account_id.to_string()),
+        ("player_id", player_id.to_string()),
+        ("entity_id", entity_id.to_string()),
+        ("type_id", PURE_CASH_DESIGN_ID.to_string()),
+        ("container_sets", "{17,15}".to_string()),
+        ("requested_container_id", "1".to_string()),
+        ("skipped_storage", "true".to_string()),
+        ("container_id", INV_CRAFTING.to_string()),
+        ("slot_id", "0".to_string()),
+        ("qty_before", "0".to_string()),
+        ("qty_after", "1".to_string()),
+        ("source", "vendor_purchase".to_string()),
+    ] {
+        assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
+    }
     assert_eq!(
-        stack_sum(&pool, player_id, INV_MAIN, PURE_CASH_DESIGN_ID).await,
+        stack_sum(&pool, player_id, INV_CRAFTING, PURE_CASH_DESIGN_ID).await,
         1,
         "stack size must equal the line's grant_quantity",
     );
@@ -230,7 +257,7 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
 
 /// Item-prerequisite path: the seeded line at store_index 1 costs no
 /// cash but consumes 1× design_id 55. Verifies the prereq stack is
-/// debited from INV_MAIN, the granted item lands in INV_MAIN, and the
+/// debited from INV_MAIN, the granted item lands in the crafting bag, and the
 /// player's naquadah is unchanged (cash_cost == 0 short-circuits the
 /// cash UPDATE in mod.rs — locking that branch in).
 #[tokio::test]
@@ -276,9 +303,9 @@ async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
     );
 
     assert_eq!(
-        count_in_container(&pool, player_id, INV_MAIN, ITEM_COST_DESIGN_ID).await,
+        count_in_container(&pool, player_id, INV_CRAFTING, ITEM_COST_DESIGN_ID).await,
         1,
-        "granted item must land in INV_MAIN",
+        "a granted crafting component must land in the crafting bag",
     );
     assert_eq!(
         naquadah_of(&pool, player_id).await,
@@ -321,7 +348,7 @@ async fn purchase_rejected_when_player_cannot_afford() {
     .await;
 
     assert_eq!(
-        count_in_container(&pool, player_id, INV_MAIN, PURE_CASH_DESIGN_ID).await,
+        count_in_container(&pool, player_id, INV_CRAFTING, PURE_CASH_DESIGN_ID).await,
         0,
         "no inventory row may be granted when the purchase is rolled back",
     );
@@ -383,7 +410,7 @@ async fn cleanup_deletes_outbox_rows_for_test_entity() {
 
 /// A store_index outside the buy list (here: 99, well past the 3 seeded
 /// rows) is rejected before any state mutates. Asserts via the
-/// no-DB-changes invariant: balance unchanged, no INV_MAIN rows of any
+/// no-DB-changes invariant: balance unchanged, no crafting-bag rows of any
 /// of the seeded designs.
 #[tokio::test]
 async fn purchase_rejected_for_index_not_in_buy_list() {
@@ -413,12 +440,12 @@ async fn purchase_rejected_for_index_not_in_buy_list() {
     .await;
 
     assert_eq!(
-        count_in_container(&pool, player_id, INV_MAIN, PURE_CASH_DESIGN_ID).await,
+        count_in_container(&pool, player_id, INV_CRAFTING, PURE_CASH_DESIGN_ID).await,
         0,
         "no item may be granted when the buy-list index is invalid",
     );
     assert_eq!(
-        count_in_container(&pool, player_id, INV_MAIN, ITEM_COST_DESIGN_ID).await,
+        count_in_container(&pool, player_id, INV_CRAFTING, ITEM_COST_DESIGN_ID).await,
         0,
         "no item may be granted when the buy-list index is invalid",
     );

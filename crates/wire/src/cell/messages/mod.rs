@@ -21,6 +21,8 @@
 //!   `CellToBaseMsg::MailGm`.
 //! - `content_mail_cell_to_base` — the content engine's `send_system_mail`
 //!   action (SS-U3), carried by `CellToBaseMsg::ContentSystemMail`.
+//! - `loot_grant` — `LootGrantSource` and `GrantRefusal`, the loot-grant
+//!   round trip that returns a refused item to its corpse.
 
 mod bank_cell_to_base;
 mod base_to_cell;
@@ -30,6 +32,7 @@ mod content_mail_cell_to_base;
 mod data;
 mod duel_base_to_cell;
 mod lab;
+mod loot_grant;
 mod mail_gm_cell_to_base;
 mod org_base_to_cell;
 mod org_cell_to_base;
@@ -51,6 +54,7 @@ pub use lab::{
     LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,
     LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
 };
+pub use loot_grant::{GrantRefusal, LootGrantSource};
 pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};
 pub use org_base_to_cell::OrgBaseToCell;
 pub use org_cell_to_base::OrgCellToBase;
