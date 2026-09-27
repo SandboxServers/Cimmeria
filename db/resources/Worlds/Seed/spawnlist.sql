@@ -960,6 +960,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- 470-489, social 490-499), so a row inserted without a spawn_id (the
 -- `.savespawn` seed SQL) never takes a used or reserved id. Raise the floor
 -- when a new block is reserved above 499; live_db_spawnlist_sequence.rs
--- guards it. Same form as the crafting CR-11 footers.
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), 499), true);
+-- and live_db_seed_sequences.rs guard it. `last_value` keeps a reload from
+-- ever lowering it. Same form as the crafting CR-11 footers.
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 499), true);
 

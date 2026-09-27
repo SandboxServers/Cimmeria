@@ -56,6 +56,6 @@ mod live_db_mail_clerk;
 mod live_db_pet_roster;
 mod live_db_pet_summons;
 mod live_db_pet_trainer;
-mod live_db_spawnlist_sequence;
 mod live_db_seed_sequences;
+mod live_db_spawnlist_sequence;
 mod npc_ability_animation;
