@@ -1,7 +1,7 @@
 # Historical CellBlocks: Seven Map States as Archaeology Worlds
 
 **Date:** 2026-09-26
-**Status:** Server wiring built (branch `feat/historical-cellblocks`). The client patch is installed in the local QA client with the streaming-filename fix described below. The in-client UAT has not run.
+**Status:** Merged (#831) and released. **Owner UAT passed 2026-09-27:** the owner reports the historical CellBlock worlds work in-client when the client has the patched files installed (the client patch with the streaming-filename fix described below). What remains is distributing those client files to testers; the server side needs no further change.
 **Trigger:** an external handoff (`CLAUDE_HANDOFF_HISTORICAL_CELLBLOCKS_7VERSIONS_ENGLISH.md`, the server pack `SGW_Historical_CellBlocks_SERVER_DEV_7VERSIONS_ENGLISH.zip` and the client pack `SGW_Historical_CellBlocks_CLIENT_7VERSIONS_FINAL.zip`). It asks for every recoverable historical state of the Castle CellBlock map to be reachable in game, beside the stock world, so the states can be compared before anything is restored into world 12.
 
 ## Summary
@@ -91,6 +91,8 @@ These are properties of the recovered packages that no server change can fix. Ea
 - **No MapData in 43485 and 55124.** Those two builds have no `_MapData.upk`; it first appears in 57050. `UNRESOLVED` whether the client needs one.
 - **Shared package GUIDs.** Unchanged files carried across the VPatch lineage keep their GUIDs, so 55124 and 57050 share 58 GUIDs, and 58674, 60130 and 62429 share 63. This matters only if two historical worlds are resident at once. `INFERENCE`: harmless for one world at a time.
 - **Old Kismet.** The historical maps carry their own Kismet. A sequence that fires on level load could reference content or server state that does not match current Cimmeria. `UNRESOLVED`
+
+**UAT result (2026-09-27).** The owner reported the worlds work in-client with the patched client files. That settles the load-blocking risks above in practice (licensee version, uncooked 43485, missing MapData): none stopped a world from loading. No Kismet or error problems were reported. The per-world table below was not filled in column by column; record specifics there if a later pass finds a difference.
 
 The UAT for each world records load success, streaming, geometry and prop differences, collision, native cover-node behaviour, unexpected current content, and package or namespace errors. It ends back in `Castle_CellBlock`, which must behave as before.
 
