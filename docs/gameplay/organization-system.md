@@ -2,13 +2,13 @@
 title: "Organization System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Organization System
 
-> **Last updated**: 2026-07-25
-> **Status**: Not implemented. Twelve inbound cell methods are decoded and dispatched, but every one logs `UNIMPLEMENTED` and drops. No persistence, no roster, no fanout.
+> **Last updated**: 2026-09-27
+> **Status**: Not implemented; the wire contract is in place. Every inbound organization call is decoded in full and answered or logged, and every outbound organization method has a serializer, but no gameplay behaviour exists yet: no persistence, no roster, no fanout. The organizations campaign ([docs/analysis/organizations/](../analysis/organizations/README.md)) builds it on this contract.
 
 ## Overview
 
@@ -18,25 +18,34 @@ The `OrganizationMember` interface in `entities/defs/interfaces/OrganizationMemb
 
 ## Implementation Status
 
-The Rust server wires the argument decoding for cell methods 8–19 in [`crates/cell-methods/src/cell/cell_methods/organization.rs`](../../crates/cell-methods/src/cell/cell_methods/organization.rs) — each arm parses its payload and emits a structured `UNIMPLEMENTED` log so the fields are visible in traces. Nothing beyond that exists: no base-side handler, no `sgw_organization*` table, and none of the eighteen `onOrganization*` client methods (indices 34–51) is ever sent.
+What exists after the campaign's contract packet (ORG-01):
+
+- **Models** in `cimmeria_entity::organization` ([`crates/entity/src/organization/`](../../crates/entity/src/organization/)): `OrgType`, `OrgRank` with the ranks each type uses, the 26 `OrgPermission` bits with the 12 (Team) and 14 (Command) bits the client's rank editors expose, `OrgLeaveReason`, `SquadLootType`, the id-space constants, the default rank permissions and `org_text`, the one implementation of the text rules (lengths, forbidden characters, the name normaliser and its uniqueness key). Every enum value is pinned against `entities/defs/enumerations.xml`.
+- **Inbound decoders** in `cimmeria-wire`: cell methods 8–19 and SGWPlayer cell method 94 `onOrganizationCreation` ([`crates/wire/src/cell/cell_methods/organization/`](../../crates/wire/src/cell/cell_methods/organization/)), and base methods 0xCF–0xD2 ([`crates/wire/src/base/organization.rs`](../../crates/wire/src/base/organization.rs)). Each bounds a `WSTRING`'s declared length by the bytes left before allocating, and rejects truncation, trailing bytes and unpaired surrogates. CM 13, 14, 15, 17 and 94 used to drop their text; they now read it.
+- **Dispatch.** The cell arms ([`crates/cell-methods/src/cell/cell_methods/organization.rs`](../../crates/cell-methods/src/cell/cell_methods/organization.rs), and CM 94 in `player/social.rs`) decode and log `UNIMPLEMENTED` on the `org` target (the text length, never the text). The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) decodes and answers every well-formed call with `onErrorCode` and a feedback chat line, "Organizations are not available yet.", so the press is not silent.
+- **Outbound serializers** for client methods 34–51, `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) in [`crates/wire/src/cell/client_methods/organization/`](../../crates/wire/src/cell/client_methods/organization/) and `player.rs`, each byte-tested. Nothing sends them yet.
+- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`, routed to logged no-ops on both sides.
+
+There is no `sgw_organization*` table yet.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Organization types | DEFINED | Command, Squad, Team in entity defs |
+| Organization types | DEFINED | Command, Squad, Team in entity defs; typed models in `cimmeria_entity::organization` |
 | Invite response | STUB | `organizationInviteResponse` (CM 8) decodes, logs, drops |
 | Leave | STUB | `organizationLeave` (CM 9) decodes, logs, drops |
 | Minimap ping | STUB | `BroadcastMinimapPing` (CM 10) decodes, logs, drops |
 | Strike team (PvP) | STUB | `strikeTeamResponse` (CM 11) decodes, logs, drops |
 | PvP leave confirmation | STUB | `pvpOrganizationLeaveResponse` (CM 12) decodes, logs, drops |
-| MOTD | STUB | `organizationMOTD` (CM 13) decodes, logs, drops |
-| Member note | STUB | `organizationNote` (CM 14) decodes, logs, drops |
-| Officer note | STUB | `organizationOfficerNote` (CM 15) decodes, logs, drops |
+| MOTD | STUB | `organizationMOTD` (CM 13) decodes the org id and the MOTD, logs, drops |
+| Member note | STUB | `organizationNote` (CM 14) decodes the org id and the note, logs, drops |
+| Officer note | STUB | `organizationOfficerNote` (CM 15) decodes the org id, the member name and the note, logs, drops |
 | Rank permissions | STUB | `organizationSetRankPermissions` (CM 16) decodes, logs, drops |
-| Custom rank names | STUB | `organizationSetRankName` (CM 17) decodes, logs, drops |
+| Custom rank names | STUB | `organizationSetRankName` (CM 17) decodes the org id, rank and name, logs, drops |
 | Loot mode | STUB | `squadSetLootMode` (CM 18) decodes, logs, drops |
 | Cash management | STUB | `organizationTransferCash` (CM 19) decodes, logs, drops |
-| Invite issue / kick / rank change | NOT IMPL | No inbound method dispatched; these are base-method chains in the defs |
-| Roster info | NOT IMPL | `onOrganizationRosterInfo` (CM 38) never sent |
+| Creation | STUB | `onOrganizationCreation` (SGWPlayer CM 94) decodes the name, logs, drops. `launchOrganizationCreation` (135) and `onOrganizationCreationResult` (134) have serializers, never sent |
+| Invite issue / kick / rank change | STUB | Base methods 0xCF–0xD2 decode, log, and answer with `onErrorCode` and a feedback line |
+| Roster info | NOT IMPL | `onOrganizationRosterInfo` (CM 38) has a serializer, never sent |
 | Experience tracking | NOT IMPL | `onOrganizationExperienceUpdate` (CM 44) never sent |
 | Persistence | NOT IMPL | No organization tables in `db/sgw/` |
 | Organization vault | NOT IMPL | Only `onClearOrgVaultInventory` reference |
@@ -110,9 +119,9 @@ Key exposed (client-invoked) methods:
 
 | Type | Purpose | Example |
 |------|---------|---------|
-| Command | Persistent guild | Player guild |
-| Squad | Temporary party | Dungeon group |
-| Team | Strike team (PvP) | PvP group |
+| Squad (0) | Temporary party of up to six, never persisted | Dungeon group |
+| Team (1) | Small persistent group; ranks Member, SeniorMember, Leader | Regular group of friends |
+| Command (2) | Persistent guild; ranks Initiate to Leader, vault and treasury | Player guild |
 
 ## Data References
 
@@ -123,8 +132,8 @@ Key exposed (client-invoked) methods:
 ## RE Priorities
 
 1. **Organization persistence** - Database schema for organization data
-2. **Rank permissions** - Bitmask format for `aRankFlags` / `aPermissions`
-3. **Loot modes** - Loot distribution types (need/greed/round-robin/etc.)
+2. **Rank permissions** - Resolved: the 26 `EOrganizationPermission` bits, `OrgPermission` in `cimmeria_entity::organization`
+3. **Loot modes** - Resolved: `EGroupLootType` has two values, RoundRobin (0) and FreeForAll (1)
 4. **Group authority integration** - How `GroupAuthority` entity manages org lifecycle
 5. **Organization vault** - Cross-entity vault storage protocol
 

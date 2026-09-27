@@ -152,6 +152,8 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 50 | `onOrganizationRankNameUpdate` | `INT32 aOrganizationId, ARRAY<INT32> aRankIds, ARRAY<WSTRING> aRankNames` |
 | 51 | `onSquadLootType` | `INT32 aOrganizationId, INT32 aLootType` |
 
+Every method in this block has an argument serializer, `build_on_<method>`, in [`crates/wire/src/cell/client_methods/organization/builders.rs`](../../crates/wire/src/cell/client_methods/organization/builders.rs), typed on the `cimmeria_entity::organization` models and pinned byte for byte in `organization/tests.rs` (organizations campaign ORG-01). `RosterInfo` is `entities/defs/alias.xml:27-36`: `WSTRING name, UINT8 level, UINT8 archetype, UINT8 rank, WSTRING note, WSTRING officerNote`, with no online flag. `ARRAY` is a `u32` count and the elements. The indices are also in `mercury::method_idx`, re-exported from `client_methods::organization` so the two tables cannot drift. Nothing sends them yet; the campaign's later packets wire them in.
+
 ### MinigamePlayer (interface) — 13 methods, indices 52–64
 
 | Index | Method | Args |
@@ -329,6 +331,8 @@ The server-side serializers are in `crates/wire/src/crafting/client_methods.rs`,
 | 28 | `alloying.entities` |
 
 With every list empty the payload is 32 zero bytes, which disables every crafting tab. `items` names usable tools (item ids) and `entities` usable machines (entity ids); the client keeps only the last id of each list ([crafting audit C-35](../analysis/crafting/audit.md)). The order above comes from the def file; the client unpacker (`0x00e49180` → `0x00e47250`) has not yet been checked against it (crafting packet CR-E1, question 2).
+
+`onErrorCode` (121), `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) have serializers in [`crates/wire/src/cell/client_methods/player.rs`](../../crates/wire/src/cell/client_methods/player.rs) (`build_on_error_code`, `build_on_organization_creation_result`, `build_launch_organization_creation`), each with a byte test. 134 and 135 go out with the extended encoding (sub-slot 73 and 74).
 
 ---
 

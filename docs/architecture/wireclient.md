@@ -40,6 +40,26 @@ entity_id, class_id, and method index — a small slice of Phase 3 pulled
 forward because the visibility test needed to assert "did entity X's
 create/appearance/leave reach this witness" against real wire bytes.
 
+Two generic builders let a test call any SGWPlayer method without a
+dedicated wrapper (added for the organizations campaign's two-client tests,
+ORG-01). Both return framed message bytes for `send_bundle`, and both take
+`args` already serialized in `.def` order:
+
+- `GameSession::cell_method(method_index, entity_id, args)` encodes an
+  exposed cell method the way the server's decoder
+  (`crates/base/src/base/connect_loop/cell_arms.rs`) reads it: index 0-60
+  as msg_id `0x80 | index`, index 61 and above as `0xBD` with the sub-slot
+  byte `index - 61` after the entity id. Indices come from
+  [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md).
+- `GameSession::base_method(msg_id, args)` frames a base method by its wire
+  id (`0xC0 + index`,
+  [sgwplayer-base-method-dispatch-table.md](../protocol/sgwplayer-base-method-dispatch-table.md)),
+  with no entity id prefix.
+
+`cell_method(25, id, &[])` and `base_method(0xD8, &[])` produce the same
+bytes as `map_loaded(id)` and `on_client_ready()`; the unit tests in
+`session.rs` pin both encodings and the 60/61 boundary.
+
 ## TL;DR
 
 `cimmeria-wireclient` is the **Tier 3** end-to-end test surface above
