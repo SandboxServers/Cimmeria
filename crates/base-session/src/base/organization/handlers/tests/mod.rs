@@ -1,16 +1,29 @@
-//! ORG-06 handler tests: login push, presence, leave and disband.
+//! Organization handler tests: login push, presence, leave and disband
+//! (ORG-06); invite, invite response, kick, rank change, the GM commands,
+//! `broadcast_to_org` and the ORG-LOCK race (ORG-07).
 //!
 //! Live-DB (TESTING.md type 3) against the real schema and trigger, with
 //! every client-bound message captured from a `TestTransport`, decrypted and
 //! compared byte for byte (types 2 and 8), and every refusal checked with
-//! `LogCapture` (type 12). Sentinels: this module owns
-//! `0x7000_4C00..=0x7000_4DFF` for account and player ids (32 blocks of
-//! 16); organizations are cleaned by exact name key ("Org06 ..." names).
+//! `LogCapture` (type 12). Sentinels for account and player ids, in blocks
+//! of 16: ORG-06 owns `0x7000_4C00..=0x7000_4DFF` (32 blocks, names
+//! `Org06P<n>`, [`Fixture::new`]); ORG-07 owns `0x7000_4F00..=0x7000_4FFF`
+//! and `0x7000_5200..=0x7000_52FF` (32 blocks in all, names `Org07P<n>`,
+//! [`Fixture::org07`]). Organizations are
+//! cleaned by exact name key ("Org06 ..." / "Org07 ..." names).
 
+mod broadcast;
 mod disband;
+mod gm;
+mod invite;
+mod invite_response;
+mod kick;
 mod leave;
+mod lock_race;
+mod org07_support;
 mod presence;
 mod push;
+mod rank;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -34,6 +47,9 @@ use crate::test_support::{test_default_connected_client_state, TestTransport};
 use cimmeria_entity::organization::OrgLeaveReason;
 
 const BASE: i32 = 0x7000_4C00;
+/// ORG-07's sentinel blocks (see the module docs).
+const BASE_ORG07: i32 = 0x7000_4F00;
+const BASE_ORG07_HIGH: i32 = 0x7000_5200;
 
 /// One decoded client-method call: `(method index, args)`.
 type Call = (u16, Vec<u8>);
@@ -42,6 +58,9 @@ type Call = (u16, Vec<u8>);
 struct Fixture {
     pool: PgPool,
     db_pool: Option<Arc<PgPool>>,
+    /// The sentinel range's first id, and the character-name prefix.
+    base: i32,
+    prefix: &'static str,
     account_id: i32,
     players: Vec<i32>,
     name_keys: Vec<String>,
@@ -57,13 +76,38 @@ impl Fixture {
     /// One account with `n` characters in block `block` (0..32), named
     /// `Org06P<i>` with level `10 + i` and archetype `i`. No session yet.
     async fn new(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
-        assert!((0..32).contains(&block) && (1..16).contains(&n));
-        let account_id = BASE + block * 16;
+        assert!((0..32).contains(&block));
+        Self::at(pool, BASE, "Org06P", block, n, org_names).await
+    }
+
+    /// [`Fixture::new`] in ORG-07's ranges: block `block` (0..32; 0..16 in
+    /// `0x7000_4F00`, 16..32 in `0x7000_5200`), names `Org07P<i>`.
+    async fn org07(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
+        assert!((0..32).contains(&block));
+        // Blocks 16..32 sit at 0x7000_5200, which is 48 blocks above
+        // 0x7000_4F00; 0x7000_5000..=0x7000_51FF belongs to other tests.
+        let slot = if block < 16 { block } else { block + 32 };
+        debug_assert_eq!(BASE_ORG07 + 48 * 16, BASE_ORG07_HIGH);
+        Self::at(pool, BASE_ORG07, "Org07P", slot, n, org_names).await
+    }
+
+    async fn at(
+        pool: &PgPool,
+        base: i32,
+        prefix: &'static str,
+        block: i32,
+        n: i32,
+        org_names: &[&str],
+    ) -> Self {
+        assert!((1..16).contains(&n));
+        let account_id = base + block * 16;
         let typed = Arc::new(TestTransport::new());
         let (cell_tx, cell_rx) = mpsc::channel(64);
         let fx = Self {
             pool: pool.clone(),
             db_pool: Some(Arc::new(pool.clone())),
+            base,
+            prefix,
             account_id,
             players: (1..=n).map(|i| account_id + i).collect(),
             name_keys: org_names
@@ -135,7 +179,7 @@ impl Fixture {
     }
 
     fn name(&self, i: usize) -> String {
-        format!("Org06P{}", self.players[i] - BASE)
+        format!("{}{}", self.prefix, self.players[i] - self.base)
     }
 
     fn player_id(&self, i: usize) -> i32 {
@@ -144,11 +188,17 @@ impl Fixture {
 
     /// Character `i`'s entity id (distinct from every player id).
     fn entity(&self, i: usize) -> u32 {
-        0x0006_0000 + (self.players[i] - BASE) as u32
+        let range = if self.base == BASE {
+            0x0006_0000
+        } else {
+            0x0007_0000
+        };
+        range + (self.players[i] - self.base) as u32
     }
 
     fn addr(&self, i: usize) -> SocketAddr {
-        format!("127.0.0.1:{}", 40000 + (self.players[i] - BASE))
+        let range = if self.base == BASE { 40000 } else { 41000 };
+        format!("127.0.0.1:{}", range + (self.players[i] - self.base))
             .parse()
             .unwrap()
     }

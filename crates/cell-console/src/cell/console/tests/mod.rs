@@ -32,6 +32,7 @@ mod org04_squad;
 mod org05_org_create;
 #[cfg(test)]
 mod org06_disband;
+mod org07_join_rank;
 #[cfg(test)]
 mod p02;
 #[cfg(test)]

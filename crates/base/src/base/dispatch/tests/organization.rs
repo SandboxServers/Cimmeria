@@ -339,3 +339,85 @@ async fn squad_forward_failure_counts_on_squad_actions_total() {
     assert!(counter_total("squad_actions_total", &labels("invite")) > invite_before);
     assert!(counter_total("squad_actions_total", &labels("kick")) > kick_before);
 }
+
+/// `/squadinvite Bo` with Bo online: the base forwards it with the session's
+/// ids when Bo's cached Ignore list does not hold the inviter, and refuses
+/// it itself when it does (ORG-07, carried from ORG-03): one `squad.invite`
+/// outcome row (`reason = ignored`, on `squad`, since the cell never sees
+/// it), a counted refusal, one feedback line, and nothing to the cell.
+#[tokio::test]
+async fn squad_invite_to_a_player_who_ignores_the_inviter_is_refused() {
+    use cimmeria_base_session::base::contact_list::ignore::IgnoreCache;
+    use cimmeria_base_session::base::organization::handlers::answer::IGNORED_TEXT;
+
+    for ignoring in [false, true] {
+        let capture = LogCapture::install();
+        let addr: SocketAddr = ADDR.parse().unwrap();
+        let bo_addr: SocketAddr = "127.0.0.1:54401".parse().unwrap();
+        let typed = Arc::new(TestTransport::new());
+        let transport: Arc<dyn Transport> = typed.clone();
+        let mut me = test_default_connected_client_state();
+        me.player_entity_id = Some(ENTITY_ID);
+        me.active_player_id = Some(77);
+        me.player_name = Some("Al".into());
+        me.listed_online = true;
+        let mut bo = test_default_connected_client_state();
+        bo.player_entity_id = Some(0x4343);
+        bo.active_player_id = Some(78);
+        bo.player_name = Some("Bo".into());
+        bo.listed_online = true;
+        if ignoring {
+            bo.ignore = IgnoreCache::with_player_ids(
+                ["Al".to_string()].into_iter().collect(),
+                [77].into_iter().collect(),
+            );
+        }
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, me), (bo_addr, bo)])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+            (ENTITY_ID, addr),
+            (0x4343, bo_addr),
+        ])));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let (cell_tx, mut cell_rx) = mpsc::channel(8);
+        let payload = [&[0u8][..], &WS_BO].concat();
+        dispatch_sgw_player_base_method(
+            0xD0,
+            &payload,
+            &None,
+            addr,
+            &transport,
+            [0u8; 32],
+            &connected,
+            &entity_manager,
+            &Some(cell_tx),
+            &entity_to_addr,
+            &None,
+        )
+        .await
+        .unwrap();
+        let forwarded = cell_rx.try_recv().is_ok();
+        assert_eq!(forwarded, !ignoring, "ignoring = {ignoring}");
+        if !ignoring {
+            assert!(typed.is_empty(), "the cell answers a forwarded invite");
+            continue;
+        }
+        assert!(typed.filter_to(bo_addr).is_empty(), "Bo is never asked");
+        let sent = typed.filter_to(addr);
+        assert_eq!(sent.len(), 1, "one line");
+        let text: Vec<u8> = IGNORED_TEXT
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert!(
+            body(&sent[0]).windows(text.len()).any(|w| w == text),
+            "the Ignore line"
+        );
+        let row = capture
+            .all()
+            .into_iter()
+            .find(|c| c.target == "squad" && c.has_field("event", "squad.invite"))
+            .expect("squad outcome row");
+        assert_eq!(row.level, Level::INFO);
+        assert!(row.has_field("reason", "ignored") && row.has_field("target_player_id", "78"));
+    }
+}

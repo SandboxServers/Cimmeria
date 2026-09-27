@@ -277,3 +277,71 @@ async fn gm_disband_without_a_gm_session_is_refused() {
     assert!(row.has_field("outcome", "rejected"), "{row:?}");
     assert!(row.has_field("reason", "not_gm"), "{row:?}");
 }
+
+/// ORG-07: `GmJoin` and `GmRank` reach their handlers. With no session
+/// behind entity 21 there is no GM to re-read, so each is refused `not_gm`
+/// in one INFO outcome row and nothing is sent.
+#[tokio::test]
+async fn gm_join_and_rank_without_a_gm_session_are_refused() {
+    let capture = LogCapture::install();
+    let msgs = [
+        (
+            OrgCellToBase::GmJoin {
+                player_id: 11,
+                entity_id: 21,
+                org_id: 5,
+                target_name: None,
+            },
+            "org.gm_join",
+        ),
+        (
+            OrgCellToBase::GmRank {
+                player_id: 11,
+                entity_id: 21,
+                target_name: "Bo".into(),
+                rank: 3,
+                org_id: Some(5),
+            },
+            "org.gm_rank",
+        ),
+    ];
+    for (msg, event) in msgs {
+        let transport = route(msg).await;
+        assert!(transport.is_empty(), "{event}");
+        let row = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("event", event))
+            .unwrap_or_else(|| panic!("{event} not logged"));
+        assert_eq!(row.level, tracing::Level::INFO);
+        assert!(row.has_field("reason", "not_gm"), "{:?}", row.fields);
+    }
+}
+
+/// A forwarded invite response (CM 8, ORG-07) whose actor is no longer a
+/// session in the world is dropped with WARN `org.actor_mismatch` before
+/// any invite is looked up.
+#[tokio::test]
+async fn forwarded_invite_response_from_a_stale_actor_is_dropped() {
+    let capture = LogCapture::install();
+    let request_id = cimmeria_entity::organization::BASE_INVITE_REQUEST_FLAG | 7;
+    let transport = route(OrgCellToBase::ForwardCellCall {
+        player_id: 11,
+        entity_id: 21,
+        method_index: 8,
+        args: [&request_id.to_le_bytes()[..], &[1]].concat(),
+    })
+    .await;
+    assert!(transport.is_empty());
+    assert!(capture
+        .find_event(
+            tracing::Level::WARN,
+            "no longer matches a session",
+            "actor_mismatch"
+        )
+        .is_some());
+    assert!(!capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "org.invite_response")));
+}
