@@ -2,7 +2,7 @@
 
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::org_cell_to_base::OrgCellToBase;
-use crate::crafting::CraftRequest;
+use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft};
 
 /// Messages sent from CellApp to BaseApp.
 #[derive(Debug)]
@@ -518,6 +518,13 @@ pub enum CellToBaseMsg {
     /// `CraftingCatalog` and the player's state, and answers every outcome,
     /// rejections included, with visible feedback (D-CR14).
     Crafting(CraftRequest),
+
+    /// The crafting stations in range of a player changed (CR-05). The base
+    /// rebuilds `onUpdateCraftingOptions`.
+    CraftingStations(CraftingStations),
+
+    /// `.allcraft` for a player (D-CR17); see [`GmAllCraft`].
+    GmAllCraft(GmAllCraft),
 
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol

@@ -54,6 +54,7 @@ mod ai_state;
 mod appearance;
 mod bandolier;
 mod construction;
+mod crafting_stations;
 mod entity_struct;
 mod identity;
 mod leash_state;
@@ -68,6 +69,7 @@ mod witness_aoi;
 
 pub use aggression::{AggroProfile, MobAggression};
 pub use appearance::filter_holstered_weapon;
+pub use crafting_stations::CraftingStationState;
 pub use entity_struct::CellEntity;
 pub use identity::PlayerIdentity;
 pub use leash_state::{ChaseRoute, LeashState};

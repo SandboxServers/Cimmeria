@@ -9,6 +9,7 @@
 mod aoi;
 mod auto_cycle;
 mod cover;
+mod crafting_stations;
 pub(crate) mod holster;
 mod npc_ground;
 mod npc_movement;
@@ -20,6 +21,7 @@ mod reload_completion;
 pub(super) use aoi::run_aoi_tick;
 pub(super) use auto_cycle::auto_cycle_tick;
 pub(super) use cover::cover_detection_tick;
+pub(super) use crafting_stations::crafting_station_tick;
 // The holster animation constant is combat's (§2F of
 // docs/architecture/services-crate-split.md); re-exported at its old path.
 pub(crate) use crate::cell::combat::HOLSTER_ANIMATION_DURATION;

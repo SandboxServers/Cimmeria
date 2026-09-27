@@ -2,14 +2,16 @@
 
 use tokio::sync::mpsc;
 
+use crate::cell::interactions::crafting_stations::{station_mask, stations_in_range};
 use crate::cell::messages::{CellToBaseMsg, CraftRequest, CraftVerb};
 use crate::cell::space_manager::SpaceManager;
 
-/// The `ECraftTypeFlags` mask sent while no station gate exists: nothing
-/// granted. CR-05 replaces it with the gate's verdict.
-const NO_STATION_GATE: u8 = 0;
-
 /// Forward `verb` for `entity_id` as a `CellToBaseMsg::Crafting`.
+///
+/// `allowed` is the station gate (CR-05): the verbs whose station is in
+/// reach right now, computed here rather than read from the 1 Hz station
+/// tick, so a player who walked away a moment ago is not let through. The
+/// base adds the tools and "craft anywhere" to it.
 ///
 /// An entity that is not a loaded character (no `player_id`) cannot have
 /// sent a crafting method through a legitimate client, so the request is
@@ -30,13 +32,11 @@ pub(super) async fn forward(
         );
         return;
     };
-    // TODO(CR-05): the station gate computes `allowed` from the stations in
-    // range, and "craft anywhere" (D-CR17).
     let request = CraftRequest {
         entity_id,
         player_id,
         verb,
-        allowed: NO_STATION_GATE,
+        allowed: station_mask(&stations_in_range(space_mgr, entity_id)),
     };
     if let Err(e) = tx.send(CellToBaseMsg::Crafting(request)).await {
         tracing::warn!(
