@@ -9,10 +9,10 @@ last_updated: 2026-09-26
 
 > **Status**: All six packet questions answered with direct evidence (Ghidra decompiles of
 > `SGW.exe` plus the client Lua source under `Content/UI/Core/Crafting/` and
-> `Content/UI/Core/DisciplineTrainer/`). One open item remains for Q4 (the client's game-clock
-> domain) requiring either a deeper Ghidra vtable trace or a live x64dbg watch — no live client
-> was running during this pass, and the campaign rules require static analysis only unless one
-> already is.
+> `Content/UI/Core/DisciplineTrainer/`). Q4's client-clock domain, originally left open pending a
+> `ClientInterface` dispatch-table walk or a live x64dbg watch, was **closed the same day** by
+> CR-02's live trace plus this finding's independent static confirmation (§4) — see the update
+> note below.
 >
 > **Binary**: `SGW.exe` (32-bit x86 PE). **Client Lua**: `Content/UI/Core/Crafting/*.lua`,
 > `Content/UI/Core/DisciplineTrainer/DisciplineTrainer.lua`.
@@ -23,6 +23,14 @@ last_updated: 2026-09-26
 > `crafting-state-machine.md`, `crafting-wire-formats.md`, `ability-trainer-ui.md` (AT-E1, the
 > `onErrorCode` open question this reuses), `ability-resolution-pipeline.md` (the `FUN_00c6e220`
 > clock).
+>
+> **Update (2026-09-26, same day):** CR-02 (bigworld-engine-advisor) live-traced the three
+> `ClientMessageHandler` bodies §4 originally could not locate and shared the result; CR-E1
+> independently confirmed all three via static `disassemble_bytes` and landed the corresponding
+> Ghidra function creation + naming + comments (`ClientMessageHandler_updateFrequencyNotification`
+> @ `0x00dd62a0`, `ClientMessageHandler_setGameTime` @ `0x00dd6820`,
+> `ClientMessageHandler_tickSync` @ `0x00dd6d00`). §4 below is the closed version; no contradiction
+> was found.
 
 ---
 
@@ -216,10 +224,10 @@ the ability trainer, not as the primary feedback channel.
 
 ---
 
-## 4. The client clock `FUN_00c6e220` — likely a general engine tick clock, not server-message-driven (Q4, feeds CR-02 / D-CR20)
+## 4. The client clock `FUN_00c6e220` — CLOSED: all three sync messages feed it (Q4, feeds CR-02 / D-CR20)
 
-**Confidence: MEDIUM — strong circumstantial evidence from the caller graph; the exact setter for
-the underlying struct's fields was not located in this static pass.**
+**Confidence: HIGH — the open item below was closed same-day by CR-02 (live trace) and confirmed
+independently here via static disassembly of all three handler bodies.**
 
 `FUN_00c6e220(int param_1) { FUN_00dd6c60(*(int *)(param_1 + 0x28)); }` is a thin wrapper.
 `FUN_00dd6c60` reads four fields from the struct it's handed:
@@ -230,48 +238,53 @@ lastBase    = *(double *)(struct + 0x334)
 interval    = *(double *)(struct + 0x344)
 current_ptr = **(double**)(struct + 0x34c)  // dereferenced pointer to a live double
 frac        = interval > 0 ? (current_ptr - lastBase) / interval : 0
-result      = (tickCount_as_float + frac) / DAT_01e51cb8   // DAT_01e51cb8 is very likely the tick rate
+result      = (tickCount_as_float + frac) / DAT_01e51cb8   // DAT_01e51cb8 = the tick-rate/"hertz" constant
 ```
 
 This is the shape of a BigWorld-style engine clock: an integer tick counter plus a sub-tick
 interpolation fraction, converted to seconds by dividing by the tick rate constant. The object
 `FUN_00c6e220` reads from is reached through a lazily-constructed global singleton
-(`DAT_01ef2264`, built by `Mercury__unknown_00c6f870` / `FUN_00c6f690`).
+(`DAT_01ef2264`, built by `Mercury__unknown_00c6f870` / `FUN_00c6f690`), and is a
+`ServerConnection`-owned sub-struct.
 
-**Why this matters for CR-02/D-CR20**: `FUN_00c6e220`'s **caller list spans systems that have
-nothing to do with server time sync** — `ZipFileSystem__unknown_00e09160` (async package/file
-loading), numerous unlabelled `Mercury*`-namespace protocol-internals functions, and (relevantly)
-crafting's own `onTimerUpdate` handler `FUN_00e47800` and multiple ability-cooldown computations
-(e.g. `FUN_00c6bc20`, which computes `abilityCooldownTarget - FUN_00c6e220(...)`). A clock consumed
-by the file-loading subsystem is very unlikely to be something that only three specific network
-messages (`SET_GAME_TIME`, `TICK_SYNC`, `UPDATE_FREQUENCY_NOTIFICATION`) reset or advance — it
-looks like the client's general local engine tick clock, running independently of any particular
-incoming message.
+`FUN_00c6e220`'s caller list spans systems that have nothing to do with server time sync —
+`ZipFileSystem__unknown_00e09160` (async package/file loading), numerous unlabelled `Mercury*`
+protocol-internals functions, and (relevantly) crafting's own `onTimerUpdate` handler
+`FUN_00e47800` and multiple ability-cooldown computations (e.g. `FUN_00c6bc20`, which computes
+`abilityCooldownTarget - FUN_00c6e220(...)`). This is exactly what a shared, general "current game
+time in seconds" accessor looks like — it is not crafting-specific or ability-specific, it is the
+one clock every timer-remaining computation in the client uses.
 
-**What this pass could not confirm**: the client does have distinct `ClientMessageHandler`
-specializations for all three messages (RTTI strings `updateFrequencyNotification` @ `0x019d09d0`,
-`setGameTime` @ `0x019d09ec`, `tickSync` @ `0x019d0a8c`, each with a
-`.?AV?$ClientMessageHandler@U...Args@ClientInterface@@@@` type descriptor at `0x01e520e0`/
-`0x01e52138`/`0x01e52270`). None of these three RTTI descriptors have **direct code
-cross-references** — normal for a vtable-dispatched handler reached only through the message
-dispatch table, not a decompile dead end by itself, but tracing their handler bodies (to check
-whether any of them write to the `+0x32c/+0x334/+0x344/+0x34c` fields of the struct
-`FUN_00c6e220` reads) needs a `ClientInterface` dispatch-table walk this packet's budget did not
-cover. The `DAT_01ef2264` singleton itself is touched by only two tiny accessor wrappers
-(`Mercury__unknown_00c6f870`, `FUN_00c6f840`) — no other named function writes to it directly,
-meaning any setter reaches the underlying struct through the *same* accessor, which this pass did
-not exhaustively enumerate (its caller list is dominated by a name-collision artifact — dozens of
-sites all mislabelled `register_NetOut_onStrikeTeamResponse`, a known class of Ghidra
-annotation-script shift bug per `rtti-table-shift-and-rva-va-traps` agent memory — and was not
-useful for isolating a real setter).
+### The setters — confirmed (CR-02 live trace + CR-E1 static disassembly)
 
-**Recommendation for CR-02**: treat this as supporting evidence for D-CR20's fallback, not as
-proof the clock is unmatchable. The open item — whether any of the three sync messages actually
-write into this specific struct — needs either a live x64dbg watch on the struct's fields while
-the three messages are received (no live client was running for this pass, and the campaign rules
-require one to already be running before attaching) or a follow-up Ghidra pass walking
-`ClientInterface`'s message-handler dispatch table. Until closed, CR-02 should not assume the
-struct `FUN_00c6e220` reads is reachable/resettable from server messages at all.
+CR-02 (bigworld-engine-advisor) traced this live against a running client while investigating
+CR-02's own game-clock packet, and reported the three `ClientMessageHandler` bodies this finding
+originally could not locate (their RTTI descriptors have no direct code cross-references — they
+are reached only through `ClientInterface`'s message dispatch table, which is why Ghidra had not
+auto-created function boundaries for any of them). CR-E1 independently verified all three via
+`disassemble_bytes` and created + named + commented the functions in Ghidra
+(`ClientMessageHandler_updateFrequencyNotification` @ `0x00dd62a0`,
+`ClientMessageHandler_setGameTime` @ `0x00dd6820`, `ClientMessageHandler_tickSync` @ `0x00dd6d00`).
+All three write into the exact same `ServerConnection` sub-struct `FUN_00dd6c60` reads:
+
+| Handler | Confirmed writes |
+|---|---|
+| `updateFrequencyNotification` (`0x00dd62a0`) | Reads one `UINT8` (ms-per-tick) from the arg, converts to float (`CVTSI2SS`), stores into `DAT_01e51cb8` — the "hertz"/tick-rate divisor `FUN_00dd6c60` uses. Confirmed byte-for-byte: `MOVZX ECX,[EAX]` → `CVTSI2SS XMM0,ECX` → `MOVSS [0x01e51cb8],XMM0`. |
+| `setGameTime` (`0x00dd6820`) | `+0x32c` = **low 16 bits** of the arg's `gameTime` (`MOVZX EDX,AX; SUB EAX,EDX` splits it), `+0x330` = the high part — a deliberate word-split encoding, not a truncation bug. `+0x334` = the struct's previous `+0x33c` value (rolls the interpolation baseline forward). `+0x33c` = `*(this+0x174)` if that pointer is non-null, else `0.0`. |
+| `tickSync` (`0x00dd6d00`) | Args: `UINT32 gameTime, UINT32 tickRate`. `+0x32c` = `gameTime` (full 32-bit this time, unlike `setGameTime`'s split). `+0x334` = previous `+0x33c` value. `+0x34c` = `*(this+0x174)` (the pointer itself, unconditionally). `+0x33c` = `*(that pointer)` (a fresh "now" double). `+0x344` = `tickRate` (with the standard negative-int32 `+2^32` wraparound fix) `* DAT_01848ab8` — confirmed ≈ `0.001` by reading the raw bytes (`3F5062...`, an IEEE-754 double in the `2^-10` magnitude band), i.e. `tickRate` is milliseconds and `+0x344` becomes seconds-per-tick, matching `FUN_00dd6c60`'s `interval` field exactly. |
+
+**Conclusion**: the client's game clock **is** driven by the server's sync messages, closing the
+open item this finding originally flagged. `setGameTime` and `tickSync` both feed the same
+tick-counter/interpolation-baseline fields (`+0x32c`/`+0x334`/`+0x33c`/`+0x34c`) that
+`FUN_00dd6c60` reads, and `updateFrequencyNotification` feeds the divisor
+(`DAT_01e51cb8`) that same function uses to convert to seconds — the "general engine clock" read
+in the caller graph above is general in the sense that *every* system reads the same clock, not in
+the sense that it is locally driven. **CR-02 should build `game_time_secs()` to match this: an
+absolute tick count (matching `tickSync`'s `gameTime`) plus a millisecond-resolution `tickRate`
+(the `updateFrequencyNotification` divisor), with `setGameTime`'s odd low/high word split noted as
+a client quirk to reproduce if `setGameTime` is the message the server sends at login** (per the
+combat-advisor's `ontimerupdate-wire-and-clock` memory, `build_time_sync` currently hardcodes all
+three messages to zero at login — this is the gap CR-02 closes).
 
 ---
 
@@ -430,7 +443,8 @@ UI element — expertise gain on success is a server-only outcome the client nev
 | `Mercury__unknown_00ceae50` caller list spans Mercury internals + ZipFileSystem + every crafting sender | xref sweep, 2026-09-26 | Xrefs |
 | Legacy `feedback()` → `onPlayerCommunication(..., CHAN_feedback, msg)` | `deprecated/python/cell/SGWPlayer.py:362-368`, `base/SGWPlayer.py:64-67` | Direct read |
 | `FUN_00c6e220` → `FUN_00dd6c60`: tick+fraction clock, callers span ZipFileSystem/Mercury/abilities/crafting | `0x00c6e220`, `0x00dd6c60` | Decompile + xrefs |
-| `tickSync`/`setGameTime`/`updateFrequencyNotification` RTTI exist, handler bodies not traced | `0x019d0a8c`, `0x019d09ec`, `0x019d09d0` | Search, no code xrefs found |
+| `updateFrequencyNotification`/`setGameTime`/`tickSync` handlers confirmed writing the clock struct | `0x00dd62a0`, `0x00dd6820`, `0x00dd6d00` | Disassemble + Ghidra function creation (CR-02 live trace + CR-E1 static confirm, 2026-09-26) |
+| `DAT_01848ab8` ≈ 0.001 (tickSync's ms→seconds tick-rate multiplier) | `0x01848ab8` | `read_memory` (IEEE-754 double bit pattern) |
 | `DAT_01ef2264` singleton touched only by two accessor wrappers | `0x00c6f870`, `0x00c6f840` | Xrefs |
 | Alloy quality counts (2000/3000/4000/5000 → 10/5/2/1, no Poor), stack-quantity decrement | `0x00e46990` | Decompile |
 | Alloy "exactly one quality met" rule (0 or ≥2 satisfied buckets both reject) | `0x00e46990` | Decompile |
@@ -447,7 +461,5 @@ UI element — expertise gain on success is a server-only outcome the client nev
    per `cme-event-signal.md`.
 2. **`onErrorCode` native rendering** — unresolved, same open item as AT-E1; applies identically
    to crafting's codes 213/214.
-3. **The client clock's message-driven setter (Q4)** — whether `tickSync`/`setGameTime`/
-   `updateFrequencyNotification` write into the struct `FUN_00c6e220` reads is unconfirmed; needs
-   either a `ClientInterface` dispatch-table walk or a live x64dbg watch (no live client running
-   during this pass).
+
+Q4 (the client clock's message-driven setter) is **no longer open** — see §4's update note.

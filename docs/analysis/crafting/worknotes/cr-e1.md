@@ -69,17 +69,22 @@ the client Lua tree; no live client was running, so no x64dbg was used, per the 
    the Rust side (`crates/wire/src/cell/chat.rs`) and already used by the vendor-rejection path.
    Confidence: HIGH that `Mercury__unknown_00ceae50` is not chat; unresolved (inherited from AT-E1)
    on `onErrorCode` rendering.
-4. **Client clock `FUN_00c6e220`.** Traced to `FUN_00dd6c60`, an integer-tick-plus-interpolation
-   clock read from a singleton (`DAT_01ef2264`). Its caller graph spans `ZipFileSystem` async
-   loading, unrelated Mercury protocol internals, ability-cooldown math, and crafting's own
-   `onTimerUpdate` handler — a shape that looks like the client's general local engine tick clock,
-   not something exclusively driven by `SET_GAME_TIME`/`TICK_SYNC`/`UPDATE_FREQUENCY_NOTIFICATION`.
-   Could **not** confirm or rule out that those three messages write into the struct's
-   `+0x32c/+0x334/+0x344/+0x34c` fields — their `ClientMessageHandler` RTTI exists but has no
-   direct code cross-references (vtable-dispatched), and a full dispatch-table walk was out of this
-   packet's budget. Confidence: MEDIUM. **This directly feeds D-CR20**: CR-02 should not assume
-   the struct is reachable from server messages until this is closed by either a live x64dbg watch
-   or a follow-up static trace.
+4. **Client clock `FUN_00c6e220` — CLOSED same day.** Traced to `FUN_00dd6c60`, an
+   integer-tick-plus-interpolation clock read from a `ServerConnection`-owned singleton
+   (`DAT_01ef2264`). Originally left open (the three `ClientMessageHandler` bodies had no direct
+   code cross-references — vtable-dispatched only, and a dispatch-table walk was out of this
+   packet's budget). **CR-02 live-traced all three handlers and shared the result**; CR-E1
+   independently confirmed via `disassemble_bytes` at `0x00dd62a0`
+   (`updateFrequencyNotification` — writes the `DAT_01e51cb8` tick-rate divisor from a `UINT8`),
+   `0x00dd6820` (`setGameTime` — writes `+0x32c`/`+0x330` as a low16/high split of `gameTime`,
+   `+0x334`/`+0x33c` the interpolation baseline), and `0x00dd6d00` (`tickSync` — writes
+   `+0x32c` = full 32-bit `gameTime`, `+0x334`/`+0x33c`/`+0x34c` the baseline/pointer, `+0x344` =
+   `tickRate * 0.001`, confirmed by reading `DAT_01848ab8`'s raw bytes). All three write the exact
+   struct `FUN_00dd6c60` reads. Created + named + commented all three in Ghidra
+   (`ClientMessageHandler_updateFrequencyNotification`/`_setGameTime`/`_tickSync`). Confidence:
+   HIGH. **D-CR20's open item is resolved**: the client clock is server-message-driven; CR-02 can
+   build `game_time_secs()` against it directly. See `crafting-client-ui.md` §4 for the full
+   per-handler table.
 5. **Alloy.** Confirmed the four counts (Normal 2000→10, Good 3000→5, Great 4000→2,
    Fantastic 5000→1, no Poor) and stack-quantity decrementing exactly as C-38 states. **Refines**
    C-38: the client rejects locally not just when zero quality buckets are satisfied but also when
@@ -112,8 +117,9 @@ the client Lua tree; no live client was running, so no x64dbg was used, per the 
 1. `Event_SlashCmd_RespecCraft`'s console-command string binding and handler body — not traced
    (would need a `SGWTextCommandMgr` registration-table walk or a `vfunc_5` invoke-dispatch trace).
 2. `onErrorCode` native rendering — unresolved, inherited from AT-E1, applies identically here.
-3. The client clock's message-driven setter (Q4) — the single biggest open item feeding CR-02;
-   needs either a `ClientInterface` dispatch-table walk or a live x64dbg watch.
+
+Q4 (the client clock's message-driven setter) is no longer open — closed 2026-09-26 jointly with
+CR-02 (see item 4 above and `crafting-client-ui.md` §4).
 
 ## Ghidra editing note
 
@@ -124,6 +130,18 @@ not surface). Re-setting the comment at the correct address (`0x00e465d0`) produ
 replacement. Left a short pointer comment at `0x00e465d6` rather than leaving the old wrong text
 or a duplicate wall of text. Anyone editing this function's comments again should check both
 addresses.
+
+**Follow-up (2026-09-26, same day):** after CR-02 shared its live-traced Q4 finding, verified all
+three `ClientMessageHandler` bodies via `disassemble_bytes` (Ghidra had not auto-created function
+boundaries for any of them — each is reached only via a data-referenced dispatch-table slot, not a
+direct `CALL`) and used `create_function` + `set_plate_comment` to land
+`ClientMessageHandler_updateFrequencyNotification` (`0x00dd62a0`),
+`ClientMessageHandler_setGameTime` (`0x00dd6820`), `ClientMessageHandler_tickSync`
+(`0x00dd6d00`) permanently in Ghidra. `create_function`'s naming-convention linter warned these
+names aren't verb-first PascalCase (its suggested rewrite, `ClientmessagehandlerTicksync` etc., is
+worse for readability and inconsistent with the rest of this binary's existing
+`ClassName_methodName` naming, e.g. `Crafting_isCraftTypeAllowed`) — kept the descriptive names,
+warnings are non-blocking.
 
 ## Commands run
 
@@ -136,10 +154,10 @@ addresses.
 - No contended files touched. `crafting-restoration.md`/`crafting-wire-formats.md` edits are
   additive corrections (new paragraphs/notes), not restructuring — should merge cleanly regardless
   of CR-01's parallel edits to Rust files in the same area.
-- CR-02 should read finding §4 before assuming the client clock is fixable without a client patch;
-  if the coordinator wants that open item closed before CR-02 starts, it needs a live-client x64dbg
-  session (non-freezing log breakpoints only) watching `DAT_01ef2264`'s referenced struct while the
-  three sync messages arrive.
+- CR-02's clock question is now answered (finding §4, updated 2026-09-26): the client's game clock
+  is driven by `setGameTime`/`tickSync` (tick counter + interpolation baseline) and
+  `updateFrequencyNotification` (the seconds divisor) — CR-02 can build `game_time_secs()` directly
+  against the confirmed field layout rather than treating D-CR20's fallback as necessary.
 - CR-04/CR-08's feedback wiring (D-CR14) should route through the `CHAN_feedback` /
   `onPlayerCommunication` path (already used by the vendor rejection code), not rely on
   `onErrorCode` alone, per finding §3.
