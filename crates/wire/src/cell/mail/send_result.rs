@@ -5,13 +5,12 @@ use crate::mercury::write_wstring;
 
 /// Wire order of `sendMailResult`'s two trailing arguments.
 ///
-/// **Open question.** `SGWMailManager.def:43-47` declares `ResultCode`,
-/// `FailedRecipients`, `FailedRecipientFlags`, and BigWorld streams a
-/// method's arguments in `.def` order. SS-E1's M-Q1 note says the client
-/// handler (`0x00e13b90`) reads `FailedRecipientFlags` before
-/// `FailedRecipients`, which may be field access on an already-decoded
-/// struct rather than the stream order. Until a Ghidra pass or a capture
-/// settles it, this is the `.def` order; flipping it is this one constant.
+/// `.def` order (`SGWMailManager.def:43-47`): `ResultCode`,
+/// `FailedRecipients`, `FailedRecipientFlags`. SS-E1's M-Q1 note that the
+/// client handler (`0x00e13b90`) reads the flags first is field access on
+/// a struct the generic dispatcher (`Client_NetIn_EntityMethodDispatch`,
+/// `0x00c6f8f0`) already decoded in `.def` order, not the stream order
+/// (resolved on #875).
 pub const SEND_MAIL_RESULT_FLAGS_BEFORE_NAMES: bool = false;
 
 /// Serialize `sendMailResult(UINT8 ResultCode, ARRAY<WSTRING>
