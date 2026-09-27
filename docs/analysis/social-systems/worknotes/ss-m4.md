@@ -7,8 +7,8 @@
 
 - **Packet:** SS-M4, new-mail notification (D-SS11) and expiry (D-SS04), plus the integration edits SS-M1, SS-M2, SS-M3 and SS-U1 left for it.
 - **Decisions in force:** D-SS04 (30-day TTL, three terminal paths, archived never expires, quarantine never deletes), D-SS11 (notify an online recipient), D-SS03 (server mail is exempt from the cap; quarantined mail is out of it), D-SS10 (system mail cannot be returned), and the SS-M3 coordinator decision that a paid, untaken COD is the recipient's and is never returned by expiry.
-- **Base:** written on `origin/main` @ `91919e909` (SS-M1/M2/M3 and SS-U1 merged), rebased onto `1c6bed3cc` (BV-04, ORG-04, PT-13; the only conflict was the Mail/Bank/Squads rows of `docs/commands.md`, both sides kept). Branch `social/m4-notify-expiry`, worktree `.claude/worktrees/ss-m4`.
-- **Commits (after the rebase):** `dc06c12c6` (the feature), `0afa75775` (the security-review follow-ups), `239868561` (docs and this worknote), `8502533c0` (agent memory), `dd2a30730` (the crafting-bag scope addition), `f2dcc63aa` (its docs), `31702c759` (the reviewer's memory note), then this update. Shas elsewhere in this note (`1c4aa7616`, `70bd7799b`, `8b113928e`) are the pre-rebase ones.
+- **Base:** written on `origin/main` @ `91919e909` (SS-M1/M2/M3 and SS-U1 merged), rebased onto `cdbd5ce88` (BV-04, ORG-04, PT-13, ORG-02). Conflicts: the Mail/Bank/Squads rows of `docs/commands.md`, the startup spawns in `crates/base/src/base/service.rs` (ORG-02's audit sweep and the mail sweeper, both kept) and the server-authority-enforcer `MEMORY.md` index (both lines kept). Branch `social/m4-notify-expiry`, worktree `.claude/worktrees/ss-m4`.
+- **Commits (after the rebase):** `c19589521` (the feature), `0f63f0e6e` (the security-review follow-ups), `afd486435` (docs and this worknote), `53b8f36c8` (agent memory), `4dbc3e105` (crafting bag as a source), `c3e56fb42` (its docs), `006529e47` (the reviewer's memory note), `785a4a002` (worknote), `388efc0da` (take-item placement by `container_sets`), `2f9e7f622` (its docs), then this update. Shas elsewhere in this note (`1c4aa7616`, `70bd7799b`, `8b113928e`) are the pre-rebase ones.
 - **Owned paths (new):**
   - `crates/base-methods/src/base/world_entry/methods/mail/{expiry/mod.rs, expiry/terminal.rs, notify.rs}`
   - `crates/base-methods/src/base/world_entry/methods/mail/gm/{expire.rs, mailbox.rs}` (`gm.rs` became `gm/mod.rs`: at 671 lines it had three families, `.mail`, `.mailbox` and `.mail_expire`)
@@ -108,7 +108,7 @@ All from the worktree root through the lane.
 | `bash tools/build-lane/lane.sh cargo fmt --all -- --check` | 0 | |
 | `bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-base-session -p cimmeria-cell-console mail find_player ss_u1` | 0 | 28 passed |
 | revert proofs: `cargo nextest run --profile ci-live-db -p cimmeria-base-methods -p cimmeria-base-session <test>` with `DATABASE_URL=…/sgw_ss_m4`, one per mutation | 100 each (expected) | see Regression proof |
-| `bash tools/build-lane/live-db-test.sh "methods::mail::"` | 0 | 124 passed before the scope addition; after it and the rebase onto `1c6bed3cc`, 125 passed, none skipped (`DATABASE_URL=…/sgw_ss_m4`) |
+| `bash tools/build-lane/live-db-test.sh "methods::mail::"` | 0 | 124 passed before the scope addition; after it and the rebase onto `1c6bed3cc`, 125 passed; after the placement change and the rebase onto `cdbd5ce88`, 128 passed, none skipped (`DATABASE_URL=…/sgw_ss_m4`) |
 
 ## Tests
 
