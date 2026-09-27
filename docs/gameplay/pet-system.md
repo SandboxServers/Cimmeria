@@ -8,7 +8,7 @@ last_updated: 2026-09-26
 # Pet System
 
 > **Last updated**: 2026-09-27
-> **Status**: ~25%. Engine support, content and client are complete. The server can now spawn an owned pet, introduce it to its owner, tear it down, and keep it tied to its owner on every owner lifecycle path (pets campaign PT-01, PT-02); summoning by ability, pet commands and pet AI are still missing (tracked in #570, ledger `docs/analysis/pets/`). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
+> **Status**: ~30%. Engine support, content and client are complete. A player can summon an owned pet by casting its summon ability (pets campaign PT-03: 2826 Summon Straegis spawns template 350). The server introduces the pet to its owner, tears it down, and keeps it tied to its owner on every owner lifecycle path (PT-01, PT-02). Pet commands and pet AI are still missing (tracked in #570, ledger `docs/analysis/pets/`). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Overview
 
@@ -64,7 +64,16 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 - **Backstop.** `pet_owner_sweep` runs every AoI tick and despawns any pet whose owner is gone, dead or in another space, so a future owner path that forgets the hooks costs at most one tick. A source-scan test (`every_owner_travel_site_calls_the_pet_hooks`) fails when a cell file sends `GateTravel` without `on_owner_left`, or `TeleportPlayer` without `on_owner_teleported`.
 - The `SGWPet.def` cell methods `onOwnerDeath`, `onOwnerLeash` and `onOwnerRespawn` are not called: in our server the cell owns both the owner and the pet, so the hooks run directly.
 
-Nothing spawns a pet yet except code and tests. Summon by ability is PT-03 and the `.pet` console is PT-07. The table records what the entity definitions provide and what the server does with them.
+**Summoning (PT-03).** A player ability with a `resources.pet_summons` row summons a pet. The seed has one row today: 2826 Summon Straegis, which spawns template 350 with one pet out at a time. The code is `crates/cell-combat/src/cell/abilities/use_ability/summon.rs`, and the design is decision 23 of [`abilities-and-effects-system.md`](../architecture/abilities-and-effects-system.md).
+
+- The cast is an ordinary cast. It has the 6 s warmup, which `speedPet` shortens for `SpeedPet` abilities (D-PT10). The cooldown is charged at launch. Moving, dying or changing space during the warmup cancels it, and a cancelled warmup spawns nothing.
+- The client's target is ignored. Any other self-targeted ability is still refused by the #444 gate.
+- When the warmup ends, the caster plays the summon effect (2292). A second summon despawns the current pet first (D-PT04). The new pet appears 2 u behind the owner.
+- The ground effect (2293) plays at the pet once the owner's client has created the pet.
+- A summon that cannot spawn gets an `onErrorCode` and a chat line: "Your pet could not be summoned." (or "You have not trained that summon."). No cooldown is charged when this happens at the press.
+- The Jaffa, Prime and Lo'taur rows follow in PT-11. The `.pet` console is PT-07.
+
+The table records what the entity definitions provide and what the server does with them.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -72,6 +81,7 @@ Nothing spawns a pet yet except code and tests. Summon by ability is PT-03 and t
 | Owner tracking | DONE (PT-01) | `PetRegistry` on the cell. `ownerID` reaches the client as `onEntityProperty(GENERICPROPERTY_PetOwnerId)` in the create cascade |
 | Ability list | DONE (PT-01) | `onPetAbilityList` to the owner only, on AoI entry |
 | Stance list | DONE (PT-01) | `onPetStanceList` to the owner only, filtered by `ENTITYFLAG_NoPassive` / `NoDefensive` / `NoAggressive` |
+| Summon by ability | DONE (PT-03) | `pet_summons` row → warmup → spawn beside the owner; one pet per owner (D-PT04); source and target VFX |
 | Spawn and teardown | DONE (PT-01, PT-02) | `spawn_pet_from_template`. Despawn on every owner departure, move beside the owner on a same-space teleport; see [Owner lifecycle](#owner-lifecycle) |
 | Ability toggling | STUB | `toggleAbility` with on/off flag |
 | Stance changing | STUB | `changePetStance` with `onPetStanceUpdate` |
@@ -227,6 +237,10 @@ authored. (The **Straegis** line is the one fully-wired example: abilities **and
 **and** models all present.) So the *summon → specific creature/model* mapping for the
 player-pet types still needs recovering from the effect scripts / a debugger capture — see
 the dynamic-analysis list in [`pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
+
+Cimmeria does not wait for that recovery. The binding is its own seed table,
+`resources.pet_summons` (ability → template, `max_active`; PT-S). The summon keys on the ability
+id, not on an effect script (PT-03).
 
 ## Related Docs
 
