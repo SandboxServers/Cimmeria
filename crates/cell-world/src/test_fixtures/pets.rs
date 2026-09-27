@@ -80,6 +80,7 @@ pub fn add_pet_owner(
     mgr.connect_entity(entity_id);
     if let Some(e) = mgr.get_entity_mut(entity_id) {
         e.account_id = Some(entity_id);
+        e.player_id = Some(entity_id as i32 + 1000);
         e.archetype_id = Some(1);
         e.level = level;
     }

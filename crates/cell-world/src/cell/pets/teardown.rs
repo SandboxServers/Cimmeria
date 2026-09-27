@@ -17,13 +17,15 @@
 //! Despawn goes through `despawn_npc`, never bare `destroy_entity`: the
 //! former sends `LeftAoI` to every witness and scrubs the witness sets.
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::state_field::BSF_DEAD;
 use tokio::sync::mpsc;
 
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::{DespawnOutcome, SpaceManager};
 
-/// Why a pet was despawned: the `reason` of the `pets.lifecycle` INFO line.
+/// Why a pet was despawned: the `reason` of the `pets.lifecycle`
+/// `event = "despawned"` line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PetDespawnReason {
     /// The owner's client disconnected.
@@ -51,6 +53,20 @@ impl PetDespawnReason {
     }
 }
 
+/// The owner's log identity for a pet's teardown line: the one captured at
+/// summon, else the live owner's if it is still a player. Resolved before
+/// the teardown, never defaulted to `0` (instrumentation-discipline Rule 5).
+fn owner_identity(space_mgr: &SpaceManager, owner: u32) -> PlayerIdentity {
+    let cached = space_mgr.pets.owner_identity(owner);
+    if cached.is_known() {
+        return cached;
+    }
+    match space_mgr.get_entity(owner) {
+        Some(e) if e.is_player => e.identity(),
+        _ => PlayerIdentity::UNKNOWN,
+    }
+}
+
 /// Despawn `pet_id` visibly (`LeftAoI` to every witness) and drop it from
 /// the registry. Refuses (`RefusedPlayer`/`NotFound`) exactly as
 /// `despawn_npc` does; the registry is scrubbed either way, so a stale entry
@@ -61,26 +77,43 @@ pub async fn despawn_pet(
     reason: PetDespawnReason,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) -> DespawnOutcome {
+    // Everything the log needs is read before the pet and the registry
+    // entry go away.
     let owner_id = space_mgr.pets.owner_of(pet_id);
+    let id = owner_id.map_or(PlayerIdentity::UNKNOWN, |o| owner_identity(space_mgr, o));
+    let template_id = space_mgr.get_entity(pet_id).and_then(|e| e.template_id);
     let outcome = space_mgr.despawn_npc(pet_id, tx).await;
     space_mgr.pets.forget_pet(pet_id);
     match outcome {
-        DespawnOutcome::Despawned { witnesses_notified } => tracing::info!(
+        DespawnOutcome::Despawned { witnesses_notified } => tracing::debug!(
             target: "pets.lifecycle",
+            event = "despawned",
             decision_outcome = "despawned",
             pet_id,
-            owner_id = owner_id.unwrap_or(0),
+            owner_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            template_id,
             reason = reason.reason(),
             witnesses_notified,
             "pet despawned"
         ),
+        // A teardown path asked to remove a pet that is not there (or is a
+        // player): a server bookkeeping error, never client-triggerable.
         other => tracing::warn!(
             target: "pets.lifecycle",
+            event = "despawn_failed",
             decision_outcome = "despawn_failed",
             pet_id,
-            owner_id = owner_id.unwrap_or(0),
-            reason = reason.reason(),
-            outcome = ?other,
+            owner_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            template_id,
+            reason = match other {
+                DespawnOutcome::RefusedPlayer => "refused_player",
+                _ => "pet_not_found",
+            },
+            despawn_reason = reason.reason(),
             "pet despawn did not remove an entity"
         ),
     }
@@ -95,13 +128,28 @@ pub async fn forget_owner(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
+    let pets = space_mgr.pets.pets_of(owner);
+    if pets.is_empty() {
+        return 0;
+    }
+    let id = owner_identity(space_mgr, owner);
     let mut despawned = 0;
-    for pet_id in space_mgr.pets.pets_of(owner) {
+    for &pet_id in &pets {
         let outcome = despawn_pet(space_mgr, pet_id, PetDespawnReason::OwnerDisconnected, tx).await;
         if matches!(outcome, DespawnOutcome::Despawned { .. }) {
             despawned += 1;
         }
     }
+    tracing::debug!(
+        target: "pets.lifecycle",
+        event = "owner_forgotten",
+        owner_id = owner,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        pet_count = pets.len(),
+        despawned,
+        "owner disconnected; its pets were despawned"
+    );
     despawned
 }
 
@@ -155,12 +203,18 @@ pub async fn pet_owner_sweep(
         match sweep_verdict(space_mgr, pet_id, owner) {
             None => {}
             Some(SweepAction::Scrub) => {
+                let id = owner_identity(space_mgr, owner);
                 space_mgr.pets.forget_pet(pet_id);
-                tracing::debug!(
+                // `destroy_entity` / `destroy_space` scrub every pet they
+                // remove, so an orphan entry is a missed teardown path.
+                tracing::warn!(
                     target: "pets.lifecycle",
+                    event = "registry_scrubbed",
                     decision_outcome = "registry_scrubbed",
                     pet_id,
                     owner_id = owner,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
                     reason = "pet_entity_gone",
                     "pet registry entry without an entity dropped"
                 );

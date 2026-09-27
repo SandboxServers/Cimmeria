@@ -9,6 +9,7 @@ mod create_on_client;
 mod registry;
 mod spawn;
 mod teardown;
+mod telemetry;
 
 /// Owner entity id used throughout.
 const OWNER: u32 = 7;

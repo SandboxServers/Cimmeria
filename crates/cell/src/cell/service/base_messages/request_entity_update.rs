@@ -125,9 +125,15 @@ pub(super) async fn handle(
         for msg in pet_create_on_client_events(witness_id, other) {
             if let Err(e) = tx.send(msg).await {
                 tracing::warn!(
+                    target: "pets.lifecycle",
+                    event = "pet_list_replay_failed",
+                    reason = "cell_to_base_closed",
                     witness_id,
-                    entity_id,
-                    "RequestEntityUpdate: pet list re-emit cell\u{2192}base send failed: {e}"
+                    account_id = space_mgr.player_identity(witness_id).account_id,
+                    player_id = space_mgr.player_identity(witness_id).player_id,
+                    pet_id = entity_id,
+                    error = %e,
+                    "RequestEntityUpdate: pet list re-emit cell\u{2192}base send failed"
                 );
                 return;
             }

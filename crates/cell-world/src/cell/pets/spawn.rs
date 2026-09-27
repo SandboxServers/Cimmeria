@@ -102,27 +102,39 @@ impl SpaceManager {
         summon_ability_id: i32,
     ) -> Result<u32, PetSpawnError> {
         let result = self.spawn_pet_inner(owner, template_id, summon_ability_id);
+        // The owner is alive here on both arms; its identity is also kept on
+        // the registry for teardown logs, which may run after it is gone.
+        let id = self.player_identity(owner);
         match &result {
             Ok(pet_id) => {
-                let space_id = self.get_entity_space_id(*pet_id).unwrap_or(0);
-                tracing::info!(
+                self.pets.note_owner_identity(owner, id);
+                tracing::debug!(
                     target: "pets.lifecycle",
+                    event = "summoned",
                     decision_outcome = "summoned",
                     pet_id = *pet_id,
                     owner_id = owner,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
                     template_id,
-                    summon_ability_id,
-                    space_id,
+                    ability_id = summon_ability_id,
+                    space_id = self.get_entity_space_id(*pet_id),
                     "pet summoned"
                 );
             }
+            // Not client-triggerable at will: every reason is a caller or
+            // seed error (a summon names a seeded template for a live
+            // player), so WARN.
             Err(e) => {
                 tracing::warn!(
                     target: "pets.lifecycle",
+                    event = "summon_failed",
                     decision_outcome = "summon_failed",
                     owner_id = owner,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
                     template_id,
-                    summon_ability_id,
+                    ability_id = summon_ability_id,
                     reason = e.reason(),
                     error = %e,
                     "pet summon failed"

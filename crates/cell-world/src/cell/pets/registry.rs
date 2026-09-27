@@ -8,6 +8,8 @@
 
 use std::collections::HashMap;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
 use super::super::space_manager::SpaceManager;
 
 /// Why a claimed pet id was refused. `reason()` is the `reason` field of the
@@ -44,6 +46,11 @@ pub struct PetRegistry {
     owner_of: HashMap<u32, u32>,
     /// owner entity id -> pet entity ids, in summon order.
     pets_by_owner: HashMap<u32, Vec<u32>>,
+    /// owner entity id -> the owner's log identity, captured at summon.
+    /// Teardown logs read it because the owner may already be destroyed
+    /// (or its id reused) by the time its pet is swept. Dropped with the
+    /// owner's last pet.
+    owner_identity: HashMap<u32, PlayerIdentity>,
 }
 
 impl PetRegistry {
@@ -63,9 +70,23 @@ impl PetRegistry {
             list.retain(|&p| p != pet);
             if list.is_empty() {
                 self.pets_by_owner.remove(&owner);
+                self.owner_identity.remove(&owner);
             }
         }
         Some(owner)
+    }
+
+    /// Remember `owner`'s log identity for its pets' later teardown logs.
+    pub fn note_owner_identity(&mut self, owner: u32, identity: PlayerIdentity) {
+        self.owner_identity.insert(owner, identity);
+    }
+
+    /// The owner's identity as captured at summon, or `UNKNOWN`.
+    pub fn owner_identity(&self, owner: u32) -> PlayerIdentity {
+        self.owner_identity
+            .get(&owner)
+            .copied()
+            .unwrap_or(PlayerIdentity::UNKNOWN)
     }
 
     /// The owner of `pet`, if it is a registered pet.
@@ -116,12 +137,39 @@ impl SpaceManager {
     /// (CAT-C-11 / #462): `Ok(claimed)` only when `caller` owns the
     /// live pet `claimed`. A mismatch is the caller's to report as a WARN
     /// with `reason` plus visible feedback, never a silent drop.
+    ///
+    /// Every rejection is logged here once, at DEBUG on `pets.command`
+    /// (`event = "ownership_rejected"`, `reason` = [`PetReject::reason`]):
+    /// a client can name any id at will, so it is not a WARN
+    /// (negative-logging convention). Handlers add feedback, not a second
+    /// log of the same seam.
     pub fn owned_pet(&self, caller: u32, claimed: u32) -> Result<u32, PetReject> {
-        let pet = self.pets.owned_pet(caller, claimed)?;
-        if self.get_entity(pet).is_none_or(|e| e.pet.is_none()) {
-            return Err(PetReject::PetGone);
+        let result = self.pets.owned_pet(caller, claimed).and_then(|pet| {
+            if self.get_entity(pet).is_none_or(|e| e.pet.is_none()) {
+                Err(PetReject::PetGone)
+            } else {
+                Ok(pet)
+            }
+        });
+        if let Err(reject) = result {
+            let id = self.player_identity(caller);
+            let owner_id = match reject {
+                PetReject::NotOwner { owner_id } => Some(owner_id),
+                _ => None,
+            };
+            tracing::debug!(
+                target: "pets.command",
+                event = "ownership_rejected",
+                reason = reject.reason(),
+                caller_id = caller,
+                account_id = id.account_id,
+                player_id = id.player_id,
+                pet_id = claimed,
+                owner_id,
+                "pet command names a pet the caller does not own"
+            );
         }
-        Ok(pet)
+        result
     }
 
     /// Who is credited for something `attacker` did (XP, kill credit, loot
