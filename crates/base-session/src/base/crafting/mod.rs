@@ -7,6 +7,7 @@
 //! - [`request`]: the entry point for `CellToBaseMsg::Crafting`. It logs the
 //!   request and routes each verb; until a verb's packet lands, the verb is
 //!   answered with a "not available yet" line.
+//! - [`spend`]: `spendAppliedSciencePoints`, learning a discipline (CR-04).
 //! - [`feedback`]: the rejection path. Every refused request gets a visible
 //!   text line (D-CR14).
 //! - [`sync`]: the owner-only pushes of crafting state to the client (136,
@@ -22,6 +23,7 @@ pub mod feedback;
 pub mod handlers;
 pub mod persistence;
 pub mod request;
+pub mod spend;
 pub mod sync;
 
 #[cfg(test)]

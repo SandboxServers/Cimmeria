@@ -18,6 +18,7 @@ use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::CraftVerb;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
+use cimmeria_cell_catalog::crafting::CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 /// Why a crafting request was refused. Later packets add one variant per
@@ -28,6 +29,32 @@ pub enum CraftReject {
     NotAvailableYet {
         /// What the player tried, as a sentence subject ("Alloying").
         action: &'static str,
+    },
+    /// The server could not decide the request (no database, the catalog
+    /// or the transaction failed). Nothing changed.
+    Unavailable {
+        /// What the player tried, as a sentence subject.
+        action: &'static str,
+    },
+    /// `spendAppliedSciencePoints` named a discipline the catalog does not
+    /// have. The 2009 client only offers catalog disciplines, so this is a
+    /// forged or stale request.
+    UnknownDiscipline { discipline_id: i32 },
+    /// The discipline is already known. Also what a replayed spend gets.
+    DisciplineAlreadyKnown { name: String },
+    /// No unspent applied science points.
+    NoAppliedSciencePoints,
+    /// The discipline's racial paradigm is below the level it needs.
+    ParadigmTooLow {
+        discipline: String,
+        paradigm: &'static str,
+        required: i32,
+        have: i32,
+    },
+    /// A required discipline is unknown or below expertise 50.
+    PrerequisiteMissing {
+        discipline: String,
+        prerequisite: String,
     },
 }
 
@@ -49,6 +76,12 @@ impl CraftReject {
     pub fn reason(&self) -> &'static str {
         match self {
             CraftReject::NotAvailableYet { .. } => "not_available_yet",
+            CraftReject::Unavailable { .. } => "unavailable",
+            CraftReject::UnknownDiscipline { .. } => "unknown_discipline",
+            CraftReject::DisciplineAlreadyKnown { .. } => "already_known",
+            CraftReject::NoAppliedSciencePoints => "not_enough_asp",
+            CraftReject::ParadigmTooLow { .. } => "paradigm_too_low",
+            CraftReject::PrerequisiteMissing { .. } => "prerequisite_missing",
         }
     }
 
@@ -58,6 +91,28 @@ impl CraftReject {
             CraftReject::NotAvailableYet { action } => {
                 format!("{action} is not available yet.")
             }
+            CraftReject::Unavailable { action } => {
+                format!("{action} is unavailable right now. Nothing was changed.")
+            }
+            CraftReject::UnknownDiscipline { discipline_id } => {
+                format!("There is no discipline {discipline_id}.")
+            }
+            CraftReject::DisciplineAlreadyKnown { name } => format!("You already know {name}."),
+            CraftReject::NoAppliedSciencePoints => {
+                "You have no applied science points.".to_string()
+            }
+            CraftReject::ParadigmTooLow {
+                discipline,
+                paradigm,
+                required,
+                have,
+            } => format!(
+                "{discipline} requires {paradigm} paradigm level {required}; yours is {have}."
+            ),
+            CraftReject::PrerequisiteMissing {
+                discipline,
+                prerequisite,
+            } => format!("{discipline} requires {prerequisite} at expertise 50."),
         }
     }
 
@@ -67,7 +122,15 @@ impl CraftReject {
     /// every other reason is text only.
     pub fn error_code(&self) -> Option<u16> {
         match self {
-            CraftReject::NotAvailableYet { .. } => None,
+            CraftReject::NoAppliedSciencePoints => {
+                Some(CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS)
+            }
+            CraftReject::NotAvailableYet { .. }
+            | CraftReject::Unavailable { .. }
+            | CraftReject::UnknownDiscipline { .. }
+            | CraftReject::DisciplineAlreadyKnown { .. }
+            | CraftReject::ParadigmTooLow { .. }
+            | CraftReject::PrerequisiteMissing { .. } => None,
         }
     }
 }
@@ -288,5 +351,76 @@ mod tests {
     #[test]
     fn error_code_args_are_system_instance_code() {
         assert_eq!(error_code_args(214), [0, 0, 0, 0, 0, 0xD6, 0x00]);
+    }
+
+    /// A reason that maps a condition code (no ASP -> 214) sends the text
+    /// line first, then `onErrorCode(0, 0, 214)`: two packets, in that
+    /// order, both to the player. Unmapping the code, or sending the code
+    /// instead of the text, fails the comparison.
+    #[tokio::test]
+    async fn coded_reject_sends_the_text_then_on_error_code() {
+        let typed = Arc::new(TestTransport::new());
+        let transport: Arc<dyn Transport> = typed.clone();
+        let (addr, connected, entity_to_addr) = one_session();
+
+        reject(
+            ENTITY,
+            PLAYER_ID,
+            &CraftReject::NoAppliedSciencePoints,
+            &transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+
+        let packet = |seq, method, args: &[u8]| {
+            build_player_entity_method_packet(
+                &[0u8; 32],
+                seq,
+                &[],
+                ENTITY,
+                method,
+                args,
+                EncryptionVersion::V1,
+            )
+        };
+        assert_eq!(
+            typed.filter_to(addr),
+            vec![
+                packet(
+                    0,
+                    method_idx::ON_PLAYER_COMMUNICATION,
+                    &feedback_text_args("You have no applied science points."),
+                ),
+                packet(1, method_idx::ON_ERROR_CODE, &[0, 0, 0, 0, 0, 0xD6, 0x00]),
+            ]
+        );
+    }
+
+    /// Only the ASP reason carries a code; every other spend reason is
+    /// text only (D-CR14).
+    #[test]
+    fn only_not_enough_asp_maps_a_condition_code() {
+        let texts_only = [
+            CraftReject::Unavailable {
+                action: "Learning disciplines",
+            },
+            CraftReject::UnknownDiscipline { discipline_id: 9 },
+            CraftReject::DisciplineAlreadyKnown { name: "X".into() },
+            CraftReject::ParadigmTooLow {
+                discipline: "X".into(),
+                paradigm: "Common",
+                required: 5,
+                have: 1,
+            },
+            CraftReject::PrerequisiteMissing {
+                discipline: "X".into(),
+                prerequisite: "Y".into(),
+            },
+        ];
+        for why in texts_only {
+            assert_eq!(why.error_code(), None, "{why:?}");
+        }
+        assert_eq!(CraftReject::NoAppliedSciencePoints.error_code(), Some(214));
     }
 }

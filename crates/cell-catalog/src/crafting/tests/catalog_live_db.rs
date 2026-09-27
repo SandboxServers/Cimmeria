@@ -109,3 +109,21 @@ async fn catalog_loads_seed_counts_sets_and_item_attrs() {
         assert_eq!(a.applied_science_id, science, "item {id} applied science");
     }
 }
+
+/// The paradigm names crafting text uses are the seed's rows, in full.
+#[tokio::test]
+async fn racial_paradigm_names_match_the_seed() {
+    let pool = require_db_or_skip!();
+    let rows: Vec<(i32, String)> =
+        sqlx::query_as("SELECT id, name FROM resources.racial_paradigm ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .expect("racial_paradigm rows");
+    let names: Vec<(i32, String)> = RACIAL_PARADIGM_NAMES
+        .iter()
+        .map(|&(id, name)| (id, name.to_string()))
+        .collect();
+    assert_eq!(rows, names);
+    assert_eq!(racial_paradigm_name(3), Some("Goa'uld"));
+    assert_eq!(racial_paradigm_name(6), None);
+}
