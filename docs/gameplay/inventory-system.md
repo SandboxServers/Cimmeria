@@ -37,7 +37,8 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
 | Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined; blocked on the organization system |
-| Personal vault window | DONE (open path only) | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Moves into and out of the vault are BV-03 |
+| Personal vault window | DONE | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Deposits and withdrawals: [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
+| Vault expansion | DONE (UAT pending) | +10 slots per purchase at a Banker, 40 to 100, priced by `resources.bank_expansion_price`; see [Expanding the vault](#expanding-the-vault) |
 
 ### Vendor caveat
 
@@ -125,7 +126,7 @@ No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE
 | 20 | 100 | No |
 | anything else | 0 | No |
 
-**The personal vault's size is per player.** `sgw_player.bank_slots` is a `smallint`, default 40, constrained to 40-100 in steps of 10. It loads with the player, and `onBagInfo` declares container 17 at that size both at world entry (`map_loaded.rs`) and on the post-respawn resync (`send_full_inventory_resync`). Every other container is declared at its capacity.
+**The personal vault's size is per player.** `sgw_player.bank_slots` is a `smallint`, default 40, constrained to 40-100 in steps of 10. It loads with the player, and `onBagInfo` declares container 17 at that size at world entry (`map_loaded.rs`), on the post-respawn resync (`send_full_inventory_resync`), and after each expansion bought at a Banker (see [Expanding the vault](#expanding-the-vault)). Every other container is declared at its capacity. `bank_slots` only ever grows: the bank moves read it without a lock, which is safe only while no writer can shrink it.
 
 **Player moves go through an allowlist.** `handle_move_inventory_item` checks the target container before the slot-range check and the source container after it locks the source row, using `player_movable` in [`move_/container_policy.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/move_/container_policy.rs). A capacity alone never makes a container movable. `VaultSession` means movable only with the cell's vault verdict open (see [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault)). A refused move changes nothing, logs `move_rejected` at WARN under the `bank` target with a `reason` (`source_container_not_player_movable` or `target_container_not_player_movable` for the allowlist; the vault reasons are listed below), and resends that one item (`onUpdateItem` for the refused `item_id` only, read and sent under the per-player move lock and a row lock on that item, so no concurrent write to it, such as a grant merging into the stack, can be overtaken by the older state) so the client snaps it back. An `item_id` the player does not own gets no packet. If either lock cannot be taken, nothing is resent either (`move_resync_skipped reason=lock_timeout`): the client keeps the dragged position until the next update of that item, rather than risk an unlocked resend overtaking a concurrent write. Whether a given item may sit in a movable container is still decided by its `container_sets` (`item_allows_container`).
 
@@ -198,6 +199,37 @@ Every committed vault move logs `move_accepted` (DEBUG, `bank`) with `kind` (`de
 **Use and removal** find an item by id (or by type), and used to find it in any container, so an item in buyback could be used and a banked item used from anywhere. `player_accessible(container_id, &vault)` beside the move allowlist now decides: 1-15 always, 17 only with the verdict open, never 16 or 18-20. `useItem`, `removeItem`, content `RemoveItem` by instance and `gmRemoveItem` refuse an item elsewhere with `use_rejected` (WARN, `bank`, `reason=container_not_accessible`, `container`, `op`) and a chat line. Content `RemoveItem` by type (a turn-in) searches only 1-15, even with the vault open: the bank is storage only (D-BV04), so what a chain consumes must not depend on whether a window is open.
 
 **Slot reservation.** `reserve_free_inventory_slots` bounds 17 by `bank_slots` too, so no path that reserves vault slots can hand a 40-slot player slot 40. Grants into 17 are refused before they get there.
+
+## Expanding the vault
+
+The personal vault starts at 40 slots and grows to 100 in steps of 10, each step bought at a Banker (decision D-BV02). The price of each step is a row in `resources.bank_expansion_price` (`to_slots`, `price_naquadah`), seeded at 100 naquadah for every step from 50 to 100, so it can be tuned in the seed without code. A missing row makes that step unbuyable, never free.
+
+**The offer.** Every personal vault open (a Banker click or GM `.bank`) also asks the base for a quote (`BankCellToBase::ExpansionQuote`). The base reads `bank_slots`, the cash and the next step's price:
+
+- below 100 slots, it answers the cell with `BankBaseToCell::OfferExpansion { from_slots, price }`. The cell records `from_slots` on the vault session (`VaultSession::expansion_offer`) and shows dialog 60110, "Expand vault": one screen with one Generic 1 button, authored as a cooked-data override. It also sends a chat line with the size and the price, because the dialog text cannot carry a seed value;
+- at 100 slots, it sends no offer and tells the player the vault is full.
+
+The offer is dropped (`expand_offer_dropped`) if the session ended or moved to another speaker before it arrived.
+
+**The purchase.** Pressing the button sends `dialogButtonChoice(60110, 8)`. The #479 gate checks only that the dialog was shown, so the button is not an authority check. The cell routes the answer by dialog id to the purchase path, never to a content chain. There it takes the offer (one-shot) and a **fresh** vault verdict, `vault_access`, the rule every bank move takes, and forwards both as `BankCellToBase::Expand`. A close (`-1`) is never a purchase. The base then:
+
+1. refuses unless the verdict opens the personal vault (a Banker in range, or a GM session) and the session held an offer;
+2. buys in one statement ([`bank_expand/persist.rs`](../../crates/base-session/src/base/bank_expand/persist.rs)): `bank_slots + 10` and `naquadah - price` together, only while the row is still at the offered size, below 100, with a price row for the step and the cash to pay it. The offered size is the replay key: a second send for the same offer matches no row and charges nothing;
+3. on success, re-declares every container with `onBagInfo` (container 17 at the new size), sends `onCashChanged` and a chat line. BV-E1 infers that the new size resizes an open vault window live through `InventoryUpdateContainerSize`; UAT confirms it. The chat line is sent either way, so the press is acknowledged even with the window closed.
+
+A zero-row purchase is classified by a follow-up read, replay key first. Every refusal logs `expand_rejected` (WARN, `bank`) with a stable `reason`, the size and the cash it read, and sends a chat line:
+
+| `reason` | When |
+|---|---|
+| the verdict's label (`no_vault_session`, `banker_out_of_range`, `banker_gone`, `banker_other_space`, `vault_session_other_space`, `player_missing`, `vault_scope_mismatch`) | no session, walked away, or changed space |
+| `no_offer` | the session holds no offer (answered twice, or after the vault was reopened) |
+| `replay` | the vault is no longer at the offered size |
+| `at_ceiling` | already at 100 slots |
+| `insufficient_cash` | less naquadah than the price (`price` logged) |
+| `price_missing` | no price row for the step |
+| `player_row_missing`, `db_unavailable`, `query_failed` | infrastructure |
+
+A purchase logs `expand` (INFO, `bank`) with `bank_slots_before`/`after`, `price`, `cash_before`/`after`, and the Banker (`banker_id`, `distance`) or `gm_override=true`. The cell side runs in the INFO span `bank.expand`, the purchase in `bank.expand_purchase`, the quote in `bank.expansion_quote`.
 
 ## Flush Update Order
 
