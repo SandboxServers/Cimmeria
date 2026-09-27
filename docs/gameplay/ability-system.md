@@ -220,6 +220,48 @@ A rejected purchase sends `onErrorCode` (121) with `SystemID 0` (`ERRORCODE_SYST
 
 The mapping comes from AT-E1 ([ability-trainer-ui.md](../reverse-engineering/findings/ability-trainer-ui.md) §2). Whether the client renders `onErrorCode` at all is **unresolved**: no client Lua consumes it. The trainer re-send is the feedback the player is known to see, so every coded rejection is followed by one. The re-send is skipped for the silent rows, so a forging client gets no free `onTrainerOpen` build per packet.
 
+### Respec
+
+The trainer window's Respec button calls `respecAbilities()`, which sends cell method 72 `resetMyAbilities` with no arguments (AT-E1 Q5). Since AT-08 the server implements it; before, it only logged `UNIMPLEMENTED`.
+
+The cell checks two things (`cell/cell_methods/player/vendor/respec.rs`):
+
+- The player's pin must be a live trainer that is still within `interact_target_in_range`. This is the same `trainer_pin` a purchase uses, but the trainer's offered list does not matter.
+- Something must be trainer-bought (`tree_progress`).
+
+It then sends `CellToBaseMsg::ResetAbilities` with the price, `RESPEC_COST_NAQUADAH` = 1000 (decision D-AT10). The same constant fills `onTrainerOpen`'s `CostToRespec` field, so the window shows what the respec charges.
+
+The base runs **one** `UPDATE` on `sgw_player` (`progression/respec.rs`). It is guarded by `naquadah >= cost` and "`tree_points_spent > 0` or `trained_abilities` is not empty", and it does the following:
+
+- removes every id in `trained_abilities` from `abilities`, keeping the order of the rest, so starter and quest grants survive;
+- adds `tree_points_spent` back to `training_points`, which is the exact refund because only trainer purchases count as spend (D-AT03);
+- sets `tree_points_spent = 0` and `trained_abilities = '{}'`;
+- subtracts the price from `naquadah`.
+
+A replayed respec finds nothing trainer-bought, so it matches no row and charges nothing. When the guard holds the row back, a read-only `SELECT` decides which refusal to report.
+
+The base answers with `BaseToCellMsg::AbilitiesReset`, which carries a `RespecOutcome`. On `Reset`, the cell mirrors the row: it drops the refunded abilities, clears `tree_progress` and sets the points. A warmup in progress on a refunded ability is interrupted (reason `ability_unlearned`, AT-10), and its interrupt frames go out first. The cell then sends, in order:
+
+1. `onKnownAbilitiesUpdate`;
+2. `onEntityProperty(GENERICPROPERTY_TrainingPoints, n)`;
+3. `onCashChanged(naquadah)`;
+4. while a trainer is pinned, the `onTrainerOpen` re-send, which shows the branch roots as buyable again.
+
+Every refused respec gets feedback on the first press: `onErrorCode` with `SystemID 0` and `InstanceID 0` (a respec names no ability), then the pinned trainer's re-send (`cell/interactions/respec_feedback.rs`).
+
+| Refusal | Decided by | `ErrorCodeID` | Fit |
+|---|---|---|---|
+| No trainer pinned, trainer despawned, pin not a trainer, out of range | cell | 43 `OutsideDistanceCheck` | Close, as for purchases |
+| Nothing trainer-bought (includes a replay) | cell, or base when the two race | 167 `EntityDoesNotHaveAbility` | Reused: the player has none of the abilities a respec removes |
+| Too little naquadah | base | 35 `StatValueLessThan` | Reused: the enum has no currency token |
+| Entity is not a loaded character | cell | none: silent | A legitimate client cannot send this. It is logged at WARN |
+
+A first press with nothing trainer-bought gets feedback too: the button looks enabled, so the project's first-press rule applies. Because the trainer gate runs first, only a player standing at a trainer can trigger the re-send.
+
+A press within 1 second of the last forwarded respec (`RESPEC_RETRY_WINDOW`) is dropped without an answer. The earlier press's answer is still on its way, so the dropped press is not a first press. The window stops a double-click from showing the success burst and then "nothing trained". It also limits the base to one row-locking `UPDATE` per player per second, which matters because the cell cannot see the naquadah balance. `AbilitiesReset` names the character that was reset, and the cell ignores the message if the entity id now belongs to another character.
+
+**The hotbar.** The client keeps its action-bar bindings in a per-character Lua saved variable (`GActionProfiles`, declared as a `<CharacterVariable>` in `ActionButtons.toc` and written to `Documents/My Games/.../SGWGame/<account>/<character>/ActionButtons - Saved Vars.lua`). No server method, property or table carries it, so the server cannot strip refunded abilities from it. The only server-held list the bar draws from is `sgw_player.abilities`, which the respec `UPDATE` strips, and `onKnownAbilitiesUpdate` re-sends it. A button still bound to a refunded ability stays on the bar until the player clears it. Pressing it is refused, because the ability is no longer known. AT-E1 found no client-side cleanup either ([ability-trainer-ui.md](../reverse-engineering/findings/ability-trainer-ui.md) §5).
+
 ## Data References
 
 - **Ability definitions**: 1,886 in `db/resources/Abilities/Seed/abilities.sql`
