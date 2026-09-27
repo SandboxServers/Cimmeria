@@ -53,10 +53,7 @@ pub enum PetEngagement {
 ///   so re-engaging it would flap the owner in and out of combat), not yet
 ///   spawned, or in the error state. An owner order still reaches a
 ///   surrendered NPC, as a player's own attack does.
-pub(super) fn target_state_refusal(
-    target: &CellEntity,
-    kind: PetEngagement,
-) -> Option<&'static str> {
+pub fn target_state_refusal(target: &CellEntity, kind: PetEngagement) -> Option<&'static str> {
     if combat::is_dead_state(target.state_field)
         || target.stats.get(HEALTH).is_none_or(|h| h.cur <= 0)
         || target.ai_state() == AiState::Dead
@@ -95,7 +92,9 @@ pub(super) fn target_state_refusal(
 ///
 /// Stance is not checked here: the stance decides whether the pet picks a
 /// fight on its own (a Passive pet never does), while an explicit order is
-/// obeyed. `kind` says which it is ([`PetEngagement`]). Uses the `pet_stance` aggro cause, which never recruits
+/// obeyed. `kind` says which it is ([`PetEngagement`]); an owner order also
+/// puts the target on top of the pet's threat list, so it redirects a pet
+/// already fighting something else. Uses the `pet_stance` aggro cause, which never recruits
 /// assisters. Callers log the outcome; only the cross-space refusal is
 /// logged here, since an owner order's target id comes from the client.
 pub fn engage_pet_target(
@@ -166,7 +165,26 @@ pub fn engage_pet_target(
     // owner's order is obeyed whatever the stance.
     let world = super::super::world_label(space_mgr, pet_id);
     if let Some(pet) = space_mgr.get_entity_mut(pet_id) {
-        *pet.threat_list.entry(target_id).or_insert(0.0) += PET_ENGAGE_THREAT;
+        let seeded = match kind {
+            PetEngagement::Automatic => {
+                pet.threat_list.get(&target_id).copied().unwrap_or(0.0) + PET_ENGAGE_THREAT
+            }
+            // An owner's order redirects the pet (PT-04): the named target
+            // goes just above everything else it is fighting, so the fight
+            // handler's top-threat pick is the owner's. Bounded: repeating
+            // the order does not grow it past the others.
+            PetEngagement::OwnerOrder => {
+                let others = pet
+                    .threat_list
+                    .iter()
+                    .filter(|(&id, _)| id != target_id)
+                    .map(|(_, &t)| t)
+                    .fold(0.0_f32, f32::max);
+                let current = pet.threat_list.get(&target_id).copied().unwrap_or(0.0);
+                current.max(others + PET_ENGAGE_THREAT)
+            }
+        };
+        pet.threat_list.insert(target_id, seeded);
         if pet.ai_state() != AiState::Fighting {
             super::super::set_ai_state_on(
                 pet,

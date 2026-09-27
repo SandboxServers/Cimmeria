@@ -165,9 +165,11 @@ async fn fire_time_refusal(
         return Some(InterruptReason::TargetLost);
     }
     // A pet casts on its owner's order (`petInvokeAbility`, pets PT-04),
-    // which applied the owner's target rule at launch; re-check the same
-    // rule here. An AI-driven mob is not (its fight tick picks targets).
-    if caster.pet.is_some() && !cimmeria_cell_world::cell::pets::is_order_target(target) {
+    // which applied the pet rule at launch; re-check it here. An AI-driven
+    // mob is not (its fight tick picks targets).
+    if caster.pet.is_some()
+        && super::pet_order::pet_fire_refusal(space_mgr, caster, target).is_some()
+    {
         return Some(InterruptReason::TargetLost);
     }
 
@@ -300,5 +302,5 @@ async fn fire_due_cast(
     }
     // A pet's owner order engages its target once the cast has fired
     // (pets PT-04); an interrupted warmup never gets here.
-    cimmeria_cell_world::cell::pets::engage_deferred_order(space_mgr, entity_id, pc.target_id);
+    super::pet_order::engage_fired_order(entity_id, pc.target_id, tx, space_mgr).await;
 }

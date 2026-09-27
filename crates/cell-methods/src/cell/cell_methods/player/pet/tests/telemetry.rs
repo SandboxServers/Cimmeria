@@ -90,6 +90,17 @@ async fn trigger(reason: &str) {
             (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, ELSEWHERE))
         }
         "target_not_hostile" => (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, FRIENDLY)),
+        "target_not_combatant" => {
+            mgr.get_entity_mut(MOB).unwrap().class_id = 0x01;
+            (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, MOB))
+        }
+        "target_resetting" => {
+            cimmeria_cell_combat::cell::service::npc_ai::force_ai_state(
+                mgr.get_entity_mut(MOB).unwrap(),
+                cimmeria_entity::cell_entity::AiState::Leashing,
+            );
+            (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, MOB))
+        }
         "target_dead" => {
             mgr.get_entity_mut(MOB).unwrap().state_field |= crate::cell::combat::BSF_DEAD;
             (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, MOB))
@@ -165,6 +176,8 @@ const REFUSALS: &[(&str, &str, Level)] = &[
     ("target_gone", "target_gone", Level::DEBUG),
     ("target_other_space", "target_other_space", Level::DEBUG),
     ("target_not_hostile", "target_not_hostile", Level::DEBUG),
+    ("target_not_combatant", "target_not_combatant", Level::DEBUG),
+    ("target_resetting", "target_resetting", Level::DEBUG),
     ("target_dead", "target_dead", Level::DEBUG),
     ("out_of_range", "out_of_range", Level::DEBUG),
     ("no_line_of_sight", "no_line_of_sight", Level::DEBUG),

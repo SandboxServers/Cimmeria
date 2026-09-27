@@ -171,6 +171,8 @@ async fn a_fired_warmup_engages_the_ordered_target() {
     assert_eq!(e.ai_state(), AiState::Fighting, "the pet engages on fire");
     assert!(e.threat_list.contains_key(&MOB));
     assert_eq!(e.pet.as_deref().unwrap().deferred_order, None, "taken");
+    let mut mgr = mgr;
+    assert_two_sided_engagement(&mut mgr, pet, MOB).await;
 }
 
 /// An order whose warmup is interrupted (the target turned friendly) leaves
@@ -186,6 +188,10 @@ async fn an_interrupted_warmup_leaves_the_pet_not_fighting() {
     let e = mgr.get_entity(pet).unwrap();
     assert!(e.threat_list.is_empty(), "no command-seeded threat");
     assert_ne!(e.ai_state(), AiState::Fighting);
+    assert!(
+        mgr.get_entity(MOB).unwrap().threat_list.is_empty(),
+        "the mob was never engaged"
+    );
     assert!(
         !rows.iter().any(|c| c.has_field("event", "order_engaged")),
         "an interrupted cast never reaches the engagement"

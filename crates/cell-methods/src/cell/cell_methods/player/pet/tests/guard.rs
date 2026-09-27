@@ -97,6 +97,11 @@ async fn another_players_pet_is_refused_for_every_command() {
             vec![(instance, FEEDBACK_IS_NOT_PET_OWNER)],
             "{label}: the caller gets IsNotPetOwner"
         );
+        assert_eq!(
+            sent.feedback_lines_to(OWNER),
+            1,
+            "{label}: and a visible CHAN_FEEDBACK line"
+        );
         assert!(
             sent.witness_calls().is_empty(),
             "{label}: nothing about the pet is sent to anyone"

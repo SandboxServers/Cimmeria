@@ -20,6 +20,7 @@
 //! the same `handle_use_ability` and its casts park here too.
 
 mod interrupt;
+mod pet_order;
 mod tick;
 
 use tokio::sync::mpsc;

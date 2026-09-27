@@ -13,8 +13,8 @@
 //!   the owner witnesses the pet.
 //! - [`teardown`] holds `despawn_pet`, `forget_owner` and the per-tick
 //!   `pet_owner_sweep` (which also expires pet corpses, D-PT08).
-//! - [`order`] holds the owner's attack order (PT-04): the engagement, and
-//!   the deferred one the warmup tick applies when an ordered cast fires.
+//! - [`order`] holds what the owner's attack order (PT-04) shares across
+//!   crates: the deferred order the warmup tick pops, and the feedback text.
 //! - [`owner_hooks`] holds the PT-02 choke points every owner path calls:
 //!   `on_owner_left` (despawn) and `on_owner_teleported` (move beside).
 //!
@@ -31,10 +31,7 @@ pub mod teardown;
 
 pub use arrival::{drain_arrivals, pet_arrival_tick, PetArrival, ARRIVAL_TIMEOUT};
 pub use create_on_client::{pet_create_on_client_events, CLIENT_DEFAULT_STANCE};
-pub use order::{
-    engage_commanded_target, engage_deferred_order, is_order_target, PET_COMMAND_THREAT,
-    PET_COMMAND_THREAT_CAP,
-};
+pub use order::{engage_refusal_code, order_feedback_text, take_deferred_order, TakenOrder};
 pub use owner_hooks::{on_owner_left, on_owner_reappeared, on_owner_teleported, OwnerPath};
 pub use registry::{PetRegistry, PetReject};
 pub use spawn::{stance_mask_from_flags, PetSpawnError, PET_SPAWN_OFFSET};

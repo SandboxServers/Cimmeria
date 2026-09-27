@@ -105,10 +105,6 @@ pub enum AiTransitionReason {
     /// in place of the leash home, or out of a state a pet never keeps
     /// (pets PT-05, D-PT07).
     PetFollow,
-    /// The pet's owner ordered an attack through `petInvokeAbility` (cell
-    /// method 88) and the cast committed: the pet engages that target
-    /// (pets PT-04).
-    PetCommand,
 }
 
 impl AiTransitionReason {
@@ -140,7 +136,6 @@ impl AiTransitionReason {
             Self::FollowResumed => "follow_resumed",
             Self::PetEngage => "pet_engage",
             Self::PetFollow => "pet_follow",
-            Self::PetCommand => "pet_command",
         }
     }
 }
@@ -342,7 +337,6 @@ mod tests {
         assert_eq!(AiTransitionReason::FollowResumed.label(), "follow_resumed");
         assert_eq!(AiTransitionReason::PetEngage.label(), "pet_engage");
         assert_eq!(AiTransitionReason::PetFollow.label(), "pet_follow");
-        assert_eq!(AiTransitionReason::PetCommand.label(), "pet_command");
         assert_eq!(AiState::Investigating.label(), "investigating");
     }
 

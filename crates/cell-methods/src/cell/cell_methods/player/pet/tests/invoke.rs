@@ -37,6 +37,7 @@ async fn owner_order_casts_and_engages_the_target() {
         .max_by(|a, b| a.1.total_cmp(b.1))
         .map(|(&id, _)| id);
     assert_eq!(top, Some(MOB), "the commanded mob is the top threat");
+    assert_two_sided_engagement(&mut mgr, pet, MOB).await;
 }
 
 /// A hostile-faction SGWBeing (class 0x01: a prop or story actor) is not a
@@ -54,12 +55,38 @@ async fn a_hostile_faction_being_is_refused() {
     being.faction = HOSTILE_FACTION;
     being.class_id = 0x01;
 
+    let capture = crate::test_support::LogCapture::install();
     let sent = invoke(&mut mgr, OWNER, pet, PET_ABILITY, BEING).await;
     assert_eq!(
         sent.error_codes_to(OWNER),
         vec![(PET_ABILITY, FEEDBACK_RELATIONSHIP_FRIEND)]
     );
+    assert_eq!(sent.feedback_lines_to(OWNER), 1, "a visible chat line");
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.target == "pets.command" && c.has_field("reason", "target_not_combatant")));
     assert_pet_idle(&mgr, pet, PET_ABILITY);
+    assert!(mgr.get_entity(BEING).unwrap().threat_list.is_empty());
+}
+
+/// A mob walking home (Leashing) evades: the order is refused before the
+/// cast, with feedback, and nothing is engaged.
+#[tokio::test]
+async fn a_leashing_target_is_refused() {
+    let World { mut mgr, pet, .. } = world();
+    cimmeria_cell_combat::cell::service::npc_ai::force_ai_state(
+        mgr.get_entity_mut(MOB).unwrap(),
+        cimmeria_entity::cell_entity::AiState::Leashing,
+    );
+    let sent = invoke(&mut mgr, OWNER, pet, PET_ABILITY, MOB).await;
+    assert_eq!(
+        sent.error_codes_to(OWNER),
+        vec![(PET_ABILITY, FEEDBACK_INVALID_ENTITY)]
+    );
+    assert_eq!(sent.feedback_lines_to(OWNER), 1);
+    assert_pet_idle(&mgr, pet, PET_ABILITY);
+    assert!(mgr.get_entity(MOB).unwrap().threat_list.is_empty());
 }
 
 /// A second order at a new target outranks the fight the pet is already in.
@@ -295,6 +322,11 @@ async fn a_target_in_another_space_is_refused() {
     assert_eq!(
         sent.error_codes_to(OWNER),
         vec![(PET_ABILITY, FEEDBACK_INVALID_ENTITY)]
+    );
+    assert_eq!(sent.feedback_lines_to(OWNER), 1, "a visible chat line");
+    assert!(
+        mgr.get_entity(ELSEWHERE).unwrap().threat_list.is_empty(),
+        "no threat across spaces"
     );
     assert!(capture
         .all()

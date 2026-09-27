@@ -131,6 +131,19 @@ impl Sent {
             .collect()
     }
 
+    /// How many `CHAN_FEEDBACK` chat lines (`onPlayerCommunication`) went
+    /// to `player`: every refusal pairs one with its `onErrorCode`.
+    fn feedback_lines_to(&self, player: u32) -> usize {
+        self.0
+            .iter()
+            .filter(|m| {
+                matches!(m, CellToBaseMsg::EntityMethodCall { entity_id, method_index, .. }
+                    if *entity_id == player
+                        && *method_index == crate::mercury::method_idx::ON_PLAYER_COMMUNICATION)
+            })
+            .count()
+    }
+
     /// Every `onErrorCode`, whoever it is addressed to.
     fn all_error_codes(&self) -> usize {
         self.0
@@ -219,4 +232,38 @@ async fn toggle(mgr: &mut SpaceManager, caller: u32, pet: u32, ability: i32, on:
 
 async fn stance(mgr: &mut SpaceManager, caller: u32, pet: u32, raw: i8) -> Sent {
     call(mgr, caller, PET_CHANGE_STANCE, &stance_args(pet, raw)).await
+}
+
+/// Run one pass of the real NPC AI tick (the pet's owner-relative pre-pass
+/// included), which mirrors a pet's fights into its owner's combat state.
+async fn ai_tick(mgr: &mut SpaceManager) {
+    let (tx, _rx) = mpsc::channel(512);
+    let engine = ChainEngine::new();
+    cimmeria_cell_combat::cell::service::npc_ai::npc_ai_tick_for_test(
+        &tx,
+        mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
+}
+
+/// Both sides of an ordered engagement, and the owner in combat after the
+/// AI's next pass: the mob lists the pet and is Fighting, and the owner is
+/// `BSF_InCombat` (PT-05's owner combat mirror).
+async fn assert_two_sided_engagement(mgr: &mut SpaceManager, pet: u32, mob: u32) {
+    use cimmeria_entity::cell_entity::AiState;
+    let m = mgr.get_entity(mob).unwrap();
+    assert!(
+        m.threat_list.contains_key(&pet),
+        "the mob lists the pet: {:?}",
+        m.threat_list
+    );
+    assert_eq!(m.ai_state(), AiState::Fighting, "the mob fights back");
+    ai_tick(mgr).await;
+    let owner_state = mgr.get_entity(OWNER).unwrap().state_field;
+    assert_ne!(
+        owner_state & crate::cell::combat::BSF_IN_COMBAT,
+        0,
+        "the owner is in combat"
+    );
 }

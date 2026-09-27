@@ -51,6 +51,9 @@ use crate::cell::combat::is_dead_state;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::pets::PetReject;
 use crate::cell::space_manager::SpaceManager;
+use crate::mercury::method_idx::ON_PLAYER_COMMUNICATION;
+use cimmeria_cell_world::cell::pets::order_feedback_text;
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 pub use stance::{resolve_requested_stance, StanceSource};
 
@@ -271,26 +274,43 @@ pub(crate) async fn refuse(
             refusal.reason
         ),
     }
-    send_error_code(caller, refusal.instance_id, refusal.error_code, tx).await;
+    send_error_code(
+        caller,
+        refusal.instance_id,
+        refusal.error_code,
+        refusal.reason,
+        tx,
+    )
+    .await;
 }
 
-/// `onErrorCode(SystemID u8, InstanceID i32, ErrorCodeID u16)` to the owner.
+/// `onErrorCode(SystemID u8, InstanceID i32, ErrorCodeID u16)` to the owner,
+/// then a `CHAN_FEEDBACK` chat line saying why (`order_feedback_text` by
+/// `reason`). The shipped client has no Lua consumer for `onErrorCode`
+/// (AT-E1), so the line is what the owner actually sees.
 async fn send_error_code(
     caller: Caller,
     instance_id: i32,
     error_code: u16,
+    reason: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
     let mut args = Vec::with_capacity(7);
     args.push(ERRORCODE_SYSTEM_ABILITY);
     args.extend_from_slice(&instance_id.to_le_bytes());
     args.extend_from_slice(&error_code.to_le_bytes());
-    let msg = CellToBaseMsg::EntityMethodCall {
-        entity_id: caller.owner_id,
-        method_index: ON_ERROR_CODE,
-        args,
-    };
-    if tx.send(msg).await.is_err() {
+    let chat =
+        serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, order_feedback_text(reason));
+    let mut failed = false;
+    for (method_index, args) in [(ON_ERROR_CODE, args), (ON_PLAYER_COMMUNICATION, chat)] {
+        let msg = CellToBaseMsg::EntityMethodCall {
+            entity_id: caller.owner_id,
+            method_index,
+            args,
+        };
+        failed |= tx.send(msg).await.is_err();
+    }
+    if failed {
         tracing::warn!(
             target: "pets.command",
             command = caller.command.label(),
@@ -364,7 +384,7 @@ pub(crate) async fn owned_pet_or_refuse(
                 | PetReject::NotOwner { .. }
                 | PetReject::OwnerIdentityMismatch => FEEDBACK_IS_NOT_PET_OWNER,
             };
-            send_error_code(caller, instance_id, error_code, tx).await;
+            send_error_code(caller, instance_id, error_code, reject.reason(), tx).await;
             return None;
         }
     };

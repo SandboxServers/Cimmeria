@@ -2,12 +2,14 @@
 //!
 //! Every pet-bar click lands here (A-06). After the ownership guard the
 //! ability must be on the pet's bar and not toggled off, the pet must be
-//! alive and ready, and an explicit target must be a live hostile SGWMob in
-//! the pet's space (`pets::is_order_target`), within reach and in sight.
+//! alive and ready, and an explicit target must be something the pet may
+//! fight (PT-05's `npc_ai::pet::fight_refusal`: a combatant SGWMob its owner
+//! could attack) in the pet's space, engageable, within reach and in sight.
 //! Then the pet casts through `handle_use_ability_with_kill_credit` and
-//! engages the target: at once for an instant cast, or, for a cast with a
-//! warmup, when the warmup tick fires it (`pets::engage_deferred_order`).
-//! An interrupted warmup engages nothing.
+//! engages the target through the pet AI's `engage_pet_target`
+//! (`PetEngagement::OwnerOrder`, both sides of the fight): at once for an
+//! instant cast, or, for a cast with a warmup, when the warmup tick fires it
+//! (`warmup::pet_order`). An interrupted warmup engages nothing.
 //!
 //! # Why the target gate lives here
 //!
@@ -32,8 +34,11 @@ use super::{
 };
 use crate::cell::combat::is_dead_state;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::pets::{engage_commanded_target, is_order_target};
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_cell_combat::cell::service::npc_ai::pet::{
+    engage_pet_target, fight_refusal, target_state_refusal, PetEngagement,
+};
+use cimmeria_cell_world::cell::pets::engage_refusal_code;
 
 /// The range `handle_use_ability` uses when an ability's `max_range` is the
 /// `0` "server default" sentinel. Kept equal to it so this pre-check never
@@ -89,7 +94,7 @@ pub(super) async fn handle(
     let Some(pet) = owned_pet_or_refuse(caller, pet_id, ability_id, tx, space_mgr).await else {
         return;
     };
-    if let Err(refusal) = check_invoke(space_mgr, pet, ability_id, target_id) {
+    if let Err(refusal) = check_invoke(space_mgr, caller.owner_id, pet, ability_id, target_id) {
         refuse(caller, pet_id, refusal, tx).await;
         return;
     }
@@ -122,7 +127,7 @@ pub(super) async fn handle(
     // A cast with a warmup has only started: engaging now would leave the
     // pet fighting a target the warmup tick then refuses (it turned
     // friendly, went behind a wall). Record the order instead; the tick
-    // engages it when the cast fires (`pets::engage_deferred_order`) and an
+    // engages it when the cast fires (`warmup::pet_order`) and an
     // interrupted cast engages nothing. An instant cast has fired already.
     let warming = space_mgr
         .get_entity(pet)
@@ -135,8 +140,21 @@ pub(super) async fn handle(
         // A new order replaces an older one still waiting on its warmup.
         state.deferred_order = deferred.then_some(target_id as u32);
     }
-    let engaged =
-        !warming && target_id > 0 && engage_commanded_target(space_mgr, pet, target_id as u32);
+    // The pet AI's engagement (PT-05): both sides of the fight, the pet's
+    // rule and the target's state, as an owner order (a surrendered NPC is
+    // still a target, as for a player's own attack).
+    let mut engaged = false;
+    if !warming && target_id > 0 {
+        match engage_pet_target(space_mgr, pet, target_id as u32, PetEngagement::OwnerOrder) {
+            Ok(()) => engaged = true,
+            // The cast just killed it: nothing to engage, nothing to report.
+            Err("target_dead") => {}
+            Err(reason) => {
+                let refusal = Refusal::debug(reason, engage_refusal_code(reason), ability_id);
+                refuse(caller, pet_id, refusal, tx).await;
+            }
+        }
+    }
     tracing::debug!(
         target: "pets.command",
         event = "invoked",
@@ -159,6 +177,7 @@ pub(super) async fn handle(
 /// `target_id`. `pet` has already passed the ownership guard.
 pub(crate) fn check_invoke(
     space_mgr: &SpaceManager,
+    owner_id: u32,
     pet: u32,
     ability_id: i32,
     target_id: i32,
@@ -230,24 +249,33 @@ pub(crate) fn check_invoke(
             ))
         }
     };
-    // The #444 rule a player attacker gets, applied on the owner's behalf,
-    // plus the combatant check: only a hostile SGWMob, never a player, a
-    // pet (whatever its faction) or a being (`is_order_target`). DEBUG, not
-    // WARN: the pet bar sends the owner's current target (`Unit.Target`), so
-    // a friendly target is an ordinary misclick.
-    if target_u == pet || space_mgr.pets.is_pet(target_u) || !is_order_target(target) {
+    // The pet rule (PT-05's `fight_refusal`): a combatant SGWMob its owner
+    // could attack itself, so never a player, a pet (whatever its faction)
+    // or a being (`target_not_combatant`), and never what the #444 rule
+    // spares (`target_not_hostile`). DEBUG, not WARN: the pet bar sends the
+    // owner's current target (`Unit.Target`), so either is an ordinary
+    // misclick. The guard already proved the owner is live.
+    let fight = space_mgr
+        .get_entity(owner_id)
+        .map_or(Some("target_not_hostile"), |owner| {
+            fight_refusal(owner, target)
+        });
+    if let Some(reason) = fight {
         return Err(Refusal::debug(
-            "target_not_hostile",
+            reason,
             FEEDBACK_RELATIONSHIP_FRIEND,
             ability_id,
         ));
     }
-    if is_dead(target) {
-        return Err(Refusal::debug(
-            "target_dead",
-            FEEDBACK_NOT_LIVING,
-            ability_id,
-        ));
+    // The engagement's state rule, checked before the cast so a refused
+    // order casts nothing: dead, or walking home / leaving the world.
+    if let Some(reason) = target_state_refusal(target, PetEngagement::OwnerOrder) {
+        let code = if reason == "target_dead" {
+            FEEDBACK_NOT_LIVING
+        } else {
+            FEEDBACK_INVALID_ENTITY
+        };
+        return Err(Refusal::debug(reason, code, ability_id));
     }
     let max_range = space_mgr
         .ability_defs
