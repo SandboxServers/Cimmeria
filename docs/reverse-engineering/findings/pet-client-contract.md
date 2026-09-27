@@ -32,10 +32,11 @@ SGWSpawnableEntity → SGWBeing → SGWMob → SGWPet`, and the SGWMob table alr
 methods, matching `IDBASE_NPC_DEFAULT = 62` (`crates/mercury/src/channel_bundle/idbase.rs`) and
 the entity-property-sync appendix B figure of 32 for SGWPet cited in `code-map.md §1.5`.
 
-This is now independently corroborated (not just "derived, pending verification" — the
-verification step `code-map.md` flagged as outstanding is done): the three GamePet-side CME
-handlers for these methods carry the exact `.def` `<ArgName>` strings as their internal
-property-list keys —
+This is consistent with the handlers, though the handlers alone do not prove the numbers: the
+three GamePet-side CME handlers for these methods carry the exact `.def` `<ArgName>` strings as
+their internal property-list keys, which confirms *which* method each handler processes. The
+numeric indices 29/30/31 still rest on the flattening rule and the SGWMob prefix; no
+EntityDescription or dispatch mapping was read that would rule out a remap —
 
 - `GamePet__OnPetAbilityListChanged` (`0x00d39eb0`, renamed this session; was `FUN_00d39eb0`)
   builds its temporary property list keyed on the literal string `"aAbilityList"`.
@@ -189,7 +190,7 @@ a two-input AND with either input able to arrive first:**
 
 This is the exact message sequence PT-01's `pet_create_on_client_events(witness, &entity)`
 helper (`code-map.md §1.4`, item 2) needs to assemble for the owner-only createOnClient replay:
-`onEntityProperty(PetOwnerId=5, owner)` (cascade, alongside the existing `DatabaseId` push),
+`onEntityProperty(PetOwnerId=5, owner)` (cascade, **immediately after `onEntityFlags` carrying `ENTITYFLAG_Pet`**: the owner handler checks the Pet flag when the property arrives, so an owner property sent before the flags is ignored and the pet never binds),
 then `onPetAbilityList`, `onPetStanceList`, and (if non-default) `onPetStanceUpdate` — matching
 the legacy Python's `onPetAbilityList` → `onPetStanceList` ordering, now with the ownerID
 property confirmed as the missing third ingredient.

@@ -79,7 +79,8 @@ Full call chain traced and cross-confirmed two independent ways (see
   above, and *also*, redundantly, inside `GamePet__OnPetAbilityListChanged`'s successful-parse
   path. `+0x172` is set **only** by `GamePet__OnPetStanceListChanged`. So the real requirement
   reduces to: **`onEntityProperty(GENERICPROPERTY_PetOwnerId=5, owner)` (or a successful
-  `onPetAbilityList`) AND `onPetStanceList`, in any order.** `onPetStanceUpdate` does **not**
+  `onPetAbilityList`) AND `onPetStanceList`, in any order.** The owner property must reach the client **after** `onEntityFlags` has set
+  `ENTITYFLAG_Pet`: the owner handler is gated on the flag when the property arrives. `onPetStanceUpdate` does **not**
   gate this at all — it only updates the cached current-stance byte (`+0x173`) and fires a UI
   event. This directly answers PT-01's `pet_create_on_client_events` message-sequence question
   (`code-map.md §1.4` item 2) and resolves one of `pet-restoration.md`'s open questions (does
