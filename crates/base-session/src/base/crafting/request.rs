@@ -36,12 +36,13 @@ impl CraftCtx<'_> {
     }
 }
 
-/// Log the request at target `crafting` (`event = "request"`) and answer it,
-/// inside one `crafting.request` span per request.
+/// Log the request at target `crafting` (`event = "request"`), apply the
+/// station gate ([`super::gate`]) and answer it, inside one
+/// `crafting.request` span per request.
 ///
-/// `Spend` is decided by [`super::spend`]. Every other verb is answered with
-/// a "not available yet" line until it is implemented, so a press is never
-/// silent.
+/// `Spend` is decided by [`super::spend`]. Every other verb that passes the
+/// gate is answered with a "not available yet" line until it is
+/// implemented, so a press is never silent.
 #[tracing::instrument(
     name = "crafting.request",
     level = "info",
@@ -49,6 +50,7 @@ impl CraftCtx<'_> {
     fields(verb = request.verb.method_name())
 )]
 pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
+    let gate = super::gate::check(&request, ctx).await;
     let CraftRequest {
         entity_id,
         player_id,
@@ -68,6 +70,10 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
         args = ?verb,
         "crafting request"
     );
+    if let Err(why) = gate {
+        reject(method, entity_id, player_id, &why, ctx.client()).await;
+        return;
+    }
     if let CraftVerb::Spend { discipline_id } = verb {
         handle_spend(entity_id, player_id, discipline_id, ctx).await;
         return;

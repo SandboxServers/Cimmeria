@@ -467,6 +467,19 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
+    // Crafting options (140): the window's machine and tool, from the
+    // crafting bag and whatever stations the cell has reported. Sent on
+    // every onClientReady, so a world change resends it too.
+    super::super::crafting::options::send_login_options(
+        entity_id,
+        pending.player_id,
+        db_pool,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.
     // Runs after the list-push so the player is fully set up before watchers

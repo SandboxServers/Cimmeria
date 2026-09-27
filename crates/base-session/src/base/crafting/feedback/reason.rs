@@ -2,7 +2,9 @@
 //! reads, the enumerated `reason`, the values the rule compared, and the
 //! optional condition code.
 
-use cimmeria_cell_catalog::crafting::CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS;
+use cimmeria_cell_catalog::crafting::{
+    CraftType, CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS,
+};
 
 use crate::cell::messages::CraftVerb;
 
@@ -54,6 +56,9 @@ pub enum CraftReject {
         expertise: i32,
         required: i32,
     },
+    /// No station in reach, no covering tool in the crafting bag, and no
+    /// "craft anywhere".
+    NoStationOrTool { verb: CraftType },
 }
 
 /// The values a refused rule compared, logged as fields of the `rejected`
@@ -96,6 +101,7 @@ impl CraftReject {
             CraftReject::ParadigmTooLow { .. } => "paradigm_too_low",
             CraftReject::PrerequisiteMissing { .. } => "prerequisite_missing",
             CraftReject::PrerequisiteExpertise { .. } => "prerequisite_expertise",
+            CraftReject::NoStationOrTool { .. } => "no_station_or_tool",
         }
     }
 
@@ -138,15 +144,24 @@ impl CraftReject {
             } => format!(
                 "{discipline} requires {prerequisite} at expertise {required}; yours is {expertise}."
             ),
+            CraftReject::NoStationOrTool { verb } => {
+                let verb = match verb {
+                    CraftType::Craft => "crafting",
+                    CraftType::Research => "research",
+                    CraftType::ReverseEngineering => "reverse engineering",
+                    CraftType::Alloying => "alloying",
+                };
+                format!("No crafting station or tool for {verb} nearby.")
+            }
         }
     }
 
     /// What the refused rule compared.
     pub fn compared(&self) -> Compared {
         match *self {
-            CraftReject::NotAvailableYet { .. } | CraftReject::Unavailable { .. } => {
-                Compared::default()
-            }
+            CraftReject::NotAvailableYet { .. }
+            | CraftReject::Unavailable { .. }
+            | CraftReject::NoStationOrTool { .. } => Compared::default(),
             CraftReject::UnknownDiscipline { discipline_id }
             | CraftReject::DisciplineAlreadyKnown { discipline_id, .. } => Compared {
                 discipline_id: Some(discipline_id),
@@ -208,7 +223,8 @@ impl CraftReject {
             | CraftReject::DisciplineAlreadyKnown { .. }
             | CraftReject::ParadigmTooLow { .. }
             | CraftReject::PrerequisiteMissing { .. }
-            | CraftReject::PrerequisiteExpertise { .. } => None,
+            | CraftReject::PrerequisiteExpertise { .. }
+            | CraftReject::NoStationOrTool { .. } => None,
         }
     }
 }
@@ -254,6 +270,27 @@ mod tests {
         assert_eq!(
             text(CraftVerb::Respec),
             "Crafting respec is not available yet."
+        );
+    }
+
+    #[test]
+    fn no_station_text_names_the_verb() {
+        let text = |verb| CraftReject::NoStationOrTool { verb }.text();
+        assert_eq!(
+            text(CraftType::Craft),
+            "No crafting station or tool for crafting nearby."
+        );
+        assert_eq!(
+            text(CraftType::Research),
+            "No crafting station or tool for research nearby."
+        );
+        assert_eq!(
+            text(CraftType::ReverseEngineering),
+            "No crafting station or tool for reverse engineering nearby."
+        );
+        assert_eq!(
+            text(CraftType::Alloying),
+            "No crafting station or tool for alloying nearby."
         );
     }
 

@@ -8,7 +8,7 @@
 //! re-exports `methods` at its old path.
 
 pub(crate) use cimmeria_base_session::base::{
-    contact_list, gm_feedback, helpers, outbox, ConnectedClientState,
+    contact_list, crafting, gm_feedback, helpers, outbox, ConnectedClientState,
 };
 // The bag tables.
 pub(crate) use cimmeria_resources::base::resources;

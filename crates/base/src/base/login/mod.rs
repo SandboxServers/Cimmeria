@@ -213,6 +213,7 @@ pub(crate) async fn handle_login(
                 active_player_id: None,
                 pending_destination_ring_id: None,
                 channel: Mutex::new(new_client_channel(addr)),
+                crafting_options: Default::default(),
             },
         );
         arcs

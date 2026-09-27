@@ -4,6 +4,10 @@
 //! Revert-verifier: removing the arm's call, or the `reject` send inside
 //! `handle_craft_request`, leaves the player's address with no packet and
 //! fails the count below.
+//!
+//! The request carries the alloying station bit, so it passes the station
+//! gate (CR-05) and reaches the verb's "not available yet" answer. The gate
+//! itself is pinned in [`super::crafting_gate`].
 
 use super::super::*;
 use super::one_session;
@@ -29,7 +33,8 @@ async fn crafting_request_is_logged_and_answered_with_feedback() {
                 current_tier_item_id: 9001,
                 lower_tier_items: vec![11, 12],
             },
-            allowed: 0,
+            // A station for alloying is in reach.
+            allowed: 0x08,
         }),
         &transport,
         &connected,

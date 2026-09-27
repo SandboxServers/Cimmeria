@@ -562,7 +562,7 @@ restart, never written to the DB):**
 | Stat readouts | `.primarystats` `.speedstats` `.armorstats` `.qrstats` `.absorbstats` `.stealthstats` | ✅ Yes |
 | Entity authoring | `.tag` `.name` `.alignment` `.nameid` `.staticmesh` `.bodyset` `.eventset` `.interactiontype` `.lookat` `.visible` `.setcombatant` `.unsetcombatant` `.addcomponent` `.delcomponent` `.adddialog` `.removedialog` `.dynamicupdate` | 🚧 In-memory (pair with `.savespawn`) |
 | Net / AI debug | `.net_seq` `.net_seqto` `.net_seqfrom` `.net_timer` `.net_mapinfo` `.net_speak` `.net_dialog` `.net_challenge` `.debug_velocity` `.debug_controller` `.debug_follow` `.threaten` `.aggression` `.aggro` | ✅ Yes. `.aggro off` stops idle mobs noticing you, `.aggro on` restores it, and `.aggro` alone shows it. `.aggression <1-5|0|clear>` sets the selected mob's aggression override (1 hostile, 3 neutral; 0 means passive; `clear` goes back to its faction) |
-| Crafting | `.learndiscipline` `.forgetdiscipline` `.allcraft` | 🚧 Partly |
+| Crafting | `.learndiscipline` `.forgetdiscipline` `.allcraft` | ✅ Yes. `.allcraft` on a targeted player sets every paradigm to 7, every discipline to 100 and grants every blueprint (saved), and lets that player craft anywhere until logout |
 | Mission gaps | `.missionfail` `.missionrewards` | ✅ / 🚧 (preview) |
 | Spawn authoring | `.savespawn` `.delspawn` `.autosavespawn` `.respawnall` `.spawnrandom` | ✅ Yes — `.savespawn`/`.delspawn` **write the DB** (commit seed) |
 | Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **write the DB** (commit seed) |
@@ -570,7 +570,7 @@ restart, never written to the DB):**
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
 | Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
 
-A few commands (`.debug_controller`, the server/maint family, `.allcraft`) report
+A few commands (`.debug_controller`, the server/maint family) report
 an honest limitation in-game where the Rust server handles the concern
 differently from the legacy Python (incremental persistence, startup resource
 loading, env-based log level). See the

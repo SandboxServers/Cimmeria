@@ -30,6 +30,8 @@
 //!   `EntityInvisible`, under the first-login cinematic AoI hold.
 //! - [`crafting_arm`]      — `Crafting` logs the request and answers it
 //!   with a visible feedback line.
+//! - [`crafting_gate`]     â€” the station gate, "craft anywhere", station
+//!   reports and the `.allcraft` access check.
 //! - [`fallible_handlers`] — `GateTravel` / `ReanchorPlayer` error-log
 //!   seams.
 //! - [`passthrough`]       — `SpaceData` / `MissionUpdate` / `MailRequest`
@@ -49,6 +51,7 @@ use crate::test_support::test_default_connected_client_state;
 mod aoi_defer_gate;
 mod cinematic_hold_gate;
 mod crafting_arm;
+mod crafting_gate;
 mod fallible_handlers;
 mod gm_grant_arms;
 mod org_arms;

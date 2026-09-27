@@ -65,5 +65,6 @@ pub fn test_default_connected_client_state() -> ConnectedClientState {
         channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
             "127.0.0.1:9999".parse().unwrap(),
         )),
+        crafting_options: Default::default(),
     }
 }
