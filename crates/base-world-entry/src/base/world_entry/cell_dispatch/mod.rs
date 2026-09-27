@@ -124,6 +124,7 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::ResetAbilities { .. }
         | CellToBaseMsg::GrantItem { .. }
         | CellToBaseMsg::GrantCash { .. }
+        | CellToBaseMsg::GrantTrainingPoints { .. }
         | CellToBaseMsg::GrantExpertise { .. }
         | CellToBaseMsg::GrantAppliedSciencePoints { .. }
         | CellToBaseMsg::ExecuteAuthoringSql { .. }

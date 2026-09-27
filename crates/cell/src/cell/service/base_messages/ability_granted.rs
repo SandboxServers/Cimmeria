@@ -13,6 +13,8 @@
 //!
 //! `ProgressionChanged` keeps the cell's level and points in step with a
 //! base level-up, so the gates above read what the base debits against.
+//! `TrainingPointsGranted` does the same for a GM grant, and also sends the
+//! counter and the trainer re-send, since no base bundle carried them.
 
 use tokio::sync::mpsc;
 
@@ -86,19 +88,30 @@ pub(super) async fn handle_ability_granted(
     // set, level, prereqs). This matches Python's
     // `AbilityTrainer.onTrainAbility` behavior: it re-fires
     // `onTrainerOpen` unconditionally after a successful train RPC.
-    // `try_open_trainer` short-circuits to `false` when the pinned
-    // target isn't a trainer template, so non-trainer NPCs pinned
-    // as `last_interaction_target` (vendors, lootables, dialog NPCs)
-    // never trigger a resend.
-    //
-    // `last_interaction_target` is set by `handle_interact` and
-    // not cleared on trainer close. Trade-off: if a player opens
-    // a trainer, closes it, then earns an ability some other way
-    // (chain `Action::GrantAbility` from a quest turn-in), we'd
-    // emit a spurious `onTrainerOpen`. The client tolerates an
-    // unsolicited `onTrainerOpen` when the trainer window isn't
-    // visible (UEvent_UI_TrainerOpen handler just shows the panel),
-    // so this is harmless.
+    resend_trainer_if_pinned(entity_id, training_points, tx, space_mgr).await;
+}
+
+/// Re-send `onTrainerOpen` when the player has a trainer pinned, so its
+/// `trainable` bytes reflect points or abilities that just changed.
+///
+/// `try_open_trainer` short-circuits to `false` when the pinned target isn't
+/// a trainer template, so non-trainer NPCs pinned as
+/// `last_interaction_target` (vendors, lootables, dialog NPCs) never trigger
+/// a resend.
+///
+/// `last_interaction_target` is set by `handle_interact` and not cleared on
+/// trainer close. Trade-off: if a player opens a trainer, closes it, then
+/// earns an ability or points some other way (chain `Action::GrantAbility`
+/// from a quest turn-in, a GM grant), we'd emit a spurious `onTrainerOpen`.
+/// The client tolerates an unsolicited `onTrainerOpen` when the trainer
+/// window isn't visible (UEvent_UI_TrainerOpen handler just shows the
+/// panel), so this is harmless.
+async fn resend_trainer_if_pinned(
+    entity_id: u32,
+    training_points: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     let trainer_entity_id = space_mgr
         .get_entity(entity_id)
         .and_then(|p| p.last_interaction_target);
@@ -112,15 +125,45 @@ pub(super) async fn handle_ability_granted(
                 target: "abilities",
                 event = "trainer_resend",
                 entity_id,
-                ability_id,
                 trainer_entity_id = target,
                 training_points,
-                "AbilityGranted: re-sending onTrainerOpen to refresh trainable flags"
+                "re-sending onTrainerOpen to refresh trainable flags"
             );
             let _ =
                 crate::cell::interactions::try_open_trainer(entity_id, target, tx, space_mgr).await;
         }
     }
+}
+
+/// Handle `BaseToCellMsg::TrainingPointsGranted`: mirror a persisted GM
+/// grant, then send the counter and (with a trainer pinned) the trainer
+/// re-send. Nothing else told the client, unlike `ProgressionChanged`.
+pub(super) async fn handle_training_points_granted(
+    entity_id: u32,
+    training_points: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
+        tracing::warn!(
+            target: "abilities",
+            event = "training_points_granted_entity_missing",
+            entity_id,
+            training_points,
+            "TrainingPointsGranted: no cell entity; trainer gate keeps the old points"
+        );
+        return;
+    };
+    entity.tree_progress.training_points = training_points;
+    tracing::info!(
+        target: "abilities",
+        event = "training_points_granted",
+        entity_id,
+        training_points,
+        "TrainingPointsGranted: cell mirrored + counter refresh"
+    );
+    send_training_points(entity_id, training_points, tx).await;
+    resend_trainer_if_pinned(entity_id, training_points, tx, space_mgr).await;
 }
 
 /// Send the training-point counter to the owning client. Built by the same

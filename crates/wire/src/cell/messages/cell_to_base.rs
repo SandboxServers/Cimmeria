@@ -483,6 +483,21 @@ pub enum CellToBaseMsg {
         amount: i32,
     },
 
+    /// Grant training points and persist to the database
+    /// (`gmGiveTrainingPoints`). The base adds `amount` to
+    /// `sgw_player.training_points` in one guarded `UPDATE`, refreshes its
+    /// point cache, answers the cell with
+    /// [`crate::cell::messages::BaseToCellMsg::TrainingPointsGranted`] (which
+    /// mirrors the points and sends the client counter), and sends the
+    /// feedback line to `gm_feedback_to`. `amount` is validated `> 0`
+    /// cell-side; the base re-checks it.
+    GrantTrainingPoints {
+        entity_id: u32,
+        player_id: i32,
+        amount: i32,
+        gm_feedback_to: Option<u32>,
+    },
+
     /// Grant applied-science points and persist to the database
     /// (`gmGiveAppliedSciencePoints`). One-way sink, mirroring `GrantCash`:
     /// the base loads the `CraftingState`, adds `amount` to

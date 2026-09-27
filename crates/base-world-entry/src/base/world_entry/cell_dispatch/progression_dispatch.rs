@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg, MailOp};
 
 use super::super::super::ConnectedClientState;
-use super::super::methods::progression::{RespecRequest, TrainRequest};
+use super::super::methods::progression::{RespecRequest, TrainRequest, TrainingPointsGrant};
 use super::super::methods::{
     handle_grant_cash, handle_grant_item, handle_grant_xp, handle_mail_request,
     handle_mission_update,
@@ -167,6 +167,27 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+            )
+            .await
+        }
+        CellToBaseMsg::GrantTrainingPoints {
+            entity_id,
+            player_id,
+            amount,
+            gm_feedback_to,
+        } => {
+            super::super::methods::progression::handle_grant_training_points(
+                TrainingPointsGrant {
+                    entity_id,
+                    player_id,
+                    amount,
+                    gm_feedback_to,
+                },
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
