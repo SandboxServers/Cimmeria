@@ -14,6 +14,7 @@ use super::ConnectedClientState;
 
 mod chat;
 mod diagnostics;
+mod duel;
 mod organization;
 mod session;
 
@@ -173,6 +174,11 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 entity_to_addr,
             )
             .await;
+        }
+
+        // sendDuelChallenge(WSTRING playerName, INT8 squadDuel) (SS-D1).
+        cimmeria_wire::base::duel::SEND_DUEL_CHALLENGE => {
+            duel::handle_send_duel_challenge(payload, addr, transport, connected, cell_tx).await;
         }
 
         _ => {
