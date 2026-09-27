@@ -89,6 +89,7 @@ pub async fn handle_alloy_in(
                 account_id: account_id.unwrap_or(0),
                 player_id,
                 entity_id,
+                gm_entity_id: None,
             };
             resync_inventory(&InductionEnv::from_ctx(ctx), pool, &ids).await;
         }
