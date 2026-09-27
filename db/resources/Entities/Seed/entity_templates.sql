@@ -939,6 +939,28 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- moniker 7054 `DN_Ob_Ms_Human_Castle_Crate` ('Crate').
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (304, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, 1, 0, 10, 7054, NULL, NULL, NULL, 'Debug Hub - Loot Crate', 'mob', NULL, NULL, NULL, NULL, 6, NULL, 3, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
+-- Pets campaign (docs/analysis/pets/): templates 350-369 are pets. A pet
+-- template is class 'pet', carries ENTITYFLAG_Pet (1024), has no loot table
+-- and is never placed in spawnlist: resources.pet_summons names it and the
+-- summon ability spawns it next to its owner. Guards:
+-- crates/cell-catalog/src/cell/spawner/tests/live_db_pet_summons.rs.
+-- 350 "Summoned Straegis Fighter" (2826 Summon Straegis): the Straegis Fighter
+--   (78) body, component, animation event set 570 and skin tint. 78 itself is a
+--   faction-10 mob no spawnlist row has ever placed, so this is the first
+--   creature (MOB_) body our server spawns.
+--   name_id 27377 'Summoned Straegis Fighter': the pet's own moniker 28894
+--   DN_Pet_Straegis_Tier_1 has empty text and would leave a blank nameplate.
+--   flags 1032 = Pet | NoPetLeveling: pets gain no XP of their own (D-PT02
+--   sends kill XP to the owner and takes the owner's level at summon).
+--   level 1 is a placeholder the summon overwrites; a GM or content spawn of
+--   this template gets 250 HP. faction 1 is friendly (78 is hostile 10; the
+--   summon applies the owner's faction, D-PT06). ability set 350 (see
+--   ability_set_abilities.sql). move_speed 0.9 keeps pace with a running
+--   player, as the Col Marsh escort (10) does. use_cover false so the cover
+--   scorer never parks the pet, whatever faction it takes. respawn_secs NULL:
+--   a pet never respawns on its own.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (350, NULL, 'MOB_StraegisFighter.BS_MOB_StraegisFighter', '{MOB_StraegisFighter.MOB_StraegisFighter00_00}', 1032, 0, 570, 1, 0, 1, 27377, NULL, NULL, NULL, 'Summoned Straegis Fighter', 'pet', NULL, NULL, NULL, NULL, 350, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+
 --
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210

@@ -62,3 +62,23 @@ INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (5, 711);
 -- holds fire until the player stands in melee reach.
 INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (6, 710);
 
+
+-- Pets campaign, set 350 (the Straegis pet, template 350). The Straegis mob kit
+-- in the seed is 1156 Disengage, 2847 Dissonance and 1240 Straegis Explode,
+-- and none of the three deals damage today: their effects (1322, 4138,
+-- 1397/1398) carry no damage NVP and no script. So the pet needs a real
+-- repeatable attack, and two of the three must stay out:
+-- * 1240 Straegis Explode has cooldown 0 and event set 1507 "Straegis death
+--   ability source": the lowest-id fallback would play the death burst on a
+--   living pet every AI tick.
+-- * 2847 Dissonance is is_ranged = false (3 m reach) and self-targeted
+--   (target type 1); the AI would cast it at its enemy and walk into melee.
+-- 221 Energy Shock (the prisoner retrieval unit's attack, set 2): ranged,
+-- cooldown 2, effect 264 deals HealthDamage 16, event set 802 plays the
+-- EnergyShock beam (sequence 1866), which needs no humanoid animation. It is
+-- the lowest id, so it is the primary. 1156 Disengage (event set 1499,
+-- sequence 2824, the Straegis-native sEmitAura) is cosmetic filler while 221
+-- cools. Its is_ranged = true with max_range 0 resolves to the 30 m default.
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (350, 221);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (350, 1156);

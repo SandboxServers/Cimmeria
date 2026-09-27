@@ -213,6 +213,7 @@
 \ir resources/Entities/Tables/blueprints_components.sql
 \ir resources/Entities/Tables/entity_templates.sql
 \ir resources/Entities/Tables/monikers.sql
+\ir resources/Entities/Tables/pet_summons.sql
 \ir resources/Entities/Tables/resource_types.sql
 \ir resources/Entities/Tables/resource_versions.sql
 \ir resources/Events/Tables/event_sets.sql
@@ -296,6 +297,7 @@
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/entity_templates.sql
 \ir resources/Entities/Seed/monikers.sql
+\ir resources/Entities/Seed/pet_summons.sql
 \ir resources/Entities/Seed/resource_types.sql
 \ir resources/Entities/Seed/resource_versions.sql
 \ir resources/Events/Seed/event_sets.sql

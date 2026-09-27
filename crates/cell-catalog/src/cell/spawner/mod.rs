@@ -19,6 +19,7 @@
 //! - `regions` — generic region (AreaSet) loading.
 //! - `abilities` — ability/effect defs + event-set sequence map.
 //! - `loot` — loot tables + item container map + weapon defs.
+//! - `pet_summons` — summon ability → pet template (`resources.pet_summons`).
 //! - `templates` — prototype `SpawnRecord` per `entity_templates` row, for
 //!   the content engine's `spawn_entity` action (no `spawnlist` row exists
 //!   for a mission-scoped spawn).
@@ -33,6 +34,7 @@ mod loot;
 mod missions;
 mod navmesh_mode;
 mod npcs;
+mod pet_summons;
 mod regions;
 mod respawners;
 mod stargates;
@@ -58,6 +60,7 @@ pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTable
 pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, MissionObjectiveDef};
 pub use navmesh_mode::NavmeshMode;
 pub use npcs::{class_id_for_class, load_spawns_from_db, SpawnRecord};
+pub use pet_summons::{load_pet_summons, PetSummon, PetSummonCatalog};
 // Reused by the base-side GM spawn handler
 // (`base::gm_spawn::load_spawn_record_for_template` in cimmeria-base-session).
 pub use npcs::load_patrol_points;
