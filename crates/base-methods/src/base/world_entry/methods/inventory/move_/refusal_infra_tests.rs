@@ -3,13 +3,15 @@
 //! snap-back. Each must log `move_rejected` or `move_resync_skipped` under
 //! `bank` with its stable `reason=` and the player's correlators.
 //!
-//! `move_lock_begin_failed`, `refusal_context_query_failed` and
-//! `resync_read_failed` run against a pool that can never connect, so they
-//! need no database. `move_lock_failed` needs a real lock held by another
-//! connection and a `lock_timeout`, so it is live-DB. `move_lock_release_failed`
-//! (the rollback of a read-only transaction failing after the packet has
-//! gone) is not injectable without dropping the connection mid-transaction,
-//! and has no guard.
+//! `move_lock_begin_failed` and `refusal_context_query_failed` run against a
+//! pool that can never connect, so they need no database. `move_lock_failed`
+//! needs a real lock held by another connection and a `lock_timeout`, so it
+//! is live-DB. Every lock failure ends in `move_resync_skipped
+//! reason=lock_timeout` and no packet: an unlocked resend could overtake a
+//! concurrent write. Two reasons have no guard, because each needs the
+//! connection to fail after both locks were taken on it, which nothing can
+//! inject: `resync_read_failed` (the item read under the locks) and
+//! `move_lock_release_failed` (the rollback after the packet has gone).
 //!
 //! Sentinels: accounts/players `0x7000_B1C2..=0x7000_B1C5` (and player
 //! `0x7000_B1C7`, item `0x7000_B1D0` for the no-database test), entities
@@ -40,9 +42,9 @@ fn unreachable_pool() -> Arc<PgPool> {
 
 /// With the database unreachable, a refusal still logs every step it could
 /// not take: the lock transaction (`move_lock_begin_failed`), the context
-/// read (`refusal_context_query_failed`) and the snap-back read
-/// (`resync_read_failed`), each with the player and entity, and it sends
-/// nothing.
+/// read (`refusal_context_query_failed`) and the skipped snap-back
+/// (`move_resync_skipped reason=lock_timeout`), each with the player and
+/// entity, and it sends nothing.
 #[tokio::test]
 async fn refusal_with_the_database_down_logs_each_failed_step() {
     let entity_id: u32 = 0x7000_B1EA;
@@ -76,7 +78,7 @@ async fn refusal_with_the_database_down_logs_each_failed_step() {
     for (event, reason) in [
         ("move_rejected", "move_lock_begin_failed"),
         ("move_rejected", "refusal_context_query_failed"),
-        ("move_resync_skipped", "resync_read_failed"),
+        ("move_resync_skipped", "lock_timeout"),
     ] {
         let found = capture
             .find_event(Level::WARN, event, reason)
@@ -90,14 +92,16 @@ async fn refusal_with_the_database_down_logs_each_failed_step() {
     assert_eq!(
         transport.send_count_to(addr),
         0,
-        "nothing can be resent when the item cannot be read"
+        "nothing is resent without the locks"
     );
 }
 
 /// Hold `lock_sql` in another transaction, run a refusal on a pool whose
-/// `lock_timeout` is short, and return what it logged and sent. The
-/// refusal must give up on the lock, log `move_lock_failed`, and still snap
-/// the item back without it.
+/// `lock_timeout` is short. The refusal must give up on the lock, log
+/// `move_lock_failed`, still log the refusal itself, and then skip the
+/// snap-back (`move_resync_skipped reason=lock_timeout`) and send nothing:
+/// the write holding the lock may be about to send its own update, and an
+/// unlocked resend could overtake it.
 async fn refusal_under_a_held_lock(
     account_id: i32,
     player_id: i32,
@@ -172,18 +176,33 @@ async fn refusal_under_a_held_lock(
             .is_some(),
         "the refusal itself is still logged"
     );
+    let skipped = capture
+        .find_event(Level::WARN, "move_resync_skipped", "lock_timeout")
+        .expect("a refusal that could not lock must log move_resync_skipped reason=lock_timeout");
+    assert_eq!(skipped.target, "bank");
+    assert_fields(
+        &skipped,
+        &[
+            ("event", "move_resync_skipped".into()),
+            ("account_id", account_id.to_string()),
+            ("player_id", player_id.to_string()),
+            ("entity_id", entity_id.to_string()),
+            ("item_id", item.to_string()),
+        ],
+        &[],
+    );
     assert_eq!(
         transport.send_count_to(addr),
-        1,
-        "the snap-back is still sent without the lock"
+        0,
+        "no unlocked snap-back may be sent"
     );
 
     holder.rollback().await.expect("release the held lock");
     cleanup_all(&pool, account_id, player_id).await;
 }
 
-/// `move_lock_failed` on the per-player move lock: another move holds
-/// `(player, 0)`.
+/// `move_lock_failed` then `move_resync_skipped reason=lock_timeout` on the
+/// per-player move lock: another move holds `(player, 0)`.
 #[tokio::test]
 async fn refusal_logs_move_lock_failed_when_the_move_lock_times_out() {
     refusal_under_a_held_lock(
@@ -197,8 +216,9 @@ async fn refusal_logs_move_lock_failed_when_the_move_lock_times_out() {
     .await;
 }
 
-/// `move_lock_failed` on the refused item's row lock: a write to the row
-/// (a grant's stack merge, a remove, a trade) is still open.
+/// `move_lock_failed` then `move_resync_skipped reason=lock_timeout` on the
+/// refused item's row lock: a write to the row (a grant's stack merge, a
+/// remove, a trade) is still open.
 #[tokio::test]
 async fn refusal_logs_move_lock_failed_when_the_item_row_lock_times_out() {
     refusal_under_a_held_lock(

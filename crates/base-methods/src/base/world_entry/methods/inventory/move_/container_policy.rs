@@ -118,6 +118,13 @@ struct RefusalContext {
 /// that row can overtake the packet. Only the named item is resent, never
 /// the whole inventory: see [`send_inventory_item_update_via`].
 ///
+/// If either lock cannot be taken (a `lock_timeout`, or the transaction
+/// cannot begin), the refusal is still logged but nothing is resent: an
+/// unlocked read could be overtaken by a concurrent write's own update and
+/// undo it on the client. The client keeps its optimistic position until
+/// the next authoritative update of that item, and `move_resync_skipped
+/// reason=lock_timeout` records the skip.
+///
 /// `quantity` is the requested quantity as sent (`<= 0` means the whole
 /// stack). The caller has already rolled back any transaction it opened.
 pub(super) async fn refuse_move(
@@ -165,17 +172,10 @@ pub(super) async fn refuse_move(
             }
         }
         None => {
+            // The context read is only for the log, so it needs no lock.
             let context = refusal_context(pool.as_ref(), entity_id, player_id, item_id).await;
             if refusal.log(&context) {
-                refusal
-                    .resend(
-                        pool.as_ref(),
-                        &context,
-                        transport,
-                        connected,
-                        entity_to_addr,
-                    )
-                    .await;
+                refusal.skip_unlocked_resend(&context);
             }
         }
     }
@@ -233,6 +233,22 @@ impl Refusal {
         false
     }
 
+    /// The locks could not be taken, so the item is not resent (see
+    /// [`refuse_move`]).
+    fn skip_unlocked_resend(&self, context: &RefusalContext) {
+        tracing::warn!(
+            target: "bank",
+            event = "move_resync_skipped",
+            account_id = context.account_id,
+            player_id = self.player_id,
+            entity_id = self.entity_id,
+            item_id = self.item_id,
+            reason = "lock_timeout",
+            "move_resync_skipped: the move lock or the item's row lock could not be taken; \
+             not resending an unlocked read that a concurrent write could overtake"
+        );
+    }
+
     async fn resend<'c, E>(
         &self,
         executor: E,
@@ -273,8 +289,7 @@ impl Refusal {
 
 /// Begin a read-only transaction holding the per-player move lock and a
 /// row lock on the refused item (see [`refuse_move`]). `None`, logged, if
-/// any step fails; the caller then works without the locks, because the
-/// player must still see the snap-back.
+/// any step fails; the caller then logs the refusal without resending.
 async fn take_move_lock(
     pool: &Arc<PgPool>,
     entity_id: u32,
@@ -291,7 +306,7 @@ async fn take_move_lock(
                 entity_id,
                 item_id,
                 reason = "move_lock_begin_failed",
-                "move_rejected: begin failed, resyncing without the move lock: {e}"
+                "move_rejected: begin failed, not resyncing without the move lock: {e}"
             );
             return None;
         }
@@ -328,7 +343,7 @@ async fn take_move_lock(
                 entity_id,
                 item_id,
                 reason = "move_lock_failed",
-                "move_rejected: move or item row lock failed, resyncing without it: {e}"
+                "move_rejected: move or item row lock failed, not resyncing without it: {e}"
             );
             None
         }
