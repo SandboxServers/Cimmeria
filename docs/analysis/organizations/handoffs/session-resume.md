@@ -53,6 +53,6 @@ Open a GitHub issue per item before starting it, and keep this campaign's id blo
 
 ## Other campaigns
 
-- **Bank / Vault** (cimmeria-79): owns the Team and Command vaults (BV-07, PRs #948 and #949, open at close-out) and the treasury (BV-08, which replaces the CM 19 "not available yet" arm). It builds on the [ORG-API](../work-packets.md#bank-campaign-api-org-api) and follows D-ORG28's lock order. It also replaces the `org_vault_is_empty` and `org_vault_is_empty_sql` stubs, after which the memberless-organization branch can get its live-DB test.
+- **Bank / Vault** (cimmeria-79): owns the Team and Command vaults (BV-07: storage and open merged as #948; moves are #949, open at close-out) and the treasury (BV-08, which replaces the CM 19 "not available yet" arm). It builds on the [ORG-API](../work-packets.md#bank-campaign-api-org-api) and follows D-ORG28's lock order. It also replaces the `org_vault_is_empty` and `org_vault_is_empty_sql` stubs, after which the memberless-organization branch can get its live-DB test.
 - **Social** (cimmeria-3d): owns the chat channel ids and `CHAN_*` (SS-C4, D-ORG26).
 - **Black market and the stasis debug hub** (cimmeria-11): the registrar NPCs sit in the hub's slots (`docs/content/debug-hub.md`).
