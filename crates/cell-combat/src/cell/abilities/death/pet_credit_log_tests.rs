@@ -240,6 +240,30 @@ async fn an_overflowing_transfer_xp_logs_xp_overflow_at_warn() {
     assert_owner_identity(&row);
 }
 
+/// **Guard (#889).** A payout that fits `u32` but not `i32` (50 XP x 6e7 =
+/// 3e9) is also `xp_overflow`: `sgw_player.exp` and the wire payload are
+/// `INT32`, so `MAX_KILL_XP` is `i32::MAX`. Reverted to a `u32::MAX` cap,
+/// a 3e9 `GrantXP` goes to the owner and the base clamps it silently.
+#[tokio::test]
+async fn a_payout_past_i32_max_logs_xp_overflow() {
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(pet)
+        .unwrap()
+        .pet
+        .as_mut()
+        .unwrap()
+        .transfer_xp = 6.0e7;
+    let capture = LogCapture::install();
+    assert_eq!(kill(&mut mgr, mob, pet).await, vec![], "no GrantXP");
+    let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+    assert_eq!(row.level, Level::WARN);
+    assert!(row.has_field("reason", "xp_overflow"), "{row:?}");
+    assert!(
+        row.has_field("max_kill_xp", &(i32::MAX as u64).to_string()),
+        "{row:?}"
+    );
+}
+
 /// **Guard (#889).** The registry dropped the pet AND the owner's entity id
 /// now belongs to another player. The `pet_unregistered` row keeps the pet
 /// and the `owner_id`, but logs no `account_id` / `player_id`: the
