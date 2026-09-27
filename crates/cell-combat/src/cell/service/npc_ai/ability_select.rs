@@ -63,7 +63,7 @@ pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager)
     if npc.abilities.known_count() == 0 {
         // A pet whose owner toggled the default off holds fire too.
         return Some(combat::NPC_DEFAULT_ABILITY)
-            .filter(|&id| super::pet::ability_allowed(npc, id));
+            .filter(|&id| super::pet::ability_allowed(space_mgr, npc, id));
     }
 
     let mut ability_ids = npc.abilities.known_ability_ids();
@@ -71,9 +71,9 @@ pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager)
 
     // A pet never picks an ability its owner toggled off (pets PT-05). With
     // every ability toggled off the pet holds fire, like an all-cooling NPC.
-    ability_ids
-        .into_iter()
-        .find(|&id| !npc.abilities.is_on_cooldown(id) && super::pet::ability_allowed(npc, id))
+    ability_ids.into_iter().find(|&id| {
+        !npc.abilities.is_on_cooldown(id) && super::pet::ability_allowed(space_mgr, npc, id)
+    })
 }
 
 /// Whether every ability the NPC knows is a melee swing (`is_ranged =
@@ -148,7 +148,7 @@ pub(in crate::cell) fn choose_npc_ability_within_reach(
 
     let in_reach = ability_ids.into_iter().find(|&id| {
         !npc.abilities.is_on_cooldown(id)
-            && super::pet::ability_allowed(npc, id)
+            && super::pet::ability_allowed(space_mgr, npc, id)
             && effective_max_range(space_mgr.ability_defs.get(&id), npc_attack_range) >= target_dist
     });
 

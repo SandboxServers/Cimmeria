@@ -951,22 +951,23 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   creature (MOB_) body our server spawns.
 --   name_id 27377 'Summoned Straegis Fighter': the pet's own moniker 28894
 --   DN_Pet_Straegis_Tier_1 has empty text and would leave a blank nameplate.
---   flags 1032 = Pet | NoPetLeveling: pets gain no XP of their own (D-PT02
---   sends kill XP to the owner and takes the owner's level at summon).
---   level 1 is a placeholder the summon overwrites; a GM or content spawn of
---   this template gets 250 HP. faction 1 is friendly (78 is hostile 10; the
+--   flags 1024 = ENTITYFLAG_Pet. No NoPetLeveling (8): with it the summon
+--   keeps the template's level, and this L50 capstone pet would spawn at
+--   level 1 (PT-11). Pets gain no XP of their own whatever the flag (D-PT02
+--   sends kill XP to the owner). level 1 is a placeholder the summon
+--   overwrites with the owner's level; a GM or content spawn of this
+--   template gets 250 HP. faction 1 is friendly (78 is hostile 10; the
 --   summon applies the owner's faction, D-PT06). ability set 350 (see
 --   ability_set_abilities.sql). move_speed 0.9 keeps pace with a running
 --   player, as the Col Marsh escort (10) does. use_cover false so the cover
 --   scorer never parks the pet, whatever faction it takes. respawn_secs NULL:
 --   a pet never respawns on its own.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (350, NULL, 'MOB_StraegisFighter.BS_MOB_StraegisFighter', '{MOB_StraegisFighter.MOB_StraegisFighter00_00}', 1032, 0, 570, 1, 0, 1, 27377, NULL, NULL, NULL, 'Summoned Straegis Fighter', 'pet', NULL, NULL, NULL, NULL, 350, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (350, NULL, 'MOB_StraegisFighter.BS_MOB_StraegisFighter', '{MOB_StraegisFighter.MOB_StraegisFighter00_00}', 1024, 0, 570, 1, 0, 1, 27377, NULL, NULL, NULL, 'Summoned Straegis Fighter', 'pet', NULL, NULL, NULL, NULL, 350, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
 
 -- PT-11, the rest of the Goa'uld Servant Lord roster (D-PT13 order). Same
 -- shape as 350 (class 'pet', faction 1, no loot, no respawn, move_speed 0.9,
--- use_cover false, level 1 placeholder), with one difference: flags 1024 =
--- ENTITYFLAG_Pet alone. Without NoPetLeveling the summon gives the pet its
--- owner's level (D-PT02); with it, the spawn keeps the template's level 1.
+-- use_cover false, level 1 placeholder, flags 1024 = ENTITYFLAG_Pet alone,
+-- so the summon gives the pet its owner's level, D-PT02).
 -- Each name_id is the pet's own DN_Pet_*_Tier_1 moniker, which has text.
 -- Guards: crates/cell-catalog/src/cell/spawner/tests/live_db_pet_roster.rs.
 -- 351 "Jaffa Soldier" (1643 Summon Jaffa): a copy of 160 Praxis Jaffa Guard,

@@ -17,6 +17,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use cimmeria_entity::abilities::ability_is_unimplemented;
+
 use crate::cell::spawner::{
     load_ability_defs, load_effect_defs, load_event_set_sequences, load_spawn_templates,
     EVENT_ABILITY_END,
@@ -263,11 +265,14 @@ async fn a_hostile_template_fires_its_weapons_ranged_auto_attack() {
     );
 }
 
-/// The allowlist's premise holds: every allowlisted ability deals no damage
-/// and runs no effect script, so letting it through without an animation
-/// cannot hide a silent hit. Fails when someone wires damage or a script
-/// onto an allowlisted ability without giving it an event set, and when an
-/// entry names an ability the seed no longer has.
+/// The allowlist's premise holds: every allowlisted ability is still
+/// unimplemented by the shared predicate the pet command gate and the pet AI
+/// use (`cimmeria_entity::abilities::ability_is_unimplemented`): no event
+/// set, no damage values, no effect script. So letting it through without an
+/// animation cannot hide a silent hit. Fails when someone wires damage, a
+/// script or an event set onto an allowlisted ability (drop the entry then),
+/// when one of its effects stops loading, and when an entry names an ability
+/// the seed no longer has.
 #[tokio::test]
 async fn animation_allowlist_entries_deal_no_damage() {
     let pool = require_db_or_skip!();
@@ -280,26 +285,17 @@ async fn animation_allowlist_entries_deal_no_damage() {
             failures.push(format!("{ability_id} ({reason}): no abilities row"));
             continue;
         };
-        if def.event_set_id.is_some() {
-            failures.push(format!(
-                "{ability_id} ({reason}): has event set {:?} now; drop the entry",
-                def.event_set_id
-            ));
-        }
         for effect_id in &def.effect_ids {
-            let Some(effect) = effects.get(effect_id) else {
+            if !effects.contains_key(effect_id) {
                 failures.push(format!("{ability_id}: effect {effect_id} did not load"));
-                continue;
-            };
-            let health = effect.param_i32("HealthDamage");
-            let focus = effect.param_i32("FocusDamage");
-            if health > 0 || focus > 0 || effect.script_name.is_some() {
-                failures.push(format!(
-                    "{ability_id} ({reason}): effect {effect_id} now does something \
-                     (HealthDamage {health}, FocusDamage {focus}, script {:?})",
-                    effect.script_name
-                ));
             }
+        }
+        if !ability_is_unimplemented(def, &effects) {
+            failures.push(format!(
+                "{ability_id} ({reason}): now does something (event set {:?}, effects {:?}); \
+                 drop the entry",
+                def.event_set_id, def.effect_ids
+            ));
         }
     }
     assert!(

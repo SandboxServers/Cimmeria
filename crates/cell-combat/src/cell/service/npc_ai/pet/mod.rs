@@ -25,8 +25,8 @@
 //! - A fight that ends goes straight back to `Follow`, unhealed and without
 //!   the walk home or the evade ([`rearm_after_fight`], called from
 //!   `leash::begin_leash`).
-//! - The ability selector skips abilities the owner toggled off
-//!   ([`ability_allowed`]).
+//! - The ability selector skips abilities the owner toggled off, and
+//!   abilities that do nothing on this server yet ([`ability_allowed`]).
 //!
 //! Ownership is the pet's summoner identity, never the bare owner id: entity
 //! ids are reused, and a player given a destroyed owner's id must not be
@@ -53,6 +53,7 @@ pub use engage::{
 };
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::abilities::ability_is_unimplemented;
 use cimmeria_entity::cell_entity::{AiState, CellEntity, PetStance, PlayerIdentity};
 use tokio::sync::mpsc;
 
@@ -227,12 +228,23 @@ pub(in crate::cell) fn log_fight_entered(
     );
 }
 
-/// Whether the AI may pick `ability_id` for `npc`: always for a mob, and for a
-/// pet unless its owner toggled the ability off (`SGWPet.toggledAbilities`).
-pub(super) fn ability_allowed(npc: &CellEntity, ability_id: i32) -> bool {
-    npc.pet
-        .as_deref()
-        .is_none_or(|p| !p.toggled_off.contains(&ability_id))
+/// Whether the AI may pick `ability_id` for `npc`: always for a mob. For a
+/// pet, not when its owner toggled the ability off (`SGWPet.toggledAbilities`),
+/// and not when the ability has no visible result at all: no damage, no
+/// effect script, no event set (`ability_is_unimplemented`, the predicate
+/// CM 88 refuses an owner order with). Such a cast is an empty, silent hit,
+/// so a pet whose kit is all of them (the Lo'taur, pets PT-11) holds fire
+/// instead of standing at its enemy "attacking" with nothing. An ability with
+/// no definition is left to the caller, as for a mob.
+pub(super) fn ability_allowed(space_mgr: &SpaceManager, npc: &CellEntity, ability_id: i32) -> bool {
+    let Some(pet) = npc.pet.as_deref() else {
+        return true;
+    };
+    !pet.toggled_off.contains(&ability_id)
+        && !space_mgr
+            .ability_defs
+            .get(&ability_id)
+            .is_some_and(|d| ability_is_unimplemented(d, &space_mgr.effect_defs))
 }
 
 /// What a fighting NPC's leash is measured from: its spawn point, or for a pet

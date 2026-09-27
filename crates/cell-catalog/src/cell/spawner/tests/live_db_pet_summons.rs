@@ -221,10 +221,10 @@ mod live_db {
         assert_eq!(pet.template_name, "Summoned Straegis Fighter");
         assert_eq!(pet.class, "pet");
         assert_eq!(
-            pet.flags,
-            ENTITYFLAG_PET | ENTITYFLAG_NO_PET_LEVELING,
-            "ENTITYFLAG_Pet | NoPetLeveling and nothing else"
+            pet.flags, ENTITYFLAG_PET,
+            "ENTITYFLAG_Pet and nothing else: NoPetLeveling would keep the              L50 capstone pet at the template's level 1 (D-PT02, PT-11)"
         );
+        assert_eq!(pet.flags & ENTITYFLAG_NO_PET_LEVELING, 0);
         assert_eq!(
             pet.body_set, fighter.body_set,
             "body set must match the Straegis Fighter"

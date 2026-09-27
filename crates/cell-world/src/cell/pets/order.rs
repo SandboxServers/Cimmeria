@@ -76,6 +76,7 @@ pub fn order_feedback_text(reason: &str) -> &'static str {
         "pet_dead" => "Your pet is dead.",
         "ability_not_in_list" => "Your pet does not have that ability.",
         "ability_toggled_off" => "That pet ability is turned off.",
+        "ability_not_implemented" => "Your pet can't use that ability yet.",
         "pet_casting" | "ability_on_cooldown" => "Your pet is not ready.",
         "cast_refused" => "Your pet could not use that ability.",
         "target_gone" | "target_other_space" => "Your pet cannot reach that target.",

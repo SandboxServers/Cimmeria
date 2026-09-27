@@ -26,6 +26,9 @@ use crate::test_support::{require_db_or_skip, NoContentEvents};
 const OWNER: u32 = 1;
 /// The owner's level: every roster pet must take it (D-PT02).
 const OWNER_LEVEL: u32 = 23;
+/// 2826 Summon Straegis, the Servant Lord L50 capstone, and its template.
+const SUMMON_STRAEGIS: i32 = 2826;
+const STRAEGIS_PET: i32 = 350;
 /// Ability_End of event set 1121 "Goauld summon source".
 const SEQ_SUMMON_CAST: i32 = 2292;
 
@@ -36,9 +39,10 @@ const ROSTER: [(i32, i32, i32, &[i32]); 3] = [
     (1644, 353, 28891, &[1653, 3326, 3327, 3328, 3329]),
 ];
 
-/// A Castle space with the owner in it, knowing every roster summon, and
-/// the four caches the summon path reads loaded from the seed.
-async fn seeded_mgr(pool: &sqlx::PgPool) -> SpaceManager {
+/// A Castle space with the owner in it at `owner_level`, knowing every
+/// roster summon and 2826, and the four caches the summon path reads loaded
+/// from the seed.
+async fn seeded_mgr(pool: &sqlx::PgPool, owner_level: u32) -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
@@ -48,7 +52,11 @@ async fn seeded_mgr(pool: &sqlx::PgPool) -> SpaceManager {
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
     )
     .unwrap();
-    add_pet_owner(&mut mgr, OWNER, "Castle", [0.0, 0.0, 0.0], OWNER_LEVEL);
+    add_pet_owner(&mut mgr, OWNER, "Castle", [0.0, 0.0, 0.0], owner_level);
+    mgr.get_entity_mut(OWNER)
+        .unwrap()
+        .abilities
+        .add_ability(SUMMON_STRAEGIS);
     for (summon, ..) in ROSTER {
         mgr.get_entity_mut(OWNER)
             .unwrap()
@@ -91,7 +99,7 @@ async fn summon_through_the_cast_path(
 #[tokio::test]
 async fn each_roster_summon_spawns_its_pet_through_the_cast_path() {
     let pool = require_db_or_skip!();
-    let mut mgr = seeded_mgr(&pool).await;
+    let mut mgr = seeded_mgr(&pool, OWNER_LEVEL).await;
     let (tx, mut rx) = mpsc::channel(512);
 
     let mut previous: Option<u32> = None;
@@ -128,4 +136,23 @@ async fn each_roster_summon_spawns_its_pet_through_the_cast_path() {
             "{summon}: the cast plays 2292 on the caster"
         );
     }
+}
+
+/// **A Straegis summoned by a level-50 owner is level 50** (D-PT02). Template
+/// 350 used to carry `ENTITYFLAG_NoPetLeveling`, which makes the spawn keep
+/// the template's level: the L50 capstone pet came out at level 1 with
+/// 250 HP. Fails with bit 8 back on 350's flags.
+#[tokio::test]
+async fn a_straegis_summoned_by_a_level_50_owner_is_level_50() {
+    let pool = require_db_or_skip!();
+    let mut mgr = seeded_mgr(&pool, 50).await;
+    let (tx, mut rx) = mpsc::channel(512);
+
+    summon_through_the_cast_path(&mut mgr, SUMMON_STRAEGIS, &tx, &mut rx).await;
+
+    let pets = mgr.pets.pets_of(OWNER);
+    assert_eq!(pets.len(), 1, "one pet");
+    let pet = mgr.get_entity(pets[0]).expect("pet entity exists");
+    assert_eq!(pet.template_id, Some(STRAEGIS_PET));
+    assert_eq!(pet.level, 50, "the Straegis takes its owner's level");
 }

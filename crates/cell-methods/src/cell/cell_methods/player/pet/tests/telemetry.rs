@@ -66,6 +66,10 @@ async fn trigger(reason: &str) {
             state.toggled_off.push(PET_ABILITY);
             (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, MOB))
         }
+        "ability_not_implemented" => {
+            mgr.ability_defs.get_mut(&PET_ABILITY).unwrap().event_set_id = None;
+            (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, MOB))
+        }
         "pet_dead" => {
             mgr.get_entity_mut(pet).unwrap().state_field |= crate::cell::combat::BSF_DEAD;
             (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, MOB))
@@ -170,6 +174,11 @@ const REFUSALS: &[(&str, &str, Level)] = &[
         Level::DEBUG,
     ),
     ("ability_toggled_off", "ability_toggled_off", Level::DEBUG),
+    (
+        "ability_not_implemented",
+        "ability_not_implemented",
+        Level::DEBUG,
+    ),
     ("pet_dead", "pet_dead", Level::DEBUG),
     ("pet_casting", "pet_casting", Level::DEBUG),
     ("ability_on_cooldown", "ability_on_cooldown", Level::DEBUG),

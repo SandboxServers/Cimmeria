@@ -1,8 +1,9 @@
 //! CM 88 `petInvokeAbility(INT32 petId, INT32 abilityId, INT32 targetId)`.
 //!
 //! Every pet-bar click lands here (A-06). After the ownership guard the
-//! ability must be on the pet's bar and not toggled off, the pet must be
-//! alive and ready, and an explicit target must be something the pet may
+//! ability must be on the pet's bar, not toggled off and implemented (it
+//! deals damage, runs an effect script or plays an event set), the pet must
+//! be alive and ready, and an explicit target must be something the pet may
 //! fight (PT-05's `npc_ai::pet::fight_refusal`: a combatant SGWMob its owner
 //! could attack) in the pet's space, engageable, within reach and in sight.
 //! Then the pet casts through `handle_use_ability_with_kill_credit` and
@@ -24,6 +25,7 @@
 //! `onErrorCode` addressed to the caster, which for a pet reaches no client.
 
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_entity::abilities::ability_is_unimplemented;
 use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
@@ -199,6 +201,22 @@ pub(crate) fn check_invoke(
     if state.toggled_off.contains(&ability_id) {
         return Err(Refusal::debug(
             "ability_toggled_off",
+            FEEDBACK_NO_SUCH_PET_ABILITY,
+            ability_id,
+        ));
+    }
+    // An ability with no damage, no effect script and no event set resolves
+    // as an empty, silent hit: the owner's click would show nothing at all.
+    // Refuse it before casting so the press gets feedback (pets PT-11;
+    // 1654 and the Lo'taur kit). DEBUG: the pet bar offers it, so any owner
+    // can click it at will.
+    if space_mgr
+        .ability_defs
+        .get(&ability_id)
+        .is_some_and(|d| ability_is_unimplemented(d, &space_mgr.effect_defs))
+    {
+        return Err(Refusal::debug(
+            "ability_not_implemented",
             FEEDBACK_NO_SUCH_PET_ABILITY,
             ability_id,
         ));
