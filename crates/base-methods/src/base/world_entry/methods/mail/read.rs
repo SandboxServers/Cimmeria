@@ -281,8 +281,60 @@ async fn refuse_delete(ctx: &MailCtx<'_>, mail_id: i32, held: Held) {
     }
 }
 
+/// Set `MAIL_Archive` on `mail_id` for its owner `player_id`, unless it is
+/// an unpaid COD. Returns the rows changed (0 or 1).
+///
+/// An unpaid COD must stay in the inbox (SS-M3 security review): archived
+/// mail cannot be returned (D-SS10) and never expires (D-SS04), a COD
+/// cannot be deleted while its price is on it, and its item cannot be taken
+/// until it is paid, so an archived unpaid COD would strand the seller's
+/// item for good. A paid COD has the flag cleared and archives normally.
+pub(super) async fn archive_unless_cod(
+    pool: &sqlx::PgPool,
+    mail_id: i32,
+    player_id: i32,
+) -> Result<u64, sqlx::Error> {
+    sqlx::query(
+        "UPDATE sgw_gate_mail SET flags = flags | $3 \
+         WHERE mail_id = $1 AND character_id = $2 AND (flags & $4) = 0",
+    )
+    .bind(mail_id)
+    .bind(player_id)
+    .bind(MAIL_ARCHIVE)
+    .bind(MAIL_COD)
+    .execute(pool)
+    .await
+    .map(|r| r.rows_affected())
+}
+
+/// Refuse to archive an unpaid COD: log it and tell the player on the first
+/// press. No `onMailHeaderRemove`, so the mail stays in the inbox list.
+async fn refuse_archive_cod(ctx: &MailCtx<'_>, mail_id: i32) {
+    tracing::warn!(
+        target: "mail",
+        event = "mail.archive_refused",
+        entity_id = ctx.entity_id,
+        player_id = ctx.player_id,
+        account_id = ctx.account_id(),
+        mail_id,
+        reason = "cod_unpaid",
+        "Mail: archive refused, the mail is an unpaid COD"
+    );
+    if let Some(addr) = ctx.addr() {
+        let fb = FeedbackCtx {
+            transport: ctx.transport,
+            connected: ctx.connected,
+        };
+        send_feedback_line(&fb, addr, ARCHIVE_COD_TEXT).await;
+    }
+}
+
+/// The feedback for an archive refused on an unpaid COD.
+pub(super) const ARCHIVE_COD_TEXT: &str =
+    "Pay for or return this COD delivery before archiving it.";
+
 /// `archiveMailMessage(MailId)`: sets `MAIL_Archive` and drops the row from
-/// the open list.
+/// the open list. Refused for an unpaid COD ([`archive_unless_cod`]).
 pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
     tracing::debug!(
@@ -293,16 +345,20 @@ pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
         mail_id,
         "Mail: archiving"
     );
-    match sqlx::query(
-        "UPDATE sgw_gate_mail SET flags = flags | $3 WHERE mail_id = $1 AND character_id = $2",
-    )
-    .bind(mail_id)
-    .bind(player_id)
-    .bind(MAIL_ARCHIVE)
-    .execute(ctx.pool)
-    .await
-    {
-        Ok(r) if r.rows_affected() == 0 => {
+    match archive_unless_cod(ctx.pool, mail_id, player_id).await {
+        Ok(0) => {
+            let cod: Result<Option<bool>, sqlx::Error> = sqlx::query_scalar(
+                "SELECT (flags & $3) <> 0 FROM sgw_gate_mail \
+                 WHERE mail_id = $1 AND character_id = $2",
+            )
+            .bind(mail_id)
+            .bind(player_id)
+            .bind(MAIL_COD)
+            .fetch_optional(ctx.pool)
+            .await;
+            if let Ok(Some(true)) = cod {
+                return refuse_archive_cod(ctx, mail_id).await;
+            }
             tracing::warn!(
                 target: "mail",
                 entity_id,

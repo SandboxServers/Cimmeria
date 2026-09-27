@@ -141,6 +141,12 @@ async fn take_cash_rejects_cod_mail() {
         Some((owner, 300, crate::cell::mail::codes::flags::MAIL_COD, false))
     );
     assert_refused(&capture, "take_cash", "cod_unpaid", mail_id);
+    // The refusal names the mail's sender (the review's telemetry nit).
+    assert!(capture.all().iter().any(|e| {
+        e.has_field("event", "mail.op_refused")
+            && e.has_field("mail_id", &mail_id.to_string())
+            && e.has_field("target_player_id", &sender.to_string())
+    }));
 
     cleanup(&pool, BASE + 0x10).await;
 }

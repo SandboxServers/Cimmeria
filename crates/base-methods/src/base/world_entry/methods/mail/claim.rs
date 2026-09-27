@@ -44,6 +44,7 @@ pub(super) struct LockedMail {
     pub(super) returned: bool,
     pub(super) cod_paid: bool,
     pub(super) subject: String,
+    pub(super) sender_name: String,
 }
 
 impl LockedMail {
@@ -66,7 +67,8 @@ pub(super) async fn lock_mail(
 ) -> Result<Option<LockedMail>, sqlx::Error> {
     take_inventory_locks(&mut *conn, player_id, &[INV_MAIN]).await?;
     sqlx::query_as::<_, LockedMail>(
-        "SELECT cash, flags, sender_id, returned, cod_paid, subject FROM sgw_gate_mail \
+        "SELECT cash, flags, sender_id, returned, cod_paid, subject, sender_name \
+         FROM sgw_gate_mail \
          WHERE mail_id = $1 AND character_id = $2 FOR UPDATE",
     )
     .bind(mail_id)
@@ -233,6 +235,22 @@ impl From<Refusal> for OpError {
 /// first press. Nothing was written (the transaction rolled back).
 pub(super) async fn answer_failure(ctx: &MailCtx<'_>, op: Op, mail_id: i32, err: OpError) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    // The mail's sender for `target_player_id`. The transaction rolled back,
+    // so this is a plain owner-scoped read of the row as it stands; absent
+    // for someone else's mail and for server mail.
+    let target_player_id = match &err {
+        OpError::Refused(r) if *r != NOT_FOUND => sqlx::query_scalar::<_, Option<i32>>(
+            "SELECT sender_id FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2",
+        )
+        .bind(mail_id)
+        .bind(player_id)
+        .fetch_optional(ctx.pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten(),
+        _ => None,
+    };
     let text = match &err {
         OpError::Refused(refusal) => {
             tracing::warn!(
@@ -241,6 +259,7 @@ pub(super) async fn answer_failure(ctx: &MailCtx<'_>, op: Op, mail_id: i32, err:
                 entity_id,
                 player_id,
                 account_id,
+                target_player_id,
                 op = op.name(),
                 mail_id,
                 reason = refusal.reason,

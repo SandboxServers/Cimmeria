@@ -38,7 +38,7 @@ const PAYMENT_SUBJECT_PREFIX: &str = "COD payment: ";
 const SUBJECT_MAX_CHARS: usize = 128;
 
 /// What a committed `payCODForMailMessage` did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum CodOutcome {
     Paid(CodPaid),
     /// The COD's sender no longer exists (their character was deleted, and
@@ -49,6 +49,9 @@ pub(super) enum CodOutcome {
     /// return to, and take and delete refuse an unpaid COD.
     CancelledSenderGone {
         price: i64,
+        /// The stored `sender_name`: with `sender_id` gone, the only trail
+        /// to the seller.
+        sender_name: String,
     },
 }
 
@@ -115,7 +118,10 @@ pub(super) async fn pay_cod_tx(
     let Some((sender_id, payer_name)) = live else {
         clear_cod(&mut tx, player_id, mail_id, mail.cash, false).await?;
         tx.commit().await?;
-        return Ok(CodOutcome::CancelledSenderGone { price: mail.cash });
+        return Ok(CodOutcome::CancelledSenderGone {
+            price: mail.cash,
+            sender_name: mail.sender_name,
+        });
     };
     item.ok_or(COD_WITHOUT_ITEM)?;
     let price = i32::try_from(mail.cash).map_err(|_| NOT_ENOUGH_CASH)?;
@@ -208,7 +214,7 @@ pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
             .await;
             refresh_one(ctx, mail_id).await;
         }
-        Ok(CodOutcome::CancelledSenderGone { price }) => {
+        Ok(CodOutcome::CancelledSenderGone { price, sender_name }) => {
             tracing::info!(
                 target: "mail",
                 event = "mail.cod_cancelled",
@@ -218,6 +224,7 @@ pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
                 mail_id,
                 reason = "sender_gone",
                 price,
+                sender_name = %sender_name,
                 "gate-mail COD cancelled: its sender no longer exists; nothing charged",
             );
             if let Some(addr) = ctx.addr() {

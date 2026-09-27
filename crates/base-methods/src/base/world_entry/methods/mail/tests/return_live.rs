@@ -345,3 +345,81 @@ async fn return_rejects_paid_cod() {
 
     cleanup(&pool, BASE + 0x28).await;
 }
+
+/// SS-M3 security review (MEDIUM): an archived unpaid COD would strand the
+/// seller's item for good (archived mail cannot be returned and never
+/// expires; a COD cannot be deleted or its item taken while unpaid). So
+/// archiving an unpaid COD is refused `cod_unpaid` with feedback and no
+/// `onMailHeaderRemove`: the mail stays in the inbox, unarchived, and the
+/// recipient can still return it to the seller, item and all. A paid COD
+/// archives normally. Fails when the archive's COD check is removed.
+#[tokio::test]
+async fn archive_refuses_unpaid_cod_so_it_can_still_be_returned() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (buyer, seller, _) = three_players(&pool, BASE + 0x30, "Arc").await;
+    set_naquadah(&pool, buyer, 1_000).await;
+    let type_id = any_type_id(&pool).await;
+    let item_id = ITEMS + 0x30;
+    let mail_id = AttachedMail::from(buyer, seller, "SsmThreeRetSArc")
+        .cod(300)
+        .item(item_id, type_id, 1)
+        .insert(&pool)
+        .await;
+
+    let b = Client::new(BASE as u32 + 0x50, buyer, 55_150, "SsmThreeRetRArc");
+    let now = Instant::now();
+    b.op(MailOp::Archive { mail_id }, Some(&pool), now).await;
+    assert_eq!(
+        b.take(),
+        vec![Received::Feedback(
+            "Pay for or return this COD delivery before archiving it.".to_string()
+        )],
+        "feedback only: the header stays in the inbox"
+    );
+    assert_eq!(
+        mail_state(&pool, mail_id).await,
+        Some((buyer, 300, crate::cell::mail::codes::flags::MAIL_COD, false)),
+        "not archived"
+    );
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|e| {
+            e.level == tracing::Level::WARN
+                && e.has_field("event", "mail.archive_refused")
+                && e.has_field("reason", "cod_unpaid")
+                && e.has_field("mail_id", &mail_id.to_string())
+        })
+        .expect("mail.archive_refused reason=cod_unpaid");
+    for key in ["account_id", "player_id", "entity_id"] {
+        assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
+    }
+
+    // The way out still works: the seller gets the mail and the item back.
+    b.op(MailOp::Return { mail_id }, Some(&pool), now).await;
+    assert_eq!(mail_state(&pool, mail_id).await, Some((seller, 0, 0, true)));
+    assert_eq!(escrow_for(&pool, seller).await.len(), 1);
+
+    // A paid COD is no longer a COD and archives normally.
+    let paid_id = AttachedMail::from(buyer, seller, "SsmThreeRetSArc")
+        .cod(100)
+        .item(ITEMS + 0x31, type_id, 1)
+        .insert(&pool)
+        .await;
+    b.op(MailOp::PayCod { mail_id: paid_id }, Some(&pool), now)
+        .await;
+    b.take();
+    b.op(MailOp::Archive { mail_id: paid_id }, Some(&pool), now)
+        .await;
+    assert_eq!(
+        b.take(),
+        vec![Received::Other(method_idx::ON_MAIL_HEADER_REMOVE)]
+    );
+    assert_eq!(
+        mail_state(&pool, paid_id).await,
+        Some((buyer, 0, MAIL_ARCHIVE, false))
+    );
+
+    cleanup(&pool, BASE + 0x30).await;
+}

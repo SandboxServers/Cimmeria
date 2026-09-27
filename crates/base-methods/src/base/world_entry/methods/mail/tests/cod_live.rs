@@ -297,6 +297,7 @@ async fn pay_cod_with_deleted_sender_cancels_cod_and_frees_item() {
         e.has_field("event", "mail.cod_cancelled")
             && e.has_field("reason", "sender_gone")
             && e.has_field("price", "300")
+            && e.has_field("sender_name", "SsmThreeCodSGone")
             && e.has_field("mail_id", &mail_id.to_string())
     }));
 
