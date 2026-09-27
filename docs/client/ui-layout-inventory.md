@@ -230,14 +230,14 @@ Legend:
 | `Pet/PetContainerDrag.layout` | **ACTIVE** | Pet | Pet ability drag ghost |
 | `Pet/PetDrag.layout` | **ACTIVE** | Pet | Pet slot drag ghost |
 
-### Commands (Custom Macros)
+### Command (Organization Tier)
 
 | File | Status | Module | Description |
 |------|--------|--------|-------------|
-| `Command/CommandVault.layout` | **ACTIVE** | Command | Command macro library |
-| `Command/CommandEditor.layout` | **ACTIVE** | Command | Macro editor (icon, script, name) |
-| `Command/CreateCommand.layout` | **ACTIVE** | Command | New macro creation dialog |
-| `Command/CommandVaultDragItem.layout` | **ACTIVE** | Command | Command drag ghost |
+| `Command/CommandVault.layout` | **ACTIVE** | Command | Command organization vault (container `INV_CommandBank` = 20), opened by `onCommandVaultOpen`. See [bank-vault audit A-04](../analysis/bank-vault/audit.md) |
+| `Command/CommandEditor.layout` | **ACTIVE** | Command | Command organization editor: per-rank permission checkboxes (`CommandEditor_Perm_<perm>_<rank>`) |
+| `Command/CreateCommand.layout` | **ACTIVE** | Command | Create-a-Command-organization dialog (name entry) |
+| `Command/CommandVaultDragItem.layout` | **ACTIVE** | Command | Drag ghost for the Command organization vault |
 
 ### Navigation & World
 
