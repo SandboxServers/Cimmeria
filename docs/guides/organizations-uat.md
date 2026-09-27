@@ -347,8 +347,10 @@ every online member's window.
 **Log rows.** `org.set_text` (INFO, `field` = `motd`, `note` or
 `officer_note`, `from_units`, `to_units`, `target_player_id` for an officer
 note); `org.set_rank_name`; `org.set_rank_permissions` (INFO, `rank`,
-`from_mask`, `to_mask`, `wire_mask`); `text_changed` and
-`permissions_changed` (DEBUG). The GM fallback writes `org.gm_action` with
+`from_mask`, `to_mask`, `wire_mask`); the persistence rows `set_text` and
+`set_rank_permissions`, `rank_permissions_changed`, and
+`org.officer_note_sync` (`show`, `recipients`) when the officer-note bit
+moves (DEBUG). The GM fallback writes `org.gm_action` with
 `action = gm_org_set_perms` and DEBUG `permissions_changed` with `via = gm`
 and `ignored_bits`.
 

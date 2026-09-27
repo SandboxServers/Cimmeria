@@ -71,17 +71,17 @@ async fn every_org_variant_reaches_the_org_arm() {
     }
 }
 
-/// A call no packet serves yet (CM 13, until ORG-08) and the Bank's CM 19
-/// stub answer a live session with ORG-01's pair, so the press is never
-/// silent.
+/// A call no packet serves yet (CM 10, the Team / Command minimap ping)
+/// and the Bank's CM 19 stub answer a live session with ORG-01's pair, so
+/// the press is never silent.
 #[tokio::test]
 async fn unserved_calls_from_a_live_session_are_answered() {
     let msgs = [
         OrgCellToBase::ForwardCellCall {
             player_id: 11,
             entity_id: 21,
-            method_index: 13,
-            args: vec![5, 0, 0, 0, 0, 0, 0, 0],
+            method_index: 10,
+            args: [&5i32.to_le_bytes()[..], &[0u8; 12]].concat(),
         },
         OrgCellToBase::TransferCash {
             player_id: 11,
@@ -403,5 +403,97 @@ async fn org10_gm_variants_reach_their_handlers() {
             rows[0].fields
         );
         assert!(rows[0].has_field("player_id", "11"), "{:?}", rows[0].fields);
+    }
+}
+
+/// ORG-08: CM 13-17 from a live session reach the text and rank-editor
+/// handlers, not the "not available yet" arm. With no database each ends
+/// in its own `rejected` row (`no_db`) and one feedback line.
+#[tokio::test]
+async fn texts_and_rank_editor_reach_their_handlers() {
+    let wstr = |s: &str| {
+        let units: Vec<u16> = s.encode_utf16().collect();
+        let mut b = (units.len() as u32).to_le_bytes().to_vec();
+        units
+            .iter()
+            .for_each(|u| b.extend_from_slice(&u.to_le_bytes()));
+        b
+    };
+    let org = 5i32.to_le_bytes().to_vec();
+    let cases: [(u16, Vec<u8>, &str); 5] = [
+        (13, [org.clone(), wstr("Hi")].concat(), "org.set_text"),
+        (14, [org.clone(), wstr("Hi")].concat(), "org.set_text"),
+        (
+            15,
+            [org.clone(), wstr("Bo"), wstr("Hi")].concat(),
+            "org.set_text",
+        ),
+        (
+            16,
+            [
+                org.clone(),
+                2i32.to_le_bytes().to_vec(),
+                1i32.to_le_bytes().to_vec(),
+            ]
+            .concat(),
+            "org.set_rank_permissions",
+        ),
+        (
+            17,
+            [org.clone(), 2i32.to_le_bytes().to_vec(), wstr("Grunt")].concat(),
+            "org.set_rank_name",
+        ),
+    ];
+    for (method_index, args, event) in cases {
+        let capture = LogCapture::install();
+        let typed_transport = Arc::new(TestTransport::new());
+        let transport: Arc<dyn Transport> = typed_transport.clone();
+        let (connected, entity_to_addr) = empty_maps();
+        let addr: std::net::SocketAddr = "127.0.0.1:54321".parse().unwrap();
+        let mut s = crate::test_support::test_default_connected_client_state();
+        s.active_player_id = Some(11);
+        s.player_entity_id = Some(21);
+        s.listed_online = true;
+        connected.lock().unwrap().insert(addr, s);
+        entity_to_addr.lock().unwrap().insert(21, addr);
+        handle_cell_message(
+            CellToBaseMsg::Org(OrgCellToBase::ForwardCellCall {
+                player_id: 11,
+                entity_id: 21,
+                method_index,
+                args,
+            }),
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+            &None,
+            &None,
+            "127.0.0.1",
+            7777,
+        )
+        .await;
+        let row = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("event", event) && c.fields.contains_key("outcome"))
+            .unwrap_or_else(|| panic!("CM {method_index}: no {event} row"));
+        assert!(
+            row.has_field("reason", "no_db"),
+            "CM {method_index}: {row:?}"
+        );
+        assert!(
+            !capture
+                .all()
+                .iter()
+                .any(|c| c.has_field("event", "org.forward_unimplemented")),
+            "CM {method_index} reached the not-available arm"
+        );
+        // One feedback line, no onErrorCode.
+        assert_eq!(
+            typed_transport.filter_to(addr).len(),
+            1,
+            "CM {method_index}"
+        );
     }
 }
