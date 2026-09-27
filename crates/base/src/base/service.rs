@@ -287,6 +287,13 @@ impl BaseService {
             );
         }
 
+        // Log any organization trigger events a bare DELETE (psql, a test,
+        // a crash between commit and export) left unexported; see
+        // `organization::audit`.
+        if let Some(pool) = self.db_pool.clone() {
+            cimmeria_base_session::base::organization::audit::spawn_startup_sweep(pool);
+        }
+
         self.is_running = true;
         Ok(())
     }

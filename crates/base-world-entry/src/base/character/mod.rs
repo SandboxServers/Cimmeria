@@ -126,16 +126,27 @@ pub async fn handle_delete_character(
         }
     };
 
-    let result = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1 AND account_id = $2")
-        .bind(player_id)
-        .bind(account_id as i32)
-        .execute(pool.as_ref())
-        .await;
+    // Locks the character's Teams and Commands before the delete, so the
+    // member-delete trigger (leader promotion, D-ORG12) keeps the ORG-LOCK
+    // order, and after the commit logs what the trigger did to them (INFO on
+    // `org`: `leader_changed`, `disbanded`, `left_memberless`).
+    let result = super::organization::character_delete::delete_character(
+        pool.as_ref(),
+        player_id,
+        account_id as i32,
+    )
+    .await;
 
     match result {
-        Ok(r) => {
-            if r.rows_affected() > 0 {
-                tracing::info!(%addr, player_id, account_id, "Character deleted");
+        Ok(deletion) => {
+            if deletion.deleted {
+                tracing::info!(
+                    %addr,
+                    player_id,
+                    account_id,
+                    org_events = deletion.org_events.len(),
+                    "Character deleted"
+                );
             } else {
                 tracing::warn!(%addr, player_id, account_id, "Character not found or not owned");
             }

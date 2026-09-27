@@ -58,3 +58,4 @@
 - [project_crafting_induction_review_2026-09-27.md](project_crafting_induction_review_2026-09-27.md) — CR06 induction/tx: trade lock-order cycle, qty<=0 fail-open, world_name never updated on gate travel
 - [project_mail_escrow_ss_m2.md](project_mail_escrow_ss_m2.md) — SS-M2 escrow + SS-M3 take/COD/return cleared; residual: archived unpaid COD strands escrow, buyback lock inversion
 - [reference_duel_harm_gate.md](reference_duel_harm_gate.md) — Duel harm gate authority (SS-D2) + side paths that skip it: pulses, auto-cycle, pet defend sweep, launch same-space
+- [reference_org_lock_authority.md](reference_org_lock_authority.md) — ORG-02 authority map: authz-by-convention gap, no leader UPDATE guard, at-most-once audit export
