@@ -129,6 +129,79 @@ session did not reach — the `Event_Level_PostLoad` subscribers `GameAppearance
 `0x00df7b80`) remain untraced; finding their handler bodies needs the vtable slot arithmetic this
 session didn't have time to work out — see Next Steps).
 
+## Round 3 (2026-09-27, same day): the record parser is generic infra, not a lead; XML shape is precedented; the lazy-read finding is now in tension with the content-field hypothesis
+
+Followed team-lead's four candidates further. Two more dead ends and one structural conclusion
+that needs to be stated plainly, because it cuts against the working "which content field" framing
+rather than narrowing it.
+
+**Dead end — the top-level Dialog record parser (`CME_UIScreen_UIScreenType_1` @ `0x015e4b20`,
+confirmed by decompile: reads `DialogID`/`UIScreenType`/`KismetEventSetID`/`DialogFlags`, matching
+`dialog-portrait-lookup.md`) is called only from the same generic XSD-type-dispatch machinery as the
+per-`<Screens>` parser.** Its four callers (`CME_UIScreen__unknown_015e5ff0`, twice, plus
+`FUN_015e9150` and `FUN_015e7960`) are the CME `DataType` registry's generic "resolve a type name
+string to its decoder" dispatcher — the same one `datatype-registry-system.md` describes, shared
+across every cooked-data schema, not Dialog-specific and not map-load-specific. Chasing this
+further would mean tracing what *those* generic dispatchers are called with (a type-name string) at
+each of dozens of call sites across the whole CME type system — a large, low-yield fan-out. Not
+pursued further.
+
+**Dead end — could not resolve `GameAppearanceManager`'s or `Minimap`'s handler bodies via vtable
+arithmetic.** The pattern that resolves an `___CallbackImpl` RTTI accessor to its vtable (accessor
+address = vtable_base + 8, confirmed against `GameProxyPlayer`'s already-known
+`Event_Level_PostLoad` case: xref to `0x00df6e80` lands at `0x019d5ac4` = `0x019d5abc + 8`, matching
+`world-entry-pipeline.md`'s documented vtable) does **not** extend to the actual handler address the
+way I assumed. Reading the vtable slot at `+0xC` (where the invoke/`vfunc_3` should sit) resolves to
+the *same* address (`0x00429700`) for all four vtables I checked, including the known-good
+`GameProxyPlayer` one — meaning `vfunc_3` in these vtables is a **generic invoke thunk** that reads
+the real handler pointer from a runtime, per-instance field (`CmeMemberCallback.pMethodPtr`), not a
+per-class vtable slot. This matches `world-entry-pipeline.md`'s own original open question for this
+exact case ("stored at runtime in `CmeMemberCallback.pMethodPtr`... not findable via static analysis
+alone") — the `0x00de8660` resolution for `GameProxyPlayer` must have come from a live trace or from
+finding its owning-class constructor's literal argument (the way `FUN_00d26850`/`FUN_0044e5d0`
+directly named DialogController's and category 5's own handlers as call arguments), not from vtable
+slot arithmetic. I could not find `GameAppearanceManager`'s or `Minimap`'s owning-class constructor
+in the time available (no data xrefs to any of the three vtable base addresses — Ghidra's analysis
+pass never linked the immediate operand that writes the vtable pointer as a reference at all, for
+any of the three unresolved cases). This remains open for a session with either more time to search
+for the owning-class constructors, or live-trace access.
+
+**Structural conclusion, stated plainly because it's in tension with the working hypothesis: XML
+*parsing* of a cached Dialog element is lazy, and nothing eager triggers it for content this
+session could find.** `FUN_0043c2b0`/`FUN_0043a9d0` (the element-commit/persist path a
+`resourceFragment` push runs) only write raw bytes to the ZIP archive — they never parse the XML.
+Parsing (`CME_UIScreen_UIScreenType_1` → `FUN_015e4d10`, which is where `SpeakerID`/`ScreenID`/
+button fields actually get read into memory) only runs when something asks the CME type registry
+for the Dialog object by key, and "What is not confirmed" §2's negative finding says nothing does
+that automatically for category 5 — the only wire-traced path that reads a Dialog by key is
+`Event_NetIn_DialogDisplay` (`FUN_00d25900`, per `dialog-controller-wire-flow.md`), which only fires
+when a dialog is actually shown to a player. The debug-hub dialogs are never displayed in
+`Castle_CellBlock` (confirmed again this session — no seed content there references them). **Taken
+at face value, this means the debug-hub dialogs' content — `speaker_id`, screen count, `ScreenID`
+range, button type — should never even be parsed, let alone acted on, during a session that never
+opens them.** That is a real tension with "which content field crashes it," not a dodge: either (a)
+there is an eager consumer this session did not locate (the two untraced `Event_Level_PostLoad`/
+`Event_World_Loaded` handlers above are the most likely remaining candidates, since they are the
+only ones this session could not fully clear), or (b) the mechanism is not about Dialog *content*
+being parsed and acted on at all, but something at the byte/archive level sensitive to these entries'
+*presence* or *size* rather than their field values (checked and found nothing obviously undersized —
+the classic (non-ZIP64) ZIP total-entry-count field is 16-bit, but `CookedDataDialogs.pak` has ~5,405
+shipped entries plus a handful of overrides, nowhere near that limit).
+
+**One useful negative on the "content shape" front: two screens and button type 4 are both already
+common in the shipped PAK, so they are weak candidates by themselves.** `emit_cooked_dialog`'s own
+module docs (`crates/resources/src/base/dialog_overrides/emit.rs`) cite "4,349 shipped `<Buttons>`
+elements" and a real shipped two-button dialog ("Blurb 2572," More Info + Accept) as the reference
+shape the emitter matches byte-for-byte — multi-screen, multi-button dialogs are not novel to the
+client's parser, only to *Cimmeria's own* prior overrides (which all happen to be single-screen,
+button-less). Comparing `generate_dialog_xml` for `3995` against `100100` by hand (both already
+byte-pinned in `mod.rs`'s tests) shows only three differences beyond text: `SpeakerID="754"` instead
+of `"0"`, `ScreenID`s in the `200000` range instead of `96108`, and a second `<Screens>` with one
+`<Buttons ButtonType="4" ...>`. Given the shape difference (screens/buttons) is precedented in
+5,405 shipped dialogs and the emitter's own tests, `speaker_id` novelty and the `ScreenID` range are
+the more likely remaining differentiators *if* an eager consumer exists — but this session could not
+locate one.
+
 ## Summary
 
 A server deploy pushed two new Cimmeria-authored `CookedDataDialogs.pak` overrides (dialog ids
