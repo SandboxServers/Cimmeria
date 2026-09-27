@@ -49,8 +49,8 @@
 | `chat.gm_broadcast` | INFO | `chat` | `cell-console` `gm/shout.rs` | `entity_id`, `account_id`, `player_id`, `speaker`, `source` (`native` / `console`), `scope` (`space` / `global`), `space_id`, `text_units`, `text` |
 | `chat.gm_broadcast_delivered` | INFO | `chat` | space: `gm/shout.rs`; global: `base-world-entry` `chat_dispatch.rs` | actor ids, `source`, `scope`, `delivered`, `failed`, (`space_id` / `not_in_world`) |
 | `chat.gm_broadcast_rejected` | WARN | `chat` | `gm/shout.rs`, `console/social.rs` | `entity_id`, `account_id`, `player_id`, `source`, `scope`, `text_units`, `reason` = `empty_text` / `malformed_args` / `no_text` / `caller_not_found` / a `TextReject::reason()` (`too_long`, `control_char`, ...) |
-| `chat.gm_broadcast_send_failed` | WARN | `chat` | `gm/shout.rs` (global hand-off to the base; each space recipient), `gm_broadcast.rs` (each global recipient) | the GM's `entity_id`, `account_id`, `player_id`; `scope`; `reason` = `base_channel_closed` / `send_error`; per-recipient rows add `target_player_id`, `target_entity_id` (and `addr` on the base) |
-| `chat.gm_broadcast_skipped` | WARN | `chat` | `gm_broadcast.rs` | the GM's ids, `reason = session_map_poisoned` |
+| `chat.gm_broadcast_send_failed` | WARN | `chat` | `gm/shout.rs` (global hand-off to the base; each space recipient), `gm_broadcast.rs` (each global recipient) | the GM's `entity_id`, `account_id`, `player_id`; `scope`; `reason` = `base_channel_closed` / `send_error`; per-recipient rows add `target_player_id`, `target_entity_id` (and `addr` on the base; the base rows carry `scope = global`) |
+| `chat.gm_broadcast_skipped` | WARN | `chat` | `gm_broadcast.rs` | the GM's ids, `scope = global`, `reason = session_map_poisoned` |
 
 A non-GM attempt is the existing gate row, `GM-gated cell method rejected` with `method_index = 222`.
 
@@ -64,7 +64,8 @@ SigNoz query for a tester: logs where `event IN ('chat.gm_broadcast', 'chat.gm_b
 | `gm_shout_space_scope_stays_in_space` | `cimmeria-cell-console` (`gm::tests::shout`) | 8 | `isGlobal = 0` reaches exactly the GM's space instance (GM + one player, byte for byte); a player in another world and one in a **second instance of the same world** get nothing; no global forward |
 | `gm_shout_global_forwards_one_broadcast_to_base` | same | unit + 12 | `isGlobal = 1`: one `GmBroadcast` with the cell's ids and payload; the audit row's fields |
 | `gm_shout_base_channel_closed_logs_send_failed` | same | 12 | base channel gone: global logs one `chat.gm_broadcast_send_failed` for the lost hand-off, space one per recipient; all carry the GM's `account_id` / `player_id` and `reason`, the space rows name the recipient (Copilot review, PR #887) |
-| `help_announce_shows_usage_and_argument_detail` | `cimmeria-cell-console` (`console::tests::ss_c2_announce`) | unit | `.help announce` prints the summary and a `text (str)` detail row (new `ANNOUNCE_ARGS` in `registry/mod.rs`) |
+| `help_announce_shows_usage_and_argument_detail` | `cimmeria-cell-console` (`console::tests::ss_c2_announce`) | unit | `.help announce` prints the summary and a `[text] (str): Required. ...` detail row (new `ANNOUNCE_ARGS` in `registry/mod.rs`; bracketed because the spec's `min` is 0) |
+| `bare_announce_logs_no_text_and_shows_usage` | same | 12 | a bare `.announce` reaches `parse_announce`: `chat.gm_broadcast_rejected reason=no_text` with the GM's ids and exactly the usage line (Copilot round 2: the spec had `min: 1`, so the generic argc check answered first and this path was unreachable) |
 | `gm_shout_refusals_send_feedback_and_nothing_else` | same | 12 | blank, 256-unit, truncated WSTRING, empty args: `reason` logged, one GM feedback line, no broadcast |
 | `gm_broadcast_global_reaches_every_listed_session` | `cimmeria-base-session` | 8 | two listed sessions each get one reliable packet with the exact payload on their own entity; an unlisted session and a listed one with no entity get nothing |
 | `gm_broadcast_arm_fans_out_and_logs_delivery` | `cimmeria-base-world-entry` | dispatch arm | `CellToBaseMsg::Chat` reaches the fan-out and logs `chat.gm_broadcast_delivered` |
@@ -89,6 +90,8 @@ SigNoz query for a tester: logs where `event IN ('chat.gm_broadcast', 'chat.gm_b
 | `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell -p cimmeria-base` | 0 | 1283 passed, 0 skipped |
 | `lane.sh cargo fmt --all -- --check` | 0 | clean |
 | Review round (PR #887): `lane.sh cargo nextest run -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell` | 0 | 992 passed, 0 skipped |
+| Review round 2: `lane.sh cargo nextest run -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell` | 0 | 993 passed, 0 skipped |
+| Review round 2: `lane.sh cargo fmt --all -- --check`; `lane.sh cargo clippy -p cimmeria-base-session -p cimmeria-cell-console --all-targets -- -D warnings` | 0 | clean |
 | Review round: `lane.sh cargo fmt --all -- --check`; `lane.sh cargo clippy -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell --all-targets -- -D warnings` | 0 | clean |
 | `lane.sh cargo clippy -p cimmeria-wire -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell -p cimmeria-server --all-targets -- -D warnings` | 0 | clean |
 
@@ -104,6 +107,7 @@ Each fix reverted on top of the commits, the guard run, then `git checkout --` r
 | space filter widened to every player entity | `gm_shout_space_scope_stays_in_space` | FAILED: recipients `[1, 2, 3, 4]`, expected `[1, 2]` |
 | global fan-out iterates every session instead of the online index | `gm_broadcast_global_reaches_every_listed_session` | FAILED: `delivered: 3` (the character-select session got the line), expected 2 |
 | the `if !forwarded` check disabled (review fix) | `gm_shout_base_channel_closed_logs_send_failed` | FAILED: "global: a lost hand-off must log chat.gm_broadcast_send_failed" |
+| `.announce` spec `min` set back to 1 (review round 2) | `bare_announce_logs_no_text_and_shows_usage` | FAILED: "a bare .announce must log chat.gm_broadcast_rejected reason=no_text" |
 | `account_id` / `player_id` dropped from the space send-failure row (review fix) | `gm_shout_base_channel_closed_logs_send_failed` | FAILED at the `account_id` assertion on the `space` row |
 
 ## Known gaps
