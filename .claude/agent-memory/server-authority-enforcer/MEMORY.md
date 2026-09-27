@@ -54,4 +54,3 @@
 - [pr-426-navmesh-extractor.md](pr-426-navmesh-extractor.md) — Build-time navmesh parser hardened with checked_alloc_size; pattern worth reusing for header-driven Vec allocation
 - [pr-427-crafting-phase1.md](pr-427-crafting-phase1.md) — Phase 1 dispatch+persist; no mutation surface yet; Phase 2 is where the real adversarial review lands
 - [open-followup-runtime-navmesh-load.md](open-followup-runtime-navmesh-load.md) — NavMesh::load in cimmeria-entity has the same unguarded count*stride pattern; worth a follow-up issue
-- [project_crafting_induction_review_2026-09-27.md](project_crafting_induction_review_2026-09-27.md) — CR06 induction/tx: trade lock-order cycle, qty<=0 fail-open, world_name never updated on gate travel
