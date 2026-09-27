@@ -25,31 +25,37 @@ fn add_hostile_but_unattackable(mgr: &mut SpaceManager, id: u32, pos: [f32; 3]) 
 }
 
 /// Aggressive: an NPC that aggroes players but that the owner cannot attack
-/// is not scanned in.
+/// is not scanned in. The stance filter, not the threat entry's refusal
+/// behind it, is what stops it: no `engage_refused` WARN.
 #[tokio::test]
 async fn aggressive_pet_leaves_an_npc_its_owner_cannot_attack() {
     let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
     add_hostile_but_unattackable(&mut mgr, MOB, [10.0, 0.0, 14.0]);
     set_stance(&mut mgr, pet, PetStance::Aggressive);
 
+    let logs = LogCapture::install();
     tick(&mut mgr).await;
 
     assert_eq!(state(&mgr, pet), AiState::Follow);
     assert!(mgr.get_entity(pet).unwrap().threat_list.is_empty());
+    assert!(pets_ai_row(&logs, "pet_engage_refused").is_none());
 }
 
 /// Defensive: a non-hostile-faction NPC a content chain set fighting the
-/// owner is not "defended against"; the owner could not hit it either.
+/// owner is not "defended against"; the owner could not hit it either. As
+/// above, the stance never picks it (no `engage_refused` WARN).
 #[tokio::test]
 async fn defensive_pet_does_not_attack_an_npc_its_owner_cannot_attack() {
     let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
     add_mob(&mut mgr, MOB, [14.0, 0.0, 10.0], 0);
     mob_fights(&mut mgr, MOB, OWNER);
 
+    let logs = LogCapture::install();
     tick(&mut mgr).await;
 
     assert_eq!(state(&mgr, pet), AiState::Follow);
     assert!(mgr.get_entity(pet).unwrap().threat_list.is_empty());
+    assert!(pets_ai_row(&logs, "pet_engage_refused").is_none());
 }
 
 /// Player-to-pet threat: a friendly player's hit (or a content chain aiming
