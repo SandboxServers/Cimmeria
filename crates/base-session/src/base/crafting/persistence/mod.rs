@@ -14,8 +14,9 @@
 //! See `db/sgw/Players/Tables/sgw_player_discipline_expertise.sql` for the
 //! schema rationale.
 //!
-//! Every load gives a character with no stored paradigm levels the
-//! starting levels (`CraftingState::apply_default_paradigm_levels`). A verb
+//! Every load gives each paradigm with no stored level its starting level
+//! (`CraftingState::apply_default_paradigm_levels`), so a loaded state
+//! always carries all five. A verb
 //! that mutates state inside its own transaction uses
 //! [`load_crafting_state_locked`] and [`save_crafting_state_in`], so the
 //! `sgw_player` row stays locked from the read to the commit.
@@ -48,8 +49,8 @@ pub async fn load_crafting_state(
         .map(|(state, _)| state)
 }
 
-/// [`load_crafting_state`], also saying whether the starting paradigm
-/// levels were applied because none were stored. The login sync logs it.
+/// [`load_crafting_state`], also saying whether any starting paradigm level
+/// was filled in because none was stored. The login sync logs it.
 #[tracing::instrument(name = "crafting.load", level = "info", skip_all, fields(player_id))]
 pub async fn load_crafting_state_reporting(
     pool: &PgPool,
@@ -131,8 +132,8 @@ macro_rules! select_player_crafting {
     };
 }
 
-/// Read both tables on `conn` and apply the starting paradigm levels when
-/// none are stored (the `bool`). A missing player row is `Err(RowNotFound)`;
+/// Read both tables on `conn` and fill in the starting level of every
+/// paradigm with none stored (the `bool`: whether any was filled). A missing player row is `Err(RowNotFound)`;
 /// the callers map it to their own contract.
 async fn read_state(
     conn: &mut PgConnection,

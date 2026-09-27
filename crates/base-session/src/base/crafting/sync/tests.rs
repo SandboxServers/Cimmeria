@@ -358,6 +358,57 @@ async fn existing_character_with_no_levels_loads_and_pushes_the_defaults() {
     );
 }
 
+/// Live DB, the partial-array guard: a stored array shorter than five
+/// (here Common 7 and Human 2 only) keeps its stored levels and loads the
+/// rest at their starting levels, so the login push carries a 138 for all
+/// five paradigms. A push of only the stored two would leave the client's
+/// Goa'uld, Asgard and Ancient levels at whatever they were before the relog.
+/// Filling in only an empty map fails every assertion.
+#[tokio::test]
+async fn partial_stored_levels_load_and_push_all_five_paradigms() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (TEST_BASE + 8, TEST_BASE + 9);
+    cleanup(&pool, account_id, player_id).await;
+    insert_player(&pool, account_id, player_id).await;
+    sqlx::query("UPDATE sgw_player SET racial_paradigm_levels = '{7,2}' WHERE player_id = $1")
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .expect("store partial levels");
+
+    let loaded = load_crafting_state(&pool, player_id).await.expect("load");
+    let capture = LogCapture::install();
+    let session = OneSession::new(ENTITY, 55738);
+    let db_pool = Some(Arc::new(pool.clone()));
+    push_crafting_on_login(ENTITY, player_id, &db_pool, session.client()).await;
+    let sent = session.typed.filter_to(session.addr);
+    cleanup(&pool, account_id, player_id).await;
+
+    let levels = HashMap::from([(1, 7), (2, 2), (3, 1), (4, 1), (5, 1)]);
+    assert_eq!(
+        loaded.racial_paradigm_levels, levels,
+        "stored levels kept, the missing three at their starting levels"
+    );
+    let mut expected_state = CraftingState::new();
+    expected_state.racial_paradigm_levels = levels;
+    let paradigm_pushes = crafting_state_messages(&expected_state)
+        .into_iter()
+        .filter(|(method, _)| *method == ON_UPDATE_RACIAL_PARADIGM_LEVEL)
+        .count();
+    assert_eq!(
+        paradigm_pushes, 5,
+        "the expected bundle names every paradigm"
+    );
+    assert_eq!(
+        sent,
+        expected_bundle_packets(ENTITY, &expected_state, 0),
+        "the login push carries 138 for all five paradigms"
+    );
+    let event = login_sync_event(&capture);
+    assert!(event.has_field("paradigms", "5"), "{event:#?}");
+    assert!(event.has_field("defaults_applied", "true"), "{event:#?}");
+}
+
 /// A login whose crafting load fails (a pool that cannot connect stands in
 /// for a database outage) is a WARN naming the phase, and sends nothing.
 #[tokio::test]

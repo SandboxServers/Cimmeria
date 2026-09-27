@@ -64,7 +64,12 @@ impl MeterProvider for RecordingProvider {
 }
 
 /// Install the recording meter once per process. Safe to call from every
-/// test.
+/// test, in any order.
+///
+/// The facade's meter can be set only once per process, so in a test
+/// binary that uses this module every [`crate::init`] must go through here
+/// (the facade's own `init` self-test does); a direct `init` would take the
+/// slot with whatever provider is global at the time.
 ///
 /// # Panics
 ///

@@ -137,8 +137,9 @@ pub async fn push_login_bundle(
 /// entry, after the `onClientReady` burst, so it lands on a live entity
 /// whose UI has loaded.
 ///
-/// Loading applies the starting paradigm levels to a character that has
-/// none stored, so the tree draws the root disciplines as learnable. A sent
+/// Loading fills in the starting level of every paradigm with none stored,
+/// so the bundle carries all five 138s (none left at its pre-relog value)
+/// and the tree draws the root disciplines as learnable. A sent
 /// bundle is a `login_sync` event recording what was sent. A failed load
 /// sends nothing (the ASP count and blueprint list from the `mapLoaded`
 /// bundle stay); it and a bundle that could not be sent are a

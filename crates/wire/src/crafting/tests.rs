@@ -18,11 +18,54 @@ fn update_discipline_is_id_then_expertise() {
     );
 }
 
-/// The ASP property: `onEntityProperty` propId 2 (the enumerations.xml
-/// value), then the total, both INT32 LE.
+/// The value of `GENERICPROPERTY_AppliedSciencePoints` in the
+/// `EEntityPropertyType` block of `entities/defs/enumerations.xml`. The defs
+/// pad names and values with spaces, so both are trimmed.
+fn asp_property_id_from_enumerations_xml() -> i32 {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../entities/defs/enumerations.xml");
+    let xml = std::fs::read_to_string(&path).expect("read enumerations.xml");
+    let start = xml
+        .find("<EEntityPropertyType>")
+        .expect("EEntityPropertyType block");
+    let end = start
+        + xml[start..]
+            .find("</EEntityPropertyType>")
+            .expect("closing tag");
+    let values: Vec<i32> = xml[start..end]
+        .split("<Token>")
+        .skip(1)
+        .filter(|token| {
+            let name = &token[token.find("<Name>").expect("<Name>") + 6
+                ..token.find("</Name>").expect("</Name>")];
+            name.trim() == "GENERICPROPERTY_AppliedSciencePoints"
+        })
+        .map(|token| {
+            token[token.find("<Value>").expect("<Value>") + 7
+                ..token.find("</Value>").expect("</Value>")]
+                .trim()
+                .parse()
+                .expect("numeric value")
+        })
+        .collect();
+    assert_eq!(values.len(), 1, "declared exactly once: {values:?}");
+    values[0]
+}
+
+/// The ASP property id is the one `enumerations.xml` declares, so a typo in
+/// the constant cannot ship a value the client files under another property.
+#[test]
+fn asp_property_id_matches_enumerations_xml() {
+    assert_eq!(
+        GENERICPROPERTY_APPLIED_SCIENCE_POINTS,
+        asp_property_id_from_enumerations_xml()
+    );
+}
+
+/// The ASP property: `onEntityProperty` propId 2, then the total, both
+/// INT32 LE.
 #[test]
 fn asp_property_is_prop_2_then_total() {
-    assert_eq!(GENERICPROPERTY_APPLIED_SCIENCE_POINTS, 2);
     assert_eq!(
         applied_science_points_property_args(7),
         [0x02, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00]

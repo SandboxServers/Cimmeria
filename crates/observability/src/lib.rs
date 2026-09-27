@@ -310,11 +310,16 @@ mod tests {
     /// return `Err(AlreadyInitialized)`. Pin this contract so a refactor
     /// that switches to `set_meter_provider` panics doesn't silently
     /// regress to a "second init crashes the process" failure mode.
+    ///
+    /// The first `init` goes through [`crate::testing::install`], as every
+    /// `init` in a test binary must: the facade's meter is set once per
+    /// process, and under `cargo test` this test shares the process with
+    /// the recording-meter test. Were this test to take the slot with the
+    /// default no-op meter first, `install` could never put its recording
+    /// meter in place.
     #[test]
     fn init_returns_already_initialized_on_second_call() {
-        // First call may have happened in another test; just verify
-        // the second call returns Err either way.
-        let _ = init("self-test");
+        crate::testing::install();
         let second = init("self-test");
         assert!(
             matches!(second, Err(InitError::AlreadyInitialized)),

@@ -65,8 +65,8 @@ pub struct CraftingState {
 
     /// Racial paradigm levels, keyed by paradigm id. Discipline unlocks
     /// gate on `racial_paradigm_levels[discipline.racial_paradigm_id] >=
-    /// discipline.racial_paradigm_level`. A character with no stored levels
-    /// gets [`DEFAULT_RACIAL_PARADIGM_LEVELS`], not Python's
+    /// discipline.racial_paradigm_level`. A paradigm with no stored level
+    /// gets its [`DEFAULT_RACIAL_PARADIGM_LEVELS`] entry, not Python's
     /// all-ones, under which no real root discipline was learnable.
     ///
     /// `i8` matches the wire encoding of `onUpdateRacialParadigmLevel`
@@ -108,18 +108,26 @@ impl CraftingState {
         self.expertise.insert(discipline_id, clamped);
     }
 
-    /// Give a character with no stored paradigm levels the starting levels
-    /// ([`DEFAULT_RACIAL_PARADIGM_LEVELS`]). Stored levels, even a partial
-    /// list, are left alone. Characters created before these defaults have an empty
-    /// array, so applying this on load covers them without a migration.
-    /// Returns whether the defaults were applied.
+    /// Give every paradigm with no stored level its starting level
+    /// ([`DEFAULT_RACIAL_PARADIGM_LEVELS`]); a stored level is kept as it is.
+    /// Characters created before these defaults have an empty array, and a
+    /// shorter array leaves the later paradigms unset, so applying this on
+    /// load covers both without a migration. After it, all five paradigms
+    /// have a level: the login sync sends a 138 for each (a missing one would
+    /// leave the client's value from before the relog), the discipline
+    /// gate never reads an unset paradigm as 0, and a save writes the full
+    /// array. Returns whether any starting level was filled in.
     pub fn apply_default_paradigm_levels(&mut self) -> bool {
-        if !self.racial_paradigm_levels.is_empty() {
-            return false;
+        let mut applied = false;
+        for (paradigm_id, level) in DEFAULT_RACIAL_PARADIGM_LEVELS {
+            if let std::collections::hash_map::Entry::Vacant(slot) =
+                self.racial_paradigm_levels.entry(paradigm_id)
+            {
+                slot.insert(level);
+                applied = true;
+            }
         }
-        self.racial_paradigm_levels
-            .extend(DEFAULT_RACIAL_PARADIGM_LEVELS);
-        true
+        applied
     }
 
     /// Whether the player knows `discipline_id`: it is in `discipline_ids`.
@@ -168,10 +176,9 @@ mod tests {
         assert!(s.racial_paradigm_levels.is_empty());
     }
 
-    /// An empty map gets Common 5 and the other four at 1; stored
-    /// levels, even a partial list, are kept as they are.
+    /// An empty map gets Common 5 and the other four at 1.
     #[test]
-    fn default_paradigm_levels_apply_only_when_nothing_is_stored() {
+    fn default_paradigm_levels_fill_an_empty_map() {
         let mut fresh = CraftingState::new();
         assert!(fresh.apply_default_paradigm_levels());
         assert_eq!(fresh.racial_paradigm_levels.len(), 5);
@@ -179,12 +186,33 @@ mod tests {
         for paradigm_id in 2..=5 {
             assert_eq!(fresh.racial_paradigm_levels[&paradigm_id], 1);
         }
+    }
 
+    /// A partial map keeps its stored levels and gets the starting level for
+    /// every paradigm it lacks, so all five are always present.
+    #[test]
+    fn default_paradigm_levels_fill_the_gaps_of_a_partial_map() {
         let mut stored = CraftingState::new();
         stored.racial_paradigm_levels.insert(2, 7);
-        assert!(!stored.apply_default_paradigm_levels());
-        assert_eq!(stored.racial_paradigm_levels.len(), 1);
-        assert_eq!(stored.racial_paradigm_levels[&2], 7);
+        stored.racial_paradigm_levels.insert(4, 0);
+        assert!(stored.apply_default_paradigm_levels());
+        let mut levels: Vec<(i32, i8)> = stored
+            .racial_paradigm_levels
+            .iter()
+            .map(|(&id, &level)| (id, level))
+            .collect();
+        levels.sort_unstable();
+        assert_eq!(levels, [(1, 5), (2, 7), (3, 1), (4, 0), (5, 1)]);
+
+        let mut complete = stored.clone();
+        assert!(
+            !complete.apply_default_paradigm_levels(),
+            "a full map fills nothing"
+        );
+        assert_eq!(
+            complete.racial_paradigm_levels,
+            stored.racial_paradigm_levels
+        );
     }
 
     #[test]
