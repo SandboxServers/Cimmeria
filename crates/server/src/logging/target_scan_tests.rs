@@ -317,8 +317,8 @@ fn scan_finds_known_targets() {
         ("org", Level::DEBUG),
         ("org", Level::WARN),
         ("squad", Level::DEBUG),
-        // ORG-03's squad handlers in crates/cell-methods: membership
-        // changes at INFO, forged ids and out-of-range values at WARN.
+        // ORG-03's squad handlers in crates/cell-methods: spans and outcome
+        // rows at INFO, the actor-mismatch and dropped-send seams at WARN.
         ("squad", Level::INFO),
         ("squad", Level::WARN),
         // The social-systems campaign (SS-00): the chat length-cap refusal and
