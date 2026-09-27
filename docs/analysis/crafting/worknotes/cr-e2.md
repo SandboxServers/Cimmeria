@@ -24,9 +24,9 @@
   created fresh by this packet.
 - **Owned paths (this packet):**
   - `docs/reverse-engineering/findings/crafting-items.md` (new)
-  - `docs/reverse-engineering/findings/README.md` (added one row, bumped the doc count 73→79
+  - `docs/reverse-engineering/findings/README.md` (added one row, bumped the doc count 73→80
     to match the actual row count after the rebase onto CR-E1 (#858), which had already drifted before this packet touched it)
-  - `docs/reverse-engineering/README.md` (bumped "72 docs" → "79 docs", date 2026-09-25 →
+  - `docs/reverse-engineering/README.md` (bumped "72 docs" → "80 docs", date 2026-09-25 →
     2026-09-26)
   - `docs/analysis/crafting/source/blueprint-items.csv` (new)
   - `docs/analysis/crafting/worknotes/cr-e2.md` (this file)
