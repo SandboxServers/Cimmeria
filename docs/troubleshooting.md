@@ -303,13 +303,13 @@ Copy-Item .\target\debug\cimmeria-server.exe .
 cargo clippy --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab `
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab `
   --all-targets -- -D warnings
 ```
 
-All six excludes matter — the four GUI crates (the Tauri admin app, the two
-Tauri editors and the egui launcher), the Windows-only client-telemetry cdylib,
-and the `cimmeria-lab` supervisor. Dropping `cimmeria-client-telemetry` is the
+All seven excludes matter — the four GUI crates (the Tauri admin app, the two
+Tauri editors and the egui launcher), the Windows-only client-telemetry and
+client-patches cdylibs, and the `cimmeria-lab` supervisor. Dropping `cimmeria-client-telemetry` is the
 easy one to miss: it makes a Linux host, such as CI's runners, need
 xkbcommon/xcb dev packages. The authoritative list is
 [`.github/workflows/test.yml`](../.github/workflows/test.yml).

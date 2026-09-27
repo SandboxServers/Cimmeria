@@ -380,8 +380,8 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // `pub mod world_entry { pub mod methods; }` is inline in
         // base-methods' base/mod.rs, with a directory child.
         "cimmeria_base_methods::base::world_entry::methods",
-        // A bare prefix covering cimmeria_client_launch and
-        // cimmeria_client_telemetry.
+        // A bare prefix covering cimmeria_client_launch,
+        // cimmeria_client_patches and cimmeria_client_telemetry.
         "cimmeria_client",
     ] {
         assert!(resolves(real, &roots), "`{real}` should resolve");

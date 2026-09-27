@@ -1,0 +1,41 @@
+[package]
+name = "cimmeria-client-patches"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Injected DLL that restores shelved SGW.exe client features: it claims entity methods the stock client drops, decodes them with cimmeria-patch-wire and hands them to the UI Lua on the main thread. First feature: the Black Market."
+
+# cdylib for the injected DLL; rlib so the host can run the unit tests of
+# everything that is not raw FFI.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Built for i686-pc-windows-msvc, like cimmeria-client-telemetry, and left
+# out of the Linux workspace jobs the same way (the root CI excludes, the
+# workspace-hack's traversal and final excludes). Every hook, detour and
+# Lua call is behind `cfg(all(windows, target_arch = "x86"))`; on any other
+# target the library is the portable logic and its tests.
+[dependencies]
+# The Black Market argument codecs, shared with the server. std-only, so
+# nothing heavy comes into SGW.exe with it.
+cimmeria-patch-wire = { workspace = true }
+
+[target.'cfg(all(windows, target_arch = "x86"))'.dependencies]
+# DllMain, the bootstrap thread, VirtualQuery page checks, the lua51.dll
+# export lookup and OutputDebugStringW.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    # CreateThread's signature names SECURITY_ATTRIBUTES.
+    "Win32_Security",
+    "Win32_System_SystemServices",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+] }
+# The same MinHook the telemetry DLL uses. Both DLLs can be loaded at once
+# and both hook FEngineLoop::Tick and the drop callee, so both must chain:
+# MinHook relocates an existing `E9 rel32` at a target into its trampoline,
+# which a raw prologue overwrite would not.
+minhook-sys = "0.1"

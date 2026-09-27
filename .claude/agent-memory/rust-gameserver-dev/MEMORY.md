@@ -44,6 +44,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cell-entity-direction-semantics.md](cell-entity-direction-semantics.md) — `direction` is `[pitch, yaw, roll]` radians for all entities; `[i8; 3]` param zeroes facing.
 - [game-clock-and-timer-expiry-tests.md](game-clock-and-timer-expiry-tests.md) — client clock is ticks / hertz; expiries = `game_time_secs() + d`; settle the clock past its epoch in tests.
 
+## Injected client DLLs
+
+- [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues; Lua errors outside pcall exit; MinHook chains two DLLs; confirmed MethodDescription/stream layouts.
+
 ## UE3 packages and navmesh
 
 - [ue3-absent-property-defaults.md](ue3-absent-property-defaults.md) — an absent tagged property is the SGW class default (`Terrain.DrawScale3D` = 100).

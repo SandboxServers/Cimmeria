@@ -113,14 +113,14 @@ The five gating checks CI runs are documented in [`CLAUDE.md`](../CLAUDE.md) und
 cargo fmt --all -- --check
 cargo clippy --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab --all-targets -- -D warnings
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab --all-targets -- -D warnings
 cargo build --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab --all-targets
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Live-DB tests (need a running Postgres on :5433):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \

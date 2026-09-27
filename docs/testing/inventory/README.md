@@ -3,11 +3,11 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-07-25 (header figures re-counted; catalogue tables are still the 2026-06-12 snapshot)  
-> **Total tests catalogued**: 1,351 *(stale snapshot; current workspace count is **2,936 tests across 461 files** — inventory regeneration is pending the next sweep)*  
+> **Total tests catalogued**: 1,351 *(stale snapshot; current workspace count is **6,019 tests across 950 files** (2026-09-27, `python tools/extract_tests.py`) — inventory regeneration is pending the next sweep)*  
 > **Companion docs**: [TESTING.md](../../../TESTING.md) (the playbook for *how to write* tests), [maintenance.md](maintenance.md), [review-report.md](review-report.md) (audit findings — owned by the testing-validation-engineer agent)
 
 > **Catalogue drift warning.** The per-crate tables below cover 1,351 tests
-> against a workspace that now has 2,936 — they are missing more than half
+> against a workspace that now has 6,019 — they are missing more than half
 > the suite, and several crates added since the snapshot have no file at all
 > (`admin-api`, `discord`, `navmesh-extractor`, `observability`,
 > `client-telemetry`). `wireclient` was catalogued separately on 2026-07-25 —

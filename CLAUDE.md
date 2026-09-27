@@ -70,14 +70,15 @@ bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
 bash tools/build-lane/lane.sh cargo test -p cimmeria-cell
 
 # Full workspace check — skip the GUI apps (Tauri editors and the egui
-# launcher), and the Windows-only client-telemetry cdylib so CI's Linux
-# runners don't need xkbcommon/xcb dev packages. Same six exclusions as CI.
+# launcher), and the Windows-only client-telemetry and client-patches cdylibs
+# so CI's Linux runners don't need xkbcommon/xcb dev packages. Same seven
+# exclusions as CI.
 bash tools/build-lane/lane.sh --exclusive cargo check --workspace \
   --exclude cimmeria-app \
   --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor \
   --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Full debug info for a debugger session (builds into target/dev-debug/)
 bash tools/build-lane/lane.sh cargo build -p cimmeria-server --profile dev-debug
@@ -110,16 +111,16 @@ cargo hakari generate --diff && cargo hakari manage-deps --dry-run
 cargo clippy --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab \
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab \
   --all-targets -- -D warnings
 cargo build --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab --all-targets
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 # Doctests aren't run by nextest — only cimmeria-commands has runnable
 # doctests today, so this is a one-crate sanity check:
 cargo test --doc -p cimmeria-commands
@@ -188,7 +189,7 @@ The map of "what changed → what to update":
 | The toolchain pin, cargo profiles, `.cargo/config.toml`, or the build tooling under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` or `tools/build-metrics/` | [docs/architecture/build-system.md](docs/architecture/build-system.md) (the ADR), "Build rules" in this file and [.github/copilot-instructions.md](.github/copilot-instructions.md), the worktree and lane rules in [docs/agents/development-workflow.md](docs/agents/development-workflow.md), and [docs/troubleshooting.md](docs/troubleshooting.md) if the change adds a new failure mode |
 | Test conventions, types, or gotchas | [TESTING.md](TESTING.md) (and re-link from README if a new section is added) |
 | Markdown lint rules, exclusions, or the wrapper scripts | [.markdownlint-cli2.yaml](.markdownlint-cli2.yaml), [tools/lint-md.sh](tools/lint-md.sh), [tools/lint-md.ps1](tools/lint-md.ps1), and the workflow at [.github/workflows/markdownlint.yml](.github/workflows/markdownlint.yml) |
-| Add or remove ≥5% of workspace tests in one PR (~147 tests at current 2,936 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
+| Add or remove ≥5% of workspace tests in one PR (~301 tests at current 6,019 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
 | Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
 | Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) (crate table). Regenerate the crate diagrams in [README.md](README.md) and crates/README.md with `python tools/crate-graph/crate_graph.py` (CI fails when they are stale); add a new crate to a layer in [tools/crate-graph/groups.toml](tools/crate-graph/groups.toml) |
 | A new crate split out of an existing one, or a module moved between crates | A new crate with live-DB tests goes in [tools/test-live-db.sh](tools/test-live-db.sh) and [.ps1](tools/test-live-db.ps1). An in-process crate also needs an `IN_PROCESS_CRATES` entry in `crates/server/src/logging/target_scan_tests.rs`, and an `OTEL_FILTER` row of its own (never a bare name that prefixes a sibling crate's, such as `cimmeria_cell`), or a `NO_OWN_ROW` entry that says why not. `crates/server/src/logging/parity_tests/crate_rows.rs` checks both. Moved tracing targets follow the move in the `FILE_LAYERS` rows of `crates/server/src/logging/filters.rs`. Update the crate table and graph as the row above says, and regenerate the workspace-hack (`cargo hakari generate && cargo hakari manage-deps --yes`). How the services split was done: [docs/architecture/services-crate-split.md](docs/architecture/services-crate-split.md). The layering guard that policed the split's planned crate DAG is retired: the crates now exist, and a new dependency edge shows up in the regenerated crate graph |

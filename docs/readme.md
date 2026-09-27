@@ -39,8 +39,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | 285 (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 2,936 across 461 files (2,691 gated in CI) |
-| Live-DB regression guards | 224 |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 6,019 across 950 files (5,604 gated in CI) |
+| Live-DB regression guards | 811 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -259,6 +259,7 @@ How the Cimmeria emulator itself is structured. 38 documents.
 | [observability.md](architecture/observability.md) | ADR for server-side observability: OTLP exporter, Mercury packet instrumentation, SigNoz overlay, target catalog, `decision_outcome` enum | Complete |
 | [dev-session-telemetry.md](architecture/dev-session-telemetry.md) | Dev-session telemetry pipeline: the `/auth/dev-session` HMAC token, launcher `telemetry/` capture, storage layout | Complete |
 | [client-telemetry.md](architecture/client-telemetry.md) | Client-side telemetry architecture: from-scratch instrumentation hookpoints in the launcher, capture surface, transport | Complete |
+| [client-patches.md](architecture/client-patches.md) | ADR for `cimmeria-client-patches`, the always-injected DLL for client fixes gameplay needs (separate from telemetry): build fingerprint gate, claim-by-name receive hooks on the dispatcher's drop path, main-thread delivery to the UI Lua, MinHook chaining with the telemetry DLL, the shared `cimmeria-patch-wire` codec | Accepted |
 | [discord-notifications.md](architecture/discord-notifications.md) | Discord notification design + ops: `EventKind` catalogue, channel routing, embed formatting, default toggles | Complete |
 | [atrea-editor-bridge.md](architecture/atrea-editor-bridge.md) | ADR for the Atrea Editor bridge â€” an MCP server exposing the in-game UnrealEd surface | Complete |
 | [live-research-lab.md](architecture/live-research-lab.md) | ADR (Proposed) for the live research lab: inbound bridge in the client-telemetry DLL (Lua eval, memory, dynamic hooks, native calls), the `cimmeria-lab` supervisor (lifecycle, autologin, screenshots, crash recovery), and the token-gated in-server MCP endpoint (console passthrough, live entity queries, packet taps) | Proposed |

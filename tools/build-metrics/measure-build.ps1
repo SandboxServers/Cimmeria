@@ -33,7 +33,7 @@ Set-Location $root
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 $excludes = @('cimmeria-app', 'cimmeria-content-editor', 'cimmeria-scene-editor', 'sgw-launcher',
-    'cimmeria-client-telemetry', 'cimmeria-lab') | ForEach-Object { '--exclude', $_ }
+    'cimmeria-client-telemetry', 'cimmeria-client-patches', 'cimmeria-lab') | ForEach-Object { '--exclude', $_ }
 
 # --- memory sampler ---------------------------------------------------------------------------
 $samples = Join-Path $OutDir 'memory-samples.csv'

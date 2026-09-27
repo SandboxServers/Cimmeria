@@ -68,6 +68,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "runs inside SGW.exe; its rows reach the server only as `client.native` replays",
     ),
     (
+        "client-patches",
+        "runs inside SGW.exe; logs to OutputDebugString and a file beside SGW.exe, never to the server",
+    ),
+    (
         "launcher",
         "the player's launcher; its rows reach the server only as `launcher.*` replays",
     ),
