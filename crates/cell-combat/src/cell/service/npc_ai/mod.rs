@@ -94,7 +94,7 @@ mod path_failure;
 mod path_request;
 mod patrol;
 // `combat::generate_threat` asks it whether a Passive pet refuses threat.
-pub(in crate::cell) mod pet;
+pub mod pet;
 mod step_back;
 use cimmeria_cell_world::cell::service::npc_ai::transition;
 mod wander;

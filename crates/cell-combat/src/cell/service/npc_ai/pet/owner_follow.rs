@@ -69,6 +69,7 @@ pub(super) fn arm_follow(space_mgr: &mut SpaceManager, pet_id: u32, owner_id: u3
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
     tracing::debug!(
         target: "pets.ai",
+        entity_id = pet_id,
         event = "follow_armed",
         decision_outcome = "pet_follow_armed",
         pet_id,
@@ -122,6 +123,7 @@ pub(super) async fn teleport_if_left_behind(
     {
         tracing::debug!(
             target: "pets.ai",
+            entity_id = pet_id,
             event = "teleport_rate_limited",
             decision_outcome = "pet_teleport_rate_limited",
             pet_id,
@@ -140,6 +142,7 @@ pub(super) async fn teleport_if_left_behind(
     // (from, to, grounding).
     tracing::debug!(
         target: "pets.ai",
+        entity_id = pet_id,
         event = "teleported",
         decision_outcome = "pet_teleported",
         pet_id,

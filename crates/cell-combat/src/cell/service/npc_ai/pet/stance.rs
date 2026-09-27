@@ -1,5 +1,5 @@
 //! Stance rules (D-PT09): which target, if any, a pet out of a fight should
-//! engage this turn. Pure reads; [`super::defend::engage`] acts on the pick.
+//! engage this turn. Pure reads; [`super::engage::engage_stance_pick`] acts on the pick.
 //!
 //! Engaging on being hit is not here: `combat::generate_threat` preempts a
 //! Defensive or Aggressive pet into Fighting the moment damage lands, as it
@@ -94,11 +94,19 @@ pub(super) fn pick_engagement(
     if super::owner_follow::left_behind(&pet.position, &owner.position).is_some() {
         return None;
     }
+    // Every rule is bounded: the defend rules and the owner's target within
+    // PET_DEFEND_RADIUS of the owner, the Aggressive scan within
+    // PET_AGGRESSIVE_RADIUS of the pet. Dropping the rest before the sort
+    // keeps the per-turn cost to the mobs near the pair, not the space.
+    let in_reach = |m: &CellEntity| {
+        horizontal_distance(&m.position, &owner.position) <= PET_DEFEND_RADIUS
+            || horizontal_distance(&m.position, &pet.position) <= PET_AGGRESSIVE_RADIUS
+    };
     let mut mobs: Vec<&CellEntity> = space_mgr
         .npc_ids_in_space_of(pet_id)
         .into_iter()
         .filter_map(|id| space_mgr.get_entity(id))
-        .filter(|m| fightable(m) && super::fight_refusal(owner, m).is_none())
+        .filter(|m| in_reach(m) && fightable(m) && super::fight_refusal(owner, m).is_none())
         .collect();
     // Nearest first; the id breaks ties so the pick is deterministic.
     mobs.sort_by(|a, b| {

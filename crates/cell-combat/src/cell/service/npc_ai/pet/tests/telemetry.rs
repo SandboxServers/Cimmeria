@@ -28,18 +28,18 @@ async fn owner_missing_row_names_the_reason() {
     );
 }
 
-/// The engage seam's refusal: a target the threat entry refuses is a WARN
-/// with `reason = threat_refused` (an invariant violation: the stance never
-/// picks such a target). Driven directly with a Passive pet, which
-/// `generate_threat` refuses.
+/// The engage seam's refusal: a target the engagement refuses is a WARN
+/// with its `reason` (an invariant violation: the stance never picks such a
+/// target). Driven directly with a mob its owner could not attack.
 #[test]
 fn engage_refusal_warns_with_a_reason() {
     let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
-    add_mob(&mut mgr, MOB, [14.0, 0.0, 10.0], HOSTILE);
-    set_stance(&mut mgr, pet, PetStance::Passive);
+    // Not the hostile faction: the engagement refuses what the owner could
+    // not attack.
+    add_mob(&mut mgr, MOB, [14.0, 0.0, 10.0], 0);
 
     let logs = LogCapture::install();
-    let fighting = super::super::defend::engage(
+    let fighting = super::super::engage::engage_stance_pick(
         &mut mgr,
         pet,
         OWNER,
@@ -50,8 +50,8 @@ fn engage_refusal_warns_with_a_reason() {
     let row = logs
         .find_event(
             tracing::Level::WARN,
-            "threat entry refused",
-            "threat_refused",
+            "engagement was refused",
+            "target_not_hostile",
         )
         .expect("engage_refused warn");
     assert!(row.has_field("event", "engage_refused"), "{row:?}");
@@ -103,5 +103,31 @@ async fn every_pets_ai_row_carries_event_and_owner_identity() {
         assert!(row.fields.contains_key("event"), "{row:?}");
         assert!(row.has_field("pet_id", &pet.to_string()), "{row:?}");
         assert_owner_identity(row);
+    }
+}
+
+/// Rule 5 correlator: every `pets.ai` row names the pet as `entity_id`,
+/// as the `pets.lifecycle` rows do. Driven through a stance fight that ends
+/// (engage, owner mirror, target dropped, follow re-armed).
+#[tokio::test]
+async fn every_pets_ai_row_carries_the_pet_as_entity_id() {
+    let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
+    add_mob(&mut mgr, MOB, [10.0, 0.0, 16.0], HOSTILE);
+    set_stance(&mut mgr, pet, PetStance::Aggressive);
+
+    let logs = LogCapture::install();
+    tick(&mut mgr).await;
+    mgr.get_entity_mut(MOB).unwrap().faction = 0;
+    tick(&mut mgr).await;
+    tick(&mut mgr).await;
+
+    let rows: Vec<_> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "pets.ai")
+        .collect();
+    assert!(rows.len() >= 3, "a fight's worth of rows: {rows:#?}");
+    for row in rows {
+        assert!(row.has_field("entity_id", &pet.to_string()), "{row:?}");
     }
 }

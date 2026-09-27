@@ -13,8 +13,10 @@
 //!   never engages, even when hit. Defensive engages whatever attacks the
 //!   owner or the pet. Aggressive also engages the owner's current target once
 //!   the owner is in combat, and hostile NPCs within 15 u of the pet.
-//! - [`defend`]: seeding that engagement, and mirroring the pet's fights into
-//!   the owner's combat state (`threatened_mobs`, `BSF_InCombat`).
+//! - [`engage`]: seeding that engagement on both sides
+//!   ([`engage_pet_target`], public: an owner's attack order uses it too).
+//! - [`defend`]: mirroring the pet's fights into the owner's combat state
+//!   (`threatened_mobs`, `BSF_InCombat`).
 //!
 //! Outside the pre-pass, three seams:
 //!
@@ -37,10 +39,13 @@
 //! `docs/architecture/observability.md`.
 
 mod defend;
+mod engage;
 mod owner_follow;
 mod stance;
 #[cfg(test)]
 mod tests;
+
+pub use engage::{engage_pet_target, PET_ENGAGE_THREAT};
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::{AiState, CellEntity, PetStance, PlayerIdentity};
@@ -157,6 +162,7 @@ pub(in crate::cell) fn log_threat_refusal(
     let id = owner_identity(space_mgr, target.entity_id.0 as u32, pet.owner_id);
     tracing::debug!(
         target: "pets.ai",
+        entity_id = target.entity_id.0,
         event = if reason == "passive_stance" {
             "passive_ignored"
         } else {
@@ -199,6 +205,7 @@ pub(in crate::cell) fn log_fight_entered(
     let id = owner_identity(space_mgr, pet_id, owner_id);
     tracing::debug!(
         target: "pets.ai",
+        entity_id = pet_id,
         event = "fight_entered",
         decision_outcome = "pet_fight_entered",
         pet_id,
@@ -266,6 +273,7 @@ pub(super) async fn pre_pass(
         let id = owner_identity(space_mgr, npc_id, owner_id);
         tracing::debug!(
             target: "pets.ai",
+            entity_id = npc_id,
             event = "owner_missing",
             decision_outcome = "pet_owner_missing",
             pet_id = npc_id,
@@ -335,7 +343,10 @@ pub(super) async fn pre_pass(
     }
 
     if let Some((target_id, why)) = stance::pick_engagement(space_mgr, npc_id, owner_id, stance) {
-        if defend::engage(space_mgr, npc_id, owner_id, target_id, why) {
+        if engage::engage_stance_pick(space_mgr, npc_id, owner_id, target_id, why) {
+            // The mob now lists the pet: mirror the fight to the owner this
+            // turn, not on the pet's next one.
+            defend::sync_owner_combat(npc_id, owner_id, tx, space_mgr).await;
             return Some(AiState::Fighting);
         }
     }
@@ -411,6 +422,7 @@ fn drop_targets_not_worth_fighting(space_mgr: &mut SpaceManager, pet_id: u32, ow
     for (target_id, reason) in dropped {
         tracing::debug!(
             target: "pets.ai",
+            entity_id = pet_id,
             event = "target_dropped",
             decision_outcome = "pet_target_dropped",
             pet_id,
@@ -496,6 +508,7 @@ pub(in crate::cell::service::npc_ai) async fn rearm_after_fight(
     let id = owner_identity(space_mgr, npc_id, owner_id);
     tracing::debug!(
         target: "pets.ai",
+        entity_id = npc_id,
         event = "follow_rearmed",
         decision_outcome = "pet_follow_rearmed",
         pet_id = npc_id,

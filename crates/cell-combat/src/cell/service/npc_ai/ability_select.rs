@@ -61,7 +61,9 @@ pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager)
 
     let npc = space_mgr.get_entity(npc_id)?;
     if npc.abilities.known_count() == 0 {
-        return Some(combat::NPC_DEFAULT_ABILITY);
+        // A pet whose owner toggled the default off holds fire too.
+        return Some(combat::NPC_DEFAULT_ABILITY)
+            .filter(|&id| super::pet::ability_allowed(npc, id));
     }
 
     let mut ability_ids = npc.abilities.known_ability_ids();

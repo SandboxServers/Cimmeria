@@ -9,6 +9,24 @@ fn threat_on(mgr: &SpaceManager, pet: u32, mob: u32) -> bool {
     mgr.get_entity(pet).unwrap().threat_list.contains_key(&mob)
 }
 
+/// A stance engagement is two-sided, and the owner is in the fight the same
+/// turn: the mob is Fighting with the pet on its threat list (so it fights
+/// back), the pet lists the mob, and the owner is mirrored into combat with
+/// it. Checking only the pet's side let an engagement that never touched the
+/// mob pass (Copilot, #896).
+fn assert_engaged_both_ways(mgr: &SpaceManager, pet: u32, mob: u32) {
+    assert!(threat_on(mgr, pet, mob), "the pet lists the mob");
+    let m = mgr.get_entity(mob).unwrap();
+    assert_eq!(m.ai_state(), AiState::Fighting, "the mob fights back");
+    assert!(m.threat_list.contains_key(&pet), "the mob lists the pet");
+    let owner = mgr.get_entity(OWNER).unwrap();
+    assert!(
+        owner.threatened_mobs.contains(&mob),
+        "the owner is mirrored into the fight"
+    );
+    assert_ne!(owner.state_field & BSF_IN_COMBAT, 0, "and is in combat");
+}
+
 /// The negative: a Passive pet that is hit takes no threat and does not
 /// leave Follow. Without the refusal `generate_threat` preempts every NPC
 /// into Fighting on the first hit.
@@ -81,7 +99,7 @@ async fn defensive_pet_defends_its_owner() {
     let logs = LogCapture::install();
     tick(&mut mgr).await;
     assert_eq!(state(&mgr, pet), AiState::Fighting);
-    assert!(threat_on(&mgr, pet, MOB));
+    assert_engaged_both_ways(&mgr, pet, MOB);
     let row = pets_ai_row(&logs, "pet_engaged").expect("pet_engaged row");
     assert!(row.has_field("why", "defend_owner"), "{row:?}");
     assert!(row.has_field("event", "engaged"), "{row:?}");
@@ -125,7 +143,7 @@ async fn aggressive_pet_engages_a_nearby_hostile() {
     let logs = LogCapture::install();
     tick(&mut mgr).await;
     assert_eq!(state(&mgr, pet), AiState::Fighting);
-    assert!(threat_on(&mgr, pet, MOB));
+    assert_engaged_both_ways(&mgr, pet, MOB);
     let row = pets_ai_row(&logs, "pet_engaged").expect("pet_engaged row");
     assert!(row.has_field("why", "aggressive_scan"), "{row:?}");
 }
@@ -159,6 +177,7 @@ async fn aggressive_pet_takes_the_owners_target_in_combat() {
         tick(&mut mgr).await;
         assert_eq!(threat_on(&mgr, pet, MOB), engages, "{stance:?}");
         if engages {
+            assert_engaged_both_ways(&mgr, pet, MOB);
             let row = pets_ai_row(&logs, "pet_engaged").expect("pet_engaged row");
             assert!(row.has_field("why", "owner_target"), "{row:?}");
         }

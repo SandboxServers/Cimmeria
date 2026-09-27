@@ -1,4 +1,4 @@
-//! Acting on a stance pick, and the owner's side of a pet's fight (D-PT06).
+//! The owner's side of a pet's fight (D-PT06).
 //!
 //! The owner's combat state is the player `threatened_mobs` set and the
 //! `BSF_InCombat` bit (`combat::threat::player_combat`). A mob adds a player
@@ -13,76 +13,11 @@
 //! Exits also happen without it: the leash drain and the dead-NPC sweep walk
 //! every player whose set names the mob.
 
-use cimmeria_entity::cell_entity::AiState;
 use tokio::sync::mpsc;
 
 use crate::cell::combat;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
-
-use super::stance::EngageWhy;
-
-/// Threat a stance engagement seeds on the pet. The same tiny seed proximity
-/// aggro and assist use, so real damage decides the pet's target as soon as
-/// the fight starts.
-pub(super) const PET_ENGAGE_THREAT: f32 = 1.0;
-
-/// Put the pet into Fighting against `target_id` through the ordinary threat
-/// entry (`combat::generate_threat`, cause `pet_stance`, which never recruits
-/// assisters). Returns whether the pet is now fighting.
-pub(super) fn engage(
-    space_mgr: &mut SpaceManager,
-    pet_id: u32,
-    owner_id: u32,
-    target_id: u32,
-    why: EngageWhy,
-) -> bool {
-    // The attacker is the mob and the victim the pet, so the mob lands on
-    // the pet's threat list; `enter_player_combat` is a no-op for a mob.
-    let _ = combat::generate_threat(
-        space_mgr,
-        target_id,
-        pet_id,
-        PET_ENGAGE_THREAT,
-        combat::AggroCause::PetStance,
-    );
-    let fighting = space_mgr
-        .get_entity(pet_id)
-        .is_some_and(|p| p.ai_state() == AiState::Fighting);
-    let id = super::owner_identity(space_mgr, pet_id, owner_id);
-    if fighting {
-        tracing::debug!(
-            target: "pets.ai",
-            event = "engaged",
-            decision_outcome = "pet_engaged",
-            pet_id,
-            owner_id,
-            account_id = id.account_id,
-            player_id = id.player_id,
-            target_id,
-            why = why.label(),
-            "pet: stance engaged a target"
-        );
-    } else {
-        // The stance only picks targets `generate_threat` accepts (alive, not
-        // leashing, a mob, a non-Passive pet), so a refusal here is an
-        // invariant violation, not something a client can cause.
-        tracing::warn!(
-            target: "pets.ai",
-            event = "engage_refused",
-            decision_outcome = "pet_engage_refused",
-            reason = "threat_refused",
-            pet_id,
-            owner_id,
-            account_id = id.account_id,
-            player_id = id.player_id,
-            target_id,
-            why = why.label(),
-            "pet: stance picked a target but the threat entry refused it"
-        );
-    }
-    fighting
-}
 
 /// Mirror the pet's fights into its owner's combat state, and drop the
 /// entries nothing explains any more. Sends the owner `onStateFieldUpdate` on
@@ -116,6 +51,7 @@ pub(super) async fn sync_owner_combat(
             let id = super::owner_identity(space_mgr, pet_id, owner_id);
             tracing::debug!(
                 target: "pets.ai",
+                entity_id = pet_id,
                 event = "owner_combat_entered",
                 decision_outcome = "owner_combat_entered",
                 pet_id,
@@ -167,6 +103,7 @@ pub(super) async fn sync_owner_combat(
             let id = super::owner_identity(space_mgr, pet_id, owner_id);
             tracing::debug!(
                 target: "pets.ai",
+                entity_id = pet_id,
                 event = "owner_combat_left",
                 decision_outcome = "owner_combat_left",
                 pet_id,

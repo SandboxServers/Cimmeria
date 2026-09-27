@@ -35,3 +35,17 @@ fn pet_selector_skips_toggled_off_abilities() {
         "everything toggled off: the pet holds fire"
     );
 }
+
+/// A pet whose template grants no ability falls back to the NPC default
+/// ability; toggling that off holds fire as well, like any other ability.
+#[test]
+fn a_pet_with_no_abilities_honours_a_toggled_off_default() {
+    let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
+    mgr.get_entity_mut(pet).unwrap().abilities = Default::default();
+    let default = crate::cell::combat::NPC_DEFAULT_ABILITY;
+    assert_eq!(choose_npc_ability(pet, &mgr), Some(default), "precondition");
+
+    toggle_off(&mut mgr, pet, &[default]);
+    assert_eq!(choose_npc_ability(pet, &mgr), None);
+    assert_eq!(choose_npc_ability_within_reach(pet, &mgr, 5.0, 30.0), None);
+}
