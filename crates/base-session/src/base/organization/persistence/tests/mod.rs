@@ -26,6 +26,8 @@ mod mutations;
 mod telemetry;
 mod trigger;
 
+use std::time::Duration;
+
 use cimmeria_entity::organization::{org_text, OrgType, TextField};
 use sqlx::PgPool;
 
@@ -178,4 +180,28 @@ fn violated(e: &sqlx::Error) -> Option<String> {
         sqlx::Error::Database(db) => db.constraint().map(str::to_owned),
         _ => None,
     }
+}
+
+/// Poll until some other session in this database waits on a lock, so a
+/// concurrency test cannot pass without its race.
+async fn wait_until_blocked(pool: &PgPool) {
+    for _ in 0..100 {
+        if lock_waiters(pool).await > 0 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the concurrent statement never waited on a lock");
+}
+
+/// How many other sessions in this database wait on a lock.
+async fn lock_waiters(pool: &PgPool) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM pg_stat_activity \
+         WHERE wait_event_type = 'Lock' AND datname = current_database() \
+           AND pid <> pg_backend_pid()",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
 }

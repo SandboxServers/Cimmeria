@@ -259,3 +259,57 @@ async fn remove_member_rows_export_after_commit() {
 
     teardown(&pool, &fx).await;
 }
+
+/// Copilot #881 (audit.rs): the export must log a row before its stamp can
+/// commit, or a crash in between loses the event. A `SHARE` lock on the
+/// table lets the export lock its rows (`FOR UPDATE` is `ROW SHARE`) but
+/// holds its stamping `UPDATE` (`ROW EXCLUSIVE`); by then the event must
+/// already be in the log.
+#[tokio::test]
+async fn export_logs_before_the_stamp_can_commit() {
+    let pool = require_db_or_skip!();
+    let fx = setup(&pool, 34, 2, &["Org02 Log First"]).await;
+    let (p0, p1) = (fx.player(0), fx.player(1));
+    let org = create(&pool, OrgType::Team, "Org02 Log First", p0)
+        .await
+        .org_id;
+    add(&pool, org, p1, OrgRank::MEMBER).await;
+    sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
+        .bind(p0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let tx_id: i64 =
+        sqlx::query_scalar("SELECT tx_id FROM sgw_organization_events WHERE org_id = $1")
+            .bind(org)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    let mut blocker = pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE sgw_organization_events IN SHARE MODE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+
+    let capture = LogCapture::install();
+    let export = export_committed(&pool, tx_id, ExportSource::MemberRemoval);
+    tokio::pin!(export);
+    tokio::select! {
+        res = &mut export => panic!("the stamp ran under the SHARE lock: {res:?}"),
+        () = wait_until_blocked(&pool) => {}
+    }
+    assert!(
+        export_log(&capture, Level::INFO, org, "leader_changed").is_some(),
+        "the event must be logged before its stamp is written"
+    );
+    assert!(!audit_rows(&pool, org).await[0].4, "not stamped yet");
+
+    blocker.commit().await.unwrap();
+    let rows = export.await.expect("the export finishes");
+    assert_eq!(rows.len(), 1);
+    drop(capture);
+    assert!(audit_rows(&pool, org).await[0].4, "stamped after the log");
+
+    teardown(&pool, &fx).await;
+}

@@ -14,30 +14,6 @@ use super::super::{add_member, remove_member, set_rank, AfterRemoval, OrgStoreEr
 use super::*;
 use crate::test_support::{require_db_or_skip, LogCapture};
 
-/// Poll until some other session in this database waits on a lock, so a
-/// concurrency test cannot pass without its race.
-async fn wait_until_blocked(pool: &PgPool) {
-    for _ in 0..100 {
-        if lock_waiters(pool).await > 0 {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("the concurrent statement never waited on a lock");
-}
-
-/// How many other sessions in this database wait on a lock.
-async fn lock_waiters(pool: &PgPool) -> i64 {
-    sqlx::query_scalar(
-        "SELECT count(*) FROM pg_stat_activity \
-         WHERE wait_event_type = 'Lock' AND datname = current_database() \
-           AND pid <> pg_backend_pid()",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap()
-}
-
 async fn add(pool: &PgPool, org_id: i32, player_id: i32, rank: OrgRank) {
     let mut tx = pool.begin().await.unwrap();
     as_sys!(add_member, tx, org_id, player_id, rank).unwrap();
