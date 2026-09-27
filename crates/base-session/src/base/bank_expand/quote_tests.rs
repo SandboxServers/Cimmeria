@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::Level;
 
-use super::tests::{caller, cleanup, in_world, one, setup, TestClient};
+use super::tests::{caller, cleanup, in_world, one, setup};
 use super::*;
 use crate::test_support::{require_db_or_skip, LogCapture};
 
@@ -18,7 +18,6 @@ const SPEAKER: u32 = 0x7000_BBD1;
 
 async fn quote(
     pool: Option<&PgPool>,
-    client: &TestClient,
     c: ExpandCaller,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
@@ -48,7 +47,7 @@ async fn below_the_ceiling_the_cell_is_sent_the_offer() {
     let (tx, mut rx) = mpsc::channel(8);
     let capture = LogCapture::install();
 
-    quote(Some(&pool), &client, c, &Some(tx)).await;
+    quote(Some(&pool), c, &Some(tx)).await;
     cleanup(&pool, c).await;
 
     assert_eq!(
@@ -89,7 +88,7 @@ async fn at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
     let (tx, mut rx) = mpsc::channel(8);
     let capture = LogCapture::install();
 
-    quote(Some(&pool), &client, c, &Some(tx)).await;
+    quote(Some(&pool), c, &Some(tx)).await;
     cleanup(&pool, c).await;
 
     assert!(offers(&mut rx).is_empty());
@@ -114,9 +113,8 @@ async fn quote_failures_log_their_reason() {
     let pool = require_db_or_skip!();
 
     let c = caller(0x80 + 0x30, 0x7000_BBF2);
-    let client = in_world(c, 40922);
     let capture = LogCapture::install();
-    quote(None, &client, c, &None).await;
+    quote(None, c, &None).await;
     one(
         &capture,
         "expand_quote",
@@ -129,7 +127,7 @@ async fn quote_failures_log_their_reason() {
     let c = caller(0x80 + 0x40, 0x7000_BBF3);
     cleanup(&pool, c).await;
     let capture = LogCapture::install();
-    quote(Some(&pool), &client, c, &None).await;
+    quote(Some(&pool), c, &None).await;
     one(
         &capture,
         "expand_quote",
@@ -142,7 +140,7 @@ async fn quote_failures_log_their_reason() {
     let c = caller(0x80 + 0x50, 0x7000_BBF4);
     setup(&pool, c, 40, 0).await;
     let capture = LogCapture::install();
-    quote(Some(&pool), &client, c, &None).await;
+    quote(Some(&pool), c, &None).await;
     cleanup(&pool, c).await;
     one(
         &capture,
@@ -165,10 +163,9 @@ async fn an_unreachable_database_logs_quote_query_failed() {
         .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
         .expect("lazy pool");
     let c = caller(0x80 + 0x60, 0x7000_BBF5);
-    let client = in_world(c, 40923);
     let capture = LogCapture::install();
 
-    quote(Some(&unreachable), &client, c, &None).await;
+    quote(Some(&unreachable), c, &None).await;
 
     let e = one(
         &capture,

@@ -591,9 +591,7 @@ mod tests {
             .contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send me a mail\">"));
         // BV-05: exactly one Generic 1 button, the one the purchase buys on.
         let expand = xml(60110);
-        assert!(
-            expand.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Expand vault\">")
-        );
+        assert!(expand.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Expand vault\">"));
         assert_eq!(expand.matches("<Buttons").count(), 1, "{expand}");
     }
 

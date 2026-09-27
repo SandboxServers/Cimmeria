@@ -44,7 +44,6 @@ pub(super) struct TestClient {
     pub(super) transport: Arc<TestTransport>,
     pub(super) dyn_transport: Arc<dyn Transport>,
     pub(super) addr: SocketAddr,
-    pub(super) e2a: Arc<Mutex<HashMap<u32, SocketAddr>>>,
     pub(super) conn: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 }
 
@@ -65,7 +64,6 @@ pub(super) fn in_world_as(entity_id: u32, player_id: i32, port: u16) -> TestClie
         transport,
         dyn_transport,
         addr,
-        e2a: Arc::new(Mutex::new(HashMap::from([(entity_id, addr)]))),
         conn: Arc::new(Mutex::new(HashMap::from([(addr, state)]))),
     }
 }
