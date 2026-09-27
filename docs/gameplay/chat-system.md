@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Chat System
 
 > **Last updated**: 2026-09-27
-> **Status**: Spatial chat (say / emote / yell) works. The social-systems campaign (merged 2026-09-27, not yet tested with two real clients; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers it) added a flood limit and text rules (SS-00), tells, `chatIgnore` and the one-way Ignore filter (SS-C1), GM broadcast (SS-C2), a channel allowlist, GM mutes and a feedback line for every Communicator method the server does not implement (SS-C3), and channel ids that match the client's own, with no channel registration at login (SS-C4). Squad chat works (organizations ORG-04); team, command and officer answer with a "not supported yet" line, matching the legacy `onError` reply (`deprecated/python/cell/SGWPlayer.py::processPlayerCommunication`). User channels, channel moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server.
+> **Status**: Spatial chat (say / emote / yell) works. The social-systems campaign (merged 2026-09-27, not yet tested with two real clients; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers it) added a flood limit and text rules (SS-00), tells, `chatIgnore` and the one-way Ignore filter (SS-C1), GM broadcast (SS-C2), a channel allowlist, GM mutes and a feedback line for every Communicator method the server does not implement (SS-C3), and channel ids that match the client's own, with no channel registration at login (SS-C4). Squad chat (organizations ORG-04) and team, command and officer chat (ORG-09) work; the organization channels are not yet tested with two real clients. User channels, channel moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server.
 
 ## Overview
 
@@ -33,7 +33,7 @@ Six Communicator base methods do something — `chatJoin` (0xC0), `chatLeave` (0
 | GM console passthrough | DONE | A `.`-prefixed say from a GM is routed to the console handler; from a non-GM it falls through as ordinary chat |
 | Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. The built-in channels need no joining (the client hardcodes them), and user channels do not exist yet, so there is no join/leave state to change |
 | AFK status | DONE (not client-tested) | `chatSetAFKMessage` stores the away message under the DND rules (2+ characters sets it, 128-scalar bound). It is not a speaker flag; a tell to an away player is answered with it. See [Tells and Ignore](#tells-and-ignore) |
-| Organization channels (team / squad / command / officer) | PARTIAL | Squad lines reach every squad member (organizations ORG-04, `cell/console/chat/squad.rs`). Team, command and officer have no membership backing yet, so the sender gets a "not supported yet" feedback line instead of a silent drop. A player line on server (8) is refused at the base — see [System Channels](#system-channels) |
+| Organization channels (team / squad / command / officer) | DONE (not client-tested) | Squad lines reach every squad member (organizations ORG-04, `cell/console/chat/squad.rs`). Team, command and officer lines are handled on the base and reach the online members of the speaker's Team or Command, wherever they are (ORG-09, `base/organization/handlers/chat.rs`); see [Organization channels](#organization-channels). A player line on server (8) is refused at the base — see [System Channels](#system-channels) |
 | Player-to-player tell | DONE (not client-tested) | Handled on the base, never forwarded to the cell: the client sends tells on channel 10 and the recipient gets them on 10. See [Tells and Ignore](#tells-and-ignore) |
 | User channels | NOT IMPL | No create / delete / password / member list |
 | Channel operator system | NOT IMPL | `chatOp` answers with a feedback line |
@@ -106,10 +106,10 @@ Every built-in channel id is an `EChannel` value from `entities/defs/enumeration
 | say | 0 | White, Info tab | Spatial fanout to AoI witnesses |
 | emote | 1 | Yellow | Spatial fanout to AoI witnesses |
 | yell | 2 | Light red | Spatial fanout to AoI witnesses (same radius as say today — no wider range implemented) |
-| team | 3 | Violet | Forwarded to the cell; no team backing yet, so the sender gets a "not supported yet" feedback line |
+| team | 3 | Violet | Handled on the base: the speaker's Team (ORG-09) |
 | squad | 4 | Turquoise | Relayed to the speaker's squad by the cell (ORG-03) |
-| command | 5 | Green | Forwarded to the cell; no command backing yet, so the sender gets a "not supported yet" feedback line |
-| officer | 6 | Green | Forwarded to the cell like command |
+| command | 5 | Green | Handled on the base: the speaker's Command (ORG-09) |
+| officer | 6 | Green | Handled on the base: the members of the speaker's Command whose rank holds `OfficerChat` (ORG-09) |
 | server | 8 | Bright red line (`:1249`) **and a modal "Server Message" prompt** with an OK button (`:160-162`) | Server-to-client broadcasts only: `/gmshout` and `.announce` ([GM broadcast](#gm-broadcast)). A player line on 8 is refused at the base |
 | feedback | 9 | Sky blue, Info tab (`:1250`, `:1274`) | Server-to-client system lines to one player: the login welcome, GM feedback, every refusal line. A player line on 9 is refused at the base |
 | tell | 10 | Purple (red for a GM speaker) | Player-to-player, handled on the base ([Tells and Ignore](#tells-and-ignore)) |
@@ -169,7 +169,8 @@ SS-C3 (2026-09-27), security finding CAT-L-03 and decision D-SS26 in `docs/analy
 | Channel | Id | What happens |
 |---|---|---|
 | say, emote, yell | 0, 1, 2 | Forwarded to the cell |
-| team, squad, command, officer | 3, 4, 5, 6 | Forwarded to the cell, where the organizations campaign handles them |
+| squad | 4 | Forwarded to the cell, which relays it to the squad (ORG-04) |
+| team, command, officer | 3, 5, 6 | Handled on the base; never reach the cell (ORG-09, [Organization channels](#organization-channels)) |
 | tell | 10 | Handled on the base ([Tells and Ignore](#tells-and-ignore)) |
 
 Everything else is refused at the base with one feedback line, and nothing reaches the cell:
@@ -220,6 +221,19 @@ The GM gate runs before anything else: cell method 222 is in the SGWGmPlayer tai
 
 SigNoz: `chat.gm_broadcast` (INFO, the audit row: actor ids, `scope`, `source` = `native` or `console`, `space_id`, the text), `chat.gm_broadcast_delivered` (INFO, the recipient count per scope), `chat.gm_broadcast_rejected` (WARN, `reason` = `empty_text`, `too_long`, `malformed_args`, `no_text`, ...).
 
+## Organization channels
+
+Team (3), command (5) and officer (6) lines pass the same flood limit, allowlist, mute and text rules as every other line, and are then handled on the base, which holds the memberships (organizations ORG-09, `crates/base-session/src/base/organization/handlers/chat.rs`). The base reads the speaker's Team or Command from the database and sends `onPlayerCommunication(speaker, flags, channel, text)` to every member who is in the world now, whatever space they are in, and to the speaker too. Officer is a Command channel: only members whose rank holds `OfficerChat` get the line, and a speaker without it is refused. No channel is registered at login: the client knows 3, 5 and 6 itself (D-ORG14). Every refusal is one feedback line:
+
+| Refusal | Feedback line |
+|---|---|
+| Team line from a character in no Team | "You are not in a team." |
+| Command or officer line from a character in no Command | "You are not in a command." |
+| Officer line from a rank without `OfficerChat` | "Your rank cannot speak on the officer channel." |
+| The membership cannot be read (no database, a database error) | "Organization chat is unavailable right now. Try again later." |
+
+SigNoz: one `org.chat` row per line on the `org` target (`outcome`, `reason`, `channel`, `org_id`, `recipients`, `text_units`, never the text); the full field list is the `org` row of [observability.md](../architecture/observability.md).
+
 ## Tells and Ignore
 
 SS-C1 (2026-09-27), decisions D-SS13, D-SS15 and D-SS17 in `docs/analysis/social-systems/README.md`.
@@ -254,7 +268,7 @@ Events, all on the `chat` target: `chat.tell_delivered` (INFO), `chat.tell_refus
 
 ## Remaining Work
 
-1. **Organization channels** — squad works (ORG-04); team, command and officer have no membership backing yet (organizations campaign, and the [group system](group-system.md))
+1. **Organization channels** — squad (ORG-04), team, command and officer (ORG-09) are implemented but not yet tested with two real clients (organizations campaign, and the [group system](group-system.md))
 2. **Yell radius** — say, emote, and yell all fan out to the same AoI witness set; yell should use a wider range
 3. **User channels + channel moderation** — create/join/password/op/mute/kick/ban answer with a feedback line and do nothing; user channel ids (12 and up) are refused at the base. Mutes are GM-only (`.mute`), not saved across a restart, and keyed by character, so an alt escapes them (an owner question in the [session resume](../analysis/social-systems/handoffs/session-resume.md#owner-questions)). A mute does not block mail
 4. **NPC speech** — how `onSystemCommunication`'s Speaker field works for NPCs is still unrecovered

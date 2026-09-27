@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Organization System
 
 > **Last updated**: 2026-09-27
-> **Status**: Squads work (ORG-03, ORG-04): invite, accept, leave, kick, loot mode, disconnect, gate travel, squad chat, the minimap ping and the GM `.squad_*` commands, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands (organizations campaign, [docs/analysis/organizations/](../analysis/organizations/README.md)) are persisted (ORG-02) and can be founded (ORG-05), restored at login, left and disbanded (ORG-06), and invited into, kicked from and re-ranked (ORG-07, [below](#invite-kick-and-rank-change-org-07)). MOTD, notes, the rank editor, organization chat and the vault are still to come.
+> **Status**: Squads work (ORG-03, ORG-04): invite, accept, leave, kick, loot mode, disconnect, gate travel, squad chat, the minimap ping and the GM `.squad_*` commands, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands (organizations campaign, [docs/analysis/organizations/](../analysis/organizations/README.md)) are persisted (ORG-02) and can be founded (ORG-05), restored at login, left and disbanded (ORG-06), invited into, kicked from and re-ranked (ORG-07, [below](#invite-kick-and-rank-change-org-07)), and have team, command and officer chat (ORG-09, [below](#team-command-and-officer-chat-org-09)). MOTD, notes, the rank editor and the vault are still to come.
 
 ## Overview
 
@@ -50,6 +50,7 @@ The schema and the base-side persistence layer came with ORG-02; see [Persistenc
 | Disband | PARTIAL | The last member leaving, and `.org_disband <orgId>` for GMs (ORG-06); both refused while the vault is not empty |
 | Experience tracking | NOT IMPL | `onOrganizationExperienceUpdate` (CM 44) never sent |
 | Persistence | IMPLEMENTED | Tables, constraints, the leader trigger and the locked write API (ORG-02, [Persistence](#persistence)); the creation handlers (ORG-05), the ORG-06 and the ORG-07 handlers use them |
+| Organization chat | DONE (not client-tested) | Team (3), command (5) and officer (6) lines are handled on the base and reach the online members of the speaker's Team or Command; officer needs `OfficerChat` (ORG-09, [below](#team-command-and-officer-chat-org-09)). Squad chat (4) is ORG-04 |
 | Organization vault | NOT IMPL | Only `onClearOrgVaultInventory` reference |
 
 ## Creation (ORG-05)
@@ -248,6 +249,26 @@ Everything logs on the `org` target; each action counts once on `org_actions_tot
 | Where a cell call went | `event = 'org.forward' AND method_index = <n>` (`route` = `squad` \| `base` \| `rejected`) |
 | A fanout that missed someone | `event IN ('org.send_failed', 'org.broadcast_failed')` (`what`, `reason`) |
 
+## Team, command and officer chat (ORG-09)
+
+`sendPlayerCommunication` on team (3), command (5) or officer (6) is handled on the base, which holds the memberships; these lines never reach the cell. The code is [`crates/base-session/src/base/organization/handlers/chat.rs`](../../crates/base-session/src/base/organization/handlers/chat.rs), called from the base chat dispatch ([`crates/base/src/base/dispatch/chat.rs`](../../crates/base/src/base/dispatch/chat.rs)) after the flood limit, the channel allowlist, the GM mute and the text rules, none of which it repeats. See [chat-system.md § Organization channels](chat-system.md#organization-channels) for the player's view.
+
+- **Who hears it.** The speaker's Team for 3, their Command for 5 and 6, read from the database per line. `broadcast_to_org`'s fanout sends `onPlayerCommunication` [28] to every member in the world now, in any space, and the speaker gets their own copy.
+- **Officer is a Command channel.** Only the Command's members whose rank holds `OfficerChat` get an officer line, and a speaker without it is refused. `OfficerChat` is in the Command rank editor only (audit A-12), the officer ranks exist only in a Command, and the legacy mail enum has `MAIL_ToCommandOfficers` with no Team twin. A Team's `SeniorMember` default mask includes the bit, but a Team has no officer channel.
+- **No registration.** Nothing sends `onChatJoined`: the client hardcodes 3, 5 and 6 (D-ORG14, ORG-E1 Q5).
+- **Refusals.** Each is one feedback line: "You are not in a team.", "You are not in a command.", "Your rank cannot speak on the officer channel.", or "Organization chat is unavailable right now. Try again later." (no database, a database error).
+- **Authorization read.** The speaker's rank and mask come from the unlocked display read `load_memberships`. A chat line changes nothing, so it takes no org lock; a demotion committing while a line is in flight can let that one line through, the same window the fanout's recipient filter has.
+
+### Telemetry (ORG-09)
+
+| Question | SigNoz Logs filter (`service.name = 'cimmeria-server' AND scope_name = 'org' AND ...`) |
+|---|---|
+| Did a player's org line go out, and to how many | `event = 'org.chat' AND player_id = <id>` (`outcome`, `channel`, `org_id`, `recipients`, `text_units`) |
+| Why a line was refused | `event = 'org.chat' AND outcome = 'rejected'` (`reason` = `not_in_org` \| `missing_permission` \| `rate_limited` \| `text_invalid` \| `no_db` \| `db_error` \| `not_in_world`) |
+| A member or the speaker who missed a line | `event = 'org.send_failed' AND what IN ('chat', 'chat_echo')` (`reason`) |
+
+A muted speaker's line writes no `org.chat` row: look for `event = 'chat.muted_refused'` on the `chat` target. Every row counts on `org_actions_total{action = "chat"}`.
+
 ## Entity Definition (OrganizationMember.def)
 
 ### Properties
@@ -338,5 +359,5 @@ Key exposed (client-invoked) methods:
 ## Related Docs
 
 - [group-system.md](group-system.md) - GroupAuthority that manages organizations
-- [chat-system.md](chat-system.md) - Organization channels (command, officer, squad)
+- [chat-system.md](chat-system.md) - Organization channels (team, squad, command, officer)
 - [inventory-system.md](inventory-system.md) - Organization vault
