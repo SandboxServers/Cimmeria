@@ -93,7 +93,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58.
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
 | Organizations / guilds | KM | 15 (all KM) | Contract only (ORG-01, 2026-09-27): models, bounded decoders, client-method serializers and cell↔base message plumbing; no behaviour. DB schema is ORG-02 |
-| Mail | IM | 13 (2 NT, 2 IM, 8 KM, 1 NU) | **Corrected down.** The read side works (list, read body, delete). Sending, attaching items or cash, taking attachments, return-to-sender and COD are stubs that log "unimplemented". Archiving sets a flag the inbox query ignores |
+| Mail | NT | 13 (5 NT, 7 KM, 1 NU) | **Plain send landed (SS-M1, 2026-09-27), not yet client-tested.** Text mail to up to 10 recipients (offline ones included), with a flood limit, a 100-message mailbox cap and a reason for every refusal. The inbox and archive lists are now separate. Attachments, COD, take and return are refused with a result code until SS-M2 and SS-M3 |
 | Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 is on the unmerged `feat/571-black-market-phase1` (PR #586), and the client window additionally needs a client patch (#587) |
 | Dueling | KM | 6 (all KM) | Not ported. 5-state machine + 7 defeat conditions to implement |
 | Pets | KM | 7 (all KM) | Not ported. Entity extends spawner mob + Follow AI state |
