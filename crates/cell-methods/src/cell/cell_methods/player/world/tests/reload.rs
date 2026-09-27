@@ -321,7 +321,7 @@ async fn handle_reload_emits_ammo_type_under_correct_propid() {
 
 /// The reload timer (`onTimerUpdate` type 2, ability 596) carries an
 /// absolute `BigWorldTimeComplete`: `warmup + cooldown` after the game
-/// clock at reload start (CR-02). The client's cooldown manager shows
+/// clock at reload start. The client's cooldown manager shows
 /// `complete - clock`, clamped to 0, so the old `0.0` showed no reload bar.
 #[tokio::test]
 async fn handle_reload_timer_expiry_is_absolute_on_the_game_clock() {

@@ -13,7 +13,7 @@
 //! its layout.
 //!
 //! The trailing `BigWorldTimeComplete` float is the absolute expiry on the
-//! server's game clock (CR-02), asserted as a window below.
+//! server's game clock, asserted as a window below.
 
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;

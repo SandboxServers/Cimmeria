@@ -121,7 +121,7 @@ pub(super) fn timer_expiry(args: &[u8]) -> f32 {
 }
 
 /// The timer's expiry is absolute on the game clock: `duration` after a
-/// clock reading taken between `before` and `after` (CR-02). A relative
+/// clock reading taken between `before` and `after`. A relative
 /// expiry or the old `0.0` falls outside the window.
 pub(super) fn assert_absolute_expiry(args: &[u8], duration: f32, before: f32, after: f32) {
     let expiry = timer_expiry(args);
@@ -315,7 +315,7 @@ async fn warmup_wire_is_begin_at_launch_then_end_at_fire() {
 /// **No-change guard.** A zero-warmup ability's wire is what it was before
 /// AT-10: cooldown timer, `Ability_End`, then the damage, all in the launch
 /// pass, with no `Ability_Begin` and no warmup timer. The timer and
-/// `Ability_End` are compared byte for byte, except that since CR-02 the
+/// `Ability_End` are compared byte for byte, except that the
 /// timer's `BigWorldTimeComplete` is the absolute game-clock expiry.
 #[tokio::test]
 async fn zero_warmup_wire_is_unchanged() {

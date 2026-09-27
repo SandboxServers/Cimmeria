@@ -1,6 +1,6 @@
-//! CR-02: every session reports the one server-wide game clock.
+//! Every session reports the one server-wide game clock.
 //!
-//! Before CR-02 each session's tick-sync loop counted from 0 at its own
+//! Previously each session's tick-sync loop counted from 0 at its own
 //! login, so two clients held two different clocks and the cell could not
 //! build an absolute `onTimerUpdate` expiry either of them would read the
 //! same way. These tests drive `handle_login` and read the `tickSync`

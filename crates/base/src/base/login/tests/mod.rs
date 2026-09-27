@@ -391,8 +391,8 @@ async fn login_pushes_discord_player_login_event() {
 /// before its first send, and we cancel it immediately, so a synchronous
 /// drain captures only the handshake.
 ///
-/// The time-sync bundle carries the server's game clock at login, not 0
-/// (CR-02): the test waits until the clock has passed tick 0, then checks
+/// The time-sync bundle carries the server's game clock at login, not 0.
+/// The test waits until the clock has passed tick 0, then checks
 /// the bytes against the ticks read back from the packet, bracketed by the
 /// clock before and after the call.
 #[tokio::test]

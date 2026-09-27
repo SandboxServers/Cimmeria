@@ -1,4 +1,4 @@
-//! CR-02: the duration-effect timer (`onTimerUpdate` type 5) carries an
+//! The duration-effect timer (`onTimerUpdate` type 5) carries an
 //! absolute `BigWorldTimeComplete` on the server's game clock.
 //!
 //! The client's `EffectSet` handler (`0x00e09160`) creates the buff/debuff
