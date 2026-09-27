@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::mercury::world_data::historical_cellblocks::historical_cellblock;
 use crate::mercury::DEFAULT_SPACE_ID;
 
 /// Thread-safe space registry mapping world_name -> space_id.
@@ -24,8 +25,18 @@ pub fn register_space(world_name: String, space_id: u32) {
 }
 
 /// Hardcoded space ID fallback (used when CellService oneshot fails or is unavailable).
-pub fn resolve_space_id_fallback(world_name: &str) -> u32 {
-    match world_name {
+///
+/// `None` means there is no safe fallback and the caller must fail closed.
+/// That is the answer for the historical CellBlock worlds (1201–1207): the
+/// unknown-world default below is the stock `Castle_CellBlock` space, and a
+/// world-entry packet naming it for a player bound for `CellBlock43` would
+/// hand the client the stock map's space id for an entity the cell never
+/// placed there.
+pub fn resolve_space_id_fallback(world_name: &str) -> Option<u32> {
+    if historical_cellblock(world_name).is_some() {
+        return None;
+    }
+    Some(match world_name {
         "Castle_CellBlock" => DEFAULT_SPACE_ID, // 65552
         "SGC_W1" => DEFAULT_SPACE_ID + 1,       // 65553
         "CombatSim" => DEFAULT_SPACE_ID + 2,    // 65554
@@ -33,5 +44,5 @@ pub fn resolve_space_id_fallback(world_name: &str) -> u32 {
             tracing::warn!("Unknown world_location: {world_name}, defaulting to Castle_CellBlock");
             DEFAULT_SPACE_ID
         }
-    }
+    })
 }

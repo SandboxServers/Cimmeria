@@ -7,6 +7,7 @@ use super::*;
 mod aoi;
 mod aoi_player_intro;
 mod entity_lifecycle;
+mod historical_cellblocks;
 mod instances;
 mod movement_validation;
 mod npc_spawn;

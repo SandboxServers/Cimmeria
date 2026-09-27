@@ -36,6 +36,7 @@ use crate::cell::space_manager::SpaceManager;
 mod freeform;
 mod goto;
 mod gotolocation;
+mod historical_cellblocks;
 mod summon;
 
 /// Non-instanced, created by `setup()`; every fixture starts here.
