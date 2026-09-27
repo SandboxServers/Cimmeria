@@ -276,7 +276,7 @@ Status: **BlockedDependency** (ORG-07, and the social campaign's SS-C4). Writer:
 - **Scope change (D-ORG26, agreed with the social coordinator 2026-09-27).** The D-ORG14 channel-id alignment moved to the social campaign's SS-C4: dropping the built-in `onChatJoined` burst from `DEFAULT_CHAT_CHANNELS` entirely (no `onChatJoined` for any id below 12), keeping the welcome line on feedback (9) and moving GM broadcast to server (8), realigning `CHAN_*` to `enumerations.xml`, swapping the social locals (the `chat_gates.rs` allowlist, `dispatch::tell::TELL_CHANNEL`, SS-C2's `CHAN_SERVER`), `docs/gameplay/chat-system.md`, and the tests for all of it. This packet is only the team (3), command (5) and officer (6) fanout, and builds on SS-C4 and does not repeat any of it.
 - Do not re-implement mute. SS-C3 (#925) already routes channels 3-6 unchanged through the base allowlist and applies `.mute` to every channel, the org ones included. `ChatCellToBase` has `Mute` and `Unmute`; this packet may add variants.
 - Telemetry: `org.chat` per message at INFO (`ok` or `rejected`; the SS-00 flood limit bounds the rate), with `channel`, `org_id`, `recipients`, `text_units` and the reason.
-- Tests: fanout per channel; officer chat without `OfficerChat` is rejected with feedback.
+- Tests: fanout per channel; officer chat without `OfficerChat` is rejected with feedback; officer (6) is never registered (`onChatJoined` is never sent for it; the client hardcodes it).
 
 ### ORG-10: GM suite and UAT checklist
 
