@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use cimmeria_entity::organization::{OrgPermission, OrgRank, OrgType};
 
-use super::super::super::api::{lock_org, member_access_locked};
+use super::super::super::api::{lock_org, member_access_locked, OrgAccess};
 use super::super::super::character_delete::delete_character as delete_character_locked;
 use super::super::{add_member, remove_member, set_rank, AfterRemoval, OrgStoreError};
 use super::*;
@@ -52,9 +52,7 @@ async fn set_joined(pool: &PgPool, org_id: i32, player_id: i32, days_ago: i32) {
 
 async fn add(pool: &PgPool, org_id: i32, player_id: i32, rank: OrgRank) {
     let mut tx = pool.begin().await.unwrap();
-    add_member(&mut tx, org_id, player_id, rank)
-        .await
-        .expect("add_member");
+    as_sys!(add_member, tx, org_id, player_id, rank).expect("add_member");
     tx.commit().await.unwrap();
 }
 
@@ -160,7 +158,7 @@ async fn last_member_delete_with_vault_leaves_memberless_org() {
         .await
         .unwrap();
     // A leave of the only member reports the same outcome.
-    let removal = remove_member(&mut tx, team, p1).await.unwrap();
+    let removal = as_sys!(remove_member, tx, team, p1).unwrap();
     assert_eq!(removal.old_rank, OrgRank::LEADER);
     assert_eq!(removal.after, AfterRemoval::Memberless);
 
@@ -180,17 +178,16 @@ async fn last_member_delete_with_vault_leaves_memberless_org() {
     }
 
     // GM recovery: nobody joins below Leader first; a Leader may.
-    let res = add_member(&mut tx, cmd, p2, OrgRank::INITIATE).await;
+    let res = as_sys!(add_member, tx, cmd, p2, OrgRank::INITIATE);
     assert!(matches!(res, Err(OrgStoreError::NeedsLeader)), "{res:?}");
-    add_member(&mut tx, cmd, p2, OrgRank::LEADER)
-        .await
+    as_sys!(add_member, tx, cmd, p2, OrgRank::LEADER)
         .expect("a Leader may join a memberless organization");
     let access = member_access_locked(&mut tx, cmd, p2)
         .await
         .unwrap()
         .expect("p2 is a member");
-    assert_eq!(access.rank, OrgRank::LEADER);
-    assert_eq!(access.permissions, OrgPermission::ALL);
+    assert_eq!(access.rank(), OrgRank::LEADER);
+    assert_eq!(access.permissions(), OrgPermission::ALL);
 
     tx.rollback().await.unwrap();
 
@@ -215,18 +212,16 @@ async fn remove_member_reports_what_the_trigger_did() {
     add(&pool, org, p1, OrgRank::MEMBER).await;
     add(&pool, org, p2, OrgRank::MEMBER).await;
     let mut tx = pool.begin().await.unwrap();
-    set_rank(&mut tx, org, p2, OrgRank::SENIOR_MEMBER)
-        .await
-        .unwrap();
+    as_sys!(set_rank, tx, org, p2, OrgRank::SENIOR_MEMBER).unwrap();
     tx.commit().await.unwrap();
 
     let mut tx = pool.begin().await.unwrap();
-    let r = remove_member(&mut tx, org, p1).await.unwrap();
+    let r = as_sys!(remove_member, tx, org, p1).unwrap();
     assert_eq!(
         (r.old_rank, r.after),
         (OrgRank::MEMBER, AfterRemoval::Unchanged)
     );
-    let r = remove_member(&mut tx, org, p0).await.unwrap();
+    let r = as_sys!(remove_member, tx, org, p0).unwrap();
     assert_eq!(
         (r.old_rank, r.after),
         (
@@ -234,13 +229,16 @@ async fn remove_member_reports_what_the_trigger_did() {
             AfterRemoval::LeaderPromoted { player_id: p2 }
         )
     );
-    let r = remove_member(&mut tx, org, p2).await.unwrap();
+    let r = as_sys!(remove_member, tx, org, p2).unwrap();
     assert_eq!(
         (r.old_rank, r.after),
         (OrgRank::LEADER, AfterRemoval::Disbanded)
     );
-    let res = remove_member(&mut tx, org, p2).await;
-    assert!(matches!(res, Err(OrgStoreError::NoSuchOrg)), "{res:?}");
+    // The organization is gone: no actor can be had for it.
+    assert!(OrgAccess::system(&mut tx, org, TEST_ACTOR)
+        .await
+        .unwrap()
+        .is_none());
     tx.commit().await.unwrap();
     assert!(!org_exists(&pool, org).await);
 
@@ -269,7 +267,7 @@ async fn trigger_waits_for_the_org_lock() {
         .await
         .unwrap()
         .expect("org exists");
-    let r = remove_member(&mut holder, org, member).await.unwrap();
+    let r = as_sys!(remove_member, holder, org, member).unwrap();
     assert_eq!(r.after, AfterRemoval::Unchanged);
 
     let delete_pool = pool.clone();
@@ -387,9 +385,7 @@ async fn kick_during_character_delete_does_not_deadlock() {
     }
     assert!(blocked, "the character delete never waited on the org lock");
 
-    let kicked = remove_member(&mut kick, org, member)
-        .await
-        .expect("the kick must not deadlock");
+    let kicked = as_sys!(remove_member, kick, org, member).expect("the kick must not deadlock");
     assert_eq!(kicked.after, AfterRemoval::Unchanged);
     kick.commit().await.expect("the kick commits");
 

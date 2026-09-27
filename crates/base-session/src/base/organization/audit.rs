@@ -8,10 +8,9 @@
 //!
 //! - [`export_committed`]: rows a committed transaction wrote, logged at
 //!   INFO. `character_delete::delete_character` calls it right after its
-//!   commit.
-//! - [`export_in_transaction`]: rows the current transaction wrote, logged
-//!   at DEBUG because the caller may still roll back (and a rollback takes
-//!   the row and its stamp with it). `persistence::remove_member` calls it.
+//!   commit; the leave and kick handlers (ORG-06, ORG-07) call it after
+//!   committing a `persistence::remove_member`, with
+//!   `MemberRemoval::tx_id`.
 //! - [`sweep_unexported`]: every row still unstamped, logged at INFO. Run
 //!   at base startup ([`spawn_startup_sweep`]) for rows a bare `DELETE`
 //!   (psql, a test) or a crash left.
@@ -47,9 +46,12 @@ pub struct OrgEventRow {
 
 /// Which exporter logged a row (the `source` log field).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ExportSource {
+pub enum ExportSource {
+    /// `character_delete::delete_character`, after its commit.
     CharacterDelete,
-    InTransaction,
+    /// A leave or kick handler, after committing `remove_member`.
+    MemberRemoval,
+    /// [`sweep_unexported`].
     StartupSweep,
 }
 
@@ -57,7 +59,7 @@ impl ExportSource {
     fn as_str(self) -> &'static str {
         match self {
             ExportSource::CharacterDelete => "character_delete",
-            ExportSource::InTransaction => "in_transaction",
+            ExportSource::MemberRemoval => "member_removal",
             ExportSource::StartupSweep => "startup_sweep",
         }
     }
@@ -68,8 +70,6 @@ impl ExportSource {
 enum Scope {
     /// Rows transaction `tx_id` wrote.
     Tx(i64),
-    /// Rows the current transaction wrote.
-    CurrentTx,
     /// Every unstamped row.
     All,
 }
@@ -109,19 +109,15 @@ pub async fn current_tx_id(tx: &mut Transaction<'_, Postgres>) -> Result<i64, sq
 
 /// Log, at INFO, every unexported row transaction `tx_id` wrote, then stamp
 /// them. Call after that transaction committed.
-pub async fn export_committed(pool: &PgPool, tx_id: i64) -> Result<Vec<OrgEventRow>, sqlx::Error> {
+pub async fn export_committed(
+    pool: &PgPool,
+    tx_id: i64,
+    source: ExportSource,
+) -> Result<Vec<OrgEventRow>, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let rows = export(&mut tx, Scope::Tx(tx_id), ExportSource::CharacterDelete).await?;
+    let rows = export(&mut tx, Scope::Tx(tx_id), source).await?;
     tx.commit().await?;
     Ok(rows)
-}
-
-/// Log, at DEBUG, every unexported row the current transaction wrote, and
-/// stamp them in that transaction.
-pub async fn export_in_transaction(
-    tx: &mut Transaction<'_, Postgres>,
-) -> Result<Vec<OrgEventRow>, sqlx::Error> {
-    export(tx, Scope::CurrentTx, ExportSource::InTransaction).await
 }
 
 /// Log, at INFO, every row still unstamped, then stamp them.
@@ -166,11 +162,6 @@ async fn export(
                 .fetch_all(&mut *conn)
                 .await?
         }
-        Scope::CurrentTx => {
-            sqlx::query_as(select_unexported!("tx_id = txid_current()"))
-                .fetch_all(&mut *conn)
-                .await?
-        }
         Scope::All => {
             sqlx::query_as(select_unexported!("true"))
                 .fetch_all(&mut *conn)
@@ -210,27 +201,19 @@ async fn export(
 
 fn log_rows(rows: &[OrgEventRow], source: ExportSource) {
     for r in rows {
-        macro_rules! emit {
-            ($level:ident) => {
-                tracing::$level!(
-                    target: "org",
-                    event = r.event.as_str(),
-                    reason = r.reason.as_str(),
-                    org_id = r.org_id,
-                    from_player_id = r.from_player_id,
-                    from_account_id = r.from_account_id,
-                    to_player_id = r.to_player_id,
-                    to_account_id = r.to_account_id,
-                    org_event_id = r.org_event_id,
-                    at_unix_ms = r.at_unix_ms,
-                    source = source.as_str(),
-                    "Organization changed by the member-delete trigger"
-                )
-            };
-        }
-        match source {
-            ExportSource::InTransaction => emit!(debug),
-            ExportSource::CharacterDelete | ExportSource::StartupSweep => emit!(info),
-        }
+        tracing::info!(
+            target: "org",
+            event = r.event.as_str(),
+            reason = r.reason.as_str(),
+            org_id = r.org_id,
+            from_player_id = r.from_player_id,
+            from_account_id = r.from_account_id,
+            to_player_id = r.to_player_id,
+            to_account_id = r.to_account_id,
+            org_event_id = r.org_event_id,
+            at_unix_ms = r.at_unix_ms,
+            source = source.as_str(),
+            "Organization changed by the member-delete trigger"
+        );
     }
 }

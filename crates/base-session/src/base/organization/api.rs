@@ -5,17 +5,44 @@
 //! `docs/analysis/organizations/work-packets.md` § "Bank campaign API"):
 //!
 //! - [`lock_org`] takes the organization row lock. **ORG-LOCK (D-ORG04):**
-//!   every Team or Command mutation opens a transaction and calls it
-//!   *first*; the global lock order is the organization row, then
-//!   `sgw_player` rows, then item rows (the order trade and vendor use).
+//!   every Team or Command mutation opens a transaction and takes it before
+//!   it reads or writes anything else about the organization.
 //! - [`member_access_locked`] reads a player's rank and permissions inside
-//!   that transaction. There is deliberately no pool-level variant: an
-//!   authorization read outside the lock lets a member who was kicked or
-//!   demoted a moment ago still act.
+//!   that transaction and returns an [`OrgAccess`]. There is deliberately no
+//!   pool-level variant: an authorization read outside the lock lets a
+//!   member who was kicked or demoted a moment ago still act.
+//! - [`OrgAccess`] is the proof of that read. Only [`member_access_locked`]
+//!   and [`OrgAccess::system`] build one; every persistence mutation takes
+//!   one and refuses it if it names another organization or was read in
+//!   another transaction (`OrgStoreError::ActorMismatch`,
+//!   `OrgStoreError::StaleAccess`).
 //! - [`org_vault_is_empty`] is the vault predicate every voluntary disband
 //!   checks (D-ORG20). A stub until the Bank campaign's vault lands.
 //!
 //! `broadcast_to_org` (the fanout primitive) is ORG-07's.
+//!
+//! ## Lock order
+//!
+//! 1. **Organization-scoped work** (every persistence mutation, the Bank's
+//!    cash and vault changes): the organization row, then `sgw_player`
+//!    rows, then item rows (the order trade and vendor use for players and
+//!    items).
+//! 2. **Character deletes** (from any path, an account delete cascading to
+//!    its characters included): the character's `sgw_player` row, then its
+//!    organization rows in `org_id` order (the
+//!    `sgw_player_before_delete_lock_orgs` trigger), then its member rows.
+//!
+//! The two orders never form a cycle because no transaction holding an
+//! organization waits on the `sgw_player` row of one of that
+//! organization's members: `add_member` checks membership before it takes
+//! the `FOR KEY SHARE` lock on the joining character, so it only waits on
+//! a non-member's row, and kicks and rank changes touch member rows, not
+//! player rows. The Bank locks the acting (online) character's
+//! `sgw_player` row after the organization; a character is deleted only
+//! from the character list, never while it is in the world, so that row
+//! is never one a character delete holds. A new path that waits on a
+//! member's `sgw_player` row while holding the organization breaks this
+//! and must lock the player row first.
 //!
 //! All of this assumes READ COMMITTED, the server's isolation level: a
 //! statement after the lock wait sees what the previous lock holder
@@ -41,14 +68,130 @@ pub struct OrgHeader {
     pub experience: i64,
 }
 
-/// What one member may do in one organization, read under ORG-LOCK.
+/// What one actor may do in one organization, read under ORG-LOCK in one
+/// transaction.
+///
+/// Only [`member_access_locked`] (a member) and [`OrgAccess::system`] (a
+/// GM or server path) build one: the private fields rule out a struct
+/// literal. It records the transaction it was read in, and every
+/// persistence mutation refuses it in any other transaction, so an
+/// authorization cannot outlive the lock it was read under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrgAccess {
-    pub org_id: i32,
-    pub org_type: OrgType,
-    pub rank: OrgRank,
-    /// The permission mask of `rank`'s row in this organization.
-    pub permissions: OrgPermission,
+    org_id: i32,
+    org_type: OrgType,
+    rank: OrgRank,
+    permissions: OrgPermission,
+    /// The member this access belongs to; `None` for a system actor.
+    player_id: Option<i32>,
+    /// `txid_current()` of the transaction that read it.
+    tx_id: i64,
+}
+
+/// Who a system [`OrgAccess`] acts for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemActor<'a> {
+    /// A GM command (`.org_join`, `.org_disband`, ...): logged as
+    /// `org.gm_action` with the GM's identity.
+    Gm {
+        account_id: Option<i32>,
+        player_id: Option<i32>,
+        command: &'a str,
+    },
+    /// The server itself (a sweep, a test fixture): logged as
+    /// `system_action` with `source`.
+    Server { source: &'static str },
+}
+
+impl OrgAccess {
+    pub fn org_id(&self) -> i32 {
+        self.org_id
+    }
+
+    pub fn org_type(&self) -> OrgType {
+        self.org_type
+    }
+
+    /// The actor's rank; `Leader` for a system actor.
+    pub fn rank(&self) -> OrgRank {
+        self.rank
+    }
+
+    /// The actor's rank's mask; every bit for a system actor.
+    pub fn permissions(&self) -> OrgPermission {
+        self.permissions
+    }
+
+    /// The acting member; `None` for a system actor.
+    pub fn player_id(&self) -> Option<i32> {
+        self.player_id
+    }
+
+    /// `true` for [`OrgAccess::system`].
+    pub fn is_system(&self) -> bool {
+        self.player_id.is_none()
+    }
+
+    pub(super) fn tx_id(&self) -> i64 {
+        self.tx_id
+    }
+
+    /// Lock the organization and act on it with no member's authority: a
+    /// GM command or a server path. Holds `Leader` rank and every
+    /// permission bit, so the caller must have authorized the GM itself
+    /// (D-ORG13). Logs one INFO `org.gm_action` (a GM) or `system_action`
+    /// (the server) with the organization and the actor.
+    ///
+    /// `Ok(None)` when there is no such organization (WARN `system_access`,
+    /// `reason = no_such_org`).
+    pub async fn system(
+        tx: &mut Transaction<'_, Postgres>,
+        org_id: i32,
+        actor: SystemActor<'_>,
+    ) -> Result<Option<OrgAccess>, sqlx::Error> {
+        let Some((header, tx_id)) = lock_org_with_tx(tx, org_id).await? else {
+            tracing::warn!(
+                target: "org",
+                event = "system_access",
+                org_id,
+                reason = "no_such_org",
+                "Organization lookup missed"
+            );
+            return Ok(None);
+        };
+        match actor {
+            SystemActor::Gm {
+                account_id,
+                player_id,
+                command,
+            } => tracing::info!(
+                target: "org",
+                event = "org.gm_action",
+                org_id,
+                org_type = header.org_type.name(),
+                account_id,
+                player_id,
+                command,
+                "GM acting on an organization"
+            ),
+            SystemActor::Server { source } => tracing::info!(
+                target: "org",
+                event = "system_action",
+                org_id,
+                org_type = header.org_type.name(),
+                source,
+                "Server acting on an organization"
+            ),
+        }
+        Ok(Some(OrgAccess {
+            org_id,
+            org_type: header.org_type,
+            rank: OrgRank::LEADER,
+            permissions: OrgPermission::ALL,
+            player_id: None,
+            tx_id,
+        }))
+    }
 }
 
 /// Lock the organization row (`SELECT … FOR UPDATE`) and return it.
@@ -83,22 +226,36 @@ pub(super) async fn lock_org_quiet(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
 ) -> Result<Option<OrgHeader>, sqlx::Error> {
-    let row: Option<(i32, i16, String, String, i64, i64)> = sqlx::query_as(
-        "SELECT org_id, org_type, name, motd, cash, experience \
+    Ok(lock_org_with_tx(tx, org_id)
+        .await?
+        .map(|(header, _)| header))
+}
+
+/// [`lock_org_quiet`], also returning the transaction's `txid_current()`,
+/// which [`OrgAccess`] records and the mutations compare.
+pub(super) async fn lock_org_with_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    org_id: i32,
+) -> Result<Option<(OrgHeader, i64)>, sqlx::Error> {
+    let row: Option<(i32, i16, String, String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT org_id, org_type, name, motd, cash, experience, txid_current() \
          FROM sgw_organizations WHERE org_id = $1 FOR UPDATE",
     )
     .bind(org_id)
     .fetch_optional(&mut **tx)
     .await?;
-    row.map(|(org_id, org_type, name, motd, cash, experience)| {
-        Ok(OrgHeader {
-            org_id,
-            org_type: org_type_from_db(org_type)?,
-            name,
-            motd,
-            cash,
-            experience,
-        })
+    row.map(|(org_id, org_type, name, motd, cash, experience, tx_id)| {
+        Ok((
+            OrgHeader {
+                org_id,
+                org_type: org_type_from_db(org_type)?,
+                name,
+                motd,
+                cash,
+                experience,
+            },
+            tx_id,
+        ))
     })
     .transpose()
 }
@@ -128,10 +285,10 @@ pub async fn member_access_locked(
             "Organization access lookup missed"
         );
     };
-    if lock_org_quiet(tx, org_id).await?.is_none() {
+    let Some((_, tx_id)) = lock_org_with_tx(tx, org_id).await? else {
         miss("no_such_org");
         return Ok(None);
-    }
+    };
     let row: Option<(i16, i16, i32)> = sqlx::query_as(
         "SELECT m.org_type, m.rank, r.permissions \
          FROM sgw_organization_members m \
@@ -151,6 +308,8 @@ pub async fn member_access_locked(
         org_type: org_type_from_db(org_type)?,
         rank: rank_from_db(rank)?,
         permissions: permissions_from_db(permissions),
+        player_id: Some(player_id),
+        tx_id,
     };
     tracing::debug!(
         target: "org",

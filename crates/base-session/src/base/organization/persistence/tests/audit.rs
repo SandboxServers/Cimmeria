@@ -5,7 +5,7 @@
 use cimmeria_entity::organization::{OrgRank, OrgType};
 use tracing::Level;
 
-use super::super::super::audit::sweep_unexported;
+use super::super::super::audit::{export_committed, sweep_unexported, ExportSource};
 use super::super::super::character_delete::delete_character;
 use super::super::{add_member, remove_member, AfterRemoval};
 use super::*;
@@ -26,7 +26,7 @@ async fn audit_rows(pool: &PgPool, org_id: i32) -> Vec<(String, String, i32, Opt
 
 async fn add(pool: &PgPool, org_id: i32, player_id: i32, rank: OrgRank) {
     let mut tx = pool.begin().await.unwrap();
-    add_member(&mut tx, org_id, player_id, rank).await.unwrap();
+    as_sys!(add_member, tx, org_id, player_id, rank).unwrap();
     tx.commit().await.unwrap();
 }
 
@@ -194,11 +194,12 @@ async fn startup_sweep_exports_rows_a_bare_delete_left() {
     teardown(&pool, &fx).await;
 }
 
-/// A Rust leave or kick: `remove_member` exports its own transaction's row
-/// at DEBUG (the caller may still roll back) with `reason =
-/// member_removed`, and a rollback takes the row and its stamp with it.
+/// A Rust leave or kick: `remove_member` logs nothing from the audit
+/// table itself; it returns its transaction id, and the caller exports
+/// after committing, at INFO with `reason = member_removed`. A rollback
+/// leaves no row to export.
 #[tokio::test]
-async fn remove_member_exports_its_rows_in_transaction() {
+async fn remove_member_rows_export_after_commit() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 22, 2, &["Org02 InTx"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));
@@ -207,21 +208,42 @@ async fn remove_member_exports_its_rows_in_transaction() {
         .org_id;
     add(&pool, org, p1, OrgRank::INITIATE).await;
 
-    // Rolled back: no row survives, stamped or not.
+    // Rolled back: no row survives.
     let mut tx = pool.begin().await.unwrap();
-    remove_member(&mut tx, org, p0).await.unwrap();
+    let r = as_sys!(remove_member, tx, org, p0).unwrap();
     tx.rollback().await.unwrap();
     assert!(audit_rows(&pool, org).await.is_empty());
+    assert!(
+        export_committed(&pool, r.tx_id, ExportSource::MemberRemoval)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let capture = LogCapture::install();
     let mut tx = pool.begin().await.unwrap();
-    let r = remove_member(&mut tx, org, p0).await.unwrap();
+    let r = as_sys!(remove_member, tx, org, p0).unwrap();
     assert_eq!(r.after, AfterRemoval::LeaderPromoted { player_id: p1 });
+    assert!(
+        export_log(&capture, Level::INFO, org, "leader_changed").is_none()
+            && export_log(&capture, Level::DEBUG, org, "leader_changed").is_none(),
+        "nothing is logged from the audit table before the commit"
+    );
     tx.commit().await.unwrap();
-    let log = export_log(&capture, Level::DEBUG, org, "leader_changed")
-        .expect("exported at DEBUG inside the transaction");
+    assert!(
+        !audit_rows(&pool, org).await[0].4,
+        "unstamped until exported"
+    );
+
+    let rows = export_committed(&pool, r.tx_id, ExportSource::MemberRemoval)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    let log = export_log(&capture, Level::INFO, org, "leader_changed")
+        .expect("exported at INFO after the commit");
     assert!(log.has_field("reason", "member_removed"));
-    assert!(log.has_field("source", "in_transaction"));
+    assert!(log.has_field("source", "member_removal"));
+    assert!(log.has_field("org_event_id", &rows[0].org_event_id.to_string()));
     drop(capture);
 
     assert_eq!(

@@ -3,10 +3,9 @@
 use cimmeria_entity::organization::{OrgRank, OrgType};
 use sqlx::{Postgres, Transaction};
 
-use super::super::api::rank_from_db;
-use super::super::audit::export_in_transaction;
+use super::super::api::{rank_from_db, OrgAccess};
 use super::observe::observed;
-use super::{lock_or_miss, OrgStoreError};
+use super::{authorize, OrgStoreError};
 
 /// What happened to the organization when a member row went.
 ///
@@ -44,6 +43,13 @@ pub struct MemberRemoval {
     /// The rank the removed member held.
     pub old_rank: OrgRank,
     pub after: AfterRemoval,
+    /// The transaction's id. After committing, the caller passes it to
+    /// `audit::export_committed(pool, tx_id, ExportSource::MemberRemoval)`,
+    /// which logs the trigger's `sgw_organization_events` rows at INFO
+    /// (`leader_changed`, `disbanded`, `left_memberless`). ORG-06's leave and
+    /// ORG-07's kick handlers must make that call; a row they miss is
+    /// logged by the next startup sweep instead.
+    pub tx_id: i64,
 }
 
 /// Add `player_id` to the organization at `rank`.
@@ -58,12 +64,13 @@ pub struct MemberRemoval {
 /// same lock.
 pub async fn add_member(
     tx: &mut Transaction<'_, Postgres>,
+    actor: &OrgAccess,
     org_id: i32,
     player_id: i32,
     rank: OrgRank,
 ) -> Result<(), OrgStoreError> {
     observed("add_member", Some(org_id), Some(player_id), async {
-        let header = lock_or_miss(tx, org_id).await?;
+        let header = authorize(tx, actor, org_id).await?;
         if !rank.is_valid_for(header.org_type) {
             return Err(OrgStoreError::RankNotInType(rank));
         }
@@ -99,12 +106,16 @@ pub async fn add_member(
 /// organization row must already be locked (or inserted) by this
 /// transaction.
 ///
-/// The character is read first with `FOR KEY SHARE`, which also holds it
-/// against a concurrent delete until commit (the lock the foreign key would
-/// take anyway, taken after the organization row, per ORG-LOCK), and gives
-/// the `account_id` the member row keeps for the trigger's audit rows. The
-/// insert uses `ON CONFLICT DO NOTHING`, so both unique keys give a typed
-/// refusal and leave the transaction usable.
+/// Membership in this organization is checked first, from the member rows
+/// alone. Only a non-member's character is then read with `FOR KEY SHARE`,
+/// which holds it against a concurrent delete until commit and gives the
+/// `account_id` the member row keeps. That order is what keeps ORG-LOCK
+/// deadlock-free: a transaction holding this organization never waits on
+/// the `sgw_player` row of one of its members, which is the row a
+/// character delete holds while it waits for the member's organizations
+/// (`api` § "Lock order"). The insert uses `ON CONFLICT DO NOTHING`, so the
+/// other unique key gives a typed refusal and leaves the transaction
+/// usable.
 pub(super) async fn insert_member(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
@@ -112,6 +123,17 @@ pub(super) async fn insert_member(
     player_id: i32,
     rank: OrgRank,
 ) -> Result<i32, OrgStoreError> {
+    let member: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM sgw_organization_members \
+         WHERE org_id = $1 AND player_id = $2)",
+    )
+    .bind(org_id)
+    .bind(player_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if member {
+        return Err(OrgStoreError::AlreadyMember);
+    }
     let account_id: Option<i32> =
         sqlx::query_scalar("SELECT account_id FROM sgw_player WHERE player_id = $1 FOR KEY SHARE")
             .bind(player_id)
@@ -132,21 +154,9 @@ pub(super) async fn insert_member(
     if inserted.rows_affected() == 1 {
         return Ok(account_id);
     }
-    // One of the two unique keys matched: (org_id, player_id) or
-    // (player_id, org_type). Which one decides the feedback.
-    let same_org: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM sgw_organization_members \
-         WHERE org_id = $1 AND player_id = $2)",
-    )
-    .bind(org_id)
-    .bind(player_id)
-    .fetch_one(&mut **tx)
-    .await?;
-    Err(if same_org {
-        OrgStoreError::AlreadyMember
-    } else {
-        OrgStoreError::AlreadyInType
-    })
+    // Not a member of this organization (checked above, under its lock), so
+    // the key that matched is (player_id, org_type).
+    Err(OrgStoreError::AlreadyInType)
 }
 
 /// Remove `player_id` from the organization, and report what the
@@ -162,15 +172,16 @@ pub(super) async fn insert_member(
 /// running a voluntary leave checks `api::org_vault_is_empty` first
 /// (D-ORG20).
 ///
-/// The trigger's `sgw_organization_events` rows for this transaction are
-/// exported (logged at DEBUG and stamped) here, inside the transaction.
+/// The trigger's `sgw_organization_events` rows are not logged here: the
+/// caller exports them after it commits ([`MemberRemoval::tx_id`]).
 pub async fn remove_member(
     tx: &mut Transaction<'_, Postgres>,
+    actor: &OrgAccess,
     org_id: i32,
     player_id: i32,
 ) -> Result<MemberRemoval, OrgStoreError> {
     observed("remove_member", Some(org_id), Some(player_id), async {
-        lock_or_miss(tx, org_id).await?;
+        authorize(tx, actor, org_id).await?;
         let leader_before = current_leader(tx, org_id).await?;
         let old_rank: Option<i16> = sqlx::query_scalar(
             "DELETE FROM sgw_organization_members WHERE org_id = $1 AND player_id = $2 \
@@ -213,8 +224,11 @@ pub async fn remove_member(
             rows_affected = 1u64,
             "Organization member removed"
         );
-        export_in_transaction(tx).await?;
-        Ok(MemberRemoval { old_rank, after })
+        Ok(MemberRemoval {
+            old_rank,
+            after,
+            tx_id: actor.tx_id(),
+        })
     })
     .await
 }
@@ -243,12 +257,13 @@ async fn current_leader(
 /// check, under the same lock.
 pub async fn set_rank(
     tx: &mut Transaction<'_, Postgres>,
+    actor: &OrgAccess,
     org_id: i32,
     player_id: i32,
     rank: OrgRank,
 ) -> Result<OrgRank, OrgStoreError> {
     observed("set_rank", Some(org_id), Some(player_id), async {
-        let header = lock_or_miss(tx, org_id).await?;
+        let header = authorize(tx, actor, org_id).await?;
         if !rank.is_valid_for(header.org_type) {
             return Err(OrgStoreError::RankNotInType(rank));
         }

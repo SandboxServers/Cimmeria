@@ -31,6 +31,14 @@ async fn misses_are_typed_not_ok() {
         None
     );
 
+    // A system actor for `gone` cannot exist, and an actor for `org` is
+    // refused against any other organization id.
+    assert!(OrgAccess::system(&mut tx, gone, TEST_ACTOR)
+        .await
+        .unwrap()
+        .is_none());
+    let actor = sys(&mut tx, org).await;
+
     macro_rules! refused {
         ($call:expr, $pat:pat) => {{
             let res = $call.await;
@@ -38,16 +46,17 @@ async fn misses_are_typed_not_ok() {
         }};
     }
     refused!(
-        remove_member(&mut tx, org, outsider),
+        remove_member(&mut tx, &actor, org, outsider),
         OrgStoreError::NotAMember
     );
     refused!(
-        set_rank(&mut tx, org, outsider, OrgRank::SENIOR_MEMBER),
+        set_rank(&mut tx, &actor, org, outsider, OrgRank::SENIOR_MEMBER),
         OrgStoreError::NotAMember
     );
     refused!(
         set_text(
             &mut tx,
+            &actor,
             org,
             OrgTextTarget::Note {
                 player_id: outsider
@@ -59,6 +68,7 @@ async fn misses_are_typed_not_ok() {
     refused!(
         set_text(
             &mut tx,
+            &actor,
             org,
             OrgTextTarget::OfficerNote {
                 player_id: outsider
@@ -68,27 +78,31 @@ async fn misses_are_typed_not_ok() {
         OrgStoreError::NotAMember
     );
     refused!(
-        set_text(&mut tx, gone, OrgTextTarget::Motd, "hi"),
-        OrgStoreError::NoSuchOrg
+        set_text(&mut tx, &actor, gone, OrgTextTarget::Motd, "hi"),
+        OrgStoreError::ActorMismatch
     );
     refused!(
-        add_member(&mut tx, gone, outsider, OrgRank::MEMBER),
-        OrgStoreError::NoSuchOrg
+        add_member(&mut tx, &actor, gone, outsider, OrgRank::MEMBER),
+        OrgStoreError::ActorMismatch
     );
-    refused!(disband(&mut tx, gone), OrgStoreError::NoSuchOrg);
-    refused!(remove_member(&mut tx, gone, p0), OrgStoreError::NoSuchOrg);
+    refused!(disband(&mut tx, &actor, gone), OrgStoreError::ActorMismatch);
+    refused!(
+        remove_member(&mut tx, &actor, gone, p0),
+        OrgStoreError::ActorMismatch
+    );
     // Team uses ranks 2, 3 and 8 only.
     refused!(
-        set_rank(&mut tx, org, p0, OrgRank::VETERAN),
+        set_rank(&mut tx, &actor, org, p0, OrgRank::VETERAN),
         OrgStoreError::RankNotInType(OrgRank::VETERAN)
     );
     refused!(
-        set_rank_permissions(&mut tx, org, OrgRank::INITIATE, OrgPermission::NONE),
+        set_rank_permissions(&mut tx, &actor, org, OrgRank::INITIATE, OrgPermission::NONE),
         OrgStoreError::RankNotInType(OrgRank::INITIATE)
     );
     refused!(
         set_text(
             &mut tx,
+            &actor,
             org,
             OrgTextTarget::RankName {
                 rank: OrgRank::OFFICER
@@ -98,11 +112,11 @@ async fn misses_are_typed_not_ok() {
         OrgStoreError::RankNotInType(OrgRank::OFFICER)
     );
     refused!(
-        add_member(&mut tx, org, outsider, OrgRank::INITIATE),
+        add_member(&mut tx, &actor, org, outsider, OrgRank::INITIATE),
         OrgStoreError::RankNotInType(OrgRank::INITIATE)
     );
     refused!(
-        add_member(&mut tx, org, -1, OrgRank::MEMBER),
+        add_member(&mut tx, &actor, org, -1, OrgRank::MEMBER),
         OrgStoreError::NoSuchPlayer
     );
     // Every refusal above left the transaction usable.
@@ -125,16 +139,20 @@ async fn leader_rank_is_pinned() {
         .org_id;
 
     let mut tx = pool.begin().await.unwrap();
-    let res = add_member(&mut tx, org, other, OrgRank::LEADER).await;
+    let res = as_sys!(add_member, tx, org, other, OrgRank::LEADER);
     assert!(matches!(res, Err(OrgStoreError::LeaderPinned)), "{res:?}");
-    add_member(&mut tx, org, other, OrgRank::INITIATE)
-        .await
-        .unwrap();
-    let res = set_rank(&mut tx, org, other, OrgRank::LEADER).await;
+    as_sys!(add_member, tx, org, other, OrgRank::INITIATE).unwrap();
+    let res = as_sys!(set_rank, tx, org, other, OrgRank::LEADER);
     assert!(matches!(res, Err(OrgStoreError::LeaderPinned)), "{res:?}");
-    let res = set_rank(&mut tx, org, leader, OrgRank::OFFICER).await;
+    let res = as_sys!(set_rank, tx, org, leader, OrgRank::OFFICER);
     assert!(matches!(res, Err(OrgStoreError::LeaderPinned)), "{res:?}");
-    let res = set_rank_permissions(&mut tx, org, OrgRank::LEADER, OrgPermission::NONE).await;
+    let res = as_sys!(
+        set_rank_permissions,
+        tx,
+        org,
+        OrgRank::LEADER,
+        OrgPermission::NONE
+    );
     assert!(matches!(res, Err(OrgStoreError::LeaderPinned)), "{res:?}");
     tx.commit().await.unwrap();
 
@@ -159,10 +177,8 @@ async fn rank_and_permission_writes_round_trip() {
         .org_id;
 
     let mut tx = pool.begin().await.unwrap();
-    add_member(&mut tx, org, m, OrgRank::INITIATE)
-        .await
-        .unwrap();
-    let old = set_rank(&mut tx, org, m, OrgRank::OFFICER).await.unwrap();
+    as_sys!(add_member, tx, org, m, OrgRank::INITIATE).unwrap();
+    let old = as_sys!(set_rank, tx, org, m, OrgRank::OFFICER).unwrap();
     assert_eq!(old, OrgRank::INITIATE);
 
     let officer_default = default_rank_permissions(OrgType::Command)
@@ -171,18 +187,21 @@ async fn rank_and_permission_writes_round_trip() {
         .unwrap()
         .1;
     let new_mask = OrgPermission::INVITE | OrgPermission::MOTD;
-    let old_mask = set_rank_permissions(&mut tx, org, OrgRank::OFFICER, new_mask)
-        .await
-        .unwrap();
+    let old_mask = as_sys!(set_rank_permissions, tx, org, OrgRank::OFFICER, new_mask).unwrap();
     assert_eq!(old_mask, officer_default);
+    let access = member_access_locked(&mut tx, org, m)
+        .await
+        .unwrap()
+        .expect("m is a member");
     assert_eq!(
-        member_access_locked(&mut tx, org, m).await.unwrap(),
-        Some(OrgAccess {
-            org_id: org,
-            org_type: OrgType::Command,
-            rank: OrgRank::OFFICER,
-            permissions: new_mask,
-        })
+        (
+            access.org_id(),
+            access.org_type(),
+            access.rank(),
+            access.permissions(),
+            access.player_id()
+        ),
+        (org, OrgType::Command, OrgRank::OFFICER, new_mask, Some(m))
     );
     tx.commit().await.unwrap();
 
@@ -203,41 +222,39 @@ async fn texts_are_validated_and_stored() {
     let mut tx = pool.begin().await.unwrap();
     let motd = "Raid at 8.\nBring ammo.";
     assert_eq!(
-        set_text(&mut tx, org, OrgTextTarget::Motd, motd)
-            .await
-            .unwrap(),
+        as_sys!(set_text, tx, org, OrgTextTarget::Motd, motd).unwrap(),
         motd
     );
-    set_text(
-        &mut tx,
+    as_sys!(
+        set_text,
+        tx,
         org,
         OrgTextTarget::Note { player_id: p },
         "my note",
     )
-    .await
     .unwrap();
-    set_text(
-        &mut tx,
+    as_sys!(
+        set_text,
+        tx,
         org,
         OrgTextTarget::OfficerNote { player_id: p },
         "reliable",
     )
-    .await
     .unwrap();
-    let stored = set_text(
-        &mut tx,
+    let stored = as_sys!(
+        set_text,
+        tx,
         org,
         OrgTextTarget::RankName {
             rank: OrgRank::OFFICER,
         },
         "  First   Prime ",
     )
-    .await
     .unwrap();
     assert_eq!(stored, "First Prime");
 
     // A right-to-left override is refused and nothing changes.
-    let res = set_text(&mut tx, org, OrgTextTarget::Motd, "evil\u{202E}txt").await;
+    let res = as_sys!(set_text, tx, org, OrgTextTarget::Motd, "evil\u{202E}txt");
     assert!(
         matches!(
             res,
@@ -245,7 +262,7 @@ async fn texts_are_validated_and_stored() {
         ),
         "{res:?}"
     );
-    let res = set_text(&mut tx, org, OrgTextTarget::Motd, &"x".repeat(256)).await;
+    let res = as_sys!(set_text, tx, org, OrgTextTarget::Motd, &"x".repeat(256));
     assert!(
         matches!(
             res,
@@ -284,9 +301,7 @@ async fn loads_return_what_the_login_push_needs() {
         .await
         .org_id;
     let mut tx = pool.begin().await.unwrap();
-    add_member(&mut tx, cmd, b, OrgRank::INITIATE)
-        .await
-        .unwrap();
+    as_sys!(add_member, tx, cmd, b, OrgRank::INITIATE).unwrap();
     tx.commit().await.unwrap();
 
     let ms = load_memberships(&pool, b).await.unwrap();
@@ -301,7 +316,7 @@ async fn loads_return_what_the_login_push_needs() {
             (cmd, OrgType::Command, OrgRank::INITIATE),
         ]
     );
-    assert_eq!(ms[0].permissions, OrgPermission::ALL);
+    assert_eq!(ms[0].display_permissions, OrgPermission::ALL);
     assert_eq!(ms[0].header.name, "Org02 Load Team");
     assert_eq!((ms[1].header.cash, ms[1].header.experience), (0, 0));
 

@@ -8,7 +8,19 @@
 //! start with "Org02 " and are cleaned up by exact name key, so a crashed
 //! run cannot make the next one collide on `UNIQUE (org_type, name_key)`.
 
+/// Run a persistence mutation as a system actor for `$org`, read in the
+/// same transaction: `as_sys!(set_rank, tx, org, player, rank)` is
+/// `set_rank(&mut tx, &actor, org, player, rank).await`.
+macro_rules! as_sys {
+    ($f:path, $tx:ident, $org:expr $(, $arg:expr)* $(,)?) => {{
+        let org_id = $org;
+        let actor = sys(&mut $tx, org_id).await;
+        $f(&mut $tx, &actor, org_id $(, $arg)*).await
+    }};
+}
+
 mod audit;
+mod authority;
 mod constraints;
 mod mutations;
 mod telemetry;
@@ -17,7 +29,21 @@ mod trigger;
 use cimmeria_entity::organization::{org_text, OrgType, TextField};
 use sqlx::PgPool;
 
+use super::super::api::{OrgAccess, SystemActor};
 use super::{create_org, CreatedOrg};
+
+/// The system actor the fixtures act as.
+const TEST_ACTOR: SystemActor<'static> = SystemActor::Server {
+    source: "org02_test",
+};
+
+/// A system [`OrgAccess`] for `org_id`, read in `tx`.
+async fn sys(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, org_id: i32) -> OrgAccess {
+    OrgAccess::system(tx, org_id, TEST_ACTOR)
+        .await
+        .expect("system access")
+        .expect("the organization exists")
+}
 
 /// First sentinel of this module's block.
 const BASE: i32 = 0x7000_4800;

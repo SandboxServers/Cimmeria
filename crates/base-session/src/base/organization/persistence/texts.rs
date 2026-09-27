@@ -4,8 +4,9 @@ use cimmeria_entity::organization::{org_text, OrgPermission, OrgRank, TextField}
 use sqlx::{Postgres, Transaction};
 
 use super::super::api::permissions_from_db;
+use super::super::api::OrgAccess;
 use super::observe::{observed, units};
-use super::{lock_or_miss, OrgStoreError};
+use super::{authorize, OrgStoreError};
 
 /// Which organization text [`set_text`] writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,13 +62,14 @@ impl OrgTextTarget {
 /// D-ORG09 (3)) are the caller's, under the same lock.
 pub async fn set_text(
     tx: &mut Transaction<'_, Postgres>,
+    actor: &OrgAccess,
     org_id: i32,
     target: OrgTextTarget,
     text: &str,
 ) -> Result<String, OrgStoreError> {
     observed("set_text", Some(org_id), target.player_id(), async {
         let text = org_text::validate(target.field(), text)?;
-        let header = lock_or_miss(tx, org_id).await?;
+        let header = authorize(tx, actor, org_id).await?;
         // Each UPDATE returns the text it replaced through a self-join on
         // the same row (RETURNING alone sees only the new values), so the
         // log can carry both lengths. `None` means no row matched.
@@ -160,12 +162,13 @@ pub async fn set_text(
 /// (D-ORG09 (3), (6)) is the caller's, under the same lock.
 pub async fn set_rank_permissions(
     tx: &mut Transaction<'_, Postgres>,
+    actor: &OrgAccess,
     org_id: i32,
     rank: OrgRank,
     permissions: OrgPermission,
 ) -> Result<OrgPermission, OrgStoreError> {
     observed("set_rank_permissions", Some(org_id), None, async {
-        let header = lock_or_miss(tx, org_id).await?;
+        let header = authorize(tx, actor, org_id).await?;
         if !rank.is_valid_for(header.org_type) {
             return Err(OrgStoreError::RankNotInType(rank));
         }

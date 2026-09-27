@@ -56,19 +56,15 @@ $$;
 -- sgw_organization_events (reason character_deleted or member_removed), which
 -- Rust exports to the `org` log target: tracing cannot see inside Postgres.
 --
--- Lock order (D-ORG04: organization row, then sgw_player, then items).
--- Deleting a member row without holding its organization's lock inverts
--- that order: the member row stays locked until commit while this trigger
--- waits for the organization, and a transaction that holds the
--- organization and wants that member row (a kick, or this same trigger
--- promoting that member) deadlocks against it. So every path that deletes
--- member rows locks the organizations first: the Rust mutations call
--- lock_org, and a character delete goes through
--- organization::character_delete::delete_character, which locks the
--- character's organizations in org_id order before it deletes the
--- sgw_player row. Here the FOR UPDATE then re-takes a lock the
--- transaction already holds. A bare DELETE FROM sgw_player still works; it
--- just runs the deadlock risk.
+-- Lock order. Deleting a member row without holding its organization's
+-- lock would invert ORG-LOCK: the member row stays locked until commit
+-- while this trigger waits for the organization, and a transaction holding
+-- the organization and wanting that member row (a kick) deadlocks against
+-- it. So every path that deletes member rows holds the organization first:
+-- the Rust mutations call lock_org, and a character delete (from any path,
+-- an account cascade included) is locked by org_player_before_delete
+-- before the cascade reaches the member rows. Here the FOR UPDATE then
+-- re-takes a lock the transaction already holds.
 --
 -- Isolation. The function relies on READ COMMITTED, the server's level:
 -- after the FOR UPDATE wait each statement below takes a fresh snapshot and
@@ -139,5 +135,80 @@ BEGIN
             (OLD.org_id, 'left_memberless', v_reason, OLD.player_id, OLD.account_id);
     END IF;
     RETURN NULL;
+END;
+$$;
+
+--
+-- Function: org_member_before_update()
+-- Trigger:  sgw_organization_members_before_update (_triggers.sql)
+--
+-- A member row's identity is immutable: org_id, player_id, org_type and
+-- account_id never change (a move between organizations is a delete and an
+-- insert, so the delete trigger sees it). The Leader rank moves only
+-- through the member-delete trigger's promotion: a rank change to or from 8
+-- is refused unless it runs inside another trigger (pg_trigger_depth() > 1,
+-- which the promotion UPDATE inside org_member_after_delete always is). The
+-- Rust layer refuses the same changes (OrgStoreError::LeaderPinned); this
+-- stops psql, a GM tool or a future code path from making a second leader
+-- or a leaderless organization.
+--
+
+CREATE FUNCTION org_member_before_update() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.org_id <> OLD.org_id OR NEW.player_id <> OLD.player_id
+       OR NEW.org_type <> OLD.org_type OR NEW.account_id <> OLD.account_id THEN
+        RAISE EXCEPTION 'organization member identity is immutable (org %, player %)',
+            OLD.org_id, OLD.player_id
+            USING ERRCODE = 'check_violation',
+                  CONSTRAINT = 'sgw_organization_members_identity_immutable';
+    END IF;
+    IF NEW.rank <> OLD.rank AND (NEW.rank = 8 OR OLD.rank = 8)
+       AND pg_trigger_depth() <= 1 THEN
+        RAISE EXCEPTION 'the Leader rank moves only by promotion (org %, player %)',
+            OLD.org_id, OLD.player_id
+            USING ERRCODE = 'check_violation',
+                  CONSTRAINT = 'sgw_organization_members_leader_pinned';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+--
+-- Function: org_player_before_delete()
+-- Trigger:  sgw_player_before_delete_lock_orgs (_triggers.sql)
+--
+-- Makes every character delete take the ORG-LOCK order on its own: a
+-- DELETE FROM sgw_player from any path (organization::character_delete,
+-- an account delete cascading to its characters, psql, a test) locks the
+-- character's organization rows, in org_id order, before the cascade
+-- deletes its member rows and the member-delete trigger runs.
+--
+-- A BEFORE DELETE row trigger fires after Postgres has locked the
+-- sgw_player row and before any cascade, so the order is: the character's
+-- sgw_player row, then its organizations, then (through the cascade) its
+-- member rows. Nothing else waits on a character's sgw_player row while
+-- holding one of that character's organizations: add_member checks
+-- membership before it touches the player row, so it only ever waits on a
+-- non-member's row; the kick and rank paths touch member rows, not player
+-- rows. See the lock-order note in crates/base-session/src/base/organization/api.rs.
+--
+-- The membership read runs after the player row is locked, and a new
+-- member row needs a KEY SHARE lock on that player row (its foreign key),
+-- so no organization can be joined between this read and the delete.
+--
+
+CREATE FUNCTION org_player_before_delete() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    PERFORM 1
+       FROM sgw_organizations
+      WHERE org_id IN (SELECT org_id FROM sgw_organization_members
+                        WHERE player_id = OLD.player_id)
+      ORDER BY org_id
+        FOR UPDATE;
+    RETURN OLD;
 END;
 $$;

@@ -90,9 +90,9 @@ async fn second_team_for_same_player_is_refused() {
     // Through the Rust layer it is a typed refusal, and the transaction
     // stays usable.
     let mut tx = pool.begin().await.unwrap();
-    let res = add_member(&mut tx, b.org_id, p, OrgRank::MEMBER).await;
+    let res = as_sys!(add_member, tx, b.org_id, p, OrgRank::MEMBER);
     assert!(matches!(res, Err(OrgStoreError::AlreadyInType)), "{res:?}");
-    let res = add_member(&mut tx, a.org_id, p, OrgRank::MEMBER).await;
+    let res = as_sys!(add_member, tx, a.org_id, p, OrgRank::MEMBER);
     assert!(matches!(res, Err(OrgStoreError::AlreadyMember)), "{res:?}");
     // A second create by a player already in a Team fails the same way, and
     // its organization row is rolled back with it: committing the
@@ -173,9 +173,11 @@ async fn member_org_type_cannot_drift() {
         .execute(&pool)
         .await
         .expect_err("retyping a member row must be refused");
+    // The member BEFORE UPDATE trigger refuses it before the foreign key
+    // is checked.
     assert_eq!(
         violated(&err).as_deref(),
-        Some("sgw_organization_members_org_fkey")
+        Some("sgw_organization_members_identity_immutable")
     );
 
     teardown(&pool, &fx).await;
@@ -292,16 +294,12 @@ async fn disband_cascades_ranks_and_members() {
     let fx = setup(&pool, 7, 3, &["Org02 Disband"]).await;
     let org = create(&pool, OrgType::Command, "Org02 Disband", fx.player(0)).await;
     let mut tx = pool.begin().await.unwrap();
-    add_member(&mut tx, org.org_id, fx.player(1), OrgRank::INITIATE)
-        .await
-        .unwrap();
-    add_member(&mut tx, org.org_id, fx.player(2), OrgRank::INITIATE)
-        .await
-        .unwrap();
+    as_sys!(add_member, tx, org.org_id, fx.player(1), OrgRank::INITIATE).unwrap();
+    as_sys!(add_member, tx, org.org_id, fx.player(2), OrgRank::INITIATE).unwrap();
     tx.commit().await.unwrap();
 
     let mut tx = pool.begin().await.unwrap();
-    let members = disband(&mut tx, org.org_id).await.expect("disband");
+    let members = as_sys!(disband, tx, org.org_id).expect("disband");
     tx.commit().await.unwrap();
 
     assert_eq!(members, fx.players);

@@ -53,6 +53,14 @@ pub enum OrgStoreError {
     /// Squads are cell state and are never persisted (D-ORG03).
     #[error("squads are not persisted")]
     NotPersistent,
+    /// The [`OrgAccess`](super::super::api::OrgAccess) passed as the actor
+    /// was read for a different organization.
+    #[error("the actor's access is for another organization")]
+    ActorMismatch,
+    /// The actor's access was read in a different transaction, so it was
+    /// not authorized under this transaction's lock (ORG-LOCK).
+    #[error("the actor's access was read in another transaction")]
+    StaleAccess,
     /// The player id names no character.
     #[error("no such character")]
     NoSuchPlayer,
@@ -77,6 +85,8 @@ impl OrgStoreError {
             OrgStoreError::VaultNotEmpty => "vault_not_empty",
             OrgStoreError::NotPersistent => "not_persistent",
             OrgStoreError::NoSuchPlayer => "no_such_player",
+            OrgStoreError::ActorMismatch => "actor_mismatch",
+            OrgStoreError::StaleAccess => "stale_access",
             OrgStoreError::Db(_) => "db_error",
         }
     }

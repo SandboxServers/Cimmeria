@@ -18,7 +18,11 @@ use super::OrgStoreError;
 pub struct OrgMembership {
     pub header: OrgHeader,
     pub rank: OrgRank,
-    pub permissions: OrgPermission,
+    /// The rank's mask, for the client's display (the login push).
+    /// **Display only:** read without the organization lock, so it may
+    /// already be stale. Never authorize from it; use
+    /// `api::member_access_locked` inside the mutation's transaction.
+    pub display_permissions: OrgPermission,
 }
 
 /// One roster row: what `RosterInfo` (`onOrganizationRosterInfo` [38])
@@ -76,7 +80,7 @@ pub async fn load_memberships<'e>(
                             experience,
                         },
                         rank: rank_from_db(rank)?,
-                        permissions: permissions_from_db(perms),
+                        display_permissions: permissions_from_db(perms),
                     })
                 },
             )
@@ -86,7 +90,7 @@ pub async fn load_memberships<'e>(
                     target: "org",
                     event = "load_memberships",
                     player_id,
-                    rows = ms.len(),
+                    rows_affected = ms.len(),
                     "Organization memberships loaded"
                 )
             })
@@ -131,7 +135,7 @@ pub async fn load_roster<'e>(
                     target: "org",
                     event = "load_roster",
                     org_id,
-                    rows = r.len(),
+                    rows_affected = r.len(),
                     "Organization roster loaded"
                 )
             })
@@ -166,7 +170,7 @@ pub async fn load_ranks<'e>(
                     target: "org",
                     event = "load_ranks",
                     org_id,
-                    rows = r.len(),
+                    rows_affected = r.len(),
                     "Organization ranks loaded"
                 )
             })

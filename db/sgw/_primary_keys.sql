@@ -142,3 +142,14 @@ ALTER TABLE ONLY sgw_organization_members
 ALTER TABLE ONLY sgw_organization_events
     ADD CONSTRAINT sgw_organization_events_pkey PRIMARY KEY (org_event_id);
 
+--
+-- Name: sgw_player_player_id_account_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+-- Redundant as a key (player_id alone is the primary key); it exists as the
+-- target of sgw_organization_members_player_fkey, which pins each member
+-- row's account_id copy to its character's account.
+--
+
+ALTER TABLE ONLY sgw_player
+    ADD CONSTRAINT sgw_player_player_id_account_id_key UNIQUE (player_id, account_id);
+

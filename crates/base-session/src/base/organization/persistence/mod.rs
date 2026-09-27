@@ -8,8 +8,10 @@
 //! leader, or disbands, whenever a member row goes (D-ORG12, D-ORG20), so a
 //! character delete never leaves a leaderless organization behind.
 //!
-//! **ORG-LOCK (D-ORG04).** Every mutation here takes a transaction and
-//! locks the organization row ([`super::api::lock_org`]) before it reads or writes
+//! **ORG-LOCK (D-ORG04).** Every mutation here takes a transaction and an
+//! actor ([`OrgAccess`], from `api::member_access_locked` or
+//! `OrgAccess::system` in the same transaction), and locks the
+//! organization row ([`super::api::lock_org`]) before it reads or writes
 //! anything else, so a caller's authorization read
 //! ([`super::api::member_access_locked`]) and the write it authorizes see
 //! the same state. [`create_org`] is the exception only because there is no
@@ -45,7 +47,7 @@ use cimmeria_entity::organization::{
 };
 use sqlx::{Postgres, Transaction};
 
-use super::api::{lock_org_quiet, org_vault_is_empty, OrgHeader};
+use super::api::{lock_org_with_tx, org_vault_is_empty, OrgAccess, OrgHeader};
 use observe::{observed, units};
 
 /// A freshly created organization.
@@ -128,12 +130,13 @@ async fn insert_org(
         .map(|(rank, perms)| (i16::from(rank.as_u8()), perms.to_wire()))
         .unzip();
     sqlx::query(
-        "INSERT INTO sgw_organization_ranks (org_id, rank, permissions) \
-         SELECT $1, r, p FROM UNNEST($2::smallint[], $3::integer[]) AS t(r, p)",
+        "INSERT INTO sgw_organization_ranks (org_id, org_type, rank, permissions) \
+         SELECT $1, $4, r, p FROM UNNEST($2::smallint[], $3::integer[]) AS t(r, p)",
     )
     .bind(org_id)
     .bind(&ranks)
     .bind(&masks)
+    .bind(i16::from(org_type.as_u8()))
     .execute(&mut **tx)
     .await?;
 
@@ -159,13 +162,15 @@ async fn insert_org(
 ///
 /// Refused with [`OrgStoreError::VaultNotEmpty`] while the vault or the
 /// treasury holds anything (D-ORG20), and with
-/// [`OrgStoreError::NoSuchOrg`] when there is nothing to disband.
+/// [`OrgStoreError::NoSuchOrg`] when there is nothing to disband. Whether
+/// `actor` may disband is the caller's check.
 pub async fn disband(
     tx: &mut Transaction<'_, Postgres>,
+    actor: &OrgAccess,
     org_id: i32,
 ) -> Result<Vec<i32>, OrgStoreError> {
     observed("disband", Some(org_id), None, async {
-        let header = lock_or_miss(tx, org_id).await?;
+        let header = authorize(tx, actor, org_id).await?;
         if !org_vault_is_empty(tx, org_id).await? {
             return Err(OrgStoreError::VaultNotEmpty);
         }
@@ -196,15 +201,25 @@ pub async fn disband(
     .await
 }
 
-/// `api::lock_org`, with a missing organization as a typed miss (logged
-/// once, by [`observe::observed`]).
-async fn lock_or_miss(
+/// The start of every mutation: check that `actor` is for `org_id`, lock
+/// the organization, and check that `actor` was read in this transaction
+/// (so under this lock). A refusal is a typed miss, logged once by
+/// [`observe::observed`].
+async fn authorize(
     tx: &mut Transaction<'_, Postgres>,
+    actor: &OrgAccess,
     org_id: i32,
 ) -> Result<OrgHeader, OrgStoreError> {
-    lock_org_quiet(tx, org_id)
+    if actor.org_id() != org_id {
+        return Err(OrgStoreError::ActorMismatch);
+    }
+    let (header, tx_id) = lock_org_with_tx(tx, org_id)
         .await?
-        .ok_or(OrgStoreError::NoSuchOrg)
+        .ok_or(OrgStoreError::NoSuchOrg)?;
+    if tx_id != actor.tx_id() {
+        return Err(OrgStoreError::StaleAccess);
+    }
+    Ok(header)
 }
 
 #[cfg(test)]
