@@ -80,7 +80,7 @@ Values from `entities/defs/enumerations.xml`:
    - `crates/wire/src/mercury/aoi/create.rs` `compose_create_entity_base_body` (:77) writes `[eid][0xFF idAlias][class_id][0][0]`. **No BigWorld property stream is ever sent for NPCs** (and players get `propCount=0`).
    - The cascade `compose_create_entity_cascade_body` (:146) uses `cascade_idbase` = 62 for any `npc_data` (:26), which is correct for SGWPet.
    - `onEntityProperty(GENERICPROPERTY_*, value)` is already emitted for `DatabaseId` (:37, :158-175). **The owner id most likely rides `onEntityProperty(GENERICPROPERTY_PetOwnerId=5, ownerEntityId)` in this cascade.** That requires adding `pet_owner_id: Option<i32>` to `NpcAoIData` (`crates/wire/src/cell/messages/data.rs:24`).
-   - This is also where issue #570 Phase 4 ("ownerID/ownerBase CELL_PUBLIC in the AoI-entry property payload") lands. Since no property payload exists, the `.def` CELL_PUBLIC `ownerID` cannot be sent the BigWorld way without new wire work. **RE question:** does `GamePet` read owner from the generic property or from a BW property?
+   - This is also where issue #570 Phase 4 ("ownerID/ownerBase CELL_PUBLIC in the AoI-entry property payload") lands. Since no property payload exists, the `.def` CELL_PUBLIC `ownerID` cannot be sent the BigWorld way without new wire work. **RE question resolved (PT-E1):** `GamePet` reads owner from the generic property, not a BW property — confirmed by decompiling the CME handler that reads it (`GamePet__OnOwnerIdChanged_ValuePushed`, gated on `ENTITYFLAG_Pet`), which requires `onEntityFlags` to have set that flag first. See [`pet-client-contract.md`](../../../reverse-engineering/findings/pet-client-contract.md) §2.
 
 ### 1.5 Method indices for SGWPet
 
@@ -89,7 +89,7 @@ Values from `entities/defs/enumerations.xml`:
   - `SGWPet.def` has no `<Implements>` and 3 own ClientMethods, so the derived indices are **29 `onPetAbilityList(ARRAY<INT32>)`, 30 `onPetStanceList(ARRAY<INT8>)`, 31 `onPetStanceUpdate(INT8)`**.
   - That total of 32 matches entity-property-sync App. B (SGWPet = 32).
   - All three direct-encode as `0x80|idx` = `0x9D/0x9E/0x9F`.
-- **Discrepancy to reconcile.** `pet-restoration.md` says "onPetAbilityList [client idx 1] / onPetStanceList [idx 0] / onPetStanceUpdate [idx 2]". That is the client's handler-registration order (`0x00d77720/0x00d779c0/0x00d77c60`), not the wire index. The work plan needs one verification step (Ghidra EntityDescription for type 5, or a live capture) and a doc fix in the same PR. Neither table lists SGWPet yet: add an "SGWPet Client Method Dispatch Table" section after the SGWMob one.
+- **Discrepancy resolved (PT-E1).** `pet-restoration.md` previously said "onPetAbilityList [client idx 1] / onPetStanceList [idx 0] / onPetStanceUpdate [idx 2]". That was the client's handler-registration order (`0x00d77720/0x00d779c0/0x00d77c60`), not the wire index, and has been corrected in `pet-restoration.md`. The wire indices (29/30/31) still rest on the flattening-rule derivation; PT-E1 independently confirmed each handler's *identity* (which method it implements) via its `.def`-matching property key, not the numeric index values themselves — see [`pet-client-contract.md`](../../../reverse-engineering/findings/pet-client-contract.md) §1. Both tables now exist: `docs/protocol/client-method-dispatch-table.md` has an "SGWPet Client Method Dispatch Table" section after the SGWMob one.
 - Constants
   - SGWMob's live constants are in `crates/wire/src/mercury/mod.rs:252-253` (`method_idx::ON_AGGRESSION_OVERRIDE_*`). Agent memory flags `method_idx` as a drifted duplicate; `crates/wire/src/cell/client_methods/` is authoritative.
   - SGWPet constants belong in a new `crates/wire/src/cell/client_methods/pet.rs` (siblings: `being.rs`, `combatant.rs`, ...) with a doc comment warning that 27+ collides with SGWPlayer's Communicator range.
@@ -326,12 +326,12 @@ Player teardown call sites on the cell (all async with `tx` in hand unless noted
 3. **Binary faction model.** Pets must be non-hostile to players but valid targets for hostile NPCs. Hostile NPCs have no NPC-vs-NPC proximity aggro or assist (witness/player-only scans). Owner combat state does not mirror pet combat.
 4. **Leash semantics.** `begin_leash` returns an NPC to `spawn_position` and makes it evade. For a pet this strands it at the summon point and makes it immune to threat.
 5. **Teardown fan-out.** 11 owner-teardown paths (§4), and `destroy_entity` has no `tx`. Without the self-healing tick, a pet is orphaned in the world on any missed path.
-6. **Wire uncertainty.**
-   - Pet client-method indices (29/30/31 derived vs the "idx 0/1/2" in the findings doc).
-   - How the client learns `ownerID`: there is no BW property stream, and `GENERICPROPERTY_PetOwnerId` via `onEntityProperty` is inferred.
-   - Stance-list element meaning.
-   - Leash threshold and poll interval.
-   - All need Ghidra/x64dbg before the wire PR, per the bible rule.
+6. **Wire uncertainty — closed by PT-E1 for the first two, still open for the rest.**
+   - ~~Pet client-method indices~~ — **confirmed**: 29/30/31 (derivation + independently confirmed handler identity), not the old "idx 0/1/2" in the findings doc (now corrected).
+   - ~~How the client learns `ownerID`~~ — **confirmed**: there is no BW property stream; `GENERICPROPERTY_PetOwnerId` via `onEntityProperty` is the mechanism, gated on `onEntityFlags` having set `ENTITYFLAG_Pet` first. See [`pet-client-contract.md`](../../../reverse-engineering/findings/pet-client-contract.md) §2.
+   - Stance-list element meaning — resolved separately, see `research/client-static-re.md` §B (not a PT-E1 item).
+   - Leash threshold and poll interval — still open; no client footprint (server-only design values, per `client-static-re.md` §F).
+   - `SpeedPet` consumer — still open (PT-E1 tried, not found statically; see `pet-client-contract.md` §3).
 7. **Summon binding and the self-target cast path.**
    - Summon effects have no `script_name` and no template NVP, so a seed edit is required.
    - Script dispatch only runs inside `apply_damage_to_target` behind the #444 hostile-target gate, which a self-cast summon fails.

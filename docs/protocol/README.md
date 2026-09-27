@@ -14,7 +14,7 @@ Wire formats, Mercury messaging, and client-server protocol documentation.
 | [login-handshake.md](login-handshake.md) | Auth flow: challenge, shard key, server select, baseAppLogin binary format | Complete |
 | [position-updates.md](position-updates.md) | Entity movement and volatile property updates; avatarUpdate variants, packed formats | Complete |
 | [message-dispatch-table.md](message-dispatch-table.md) | Mercury message dispatch table: message id → handler mapping | Complete |
-| [client-method-dispatch-table.md](client-method-dispatch-table.md) | SGWPlayer client-method dispatch table (server → client), by method index | Complete |
+| [client-method-dispatch-table.md](client-method-dispatch-table.md) | Client-method dispatch table (server → client), by method index — SGWPlayer (primary/reference table), plus SGWMob and SGWPet (each their own, separate index space) | Complete |
 | [cell-method-dispatch-table.md](cell-method-dispatch-table.md) | SGWPlayer exposed CellMethod dispatch table (client → cell), by method index | Complete |
 | [sgwplayer-base-method-dispatch-table.md](sgwplayer-base-method-dispatch-table.md) | SGWPlayer exposed BaseMethod dispatch table (client → base), by method index | Complete |
 | [client-verified-wire-formats.md](client-verified-wire-formats.md) | Wire formats verified byte-exact against the live client | Complete |

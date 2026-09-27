@@ -21,12 +21,13 @@ constants `Pet1`..`Pet4` at `0x01955a9c`-`0x01955ac0` name them, but the slot *v
 confirmed by the slot-bind loop itself, `GamePet__SyncLocalOwnerPetSlots` @ `0x00d39880`).
 The bind is driven entirely by native C++/CME event handlers (no Lua touches it — Lua only
 *consumes* `Unit.Pet1` as an already-resolved unit handle, e.g. `PetContainer.lua:429-432`,
-`PetInfo.lua:59,73`) and requires, in this order: (1) `onEntityFlags` sets `ENTITYFLAG_Pet` (bit
-`0x400`) on the entity; (2) `onEntityProperty(GENERICPROPERTY_PetOwnerId = 5, ownerEntityId)`
-then arrives and is read by `GamePet__OnOwnerIdChanged_ValuePushed` (`0x00d39a10`), which is
-gated on that flag and, once it fires, adds the pet id to the owner's own pet-id vector
-(`GameBeing__AddPetId`); (3) `onPetStanceList` also arrives (a second, independent readiness
-gate). `GamePet__ctor` (`0x00d39cb0`) zero-inits fields but does not read an ownerID off the
+`PetInfo.lua:59,73`) and requires: (1) `onEntityFlags` sets `ENTITYFLAG_Pet` (bit `0x400`) on
+the entity **before** (2) `onEntityProperty(GENERICPROPERTY_PetOwnerId = 5, ownerEntityId)`
+arrives and is read by `GamePet__OnOwnerIdChanged_ValuePushed` (`0x00d39a10`), which is gated on
+that flag and, once it fires, adds the pet id to the owner's own pet-id vector
+(`GameBeing__AddPetId`) — that ordering is strict. Independently, (3) `onPetStanceList` must
+also arrive (a second, independent readiness gate that can arrive before or after (1)/(2)).
+`GamePet__ctor` (`0x00d39cb0`) zero-inits fields but does not read an ownerID off the
 wire at construction time — ownership only arrives via the property update in (2), after
 `createOnClient`. Ctor field layout (fastcall, `param_1` = `this`):
 

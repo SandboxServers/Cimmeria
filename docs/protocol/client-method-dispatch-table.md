@@ -1,12 +1,21 @@
 ---
-title: "SGWPlayer Client Method Dispatch Table (Server → Client)"
+title: "Client Method Dispatch Table (Server → Client): SGWPlayer, SGWMob, SGWPet"
 type: reference
 audience: engineers
 last_updated: 2026-09-27
 ---
 
-# SGWPlayer Client Method Dispatch Table (Server → Client)
+# Client Method Dispatch Table (Server → Client): SGWPlayer, SGWMob, SGWPet
 
+> This reference covers three entity types' server→client method dispatch: the full 157-method
+> **SGWPlayer** table below is the primary/reference table (and the one
+> [`tools/wire_decoder_codegen.py`](../../tools/wire_decoder_codegen.py) parses — see its own
+> section-boundary note); the **SGWMob** and **SGWPet** tables further down are each a much
+> smaller, separate index space layered on top of the shared `SGWSpawnableEntity`/`SGWBeing`/
+> `SGWCombatant` prefix (their own method indices reuse small numbers that collide with
+> SGWPlayer's at the same index — they are a different entity type's dispatch table, not an
+> extension of SGWPlayer's).
+>
 > **Last updated**: 2026-09-27 — added the SGWPet table (pets campaign PT-E1)
 > **Previously**: 2026-09-25 — added the SGWMob table (NA33)
 > **Verified**: 2026-07-25 — all 157 index/name pairs re-derived from
@@ -17,7 +26,8 @@ last_updated: 2026-09-27
 > **Total methods**: 157 (indices 0–156)
 > **Encoding**: Methods 0–60 use direct wire encoding (`msg_id = 0x80 + index`);
 > methods 61+ use extended encoding (`msg_id = 0xBD`, sub-byte = `index - 61`).
-> **Entity type**: SGWPlayer (class_id = 0x02)
+> **Entity type**: SGWPlayer (class_id = 0x02) — see the SGWMob and SGWPet sections below for
+> their own entity types and class_ids.
 
 ---
 
