@@ -6,7 +6,10 @@ use cimmeria_entity::organization::{OrgPermission, OrgRank, OrgType};
 use tracing::Level;
 
 use super::super::super::api::{lock_org, member_access_locked, OrgAccess};
-use super::super::{add_member, set_rank, set_rank_permissions, set_text, OrgTextTarget};
+use super::super::{
+    add_member, load_memberships, load_ranks, load_roster, set_rank, set_rank_permissions,
+    set_text, OrgTextTarget,
+};
 use super::*;
 use crate::test_support::{require_db_or_skip, Captured, LogCapture, LogCaptureGuard};
 
@@ -120,6 +123,24 @@ async fn changes_log_debug_with_before_and_after() {
             .all(|c| !c.fields.values().any(|v| v.contains("hello"))),
         "text is logged as lengths, never the text"
     );
+
+    // Loads carry the same row-count field as the writes (Copilot #881).
+    load_memberships(&pool, p1).await.unwrap();
+    load_roster(&pool, org).await.unwrap();
+    load_ranks(&pool, org).await.unwrap();
+    for (event, rows) in [
+        ("load_memberships", "1"),
+        ("load_roster", "2"),
+        ("load_ranks", "8"),
+    ] {
+        let hits = org_events(&capture, Level::DEBUG, event);
+        assert_eq!(hits.len(), 1, "{event}: {:#?}", capture.all());
+        assert!(
+            hits[0].has_field("rows_affected", rows),
+            "{event}: {:?}",
+            hits[0]
+        );
+    }
 
     teardown(&pool, &fx).await;
 }
