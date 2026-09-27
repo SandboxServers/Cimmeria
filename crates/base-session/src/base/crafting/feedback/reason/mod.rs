@@ -250,12 +250,12 @@ impl CraftReject {
     /// other reason.
     pub fn elementary_counts(&self) -> Option<String> {
         match self {
-            CraftReject::CountNotMet { counts } | CraftReject::MultipleBuckets { counts } => Some(
-                format!(
+            CraftReject::CountNotMet { counts } | CraftReject::MultipleBuckets { counts } => {
+                Some(format!(
                     "normal:{},good:{},great:{},fantastic:{}",
                     counts[0], counts[1], counts[2], counts[3]
-                ),
-            ),
+                ))
+            }
             _ => None,
         }
     }
