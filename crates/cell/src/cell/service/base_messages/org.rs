@@ -6,6 +6,7 @@
 //! character before acting. Later packets add their handlers to this file
 //! rather than to `mod.rs`.
 
+use cimmeria_entity::organization::OrgLeaveReason;
 use tokio::sync::mpsc;
 
 use super::super::super::cell_methods::organization::squad;
@@ -39,21 +40,34 @@ pub(super) async fn handle(
             entity_id,
             org_id,
             reason,
-        } => {
-            // The Bank campaign's BV-07 extends this arm to close an open
-            // Team or Command vault session for this player.
-            let live = space_mgr.player_identity(entity_id);
-            tracing::debug!(
-                target: "org",
-                event = "org.membership_ended",
-                account_id = live.account_id,
-                player_id,
-                entity_id,
-                org_id,
-                reason = reason.as_u8(),
-                live_entity = live.player_id == Some(player_id),
-                "a player left a Team or Command"
-            );
-        }
+        } => membership_ended(player_id, entity_id, org_id, reason, space_mgr),
     }
+}
+
+/// An online player stopped being a member of a Team or Command (ORG-06's
+/// Bank hook, sent by the base beside every `onOrganizationLeft` [36]).
+///
+/// For now it only logs DEBUG `org.membership_ended`. **The Bank / Vault
+/// campaign (BV-07) extends this function** to close any Team or Command
+/// vault session the player has open (`vault_session_closed`,
+/// `reason = org_left`); ORG-07 sends it on a kick too.
+fn membership_ended(
+    player_id: i32,
+    entity_id: u32,
+    org_id: i32,
+    reason: OrgLeaveReason,
+    space_mgr: &SpaceManager,
+) {
+    let live = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        target: "org",
+        event = "org.membership_ended",
+        account_id = live.account_id,
+        player_id,
+        entity_id,
+        org_id,
+        reason = reason.as_u8(),
+        live_entity = live.player_id == Some(player_id),
+        "a player left a Team or Command"
+    );
 }
