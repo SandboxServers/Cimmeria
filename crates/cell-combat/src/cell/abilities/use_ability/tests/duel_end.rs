@@ -17,11 +17,11 @@ use cimmeria_entity::stats::HEALTH;
 use cimmeria_wire::state_field::BSF_IN_COMBAT;
 
 use super::*;
-use crate::cell::duel::{end_engaged, EndReason};
 use crate::cell::effects::{effect_pulse_tick, register_active_effect};
 use crate::test_support::{
     add_pet_owner, make_pet_world, LogCapture, NoContentEvents, PET_FIXTURE_TEMPLATE_ID,
 };
+use cimmeria_cell_world::cell::duel::{end_engaged, EndReason};
 
 const A: u32 = 1;
 const B: u32 = 2;

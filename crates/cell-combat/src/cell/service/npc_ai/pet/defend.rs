@@ -85,17 +85,15 @@ pub(super) async fn sync_owner_combat(
         .into_iter()
         .filter(|&p| space_mgr.pets.summoner_matches(p, owner_identity))
         .collect();
-    // The owner's duel opponent is a combat source too (SS-D2), not a mob
-    // with a threat list: it is never stale here; the duel clears it.
-    let duel_opponent = owner_identity
-        .player_id
-        .and_then(|pid| crate::cell::duel::engaged_opponent_entity(space_mgr, pid));
     let stale: Vec<u32> = space_mgr
         .get_entity(owner_id)
         .map(|o| o.threatened_mobs.iter().copied().collect::<Vec<u32>>())
         .unwrap_or_default()
         .into_iter()
-        .filter(|m| Some(*m) != duel_opponent)
+        // Only NPC sources are this sweep's to prune: a player source (a duel
+        // opponent, SS-D2) has no threat list to consult and is cleared by
+        // the system that added it, never here.
+        .filter(|m| !space_mgr.get_entity(*m).is_some_and(|e| e.is_player))
         .filter(|m| {
             space_mgr.get_entity(*m).is_none_or(|e| {
                 combat::is_dead_state(e.state_field)
