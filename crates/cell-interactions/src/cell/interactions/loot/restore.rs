@@ -77,7 +77,9 @@ fn restored_text(reason: GrantRefusal, container_id: i32) -> &'static str {
             "Your crafting bag is full. The item was left on the corpse."
         }
         GrantRefusal::ContainerFull => "Your inventory is full. The item was left on the corpse.",
-        GrantRefusal::StorageOnly => "That item cannot be carried. It was left on the corpse.",
+        GrantRefusal::StorageOnly | GrantRefusal::NotGrantable => {
+            "That item cannot be carried. It was left on the corpse."
+        }
         GrantRefusal::NoDatabase | GrantRefusal::DatabaseError => {
             "That item could not be picked up right now. It was left on the corpse."
         }

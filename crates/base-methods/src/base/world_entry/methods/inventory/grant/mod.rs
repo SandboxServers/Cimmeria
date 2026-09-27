@@ -45,6 +45,8 @@ use crate::base::ConnectedClientState;
 #[cfg(test)]
 mod fall_through_tests;
 #[cfg(test)]
+mod full_bag_tests;
+#[cfg(test)]
 mod loot_refusal_tests;
 #[cfg(test)]
 mod tests;

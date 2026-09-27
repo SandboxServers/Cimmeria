@@ -23,6 +23,7 @@ use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::outbox;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::{BaseToCellMsg, GrantRefusal, LootGrantSource};
+use cimmeria_cell_catalog::item_placement::INV_BUYBACK;
 
 /// How a grant ended, for callers that must act on a refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -238,6 +239,33 @@ async fn grant(
         .await;
         return GrantOutcome::Refused {
             reason: GrantRefusal::StorageOnly,
+            container_id: target,
+            account_id,
+        };
+    }
+
+    // Buyback holds only what the player sold; a grant that still resolves
+    // there (an item that lists buyback and no carried bag) is refused.
+    if target == INV_BUYBACK {
+        let reason = GrantRefusal::NotGrantable;
+        tracing::info!(
+            target: "inventory",
+            event = "grant_refused",
+            account_id,
+            player_id,
+            entity_id,
+            type_id = item_id,
+            quantity = count,
+            container_id = target,
+            reason = reason.as_str(),
+            "grant_refused: nothing was written"
+        );
+        gm_refusal(format!(
+            "gmGiveItem: could not give item {item_id}: it cannot be carried"
+        ))
+        .await;
+        return GrantOutcome::Refused {
+            reason,
             container_id: target,
             account_id,
         };

@@ -31,6 +31,8 @@ pub struct LootGrantSource {
 pub enum GrantRefusal {
     /// The item lists only storage containers, which a grant never writes.
     StorageOnly,
+    /// The grant resolved to the buyback list, which a grant never writes.
+    NotGrantable,
     /// The container the item goes to has no free slot.
     ContainerFull,
     /// The base has no database pool.
@@ -44,6 +46,7 @@ impl GrantRefusal {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::StorageOnly => "storage_only",
+            Self::NotGrantable => "not_grantable_container",
             Self::ContainerFull => "container_full",
             Self::NoDatabase => "no_database",
             Self::DatabaseError => "database_error",
