@@ -13,7 +13,7 @@ use crate::test_support::LogCapture;
 #[tokio::test]
 async fn gm_reload_organizations_is_inside_the_gated_tail() {
     assert_eq!(GM_RELOAD_ORGANIZATIONS, 164);
-    assert!(GM_RELOAD_ORGANIZATIONS >= SGWGMPLAYER_CELL_METHOD_BASE);
+    const { assert!(GM_RELOAD_ORGANIZATIONS >= SGWGMPLAYER_CELL_METHOD_BASE) };
     assert!(requires_gm(GM_RELOAD_ORGANIZATIONS));
 
     let mut mgr = mgr_with_player(1, "Castle");
