@@ -313,6 +313,12 @@ fn scan_finds_known_targets() {
         ("org", Level::DEBUG),
         ("org", Level::WARN),
         ("squad", Level::DEBUG),
+        // The social-systems campaign (SS-00): the chat length-cap refusal and
+        // the flood limit's drops, both in crates/base (the SGWPlayer chat
+        // arm), the rate_limit helper itself in crates/base-session.
+        ("chat", Level::WARN),
+        ("rate_limit", Level::WARN),
+        ("rate_limit", Level::DEBUG),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),

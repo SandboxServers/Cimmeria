@@ -110,8 +110,15 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match msg_id {
         sgw_player_base::SEND_PLAYER_COMMUNICATION => {
-            chat::handle_send_player_communication(payload, player_name, addr, connected, cell_tx)
-                .await;
+            chat::handle_send_player_communication(
+                payload,
+                player_name,
+                addr,
+                transport,
+                connected,
+                cell_tx,
+            )
+            .await;
         }
 
         sgw_player_base::CHAT_JOIN => {
