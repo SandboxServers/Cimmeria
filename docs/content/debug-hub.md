@@ -37,6 +37,8 @@ a new character appears.
 | 402 | 302 | `DebugHub_DialogNpc` | Airman Lance | (-338.63, 73.47, -231.35) | 0.9473 |
 | 403 | 303 | `DebugHub_LivewireTerminal` | Terminal | (-333.35, 73.47, -234.21) | 0.0464 |
 | 404 | 304 | `DebugHub_LootCrate` | Crate | (-330.72, 73.47, -235.64) | -0.2710 |
+| 430 | 330 | `DebugHub_TeamRegistrar` | Organization Registrar | (-327.40, 73.47, -233.91) | -0.7086 |
+| 431 | 331 | `DebugHub_CommandRegistrar` | Organization Registrar | (-330.04, 73.47, -232.48) | -0.5276 |
 | 450 | 360 | `DebugHub_PetTrainer` | Goa'uld Advanced Skills | (-328.08, 73.47, -237.07) | -0.4698 |
 | 470 | 370 | `DebugHub_Banker` | Storage Officer | (-325.92, 73.47, -231.18) | -1.0739 |
 | 490 | 390 | `DebugHub_MailClerk` | Sgt. Harriman | (-324.11, 73.47, -227.84) | -1.5123 |
@@ -58,13 +60,24 @@ along it from B. That puts it 3.8 units from the Banker, 5.4 from the C-D
 exit wall and 10.1 from the respawner. Its ids come from the social block
 (templates 390-399, spawns 490-499).
 
+The Team and Command registrars (organizations ORG-05) stand as a pair between
+the pet trainer and the Banker. The Team registrar is on the B-C wall, 3 units
+in from it and 6.1 units along it from B. The Command registrar is 3 units
+further into the room, level with it. The pair is 3.0 units apart, at least
+3.1 from every other NPC (the Banker, the pet trainer and the crate) and 6.1
+from the respawner. Their ids come from the organizations block (templates
+330-349, spawns 430-449).
+
 The names are monikers the client PAK already ships. A new `texts.sql` id
 cannot render, so the templates reuse existing ones. No shipped moniker says
 "Pet Trainer", so template 360 shows "Goa'uld Advanced Skills" (8000). The
 Banker uses the Omega Site banker's own name, "Storage Officer" (29462). No
 shipped moniker says "Mail Clerk", so template 390 shows "Sgt. Harriman"
 (26715), with Walter Harriman's SGC_W1 look (template 58). The dialog and the
-mail's sender name say "Gate Mail Clerk".
+mail's sender name say "Gate Mail Clerk". Both registrars use the Omega Site
+registrar's name, "Organization Registrar" (29068), which covers both types;
+the Team registrar wears the dialog NPC's SGC uniform and the Command
+registrar the trainer's armour.
 
 > **Placement is unchecked in the client.** There is no navmesh or occluder
 > data for this room. The coordinates are derived from the region corners and
@@ -311,6 +324,35 @@ and take the naquadah and the slappacks.
 - Deviation from plain intent: none. The cooldown is per character, not per
   account, because mail is per character.
 
+### Team and Command registrars (templates 330 and 331)
+
+Right-click the Team registrar to found a Team, or the Command registrar to
+found a Command. The client's naming window opens (`CreateTeamWin` or
+`CreateCommandWin`); type a name and confirm. The organization window then
+opens with you as its leader, and a line says the organization was founded.
+
+- Tests the founding flow end to end: the registrar click, the base's
+  eligibility check, the naming dialog (`launchOrganizationCreation`), the
+  name (`onOrganizationCreation`), and the founder's window
+  (`onOrganizationCreationResult`, `onOrganizationJoined`, the name, the rank
+  permissions and the roster). Creation is free (D-ORG15).
+- Refusals to try, each answered with a line: a second Team (or Command)
+  while you lead one, a name another organization of that type already has
+  (compared without case), an empty name or one over 60 characters, and
+  characters outside letters, digits, spaces, `'`, `-` and `.`. Three refused
+  names spend the offer; the registrar then asks you to wait until the
+  5-minute offer expires.
+- A click from further than 5 units says you are too far away. The offer ends
+  if you leave the room's space before naming.
+- The click routes to the registrar because the template carries
+  `INT_Organization` (64) and exactly one registrar interaction set in
+  `static_interaction_sets`, 7447 for a Team or 7448 for a Command (the 2009
+  server's `INTERACTION_OrganizationRegister*` ids). Nothing else on the
+  template answers a click first.
+- To found one without walking here, a GM types
+  `.org_create <team|command> <name>` ([commands.md](../commands.md#dev-console--commands)).
+- The registrars are faction 1 and cannot die.
+
 ## What the hub cannot test, and why
 
 | System | Why there is no hub NPC |
@@ -319,7 +361,7 @@ and take the naquadah and the slappacks.
 | Chat | Tells and ignore need a second player; an NPC does not chat. Alone you can still check the refusals: a tell to your own name ("You cannot send a tell to yourself.") or to an offline name, and the flood limit (paste ten lines into say). As a GM, `.mute <name> <minutes>` and `.unmute <name>` mute a player, and `.announce` (or `/gmshout`) broadcasts ([commands.md](../commands.md#command-families)). The two-player checks are SS-UAT steps 7-10. |
 | Duels | A duel needs a second player. Alone, run `sparbot`, a second account that accepts every challenge and forfeits after a set time ([wireclient.md](../architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing)). As a GM, `.duel_status [name]` shows a duel's stage and `.duel_end <name>` ends it. The duel checks are SS-UAT steps 11-13. |
 | Bank (partly) | The Banker (template 370) opens the personal vault. Moving items into and out of it is the bank campaign's BV-03, the vault-size purchase BV-05, and the Squad, Team and Command vaults BV-07 ([docs/analysis/bank-vault/](../analysis/bank-vault/README.md), [gap-analysis.md §23](../gap-analysis.md)). No hub NPC is an organization Banker: those need an organization, which the hub cannot give a new character. |
-| Guilds / organizations | Known missing on the server ([gap-analysis.md §23](../gap-analysis.md)). |
+| Guilds / organizations (partly) | The registrars (templates 330 and 331) found a Team or a Command. Inviting, ranks, texts and organization chat need a second player and later organizations packets ([docs/analysis/organizations/](../analysis/organizations/README.md), [gap-analysis.md §23](../gap-analysis.md)). |
 | Black market | Known missing on `main` ([gap-analysis.md §25](../gap-analysis.md)). |
 | Crafting verbs | The [crafting corner](#crafting-corner) gives stations and supplies. Whether each verb works depends on the crafting campaign's progress ([gap-analysis.md §19](../gap-analysis.md)). |
 | Pets (partly) | The pet trainer (template 360) sells the summon abilities, but a pet needs a tester, not a hub NPC: summon with `.pet summon 2826` or the ability (`.giveability 1643`, `1644` or `1645` for the Jaffa, Lo'taur or Prime), then walk, fight and change stance. Every pets-campaign packet has merged; the owner's UAT checklist is in [the pets session resume](../analysis/pets/handoffs/session-resume.md) ([docs/analysis/pets/](../analysis/pets/README.md), [gap-analysis.md §28](../gap-analysis.md)). |
@@ -329,8 +371,8 @@ and take the naquadah and the slappacks.
 
 | What | Where |
 |---|---|
-| Templates 300-304, 360, 370, 390 | `db/resources/Entities/Seed/entity_templates.sql` |
-| Spawns 400-404, 450, 470, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
+| Templates 300-304, 330, 331, 360, 370, 390 | `db/resources/Entities/Seed/entity_templates.sql` |
+| Spawns 400-404, 430, 431, 450, 470, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
 | Trainer list 350 | `db/resources/Abilities/Seed/trainer_ability_lists.sql`, `trainer_abilities.sql` |
 | Chains 7001-7005, 7010-7011 | `db/resources/Content/Seed/debug_hub_chains.sql` |
 | Dialogs 60100-60104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `DIALOG_OVERRIDES` |
@@ -339,11 +381,13 @@ and take the naquadah and the slappacks.
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
 | Vendor and Banker derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
 | Crafting corner: templates 310-314, spawns 410-414, buy list 310 (rows 3101-3124) | `entity_templates.sql`, `spawnlist.sql`, `db/resources/Items/Seed/item_lists.sql` and `item_list_items.sql` |
+| Registrar recognition | `registrar_type` in `crates/cell-interactions/src/cell/interactions/org_registrar.rs` |
 
 Every seed row is commented `NEW CONTENT (debug hub)`, except the pet
 trainer's, which are commented `Pets campaign, PT-07`, and the Banker's,
 commented `Bank and Vault campaign, BV-04`, and the mail clerk's,
-commented `Social-systems campaign, SS-U3`. The `trainer_abilities`
+commented `Social-systems campaign, SS-U3`, and the registrars',
+commented `Organizations campaign, ORG-05`. The `trainer_abilities`
 rows carry no comment: that file is regenerated by
 `tools/ability_trees/generate_seed.py`, which keeps other lists' rows but not
 comments. The crafting corner's rows are commented `NEW CONTENT (debug
@@ -354,7 +398,8 @@ hub, crafting)`.
 | Guard | What it pins |
 |---|---|
 | `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns (the mail clerk's 490 included) inside Region1, on the floor, at least 5 units from the respawner and 2.5 from every other spawn in the room; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, with every loot row at probability 1; dialog screens and buttons, and neither dialog is a monologue |
-| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself |
+| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself; each registrar asks the base about its own type |
+| `cell-catalog` `spawner/tests/live_db_debug_registrars.rs` | Templates 330 and 331 are a Team and a Command registrar and nothing else: exactly `INT_Organization` and their own registrar set, a shipped name, no trainer or vendor list, not faction 10; they are the only registrar templates; spawns 430 and 431 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_debug_banker.rs` | Template 370 is a personal Banker and nothing else: exactly `INT_Banker`, `vault_scope = 'personal'`, a shipped name, no trainer list or vendor lists, not faction 10; spawn 470 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_pet_trainer.rs` | Template 360's role columns and name; spawn 450 inside Region1, on the floor, clear of the respawner and the other hub NPCs; list 350 keyed to the Goa'uld only, with exactly the six pet nodes, each a Goa'uld tree node |
 | `cell-catalog` `spawner/tests/live_db_mail_clerk.rs` | Template 390's role columns and name; dialog 60104 is one clerk screen with one Generic 1 button, and not a monologue |
