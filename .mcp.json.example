@@ -29,7 +29,10 @@
     "                 cimmeria-server. Only present when the server was started",
     "                 with CIMMERIA_LAB_MCP_BIND + CIMMERIA_LAB_MCP_TOKEN set",
     "                 (fail-closed). On the colo it is reachable over WireGuard",
-    "                 only -- see docs/operations/colo-deploy.md.",
+    "                 only -- see docs/operations/colo-deploy.md. URL and token",
+    "                 come from the CIMMERIA_LAB_MCP_URL / CIMMERIA_LAB_MCP_TOKEN",
+    "                 user env vars (Claude Code expands ${VAR} here), so the",
+    "                 token never lands in this file.",
     "",
     "The GHIDRA_MCP_URL port can drift on Windows when iphlpsvc holds 8089-8099.",
     "The plugin falls back to the first free port in 8089..8104 — confirm the",
@@ -73,9 +76,9 @@
     },
     "lab-server": {
       "type": "http",
-      "url": "http://127.0.0.1:8444/mcp",
+      "url": "${CIMMERIA_LAB_MCP_URL:-http://127.0.0.1:8444/mcp}",
       "headers": {
-        "Authorization": "Bearer REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN"
+        "Authorization": "Bearer ${CIMMERIA_LAB_MCP_TOKEN}"
       }
     }
   }

@@ -48,6 +48,7 @@
 ## Per-PR review findings
 
 - [trade-container-whitelist.md](trade-container-whitelist.md) — Trade swap must whitelist source containers (INV_MAIN only) — blacklist-only is a dupe-strip exploit
+- [exploit_buyback_moveitem_source.md](exploit_buyback_moveitem_source.md) — moveItem never checks source container; 16->bag is free buyback; whitelist 1-15 fix drafted 2026-09-25
 - [advisory-lock-namespaces.md](advisory-lock-namespaces.md) — `pg_advisory_xact_lock(player_id, ns)` namespace assignments across vendor/trade — divergence is deadlock surface, not correctness
 - [pattern-checked-alloc-size.md](pattern-checked-alloc-size.md) — Canonical helper for count*stride bounds + overflow checks on attacker-influenced binary input
 - [pr-426-navmesh-extractor.md](pr-426-navmesh-extractor.md) — Build-time navmesh parser hardened with checked_alloc_size; pattern worth reusing for header-driven Vec allocation
