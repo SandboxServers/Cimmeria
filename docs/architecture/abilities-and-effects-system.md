@@ -573,10 +573,14 @@ pet registry
 ([`pets/arrival.rs`](../../crates/cell-world/src/cell/pets/arrival.rs)) until the owner
 witnesses the pet. The drain runs after the AoI tick and sends the VFX to the pet's
 witnesses, so it can never reach a client ahead of the pet's CREATE_ENTITY. It is dropped
-after 2 s, and `forget_pet` scrubs it on every teardown path. It is also dropped when the owner's entity id
-now belongs to a player who is not the pet's summoner (`PetRegistry::summoner_matches`, #870). A summon carries
-`Deactivate_AutoCycle` and `DoNotActivate_AutoCycle`, so it is not stashed as the
-last-fired ability, and a later `setAutoCycle(1)` press cannot re-fire it.
+after 2 s, and `forget_pet` scrubs it on every teardown path. It is also dropped when the
+owner's entity id now belongs to a player who is not the pet's summoner
+(`PetRegistry::summoner_matches`, #870). It is counted and logged as sent only when at least
+one witness send succeeds. A summon carries `Deactivate_AutoCycle` and
+`DoNotActivate_AutoCycle`, so it is not stashed as the last-fired ability, and a later
+`setAutoCycle(1)` press cannot re-fire it. Neither flag lets any ability arm the loop:
+1024 clears it, and 512 leaves it as it was (python passed `autoCycle = False`,
+`SGWPlayer.py:1177`).
 
 **Why:** The 2009 data never linked a summon to a template. The summon abilities carry no
 effects, and the editor's "Spawn Mob" effects name no template (pets audit A-26), so there
