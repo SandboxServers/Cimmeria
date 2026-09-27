@@ -6,8 +6,8 @@
 //!
 //! Reference: `python/cell/SGWPlayer.py:1148-1203`
 
-pub mod crafting_stations;
 mod bank;
+pub mod crafting_stations;
 mod dhd;
 // The dialog display choke point is in `cimmeria-cell-content` (wave C3):
 // the content executor opens dialogs through it. Imported under its old name,
