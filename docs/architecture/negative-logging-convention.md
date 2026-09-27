@@ -321,16 +321,20 @@ at time T and it failed" is answerable from SigNoz alone.
 | `event` (also the message prefix) | `reason` | Fields |
 |---|---|---|
 | `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable`, `source_container_needs_vault_session`, `target_container_needs_vault_session` | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
-| `move_resync_skipped` | `refused_item_not_owned` (the refused move named an item the player does not own: a forged packet), `resync_read_failed` | `account_id` (not on `resync_read_failed`), `player_id`, `entity_id`, `item_id` |
-| `move_rejected` (infrastructure) | `move_lock_begin_failed`, `move_lock_failed`, `refusal_context_query_failed`, `move_lock_release_failed` | `player_id`, plus `item_id` / `entity_id` where known |
+| `move_resync_skipped` | `refused_item_not_owned` (the refused move named an item the player does not own: a forged packet), `resync_read_failed` | `account_id` (when it was read before the failure), `player_id`, `entity_id`, `item_id` |
+| `move_rejected` (infrastructure) | `move_lock_begin_failed`, `move_lock_failed` (the move lock or the item's row lock), `refusal_context_query_failed`, `move_lock_release_failed` | `player_id`, `entity_id`, `item_id`; `account_id` only on `move_lock_release_failed`, the one failure after the account is read |
 | `grant_rejected` | `grant_into_storage_container` | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `target_container_id` |
-| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id` |
+| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id`, `entity_id`, `type_id`, `target_container_id` (no `account_id`: that is what failed to load) |
 
 The item fields of `move_rejected` are read at refusal time under the
-per-player move lock, so they are the item's committed position, and they
-are omitted (not zero) when the player does not own the item. The
-`LogCapture` guards are in `inventory/move_/allowlist_tests.rs` and
-`inventory/grant/vault_guard_tests.rs`.
+per-player move lock and the item's row lock, so they are the item's
+committed position, and they are omitted (not zero) when the player does
+not own the item. The `LogCapture` guards are in
+`inventory/move_/allowlist_tests.rs`, `refusal_resync_tests.rs` and
+`refusal_infra_tests.rs` (the infrastructure reasons, injected with an
+unreachable pool or a lock held under a short `lock_timeout`), and
+`inventory/grant/vault_guard_tests.rs`. `move_lock_release_failed` has no
+guard: it cannot fail without the connection dropping mid-transaction.
 
 ## Related
 
