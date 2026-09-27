@@ -84,6 +84,8 @@ pub(super) fn target_state_refusal(
 /// - `not_a_pet`: `pet_id` carries no `PetState`;
 /// - `owner_gone` / `owner_identity_mismatch`: the owner is not the live
 ///   player who summoned the pet (`live_owner`);
+/// - `target_other_space`: the target is not in the pet's space (checked
+///   first; logged here as `pets.ai event=cross_space_refused`);
 /// - `target_gone`, and the state refusals of [`target_state_refusal`]
 ///   (`target_dead`, `target_resetting`, `target_not_engageable`);
 /// - `target_not_combatant` / `target_not_hostile`: the pet may not fight it
@@ -94,7 +96,8 @@ pub(super) fn target_state_refusal(
 /// Stance is not checked here: the stance decides whether the pet picks a
 /// fight on its own (a Passive pet never does), while an explicit order is
 /// obeyed. `kind` says which it is ([`PetEngagement`]). Uses the `pet_stance` aggro cause, which never recruits
-/// assisters. Logs nothing itself; callers log the outcome.
+/// assisters. Callers log the outcome; only the cross-space refusal is
+/// logged here, since an owner order's target id comes from the client.
 pub fn engage_pet_target(
     space_mgr: &mut SpaceManager,
     pet_id: u32,
@@ -108,6 +111,34 @@ pub fn engage_pet_target(
         .ok_or("not_a_pet")?;
     let owner = super::live_owner(space_mgr, pet_id, owner_id)?;
     let target = space_mgr.get_entity(target_id).ok_or("target_gone")?;
+    // Same space (an instance is its own space) before anything else:
+    // `generate_threat` takes raw ids, and an owner order carries a
+    // client-chosen one. A target in another space would otherwise get the
+    // pet on its threat list, and the owner a combat entry, across spaces.
+    let (pet_space, target_space) = (
+        space_mgr.get_entity_space_id(pet_id),
+        space_mgr.get_entity_space_id(target_id),
+    );
+    if pet_space.is_none() || pet_space != target_space {
+        let id = super::owner_identity(space_mgr, pet_id, owner_id);
+        tracing::debug!(
+            target: "pets.ai",
+            entity_id = pet_id,
+            event = "cross_space_refused",
+            decision_outcome = "pet_cross_space_refused",
+            reason = "target_other_space",
+            pet_id,
+            owner_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            target_id,
+            pet_space_id = pet_space,
+            target_space_id = target_space,
+            kind = ?kind,
+            "pet: engagement refused, the target is in another space"
+        );
+        return Err("target_other_space");
+    }
     if let Some(why) = super::fight_refusal(owner, target) {
         return Err(why);
     }

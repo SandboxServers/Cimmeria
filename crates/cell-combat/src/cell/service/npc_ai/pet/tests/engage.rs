@@ -81,3 +81,62 @@ fn a_surrendered_npc_takes_an_order_but_not_an_automatic_engagement() {
     );
     assert!(lists(&mgr, pet, MOB));
 }
+
+/// A target in another space (an owner order carries a client-chosen id) is
+/// refused before either side is seeded: no threat on the pet, none on the
+/// target, and no combat entry for the owner.
+#[test]
+fn a_target_in_another_space_is_refused_and_nothing_is_seeded() {
+    use crate::test_support::LogCapture;
+
+    let mut mgr = SpaceManager::new(1);
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces>
+        <Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" />
+        <Space WorldName="Castle" Instanced="false" MinX="-2400" MaxX="2400" MinY="-2400" MaxY="2400" />
+        </Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    seed_pet_template(&mut mgr, PET_FIXTURE_TEMPLATE_ID);
+    add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
+    mgr.get_entity_mut(OWNER).unwrap().player_id = Some(OWNER_PLAYER_ID);
+    let pet = mgr
+        .spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 0)
+        .unwrap();
+    // Same coordinates as the pet, another space.
+    mgr.spawn_npc(MOB, "Castle", [10.0, 0.0, 8.0], [0.0; 3])
+        .unwrap();
+    let mob = mgr.get_entity_mut(MOB).unwrap();
+    mob.faction = HOSTILE;
+    if let Some(h) = mob.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+        h.update(0, 100, 100);
+        h.clear_dirty();
+    }
+    assert_ne!(
+        mgr.get_entity_space_id(pet),
+        mgr.get_entity_space_id(MOB),
+        "precondition"
+    );
+
+    let logs = LogCapture::install();
+    for kind in [PetEngagement::OwnerOrder, PetEngagement::Automatic] {
+        assert_eq!(
+            engage_pet_target(&mut mgr, pet, MOB, kind),
+            Err("target_other_space")
+        );
+    }
+
+    assert!(mgr.get_entity(pet).unwrap().threat_list.is_empty());
+    assert!(mgr.get_entity(MOB).unwrap().threat_list.is_empty());
+    assert_ne!(state(&mgr, pet), AiState::Fighting);
+    assert_ne!(state(&mgr, MOB), AiState::Fighting);
+    assert!(mgr.get_entity(OWNER).unwrap().threatened_mobs.is_empty());
+    let row = pets_ai_row(&logs, "pet_cross_space_refused").expect("refusal row");
+    assert!(row.has_field("reason", "target_other_space"), "{row:?}");
+    assert!(row.has_field("target_id", &MOB.to_string()), "{row:?}");
+    assert_owner_identity(&row);
+}
