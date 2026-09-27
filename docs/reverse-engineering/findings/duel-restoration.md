@@ -74,13 +74,13 @@ SGWPlayer.def internal cell methods (none implemented): `duelChallenge`, `duelRe
    `duelChallenge(challengerMailbox, squadMailboxes)` → `onDuelChallenge` [143] + `Event_UI_DuelTimerStart`.
 2. **Response**: accept/decline → `sendDuelResponse` [102] → `duelResponse`.
 3. **Arena setup**: spawn `SGWDuelMarker`, `registerDuelMarker` + `startDuel` on participants, set
-   the PvP flag to 1 and fan it out to AoI witnesses (**provisional**: the vehicle, `GENERICPROPERTY_PvPFlag=4` or the `pvpFlag` property, is unresolved; see open question 7), `onDuelEntitiesSet` [151].
+   the PvP flag to 1 and fan it out to AoI witnesses (`GENERICPROPERTY_PvPFlag=4` via `onEntityProperty`, resolved by SS-D2; see open question 7), `onDuelEntitiesSet` [151].
 4. **Combat**: PvP flag active; both can damage each other.
 5. **Resolution**: on death/forfeit/teleport/disconnect/range → `duelEntityDefeat(mailbox, reason)` →
    marker `onEntityDefeated` → `onDuelEntitiesRemove` [152] → when empty: `onDuelEntitiesClear` [153] +
    reset PvP flag + destroy marker.
 
-**PvP flag (provisional; the vehicle is unresolved, see open question 7)**: one candidate is `GENERICPROPERTY_PvPFlag = 4` via `onEntityProperty(4, INT32)`. Current Rust sends `(4,0)`
+**PvP flag (resolved by SS-D2, open question 7: `onEntityProperty(4, v)`)**: one candidate is `GENERICPROPERTY_PvPFlag = 4` via `onEntityProperty(4, INT32)`. Current Rust sends `(4,0)`
 at world entry only (`world_data.rs`); no setter to 1 / no duel-time fanout exists.
 
 **Correction 2026-09-27 (SS-E1, D-Q4)**: `SGWPlayer.def` also declares a dedicated `pvpFlag`
@@ -96,6 +96,9 @@ how client UI reads `pvpFlag` once synced. See `duel-wire-formats.md`'s SS-E1 se
    **Partially closed 2026-09-27 (SS-E1, D-Q1)**: the client applies no hardcoded duration constant
    anywhere between `Event_UI_DuelTimerStart` and the Lua countdown display — whatever float the
    server sends is shown verbatim. See `duel-wire-formats.md`'s SS-E1 section.
+   **Closed 2026-09-27 (SS-D2)**: server-started. A type-14 `onTimerUpdate` raises
+   `Event_UI_DuelTimerStart` (`0x00dec9e0` → `0x00dfdcb0`, RTTI-confirmed); see
+   `duel-wire-formats.md`'s SS-D2 section.
 2. `duelAbort` semantics on decline/timeout/disconnect — no impl anywhere.
 3. Squad-duel scope — can any member challenge, or leader only? (`aSquadDuel` flag client-controlled.)
    The seeded text moniker 875 ("SVR must be leader to challenge") answers this for squad duels:
@@ -111,9 +114,10 @@ how client UI reads `pvpFlag` once synced. See `duel-wire-formats.md`'s SS-E1 se
    per-target-template + range lookup. Sending 151 at duel start and 153 at duel end is safe and
    does not affect NPC interactability; `aoi.rs:203-211`'s comment has the add/erase direction
    backwards and should be corrected.
-7. `GENERICPROPERTY_PvPFlag` vs. the client's actual PvP-flag consumption — **still open
-   (new candidate found 2026-09-27 (SS-E1, D-Q4))**: see the "PvP flag" correction above. `pvpFlag` and the generic-property
-   channel are both still candidates: neither the receiver path nor client-side consumption has been traced.
+7. `GENERICPROPERTY_PvPFlag` vs. the client's actual PvP-flag consumption — **closed 2026-09-27
+   (SS-D2)**: the client UI reads `Property.PVPFlag` from the generic-property table that
+   `onEntityProperty` fills (`UnitFrames.lua`, `Squad.lua`), and nothing reads a `pvpFlag`
+   property. The vehicle is `onEntityProperty(4, v)`; see `duel-wire-formats.md`'s SS-D2 section.
 
 ## Dynamic-analysis needs (x64dbg)
 

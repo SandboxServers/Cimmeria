@@ -146,7 +146,7 @@ set insert `0x00c6bd20`, set erase `0x00e083a0`; per-id refresh `0x00e6e330`
 (`GameEntity__unknown_00e6e330`); classification `0x00e719d0`; Clear's per-id cleanup stub at
 `0x00e06fb0` (disassembled directly, not a named function).
 
-### D-Q1 (D.1) — countdown duration (CLOSED — no client constant)
+### D-Q1 (D.1) — countdown duration (CLOSED — no client constant; driver traced by SS-D2, below)
 
 `DuelTimerStart_handler` (`0x00cd65a0`) forwards the wire `Event_UI_DuelTimerStart(float
 duration)` value unmodified through one more native hop (`FUN_00cc19a0` → `FUN_00ccd720`, a
@@ -173,7 +173,7 @@ implementation purposes: D-SS20 (non-lethal clamp at 1 HP, no death/loot/respawn
 **owner-approved** decision regardless of what the original client would have done, so SS-D3
 should proceed on D-SS20 as written.
 
-### D-Q4 (D.7) — `GENERICPROPERTY_PvPFlag` (PARTIAL — important correction)
+### D-Q4 (D.7) — `GENERICPROPERTY_PvPFlag` (RESOLVED by SS-D2, below: the vehicle is `onEntityProperty(4, v)`)
 
 **`SGWPlayer.def` declares a real, dedicated `pvpFlag` property, not just the generic-property
 side-channel the existing restoration doc assumes:**
@@ -247,6 +247,39 @@ the GM-feedback and mail-error convention already in use elsewhere), rather than
 client-side numeric-moniker resolution. **Recommend SS-D1/D2/D3 send these as literal feedback
 text** (as the ledger's own packet descriptions already do, e.g. "text 877") rather than build a
 moniker-id wire path pending stronger evidence.
+
+## SS-D2 receiver trace (2026-09-27)
+
+> For the social-systems campaign's SS-D2 packet. No Ghidra instance was reachable, so D-Q4 was traced through the shipped client Lua and D-Q1 through the bytes of `SGW.exe`, read with a small PE reader (section table, raw bytes, MSVC RTTI). Paths below are relative to the client's `Working/SGWGame/Content/UI/Core/`.
+
+### D-Q4 resolved: the PvP flag rides `onEntityProperty(GENERICPROPERTY_PvPFlag = 4, v)`
+
+The client UI reads the flag as `Property.PVPFlag`, and that `Property.*` table is the generic-property table `onEntityProperty` fills:
+
+- `UnitFrames/UnitFrames.lua:492` subscribes `UnitFramesMod.onPropertyUpdated(this, unitId, propType, propValue)` to `Events.PropertyUpdated`; lines 173-180 branch on `propType == Property.PVPFlag`, and `updatePVPFlag` (183-208) reads `getUnitProperty(frameData.UnitID, Property.PVPFlag)` and flashes the frame's `PVPFlagHighlight` while it is non-zero.
+- `Squad/Squad.lua:217` reads `getUnitProperty(Unit.Player, Property.PVPFlag)` to word a squad invitation.
+- The same table and event carry the generic properties the server already delivers through `onEntityProperty` and that work in game: `Property.TrainingPoints` (`Ability/Ability.lua:58, 217-218`, id 1), `Property.AppliedSciencePoints` (`DisciplineTrainer/DisciplineTrainer.lua:24, 49-51`, id 2) and `Property.AccessLevel` (`ChatWindow/ChatWindow.lua:1110-1112`, id 7). The client's Lua label table lists `PVPFlag` beside `TrainingPoints` and `AppliedSciencePoints` (`0x01956d80`, [combat-formulas-client-evidence.md](combat-formulas-client-evidence.md)).
+- No client Lua reads a `pvpFlag` property. With `CELL_PUBLIC` mapping only to `DATA_GHOSTED`, the dedicated property has no path to any client.
+
+**Verdict:** the vehicle is `onEntityProperty(4, 0 | 1)` on the duelist's entity, sent to the duelist and to every witness. Cimmeria implements that (`crates/wire/src/cell/client_methods/duel.rs::build_pvp_flag`). The flag is presentation only; the server's duel registry decides harm (D-SS23).
+
+**Confidence:** high for the vehicle (four independent consumers of the same property table, three of them proven in game); the native hop from `onEntityProperty` to `Events.PropertyUpdated` was not re-traced.
+
+**Client quirk:** `UnitFrames.lua:175` indexes `TrackedUnits[unitID]`, but the parameter is `unitId` (Lua is case-sensitive), so the live `PropertyUpdated` branch never finds a frame. The indicator refreshes when a frame is registered or its unit mapping changes (lines 65 and 123), for example on retargeting. This is a client presentation bug; nothing on the server depends on it.
+
+### D-Q1 driver: `onTimerUpdate` type 14 raises `Event_UI_DuelTimerStart`
+
+The server drives the countdown with `onTimerUpdate(ID, Type = 14, SourceID, SecondaryId, TotalTime, BigWorldTimeComplete)`. `ETimerUpdateType.DuelTimer = 14` (`entities/defs/enumerations.xml:714`) names it; the bytes prove the handler:
+
+- `0x00dec9e0` reads the `Type` field (string `0x019d317c`) and at `0x00deca8f` runs `cmp byte [esp+0x13], 0x0e; jne`, so it handles type 14 only. It then reads `BigWorldTimeComplete` (`0x019d3184`) and `SourceID` (`0x019d319c`).
+- `0x00decbf2`-`0x00decc21` load `BigWorldTimeComplete` as a float, subtract the client game clock (`FUN_00c6e220`), clamp a negative result to 0.0 and store it in a 4-byte heap float.
+- `0x00decc29` fetches the global event dispatcher (`0x0054c980`, a lazily-created singleton at `0x01ee2678`) and `0x00decc34` queues the float through `0x00dfdcb0`.
+- `0x00dfdcb0` builds the event node in `0x00df57c0`, which writes the event's type descriptor `0x01e0da40` at `node+8` (`0x00df57f7`) and the vtable `0x019d52d0`.
+- MSVC RTTI names both: `0x01e0da40` is the `type_info` for `.?AUEvent_UI_DuelTimerStart@@`, and the complete-object locator of `0x019d52d0` names `.?AU?$TypedEmitInfo@UEvent_UI_DuelTimerStart@@@EventSignal@CME@@`.
+
+So a type-14 `onTimerUpdate` raises `Event_UI_DuelTimerStart(seconds remaining)`, which `Duel/Duel.lua:55-57` (`DuelMod.DuelTimerStart`) shows as the splash countdown with a beep. This corrects the "BigWorld time-complete" label [ability-resolution-pipeline.md](ability-resolution-pipeline.md) gave type 14: the field is named `BigWorldTimeComplete`, but the event is the duel timer. No `SourceID` compare-and-branch sits on the straight path to the emit (medium confidence); Cimmeria sends the duelist's own entity id anyway.
+
+**Implementation:** at the accept each duelist gets `onTimerUpdate(duel_id, 14, own entity, 0, 5.0, game_time_secs() + 5.0)` (`build_duel_timer`, `cell::duel::response`).
 
 ## Correction to this file (A-47)
 

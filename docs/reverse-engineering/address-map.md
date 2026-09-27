@@ -381,7 +381,7 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 
 | Address | Function | Notes |
 |---------|----------|-------|
-| `0x00dec9e0` | `SGWBeing_onBigWorldTimeComplete` | Event_NetIn_TimerUpdate type 14 (0x0E); reads BigWorldTimeComplete double + SourceID; emits float countdown |
+| `0x00dec9e0` | `SGWBeing_onBigWorldTimeComplete` | Event_NetIn_TimerUpdate type 14 (0x0E, `DuelTimer`); reads BigWorldTimeComplete float + SourceID; emits `Event_UI_DuelTimerStart(seconds remaining)` via `0x00dfdcb0` (SS-D2, `duel-wire-formats.md`) |
 | `0x00d26380` | `FUN_00d26380` | DialogController Event_NetIn_TimerUpdate handler; type 6 (0x06); drives NPC interaction timer UI |
 | `0x00d26ee0` | `FUN_00d26ee0` | MemberCallback<DialogController, Event_NetIn_TimerUpdate> ctor |
 | `0x00d26850` | `FUN_00d26850` | DialogController constructor; registers handler FUN_00d26380 |
@@ -1388,7 +1388,7 @@ Corrected 2026-09-24: Leash is case 5 (`0x00debad0`), Patrol is case 2 (`0x00deb
 | `0x00deaaf0` | `GameProxyPlayer` `onShowCommandWaypoints` handler (was "onPositionUpdate") | Allocates UE3 actors for path-waypoint visualisation; registered via `CallbackImpl<Event_NetIn_onShowCommandWaypoints>` |
 | `0x00dec040` | `GameProxyPlayer` `onDisableShowPath` handler (was "PathDestroy") | Destroys path-visualisation actors by `wcsicmp` name match; registered via `CallbackImpl<Event_NetIn_onDisableShowPath>` |
 | `0x00dec6d0` | `onSquadList` | Squad-member path data receiver |
-| `0x00dec9e0` | `onBigWorldTimeComplete` | BigWorld time-sync callback |
+| `0x00dec9e0` | `onBigWorldTimeComplete` | Duel countdown: `onTimerUpdate` type 14 → `Event_UI_DuelTimerStart` (SS-D2; not a time-sync callback) |
 | `0x00dedf30` | `TickUpdate` | Per-tick movement advance (advances entity along waypath) |
 | `0x00def320` | `ApplyTargetChange` | Target acquisition / heading update |
 | `0x00df08c0` | `TargetIDReceiver` | CME NetIn target-id event receiver |

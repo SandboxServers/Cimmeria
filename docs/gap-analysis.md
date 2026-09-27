@@ -863,7 +863,7 @@ last_updated: 2026-09-27
 
 - **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
 - **Documentation**: [gameplay/duel-system.md](gameplay/duel-system.md), [reverse-engineering/findings/duel-wire-formats.md](reverse-engineering/findings/duel-wire-formats.md)
-- **Rust code**: Challenge and response since SS-D1 (2026-09-27): `base/dispatch/duel.rs` (0xD9) and the cell `DuelRegistry` in `crates/cell-world/src/cell/duel/`, which sends `onDuelChallenge` (143). `duelForfeit` (CM 103) still logs `UNIMPLEMENTED`. Nothing emits `onDuelEntitiesSet/Remove/Clear` (151-153) for duels.
+- **Rust code**: Challenge and response since SS-D1 (2026-09-27): `base/dispatch/duel.rs` (0xD9) and the cell `DuelRegistry` in `crates/cell-world/src/cell/duel/`, which sends `onDuelChallenge` (143). SS-D2 (2026-09-27) added the countdown display (`onTimerUpdate` type 14), the engage (`onDuelEntitiesSet` 151, the PvP flag as `onEntityProperty(4, v)` to both duelists and their witnesses, the partner as a combat source), the harm gate (`combat::player_may_attack`, used by all four hostility gates) and one end clear (`duel::end_engaged`: flag 0, `onDuelEntitiesClear` 153, combat exit) with safety ends only. `duelForfeit` (CM 103) still logs `UNIMPLEMENTED`; health, range, disconnect and teleport ends are SS-D3.
 - **Recent PRs**: none since 2026-07-25
 - **Open issues**: #569 (implement duel system)
 - **Path forward**: 5-state machine port; 7 defeat-condition enum (#569).
@@ -871,8 +871,8 @@ last_updated: 2026-09-27
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
 | Duel challenge | IM | -- | base/dispatch/duel.rs; cell/duel/challenge.rs | SS-D1: rate limit, online lookup, self, space, range, busy and pair-cooldown checks; not yet client-tested |
-| Duel response | IM | -- | cell/duel/response.rs | SS-D1: accept, decline, expiry; accept ends in "Duel aborted" until SS-D2 engages |
-| Duel start | KM | Combat | -- | StartPending → Engaged |
+| Duel response | IM | -- | cell/duel/response.rs | SS-D1: accept, decline, expiry; SS-D2: the accept starts both clients' countdown (`onTimerUpdate` type 14) |
+| Duel start | IM | -- | cell/duel/engage.rs; cell/duel/end.rs; combat/aggression.rs | SS-D2: StartPending → Engaged, 151 to both, PvP flag to both and their witnesses (replayed on AoI enter), combat pair, the four-gate harm rule; safety ends (10-minute limit, duelist gone). Unit, type 8 and type 11 tested; not yet client-tested |
 | Duel forfeit | KM | -- | stub | social.rs:100-101 |
 | Defeat conditions | KM | Combat | -- | 7 types |
 | Duel marker entity | KM | -- | -- | SGWDuelMarker not ported |
@@ -1277,7 +1277,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 24 | Mail | 13 | 0 | 5 | 0 | 7 | 1 |
 | 25 | Black Market | 10 | 0 | 0 | 0 | 9 | 1 |
 | 26 | Contact Lists | 10 | 10 | 0 | 0 | 0 | 0 |
-| 27 | Dueling | 6 | 0 | 0 | 2 | 4 | 0 |
+| 27 | Dueling | 6 | 0 | 0 | 3 | 3 | 0 |
 | 28 | Pets | 7 | 0 | 0 | 0 | 7 | 0 |
 | 29 | Minigames | 9 | 5 | 0 | 1 | 3 | 0 |
 | 30 | Groups / Parties | 7 | 0 | 0 | 0 | 7 | 0 |
@@ -1296,22 +1296,22 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **65** | **104** | **129** | **4** |
+| | **TOTALS** | **471** | **169** | **65** | **105** | **128** | **4** |
 
 ### Summary Percentages
 
-Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row, SS-D1 the two Dueling rows, crafting CR-08 the Research and Reverse engineer rows, CR-09 the Alloy row and CR-07 the Craft row); the columns sum to the totals line and the totals line sums to 471.
+Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row, SS-D1 two Dueling rows and SS-D2 a third, crafting CR-08 the Research and Reverse engineer rows, CR-09 the Alloy row and CR-07 the Craft row); the columns sum to the totals line and the totals line sums to 471.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
 | Confirmed Working (CW) | 169 | 35.9% |
 | Needs Test (NT) | 65 | 13.8% |
-| Implemented (IM) | 104 | 22.1% |
-| Known/Missing (KM) | 129 | 27.4% |
+| Implemented (IM) | 105 | 22.3% |
+| Known/Missing (KM) | 128 | 27.2% |
 | Needed/Unknown (NU) | 4 | 0.8% |
 
-**Code exists (CW + NT + IM)**: 338 features (71.8%)
-**Missing (KM + NU)**: 133 features (28.2%)
+**Code exists (CW + NT + IM)**: 339 features (72.0%)
+**Missing (KM + NU)**: 132 features (28.0%)
 
 **Tested end-to-end (CW)**: 169 features (35.9%).
 
@@ -1377,7 +1377,7 @@ Corrected 2026-07-25 — trading and contact lists have left this table.
 | Crafting | crafting-system.md | crafting-wire-formats.md | State, persistence, login sync, ASP spend, craft, research, reverse engineering and alloying ported (#427, CR-03, CR-04, CR-07, CR-08, CR-09); respec is still a stub |
 | Organizations | organization-system.md | organization-wire-formats.md | 200 lines stubs — unchanged |
 | Black Market | black-market.md | black-market-wire-formats.md | 94 lines stubs on `main`; full Phase 1 waiting on `feat/571-black-market-phase1` |
-| Dueling | duel-system.md | duel-wire-formats.md | Challenge and response (SS-D1); no engaged duel, forfeit or end paths |
+| Dueling | duel-system.md | duel-wire-formats.md | Challenge, response, countdown, engaged duel, PvP flag and harm gate (SS-D1, SS-D2); no forfeit or real end paths (SS-D3) |
 | Pets | pet-system.md | pet-wire-formats.md | Not ported |
 | Groups | group-system.md | group-wire-formats.md | Not ported |
 
