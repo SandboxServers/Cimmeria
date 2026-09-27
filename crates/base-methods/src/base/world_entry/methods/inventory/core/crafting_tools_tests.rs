@@ -20,10 +20,10 @@ use super::send_full_inventory_update;
 use crate::mercury::build_player_entity_method_packet;
 use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
 
-// Crafting live-DB sentinels (`0x7000_Cxxx`).
-const ACCOUNT: i32 = 0x7000_CE10;
-const PLAYER: i32 = 0x7000_CE11;
-const TOOL: i32 = 0x7000_CE12;
+// Crafting live-DB sentinels (`0x7000_Cxxx`): `0x7000_CD40..0x7000_CD42`.
+const ACCOUNT: i32 = 0x7000_CD40;
+const PLAYER: i32 = 0x7000_CD41;
+const TOOL: i32 = 0x7000_CD42;
 /// BMAS-5 Field Crafting Tool.
 const TOOL_TYPE: i32 = 5369;
 const ENTITY: u32 = 4310;

@@ -34,20 +34,39 @@ fn apply_all_craft_sets_everything_and_keeps_asp() {
     assert_eq!(state.applied_science_points, 3, "ASP untouched");
 }
 
-/// One 136 per discipline, one 138 per paradigm, then one 139.
+/// The pushed bundle is the login sync's state bundle: one 136 per
+/// discipline, one 138 per paradigm, one 139, then the unchanged ASP total.
 #[test]
 fn state_bundle_carries_every_update() {
+    use super::super::sync::crafting_state_messages;
     let mut state = CraftingState::new();
+    state.applied_science_points = 3;
     apply_all_craft(&mut state, &[21, 22, 23], &[5, 7], &[1, 2]);
+    let methods: Vec<u16> = crafting_state_messages(&state)
+        .into_iter()
+        .map(|(method, _)| method)
+        .collect();
+    assert_eq!(methods, [136, 136, 136, 138, 138, 139, 7]);
     assert_eq!(
-        crafting_state_bundle(4290, &state).num_messages(),
-        3 + 2 + 1
+        build_crafting_state_bundle(4290, &state).num_messages(),
+        methods.len()
     );
 }
 
-/// Crafting sentinels (`0x7000_Cxxx`): `tools_tests.rs` holds `0x7000_CE0x`.
-const ACCOUNT: i32 = 0x7000_CD00;
-const PLAYER: i32 = 0x7000_CD01;
+/// The GM's line is one sentence with single spaces.
+#[test]
+fn granted_text_reads_as_one_sentence() {
+    assert_eq!(
+        granted_text(4291, 78, 498, 5),
+        "allcraft [4291]: 78 disciplines at 100, 498 blueprints, 5 paradigms at 7; \
+         craft anywhere is on until logout."
+    );
+}
+
+/// Crafting sentinels (`0x7000_Cxxx`): `0x7000_CD20..0x7000_CD21`. The sync
+/// tests hold `0x7000_CD00..0x7000_CD1F`, the tool tests `0x7000_CD30..`.
+const ACCOUNT: i32 = 0x7000_CD20;
+const PLAYER: i32 = 0x7000_CD21;
 const TARGET_ENTITY: u32 = 4291;
 const GM_ENTITY: u32 = 4292;
 
@@ -115,8 +134,9 @@ fn sessions(gm_access_level: u32) -> Sessions {
     )
 }
 
-async fn run(pool: &PgPool, sessions: &Sessions) {
-    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+async fn run(pool: &PgPool, sessions: &Sessions) -> Arc<TestTransport> {
+    let typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed.clone();
     let db_pool = Some(Arc::new(pool.clone()));
     let ctx = CraftCtx {
         db_pool: &db_pool,
@@ -134,6 +154,7 @@ async fn run(pool: &PgPool, sessions: &Sessions) {
         &ctx,
     )
     .await;
+    typed
 }
 
 fn craft_anywhere_on(sessions: &Sessions) -> bool {
@@ -151,10 +172,28 @@ async fn allcraft_persists_the_full_crafting_state() {
     insert_player(&pool).await;
     let sessions = sessions(2);
 
-    run(&pool, &sessions).await;
+    let typed = run(&pool, &sessions).await;
     let reloaded = load_crafting_state(&pool, PLAYER).await;
     cleanup(&pool).await;
     let reloaded = reloaded.expect("reload");
+
+    // The target's client gets the saved state as the login sync's bundle,
+    // then the craft-anywhere options.
+    let target: SocketAddr = "127.0.0.1:55741".parse().unwrap();
+    let (bundle, _) = build_crafting_state_bundle(TARGET_ENTITY, &reloaded).finalize(
+        cimmeria_mercury::packet::FLAG_RELIABLE | cimmeria_mercury::packet::FLAG_ON_CHANNEL,
+        0,
+        |p| {
+            crate::mercury::encrypt_packet(
+                p,
+                &[0u8; 32],
+                cimmeria_mercury::encryption::EncryptionVersion::V1,
+            )
+        },
+    );
+    let sent = typed.filter_to(target);
+    assert_eq!(sent.len(), bundle.len() + 1, "state bundle, then 140");
+    assert_eq!(&sent[..bundle.len()], &bundle[..]);
 
     let catalog = shared_crafting_catalog(&pool).await.expect("catalog");
     assert_eq!(reloaded.discipline_ids.len(), catalog.disciplines.len());

@@ -2,8 +2,9 @@
 //! crafting page at once, for UAT.
 //!
 //! It sets every racial paradigm to 7, learns every discipline at expertise
-//! 100, grants every blueprint, persists that in one save, pushes it to the
-//! client (136 per discipline, 138 per paradigm, 139), and turns on "craft
+//! 100, grants every blueprint, persists that in one save, pushes the whole
+//! state to the client in one bundle (136 per discipline, 138 per paradigm,
+//! 139 and the unchanged ASP total, as the login sync does), and turns on "craft
 //! anywhere" for the target's session: the options name the player as its
 //! own machine in all four sections, and the gate lets every verb through.
 //! It changes no applied-science points.
@@ -13,17 +14,13 @@
 
 use cimmeria_cell_catalog::crafting::shared_crafting_catalog;
 use cimmeria_entity::crafting::CraftingState;
-use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
-use cimmeria_wire::cell::client_methods::player::{
-    ON_UPDATE_DISCIPLINE, ON_UPDATE_KNOWN_CRAFTS, ON_UPDATE_RACIAL_PARADIGM_LEVEL,
-};
-use cimmeria_wire::crafting::{
-    known_crafts_args, racial_paradigm_level_args, update_discipline_args, GmAllCraft,
-};
+use cimmeria_wire::crafting::GmAllCraft;
 
 use super::options::enable_craft_anywhere;
 use super::persistence::{load_crafting_state, save_crafting_state};
 use super::request::CraftCtx;
+use super::sync::build_crafting_state_bundle;
+use super::telemetry::sql_error_class;
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::helpers::send_bundle_to_witness_reliable;
 use crate::base::session_identity::identity_for_entity;
@@ -63,42 +60,6 @@ pub fn apply_all_craft(
             .racial_paradigm_levels
             .insert(id, ALL_CRAFT_PARADIGM_LEVEL);
     }
-}
-
-/// The client update for a crafting state: 136 per known discipline, 138
-/// per paradigm, then 139, all on the player's own entity.
-pub fn crafting_state_bundle(entity_id: u32, state: &CraftingState) -> ChannelBundle {
-    let mut bundle = ChannelBundle::new(true);
-    for &id in &state.discipline_ids {
-        let expertise = state.get_expertise(id).unwrap_or(0);
-        bundle.append_entity_method(
-            ON_UPDATE_DISCIPLINE,
-            IDBASE_SGW_PLAYER,
-            entity_id,
-            &update_discipline_args(id, expertise),
-        );
-    }
-    let mut paradigms: Vec<(i32, i8)> = state
-        .racial_paradigm_levels
-        .iter()
-        .map(|(&id, &level)| (id, level))
-        .collect();
-    paradigms.sort_unstable();
-    for (id, level) in paradigms {
-        bundle.append_entity_method(
-            ON_UPDATE_RACIAL_PARADIGM_LEVEL,
-            IDBASE_SGW_PLAYER,
-            entity_id,
-            &racial_paradigm_level_args(id, level),
-        );
-    }
-    bundle.append_entity_method(
-        ON_UPDATE_KNOWN_CRAFTS,
-        IDBASE_SGW_PLAYER,
-        entity_id,
-        &known_crafts_args(&state.blueprint_ids),
-    );
-    bundle
 }
 
 /// The caller's session access level; 0 when it has no session.
@@ -236,6 +197,7 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             phase = "save_crafting_state",
             rows_affected,
             expected = 1u64,
+            error_class = sql_error_class(&e),
             account_id,
             player_id,
             entity_id,
@@ -251,15 +213,15 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         ctx.connected,
         ctx.entity_to_addr,
         entity_id,
-        crafting_state_bundle(entity_id, &state),
+        build_crafting_state_bundle(entity_id, &state),
     )
     .await;
     if let Some(reason) = outcome.failure_reason() {
         tracing::warn!(
             target: "crafting",
-            event = "send_failed",
+            event = "push_failed",
+            what = "allcraft_state",
             reason,
-            method = "136/138/139",
             account_id,
             player_id,
             entity_id,
@@ -284,13 +246,27 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         paradigm_levels_after = ?paradigm_levels(&state),
         "allcraft granted"
     );
-    feedback(format!(
-        "allcraft [{entity_id}]: {} disciplines at {ALL_CRAFT_EXPERTISE}, {} blueprints,          {} paradigms at {ALL_CRAFT_PARADIGM_LEVEL}; craft anywhere is on until logout.",
+    feedback(granted_text(
+        entity_id,
         discipline_ids.len(),
         blueprint_ids.len(),
         paradigm_ids.len(),
     ))
     .await;
+}
+
+/// The line the GM reads after a grant.
+pub fn granted_text(
+    entity_id: u32,
+    disciplines: usize,
+    blueprints: usize,
+    paradigms: usize,
+) -> String {
+    format!(
+        "allcraft [{entity_id}]: {disciplines} disciplines at {ALL_CRAFT_EXPERTISE}, \
+         {blueprints} blueprints, {paradigms} paradigms at {ALL_CRAFT_PARADIGM_LEVEL}; \
+         craft anywhere is on until logout."
+    )
 }
 
 #[cfg(test)]

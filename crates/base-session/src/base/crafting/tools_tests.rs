@@ -133,11 +133,13 @@ async fn every_seeded_tool_classifies_and_matches_its_description() {
 }
 
 /// Live-DB sentinels for the tool tests (`0x7000_Cxxx` crafting block;
-/// `persistence.rs` uses up to `0x7000_CB55`, `handlers.rs` `0x7000_CC00`).
-const TOOL_ACCOUNT: i32 = 0x7000_CE00;
-const TOOL_PLAYER: i32 = 0x7000_CE01;
-const TOOL_IN_CRAFTING_BAG: i32 = 0x7000_CE02;
-const TOOL_IN_MAIN_BAG: i32 = 0x7000_CE03;
+/// `persistence.rs` uses up to `0x7000_CB55`, `handlers.rs` `0x7000_CC00`,
+/// `sync` `0x7000_CD00..`, `.allcraft` `0x7000_CD2x`, `spend` `0x7000_CE00..`):
+/// `0x7000_CD30..0x7000_CD33`.
+const TOOL_ACCOUNT: i32 = 0x7000_CD30;
+const TOOL_PLAYER: i32 = 0x7000_CD31;
+const TOOL_IN_CRAFTING_BAG: i32 = 0x7000_CD32;
+const TOOL_IN_MAIN_BAG: i32 = 0x7000_CD33;
 
 async fn cleanup(pool: &PgPool) {
     for id in [TOOL_IN_CRAFTING_BAG, TOOL_IN_MAIN_BAG] {
