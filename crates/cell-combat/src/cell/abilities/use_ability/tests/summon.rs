@@ -329,6 +329,60 @@ async fn summon_that_cannot_spawn_after_its_warmup_keeps_the_old_pet() {
     assert!(feedback(&sent, 0, super::super::summon::SUMMON_FAILED_TEXT));
 }
 
+/// **Feedback on failure (spawn).** The warmup completes and every
+/// fire-time check passes, but `spawn_pet_from_template` itself refuses.
+/// The player sees the cast cancelled (2904, never the End 2292) and the
+/// feedback line, like any other failed cast, and keeps the pet it had:
+/// the spawn runs before End and before the old pet is retired. Before the
+/// fix this path played End, despawned the old pet, then sent only the
+/// feedback line.
+///
+/// A caster that is not a player is the one spawn failure a fixture can
+/// reach past `fire_refusal` (`OwnerNotPlayer`), so this drives
+/// `fire_summon` directly, as `fire_cast` does after the warmup. With the
+/// caster no longer a player, the sequences are read off a watcher's
+/// `WitnessEntityMethod`s (the self send is player-only).
+#[tokio::test]
+async fn summon_whose_spawn_fails_plays_the_interrupt_and_keeps_the_old_pet() {
+    let mut mgr = summon_mgr();
+    add_pet_owner(&mut mgr, WATCHER, "Castle", [4.0, 0.0, 0.0], 10);
+    let (tx, mut rx) = mpsc::channel(256);
+    cast_and_complete(&mut mgr, 0, &tx, &mut rx).await;
+    let first = mgr.pets.pets_of(OWNER)[0];
+    let _ = mgr.compute_aoi_changes();
+    assert!(
+        mgr.get_witnesses_of(OWNER).contains(&WATCHER),
+        "fixture: the watcher sees the caster"
+    );
+    mgr.get_entity_mut(OWNER).unwrap().is_player = false;
+    let summon = mgr.pet_summons.pet_summon_for(SUMMON).unwrap();
+
+    super::super::summon::fire_summon(
+        OWNER,
+        SUMMON,
+        1,
+        summon,
+        &Some(summon_def(SUMMON)),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    let sent = drain(&mut rx);
+
+    assert_eq!(mgr.pets.pets_of(OWNER), vec![first], "the old pet stays");
+    assert!(mgr.get_entity(first).is_some(), "and is still in the world");
+    let seqs = sequences(&sent, OWNER);
+    assert!(
+        seqs.contains(&SEQ_INTERRUPT),
+        "the cast bar closes as cancelled: {seqs:?}"
+    );
+    assert!(!seqs.contains(&SEQ_END), "never as completed: {seqs:?}");
+    assert!(
+        feedback(&sent, 0, super::super::summon::SUMMON_FAILED_TEXT),
+        "the failed summon must be answered: {sent:?}"
+    );
+}
+
 /// D-PT10: `speedPet` shortens a `SpeedPet`-flagged warmup like the other
 /// speed stats; at 0 the warmup is the seeded 6 s.
 #[test]

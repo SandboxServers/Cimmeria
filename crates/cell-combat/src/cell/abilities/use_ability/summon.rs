@@ -261,34 +261,13 @@ pub(super) async fn fire_summon(
         template_id = summon.template_id,
         "summon warmup complete; spawning the pet"
     );
-    play_ability_sequence(phase(AbilityPhase::End), tx, space_mgr).await;
 
-    // D-PT04: one active pet per owner. Count every pet the owner has, not
-    // only this ability's, or cycling through summon abilities would stack
-    // pets. Bounded by the list taken up front, so a despawn that refuses
-    // cannot spin the loop.
+    // Spawn first, then play End and retire the old pet. A spawn that fails
+    // answers like the fire-time refusal above (Interrupt, then feedback,
+    // the cooldown stays charged), so the cast bar closes as cancelled and
+    // the owner keeps the pet it had. The owner's pets are listed before the
+    // spawn, so the new pet is never counted against the cap.
     let current = space_mgr.pets.pets_of(entity_id);
-    let cap = summon.max_active.max(1) as usize;
-    let excess = (current.len() + 1).saturating_sub(cap);
-    for &old_pet in current.iter().take(excess) {
-        tracing::debug!(
-            target: "pets.lifecycle",
-            event = "summon_replaced_pet",
-            entity_id,
-            owner_id = entity_id,
-            account_id = id.account_id,
-            player_id = id.player_id,
-            ability_id,
-            template_id = summon.template_id,
-            replaced_pet_id = old_pet,
-            max_active = summon.max_active,
-            "summon replaces the owner's current pet (D-PT04)"
-        );
-        // `despawn_pet` logs its own outcome and scrubs the registry
-        // either way, so the new pet never counts against a stale entry.
-        let _outcome = despawn_pet(space_mgr, old_pet, PetDespawnReason::Dismissed, tx).await;
-    }
-
     let pet_id = match space_mgr.spawn_pet_from_template(entity_id, summon.template_id, ability_id)
     {
         Ok(pet_id) => pet_id,
@@ -309,6 +288,7 @@ pub(super) async fn fire_summon(
                 reason = e.reason(),
                 "summon's pet spawn failed; nothing spawned"
             );
+            play_ability_sequence(phase(AbilityPhase::Interrupt), tx, space_mgr).await;
             send_summon_feedback(
                 entity_id,
                 id,
@@ -321,6 +301,31 @@ pub(super) async fn fire_summon(
             return;
         }
     };
+    play_ability_sequence(phase(AbilityPhase::End), tx, space_mgr).await;
+
+    // D-PT04: one active pet per owner. Count every pet the owner has, not
+    // only this ability's, or cycling through summon abilities would stack
+    // pets. Bounded by the list taken before the spawn, so a despawn that
+    // refuses cannot spin the loop.
+    let cap = summon.max_active.max(1) as usize;
+    let excess = (current.len() + 1).saturating_sub(cap);
+    for &old_pet in current.iter().take(excess) {
+        tracing::debug!(
+            target: "pets.lifecycle",
+            event = "summon_replaced_pet",
+            entity_id,
+            owner_id = entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            ability_id,
+            template_id = summon.template_id,
+            replaced_pet_id = old_pet,
+            max_active = summon.max_active,
+            "summon replaces the owner's current pet (D-PT04)"
+        );
+        // `despawn_pet` logs its own outcome and scrubs the registry.
+        let _outcome = despawn_pet(space_mgr, old_pet, PetDespawnReason::Dismissed, tx).await;
+    }
 
     tracing::debug!(
         target: "pets.lifecycle",
