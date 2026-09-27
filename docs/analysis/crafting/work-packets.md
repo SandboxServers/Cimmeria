@@ -51,8 +51,8 @@ Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` 
 - **Events.** A DEBUG or INFO event with `event = "…"` on every state transition (rule 2):
   - `request` (the verb and every parsed argument);
   - `rejected` (INFO, with an enumerated `reason`, the same value as the `CraftReject` variant);
-  - `queued` / `induction_started` / `induction_expired` (`job_id`, `queue_len`, `expires_at`);
-  - `completed` (`job_id`, `blueprint_id` or `item_id`, the consumed inputs as `item_id:type_id:qty_before→qty_after`, the granted outputs as `type_id:qty:bag:slot`, `expertise_before` / `expertise_after`, `asp_before` / `asp_after`, the RNG roll and chance where a roll was made);
+  - `queued` / `induction_started` / `induction_expired` (`job_id`, `verb`, `queue_len`, `expires_at`);
+  - `completed` (`job_id`, `verb`, `blueprint_id` or `item_id`, the consumed inputs as `item_id:type_id:qty_before→qty_after`, the granted outputs as `type_id:bag:slot:qty_before→qty_after` so a stack merge is distinguishable from a new slot, a `result` for verbs that roll (`success | failure`), `expertise_before` / `expertise_after`, `asp_before` / `asp_after`, the RNG roll and chance where a roll was made);
   - `queue_dropped` (`reason = logout | world_change`, `jobs_dropped`);
   - `options_changed` (the station entity ids and tool item ids per section);
   - `learned`, `respec_prompted`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values);
@@ -249,7 +249,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `research.rs`: item researchable (`Craft_Research`), kickers flagged `Kicker`, at most one per applied science and none from the item's own (D-CR11). At completion: consume the item and kickers, roll per D-CR15, +5 expertise on success, and a text line either way. A success also teaches the blueprint that makes the researched item, when that blueprint's discipline is known (D-CR04), and sends 139.
 - `reverse_engineer.rs`: item reverse-engineerable (`Craft_RevEng`) and produced by at least one blueprint. At completion: consume the item, pick a blueprint and a component set uniformly (no C-50), recover per D-CR06, grant. Up to 10 queued (C-34).
 
-**Telemetry:** research logs the eligible disciplines, the chosen one, the chance and the roll, the result, and any blueprint taught; reverse engineering logs the chosen blueprint and component set, the bias, and the per-component roll and recovered quantity.
+**Telemetry:** both verbs use the contract's `queued` → `induction_started` → `completed` chain and `rejected` for refusals. Research's `completed` adds `eligible_disciplines`, `discipline_id`, `chance`, `roll`, `result`, `expertise_before` / `expertise_after` and any `blueprint_learned` it triggers (also emitted as its own event). Reverse engineering's `completed` adds the chosen `blueprint_id` and `component_set_id`, `bias`, and each component's roll with its recovered quantity. Refusal reasons: `not_researchable`, `not_kicker`, `kicker_same_science`, `kicker_duplicate_science`, `not_reverse_engineerable`, `no_blueprint_for_item`.
 
 **Acceptance:** seeded-RNG tests for success and failure, and for the blueprint taught on success; a burst of 10 reverse-engineer requests completes 10 times; guards for the kicker rules and the zero-expertise case.
 
@@ -269,7 +269,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 **Scope:** `respec.rs`, per D-CR16 and D-CR23: a player-usable `.respeccraft` sends the prompt (cost 0, D-CR02), the pending window, then one transaction that clears disciplines and expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept. Then 137 and the ASP property. Nothing to reset gets feedback. Replay-safe.
 
-**Telemetry:** `event=respec_prompted` and `event=respec` with the disciplines cleared, `asp_before` / `asp_after`, and the kept blueprint and paradigm counts; a confirm with nothing pending is `rejected reason=no_pending_respec`.
+**Telemetry:** `event=respec_prompted` and `event=respec` with each cleared discipline as `discipline_id:expertise_before→0`, `asp_before` / `asp_after`, and the kept blueprint and paradigm counts; a confirm with nothing pending is `rejected reason=no_pending_respec`.
 
 **Acceptance:** live-DB tests for the refund, the clear, and the kept blueprints and paradigms; a guard that a single send never wipes; a replay test.
 
@@ -284,7 +284,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `.craftkit <blueprint> [count]` and `.learnblueprint <id>` (D-CR17).
 - Add the stations to `docs/content/debug-hub.md`.
 
-**Telemetry:** the seed guard is the test; the stations and vendor need no new events beyond CR-05's `options_changed`. `.craftkit` logs `event=gm_craftkit` with `blueprint_id`, `count`, and each granted item as `type_id:qty:bag:slot`.
+**Telemetry:** the seed guard is the test; the stations and vendor need no new events beyond CR-05's `options_changed`. `.craftkit` logs `event=gm_craftkit` with `blueprint_id`, `count`, and each granted item as `type_id:bag:slot:qty_before→qty_after`.
 
 **Acceptance:** a live-DB seed guard that the templates carry the flags and the spawns sit in world 12; the vendor list resolves; a `.craftkit` test.
 
@@ -364,7 +364,7 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 | 3 | `event IN ('learned', 'rejected')` | ASP before and after, or the refusal `reason` and the values compared |
 | 5, 6 | `event = 'options_changed'` | The station and tool ids the client was given, and why |
 | 7, 8 | `event IN ('blueprint_learned', 'paradigm_raised', 'rejected')` | Item use results |
-| 9-11, 13 | `job_id = <id>`, after finding the id with `event = 'queued'` | The whole life of one craft: queue, induction, completion or failure, items before and after |
+| 9, 11, 13 | `job_id = <id>`, after finding the id with `event = 'queued'` | The whole life of one craft: queue, induction, completion or failure, items before and after |
 | 12 | `verb = 'reverse_engineer' AND event IN ('queued', 'completed')` over the step's time window | Ten `queued` rows and ten `completed` rows, one `job_id` each |
 | 10 | `event = 'rejected' AND reason = 'insufficient_components'` | The refusal and the counts compared |
 | 14 | `event = 'queue_dropped'` | Jobs dropped at logout, with nothing consumed |
