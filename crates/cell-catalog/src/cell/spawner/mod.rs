@@ -67,6 +67,9 @@ pub use regions::{
 // Exact XZ containment, re-exported for the playtest-friction watcher and
 // the `.bug` bookmark, which reach it via `playtest_friction`.
 pub use regions::region_contains_xz;
+// The client's own region hit test, for the friction watcher's
+// `region_dwell_no_hint` candidates.
+pub use regions::client_would_hint_region;
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;

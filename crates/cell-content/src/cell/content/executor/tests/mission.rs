@@ -175,3 +175,76 @@ async fn complete_mission_action_against_active_mission_marks_completed() {
         "an ACTIVE mission must transition to COMPLETED"
     );
 }
+
+/// Stuck-player signal `objective_never_completed` on `CompleteMission`.
+///
+/// Mission 681's final step 2348 carries kill objective 2724 (closed only
+/// by chain 1087's `complete_mission` -- the Atrea turn-in shape) and flank
+/// objective 2725 (closed by chain 1141's `complete_objective` when a
+/// flank happens). Completing the mission with both open must report the
+/// flank objective and stay quiet about the turn-in one. Pre-fix the
+/// detector reported every open objective, so every Cellblock mission
+/// fired once per player (37 WARNs on the 2026-09-26 colo run).
+#[tokio::test]
+async fn complete_mission_reports_only_objectives_a_chain_completes() {
+    use crate::test_support::LogCapture;
+    use cimmeria_content_engine::chain::Chain;
+    use cimmeria_content_engine::triggers::Trigger;
+    use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        let obj = |objective_id| MissionObjective {
+            objective_id,
+            status: STATUS_ACTIVE,
+            hidden: false,
+            optional: false,
+        };
+        e.missions
+            .add_mission(MissionInstance::new(681, 2348, vec![obj(2724), obj(2725)]));
+    }
+    mgr.connect_entity(1);
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(Chain {
+        action_delays: Vec::new(),
+        id: 1141,
+        name: "681 flank".to_string(),
+        enabled: true,
+        trigger: Trigger::OnMissionCompleted { mission_id: 9999 },
+        conditions: Vec::new(),
+        actions: vec![Action::CompleteObjective {
+            mission_id: 681,
+            objective_id: 2725,
+        }],
+        priority: 0,
+    });
+
+    let (tx, _rx) = mpsc::channel(64);
+    let resolved = ResolvedActions {
+        action_delays: Vec::new(),
+        params: std::collections::HashMap::new(),
+        actions: vec![(1087, Action::CompleteMission { mission_id: 681 })],
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let reported: Vec<String> = capture
+        .all()
+        .into_iter()
+        .filter(|c| {
+            c.level == Level::WARN && c.has_field("reason", "objective_open_at_mission_complete")
+        })
+        .filter_map(|c| c.fields.get("objective_id").cloned())
+        .collect();
+    assert_eq!(
+        reported,
+        vec!["2725".to_string()],
+        "only the chain-completed flank objective may be reported; the \
+         turn-in objective 2724 has no completer but CompleteMission",
+    );
+}

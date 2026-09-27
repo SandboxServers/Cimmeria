@@ -60,6 +60,11 @@ pub(super) async fn handle_dialog_button_choice(
         return;
     }
 
+    // The player has closed or answered this dialog. Tell the stuck-player
+    // detector BEFORE the chain runs: a follow-up the chain displays now is
+    // the player moving on, not a dialog replaced before it could be read.
+    crate::cell::playtest_friction::dialog_answered(entity_id, dialog_id);
+
     let player_id = space_mgr
         .get_entity(entity_id)
         .and_then(|e| e.player_id)

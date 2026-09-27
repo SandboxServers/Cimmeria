@@ -300,6 +300,81 @@ async fn chain_1108_increments_armory_kills_on_guard_death() {
         })
         .count();
     assert_eq!(n, 1, "chain 1108 must increment armory_kills by 1; got {n}",);
+
+    // 2026-09-26 colo tester bookmark (03:03:55): the kill must tick the
+    // optional "Eliminate the NID guards." objective itself, not leave it
+    // open until chain 1107's terminal advance force-completes it.
+    let completes = resolved
+        .actions
+        .iter()
+        .filter(|(id, action)| {
+            *id == 1108
+                && matches!(
+                    action,
+                    Action::CompleteObjective {
+                        mission_id: 688,
+                        objective_id: 4647
+                    }
+                )
+        })
+        .count();
+    assert_eq!(
+        completes, 1,
+        "chain 1108 must complete optional objective 688/4647 on the armory \
+         guard's death; got {completes} in {:?}",
+        resolved.actions,
+    );
+}
+
+/// Chain 1108 self-completion guard: once 4647 is complete, a second
+/// death event (respawned guard) must resolve nothing — re-running
+/// `complete_objective` would resend the checkmark and re-persist.
+#[tokio::test]
+async fn chain_1108_does_not_refire_once_objective_4647_completed() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1108)
+        .await
+        .expect("DB query for chain 1108 must succeed")
+        .expect("chain 1108 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "entity_tag".to_string(),
+        serde_json::json!("Cellblock_ArmoryGuard1"),
+    );
+    ctx.set_param(
+        "mission_688_status".to_string(),
+        serde_json::json!("active"),
+    );
+    ctx.set_param(
+        "mission_688_step_2356_status".to_string(),
+        serde_json::json!("active"),
+    );
+    ctx.set_param(
+        "mission_688_obj_4647_status".to_string(),
+        serde_json::json!("completed"),
+    );
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::EntityDeath,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let n = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1108)
+        .count();
+    assert_eq!(
+        n, 0,
+        "chain 1108 must not match once objective 4647 is completed; got {n} actions",
+    );
 }
 
 /// Chain 1109 — the load-bearing chain of mission 688. Interacting

@@ -347,3 +347,45 @@ async fn a_forged_id_is_rejected_and_an_answered_id_cannot_be_reclosed() {
          on a later close — this is what keeps eviction from double-advancing"
     );
 }
+
+/// Colo 2026-09-26: closing 2299 fired chain 1019, which displayed 2298
+/// in the same millisecond, and the stuck-player detector reported 2298
+/// as having replaced 2299 "before the player could read it". An accepted
+/// choice is the player moving on, so the follow-up must not be flagged.
+#[tokio::test]
+async fn follow_up_of_an_answered_dialog_is_not_reported_as_displaced() {
+    use crate::test_support::LogCapture;
+    // Unique id: the friction watch is process-global.
+    const EID: u32 = 947_299;
+    let mut mgr = make_space_manager();
+    mgr.create_entity(EID, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(EID) {
+        p.player_id = Some(42);
+        p.offer_dialog(2299);
+    }
+    let engine = engine_with_dialog_choice_chain(2299, "c1019");
+    let (tx, _rx) = mpsc::channel(16);
+    crate::cell::playtest_friction::forget(EID);
+    let capture = LogCapture::install();
+
+    crate::cell::playtest_friction::dialog_shown(EID, 2299);
+    dispatch(
+        EID,
+        DIALOG_BUTTON_CHOICE,
+        &dialog_choice_args(2299, -1),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+    assert_eq!(counter(&mgr, EID, "c1019"), 1);
+    crate::cell::playtest_friction::dialog_shown(EID, 2298);
+    crate::cell::playtest_friction::forget(EID);
+
+    assert!(
+        capture
+            .find_message(tracing::Level::WARN, "friction: a dialog was replaced")
+            .is_none(),
+        "a dialog displayed after the player answered the previous one          did not displace it"
+    );
+}
