@@ -254,6 +254,10 @@ Rebased onto `origin/main` after SS-M1 (#894) and SS-D1 (#888) merged.
 | `live-db-test.sh ignore` / `tell` / `mail` / `contact_list` | 52 / 20 / 59 / 57 passed, 0 failed |
 | clippy `-D warnings` on the 10 crates; `cargo fmt --all -- --check` | clean |
 
+## Rebase after round 6
+
+Rebased onto `origin/main` again after other campaigns merged. The only conflict was `docs/gap-analysis.md`: the TOTALS line and the summary block, which crafting CR-08 had also changed. I recomputed both from the matrix rows: 472 / CW 169 / NT 68 / IM 101 / KM 130 / NU 4 (35.8 / 14.4 / 21.4 / 27.5 / 0.8%; code exists 338, 71.6%). This supersedes the earlier 472 / 169 / 68 / 99 / 132 / 4 figure. After the rebase: nextest on the 8 crates 2190 passed; `live-db-test.sh` ignore 54, tell 22, mail 59, contact_list 57, all passed; fmt and clippy clean.
+
 ## Known gaps
 
 1. **Mute (SS-C3).** `tell.rs` has a `TODO(SS-C3)` where a muted sender is refused.
