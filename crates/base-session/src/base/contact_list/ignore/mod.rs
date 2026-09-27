@@ -310,7 +310,7 @@ pub async fn resync_ignore_cache(
         }
     };
 
-    let (account_id, before) = {
+    let (account_id, synced) = {
         let mut clients = ctx.connected.lock().unwrap();
         match clients.get_mut(&addr) {
             // Only the session still playing this character takes the set: a
@@ -319,13 +319,13 @@ pub async fn resync_ignore_cache(
             Some(c) if c.active_player_id == Some(player_id) => {
                 let before = c.ignore.len();
                 c.ignore = IgnoreCache::with_player_ids(names.clone(), ignored_ids);
-                (Some(c.account_id), Some(before))
+                (Some(c.account_id), Some((c.account_id, before)))
             }
             Some(c) => (Some(c.account_id), None),
             None => (None, None),
         }
     };
-    let Some(before) = before else {
+    let Some((session_account_id, before)) = synced else {
         tracing::debug!(
             target: "chat",
             event = "chat.ignore_sync_failed",
@@ -358,6 +358,7 @@ pub async fn resync_ignore_cache(
             .send(BaseToCellMsg::UpdateIgnoreList {
                 entity_id,
                 player_id,
+                account_id: session_account_id,
                 ignore_names: names.clone(),
             })
             .await

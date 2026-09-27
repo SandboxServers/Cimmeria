@@ -180,6 +180,7 @@ async fn resync_ignore_cache_updates_session_and_cell() {
     let addr: SocketAddr = "127.0.0.1:54710".parse().unwrap();
     let mut state = test_default_connected_client_state();
     state.active_player_id = Some(player_id);
+    state.account_id = 0x7300_C1AA;
     let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
     let db_pool = Some(Arc::new(pool.clone()));
     let (tx, mut rx) = mpsc::channel(4);
@@ -207,9 +208,14 @@ async fn resync_ignore_cache_updates_session_and_cell() {
         Ok(BaseToCellMsg::UpdateIgnoreList {
             entity_id,
             player_id: pid,
+            account_id,
             ignore_names,
         }) => {
             assert_eq!((entity_id, pid), (9001, player_id));
+            assert_eq!(
+                account_id, 0x7300_C1AA,
+                "the session's account rides the push"
+            );
             assert_eq!(ignore_names, set(&["ssc1jerk"]));
         }
         _ => panic!("expected UpdateIgnoreList on the cell channel"),

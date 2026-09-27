@@ -13,6 +13,7 @@ fn names(v: &[&str]) -> HashSet<String> {
 
 #[tokio::test]
 async fn update_ignore_list_replaces_the_cell_entity_set() {
+    let capture = LogCapture::install();
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
@@ -29,6 +30,7 @@ async fn update_ignore_list_replaces_the_cell_entity_set() {
             BaseToCellMsg::UpdateIgnoreList {
                 entity_id: 7,
                 player_id: 70,
+                account_id: 700,
                 ignore_names: set.clone(),
             },
             &tx,
@@ -44,6 +46,15 @@ async fn update_ignore_list_replaces_the_cell_entity_set() {
         );
     }
     assert!(rx.try_recv().is_err(), "the arm sends nothing to the base");
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "chat.ignore_set_applied"))
+        .expect("chat.ignore_set_applied logged");
+    assert!(
+        ev.has_field("account_id", "700") && ev.has_field("player_id", "70"),
+        "the applied row names the owner's account and player (rule 5)"
+    );
 }
 
 #[tokio::test]
@@ -56,6 +67,7 @@ async fn update_ignore_list_for_missing_entity_logs_reason() {
         BaseToCellMsg::UpdateIgnoreList {
             entity_id: 404,
             player_id: 70,
+            account_id: 700,
             ignore_names: names(&["X"]),
         },
         &tx,
@@ -71,6 +83,10 @@ async fn update_ignore_list_for_missing_entity_logs_reason() {
         .expect("a push for a missing entity must log chat.ignore_set_dropped");
     assert!(ev.has_field("reason", "entity_missing"));
     assert!(ev.has_field("player_id", "70") && ev.has_field("entity_id", "404"));
+    assert!(
+        ev.has_field("account_id", "700"),
+        "entity_missing carries the owner's account from the message (rule 5)"
+    );
 }
 
 /// Keyed by player identity: a push naming entity 7 for player 70 must not
@@ -94,6 +110,7 @@ async fn update_ignore_list_for_another_players_entity_is_dropped() {
         BaseToCellMsg::UpdateIgnoreList {
             entity_id: 7,
             player_id: 70,
+            account_id: 700,
             ignore_names: names(&["Pest"]),
         },
         &tx,
@@ -112,4 +129,8 @@ async fn update_ignore_list_for_another_players_entity_is_dropped() {
         .find(|c| c.has_field("event", "chat.ignore_set_dropped"))
         .expect("chat.ignore_set_dropped logged");
     assert!(ev.has_field("reason", "player_mismatch"));
+    assert!(
+        ev.has_field("account_id", "700"),
+        "the message owner's account"
+    );
 }

@@ -456,8 +456,12 @@ pub enum BaseToCellMsg {
     /// hides nobody from anyone's AoI.
     UpdateIgnoreList {
         entity_id: u32,
-        /// `sgw_player.player_id` of the owner, for the cell's log rows.
+        /// `sgw_player.player_id` of the owner. The cell applies the set only
+        /// to an entity that still belongs to this player.
         player_id: i32,
+        /// The owner's account, for the cell's log rows: on the
+        /// `entity_missing` path there is no entity to read it from.
+        account_id: u32,
         ignore_names: std::collections::HashSet<String>,
     },
 }

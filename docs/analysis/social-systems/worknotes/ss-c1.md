@@ -188,6 +188,20 @@ Sentinels: `0x7300_C1xx` (ignore module), `0x7300_C2xx` (chatIgnore dispatch), `
 | `tell_to_recipient_who_left_the_world_before_the_send_is_refused` | same | FAILED |
 | `update_ignore_list_for_another_players_entity_is_dropped` | the guard changed to `entity.player_id == Some(player_id) \|\| true` | FAILED |
 
+## Review round 4 (PR #893)
+
+`BaseToCellMsg::UpdateIgnoreList` now carries `account_id`, taken from the base session in the same lock where the session copy of the list is written. The cell logs it on every ignore-set event: `chat.ignore_set_applied`, and `chat.ignore_set_dropped` with either `reason = entity_missing` (where there is no entity to read it from) or `reason = player_mismatch`, which also logs the entity's own `entity_account_id`.
+
+The tell-channel registration finding was answered by the coordinator (D-ORG14: the client hardcodes built-in channel ids; the constants belong to ORG-09). No code change.
+
+| Command | Result |
+|---|---|
+| `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry --lib` | 1047 passed |
+| `live-db-test.sh resync_ignore_cache_updates_session_and_cell` (asserts the pushed `account_id`) | 1 passed |
+| clippy `-D warnings` on wire, cell, base-session, base, base-world-entry and services; `cargo fmt --all -- --check` | clean |
+
+Guards: `update_ignore_list_for_missing_entity_logs_reason` and `update_ignore_list_for_another_players_entity_is_dropped` assert `account_id = 700`, and `update_ignore_list_replaces_the_cell_entity_set` now captures `chat.ignore_set_applied` and asserts its `account_id` and `player_id`. Proof: with `account_id` removed from the `entity_missing` row, `update_ignore_list_for_missing_entity_logs_reason` FAILED; restored.
+
 ## Known gaps
 
 1. **Mute (SS-C3).** `tell.rs` has a `TODO(SS-C3)` where a muted sender is refused.

@@ -16,6 +16,7 @@ use super::super::super::space_manager::SpaceManager;
 pub(super) fn handle(
     entity_id: u32,
     player_id: i32,
+    account_id: u32,
     ignore_names: HashSet<String>,
     space_mgr: &mut SpaceManager,
 ) {
@@ -29,7 +30,7 @@ pub(super) fn handle(
                 event = "chat.ignore_set_applied",
                 entity_id,
                 player_id,
-                account_id = entity.account_id,
+                account_id,
                 before,
                 after = count,
                 "cell Ignore set replaced"
@@ -42,7 +43,8 @@ pub(super) fn handle(
                 entity_id,
                 player_id,
                 entity_player_id = entity.player_id,
-                account_id = entity.account_id,
+                entity_account_id = entity.account_id,
+                account_id,
                 count,
                 reason = "player_mismatch",
                 "UpdateIgnoreList for an entity id now held by another character; dropped"
@@ -54,6 +56,7 @@ pub(super) fn handle(
                 event = "chat.ignore_set_dropped",
                 entity_id,
                 player_id,
+                account_id,
                 count,
                 reason = "entity_missing",
                 "UpdateIgnoreList for an entity the cell does not hold; dropped"
