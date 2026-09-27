@@ -139,3 +139,4 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Testing patterns
 
 - [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race: hold `LOCK TABLE ... IN SHARE MODE`, release when 2 sessions are held by the gate (pg_blocking_pids).
+- [training-points-cache-absolute-write.md](training-points-cache-absolute-write.md) — `handle_grant_xp` writes training_points absolutely from the session cache; every other TP writer must refresh it; ASP is added in SQL; level-ups need XP > threshold.

@@ -212,9 +212,9 @@ Training points (TP) gate ability learning. A player spends one TP to permanentl
 training_points INTEGER DEFAULT 0
 ```
 
-### Earning: Not Implemented
+### Earning
 
-No code grants training points on level-up. `giveTrainingPoints(points)` exists and is functional, but it is never called by the leveling path. Points must be manually inserted into the database for testing.
+A new character starts with 1 TP (`STARTING_TRAINING_POINTS`, bound by `createCharacter` in `crates/base/src/base/character_create.rs`; the column default is still 0). Each level gained adds `TRAINING_POINTS_PER_LEVEL` (1): `apply_level_ups` in `crates/game/src/player.rs` counts the levels, and `handle_grant_xp` (`crates/base-methods/src/base/world_entry/methods/progression/mod.rs`) persists the new total with the XP and level, sends it in the XP bundle (`onEntityProperty`, via `training_points_property_args`) and mirrors it to the cell (`ProgressionChanged`). An unspent character at level `L` holds `L` points, 50 at the cap. GM grants (`gmGiveTrainingPoints`, `progression/grant_training_points.rs`) come on top.
 
 ### Spending
 
@@ -278,9 +278,9 @@ Applied science points (ASP) gate discipline learning. Disciplines are crafting 
 applied_science_points INTEGER DEFAULT 0
 ```
 
-### Earning: Not Implemented
+### Earning
 
-No code grants applied science points on level-up. The grant methods exist and are functional but are never called by the leveling path. Points must be manually set in the database.
+A new character starts with 1 ASP (`createCharacter` binds `STARTING_APPLIED_SCIENCE_POINTS`; the column default is still 0, and the seeded characters hold 1). Each level gained adds 1 more: `handle_grant_xp` writes the new XP, level, training points and ASP in one statement, counting the levels gained against the level stored in the row, then pushes the new ASP total to the client. An unspent character at level `L` holds `L` points, 50 at the cap. GM grants (`gmGiveAppliedSciencePoints`) come on top. Details: [crafting-system.md](crafting-system.md#earning-applied-science-points).
 
 ### Spending
 
@@ -370,11 +370,11 @@ def setLevel(self, level):
 
 **2. Training points on level-up**
 
-Call `giveTrainingPoints(n)` inside the level-up block in `giveExperience()`. The exact formula is unknown; 1 TP per level is a reasonable baseline. Some games grant additional points at milestone levels.
+Done: 1 TP at level 1 and 1 per level gained (see [Earning](#earning)). The original formula is unknown.
 
 **3. Applied science points on level-up**
 
-Grant ASP at defined level thresholds (e.g., every 5 levels). The original design intent is unknown.
+Done: 1 ASP at level 1 and 1 per level gained (owner decision D-CR01; see [Earning](#earning-1) under Applied Science Points). The original design intent is unknown.
 
 **4. XP from mob kills**
 
