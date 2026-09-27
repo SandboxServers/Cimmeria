@@ -15,8 +15,11 @@
 //!
 //! The queue lives on `PetRegistry` and `forget_pet` scrubs it, so every
 //! teardown path drops a pending VFX with its pet. The drain also checks
-//! that the pet still belongs to the queued owner, which covers an id
-//! reused before a scrub.
+//! that the pet still belongs to the queued owner, and that whoever holds
+//! the owner's entity id now is the player who summoned it
+//! (`PetRegistry::summoner_matches`): entity ids are reused, and the
+//! owner-only intro is withheld from a new holder of the id, so the VFX
+//! must be too.
 
 use std::time::{Duration, Instant};
 
@@ -24,6 +27,7 @@ use tokio::sync::mpsc;
 
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
+use super::teardown::owner_identity;
 
 /// How long a queued VFX waits for the owner to witness its pet. The intro
 /// normally lands on the next 100 ms AoI tick; past this the effect would
@@ -93,6 +97,15 @@ fn arrival_step(
         Some(owner) if owner != arrival.owner_id => return ArrivalStep::Drop("owner_mismatch"),
         Some(_) => {}
     }
+    // The owner's id now belongs to another player (destroyed and reused
+    // before the sweep): that player is not the summoner, so the VFX is not
+    // theirs to release.
+    if !space_mgr
+        .pets
+        .summoner_matches(pet, space_mgr.player_identity(arrival.owner_id))
+    {
+        return ArrivalStep::Drop("owner_identity_mismatch");
+    }
     if space_mgr.get_entity(pet).is_none() {
         return ArrivalStep::Drop("pet_gone");
     }
@@ -139,14 +152,16 @@ pub async fn drain_arrivals(
                     continue;
                 };
                 let owner_id = arrival.owner_id;
-                let id = space_mgr.player_identity(owner_id);
+                // The summoner's identity captured at summon (the live one
+                // may belong to a new holder of a reused id), Rule 5.
+                let id = owner_identity(space_mgr, pet, Some(owner_id));
                 let registered_owner = space_mgr.pets.owner_of(pet);
                 let waited_ms = now.duration_since(arrival.queued_at).as_millis() as u64;
                 // A pet gone before its intro is ordinary (despawned at
                 // once): DEBUG. An owner who never saw its live pet means the
-                // intro went missing, and an owner mismatch means a missed
-                // registry scrub: both server faults no client can cause,
-                // so WARN.
+                // intro went missing, and an owner or identity mismatch means
+                // a reused id past a missed scrub: server faults no client
+                // can cause, so WARN.
                 if reason == "pet_gone" {
                     tracing::debug!(
                         target: "pets.lifecycle",
@@ -205,7 +220,7 @@ pub async fn drain_arrivals(
                         );
                     }
                 }
-                let id = space_mgr.player_identity(arrival.owner_id);
+                let id = owner_identity(space_mgr, pet, Some(arrival.owner_id));
                 tracing::debug!(
                     target: "pets.lifecycle",
                     event = "arrival_vfx_sent",

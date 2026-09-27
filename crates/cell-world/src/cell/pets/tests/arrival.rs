@@ -58,11 +58,16 @@ fn queue_arrival_ignores_an_entity_that_is_not_a_pet() {
 }
 
 /// Seam: the 2 s drop is a WARN with `reason=owner_never_witnessed` and the
-/// owner's identity (the intro went missing; no client can cause it).
+/// owner's identity as captured at summon (the intro went missing; no
+/// client can cause it).
 #[tokio::test]
 async fn never_witnessed_drop_logs_warn_with_reason() {
-    let (mut mgr, pet) = world_with_pet();
+    let mut mgr = make_world();
+    add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
     mgr.get_entity_mut(OWNER).unwrap().player_id = Some(77);
+    let pet = mgr
+        .spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 1643)
+        .expect("pet spawns");
     mgr.pets.queue_arrival(pet, arrival());
     let (tx, _rx) = mpsc::channel(64);
 
@@ -121,4 +126,35 @@ async fn pet_gone_drop_logs_debug_with_reason() {
         .expect("DEBUG arrival_vfx_dropped reason=pet_gone");
     assert!(c.has_field("pet_id", &pet.to_string()), "{c:?}");
     assert!(mgr.pets.pending_arrival(pet).is_none());
+}
+
+/// The owner was destroyed and its entity id handed to another player
+/// before the sweep: the new holder is not the summoner, so the VFX is
+/// dropped (WARN `reason=owner_identity_mismatch`, the summoner's identity
+/// on the row) and never sent, even though the registry's owner id still
+/// matches (Copilot, #870).
+#[tokio::test]
+async fn reused_owner_id_drops_the_vfx_with_identity_mismatch() {
+    let mut mgr = make_world();
+    add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
+    mgr.get_entity_mut(OWNER).unwrap().player_id = Some(77);
+    let pet = mgr
+        .spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 1643)
+        .expect("pet spawns");
+    mgr.pets.queue_arrival(pet, arrival());
+    reuse_owner_id_by_another_player(&mut mgr);
+    assert_eq!(mgr.pets.owner_of(pet), Some(OWNER), "not swept yet");
+    let (tx, mut rx) = mpsc::channel(64);
+
+    let logs = LogCapture::install();
+    assert_eq!(drain_arrivals(Instant::now(), &tx, &mut mgr).await, 0);
+    let c = logs
+        .find_event(Level::WARN, "summon VFX dropped", "owner_identity_mismatch")
+        .expect("WARN arrival_vfx_dropped reason=owner_identity_mismatch");
+    assert!(
+        c.has_field("player_id", "77"),
+        "the summoner, not 4243: {c:?}"
+    );
+    assert!(mgr.pets.pending_arrival(pet).is_none());
+    assert!(rx.try_recv().is_err(), "nothing sent");
 }
