@@ -515,8 +515,9 @@ pub(super) async fn entity_invisible(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Cinematic hold: keep the invisibility behind the buffered create it
-    // applies to, or the entity pops in visible when the hold releases.
+    // Keep the invisibility behind the buffered create it applies to (pre-
+    // ready window or cinematic hold), or the entity pops in visible when
+    // the buffer flushes.
     if let Some(addr) = held_witness_addr(witness_id, entity_id, connected, entity_to_addr) {
         deferred_aoi::push_deferred(
             connected,
@@ -528,8 +529,11 @@ pub(super) async fn entity_invisible(
     aoi::entity_invisible(witness_id, entity_id, transport, connected, entity_to_addr).await;
 }
 
-/// The witness's address iff its session is inside the first-login cinematic
-/// hold. Gates the two arms the pre-`onClientReady` window leaves ungated.
+/// The witness's address iff a `WitnessEntityMethod` / `EntityInvisible`
+/// about `entity_id` must be buffered: about another entity, while the
+/// session is pre-`onClientReady` or in the first-login cinematic hold
+/// ([`deferred_aoi::should_hold_entity_traffic`]); about the witness itself,
+/// in the cinematic hold only.
 fn held_witness_addr(
     witness_id: u32,
     entity_id: u32,

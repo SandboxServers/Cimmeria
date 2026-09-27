@@ -27,7 +27,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [sqlx-dynamic-sql-string.md](sqlx-dynamic-sql-string.md) — `sqlx::query` needs `&'static str`; share SELECTs with `macro_rules!` + `concat!`.
 - [sqlx-chain-id-is-i32-vacuous-guards.md](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is i32; a wrong decode type hides inside "no rows" guards.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules hide a new `foo/mod.rs`; check with `git check-ignore -v`.
-- [worktree-shell-and-external-binary-tests.md](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends and chained commits (use scratch scripts); B: full means a C: `CIMMERIA_TARGET_ROOT`; C++-binary tests need an opt-in env var.
+- [worktree-shell-and-external-binary-tests.md](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends and chained commits (use scratch scripts); a full Dev Drive means moving `CIMMERIA_TARGET_ROOT` to a drive with space; C++-binary tests need an opt-in env var.
 
 ## Wire format
 

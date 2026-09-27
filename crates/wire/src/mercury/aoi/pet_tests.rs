@@ -108,10 +108,11 @@ fn pet_owner_binding_follows_entity_flags() {
     );
 }
 
-/// Negative: an ordinary NPC (no owner) gets no `PetOwnerId` property.
-/// Guards against the binding leaking onto every mob.
+/// Negative: an SGWPet-class entity with no owner (`pet_owner_id = None`)
+/// gets no `PetOwnerId` property. The binding is keyed on the owner, not
+/// the class, so it cannot leak onto an unowned entity.
 #[test]
-fn non_pet_cascade_has_no_owner_binding() {
+fn ownerless_pet_class_cascade_has_no_owner_binding() {
     let body =
         compose_create_entity_cascade_body(PET_ID, SGWPET_CLASS_ID, 12, Some(&pet_npc_data(None)));
     let mut prefix = vec![0x87, 0x0C, 0x00];

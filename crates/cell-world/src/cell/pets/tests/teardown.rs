@@ -134,6 +134,23 @@ async fn owner_id_reused_by_another_player_is_swept() {
     assert_pet_gone(&mgr, pet);
 }
 
+/// Copilot, #870: the id's new holder summoning a pet of its own before the
+/// sweep must not rescue the old pet. The sweep despawns the old pet only.
+#[tokio::test]
+async fn a_new_summon_by_the_id_holder_does_not_save_the_old_pet() {
+    let (mut mgr, old_pet) = watched_pet();
+    let (tx, _rx) = mpsc::channel(64);
+    let new_pet = super::reuse_owner_id_then_resummon(&mut mgr);
+
+    assert_eq!(pet_owner_sweep(&tx, &mut mgr).await, 1);
+    assert!(
+        mgr.get_entity(old_pet).is_none(),
+        "the old pet is despawned"
+    );
+    assert!(mgr.get_entity(new_pet).is_some(), "the new pet is kept");
+    assert_eq!(mgr.pets.pets_of(OWNER), vec![new_pet]);
+}
+
 /// D-PT08: owner death despawns the pet.
 #[tokio::test]
 async fn dead_owner_is_swept() {

@@ -172,6 +172,21 @@ fn reused_owner_id_gets_the_pet_but_not_its_lists() {
     );
 }
 
+/// Copilot, #870: the id's new holder summons its own pet before the sweep.
+/// Its new pet's lists reach it; the old pet's still do not.
+#[test]
+fn a_new_summon_by_the_id_holder_gets_only_its_own_pets_lists() {
+    let (mut mgr, old_pet) = world_with_pet();
+    let new_pet = super::reuse_owner_id_then_resummon(&mut mgr);
+    let events = mgr.compute_aoi_changes();
+    assert!(
+        pet_pushes(&events, old_pet).is_empty(),
+        "the old pet's lists must not reach the id's new holder"
+    );
+    let new_lists: Vec<u16> = pet_pushes(&events, new_pet).iter().map(|p| p.1).collect();
+    assert_eq!(new_lists, vec![ON_PET_ABILITY_LIST, ON_PET_STANCE_LIST]);
+}
+
 /// An ordinary NPC produces no pet pushes for anyone.
 #[test]
 fn ordinary_npc_sends_no_pet_lists() {

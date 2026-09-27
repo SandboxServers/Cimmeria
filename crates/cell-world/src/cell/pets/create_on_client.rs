@@ -46,7 +46,7 @@ pub const CLIENT_DEFAULT_STANCE: PetStance = PetStance::Defensive;
 /// The owner-only pet messages for `witness` meeting `entity`, in send
 /// order. Empty unless `entity` is a pet and `witness` is the player who
 /// summoned it: its entity id is the pet's `owner_id` **and** its live
-/// identity matches the one `pets` captured at summon.
+/// identity matches the one `pets` captured for this pet at summon.
 ///
 /// An id match with an identity mismatch is the id-reuse window before the
 /// sweep: nothing owner-only is sent, and a WARN on `pets.lifecycle`
@@ -67,11 +67,11 @@ pub fn pet_create_on_client_events(
     }
     let pet_id = entity.entity_id.0 as u32;
     let live = witness.identity();
-    if !witness.is_player || !pets.owner_identity_matches(witness_id, live) {
+    if !witness.is_player || !pets.summoner_matches(pet_id, live) {
         // Server-side id reuse, not something a client can trigger at will:
         // WARN (negative-logging convention). `account_id` / `player_id` are
         // the summoner's (Rule 5), the `witness_*` pair the id's new holder.
-        let owner = pets.owner_identity(witness_id);
+        let owner = pets.summoner_identity(pet_id);
         tracing::warn!(
             target: "pets.lifecycle",
             event = "pet_list_replay_refused",

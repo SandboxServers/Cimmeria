@@ -47,10 +47,15 @@
 //! While [`ConnectedClientState::cinematic_aoi_hold`] is set,
 //! [`should_hold_entity_traffic`] keeps every *entity-scoped* message in the
 //! same buffer until the movie is cancelled or its duration elapses — see
-//! `world_entry_appearance::cinematic_aoi_hold`. That includes the two
-//! variants the pre-ready gate leaves alone, `WitnessEntityMethod` and
-//! `EntityInvisible`: a held entity's method sent ahead of its create would
-//! reach a client that has no such entity and be dropped for good.
+//! `world_entry_appearance::cinematic_aoi_hold`. That includes
+//! `WitnessEntityMethod` and `EntityInvisible`: a held entity's method sent
+//! ahead of its create would reach a client that has no such entity and be
+//! dropped for good. The same two variants are also held in the
+//! pre-`onClientReady` window when they are about ANOTHER entity (whose
+//! create is buffered there too, e.g. a pet's owner-only lists replayed
+//! right after its `EnteredAoI`); about the witness's own entity they are
+//! held by the cinematic hold only. The dispatch arms pick the gate
+//! (`aoi_dispatch::held_witness_addr`).
 //! Player-self `EntityMethodCall`s are not held; they stay on
 //! [`should_defer`] and flush at `onClientReady` via
 //! [`drain_deferred_self_methods`].
@@ -106,7 +111,9 @@ pub enum DeferredAoiMsg {
         args: Vec<u8>,
     },
     /// Buffered [`crate::cell::messages::CellToBaseMsg::WitnessEntityMethod`].
-    /// Only the cinematic hold buffers this variant.
+    /// Held by [`should_hold_entity_traffic`] (pre-`onClientReady` window
+    /// or cinematic hold) when it is about another entity, and by the
+    /// cinematic hold only when it is about the witness itself.
     WitnessEntityMethod {
         entity_id: u32,
         method_index: u16,
@@ -114,7 +121,8 @@ pub enum DeferredAoiMsg {
         entity_is_player: bool,
     },
     /// Buffered [`crate::cell::messages::CellToBaseMsg::EntityInvisible`].
-    /// Only the cinematic hold buffers this variant.
+    /// Gated like `WitnessEntityMethod`: pre-ready or cinematic hold for
+    /// another entity, cinematic hold only for the witness itself.
     EntityInvisible { entity_id: u32 },
 }
 
@@ -162,8 +170,10 @@ pub fn should_hold_entity_traffic(
 
 /// True iff the session is inside the first-login cinematic hold.
 ///
-/// Gates `WitnessEntityMethod` / `EntityInvisible`, which the pre-ready
-/// window deliberately leaves ungated.
+/// Gates `WitnessEntityMethod` / `EntityInvisible` about the witness's own
+/// entity, which the pre-ready window leaves ungated (the witness's own
+/// entity is never buffered). About another entity they use
+/// [`should_hold_entity_traffic`] instead.
 pub fn cinematic_hold_active(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,

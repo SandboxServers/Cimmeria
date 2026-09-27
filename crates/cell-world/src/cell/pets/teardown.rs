@@ -53,18 +53,23 @@ impl PetDespawnReason {
     }
 }
 
-/// The owner's identity for a pet log line: the one captured at summon
-/// (the owner may already be destroyed, or its id reused, when its pet is
-/// swept), else the live owner's while it is still a player. `UNKNOWN`
-/// (both fields omitted), never a zero (instrumentation-discipline Rule 5).
-pub(super) fn owner_identity(space_mgr: &SpaceManager, owner: Option<u32>) -> PlayerIdentity {
-    let Some(owner) = owner else {
-        return PlayerIdentity::UNKNOWN;
-    };
-    let cached = space_mgr.pets.owner_identity(owner);
+/// The owner's identity for a log line about `pet_id`: the one captured
+/// when that pet was summoned (the owner may already be destroyed, or its
+/// id reused, when its pet is swept), else the live owner's while it is
+/// still a player. `UNKNOWN` (both fields omitted), never a zero
+/// (instrumentation-discipline Rule 5).
+pub(super) fn owner_identity(
+    space_mgr: &SpaceManager,
+    pet_id: u32,
+    owner: Option<u32>,
+) -> PlayerIdentity {
+    let cached = space_mgr.pets.summoner_identity(pet_id);
     if cached.is_known() {
         return cached;
     }
+    let Some(owner) = owner else {
+        return PlayerIdentity::UNKNOWN;
+    };
     match space_mgr.get_entity(owner) {
         Some(e) if e.is_player => e.identity(),
         _ => PlayerIdentity::UNKNOWN,
@@ -96,7 +101,7 @@ pub(super) async fn despawn_pet_via(
     // Everything the log needs is read before the pet and the registry
     // entry go away.
     let owner_id = space_mgr.pets.owner_of(pet_id);
-    let id = owner_identity(space_mgr, owner_id);
+    let id = owner_identity(space_mgr, pet_id, owner_id);
     let template_id = space_mgr.get_entity(pet_id).and_then(|e| e.template_id);
     let outcome = space_mgr.despawn_npc(pet_id, tx).await;
     space_mgr.pets.forget_pet(pet_id);
@@ -149,7 +154,14 @@ pub async fn forget_owner(
     if pets.is_empty() {
         return 0;
     }
-    let id = owner_identity(space_mgr, Some(owner));
+    // The disconnecting owner is still in the space: its live identity is
+    // the one to name. The first pet's capture covers an entity with none.
+    let live = space_mgr.player_identity(owner);
+    let id = if live.is_known() {
+        live
+    } else {
+        owner_identity(space_mgr, pets[0], None)
+    };
     let mut despawned = 0;
     for &pet_id in &pets {
         let outcome = despawn_pet_via(
@@ -192,11 +204,12 @@ fn sweep_verdict(space_mgr: &SpaceManager, pet_id: u32, owner: u32) -> Option<Sw
     };
     // Entity ids are reused: after the owner is destroyed the id can come
     // back as an NPC, or as another player, in the same space. Only the
-    // player who summoned the pet owns it.
+    // player who summoned THIS pet owns it; a pet the id's new holder
+    // summoned since has its own capture and is kept.
     if !owner_entity.is_player
         || !space_mgr
             .pets
-            .owner_identity_matches(owner, owner_entity.identity())
+            .summoner_matches(pet_id, owner_entity.identity())
     {
         return Some(SweepAction::Despawn(PetDespawnReason::OwnerGone));
     }
@@ -234,7 +247,7 @@ pub async fn pet_owner_sweep(
         match sweep_verdict(space_mgr, pet_id, owner) {
             None => {}
             Some(SweepAction::Scrub) => {
-                let id = owner_identity(space_mgr, Some(owner));
+                let id = owner_identity(space_mgr, pet_id, Some(owner));
                 space_mgr.pets.forget_pet(pet_id);
                 // `destroy_entity` / `destroy_space` scrub every pet they
                 // remove, so an orphan entry is a missed teardown path.

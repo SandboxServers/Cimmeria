@@ -51,19 +51,23 @@ pub struct PetRegistry {
     owner_of: HashMap<u32, u32>,
     /// owner entity id -> pet entity ids, in summon order.
     pets_by_owner: HashMap<u32, Vec<u32>>,
-    /// owner entity id -> the owner's log identity, captured at summon.
-    /// Teardown logs read it because the owner may already be destroyed
-    /// (or its id reused) by the time its pet is swept. Dropped with the
-    /// owner's last pet.
-    owner_identity: HashMap<u32, PlayerIdentity>,
+    /// pet entity id -> the identity of the player who summoned it,
+    /// captured at summon. Keyed by pet, not owner: entity ids are reused,
+    /// and a later player given the owner's id can summon a pet of its own
+    /// before the sweep. An owner-keyed capture would be overwritten by that
+    /// summon and vouch for the new holder on the OLD pet (Copilot, #870).
+    /// Teardown logs read it too, because the owner may already be gone.
+    summoner: HashMap<u32, PlayerIdentity>,
 }
 
 impl PetRegistry {
-    /// Record that `owner` owns `pet`. Re-registering a pet moves it.
-    pub fn register(&mut self, owner: u32, pet: u32) {
+    /// Record that `owner` owns `pet`, summoned by the player `summoner`
+    /// (the owner's identity at summon). Re-registering a pet moves it.
+    pub fn register(&mut self, owner: u32, pet: u32, summoner: PlayerIdentity) {
         self.forget_pet(pet);
         self.owner_of.insert(pet, owner);
         self.pets_by_owner.entry(owner).or_default().push(pet);
+        self.summoner.insert(pet, summoner);
     }
 
     /// Drop `pet` from both maps. Returns its owner, if it was registered.
@@ -71,31 +75,27 @@ impl PetRegistry {
     /// path scrubs the registry whatever triggered it.
     pub fn forget_pet(&mut self, pet: u32) -> Option<u32> {
         let owner = self.owner_of.remove(&pet)?;
+        self.summoner.remove(&pet);
         if let Some(list) = self.pets_by_owner.get_mut(&owner) {
             list.retain(|&p| p != pet);
             if list.is_empty() {
                 self.pets_by_owner.remove(&owner);
-                self.owner_identity.remove(&owner);
             }
         }
         Some(owner)
     }
 
-    /// Remember `owner`'s log identity for its pets' later teardown logs.
-    pub fn note_owner_identity(&mut self, owner: u32, identity: PlayerIdentity) {
-        self.owner_identity.insert(owner, identity);
-    }
-
-    /// The owner's identity as captured at summon, or `UNKNOWN`.
-    pub fn owner_identity(&self, owner: u32) -> PlayerIdentity {
-        self.owner_identity
-            .get(&owner)
+    /// The identity of the player who summoned `pet`, captured at summon,
+    /// or `UNKNOWN`.
+    pub fn summoner_identity(&self, pet: u32) -> PlayerIdentity {
+        self.summoner
+            .get(&pet)
             .copied()
             .unwrap_or(PlayerIdentity::UNKNOWN)
     }
 
-    /// Whether `live` (the identity of whoever holds `owner`'s entity id
-    /// now) is the player who summoned `owner`'s pets.
+    /// Whether `live` (the identity of whoever holds the pet's owner id
+    /// now) is the player who summoned `pet`.
     ///
     /// Entity ids are reused, so the id alone cannot tell the summoner from
     /// a later player given the same id. The summon-time capture decides:
@@ -105,8 +105,8 @@ impl PetRegistry {
     /// goes through `spawn_pet_from_template`, which captures the owner's
     /// identity, so this only strands a pet whose owner had no session
     /// identity at summon, which is not a real player.
-    pub fn owner_identity_matches(&self, owner: u32, live: PlayerIdentity) -> bool {
-        let captured = self.owner_identity(owner);
+    pub fn summoner_matches(&self, pet: u32, live: PlayerIdentity) -> bool {
+        let captured = self.summoner_identity(pet);
         match (captured.player_id, captured.account_id) {
             (Some(player), _) => live.player_id == Some(player),
             (None, Some(account)) => live.account_id == Some(account),
@@ -174,7 +174,7 @@ impl SpaceManager {
                 Err(PetReject::PetGone)
             } else if !self
                 .pets
-                .owner_identity_matches(caller, self.player_identity(caller))
+                .summoner_matches(pet, self.player_identity(caller))
             {
                 Err(PetReject::OwnerIdentityMismatch)
             } else {
@@ -218,8 +218,7 @@ impl SpaceManager {
         if let Some(owner) = self.pets.owner_of(attacker) {
             let live = self.player_identity(owner);
             let holder = self.get_entity(owner);
-            if holder.is_some_and(|e| e.is_player) && self.pets.owner_identity_matches(owner, live)
-            {
+            if holder.is_some_and(|e| e.is_player) && self.pets.summoner_matches(attacker, live) {
                 return Some(owner);
             }
             let reason = if holder.is_none() {
@@ -227,7 +226,7 @@ impl SpaceManager {
             } else {
                 "owner_identity_mismatch"
             };
-            let summoner = self.pets.owner_identity(owner);
+            let summoner = self.pets.summoner_identity(attacker);
             tracing::warn!(
                 target: "pets.credit",
                 event = "credit_refused",

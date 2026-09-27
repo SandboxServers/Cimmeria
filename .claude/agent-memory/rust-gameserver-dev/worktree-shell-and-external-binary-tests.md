@@ -22,8 +22,8 @@ cannot statically resolve.
 - `python3 - <<'PY' ... PY` when combined with anything else on the line.
 - `cat >> file <<'EOF'` to append to a source file.
 
-What works: spell the binary out in full (`/c/Users/.../lane.sh cargo
-...`), put env vars as a plain `FOO=bar cmd` prefix (that form *is*
+What works: spell the binary out in full (the absolute path to your
+worktree's `tools/build-lane/lane.sh`), put env vars as a plain `FOO=bar cmd` prefix (that form *is*
 accepted), write commit messages to a scratch file and `git commit -F
 <path>` as a separate call, and use the Edit/Write tools instead of
 heredoc appends.
@@ -61,9 +61,10 @@ another agent's files. Give scratch scripts a packet-unique name
 (`pt01_*.py`), hard-code your own worktree in `ROOT`, and re-read a script
 before re-running it.
 
-Also, when the B: Dev Drive fills up ("no space on device"), delete only
-your own `B:\targets\<worktree>` and point `CIMMERIA_TARGET_ROOT` at a C:
-scratch directory.
+Also, when the Dev Drive that holds the build-lane target dirs fills up
+("no space on device"), delete only your own worktree's target dir under
+`CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch
+directory on a drive with free space.
 
 ## A test against a rebuilt C++ binary needs an explicit opt-in
 

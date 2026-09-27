@@ -102,12 +102,12 @@ impl SpaceManager {
         summon_ability_id: i32,
     ) -> Result<u32, PetSpawnError> {
         let result = self.spawn_pet_inner(owner, template_id, summon_ability_id);
-        // The owner is alive here on both arms; its identity is also kept on
-        // the registry for teardown logs, which may run after it is gone.
+        // The owner is alive here on both arms. `spawn_pet_inner` also keeps
+        // its identity on the registry, per pet, for the ownership checks and
+        // for teardown logs that may run after the owner is gone.
         let id = self.player_identity(owner);
         match &result {
             Ok(pet_id) => {
-                self.pets.note_owner_identity(owner, id);
                 tracing::info!(
                     target: "pets.lifecycle",
                     decision_outcome = "summoned",
@@ -216,7 +216,8 @@ impl SpaceManager {
                 summon_ability_id,
             )));
         }
-        self.pets.register(owner, pet_id);
+        let summoner = self.player_identity(owner);
+        self.pets.register(owner, pet_id, summoner);
         Ok(pet_id)
     }
 }

@@ -47,6 +47,16 @@ fn reuse_owner_id_by_another_player(mgr: &mut SpaceManager) {
     impostor.player_id = Some(4243);
 }
 
+/// [`reuse_owner_id_by_another_player`], then the id's new holder summons
+/// a pet of its own before the sweep runs. Returns that second pet. With an
+/// owner-keyed capture, this summon would overwrite the first owner's
+/// identity and make the OLD pet look like the new holder's (Copilot, #870).
+fn reuse_owner_id_then_resummon(mgr: &mut SpaceManager) -> u32 {
+    reuse_owner_id_by_another_player(mgr);
+    mgr.spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 1643)
+        .expect("the id's new holder summons its own pet")
+}
+
 /// A world with `OWNER` (level 12) in Agnos and one pet summoned for it.
 fn world_with_pet() -> (SpaceManager, u32) {
     let mut mgr = make_world();

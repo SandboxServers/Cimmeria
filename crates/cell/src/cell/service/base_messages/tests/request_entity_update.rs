@@ -328,10 +328,10 @@ async fn request_entity_update_replays_pet_lists_to_the_owner_only() {
         state.stance = PetStance::Aggressive;
         p.pet = Some(Box::new(state));
     }
-    mgr.pets.register(OWNER, PET);
-    // What `spawn_pet_from_template` captures at summon.
-    mgr.pets.note_owner_identity(
+    // With the summoner's identity, as `spawn_pet_from_template` captures it.
+    mgr.pets.register(
         OWNER,
+        PET,
         PlayerIdentity::new(Some(OWNER * 10), Some(OWNER as i32 * 100)),
     );
     let engine = ChainEngine::new();

@@ -31,7 +31,7 @@ fn assert_owner_identity(c: &Captured) {
 }
 
 #[tokio::test]
-async fn summon_is_a_debug_event_with_owner_identity_and_template() {
+async fn summon_is_an_info_event_with_owner_identity_and_template() {
     let logs = LogCapture::install();
     let (_mgr, pet) = world_with_pet();
     let c = event(&logs, "pets.lifecycle", "summoned").expect("summoned event");
@@ -64,7 +64,8 @@ async fn ownership_rejections_log_their_reason_at_debug() {
     let logs = LogCapture::install();
     let (mut mgr, pet) = world_with_pet();
     add_pet_owner(&mut mgr, OTHER, "Agnos", [1.0, 0.0, 1.0], 5);
-    mgr.pets.register(OWNER, 999_999);
+    let owner_identity = mgr.player_identity(OWNER);
+    mgr.pets.register(OWNER, 999_999, owner_identity);
 
     let _ = mgr.owned_pet(OTHER, pet);
     let _ = mgr.owned_pet(OWNER, OTHER);
@@ -174,7 +175,8 @@ async fn disconnect_logs_despawn_and_owner_forgotten() {
 async fn orphan_registry_entry_is_scrubbed_with_a_warn() {
     let (mut mgr, _pet) = world_with_pet();
     let (tx, _rx) = mpsc::channel(64);
-    mgr.pets.register(OWNER, 999_999);
+    let owner_identity = mgr.player_identity(OWNER);
+    mgr.pets.register(OWNER, 999_999, owner_identity);
     let logs = LogCapture::install();
     pet_owner_sweep(&tx, &mut mgr).await;
     let c = logs
@@ -190,7 +192,8 @@ async fn orphan_registry_entry_is_scrubbed_with_a_warn() {
 async fn despawning_a_missing_pet_warns_with_reason() {
     let (mut mgr, _pet) = world_with_pet();
     let (tx, _rx) = mpsc::channel(64);
-    mgr.pets.register(OWNER, 999_999);
+    let owner_identity = mgr.player_identity(OWNER);
+    mgr.pets.register(OWNER, 999_999, owner_identity);
     let logs = LogCapture::install();
     let _ = despawn_pet(&mut mgr, 999_999, PetDespawnReason::Dismissed, &tx).await;
     let c = logs
