@@ -7,7 +7,9 @@
 
 use std::time::{Duration, Instant};
 
-use super::super::chat::{send_player_communication_at, CHAT_TOO_LONG_TEXT};
+use super::super::chat::{
+    send_player_communication_at, CHAT_BAD_CHARACTER_TEXT, CHAT_TOO_LONG_TEXT,
+};
 use super::super::*;
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 use tracing::Level;
@@ -219,11 +221,42 @@ async fn chat_rejects_text_over_cap() {
         "an over-cap line must never reach the cell"
     );
     let event = capture
-        .find_event(Level::WARN, "text over the length cap", "text_over_cap")
-        .expect("the refused line must log reason=text_over_cap at WARN");
+        .find_event(Level::WARN, "chat text rules", "too_long")
+        .expect("the refused line must log chat.rejected reason=too_long at WARN");
     assert_eq!(event.target, "chat");
+    assert!(event.has_field("event", "chat.rejected"));
     assert!(event.has_field("text_units", "256"));
     assert_eq!(h.feedback(), vec![CHAT_TOO_LONG_TEXT]);
+}
+
+/// D-SS12 with the D-ORG10 character rules (one implementation,
+/// `org_text::validate(TextField::ChatText, ..)`): controls, bidi and
+/// zero-width characters and newlines are refused before the cell, each with
+/// its own `reason`.
+#[tokio::test]
+async fn chat_rejects_forbidden_characters() {
+    for (text, reason) in [
+        ("hi\u{202E}olleh", "bidi_control"),
+        ("in\u{200B}visible", "zero_width"),
+        ("tab\there", "control_char"),
+        ("two\nlines", "control_char"),
+        ("soft\u{00AD}hyphen", "format_char"),
+        ("sep\u{2028}arator", "line_separator"),
+    ] {
+        let capture = LogCapture::install();
+        let mut h = Harness::new(0);
+        h.say(text, Instant::now()).await;
+        assert!(h.forwarded().is_empty(), "{text:?} must not reach the cell");
+        let event = capture
+            .find_event(Level::WARN, "chat text rules", reason)
+            .unwrap_or_else(|| panic!("{text:?} must log chat.rejected reason={reason}"));
+        assert_eq!(event.target, "chat");
+        assert_eq!(h.feedback(), vec![CHAT_BAD_CHARACTER_TEXT], "{text:?}");
+    }
+    // Ordinary non-Latin text is fine.
+    let mut h = Harness::new(0);
+    h.say("Kree! Jaffa, ça va? 界", Instant::now()).await;
+    assert_eq!(h.forwarded(), vec!["Kree! Jaffa, ça va? 界"]);
 }
 
 /// The cap counts UTF-16 units: 255 is accepted, and a supplementary-plane

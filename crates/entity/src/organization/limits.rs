@@ -102,3 +102,10 @@ pub const MAX_NOTE_UNITS: usize = 128;
 pub const MAX_OFFICER_NOTE_UNITS: usize = 128;
 /// Longest rank name.
 pub const MAX_RANK_NAME_UNITS: usize = 32;
+
+/// Longest chat line (`sendPlayerCommunication` text). Not an organization
+/// field: the social-systems campaign's D-SS12 cap ("the client's input
+/// cap, never more than 255"), kept here so the one D-ORG10 implementation
+/// holds every text cap. Provisional until SS-E1 reports the client's own
+/// input limit; it may only go down.
+pub const MAX_CHAT_TEXT_UNITS: usize = 255;

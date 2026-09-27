@@ -1,5 +1,7 @@
 //! The D-ORG10 text rules: the one implementation, for every organization
-//! text field and every caller (cell methods, base methods, GM commands).
+//! text field and every caller (cell methods, base methods, GM commands),
+//! and for the social-systems campaign's player text (D-SS12: the chat
+//! line, [`TextField::ChatText`]), which reuses them rather than forking.
 //!
 //! Text is **rejected**, never truncated or silently cleaned, so the caller
 //! can give the player feedback. Project policy, not recovered data, except
@@ -46,8 +48,8 @@
 use std::fmt;
 
 use super::limits::{
-    MAX_MOTD_UNITS, MAX_NAME_UNITS, MAX_NOTE_UNITS, MAX_OFFICER_NOTE_UNITS, MAX_RANK_NAME_UNITS,
-    MIN_NAME_UNITS,
+    MAX_CHAT_TEXT_UNITS, MAX_MOTD_UNITS, MAX_NAME_UNITS, MAX_NOTE_UNITS, MAX_OFFICER_NOTE_UNITS,
+    MAX_RANK_NAME_UNITS, MIN_NAME_UNITS,
 };
 
 /// Which organization text a string is.
@@ -63,6 +65,9 @@ pub enum TextField {
     OfficerNote,
     /// A rank's display name (CM 17).
     RankName,
+    /// A chat line (`sendPlayerCommunication` text, social-systems D-SS12).
+    /// Free text, one line, not normalised.
+    ChatText,
 }
 
 impl TextField {
@@ -72,7 +77,7 @@ impl TextField {
         match self {
             TextField::Name => MIN_NAME_UNITS,
             TextField::RankName => 1,
-            TextField::Motd | TextField::Note | TextField::OfficerNote => 0,
+            TextField::Motd | TextField::Note | TextField::OfficerNote | TextField::ChatText => 0,
         }
     }
 
@@ -84,6 +89,7 @@ impl TextField {
             TextField::Note => MAX_NOTE_UNITS,
             TextField::OfficerNote => MAX_OFFICER_NOTE_UNITS,
             TextField::RankName => MAX_RANK_NAME_UNITS,
+            TextField::ChatText => MAX_CHAT_TEXT_UNITS,
         }
     }
 
@@ -102,6 +108,7 @@ impl TextField {
             TextField::Note => "note",
             TextField::OfficerNote => "officer_note",
             TextField::RankName => "rank_name",
+            TextField::ChatText => "chat_text",
         }
     }
 }

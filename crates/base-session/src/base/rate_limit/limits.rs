@@ -52,5 +52,7 @@ pub const CHAT_EXEMPT_ACCESS_LEVEL: u32 = 2;
 
 /// Longest chat line accepted, in UTF-16 units (D-SS12: "never more than
 /// 255"). Provisional until SS-E1 reports the client's own input cap; the
-/// server cap may only go down to meet it, never above 255.
-pub const MAX_CHAT_TEXT_UNITS: usize = 255;
+/// server cap may only go down to meet it, never above 255. Defined beside
+/// the other text caps in the one D-ORG10 implementation
+/// (`TextField::ChatText`), which the chat path validates with.
+pub use cimmeria_entity::organization::limits::MAX_CHAT_TEXT_UNITS;

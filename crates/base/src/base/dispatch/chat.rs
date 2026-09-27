@@ -17,6 +17,8 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::read_wstring;
 
 use super::super::feedback::{send_feedback_line, FeedbackCtx};
+use cimmeria_entity::organization::org_text::{validate, TextField, TextReject};
+
 use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_UNITS};
 use super::super::rate_limit::{log_exceeded, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
@@ -31,11 +33,14 @@ const MAX_DND_MESSAGE_CHARS: usize = 128;
 /// ever sees the line:
 ///
 /// 1. the per-player chat bucket (D-SS14; GameMaster and above exempt);
-/// 2. the D-SS12 length cap, [`MAX_CHAT_TEXT_UNITS`] UTF-16 units.
+/// 2. the D-SS12 text rules: at most [`MAX_CHAT_TEXT_UNITS`] UTF-16 units and
+///    none of the characters D-ORG10 forbids (controls, bidi, zero-width and
+///    other format characters, line separators), through the one
+///    implementation, `org_text::validate(TextField::ChatText, ..)`.
 ///
-/// The bucket runs first, so an over-long line also costs a token: a client
-/// spamming over-long lines is limited like any other flood, and cannot turn
-/// each bad packet into a feedback packet.
+/// The bucket runs first, so a refused line also costs a token: a client
+/// spamming bad lines is limited like any other flood, and cannot turn each
+/// bad packet into a feedback packet.
 pub(super) async fn handle_send_player_communication(
     payload: &[u8],
     player_name: &Option<String>,
@@ -139,22 +144,22 @@ pub(super) async fn send_player_communication_at(
         return;
     }
 
-    // D-SS12: reject, never truncate. Counted in UTF-16 units, the unit the
-    // client's WSTRING and its input box use.
-    let text_units = text.encode_utf16().count();
-    if text_units > MAX_CHAT_TEXT_UNITS {
+    // D-SS12: reject, never truncate. Lengths count UTF-16 units, the unit
+    // the client's WSTRING and its input box use.
+    if let Err(reject) = validate(TextField::ChatText, &text) {
         tracing::warn!(
             target: "chat",
             event = "chat.rejected",
             %addr,
             player_id,
             channel,
-            text_units,
+            text_units = text.encode_utf16().count(),
             max_units = MAX_CHAT_TEXT_UNITS,
-            reason = "text_over_cap",
-            "sendPlayerCommunication rejected: text over the length cap, not forwarded",
+            reason = reject.reason(),
+            detail = %reject,
+            "sendPlayerCommunication rejected: text breaks the chat text rules, not forwarded",
         );
-        send_feedback_line(&feedback, addr, CHAT_TOO_LONG_TEXT).await;
+        send_feedback_line(&feedback, addr, chat_reject_text(&reject)).await;
         return;
     }
 
@@ -186,6 +191,18 @@ pub(super) async fn send_player_communication_at(
 
 /// Feedback for a chat line over [`MAX_CHAT_TEXT_UNITS`].
 pub(super) const CHAT_TOO_LONG_TEXT: &str = "Your message is too long.";
+
+/// Feedback for a chat line with a character the text rules forbid.
+pub(super) const CHAT_BAD_CHARACTER_TEXT: &str =
+    "Your message contains a character that cannot be sent.";
+
+/// The one line the player reads for a refused chat line.
+fn chat_reject_text(reject: &TextReject) -> &'static str {
+    match reject {
+        TextReject::TooLong { .. } => CHAT_TOO_LONG_TEXT,
+        _ => CHAT_BAD_CHARACTER_TEXT,
+    }
+}
 
 /// `chatJoin(WSTRING channelName, WSTRING password)` — acknowledged (channels
 /// are auto-joined).

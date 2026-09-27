@@ -141,9 +141,10 @@ feedback line through `base::feedback::send_feedback_line`, and
 WARN (DEBUG for the silent drops between notifies). GameMaster (access level
 2) and above skip the chat bucket only.
 
-The chat path checks the bucket **before** the D-SS12 length cap (255 UTF-16
-units), so an over-long line also costs a token and a client cannot turn a
-stream of bad packets into a stream of feedback packets.
+The chat path checks the bucket **before** the D-SS12 text rules (255 UTF-16
+units and the D-ORG10 character rules, through `org_text::validate`), so a
+refused line also costs a token and a client cannot turn a stream of bad
+packets into a stream of feedback packets.
 
 Still open: ability-use attempts, trade requests and login attempts have no
 bucket.

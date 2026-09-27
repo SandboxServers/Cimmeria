@@ -27,7 +27,7 @@ Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `c
 | DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |
 | Flood limit | DONE (not client-tested) | Every line is checked against a per-player bucket on the base before it reaches the cell: 5 back to back, then one a second. GameMaster and above are exempt. See [Flood limit and length cap](#flood-limit-and-length-cap) |
-| Length cap | DONE (not client-tested) | A line over 255 UTF-16 units is refused, not truncated |
+| Text rules | DONE (not client-tested) | A line over 255 UTF-16 units, or with a control, bidi, zero-width or other invisible formatting character, is refused, not truncated or cleaned |
 | GM console passthrough | DONE | A `.`-prefixed say from a GM is routed to the console handler; from a non-GM it falls through as ordinary chat |
 | Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. Channels are auto-joined at login; there is no join/leave state to change |
 | AFK status | ACK-ONLY | `chatSetAFKMessage` is deliberately log-only — AFK is not a speaker flag, and the auto-reply-tell path it feeds is unported |
@@ -143,9 +143,9 @@ Computed in `base/dispatch/mod.rs::speaker_flags` and stamped onto every outboun
 `sendPlayerCommunication` runs two gates on the base, in this order, before the line is forwarded to the cell (SS-00, decisions D-SS14 and D-SS12 in `docs/analysis/social-systems/README.md`):
 
 1. **Flood limit.** Each player has a chat token bucket: a burst of 5 lines, then one more per second. A line with no token is dropped. The first drop sends the player "You are sending messages too quickly." on the feedback channel; further drops inside the next 5 seconds are silent, so a flood never turns into a flood of replies. Access level GameMaster (2) and above skip the bucket. The bucket covers every channel the player sends on, tells included.
-2. **Length cap.** A line longer than 255 UTF-16 units (the unit of the client's `WSTRING`; a character outside the Basic Multilingual Plane counts two) is refused with "Your message is too long." It still used up a token, so over-long lines cannot be spammed past the flood limit.
+2. **Text rules.** A line longer than 255 UTF-16 units (the unit of the client's `WSTRING`; a character outside the Basic Multilingual Plane counts two) is refused with "Your message is too long." A line containing a control character (tab and newline included), a bidi control, a zero-width or other format character, or a line or paragraph separator is refused with "Your message contains a character that cannot be sent." These are the organizations campaign's D-ORG10 rules, applied through the same function (`org_text::validate(TextField::ChatText, ..)`), not a second filter. A refused line still used up a token, so bad lines cannot be spammed past the flood limit.
 
-Both numbers are project policy, not recovered client data. The cap may come down to the client's own input limit once SS-E1 reports it (it never goes above 255). The character rules of D-SS12 (no control, bidi or zero-width characters) are not applied yet: they share one implementation with the organizations campaign (`org_text::validate`, ORG-01) and land when that merges. Drops log `rate_limit.exceeded` and refusals `chat.rejected`; see the `rate_limit` and `chat` rows of the target catalog in [observability.md](../architecture/observability.md).
+The numbers are project policy, not recovered client data. The cap may come down to the client's own input limit once SS-E1 reports it (it never goes above 255). Drops log `rate_limit.exceeded` and refusals `chat.rejected`; see the `rate_limit` and `chat` rows of the target catalog in [observability.md](../architecture/observability.md).
 
 ## Remaining Work
 
