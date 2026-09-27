@@ -116,6 +116,22 @@ impl CraftReject {
                  Nothing was used."
                     .to_string()
             }
+            CraftReject::UnknownBlueprint { .. } => "You do not know that blueprint.".to_string(),
+            CraftReject::DisciplineUnknown { .. } => {
+                "You must learn the blueprint's discipline first.".to_string()
+            }
+            CraftReject::NotAlloy { .. } => "That blueprint is not an alloy.".to_string(),
+            CraftReject::WrongTier { required_tier, .. } => format!(
+                "Elementary components must be one tier lower than the component (tier {required_tier}). Nothing was used."
+            ),
+            CraftReject::CountNotMet { .. } => {
+                "The quantity of elementary components per item quality was not met: 10 Normal, 5 Good, 2 Great or 1 Fantastic. Nothing was used."
+                    .to_string()
+            }
+            CraftReject::MultipleBuckets { .. } => {
+                "Multiple categories of elementary components were met; use one quality only. Nothing was used."
+                    .to_string()
+            }
         }
     }
 }

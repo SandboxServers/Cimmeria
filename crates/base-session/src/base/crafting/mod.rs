@@ -11,6 +11,8 @@
 //! - [`research`] and [`reverse_engineer`]: the `research` and
 //!   `reverseEngineer` inductions; [`induction_verb`] and [`item_lookup`]
 //!   hold what an induction verb does around its own rule.
+//! - [`alloy`]: `alloying`, one component plus elementary components into
+//!   an alloy, as an induction.
 //! - [`feedback`]: the rejection path. Every refused request gets a visible
 //!   text line.
 //! - [`sync`]: the owner-only pushes of crafting state to the client (136,
@@ -42,6 +44,7 @@
 //! - [`item_use`]: using a Blueprint item or a Racial Paradigm Guide.
 
 pub mod allcraft;
+pub mod alloy;
 pub mod feedback;
 pub mod gate;
 pub mod handlers;

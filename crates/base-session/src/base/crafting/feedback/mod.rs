@@ -115,6 +115,10 @@ async fn refuse(
         applied_science_id = c.applied_science_id,
         tools = why.tools_considered(),
         blueprint_ids = why.blueprints_considered(),
+        blueprint_id = c.blueprint_id,
+        tier = c.tier,
+        required_tier = c.required_tier,
+        elementary_counts = why.elementary_counts(),
         "crafting request rejected"
     );
     record_rejection(verb, reason);

@@ -134,6 +134,12 @@ pub struct JobReport {
     /// `blueprint_id:known_before→known_after` per blueprint taught,
     /// comma-separated.
     pub blueprints_learned: String,
+    /// The elementary quality whose count an alloy met (`normal`, `good`,
+    /// `great`, `fantastic`).
+    pub quality_bucket: Option<&'static str>,
+    /// An alloy's elementary components as
+    /// `item_id:type_id:quality:tier:quantity_used`, comma-separated.
+    pub elementary: String,
 }
 
 /// The base handles an induction needs after the request that queued it

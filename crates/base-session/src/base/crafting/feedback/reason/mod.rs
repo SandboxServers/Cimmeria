@@ -152,6 +152,30 @@ pub enum CraftReject {
     NotReverseEngineerable { item_id: i32, type_id: i32 },
     /// No blueprint with a recipe makes the item.
     NoBlueprintForItem { item_id: i32, type_id: i32 },
+    /// A blueprint the catalog does not have, or the player has not
+    /// learned. The client lists only known blueprints, so this is a
+    /// forged or stale request.
+    UnknownBlueprint { blueprint_id: i32 },
+    /// The blueprint is known but its discipline is not.
+    DisciplineUnknown {
+        blueprint_id: i32,
+        discipline_id: i32,
+    },
+    /// An alloy request named a blueprint that is not an alloy.
+    NotAlloy { blueprint_id: i32 },
+    /// An elementary component is not exactly one tier below the alloy's
+    /// component.
+    WrongTier {
+        item_id: i32,
+        type_id: i32,
+        tier: i32,
+        required_tier: i32,
+    },
+    /// No quality's elementary count was met. `counts` is the summed stack
+    /// quantity per quality: Normal, Good, Great, Fantastic.
+    CountNotMet { counts: [i64; 4] },
+    /// More than one quality's elementary count was met at once.
+    MultipleBuckets { counts: [i64; 4] },
 }
 
 impl CraftReject {
@@ -199,6 +223,12 @@ impl CraftReject {
             CraftReject::KickerDuplicateScience { .. } => "kicker_duplicate_science",
             CraftReject::NotReverseEngineerable { .. } => "not_reverse_engineerable",
             CraftReject::NoBlueprintForItem { .. } => "no_blueprint_for_item",
+            CraftReject::UnknownBlueprint { .. } => "unknown_blueprint",
+            CraftReject::DisciplineUnknown { .. } => "discipline_unknown",
+            CraftReject::NotAlloy { .. } => "not_alloy",
+            CraftReject::WrongTier { .. } => "wrong_tier",
+            CraftReject::CountNotMet { .. } => "count_not_met",
+            CraftReject::MultipleBuckets { .. } => "multiple_buckets",
         }
     }
 
@@ -209,6 +239,22 @@ impl CraftReject {
         match self {
             CraftReject::BlueprintAlreadyKnown { blueprint_ids, .. } => {
                 Some(format!("{blueprint_ids:?}"))
+            }
+            _ => None,
+        }
+    }
+
+    /// The summed elementary stack quantity per quality an alloy count
+    /// rule compared, as the `elementary_counts` field of the `rejected`
+    /// event (`normal:10,good:0,great:0,fantastic:0`); `None` for every
+    /// other reason.
+    pub fn elementary_counts(&self) -> Option<String> {
+        match self {
+            CraftReject::CountNotMet { counts } | CraftReject::MultipleBuckets { counts } => {
+                Some(format!(
+                    "normal:{},good:{},great:{},fantastic:{}",
+                    counts[0], counts[1], counts[2], counts[3]
+                ))
             }
             _ => None,
         }
@@ -257,6 +303,12 @@ impl CraftReject {
             | CraftReject::KickerDuplicateScience { .. }
             | CraftReject::NotReverseEngineerable { .. }
             | CraftReject::NoBlueprintForItem { .. } => None,
+            CraftReject::UnknownBlueprint { .. }
+            | CraftReject::DisciplineUnknown { .. }
+            | CraftReject::NotAlloy { .. }
+            | CraftReject::WrongTier { .. }
+            | CraftReject::CountNotMet { .. }
+            | CraftReject::MultipleBuckets { .. } => None,
         }
     }
 }
