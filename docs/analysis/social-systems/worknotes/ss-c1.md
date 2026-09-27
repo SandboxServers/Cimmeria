@@ -274,6 +274,10 @@ Also: four SQL strings in `persistence/mod.rs` and `ignore/mod.rs` had lost thei
 | `live-db-test.sh ignore` / `tell` / `mail` / `contact_list` | 56 / 23 / 59 / 59 passed, 0 failed |
 | clippy `-D warnings` on the 10 crates; `cargo fmt --all -- --check` | clean |
 
+## Final rebase
+
+Rebased onto `origin/main` after crafting CR-09. The only conflict was the `docs/gap-analysis.md` TOTALS and summary block again, recomputed from the rows: 472 / CW 169 / NT 68 / IM 102 / KM 129 / NU 4 (35.8 / 14.4 / 21.6 / 27.3 / 0.8%; code exists 339, 71.8%). After it: nextest on the 8 crates 2226 passed; `live-db-test.sh` ignore 56, tell 23, mail 59, contact_list 59, all passed; fmt and clippy clean.
+
 ## Known gaps
 
 1. **Mute (SS-C3).** `tell.rs` has a `TODO(SS-C3)` where a muted sender is refused.
