@@ -286,3 +286,36 @@ async fn countdown_end_with_a_duelist_gone_is_refused() {
         assert!(ev.has_field(k, v), "engage_refused {k}={v}: {ev:?}");
     }
 }
+
+/// The single end SS-U2's GM `.duel_end` must call for an engaged duel:
+/// `end_engaged` with `GmAborted` clears both flags, 153 and the combat pair,
+/// returns the duel and logs `reason = gm_aborted`. A second call finds
+/// nothing, so a GM path that already removed the duel cannot double-send.
+#[tokio::test]
+async fn gm_end_of_an_engaged_duel_clears_through_end_engaged() {
+    use crate::cell::duel::{end_engaged, EndReason};
+    let capture = LogCapture::install();
+    let mut mgr = aoi_mgr();
+    let (tx, mut rx) = mpsc::channel(256);
+    engage(&mut mgr, &tx, &mut rx).await;
+    drain(&mut rx);
+    let duel_id = mgr.duels.duel_of(A_PID).unwrap().duel_id;
+
+    let ended = end_engaged(&tx, &mut mgr, duel_id, EndReason::GmAborted).await;
+    assert_eq!(ended.map(|d| d.duel_id), Some(duel_id));
+    let sent = drain(&mut rx);
+    for me in [A_EID, B_EID] {
+        assert_eq!(own(&sent, me, PVP_FLAG), vec![build_pvp_flag(false)]);
+        assert_eq!(own(&sent, me, DUEL_CLEAR).len(), 1);
+        assert!(mgr.get_entity(me).unwrap().threatened_mobs.is_empty());
+    }
+    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "duel.ended") && c.has_field("reason", "gm_aborted")));
+    assert!(end_engaged(&tx, &mut mgr, duel_id, EndReason::GmAborted)
+        .await
+        .is_none());
+    assert!(drain(&mut rx).is_empty());
+}

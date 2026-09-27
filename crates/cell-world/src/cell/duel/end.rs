@@ -39,6 +39,10 @@ pub enum EndReason {
     EngagedLimit,
     /// A duelist is no longer at the engaged entity in the duel's space.
     DuelistGone,
+    /// A GM ended it (`.duel_end`, SS-U2). The GM path must call
+    /// [`end_engaged`] for an engaged duel instead of removing it from the
+    /// registry itself, or both players keep their flag and combat state.
+    GmAborted,
 }
 
 impl EndReason {
@@ -47,23 +51,24 @@ impl EndReason {
         match self {
             EndReason::EngagedLimit => "engaged_limit",
             EndReason::DuelistGone => "duelist_gone",
+            EndReason::GmAborted => "gm_aborted",
         }
     }
 }
 
 /// End the engaged duel `duel_id` and clear everything the engage set.
-/// Does nothing when the duel is gone or not engaged.
+/// Returns the ended duel; `None` (and nothing done) when the duel is gone
+/// or not engaged. The single end every path uses: the safety sweep, the
+/// GM `.duel_end` and SS-D3's end paths.
 pub async fn end_engaged(
     tx: &mpsc::Sender<CellToBaseMsg>,
     mgr: &mut SpaceManager,
     duel_id: DuelId,
     reason: EndReason,
-) {
-    let Some(duel) = mgr.duels.duel(duel_id).copied() else {
-        return;
-    };
+) -> Option<super::registry::Duel> {
+    let duel = mgr.duels.duel(duel_id).copied()?;
     let (DuelState::Engaged { .. }, Some(entities)) = (duel.state, duel.engaged_entities) else {
-        return;
+        return None;
     };
     mgr.duels.end_duel(duel_id);
 
@@ -108,6 +113,7 @@ pub async fn end_engaged(
         reason = reason.reason(),
         "duel ended: PvP flags, duel entities and the combat pair cleared"
     );
+    Some(duel)
 }
 
 /// The safety ends, run by the tick: every engaged duel past its limit, or

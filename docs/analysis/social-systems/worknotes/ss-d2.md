@@ -113,6 +113,24 @@ Each mutation applied to the working tree, the named tests run, the file restore
 | no `end::sweep` in the tick | `engaged_limit_...`, `duelist_leaving_...` and `interactable_...` FAILED |
 | no `send_countdown` at the accept | `accept_starts_the_countdown_for_both` FAILED |
 
+## Follow-up: pets stay out of duels, and the SS-U2 GM end
+
+Two coordinator notes after the first push.
+
+**Pets (from the pets campaign).** The duel widening applies only when attacker and target are the two engaged players; a pet never joins a duel (the default until the owner decides). This already held: in `player_may_attack` a pet target takes the NPC branch, which refuses every pet, and `pet::fight_refusal` refuses player targets before it calls the rule (with an empty registry), so a pet neither fights the duel opponent nor accepts its threat. The new guard `duel_opponent_cannot_harm_partner_pet` (`use_ability/tests/duel_gate.rs`) pins it: A, dueling B, cannot target B's pet (the rule, the area rule, the single-target launch, a ground AoE centred on the pet), and B's pet refuses A as a fight target and as a threat source (`fight_refusal`, `threat_refusal`, `generate_threat` leaves A off its threat list). Regression proof: a mutation that lets `player_may_attack` admit any pet while the attacker is in an engaged duel fails it at "the rule". No pets file was edited for this.
+
+**`warmup/tick.rs`** stays at the one-condition edit for PT-04's rebase.
+
+**SS-U2 (#910, open, not merged).** `duel::end_engaged` is the single end every path must use, and now returns the ended `Duel` (`None` when the duel is gone or not engaged, so a second call sends nothing). `EndReason::GmAborted` (`reason = gm_aborted`) exists for `.duel_end`. Guard: `gm_end_of_an_engaged_duel_clears_through_end_engaged` (both flags to 0, 153, combat cleared, the `duel.ended` row, and a second call is a no-op). The integration edits #910 needs, whichever merges second:
+
+- `DuelState::name`: the arm is `DuelState::Engaged { .. } => "engaged"` (the variant now carries `until`).
+- `duel::gm::gm_end`: before `mgr.duels.gm_abort(subject_player_id)`, if the subject's duel is `Engaged`, call `end_engaged(tx, mgr, duel_id, EndReason::GmAborted)` and return `GmAborted::Duel(duel)` without sending its own 878 lines (`end_engaged` sends them). `gm_abort` stays for a countdown or a pending challenge, where nothing was flagged.
+- A `.duel_end` test on an engaged duel that asserts the flag clear and 153, like the guard above.
+
+**Type 11.** `duel_two_duelists_and_a_spectator.rs` is written against `main`, not the #910 branch: it uses `support::enter_castle` and three real sessions, and finishes in about 10 s, well inside the 60 s reap window, so it needs no sparbot heartbeat. If #910 moves `enter_world` into `crates/wireclient/src/world_entry.rs` and changes `support`, adapt the test at merge; it does not use `sparbot`.
+
+Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-cell-combat duel_gate` (3 passed); `lane.sh cargo nextest run -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-wire` (1633 passed, 0 skipped); `lane.sh cargo clippy -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell --all-targets -- -D warnings` (clean); `lane.sh cargo fmt --all` (clean).
+
 ## Docs
 
 - `docs/reverse-engineering/findings/duel-wire-formats.md`: the SS-D2 receiver trace (D-Q4 resolved, D-Q1 driver), both headings updated.

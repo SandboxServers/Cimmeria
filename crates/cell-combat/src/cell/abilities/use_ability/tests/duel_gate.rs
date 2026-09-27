@@ -194,3 +194,108 @@ async fn bystander_untouchable_during_duel() {
     );
     assert!(mgr.get_entity(A).unwrap().pending_cast.is_none());
 }
+
+/// Pets stay out of duels (the default until the owner decides otherwise).
+/// The widening in `player_may_attack` covers the two engaged players
+/// themselves, never a pet: a duelist can neither target nor splash the
+/// opponent's pet, and the pet will not take up the fight against the
+/// duelist. Fails if the duel rule ever leaks to pets.
+#[tokio::test]
+async fn duel_opponent_cannot_harm_partner_pet() {
+    use crate::cell::combat::{area_candidates, may_hit_in_area, player_may_attack};
+    use crate::cell::service::npc_ai::pet::{fight_refusal, threat_refusal};
+    use crate::test_support::{add_pet_owner, make_pet_world, PET_FIXTURE_TEMPLATE_ID};
+
+    const ABILITY: i32 = 60;
+    let mut mgr = make_pet_world();
+    add_pet_owner(&mut mgr, A, "Agnos", [0.0; 3], 10);
+    add_pet_owner(&mut mgr, B, "Agnos", [30.0, 0.0, 0.0], 10);
+    let (a_pid, b_pid) = (
+        mgr.get_entity(A).unwrap().player_id.unwrap(),
+        mgr.get_entity(B).unwrap().player_id.unwrap(),
+    );
+    let pet = mgr
+        .spawn_pet_from_template(B, PET_FIXTURE_TEMPLATE_ID, 0)
+        .expect("B's pet spawns");
+    mgr.get_entity_mut(pet).unwrap().position = cimmeria_common::Vector3::new(3.0, 0.0, 0.0);
+    {
+        let hp = mgr
+            .get_entity_mut(pet)
+            .unwrap()
+            .stats
+            .get_mut(HEALTH)
+            .unwrap();
+        hp.update(0, FULL, FULL);
+        hp.clear_dirty();
+    }
+    let mut def = super::warmup::cast_ability(ABILITY, 0.0);
+    def.event_set_id = None;
+    mgr.ability_defs.insert(ABILITY, def);
+    let mut params = std::collections::HashMap::new();
+    params.insert("HealthDamage".to_string(), "5".to_string());
+    mgr.effect_defs.insert(
+        500,
+        cimmeria_entity::abilities::EffectDef {
+            effect_id: 500,
+            params,
+            ..Default::default()
+        },
+    );
+    {
+        let a = mgr.get_entity_mut(A).unwrap();
+        a.abilities.add_ability(ABILITY);
+        a.weapon_holstered = false;
+    }
+    let _ = mgr.compute_aoi_changes();
+
+    // A and B duel.
+    let now = Instant::now();
+    mgr.duels.open_challenge(a_pid, b_pid, now).unwrap();
+    let p = mgr.duels.take_pending_for(b_pid, now).unwrap();
+    let duel = mgr
+        .duels
+        .start_duel(&p, 1, Vector3::new(15.0, 0.0, 0.0), now);
+    mgr.duels.engage(duel.duel_id, [A, B], now).unwrap();
+    let (attacker, pet_e) = (mgr.get_entity(A).unwrap(), mgr.get_entity(pet).unwrap());
+    assert!(!player_may_attack(attacker, pet_e, &mgr.duels), "the rule");
+    assert!(
+        !may_hit_in_area(attacker, pet_e, &mgr.duels),
+        "the area rule"
+    );
+    assert!(
+        area_candidates(&mgr, A).contains(&B),
+        "the partner is a candidate"
+    );
+
+    let (tx, _rx) = mpsc::channel(1024);
+    // Single target: refused, no damage.
+    assert!(!handle_use_ability(A, ABILITY, pet as i32, &tx, &mut mgr).await);
+    assert_eq!(
+        health(&mgr, pet),
+        FULL,
+        "single target hit the partner's pet"
+    );
+    // Ground AoE on the pet: the pet is not collected (B is out of radius).
+    handle_use_ability_on_ground(A, ABILITY, [3.0, 0.0, 0.0], &tx, &mut mgr).await;
+    assert_eq!(
+        health(&mgr, pet),
+        FULL,
+        "the AoE splashed the partner's pet"
+    );
+
+    // The pet does not take up its owner's duel against A.
+    let owner = mgr.get_entity(B).unwrap();
+    assert!(fight_refusal(owner, mgr.get_entity(A).unwrap()).is_some());
+    assert!(threat_refusal(&mgr, mgr.get_entity(pet).unwrap(), A).is_some());
+    let _ = crate::cell::combat::generate_threat(
+        &mut mgr,
+        A,
+        pet,
+        50.0,
+        crate::cell::combat::AggroCause::Damage,
+    );
+    assert!(
+        !mgr.get_entity(pet).unwrap().threat_list.contains_key(&A),
+        "the pet put the duel opponent on its threat list"
+    );
+}
