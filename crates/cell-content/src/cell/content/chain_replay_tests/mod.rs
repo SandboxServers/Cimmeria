@@ -23,10 +23,13 @@
 //! the resolved actions through
 //! `executor::execute_actions` and assert on the resulting
 //! `CellToBaseMsg` traffic — a resolve-only test cannot tell a wired
-//! executor arm from the `other =>` catch-all.
+//! executor arm from the `other =>` catch-all. [`debug_hub`] belongs to no
+//! mission either (the Cellblock stasis-room debug NPCs) and executes its
+//! chains the same way.
 
 mod castle_702_704_executor;
 mod cellblock_dialog_closes;
+mod debug_hub;
 mod entity_health_below;
 mod gc1_escort;
 mod grant_xp;

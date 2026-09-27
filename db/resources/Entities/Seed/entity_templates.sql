@@ -872,10 +872,73 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (248, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_WallTerminal', NULL, 4, 0, NULL, 1, 0, 1, 2695, NULL, NULL, NULL, 'Harset Monitoring Device Anchor', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
 --
+-- NEW CONTENT (debug hub): templates 300-304, the five debug-hub NPCs in the
+-- Castle_CellBlock stasis room (spawnlist 400-404, docs/content/debug-hub.md).
+-- Each one exercises exactly one server system, so a failure points at that
+-- system. Templates 23 and 25 are deliberately left as they were. The ids
+-- start at 300, not at the first free id, because the Harset rebuild reserves
+-- 200-299 (docs/analysis/harset-rebuild/work-packets.md) and its template
+-- tests count that whole block.
+--
+-- `interaction_type` is the runtime `interaction_type_flags` value
+-- (spawn.rs), so each row carries the one bit that gives the client its
+-- cursor. `name_id` reuses a moniker the client PAK already ships: a new
+-- texts.sql id can never render, and NULL ships a nameless NPC.
+--
+
+-- NEW CONTENT (debug hub): vendor-only NPC. Buy list 1, sell/repair/recharge
+--   list 2, the same lists as template 25. INT_VendorGeneral (65536) is what
+--   routes the click to the store: spawn.rs derives the Vendor interaction
+--   from any INT_Vendor* bit. No trainer list, so the trainer check that
+--   answers template 25's click cannot claim this one.
+-- moniker 8010 `DN_npc_ven_BasicEquipQuartermaste_Harset_JaffaTier0MissionTo`
+--   ('Basic Equipment Quartermaster').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (300, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Boots00_00,BS_HumanMale.BS_HM_Base_Hands00_00,BS_HumanMale.BS_HM_FaceHair_01,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Head_02,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 65536, 570, 1, 0, 1, 8010, NULL, NULL, NULL, 'Debug Hub - Vendor', 'mob', 1, 2, 2, 2, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): ability-trainer-only NPC. Trainer list 1 offers
+--   every tree node (trainer_abilities.sql). A right-click opens the trainer
+--   through `template_trainer_lists`, and the pin that click writes is the
+--   one AT-08's respec gate (`resetMyAbilities`, cell method 72) checks.
+--   INT_Trainer (128) gives the trainer cursor.
+-- moniker 20186 `DN_npc_trn_Global_Trainer` ('Archetype Skills Trainer').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (301, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Ablative.AR_HM_AT3_AT300,AR_H_Ballistic00.AR_HM_BG3_BG300,NPC_Human.NPC_HM_Marsh_Head_BC,AR_H_Ablative.AR_HM_AL3_AL300AH300}', 0, 128, 570, 1, 0, 1, 20186, NULL, NULL, NULL, 'Debug Hub - Trainer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', 1, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): dialog NPC. Clicking him fires chain 7001
+--   (debug_hub_chains.sql), which opens dialog 100100; its button and dialog
+--   100101's close each fire a `dialog_choice` chain. No mission.
+--   INT_NonAStoryMissionAvaliable (134217728) gives the talk cursor and the
+--   side-quest "?"; without a bit the client never sends the click.
+-- moniker 7412 `DN_npc_Int_BetaE1_KhenmerFa_AirmanLance` ('Airman Lance');
+--   speaker 754 is the same Airman Lance, and the dialog screens use it.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (302, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_04}', 0, 134217728, 570, 1, 0, 1, 7412, NULL, NULL, NULL, 'Debug Hub - Dialog', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, 754, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): Livewire minigame terminal. Clicking it fires chain
+--   7004, which starts Livewire; the win fires chain 7005. The
+--   INT_MinigameLivewire bit (256) is permanent on purpose: the terminal is
+--   reusable, so there is no set/clear lifecycle as on a mission console.
+-- moniker 7550 `DN_Ob_Sc_HumanScreen_Cellblock_SecurityTerminal` ('Terminal'),
+--   the same name and mesh as template 19.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (303, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_WallTerminal', NULL, 4, 256, NULL, 1, 0, 1, 7550, NULL, NULL, NULL, 'Debug Hub - Livewire Terminal', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub): loot crate. Loot is only rolled when a mob dies
+--   (loot_drop.rs), so the crate is a killable faction-10 mob: shoot it, then
+--   right-click the corpse for loot table 3 (every entry at probability 1, so
+--   the corpse always carries loot) and use Loot All. The spawn row respawns
+--   it after 30 s.
+-- Faction 10 is what lets the player damage it. It is not a threat: the spawn
+--   row sets NEUTRAL aggression (no proximity aggro) and is_stationary, and
+--   ability set 6 holds only 710 'Staff Melee AA', whose effect deals no
+--   damage. It still turns to face the player and swings at melee range when
+--   hit. An empty set would fall back to 592 Pistol Shot, which does damage.
+--   Level 1 = 250 HP; a GM `.kill` goes through the same death path.
+-- moniker 7054 `DN_Ob_Ms_Human_Castle_Crate` ('Crate').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (304, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, 1, 0, 10, 7054, NULL, NULL, NULL, 'Debug Hub - Loot Crate', 'mob', NULL, NULL, NULL, NULL, 6, NULL, 3, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+--
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210
 -- Name: entity_templates_template_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('entity_templates_template_id_seq', 248, true);
+SELECT pg_catalog.setval('entity_templates_template_id_seq', 304, true);
 

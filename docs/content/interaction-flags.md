@@ -68,6 +68,8 @@ These set the "verb" on the right-click cursor. Set when an NPC becomes interact
 
 Vendor NPCs OR multiple of these together to advertise their stock filter. The client decides which tab to show in the vendor UI.
 
+On the server, any of these bits on a template's `interaction_type` makes the spawned NPC a vendor: a right-click opens the store built from the template's `buy_item_list` / `sell_item_list` / `repair_item_list` / `recharge_item_list` (`static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs`). The derivation happens at spawn only, so a vendor bit OR'd in later by `set_interaction_type` changes the cursor but does not open a store. Worked example: the stasis-room debug vendor, template 300 ([debug-hub.md](debug-hub.md)).
+
 | Bit | Mask | Constant |
 |-----|------|----------|
 | 13 | `8192` | `INT_VendorArmor` |

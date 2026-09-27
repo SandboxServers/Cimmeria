@@ -126,3 +126,112 @@ fn spawn_npc_from_record_sets_template_fields() {
         450
     );
 }
+
+/// A record whose only varying field is `interaction_type`, for the
+/// static-interaction derivation below.
+fn record_with_flags(interaction_type: i64) -> crate::cell::spawner::SpawnRecord {
+    crate::cell::spawner::SpawnRecord {
+        spawn_id: 400,
+        world_name: "Agnos".to_string(),
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        heading: 0.0,
+        class: "mob".to_string(),
+        template_id: 300,
+        template_name: "Debug Hub - Vendor".to_string(),
+        tag: Some("DebugHub_Vendor".to_string()),
+        name_id: Some(8010),
+        speaker_id: None,
+        event_set_id: Some(570),
+        interaction_type,
+        flags: 0,
+        faction: Some(1),
+        alignment: Some(0),
+        level: Some(1),
+        static_interaction_sets: vec![],
+        has_dynamic_properties: true,
+        static_mesh: None,
+        body_set: "BS_HumanMale.BS_HumanMale".to_string(),
+        components: None,
+        loot_table_id: None,
+        is_stationary: false,
+        ability_ids: vec![],
+        respawn_secs: None,
+        patrol_path: vec![],
+        patrol_point_delay_secs: 2.0,
+        wander_radius: 0.0,
+        wander_min_dwell_secs: 3.0,
+        wander_max_dwell_secs: 8.0,
+        follow_min_distance: 2.0,
+        follow_max_distance: 5.0,
+        move_speed: 0.6,
+        leash_distance: None,
+        aggro_radius: None,
+        assist_radius: None,
+        aggression_override: None,
+        use_cover: None,
+    }
+}
+
+/// Any `INT_Vendor*` bit on the template makes the spawned NPC a Vendor, so
+/// `handle_interact` reaches its store-open arm. Before the derivation
+/// existed nothing set `NpcInteractionType::Vendor`, and a vendor-only
+/// template (debug-hub template 300) dead-ended on a right-click; this fails
+/// if the assignment in `spawn_npc_from_record_into` is removed.
+#[test]
+fn spawn_npc_from_record_derives_vendor_from_every_vendor_bit() {
+    use cimmeria_entity::cell_entity::NpcInteractionType;
+    use cimmeria_entity::interaction_flags::*;
+    for bit in [
+        INT_VENDOR_ARMOR,
+        INT_VENDOR_WEAPONS,
+        INT_VENDOR_CONSUMABLES,
+        INT_VENDOR_GENERAL,
+        INT_VENDOR_MISSION,
+        INT_VENDOR_CRAFT_BIO,
+        INT_VENDOR_CRAFT_POWER,
+        INT_VENDOR_CRAFT_MATERIALS,
+        INT_VENDOR_CRAFT_ELECTRONICS,
+    ] {
+        let mut mgr = make_manager();
+        // A vendor bit OR'd with an unrelated one still counts.
+        mgr.spawn_npc_from_record(600, &record_with_flags(bit | INT_TRAINER))
+            .unwrap();
+        assert_eq!(
+            mgr.get_entity(600).unwrap().interaction_type,
+            Some(NpcInteractionType::Vendor),
+            "vendor bit {bit} must derive NpcInteractionType::Vendor",
+        );
+        assert_eq!(
+            mgr.get_entity(600).unwrap().interaction_type_flags,
+            bit | INT_TRAINER,
+            "the flags themselves pass through unchanged",
+        );
+    }
+}
+
+/// No vendor bit, no static interaction: the trainer, minigame, quest and
+/// loot bits are all dispatched elsewhere, and deriving one of them here
+/// would shadow that dispatch.
+#[test]
+fn spawn_npc_from_record_derives_nothing_without_a_vendor_bit() {
+    use cimmeria_entity::interaction_flags::*;
+    for flags in [
+        0,
+        INT_TRAINER,
+        INT_MINIGAME_LIVEWIRE,
+        INT_DHD,
+        INT_NON_A_STORY_MISSION_AVAILABLE,
+        INT_NORMAL_LOOT,
+    ] {
+        let mut mgr = make_manager();
+        mgr.spawn_npc_from_record(600, &record_with_flags(flags))
+            .unwrap();
+        assert_eq!(
+            mgr.get_entity(600).unwrap().interaction_type,
+            None,
+            "flags {flags} carry no vendor bit and must derive nothing",
+        );
+    }
+}

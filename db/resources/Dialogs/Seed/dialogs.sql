@@ -10828,11 +10828,25 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100011, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Sandbox Ba''al Test Mission Accept');
 
+-- NEW CONTENT (debug hub): the stasis-room dialog NPC (template 302) and the
+-- two chat-line holders the debug-hub chains bark from. None of these is in
+-- the client PAK: the client draws 100100 and 100101 from DIALOG_OVERRIDES in
+-- crates/resources/src/base/dialog_overrides/mod.rs, whose text must match
+-- dialog_screens.sql character for character. 100102 and 100103 are never
+-- displayed; `npc_bark` reads their screen text (chains 7003 and 7005).
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100100, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - dialog round trip A');
+
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100101, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - dialog round trip B');
+
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100102, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - dialog bark holder (never displayed)');
+
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100103, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - Livewire bark holder (never displayed)');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309
 -- Name: dialogs_dialog_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialogs_dialog_id_seq', 100011, true);
+SELECT pg_catalog.setval('dialogs_dialog_id_seq', 100103, true);
 

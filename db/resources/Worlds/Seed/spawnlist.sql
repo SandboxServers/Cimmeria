@@ -857,11 +857,48 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (313, -160.5, -28.25, 232.6, 5.0039, 57, 244, 'Harset_PetbeQuarters', NULL, false, 30);
 
 --
+-- NEW CONTENT (debug hub): spawns 400-404, the debug hub in the
+-- Castle_CellBlock stasis room (world 12), templates 300-304. Full write-up:
+-- docs/content/debug-hub.md. The ids start at 400 because the Harset rebuild
+-- reserves 300-399.
+--
+-- ALWAYS SEEDED, BY OWNER DECISION. These are plain rows that every player
+-- sees, in the room every new character wakes up in. `spawnlist` has no
+-- dev/enabled column, and the owner chose visible-to-all over gating. Contrast
+-- Harset packet H13 (header of this file), which deleted spawns 1 and 42
+-- (templates 23 and 25) from the Harset gate plaza because they stood in the
+-- player's face on arrival. These stand along the room's A-B wall instead.
+--
+-- Placement. The room is point set 2032 `Castle_Cellblock.Region1`, corners
+-- A(-347.17, -230.14) B(-327.67, -240.70) C(-318.89, -224.51) D(-338.39,
+-- -213.94) in XZ, D being the raised exit threshold. The five sit on a line
+-- 3 units in from the A-B wall, 3 units apart, at the respawner's floor height
+-- (respawner 8 'Stasis Chamber' is at y = 73.472). The slot closest to the
+-- respawner is left empty, so the nearest NPC is 5.5 units from where a new
+-- character appears. Headings face the room centre (-333.03, -227.32),
+-- yaw = atan2(dx, dz). There is no navmesh or occluder data for this room:
+-- the placement still needs an in-client check.
+--
+-- Only the crate is a mob that can die, so only it carries respawn_secs,
+-- is_stationary and an aggression override (NEUTRAL, 3: no proximity aggro).
+-- Its tag is unique so no entity_dead_tag chain or kill objective can match.
+--
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (400, -343.9, 73.472, -228.49, 1.4638, 12, 300, 'DebugHub_Vendor', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (401, -341.26, 73.472, -229.92, 1.2651, 12, 301, 'DebugHub_Trainer', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (402, -338.63, 73.472, -231.35, 0.9473, 12, 302, 'DebugHub_DialogNpc', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (403, -333.35, 73.472, -234.21, 0.0464, 12, 303, 'DebugHub_LivewireTerminal', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, aggression_override) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL, true, 30, 3);
+
+--
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
 
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 349, true);
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 404, true);
 

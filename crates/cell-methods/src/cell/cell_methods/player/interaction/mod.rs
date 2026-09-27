@@ -9,6 +9,8 @@ use tokio::sync::mpsc;
 
 use super::constants::*;
 
+#[cfg(test)]
+mod debug_hub_dispatch_tests;
 mod dialog;
 #[cfg(test)]
 mod dialog_choice_gate_tests;

@@ -56,6 +56,8 @@ mod patches_castle;
 mod patches_cellblock;
 
 #[cfg(test)]
+mod override_seed_agreement_debug_hub;
+#[cfg(test)]
 mod patch_seed_agreement_castle;
 #[cfg(test)]
 mod patch_seed_agreement_cellblock;
@@ -126,8 +128,10 @@ pub struct DialogOverride {
 ///   1. Insert/patch the row(s) in
 ///      `db/resources/Dialogs/Seed/dialogs.sql` and
 ///      `db/resources/Dialogs/Seed/dialog_screens.sql` so the server-side
-///      catalogue agrees (documentary + used by any server-side log/debug
-///      string — the client renders from this override, not the DB).
+///      catalogue agrees. The client renders from this override, not the
+///      DB, but the server does read the seed: a dialog whose screens all
+///      have `speaker_id = 0` is a monologue, and `display_dialog` binds the
+///      player rather than an NPC as its speaker (`load_monologue_dialog_ids`).
 ///   2. Add a `DialogOverride` here so the client's UI actually renders
 ///      the text via the per-key invalidation handshake.
 ///   3. Bind the dialog to its template via a `dialog_set_maps` row (and,
@@ -137,6 +141,11 @@ pub struct DialogOverride {
 /// The override text and the `dialog_screens.sql` text must be kept in
 /// sync by hand — the override is the source of truth for what the player
 /// sees; the seed row is the canonical record for committing to the repo.
+/// The debug-hub entries are checked against the seed by
+/// `override_seed_agreement_debug_hub`.
+///
+/// Append new entries at the END: tests elsewhere read `DIALOG_OVERRIDES[0]`
+/// as the Frost dialog.
 pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
     // Mission 622 "Arm Yourself!" — Frost's corpse (dialog 3995). The
     // canonical PAK never shipped 3995 (it's a Cimmeria-added dialog), and
@@ -172,6 +181,55 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             speaker_id: 0,
             text: "The NID Guard died with his weapon still drawn. You pry the pistol \
                    from his grip - it's still serviceable.",
+            buttons: &[],
+        }],
+    },
+    // NEW CONTENT (debug hub): the stasis-room dialog NPC (template 302,
+    // Airman Lance, speaker 754), chains 7001-7003 in debug_hub_chains.sql.
+    // Two screens so the player pages with Next; ONE button, on the final
+    // screen (hard rule 1), so reading to the end always leaves something to
+    // press. Type 4 (Generic 1) because a `DUIST_DefaultDialog` draws only
+    // types 2 and 4-6, and type 2 (Accept) would hide the label behind a
+    // fixed image and bring an inert Decline.
+    DialogOverride {
+        dialog_id: 100100,
+        dialog_flags: 0,
+        kismet_event_set_id: 0,
+        ui_screen_type: 2,
+        screens: &[
+            DialogScreen {
+                screen_id: 200000,
+                speaker_id: 754,
+                text: "Debug hub dialog test. This is screen one of two. Page forward to \
+                       reach the button.",
+                buttons: &[],
+            },
+            DialogScreen {
+                screen_id: 200001,
+                speaker_id: 754,
+                text: "Screen two. The button below sends your choice to the server, and the \
+                       server answers by opening a second dialog.",
+                buttons: &[DialogButton {
+                    button_type: 4,
+                    button_id: 8,
+                    text: "Send my choice",
+                }],
+            },
+        ],
+    },
+    // NEW CONTENT (debug hub): the answer to 100100's button. Zero buttons on
+    // purpose: closing it sends `dialogButtonChoice(100101, -1)` (fact F8),
+    // which is the other half of the round trip (chain 7003).
+    DialogOverride {
+        dialog_id: 100101,
+        dialog_flags: 0,
+        kismet_event_set_id: 0,
+        ui_screen_type: 2,
+        screens: &[DialogScreen {
+            screen_id: 200002,
+            speaker_id: 754,
+            text: "Choice received. This dialog has no buttons, so closing it sends -1 to \
+                   the server, which answers in your chat window.",
             buttons: &[],
         }],
     },
@@ -387,12 +445,15 @@ mod tests {
         );
     }
 
-    /// The two shipped overrides must keep zero buttons. A button here
+    /// The two mission-622 overrides must keep zero buttons. A button here
     /// would stop the client sending `dialogButtonChoice(id, -1)` on
     /// close, and the mission 622 search chains key on exactly that.
     #[test]
     fn shipped_overrides_carry_no_buttons() {
-        for ov in DIALOG_OVERRIDES {
+        for ov in DIALOG_OVERRIDES
+            .iter()
+            .filter(|ov| [3995, 3996].contains(&ov.dialog_id))
+        {
             for screen in ov.screens {
                 assert!(
                     screen.buttons.is_empty(),
