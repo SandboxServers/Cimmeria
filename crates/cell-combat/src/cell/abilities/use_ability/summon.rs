@@ -36,6 +36,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_cell_world::cell::pets::{despawn_pet, PetArrival, PetDespawnReason};
 use cimmeria_entity::abilities::AbilityDef;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use super::super::super::combat;
@@ -144,6 +145,7 @@ pub(super) async fn refuse_summon_launch(
             event = "summon_refused",
             decision_outcome = "summon_refused",
             stage = "launch",
+            entity_id,
             owner_id = entity_id,
             account_id = id.account_id,
             player_id = id.player_id,
@@ -158,6 +160,7 @@ pub(super) async fn refuse_summon_launch(
             event = "summon_refused",
             decision_outcome = "summon_refused",
             stage = "launch",
+            entity_id,
             owner_id = entity_id,
             account_id = id.account_id,
             player_id = id.player_id,
@@ -167,7 +170,7 @@ pub(super) async fn refuse_summon_launch(
             "summon refused at launch; no cooldown charged"
         );
     }
-    send_summon_feedback(entity_id, ability_id, code, text, tx).await;
+    send_summon_feedback(entity_id, id, ability_id, code, text, tx).await;
     true
 }
 
@@ -224,6 +227,7 @@ pub(super) async fn fire_summon(
             event = "summon_refused",
             decision_outcome = "summon_refused",
             stage = "fire",
+            entity_id,
             owner_id = entity_id,
             account_id = id.account_id,
             player_id = id.player_id,
@@ -236,6 +240,7 @@ pub(super) async fn fire_summon(
         play_ability_sequence(phase(AbilityPhase::Interrupt), tx, space_mgr).await;
         send_summon_feedback(
             entity_id,
+            id,
             ability_id,
             CONDITION_FEEDBACK_INVALID_ENTITY,
             SUMMON_FAILED_TEXT,
@@ -248,6 +253,7 @@ pub(super) async fn fire_summon(
     tracing::debug!(
         target: "pets.lifecycle",
         event = "summon_fired",
+        entity_id,
         owner_id = entity_id,
         account_id = id.account_id,
         player_id = id.player_id,
@@ -268,6 +274,7 @@ pub(super) async fn fire_summon(
         tracing::debug!(
             target: "pets.lifecycle",
             event = "summon_replaced_pet",
+            entity_id,
             owner_id = entity_id,
             account_id = id.account_id,
             player_id = id.player_id,
@@ -293,6 +300,7 @@ pub(super) async fn fire_summon(
                 event = "summon_refused",
                 decision_outcome = "summon_refused",
                 stage = "spawn",
+                entity_id,
                 owner_id = entity_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
@@ -303,6 +311,7 @@ pub(super) async fn fire_summon(
             );
             send_summon_feedback(
                 entity_id,
+                id,
                 ability_id,
                 CONDITION_FEEDBACK_INVALID_ENTITY,
                 SUMMON_FAILED_TEXT,
@@ -316,6 +325,7 @@ pub(super) async fn fire_summon(
     tracing::debug!(
         target: "pets.lifecycle",
         event = "summon_spawned",
+        entity_id,
         owner_id = entity_id,
         account_id = id.account_id,
         player_id = id.player_id,
@@ -341,6 +351,7 @@ pub(super) fn log_summon_launched(
     tracing::debug!(
         target: "pets.lifecycle",
         event = "summon_launched",
+        entity_id,
         owner_id = entity_id,
         account_id = id.account_id,
         player_id = id.player_id,
@@ -354,6 +365,7 @@ pub(super) fn log_summon_launched(
         tracing::debug!(
             target: "pets.lifecycle",
             event = "summon_warmup_started",
+            entity_id,
             owner_id = entity_id,
             account_id = id.account_id,
             player_id = id.player_id,
@@ -380,6 +392,7 @@ pub(super) fn log_summon_interrupted(
     tracing::debug!(
         target: "pets.lifecycle",
         event = "summon_interrupted",
+        entity_id,
         owner_id = entity_id,
         account_id = id.account_id,
         player_id = id.player_id,
@@ -393,6 +406,7 @@ pub(super) fn log_summon_interrupted(
 /// Queue the summon's target VFX for `pet_id`. It is sent once the owner
 /// witnesses the pet, i.e. after the pet's CREATE_ENTITY, never ahead of it.
 fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32) {
+    let id = space_mgr.player_identity(owner);
     let Some(&sequence_id) = space_mgr
         .sequence_map
         .get(&(SUMMON_TARGET_EVENT_SET, EVENT_EFFECT_INIT))
@@ -401,7 +415,10 @@ fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32) {
             target: "pets.lifecycle",
             event = "arrival_vfx_skipped",
             reason = "no_sequence",
+            entity_id = pet_id,
             owner_id = owner,
+            account_id = id.account_id,
+            player_id = id.player_id,
             pet_id,
             event_set_id = SUMMON_TARGET_EVENT_SET,
             "summon target VFX not in the sequence map; the pet arrives without it"
@@ -420,6 +437,7 @@ fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32) {
 /// `CHAN_FEEDBACK` line to the summoning player. Both self-only.
 async fn send_summon_feedback(
     entity_id: u32,
+    id: PlayerIdentity,
     ability_id: i32,
     code: u16,
     text: &str,
@@ -447,7 +465,10 @@ async fn send_summon_feedback(
                 target: "pets.lifecycle",
                 event = "summon_feedback_send_failed",
                 decision_outcome = "summon_feedback_send_failed",
+                entity_id,
                 owner_id = entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 ability_id,
                 method_index,
                 "summon feedback could not be queued (base channel closed)"

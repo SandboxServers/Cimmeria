@@ -292,6 +292,16 @@ pub async fn handle_use_ability(
     }
 
     if not_known {
+        // An untrained summon gets the summon refusal (onErrorCode, the
+        // CHAN_FEEDBACK line and `summon_refused`), not the bare
+        // onErrorCode every other unknown ability gets (pets PT-03).
+        if let Some(summon) = summon {
+            if super::summon::refuse_summon_launch(entity_id, ability_id, summon, tx, space_mgr)
+                .await
+            {
+                return false;
+            }
+        }
         send_not_known_feedback(entity_id, ability_id, tx).await;
         return false;
     }

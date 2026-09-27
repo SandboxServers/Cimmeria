@@ -158,3 +158,76 @@ async fn reused_owner_id_drops_the_vfx_with_identity_mismatch() {
     assert!(mgr.pets.pending_arrival(pet).is_none());
     assert!(rx.try_recv().is_err(), "nothing sent");
 }
+
+/// The one `pets.lifecycle` row with this `event`, at this level.
+fn lifecycle_event(
+    all: &[crate::test_support::Captured],
+    level: Level,
+    event: &str,
+) -> crate::test_support::Captured {
+    all.iter()
+        .find(|c| c.target == "pets.lifecycle" && c.level == level && c.has_field("event", event))
+        .cloned()
+        .unwrap_or_else(|| panic!("no {level} pets.lifecycle event={event}: {all:#?}"))
+}
+
+/// `world_with_pet`, with the owner's `player_id` known at summon, a VFX
+/// queued, and the AoI tick run so the owner witnesses the pet.
+fn witnessed_pet_with_vfx() -> (SpaceManager, u32) {
+    let mut mgr = make_world();
+    add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
+    mgr.get_entity_mut(OWNER).unwrap().player_id = Some(77);
+    let pet = mgr
+        .spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 1643)
+        .expect("pet spawns");
+    mgr.pets.queue_arrival(pet, arrival());
+    let _ = mgr.compute_aoi_changes();
+    assert!(
+        mgr.get_witnesses_of(pet).contains(&OWNER),
+        "fixture: the owner witnesses the pet"
+    );
+    (mgr, pet)
+}
+
+/// A delivered VFX is counted and logs DEBUG `arrival_vfx_sent` with the
+/// Rule 5 correlators (`entity_id` = the pet, the summoner's ids).
+#[tokio::test]
+async fn delivered_vfx_is_counted_and_logs_sent_with_correlators() {
+    let (mut mgr, pet) = witnessed_pet_with_vfx();
+    let (tx, mut rx) = mpsc::channel(64);
+
+    let logs = LogCapture::install();
+    assert_eq!(drain_arrivals(Instant::now(), &tx, &mut mgr).await, 1);
+    assert!(rx.try_recv().is_ok(), "the owner got the VFX");
+    let c = lifecycle_event(&logs.all(), Level::DEBUG, "arrival_vfx_sent");
+    assert!(c.has_field("entity_id", &pet.to_string()), "{c:?}");
+    assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
+    assert!(c.has_field("player_id", "77"), "{c:?}");
+    assert!(c.has_field("delivered_count", "1"), "{c:?}");
+}
+
+/// Seam: every witness send fails (the base channel is closed). The VFX is
+/// not counted, `arrival_vfx_sent` is not logged, each failed send logs
+/// WARN `arrival_vfx_send_failed`, and the whole attempt logs WARN
+/// `arrival_vfx_undelivered`, all with the Rule 5 correlators.
+#[tokio::test]
+async fn vfx_with_every_send_failing_is_undelivered_not_sent() {
+    let (mut mgr, pet) = witnessed_pet_with_vfx();
+    let (tx, rx) = mpsc::channel(64);
+    drop(rx);
+
+    let logs = LogCapture::install();
+    assert_eq!(drain_arrivals(Instant::now(), &tx, &mut mgr).await, 0);
+    assert!(mgr.pets.pending_arrival(pet).is_none(), "not retried");
+    let all = logs.all();
+    assert!(
+        !all.iter().any(|c| c.has_field("event", "arrival_vfx_sent")),
+        "nothing reached a client, so nothing is logged as sent: {all:#?}"
+    );
+    for event in ["arrival_vfx_send_failed", "arrival_vfx_undelivered"] {
+        let c = lifecycle_event(&all, Level::WARN, event);
+        assert!(c.has_field("entity_id", &pet.to_string()), "{c:?}");
+        assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
+        assert!(c.has_field("player_id", "77"), "{c:?}");
+    }
+}

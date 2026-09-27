@@ -35,6 +35,7 @@ fn row(all: &[Captured], event: &str) -> Captured {
 
 /// The Rule 5 correlators every summon row carries.
 fn assert_owner_correlators(c: &Captured) {
+    assert!(c.has_field("entity_id", &OWNER.to_string()), "{c:?}");
     assert!(c.has_field("owner_id", &OWNER.to_string()), "{c:?}");
     assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
     assert!(c.has_field("player_id", &PLAYER_ID.to_string()), "{c:?}");
@@ -184,4 +185,56 @@ async fn fire_time_dead_owner_logs_warn() {
         .expect("WARN summon_refused reason=owner_dead");
     assert_owner_correlators(&c);
     assert!(mgr.pets.is_empty());
+}
+
+/// **Guard (first-press feedback).** An untrained summon pressed through
+/// `useAbility` is refused by the summon refusal, not the generic
+/// not-known path: the player gets `onErrorCode` AND the `CHAN_FEEDBACK`
+/// line, and `summon_refused reason=not_trained` is logged. Before the fix
+/// the generic path answered with the error code alone and no summon row.
+#[tokio::test]
+async fn untrained_summon_press_gets_the_feedback_line_and_summon_refused() {
+    let mut mgr = mgr_with_identity();
+    mgr.get_entity_mut(OWNER)
+        .unwrap()
+        .abilities
+        .remove_ability(SUMMON);
+    let (tx, mut rx) = mpsc::channel(64);
+
+    let logs = LogCapture::install();
+    assert!(!handle_use_ability(OWNER, SUMMON, 0, &tx, &mut mgr).await);
+    let sent = drain(&mut rx);
+
+    let chat = cimmeria_wire::cell::chat::serialize_on_player_communication(
+        "SYSTEM",
+        0,
+        cimmeria_wire::cell::chat::CHAN_FEEDBACK,
+        super::super::summon::SUMMON_NOT_TRAINED_TEXT,
+    );
+    assert!(
+        sent.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall { entity_id, method_index, args }
+                if *entity_id == OWNER
+                    && *method_index == method_idx::ON_PLAYER_COMMUNICATION
+                    && *args == chat
+        )),
+        "the refused press must carry the feedback line: {sent:?}"
+    );
+    assert!(
+        sent.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall { method_index, .. }
+                if *method_index == method_idx::ON_ERROR_CODE
+        )),
+        "and the error code: {sent:?}"
+    );
+    let c = logs
+        .find_event(Level::DEBUG, "summon refused at launch", "not_trained")
+        .expect("DEBUG summon_refused reason=not_trained");
+    assert!(c.has_field("event", "summon_refused"));
+    assert_owner_correlators(&c);
+    let owner = mgr.get_entity(OWNER).unwrap();
+    assert!(!owner.abilities.is_on_cooldown(SUMMON));
+    assert!(owner.pending_cast.is_none());
 }

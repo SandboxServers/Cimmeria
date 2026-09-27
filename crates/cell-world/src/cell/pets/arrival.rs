@@ -119,7 +119,8 @@ fn arrival_step(
     ArrivalStep::Wait
 }
 
-/// Per-tick drain, run after the AoI tick. Returns how many VFX were sent.
+/// Per-tick drain, run after the AoI tick. Returns how many VFX reached at
+/// least one witness.
 /// Returns at once when nothing is queued.
 pub async fn pet_arrival_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -167,6 +168,7 @@ pub async fn drain_arrivals(
                         target: "pets.lifecycle",
                         event = "arrival_vfx_dropped",
                         decision_outcome = "arrival_vfx_dropped",
+                        entity_id = pet,
                         pet_id = pet,
                         owner_id,
                         account_id = id.account_id,
@@ -181,6 +183,7 @@ pub async fn drain_arrivals(
                         target: "pets.lifecycle",
                         event = "arrival_vfx_dropped",
                         decision_outcome = "arrival_vfx_dropped",
+                        entity_id = pet,
                         pet_id = pet,
                         owner_id,
                         registered_owner_id = registered_owner,
@@ -197,6 +200,10 @@ pub async fn drain_arrivals(
                 let Some(arrival) = space_mgr.pets.arrivals.remove(&pet) else {
                     continue;
                 };
+                // The summoner as captured at summon (Rule 5), resolved
+                // before the sends so every row below names the same player.
+                let id = owner_identity(space_mgr, pet, Some(arrival.owner_id));
+                let mut delivered = 0usize;
                 for &witness_id in &witnesses {
                     if tx
                         .send(CellToBaseMsg::WitnessEntityMethod {
@@ -207,30 +214,55 @@ pub async fn drain_arrivals(
                             entity_is_player: false,
                         })
                         .await
-                        .is_err()
+                        .is_ok()
                     {
+                        delivered += 1;
+                    } else {
                         tracing::warn!(
                             target: "pets.lifecycle",
                             event = "arrival_vfx_send_failed",
                             decision_outcome = "arrival_vfx_send_failed",
+                            entity_id = pet,
                             pet_id = pet,
                             owner_id = arrival.owner_id,
+                            account_id = id.account_id,
+                            player_id = id.player_id,
                             witness_id,
                             "summon VFX could not be queued (base channel closed)"
                         );
                     }
                 }
-                let id = owner_identity(space_mgr, pet, Some(arrival.owner_id));
+                if delivered == 0 {
+                    // Every witness send failed: the VFX reached nobody, so
+                    // it is neither logged as sent nor counted.
+                    tracing::warn!(
+                        target: "pets.lifecycle",
+                        event = "arrival_vfx_undelivered",
+                        decision_outcome = "arrival_vfx_undelivered",
+                        entity_id = pet,
+                        pet_id = pet,
+                        owner_id = arrival.owner_id,
+                        account_id = id.account_id,
+                        player_id = id.player_id,
+                        sequence_id = arrival.sequence_id,
+                        witness_count = witnesses.len(),
+                        reason = "cell_to_base_closed",
+                        "summon VFX reached no witness (base channel closed)"
+                    );
+                    continue;
+                }
                 tracing::debug!(
                     target: "pets.lifecycle",
                     event = "arrival_vfx_sent",
                     decision_outcome = "arrival_vfx_sent",
+                    entity_id = pet,
                     pet_id = pet,
                     owner_id = arrival.owner_id,
                     account_id = id.account_id,
                     player_id = id.player_id,
                     sequence_id = arrival.sequence_id,
                     witness_count = witnesses.len(),
+                    delivered_count = delivered,
                     "summon VFX sent to the pet's witnesses"
                 );
                 sent += 1;
