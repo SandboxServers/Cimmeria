@@ -1,5 +1,6 @@
 //! Social (`console/social.rs`): the GM broadcast and the chat mutes.
 //! Duels (`console/duel.rs`): the registry read and the GM abort (SS-U2).
+//! Mail (`console/mail.rs`): `.mail`, `.mailbox`, `.mail_expire` (SS-U1).
 
 use super::{spec, Spec, Target};
 
@@ -46,5 +47,30 @@ pub(super) const SPECS: &[Spec] = &[
         usize::MAX,
         Target::None,
         "Lift an online player's chat mute (name)",
+    ),
+    // `min` 0 and no `max`: every option is optional and the subject is
+    // free text; `mail::parse_mail` checks the words itself.
+    spec(
+        "mail",
+        0,
+        usize::MAX,
+        Target::None,
+        "Mail yourself or a player minted cash and an item, no postage ([to name] [cash n] [item typeId [qty]] [cod n] [subject])",
+    ),
+    spec(
+        "mailbox",
+        0,
+        1,
+        Target::None,
+        "Show a mailbox: open and archived mail, what is in escrow, the next expiry ([name])",
+    ),
+    // `min` 0 so a bare `.mail_expire` reaches its own usage line and logs
+    // `mail.gm_rejected reason=no_mail_id`.
+    spec(
+        "mail_expire",
+        0,
+        1,
+        Target::None,
+        "Expire a mail now so the expiry sweep takes it; not available until mail expiry lands (mailId)",
     ),
 ];

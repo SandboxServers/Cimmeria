@@ -2,6 +2,7 @@
 
 use super::chat_cell_to_base::ChatCellToBase;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
+use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
 use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft};
 
@@ -829,4 +830,8 @@ pub enum CellToBaseMsg {
     /// Chat traffic (the GM broadcast today). One nested enum, so chat
     /// packets add variants in `chat_cell_to_base.rs` instead of here.
     Chat(ChatCellToBase),
+
+    /// The GM mail tools (`.mail`, `.mailbox`, SS-U1). One nested enum, so
+    /// they never touch `MailOp`, which the mail packets own.
+    MailGm(MailGmCellToBase),
 }

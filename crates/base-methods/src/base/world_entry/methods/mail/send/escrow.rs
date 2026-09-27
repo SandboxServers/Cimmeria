@@ -31,12 +31,12 @@ use crate::base::crafting::inventory_locks::take_inventory_locks;
 
 /// The sender's item row, locked `FOR UPDATE`.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub(super) struct SourceItem {
-    pub(super) item_id: i32,
-    pub(super) type_id: i32,
-    pub(super) stack_size: i32,
-    pub(super) container_id: i32,
-    pub(super) bound: bool,
+pub(in super::super) struct SourceItem {
+    pub(in super::super) item_id: i32,
+    pub(in super::super) type_id: i32,
+    pub(in super::super) stack_size: i32,
+    pub(in super::super) container_id: i32,
+    pub(in super::super) bound: bool,
 }
 
 /// Take the sender's inventory locks and lock the item row. `None` when the
@@ -165,7 +165,7 @@ const ESCROW_SPLIT_SQL: &str = "INSERT INTO sgw_gate_mail_item \
 /// Move `quantity` of `source` into escrow for `mail_id`: the whole row when
 /// it is the whole stack, otherwise a decrement of the sender's row plus a
 /// new escrow row.
-pub(super) async fn escrow_item(
+pub(in super::super) async fn escrow_item(
     conn: &mut PgConnection,
     mail_id: i32,
     sender_id: i32,

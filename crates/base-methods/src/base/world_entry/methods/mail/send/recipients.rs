@@ -7,7 +7,7 @@ use sqlx::PgConnection;
 
 /// Why one recipient did not get the mail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FailReason {
+pub(in super::super) enum FailReason {
     /// No character has this name, exactly or case-folded.
     Unknown,
     /// No exact match, and more than one character matches case-folded.
@@ -20,7 +20,7 @@ pub(super) enum FailReason {
 
 impl FailReason {
     /// Stable `reason` log value.
-    pub(super) fn reason(self) -> &'static str {
+    pub(in super::super) fn reason(self) -> &'static str {
         match self {
             FailReason::Unknown => "unknown_recipient",
             FailReason::Ambiguous => "ambiguous_recipient",
@@ -42,7 +42,7 @@ pub(super) struct FailedRecipient {
 
 /// What one typed name resolved to.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Resolution {
+pub(in super::super) enum Resolution {
     Found { player_id: i32 },
     Failed(FailReason),
 }
@@ -52,7 +52,7 @@ pub(super) enum Resolution {
 /// match only if exactly one character has it. `sgw_player.player_name` is
 /// `UNIQUE` but case-sensitive, so "Bob" and "bob" can both exist, and an
 /// ambiguous fold is refused rather than guessed.
-pub(super) fn resolve_names(typed: &[String], rows: &[(i32, String)]) -> Vec<Resolution> {
+pub(in super::super) fn resolve_names(typed: &[String], rows: &[(i32, String)]) -> Vec<Resolution> {
     typed
         .iter()
         .map(|name| {
@@ -80,7 +80,7 @@ pub(in super::super) const CANDIDATE_ROWS_SQL: &str =
 /// Every `sgw_player` row that could match one of `typed`, exactly or
 /// case-folded. At most `MAX_MAIL_RECIPIENTS` names reach here, so this is
 /// one small query.
-pub(super) async fn candidate_rows(
+pub(in super::super) async fn candidate_rows(
     conn: &mut PgConnection,
     typed: &[String],
 ) -> Result<Vec<(i32, String)>, sqlx::Error> {

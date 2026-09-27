@@ -51,6 +51,18 @@ impl Client {
         route(caller, op, pool, now).await;
     }
 
+    /// Run one GM mail command (SS-U1) as this client's GM.
+    pub(super) async fn gm(&self, msg: crate::cell::messages::MailGmCellToBase, pool: &PgPool) {
+        super::super::handle_mail_gm(
+            msg,
+            &self.dyn_transport,
+            &self.connected,
+            &self.entity_to_addr,
+            &Some(Arc::new(pool.clone())),
+        )
+        .await;
+    }
+
     /// Everything sent to this client since the last call, decoded.
     pub(super) fn take(&self) -> Vec<Received> {
         self.transport
