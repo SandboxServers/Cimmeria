@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use cimmeria_cell_catalog::item_placement::first_player_container;
+use cimmeria_cell_catalog::item_placement::{first_player_container, STORAGE_CONTAINERS};
 use cimmeria_resources::base::resources::{bag_max_slots, bag_min_slot};
 use sqlx::{Postgres, Transaction};
 
@@ -202,8 +202,13 @@ pub(super) async fn place(
 }
 
 /// The first `needed` free slots of `container_id`, or `None` if it has
-/// fewer.
+/// fewer. A storage container (17-20) never has a grant slot: since BV-01
+/// they have a capacity for `onBagInfo`, so the exclusion is explicit here
+/// rather than a side effect of `bag_max_slots` returning 0.
 fn free_slots(container_id: i32, occupied: &[i32], needed: usize) -> Option<Vec<i32>> {
+    if STORAGE_CONTAINERS.contains(&container_id) {
+        return None;
+    }
     let occupied: HashSet<i32> = occupied.iter().copied().collect();
     let slots: Vec<i32> = (bag_min_slot(container_id)..bag_max_slots(container_id))
         .filter(|s| !occupied.contains(s))

@@ -28,7 +28,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 
 **Capacity (BV-01).**
 
-- `cimmeria_wire::containers::bag_max_slots(container_id) -> i32` is the only capacity table. Container 17 returns 100, the maximum; 19 returns 100; 20 returns 100.
+- `cimmeria_entity::inventory::bag_max_slots(container_id) -> i32` is the only capacity table (D-BV20). `cimmeria_wire::containers::bag_max_slots` and `base::resources::bag_max_slots` re-export it, so either path works. Containers 17, 18, 19 and 20 return 100, the maximum.
 - `BAG_SIZES` in `crates/entity` derives from it, or is replaced by it. They must not be able to disagree.
 - `sgw_player.bank_slots smallint NOT NULL DEFAULT 40`, with `CHECK (bank_slots BETWEEN 40 AND 100 AND bank_slots % 10 = 0)`. It is loaded with the player.
 - `onBagInfo` declares container 17 as `bank_slots` for that player, both at world entry and on resync.
@@ -67,18 +67,18 @@ pub enum VaultScope { Personal, Team, Command }
 **Telemetry contract (D-BV19).** Every packet satisfies all of the following. A worker who needs a new event adds a row here through the coordinator, never locally.
 
 - **Target:** `bank`. Every event is structured: an `event="…"` discriminator plus fields, never free text alone.
-- **Correlators on every event:** `account_id`, `player_id`, `entity_id`. Org events also carry `org_id`, `org_type`, `rank` and the permission bit checked (`perm`).
+- **Correlators on every event:** `account_id`, `player_id`, `entity_id`. Org events also carry `org_id`, `org_type`, `rank` and the permission bit checked (`perm`). One exception: an infrastructure-failure event (a database error, not a player decision) carries `account_id` only if the account was read before the failure. `account_lookup_failed`, `move_lock_begin_failed`, `move_lock_failed` and `refusal_context_query_failed` therefore have `player_id` and `entity_id` but no `account_id`.
 - **Refusals:** a stable `reason=` string from the packet's reject enum. Never a formatted message only.
 - **Before and after:** every event that changes state records the prior and new values of whatever it changed: container and slot, `stack_size`, `bank_slots`, player cash, org cash.
-- **Guards:** every event row below has a `LogCapture` test (TESTING.md type 12) that asserts its target, level and required fields. Refusal events have one test per `reason`.
+- **Guards:** every event row below has a `LogCapture` test (TESTING.md type 12) that asserts its target, level and required fields. Refusal events have one test per `reason`, infrastructure reasons included: inject the failure with a pool that cannot connect, or with a lock held by another connection under a short `lock_timeout`. The only exemption is a reason that cannot be injected without dropping the connection mid-transaction (BV-01: `resync_read_failed` and `move_lock_release_failed`, which need the connection to fail after both locks were taken on it). The worknote names each exempt reason and why.
 - **Filter:** `bank` at `debug` has an `OTEL_FILTER` row plus its pinning assertion in `crates/server/src/logging/`. The first packet that emits a debug `bank` event adds it.
 - **Spans:** an info span on each dispatch entrypoint: the Banker interact, `.bank`, the bank branch of `moveItem`, the expand purchase and the org cash transfer. No spans inside per-tick work.
 
 | Event | Level | Packet | Fields beyond the correlators |
 |---|---|---|---|
-| `move_rejected` | warn | BV-01, BV-03 | `reason`, `item_id`, `type_id`, `quantity`, `src_container`, `src_slot` (when known), `dst_container`, `dst_slot` |
-| `grant_rejected` | warn | BV-01 | `reason`, `type_id`, `quantity`, `container` |
-| `resync_item_missing` | warn | BV-01 | `reason`, `item_id` (negative log: the refusal resync found no owned row) |
+| `move_rejected` | warn | BV-01, BV-03 | `reason` (BV-01: `source_container_not_player_movable`, `target_container_not_player_movable`, `source_container_needs_vault_session`, `target_container_needs_vault_session`; infrastructure: `move_lock_begin_failed`, `move_lock_failed`, `refusal_context_query_failed`, `move_lock_release_failed`), `item_id`, `type_id`, `quantity` (as requested; `<= 0` is the whole stack), `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id`. The item fields are read under the move lock and the item's row lock, and omitted when the player does not own the item |
+| `grant_rejected` | warn | BV-01 | `reason` (`grant_into_storage_container`; infrastructure: `account_lookup_failed`), `type_id` (a grant names a type, not an instance), `quantity`, `target_container_id` |
+| `move_resync_skipped` | warn | BV-01 | `reason` (`refused_item_not_owned`: the refused move named an item the player does not own, so nothing was resent; `lock_timeout`: the move lock or the item's row lock could not be taken, so nothing was resent, because an unlocked read could overtake a concurrent write's own update; `resync_read_failed`), `item_id` |
 | `vault_session_opened` | debug | BV-02 | `scope`, `banker_id` or `gm_override=true`, `space_id`, `distance` |
 | `vault_session_closed` | debug | BV-02 | `reason` (`space_change`, `logout`, `re_pin`), `scope`, `open_ms` (milliseconds since the session opened) |
 | `vault_open_rejected` | warn | BV-02 | `reason` (`out_of_range`, `org_vault_not_available`, `not_gm`, `banker_missing`), `banker_id`, `distance` |
@@ -136,7 +136,7 @@ Tests:
 
 Docs to update: `docs/gameplay/inventory-system.md` (the capacity source), `TESTING.md` if any type guidance shifts, and close #798 in the PR body.
 
-Telemetry: emit `move_rejected`, `grant_rejected` and `resync_item_missing` exactly as the contract catalog specifies, with a `LogCapture` test per reason.
+Telemetry: emit `move_rejected`, `grant_rejected` and `move_resync_skipped` exactly as the contract catalog specifies, with a `LogCapture` test per reason.
 
 ## BV-E1 client evidence
 
@@ -189,7 +189,7 @@ Scope:
 - A rejection sends feedback, then re-syncs the affected slots with `onUpdateItem`, so the client's drag snaps back.
 - **The slot bound is the player's `bank_slots`, read inside the move transaction.** It is not `bag_max_slots(17)`, which is the ceiling of 100. Apply the same bound wherever `reserve_free_inventory_slots` can reach 17. Without it, a 40-slot player can use slots 40-99 without buying the expansion (BV-01 review, follow-up 2).
 - **Player-accessible containers for use and removal.** `useItem`, `removeItem` and content `RemoveItem` (`use_instance.rs`, `remove_instance.rs`, `remove_by_type.rs`) find an item by id without checking its container. So an item sitting in buyback (16) can be used today, and a banked item would be usable from anywhere. Add one shared check next to `player_movable`: 1-15, and 17 only with a vault session (BV-01 review, follow-up 1).
-- Split `move_/mod.rs` first. BV-01 (#872) takes it to about 690 lines, against a 700-line hard cap: move the post-commit side effects into `move_/after_commit.rs`.
+- Split `move_/mod.rs` first. BV-01 (#872) takes it to 694 lines, against a 700-line hard cap: move the post-commit side effects into `move_/after_commit.rs`.
 
 Tests:
 

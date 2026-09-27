@@ -65,6 +65,7 @@ fn build_map_loaded_produces_multiple_packets() {
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 42,
@@ -209,6 +210,7 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -277,6 +279,7 @@ fn build_map_loaded_each_packet_decrypts_within_limit() {
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -340,6 +343,7 @@ fn build_map_loaded_contains_setup_world_params_and_player_data_loaded() {
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -417,6 +421,7 @@ fn build_map_loaded_uses_mercury_fragmentation() {
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,

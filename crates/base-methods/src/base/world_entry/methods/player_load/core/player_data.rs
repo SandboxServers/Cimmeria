@@ -52,6 +52,8 @@ pub async fn query_player_load_data(
         // Server-synced client options — see SystemOptions docs.
         auto_reload: bool,
         reload_on_activate: bool,
+        /// `smallint` in the schema.
+        bank_slots: i16,
     }
 
     match sqlx::query_as::<_, PlayerRow>(
@@ -59,7 +61,7 @@ pub async fn query_player_load_data(
          bodyset, components, exp, naquadah, known_stargates, abilities, \
          training_points, applied_science_points, blueprint_ids, first_login, \
          access_level, skin_color_id, bandolier_slot, \
-         auto_reload, reload_on_activate \
+         auto_reload, reload_on_activate, bank_slots \
          FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
@@ -202,6 +204,7 @@ pub async fn query_player_load_data(
                 items,
                 auto_reload: row.auto_reload,
                 reload_on_activate: row.reload_on_activate,
+                bank_slots: i32::from(row.bank_slots),
             }
         }
         Ok(None) => {

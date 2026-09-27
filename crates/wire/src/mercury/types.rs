@@ -109,6 +109,9 @@ pub struct PlayerLoadData {
     /// `reloadOnActivate` client option, loaded from
     /// `sgw_player.reload_on_activate`.
     pub reload_on_activate: bool,
+    /// Personal vault size from `sgw_player.bank_slots` (40-100, steps of
+    /// 10). `onBagInfo` declares container 17 at this size.
+    pub bank_slots: i32,
 }
 
 impl PlayerLoadData {
@@ -166,6 +169,7 @@ mod player_load_data_tests {
             items: vec![],
             auto_reload: true,
             reload_on_activate: false,
+            bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
         }
     }
 

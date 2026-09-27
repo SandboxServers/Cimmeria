@@ -21,6 +21,8 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 #[cfg(test)]
 mod crafting_tools_tests;
+#[cfg(test)]
+mod one_item_select_tests;
 mod remove_by_type;
 mod remove_instance;
 #[cfg(test)]
@@ -36,12 +38,12 @@ pub use remove_by_type::handle_remove_inventory_item_by_type;
 pub use remove_instance::handle_remove_inventory_item;
 pub use use_instance::handle_use_inventory_item;
 
-/// `pub(crate)` so the duplicate copy in `player_load/core.rs` can be
-/// pinned against this one by the SQL drift-guard test
-/// `inventory_item_select_matches_player_load_copy_byte_for_byte`. Both
-/// paths must produce identical row layouts; if they ever diverge, every
-/// downstream `InvItem` consumer breaks in a hard-to-diagnose way.
-pub(crate) const INVENTORY_ITEM_SELECT: &str = r#"
+/// The column list and joins every inventory-row read shares, up to (not
+/// including) its `WHERE`. The two selects below differ only in the filter,
+/// so their row layout cannot drift apart.
+macro_rules! inventory_item_select_head {
+    () => {
+        r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
        COALESCE((
@@ -53,9 +55,29 @@ SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        END AS cur_ammo_type_id
 FROM sgw_inventory inv
 LEFT JOIN resources.items ri ON ri.item_id = inv.type_id
-WHERE inv.character_id = $1
-ORDER BY inv.container_id, inv.slot_id
-"#;
+"#
+    };
+}
+
+/// `pub(crate)` so the duplicate copy in `player_load/core.rs` can be
+/// pinned against this one by the SQL drift-guard test
+/// `inventory_item_select_matches_player_load_copy_byte_for_byte`. Both
+/// paths must produce identical row layouts; if they ever diverge, every
+/// downstream `InvItem` consumer breaks in a hard-to-diagnose way.
+pub(crate) const INVENTORY_ITEM_SELECT: &str = concat!(
+    inventory_item_select_head!(),
+    "WHERE inv.character_id = $1\n",
+    "ORDER BY inv.container_id, inv.slot_id\n",
+);
+
+/// One inventory row, by instance id, and only if the player owns it: the
+/// same row layout as [`INVENTORY_ITEM_SELECT`] (shared head), filtered in
+/// SQL so a single-item read costs one indexed row, not the whole bag set.
+/// `$1` is the player, `$2` the `item_id`.
+pub(crate) const INVENTORY_ONE_ITEM_SELECT: &str = concat!(
+    inventory_item_select_head!(),
+    "WHERE inv.character_id = $1 AND inv.item_id = $2\n",
+);
 
 #[derive(sqlx::FromRow)]
 struct InventoryRow {
@@ -134,12 +156,39 @@ pub async fn send_full_inventory_resync(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // 1. onBagInfo — declare containers on the fresh InventoryComponent.
-    //    Bag set is identity-per-player (every player has the same set
-    //    of containers, sized by `BAG_SIZES`); we just need the wire
-    //    bytes, no DB lookup required.
+    // One round-trip for the three `sgw_player` fields the bundle needs:
+    // `bank_slots` (container 17's size in onBagInfo), `bandolier_slot`
+    // (onActiveSlotUpdate) and `naquadah` (onCashChanged). If the row is
+    // missing (data corruption on the player_id), log and skip those two;
+    // onBagInfo falls back to the default vault size and the inventory
+    // update still fires so the UI at least shows items.
+    let player_meta: Option<(i32, i32, i16)> = match sqlx::query_as::<_, (i32, i32, i16)>(
+        "SELECT bandolier_slot, naquadah, bank_slots FROM sgw_player WHERE player_id = $1",
+    )
+    .bind(player_id)
+    .fetch_optional(pool.as_ref())
+    .await
     {
-        let inv = cimmeria_entity::inventory::Inventory::new(0);
+        Ok(row) => row,
+        Err(e) => {
+            tracing::warn!(
+                player_id,
+                "send_full_inventory_resync: sgw_player lookup failed: {e}"
+            );
+            None
+        }
+    };
+
+    // 1. onBagInfo — declare containers on the fresh InventoryComponent.
+    //    Every player has the same container set, sized by `BAG_SIZES`,
+    //    except the personal vault (17), which is this player's
+    //    `bank_slots` (D-BV06).
+    {
+        let bank_slots = player_meta.map_or(
+            cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
+            |(_, _, bank_slots)| i32::from(bank_slots),
+        );
+        let inv = cimmeria_entity::inventory::Inventory::new(0).with_bank_slots(bank_slots);
         let bag_info = inv.serialize_bag_info();
         send_to_witness_reliable(
             transport,
@@ -161,28 +210,8 @@ pub async fn send_full_inventory_resync(
         .await;
     }
 
-    // 2. onActiveSlotUpdate + 3. onCashChanged — pull from sgw_player.
-    //    One round-trip for both. If the row is missing (data corruption
-    //    on the player_id), log and skip; the inventory update still
-    //    fires so the UI at least shows items.
-    let player_meta: Option<(i32, i32)> = match sqlx::query_as::<_, (i32, i32)>(
-        "SELECT bandolier_slot, naquadah FROM sgw_player WHERE player_id = $1",
-    )
-    .bind(player_id)
-    .fetch_optional(pool.as_ref())
-    .await
-    {
-        Ok(row) => row,
-        Err(e) => {
-            tracing::warn!(
-                player_id,
-                "send_full_inventory_resync: sgw_player lookup failed: {e}"
-            );
-            None
-        }
-    };
-
-    if let Some((bandolier_slot, naquadah)) = player_meta {
+    // 2. onActiveSlotUpdate + 3. onCashChanged.
+    if let Some((bandolier_slot, naquadah, _)) = player_meta {
         // Wire: `(bag_id:i32, wire_slot:i32)` where wire_slot is the
         // 1-indexed server slot (matches `Bag.py:369` and the live
         // `handle_request_active_slot_change` send shape).
@@ -275,9 +304,95 @@ pub async fn send_full_inventory_update(
         }
     };
 
-    let mut args = Vec::with_capacity(4 + all_items.len() * 48);
-    args.extend_from_slice(&(all_items.len() as u32).to_le_bytes());
-    for row in all_items.iter() {
+    send_update_item(entity_id, &all_items, transport, connected, entity_to_addr).await;
+
+    // Every inventory commit ends in this resync, so it is where the
+    // crafting options learn that a Field Crafting Tool entered or left the
+    // crafting bag. No second query: the rows above carry the
+    // container.
+    refresh_tools_from_rows(
+        entity_id,
+        player_id,
+        pool,
+        all_items
+            .iter()
+            .map(|r| (r.item_id, r.type_id, r.container_id)),
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+
+    all_items.len()
+}
+
+/// Send `onUpdateItem` for one inventory instance only, read through
+/// `executor` so the caller can read it inside its own transaction, under a
+/// lock it holds. Returns `false`, and sends nothing, when the player has no
+/// such row (a forged or stale `item_id`) or the read fails.
+///
+/// The move refusal uses this to snap one dragged item back. A full
+/// snapshot would also carry every other row as of the read, and a grant
+/// committing between that read and the send would then be hidden on the
+/// client by the older snapshot. With one row, only a write to that same row
+/// can race the send, and the refusal holds the row's `FOR UPDATE` lock
+/// across it (`move_/container_policy.rs`, `take_move_lock`).
+pub(crate) async fn send_inventory_item_update_via<'c, E>(
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+    executor: E,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> bool
+where
+    E: sqlx::PgExecutor<'c>,
+{
+    // `moveItem` is client-callable, so a refusal must cost one row however
+    // big the inventory is: the owner check and the item filter are in SQL.
+    let row = match sqlx::query_as::<_, InventoryRow>(INVENTORY_ONE_ITEM_SELECT)
+        .bind(player_id)
+        .bind(item_id)
+        .fetch_optional(executor)
+        .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::error!(
+                entity_id,
+                player_id,
+                item_id,
+                "send_inventory_item_update_via: query failed: {e}"
+            );
+            return false;
+        }
+    };
+    let Some(row) = row else {
+        return false;
+    };
+    send_update_item(
+        entity_id,
+        std::slice::from_ref(&row),
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+    true
+}
+
+/// `onUpdateItem(ARRAY<InvItem>)` for `rows`, to the player's own client.
+async fn send_update_item(
+    entity_id: u32,
+    rows: &[InventoryRow],
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let mut args = Vec::with_capacity(4 + rows.len() * 48);
+    args.extend_from_slice(&(rows.len() as u32).to_le_bytes());
+    for row in rows {
         let item = cimmeria_entity::inventory::InvItem {
             id: row.item_id,
             dbid: row.type_id,
@@ -311,25 +426,6 @@ pub async fn send_full_inventory_update(
         },
     )
     .await;
-
-    // Every inventory commit ends in this resync, so it is where the
-    // crafting options learn that a Field Crafting Tool entered or left the
-    // crafting bag. No second query: the rows above carry the
-    // container.
-    refresh_tools_from_rows(
-        entity_id,
-        player_id,
-        pool,
-        all_items
-            .iter()
-            .map(|r| (r.item_id, r.type_id, r.container_id)),
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await;
-
-    all_items.len()
 }
 
 /// Tell the player's client to drop an inventory item instance from its

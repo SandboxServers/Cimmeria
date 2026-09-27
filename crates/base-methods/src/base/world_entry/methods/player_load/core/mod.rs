@@ -7,6 +7,8 @@
 //! `query_player_load_data` is re-exported so the existing
 //! `player_load::core::query_player_load_data` import path stays valid.
 
+#[cfg(test)]
+mod bank_load_tests;
 mod inventory_items;
 mod player_data;
 

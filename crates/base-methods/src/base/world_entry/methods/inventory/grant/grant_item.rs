@@ -60,6 +60,19 @@ pub async fn handle_grant_item(
         }
     };
 
+    if super::validation::refuse_storage_grant(
+        pool,
+        entity_id,
+        player_id,
+        item_id,
+        container_id,
+        count,
+    )
+    .await
+    {
+        return;
+    }
+
     let mut db_tx = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
