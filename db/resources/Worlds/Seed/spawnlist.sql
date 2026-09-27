@@ -911,6 +911,22 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- aggression override.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (470, -325.92, 73.472, -231.18, -1.0739, 12, 370, 'DebugHub_Banker', NULL);
 
+-- BV-10a: spawns 471 and 472, the debug hub's Team and Command Bankers
+-- (templates 371 and 372, docs/content/debug-hub.md). The B-C wall line
+-- (3 units in) is full from B to the mail clerk (450, 430, 470, 490) and has
+-- one slot left past 490, 2.4 units from the C-D wall; the A-B line is full,
+-- crafting takes the D-A wall. So the org Bankers stand in a second row, 6
+-- units in from the B-C wall, each in the gap between two wall NPCs so that
+-- none hides another from the room centre: 471 between the Banker and the
+-- mail clerk (11.1 along from B), 472 past the mail clerk (14.9 along). In
+-- XZ: 471 is 3.55 from 470 and from 490, 3.8 from 472, 5.0 from 431 and 6.6
+-- from the respawner; 472 is 3.55 from 490, 6.4 from 470, 3.5 from the C-D
+-- wall and 9.0 from the respawner. Headings face the room centre (-333.03,
+-- -227.32), yaw = atan2(dx, dz). They cannot die, so no respawn_secs,
+-- is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (471, -327.65, 73.472, -228.09, -1.4294, 12, 371, 'DebugHub_TeamBanker', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (472, -325.84, 73.472, -224.74, -1.9148, 12, 372, 'DebugHub_CommandBanker', NULL);
+
 -- Social-systems campaign, SS-U3: spawn 490, the debug hub's Gate Mail Clerk
 -- (template 390, docs/content/debug-hub.md). Social owns spawns 490-499;
 -- 491-499 stay reserved. The A-B line is full (its only open slot, next to the

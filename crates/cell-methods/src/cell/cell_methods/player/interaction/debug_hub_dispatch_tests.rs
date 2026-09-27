@@ -14,6 +14,7 @@
 //! | Banker    | 370      | `onVaultOpen` and a personal vault session (bank-vault BV-04) |
 //! | mail clerk | 390     | chain 7010 → `onDialogDisplay` 60104 (SS-U3)    |
 //! | registrars | 330, 331 | `RegistrarOpen` to the base, Team / Command (ORG-05) |
+//! | org Bankers | 371, 372 | `OrgVaultOpen` to the base; the round trip is `cimmeria-services` `bank_org_round_trip_tests` (BV-10a) |
 //!
 //! The vendor row is the one that regressed silently: nothing ever set
 //! `NpcInteractionType::Vendor`, so a vendor-only template reached the `None`
@@ -26,11 +27,11 @@ use std::collections::HashSet;
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
-use cimmeria_entity::cell_entity::NpcInteractionType;
+use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope};
 use cimmeria_entity::organization::OrgType;
 
 use crate::cell::cell_methods::player::{dispatch, INTERACT, RESET_MY_ABILITIES};
-use crate::cell::messages::{CellToBaseMsg, OrgCellToBase};
+use crate::cell::messages::{BankCellToBase, CellToBaseMsg, OrgCellToBase};
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner;
 use crate::test_support::require_db_or_skip;
@@ -98,10 +99,10 @@ fn staged_hub(seed: HubSeed) -> (SpaceManager, Vec<(String, u32)>) {
     }
     assert_eq!(
         hub.len(),
-        10,
-        "the hub seeds ten NPCs (#846's five, the PT-07 pet trainer, the \
-         BV-04 Banker, the SS-U3 mail clerk and the ORG-05 Team and Command \
-         registrars): {hub:?}"
+        12,
+        "the hub seeds twelve NPCs (#846's five, the PT-07 pet trainer, the \
+         BV-04 Banker, the SS-U3 mail clerk, the ORG-05 Team and Command \
+         registrars and the BV-10a Team and Command Bankers): {hub:?}"
     );
 
     // Any archetype list 1 offers, so the trainer has something to show.
@@ -301,6 +302,31 @@ async fn debug_hub_npcs_answer_a_click_with_their_own_interaction() {
         assert!(methods(&msgs).is_empty(), "{tag}: {msgs:?}");
     }
 
+    // Org Bankers (BV-10a): the click asks the base for the player's Team
+    // or Command vault, naming the Banker, and opens nothing until the
+    // base grants it.
+    for (tag, scope) in [
+        ("DebugHub_TeamBanker", VaultScope::Team),
+        ("DebugHub_CommandBanker", VaultScope::Command),
+    ] {
+        let banker = eid_of(&hub, tag);
+        let msgs = click(&mut mgr, &engine, banker).await;
+        let asked: Vec<(VaultScope, u32)> = msgs
+            .iter()
+            .filter_map(|m| match m {
+                CellToBaseMsg::Bank(BankCellToBase::OrgVaultOpen {
+                    scope,
+                    banker_id,
+                    player_id: Some(PLAYER_ID),
+                    ..
+                }) => Some((*scope, *banker_id)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(asked, vec![(scope, banker)], "{tag}: {msgs:?}");
+        assert!(methods(&msgs).is_empty(), "{tag}: {msgs:?}");
+    }
+
     // None of the others is a vendor.
     for npc in [trainer, dialog_npc, terminal, clerk] {
         assert_eq!(mgr.get_entity(npc).unwrap().interaction_type, None);
@@ -478,8 +504,6 @@ async fn debug_hub_pet_trainer_opens_list_350() {
 /// engine is loaded, so a chain added on `DebugHub_Banker` fails this.
 #[tokio::test]
 async fn debug_hub_banker_opens_the_personal_vault() {
-    use cimmeria_entity::cell_entity::VaultScope;
-
     let pool = require_db_or_skip!();
     let (mut mgr, hub) = staged_hub(load_hub!(pool));
     let engine = crate::cell::content::build_engine(Some(&pool)).await;

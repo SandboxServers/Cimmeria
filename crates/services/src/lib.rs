@@ -58,6 +58,12 @@ pub use cimmeria_wire_log::wire_log;
 // registers tickets in its `SessionRegistry`) keeps resolving.
 pub use cimmeria_minigame::minigame;
 
+/// The debug hub's Team and Command Bankers clicked end to end: the cell's
+/// Banker arm (`cimmeria-cell-methods`), the base's org vault open
+/// (`cimmeria-base-world-entry`) and the cell's grant. Test-only.
+#[cfg(test)]
+mod bank_org_round_trip_tests;
+
 /// The gate-travel round trips that drive the cell's gate handlers
 /// (`cimmeria-cell-interactions`) and then the base's world entry
 /// (`cimmeria-base-world-entry`). Test-only.
