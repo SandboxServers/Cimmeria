@@ -668,7 +668,8 @@ The state these abilities leave is on the pet, not in `active_effects`:
 - **Passives.** An `EF_AlwaysPersist` (524288) effect whose script is a passive script
   (`pet_scripts::is_passive_script`, today only `PetSummonSpeed`) holds while its ability is
   known. [`effects/passives.rs`](../../crates/cell-world/src/cell/effects/passives.rs) runs it
-  at `InitPlayerState` and `AbilityGranted`, and runs its `on_remove` at `AbilitiesReset`.
+  at `InitPlayerState`, `AbilityGranted` and `GmAbilityGranted` (the GM `.giveability` mirror),
+  and runs its `on_remove` at `AbilitiesReset`.
   Heed Our Calling (2852 -> 4968) sets the owner's `speedPet` to its base plus 100, so a
   `SpeedPet` summon's warmup scales to 0 (D-PT10). The stat is server-side only: the passive
   leaves it clean, so no burst changes.

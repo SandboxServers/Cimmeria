@@ -90,6 +90,52 @@ async fn world_entry_applies_a_known_passive() {
     assert_eq!(speed_pet(&mgr), 100);
 }
 
+/// **Regression guard (UAT path).** `.giveability 2852` persists on the base,
+/// which answers with `GmAbilityGranted`; that mirror must apply the passive
+/// at once, so the tester's next summon is instant. Fails when the mirror's
+/// `apply_passives` call is removed.
+#[tokio::test]
+async fn a_gm_grant_applies_the_passive_at_once() {
+    let mut mgr = fixture();
+    assert_eq!(speed_pet(&mgr), 0);
+    deliver(
+        &mut mgr,
+        BaseToCellMsg::GmAbilityGranted {
+            entity_id: PLAYER,
+            player_id: PLAYER_ID,
+            ability_id: HEED_OUR_CALLING,
+        },
+    )
+    .await;
+    assert!(mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .abilities
+        .has_ability(HEED_OUR_CALLING));
+    assert_eq!(
+        speed_pet(&mgr),
+        100,
+        ".giveability 2852: the summon is instant"
+    );
+}
+
+/// A GM grant addressed to a character the entity no longer plays changes
+/// nothing, passive included.
+#[tokio::test]
+async fn a_stale_gm_grant_applies_no_passive() {
+    let mut mgr = fixture();
+    deliver(
+        &mut mgr,
+        BaseToCellMsg::GmAbilityGranted {
+            entity_id: PLAYER,
+            player_id: PLAYER_ID + 1,
+            ability_id: HEED_OUR_CALLING,
+        },
+    )
+    .await;
+    assert_eq!(speed_pet(&mgr), 0);
+}
+
 #[tokio::test]
 async fn a_trainer_purchase_applies_the_passive_and_a_respec_removes_it() {
     let mut mgr = fixture();

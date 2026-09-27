@@ -214,6 +214,14 @@ pub(super) async fn handle_gm_ability_granted(
         }
         None => return,
     };
+    // A GM-granted passive holds at once, like a trained one (pets PT-08:
+    // `.giveability 2852` makes the next summon instant, which UAT relies on).
+    let _passives = crate::cell::effects::passives::apply_passives(
+        space_mgr,
+        entity_id,
+        &[ability_id],
+        crate::cell::effects::passives::PassiveChange::Learned,
+    );
     let account_id = space_mgr.player_identity(entity_id).account_id;
     tracing::info!(
         target: "abilities",
