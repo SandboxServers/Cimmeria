@@ -56,7 +56,7 @@ bash tools/build-lane/lane.sh --exclusive cargo build --workspace ...   # worksp
 3. **The lane sets up the build environment:** a target dir per worktree (on the Dev Drive when one is set up), incremental builds for workspace crates, and sccache for third-party crates. A direct `cargo` call bypasses the slot count, which is why agents never make one.
 4. **Every lane job is logged.** `python tools/build-lane/lane_stats.py` reports on the log (`--recent 20` for the last jobs, `--html` for charts, `--csv` for a spreadsheet).
 
-Worktrees, per-worktree test databases and Dev Drive seeding: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
+Worktrees, per-worktree test databases and Dev Drive seeding: [docs/agents/development-workflow.md](docs/agents/development-workflow.md). **Retire a worktree the day its PR merges** with `bash tools/build-lane/rm-worktree.sh <name>`: it deletes the target dir and the test database, and unlinks `external/` safely. A session that dispatched workers retires their worktrees too; `--merged` sweeps every merged, idle one. Stale target dirs filled the Dev Drive once and stopped every lane build.
 
 Quick reference:
 

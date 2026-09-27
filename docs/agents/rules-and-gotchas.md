@@ -71,7 +71,7 @@ Classify before you design.
 - **Scripts that rewrite files must open them in binary mode** and write UTF-8 explicitly. Python's default text mode on Windows converts both the encoding and the line endings.
 - **Git Bash rewrites arguments that start with `/` or contain `:.`** into Windows paths. This breaks `gh ... --body "/release"` and `git show <ref>:.github/...`. Use PowerShell, `--body-file`, or `MSYS_NO_PATHCONV=1`.
 - **Revert-verification wipes uncommitted work.** Commit (or make a WIP commit) before you `git checkout` a file to prove a guard fails.
-- **Removing a worktree that has an `external/` junction:** remove the junction first. See [`development-workflow.md`](development-workflow.md#create-a-worktree-that-builds).
+- **Retire worktrees with `tools/build-lane/rm-worktree.sh`, the day the PR merges.** It unlinks the `external/` junction first; a hand-rolled recursive delete can follow the junction and empty the real `external/`. Leaving merged worktrees around is not harmless either: their target dirs filled the Dev Drive on 2026-09-26 and stopped every lane build. See [`development-workflow.md`](development-workflow.md#retire-it-when-its-pr-merges).
 
 ## Client assets and RE tooling
 
