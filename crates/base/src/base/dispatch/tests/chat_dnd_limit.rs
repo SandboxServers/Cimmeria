@@ -79,3 +79,63 @@ async fn dnd_bound_holds_for_a_very_long_message() {
     let stored = update_dnd(None, &"y".repeat(10_000)).await;
     assert_eq!(stored.map(|m| m.chars().count()), Some(128));
 }
+
+/// SS-C1: `chatSetAFKMessage` stores the away message a tell answers with,
+/// clears it on an empty or 1-char message, bounds it like DND, and leaves
+/// it alone on a malformed payload.
+#[tokio::test]
+async fn chat_set_afk_stores_clears_and_bounds_the_away_message() {
+    let addr: SocketAddr = "127.0.0.1:54406".parse().unwrap();
+    let connected = Arc::new(Mutex::new(HashMap::from([(
+        addr,
+        test_default_connected_client_state(),
+    )])));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    let afk = |payload: Vec<u8>| {
+        let (connected, transport, entity_manager, entity_to_addr) = (
+            connected.clone(),
+            transport.clone(),
+            entity_manager.clone(),
+            entity_to_addr.clone(),
+        );
+        async move {
+            dispatch_sgw_player_base_method(
+                sgw_player_base::CHAT_SET_AFK,
+                &payload,
+                &Some("Tester".to_string()),
+                addr,
+                &transport,
+                [0; 32],
+                &connected,
+                &entity_manager,
+                &None,
+                &entity_to_addr,
+                &None,
+            )
+            .await
+            .expect("AFK update must not error");
+            connected.lock().unwrap()[&addr].afk_message.clone()
+        }
+    };
+    let wstr = |s: &str| {
+        let mut p = Vec::new();
+        crate::mercury::write_wstring(&mut p, s);
+        p
+    };
+
+    assert_eq!(afk(wstr("at lunch")).await.as_deref(), Some("at lunch"));
+    assert_eq!(
+        afk(vec![0xFF, 0xFF]).await.as_deref(),
+        Some("at lunch"),
+        "a malformed payload keeps the message"
+    );
+    assert_eq!(afk(wstr("x")).await, None, "a 1-char message clears it");
+    let long = "z".repeat(300);
+    assert_eq!(
+        afk(wstr(&long)).await.map(|m| m.chars().count()),
+        Some(128),
+        "stored bounded like DND"
+    );
+}

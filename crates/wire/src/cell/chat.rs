@@ -99,9 +99,43 @@ pub fn serialize_on_player_communication(
     args
 }
 
+/// Serialize `onTellSent(WSTRING aTarget, WSTRING aText)` args
+/// (`Communicator.def`, client method 30): the sender's confirmation that a
+/// tell went out, naming the recipient.
+///
+/// Wire format: two WSTRINGs, each `u32` UTF-16 unit count then the units LE.
+pub fn serialize_on_tell_sent(target: &str, text: &str) -> Vec<u8> {
+    let mut args = Vec::with_capacity(8 + (target.len() + text.len()) * 2);
+    for s in [target, text] {
+        let units: Vec<u16> = s.encode_utf16().collect();
+        args.extend_from_slice(&(units.len() as u32).to_le_bytes());
+        for u in units {
+            args.extend_from_slice(&u.to_le_bytes());
+        }
+    }
+    args
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `onTellSent("Bo", "hi")`: `[02 00 00 00]['B' 'o'][02 00 00 00]['h' 'i']`.
+    #[test]
+    fn serialize_on_tell_sent_is_two_wstrings() {
+        assert_eq!(
+            serialize_on_tell_sent("Bo", "hi"),
+            vec![
+                0x02, 0x00, 0x00, 0x00, b'B', 0x00, b'o', 0x00, //
+                0x02, 0x00, 0x00, 0x00, b'h', 0x00, b'i', 0x00,
+            ]
+        );
+        assert_eq!(
+            serialize_on_tell_sent("", ""),
+            vec![0u8; 8],
+            "empty strings still carry both length prefixes"
+        );
+    }
 
     #[test]
     fn serialize_on_player_communication_basic() {

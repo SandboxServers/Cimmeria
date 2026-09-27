@@ -14,12 +14,16 @@
 //! - [`player_index_logoff`]: `logOff` unlists the character (SS-00).
 //! - [`duel_challenge`]: `sendDuelChallenge` (0xD9): the duel bucket, squad
 //!   refusal, the online lookup and the forward (SS-D1).
+//! - [`tell`]: tells on the base, fan-out and refusals (SS-C1).
+//! - [`chat_ignore`]: `chatIgnore` refusals that need no database (SS-C1).
 
 mod chat_dnd_limit;
 mod chat_flood_limit;
+mod chat_ignore;
 mod chat_speaker_flags;
 mod crafting_teardown;
 mod duel_challenge;
 mod organization;
 mod player_index_logoff;
 mod routing_logging;
+mod tell;

@@ -2,8 +2,8 @@
 //!
 //! Extracted from `dispatch.rs` — the chat-family arms of
 //! `dispatch_sgw_player_base_method`: `sendPlayerCommunication`, `chatJoin`,
-//! `chatLeave`, `chatSetAFKMessage`, and `chatSetDNDMessage`. Pure code
-//! movement; each function carries the exact arm body it replaced.
+//! `chatLeave`, `chatSetAFKMessage`, and `chatSetDNDMessage`. The tell
+//! channel branches off to `tell.rs` after the flood and text gates.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -23,6 +23,7 @@ use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_U
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 use super::speaker_flags;
+use super::tell::{self, TellSender, TELL_CHANNEL};
 
 const MAX_DND_MESSAGE_CHARS: usize = 128;
 
@@ -181,6 +182,20 @@ pub(super) async fn send_player_communication_at(
         return;
     }
 
+    // Tells are delivered here, on the base, and never reach the cell.
+    if channel == TELL_CHANNEL {
+        let sender = TellSender {
+            addr,
+            name: speaker,
+            flags: speaker_flags_value,
+            entity_id: player_eid,
+            player_id,
+            account_id,
+        };
+        tell::handle_tell(&feedback, sender, &target, &text).await;
+        return;
+    }
+
     // Logged only once both gates pass: every field here is client-supplied,
     // so a flooding client must not get one INFO row per packet.
     tracing::info!(
@@ -247,19 +262,50 @@ pub(super) fn handle_chat_leave(payload: &[u8], addr: SocketAddr) {
     tracing::debug!(%addr, channel_id, "chatLeave -- acknowledged");
 }
 
-/// `chatSetAFKMessage` — intentionally log-only.
-pub(super) fn handle_chat_set_afk(addr: SocketAddr) {
-    // AFK is intentionally log-only. AFK is NOT a speaker flag:
-    // `entities/defs/enumerations.xml` has no `SPEAKER_AFK`
-    // token, and `python/base/Chat.py::getSpeakerFlags` only
-    // checks `accessLevel > 0` / `dndMessage is not None`. In
-    // Python, `chatSetAFKMessage` only affects the
-    // auto-reply-tell path in `sendPlayerMessage`, which is a
-    // separate feature we have not ported yet.
-    tracing::debug!(
-        %addr,
-        "chatSetAFKMessage -- acknowledged (auto-reply not yet implemented)",
-    );
+/// `chatSetAFKMessage(WSTRING message)`.
+///
+/// Stores the away message the tell path sends back to anyone who tells this
+/// player (`tell.rs`). Same rules as DND (`python/base/SGWPlayer.py:195-199`):
+/// an empty or 1-char message clears it, a longer one is stored truncated to
+/// [`MAX_DND_MESSAGE_CHARS`], and a malformed payload leaves it untouched.
+///
+/// AFK is NOT a speaker flag: `entities/defs/enumerations.xml` has no
+/// `SPEAKER_AFK` token, and `python/base/Chat.py::getSpeakerFlags` only checks
+/// `accessLevel > 0` / `dndMessage is not None`.
+pub(super) fn handle_chat_set_afk(
+    payload: &[u8],
+    addr: SocketAddr,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) {
+    let message = match read_wstring(payload, 0) {
+        Ok((s, _)) => s,
+        Err(e) => {
+            tracing::warn!(
+                %addr,
+                payload_len = payload.len(),
+                reason = "read_wstring_failed",
+                error = %e,
+                "chatSetAFKMessage: WSTRING decode failed -- existing AFK state preserved",
+            );
+            return;
+        }
+    };
+    let active = message.chars().count() > 1;
+    let stored: String = message.chars().take(MAX_DND_MESSAGE_CHARS).collect();
+    let mut clients = connected.lock().unwrap();
+    if let Some(c) = clients.get_mut(&addr) {
+        c.afk_message = active.then_some(stored);
+        tracing::debug!(
+            target: "chat",
+            event = "chat.afk_set",
+            %addr,
+            player_id = c.active_player_id,
+            account_id = c.account_id,
+            entity_id = c.player_entity_id,
+            afk_active = active,
+            "chatSetAFKMessage",
+        );
+    }
 }
 
 /// `chatSetDNDMessage(WSTRING message)`.
