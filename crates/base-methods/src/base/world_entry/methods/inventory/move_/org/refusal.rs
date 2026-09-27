@@ -14,7 +14,7 @@
 //! - in the player's own inventory: `onUpdateItem` of that row;
 //! - in this organization's vault: `onUpdateItem` of the vault row;
 //! - neither (another member moved it since this client last saw the vault,
-//!   and fan-out waits on ORG-07's `broadcast_to_org`): `onRemoveItem`, so
+//!   and the fan-out did not reach this client): `onRemoveItem`, so
 //!   the stale item leaves the window.
 
 use sqlx::{Postgres, Transaction};
