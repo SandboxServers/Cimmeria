@@ -2,16 +2,18 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-09-25
+last_updated: 2026-09-27
 ---
 
 # Project Status
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **471 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
+> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **482 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
 >
 > **Re-verified 2026-09-25** against the code at `acbcc22e`, after about 160 PRs landed since the previous (2026-07-25) edition. Every row was re-read, and a feature counts as Confirmed Working only when there is a written record of an in-client test: the 2026-09-18 colo playtest, the 2026-09-25 NPC AI UAT, a PR or issue note, or a recorded confirmation. That stricter bar moved some rows down (vendors, spawn population, mission cash, mail sending, effect clear-flags) while the playtest moved others up (character creation, minigames, ring trips, damage, loot). The previous edition's headline also did not match its own table: it printed 443 / CW 159 / KM 128 against rows that summed to 444 / CW 164 / KM 124. The figures below are recomputed from the rows.
+>
+> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). Other rows keep their 2026-09-25 prose.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -29,18 +31,18 @@ Where the Cimmeria server emulator stands today and what's ahead.
 
 | Status | Features | Percentage |
 |--------|----------|-----------|
-| Confirmed Working (CW) | 169 | 35.9% |
-| Needs Test (NT) | 58 | 12.3% |
-| Implemented (IM) | 98 | 20.8% |
-| Known/Missing (KM) | 142 | 30.1% |
-| Needed/Unknown (NU) | 4 | 0.8% |
-| **Total** | **471** | |
+| Confirmed Working (CW) | 167 | 34.6% |
+| Needs Test (NT) | 93 | 19.3% |
+| Implemented (IM) | 108 | 22.4% |
+| Known/Missing (KM) | 111 | 23.0% |
+| Needed/Unknown (NU) | 3 | 0.6% |
+| **Total** | **482** | |
 
-**Code exists (CW + NT + IM)**: 325 features (69.0%)  
-**Missing (KM + NU)**: 146 features (31.0%)  
-**Tested end-to-end (CW)**: 169 features (35.9%)
+**Code exists (CW + NT + IM)**: 368 features (76.3%)  
+**Missing (KM + NU)**: 114 features (23.7%)  
+**Tested end-to-end (CW)**: 167 features (34.6%)
 
-The story of this quarter is the Needs Test column, which tripled from 18 to 58. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
+The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 93 on 2026-09-27, when the social-systems, pets, organizations and crafting campaigns merged. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
 
 ## System Status
 
@@ -58,7 +60,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58.
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
 | Character creation | CW | 11 (4 CW, 4 NT, 1 IM, 2 KM) | **Promoted.** Two characters (Human Soldier, Jaffa) created and played in the 2026-09-18 colo playtest: list, preview, archetype and starting equipment are CW. Delete and visuals remain NT |
-| World entry & spaces | CW | 10 (7 CW, 2 NT, 1 IM) | About 32,500 lines across 95 files. Castle Cellblock and Castle end-to-end. Same-world respawn resync added (#756). Open: fresh clients logging straight into Castle or SGC_W1 hang (recorded in #756, no issue filed yet) |
+| World entry & spaces | CW | 12 (7 CW, 4 NT, 1 IM) | About 32,500 lines across 95 files. Castle Cellblock and Castle end-to-end. Same-world respawn resync added (#756). Open: fresh clients logging straight into Castle or SGC_W1 hang (recorded in #756, no issue filed yet) |
 | Movement & navigation | IM | 11 (1 CW, 3 NT, 7 IM) | **Every world now has a navmesh** (#794), with tiled meshes for the large exteriors (#796) and per-world containment modes. Four-layer movement validation (#437/#478). Open: the speed check divides by per-packet time and can produce Inf; Castle's navmesh does not connect its interior to its exterior |
 | Entity lifecycle (AoI) | IM | 10 (6 CW, 2 NT, 1 IM, 1 KM) | Grid-based AoI and witness lifecycle work, but an entity a witness was correctly introduced to can still fail to render (invisible corpse until relog). The first-login cinematic hold (#747) is the experiment on it and **has not been observed in game**. Player-to-player introduction (#737) is implemented and **awaiting two-client validation** — see [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md) |
 | Combat & abilities | IM | 24 (6 CW, 14 IM, 4 KM) | About 11,400 production lines and 194 tests. Damage application is CW (26 kills and 19 player deaths in the colo playtest). Line of sight is enforced on the NPC side but **not** on player `useAbility`; no facing check, min range, prerequisite monikers or threat decay. Two #673 divergences (`EF_DONT_USE_QR` value, damage-type wire values) are still open |
@@ -80,10 +82,10 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58.
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| XP & leveling | IM | 11 (7 CW, 2 NT, 1 IM, 1 KM) | Kill-XP pipeline + level scaling CW. The ability-tree campaign (2026-09-27, [ledger](analysis/ability-trees/work-packets.md)) raised the cap to 50 and moved to 1 training point per level; both are NT until the owner's UAT. It also shipped the 439-node FINAL v2 trees, the archetype-wide spend gate, trainer authority, respec, and fire-after-warmup for charged abilities. Mission XP has a `GrantXP` action (#618) but `reward_xp` is 0 on all 1,041 missions and the formula needs a maintainer decision |
-| Crafting | KM | 9 (2 IM, 7 KM) | **Phase 1 only** (#427): `CraftingState` + transactional persistence + expertise grants. Every player-facing verb (craft / research / reverse-engineer / alloy / ASP-spend / respec) still logs `UNIMPLEMENTED` |
+| XP & leveling | IM | 12 (7 CW, 3 NT, 1 IM, 1 KM) | Kill-XP pipeline + level scaling CW. The ability-tree campaign (2026-09-27, [ledger](analysis/ability-trees/work-packets.md)) raised the cap to 50 and moved to 1 training point per level; both are NT until the owner's UAT. It also shipped the 439-node FINAL v2 trees, the archetype-wide spend gate, trainer authority, respec, and fire-after-warmup for charged abilities. Mission XP has a `GrantXP` action (#618) but `reward_xp` is 0 on all 1,041 missions and the formula needs a maintainer decision |
+| Crafting | IM | 9 (8 IM, 1 KM) | State, persistence, the login sync, discipline learning, ASP spend, craft, research, reverse engineering and alloying are ported (#427, crafting campaign CR-03 to CR-09); respec is still a stub. See the [crafting ledger](analysis/crafting/README.md) and gap-analysis §19 |
 | Stargate travel | IM | 10 (2 CW, 4 NT, 3 IM, 1 KM) | Gate passage CW. DHD interaction, gate cancel, address discovery and multi-player gate sync are NT (#662, #663, #682); stargate open/cross events are now emitted. Return-trip state is IM |
-| Chat | NT | 11 (6 NT, 1 IM, 4 KM) | Say/emote/yell broadcast, now reaching other players via #737. Tells, `chatIgnore` and the one-way Ignore filter (SS-C1) and the GM broadcast `/gmshout` / `.announce` (SS-C2) work on the server since 2026-09-27, untested in-client. All 8 canonical channels are registered and auto-joined, but nothing routes traffic on the non-spatial ones; moderation unported |
+| Chat | NT | 11 (7 NT, 1 IM, 3 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Say, emote and yell reach other players (#737), with a one-way Ignore filter. Tells (with AFK and DND replies) and `chatIgnore` (SS-C1). A flood limit and text rules on every line (SS-00), a channel allowlist, GM `.mute` / `.unmute`, and a feedback line for each unimplemented Communicator method (SS-C3). GM broadcast through `/gmshout` and `.announce` (SS-C2), which the client now displays because the channel ids match its own (SS-C4); no channel is registered at login, as in the legacy server. Squad chat works (ORG-04); team, command and officer answer "not supported yet". User channels and channel moderation are unported |
 | Trading | IM | 8 (all IM) | **Ported 2026-06** (#438): full propose → lock → confirm → atomic item+cash swap, with disconnect unwind and live-DB commit guards. Needs a two-client smoke to reach CW |
 | Ring transport | IM | 9 (3 CW, 4 NT, 2 IM) | About 5,850 lines. **Four in-client Cellblock ring trips** in the colo playtest make region loading, the destination list and the state machine CW. Stall timeouts and the mission 688 client-patch ceremony are new rows; the patched map passed its Phase 0 in-client check (2026-09-19) and Phase 1 awaits a test |
 | Contact lists | CW | 10 (all CW) | **Shipped 2026-06-20**, confirmed working in-client (#572/#574/#578/#579/#581/#583). Schema, list CRUD, member add/remove, and presence fanout for LoggedInStatus / GainLevel / Death / GateTravel. `eventId` is a bitfield (LoggedInStatus = 1) |
@@ -93,9 +95,9 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58.
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
 | Organizations / guilds | KM | 17 (3 NT, 14 KM) | Squads work (ORG-03, 2026-09-27): invite, accept, leave, kick, loot mode, disconnect and gate travel, tested with two wire clients but not a real client. Teams and Commands are the ORG-01 contract only; DB schema is ORG-02 |
-| Mail | NT | 13 (7 NT, 1 IM, 4 KM, 1 NU) | **Plain send (SS-M1) and attachments (SS-M2) landed 2026-09-27, not yet client-tested.** Text mail to up to 10 recipients (offline ones included), with a flood limit, a 100-message mailbox cap and a reason for every refusal. The inbox and archive lists are separate. A mail to one recipient can carry gift cash, an item or COD; the sender pays 25 naquadah postage, and the item waits in escrow. A mail still holding an attachment cannot be deleted. Taking cash, taking an item, paying COD and return-to-sender are still stubs that log `UNIMPLEMENTED` (SS-M3), so an attachment sent today stays in escrow until SS-M3 lands |
+| Mail | NT | 17 (15 NT, 2 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Text mail to up to 10 recipients, offline ones included (SS-M1); gift cash, an item or COD to one recipient, with 25 naquadah postage and the item held in escrow (SS-M2); taking cash and items, paying COD (the price reaches the sender by mail, online or not) and return-to-sender (SS-M3); a new-mail line and live header push, and a 30-day expiry that returns, deletes or quarantines (SS-M4). A server-side system-mail API and GM `.mail` / `.mailbox` / `.mail_expire` (SS-U1), and the debug hub's Gate Mail Clerk (SS-U3). Missing: a GM release for quarantined mail, and vault and organization aliases (Bank and organizations campaigns) |
 | Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 is on the unmerged `feat/571-black-market-phase1` (PR #586), and the client window additionally needs a client patch (#587) |
-| Dueling | KM | 6 (3 IM, 3 KM) | Challenge, response, the countdown and the engaged duel implemented (SS-D1, SS-D2): duelists are PvP-flagged, can damage each other and only each other, and are in combat together. Forfeit, defeat conditions (the 1 HP clamp, range, disconnect, teleport) and the duel marker still to do (SS-D3) |
+| Dueling | IM | 6 (5 IM, 1 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Challenge, response, the countdown, the engaged duel and every end implemented (SS-D1 to SS-D3): duelists are PvP-flagged, can damage each other and only each other, and are in combat together. A duel ends on forfeit, on partner damage that would kill (held at 1 HP instead, D-SS20), on death from anyone else, disconnect, teleport or range; the winner hears 879, nothing is awarded (D-SS22). A `sparbot` wireclient partner and GM `.duel_status` / `.duel_end` help testing (SS-U2). The duel marker is not ported (D-SS24); squad duels are refused |
 | Pets | NT | 7 (6 NT, 1 IM) | **Restored server-side 2026-09-27, pending the owner's in-game UAT** (pets campaign, #570; every packet merged). A player summons a Straegis, Jaffa, Prime or Lo'taur by casting its summon ability. The pet follows, fights by stance, takes pet-bar orders behind an ownership guard, and pays its kill XP and credit to its owner; it goes away when its owner logs out, dies or travels. The owner's own pet abilities act on it, and GMs have `.pet`, `.giveability` and a debug-hub pet trainer. Not done: persistence (not planned, D-PT01), turrets (no client model), a Lo'taur that heals, several no-op kit abilities, and pet leveling past the owner's level |
 | Minigames | IM | 9 (5 CW, 1 IM, 3 KM) | **Livewire is client-verified**: 12 in-client sessions in the colo playtest, 11 wins that fired their follow-on chains. The SmartFox server is in-process (about 3,400 lines). Six games still run on an accept-anything placeholder; Alignment and GoauldCrystals are open TODOs |
 | Groups / parties | KM | 7 (all KM) | Not ported. No group code exists (an unwired `game/src/social/groups.rs` sketch was deleted in #699) |
@@ -118,12 +120,12 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
 | Session management | IM | 7 (4 IM, 3 KM) | Two-layer inactivity timeout (#711). Cross-IP session binding (#738) warns only. Developer mode does not skip duplicate-login eviction, despite a config comment promising multi-login. No reconnection grace or continuous validation |
-| Rate limiting | KM | 6 (1 CW, 1 NT, 4 KM) | Ability cooldowns enforced; dev-session token mint quota (#740). Chat / action / trade / login throttling pending |
-| Anti-cheat | IM | 7 (1 CW, 5 IM, 1 KM) | Four-layer movement validation (#437/#478): bounds/NaN/Z-clip, speed (warn-only pending calibration), teleport (hard reject + snap-back), navmesh containment. Ability range enforced server-side. Remaining gap: no max-damage cap |
+| Rate limiting | KM | 6 (1 CW, 2 NT, 3 KM) | Ability cooldowns enforced; dev-session token mint quota (#740). Per-player buckets for chat, mail sends and duel challenges (social-systems SS-00, SS-M1, SS-D1), not yet client-tested. Action, trade and login throttling pending |
+| Anti-cheat | IM | 8 (1 CW, 6 IM, 1 KM) | Four-layer movement validation (#437/#478): bounds/NaN/Z-clip, speed (warn-only pending calibration), teleport (hard reject + snap-back), navmesh containment. Ability range enforced server-side. Remaining gap: no max-damage cap |
 | Economy | IM | 7 (4 NT, 3 KM) | **Corrected down.** Vendor-priced sinks and faucets are NT until vendors are re-tested after #609. **Mission cash rewards do not exist** (#310). AH listing fees + cash-flow tracking pending |
 | World state | IM | 6 (1 CW, 1 NT, 1 IM, 3 KM) | Outbox CW. Player position on logout was never persisted until #756, which has no in-client relog test yet. Gate/door state + world-state table pending |
 | Scheduler | IM | 4 (1 IM, 3 KM) | Per-chain timers via content engine. No global cron |
-| Admin / GM | IM | 13 (4 CW, 1 NT, 5 IM, 3 KM) | Teleport and item-grant via the client's native `/` console (the SGWGmPlayer class flip, #518). About 6,070 lines of GM handlers plus a 12,730-line dev/authoring `.`-console with 89 commands (#523). The legacy command-parity campaign has integrated 12 of 49 packets. Access-level gate enforced server-side; GM surface confirmed working 2026-06-20. **Ban/mute is still missing** |
+| Admin / GM | IM | 13 (4 CW, 2 NT, 5 IM, 2 KM) | Teleport and item-grant via the client's native `/` console (the SGWGmPlayer class flip, #518). About 6,070 lines of GM handlers plus a 12,730-line dev/authoring `.`-console with 89 commands (#523). The legacy command-parity campaign has integrated 12 of 49 packets. Access-level gate enforced server-side; GM surface confirmed working 2026-06-20. GM broadcast (`/gmshout`, `.announce`) and a chat mute (`.mute` / `.unmute`, not saved across a restart) landed with the social-systems campaign. **Ban is still missing** |
 | Metrics / telemetry | CW | 9 (4 CW, 3 NT, 2 IM) | Full OTLP pipeline. New: the NPC AI health dashboard (#782) and disk-to-SigNoz log parity (#792) |
 
 ## Content Coverage
@@ -192,21 +194,21 @@ Phase 1 (#427) landed the state layer: disciplines, blueprints, applied-science 
 
 ### September landings await client verification
 
-58 rows are Needs Test: the NPC AI changes merged after the 2026-09-25 UAT, gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
+93 rows are Needs Test: the NPC AI changes merged after the 2026-09-25 UAT, the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
 
 ## Critical Path for Playability
 
 Re-ranked 2026-09-25.
 
-1. **Client-test the September landings** — the 58 NT rows above; the cheapest way to move the headline
+1. **Client-test the September landings** — the 93 NT rows above; the cheapest way to move the headline
 2. **Effect-script content coverage** — the 3,216 effect rows need script authoring for the long tail, plus the missing clear-on flags
 3. **AoI entity-introduction drop** — needs an in-game look at the #747 hold, not more code
 4. **Mission rewards** — a reward formula for XP, and cash and item dispatch (#310)
 5. **Crafting Phase 2** — the crafting verbs on top of the Phase 1 state layer
 6. **Multi-zone end-to-end** — Harset's first playtest; content campaigns for the next zones
-7. **Two-client verification** — trading, player-to-player introduction, chat between players
+7. **Two-client verification** — trading, player-to-player introduction, chat, mail and duels between players
 
-Quality-of-life items (organizations, mail sending, black market merge, dueling, remaining minigame ports, groups) follow the above and can be picked up independently. Contact lists and GM tooling have shipped, and pets are restored server-side and waiting for the owner's in-game UAT.
+Quality-of-life items (organizations, black market merge, remaining minigame ports, groups) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign) and pets are restored server-side and waiting for the owner's in-game UAT.
 
 ## Roadmap
 
@@ -222,16 +224,16 @@ Quality-of-life items (organizations, mail sending, black market merge, dueling,
 
 - Crafting Phase 2 (the verbs, on top of the shipped state layer)
 - Org / guild lifecycle + schema
-- Mail sending, attachments, CoD, return-to-sender, new-mail fanout
 - Merge `feat/571-black-market-phase1`
 - Spawn population control (SpawnRegion / SpawnSet, #62)
 
 ### Long-term — finish-out
 
-- Dueling + groups + the remaining minigame ports (in any order)
+- Groups + the remaining minigame ports (in any order)
+- Social-systems follow-ups after UAT: a GM release for quarantined mail, the owner questions in the [session resume](analysis/social-systems/handoffs/session-resume.md#owner-questions), and vault and organization mail aliases
 - Pets follow-ups after UAT: a Lo'taur that heals (an ally-target pet AI branch), effects for the no-op kit abilities, and turrets once a model is chosen
 - Server infrastructure: rate limiting, damage sanity checking, promoting speed validation from warn-only to enforcing, reconnection grace
-- Ban/mute on top of the shipped GM command surface
+- Ban, and saved mutes, on top of the shipped GM command surface
 - Mercury v2 verification against a patched client
 - Three.js space viewer (Phase 2 of the admin UI)
 

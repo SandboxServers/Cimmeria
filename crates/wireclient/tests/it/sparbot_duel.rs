@@ -87,9 +87,11 @@ fn sparbot_wire_matches_the_server() {
 /// Sentinel ids: this module reserves the block 900_700-900_799 for its
 /// accounts and players. Every module of the `it` binary shares one test
 /// database and may run concurrently, so each keeps a disjoint block:
-/// 900_1xx/2xx `two_client_castle_visibility`, 900_3xx/4xx/5xx
-/// `two_client_castle_visibility_chaos`, 900_6xx
-/// `duel_two_duelists_and_a_spectator`, `0x7000_03xx` `two_client_squad`.
+/// 900_1xx/2xx `two_client_castle_visibility`, 900_301-303/401-403/501-503
+/// `two_client_castle_visibility_chaos`, 900_311-314 `two_client_tell`
+/// (SS-C1), 900_6xx `duel_two_duelists_and_a_spectator` (SS-D2),
+/// `0x7000_03xx` `two_client_squad`, `0x7300_1Bxx` `two_client_mail_cod`
+/// (SS-M3).
 const BOT_ACCOUNT: i32 = 900_701;
 const CHALLENGER_ACCOUNT: i32 = 900_702;
 const BOT_PLAYER: i32 = 900_703;

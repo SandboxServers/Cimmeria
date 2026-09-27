@@ -2,7 +2,7 @@
 title: "Slash Commands"
 type: reference
 audience: players, GMs, operators
-last_updated: 2026-06-17
+last_updated: 2026-09-27
 ---
 
 # Slash Commands
@@ -58,7 +58,7 @@ Chat channels, emotes, friends, and private messages.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/afk` | Set your AFK auto-reply | ❌ Not yet | `<text>` | `/afk afk, back soon` |
+| `/afk` | Set your AFK auto-reply | 🚧 Server side (social-systems, 2026-09-27), not client-tested. A tell to you while you are away is answered with it | `<text>` | `/afk afk, back soon` |
 | `/ban` | Ban a player from a channel | ❌ Not yet | `<channel> <player>` | `/ban trade Spammer` |
 | `/chat` | Join a chat channel | ❌ Not yet | `<channel>` | `/chat trade` |
 | `/chatjoin` | Join a chat channel | ❌ Not yet | `<channel>` | `/chatjoin trade` |
@@ -67,10 +67,10 @@ Chat channels, emotes, friends, and private messages.
 | `/chatwho` | See who is in a chat channel | ❌ Not yet | none | `/chatwho trade` |
 | `/command` | Talk in command/guild chat | ❌ Not yet | `<text>` | `/command event tonight` |
 | `/csay` | Talk in your current chat channel | ❌ Not yet | <text> | `/csay hi all` |
-| `/dnd` | Set your Do-Not-Disturb auto-reply | ❌ Not yet | `<text>` | `/dnd in a mission` |
+| `/dnd` | Set your Do-Not-Disturb auto-reply | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Your lines carry the DND flag, and a tell to you is answered with the message | `<text>` | `/dnd in a mission` |
 | `/emote` | Perform an emote (spatial) | ✅ Yes | `<text>` — emote text | `/emote waves` |
 | `/friend` | Add a player as a friend | ❌ Not yet | `<player>` | `/friend Sam` |
-| `/ignore` | Ignore a player | ❌ Not yet | `<player>` | `/ignore Spammer` |
+| `/ignore` | Ignore a player | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Their tells, say, emote, yell, mail and duel challenges stop reaching you; they can still see you | `<player>` | `/ignore Spammer` |
 | `/kick` | Kick a player from a channel you own | ❌ Not yet | `<channel> <player>` | `/kick trade Spammer` |
 | `/me` | Perform an emote (spatial) | ✅ Yes | `<text>` — emote text | `/me waves` |
 | `/moderator` | Grant channel moderator status | ❌ Not yet | <channel> <player> | `/moderator trade Sam` |
@@ -83,7 +83,7 @@ Chat channels, emotes, friends, and private messages.
 | `/say` | Say something in local (spatial) chat | ✅ Yes | `<text>` — the message | `/say hello there` |
 | `/squad` | Talk in squad chat | 🚧 Server side (ORG-04), not client-tested. Reaches every squad member in any space; outside a squad you get "You are not in a squad." | `<text>` | `/squad regroup` |
 | `/team` | Talk in team chat | ❌ Not yet | `<text>` | `/team push left` |
-| `/tell` | Send a private message | ❌ Not yet | `<player> <text>` | `/tell Jack on my way` |
+| `/tell` | Send a private message | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Only to a player who is online; you are told when they are not | `<player> <text>` | `/tell Jack on my way` |
 | `/unban` | Lift a channel ban | ❌ Not yet | `<channel> <player>` | `/unban trade Spammer` |
 | `/unfriend` | Remove a friend | ❌ Not yet | `<player>` | `/unfriend Sam` |
 | `/unmute` | Unmute a player | ❌ Not yet | `<player>` | `/unmute Loud` |
@@ -178,16 +178,17 @@ Challenge other players.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/duel` | Challenge a player to a duel | ❌ Not yet | `<player>` | `/duel Rival` |
-| `/duelforfeit` | Forfeit an active duel | ❌ Not yet | none | `/duelforfeit` |
-| `/duelresponse` | Accept or decline a duel challenge | ❌ Not yet | `<response>` (accept/decline) | `/duelresponse 1` |
+| `/duel` | Challenge a player to a duel | 🚧 Server side (social-systems, 2026-09-27), not client-tested. The target must be within 20 units, in your world and not already dueling | `<player>` | `/duel Rival` |
+| `/duelforfeit` | Forfeit an active duel | 🚧 Server side (social-systems, 2026-09-27), not client-tested. Only once the countdown has finished | none | `/duelforfeit` |
+| `/duelresponse` | Accept or decline a duel challenge | 🚧 Server side (social-systems, 2026-09-27), not client-tested. | `<response>` (accept/decline) | `/duelresponse 1` |
 
-> **Note (2026-07-25):** `/duelforfeit` and `/duelresponse` were previously marked
-> ✅ Yes. The server does receive and dispatch both, but each handler only logs
-> `UNIMPLEMENTED` and returns — no duel state changes
-> ([player/social.rs:92-103](../crates/cell-methods/src/cell/cell_methods/player/social.rs#L92-L103)).
-> Reaching a handler is not the same as the handler doing its job. No part of the
-> duel system is implemented server-side.
+> **Duels (2026-09-27).** 1v1 duels are implemented server-side (social-systems
+> SS-D1 to SS-D3): a duel counts down for 5 seconds, then only the two duelists
+> can damage each other. It ends on a forfeit, when one would drop to 0 HP (held
+> at 1 HP instead: duels never kill), on death from anyone else, on logging off,
+> on travel, or after 5 seconds outside the 40-unit duel area. Nothing is won but
+> the line "You won the duel". Squad duels are refused. See
+> [duel-system.md](gameplay/duel-system.md).
 
 ### Crafting
 
@@ -573,6 +574,7 @@ restart, never written to the DB):**
 | Chat mutes | `.mute` `.unmute` | ✅ Yes (server side). `.mute <name> <minutes> [reason]` (1 to 10080) stops an online player's chat and tells; they are told for how long, and each refused line says how much is left. `.unmute <name>` lifts it. A mute holds across relog and ends at a server restart. A GM cannot be muted |
 | Grants | `.givecash` `.givexp` `.giveability` | ✅ Yes — `.giveability <abilityId>` gives the selected player (else you) the ability and **saves it to the character**: it survives relog and a trainer respec, costs no points, and refreshes the ability window at once. Pets UAT uses it for Summon Straegis (`.giveability 2826`) |
 | Pets | `.pet summon <templateId\|abilityId>` `.pet dismiss` `.pet stance <0-2>` `.pet info` `.pet list` | ✅ Yes (server side) — `summon` spawns a pet beside you at once, with no warmup, replacing your current pet; an id with a `pet_summons` row (2826) is the summon ability, anything else a template id (350). `stance` is 0 passive, 1 defensive, 2 aggressive. `info` shows the selected pet, else yours: owner, stance, abilities, toggled-off abilities, AI state, distance to its owner, last teleport. `list` shows every pet in your space with its owner. Nothing is saved: pets are per session |
+| Playtest bookmark | `.bug <note>` | ✅ Yes. Snapshots you, your target and every entity within 60 units into SigNoz with your note, so a tester's "this looks wrong" can be found later; see the [telemetry runbook](operations/npc-ai-telemetry-runbook.md#start-from-a-bug-bookmark) |
 | Duels | `.duel_status` `.duel_end` | ✅ Yes. `.duel_status [name]` shows a player's duel or duel challenge (yours with no name): the other player, the duel number, the stage and the seconds left. `.duel_end <name>` ends that duel or challenge in any stage, sends both players "Duel aborted", and starts no challenge cooldown. For a second duelist when testing alone, see `sparbot` in [the wireclient doc](architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing) |
 | Bank | `.bank` `.bankdump` | ✅ Yes. `.bank` opens your own personal vault wherever you stand, with no Banker; any later right-click on an NPC closes the session. A player without GM access who types `.bank` is told it needs GM access, and the line is not said aloud. `.bankdump [name]` lists a character's personal vault (container 17) in chat, read-only: one line per item with its slot, name, type id, stack size and item id, and the vault size (`bank_slots`). With no name it lists your own. The name is matched exactly (case-sensitive) against every character, so an offline character works too. A row in a slot past the vault size is flagged `(beyond bank_slots)`, because the client's vault window cannot show it |
 | Mail | `.mail` `.mailbox` `.mail_expire` | ✅ Yes. `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>] [<subject>]` sends yourself (or `<name>`, online or not) a mail with minted cash and a minted item, no postage; the options come first in any order, the first other word starts the subject, and a number right after the type id is the quantity. With `cod <n>` the mail is a COD mail from your character, so the payment comes back to you; it needs an item and no cash. `.mailbox [name]` shows a mailbox's open and archived mail, its system and quarantined mail, what is in escrow and the next expiry. `.mail_expire <mailId>` makes a mail due now and expires it at once as the sweep would (returned, deleted or quarantined) and says which; archived and quarantined mail are refused |
@@ -591,7 +593,7 @@ design and the per-command status.
 ## At a glance
 
 - **266 commands** total -- **105** for everyone, **161** Game-Master only.
-- **65** fully work on our server, **23** are handled by the game itself, **16** partly work, and **162** aren't wired up on our server yet.
+- **65** fully work on our server, **23** are handled by the game itself, **23** partly work or work only server-side so far, and **155** aren't wired up on our server yet.
 - **45** have an automated test guarding the server behavior.
 
 > The server side is tested where marked, but a full live-client pass (typing each one in the real game and watching the result) is still pending. Treat ✅ as "the server does the right thing when the command arrives."

@@ -1,7 +1,7 @@
 # Social Systems: Mail, Chat and Dueling
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and the owner.
-> Updated: 2026-09-27. Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [organizations ledger](../organizations/README.md), [documentation index](../../readme.md).
+> Updated: 2026-09-27 (close-out, SS-99). Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [organizations ledger](../organizations/README.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -32,14 +32,17 @@ Out of scope:
 
 ## Progress
 
-Updated 2026-09-27. The per-packet status lines in [work-packets.md](work-packets.md) are authoritative.
+**Complete** (2026-09-27). Every implementation packet is merged; SS-99, this close-out, is in review, and the owner's [SS-UAT](work-packets.md#ss-uat-owner-uat-colo-after-the-release) is the last step. The per-packet status lines in [work-packets.md](work-packets.md) are authoritative, and the [session resume](handoffs/session-resume.md) has the final state and the owner questions.
 
-| Line | Merged | In flight |
-|---|---|---|
-| Shared | SS-00 online-player index, rate limiter, feedback helper and chat flood limit (#880); SS-E1 client evidence (#875) | |
-| Mail | SS-M1: text-only send to up to 10 recipients, bounded decode, per-recipient cap under lock, and the read-side fixes (#894) | SS-M2 attachments and escrow |
-| Chat | `chat.rs` split (#885); SS-C2: `/gmshout` and `.announce` (#887) | SS-C1 tells and Ignore (#893) |
-| Duels | SS-D1: challenge, response, `DuelRegistry` and expiry (#888). An accepted duel counts down and then aborts until SS-D2 | SS-D2 PvP flag and harm gate; SS-U2 test partner |
+| Line | Merged |
+|---|---|
+| Shared | SS-E1 client evidence (#875); SS-00 online-player index, rate limiter, feedback helper and chat flood limit (#880) |
+| Mail | SS-M1 text send and read-side fixes (#894); SS-M2 attachments, postage and escrow (#912); SS-M3 take, COD and return (#926); SS-M4 new-mail notification, 30-day expiry and quarantine (#933); SS-U1 system-mail writer and GM `.mail` / `.mailbox` (#929); SS-U3 `send_system_mail` content action and the Gate Mail Clerk (#934) |
+| Chat | `chat.rs` split (#885); SS-C2 `/gmshout` and `.announce` (#887); SS-C1 tells, `chatIgnore` and the Ignore filter (#893); SS-C3 channel allowlist, GM mutes and feedback for 0xC6-0xCE (#925); SS-C4 channel ids that match the client, no registration at login (#937) |
+| Duels | SS-D1 challenge and response (#888); SS-D2 countdown, engage, PvP flag and harm gate (#911); SS-D3 every end path and the non-lethal clamp (#924); SS-U2 `sparbot` and GM `.duel_status` / `.duel_end` (#910) |
+| Ledger | plan (#873), ledger update (#907), close-out SS-99 (in review) |
+
+The campaign added 392 tests net across 15 crates (see the [test inventory](../../testing/inventory/README.md#social-systems-campaign-2026-09-27)).
 
 ## What was found
 
@@ -92,6 +95,8 @@ Against `main` @ `09a880ba`. The [audit](audit.md) has the file:line evidence fo
 | D-SS25 | SUPERSEDED (SS-E1, 2026-09-27) | **Lifted: sending 151 at duel start and 153 at duel end is safe.** SS-E1 D-Q5 decompiled all three: they insert into, erase from and clear a set at `GamePlayer+0x16c`, then force an interaction recompute, and the interactability decision never reads that set. `aoi.rs:203-211` has the direction backwards (152 erases); SS-D2 corrects the comment. Original row: **No `onDuelEntities*` send until SS-E1 answers.** The server must not send 151 (`Set`) or 153 (`Clear`), and must not change how it uses 152, until SS-E1 has decompiled all three handlers and the claim at `aoi.rs:203-211`. | AoI uses 152 to make NPCs interactable (audit A-41). A duel end that clears that set could make every NPC unclickable. |
 | D-SS26 | PROPOSED | **Moderation basics.** GM `.mute <name> <minutes>` and `.unmute <name>` (GameMaster and above) block a player's chat and tells, with feedback to the muted player on each attempt. Mutes are held on the base session by `player_id` with an expiry and do not survive a restart. Every Communicator base method the server does not implement (0xC6-0xCE) answers with one "not supported yet" feedback line instead of the silent catch-all. | CAT-L-07 to L-09 are out of scope, but the project rule says every press gets visible feedback. Persisted mutes are a later decision. |
 
+| D-SS27 | DONE (SS-C4, 2026-09-27; both coordinators) | **D-SS17 carried out by SS-C4 (option B).** The `CHAN_*` constants now equal `EChannel` (server 8, feedback 9, tell 10, splash 11; nothing uses 7), pinned against `enumerations.xml`, and no built-in channel is registered at login: `DEFAULT_CHAT_CHANNELS` and the `onChatJoined` burst are deleted. GM broadcasts move from 7 to 8. | The client hardcodes ids 0-11 (ORG-E1 Q5) and treats every `onChatJoined` as a user channel (`ChatWindow.lua:370-386`); the legacy server sent it only for ids 12 and up. On 7 the client raised a Lua error, so SS-C2's broadcasts had shown nothing. |
+
 PROPOSED rows are adopted at their defaults under D-SS01 unless the owner objects. A change is recorded as a new row, never by editing an old one.
 
 ## Owner decisions
@@ -106,6 +111,23 @@ Answered by the owner on 2026-09-27. Every answer matched the recommendation:
 6. **D-SS20 and D-SS22:** duels are non-lethal (clamped at 1 HP) with no rewards.
 
 The other PROPOSED rows proceed as written unless evidence or the owner overturns them.
+
+## Open owner questions (close-out)
+
+The campaign runs on these defaults until the owner answers. The [session resume](handoffs/session-resume.md#owner-questions) has each question's background, the current behaviour and the recommendation.
+
+- **Q-a.** Should a deleted recipient's escrowed mail items and COD return to the sender? Today they are deleted with the character.
+- **Q-b.** A COD whose sender was deleted becomes a free take. Keep that?
+- **Q-c.** Cap archived mail that holds items or cash at 100, so mail cannot be unlimited storage? Recommended by SS-M4, its reviewer and the Bank campaign.
+- **Q-d.** Key mutes by account, so alts cannot escape them? Today they are per character.
+- **Q-e.** Should a mute also block mail? Today it does not.
+- **Q-f.** May pets join duels? Today they may not.
+- **Q-g.** A colo account for `sparbot`?
+- **Q-h.** Bind-on-acquire is never applied (#914), so a bound reward can be mailed. Fix the grant path?
+- **Q-i.** Confirm the provisional duel numbers: 30 s challenge, 5 s countdown, 40-unit arena with a 5 s grace, 60 s pair cooldown, 10-minute limit.
+- **Q-j.** Add a GM `.mail_release` for quarantined mail (follow-up)?
+- **Q-k.** Two client-only cosmetics need a client patch: the unit-frame PvP flag does not refresh live (a Lua typo), and after a refused send the mail Send button stays greyed until New or Reply. Patch, or accept?
+- **Q-l.** Keep the new table `sgw_player_content_cooldown` (SS-U3) as the general per-player content cooldown?
 
 ## Autonomy
 
@@ -141,7 +163,7 @@ You are the coordinator for the social-systems campaign (mail, chat, 1v1 duels).
 
 ## UAT milestone
 
-The owner runs [SS-UAT](work-packets.md#ss-uat-owner-uat-colo-after-the-release) on the colo after the release. Mail and GM broadcast work with one client. Tells, Ignore and duels need two clients (two accounts); each step lists a solo fallback where one exists. The coordinator reads SigNoz afterwards for the `mail`, `chat`, `duel` and `rate_limit` targets.
+The owner runs [SS-UAT](work-packets.md#ss-uat-owner-uat-colo-after-the-release) on the colo after the release. Mail and GM broadcast work with one client. Tells, Ignore and duels need two clients (two accounts); each step lists a solo fallback where one exists. The coordinator reads SigNoz afterwards for the `mail`, `chat`, `duel` and `rate_limit` targets. Issues #72 (mail) and #569 (duels) close with a pointer to this ledger; the follow-ups the campaign filed are #906, #913, #914 and #928 ([session resume](handoffs/session-resume.md#follow-up-issues)).
 
 ## Where confidence is low
 

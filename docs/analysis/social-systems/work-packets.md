@@ -1,7 +1,7 @@
 # Social Systems Work Packets
 
 > Type: how-to. Audience: the coordinator and packet workers.
-> Updated: 2026-09-27. Companions: [launch prompt and decisions](README.md), [audit](audit.md), [session resume](handoffs/session-resume.md), [testing playbook](../../../TESTING.md), [organizations ledger](../organizations/work-packets.md) (same dispatch rules).
+> Updated: 2026-09-27 (close-out: every packet Integrated, SS-99 in Review, SS-UAT runnable). Companions: [launch prompt and decisions](README.md), [audit](audit.md), [session resume](handoffs/session-resume.md), [testing playbook](../../../TESTING.md), [organizations ledger](../organizations/work-packets.md) (same dispatch rules).
 
 ## Dispatch rules
 
@@ -105,7 +105,7 @@ SS-00 is the bottleneck and is kept small: the index, the limiter, the feedback 
 
 ### SS-E1: Client evidence
 
-**Status:** Integrated (this PR). Verdicts are in `worknotes/ss-e1.md`. **Writer:** `game-archaeology-specialist`. Static Ghidra and client Lua only; no debugger on the live client (`feedback_x64dbg_nonfreezing_breakpoints`). **Depends:** none. Documentation only.
+**Status:** Integrated (#875). Verdicts are in `worknotes/ss-e1.md`. **Writer:** `game-archaeology-specialist`. Static Ghidra and client Lua only; no debugger on the live client (`feedback_x64dbg_nonfreezing_breakpoints`). **Depends:** none. Documentation only.
 
 Answer each with an address or file:line and a verdict, into `docs/reverse-engineering/findings/mail-wire-formats.md`, `chat-wire-formats.md` and `duel-wire-formats.md` (and correct `duel-restoration.md:50`, audit A-47):
 
@@ -172,7 +172,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-C1: Tells and Ignore
 
-**Status:** Review (#893; the `chat.rs` split landed first as #885). The tell byte is 10 (ORG-E1 Q5). **Advisor:** `server-authority-enforcer`. Salvage source: PR #585 (audit A-26).
+**Status:** Integrated (#893; the `chat.rs` split landed first as #885). The tell byte is 10 (ORG-E1 Q5). **Advisor:** `server-authority-enforcer`. Salvage source: PR #585 (audit A-26).
 
 **Scope:**
 
@@ -198,7 +198,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-D1: Duel challenge and response
 
-**Status:** Integrated (#888). Until SS-D2, an accepted duel counts down and then aborts (`reason=engage_not_implemented`). **Advisor:** `server-authority-enforcer`, `combat-systems-advisor`.
+**Status:** Integrated (#888). **Advisor:** `server-authority-enforcer`, `combat-systems-advisor`.
 
 **Scope:**
 
@@ -213,7 +213,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-M2: Cash and item attachments, COD escrow
 
-**Status:** Writing (SS-M1, D-SS02 and SS-E1 M-Q2 are all settled). Attachments come from the backpack only, never containers 16-20 (an owner decision relayed by the Bank campaign). **Advisor:** `database-persistence`, `server-authority-enforcer`, `items-systems-advisor`, `testing-validation-engineer`.
+**Status:** Integrated (#912). Attachments come from the backpack, and since SS-M4 the crafting bag (15), never containers 16-20 (owner decisions relayed by the Bank and Crafting campaigns). **Advisor:** `database-persistence`, `server-authority-enforcer`, `items-systems-advisor`, `testing-validation-engineer`.
 
 **Scope:**
 
@@ -227,7 +227,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-C3: Channel allowlist, moderation basics, feedback for the rest
 
-**Status:** BlockedDependency (SS-C1, #893). **Advisor:** `server-authority-enforcer`.
+**Status:** Integrated (#925). **Advisor:** `server-authority-enforcer`.
 
 **Scope:**
 
@@ -239,7 +239,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-D2: PvP flag and the harm gate
 
-**Status:** Writing. The PvP-flag vehicle stays open under SS-E1 D-Q4 and is resolved by this packet's receiver trace; D-Q5 is closed. **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
+**Status:** Integrated (#911). The PvP flag rides `onEntityProperty(4, v)` (the receiver trace settled SS-E1 D-Q4). **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
 
 **Scope:**
 
@@ -256,7 +256,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-M3: Take cash, take item, pay COD, return
 
-**Status:** BlockedDependency (SS-M2). **Advisor:** `database-persistence`, `server-authority-enforcer`, `items-systems-advisor`, `testing-validation-engineer`.
+**Status:** Integrated (#926). **Advisor:** `database-persistence`, `server-authority-enforcer`, `items-systems-advisor`, `testing-validation-engineer`.
 
 **Scope:**
 
@@ -269,7 +269,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-D3: Duel end paths
 
-**Status:** BlockedDependency (SS-D2; owner rows D-SS20, D-SS22). **Advisor:** `combat-systems-advisor`, `server-authority-enforcer`, `aoi-witness-broadcast`, `testing-validation-engineer`.
+**Status:** Integrated (#924). **Advisor:** `combat-systems-advisor`, `server-authority-enforcer`, `aoi-witness-broadcast`, `testing-validation-engineer`.
 
 **Scope:**
 
@@ -281,7 +281,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-C4: Channel-id alignment
 
-**Status:** BlockedDependency (ORG-E1 Q5, ORG-09). **Advisor:** `social-systems-engineer`.
+**Status:** Integrated (#937). The two coordinators agreed that SS-C4 carries the constant change (option B: no channel registration at login). **Advisor:** `social-systems-engineer`.
 
 **Scope:** D-SS17. Nothing lands here if ORG-09 carries the constant change. Otherwise the two coordinators agree this packet carries it: the `CHAN_*` constants, `DEFAULT_CHAT_CHANNELS`, the welcome line's channel, the tell route from SS-C1 and `chat-system.md`, in one PR.
 
@@ -291,7 +291,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-M4: New-mail notification and expiry
 
-**Status:** BlockedDependency (SS-M3; owner row D-SS04; SS-E1 M-Q3 and M-Q6). **Advisor:** `database-persistence`, `social-systems-engineer`.
+**Status:** Integrated (#933). **Advisor:** `database-persistence`, `social-systems-engineer`.
 
 **Scope:**
 
@@ -308,7 +308,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-U1: GM mail tooling
 
-**Status:** BlockedDependency (SS-M2; SS-M3 for the COD steps). **Advisor:** `server-authority-enforcer`.
+**Status:** Integrated (#929). **Advisor:** `server-authority-enforcer`.
 
 **Scope:** GameMaster-gated `.` commands in `registry/commands/social.rs`, each logging `mail.gm_action` with the actor:
 
@@ -320,7 +320,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-U2: Duel test partner
 
-**Status:** Writing (dispatched with SS-D2; the bot's accept path is SS-D2's wireclient test). **Advisor:** `testing-validation-engineer`.
+**Status:** Integrated (#910). **Advisor:** `testing-validation-engineer`.
 
 **Scope:** a solo tester needs a second duelist.
 
@@ -332,7 +332,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-U3: Hub additions and UAT docs
 
-**Status:** BlockedDependency (SS-M3, SS-C1, SS-D1). **Advisor:** `mission-systems-advisor` (the chain), `social-systems-engineer`.
+**Status:** Integrated (#934). The scope grew by one `sgw` table, `sgw_player_content_cooldown`. **Advisor:** `mission-systems-advisor` (the chain), `social-systems-engineer`.
 
 **Scope:**
 
@@ -347,22 +347,24 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-99: Close-out
 
-**Status:** BlockedDependency (every other packet). Update `docs/project-status.md`, `docs/gap-analysis.md` §21, §24 and §27, and the three gameplay docs; close issues #72 and #569 with a pointer here; write `handoffs/session-resume.md` with the owner's UAT checklist; put `/release` on this PR (D-SS01).
+**Status:** Review (branch `social/99-close-out`; the coordinator opens the PR).  Update `docs/project-status.md`, `docs/gap-analysis.md` §21, §24 and §27, and the three gameplay docs; close issues #72 and #569 with a pointer here; write `handoffs/session-resume.md` with the owner's UAT checklist; put `/release` on this PR (D-SS01).
 
 ## SS-UAT: owner UAT (colo, after the release)
 
-Use two accounts, A and B, and optionally a third, C, as a spectator. Use `.bug <note>` at each oddity. Solo fallbacks are in brackets.
+**Before you start.** Two accounts, A and B, each with a character in the Castle_CellBlock stasis room (world 12, where new characters wake up). A needs GM rights for the solo fallbacks in steps 2 to 4 and for steps 6 and 10. A third account, C, is needed only as the spectator in step 11. Type `.bug <note>` at each oddity: it bookmarks the moment in SigNoz ([commands.md](../../commands.md#command-families)). Solo fallbacks are in brackets.
 
-1. **Plain mail.** A mails B and a second name that does not exist. A sees the failed name reported. B, offline, logs in and finds the mail. [Solo: mail yourself.]
-2. **Postage and cash.** A sends B 100 naquadah. A's balance drops by 125; B takes 100. [Solo: `.mail cash 100`, then take it.]
-3. **Item.** A sends B an item. It leaves A's bags at once. B takes it by right-click. Try again with B's bags full: the item stays in the mail and B is told. [Solo: the Gate Mail Clerk, or `.mail item <id>`.]
-4. **COD.** A sends B an item with COD 200. B cannot take the item before paying. B pays; A gets a payment mail with 200. [Solo: `.mail item <id> cod 200`; the payment comes back to you.]
-5. **Return.** B returns an unpaid COD mail. It arrives back with A, item included, and cannot be returned again.
-6. **Expiry.** `.mail_expire` on an unpaid COD mail: it returns to its sender. On a plain mail: it disappears.
-7. **Tells.** A tells B; B sees it, A sees it was sent. A tells a name that is offline: A is told. B sets DND: A's next tell gets B's DND message back.
-8. **Ignore.** B ignores A. A's tells, says and duel challenges no longer reach B, and A is told. A is still visible to B. B un-ignores A.
-9. **Flood.** Paste ten lines as fast as possible: the extras are refused with one "too quickly" line.
-10. **GM tools.** As GM, `/gmshout` (or `.announce`) reaches everyone, and a space-scoped one only your space. `.mute B 1`: B's chat is refused with feedback, and allowed again a minute later.
-11. **Duel.** A challenges B from 10 units away; B sees the prompt and accepts. After the countdown A and B can damage each other, and C, standing near, can damage neither and is not hit by A's area abilities. B's health stops at 1 and A is told A won. Nobody dies or drops loot. [Solo: `sparbot`.]
-12. **Duel ends.** Repeat with a forfeit, with B walking out of the arena, with B gating away, and with B's client killed. Each time the duel ends, and afterwards A and B cannot damage each other. Right-click an NPC after every duel: it still responds (D-SS25).
+1. **Mail: plain mail.** A mails B and a second name that does not exist. A sees the failed name reported. B, offline, logs in and finds the mail. With B online, A mails again: B gets "You have new gate-mail from A." with the mailbox closed, and with it open the mail also appears in the list at once. [Solo: mail yourself.]
+2. **Postage and cash.** A sends B 100 naquadah. A's balance drops by 125. B takes 100, and the mail's header refreshes to show no cash. [Solo: `.mail cash 100`, then take it.]
+3. **Item.** A sends B an item. It leaves A's bags at once. B takes it by right-click, and the header refreshes. Try again with B's bags full: the item stays in the mail and B is told. Then drag a crafting component (for example 5188) from the crafting bag into the attachment slot and send it: it should leave the crafting bag and arrive as an attachment. If the client refuses the drag, note it; the server path works. [Solo: the Gate Mail Clerk, Sgt. Harriman, on the stasis room's right-hand wall past the pet trainer (dialog 60104): press "Send me a mail", then take the 50 naquadah and 5 slappacks. Press again: you are told to wait about 10 minutes. Or `.mail item <id>`.]
+4. **COD.** A sends B an item with COD 200. B cannot take the item before paying. B pays, and the header refreshes; A gets a payment mail with 200. [Solo: `.mail item <id> cod 200`; the payment comes back to you.]
+5. **Return.** B returns an unpaid COD mail. It arrives back with A, item included, A is told, and it cannot be returned again.
+6. **Expiry (GM).** `.mailbox` lists what can expire. `.mail_expire <id>` on an unpaid COD mail returns it to its sender with the price cleared; on a plain mail it deletes it; on the mail returned in step 5, still holding its item, it quarantines it (gone from the mailbox, counted by `.mailbox`). Each time the command says which path it took.
+7. **Chat: tells.** A tells B; B sees it, and A sees it was sent. A tells a name that is offline: A is told. B sets DND: A's next tell gets B's DND message back. [Solo: a tell to your own name is refused, and a tell to an offline name tells you so.]
+8. **Ignore.** B ignores A. A's tells, says, mail and duel challenges no longer reach B, and A is told. A is still visible to B. B un-ignores A.
+9. **Channels and flood.** At login the welcome line is sky blue in the Info tab, with no popup and no "You have joined channel" lines. Say, squad and tell land in their own tabs; team answers "not supported yet". Paste ten lines as fast as possible: the extras are refused with one "too quickly" line.
+10. **GM tools (GM).** `/gmshout hello` or `.announce hello` reaches everyone as a red line with a modal "Server Message" prompt (new: before SS-C4 nothing displayed); `.announce space hello` reaches only your space. GM feedback, for example from `.location`, is sky blue in the Info tab. `.mute B 1`: B's chat is refused with feedback, and allowed again a minute later.
+11. **Duel: a full duel.** A challenges B from 10 units away; B sees the prompt and accepts. After the countdown A and B can damage each other, and C, standing near, can damage neither and is not hit by A's area abilities. B's health stops at 1 and A is told A won. Nobody dies or drops loot. [Solo: `sparbot`, which needs a second account and, on the colo, the colo's `--auth-url` ([wireclient.md](../../architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing)).]
+12. **Duel ends.** Repeat with a forfeit, with B walking out of the arena, with B gating away, and with B's client killed. Each time the duel ends, and afterwards A and B cannot damage each other. Right-click the Gate Mail Clerk after every duel: it still responds (D-SS25). If B leaves during the countdown, A hears "Duel aborted" at once, but A's countdown splash keeps counting down (a known client limit).
 13. **Duel refusals.** Challenge yourself, someone 50 units away, someone in another world, someone already dueling, and one player five times in a row. Each is refused with a message.
+
+**Afterwards (the coordinator).** Read SigNoz from each `.bug` bookmark, filtered to `service.name = 'cimmeria-server'` and `cimmeria.deploy_env = 'colo'`: `scope_name = 'mail' AND player_id = P` (every send, take, pay, return, expiry and refusal, each with `reason`), `scope_name = 'chat'` (`chat.tell_*`, `chat.ignore_*`, `chat.gm_broadcast`, `chat.gm_mute`, `chat.channel_rejected`), `scope_name = 'duel' AND duel_id = D` (one duel's story, ending in `duel.ended` with its `reason`), and `scope_name = 'rate_limit'` grouped by `category`. The worknotes carry the full query tables.

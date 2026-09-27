@@ -12,13 +12,13 @@ last_updated: 2026-09-27
 
 ## Overview
 
-The duel system enables structured PvP combat between two players within designated duel areas. Duel areas are defined by `SGWDuelMarker` entities placed in the world, which use a proximity detector to track participating entities. Duels end when one participant is defeated.
+The duel system lets two players agree to fight each other. One player challenges another nearby, the target accepts, a 5-second countdown runs, and then the two can damage each other, and only each other, until one of them forfeits, would be killed by the other (held at 1 HP instead), dies to something else, leaves, or strays outside the duel area. The original design placed `SGWDuelMarker` entities with a proximity detector to track the duel area; Cimmeria keeps the duel in a server-side registry and checks the area on a tick instead (D-SS24), so no marker is spawned.
 
 The `SGWDuelMarker` entity is defined in `entities/defs/SGWDuelMarker.def` (parent: `SGWSpawnableEntity`).
 
 ## Implementation Status
 
-The challenge and the answer are implemented (social-systems campaign SS-D1, [work packets](../analysis/social-systems/work-packets.md)). The duel state lives on the cell in `DuelRegistry` (`crates/cell-world/src/cell/duel/`), keyed by `player_id`.
+Every part of a 1v1 duel is implemented: the challenge and the answer (SS-D1), the countdown and the engaged duel (SS-D2), and every end path (SS-D3), in the social-systems campaign ([ledger](../analysis/social-systems/README.md), [work packets](../analysis/social-systems/work-packets.md)). None of it has been run in the real client yet; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) steps 11-13 cover it. The duel state lives on the cell in `DuelRegistry` (`crates/cell-world/src/cell/duel/`), keyed by `player_id`.
 
 | Method | Index | Handler |
 |--------|-------|---------|
@@ -72,7 +72,7 @@ A challenge still waiting for an answer, or a duel still in its countdown, is wi
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Duel marker entity | DEFINED | `SGWDuelMarker` with detector and entity tracking; no Rust spawner support |
+| Duel marker entity | NOT PORTED | `SGWDuelMarker` is defined (client type 6) but not needed: the registry holds the state and the arena is checked on the duel tick (D-SS24) |
 | Duel response | IMPLEMENTED | `sendDuelResponse` (CM 102): accept, decline and expiry (SS-D1) |
 | Duel forfeit | IMPLEMENTED | `duelForfeit` (CM 103), engaged only, else 880 (SS-D3) |
 | Defeat detection | IMPLEMENTED | Server-side, without `SGWDuelMarker`: the 1 HP clamp, death, disconnect, travel and range each end the duel with the client's defeat reason (SS-D3) |
@@ -83,6 +83,20 @@ A challenge still waiting for an answer, or a duel still in its countdown, is wi
 | Duel end paths | IMPLEMENTED | Forfeit, the non-lethal clamp, death, disconnect, travel, range, plus the safety limit (SS-D3) |
 | Duel area enforcement | IMPLEMENTED | A 40-unit arena checked on the duel tick (D-SS19), not the marker's proximity controller |
 | Win/loss tracking | NOT PLANNED | D-SS22: no rewards, rating or stats; the result is a feedback line and the `duel.ended` log row |
+| Squad duels | NOT PLANNED | `aSquadDuel = 1` is refused with a feedback line (out of scope for the campaign) |
+| Pets in a duel | NOT PLANNED | A pet never joins its owner's duel: it cannot harm the opponent or be harmed by them (`combat::player_may_attack_pve`); whether pets may join is an open owner question |
+
+### Known client-side limits
+
+- After a challenge or countdown is withdrawn (the other player left), the client's countdown splash keeps counting down; "Duel aborted" (878) is the only notice, because no cancel form of the type-14 timer is known.
+- The unit-frame PvP indicator does not refresh live while a frame is already showing, because of a typo in the client's own Lua; the flag itself is sent correctly. Fixing it needs a client patch.
+
+## Testing and GM tools
+
+- **`sparbot`**, a small `cimmeria-wireclient` binary, logs in a second account, accepts any duel challenge, stands still and forfeits after a set time, so one tester can duel alone. It needs its own account and, against the colo, the colo's `--auth-url`. See [wireclient.md](../architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing).
+- **`.duel_status [name]`** shows a player's duel or challenge: the other player, the duel number, the stage and the time left. **`.duel_end <name>`** ends it in any stage as an abort (878 to both, no loser). Both are GameMaster and above; see [commands.md](../commands.md).
+- **UAT.** The owner's checklist is [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release), steps 11-13.
+- **SigNoz.** Everything logs on the `duel` target: `duel.challenge_sent`, `duel.accepted`, `duel.engaged`, `duel.lethal_clamped` and `duel.ended` (with `reason`, `winner_player_id` and `loser_player_id`), plus a `duel.*_refused` row with a `reason` for every refusal. Query `scope_name = 'duel' AND duel_id = <id>` for one duel's story.
 
 ## Entity Definition (SGWDuelMarker.def)
 
@@ -122,32 +136,30 @@ Based on client-side event names referenced in the README:
 | `onDuelEntitiesRemove` | Participant left duel area |
 | `onDuelEntitiesClear` | Duel ended, clear all participants |
 
-## Expected Duel Flow
+## Duel Flow (as implemented)
 
+```text
+Player A: sendDuelChallenge("B", 0)                  base 0xD9
+  |-> Base: duel rate limit, B online, B not ignoring A, not a squad duel
+  |-> Cell: same space, within 20 units, neither busy, no pair cooldown
+  |-> Player B: onDuelChallenge(A's entity id, [])   [143], the Yes/No prompt
+
+Player B: sendDuelResponse(1)                        CM 102 (0 declines; 30 s to answer)
+  |-> Both: onTimerUpdate(DuelTimer = 14)            5-second countdown splash
+  |-> Countdown ends, both still present:
+       |-> Both: onDuelEntitiesSet([A, B])           [151]
+       |-> PvP flag onEntityProperty(4, 1) to each duelist and their witnesses
+       |-> A and B may damage each other; a bystander, NPC or pet is unchanged
+
+Any end path: forfeit (CM 103), partner hit that would kill (held at 1 HP),
+death from anyone else, disconnect, travel, 5 s outside the 40-unit arena
+  |-> duel removed from the registry: no more harm between A and B
+  |-> PvP flag 0 for each duelist and their witnesses; onDuelEntitiesClear [153]
+  |-> the partner's effects removed, combat between them dropped
+  |-> winner: "You won the duel" (879); loser: a feedback line
 ```
-Player A: DuelChallenge(targetPlayerId)
-  |-> Server validates: both in duel area, not in combat, not already dueling
-  |-> Player B: onDuelChallenge(challengerName)
 
-Player B: DuelResponse(accepted)
-  |-> If accepted:
-       |-> Both players: onDuelEntitiesSet(participants)
-       |-> Enable PvP between participants
-       |-> Combat proceeds using normal ability/damage systems
-  |-> If declined:
-       |-> Challenger notified
-
-During duel:
-  |-> Player leaves area: onDuelEntitiesRemove
-  |-> Player health reaches 0: onEntityDefeated(entityId)
-       |-> Duel ends, winner/loser determined
-       |-> Both players: onDuelEntitiesClear
-
-Forfeit:
-  Player: DuelForfeit
-  |-> Duel ends, forfeiting player loses
-  |-> Both players: onDuelEntitiesClear
-```
+The legacy design's `onDuelEntitiesRemove` [152] on leaving the area, and a death-based `onEntityDefeated`, are not used: the arena is checked on the duel tick and partner damage never kills.
 
 ## Data References
 
@@ -157,9 +169,9 @@ Forfeit:
 
 ## RE Priorities
 
-1. **Duel protocol** - Decompile client-side duel challenge/response message format
+1. ~~**Duel protocol**~~ - Resolved by SS-E1 and SS-D1 ([duel-wire-formats.md](../reverse-engineering/findings/duel-wire-formats.md))
 2. ~~**PvP flag handling**~~ - Resolved by SS-D2: the flag rides `onEntityProperty(4, v)` and is presentation only; the server's duel registry decides harm
-3. **Duel area bounds** - How `duelDetectorID` defines the valid duel region
+3. **Duel area bounds** - How `duelDetectorID` defines the valid duel region. Moot for the server: the arena is a 40-unit sphere around the duelists' midpoint at the accept (D-SS19, project policy)
 4. **Death handling** - Whether duel defeat uses normal death or special "downed" state. Moot for the server: D-SS20 makes partner damage non-lethal whatever the original did (SS-E1 D-Q3)
 5. **Rewards/penalties** - Any XP, rating, or currency effects from duel outcomes. None exist in the client data; D-SS22 awards nothing
 
@@ -167,3 +179,6 @@ Forfeit:
 
 - [combat-system.md](combat-system.md) - Combat mechanics used during duels
 - [stat-system.md](stat-system.md) - Stats applied during PvP
+- [chat-system.md](chat-system.md) - The Ignore list, which also blocks duel challenges
+- [duel-wire-formats.md](../reverse-engineering/findings/duel-wire-formats.md) - Client evidence for every duel method
+- [Social-systems ledger](../analysis/social-systems/README.md) - Decisions D-SS18 to D-SS25 and the owner questions
