@@ -27,19 +27,19 @@ use super::*;
 use crate::cell::abilities::{collect_cone_targets, handle_use_ability_on_ground, resolve_warmups};
 use crate::test_support::NoContentEvents;
 
-const A: u32 = 1;
-const B: u32 = 2;
+pub(super) const A: u32 = 1;
+pub(super) const B: u32 = 2;
 const C: u32 = 3;
-const MOB: u32 = 4;
-const A_PID: i32 = 101;
-const B_PID: i32 = 102;
+pub(super) const MOB: u32 = 4;
+pub(super) const A_PID: i32 = 101;
+pub(super) const B_PID: i32 = 102;
 const C_PID: i32 = 103;
 const FULL: i32 = 100_000;
 
 /// `warmup_mgr`'s player 1, with entity 2 turned into player B at (3,0,0),
 /// bystander C at (0,0,3) and hostile mob 4 at (2,0,0). Every entity has
 /// plenty of health; A's weapon is drawn so no holster queue intercepts.
-fn duel_mgr() -> SpaceManager {
+pub(super) fn duel_mgr() -> SpaceManager {
     let mut mgr = warmup_mgr();
     mgr.create_entity(C, "Castle", [0.0, 0.0, 3.0], [0.0; 3])
         .unwrap();
@@ -66,7 +66,7 @@ fn duel_mgr() -> SpaceManager {
 }
 
 /// Put A and B in an engaged duel, straight through the registry.
-fn engage(mgr: &mut SpaceManager) {
+pub(super) fn engage(mgr: &mut SpaceManager) {
     let now = Instant::now();
     mgr.duels.open_challenge(A_PID, B_PID, now).unwrap();
     let space = mgr.get_entity_space_id(A).expect("A has a space");
@@ -78,7 +78,7 @@ fn engage(mgr: &mut SpaceManager) {
     assert!(mgr.duels.can_harm(A_PID, B_PID) && mgr.duels.can_harm(B_PID, A_PID));
 }
 
-fn health(mgr: &SpaceManager, eid: u32) -> i32 {
+pub(super) fn health(mgr: &SpaceManager, eid: u32) -> i32 {
     mgr.get_entity(eid).unwrap().stats.get(HEALTH).unwrap().cur
 }
 

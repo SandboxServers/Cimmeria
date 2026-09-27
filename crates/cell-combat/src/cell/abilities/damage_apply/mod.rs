@@ -17,6 +17,7 @@ use cimmeria_entity::stats::HEALTH;
 use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
+use cimmeria_cell_world::cell::duel;
 
 use super::messaging::{
     flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
@@ -199,6 +200,17 @@ pub(super) async fn apply_damage_to_target(
         );
     }
 
+    // D-SS20: a duel partner's hit never kills. HEALTH at or below 0 is
+    // held at 1 here, before `target_died` reads it and before the stat
+    // flush, so the client sees 1 and nothing below reaches the death path.
+    // The duel ends at the bottom of this function, after every other
+    // step of this resolution (a script bleed, a registered DoT) has been
+    // clamped or registered, so the end strips them too.
+    let mut duel_clamp = duel::clamp_partner_lethal(space_mgr, entity_id, target_eid, "ability");
+    let Some(target) = space_mgr.get_entity_mut(target_eid) else {
+        return;
+    };
+
     // Did the *direct* damage kill? The state mutations and the whole
     // death burst are deferred to `death::resolve_death` below so the
     // effect-results / stat-update packets are computed against
@@ -372,6 +384,15 @@ pub(super) async fn apply_damage_to_target(
             };
             crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
         }
+        // D-SS20 again: a script's own HEALTH write (a bleed) from the
+        // partner is held at 1 too, before the flush below and before the
+        // effect-driven death sweep reads it.
+        duel_clamp = duel_clamp.or(duel::clamp_partner_lethal(
+            space_mgr,
+            entity_id,
+            target_eid,
+            "ability_script",
+        ));
         // Flush any stat changes the scripts produced so the client sees
         // the heal/buff alongside the existing damage update.
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
@@ -455,6 +476,14 @@ pub(super) async fn apply_damage_to_target(
             )
             .await;
         }
+    }
+
+    // ── Duel end (non-lethal, D-SS20) ──
+    //
+    // Last, so the end strips every effect this resolution registered on
+    // the loser: a DoT registered above must not outlive the duel.
+    if let Some(hit) = duel_clamp {
+        duel::finish_clamped(tx, space_mgr, hit).await;
     }
 }
 

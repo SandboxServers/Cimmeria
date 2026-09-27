@@ -431,6 +431,11 @@ pub(super) async fn resolve_death(
         // the dead-state broadcast above instead of racing it.
         crate::cell::service::npc_ai::purge_dead_player_from_threat(target_eid, tx, space_mgr)
             .await;
+        // SS-D3: a duelist killed by anyone else loses the duel (the
+        // partner's damage never gets here: it is clamped at 1 HP, D-SS20).
+        // The partner hears "You won the duel"; a challenge or countdown is
+        // withdrawn.
+        cimmeria_cell_world::cell::duel::on_death(tx, space_mgr, target_eid).await;
         // D-PT08: the owner's pets go with the owner's death, now rather than
         // on the next pet sweep. The owner sees them leave (its client stays).
         cimmeria_cell_world::cell::pets::on_owner_left(
