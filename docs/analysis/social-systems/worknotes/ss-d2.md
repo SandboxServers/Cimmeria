@@ -149,6 +149,24 @@ Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-cell-combat duel_gate`
 
 Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-cell-methods` (1868 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-services`, `--all-targets -- -D warnings` (clean); `lane.sh cargo fmt --all -- --check` (clean).
 
+## Rebase onto PT-04 (#901)
+
+Rebased onto `origin/main` @ `91d36d02b` (#901 merged). No conflicts: the player condition in `warmup/tick.rs` applied as one line, and #901's pet re-check (`warmup/pet_order.rs::pet_fire_refusal`) sits after it. The gap-analysis rows still sum to the totals line (471 / CW 169 / NT 65 / IM 104 / KM 129 / NU 4).
+
+Every caller of the hostility rule after the rebase:
+
+| Caller | Calls | Covers |
+|---|---|---|
+| `cell-combat/.../use_ability/handle.rs:256` | `player_may_attack(entity, target, &duels)` | single-target launch (gate 1) |
+| `cell-combat/.../use_ability/warmup/tick.rs:165` | `player_may_attack(caster, target, &duels)` | player warmup re-check (gate 2) |
+| `cell-world/.../combat/aggression.rs:136` (`may_hit_in_area`) | `player_may_attack(attacker, candidate, duels)` | ground AoE and cone collectors (gates 3 and 4) |
+| `cell-world/.../combat/aggression.rs:109` | `player_may_attack_pve` | the NPC half of `player_may_attack` |
+| `cell-combat/.../npc_ai/pet/mod.rs:123` (`fight_refusal`) | `player_may_attack_pve(owner, target)` | every pet path, through `fight_refusal`'s callers: `warmup/pet_order.rs:56` (pet cast re-check), `cell-methods/.../player/pet/invoke.rs:261` (CM 88 owner orders), `pet/defend.rs:45`, `pet/disengage.rs:57`, `pet/engage.rs:147`, `pet/stance.rs:101` and `threat_refusal` (`pet/mod.rs:152`) |
+
+The pet-side check stays inside `fight_refusal`, so the no-duel rule covers pet AI, pet commands and the pet warmup with one call.
+
+Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-cell-methods`; `lane.sh cargo clippy` on those five plus `cimmeria-services`, `--all-targets -- -D warnings`; `lane.sh cargo fmt --all -- --check`. Results in the final report.
+
 ## Docs
 
 - `docs/reverse-engineering/findings/duel-wire-formats.md`: the SS-D2 receiver trace (D-Q4 resolved, D-Q1 driver), both headings updated.
