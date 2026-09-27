@@ -66,14 +66,33 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 
 - **AI (PT-05).** Follow, teleport, stances, defend-owner, the owner-anchored leash and the owner's combat state. See [Pet AI](#pet-ai-pt-05).
 
-**Summoning (PT-03).** A player ability with a `resources.pet_summons` row summons a pet. The seed has one row today: 2826 Summon Straegis, which spawns template 350 with one pet out at a time. The code is `crates/cell-combat/src/cell/abilities/use_ability/summon.rs`, and the design is decision 23 of [`abilities-and-effects-system.md`](../architecture/abilities-and-effects-system.md).
+**Summoning (PT-03).** A player ability with a `resources.pet_summons` row summons a pet. The seed has four rows (see [Roster](#roster-pt-s-pt-11)), each with one pet out at a time. The code is `crates/cell-combat/src/cell/abilities/use_ability/summon.rs`, and the design is decision 23 of [`abilities-and-effects-system.md`](../architecture/abilities-and-effects-system.md).
 
 - The cast is an ordinary cast. It has the 6 s warmup, which `speedPet` shortens for `SpeedPet` abilities (D-PT10). The cooldown is charged at launch. Moving, dying or changing space during the warmup cancels it, and a cancelled warmup spawns nothing.
 - The client's target is ignored. Any other self-targeted ability is still refused by the #444 gate.
 - When the warmup ends, the new pet appears 2 u behind the owner and the caster plays the summon effect (2292). A second summon then despawns the previous pet (D-PT04). If the spawn fails, the cast plays as interrupted and the previous pet stays.
 - The ground effect (2293) plays at the pet once the owner's client has created the pet.
 - A summon that cannot spawn gets an `onErrorCode` and a chat line: "Your pet could not be summoned." (or "You have not trained that summon."). No cooldown is charged when this happens at the press.
-- The Jaffa, Prime and Lo'taur rows follow in PT-11. The `.pet` console is PT-07.
+- The `.pet` console is PT-07.
+
+### Roster (PT-S, PT-11)
+
+The Goa'uld Servant Lord summons, in the owner's order (D-PT13). Every row has `max_active` 1, and every summon carries event set 1121 (the Goa'uld summon cast effect). Pet templates 350-359 are summoned creatures only and are never placed in `spawnlist` (D-PT16).
+
+| Summon | Tree level | Template | Name (moniker) | Look | Kit (lowest id is the primary) |
+|---|---|---|---|---|---|
+| 1643 Summon Jaffa | L1 root | 351 | "Jaffa Soldier" (8087) | A copy of 160 Praxis Jaffa Guard: `BS_JaffaMale` in `AR_J_Praxis` | 584 Staff Auto Attack, 710 Staff Melee AA, 1652 Jaffa: Double Blast |
+| 1644 Summon Lo'taur | L10 | 353 | "Lo'Taur Servant" (28891) | Composed: the bare `BS_GoauldMale` of 211 in the `AR_G_Underlings` servant dress (body armour, dress, feet, bracers) and slave headwrap. No seeded template wore that dress | 1653 Heal Health, 3326-3329 (focus heal, focus-regen buff, defense buff, defense debuff) |
+| 1645 Summon Prime | L15 | 352 | "Jaffa Prime" (28892) | A copy of 159 Praxis Jaffa Lieutenant | 584, 710, 1654 Prime: Focus Degeneration |
+| 2826 Summon Straegis | L50 capstone | 350 | "Summoned Straegis Fighter" (27377) | A copy of 78 Straegis Fighter | 221 Energy Shock, 1156 Straegis: Disengage |
+
+- **Level.** Templates 351-353 carry `ENTITYFLAG_Pet` alone, so the summon gives the pet its owner's level (D-PT02). Template 350 also carries `ENTITYFLAG_NoPetLeveling`, so the Straegis keeps its template level 1.
+- **Stances.** No roster template sets `NoPassive`, `NoDefensive` or `NoAggressive`, and no data says any pet lacks a stance, so every pet is offered all three.
+- **What the kits do today.** Only 584 (effect 646) and the Straegis's 221 deal damage. 1652, 1654, 1653 and 3326-3329 have effects with no damage values and no script, so they resolve as empty hits. 1652 plays the staff shot (event set 3, the set of 584; its description is "Staff: Ranged Single Target Attack"). 1654 and the Lo'taur abilities have no event set in the data and play nothing; the NA43 animation linter allowlists them with a guard that they still deal no damage.
+- **The Lo'taur cannot heal yet.** The pet AI and a CM 88 order both aim a pet's ability at an enemy. Binding the `HealHealth` / `HealFocus` scripts to the Lo'taur effects needs an ally-target behaviour first, or the Lo'taur would heal what it fights.
+- **Pet-trained abilities.** 1652 and 1654 are `PetTrained`: in the original the owner trains them (Servant Lord L20) and `SGWPlayer.knownPetAbilities` carries them to the pet. The server has no `knownPetAbilities` path, so they ride on the pet's own ability set and every Jaffa or Prime has them from level 1.
+- **Range.** 1652's `max_range` is 3000 and 1653's is 800. The server reads those as world units, so the pet AI picks 1652 at any distance while 584 cools and never walks in for it. Most seeded ranges look like centimetres (3000 = 30 m); that is a server-wide question, not a pet one.
+- **Renders.** The Jaffa and Prime looks are placed today (160 and 159 in Harset and Castle). The Lo'taur composite has never been rendered and needs an in-game check.
 
 The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). The table records what the entity definitions provide and what the server does with them.
 
@@ -283,7 +302,9 @@ the dynamic-analysis list in [`pet-restoration.md`](../reverse-engineering/findi
 
 Cimmeria does not wait for that recovery. The binding is its own seed table,
 `resources.pet_summons` (ability → template, `max_active`; PT-S). The summon keys on the ability
-id, not on an effect script (PT-03).
+id, not on an effect script (PT-03). The Jaffa, Prime and Lo'taur templates the 2009 seed lacked
+are Cimmeria templates 351-353 (PT-11), named with the surviving `DN_Pet_*_Tier_1` monikers; see
+[Roster](#roster-pt-s-pt-11).
 
 ## Related Docs
 
