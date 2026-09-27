@@ -8,15 +8,16 @@
 - **Packet:** SS-M3. Take cash (CM 49), take item (CM 50), pay COD (CM 51), return (CM 47).
 - **Decisions in force:** D-SS09 (COD rules), D-SS10 (return), D-SS03 (server mail is exempt from the cap), D-SS04 (the return path is reused by SS-M4's expiry), D-SS08 (escrow). There is also an owner constraint from the Bank campaign: items leave escrow only into the backpack (`INV_MAIN`), never into vault containers 16-20.
 - **Base:** SS-M2's branch `origin/social/m2-attachments` @ `24b4163d0` (PR #912, not yet on main). Branch `social/m3-take-cod-return`, worktree `.claude/worktrees/ss-m3`. When #912 merges: `git rebase --onto origin/main 24b4163d0`.
-- **Commits:** `1ce41f51c` (schema), `64b34fa6f` (wire and cell forward), `bb8a01c7f` (base ops and tests), `87aa17d9d` (type 11), `f77232c05` (COD with a deleted sender, and the review follow-ups), `9089471a0` (docs), then this worknote.
+- **Commits:** `1ce41f51c` (schema), `64b34fa6f` (wire and cell forward), `bb8a01c7f` (base ops and tests), `87aa17d9d` (type 11), `f77232c05` (COD with a deleted sender, and the review follow-ups), `9089471a0` (docs), the worknote, then `82010fc78` (the coordinator's decisions: `cod_paid`, and `target_player_id` on SS-M2's send refusals) with its docs.
 - **Owned paths (new):**
   - `crates/base-methods/src/base/world_entry/methods/mail/{claim.rs, take.rs, cod.rs, return_.rs, headers.rs}`
   - `crates/base-methods/src/base/world_entry/methods/mail/tests/{take_live.rs, cod_live.rs, return_live.rs, take_race.rs}`
   - `crates/wireclient/tests/it/two_client_mail_cod.rs`
   - this file.
 - **Edited:**
+  - SS-M2 code, at the coordinator's request: `mail/send/{mod.rs, deliver.rs}` (`target_player_id` on `mail.send_refused` and `mail.attachment_refused`), `mail/tests/attach_live.rs` (the assertion).
   - Rust: `mail/{mod.rs, read.rs}` (the header list moved out of `read.rs` to `headers.rs`, no behaviour change), `mail/tests/mod.rs` (fixtures), `crates/wire/src/cell/messages/data.rs` (`MailOp` gains the four variants, per the contract), `crates/cell-interactions/src/cell/mail.rs` (`handle_attachment_op`), `crates/cell-methods/src/cell/cell_methods/mail.rs` (the four arms, plus tests), `crates/wireclient/tests/it/main.rs`.
-  - Schema: `db/sgw/Mail/Tables/sgw_gate_mail.sql` (the `returned` column).
+  - Schema: `db/sgw/Mail/Tables/sgw_gate_mail.sql` (the `returned` and `cod_paid` columns).
   - Docs: those listed under "Docs".
 - **Not touched:** the inventory module. `reserve_free_inventory_slots` (vendor/serializers.rs), `take_inventory_locks` and `send_full_inventory_update` are called, never changed.
 - **Read set:**
@@ -33,7 +34,7 @@
 
 - **server-authority-enforcer: CONDITIONAL.** It found no dupe, double credit or debit, overflow, owner-scoping hole, redirection or deadlock. Its findings:
   - **F1 (Medium): a COD whose sender's character is deleted strands its item.** The FK sets `sender_id` NULL, and after that pay, return, take and delete are all refused. **Fixed** in `f77232c05` (see Design decisions) with a guard.
-  - **F2 (Low): a paid COD can still be returned**, and the seller then gets both the item and the price. **Open.** I sent the coordinator a decision request (Known gaps 1).
+  - **F2 (Low): a paid COD could still be returned**, and the seller then got both the item and the price. **Fixed** in `82010fc78` by the coordinator's decision: the `cod_paid` column (see Design decisions).
   - **F3 (Info):** nobody tells an online sender that a payment or a returned mail has arrived. That is SS-M4 (D-SS11).
 - **database-persistence: no correctness bugs.**
   - It confirmed the lock order, the conditional writes, the delete-guard interplay, and that the restore copies all 14 `sgw_inventory` columns. It also confirmed that no `SELECT *` or unnamed-column `INSERT` needs the new column.
@@ -72,6 +73,7 @@ The client supplies only `mail_id`, plus `ContainerId`/`SlotId` on CM 50. The ce
 | Orphan or duplicate escrow | Only the send inserts escrow. The take restores then deletes by `mail_id` in one transaction, and the return moves nothing (the escrow row is keyed by `mail_id`). The instance keeps its id, so a second restore would also hit the `sgw_inventory` key | `take_item_twice_moves_once`, and SS-M2's `no_orphaned_escrow_after_delete` still passes |
 | Deadlock | One order for every op: the caller's advisory locks (the keys and order used by the send and crafting), then the mail row, then escrow and inventory rows, then `sgw_player` ascending. Pay and return lock both players ascending like the send, because A sending to B while B pays A's COD would otherwise cycle through the payment mail's FK lock on A's row. The send never locks an existing mail row | Reviewed by two advisors; no test (Known gaps 4) |
 | A COD stranded by a deleted sender | Pay cancels it (see Design decisions) | `pay_cod_with_deleted_sender_cancels_cod_and_frees_item` |
+| Pay a COD, then return it (the seller gets the item and the price) | The payment sets `cod_paid` in the same statement that clears the COD; return refuses it in Rust and in the `UPDATE` (`AND NOT cod_paid`) | `return_rejects_paid_cod` |
 
 ## Design decisions
 
@@ -87,6 +89,11 @@ The client supplies only `mail_id`, plus `ContainerId`/`SlotId` on CM 50. The ce
   - Nothing is debited, the price is zeroed and the flag cleared, and the item becomes an ordinary take.
   - It logs `mail.cod_cancelled reason=sender_gone`, and the player is told.
   - **Veto point:** this gives the recipient the item for free when the seller deleted their character. The only alternative that is not a permanent sink is to let delete destroy it.
+- **`cod_paid` (coordinator decision, 2026-09-27).** `sgw_gate_mail.cod_paid boolean NOT NULL DEFAULT false`, edited in place like `returned`; `returned` is not overloaded.
+  - The payment sets it in the statement that clears the COD (`clear_cod(…, paid = true)`). A COD cancelled because its sender is gone is not paid, so it stays false there; that mail cannot be returned anyway (no sender).
+  - Return refuses it: `reason=cod_paid`, and the feedback line tells the buyer the item is already paid for and to take it. There is no `sendMailResult` for a return (that method answers sends only), so the refusal is the feedback line, like every other SS-M3 refusal.
+  - The buyer can still take the item; the seller has exactly the one payment mail.
+- **`target_player_id` on SS-M2's send refusals** (coordinator request from the SS-M2 security review). `DeliverError::Refused` carries the resolved `recipient_id` (the single recipient when the attachment checks run under the lock; none for the two-players-from-one-name refusal). `mail.attachment_refused` logs it, and `mail.send_refused` goes through `refuse_about(…, target)`. A send whose single resolved recipient could not take it (a full mailbox, an Ignore) names that recipient too; with several, each has its own `mail.recipient_failed` row. Refusals before name resolution leave the field absent, never 0.
 - **Return re-addresses the row.**
   - `character_id` becomes the stored sender, and `sender_id`/`sender_name` become the returner.
   - `returned = true`, `read_time = 0` (it arrives unread) and `sent_time = now` (SS-M4's TTL restarts).
@@ -111,7 +118,8 @@ Target `mail` (no new target). Every row carries `account_id`, `player_id` and `
 | `mail.cod_paid` | INFO | `mail_id`, `payment_mail_id`, `target_player_id`, `price`, `naquadah_before`, `naquadah_after` |
 | `mail.cod_cancelled` | INFO | `mail_id`, `reason = sender_gone`, `price` |
 | `mail.returned` | INFO | `mail_id`, `target_player_id`, `cash`, `cod_cancelled`, `item_id` |
-| `mail.op_refused` | WARN | `op` (`take_cash` \| `take_item` \| `pay_cod` \| `return`), `mail_id`, `reason` (`not_found_for_owner` \| `cod_unpaid` \| `no_cash` \| `no_item` \| `balance_overflow` \| `bags_full` \| `not_cod` \| `not_enough_cash` \| `cod_without_item` \| `archived` \| `already_returned` \| `system_mail`) |
+| `mail.op_refused` | WARN | `op` (`take_cash` \| `take_item` \| `pay_cod` \| `return`), `mail_id`, `reason` (`not_found_for_owner` \| `cod_unpaid` \| `no_cash` \| `no_item` \| `balance_overflow` \| `bags_full` \| `not_cod` \| `not_enough_cash` \| `cod_without_item` \| `archived` \| `already_returned` \| `cod_paid` \| `system_mail`) |
+| `mail.send_refused`, `mail.attachment_refused` (SS-M2's) | WARN / DEBUG | now also `target_player_id` once a single recipient was resolved |
 | `mail.op_failed` | ERROR | `op`, `mail_id`, `reason` (`db_error` \| `restore_row_count` \| `escrow_delete_row_count`), `error` |
 | take-item request | DEBUG | `mail_id`, `client_container_id`, `client_slot_id` (the garbage, for forensics) |
 | span `mail.attachment_op` (cell), `mail.request` (base, `op = take_cash mail_id=…` etc.) | INFO | `entity_id`, `method` / `op` |
@@ -138,6 +146,10 @@ All ran from the worktree root, through the lane. The exit codes are the lane's 
 | `bash tools/build-lane/lane.sh cargo clippy -p cimmeria-wire -p cimmeria-base-methods -p cimmeria-cell-interactions -p cimmeria-cell-methods -p cimmeria-wireclient --all-targets -- -D warnings` | exit 0 |
 | `bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-base-methods -p cimmeria-cell-interactions -p cimmeria-cell-methods -p cimmeria-base-world-entry` | 1,032 run, 1,032 passed (live-DB tests self-skip here; the next row runs them) |
 | `bash tools/build-lane/live-db-test.sh "::"` (the whole live-DB tier, for the schema change) | exit 0: reloaded `sgw_ss_m3`, 4,303 run, 4,303 passed, 0 skipped (214 s) |
+| After `82010fc78`: `bash tools/build-lane/reload-db.sh`, then `cargo nextest run --profile ci-live-db -p cimmeria-base-methods --lib mail` | 73 run, 73 passed |
+| After `82010fc78`: fmt check, and clippy `-D warnings` on the same five crates | exit 0 |
+| After `82010fc78`: `bash tools/build-lane/live-db-test.sh "::"` | exit 0: 4,304 run, 4,304 passed, 0 skipped (196 s) |
+| After `82010fc78`: the type 11 test (command above) | 1 passed |
 
 ## Tests
 
@@ -147,7 +159,8 @@ All ran from the worktree root, through the lane. The exit codes are the lane's 
 - **CAT-G-05:** `pay_cod_twice_debits_once`, `pay_cod_rejects_insufficient_cash`, `pay_cod_amount_read_from_row`.
 - **Packet acceptance:** `paid_cod_credits_sender_once_by_mail_while_offline`.
 - **Also:** `pay_cod_with_deleted_sender_cancels_cod_and_frees_item`, `pay_cod_refuses_without_item`, `pay_and_return_refuse_another_players_mail`, `payment_subject_is_capped_at_the_column_width`.
-- **CAT-G-06:** `return_uses_sender_id_not_name`, `return_rejects_already_returned`, `return_rejects_system_mail`, plus `return_rejects_archived` and `return_cancels_cod_and_zeroes_price`.
+- **CAT-G-06:** `return_uses_sender_id_not_name`, `return_rejects_already_returned`, `return_rejects_system_mail`, plus `return_rejects_archived`, `return_cancels_cod_and_zeroes_price` and `return_rejects_paid_cod` (the coordinator's guard: the return is refused, the seller is credited once, and the item stays for the buyer).
+- **SS-M2 telemetry:** `send_rejects_bound_item` now asserts `target_player_id` on both `mail.send_refused` and `mail.attachment_refused`.
 - **Type 12:** every refusal reason above is asserted through `assert_refused` (LogCapture: `event`, `op`, `reason`, `mail_id`, plus `account_id`/`player_id`/`entity_id` present) inside the live tests. The success events are asserted with their before and after values.
 - **Cell:** `attachment_ops_forward_to_base`, `truncated_attachment_op_is_not_forwarded`.
 - **Type 11:** `two_client_mail_cod::cod_item_round_trip_between_two_clients`. A sends B a COD item (garbage `ContainerId`/`SlotId` on the take), B pays (700) and takes it (the header comes back with no attachment, and the item is in B's `INV_MAIN`), A takes the payment (1,275 = 1,000 − 25 postage + 300). Live-DB only and not in CI (audit A-60). Run it locally with the command in its header.
@@ -186,6 +199,9 @@ Each batch was applied by a script, then the `mail` live-DB tests were run again
 | R17 advisory lock, mail row `FOR UPDATE` and `cash > 0` removed together | `concurrent_take_cash_and_item_pays_out_once` (2,000, not 1,500) |
 | R18 restore writes `'{}'` for `ammo_types` | `take_item_twice_moves_once` |
 | cell: the CM 51 arm stops forwarding | `attachment_ops_forward_to_base` |
+| R19 both `cod_paid` gates on return removed | `return_rejects_paid_cod` |
+| R20 the payment stops setting `cod_paid` | `return_rejects_paid_cod` |
+| R21 `target_player_id` dropped from both send refusal rows | `send_rejects_bound_item` |
 
 The layers back each other up, so removing any one of R17's three alone still passes the race test. The single-layer gates are pinned by R1 and R2.
 
@@ -205,12 +221,10 @@ The layers back each other up, so removing any one of R17's three alone still pa
 
 ## Known gaps (for the coordinator)
 
-1. **A paid COD can still be returned (authority F2; decision requested by message).** Once paid, the mail looks like an ordinary item mail, so the recipient can return it and the seller gets both the item and the price.
-   - For a manual return this is the recipient's own loss.
-   - **For SS-M4 it is worse:** the expiry sweep reuses the return path, so a paid COD whose item is never taken would be auto-returned to the seller after 30 days.
-   - My proposal: a `cod_paid boolean NOT NULL DEFAULT false` column. `pay_cod` sets it, return refuses it (`reason=cod_paid`), and SS-M4 quarantines instead of returning. The alternative is setting `returned = true` on payment.
-   - Not implemented, pending the decision: the contract lists only `returned` for SS-M3.
-2. **Owner veto point: a COD whose seller deleted their character goes to the recipient for free** (Design decisions). The only non-stranding alternative is to let delete destroy it.
+1. **Policy choices for the owner** (listed together):
+   - **A COD whose seller deleted their character goes to the buyer for free** (approved by the coordinator 2026-09-27; see Design decisions). The only non-stranding alternative is letting delete destroy the item.
+   - **SS-M2's open question:** deleting the *recipient's* character cascades their mail and destroys escrowed items and COD (Known gap 8).
+2. (Resolved) The paid-COD return is closed by `cod_paid` (`82010fc78`).
 3. **Header refresh is inferred from the decoder (M-Q7), not client-tested.** UAT checks:
    - after a take, the attachment icon disappears and the mail stays listed;
    - after a payment, the COD marker clears;
@@ -231,7 +245,7 @@ The layers back each other up, so removing any one of R17's three alone still pa
 1. **Rebase:** `git rebase --onto origin/main 24b4163d0` once #912 merges. `docs/gap-analysis.md`'s totals are recomputed on top of SS-M2's numbers, so recompute them again if another packet has moved rows since.
 2. **work-packets.md contract:**
    - `MailOp::TakeItem` keeps `container_id` and `slot_id` as the contract says, for the log only.
-   - SS-M4 should call `return_::return_tx(pool, owner, mail_id, now)` for expiry path 1. It already cancels an unpaid COD with its price zeroed, and refuses returned, archived and system mail. For a quarantine check, SS-M4 reads `returned`.
-   - Depending on the Known gaps 1 decision, SS-M4 also skips (quarantines) a paid, untaken COD.
+   - SS-M4 should call `return_::return_tx(pool, owner, mail_id, now)` for expiry path 1. It already cancels an unpaid COD with its price zeroed, and refuses returned, archived, paid-COD and system mail.
+   - **SS-M4 integration edit (coordinator decision):** a paid, untaken COD (`cod_paid = true`, escrow row present) belongs to its recipient. Expiry must **never** return it: it takes the quarantine path (D-SS04 path 3), like an already-returned mail that still holds an item. `return_tx` refuses it with `cod_paid`, so the sweep must branch on `cod_paid` (or on that refusal) before choosing path 1. SS-M4's quarantine and cap queries read both `returned` and `cod_paid`.
 3. **Local databases need `db/database.sql` re-run** for the new column (`reload-db.sh` does it). The colo rebuilds from the seed on deploy.
 4. **Worktree hygiene (not mine, reported):** the server-authority-enforcer said it wrote its agent-memory note into the **main checkout** (`.claude/agent-memory/server-authority-enforcer/project_mail_escrow_ss_m2.md` and `MEMORY.md`). Those paths were already modified there when this session started.
