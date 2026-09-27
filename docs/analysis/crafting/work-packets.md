@@ -65,7 +65,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `base/world_entry/methods/progression/mod.rs` (`grant_xp`): CR-12 only.
 - `crates/entity/src/cell_entity/entity_struct.rs` is **over the 700-line cap**. CR-05's per-player station state goes in a new file, not in that struct's body.
 - `db/resources/Entities/Seed/entity_templates.sql`, `Worlds/Seed/spawnlist.sql`: CR-11 only, inside 310-329 and 410-429. Message the guilds session (cimmeria-fa) and the pets session (cimmeria-b5) before merging.
-- `crates/wire/src/containers.rs` and `inventory/move_/mod.rs`: no packet here should need them. If one does, message cimmeria-fa first; its vault packet edits both for containers 19 and 20.
+- `crates/wire/src/containers.rs`, `crates/entity/src/inventory.rs` (`BAG_SIZES`), `inventory/move_/mod.rs` and `inventory/grant/validation.rs`: owned by the Bank/Vault campaign (cimmeria-97, BV-01 lands first; it keeps container 15 movable) and the guilds vault packet (cimmeria-fa, containers 19 and 20). CR-05 may add a post-commit bag-15 notification in `move_/mod.rs`; message both sessions before that packet starts and rebase onto their changes.
 
 ## Common acceptance
 
