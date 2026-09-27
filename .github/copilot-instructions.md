@@ -10,6 +10,7 @@ Cimmeria is a server emulator for the cancelled MMO **Stargate Worlds**. Active 
 - **Wire entity typeIDs are the client's clientIndex** (`<ServerOnly/>` entities skipped): `SGWPlayer = 0x02`, `SGWGmPlayer = 0x03`, `Account = 0x07`. Flag any PR that changes `Account` to `0x08`; see `docs/protocol/client-verified-wire-formats.md` "Entity Class IDs".
 - **A test that compares a constant with the same literal is not a regression guard.** Ask what independent source the expected value comes from.
 - **New opcodes, wire-crypto changes, or anything needing a client patch** need a maintainer decision recorded in the PR. Server-authoritative changes that reuse existing messages are preferred.
+- **Memory files under `.claude/agent-memory/` are public.** Flag any that contain an IP address, a private hostname, a credential or token, a player or tester account name, or a local absolute path. Also flag a PR that overwrites or wholesale-rewrites a `MEMORY.md` index instead of adding lines to it.
 
 ## Content-chain review checklist (`db/resources/Content/Seed/*.sql`)
 

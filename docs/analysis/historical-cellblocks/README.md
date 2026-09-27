@@ -104,7 +104,7 @@ The UAT for each world records load success, streaming, geometry and prop differ
 
 ### Mixing servers during the UAT
 
-A client that logs in to a server with this change takes the bumped category-12 version. Logging the same client in to a server without it (the colo before this deploys) empties the client's whole world table. See [A bumped category must keep its override list everywhere](../../architecture/mission-pak-overrides.md#a-bumped-category-must-keep-its-override-list-everywhere) for the cause and the repair.
+A client that logs in to a server with this change takes the bumped category-12 version. Logging the same client in to a server without it (the colo before this deploys) empties the client's whole world table. See [A bumped category must keep its override list everywhere](../../architecture/mission-pak-overrides.md#a-bumped-category-must-keep-its-override-list-everywhere) for the cause and the repair. The server-side fix, so that a mismatch never wipes a category it doesn't re-push, is tracked in #840. Builds that predate that fix will still wipe.
 
 ## Out of scope
 
