@@ -243,9 +243,14 @@ async fn non_gm_duel_end_is_chat() {
 async fn help_duel_end_shows_argument_detail() {
     let (mut mgr, gm) = fixture();
     let lines = lines_to(&run(&mut mgr, gm, ".help duel_end").await, gm);
-    assert!(lines.iter().any(|l| l.starts_with(".duel_end: ")), "{lines:?}");
     assert!(
-        lines.iter().any(|l| l.starts_with("    [name] (str): Required.")),
+        lines.iter().any(|l| l.starts_with(".duel_end: ")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("    [name] (str): Required.")),
         "{lines:?}"
     );
 }

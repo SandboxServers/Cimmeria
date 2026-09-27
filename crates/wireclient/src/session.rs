@@ -75,7 +75,15 @@ impl GameSession {
     /// independently of the socket connect (e.g. to control the exact
     /// interleaving of two clients' world-entry sequences).
     pub async fn from_auth_session(session: &AuthSession, request_id: u32) -> Result<Self> {
-        let socket = UdpSocket::bind("127.0.0.1:0").await?;
+        // Loopback for a local server; any interface for a remote one (the
+        // `sparbot` binary against a shared server), since a socket bound to
+        // 127.0.0.1 cannot reach a routable address.
+        let bind_addr = if session.base_addr.ip().is_loopback() {
+            "127.0.0.1:0"
+        } else {
+            "0.0.0.0:0"
+        };
+        let socket = UdpSocket::bind(bind_addr).await?;
 
         let login_pkt =
             handshake::build_baseapp_login(request_id, session.account_id, &session.ticket)?;
