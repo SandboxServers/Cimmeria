@@ -32,8 +32,8 @@ const VENDOR_TEMPLATE_ID: i32 = 25;
 const TYPE_ID: i32 = 21;
 const UNIT_PRICE: i32 = 1_000;
 
-async fn setup(pool: &PgPool, account_id: i32, player_id: i32, naquadah: i32) {
-    cleanup(pool, account_id, player_id).await;
+async fn setup(pool: &PgPool, account_id: i32, player_id: i32, entity_id: u32, naquadah: i32) {
+    cleanup(pool, account_id, player_id, entity_id).await;
     sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
         .bind(account_id)
         .bind(format!("vendor-lock-{account_id}"))
@@ -57,7 +57,11 @@ async fn setup(pool: &PgPool, account_id: i32, player_id: i32, naquadah: i32) {
     .expect("insert player");
 }
 
-async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+/// Also deletes the entity's `cell_event_outbox` rows: a sale enqueues
+/// one, and an undelivered row left behind is drained by the next test
+/// that drains the outbox (the drainer is not scoped to an entity).
+async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32, entity_id: u32) {
+    delete_outbox_rows(pool, entity_id).await;
     let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
         .bind(player_id)
         .execute(pool)
@@ -66,6 +70,21 @@ async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         .bind(account_id)
         .execute(pool)
         .await;
+}
+
+async fn delete_outbox_rows(pool: &PgPool, entity_id: u32) {
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
+        .bind(entity_id as i32)
+        .execute(pool)
+        .await;
+}
+
+async fn outbox_rows(pool: &PgPool, entity_id: u32) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM cell_event_outbox WHERE entity_id = $1")
+        .bind(entity_id as i32)
+        .fetch_one(pool)
+        .await
+        .expect("count outbox rows")
 }
 
 async fn insert_item(pool: &PgPool, player_id: i32, container_id: i32, flags: i32) -> i32 {
@@ -158,7 +177,7 @@ async fn wait_until_blocked(pool: &PgPool, holder_pid: i32) {
 async fn buyback_waits_for_a_trade_on_the_same_player() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C590, 0x7000_C591, 0x7000_C5A8_u32);
-    setup(&pool, account_id, player_id, 5_000).await;
+    setup(&pool, account_id, player_id, entity_id, 5_000).await;
     let sold = insert_item(&pool, player_id, INV_BUYBACK, UNIT_PRICE).await;
 
     let mut trade = pool.begin().await.expect("begin trade");
@@ -207,7 +226,7 @@ async fn buyback_waits_for_a_trade_on_the_same_player() {
     assert_eq!(container_of(&pool, sold).await, INV_MAIN, "bought back");
     assert_eq!(naquadah_of(&pool, player_id).await, 5_000 + 1 - UNIT_PRICE);
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, account_id, player_id, entity_id).await;
 }
 
 /// A buyback on the player holds its keys (0, 1, 16) and a buyback row,
@@ -225,7 +244,7 @@ async fn buyback_waits_for_a_trade_on_the_same_player() {
 async fn sell_waits_for_a_buyback_on_the_same_player() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C592, 0x7000_C593, 0x7000_C5A9_u32);
-    setup(&pool, account_id, player_id, 5_000).await;
+    setup(&pool, account_id, player_id, entity_id, 5_000).await;
     let for_sale = insert_item(&pool, player_id, INV_MAIN, 0).await;
     let in_buyback = insert_item(&pool, player_id, INV_BUYBACK, UNIT_PRICE).await;
 
@@ -277,12 +296,17 @@ async fn sell_waits_for_a_buyback_on_the_same_player() {
         .expect("the buyback locks the player row");
     buyback.commit().await.expect("the buyback commits");
 
-    tokio::time::timeout(Duration::from_secs(20), sale)
-        .await
+    let finished = tokio::time::timeout(Duration::from_secs(20), sale).await;
+    // The sale enqueued one outbox row for the removed item. Count it,
+    // then delete it before any assertion can fail and strand it.
+    let enqueued = outbox_rows(&pool, entity_id).await;
+    delete_outbox_rows(&pool, entity_id).await;
+    finished
         .expect("the sale finishes once the buyback commits")
         .expect("sale task");
+    assert_eq!(enqueued, 1, "the sale enqueues one outbox row");
     assert_eq!(container_of(&pool, for_sale).await, INV_BUYBACK, "sold");
     assert_eq!(naquadah_of(&pool, player_id).await, 5_000 + UNIT_PRICE);
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, account_id, player_id, entity_id).await;
 }
