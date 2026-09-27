@@ -11,6 +11,7 @@ use cimmeria_cell_catalog::crafting::shared_crafting_catalog;
 use cimmeria_entity::crafting::CraftingState;
 
 use super::{caller_is_gm, gm_line, lookup_failed, GrantIds};
+use crate::base::crafting::inventory_locks::take_inventory_locks;
 use crate::base::crafting::persistence::{load_crafting_state_locked, save_crafting_state_in};
 use crate::base::crafting::request::CraftCtx;
 use crate::base::crafting::sync::push_known_crafts;
@@ -143,6 +144,16 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
             return;
         }
     };
+    // The player-wide advisory key first, as every other crafting write
+    // takes it: a crafting completion holds it (not the `sgw_player` row)
+    // while it writes expertise, and the save below rewrites every
+    // expertise row from this load, so without it a completion that
+    // commits between the load and the save is written back over.
+    if let Err(e) = take_inventory_locks(&mut tx, ids.player_id, &[]).await {
+        persist_failed("advisory_lock", &e);
+        gm_line(ids, failed_line, ctx).await;
+        return;
+    }
     let mut state = match load_crafting_state_locked(&mut tx, ids.player_id).await {
         Ok(Some(s)) => s,
         Ok(None) => {

@@ -170,3 +170,74 @@ async fn learnblueprint_for_a_missing_player_logs_the_shortfall() {
     }
     assert_identity(&e, ids);
 }
+
+/// Live DB, the lost-update guard: a crafting completion holds the
+/// player-wide advisory key (not the `sgw_player` row) while it writes
+/// expertise. `.learnblueprint` rewrites every expertise row from its load,
+/// so it must take that key first: it waits for the completion, and the
+/// completion's +1 survives. Without the key it loads expertise 10, blocks
+/// only on the expertise row, and writes 10 back over the committed 11.
+#[tokio::test]
+async fn learnblueprint_waits_for_a_completion_and_keeps_its_expertise() {
+    let pool = require_db_or_skip!();
+    // Slot 12 (`0x7000_CBB0`), past the vendor test's `0x7000_CBA0..CBA1`.
+    let ids = ids(12);
+    cleanup(&pool, ids).await;
+    insert_player(&pool, ids).await;
+    sqlx::query("UPDATE sgw_player SET discipline_ids = '{78}' WHERE player_id = $1")
+        .bind(ids.player)
+        .execute(&pool)
+        .await
+        .expect("know discipline 78");
+    sqlx::query(
+        "INSERT INTO sgw_player_discipline_expertise (player_id, discipline_id, expertise) \
+         VALUES ($1, 78, 10)",
+    )
+    .bind(ids.player)
+    .execute(&pool)
+    .await
+    .expect("expertise 10");
+    let maps = sessions(ids, 2);
+
+    // The completion: the player-wide key, then its uncommitted +1.
+    let mut completion = pool.begin().await.expect("begin");
+    sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
+        .bind(ids.player)
+        .execute(&mut *completion)
+        .await
+        .expect("player-wide key");
+    sqlx::query(
+        "UPDATE sgw_player_discipline_expertise SET expertise = 11 \
+         WHERE player_id = $1 AND discipline_id = 78",
+    )
+    .bind(ids.player)
+    .execute(&mut *completion)
+    .await
+    .expect("uncommitted +1");
+
+    let (grant_pool, grant_maps) = (pool.clone(), maps.clone());
+    let grant = tokio::spawn(async move {
+        run(Some(&grant_pool), ids, &grant_maps, learn(25)).await;
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let finished_while_held = grant.is_finished();
+    completion.commit().await.expect("commit the completion");
+    tokio::time::timeout(std::time::Duration::from_secs(10), grant)
+        .await
+        .expect("the grant finishes once the key is free")
+        .expect("grant task");
+    let reloaded = load_crafting_state(&pool, ids.player).await;
+    cleanup(&pool, ids).await;
+    let reloaded = reloaded.expect("reload");
+
+    assert!(
+        !finished_while_held,
+        "the grant waits for the player-wide key"
+    );
+    assert_eq!(
+        reloaded.get_expertise(78),
+        Some(11),
+        "the completion's committed +1 survives the grant"
+    );
+    assert_eq!(reloaded.blueprint_ids, vec![25], "and the grant landed");
+}

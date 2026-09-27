@@ -16,6 +16,7 @@ use cimmeria_cell_catalog::crafting::shared_crafting_catalog;
 use cimmeria_entity::crafting::CraftingState;
 use cimmeria_wire::crafting::GmAllCraft;
 
+use super::inventory_locks::take_inventory_locks;
 use super::options::enable_craft_anywhere;
 use super::persistence::{load_crafting_state_locked, save_crafting_state_in};
 use super::request::CraftCtx;
@@ -198,6 +199,16 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             return;
         }
     };
+    // The player-wide advisory key first, as every other crafting write
+    // takes it: a crafting completion holds it (not the `sgw_player` row)
+    // while it writes expertise, and the save below rewrites every
+    // expertise row from this load, so without it a completion that
+    // commits between the load and the save is written back over.
+    if let Err(e) = take_inventory_locks(&mut tx, player_id, &[]).await {
+        persist_failed("advisory_lock", &e);
+        feedback("allcraft: failed, the crafting state could not be saved.".into()).await;
+        return;
+    }
     let mut state = match load_crafting_state_locked(&mut tx, player_id).await {
         Ok(Some(s)) => s,
         Ok(None) => {

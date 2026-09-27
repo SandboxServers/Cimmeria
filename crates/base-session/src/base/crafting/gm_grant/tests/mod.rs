@@ -1,8 +1,9 @@
 //! Tests for the GM crafting grants: the pure kit and learn rules, then
 //! each command end to end against a live database.
 //!
-//! Crafting sentinels (`0x7000_Cxxx`): `0x7000_CB80..=0x7000_CB9F`, eight
-//! slots of four (account, player; the account id doubles as the target
+//! Crafting sentinels (`0x7000_Cxxx`): `0x7000_CB80..=0x7000_CB9F` (slots 0-7)
+//! and `0x7000_CBB0..=0x7000_CBB3` (slot 12; slots 8-11 would overlap the
+//! vendor supplies test's `0x7000_CBA0..CBA1`), slots (account, player; the account id doubles as the target
 //! entity id so outbox rows are deleted by exact entity). Clear of the
 //! persistence tests (`..0x7000_CB55`) and the GM expertise grants
 //! (`0x7000_CC00..`).
