@@ -84,49 +84,25 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
         .expect("dialogs must appear in the returned map");
     assert_eq!(
         ids.as_slice(),
-        &[3995u32, 3996u32, 60100u32, 60101u32, 60104u32],
-        "overridden_elements must name every regenerated dialog id (the two \
-         mission-622 corpses and the three debug-hub dialogs) in ascending order",
+        &[3995u32, 3996u32],
+        "overridden_elements must name every regenerated dialog id (the two          mission-622 corpses) in ascending order, and no quarantined one",
     );
 
-    // The debug-hub dialogs are absent from the PAK, like 3996, so both are
-    // inserted. 60100 must carry its one button to the client: without it
-    // the round trip's first dialog_choice can never be sent.
-    let d60100 = std::str::from_utf8(
-        dialogs
-            .elements
-            .get(&60100)
-            .expect("debug-hub dialog 60100 must be inserted"),
-    )
-    .unwrap();
-    assert!(
-        d60100.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send my choice\">"),
-        "60100 must ship its Generic 1 button; got: {d60100}",
-    );
-    let d60101 = std::str::from_utf8(
-        dialogs
-            .elements
-            .get(&60101)
-            .expect("debug-hub dialog 60101 must be inserted"),
-    )
-    .unwrap();
-    assert!(
-        !d60101.contains("<Buttons"),
-        "60101 must stay button-less so its close sends -1; got: {d60101}",
-    );
-    // SS-U3: the Gate Mail Clerk's dialog must ship its button, or the
-    // player can never ask for the mail.
-    let d60104 = std::str::from_utf8(
-        dialogs
-            .elements
-            .get(&60104)
-            .expect("the Gate Mail Clerk's dialog 60104 must be inserted"),
-    )
-    .unwrap();
-    assert!(
-        d60104.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send me a mail\">"),
-        "60104 must ship its Generic 1 button; got: {d60104}",
-    );
+    // The debug-hub dialogs are quarantined (client map-load crash,
+    // 2026-09-27): they are neither inserted into the catalogue nor named in
+    // the versionInfo InvalidKeys, so no client is sent them.
+    for q in crate::base::dialog_overrides::QUARANTINED_DIALOG_OVERRIDES {
+        assert!(
+            !dialogs.elements.contains_key(&q.dialog_id),
+            "quarantined dialog {} must not be inserted into the served catalogue",
+            q.dialog_id,
+        );
+        assert!(
+            !ids.contains(&q.dialog_id),
+            "quarantined dialog {} must not be named in overridden_elements",
+            q.dialog_id,
+        );
+    }
 }
 
 /// Defensive path: dialogs category absent (PAK missing) → no-op return,

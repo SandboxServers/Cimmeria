@@ -13,6 +13,12 @@
 //! executor arm are all on the path. The base half (the cooldown claim and
 //! the mail row) is guarded in `cimmeria-base-methods`
 //! `mail/tests/content_live.rs`.
+//!
+//! Dialog 60104 is quarantined from the cooked-data overrides since
+//! 2026-09-27 (client map-load crash): the chains still resolve, but no
+//! client is sent the dialog body, so the clerk shows nothing and its button
+//! cannot be pressed. The "not served" guard is
+//! `quarantined_dialogs_are_not_served` in `cimmeria-resources`.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};

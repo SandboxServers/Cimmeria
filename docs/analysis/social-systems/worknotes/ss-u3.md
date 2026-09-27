@@ -3,6 +3,15 @@
 > Type: reference. Audience: social-systems coordinator; the crafting coordinator (placement check).
 > Companions: [README.md](../README.md), [work-packets.md](../work-packets.md), [ss-u1.md](ss-u1.md), [ss-u2.md](ss-u2.md).
 
+> **Update 2026-09-27: dialog 60104 is quarantined.** Its cooked-data override
+> moved from `DIALOG_OVERRIDES` to `QUARANTINED_DIALOG_OVERRIDES` and is not
+> served. The debug-hub dialogs, pushed as overrides, coincide with a client
+> crash on entry into Castle_CellBlock, and the bad field is not yet known.
+> The clerk, chains 7010-7011 and the seed rows stay, but the clerk shows no
+> dialog. `.mail` is the mail test meanwhile. The override tests named below
+> now check the quarantined definition and that it is not served. See
+> [debug-hub.md](../../../content/debug-hub.md#dialog-npc-template-302-airman-lance).
+
 ## Contract
 
 - **Packet:** SS-U3, hub additions and UAT docs: the `send_system_mail` content action, the Gate Mail Clerk (template 390, spawn 490), the debug-hub doc, and a runnable SS-UAT.

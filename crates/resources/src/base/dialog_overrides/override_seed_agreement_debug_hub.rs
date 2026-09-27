@@ -4,21 +4,25 @@
 //!
 //! The two records drift apart silently, and each drift fails differently:
 //!
-//! * the client draws only the [`DIALOG_OVERRIDES`] entry (fact F1), so a
-//!   seed-only edit changes nothing a player sees;
+//! * the client draws only the override entry (fact F1), so a seed-only
+//!   edit changes nothing a player sees;
 //! * the server reads only the seed. `display_dialog` binds the player as
 //!   speaker when every screen of a dialog has `speaker_id = 0`
 //!   (`load_monologue_dialog_ids`), and the `dialog_button_linter` enforces
 //!   the button hard rules against `dialog_screen_buttons.sql`. A seed that
 //!   disagrees with the override lints and binds a dialog nobody sees.
 //!
-//! So every screen and button of the two overrides must appear in the seed
+//! So every screen and button of the overrides must appear in the seed
 //! exactly, and the seed must carry nothing the overrides do not. No
 //! database: the seed files are read from disk.
+//!
+//! The three are quarantined since 2026-09-27 (client map-load crash): the
+//! definitions live in [`QUARANTINED_DIALOG_OVERRIDES`] and are not served.
+//! They are still checked here so a restore ships a seed-consistent entry.
 
 use std::path::PathBuf;
 
-use super::{DialogOverride, DIALOG_OVERRIDES};
+use super::{DialogOverride, QUARANTINED_DIALOG_OVERRIDES};
 
 /// The Cimmeria-authored dialogs of the debug hub.
 const HUB_DIALOGS: [u32; 3] = [60100, 60101, 60104];
@@ -33,10 +37,12 @@ fn read_seed(name: &str) -> String {
 }
 
 fn hub_override(dialog_id: u32) -> &'static DialogOverride {
-    DIALOG_OVERRIDES
+    QUARANTINED_DIALOG_OVERRIDES
         .iter()
         .find(|ov| ov.dialog_id == dialog_id)
-        .unwrap_or_else(|| panic!("debug-hub dialog {dialog_id} must be a DialogOverride"))
+        .unwrap_or_else(|| {
+            panic!("debug-hub dialog {dialog_id} must be defined in QUARANTINED_DIALOG_OVERRIDES")
+        })
 }
 
 /// SQL string literal body: the seed doubles apostrophes.
