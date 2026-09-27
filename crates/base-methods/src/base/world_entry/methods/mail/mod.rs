@@ -4,9 +4,12 @@
 //! forwards `CellToBaseMsg::MailRequest`; everything that touches
 //! `sgw_gate_mail` runs here. One file per family of operations:
 //!
-//! - [`read`]: headers, body, archive and delete (refused while the mail
-//!   holds an attachment);
+//! - [`headers`]: the header list, and the one-header refresh;
+//! - [`read`]: body, archive and delete (refused while the mail holds an
+//!   attachment);
 //! - [`send`]: `sendMailMessage`, text or with cash, an item or COD attached;
+//! - [`take`], [`cod`], [`return_`]: take cash, take the item, pay a COD,
+//!   return to sender (SS-M3), sharing the lock order in [`claim`];
 //! - [`system`]: the one writer for server-originated mail (Black Market
 //!   payouts, content actions, GM `.mail`), SS-U1;
 //! - [`gm`]: the GM `.mail` and `.mailbox` tools (SS-U1).
@@ -26,8 +29,13 @@ use crate::cell::messages::MailOp;
 use crate::mercury::build_player_entity_method_packet;
 
 mod gm;
+mod claim;
+mod cod;
+mod headers;
 mod read;
+mod return_;
 mod send;
+mod take;
 pub mod system;
 
 pub use gm::handle_mail_gm;
@@ -158,10 +166,18 @@ pub(super) async fn route(caller: Caller<'_>, op: MailOp, pool: Option<&PgPool>,
     };
     let ctx = MailCtx { caller, pool };
     match op {
-        MailOp::RequestHeaders { b_archive } => read::request_headers(&ctx, b_archive).await,
+        MailOp::RequestHeaders { b_archive } => headers::request_headers(&ctx, b_archive).await,
         MailOp::RequestBody { mail_id } => read::request_body(&ctx, mail_id).await,
         MailOp::Delete { mail_id } => read::delete(&ctx, mail_id).await,
         MailOp::Archive { mail_id } => read::archive(&ctx, mail_id).await,
+        MailOp::TakeCash { mail_id } => take::take_cash(&ctx, mail_id).await,
+        MailOp::TakeItem {
+            mail_id,
+            container_id,
+            slot_id,
+        } => take::take_item(&ctx, mail_id, container_id, slot_id).await,
+        MailOp::PayCod { mail_id } => cod::pay_cod(&ctx, mail_id).await,
+        MailOp::Return { mail_id } => return_::return_mail(&ctx, mail_id).await,
         // Consumed above.
         MailOp::Send(_) | MailOp::SendRejected(_) => {}
     }
@@ -175,6 +191,10 @@ fn op_name(op: &MailOp) -> String {
         MailOp::RequestBody { mail_id } => format!("request_body mail_id={mail_id}"),
         MailOp::Delete { mail_id } => format!("delete mail_id={mail_id}"),
         MailOp::Archive { mail_id } => format!("archive mail_id={mail_id}"),
+        MailOp::TakeCash { mail_id } => format!("take_cash mail_id={mail_id}"),
+        MailOp::TakeItem { mail_id, .. } => format!("take_item mail_id={mail_id}"),
+        MailOp::PayCod { mail_id } => format!("pay_cod mail_id={mail_id}"),
+        MailOp::Return { mail_id } => format!("return mail_id={mail_id}"),
         MailOp::Send(send) => format!("send recipients={}", send.recipients.len()),
         MailOp::SendRejected(reject) => format!("send_rejected reason={}", reject.reason()),
     }
