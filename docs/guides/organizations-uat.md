@@ -374,7 +374,10 @@ with `.org_set_perms` as in step 8, then have S (second window) speak on the
 officer channel, or read the refusal row if S cannot.
 
 **Watch for.** Each line shows once. The officer refusal is visible to the
-speaker. Nobody outside the Command sees the lines.
+speaker. Nobody outside the Command sees the lines. The officer channel
+belongs to Commands only: a line on it reaches the online members of the
+sender's Command whose rank holds `OfficerChat`, never a Team (a Team's rank
+editor has no `OfficerChat` bit).
 
 **Log rows.** `org.chat` (INFO, `channel` = 5 for Command, 6 for officer,
 3 for Team; `recipients`; `text_units`; a refusal's `reason`, for example

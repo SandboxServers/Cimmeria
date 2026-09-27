@@ -8,7 +8,7 @@
 - **Packet:** ORG-10, the GM suite and the UAT guide.
 - **Decisions in force:** D-ORG08 (the Leader row holds every bit), D-ORG09 (6) and D-ORG22 (the mask clamp, `OrgPermission::apply_edit`), D-ORG10 (text caps), D-ORG13 (GM commands on the `.` console, access level re-read on the base, `org.gm_action` with the actor), D-ORG25 (coordinator review in place of Copilot).
 - **Base:** `origin/main` @ `2b30ec1ba` (ORG-07 #945). Branch `org/10-gm-uat`, worktree `.claude/worktrees/org-10`, test DB `sgw_org_10`. Rebased before push (see "Commands run").
-- **Sentinels:** `0x7000_5800..=0x7000_58FF` (16 blocks of 16, names `Org10P<n>`, organizations named `Org10 ...`), `Fixture::org10` in `base-session` `organization/handlers/tests/mod.rs`; blocks 0-5 used. Announced to org-08 and org-09 before use. Cell-console unit fixtures use player 7301 / account 8301 (no database).
+- **Sentinels:** `0x7000_5A00..=0x7000_5BFF` (32 blocks of 16, names `Org10P<n>`, organizations named `Org10 ...`), `Fixture::org10` in `base-session` `organization/handlers/tests/mod.rs`; blocks 0-5 used. Assigned by the coordinator (an earlier self-claim overlapped ORG-08's block; moved before any push). Cell-console unit fixtures use player 7301 / account 8301 (no database).
 
 ## Owned paths
 
@@ -54,13 +54,41 @@ New reasons: `leader_row_pinned`, `permissions_unchanged`, `mask_invalid` (conso
 
 All from the worktree root through the lane (`target=B:\targets/org-10`). Live-DB runs reload `sgw_org_10`; no live-DB test self-skipped (the tier sets `DATABASE_URL`).
 
-COMMANDS_TABLE
+| Command | Exit | Result |
+|---|---|---|
+| `lane.sh cargo check -p cimmeria-base-session -p cimmeria-base-world-entry` / `-p cimmeria-cell-console --all-targets` | 0 | |
+| `lane.sh cargo nextest run -p cimmeria-cell-console --lib org10 organizations org07 org06` | 0 | 18 passed |
+| `live-db-test.sh organization::handlers organization::persistence --no-fail-fast` | 0 | 87 passed |
+| `live-db-test.sh gm_suite` | 0 | 14 passed (6 live-DB, 8 console), none skipped |
+| `lane.sh cargo nextest run -p cimmeria-base-world-entry --lib org_arms` | 0 | 9 passed |
+| `python org10_mutations.py` (the ten proofs below) | 0 | each guard failed with exit 100; `git status` clean of code after |
+| `git rebase origin/main` (onto `6607fbdc2`, BV-05 #947; no conflicts) | 0 | |
+| `lane.sh cargo fmt --all -- --check` | 0 | |
+| `lane.sh cargo clippy -p cimmeria-wire -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell-world --all-targets -- -D warnings` | 101, then 0 | `assertions_on_constants` on the 164 tail pin; made a `const` assertion |
+| `lane.sh cargo nextest run` (the five crates above) `--lib --no-fail-fast` | 0 | 1885 passed |
+| `live-db-test.sh "::" --no-fail-fast` (the whole live-DB tier, after the rebase) | 0 | 5242 passed, 0 skipped |
+| `live-db-test.sh organization:: --no-fail-fast` (after moving the sentinels to the coordinator's `0x7000_5A00` block) | 0 | 226 passed |
+
+No new log target, so the `cimmeria-server` logging parity tests were not re-run. No dependency changed (no hakari run).
 
 ## Regression proof
 
-`python org10_mutations.py` (scratchpad): each mutation applied alone to the committed tree (`476201817`), its guards run (`live-db-test.sh <tests> --no-fail-fast` or `lane.sh cargo nextest run -p <crate> --lib <tests>`), then `git checkout HEAD -- <file>` and `touch`. `git status` clean afterwards.
+`python org10_mutations.py` (scratchpad): each mutation applied alone to the committed tree (`476201817`, before the rebase), its guards run (`live-db-test.sh <tests> --no-fail-fast` or `lane.sh cargo nextest run -p <crate> --lib <tests>`), then `git checkout HEAD -- <file>` and `touch`. `git status` clean afterwards.
 
-PROOF_TABLE
+| Id | Mutation | Run | Exit | Failed |
+|---|---|---|---|---|
+| M1 | `.org_set_perms`: the `apply_edit` clamp bypassed (the GM mask stored as sent) | live | 100 | `gm_set_perms_clamps_to_the_editor_bits_and_fans_out` |
+| M2 | `.org_set_perms`: the base access-level check removed | live | 100 | `gm_set_perms_refuses_the_leader_row_and_unused_ranks` |
+| M3 | `.org_info` / `.org_list` / reload: the base access-level check removed | live | 100 | `gm_info_lists_every_membership_with_rank_and_mask`, `gm_reload_resends_the_login_push` |
+| M4 | `.org_set_perms`: no [49] fanout after the commit | live | 100 | `gm_set_perms_clamps_to_the_editor_bits_and_fans_out` |
+| M5 | the `org.gm_action` twin of join, rank and disband disabled (`ActionRow::gm_audit`) | live | 100 | `every_gm_org_command_writes_one_gm_action_row` |
+| M6 | console: the `org.gm_action` twin of a console-side refusal disabled | unit (`cimmeria-cell-console`) | 100 | `console_refusals_of_every_gm_org_command_write_one_gm_action_row` |
+| M7 | the CM 164 arm removed from the GM dispatch | unit (`cimmeria-cell-console`) | 100 | `gm_reload_organizations_forwards_to_the_base` |
+| M8 | CM 164 carved out of the gated `SGWGmPlayer` tail in `requires_gm` | unit (`cimmeria-cell-console`) | 100 | `gm_reload_organizations_is_inside_the_gated_tail` |
+| M9 | the `org_set_perms` registry row removed | unit (`cimmeria-cell-console`) | 100 | `org10_commands_are_registered`, `org_set_perms_forwards_to_the_base` |
+| M10 | base dispatch: the `GmSetPerms` arm a no-op | unit (`cimmeria-base-world-entry`) | 100 | `org10_gm_variants_reach_their_handlers` |
+
+Every mutation failed exactly its named guards. The proofs ran on the first commit, before the sentinel move and the rebase; neither changes the guarded code.
 
 The Leader-row refusal has two layers (the handler's check and `set_rank_permissions`' `LeaderPinned`); removing the handler's check alone still refuses with `leader_row_pinned` through the persistence layer, so that pair was not mutated separately. ORG-02's `set_rank_permissions` tests pin the persistence layer.
 
@@ -82,7 +110,7 @@ The Leader-row refusal has two layers (the handler's check and `set_rank_permiss
 
 ## Integration edits for the coordinator
 
-- **Ledger (work-packets.md):** record `OrgCellToBase::{GmInfo, GmList, GmSetPerms, GmReload}` in § Messages; the rename of `OrgAccess::system`'s GM row to `org.gm_access` (§ ORG-API mentions none, but README/D-ORG13's "logs `org.gm_action` with the actor" now means the handler's result row); the ORG-10 sentinel range `0x7000_5800..=0x7000_58FF`; the ORG-UAT SigNoz table's `event = 'login_restore'` / `'gm_action'` should read `org.login_restore` / `org.gm_action` (the guide uses the real names).
+- **Ledger (work-packets.md):** record `OrgCellToBase::{GmInfo, GmList, GmSetPerms, GmReload}` in § Messages; the rename of `OrgAccess::system`'s GM row to `org.gm_access` (§ ORG-API mentions none, but README/D-ORG13's "logs `org.gm_action` with the actor" now means the handler's result row); the ORG-10 sentinel range `0x7000_5A00..=0x7000_5BFF`; the ORG-UAT SigNoz table's `event = 'login_restore'` / `'gm_action'` should read `org.login_restore` / `org.gm_action` (the guide uses the real names).
 - **Merge with ORG-08:** both packets touch `handlers/telemetry.rs` (`OrgReject` variants appended at the end; ORG-08 may add its own Leader-row reason for CM 16 — if it names it differently, pick one and map `LeaderRowPinned` to it), `handlers/mod.rs`, `org_cell_to_base.rs` (variants appended), the observability `org` row (text appended before "Later packets add their decisions here") and `organization-system.md`. ORG-08's CM 16 handler should set nothing in `ActionRow::gm_audit` (members are not GMs).
 - **Merge with ORG-09:** only the observability row and `organization-system.md`, both append-only.
 - **TESTING.md / inventory counts:** not edited (rule). This packet adds 19 tests (6 live-DB).

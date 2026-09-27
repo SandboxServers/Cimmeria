@@ -13,6 +13,7 @@
 //! names `Org09P<n>`, [`Fixture::org09`]). Organizations are cleaned by
 //! exact name key ("Org06 ..." / "Org07 ..." / "Org09 ..." names).
 //! [`Fixture::org07`]); ORG-10 owns `0x7000_5800..=0x7000_58FF` (16 blocks,
+//! [`Fixture::org07`]); ORG-10 owns `0x7000_5A00..=0x7000_5BFF` (32 blocks,
 //! names `Org10P<n>`, [`Fixture::org10`]). Organizations are cleaned by
 //! exact name key ("Org06 ..." / "Org07 ..." / "Org10 ..." names).
 
@@ -59,7 +60,7 @@ const BASE_ORG07_HIGH: i32 = 0x7000_5200;
 /// ORG-09's sentinel block (see the module docs).
 const BASE_ORG09: i32 = 0x7000_5600;
 /// ORG-10's sentinel range (see the module docs).
-const BASE_ORG10: i32 = 0x7000_5800;
+const BASE_ORG10: i32 = 0x7000_5A00;
 
 /// One decoded client-method call: `(method index, args)`.
 type Call = (u16, Vec<u8>);
@@ -108,9 +109,10 @@ impl Fixture {
         assert!((0..16).contains(&block));
         Self::at(pool, BASE_ORG09, "Org09P", block, n, org_names).await
     /// [`Fixture::new`] in ORG-10's range: block `block` (0..16), names
+    /// [`Fixture::new`] in ORG-10's range: block `block` (0..32), names
     /// `Org10P<i>`.
     async fn org10(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
-        assert!((0..16).contains(&block));
+        assert!((0..32).contains(&block));
         Self::at(pool, BASE_ORG10, "Org10P", block, n, org_names).await
     }
 
