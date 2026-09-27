@@ -15,7 +15,7 @@
 //! - [`minigame`] — `MinigameResult`
 //! - [`gm_spawn`] — `GmSpawnNpcReady`
 //! - [`request_entity_update`] — `RequestEntityUpdate`
-//! - [`org`] — `Org` (organization traffic; logged no-ops until ORG-03)
+//! - [`org`] — `Org` (organization traffic: the squad invite and kick)
 //! - `Duel` goes straight to `cell::duel::challenge` (SS-D1)
 
 use tokio::sync::mpsc;
@@ -224,6 +224,12 @@ pub(super) async fn handle_base_message(
                 tx,
                 space_mgr,
                 engine,
+            )
+            .await;
+            // A gate arrival re-creates the player: re-send their squad
+            // (ORG-03). After the handler above, which stamps `player_id`.
+            super::super::cell_methods::organization::squad::on_world_entry(
+                entity_id, player_id, tx, space_mgr,
             )
             .await;
         }
@@ -482,7 +488,7 @@ pub(super) async fn handle_base_message(
             .await;
         }
 
-        BaseToCellMsg::Org(org_msg) => org::handle(org_msg),
+        BaseToCellMsg::Org(org_msg) => org::handle(org_msg, tx, space_mgr).await,
 
         BaseToCellMsg::Duel(duel_msg) => {
             super::super::duel::challenge::handle(duel_msg, tx, space_mgr).await;

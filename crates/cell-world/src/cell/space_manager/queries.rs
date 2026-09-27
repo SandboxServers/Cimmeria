@@ -401,6 +401,25 @@ impl SpaceManager {
         }
     }
 
+    /// The live entity of the character `player_id`, if they are online and
+    /// bound to a space.
+    ///
+    /// Scans only each space's `players` set, so it is O(online players).
+    /// A player in gate transit (entity torn down, or re-created but not yet
+    /// connected) is `None`. The squad fanout resolves member entities
+    /// through here on every event rather than caching an id, because
+    /// entity ids are recycled and gate travel re-creates the entity.
+    pub fn player_entity_by_player_id(&self, player_id: i32) -> Option<u32> {
+        self.spaces.values().find_map(|space| {
+            space.players.iter().copied().find(|eid| {
+                space
+                    .entities
+                    .get(eid)
+                    .is_some_and(|e| e.is_player && e.player_id == Some(player_id))
+            })
+        })
+    }
+
     /// Collect every entity id across all spaces, regardless of
     /// class_id or is_player. Used by passes that must visit every
     /// entity (e.g. active-effect pulsing — DoTs apply to NPCs,

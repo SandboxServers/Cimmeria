@@ -240,6 +240,12 @@ pub(super) async fn handle_disconnect_entity(
     // disconnect mid-trade has to notify the surviving partner.
     crate::cell::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr)
         .await;
+    // Squad (ORG-03): leave with `Logout`, promote or disband, and drop the
+    // player's pending invites. Before the teardown, so the remaining
+    // members' `onMemberLeftOrganization` still names the entity. Only this
+    // arm: `DestroyEntity` is also the gate-travel teardown, and a squad
+    // survives a world change.
+    crate::cell::cell_methods::organization::squad::on_disconnect(entity_id, tx, space_mgr).await;
     // Persist the last known world + position BEFORE the teardown below
     // removes the entity. This is the only write of `sgw_player.pos_*` on
     // the way out of a session: gate travel and the GM teleport write their

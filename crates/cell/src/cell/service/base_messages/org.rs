@@ -1,36 +1,38 @@
 //! `BaseToCellMsg::Org` handler: organization traffic from the base.
 //!
-//! Nothing sends these yet (ORG-01 only lays the contract), so each arm is a
-//! logged no-op. ORG-03 replaces them with the squad registry (D-ORG03);
-//! later packets add their handlers to this file rather than to `mod.rs`.
+//! The base forwards the squad forms of its organization methods here
+//! (D-ORG03: squads live on the cell), with the actor's ids from its own
+//! session. The squad handlers re-check that the entity is still that
+//! character before acting. Later packets add their handlers to this file
+//! rather than to `mod.rs`.
 
-use super::super::super::messages::OrgBaseToCell;
+use tokio::sync::mpsc;
+
+use super::super::super::cell_methods::organization::squad;
+use super::super::super::messages::{CellToBaseMsg, OrgBaseToCell};
+use super::super::super::space_manager::SpaceManager;
 
 /// Handle one organization message from the base.
-pub(super) fn handle(msg: OrgBaseToCell) {
-    let (player_id, entity_id) = msg.actor();
-    let kind = msg.kind();
+pub(super) async fn handle(
+    msg: OrgBaseToCell,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     match msg {
-        OrgBaseToCell::SquadInvite { .. } => {
-            tracing::debug!(
-                target: "squad",
-                event = "squad.invite_unimplemented",
-                player_id,
-                entity_id,
-                kind,
-                "squad message from the base has no handler yet"
-            );
+        OrgBaseToCell::SquadInvite {
+            player_id,
+            entity_id,
+            target_name,
+        } => {
+            squad::handle_invite(player_id, entity_id, &target_name, tx, space_mgr).await;
         }
-        OrgBaseToCell::SquadKick { org_id, .. } => {
-            tracing::debug!(
-                target: "squad",
-                event = "squad.kick_unimplemented",
-                player_id,
-                entity_id,
-                kind,
-                org_id,
-                "squad message from the base has no handler yet"
-            );
+        OrgBaseToCell::SquadKick {
+            player_id,
+            entity_id,
+            org_id,
+            target_name,
+        } => {
+            squad::handle_kick(player_id, entity_id, org_id, &target_name, tx, space_mgr).await;
         }
     }
 }

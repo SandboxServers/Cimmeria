@@ -317,6 +317,10 @@ fn scan_finds_known_targets() {
         ("org", Level::DEBUG),
         ("org", Level::WARN),
         ("squad", Level::DEBUG),
+        // ORG-03's squad handlers in crates/cell-methods: spans and outcome
+        // rows at INFO, the actor-mismatch and dropped-send seams at WARN.
+        ("squad", Level::INFO),
+        ("squad", Level::WARN),
         // The social-systems campaign (SS-00): the chat length-cap refusal and
         // the flood limit's drops, both in crates/base (the SGWPlayer chat
         // arm), the rate_limit helper itself in crates/base-session.

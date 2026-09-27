@@ -226,7 +226,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 > consumer. See the [wireclient ADR](docs/architecture/wireclient.md) phase table
 > before treating any given phase as shipped.
 
-**Where**: `crates/wireclient/` — 32 unit/lib tests across 6 files (`src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `src/bundle.rs` (6)) plus 9 integration tests in one `tests/it/` binary: `tests/it/auth_smoke.rs` (3), `tests/it/trace_load.rs` (1), `tests/it/two_client_castle_visibility.rs` (2, live-DB only), `tests/it/two_client_castle_visibility_chaos.rs` (3, live-DB only). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
+**Where**: `crates/wireclient/` — 32 unit/lib tests across 6 files (`src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `src/bundle.rs` (6)) plus 10 integration tests in one `tests/it/` binary: `tests/it/auth_smoke.rs` (3), `tests/it/trace_load.rs` (1), `tests/it/two_client_castle_visibility.rs` (2, live-DB only), `tests/it/two_client_castle_visibility_chaos.rs` (3, live-DB only), `tests/it/two_client_squad.rs` (1, live-DB only: a squad invite, accept and leave between two clients, using `GameSession::base_method` and `cell_method`). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
 
 **What works today:**
 

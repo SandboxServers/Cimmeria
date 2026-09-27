@@ -147,6 +147,8 @@ crates/wireclient/
     │   │                                      #   arrival orders (NA37)
     │   ├── two_client_castle_visibility_chaos.rs  # Live-DB: the same scenario
     │   │                                      #   under injected loss/latency
+    │   ├── two_client_squad.rs                # Live-DB: /squadinvite, accept,
+    │   │                                      #   both join, leave (ORG-03)
     │   └── support/mod.rs                     # Shared server bring-up + world-entry driver
     └── fixtures/
         └── castle_cellblock_head.jsonl         # 1 header + 5 events

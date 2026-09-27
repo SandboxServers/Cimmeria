@@ -427,6 +427,11 @@ pub struct SpaceManager {
     /// Pending duel challenges, duels and their cooldowns, keyed by
     /// `player_id` (SS-D1). See `cell::duel`.
     pub duels: super::duel::DuelRegistry,
+    /// Every squad on this cell and the pending squad invites (ORG-03,
+    /// D-ORG03). Service-wide, not per space, so a member who gates to
+    /// another world keeps their squad. Keyed by `player_id`, never entity
+    /// id; see `cell::squad`.
+    pub squads: super::squad::SquadRegistry,
 }
 
 impl SpaceManager {
@@ -487,6 +492,7 @@ impl SpaceManager {
             duels: super::duel::DuelRegistry::default(),
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
+            squads: super::squad::SquadRegistry::new(),
         }
     }
 }

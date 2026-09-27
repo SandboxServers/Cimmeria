@@ -172,6 +172,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 transport,
                 connected,
                 entity_to_addr,
+                cell_tx,
             )
             .await;
         }
