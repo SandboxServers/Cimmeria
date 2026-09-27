@@ -23,4 +23,10 @@ when the cache refresh is removed, and nothing else would have noticed.
 runs `handle_grant_xp` afterwards. Cell mirror is `CellEntity::tree_progress`,
 fed by `AbilityGranted` / `ProgressionChanged` / `TrainingPointsGranted`.
 
+Unlike training points, the Applied Science Points a level-up earns (since
+2026-09-27) are added in SQL and counted against the row's locked level
+(`progression/asp_earning.rs`), so ASP has no session cache to refresh. Tests
+that drive a level-up need XP strictly above `LEVEL_XP[level]`
+(`apply_level_ups` uses `>`): 100 XP stays level 1, 101 is level 2.
+
 Related: [[stat-with-no-consumer-trap]], [[gm-feedback-cell-base]].
