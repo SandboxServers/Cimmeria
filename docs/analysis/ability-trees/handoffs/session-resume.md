@@ -1,62 +1,63 @@
 # Ability Trees: Session Resume
 
-> Type: how-to. Audience: the next coordinator session.
-> Updated: 2026-09-26. Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
+> Type: how-to. Audience: the owner (UAT) and any later session.
+> Updated: 2026-09-27. Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
 
-## Why the campaign stopped (2026-09-26)
+## State: campaign complete, awaiting owner UAT (AT-06)
 
-The owner ordered a full stop, relayed by the `cimmeria-e3` session, for a build-system overhaul: a crate split of `cimmeria-services`, a toolchain pin, cargo-hakari, target cleanup and a build-concurrency change. The coordinator did the following:
+Every packet is merged. `/release` goes on this close-out PR (D-AT05).
 
-- stopped all five workers;
-- killed the campaign's build-lane jobs, keeping only other sessions' jobs;
-- committed each worktree's uncommitted work as a `WIP:` commit and pushed it to that worktree's own branch.
+| Packet | PR | What it delivers |
+|---|---|---|
+| Plan | #805, #818 | Ledger, decisions, and the AT-10 addition |
+| AT-01 | #813 | Schema, the shared `AbilityTreeCatalog`, the single `evaluate_train` predicate |
+| AT-E1 | #809 | Client evidence for the trainer UI (`findings/ability-trainer-ui.md`) |
+| AT-07 | #812 | Level cap 50, and 1 training point at level 1 plus 1 per level |
+| AT-03 | #820 | Archetype-wide spend gate, one-statement purchase, the points refresh. Fixes a live bug: the cell never loaded a player's level, so everyone trained as level 1 |
+| AT-05b | #807 | The 439-node FINAL v2 seed, its generator and validator, and live-DB seed guards, including reachability |
+| AT-10 | #828 | Charged abilities fire when the warmup ends, with interrupts and a cooldown refund |
+| AT-04 | #827 | Trainer authority gates, rejection feedback, and a same-space check on interact range |
+| AT-02 | #832 | `onAbilityTreeInfo` built from the one shared catalog; the hard-coded trees are deleted |
+| AT-08 | #834 | Respec (cell method 72), atomic refund, and feedback when a stale action-bar button is pressed |
 
-Nothing was merged after the stop.
+The code lives in the post-#825 crates:
 
-**The overhaul will probably move files.** If `cimmeria-services` is split into crates, every open branch below must be rebased onto the new layout, and paths such as `crates/services/src/ability_tree/` may change. Rebase first, then build, then run tests.
+- `ability_tree/` is in `crates/cell-catalog`.
+- Train and respec are in `crates/cell-methods` (`vendor/`).
+- The trainer pin is in `crates/cell-interactions`.
+- Warmup is in `crates/cell-combat` (`use_ability/warmup/`).
+- Progression, train and respec on the base side are in `crates/base-methods`.
+- `onAbilityTreeInfo` is in `crates/wire`.
 
-## State at the stop
+## Owner UAT (AT-06)
 
-`main` @ `f153138b`. Merged this session: #805 (plan), #813 (AT-01), #809 (AT-E1), #812 (AT-07), #818 (ledger and AT-10), #820 (AT-03).
+Run the ten steps in [work-packets.md § AT-06](../work-packets.md#at-06-owner-uat-colo-after-the-release) on the colo after the release. For each showcase archetype, create a character, then use the Interaction Debug NPC (template 25). Also watch for these, which the tests cannot show:
 
-| Packet | Branch @ pushed tip | PR | State |
-|---|---|---|---|
-| AT-02 | `trees/at02-one-source-of-truth` @ `2927aaaa` | none yet | Done, rebased onto `a2dfa22f` (AT-03). The last commit is a 2-line WIP test tweak in `tree_info.rs`. Tests were **not** re-run after the rebase. |
-| AT-04 | `trees/at04-trainer-authority` @ `0d5af789` | none yet | Done, and rebased onto `a2dfa22f` with the AT-03 conflicts resolved. The WIP commit adds the `training_points` fixture fixes to `spend_gates.rs`, `train_spend_tests.rs` and `ability_tree/mod.rs`. Tests were **not** run after the rebase: its `verify.sh` was killed mid-build. |
-| AT-05b | `trees/at05-seed-import` @ `5cbcd057` | **#807** (draft, base `main`) | Done, and rebased onto `a2dfa22f` with doc conflicts resolved. The WIP commit adds a new live-DB guard, `ability_tree/tests/seed_reachability_live_db.rs` (173 lines, **never compiled or run**). Clippy after the rebase was killed. |
-| AT-10 | `trees/at10-ability-warmup` @ `1a2f924d` | none yet | Code, tests and docs are committed (`b6b1d751`, `3eb16b5d`, `465f6aa4`). In `worknotes/at10.md`, the **Commands run** and **Regression proof** sections are still `RESULTS_PLACEHOLDER` / `PROOF_PLACEHOLDER`, so the final suite run and revert proof are owed. The WIP commit is agent memory only. |
-| AT-08 | — | — | Not started. Wave 2, after AT-03 (merged) and AT-04. |
-| AT-09 | — | — | Close-out, after everything else. |
+- **Error text.** Does `onErrorCode` show any text? The code sends one on every rejected purchase, respec or stale-button press, and always re-sends the trainer window, which is the feedback we know works. If no text appears, only the window refresh is visible (AT-E1 Q2).
+- **Respec with the Ability window open.** Does the window drop the removed abilities (AT-E1 open question 2)?
+- **Charged abilities.** Does the charge bar appear (warmup timer type 1), and is the cooldown timer zeroed on an interrupt?
+- **Level 50.** Does the XP bar stay sane? At the cap it is sent `MaxExp == Exp`, never 0.
 
-AT-03's worktree has been removed. Every other campaign worktree is still under `.claude/worktrees/` (`at02`, `at04`, `at10`, `agent-a9a037326bb90baa4` for AT-05b, and `at-coord`). Each has an `external` junction: delete the junction with `[System.IO.Directory]::Delete(path, $false)` in PowerShell (`cmd /c rmdir` failed from Git Bash) before removing a worktree.
+## Open owner decisions
 
-## Next actions, in order
+1. **Should a stun interrupt a warmup?** The worker recommends not yet. A stun here is only `BSF_MOVEMENT_LOCK`, which ring transport and death also set, so a real fix needs a trigger driven by the stun effect itself (worknotes/at10.md).
+2. **Should an interrupted warmup carry a relaunch lockout?** The worker recommends not yet. Relaunching only sends extra packets to witnesses; it is not an exploit. If telemetry shows abuse, a silent server-side throttle of about 250 ms would contain it.
+3. **A client Lua patch to clear action-bar buttons after a respec.** The server has no hotbar (AT-08), so stale buttons remain. They now answer error 167 when pressed.
+4. **Trainer list order (D-AT07, "offer the whole tree").** `onTrainerOpen` still lists abilities in `trainer_abilities` order. The client joins the two lists by id, so nothing is broken. Make the list follow `catalog.tree()` if trainers should offer the whole tree in tree order.
+5. **D-AT10 and D-AT11** are still PROPOSED in the README:
+   - the respec price stays at 1000 naquadah;
+   - existing characters keep every ability they know, and their spend starts at 0.
 
-1. After the owner restarts the campaign, read the overhaul's notes (the new crate layout, toolchain and lane rules). Rebase each open branch onto `main`.
-2. **AT-02:** run the targeted tests and the full services suite (live DB), then open a PR and merge it when CI is green.
-3. **AT-05b:** compile and run `seed_reachability_live_db`, then the full live-DB suite. Paste the validator block from `worknotes/at05b.md` into the #807 description, mark it ready and merge it when CI is green.
-4. **AT-04:** run the full suite and clippy on the CI toolchain, open a PR and merge it when CI is green. AT-05b's real seed can change trainer-test outcomes, so re-run AT-04's tests after AT-05b merges if AT-04 lands second.
-5. **AT-10:** run the full suite, fill in the two placeholder sections of the worknote (commands with exit codes; revert proof), open a PR and merge it when CI is green. Two owner questions are in its worknote: should a stun interrupt a warmup, and should an interrupt carry a relaunch lockout?
-6. **Update the ledger status lines** (`work-packets.md`): AT-02, AT-04, AT-05b and AT-10 are Review/Integrated. Note that AT-05b found that the "existing `handle_train_ability` live-DB fixture" never existed.
-7. **Dispatch AT-08 (respec).** The owner decided the server strips refunded abilities from the saved hotbar; it is written into the AT-08 scope. It needs AT-04's pinned-trainer gate.
-8. **AT-09 close-out,** then `/release` on the last PR (D-AT05), then the owner's AT-06 UAT (10 steps in `work-packets.md`).
+## Known gaps, carried forward
 
-## Findings to carry into the close-out
+- A dead trainer still teaches. Trainer re-sends after a rejection are not rate-limited (AT-04).
+- An ability that is both bought from the trainer and granted by the equipped weapon drops out of the next known-abilities update after a respec, until the weapon is re-equipped. It still fires (AT-08).
+- Two doc conflicts need fixing in their own PR (AT-10):
+  - the timer-type numbering in `findings/combat-wire-formats.md` (`AbilityWarmup = 2`) loses to `enumerations.xml` (`AbilityWarmup = 1`);
+  - `AF_CHANNEL_ALLOWS_MOVEMENT = 16384` is actually `SpeedPet`'s value in `enumerations.xml:51`.
+- `crates/entity/src/cell_entity/entity_struct.rs` is over the 700-line hard cap and should be split.
+- Under threaded `cargo test`, `LogCapture` tests sometimes leak between tests. They pass under nextest, which CI uses (AT-04).
 
-- **AT-03:** the cell never hydrated a player's `level`, so every player trained as level 1 on `main` before #820. Fixed in #820 with `ProgressionChanged`. It also means other players saw this player as level 1 when first introduced (`request_entity_update.rs:118`).
-- **AT-04:** `interact_target_in_range` accepted a target in another space (`get_entity` searches every space). Fixed on the AT-04 branch; rated MEDIUM by server-authority-enforcer.
-- **AT-02:** the trainer's `onTrainerOpen` order still comes from `trainer_abilities`, not the catalog. It is harmless because the client joins by id, but D-AT07 ("offer the whole tree") should iterate `catalog.tree()`.
-- **AT-10, doc conflicts:**
-  - Timer-type numbering in `docs/reverse-engineering/findings/combat-wire-formats.md` (`AbilityWarmup = 2`) disagrees with `enumerations.xml` (`AbilityWarmup = 1`, `AbilityCooldown = 2`). Fix the losing doc.
-  - `AF_CHANNEL_ALLOWS_MOVEMENT = 16384` is actually `SpeedPet` in `enumerations.xml:51`.
-- **Disk:** C: ran out during this session. The main checkout's `target/` is 141 GB. Two orphan checkouts beside the repo (`Cimmeria-issue-356`, `Cimmeria-504`, about 11 GB, no git data) await an owner decision. `Cimmeria-504/external` is a junction into the main checkout's `external/`.
+## Housekeeping
 
-## AT-01 API (still valid, for briefings)
-
-Module `crates/services/src/ability_tree/` (the path may move with the crate split):
-
-- **Catalog:** `AbilityTreeCatalog` (`load`, `tree(arch)`, `node(arch, id)`). AT-02 adds `shared_catalog(pool)`, a process-wide `OnceCell`.
-- **Predicate:** `evaluate_train(&TrainContext) -> Result<TrainPlan, TrainReject>`.
-- **Gate order in `gates::NODE_GATES`:** node gates, then spend gates (`gates/spend.rs`, AT-03), then trainer gates (`gates/trainer.rs`, AT-04).
-- **Rejection feedback (AT-04):** `onErrorCode` then the `onTrainerOpen` re-send. Codes: archetype 6, level 9, prerequisite 167, trainer gates 43, spend and points 35 (a documented reuse).
-- **Player state on the cell:** `CellEntity::level`, plus `CellEntity::tree_progress { trained_abilities, tree_points_spent, training_points }`. Hydrated at `InitPlayerState` and updated by `AbilityGranted` and `ProgressionChanged`.
+Campaign worktrees still present: `at-coord` and `at08`. Before removing either, delete its `external` junction with `[System.IO.Directory]::Delete(path, $false)` or `cmd /c rmdir <worktree>\external`. Never delete the junction recursively.

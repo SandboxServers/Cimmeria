@@ -130,7 +130,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-02
 
-**Status:** Writing (`trees/at02-one-source-of-truth`). **Scope title:** One source of truth for `onAbilityTreeInfo`. **Advisor:** aoi-witness-broadcast (wire).
+**Status:** Integrated (#832). **Scope title:** One source of truth for `onAbilityTreeInfo`. **Advisor:** aoi-witness-broadcast (wire).
 
 **Scope:**
 
@@ -142,7 +142,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-03
 
-**Status:** Writing (`trees/at03-spend-gate`). **Scope title:** Archetype-wide spend gate and atomic purchase. **Advisor:** server-authority-enforcer, database-persistence, testing-validation-engineer.
+**Status:** Integrated (#820). **Scope title:** Archetype-wide spend gate and atomic purchase. **Advisor:** server-authority-enforcer, database-persistence, testing-validation-engineer.
 
 **Scope:**
 
@@ -165,7 +165,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-04
 
-**Status:** Writing (`trees/at04-trainer-authority`). **Scope title:** Trainer authority, reject feedback and the points refresh. **Advisor:** server-authority-enforcer.
+**Status:** Integrated (#827). **Scope title:** Trainer authority, reject feedback and the points refresh. **Advisor:** server-authority-enforcer.
 
 **Scope:**
 
@@ -177,7 +177,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-05b
 
-**Status:** Writing (draft PR #807, retargeted to `main`). **Scope title:** Seed import. Rebase AT-05a onto AT-01 and add the live-DB guards.
+**Status:** Integrated (#807). The "existing `handle_train_ability` live-DB fixture" named below never existed; the only stub-seed tests were AT-01's `catalog_live_db` and the `meta.rs` enum walk, both updated. **Scope title:** Seed import. Rebase AT-05a onto AT-01 and add the live-DB guards.
 
 **Acceptance:** live-DB tests assert the per-archetype counts from the v1 handoff §11 against a fresh `db/database.sql`: Soldier 72, Commando 64, Scientist 59, Archaeologist 65, Asgard 66, Sholva 51, Goa'uld 62, and Jaffa 0 (documented, D-AT04). Also: one root and one level-50 capstone per branch, every `trainer_abilities` row matched by a tree row, and every tree row matched by an ability. The existing `handle_train_ability` live-DB fixture that assumed stub rows is updated.
 
@@ -198,7 +198,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-10
 
-**Status:** Writing (`trees/at10-ability-warmup`). **Scope title:** Ability warmup: charged abilities fire after the warmup, not at once. **Depends:** none; it runs beside Wave 1. **Advisor:** combat-systems-advisor, server-authority-enforcer.
+**Status:** Integrated (#828). Open owner questions: should a stun interrupt a warmup, and should an interrupt carry a relaunch lockout? The worker recommends no to both for now (worknote at10.md). **Scope title:** Ability warmup: charged abilities fire after the warmup, not at once. **Depends:** none; it runs beside Wave 1. **Advisor:** combat-systems-advisor, server-authority-enforcer.
 
 **Bug.** `cell/abilities/use_ability/handle.rs` (about lines 545-600, at `b5130081`) sends `Ability_Begin`, then `Ability_End`, and applies damage in the same pass. No warmup timer exists, so a charge-up ability deals its damage when the charge starts. The 2009 flow in `docs/gameplay/ability-system.md` ("Ability Lifecycle") started a warmup timer after `Ability_Begin` and ran `afterWarmup()` (ammo, `Ability_End`, targets, effects) when it expired. `docs/gap-analysis.md` lists "Ability warmup" as IM, which overstates it: only the animation exists. The tree seed puts many more warmup abilities within reach, so the campaign makes the bug more visible.
 
@@ -215,7 +215,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-08
 
-**Status:** BlockedDependency (AT-03, AT-04). **Scope title:** Respec (v2 rule, D-AT03). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** Integrated (#834). **Scope title:** Respec (v2 rule, D-AT03). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:**
 
@@ -225,7 +225,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
   - `tree_points_spent = 0`, `trained_abilities = '{}'`;
   - `naquadah -= cost`, guarded by `naquadah >= cost`.
 - Replay-safe: a second respec with nothing trained is a no-op that charges nothing.
-- Then send the known-abilities update, the points property and the trainer re-send. The price stays at today's 1000 until it is sourced (D-AT10). **Hotbar (owner decision, 2026-09-26):** AT-E1 found that the client has no action-bar cleanup. The server strips refunded ability ids from the saved hotbar in the same respec transaction and re-sends the hotbar. If the client ignores a re-send mid-session, the bar is clean after relog.
+- Then send the known-abilities update, the points property and the trainer re-send. The price stays at today's 1000 until it is sourced (D-AT10). **Hotbar (owner decision 2026-09-26, corrected 2026-09-27):** the decision assumed a server-saved hotbar, and there is none. The action bar is a client-local Lua saved variable (`GActionProfiles`, `ActionButtons - Saved Vars.lua`), with no def, DB column or legacy code behind it. As shipped: refunded ids leave `abilities` in the respec transaction, `onKnownAbilitiesUpdate` is re-sent, and pressing a stale button answers `onErrorCode` 167. Clearing the client bar would need a client Lua patch, which is an owner decision.
 
 **Acceptance:**
 
@@ -234,7 +234,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-09
 
-**Status:** BlockedDependency (all, including AT-10). **Scope title:** Close-out. Write `handoffs/session-resume.md` with the owner's UAT checklist, update `docs/project-status.md` and `docs/gap-analysis.md`, and put `/release` on the last PR.
+**Status:** Integrated (this close-out PR). **Scope title:** Close-out. Write `handoffs/session-resume.md` with the owner's UAT checklist, update `docs/project-status.md` and `docs/gap-analysis.md`, and put `/release` on the last PR.
 
 ## AT-06: owner UAT (colo, after the release)
 
@@ -248,5 +248,5 @@ For each showcase archetype, in order Soldier, Commando, Scientist, Archaeologis
 6. Walk away from the trainer and replay a train packet. It is rejected with feedback.
 7. Double-click a purchase. Only one point is spent.
 8. Level with `gmGiveXp` to 21 and then to 50. The XP bar behaves, there is no level 51, the capstone opens at 50 once its path and spend are met, and you have 50 points in total.
-9. Respec. Trainer nodes go away, and starter abilities stay. Points are refunded and 1000 naquadah is charged. Refunded abilities are gone from the hotbar, at the latest after a relog.
+9. Respec with the Ability window open. Trainer nodes go away, and starter abilities stay. Points are refunded and 1000 naquadah is charged. A hotbar button for a refunded ability stays on the bar (it is client-side), and pressing it shows an error.
 10. Use a trained ability that has a charge-up (AT-10). Damage lands when the charge finishes, not when it starts. Interrupting the charge behaves as the AT-10 worknote records.
