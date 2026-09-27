@@ -377,6 +377,27 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 > They are documented in [../technical/network-messages.md](../technical/network-messages.md) with categories.
 > Handler addresses and implementation status will be populated as RE work progresses.
 
+### Routing: `onSequence` (client method 1)
+
+An ability's Ability_Begin, Ability_End and Ability_Interrupt
+`onSequence` go to the caster's own client **and** to every player with
+the caster in AoI, as Python `AbilityManager.playSequence` did
+(`ent.client` then `ent.witnesses`). The cell sends all three through
+`send_entity_method_to_self_and_witnesses`: a player caster gets one
+`EntityMethodCall` and each witness one `WitnessEntityMethod`, encoded
+under the SGWPlayer idbase for a player ghost and the NPC idbase for an
+NPC. An NPC has no client, so it gets the witness fan-out alone. Before
+NA43 a player's charge, shot and cancel went to their own client only,
+and no other player saw them.
+
+Since AT-10 the phases leave in different ticks: Ability_Begin at launch
+(`use_ability/warmup/mod.rs`), Ability_End when the cast fires
+(`use_ability/fire.rs`, in the same pass for a zero warmup, otherwise in
+the warmup tick), and Ability_Interrupt when a warmup is cancelled
+(`use_ability/warmup/interrupt.rs`). All three call
+`play_ability_sequence` in
+`crates/cell-combat/src/cell/abilities/use_ability/sequence.rs`.
+
 ---
 
 ## Cooked-Data Resource Cache (BASEMSG)

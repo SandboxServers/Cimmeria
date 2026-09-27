@@ -12,8 +12,12 @@
 //! - [`live_db_ability_animation_links`]: live-DB guards that weapon-bound
 //!   damage abilities carry the weapon family's event set, so their hits
 //!   animate.
+//! - [`npc_ability_animation`]: live-DB seed linter (NA43) that every NPC combat
+//!   ability resolves one Ability_End sequence, that 559 resolves the SMG
+//!   burst, and that an armed hostile fires its weapon's ranged attack.
 
 mod live_db_ability_animation_links;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_loaders;
+mod npc_ability_animation;

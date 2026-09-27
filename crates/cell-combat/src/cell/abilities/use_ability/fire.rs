@@ -14,10 +14,12 @@ use cimmeria_entity::abilities::AbilityDef;
 
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
-use super::super::messaging::{flush_attacker_ammo_stat, send_entity_method};
+use super::super::messaging::flush_attacker_ammo_stat;
 
 use super::auto_reload::maybe_trigger_auto_reload;
-use super::sequence::ability_sequence_args;
+use super::sequence::{
+    play_ability_sequence, warn_unanimated_npc_attack, AbilityPhase, PhaseSequence,
+};
 
 /// Fire a committed cast.
 ///
@@ -56,38 +58,34 @@ pub(in crate::cell::abilities) async fn fire_cast(
         }
     }
 
-    // ── Send the fire animation (onSequence) to attacker + witnesses ──
-    // Look up the correct sequence_id from the event set. The client expects
-    // the sequence_id from resources.sequences, NOT the event_set_id.
-    // Reference: AbilityManager.py — self.manager.playSequence(endSeq.seqId, ...)
-    if let Some(event_set_id) = ability_def.as_ref().and_then(|d| d.event_set_id) {
-        use super::super::super::spawner::EVENT_ABILITY_END;
-
-        // Send Ability_End (event_id 1001) — the main ability fire animation
-        if let Some(&end_seq_id) = space_mgr
-            .sequence_map
-            .get(&(event_set_id, EVENT_ABILITY_END))
-        {
-            let seq_args = ability_sequence_args(end_seq_id, entity_id, target_id, effect_seq);
-            send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
-            tracing::debug!(
-                target: "abilities.sequence",
-                event = "ability_end",
-                source_id = entity_id,
-                target_id,
-                ability_id,
-                sequence_id = end_seq_id,
-                event_set_id,
-                "onSequence broadcast: Ability_End (main fire animation)"
-            );
-        } else {
-            tracing::debug!(
-                entity_id,
-                ability_id,
-                event_set_id,
-                "onSequence: no Ability_End sequence found for event_set"
-            );
+    // ── Send the fire animation (Ability_End) to attacker + witnesses ──
+    // The client expects the sequence_id from resources.sequences, NOT the
+    // event_set_id. Owner + witnesses like Python `AbilityManager.playSequence`;
+    // an NPC attack that cannot animate WARNs there (NA43).
+    match ability_def.as_ref() {
+        Some(def) => {
+            play_ability_sequence(
+                PhaseSequence {
+                    phase: AbilityPhase::End,
+                    entity_id,
+                    ability_id,
+                    target_id,
+                    instance_id: effect_seq,
+                    event_set_id: def.event_set_id,
+                },
+                tx,
+                space_mgr,
+            )
+            .await;
         }
+        None => warn_unanimated_npc_attack(
+            space_mgr,
+            entity_id,
+            target_id,
+            ability_id,
+            None,
+            "no_ability_def",
+        ),
     }
 
     // ── Combat resolution (if target specified) ──
