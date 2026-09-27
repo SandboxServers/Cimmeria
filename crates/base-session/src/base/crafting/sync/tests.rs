@@ -1,11 +1,11 @@
 //! The crafting state pushes: the login bundle byte for byte, the relog
-//! round trip against the database, and the D-CR03 paradigm defaults.
+//! round trip against the database, and the starting paradigm levels.
 
 use super::*;
-use crate::base::crafting::persistence::save_crafting_state;
-use crate::base::crafting::test_players::{cleanup, insert_player, OneSession};
+use crate::base::crafting::persistence::{load_crafting_state, save_crafting_state};
+use crate::base::crafting::test_players::{cleanup, insert_player, OneSession, SESSION_ACCOUNT_ID};
 use crate::mercury::encrypt_packet;
-use crate::test_support::require_db_or_skip;
+use crate::test_support::{require_db_or_skip, Captured, LogCapture, LogCaptureGuard};
 use cimmeria_entity::crafting::DEFAULT_RACIAL_PARADIGM_LEVELS;
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE};
@@ -106,13 +106,45 @@ async fn push_login_bundle_sends_one_packet_to_the_owner() {
     let session = OneSession::new(ENTITY, 55730);
     let state = fixture_state();
 
-    push_login_bundle(ENTITY, &state, session.client()).await;
+    assert!(push_login_bundle(ENTITY, 1, &state, session.client()).await);
 
     assert_eq!(session.typed.len(), 1);
     assert_eq!(
         session.typed.filter_to(session.addr),
         expected_bundle_packets(ENTITY, &state, 0)
     );
+}
+
+/// A push that cannot reach the client (no address for the entity) is a
+/// WARN with the reason and the identity, and `push_login_bundle` reports
+/// it; a silent drop would leave stale crafting state on screen.
+#[tokio::test]
+async fn unsent_push_is_a_warn() {
+    let capture = LogCapture::install();
+    let session = OneSession::new(ENTITY, 55735);
+    let empty = Arc::new(Mutex::new(HashMap::new()));
+    let client = CraftClient {
+        entity_to_addr: &empty,
+        ..session.client()
+    };
+
+    assert!(!push_login_bundle(ENTITY, 17, &fixture_state(), client).await);
+    push_asp(ENTITY, 17, 3, client).await;
+
+    let warns: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "crafting" && c.has_field("event", "push_failed"))
+        .collect();
+    assert_eq!(warns.len(), 2, "{warns:#?}");
+    assert!(warns[0].has_field("what", "login_bundle"));
+    assert!(warns[1].has_field("what", "asp"));
+    for warn in &warns {
+        assert_eq!(warn.level, tracing::Level::WARN);
+        assert!(warn.has_field("reason", "entity_to_addr_miss"));
+        assert!(warn.has_field("player_id", "17"));
+        assert!(warn.has_field("entity_id", &ENTITY.to_string()));
+    }
 }
 
 /// Without a database the login sync sends nothing: there is no state to
@@ -130,10 +162,10 @@ async fn login_sync_without_a_database_sends_nothing() {
 #[tokio::test]
 async fn single_pushes_carry_their_method_and_arguments() {
     let session = OneSession::new(ENTITY, 55732);
-    push_discipline(ENTITY, 78, 1, session.client()).await;
-    push_paradigm(ENTITY, 2, 3, session.client()).await;
-    push_known_crafts(ENTITY, &[25, 412], session.client()).await;
-    push_asp(ENTITY, 9, session.client()).await;
+    push_discipline(ENTITY, 1, 78, 1, session.client()).await;
+    push_paradigm(ENTITY, 1, 2, 3, session.client()).await;
+    push_known_crafts(ENTITY, 1, &[25, 412], session.client()).await;
+    push_asp(ENTITY, 1, 9, session.client()).await;
 
     let packet = |seq, method, args: &[u8]| {
         build_player_entity_method_packet(
@@ -180,12 +212,26 @@ async fn relog_restores_and_pushes_the_whole_crafting_state() {
         .await
         .expect("save");
 
+    let capture = LogCapture::install();
     let session = OneSession::new(ENTITY, 55733);
     let db_pool = Some(Arc::new(pool.clone()));
     push_crafting_on_login(ENTITY, player_id, &db_pool, session.client()).await;
 
     let sent = session.typed.filter_to(session.addr);
     cleanup(&pool, account_id, player_id).await;
+    let event = login_sync_event(&capture);
+    for (k, v) in [
+        ("account_id", SESSION_ACCOUNT_ID.to_string()),
+        ("player_id", player_id.to_string()),
+        ("entity_id", ENTITY.to_string()),
+        ("disciplines", "2".to_string()),
+        ("paradigms", "5".to_string()),
+        ("blueprints", "2".to_string()),
+        ("asp", "3".to_string()),
+        ("defaults_applied", "false".to_string()),
+    ] {
+        assert!(event.has_field(k, &v), "{k}={v}: {event:#?}");
+    }
     assert_eq!(
         sent,
         expected_bundle_packets(ENTITY, &saved, 0),
@@ -193,7 +239,7 @@ async fn relog_restores_and_pushes_the_whole_crafting_state() {
     );
 }
 
-/// Live DB, the D-CR03 guard for new characters: a player row inserted
+/// Live DB, the starting-levels guard for new characters: a player row inserted
 /// without naming `racial_paradigm_levels` gets the column default, which
 /// must equal `DEFAULT_RACIAL_PARADIGM_LEVELS` (index i = paradigm i+1).
 /// Reverting the column default in `sgw_player.sql` fails the first
@@ -224,8 +270,8 @@ async fn new_character_column_default_is_the_starting_paradigm_levels() {
     assert_eq!(stored, expected);
 }
 
-/// Live DB, the D-CR03 guard for existing characters: a stored empty array
-/// (every character created before D-CR03, and every seeded one) loads as
+/// Live DB, the starting-levels guard for existing characters: a stored
+/// empty array (every older and every seeded character) loads as
 /// the starting levels, and the login push tells the client Common is 5.
 /// Removing the default from the load fails both assertions.
 #[tokio::test]
@@ -241,6 +287,7 @@ async fn existing_character_with_no_levels_loads_and_pushes_the_defaults() {
         .expect("clear levels");
 
     let loaded = load_crafting_state(&pool, player_id).await.expect("load");
+    let capture = LogCapture::install();
     let session = OneSession::new(ENTITY, 55734);
     let db_pool = Some(Arc::new(pool.clone()));
     push_crafting_on_login(ENTITY, player_id, &db_pool, session.client()).await;
@@ -259,4 +306,46 @@ async fn existing_character_with_no_levels_loads_and_pushes_the_defaults() {
         expected_bundle_packets(ENTITY, &expected_state, 0),
         "the login push carries 138 for all five paradigms, Common at 5"
     );
+    assert!(
+        login_sync_event(&capture).has_field("defaults_applied", "true"),
+        "the login_sync event says the defaults were applied"
+    );
+}
+
+/// A login whose crafting load fails (a pool that cannot connect stands in
+/// for a database outage) is a WARN naming the phase, and sends nothing.
+#[tokio::test]
+async fn failed_login_load_is_a_warn_and_sends_nothing() {
+    let capture = LogCapture::install();
+    // A pool whose connections can never be made: port 1 refuses.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(200))
+        .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
+        .expect("lazy pool");
+    let session = OneSession::new(ENTITY, 55736);
+    let db_pool = Some(Arc::new(pool));
+
+    push_crafting_on_login(ENTITY, 23, &db_pool, session.client()).await;
+
+    assert!(session.typed.is_empty(), "nothing sent on a failed load");
+    let warn = capture
+        .find_event(tracing::Level::WARN, "crafting login sync", "load_failed")
+        .expect("login_sync_failed WARN");
+    for (k, v) in [
+        ("event", "login_sync_failed"),
+        ("phase", "load_state"),
+        ("player_id", "23"),
+        ("entity_id", &ENTITY.to_string()),
+        ("account_id", &SESSION_ACCOUNT_ID.to_string()),
+    ] {
+        assert!(warn.has_field(k, v), "{k}={v}: {warn:#?}");
+    }
+}
+
+fn login_sync_event(capture: &LogCaptureGuard) -> Captured {
+    capture
+        .all()
+        .into_iter()
+        .find(|c| c.target == "crafting" && c.has_field("event", "login_sync"))
+        .expect("login_sync event")
 }

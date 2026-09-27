@@ -452,7 +452,7 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
-    // Crafting state (CR-03): disciplines, paradigm levels, blueprints and
+    // Crafting state: disciplines, paradigm levels, blueprints and
     // the ASP total, owner-only. After the burst for the same reason as the
     // contact lists: the entity is live and the crafting UI has loaded.
     crate::base::crafting::sync::push_crafting_on_login(

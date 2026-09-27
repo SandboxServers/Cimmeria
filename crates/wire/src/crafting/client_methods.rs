@@ -12,7 +12,7 @@ use crate::cell::cell_methods::inventory::build_entity_property_args;
 pub const GENERICPROPERTY_APPLIED_SCIENCE_POINTS: i32 = 2;
 
 /// `onEntityProperty(GENERICPROPERTY_AppliedSciencePoints, total)`: the
-/// player's unspent ASP. Always the **total**, never a change (audit C-57):
+/// player's unspent ASP. Always the **total**, never a change:
 /// the client shows the value as it arrives (Lua
 /// `DisciplineTrainer.lua:49-54`).
 pub fn applied_science_points_property_args(total: i32) -> Vec<u8> {

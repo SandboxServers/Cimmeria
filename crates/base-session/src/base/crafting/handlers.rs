@@ -21,6 +21,7 @@ use cimmeria_entity::crafting::CraftingState;
 
 use crate::base::crafting::persistence::{load_crafting_state_locked, save_crafting_state_in};
 use crate::base::crafting::sync::{push_asp, push_discipline, CraftClient};
+use crate::base::crafting::telemetry::{account_id_of, sql_error_class};
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::ConnectedClientState;
 
@@ -113,7 +114,7 @@ pub async fn handle_grant_expertise(
         connected,
         entity_to_addr,
     };
-    push_discipline(entity_id, discipline_id, new_expertise, client).await;
+    push_discipline(entity_id, player_id, discipline_id, new_expertise, client).await;
 }
 
 /// The expertise grant's transaction: lock the row, add `amount` (clamped to
@@ -152,11 +153,11 @@ async fn grant_expertise_in_db(
 /// `applied_science_points` in one statement, then push the new **total**
 /// to the client as `onEntityProperty(GENERICPROPERTY_AppliedSciencePoints,
 /// total)`, the property the discipline trainer listens for
-/// (`DisciplineTrainer.lua:49-54`). The count updates without a relog
-/// (audit C-06).
+/// (`DisciplineTrainer.lua:49-54`). The count updates without a relog.
 ///
-/// The single `UPDATE … RETURNING` takes the row lock itself, so a grant
-/// racing a spend adds to the committed value instead of overwriting it.
+/// One statement reads the old total under `FOR UPDATE` and writes the new
+/// one, so a grant racing a spend adds to the committed value instead of
+/// overwriting it, and the `asp_granted` event carries both totals.
 #[tracing::instrument(
     name = "crafting.grant_applied_science",
     level = "info",
@@ -185,27 +186,30 @@ pub async fn handle_grant_applied_science(
         }
     };
 
-    // Saturate at i32::MAX in SQL, as the old in-memory `saturating_add`
-    // did: `amount` has no upper bound on the cell side.
-    let updated: Result<Option<i32>, sqlx::Error> = sqlx::query_scalar(
-        "UPDATE sgw_player \
-         SET applied_science_points = \
-             LEAST(applied_science_points::bigint + $2, 2147483647)::integer \
-         WHERE player_id = $1 \
-         RETURNING applied_science_points",
+    let account_id = account_id_of(entity_id, connected, entity_to_addr);
+    // Saturate at i32::MAX in SQL: `amount` has no upper bound on the cell
+    // side.
+    let updated: Result<Option<(i32, i32)>, sqlx::Error> = sqlx::query_as(
+        "WITH old AS (              SELECT applied_science_points AS before FROM sgw_player              WHERE player_id = $1 FOR UPDATE)          UPDATE sgw_player p          SET applied_science_points = LEAST(old.before::bigint + $2, 2147483647)::integer          FROM old WHERE p.player_id = $1          RETURNING old.before, p.applied_science_points",
     )
     .bind(player_id)
     .bind(i64::from(amount))
     .fetch_optional(pool.as_ref())
     .await;
-    let new_total = match updated {
-        Ok(Some(total)) => total,
+    let (asp_before, asp_after) = match updated {
+        Ok(Some(totals)) => totals,
         Ok(None) => {
             tracing::error!(
-                entity_id,
-                player_id,
-                amount,
+                target: "crafting",
+                event = "persist_failed",
+                phase = "asp_grant_update",
+                reason = "rows_affected_zero",
                 rows_affected = 0,
+                expected = 1,
+                account_id,
+                player_id,
+                entity_id,
+                amount,
                 "GrantAppliedSciencePoints: no sgw_player row -- nothing granted"
             );
             send_gm_feedback_to_client(
@@ -220,10 +224,16 @@ pub async fn handle_grant_applied_science(
         }
         Err(e) => {
             tracing::error!(
-                entity_id,
+                target: "crafting",
+                event = "persist_failed",
+                phase = "asp_grant_update",
+                account_id,
                 player_id,
+                entity_id,
                 amount,
-                "GrantAppliedSciencePoints: UPDATE failed: {e}"
+                error_class = sql_error_class(&e),
+                error = %e,
+                "GrantAppliedSciencePoints: UPDATE failed"
             );
             send_gm_feedback_to_client(
                 entity_id,
@@ -238,10 +248,14 @@ pub async fn handle_grant_applied_science(
     };
 
     tracing::info!(
-        entity_id,
+        target: "crafting",
+        event = "asp_granted",
+        account_id,
         player_id,
+        entity_id,
         amount,
-        total = new_total,
+        asp_before,
+        asp_after,
         "GrantAppliedSciencePoints: persisted ASP"
     );
 
@@ -250,7 +264,7 @@ pub async fn handle_grant_applied_science(
     // property push below.
     send_gm_feedback_to_client(
         entity_id,
-        &format!("gmGiveAppliedSciencePoints: +{amount} (total {new_total})"),
+        &format!("gmGiveAppliedSciencePoints: +{amount} (total {asp_after})"),
         transport,
         connected,
         entity_to_addr,
@@ -261,7 +275,7 @@ pub async fn handle_grant_applied_science(
         connected,
         entity_to_addr,
     };
-    push_asp(entity_id, new_total, client).await;
+    push_asp(entity_id, player_id, asp_after, client).await;
 }
 
 #[cfg(test)]
@@ -447,15 +461,17 @@ mod tests {
 
     /// The GM ASP grant pushes the new **total** as the ASP property, after
     /// the GM's confirmation line, so the discipline trainer's count updates
-    /// without a relog (audit C-06). Removing the push leaves one packet;
+    /// without a relog. Removing the push leaves one packet;
     /// pushing the change (+5) instead of the total (9) fails the bytes.
     #[tokio::test]
     async fn grant_applied_science_pushes_the_total_property() {
-        use crate::base::crafting::test_players::OneSession;
+        use crate::base::crafting::test_players::{OneSession, SESSION_ACCOUNT_ID};
         use crate::mercury::{build_player_entity_method_packet, method_idx};
+        use crate::test_support::LogCapture;
         use cimmeria_mercury::encryption::EncryptionVersion;
 
         let pool = require_db_or_skip!();
+        let capture = LogCapture::install();
         let account_id = TEST_BASE + 20;
         let player_id = TEST_BASE + 21;
         cleanup(&pool, account_id, player_id).await;
@@ -508,6 +524,72 @@ mod tests {
                 ),
                 packet(1, method_idx::ON_ENTITY_PROPERTY, &[2, 0, 0, 0, 9, 0, 0, 0]),
             ]
+        );
+
+        // The `asp_granted` event: both totals and the full identity.
+        let event = capture
+            .all()
+            .into_iter()
+            .find(|c| c.target == "crafting" && c.has_field("event", "asp_granted"))
+            .expect("asp_granted event");
+        for (k, v) in [
+            ("asp_before", "4".to_string()),
+            ("asp_after", "9".to_string()),
+            ("amount", "5".to_string()),
+            ("account_id", SESSION_ACCOUNT_ID.to_string()),
+            ("player_id", player_id.to_string()),
+            ("entity_id", ENTITY.to_string()),
+        ] {
+            assert!(event.has_field(k, &v), "{k}={v}: {event:#?}");
+        }
+    }
+
+    /// A grant for a character with no `sgw_player` row updates nothing: an
+    /// ERROR with the paired `rows_affected = 0` / `expected = 1` and the
+    /// `phase`, and a GM line saying it failed.
+    #[tokio::test]
+    async fn grant_applied_science_for_a_missing_row_logs_rows_affected() {
+        use crate::base::crafting::test_players::OneSession;
+        use crate::test_support::LogCapture;
+
+        let pool = require_db_or_skip!();
+        let capture = LogCapture::install();
+        // Never inserted.
+        let player_id = TEST_BASE + 0x3F;
+        const ENTITY: u32 = 4281;
+        let session = OneSession::new(ENTITY, 55741);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        handle_grant_applied_science(
+            ENTITY,
+            player_id,
+            5,
+            &db_pool,
+            &session.transport,
+            &session.connected,
+            &session.entity_to_addr,
+        )
+        .await;
+
+        let event = capture
+            .find_event(
+                tracing::Level::ERROR,
+                "no sgw_player row",
+                "rows_affected_zero",
+            )
+            .expect("rows_affected ERROR");
+        for (k, v) in [
+            ("rows_affected", "0"),
+            ("expected", "1"),
+            ("phase", "asp_grant_update"),
+            ("entity_id", "4281"),
+        ] {
+            assert!(event.has_field(k, v), "{k}={v}: {event:#?}");
+        }
+        assert_eq!(
+            session.typed.filter_to(session.addr).len(),
+            1,
+            "only the GM failure line, no ASP push"
         );
     }
 }

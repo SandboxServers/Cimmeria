@@ -53,6 +53,10 @@ pub(crate) async fn insert_player(pool: &PgPool, account_id: i32, player_id: i32
     .expect("insert player");
 }
 
+/// The `account_id` every [`OneSession`] carries, so tests can assert the
+/// identity fields on crafting events.
+pub(crate) const SESSION_ACCOUNT_ID: u32 = 4242;
+
 /// One connected session for `entity_id`, with the transport that
 /// records what it is sent.
 pub(crate) struct OneSession {
@@ -68,10 +72,9 @@ impl OneSession {
         let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
         let typed = Arc::new(TestTransport::new());
         let transport: Arc<dyn Transport> = typed.clone();
-        let connected = Arc::new(Mutex::new(HashMap::from([(
-            addr,
-            test_default_connected_client_state(),
-        )])));
+        let mut state = test_default_connected_client_state();
+        state.account_id = SESSION_ACCOUNT_ID;
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
         let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
         Self {
             addr,

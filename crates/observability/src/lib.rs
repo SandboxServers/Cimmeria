@@ -51,6 +51,10 @@ use std::sync::OnceLock;
 
 use opentelemetry::metrics::Meter;
 
+/// A recording meter so tests can assert what a code path emitted.
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 /// Process-global Meter handle, set by [`init`]. Pre-init the macros
 /// no-op silently; the `meter()` helper returns `None`. This is the
 /// "telemetry not configured" path — every crate's binary that doesn't

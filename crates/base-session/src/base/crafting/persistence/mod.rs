@@ -14,7 +14,7 @@
 //! See `db/sgw/Players/Tables/sgw_player_discipline_expertise.sql` for the
 //! schema rationale.
 //!
-//! Every load gives a character with no stored paradigm levels the D-CR03
+//! Every load gives a character with no stored paradigm levels the
 //! starting levels (`CraftingState::apply_default_paradigm_levels`). A verb
 //! that mutates state inside its own transaction uses
 //! [`load_crafting_state_locked`] and [`save_crafting_state_in`], so the
@@ -37,13 +37,24 @@ use cimmeria_entity::crafting::CraftingState;
 /// `sqlx::query_as` doesn't decompose JOINs into a parent + child shape
 /// without a lot of ceremony. Two queries, one connection round-trip each.
 ///
-/// The login sync (`sync::push_crafting_on_login`) calls it. It takes no
-/// lock; a read-modify-write goes through [`load_crafting_state_locked`].
-#[tracing::instrument(name = "crafting.load", level = "info", skip_all, fields(player_id))]
+/// It takes no lock; a read-modify-write goes through
+/// [`load_crafting_state_locked`].
 pub async fn load_crafting_state(
     pool: &PgPool,
     player_id: i32,
 ) -> Result<CraftingState, sqlx::Error> {
+    load_crafting_state_reporting(pool, player_id)
+        .await
+        .map(|(state, _)| state)
+}
+
+/// [`load_crafting_state`], also saying whether the starting paradigm
+/// levels were applied because none were stored. The login sync logs it.
+#[tracing::instrument(name = "crafting.load", level = "info", skip_all, fields(player_id))]
+pub async fn load_crafting_state_reporting(
+    pool: &PgPool,
+    player_id: i32,
+) -> Result<(CraftingState, bool), sqlx::Error> {
     // Wrap the body so the counter fires exactly once on every exit
     // (`ok`, `sqlx_error`, `row_not_found`) without sprinkling counter!
     // calls at each early-return. The inner function returns
@@ -69,8 +80,8 @@ pub async fn load_crafting_state(
     match result {
         Err(sqlx::Error::RowNotFound) => {
             let mut state = CraftingState::new();
-            state.apply_default_paradigm_levels();
-            Ok(state)
+            let defaults_applied = state.apply_default_paradigm_levels();
+            Ok((state, defaults_applied))
         }
         other => other,
     }
@@ -90,13 +101,13 @@ pub async fn load_crafting_state_locked(
     let result = read_state(conn, player_id, true).await;
     count_load(&result);
     match result {
-        Ok(state) => Ok(Some(state)),
+        Ok((state, _)) => Ok(Some(state)),
         Err(sqlx::Error::RowNotFound) => Ok(None),
         Err(e) => Err(e),
     }
 }
 
-fn count_load(result: &Result<CraftingState, sqlx::Error>) {
+fn count_load<T>(result: &Result<T, sqlx::Error>) {
     let outcome = match result {
         Ok(_) => "ok",
         Err(sqlx::Error::RowNotFound) => "row_not_found",
@@ -120,13 +131,14 @@ macro_rules! select_player_crafting {
     };
 }
 
-/// Read both tables on `conn`. A missing player row is `Err(RowNotFound)`;
+/// Read both tables on `conn` and apply the starting paradigm levels when
+/// none are stored (the `bool`). A missing player row is `Err(RowNotFound)`;
 /// the callers map it to their own contract.
 async fn read_state(
     conn: &mut PgConnection,
     player_id: i32,
     lock: bool,
-) -> Result<CraftingState, sqlx::Error> {
+) -> Result<(CraftingState, bool), sqlx::Error> {
     #[derive(sqlx::FromRow)]
     struct PlayerCraftingRow {
         discipline_ids: Vec<i32>,
@@ -185,7 +197,7 @@ async fn read_state(
     // prerequisite check (which looks up by paradigm id, not array index)
     // doesn't have to remember the indexing convention.
     //
-    // Wire level fits in `i8` (levels top out at 10, D-CR03). We clamp on read
+    // Wire level fits in `i8` (levels top out at 10). We clamp on read
     // to defend against corrupted DB rows that exceed `i8::MAX`.
     for (i, level) in row.racial_paradigm_levels.into_iter().enumerate() {
         let paradigm_id = (i as i32) + 1;
@@ -209,8 +221,8 @@ async fn read_state(
         state.expertise.insert(discipline_id, expertise);
     }
 
-    state.apply_default_paradigm_levels();
-    Ok(state)
+    let defaults_applied = state.apply_default_paradigm_levels();
+    Ok((state, defaults_applied))
 }
 
 /// Save a player's crafting state to the DB.

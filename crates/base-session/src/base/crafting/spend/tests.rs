@@ -13,9 +13,11 @@ use sqlx::PgPool;
 use super::*;
 use crate::base::crafting::feedback::{error_code_args, feedback_text_args};
 use crate::base::crafting::persistence::load_crafting_state;
-use crate::base::crafting::test_players::{cleanup, insert_player, OneSession};
+use crate::base::crafting::telemetry::METRIC_REQUESTS;
+use crate::base::crafting::test_players::{cleanup, insert_player, OneSession, SESSION_ACCOUNT_ID};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
-use crate::test_support::require_db_or_skip;
+use crate::test_support::{require_db_or_skip, LogCapture, LogCaptureGuard};
+use cimmeria_observability::testing::{counter_total, install as install_meter};
 
 // ── Pure rule checks ──────────────────────────────────────────────────────
 
@@ -77,17 +79,20 @@ fn each_rule_refuses_with_its_reason() {
     assert_eq!(
         check_spend(&knowing(1, 78, 1), &c, 78),
         Err(CraftReject::DisciplineAlreadyKnown {
+            discipline_id: 78,
             name: "Materials Engineering".into()
         })
     );
     assert_eq!(
         check_spend(&fresh(0), &c, 78),
-        Err(CraftReject::NoAppliedSciencePoints)
+        Err(CraftReject::NoAppliedSciencePoints { asp: 0 })
     );
     assert_eq!(
         check_spend(&knowing(1, 78, 100), &c, 82),
         Err(CraftReject::ParadigmTooLow {
+            discipline_id: 82,
             discipline: "Ceramic Composites".into(),
+            paradigm_id: 2,
             paradigm: "Human",
             required: 3,
             have: 1,
@@ -96,8 +101,21 @@ fn each_rule_refuses_with_its_reason() {
     assert_eq!(
         check_spend(&fresh(1), &c, 79),
         Err(CraftReject::PrerequisiteMissing {
+            discipline_id: 79,
             discipline: "Non-Reactive Coatings".into(),
+            prerequisite_id: 78,
             prerequisite: "Materials Engineering".into(),
+        })
+    );
+    assert_eq!(
+        check_spend(&knowing(1, 78, 49), &c, 79),
+        Err(CraftReject::PrerequisiteExpertise {
+            discipline_id: 79,
+            discipline: "Non-Reactive Coatings".into(),
+            prerequisite_id: 78,
+            prerequisite: "Materials Engineering".into(),
+            expertise: 49,
+            required: 50,
         })
     );
 }
@@ -108,7 +126,7 @@ fn prerequisite_needs_expertise_fifty() {
     let c = catalog();
     assert!(matches!(
         check_spend(&knowing(1, 78, 49), &c, 79),
-        Err(CraftReject::PrerequisiteMissing { .. })
+        Err(CraftReject::PrerequisiteExpertise { .. })
     ));
     assert_eq!(check_spend(&knowing(1, 78, 50), &c, 79), Ok(()));
 }
@@ -139,6 +157,10 @@ fn refusal_texts_name_what_is_missing() {
     assert_eq!(
         text(&fresh(1), 79),
         "Non-Reactive Coatings requires Materials Engineering at expertise 50."
+    );
+    assert_eq!(
+        text(&knowing(1, 78, 49), 79),
+        "Non-Reactive Coatings requires Materials Engineering at expertise 50; yours is 49."
     );
     assert_eq!(text(&fresh(1), 9999), "There is no discipline 9999.");
 }
@@ -227,15 +249,75 @@ async fn snapshot(pool: &PgPool, player_id: i32) -> (Vec<i32>, i32, Vec<(i32, i3
     )
 }
 
+/// The `rejected` event for `player_id`: the reason, the full identity on
+/// the event, and the compared values the rule reported.
+fn assert_rejected(
+    capture: &LogCaptureGuard,
+    player_id: i32,
+    reason: &str,
+    fields: &[(&str, &str)],
+) {
+    let event = capture
+        .all()
+        .into_iter()
+        .find(|c| {
+            c.target == "crafting"
+                && c.has_field("event", "rejected")
+                && c.has_field("player_id", &player_id.to_string())
+        })
+        .unwrap_or_else(|| panic!("no rejected event for {player_id}"));
+    let identity = [
+        ("reason", reason.to_string()),
+        ("verb", "spendAppliedSciencePoints".to_string()),
+        ("account_id", SESSION_ACCOUNT_ID.to_string()),
+        ("entity_id", ENTITY.to_string()),
+    ];
+    for (k, v) in identity
+        .iter()
+        .map(|(k, v)| (*k, v.as_str()))
+        .chain(fields.iter().copied())
+    {
+        assert!(event.has_field(k, v), "{k}={v}: {event:#?}");
+    }
+}
+
 /// Success: 78 is learned at expertise 1, one ASP is spent, no blueprint is
-/// granted (D-CR04), and the client gets 136 then the new ASP total.
+/// granted, and the client gets 136 then the new ASP total.
 #[tokio::test]
 async fn spend_learns_the_discipline_and_pushes_it() {
     let pool = require_db_or_skip!();
+    install_meter();
+    let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 0, 2, &[]).await;
     let session = OneSession::new(ENTITY, 55750);
+    let completed = [
+        ("verb", "spendAppliedSciencePoints"),
+        ("outcome", "completed"),
+    ];
+    let completed_before = counter_total(METRIC_REQUESTS, &completed);
 
     spend(&pool, &session, player_id, 78).await;
+
+    let learned = capture
+        .all()
+        .into_iter()
+        .find(|c| c.target == "crafting" && c.has_field("event", "learned"))
+        .expect("learned event");
+    for (k, v) in [
+        ("account_id", SESSION_ACCOUNT_ID.to_string()),
+        ("player_id", player_id.to_string()),
+        ("entity_id", ENTITY.to_string()),
+        ("discipline_id", "78".to_string()),
+        ("expertise_after", "1".to_string()),
+        ("asp_before", "2".to_string()),
+        ("asp_after", "1".to_string()),
+    ] {
+        assert!(learned.has_field(k, &v), "{k}={v}: {learned:#?}");
+    }
+    assert!(
+        counter_total(METRIC_REQUESTS, &completed) > completed_before,
+        "crafting_requests_total{{outcome=completed}} counted"
+    );
 
     let state = load_crafting_state(&pool, player_id).await.expect("load");
     let sent = session.typed.filter_to(session.addr);
@@ -289,6 +371,7 @@ async fn replayed_spend_changes_nothing() {
 #[tokio::test]
 async fn spend_without_asp_is_refused_with_code_214() {
     let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 2, 0, &[]).await;
     let session = OneSession::new(ENTITY, 55752);
     let before = snapshot(&pool, player_id).await;
@@ -306,12 +389,14 @@ async fn spend_without_asp_is_refused_with_code_214() {
             packet(1, method_idx::ON_ERROR_CODE, &error_code_args(214)),
         ]
     );
+    assert_rejected(&capture, player_id, "no_asp", &[("asp", "0")]);
 }
 
 /// Already known (not a replay: the character learned it earlier).
 #[tokio::test]
 async fn spend_on_a_known_discipline_is_refused() {
     let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 3, 3, &[(78, 40)]).await;
     let session = OneSession::new(ENTITY, 55753);
     let before = snapshot(&pool, player_id).await;
@@ -326,12 +411,19 @@ async fn spend_on_a_known_discipline_is_refused() {
         sent,
         vec![refusal(0, "You already know Materials Engineering.")]
     );
+    assert_rejected(
+        &capture,
+        player_id,
+        "already_known",
+        &[("discipline_id", "78")],
+    );
 }
 
 /// Paradigm: Ceramic Composites (82) needs Human 3; the default is 1.
 #[tokio::test]
 async fn spend_below_the_paradigm_level_is_refused() {
     let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 4, 3, &[(78, 100)]).await;
     let session = OneSession::new(ENTITY, 55754);
     let before = snapshot(&pool, player_id).await;
@@ -349,6 +441,16 @@ async fn spend_below_the_paradigm_level_is_refused() {
             "Ceramic Composites requires Human paradigm level 3; yours is 1."
         )]
     );
+    assert_rejected(
+        &capture,
+        player_id,
+        "paradigm_too_low",
+        &[
+            ("paradigm_id", "2"),
+            ("paradigm_level", "1"),
+            ("required_level", "3"),
+        ],
+    );
 }
 
 /// The prerequisite guard: Non-Reactive Coatings (79) needs Materials
@@ -359,11 +461,30 @@ async fn spend_below_the_paradigm_level_is_refused() {
 #[tokio::test]
 async fn spend_without_the_prerequisite_at_fifty_is_refused() {
     let pool = require_db_or_skip!();
-    let expected = refusal(
-        0,
-        "Non-Reactive Coatings requires Materials Engineering at expertise 50.",
-    );
-    for (n, known, port) in [(5, vec![], 55755), (6, vec![(78, 49)], 55756)] {
+    let capture = LogCapture::install();
+    let cases = [
+        (
+            5,
+            vec![],
+            55755,
+            "Non-Reactive Coatings requires Materials Engineering at expertise 50.",
+            "prerequisite_missing",
+            vec![("prerequisite_id", "78")],
+        ),
+        (
+            6,
+            vec![(78, 49)],
+            55756,
+            "Non-Reactive Coatings requires Materials Engineering at expertise 50; yours is 49.",
+            "prerequisite_expertise",
+            vec![
+                ("prerequisite_id", "78"),
+                ("prerequisite_expertise", "49"),
+                ("required_expertise", "50"),
+            ],
+        ),
+    ];
+    for (n, known, port, text, reason, fields) in cases {
         let (account_id, player_id) = player(&pool, n, 3, &known).await;
         let session = OneSession::new(ENTITY, port);
         let before = snapshot(&pool, player_id).await;
@@ -374,7 +495,8 @@ async fn spend_without_the_prerequisite_at_fifty_is_refused() {
         let sent = session.typed.filter_to(session.addr);
         cleanup(&pool, account_id, player_id).await;
         assert_eq!(after, before, "prerequisite {known:?}: nothing written");
-        assert_eq!(sent, vec![expected.clone()], "prerequisite {known:?}");
+        assert_eq!(sent, vec![refusal(0, text)], "prerequisite {known:?}");
+        assert_rejected(&capture, player_id, reason, &fields);
     }
 
     let (account_id, player_id) = player(&pool, 7, 3, &[(78, 50)]).await;
@@ -420,7 +542,7 @@ async fn spend_rechecks_after_waiting_for_the_row_lock() {
     let outcome = task.await.expect("join").expect("no database error");
     let after = snapshot(&pool, player_id).await;
     cleanup(&pool, account_id, player_id).await;
-    assert_eq!(outcome, Err(CraftReject::NoAppliedSciencePoints));
+    assert_eq!(outcome, Err(CraftReject::NoAppliedSciencePoints { asp: 0 }));
     assert_eq!(after, (vec![], 0, vec![]));
 }
 
@@ -428,6 +550,7 @@ async fn spend_rechecks_after_waiting_for_the_row_lock() {
 #[tokio::test]
 async fn spend_on_an_unknown_discipline_is_refused() {
     let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 8, 3, &[]).await;
     let session = OneSession::new(ENTITY, 55758);
     let before = snapshot(&pool, player_id).await;
@@ -439,6 +562,53 @@ async fn spend_on_an_unknown_discipline_is_refused() {
     cleanup(&pool, account_id, player_id).await;
     assert_eq!(after, before);
     assert_eq!(sent, vec![refusal(0, "There is no discipline 9999.")]);
+    assert_rejected(
+        &capture,
+        player_id,
+        "unknown_discipline",
+        &[("discipline_id", "9999")],
+    );
+}
+
+/// A player row that is gone under a live session: the locked read finds
+/// nothing, which is a `persist_failed` WARN naming the phase with the
+/// paired `rows_affected = 0` / `expected = 1`, and the player still gets
+/// the "unavailable" line.
+#[tokio::test]
+async fn spend_for_a_missing_player_row_warns_with_rows_affected() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    // Inside the spend block, never inserted.
+    let missing_player = TEST_BASE + 0x1F;
+    let session = OneSession::new(ENTITY, 55761);
+
+    spend(&pool, &session, missing_player, 78).await;
+
+    let warn = capture
+        .find_event(
+            tracing::Level::WARN,
+            "fewer rows than it had to",
+            "rows_affected_short",
+        )
+        .expect("persist_failed WARN");
+    for (k, v) in [
+        ("event", "persist_failed"),
+        ("phase", "lock_player"),
+        ("rows_affected", "0"),
+        ("expected", "1"),
+        ("account_id", &SESSION_ACCOUNT_ID.to_string()),
+        ("player_id", &missing_player.to_string()),
+        ("entity_id", &ENTITY.to_string()),
+    ] {
+        assert!(warn.has_field(k, v), "{k}={v}: {warn:#?}");
+    }
+    assert_eq!(
+        session.typed.filter_to(session.addr),
+        vec![refusal(
+            0,
+            "Learning disciplines is unavailable right now. Nothing was changed."
+        )]
+    );
 }
 
 /// Without a database the request is refused visibly, not dropped.
@@ -463,7 +633,7 @@ async fn spend_without_a_database_is_refused_visibly() {
 }
 
 /// The request entry point routes `Spend` here, not to the "not available
-/// yet" line CR-01 answered it with.
+/// yet" line the other verbs still get.
 #[tokio::test]
 async fn craft_request_routes_spend_to_the_spend_handler() {
     use crate::base::crafting::request::handle_craft_request;

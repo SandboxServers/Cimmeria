@@ -1,0 +1,150 @@
+//! The crafting rejection path: every refused request gets a visible text
+//! line, and an `onErrorCode` where a condition code fits.
+//!
+//! The text is the legacy `feedback()` line: `onPlayerCommunication` from
+//! speaker `SYSTEM` on `CHAN_FEEDBACK`, built by the one shared serializer in
+//! `cimmeria_wire::cell::chat`, which is the path that reaches the player's
+//! chat window. Whether the client shows anything for `onErrorCode` is not
+//! known, so the code is only ever a secondary signal, sent after the text.
+//!
+//! [`reject`] also emits the `rejected` event (with the values the rule
+//! compared) and counts the refusal on both crafting counters.
+
+mod reason;
+
+pub use reason::{Compared, CraftReject};
+
+use crate::base::crafting::sync::CraftClient;
+use crate::base::crafting::telemetry::{
+    account_id_of, record_rejection, record_request, witness_send_failure,
+};
+use crate::base::helpers::send_to_witness_reliable;
+use crate::mercury::{build_player_entity_method_packet, method_idx};
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
+
+/// `EErrorCodeSystem::ERRORCODE_SYSTEM_Ability`, the only system the enum
+/// defines.
+const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
+
+/// The seven `onErrorCode` argument bytes: `UINT8 SystemID = 0,
+/// INT32 InstanceID = 0, UINT16 ErrorCodeID`, little-endian. A crafting
+/// rejection names no ability, so `InstanceID` is 0.
+pub fn error_code_args(code: u16) -> Vec<u8> {
+    let mut args = Vec::with_capacity(7);
+    args.push(ERRORCODE_SYSTEM_ABILITY);
+    args.extend_from_slice(&0i32.to_le_bytes());
+    args.extend_from_slice(&code.to_le_bytes());
+    args
+}
+
+/// The `onPlayerCommunication` argument bytes of a crafting feedback line:
+/// speaker `SYSTEM`, flags 0, channel `CHAN_FEEDBACK`, then `text`.
+pub fn feedback_text_args(text: &str) -> Vec<u8> {
+    serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text)
+}
+
+/// Refuse a crafting request for `verb` (the cell method name): log
+/// `rejected`, count it, send the `CHAN_FEEDBACK` text line to the player's
+/// own client and, where [`CraftReject::error_code`] maps one, `onErrorCode`
+/// after it. A send that does not go out is a WARN (`event =
+/// "feedback_send_failed"`).
+pub async fn reject(
+    verb: &'static str,
+    entity_id: u32,
+    player_id: i32,
+    why: &CraftReject,
+    client: CraftClient<'_>,
+) {
+    let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
+    let reason = why.reason();
+    let c = why.compared();
+    tracing::info!(
+        target: "crafting",
+        event = "rejected",
+        verb,
+        account_id,
+        player_id,
+        entity_id,
+        reason,
+        discipline_id = c.discipline_id,
+        asp = c.asp,
+        paradigm_id = c.paradigm_id,
+        paradigm_level = c.paradigm_level,
+        required_level = c.required_level,
+        prerequisite_id = c.prerequisite_id,
+        prerequisite_expertise = c.prerequisite_expertise,
+        required_expertise = c.required_expertise,
+        "crafting request rejected"
+    );
+    record_rejection(verb, reason);
+    record_request(verb, why.outcome());
+
+    let text_args = feedback_text_args(&why.text());
+    send_line(
+        verb,
+        entity_id,
+        player_id,
+        account_id,
+        method_idx::ON_PLAYER_COMMUNICATION,
+        &text_args,
+        client,
+    )
+    .await;
+    if let Some(code) = why.error_code() {
+        send_line(
+            verb,
+            entity_id,
+            player_id,
+            account_id,
+            method_idx::ON_ERROR_CODE,
+            &error_code_args(code),
+            client,
+        )
+        .await;
+    }
+}
+
+async fn send_line(
+    verb: &'static str,
+    entity_id: u32,
+    player_id: i32,
+    account_id: Option<u32>,
+    method_index: u16,
+    args: &[u8],
+    client: CraftClient<'_>,
+) {
+    let outcome = send_to_witness_reliable(
+        client.transport,
+        client.connected,
+        client.entity_to_addr,
+        entity_id,
+        |key, version, seq, acks| {
+            build_player_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_index,
+                args,
+                version,
+            )
+        },
+    )
+    .await;
+    if let Some(reason) = witness_send_failure(&outcome) {
+        tracing::warn!(
+            target: "crafting",
+            event = "feedback_send_failed",
+            verb,
+            account_id,
+            player_id,
+            entity_id,
+            method_index,
+            reason,
+            "crafting refusal line not sent -- the player sees nothing for this press"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests;

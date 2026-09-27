@@ -196,7 +196,7 @@ async fn first_login_update_errors_when_player_row_missing() {
     );
 }
 
-/// Live DB, the CR-03 login-sync guard: `onClientReady` pushes the player's
+/// Live DB, the crafting login-sync guard: `onClientReady` pushes the player's
 /// stored crafting state (discipline, expertise, the five paradigm levels,
 /// blueprints, the ASP total) as one bundle to the player's own client.
 /// Removing the `push_crafting_on_login` call leaves no such packet at any

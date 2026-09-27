@@ -66,18 +66,17 @@ pub struct CraftingState {
     /// Racial paradigm levels, keyed by paradigm id. Discipline unlocks
     /// gate on `racial_paradigm_levels[discipline.racial_paradigm_id] >=
     /// discipline.racial_paradigm_level`. A character with no stored levels
-    /// gets [`DEFAULT_RACIAL_PARADIGM_LEVELS`] (D-CR03), not Python's
-    /// all-ones, under which no real root discipline was learnable
-    /// (audit C-21).
+    /// gets [`DEFAULT_RACIAL_PARADIGM_LEVELS`], not Python's
+    /// all-ones, under which no real root discipline was learnable.
     ///
     /// `i8` matches the wire encoding of `onUpdateRacialParadigmLevel`
     /// (method 138, payload `INT32 paradigmId, INT8 level`). Levels top out
-    /// at 10 (D-CR03, the Racial Paradigm Guide text).
+    /// at 10 (the Racial Paradigm Guide item text).
     pub racial_paradigm_levels: HashMap<i32, i8>,
 }
 
-/// Starting racial-paradigm levels, `(paradigm id, level)` in id order
-/// (D-CR03, owner-approved): Common (1) at 5, so the four root disciplines,
+/// Starting racial-paradigm levels, `(paradigm id, level)` in id order:
+/// Common (1) at 5, so the four root disciplines,
 /// which need Common 5, are learnable; Human, Goa'uld, Asgard and Ancient
 /// (2-5) at 1. The `sgw_player.racial_paradigm_levels` column default in
 /// `db/sgw/Players/Tables/sgw_player.sql` is the same list as an array.
@@ -111,13 +110,16 @@ impl CraftingState {
 
     /// Give a character with no stored paradigm levels the starting levels
     /// ([`DEFAULT_RACIAL_PARADIGM_LEVELS`]). Stored levels, even a partial
-    /// list, are left alone. Characters created before D-CR03 have an empty
+    /// list, are left alone. Characters created before these defaults have an empty
     /// array, so applying this on load covers them without a migration.
-    pub fn apply_default_paradigm_levels(&mut self) {
-        if self.racial_paradigm_levels.is_empty() {
-            self.racial_paradigm_levels
-                .extend(DEFAULT_RACIAL_PARADIGM_LEVELS);
+    /// Returns whether the defaults were applied.
+    pub fn apply_default_paradigm_levels(&mut self) -> bool {
+        if !self.racial_paradigm_levels.is_empty() {
+            return false;
         }
+        self.racial_paradigm_levels
+            .extend(DEFAULT_RACIAL_PARADIGM_LEVELS);
+        true
     }
 
     /// Whether the player knows `discipline_id`: it is in `discipline_ids`.
@@ -166,12 +168,12 @@ mod tests {
         assert!(s.racial_paradigm_levels.is_empty());
     }
 
-    /// D-CR03: an empty map gets Common 5 and the other four at 1; stored
+    /// An empty map gets Common 5 and the other four at 1; stored
     /// levels, even a partial list, are kept as they are.
     #[test]
     fn default_paradigm_levels_apply_only_when_nothing_is_stored() {
         let mut fresh = CraftingState::new();
-        fresh.apply_default_paradigm_levels();
+        assert!(fresh.apply_default_paradigm_levels());
         assert_eq!(fresh.racial_paradigm_levels.len(), 5);
         assert_eq!(fresh.racial_paradigm_levels[&1], 5, "Common starts at 5");
         for paradigm_id in 2..=5 {
@@ -180,7 +182,7 @@ mod tests {
 
         let mut stored = CraftingState::new();
         stored.racial_paradigm_levels.insert(2, 7);
-        stored.apply_default_paradigm_levels();
+        assert!(!stored.apply_default_paradigm_levels());
         assert_eq!(stored.racial_paradigm_levels.len(), 1);
         assert_eq!(stored.racial_paradigm_levels[&2], 7);
     }

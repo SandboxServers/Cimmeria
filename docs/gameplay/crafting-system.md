@@ -52,9 +52,10 @@ The discipline trainer (Ctrl+J) sends `spendAppliedSciencePoints(disciplineId)` 
 | It is not already known | "You already know <name>." | — |
 | At least one unspent ASP | "You have no applied science points." | 214 `NotEnoughAppliedSciencePoints` |
 | The discipline's racial paradigm is at its required level | "<name> requires <paradigm> paradigm level N; yours is M." | — |
-| Every required discipline is known at expertise 50 or more | "<name> requires <prerequisite> at expertise 50." | — |
+| Every required discipline is known | "<name> requires <prerequisite> at expertise 50." | — |
+| … at expertise 50 or more | "<name> requires <prerequisite> at expertise 50; yours is N." | — |
 
-A refusal is a `CHAN_FEEDBACK` text line and writes nothing. A database failure is refused as "Learning disciplines is unavailable right now. Nothing was changed." On success the discipline is known at expertise 1 and one ASP is spent; no blueprint is granted (D-CR04, blueprints come from Blueprint items and research). The client then gets `onUpdateDiscipline(id, 1)` and the new ASP total. A repeated request finds the discipline known and changes nothing.
+A refusal is a `CHAN_FEEDBACK` text line and writes nothing. Each one is logged as a `crafting` `rejected` event whose `reason` (`unknown_discipline`, `already_known`, `no_asp`, `paradigm_too_low`, `prerequisite_missing`, `prerequisite_expertise`) and compared values say which check failed; a success is a `learned` event with the ASP before and after. The event catalog is the `crafting` row of [observability.md](../architecture/observability.md). A database failure is refused as "Learning disciplines is unavailable right now. Nothing was changed." On success the discipline is known at expertise 1 and one ASP is spent; no blueprint is granted (D-CR04, blueprints come from Blueprint items and research). The client then gets `onUpdateDiscipline(id, 1)` and the new ASP total. A repeated request finds the discipline known and changes nothing.
 
 The four root disciplines (21 Biomedical, 40 Electronic, 59 Power Systems, 78 Materials Engineering) need Common level 5, which every character now starts at. The test rows 1 and 2 ("Basketweaving") need Common 1 and are treated like any other discipline.
 
