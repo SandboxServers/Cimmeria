@@ -28,7 +28,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 
 **Capacity (BV-01).**
 
-- `cimmeria_wire::containers::bag_max_slots(container_id) -> i32` is the only capacity table. Container 17 returns 100, the maximum; 19 returns 100; 20 returns 100.
+- `cimmeria_entity::inventory::bag_max_slots(container_id) -> i32` is the only capacity table (D-BV20). `cimmeria_wire::containers::bag_max_slots` and `base::resources::bag_max_slots` re-export it, so either path works. Containers 17, 18, 19 and 20 return 100, the maximum.
 - `BAG_SIZES` in `crates/entity` derives from it, or is replaced by it. They must not be able to disagree.
 - `sgw_player.bank_slots smallint NOT NULL DEFAULT 40`, with `CHECK (bank_slots BETWEEN 40 AND 100 AND bank_slots % 10 = 0)`. It is loaded with the player.
 - `onBagInfo` declares container 17 as `bank_slots` for that player, both at world entry and on resync.
@@ -76,9 +76,9 @@ pub enum VaultScope { Personal, Team, Command }
 
 | Event | Level | Packet | Fields beyond the correlators |
 |---|---|---|---|
-| `move_rejected` | warn | BV-01, BV-03 | `reason`, `item_id`, `type_id`, `quantity`, `src_container`, `src_slot` (when known), `dst_container`, `dst_slot` |
-| `grant_rejected` | warn | BV-01 | `reason`, `type_id`, `quantity`, `container` |
-| `resync_item_missing` | warn | BV-01 | `reason`, `item_id` (negative log: the refusal resync found no owned row) |
+| `move_rejected` | warn | BV-01, BV-03 | `reason` (BV-01: `source_container_not_player_movable`, `target_container_not_player_movable`, `source_container_needs_vault_session`, `target_container_needs_vault_session`; infrastructure: `move_lock_begin_failed`, `move_lock_failed`, `refusal_context_query_failed`, `move_lock_release_failed`), `item_id`, `type_id`, `quantity` (as requested; `<= 0` is the whole stack), `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id`. The item fields are read under the move lock and omitted when the player does not own the item |
+| `grant_rejected` | warn | BV-01 | `reason` (`grant_into_storage_container`; infrastructure: `account_lookup_failed`), `type_id` (a grant names a type, not an instance), `quantity`, `target_container_id` |
+| `move_resync_skipped` | warn | BV-01 | `reason` (`refused_item_not_owned`: the refused move named an item the player does not own, so nothing was resent; `resync_read_failed`), `item_id` |
 | `vault_session_opened` | debug | BV-02 | `scope`, `banker_id` or `gm_override=true`, `space_id`, `distance` |
 | `vault_session_closed` | debug | BV-02 | `reason` (`space_change`, `logout`, `re_pin`), `scope`, `open_ms` (milliseconds since the session opened) |
 | `vault_open_rejected` | warn | BV-02 | `reason` (`out_of_range`, `org_vault_not_available`, `not_gm`, `banker_missing`), `banker_id`, `distance` |
@@ -136,7 +136,7 @@ Tests:
 
 Docs to update: `docs/gameplay/inventory-system.md` (the capacity source), `TESTING.md` if any type guidance shifts, and close #798 in the PR body.
 
-Telemetry: emit `move_rejected`, `grant_rejected` and `resync_item_missing` exactly as the contract catalog specifies, with a `LogCapture` test per reason.
+Telemetry: emit `move_rejected`, `grant_rejected` and `move_resync_skipped` exactly as the contract catalog specifies, with a `LogCapture` test per reason.
 
 ## BV-E1 client evidence
 

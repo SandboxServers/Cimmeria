@@ -318,7 +318,7 @@ Target `bank`, all WARN. Each refusal carries the player-activity pair
 (`account_id`, `player_id`) plus `entity_id`, so "player X tried to move Y
 at time T and it failed" is answerable from SigNoz alone.
 
-| Event (message prefix) | `reason` | Fields |
+| `event` (also the message prefix) | `reason` | Fields |
 |---|---|---|
 | `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable`, `source_container_needs_vault_session`, `target_container_needs_vault_session` | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
 | `move_resync_skipped` | `refused_item_not_owned` (the refused move named an item the player does not own: a forged packet), `resync_read_failed` | `account_id` (not on `resync_read_failed`), `player_id`, `entity_id`, `item_id` |
