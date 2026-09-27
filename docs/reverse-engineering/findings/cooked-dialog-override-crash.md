@@ -22,7 +22,18 @@ Sources:
   - crates/base-session/src/base/cooked_data.rs:34-178, crates/wire/src/mercury/protocol/resources.rs:70-120, crates/resources/src/base/mission_overrides.rs:85-117, crates/resources/src/base/resources/mod.rs:195-317, crates/resources/src/base/resources/metadata_bump.rs:81-109
   - SigNoz colo telemetry, 2026-09-27 16:19 UTC deploy and the two subsequent login attempts (summarized by team-lead; not independently queried — signoz MCP was unreachable this session)
 Related findings: cooked-data-pipeline.md, dialog-portrait-lookup.md, dialog-controller-wire-flow.md, world-entry-pipeline.md
-Implementation status: **The >65535 element-key-width hypothesis is REFUTED** for every code path a `resourceFragment`/`onVersionInfo`/`onCookedDataError`/map-load exchange actually runs (see "Verdict" below). #938 (renumber to `60100`-`60104`) is already merged; nothing in this finding argues against it, but nothing in it identifies a mechanism the renumber actually fixes either — root cause remains open. Recommend checking whether the crash recurred in colo telemetry after #938 shipped as the most direct empirical test.
+Implementation status: **CLOSED as "not the cause," 2026-09-27.** The >65535 element-key-width
+hypothesis is REFUTED for every code path a `resourceFragment`/`onVersionInfo`/`onCookedDataError`/
+map-load exchange actually runs (see "Verdict" below), and this is now empirically confirmed too:
+the tester crashed again at 17:52 on build `38296335f` (the `#938` renumber to `60100`-`60104`,
+already merged) with the identical crash shape — same CREATE_BASE_PLAYER + onClientMapLoad + two
+keepalives + silence. Dialogs (any id) are ruled out as the cause. The last good world entry was
+13:52 on build `707950271`; the first bad build is `b22907eb5` (16:19). The active hypothesis has
+moved to a broader **world-entry payload regression** between those two builds — see
+`docs/reverse-engineering/findings/create-base-player-crash.md` (this session's follow-up finding)
+and the `world-entry-bisect` worker's server-side wire diff. This document's own conclusions (the
+>65535 refutation, the persistence/tombstone answers in §4/§5) stand on their own merits and are
+NOT retracted — only the "leading suspect" framing is superseded.
 ```
 
 ## Verdict (2026-09-27, after live headless-Ghidra decompile)
