@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: reference
 > **Audience**: engineers working on protocol decompilation or Cimmeria's CME-bridge surface
-> **Last updated**: 2026-05-12
+> **Last updated**: 2026-09-27
 > **Confidence**: HIGH (decompiled across W1 + W2 + W3 of V5 Documentation Campaign session 1)
 
 Every `CME::EventSignal` emit on the client side follows a fixed five-call pipeline; every `TypedEmitInfo__vfunc_0` is the MSVC scalar destructor (not a name accessor); every `CallbackImpl__vfunc_2` is the RTTI type-name accessor (returning a `TypeDescriptor*`, not a name string).
@@ -189,6 +189,19 @@ CmeEventSignal_GetSystem        (0x0155f790)  get singleton
           -> bound handler body (varies per subscriber class)
 ```
 
+## `FreeCallback` and finding NetIn subscribers from RTTI
+
+`MemberCallback` is not the only subscriber shape. `CME::EventSignal::FreeCallback<Subject, Context, Fn>` binds a plain function instead of a method: `Fn` is a `__cdecl` function pointer, and the bound `Context` value is passed to it as the last argument. The two shapes show up side by side in the client's RTTI type-name strings (`.?AV?$MemberCallback@...` and `.?AV?$FreeCallback@...`), which is the quickest static way to find native, non-Lua subscribers to a `NetIn` event: search the defined strings for the event name and read the template arguments.
+
+Two subscribers found this way (2026-09-27, headless Ghidra, [tools/re/ghidra-headless/](../../../tools/re/ghidra-headless/README.md)):
+
+| Event | RTTI type-name string | Subscriber (demangled by hand) | Finding |
+|---|---|---|---|
+| `Event_NetIn_TradeResults` | `0x01e5e800` (TypeDescriptor `0x01e5e7f8`) | `MemberCallback<NoSubject, Trade, void (__thiscall Trade::*)(Event_NetIn_TradeResults const*, void*)>` | [trade-result-client-handling.md](trade-result-client-handling.md#a-native-trade-subscriber-exists-rtti-2026-09-27) |
+| `Event_NetIn_onErrorCode` | `0x01e20da8` | `FreeCallback<NoSubject, Communicator*, void (__cdecl*)(Event_NetIn_onErrorCode const*, void*, Communicator*)>` | [ability-trainer-ui.md §2](ability-trainer-ui.md#a-native-subscriber-exists-rtti-2026-09-27) |
+
+Two limits on the method. An RTTI string proves the callback type is compiled in, and so near-certainly subscribed, but it does not give you the handler's address: that is the pointer stored in the callback object (`+0x8` for a `MemberCallback`), which you read from live memory or reach through the vtable once a full RTTI analysis resolves it. And in this binary a raw pointer scan for the Complete Object Locator is **not** a reliable way to that vtable: the `Trade` scan led to `0x019d8928`, which belongs to an unrelated `MemberCallback` specialization. Treat such hits as leads to check, not results.
+
 ## Naming convention correction (Session 3)
 
 Sessions 1 and 2 applied annotation scripts that named `MemberCallback` vtable slot 2 implementations as
@@ -232,5 +245,7 @@ Slot-to-role table for `MemberCallback<E, S>` vtable:
 - [`inventory-wire-formats.md`](inventory-wire-formats.md) — `GiveInventory` anomaly context.
 - [`contact-list-wire-formats.md`](contact-list-wire-formats.md) — cyclic-shift name-misassignment example in a TypedEmitInfo block.
 - [`black-market-wire-formats.md`](black-market-wire-formats.md) — Black Market anomaly context.
+- [`trade-result-client-handling.md`](trade-result-client-handling.md) and [`ability-trainer-ui.md`](ability-trainer-ui.md) — the native `TradeResults` and `onErrorCode` subscribers found from RTTI.
+- [`../../../tools/re/ghidra-headless/README.md`](../../../tools/re/ghidra-headless/README.md) — the headless-Ghidra probe script used for RTTI string searches.
 - [`../../engine/cme-framework.md`](../../engine/cme-framework.md) — CME framework overview (PropertyNode, EventSignal, Atrea scripts).
 - [`../v5-campaign/CAMPAIGN_STATUS.md`](../v5-campaign/CAMPAIGN_STATUS.md) — V5 campaign aggregator; per-worker reports for W1/W2/W3.

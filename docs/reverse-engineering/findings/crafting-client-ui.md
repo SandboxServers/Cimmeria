@@ -2,7 +2,7 @@
 title: "Finding: Crafting Client UI Evidence (CR-E1)"
 type: reference
 audience: contributors doing RE, crafting campaign workers
-last_updated: 2026-09-26
+last_updated: 2026-09-27
 ---
 
 # Finding: Crafting Client UI Evidence (CR-E1)
@@ -173,6 +173,14 @@ server-side, consistent with C-40.
 **Confidence: HIGH that `Mercury__unknown_00ceae50` is not a chat/screen path — it is the same
 open question as AT-E1 for whether `onErrorCode` renders anything.**
 
+> [!NOTE]
+> **Superseded in part (2026-09-27).** The "no behavioral handler exists" half of the AT-E1 result
+> restated below no longer holds. A native `FreeCallback` subscriber bound to a `Communicator*` is
+> compiled into the client (RTTI type-name string at `0x01e20da8`), so `Event_NetIn_onErrorCode`
+> has a native listener. Whether it renders codes 213/214 is **still unresolved**. Full evidence:
+> [ability-trainer-ui.md §2, "A native subscriber exists"](ability-trainer-ui.md#a-native-subscriber-exists-rtti-2026-09-27);
+> the mechanism is in [cme-event-signal.md](cme-event-signal.md).
+
 ### `onErrorCode` (client method 121) with codes 213/214
 
 `entities/defs/enumerations.xml` confirms `CONDITION_FEEDBACK_EnoughAppliedSciencePoints = 213`
@@ -184,7 +192,8 @@ for `Event_NetIn_onErrorCode`, no `CONDITION_FEEDBACK` string embedded anywhere 
 only the registration/RTTI stubs `register_NetIn_onErrorCode` @ `0x00d77f00` and
 `CME_EventSignal_...vfunc_0` @ `0x00d77fe0`) — it still holds, and crafting's use of `onErrorCode`
 inherits the same open question: **it is unresolved whether any native (non-Lua) listener renders
-codes 213/214 at all.** What this finding adds: under `SystemID = 0` (the only token that exists),
+codes 213/214 at all.** (Since 2026-09-27: a native listener exists; what it renders is the open
+part.) What this finding adds: under `SystemID = 0` (the only token that exists),
 AT-E1 confirmed the client reads `InstanceID` as an **ability id**. If a crafting `onErrorCode`
 send reuses `SystemID = 0`, the client will interpret whatever `InstanceID` the server sends as an
 ability id — a domain mismatch worth flagging if `onErrorCode` is used for crafting rejections at
@@ -439,6 +448,7 @@ UI element — expertise gain on success is a server-only outcome the client nev
 | `onCraftingAllowedUpdate` — nonzero check only, no distance math | `Crafting.lua:31-48` | Direct read |
 | `EErrorCodeSystem` has only `ERRORCODE_SYSTEM_Ability = 0` | `entities/defs/enumerations.xml:1203` | Direct read |
 | `onErrorCode` has no Lua consumer, no embedded `CONDITION_FEEDBACK` string | `ability-trainer-ui.md` §2 | Existing finding (AT-E1) |
+| `onErrorCode` has a native `FreeCallback` subscriber bound to `Communicator*` (behaviour unresolved) | RTTI type-name string `0x01e20da8`; `ability-trainer-ui.md` §2 | Headless Ghidra string search (2026-09-27) |
 | `Mercury__unknown_00ceae50`/`...ac90` build an internal log record, not chat text | `0x00ceae50`, `0x00ceac90` | Decompile |
 | `Mercury__unknown_00ceae50` caller list spans Mercury internals + ZipFileSystem + every crafting sender | xref sweep, 2026-09-26 | Xrefs |
 | Legacy `feedback()` → `onPlayerCommunication(..., CHAN_feedback, msg)` | `deprecated/python/cell/SGWPlayer.py:362-368`, `base/SGWPlayer.py:64-67` | Direct read |
@@ -460,6 +470,9 @@ UI element — expertise gain on success is a server-only outcome the client nev
    would need a `SGWTextCommandMgr` registration-table walk or a `vfunc_5` invoke-dispatch trace
    per `cme-event-signal.md`.
 2. **`onErrorCode` native rendering** — unresolved, same open item as AT-E1; applies identically
-   to crafting's codes 213/214.
+   to crafting's codes 213/214. Re-scoped 2026-09-27: the native listener exists (a `FreeCallback`
+   bound to `Communicator*`); what it renders needs a live trace of the `Event_NetIn_onErrorCode`
+   dispatch or a full GUI RTTI re-analysis. The feedback-channel line (§3) stays the recommended
+   mechanism for crafting rejections either way.
 
 Q4 (the client clock's message-driven setter) is **no longer open** — see §4's update note.

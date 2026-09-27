@@ -7,9 +7,11 @@ last_updated: 2026-09-27
 
 # Finding: Trade Result Client Handling
 
-> **Status**: The Lua side is confirmed from the client's UI source. The native `onTradeResults` handler is believed to decode and forward (medium confidence) but has not been live-traced.
+> **Status**: The Lua side is confirmed from the client's UI source. A native C++ `Trade` class subscribes a member function to `Event_NetIn_TradeResults` (confirmed from RTTI, 2026-09-27); what that method does is unknown. It is believed to decode and forward (medium confidence) but has not been live-traced.
 >
-> **Sources**: client Lua and localization under `Content/UI/Core/Trade/` (the client is not in git; paths are relative to `SGWGame/`), `entities/defs/enumerations.xml`, `entities/defs/SGWPlayer.def`.
+> **Sources**: client Lua and localization under `Content/UI/Core/Trade/` (the client is not in git; paths are relative to `SGWGame/`), `entities/defs/enumerations.xml`, `entities/defs/SGWPlayer.def`, and a headless-Ghidra pass over `SGW.exe` ([tools/re/ghidra-headless/](../../../tools/re/ghidra-headless/README.md)).
+>
+> **Related findings**: [cme-event-signal.md](cme-event-signal.md) (the `MemberCallback`/`FreeCallback` subscriber mechanism), [ability-trainer-ui.md](ability-trainer-ui.md) and [crafting-client-ui.md](crafting-client-ui.md) (the matching native `onErrorCode` subscriber).
 >
 > **Found by**: the crafting campaign (CR-17, trading from the crafting bag), with a game-archaeology-specialist pass for the coordinator. Server change that followed: every trade refusal now sends `Cancelled`.
 
@@ -52,12 +54,44 @@ The trade window's other result-adjacent paths do not help. `onDragReceived` (`:
 
 ### Other channels
 
-- `onErrorCode` (SGWPlayer client method 121) has no confirmed Lua consumer. [ability-trainer-ui.md](ability-trainer-ui.md) (AT-E1) and [crafting-client-ui.md](crafting-client-ui.md) (CR-E1) both left its rendering unresolved.
+- `onErrorCode` (SGWPlayer client method 121) has no Lua consumer. A native free-function subscriber bound to a `Communicator*` does exist (RTTI, 2026-09-27), but whether it renders anything is unresolved. See [ability-trainer-ui.md §2](ability-trainer-ui.md#2-onerrorcode-rendering--unresolved) (AT-E1) and [crafting-client-ui.md §3](crafting-client-ui.md) (CR-E1).
 - `onPlayerCommunication` on the feedback channel (`CHAN_FEEDBACK`, 9) is the confirmed visible channel for a server-authored line, and `Trade.lua` writes its own status through `writeLocalFeedback`, which lands in the same place.
 
 ### Native dispatch
 
 The native `onTradeResults` handler (the `Event_NetIn_TradeResults` CME event, [event-net-mapping.md](../../analysis/event-net-mapping.md)) appears to decode the two INT32 arguments and raise `Events.TradeResult` unchanged. This is **medium confidence**: read statically, not live-traced.
+
+#### A native `Trade` subscriber exists (RTTI, 2026-09-27)
+
+A headless-Ghidra pass (read-only, `-noanalysis`, using the script in [tools/re/ghidra-headless/](../../../tools/re/ghidra-headless/README.md)) found this MSVC RTTI type-name string at `0x01e5e800`, TypeDescriptor at `0x01e5e7f8`:
+
+```text
+.?AV?$MemberCallback@UNoSubject@EventSignal@CME@@VTrade@@P84@AEXPBVEvent_NetIn_TradeResults@@PAX@ZV5@@EventSignal@CME@@
+```
+
+Demangled by hand (Ghidra's demangler does not accept raw RTTI type-name strings), it reads:
+
+```cpp
+CME::EventSignal::MemberCallback<
+    NoSubject,
+    Trade,
+    void (__thiscall Trade::*)(Event_NetIn_TradeResults const*, void*)>
+```
+
+The `P84@AE` fragment is the member-function pointer: `P8` plus a back-reference to `Trade`, `A` for a non-`const` `this`, `E` for `__thiscall`. `X` is the `void` return, and the argument list is `PBV…` (`const Event_NetIn_TradeResults*`) then `PAX` (`void*`).
+
+So a native C++ `Trade` class subscribes one of its own member functions directly to `Event_NetIn_TradeResults`, through the same `MemberCallback` mechanism described in [cme-event-signal.md](cme-event-signal.md#cmemembercallback-struct-layout). It sits upstream of the `UEvent_UI_TradeResult` that `TradeWin`'s Lua binding consumes; that UI-side subscriber's destructor is `SGWScriptedWindow_X_UEvent_UI_TradeResult___GameEventHandler__vfunc_0` at `0x00ce3870`. Strictly, RTTI proves the callback type is compiled into the client, not that it is subscribed at runtime; since the type exists only to be subscribed, a live subscription is near-certain, and the live trace under Open item would confirm it.
+
+The rest of the event's boilerplate:
+
+| Symbol | Address | Role |
+|---|---|---|
+| `register_NetIn_TradeResults` | `0x00d80a30` | RTTI type-name accessor |
+| `CME_EventSignal_VEvent_NetIn_TradeResults___TypedEmitInfo__vfunc_0` | `0x00d80b10` | MSVC scalar destructor |
+
+**What was not resolved: the bound method's address and body.** A raw pointer scan for the type's Complete Object Locator returned hits at `0x01bd3bb8` and `0x01bd3be0`. The candidate vtable they led to, `0x019d8928`, turned out to be a **false positive**: it belongs to an unrelated `MemberCallback` specialization, not to `Trade`'s. Don't cite `0x019d8928` as the `Trade` callback's vtable.
+
+What this changes: the open question is no longer "is there anything native between the wire and Lua?". There is, a `Trade` member function. What remains unknown is what it does. The reading that it decodes the two INT32s and forwards them as `UEvent_UI_TradeResult` stays **medium confidence**; it could also keep native trade state, or show something of its own for codes 3-6.
 
 ## Conclusion
 
@@ -68,6 +102,16 @@ The client closes its trade window only on `Completed` (1) or `Cancelled` (2). C
 
 The internal abort reasons, the `trade.refused` `reason` labels and the `trade_swaps_total{outcome}` labels keep their detail. Code: `crates/base-methods/src/base/world_entry/methods/trade/execute/abort.rs` (`REFUSAL_RESULT`, `refusal_lines`).
 
+The server's behaviour is correct whatever the native `Trade` handler turns out to do: `Cancelled` is the one code that both closes the window and prints a line, and the cause travels on `CHAN_FEEDBACK`, which the client is known to display.
+
 ## Open item
 
-Live-trace the native `onTradeResults` handler (x64dbg, non-freezing breakpoint) to confirm it forwards codes 3-6 to Lua unchanged and has no native-side string or UI of its own. If it does have one, the specific codes could come back for that side.
+**Status: open, re-scoped.** It was "is there anything native?"; it is now "a native `Trade` handler exists, and its behaviour is unknown". The working assumption (decode and forward) is medium confidence.
+
+To close it, find the bound method and read it. Any one of these works:
+
+1. **Live x64dbg trace.** Put a **non-freezing** breakpoint (condition `0` plus a log command, fast resume off; see [sgw-live-debugging.md](../../guides/sgw-live-debugging.md)) on `CmeEventSignal_Subscribe` at `0x00a5c150`, filtered to the `Event_NetIn_TradeResults` signal. The logged callback object's method pointer is the handler.
+2. **Read live memory.** Once you have the `Trade` subscriber's `MemberCallback` object, the bound method pointer is at `this+0x8` ([cme-event-signal.md](cme-event-signal.md#cmemembercallback-struct-layout)).
+3. **Full GUI RTTI re-analysis** in Ghidra, so the Complete Object Locator chain resolves to the right vtable.
+
+Then decompile the method and check whether it forwards codes 3-6 to Lua unchanged or has a native string or UI of its own. If it does have one, the specific codes could come back for that side.

@@ -46,6 +46,7 @@ Scripts for reverse-engineering the game client (UE3/BigWorld binaries).
 | `frag_debug.py` / `frag_debug2.py` | Debug Mercury packet fragmentation |
 | `investigate_corruption.py` | Investigate packet/data corruption patterns |
 | `re_parity.py` | LLM-free structural parity check for reverse-engineered functions — compares a reconstruction against Ghidra decompile/disasm (11 parity signals + objective call/control-flow gap verifier). Drives the `/re-verify` reverser/checker loop. Run `python tools/re_parity.py --selftest`. |
+| `re/ghidra-headless/Probe.java` | Read-only headless-Ghidra probe of `SGW.exe` (decompile, xrefs, string and function-name search, vtable dumps) run through `analyzeHeadless.bat -noanalysis -readOnly`, for when the Ghidra MCP bridge is unavailable. Java, not Python: see [re/ghidra-headless/README.md](re/ghidra-headless/README.md). |
 
 These scripts run standalone with Python 3.x — they don't need the server running.
 
