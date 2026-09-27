@@ -23,7 +23,7 @@ Six Communicator base methods do something — `chatJoin` (0xC0), `chatLeave` (0
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every player AoI witness of the speaker, except a witness who ignores the speaker. The speaker always gets their own echo, even with nobody in range (the client does not echo say locally) |
-| Channel registration on login | DONE | 8 `onChatJoined` at `onClientReady`, ids per `EChannel` (SS-C4) — see [System Channels](#system-channels) |
+| Channel registration on login | DONE (none needed) | No `onChatJoined` at login: the client hardcodes every built-in channel (SS-C4, D-ORG14) — see [System Channels](#system-channels) |
 | DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |
 | Flood limit | DONE (not client-tested) | Every line is checked against a per-player bucket on the base before it reaches the cell: 5 back to back, then one a second. GameMaster and above are exempt. See [Flood limit and length cap](#flood-limit-and-length-cap) |
@@ -67,7 +67,7 @@ DND text is capped server-side at 128 Unicode scalar values, not UTF-8 bytes or 
 | `onPlayerCommunication` | Speaker, SpeakerFlags, Channel, Text | Player message |
 | `onLocalizedCommunication` | Speaker, SpeakerFlags, Channel, Text, tokenList | Localized message |
 | `onTellSent` | Target, Text | Confirm tell delivery |
-| `onChatJoined` | ChannelName, ChannelID | Joined channel notification |
+| `onChatJoined` | ChannelName, ChannelID | Joined a **user** channel. `ChannelID` is the display id (channel id minus 12); never sent for a built-in channel |
 | `onChatLeft` | ChannelName | Left channel notification |
 | `onNickChanged` | PlayerName, PlayerNickname, AddRemoveFlag | Friend nickname change |
 
@@ -101,23 +101,29 @@ DND text is capped server-side at 128 Unicode scalar values, not UTF-8 bytes or 
 
 Every built-in channel id is an `EChannel` value from `entities/defs/enumerations.xml`, and the client compiles the same values in as literals (`UIChannel.Say` … `UIChannel.Splash`; [ORG-E1 Q5](../reverse-engineering/findings/organization-restoration.md), decision [D-ORG14](../analysis/organizations/README.md#decisions)). The client needs no registration to send or show a line on any of them. The Rust constants are `CHAN_*` in `crates/wire/src/cell/chat.rs`, pinned against the XML by `chan_constants_match_enumerations_xml`. SS-C4 (2026-09-27) moved them onto the enum; before that the server used 7 for server, 9 for tell and 10 for splash.
 
-| Channel | Id | Registered at login | Client display (`ChatWindow.lua`) | Server behaviour |
-|---------|----|---------------------|-----------------------------------|------------------|
-| say | 0 | yes | White, Info tab | Spatial fanout to AoI witnesses |
-| emote | 1 | yes | Yellow | Spatial fanout to AoI witnesses |
-| yell | 2 | yes | Light red | Spatial fanout to AoI witnesses (same radius as say today — no wider range implemented) |
-| team | 3 | yes | Violet | Forwarded to the cell; no team backing yet, so the sender gets a "not supported yet" feedback line |
-| squad | 4 | yes | Turquoise | Relayed to the speaker's squad by the cell (ORG-03) |
-| command | 5 | yes | Green | Forwarded to the cell; no command backing yet, so the sender gets a "not supported yet" feedback line |
-| officer | 6 | no | Green | Forwarded to the cell like command. The client accepts 6 without registration (ORG-E1 Q5) |
-| server | 8 | yes | Bright red line **and a modal "Server Message" prompt** | Server-to-client broadcasts only: `/gmshout` and `.announce` ([GM broadcast](#gm-broadcast)). A player line on 8 is refused at the base |
-| feedback | 9 | no | Sky blue, Info tab | Server-to-client system lines to one player: the login welcome, GM feedback, every refusal line. A player line on 9 is refused at the base |
-| tell | 10 | yes | Purple (red for a GM speaker) | Player-to-player, handled on the base ([Tells and Ignore](#tells-and-ignore)) |
-| splash | 11 | no | Green | Nothing sends it yet. A player line on 11 is refused at the base |
+| Channel | Id | Client display (`ChatWindow.lua`) | Server behaviour |
+|---------|----|-----------------------------------|------------------|
+| say | 0 | White, Info tab | Spatial fanout to AoI witnesses |
+| emote | 1 | Yellow | Spatial fanout to AoI witnesses |
+| yell | 2 | Light red | Spatial fanout to AoI witnesses (same radius as say today — no wider range implemented) |
+| team | 3 | Violet | Forwarded to the cell; no team backing yet, so the sender gets a "not supported yet" feedback line |
+| squad | 4 | Turquoise | Relayed to the speaker's squad by the cell (ORG-03) |
+| command | 5 | Green | Forwarded to the cell; no command backing yet, so the sender gets a "not supported yet" feedback line |
+| officer | 6 | Green | Forwarded to the cell like command |
+| server | 8 | Bright red line (`:1249`) **and a modal "Server Message" prompt** with an OK button (`:160-162`) | Server-to-client broadcasts only: `/gmshout` and `.announce` ([GM broadcast](#gm-broadcast)). A player line on 8 is refused at the base |
+| feedback | 9 | Sky blue, Info tab (`:1250`, `:1274`) | Server-to-client system lines to one player: the login welcome, GM feedback, every refusal line. A player line on 9 is refused at the base |
+| tell | 10 | Purple (red for a GM speaker) | Player-to-player, handled on the base ([Tells and Ignore](#tells-and-ignore)) |
+| splash | 11 | Green | Nothing sends it yet. A player line on 11 is refused at the base |
 
-Id 7 is not an `EChannel` value. The client has no `ChatMod.ChannelMap` entry for it, so a line on 7 calls a nil function in the chat Lua and shows nothing; `/gmshout` sent on 7 until SS-C4. No server-to-client send may use 7, pinned by `no_chan_constant_is_seven` and `no_player_communication_call_uses_a_literal_channel`.
+Id 7 is not an `EChannel` value. The client has no `ChatMod.ChannelMap` entry for it (`ChatWindow.lua:1297-1312`), and `onMessageReceived` calls `ChannelMap[channelId](...)` for every id below 12 (`:93-104`), so a line on 7 raises a Lua error in the chat window and shows nothing. `/gmshout` and `.announce` sent on 7 until SS-C4, so they were invisible. No server-to-client send may use 7, pinned by `no_chan_constant_is_seven` and `no_player_communication_call_uses_a_literal_channel`.
 
-**Registration.** At `onClientReady` the server sends one `onChatJoined(name, id)` for each entry of `DEFAULT_CHAT_CHANNELS` (`crates/base-session/src/base/world_entry_chat.rs`): say 0, emote 1, yell 2, team 3, squad 4, command 5, server 8, tell 10. That list is pinned against `enumerations.xml` by `default_chat_channels_match_enumerations_xml`, and each login logs `chat.channels_registered` (DEBUG, `chat` target, `channel_ids`, `account_id`, `player_id`, `entity_id`). This burst departs from the legacy server, which sent `onChatJoined` only for user channels (id 12 and up) and put the id minus 12 in its `ChannelID` field (`deprecated/python/base/SGWPlayer.py:162-163`). The client's `ChatMod.onChannelJoined` treats every join as a user channel (`channelId = UIChannel.Chat + displayId`, with a "You have joined channel" line), so the built-in entries are not what makes those channels work; see the SS-C4 worknote for the open question.
+**No registration.** The server sends no `onChatJoined` at login (SS-C4, decided 2026-09-27):
+
+- The client hardcodes ids 0 to 11, so a built-in channel needs no registration (ORG-E1 Q5).
+- The client treats every `onChatJoined(name, id)` as a **user** channel: `ChatMod.onChannelJoined` files it under `UIChannel.Chat + id` and prints "You have joined channel [id:name]" on feedback (`ChatWindow.lua:370-386`, `ChatWindow.int:107`).
+- The legacy server sent `onChatJoined` only for user channels (id 12 and up), carrying the id minus 12 (`deprecated/python/base/SGWPlayer.py:162-163`). Its `playerLoggedIn` joined the server channel on the server side only (`deprecated/python/base/Chat.py:183-190`).
+
+Until SS-C4 the Rust server sent eight `onChatJoined` (say through command, server, tell) with every login, which made eight bogus user channels on the client. `on_client_ready_burst_registers_no_built_in_channel` pins their absence. A future user-channel feature sends `onChatJoined` from its own join path.
 
 **Welcome line.** The login welcome ("Welcome to Stargate Worlds. Your player id is: N.") goes out on feedback (9), the channel the legacy `cell/SGWPlayer.py:541` names with a literal 9. It is not sent on server (8), because the client would open its modal prompt on every login.
 
@@ -142,7 +148,7 @@ Computed in `base/dispatch/mod.rs::speaker_flags` and stamped onto every outboun
 ## Data References
 
 - **Enumerations**: `EChannel` (`CHAN_say` … `CHAN_splash`), `ESpeakerFlags`
-- **Channel registration**: `DEFAULT_CHAT_CHANNELS` in `base/world_entry_chat.rs`
+- **Channel ids**: the `CHAN_*` constants in `crates/wire/src/cell/chat.rs`, pinned to `EChannel`; no channel is registered at login (`crates/base-session/src/base/world_entry_chat.rs` module doc)
 - **Base-method ids**: `sgw_player_base` module in `base/dispatch/mod.rs`; full table in [sgwplayer-base-method-dispatch-table.md](../protocol/sgwplayer-base-method-dispatch-table.md)
 
 ## Flood limit and length cap

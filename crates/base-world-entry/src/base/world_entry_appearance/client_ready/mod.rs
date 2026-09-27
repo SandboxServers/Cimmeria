@@ -18,7 +18,7 @@ use crate::cell::messages::BaseToCellMsg;
 
 use super::super::helpers::send_bundle_to_witness_reliable;
 use super::super::world_entry::handle_map_loaded;
-use super::super::world_entry_chat::{build_welcome_message_args, DEFAULT_CHAT_CHANNELS};
+use super::super::world_entry_chat::build_welcome_message_args;
 use super::super::ConnectedClientState;
 use super::builders::build_on_client_ready_burst_bundle;
 use super::cinematic::send_cinematic;
@@ -401,7 +401,9 @@ pub async fn handle_on_client_ready(
     }
 
     // Bundle the post-onClientReady burst: BeingAppearance resend +
-    // onEntityTint resend + 8× onChatJoined + onPlayerCommunication welcome.
+    // onEntityTint resend + onPlayerCommunication welcome. No onChatJoined:
+    // the client hardcodes every built-in channel (SS-C4, D-ORG14; see the
+    // `world_entry_chat` module doc).
     //
     // **Transaction-state audit** (see
     // [docs/architecture/mercury-bundle.md](../../../docs/architecture/mercury-bundle.md)):
@@ -415,12 +417,12 @@ pub async fn handle_on_client_ready(
     //
     // Pre-bundle: 11 reliable packets (1 appearance + 1 tint + 8 chat-joined
     // + 1 welcome), each consuming a TX-window slot. Post-bundle: 1 reliable
-    // packet (the burst body is ~700 B, well under FRAGMENT_BODY_SIZE=1300),
+    // packet; since SS-C4 it holds 3 messages, well under FRAGMENT_BODY_SIZE,
     // pinned by [`super::builders::tests::on_client_ready_burst_bundles_to_single_packet`].
     //
     // `speaker` resolution mirrors the pre-bundle path: prefer the session's
-    // `player_name`, fall back to "Server" (a real DEFAULT_CHAT_CHANNELS
-    // entry) with a WARN so the unexpected missing-name case stays visible.
+    // `player_name`, fall back to "Server" with a WARN so the unexpected
+    // missing-name case stays visible.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
     let speaker = player_name.as_deref().unwrap_or_else(|| {
@@ -437,19 +439,6 @@ pub async fn handle_on_client_ready(
     let bundle =
         build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
-    // One row per login naming the channel ids the client was told about,
-    // so a "my tells land in the wrong tab" report can be checked against
-    // what this server registered (SS-C4, D-ORG14).
-    tracing::debug!(
-        target: "chat",
-        event = "chat.channels_registered",
-        account_id,
-        player_id = pending.player_id,
-        entity_id,
-        channel_ids = ?DEFAULT_CHAT_CHANNELS.iter().map(|&(_, id)| id).collect::<Vec<u8>>(),
-        channel_count = DEFAULT_CHAT_CHANNELS.len(),
-        "onClientReady: chat channels registered with the client",
-    );
 
     // Push contact lists (Friends / Ignore + any custom lists) to the client.
     // Runs after the burst bundle so the entity is fully live on the client
