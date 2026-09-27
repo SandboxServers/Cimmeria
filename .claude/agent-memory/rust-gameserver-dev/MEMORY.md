@@ -86,6 +86,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [dialog-button-strip-and-seed-agreement.md](dialog-button-strip-and-seed-agreement.md) — linter floors block the packet that changes them; roster pins for patch tests.
 - [container-capacity-and-grant-targets.md](container-capacity-and-grant-targets.md) — raising a `bag_max_slots` arm opens loot/content grants into it (`container_sets[1]`, 752 items prefer 17); no seeded item allows both 1 and 15.
 - [inventory-lock-keys-and-failure-injection.md](inventory-lock-keys-and-failure-injection.md) — inventory writers use different lock keys (grants merge stacks under `(player, container)`), so a read-then-send must row-lock; DB-failure injection for LogCapture guards.
+- [move-path-lock-layers-and-vault-verdict.md](move-path-lock-layers-and-vault-verdict.md) — moveItem has three lock layers (strip all in a concurrency revert proof); vault access is a per-request cell verdict on CellToBaseMsg; merge needs equal bound.
 - [debug-hub-npc-authoring-traps.md](debug-hub-npc-authoring-traps.md) — Vendor interaction was never set (now derived at spawn); set 4 is not harmless; new dialogs need DIALOG_OVERRIDES + pinned-id test edits; dialog ids 60100-60199, never > 65535 (client crash); the DebugHub_ tag count is pinned.
 - [pet-template-seed-traps.md](pet-template-seed-traps.md) — NoPetLeveling freezes a pet at template level; summons need an event set; pet kits are silent no-ops (NA43 allowlist).
 - [trainer-seed-and-gm-grant-traps.md](trainer-seed-and-gm-grant-traps.md) — trainer_abilities.sql is generated; capstones need .giveability; grants persist via base; pets 350-359 vs NPCs 360-369.
@@ -154,6 +155,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [revert-proof-mutation-must-be-confirmed.md](revert-proof-mutation-must-be-confirmed.md) — a failed scripted mutation reports every guard "ok"; confirm it applied, never split on `=>`.
 - [vacuous-guard-and-sentinel-collision-review.md](vacuous-guard-and-sentinel-collision-review.md) — review checklist: vacuous guards, fixtures that fail two rules, `0x7000_xxxx` collisions.
 - [interact-range-and-logcapture-traps.md](interact-range-and-logcapture-traps.md) — `get_entity` spans all spaces, so proximity gates need a space check; LogCapture tests flake under threaded cargo test.
+- [test-session-packets-are-encrypted.md](test-session-packets-are-encrypted.md) — TestTransport packets are encrypted (zero key) and feedback lines need player_entity_id; decrypt before grepping text.
 - [wireclient-passive-session-dies.md](wireclient-passive-session-dies.md) — a listen-only `GameSession` is reaped at 60 s; send an unreliable AUTHENTICATE heartbeat, as `sparbot::run` does.
 - [live-db-lock-race-tests.md](live-db-lock-race-tests.md) — a lock-race test must see the waiter blocked first; cascade triggers invert lock order, multi-row cascades break id order; SHARE lock freezes a stamp.
 
