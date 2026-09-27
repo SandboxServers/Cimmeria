@@ -44,7 +44,7 @@ The real client method names are `onTradeState` / `onTradeResults`. An earlier r
 | Negative-cash guard | DONE | Base rejects a proposal carrying negative cash before the swap |
 | Source bags | DONE | The backpack (1) and the crafting bag (15); everything else is refused. See [Which items can be traded](#which-items-can-be-traded) |
 | Destination bag | DONE | Chosen per item from its `container_sets`; a full destination bag refuses the whole trade |
-| Refusal feedback | DONE | A feedback line to each player naming the cause, because the client shows nothing for the space and cash codes |
+| Refusal feedback | DONE | Every refusal is `onTradeResults(Cancelled)` to both players (the only failure code the client's window closes on) plus a feedback line to each naming the cause |
 | Entity method wiring | DONE | Methods 104–107 dispatch through `player/dispatch.rs` |
 | Remote item detail | PARTIAL | The cell does not own full inventory state (base does), so `onTradeState` pads the partner's `RemoteTradeProposal` with sentinel-bearing `InvItem` stubs rather than real item detail — see `trade/wire.rs:stub_inv_items_for` |
 | Two-client verification | UNVERIFIED | Covered by unit + validation tests; no recorded live playtest with two connected clients |
@@ -113,9 +113,9 @@ Base (world_entry/methods/trade/execute/):
   |     -> sgw_player rows, ascending (cash check)
   |     -> move items both ways, adjust both cash balances
   |-> Success: onTradeResults(Completed) to both
-  |-> Failure: asymmetric per-side result codes
-     (NoLocalCash / NoRemoteCash / NoLocalSpace / NoRemoteSpace),
-     plus a feedback line to each player naming the cause
+  |-> Failure: onTradeResults(Cancelled) to both, plus a feedback line
+     to each player naming the cause (the cell already ended the session
+     before the hand-off, so both can trade again at once)
 ```
 
 The lock order is the shared inventory order (`crates/base-session/src/base/crafting/inventory_locks.rs`): every advisory lock, then inventory rows, then player rows. Crafting completions, vendor purchase, sale and buyback, the move path, item use and gate mail take the player-wide key 0 first too, so a trade and any of them on the same player wait for each other instead of deadlocking. The live-DB guard is `trade::tests::crafting_bag::trade_and_crafting_completion_on_one_player_serialize`.
@@ -153,13 +153,15 @@ A traded component that a queued craft named is caught when the craft completes:
 | Value | Name | Meaning |
 |-------|------|---------|
 | 1 | `Completed` | Trade successful — **also sent on a user-initiated cancel** |
-| 2 | `Cancelled` | Disconnect, distance-break, or atomic-commit failure |
-| 3 | `NoLocalSpace` | You don't have inventory space |
-| 4 | `NoRemoteSpace` | Partner doesn't have inventory space |
-| 5 | `NoLocalCash` | You don't have enough cash |
-| 6 | `NoRemoteCash` | Partner doesn't have enough cash |
+| 2 | `Cancelled` | Disconnect, distance-break, or any atomic-commit refusal (space, cash, untradeable item, server fault) |
+| 3 | `NoLocalSpace` | Not sent: the client ignores it |
+| 4 | `NoRemoteSpace` | Not sent: the client ignores it |
+| 5 | `NoLocalCash` | Not sent: the client ignores it |
+| 6 | `NoRemoteCash` | Not sent: the client ignores it |
 
-The shipped client acts on only two of these. `Trade.lua` `TradeMod.onTradeResult` (client `Content/UI/Core/Trade/Trade.lua:305-315`) closes the window and prints "Trade Completed" or "Trade Cancelled" for 1 and 2, and does nothing for 3-6: no line, and the window stays open. The server therefore follows a space or cash code with a feedback line to each player ("Trade cancelled: your crafting bag does not have room ...", "... your trade partner does not have the naquadah they offered."), and a bound, untradeable-bag or unknown-type item with "one of the items you offered cannot be traded" to both. Whether to send `Cancelled` instead of the specific codes, so the window closes, is an open question.
+The shipped client acts on only two of these. `Trade.lua` `TradeMod.onTradeResult` (client `Content/UI/Core/Trade/Trade.lua:305-315`) closes the window and prints "Trade Completed" or "Trade Cancelled" for 1 and 2, and has no branch for 3-6: no line, and the window stays open and locked. `Trade.int` has no space or cash string either. Evidence: [trade-result-client-handling.md](../reverse-engineering/findings/trade-result-client-handling.md).
+
+So every refusal sends `Cancelled` (2) to both players, and the cause follows as a feedback line to each: "Trade cancelled: your crafting bag does not have room ..." / "... your trade partner's crafting bag does not have room ...", the same pair for the backpack, "you do not have the naquadah you offered" / "your trade partner does not have the naquadah they offered", and "one of the items you offered cannot be traded" / "... your trade partner offered ..." for a bound, untradeable-bag or unknown-type item. A server fault, a missing item or a duplicated instance gets only the client's own "Trade Cancelled". The abort reason stays in the telemetry (`trade.refused` `reason`, `trade_swaps_total{outcome}`).
 
 ## Wire-Format Traps
 
@@ -182,7 +184,7 @@ Two quirks the implementation preserves byte-for-byte, both of which cause silen
 3. **Proposal rate limiting** — version monotonicity rejects replay but does not cap throughput; a malicious client can spam `tradeUpdateProposal` and force an `onTradeState` broadcast per message. A per-session minimum interval is deferred (see the note in `trade/handlers.rs`)
 4. **Combat / busy-state gate** — distance is enforced, but nothing blocks opening a trade mid-combat
 5. **Trade logging** — every committed move logs `trade.item_moved` (bags and slots before and after) and every refusal `trade.refused`, but there is no GM-facing audit view
-6. **Window stays open on a space or cash refusal** — see [Trade Result Codes](#trade-result-codes)
+6. **Native result handler not live-traced** — the client's native `onTradeResults` handler is believed to forward the code to Lua unchanged; see the open item in [trade-result-client-handling.md](../reverse-engineering/findings/trade-result-client-handling.md)
 
 ## Related Docs
 

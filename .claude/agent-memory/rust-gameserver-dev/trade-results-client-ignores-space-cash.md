@@ -9,4 +9,4 @@ Client `Content/UI/Core/Trade/Trade.lua:305-315` (`TradeMod.onTradeResult`) hand
 
 **Why:** a refusal carried only by codes 3-6 is invisible to the player, which breaks the visible-feedback rule.
 
-**How to apply:** any trade refusal the player should understand needs a feedback line (the base sends one per side, `trade/execute/abort.rs` `refusal_lines`). Whether to send `Cancelled` instead so the window closes is an open owner question. Related: [[inventory-lock-keys-and-failure-injection]].
+**How to apply:** since 2026-09-27 every trade refusal sends `Cancelled` (2) to both sides (`trade/execute/abort.rs` `REFUSAL_RESULT`) and the cause in a per-side feedback line (`refusal_lines`); never send 3-6. Full evidence: `docs/reverse-engineering/findings/trade-result-client-handling.md`. Related: [[inventory-lock-keys-and-failure-injection]].

@@ -23,9 +23,10 @@ use super::wire::send_on_trade_results;
 /// Both sides reached `LockedAndConfirmed` — kick the execution off to
 /// the base layer (which owns the DB). The cell clears the in-memory
 /// session state immediately; base will fire `onTradeResults` to both
-/// clients itself, with the appropriate per-side result code (Completed
-/// on success, NoLocalCash/NoLocalSpace/NoRemoteCash/NoRemoteSpace on a
-/// validation failure inside the FOR UPDATE tx).
+/// clients itself: Completed on success, Cancelled to both on any refusal
+/// (the cause goes to each player as a feedback line). Clearing here is
+/// what makes that Cancelled true: both players can open a new trade at
+/// once.
 pub(super) async fn request_execute_trade(
     entity_id: u32,
     partner_entity_id: i32,
