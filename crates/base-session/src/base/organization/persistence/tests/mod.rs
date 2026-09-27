@@ -2,9 +2,9 @@
 //!
 //! Every test runs against a database loaded from `db/database.sql`, so the
 //! schema, the constraints and the member-delete trigger under test are the
-//! real ones. Sentinels: this module owns `0x7000_4800..=0x7000_49FF` for
-//! account and player ids (each test takes one of 32 blocks of 16). Organization ids
-//! come from the sequence and are cleaned up by exact id; organization names
+//! real ones. Sentinels: this module owns `0x7000_4800..=0x7000_4BFF` for
+//! account and player ids (each test takes one of 64 blocks of 16).
+//! Organization ids come from the sequence and are cleaned up by exact id; organization names
 //! start with "Org02 " and are cleaned up by exact name key, so a crashed
 //! run cannot make the next one collide on `UNIQUE (org_type, name_key)`.
 
@@ -62,11 +62,11 @@ impl Fixture {
     }
 }
 
-/// Create one account and `n` characters in block `block` (0..32), after
+/// Create one account and `n` characters in block `block` (0..64), after
 /// removing whatever an earlier crashed run left there. `names` are the
 /// organization names the test will use.
 async fn setup(pool: &PgPool, block: i32, n: i32, names: &[&str]) -> Fixture {
-    assert!((0..32).contains(&block) && (1..16).contains(&n));
+    assert!((0..64).contains(&block) && (1..16).contains(&n));
     let account_id = BASE + block * 16;
     let fx = Fixture {
         account_id,

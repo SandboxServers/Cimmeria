@@ -18,20 +18,24 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// concurrency test cannot pass without its race.
 async fn wait_until_blocked(pool: &PgPool) {
     for _ in 0..100 {
-        let waiting: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM pg_stat_activity \
-             WHERE wait_event_type = 'Lock' AND datname = current_database() \
-               AND pid <> pg_backend_pid()",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap();
-        if waiting > 0 {
+        if lock_waiters(pool).await > 0 {
             return;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     panic!("the concurrent statement never waited on a lock");
+}
+
+/// How many other sessions in this database wait on a lock.
+async fn lock_waiters(pool: &PgPool) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM pg_stat_activity \
+         WHERE wait_event_type = 'Lock' AND datname = current_database() \
+           AND pid <> pg_backend_pid()",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
 }
 
 async fn add(pool: &PgPool, org_id: i32, player_id: i32, rank: OrgRank) {
@@ -264,6 +268,82 @@ async fn account_delete_cascade_keeps_the_lock_order() {
         "its last member went with it"
     );
 
+    teardown(&pool, &fx).await;
+}
+
+/// Copilot #881 (_foreign_keys.sql): an account delete cascades to all its
+/// characters in one statement. Locking organizations character by
+/// character would take them out of `org_id` order: character A (in the
+/// higher org) locks it, then waits on character B's row; a
+/// single-character delete of C, a member of both, locks the lower org and
+/// waits on the higher; B's turn then waits on the lower org: 40P01. The
+/// `account` BEFORE DELETE trigger locks every character first, then every
+/// organization in order, so both deletes finish.
+#[tokio::test]
+async fn account_delete_locks_all_its_characters_orgs_in_order() {
+    let pool = require_db_or_skip!();
+    let fx = setup(&pool, 32, 2, &["Org02 Acct Lo", "Org02 Acct Hi"]).await;
+    let other = setup(&pool, 33, 1, &[]).await;
+    let (a, b, c) = (fx.player(0), fx.player(1), other.player(0));
+    // Created in this order, so lo < hi.
+    let lo = create(&pool, OrgType::Team, "Org02 Acct Lo", c)
+        .await
+        .org_id;
+    let hi = create(&pool, OrgType::Command, "Org02 Acct Hi", c)
+        .await
+        .org_id;
+    assert!(lo < hi);
+    add(&pool, lo, b, OrgRank::MEMBER).await;
+    add(&pool, hi, a, OrgRank::INITIATE).await;
+
+    // Hold character B's row so the account delete stops between its
+    // characters.
+    let mut blocker = pool.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM sgw_player WHERE player_id = $1 FOR UPDATE")
+        .bind(b)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+
+    let account_pool = pool.clone();
+    let account_id = fx.account_id;
+    let account_delete = tokio::spawn(async move {
+        sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(&account_pool)
+            .await
+            .map(|r| r.rows_affected())
+    });
+    wait_until_blocked(&pool).await;
+
+    let c_pool = pool.clone();
+    let c_account = other.account_id;
+    let c_delete = tokio::spawn(async move { delete_character(&c_pool, c, c_account).await });
+    // With the fix C's delete finishes here; without it, it waits on the
+    // higher org the account delete holds.
+    for _ in 0..100 {
+        if c_delete.is_finished() || lock_waiters(&pool).await >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    blocker.commit().await.unwrap();
+
+    let c_deleted = c_delete
+        .await
+        .unwrap()
+        .expect("the character delete must not deadlock");
+    assert!(c_deleted.deleted);
+    assert_eq!(
+        account_delete
+            .await
+            .unwrap()
+            .expect("the account delete must not deadlock"),
+        1
+    );
+    assert!(!org_exists(&pool, lo).await && !org_exists(&pool, hi).await);
+
+    teardown(&pool, &other).await;
     teardown(&pool, &fx).await;
 }
 

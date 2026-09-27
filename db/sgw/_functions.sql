@@ -198,6 +198,13 @@ $$;
 -- member row needs a KEY SHARE lock on that player row (its foreign key),
 -- so no organization can be joined between this read and the delete.
 --
+-- One statement that deletes several characters (an account delete's
+-- cascade) would run this once per character, locking the organizations of
+-- the first character before the second character's row. That is not
+-- org_id order across the statement, so org_account_before_delete locks
+-- all of an account's characters, then all of their organizations, before
+-- the cascade starts; here the FOR UPDATE then re-takes held locks.
+--
 
 CREATE FUNCTION org_player_before_delete() RETURNS trigger
     LANGUAGE plpgsql
@@ -207,6 +214,50 @@ BEGIN
        FROM sgw_organizations
       WHERE org_id IN (SELECT org_id FROM sgw_organization_members
                         WHERE player_id = OLD.player_id)
+      ORDER BY org_id
+        FOR UPDATE;
+    RETURN OLD;
+END;
+$$;
+
+--
+-- Function: org_account_before_delete()
+-- Trigger:  account_before_delete_lock_orgs (_triggers.sql)
+--
+-- An account delete cascades to every character of the account in one
+-- statement, and org_player_before_delete alone would lock organizations
+-- character by character: the first character's organizations, then the
+-- second character's row and its organizations. Two characters in two
+-- organizations (A in the higher org_id, B in the lower) then take them
+-- in descending order, and a concurrent single-character delete of a
+-- member of both (ascending) deadlocks against it.
+--
+-- So an account delete takes the character-delete order for the whole
+-- account at once: the account row (Postgres locks it before a BEFORE
+-- trigger runs), then every character's sgw_player row in player_id
+-- order, then every organization any of them belongs to in org_id order.
+-- It holds no organization while it waits on a character row, so it never
+-- holds an organization that a single-character delete (which holds its
+-- player row and waits on its organizations) needs while waiting on that
+-- character. The cascade and org_player_before_delete then re-take held
+-- locks.
+--
+
+CREATE FUNCTION org_account_before_delete() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    PERFORM 1
+       FROM sgw_player
+      WHERE account_id = OLD.account_id
+      ORDER BY player_id
+        FOR UPDATE;
+    PERFORM 1
+       FROM sgw_organizations
+      WHERE org_id IN (SELECT m.org_id
+                         FROM sgw_organization_members m
+                         JOIN sgw_player p ON p.player_id = m.player_id
+                        WHERE p.account_id = OLD.account_id)
       ORDER BY org_id
         FOR UPDATE;
     RETURN OLD;

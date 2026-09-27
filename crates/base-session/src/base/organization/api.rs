@@ -31,6 +31,10 @@
 //!    its characters included): the character's `sgw_player` row, then its
 //!    organization rows in `org_id` order (the
 //!    `sgw_player_before_delete_lock_orgs` trigger), then its member rows.
+//!    An account delete takes this order for all its characters at once
+//!    (`account_before_delete_lock_orgs`): every character row in
+//!    `player_id` order, then all their organizations in `org_id` order,
+//!    so two characters in two organizations never lock them out of order.
 //!
 //! The two orders never form a cycle because no transaction holding an
 //! organization waits on the `sgw_player` row of one of that

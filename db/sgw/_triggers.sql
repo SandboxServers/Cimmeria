@@ -30,3 +30,14 @@ CREATE TRIGGER sgw_organization_members_before_update BEFORE UPDATE ON sgw_organ
 --
 
 CREATE TRIGGER sgw_player_before_delete_lock_orgs BEFORE DELETE ON sgw_player FOR EACH ROW EXECUTE FUNCTION org_player_before_delete();
+
+--
+-- Name: account_before_delete_lock_orgs; Type: TRIGGER; Schema: public; Owner: -
+--
+-- Locks every character of a deleted account, then all their
+-- organizations, before the cascade, so an account delete keeps the lock
+-- order across its characters. See org_account_before_delete() in
+-- _functions.sql.
+--
+
+CREATE TRIGGER account_before_delete_lock_orgs BEFORE DELETE ON account FOR EACH ROW EXECUTE FUNCTION org_account_before_delete();
