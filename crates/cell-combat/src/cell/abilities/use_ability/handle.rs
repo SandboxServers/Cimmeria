@@ -250,9 +250,11 @@ pub async fn handle_use_ability(
                 // target) once an offensive/supportive ability flag exists
                 // — `AbilityDef` has no such field today, and
                 // `target_type_id` only encodes self/target/ground. The rule
-                // itself is `combat::player_may_attack`, the per-pair seam
-                // PvP (duels) widens; pets obey the same function.
-                if entity.is_player && !combat::player_may_attack(entity, target) {
+                // itself is `combat::player_may_attack`: a hostile NPC, or
+                // the attacker's engaged duel partner (SS-D2); pets obey the
+                // same function.
+                if entity.is_player && !combat::player_may_attack(entity, target, &space_mgr.duels)
+                {
                     tracing::warn!(
                         entity_id,
                         ability_id,

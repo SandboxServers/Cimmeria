@@ -159,9 +159,10 @@ async fn fire_time_refusal(
     {
         return Some(InterruptReason::TargetLost);
     }
-    // The launch's #444 target-validity rule, again: a player may only hit a
-    // hostile NPC. Content can turn an NPC friendly during the warmup.
-    if caster.is_player && (target.is_player || target.faction != combat::HOSTILE_FACTION) {
+    // The launch's #444 target-validity rule, again (`player_may_attack`: a
+    // hostile NPC or the engaged duel partner). Content can turn an NPC
+    // friendly, and a duel can end, during the warmup.
+    if caster.is_player && !combat::player_may_attack(caster, target, &space_mgr.duels) {
         return Some(InterruptReason::TargetLost);
     }
     // A pet casts on its owner's order (`petInvokeAbility`, pets PT-04),
