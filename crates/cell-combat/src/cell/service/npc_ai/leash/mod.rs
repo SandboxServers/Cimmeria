@@ -18,7 +18,9 @@ mod begin;
 // `cimmeria-cell-world` (wave C1), with the NPC AI's other state primitives.
 pub(in crate::cell) use cimmeria_cell_world::cell::service::npc_ai::leash::policy;
 
-pub(super) use begin::{begin_leash, drop_threat_target, leash_out, LeashOutAt};
+pub(super) use begin::{
+    begin_leash, drain_player_combat, drop_threat_target, leash_out, LeashOutAt,
+};
 
 use std::time::Instant;
 

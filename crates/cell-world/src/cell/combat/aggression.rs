@@ -63,8 +63,32 @@ pub fn aggression_toward_players(npc: &CellEntity) -> MobAggression {
 
 /// Whether `npc` aggroes players on sight. This is the Idle admission test
 /// in `npc_ai_tick` and the first gate of the auto-aggro scan.
+///
+/// A pet is never hostile to players, whatever its faction or override
+/// (pets PT-05, D-PT06): it fights for its owner, so it must not run the
+/// player proximity scan or be recruited as an assister. The owner's faction
+/// already reads neutral; this also covers a content `set_aggression` aimed at
+/// a pet.
 pub fn is_hostile_to_players(npc: &CellEntity) -> bool {
-    aggression_toward_players(npc).is_hostile()
+    npc.pet.is_none() && aggression_toward_players(npc).is_hostile()
+}
+
+/// Whether the player `attacker` may damage `target`: THE player hostility
+/// rule, the one the #444 single-target gate (`handle_use_ability`, the
+/// warmup re-check) enforces, and the one a pet obeys on its owner's behalf
+/// (pets PT-05: a pet fights only what its owner could).
+///
+/// PvE only today: the target is an NPC of [`HOSTILE_FACTION`] that is not a
+/// pet. Never a player, never a pet (whatever its faction), never a vendor,
+/// quest giver or neutral NPC, whatever its aggression override. `attacker`
+/// is the per-pair seam: duels (social systems SS-D2) and any later PvP widen
+/// this one function, and every caller, pets included, inherits the change.
+///
+/// [`HOSTILE_FACTION`]: super::faction_reaction::HOSTILE_FACTION
+pub fn player_may_attack(_attacker: &CellEntity, target: &CellEntity) -> bool {
+    !target.is_player
+        && target.pet.is_none()
+        && target.faction == super::faction_reaction::HOSTILE_FACTION
 }
 
 /// The override a content or console `level` sets.

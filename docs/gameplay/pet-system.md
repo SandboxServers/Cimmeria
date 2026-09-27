@@ -64,6 +64,8 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 - **Backstop.** `pet_owner_sweep` runs every AoI tick and despawns any pet whose owner is gone, dead or in another space, so a future owner path that forgets the hooks costs at most one tick. A source-scan test (`every_owner_travel_site_calls_the_pet_hooks`) fails when a cell file sends `GateTravel` without `on_owner_left`, or `TeleportPlayer` without `on_owner_teleported`.
 - The `SGWPet.def` cell methods `onOwnerDeath`, `onOwnerLeash` and `onOwnerRespawn` are not called: in our server the cell owns both the owner and the pet, so the hooks run directly.
 
+- **AI (PT-05).** Follow, teleport, stances, defend-owner, the owner-anchored leash and the owner's combat state. See [Pet AI](#pet-ai-pt-05).
+
 **Summoning (PT-03).** A player ability with a `resources.pet_summons` row summons a pet. The seed has one row today: 2826 Summon Straegis, which spawns template 350 with one pet out at a time. The code is `crates/cell-combat/src/cell/abilities/use_ability/summon.rs`, and the design is decision 23 of [`abilities-and-effects-system.md`](../architecture/abilities-and-effects-system.md).
 
 - The cast is an ordinary cast. It has the 6 s warmup, which `speedPet` shortens for `SpeedPet` abilities (D-PT10). The cooldown is charged at launch. Moving, dying or changing space during the warmup cancels it, and a cancelled warmup spawns nothing.
@@ -87,14 +89,14 @@ The table records what the entity definitions provide and what the server does w
 | Stance changing | STUB | `changePetStance` with `onPetStanceUpdate` |
 | Pet leveling | STUB | `setPetLevel` defined |
 | Owner death response | DONE (PT-02) | The pet despawns when its owner dies (D-PT08), from `resolve_death`; the `onOwnerDeath` cell method itself is unused |
-| Owner leash response | STUB | `onOwnerLeash` cell method |
+| Owner leash response | STUB | `onOwnerLeash` cell method. The AI's own teleport back (PT-05) does not go through it |
 | Owner respawn response | DONE (PT-02) | Cross-world respawn despawns the pet; a same-world respawn moves it beside the owner. `onOwnerRespawn` itself is unused |
 | Despawn timer | DONE (PT-02) | `PetState::despawn_at`: a dead pet's corpse despawns after 10 s |
 | Ability on spawn | DEFINED | `abilityToResolve`, `abilityInformation` |
 | XP transfer | DONE (PT-06) | Owner gets `kill_xp × transfer_xp` for the pet's kills; a zero, negative or non-finite value pays nothing, and so does any payout above `i32::MAX` (the width of `sgw_player.exp`) |
 | Kill credit | DONE (PT-06) | A pet's kill raises the owner's `EntityDeath` (KillCount missions advance); NPC attackers are never credited |
 | Position tracking | DEFINED | `ownerLastPosition`, `petLastPosition`, `lastOwnerPositionCheck` |
-| Pet AI | NOT IMPL | No AI behavior scripts |
+| Pet AI | DONE (PT-05) | Follow, teleport, stances, defend-owner, owner-anchored leash, owner combat state. See [Pet AI](#pet-ai-pt-05) |
 | Pet persistence | STUB | `saveToDB` defined but no save logic |
 
 ## Entity Definition (SGWPet.def)
@@ -152,7 +154,33 @@ Confirmed values (from `db/resources/AI/Types/EPetStance.sql`):
 
 ## Pet Ability Toggling
 
-The `toggledAbilities` array tracks abilities that the player has turned OFF. When the pet AI selects abilities to use, it should skip any ability whose ID is in this list.
+The `toggledAbilities` array tracks abilities that the player has turned OFF. The AI's ability selector skips any ability in `PetState::toggled_off` (PT-05). With every ability toggled off the pet holds fire, as an NPC with every ability cooling does.
+
+## Pet AI (PT-05)
+
+A pet is ticked by the NPC AI like a mob (`npc_ai_tick`, every 2 s). An owner-relative pre-pass in `crates/cell-combat/src/cell/service/npc_ai/pet/` runs before the state handler. The numbers are the greenfield values of D-PT07 and D-PT09 (`docs/analysis/pets/README.md`); the client has no footprint for them.
+
+| Behaviour | What the server does |
+|---|---|
+| Follow | Out of a fight a pet is always in `Follow` with `follow_target_id` = owner and a 2-5 u band. The ordinary follow handler walks it. An Idle pet is always admitted to the tick, so a freshly summoned pet starts following on its first turn |
+| Teleport | More than 40 u from the owner horizontally, or more than 4 u above or below (another floor): the pet is brought back through PT-02's owner-teleport move (`on_owner_teleported`, path `pet_left_behind`), so it lands on the same grounded spot behind the owner and its witnesses get an immediate `EntityMoved`. At most once every 5 s (`PetState::last_teleport_at`, which an owner teleport also stamps). It is a same-space position write, not `onPlayerTeleport`. An owner with several pets gets all of them moved |
+| Passive | Never engages. `generate_threat` refuses all threat to a Passive pet, so even a hit leaves it following. A pet switched to Passive mid-fight drops the fight on its next turn |
+| Defensive (default) | Engages a mob that is fighting its owner, or one fighting the pet itself, within 40 u of the owner. A hit preempts it into Fighting, as it does any NPC. A pet that is itself left behind engages nothing until it is back |
+| Aggressive | Defensive, plus the owner's current target once the owner has `BSF_InCombat` (within 40 u of the owner; any target the owner may attack, even one content set to Neutral: it is a fight the owner chose), plus an NPC hostile to players within 15 u of the pet, on its floor and not behind a wall |
+| Leash | Measured from the owner's position, never from `spawn_position`: the ordinary leash radius (50 u, or the template's) with its hysteresis and vertical cap |
+| End of a fight | Straight back to `Follow` on the owner (the `begin_leash` pet branch). No walk home, no evade, no heal, no cooldown reset |
+| The mob it leaves | Released (the pet leaves the mob's threat list, and the owner's combat entry for it goes the same turn) when the target stopped being fightable (not a combatant, not hostile, resetting, just reset) or the owner called the pet off (switched to Passive, or content forced Leashing). Kept when the pet is only pulled back by distance (the owner-anchored leash, or a target left behind by an owner teleport) or lost its target: the mob keeps chasing the pet as it would a fleeing player, until its own leash resets it and takes the owner out of combat. A dismissed pet needs nothing: the mob prunes a vanished target |
+| Targets it lets go | A fighting pet drops a target that is walking home (it evades), leaving or dead, one that has just finished its reset, and one more than 40 u from the owner or off the owner's floor. So after an owner teleport the pet follows instead of running back to the fight, and it never re-pulls a mob that has reset |
+| Engaging | Every engagement goes through `pet::engage_pet_target` (stance picks, and PT-04's owner orders): the target lists the pet and fights back, and the pet lists the target and fights. The owner is mirrored into the fight in the same turn. A refusal (not a combatant mob its owner could attack, dead, resetting) changes nothing. The pet never engages a surrendered (`Submit`) NPC on its own, and drops one that surrenders mid-fight; an owner's order still reaches it, as a player's own attack does |
+| Owner's combat state | Every mob with the pet on its threat list enters the owner's `threatened_mobs`, which sets `BSF_InCombat`. The entry goes when the mob dies (the dead-NPC sweep walks every player whose set names it), leashes, or no longer has the owner or a pet of the owner on its threat list. The owner is sent `onStateFieldUpdate` on each edge |
+| Hostility | A pet fights only combatant mobs (`SGWMob`; never an `SGWBeing`, even one with the hostile faction) that its owner could attack, by the same rule as the player's own single-target gate (#444): `combat::player_may_attack`, today a hostile-faction NPC that is not a pet. Every stance pick, every target it keeps, every threat it accepts and every fight mirrored into the owner's combat state goes through it, so a pet never turns on a player, another pet, a vendor or a neutral NPC, even one a content chain set fighting its owner. When duels land (SS-D2) they widen that one function and pets follow |
+| Line of sight | The Aggressive scan uses the NPC acquisition gate (floor band, radius, navmesh line of sight failing closed on `Unknown`, D-NA08). A fight's shots go through the NPC fight handler's attack line-of-sight check, like any NPC's |
+| Players | A pet is never hostile to players (`is_hostile_to_players` is false for any pet), so it never runs the player proximity scan and is never recruited as an assister. Its targets are always mobs (`SGWMob`), never a player, another pet or a being |
+| Owner id reused | The owner is the player who summoned the pet, checked against the summon-time identity, not the owner's entity id. If the owner is destroyed and its id handed to another player before the sweep, the pet holds (`owner_missing reason=owner_identity_mismatch`): it does not follow, teleport to, leash to or put that player in combat, and the sweep despawns it |
+
+Every decision logs on the `pets.ai` target; the rows are listed in [observability.md](../architecture/observability.md). A content `generate_threat` aimed at a Passive pet is refused like a hit, so a chain cannot force a Passive pet to fight.
+
+Known limits: the owner enters combat on the pet's next AI turn (up to 2 s after the pet's first hit), and hostile mobs still engage a pet only once it has hit them (they do not proximity-aggro or assist on a pet, audit A-30). An owner entry the pet's fight put in `threatened_mobs` is also cleared by the next pet turn; if the pet is dismissed first, it stays until that mob dies or leashes.
 
 ## Data References
 

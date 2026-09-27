@@ -19,6 +19,6 @@ mod spawner_tests;
 // Lower crates, at the `cell::` paths the moved code names them by.
 pub(crate) use cimmeria_cell_catalog::cell::spawner;
 pub(crate) use cimmeria_cell_world::cell::{
-    content_events, cover, dispatch, playtest_friction, space_manager,
+    content_events, cover, dispatch, pets, playtest_friction, space_manager,
 };
 pub(crate) use cimmeria_wire::cell::{client_methods, messages, player_journal};

@@ -14,8 +14,13 @@ pub(in crate::cell) const IDLE_PARKED_MIN_DIST: f32 = 2.0;
 /// Whether the AI dispatcher admits an Idle NPC. Mirrors the admission
 /// filter in `npc_ai::dispatch::npc_ai_tick`; the `idle_parked` guard test
 /// pins the two together.
+///
+/// A pet is always ticked (pets PT-05): it is never hostile and has no patrol
+/// or wander, so without this an Idle pet would never be re-armed to follow
+/// its owner.
 pub fn idle_is_ticked(npc: &CellEntity) -> bool {
-    crate::cell::combat::is_hostile_to_players(npc)
+    npc.pet.is_some()
+        || crate::cell::combat::is_hostile_to_players(npc)
         || !npc.patrol_path.is_empty()
         || npc.wander_radius > 0.0
 }

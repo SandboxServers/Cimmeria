@@ -879,7 +879,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH (code re-read 2026-09-27 for the pets campaign)
 - **Documentation**: [gameplay/pet-system.md](gameplay/pet-system.md), [reverse-engineering/findings/pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md)
-- **Rust code**: The pets campaign's PT-01 foundation is in `crates/cell-world/src/cell/pets/`: pet state, owner registry, spawn, the owner-only ability and stance list sync on AoI entry, and teardown. PT-02 ties the pet to its owner on every lifecycle path (despawn on logout, death and any trip out of the space; move beside the owner on a same-space teleport; a pet corpse despawns after 10 s). PT-06 routes kill XP and mission kill credit through `SpaceManager::credit_recipient`, so a pet's kill pays and credits its owner and a mob that kills a pet earns nothing. PT-03 lets a player summon a pet by casting its summon ability: 2826 Summon Straegis spawns template 350 after the 6 s warmup, one pet per owner, with visible feedback on every refusal. The GM `.pet` console is PT-07. The rows below stay KM because pet commands (PT-04) and pet AI (PT-05) are not in yet. `petInvokeAbility`, `petAbilityToggle` and `petChangeStance` still decode their args and log `UNIMPLEMENTED` (`cell_methods/player/social.rs:15-55`).
+- **Rust code**: The pets campaign's PT-01 foundation is in `crates/cell-world/src/cell/pets/`: pet state, owner registry, spawn, the owner-only ability and stance list sync on AoI entry, and teardown. PT-02 ties the pet to its owner on every lifecycle path (despawn on logout, death and any trip out of the space; move beside the owner on a same-space teleport; a pet corpse despawns after 10 s). PT-06 routes kill XP and mission kill credit through `SpaceManager::credit_recipient`, so a pet's kill pays and credits its owner and a mob that kills a pet earns nothing. PT-03 lets a player summon a pet by casting its summon ability: 2826 Summon Straegis spawns template 350 after the 6 s warmup, one pet per owner, with visible feedback on every refusal. The GM `.pet` console is PT-07. The rows below stay KM because pet commands (PT-04) are not in yet. PT-05 adds the pet AI in `crates/cell-combat/src/cell/service/npc_ai/pet/`: follow the owner with a teleport back, the three stances, defend-owner, the owner-anchored leash and the owner's combat state. `petInvokeAbility`, `petAbilityToggle` and `petChangeStance` still decode their args and log `UNIMPLEMENTED` (`cell_methods/player/social.rs:15-55`).
 - **Recent PRs**: none since 2026-07-25
 - **Open issues**: #570 (implement pet / companion system)
 - **Path forward**: Pet entity (extends spawner mob), Follow AI state, command handling (#570). The NPC follow tick now covers being-class followers (#791), which a pet port could reuse.
@@ -891,8 +891,8 @@ last_updated: 2026-09-25
 | Invoke pet ability | KM | Combat | stub | social.rs:15-25 |
 | Toggle pet ability | KM | -- | stub | social.rs:31-41 |
 | Change pet stance | KM | -- | stub | social.rs:47-55 |
-| Pet following | KM | NPC AI (Follow) | -- | Needs a pet owner; the follow state itself exists for escort NPCs |
-| Pet combat AI | KM | NPC AI | -- | Inherits SGWMob |
+| Pet following | KM | NPC AI (Follow) | `npc_ai/pet/owner_follow.rs` | Follow band 2-5 u, teleport past 40 u or across a floor, once per 5 s (PT-05). KM until UAT (summon landed in PT-03) |
+| Pet combat AI | KM | NPC AI | `npc_ai/pet/` | Stances, defend-owner, owner-anchored leash, owner combat state (PT-05). KM until UAT (summon landed in PT-03) |
 
 ### 29. Minigames --- IM (was KM)
 

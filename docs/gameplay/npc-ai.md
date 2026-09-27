@@ -56,6 +56,9 @@ Fighting  -->  Leashing    (last target dead / gone / out of AoI for 5 s: target
                             threat list already empty: threat_empty)
 Leashing  -->  Idle        (walked home: leash_arrived; no route or 20 s timeout: leash_snap_fallback)
 Leashing  -->  Follow      (a follower reset in place whose leader is still in the space: follow_resumed, NA42)
+Any alive -->  Follow      (a pet, every turn it is not fighting: pet_follow; a pet's fight ends here,
+                            never in Leashing)
+Follow    -->  Fighting    (a pet's stance engages a target: pet_engage)
 Any alive -->  Dead        (HP -> 0; combat::mark_npc_dead)
 Dead      -->  Idle        (npc_respawn_tick promotes; respawn_at elapsed)
 Any alive -->  Despawning / Submit / Error  (SetNpcAiState content action)
@@ -490,6 +493,8 @@ The mob maintains a set distance and angle behind a target entity (used by pets 
 Evidence: `currentlyFollowing` (bool), `followTarget` (entity reference), `followMinDistance`, `followMaxDistance`, `followAngle`, `followMovementType` properties all defined in `.def`.
 
 **Runtime: an escort survives a fight (NA42).** A mob in Follow that takes a hit is preempted into Fighting and keeps its `follow_target_id`. When the fight ends, the leash resets it where it stands (it is never walked or snapped home) and returns it to Follow while its leader is still in the space; with the leader gone it clears the target and idles. Before NA42 every leash ended in Idle, which the dispatcher never promotes back to Follow, so one stray hit ended an escort for good; chain 1302 (click Zuritska to re-arm her follow) predates the fix and is now a harmless redundancy. A `being` follower such as Col Marsh never enters combat: `generate_threat` refuses beings, so a hit leaves him in Follow and still walking. None of the 24 seeded `being` templates has an ability set, so no being could have fought back anyway.
+
+**Pets (PT-05).** A pet (wire class `SGWPet`, an NPC with `PetState`) runs through the same tick with an owner-relative pre-pass ahead of the state match (`npc_ai/pet/`). Out of a fight it is always in Follow on its owner with a 2-5 u band, and it teleports beside the owner when more than 40 u behind or on another floor, at most once every 5 s. Its stance decides what it engages: Passive nothing (`generate_threat` refuses its threat, so even a hit does not engage it), Defensive whatever fights its owner or itself, Aggressive also its owner's target once the owner is in combat and hostile NPCs within 15 u. Its leash is measured from the owner, not `spawn_position`, and a fight ends straight back in Follow: no walk home, no evade, no heal. Its fights put the owner in combat. A pet is never hostile to players, is always ticked when Idle, and skips abilities its owner toggled off. See [pet-system.md](pet-system.md#pet-ai-pt-05).
 
 ### Submit (State 10)
 
