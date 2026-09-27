@@ -189,7 +189,8 @@ fn only_org(to_cell: Vec<BaseToCellMsg>) -> OrgBaseToCell {
 const WS_BO: [u8; 8] = [2, 0, 0, 0, 0x42, 0, 0x6F, 0];
 
 /// CAT-M-02: `organizationInviteByType` with a type above Command (2) names
-/// no organization. Refused at WARN, answered, and nothing reaches the cell.
+/// no organization. Refused with one INFO outcome row (`org_type_invalid`,
+/// with the session's identity), answered, and nothing reaches the cell.
 #[tokio::test]
 async fn invite_by_type_rejects_type_above_command() {
     for org_type in [3u8, 255] {
@@ -200,13 +201,18 @@ async fn invite_by_type_rejects_type_above_command() {
         let sent = transport.filter_to(ADDR.parse().unwrap());
         assert_eq!(sent.len(), 2, "type {org_type}: error code + line");
         assert_eq!(body(&sent[0])[8..13], [0, org_type, 0, 0, 0]);
-        assert!(capture
+        let row = capture
             .find_event(
-                Level::WARN,
+                Level::INFO,
                 "names no organization type",
-                "type_out_of_range"
+                "org_type_invalid",
             )
-            .is_some());
+            .expect("outcome row");
+        assert_eq!(row.target, "org");
+        assert!(row.has_field("event", "org.invite_by_type"));
+        assert!(row.has_field("outcome", "rejected"));
+        assert!(row.has_field("player_id", "77"), "{:?}", row.fields);
+        assert!(row.fields.contains_key("account_id"), "{:?}", row.fields);
     }
 }
 
@@ -262,4 +268,28 @@ async fn team_and_command_invite_by_type_are_not_forwarded() {
         assert!(to_cell.is_empty());
         assert_eq!(transport.len(), 2);
     }
+}
+
+/// Negative seam: with no cell channel the squad invite cannot be
+/// forwarded. WARN `org.squad_forward_failed` (`cell_unreachable`), the
+/// player still gets ORG-01's answer, and the squad action gets its one
+/// outcome row on the `squad` target, since the cell never saw it.
+#[tokio::test]
+async fn squad_forward_failure_warns_and_logs_the_outcome() {
+    let capture = LogCapture::install();
+    let payload = [&[0u8][..], &WS_BO].concat();
+    let transport = call(0xD0, &payload).await;
+    assert_eq!(transport.len(), 2, "answered");
+    let warn = capture
+        .find_event(Level::WARN, "could not reach the cell", "cell_unreachable")
+        .expect("WARN org.squad_forward_failed");
+    assert!(warn.has_field("event", "org.squad_forward_failed"));
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.target == "squad" && c.has_field("event", "squad.invite"))
+        .expect("squad outcome row");
+    assert_eq!(row.level, Level::INFO);
+    assert!(row.has_field("outcome", "rejected") && row.has_field("reason", "cell_unreachable"));
+    assert!(row.has_field("player_id", "77"));
 }

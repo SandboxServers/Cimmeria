@@ -104,11 +104,11 @@ pub(super) async fn handle_org_base_method(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     // The actor comes from this session, never from the payload.
-    let (player_id, entity_id) = {
+    let (account_id, player_id, entity_id) = {
         let clients = connected.lock().unwrap();
-        clients
-            .get(&addr)
-            .map_or((None, None), |c| (c.active_player_id, c.player_entity_id))
+        clients.get(&addr).map_or((None, None, None), |c| {
+            (Some(c.account_id), c.active_player_id, c.player_entity_id)
+        })
     };
 
     let call = match decode_org_base_method(msg_id, payload) {
@@ -119,6 +119,7 @@ pub(super) async fn handle_org_base_method(
                 event = "org.base_method_malformed",
                 %addr,
                 msg_id = format_args!("{msg_id:#04x}"),
+                account_id,
                 player_id,
                 entity_id,
                 reason = e.reason(),
@@ -138,6 +139,7 @@ pub(super) async fn handle_org_base_method(
             %addr,
             msg_id = format_args!("{msg_id:#04x}"),
             method = call.method_name(),
+            account_id,
             "organization base method from a session with no player entity"
         );
         return;
@@ -155,14 +157,18 @@ pub(super) async fn handle_org_base_method(
 
     if let OrgBaseCall::InviteByType { org_type, .. } = call {
         if OrgType::try_from(org_type).is_err() {
-            tracing::warn!(
+            // A refusal, so one INFO outcome row (the telemetry rule), not
+            // a WARN: the call decoded, its type byte names nothing.
+            tracing::info!(
                 target: "org",
-                event = "org.invite_by_type_rejected",
+                event = "org.invite_by_type",
+                outcome = "rejected",
+                reason = "org_type_invalid",
                 %addr,
+                account_id,
                 player_id,
                 entity_id,
                 org_type,
-                reason = "type_out_of_range",
                 "organizationInviteByType names no organization type"
             );
             reply(UNKNOWN_ORG_TYPE_TEXT).await;
@@ -177,6 +183,7 @@ pub(super) async fn handle_org_base_method(
             %addr,
             msg_id = format_args!("{msg_id:#04x}"),
             method = call.method_name(),
+            account_id,
             player_id,
             entity_id,
             instance_id = instance_id(&call),
@@ -195,6 +202,7 @@ pub(super) async fn handle_org_base_method(
             target: "org",
             event = "org.squad_forwarded",
             %addr,
+            account_id,
             player_id,
             entity_id,
             kind,
@@ -205,11 +213,24 @@ pub(super) async fn handle_org_base_method(
             target: "org",
             event = "org.squad_forward_failed",
             %addr,
+            account_id,
             player_id,
             entity_id,
             kind,
             reason = "cell_unreachable",
             "squad call could not reach the cell -- answering with feedback"
+        );
+        // The squad action never reached the cell, so the cell logs no
+        // outcome row for it; this is that row.
+        tracing::info!(
+            target: "squad",
+            event = if kind == "squad_kick" { "squad.kick" } else { "squad.invite" },
+            outcome = "rejected",
+            reason = "cell_unreachable",
+            account_id,
+            player_id,
+            entity_id,
+            "squad action rejected"
         );
         reply(ORG_NOT_AVAILABLE_TEXT).await;
     }
