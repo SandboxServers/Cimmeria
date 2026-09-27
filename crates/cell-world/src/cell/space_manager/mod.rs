@@ -31,6 +31,8 @@ mod crossing_hold_state;
 mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
+mod interact_range;
+pub use interact_range::{interact_range, InteractRangeFail, MAX_INTERACT_DISTANCE};
 mod lab_snapshots;
 mod lifecycle;
 mod movement_telemetry;
@@ -49,6 +51,8 @@ mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
 mod step_region_replay;
+mod vault_access;
+pub use vault_access::{vault_access, vault_move_allowed, VaultReject};
 mod vault_session_end;
 pub use vault_session_end::log_vault_session_closed;
 /// Test hook: the spawn-time `use_cover` default (`spawn::resolve_use_cover`),

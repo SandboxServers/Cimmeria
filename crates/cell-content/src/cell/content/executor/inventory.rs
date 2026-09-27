@@ -7,7 +7,8 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{vault_access, SpaceManager};
+use cimmeria_wire::cell::vault::VaultAccess;
 
 /// Determine the inventory container for an item from the DB-loaded map.
 /// Falls back to INV_Main (1) if the item has no explicit container_sets entry.
@@ -154,6 +155,7 @@ pub(super) async fn remove(
     chain_id: i64,
     params: &HashMap<String, Value>,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     // Prefer the originating inventory `instance_id` if the
     // chain context carries one (set by `fire_item_use` —
@@ -194,6 +196,10 @@ pub(super) async fn remove(
                 quantity: count,
                 // Content-chain remove is not GM-sourced — no GM feedback line.
                 notify_gm: false,
+                // The instance the player just used: in the vault (17) only
+                // if the use passed a vault session, so it is consumed under
+                // the same live verdict (BV-03).
+                vault: vault_access(entity_id, space_mgr),
             })
             .await
         }
@@ -211,6 +217,11 @@ pub(super) async fn remove(
                 player_id,
                 type_id: item_id,
                 count,
+                // A by-type removal (a turn-in) never reaches into the
+                // vault, whether or not its window is open: the bank is
+                // storage only (D-BV04), so what a chain consumes must not
+                // depend on UI state (BV-03 review).
+                vault: VaultAccess::NO_SESSION,
             })
             .await
         }

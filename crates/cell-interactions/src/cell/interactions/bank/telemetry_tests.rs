@@ -194,10 +194,11 @@ async fn missing_banker_logs_vault_open_rejected_banker_missing() {
     assert!(mgr.get_entity(PLAYER).unwrap().vault_session.is_none());
 }
 
-/// Player lookup miss on `.bank`: a WARN negative log with
-/// `reason=player_entity_missing` on the crate's own target, and no `bank`
-/// row (the catalog's `vault_open_rejected` reasons are the four
-/// player-visible refusals only).
+/// Player lookup miss on `.bank`: WARN `vault_open_rejected
+/// reason=player_entity_missing` under the `bank` target (BV-03 moved it
+/// there from the crate's own target, so a query on `bank` finds every open
+/// refusal). It carries `entity_id` only: the account and player ids are
+/// read from the entity that is missing.
 #[tokio::test]
 async fn gm_open_for_a_missing_entity_logs_player_entity_missing() {
     let mut mgr = two_space_manager();
@@ -206,19 +207,17 @@ async fn gm_open_for_a_missing_entity_logs_player_entity_missing() {
 
     assert!(!open_vault_gm(4242, &tx, &mut mgr).await);
 
-    assert!(
-        capture.all().iter().all(|c| c.target != "bank"),
-        "{:#?}",
-        capture.all()
-    );
-    let miss = capture
-        .all()
-        .into_iter()
-        .find(|c| c.has_field("reason", "player_entity_missing"))
-        .expect("the lookup miss is logged");
+    let found = rows(&capture, "vault_open_rejected");
+    assert_eq!(found.len(), 1, "exactly one row: {:#?}", capture.all());
+    let miss = &found[0];
     assert_eq!(miss.level, Level::WARN);
-    assert!(miss.target.starts_with("cimmeria_cell_interactions"));
-    assert!(miss.has_field("entity_id", "4242"));
+    assert!(
+        miss.has_field("reason", "player_entity_missing"),
+        "{miss:#?}"
+    );
+    assert!(miss.has_field("entity_id", "4242"), "{miss:#?}");
+    assert!(!miss.fields.contains_key("account_id"), "{miss:#?}");
+    assert!(!miss.fields.contains_key("player_id"), "{miss:#?}");
 }
 
 /// Closed base channel on the open: WARN `vault_open_send_failed

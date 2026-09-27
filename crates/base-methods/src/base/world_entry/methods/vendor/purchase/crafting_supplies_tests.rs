@@ -8,6 +8,7 @@
 //! the entity id) and `0x7000_CBA1` (player).
 
 use cimmeria_entity::crafting::CraftingState;
+use cimmeria_wire::cell::vault::VaultAccess;
 
 use super::tests::{cleanup, insert_account_and_player, make_state};
 use super::*;
@@ -54,6 +55,7 @@ async fn use_item(pool: &PgPool, item_id: i32) {
         PLAYER_ID,
         item_id,
         0,
+        VaultAccess::NO_SESSION,
         &Some(Arc::new(pool.clone())),
         &None,
         &transport,

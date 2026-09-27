@@ -267,7 +267,10 @@ async fn execute_one(
                 .await;
         }
         Action::RemoveItem { item_id, count } => {
-            inventory::remove(item_id, count, entity_id, player_id, chain_id, params, tx).await;
+            inventory::remove(
+                item_id, count, entity_id, player_id, chain_id, params, tx, space_mgr,
+            )
+            .await;
         }
         Action::ChangeStat {
             stat_id,

@@ -13,6 +13,7 @@ mod ammo_change;
 mod move_item;
 mod slot_swap;
 mod use_item;
+mod vault_verdict;
 
 fn make_test_space_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);

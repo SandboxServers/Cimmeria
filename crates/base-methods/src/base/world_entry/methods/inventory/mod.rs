@@ -11,4 +11,4 @@ pub use core::{
     send_full_inventory_resync,
 };
 pub use grant::handle_grant_item;
-pub use move_::handle_move_inventory_item;
+pub use move_::{handle_move_inventory_item, handle_move_inventory_item_with_vault};

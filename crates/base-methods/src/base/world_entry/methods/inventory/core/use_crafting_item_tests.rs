@@ -6,6 +6,7 @@
 //! Sentinels in the crafting `0x7000_Cxxx` block: `0x7000_CEC0..0x7000_CECF`
 //! (account, player pairs; the account id doubles as the entity id).
 
+use cimmeria_wire::cell::vault::VaultAccess;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -132,6 +133,7 @@ async fn a_guide_is_used_by_crafting_not_on_item_use() {
         player_id,
         item_id,
         0,
+        VaultAccess::NO_SESSION,
         &db_pool,
         &None,
         &transport,
@@ -218,6 +220,7 @@ async fn use_through_entry(
         player_id,
         item_id,
         0,
+        VaultAccess::NO_SESSION,
         &Some(Arc::new(pool.clone())),
         &None,
         &s.1,

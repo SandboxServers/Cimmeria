@@ -12,9 +12,11 @@ use tokio::sync::mpsc;
 
 use super::super::super::super::super::ConnectedClientState;
 use super::super::super::vendor::helpers::sync_bandolier_after_inventory_change;
+use super::access::accessible_containers;
 use super::{send_full_inventory_update, send_on_remove_item, InventoryInstanceWithIdRow};
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
+use cimmeria_wire::cell::vault::VaultAccess;
 
 /// Resolve a player's first inventory instance with the given design
 /// `type_id` and remove `count` from it (delete the row when the stack is
@@ -37,6 +39,7 @@ pub async fn handle_remove_inventory_item_by_type(
     player_id: i32,
     type_id: i32,
     count: i32,
+    vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -90,13 +93,19 @@ pub async fn handle_remove_inventory_item_by_type(
     // The SELECT also pulls `item_id` so we don't need a second roundtrip
     // to look it up before sending the targeted onRemoveItem packet on
     // full removal.
+    //
+    // Only containers the player can reach are searched (BV-03): never
+    // buyback, and the vault only with a vault session open.
+    let containers = accessible_containers(&vault);
     let source = match sqlx::query_as::<_, InventoryInstanceWithIdRow>(
         "SELECT item_id, stack_size, container_id, slot_id \
          FROM sgw_inventory WHERE character_id = $1 AND type_id = $2 \
+           AND container_id = ANY($3) \
          ORDER BY container_id, slot_id LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)
     .bind(type_id)
+    .bind(&containers)
     .fetch_optional(&mut *tx)
     .await
     {
@@ -117,7 +126,8 @@ pub async fn handle_remove_inventory_item_by_type(
         tracing::warn!(
             player_id,
             type_id,
-            "RemoveInventoryItemByType: no instance of this design id owned by character"
+            vault_open = vault.is_open(),
+            "RemoveInventoryItemByType: no instance of this design id in a container the character can reach"
         );
         return;
     };

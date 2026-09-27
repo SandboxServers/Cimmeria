@@ -13,9 +13,12 @@ use tokio::sync::mpsc;
 use super::super::super::super::super::gm_feedback::send_gm_feedback_to_client;
 use super::super::super::super::super::ConnectedClientState;
 use super::super::super::vendor::helpers::sync_bandolier_after_inventory_change;
+use super::super::move_::player_accessible;
+use super::access::{refuse_inaccessible, AccessOp};
 use super::{send_full_inventory_update, send_on_remove_item, InventoryInstanceRow};
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
+use cimmeria_wire::cell::vault::VaultAccess;
 
 /// Remove an inventory item from player inventory and sync client.
 #[tracing::instrument(
@@ -30,6 +33,7 @@ pub async fn handle_remove_inventory_item(
     item_id: i32,
     quantity: i32,
     notify_gm: bool,
+    vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -96,6 +100,27 @@ pub async fn handle_remove_inventory_item(
         );
         return;
     };
+
+    // Only an item the player can reach may be removed (BV-03): not one in
+    // buyback, and one in the vault only with a vault session open. The GM
+    // `gmRemoveItem` path is held to the same rule for the GM's own items.
+    if !player_accessible(source.container_id, &vault) {
+        let _ = tx.rollback().await;
+        refuse_inaccessible(
+            AccessOp::Remove,
+            entity_id,
+            player_id,
+            item_id,
+            source.container_id,
+            &vault,
+            pool,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        return;
+    }
 
     let removed_all = quantity >= source.stack_size;
     let result = if removed_all {

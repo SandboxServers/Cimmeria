@@ -311,11 +311,7 @@ async fn refusal_of_an_unknown_item_sends_nothing() {
 
     let forged = owned + 1_000_000;
     let rejected = capture
-        .find_event(
-            Level::WARN,
-            "move_rejected",
-            "target_container_needs_vault_session",
-        )
+        .find_event(Level::WARN, "move_rejected", "no_vault_session")
         .expect("the refusal is still logged");
     assert_eq!(rejected.target, "bank");
     assert_fields(

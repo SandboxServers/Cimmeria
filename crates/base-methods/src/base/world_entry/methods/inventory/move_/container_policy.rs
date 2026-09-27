@@ -23,7 +23,11 @@ use cimmeria_entity::inventory::{
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
+use cimmeria_wire::cell::vault::VaultAccess;
+
 use super::super::core::send_inventory_item_update_via;
+use super::bank_rules::{vault_session_refusal, MoveRefusal};
+use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::base::ConnectedClientState;
 
 /// Whether a player may move an item into or out of a container.
@@ -34,9 +38,9 @@ pub(crate) enum Movable {
     /// Never movable by the player. The container is owned by a service
     /// (vendor buyback, auction escrow, org vaults) that moves items itself.
     No,
-    /// Movable only while the player has a vault session open. BV-01 has no
-    /// session, so the move path treats this as [`Movable::No`]; BV-03
-    /// wires it to the session.
+    /// Movable only while the player has a vault session open and, at a
+    /// Banker, stands within the interact distance of it: the cell's
+    /// [`VaultAccess`] verdict on the move (BV-03).
     VaultSession,
 }
 
@@ -55,30 +59,49 @@ pub(crate) fn player_movable(container_id: i32) -> Movable {
     }
 }
 
+/// May the player use or remove an item sitting in `container_id`
+/// (`useItem`, `removeItem`, content `RemoveItem`, `gmRemoveItem`)? The
+/// carried containers 1-15 always; the vault (17) only while the cell's
+/// verdict says a session is open; never buyback (16), auction escrow or the
+/// org vaults. One rule for every use and removal path, beside the move
+/// allowlist (BV-03).
+pub(crate) fn player_accessible(container_id: i32, vault: &VaultAccess) -> bool {
+    match player_movable(container_id) {
+        Movable::Yes => true,
+        Movable::VaultSession => vault.opens_personal_vault(),
+        Movable::No => false,
+    }
+}
+
 /// Which end of the move failed the allowlist.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum MoveEnd {
     Source,
     Target,
 }
 
-/// The `reason` field of a refused move. Stable: tests and log queries pin
-/// these strings.
-fn refusal_reason(end: MoveEnd, movable: Movable) -> &'static str {
-    match (end, movable) {
-        (MoveEnd::Source, Movable::VaultSession) => "source_container_needs_vault_session",
-        (MoveEnd::Target, Movable::VaultSession) => "target_container_needs_vault_session",
-        (MoveEnd::Source, _) => "source_container_not_player_movable",
-        (MoveEnd::Target, _) => "target_container_not_player_movable",
+impl MoveEnd {
+    /// `source` or `target`, for the log.
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            MoveEnd::Source => "source",
+            MoveEnd::Target => "target",
+        }
     }
 }
 
-/// `Some(verdict)` when `container_id` is not movable right now. BV-01 has
-/// no vault session, so `VaultSession` refuses too.
-pub(super) fn refusal(container_id: i32) -> Option<Movable> {
+/// The refusal for one end of a move, or `None` when `container_id` is
+/// movable right now: always for `Yes`, never for `No`, and for the vault
+/// when the cell's verdict is open.
+pub(super) fn container_refusal(
+    end: MoveEnd,
+    container_id: i32,
+    vault: &VaultAccess,
+) -> Option<MoveRefusal> {
     match player_movable(container_id) {
         Movable::Yes => None,
-        verdict @ (Movable::No | Movable::VaultSession) => Some(verdict),
+        Movable::No => Some(MoveRefusal::NotPlayerMovable(end)),
+        Movable::VaultSession => vault_session_refusal(end, vault),
     }
 }
 
@@ -95,11 +118,12 @@ struct RefusalContext {
     lookup_failed: bool,
 }
 
-/// Refuse a move: log it under the `bank` target, then resend the dragged
-/// item so the client snaps it back to where the server still has it. The
-/// legacy server did the same (`Inventory.py:377-382`: mark the item dirty,
-/// then flush). No `onErrorCode` exists for "cannot move item", so the
-/// snap-back is the whole of the feedback.
+/// Refuse a move: log it under the `bank` target, send the refusal's
+/// feedback line when it has one (every bank refusal does), then resend the
+/// dragged item so the client snaps it back to where the server still has
+/// it. The legacy server did the same (`Inventory.py:377-382`: mark the item
+/// dirty, then flush). No `onErrorCode` exists for "cannot move item", so
+/// the chat line and the snap-back are the whole of the feedback.
 ///
 /// Both happen under two locks, held until the packet has gone:
 ///
@@ -128,8 +152,8 @@ struct RefusalContext {
 /// `quantity` is the requested quantity as sent (`<= 0` means the whole
 /// stack). The caller has already rolled back any transaction it opened.
 pub(super) async fn refuse_move(
-    end: MoveEnd,
-    verdict: Movable,
+    refusal: MoveRefusal,
+    vault: &VaultAccess,
     entity_id: u32,
     player_id: i32,
     item_id: i32,
@@ -142,7 +166,8 @@ pub(super) async fn refuse_move(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let refusal = Refusal {
-        reason: refusal_reason(end, verdict),
+        refusal,
+        vault: *vault,
         entity_id,
         player_id,
         item_id,
@@ -154,6 +179,9 @@ pub(super) async fn refuse_move(
         Some(mut tx) => {
             let context = refusal_context(&mut *tx, entity_id, player_id, item_id).await;
             if refusal.log(&context) {
+                refusal
+                    .send_feedback(transport, connected, entity_to_addr)
+                    .await;
                 refusal
                     .resend(&mut *tx, &context, transport, connected, entity_to_addr)
                     .await;
@@ -175,6 +203,9 @@ pub(super) async fn refuse_move(
             // The context read is only for the log, so it needs no lock.
             let context = refusal_context(pool.as_ref(), entity_id, player_id, item_id).await;
             if refusal.log(&context) {
+                refusal
+                    .send_feedback(transport, connected, entity_to_addr)
+                    .await;
                 refusal.skip_unlocked_resend(&context);
             }
         }
@@ -183,7 +214,8 @@ pub(super) async fn refuse_move(
 
 /// The fields of one refused move that the caller knows.
 struct Refusal {
-    reason: &'static str,
+    refusal: MoveRefusal,
+    vault: VaultAccess,
     entity_id: u32,
     player_id: i32,
     item_id: i32,
@@ -211,8 +243,13 @@ impl Refusal {
             source_slot_id = context.source_slot_id,
             target_container_id = self.target_container_id,
             target_slot_id = self.target_slot_id,
-            reason = self.reason,
-            "move_rejected: container is not player-movable; item stays put (snap-back follows unless move_resync_skipped)"
+            reason = self.refusal.reason(),
+            vault_end = self.refusal.vault_end(),
+            bank_slots = self.refusal.bank_slots(),
+            banker_id = self.vault.banker_id(),
+            gm_override = self.vault.gm_override(),
+            distance = self.vault.distance(),
+            "move_rejected: item stays put (snap-back follows unless move_resync_skipped)"
         );
         if context.type_id.is_some() || context.lookup_failed {
             // Ownership unknown after a failed lookup: try the resend, which
@@ -231,6 +268,40 @@ impl Refusal {
              nothing to snap back"
         );
         false
+    }
+
+    /// Tell the player why, before the snap-back. Only the bank refusals
+    /// have a line.
+    async fn send_feedback(
+        &self,
+        transport: &Arc<dyn Transport>,
+        connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    ) {
+        let Some(text) = self.refusal.feedback() else {
+            return;
+        };
+        let addr = entity_to_addr
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&self.entity_id).copied());
+        let Some(addr) = addr else {
+            tracing::warn!(
+                target: "bank",
+                event = "bank_feedback_send_failed",
+                player_id = self.player_id,
+                entity_id = self.entity_id,
+                item_id = self.item_id,
+                reason = "no_client_address",
+                "bank_feedback_send_failed: no client address for the refusal line"
+            );
+            return;
+        };
+        let ctx = FeedbackCtx {
+            transport,
+            connected,
+        };
+        send_feedback_line(&ctx, addr, &text).await;
     }
 
     /// The locks could not be taken, so the item is not resent (see
@@ -396,6 +467,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_entity::cell_entity::VaultScope;
 
     /// Pins the allowlist per container. A change here changes what a
     /// player can drag where, so it must be deliberate.
@@ -429,33 +501,64 @@ mod tests {
         assert_eq!(player_movable(INV_CRAFTING), Movable::Yes);
     }
 
-    /// BV-01 has no vault session, so the vault refuses like any other
-    /// non-movable container.
+    const OPEN: VaultAccess = VaultAccess::Open {
+        scope: VaultScope::Personal,
+        banker_id: Some(7),
+        distance: Some(2.0),
+    };
+
+    /// The vault follows the cell's verdict; buyback refuses with or
+    /// without a session; the carried bags never ask.
     #[test]
-    fn vault_session_refuses_without_a_session() {
-        assert_eq!(refusal(INV_BANK), Some(Movable::VaultSession));
-        assert_eq!(refusal(INV_BUYBACK), Some(Movable::No));
-        assert_eq!(refusal(INV_MAIN), None);
-        assert_eq!(refusal(INV_CRAFTING), None);
+    fn vault_refuses_without_a_session_and_opens_with_one() {
+        let closed = VaultAccess::NO_SESSION;
+        assert_eq!(
+            container_refusal(MoveEnd::Target, INV_BANK, &closed).map(MoveRefusal::reason),
+            Some("no_vault_session")
+        );
+        assert_eq!(container_refusal(MoveEnd::Target, INV_BANK, &OPEN), None);
+        assert_eq!(
+            container_refusal(MoveEnd::Source, INV_BUYBACK, &OPEN),
+            Some(MoveRefusal::NotPlayerMovable(MoveEnd::Source))
+        );
+        assert_eq!(container_refusal(MoveEnd::Source, INV_MAIN, &closed), None);
+        assert_eq!(
+            container_refusal(MoveEnd::Target, INV_CRAFTING, &closed),
+            None
+        );
     }
 
+    /// A Team or Command session does not open the personal vault, for a
+    /// move or for a use: the verdict's scope must be `Personal`.
     #[test]
-    fn refusal_reasons_are_stable() {
-        assert_eq!(
-            refusal_reason(MoveEnd::Source, Movable::No),
-            "source_container_not_player_movable"
-        );
-        assert_eq!(
-            refusal_reason(MoveEnd::Target, Movable::No),
-            "target_container_not_player_movable"
-        );
-        assert_eq!(
-            refusal_reason(MoveEnd::Target, Movable::VaultSession),
-            "target_container_needs_vault_session"
-        );
-        assert_eq!(
-            refusal_reason(MoveEnd::Source, Movable::VaultSession),
-            "source_container_needs_vault_session"
-        );
+    fn an_org_session_does_not_open_the_personal_vault() {
+        for scope in [VaultScope::Team, VaultScope::Command] {
+            let org = VaultAccess::Open {
+                scope,
+                banker_id: Some(7),
+                distance: Some(1.0),
+            };
+            assert_eq!(
+                container_refusal(MoveEnd::Target, INV_BANK, &org).map(MoveRefusal::reason),
+                Some("vault_scope_mismatch"),
+                "{scope:?}"
+            );
+            assert!(!player_accessible(INV_BANK, &org), "{scope:?}");
+        }
+    }
+
+    /// Use and removal: 1-15 always, 17 only with a session, buyback and
+    /// the service containers never.
+    #[test]
+    fn player_accessible_per_container() {
+        let closed = VaultAccess::NO_SESSION;
+        for container_id in 1..=15 {
+            assert!(player_accessible(container_id, &closed), "{container_id}");
+        }
+        assert!(!player_accessible(INV_BANK, &closed));
+        assert!(player_accessible(INV_BANK, &OPEN));
+        for container_id in [INV_BUYBACK, 18, 19, 20, 0, -1, 21] {
+            assert!(!player_accessible(container_id, &OPEN), "{container_id}");
+        }
     }
 }

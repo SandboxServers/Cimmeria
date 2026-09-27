@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use super::feedback::send_gm_feedback;
 use super::{forward_to_base, read_i32};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{vault_access, SpaceManager};
 use crate::mercury::read_wstring;
 
 /// Upper bound on a single `gmGiveItem` grant. The audit required the chat-
@@ -500,6 +500,9 @@ pub(super) async fn handle_remove_item(
             item_id,
             quantity: i32::from(quantity),
             notify_gm: true,
+            // The GM's own vault is reachable only with `.bank` (or a Banker)
+            // open, like any player's (BV-03).
+            vault: vault_access(entity_id, space_mgr),
         },
         "gmRemoveItem",
     )

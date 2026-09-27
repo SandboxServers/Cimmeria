@@ -60,3 +60,4 @@
 - [reference_duel_harm_gate.md](reference_duel_harm_gate.md) — Duel harm gate authority (SS-D2) + side paths that skip it: pulses, auto-cycle, pet defend sweep, launch same-space
 - [reference_org_lock_authority.md](reference_org_lock_authority.md) — ORG-02 authority map: authz-by-convention gap, no leader UPDATE guard, at-most-once audit export
 - [project_mail_expiry_ss_m4_review.md](project_mail_expiry_ss_m4_review.md) — SS-M4 expiry/quarantine cleared shape; no GM release, archive-storage question
+- [project_bank_vault_bv03_review.md](project_bank_vault_bv03_review.md) — BV-03 vault moves: cleared verdict/TOCTOU shape, three fixed findings, bank_slots grow-only invariant for BV-05

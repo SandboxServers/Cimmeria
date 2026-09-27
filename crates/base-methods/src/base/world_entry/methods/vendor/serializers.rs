@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use cimmeria_entity::inventory::INV_BANK;
 use sqlx::{Postgres, Transaction};
 
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
@@ -184,10 +185,33 @@ pub async fn reserve_free_inventory_slots(
     let occupied_slots: Vec<i32> = rows.into_iter().map(|row| row.slot_id).collect();
     Ok(free_inventory_slots(
         bag_min_slot(container_id),
-        bag_max_slots(container_id),
+        reservable_slots(tx, player_id, container_id).await?,
         &occupied_slots,
         needed,
     ))
+}
+
+/// The slot count a reservation may use: the container's capacity, except
+/// the personal vault, whose limit is the player's own `bank_slots` (40 to
+/// 100), not the ceiling of 100 (BV-03). Read in the caller's transaction.
+/// Grants into 17 are refused before they get here (`grant_container_refused`);
+/// this bound keeps any future path that reserves vault slots honest.
+async fn reservable_slots(
+    tx: &mut Transaction<'_, Postgres>,
+    player_id: i32,
+    container_id: i32,
+) -> Result<i32, sqlx::Error> {
+    let capacity = bag_max_slots(container_id);
+    if container_id != INV_BANK {
+        return Ok(capacity);
+    }
+    let bank_slots: Option<i16> =
+        sqlx::query_scalar("SELECT bank_slots FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    // No player row: nothing is reservable.
+    Ok(bank_slots.map_or(0, |n| capacity.min(i32::from(n))))
 }
 
 #[cfg(test)]
