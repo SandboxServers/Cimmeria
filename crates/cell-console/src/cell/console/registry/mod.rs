@@ -187,6 +187,18 @@ const MUTE_ARGS: &[ArgSpec] = &[
     arg("reason", "str", "Optional. Logged for the other GMs, not shown to the player"),
 ];
 const UNMUTE_ARGS: &[ArgSpec] = &[arg("name", "str", "Required. An online, muted character")];
+/// `.craftkit` and `.learnblueprint` have no legacy docstring; these rows
+/// are written from the commands themselves.
+const CRAFTKIT_ARGS: &[ArgSpec] = &[
+    arg(
+        "blueprintId",
+        "int",
+        "Blueprint whose component set 1 the target gets",
+    ),
+    arg("count", "int", "Crafts' worth to grant, 1-10 (default 1)"),
+];
+const LEARNBLUEPRINT_ARGS: &[ArgSpec] =
+    &[arg("blueprintId", "int", "Blueprint to teach the target")];
 
 /// The GM mail tools (SS-U1) have no legacy docstring.
 const MAIL_ARGS: &[ArgSpec] = &[
@@ -243,6 +255,8 @@ pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
         "mail" => MAIL_ARGS,
         "mailbox" => MAILBOX_ARGS,
         "mail_expire" => MAIL_EXPIRE_ARGS,
+        "craftkit" => CRAFTKIT_ARGS,
+        "learnblueprint" => LEARNBLUEPRINT_ARGS,
         _ => &[],
     }
 }

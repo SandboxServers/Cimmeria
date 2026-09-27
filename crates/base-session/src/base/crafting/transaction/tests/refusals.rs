@@ -291,6 +291,7 @@ async fn no_database_is_reported_to_the_player() {
         account_id: 76,
         player_id: 78,
         entity_id: 77,
+        gm_entity_id: None,
     };
     let result = apply_craft_transaction(&env, &ids, &CraftTransaction::default()).await;
 
@@ -444,6 +445,7 @@ async fn a_failed_inventory_read_is_logged_and_sends_nothing() {
         account_id: 76,
         player_id: 78,
         entity_id: 77,
+        gm_entity_id: None,
     };
 
     resync_inventory(&env, &pool, &ids).await;

@@ -39,6 +39,8 @@
 //! - [`live_db_spawnlist_sequence`]: live-DB guard that the `spawnlist` id
 //!   sequence starts past every reserved campaign spawn block, so a row
 //!   inserted without an id (`.savespawn`) never takes a reserved one.
+//! - [`live_db_seed_sequences`]: the id sequences of the tables campaigns
+//!   seed explicit id blocks into allocate past every seeded row.
 //! - [`npc_ability_animation`]: live-DB seed linter (NA43) that every NPC combat
 //!   ability resolves one Ability_End sequence, that 559 resolves the SMG
 //!   burst, and that an armed hostile fires its weapon's ranged attack.
@@ -55,4 +57,5 @@ mod live_db_pet_roster;
 mod live_db_pet_summons;
 mod live_db_pet_trainer;
 mod live_db_spawnlist_sequence;
+mod live_db_seed_sequences;
 mod npc_ability_animation;

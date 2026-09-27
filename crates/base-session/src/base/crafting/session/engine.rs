@@ -183,6 +183,7 @@ impl CraftingSessions {
                 account_id: env.account_of(entity_id),
                 player_id,
                 entity_id,
+                gm_entity_id: None,
             };
             log_dropped(&ids, DropReason::NotConnected, "submit", &[(job_id, verb)]);
             return SubmitOutcome::NotConnected;
@@ -193,6 +194,7 @@ impl CraftingSessions {
             account_id: owner.account_id,
             player_id,
             entity_id,
+            gm_entity_id: None,
         };
         let (enqueued, resync, queue_len, stale) = {
             let mut sessions = self.sessions.lock().unwrap();
@@ -212,6 +214,7 @@ impl CraftingSessions {
                         account_id: session.account_id(),
                         player_id: session.player_id(),
                         entity_id,
+                        gm_entity_id: None,
                     };
                     stale = Some((old, held));
                 }
@@ -282,6 +285,7 @@ impl CraftingSessions {
                 account_id: session.account_id(),
                 player_id: session.player_id(),
                 entity_id,
+                gm_entity_id: None,
             };
             (
                 session.take_due(job_id, now),
@@ -409,6 +413,7 @@ impl CraftingSessions {
             account_id: session.account_id(),
             player_id: session.player_id(),
             entity_id,
+            gm_entity_id: None,
         };
         log_dropped(&ids, reason, cause, &held);
         held.len()

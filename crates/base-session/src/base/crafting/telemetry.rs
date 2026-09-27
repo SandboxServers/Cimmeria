@@ -125,6 +125,10 @@ pub struct JobIds {
     pub account_id: u32,
     pub player_id: i32,
     pub entity_id: u32,
+    /// The GM who ran the command, when the transaction is a GM grant
+    /// rather than the player's own induction. Carried on the transaction
+    /// and client-sync events; omitted for a player's job.
+    pub gm_entity_id: Option<u32>,
 }
 
 /// How an induction job ended: the `outcome` label of
@@ -200,6 +204,7 @@ pub async fn send_to_player(
             job_id = ids.job_id,
             account_id = ids.account_id,
             player_id = ids.player_id,
+            gm_entity_id = ids.gm_entity_id,
             entity_id,
             what,
             method,
@@ -214,6 +219,7 @@ pub async fn send_to_player(
         job_id = ids.job_id,
         account_id = ids.account_id,
         player_id = ids.player_id,
+        gm_entity_id = ids.gm_entity_id,
         entity_id,
         what,
         method,

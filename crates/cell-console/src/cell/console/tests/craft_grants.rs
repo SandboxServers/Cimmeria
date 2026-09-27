@@ -133,3 +133,89 @@ async fn non_gm_grants_forward_nothing() {
         assert!(grants(&msgs).is_empty(), "{line}: {msgs:?}");
     }
 }
+
+/// With the base channel closed, the grant cannot be queued: a WARN
+/// `forward_failed` carrying the target's `account_id`, `player_id` and
+/// `entity_id`, and the GM in `gm_entity_id`.
+#[tokio::test]
+async fn a_grant_the_base_cannot_receive_warns_with_the_canonical_identity() {
+    let capture = crate::test_support::LogCapture::install();
+    let (mut mgr, gm) = with_player_target(2);
+    mgr.get_entity_mut(TARGET).unwrap().account_id = Some(4303);
+    let (tx, rx) = mpsc::channel(64);
+    drop(rx);
+    handle_chat_message(
+        gm,
+        "Speaker",
+        0,
+        CHAN_SAY,
+        ".craftkit 25",
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+    )
+    .await;
+
+    let e = capture
+        .find_message(
+            tracing::Level::WARN,
+            "GM crafting grant could not be queued",
+        )
+        .expect("forward_failed WARN");
+    assert_eq!(e.target, "crafting");
+    for (field, value) in [
+        ("event", "forward_failed".to_string()),
+        ("kind", "gm_craft_grant".to_string()),
+        ("account_id", "4303".to_string()),
+        ("player_id", TARGET_PLAYER_ID.to_string()),
+        ("entity_id", TARGET.to_string()),
+        ("gm_entity_id", gm.to_string()),
+    ] {
+        assert!(e.has_field(field, &value), "{field}: {e:#?}");
+    }
+}
+
+/// `.help craftkit` and `.help learnblueprint` list their arguments, the
+/// count marked optional.
+#[tokio::test]
+async fn help_lists_the_grant_arguments() {
+    for (command, want) in [
+        (
+            "craftkit",
+            vec![
+                "    blueprintId (int): Blueprint whose component set 1 the target gets",
+                "    [count] (int): Crafts' worth to grant, 1-10 (default 1)",
+            ],
+        ),
+        (
+            "learnblueprint",
+            vec!["    blueprintId (int): Blueprint to teach the target"],
+        ),
+    ] {
+        let (mut mgr, gm, _npc) = setup();
+        let (tx, mut rx) = mpsc::channel(64);
+        crate::cell::console::handle_console_command(
+            gm,
+            &format!(".help {command}"),
+            &tx,
+            &mut mgr,
+            &ChainEngine::new(),
+        )
+        .await;
+        let lines: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| super::decode_feedback(&m))
+            .collect();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with(&format!(".{command}: "))),
+            "{lines:?}"
+        );
+        for line in want {
+            assert!(
+                lines.iter().any(|l| l == line),
+                "{command}: {line:?} in {lines:?}"
+            );
+        }
+    }
+}

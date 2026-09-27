@@ -78,5 +78,12 @@ INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquada
 -- Name: item_list_items_item_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('item_list_items_item_id_seq', 7, true);
+-- Past every seeded row, never lowered. Several campaigns seed explicit id
+-- blocks into this table (see docs/analysis/*/), so a fixed value here goes
+-- stale the moment one of them lands above it, and the next default id
+-- collides with a seeded row.
+SELECT pg_catalog.setval(
+    'item_list_items_item_id_seq',
+    GREATEST((SELECT MAX(item_id) FROM item_list_items), (SELECT last_value FROM item_list_items_item_id_seq)),
+    true);
 

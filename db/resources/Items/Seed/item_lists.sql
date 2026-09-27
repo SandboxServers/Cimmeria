@@ -18,5 +18,12 @@ INSERT INTO item_lists (item_list_id, name) VALUES (310, 'Debug hub crafting sup
 -- Name: item_lists_item_list_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('item_lists_item_list_id_seq', 2, true);
+-- Past every seeded row, never lowered. Several campaigns seed explicit id
+-- blocks into this table (see docs/analysis/*/), so a fixed value here goes
+-- stale the moment one of them lands above it, and the next default id
+-- collides with a seeded row.
+SELECT pg_catalog.setval(
+    'item_lists_item_list_id_seq',
+    GREATEST((SELECT MAX(item_list_id) FROM item_lists), (SELECT last_value FROM item_lists_item_list_id_seq)),
+    true);
 

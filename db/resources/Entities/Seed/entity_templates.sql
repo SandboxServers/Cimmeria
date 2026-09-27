@@ -1093,5 +1093,12 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- Name: entity_templates_template_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('entity_templates_template_id_seq', 304, true);
+-- Past every seeded row, never lowered. Several campaigns seed explicit id
+-- blocks into this table (see docs/analysis/*/), so a fixed value here goes
+-- stale the moment one of them lands above it, and the next default id
+-- collides with a seeded row.
+SELECT pg_catalog.setval(
+    'entity_templates_template_id_seq',
+    GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq)),
+    true);
 

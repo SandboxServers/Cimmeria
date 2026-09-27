@@ -195,6 +195,7 @@ async fn a_failed_client_send_is_a_warning() {
         account_id: ACCOUNT_ID,
         player_id: PLAYER_ID,
         entity_id: ENTITY,
+        gm_entity_id: None,
     };
     assert!(!send_to_player(&env, &ids, 12, &[], "induction_timer").await);
     let e = capture
@@ -290,6 +291,7 @@ async fn a_late_start_for_a_dropped_job_sends_no_bar() {
         account_id: ACCOUNT_ID,
         player_id: PLAYER_ID,
         entity_id: ENTITY,
+        gm_entity_id: None,
     };
     let started = Started {
         job_id: scheduled[0].job_id,

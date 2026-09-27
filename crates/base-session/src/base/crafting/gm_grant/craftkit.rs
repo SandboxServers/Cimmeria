@@ -179,6 +179,7 @@ pub(super) async fn handle_craftkit(
         account_id: ids.account_id.unwrap_or(0),
         player_id: ids.player_id,
         entity_id: ids.entity_id,
+        gm_entity_id: Some(ids.gm_entity_id),
     };
     let plan = CraftTransaction {
         grant: grants,

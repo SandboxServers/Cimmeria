@@ -157,6 +157,7 @@ async fn send_items(
                 job_id = ids.job_id,
                 account_id = ids.account_id,
                 player_id = ids.player_id,
+                gm_entity_id = ids.gm_entity_id,
                 entity_id = ids.entity_id,
                 what = if filter.is_some() { "update_item" } else { "resync" },
                 reason = "inventory_read_failed",

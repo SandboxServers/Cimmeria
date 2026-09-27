@@ -201,3 +201,53 @@ async fn craftkit_without_a_database_warns_and_answers() {
     assert!(e.has_field("command", "craftkit"), "{e:#?}");
     assert_identity(&e, ids);
 }
+
+/// A kit whose transaction rolls back (the player row is gone) logs the
+/// transaction's own `persist_failed` with the GM's identity next to the
+/// target's, and tells the GM.
+#[tokio::test]
+async fn a_rolled_back_kit_carries_the_gm_on_persist_failed() {
+    let pool = require_db_or_skip!();
+    let ids = ids(3);
+    let capture = LogCapture::install();
+    cleanup(&pool, ids).await;
+    let maps = sessions(ids, 2);
+
+    let typed = run(Some(&pool), ids, &maps, kit(25, 1)).await;
+
+    assert_eq!(
+        gm_lines(&typed, ids),
+        vec!["craftkit: failed, the grant could not be saved; nothing was granted.".to_string()]
+    );
+    let e = capture
+        .find_event(Level::WARN, "rolled back", "player_missing")
+        .expect("persist_failed WARN");
+    assert!(e.has_field("event", "persist_failed"), "{e:#?}");
+    assert!(e.has_field("job_id", "0"), "{e:#?}");
+    assert_identity(&e, ids);
+}
+
+/// A kit granted to a target whose client cannot be reached logs
+/// `client_sync_failed` with the GM's identity; the grant itself stands.
+#[tokio::test]
+async fn an_unsent_kit_update_carries_the_gm_on_client_sync_failed() {
+    let pool = require_db_or_skip!();
+    let ids = ids(2);
+    let capture = LogCapture::install();
+    cleanup(&pool, ids).await;
+    insert_player(&pool, ids).await;
+    let maps = sessions(ids, 2);
+    maps.1.lock().unwrap().remove(&ids.target);
+
+    run(Some(&pool), ids, &maps, kit(25, 1)).await;
+    let held = inventory(&pool, ids).await;
+    cleanup(&pool, ids).await;
+
+    assert_eq!(held.len(), 13, "the kit committed");
+    let e = capture
+        .find_event(Level::WARN, "not sent", "entity_to_addr_miss")
+        .expect("client_sync_failed WARN");
+    assert!(e.has_field("event", "client_sync_failed"), "{e:#?}");
+    assert!(e.has_field("gm_entity_id", &ids.gm.to_string()), "{e:#?}");
+    assert!(e.has_field("player_id", &ids.player.to_string()), "{e:#?}");
+}
