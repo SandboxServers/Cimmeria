@@ -63,6 +63,8 @@ Source: `entities/defs/interfaces/OrganizationMember.def`
 
 Argument order and types are from `OrganizationMember.def:418-449` (corrected 2026-09-27; this table previously listed the name first and every numeric field as `INT32`).
 
+Handled in `crates/base/src/base/dispatch/organization.rs`. Squads: 0xD0 with type 0 (after the base's Ignore check) and 0xD1 with a squad-range id are forwarded to the cell (ORG-03, `organization_squad.rs`). Teams and Commands: 0xCF, 0xD0 with type 1 or 2, 0xD1 and 0xD2 go to the base handlers under ORG-LOCK (ORG-07, [organization-system.md § Invite, kick and rank change](../gameplay/organization-system.md#invite-kick-and-rank-change-org-07)). A type above 2 is refused; 0xD2 with a squad id answers "not available yet".
+
 ### MinigamePlayer — 1 exposed (index 19)
 
 Source: `entities/defs/interfaces/MinigamePlayer.def`

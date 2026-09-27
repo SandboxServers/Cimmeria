@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Organization System
 
 > **Last updated**: 2026-09-27
-> **Status**: Squads work (ORG-03, ORG-04): invite, accept, leave, kick, loot mode, disconnect, gate travel, squad chat, the minimap ping and the GM `.squad_*` commands, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands are not implemented yet: their calls are decoded and answered with "not available yet", with no persistence, roster or fanout. The organizations campaign ([docs/analysis/organizations/](../analysis/organizations/README.md)) builds them on the same wire contract. Teams and Commands have their schema and persistence layer (ORG-02, [Persistence](#persistence)); no handler calls it yet.
+> **Status**: Squads work (ORG-03, ORG-04): invite, accept, leave, kick, loot mode, disconnect, gate travel, squad chat, the minimap ping and the GM `.squad_*` commands, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands (organizations campaign, [docs/analysis/organizations/](../analysis/organizations/README.md)) are persisted (ORG-02) and can be founded (ORG-05), restored at login, left and disbanded (ORG-06), and invited into, kicked from and re-ranked (ORG-07, [below](#invite-kick-and-rank-change-org-07)). MOTD, notes, the rank editor, organization chat and the vault are still to come.
 
 ## Overview
 
@@ -18,13 +18,13 @@ The `OrganizationMember` interface in `entities/defs/interfaces/OrganizationMemb
 
 ## Implementation Status
 
-What exists after the campaign's contract packet (ORG-01), the squad core (ORG-03), creation (ORG-05) and the Team and Command lifecycle (ORG-06):
+What exists after the campaign's contract packet (ORG-01), the squad core (ORG-03), creation (ORG-05), the Team and Command lifecycle (ORG-06) and invite, kick and rank change (ORG-07):
 
 - **Models** in `cimmeria_entity::organization` ([`crates/entity/src/organization/`](../../crates/entity/src/organization/)): `OrgType`, `OrgRank` with the ranks each type uses, the 26 `OrgPermission` bits with the 12 (Team) and 14 (Command) bits the client's rank editors expose, `OrgLeaveReason`, `SquadLootType`, the id-space constants, the default rank permissions and `org_text`, the one implementation of the text rules (lengths, forbidden characters, the name normaliser and its uniqueness key). Every enum value is pinned against `entities/defs/enumerations.xml`.
 - **Inbound decoders** in `cimmeria-wire`: cell methods 8–19 and SGWPlayer cell method 94 `onOrganizationCreation` ([`crates/wire/src/cell/cell_methods/organization/`](../../crates/wire/src/cell/cell_methods/organization/)), and base methods 0xCF–0xD2 ([`crates/wire/src/base/organization.rs`](../../crates/wire/src/base/organization.rs)). Each bounds a `WSTRING`'s declared length by the bytes left before allocating, and rejects truncation, trailing bytes and unpaired surrogates. CM 10 rejects a non-finite coordinate, and CM 19's signed amount decodes to a `CashDir` (positive deposits, negative withdraws, zero is rejected). CM 13, 14, 15, 17 and 94 used to drop their text; they now read it.
-- **Dispatch.** The cell router ([`crates/cell-methods/src/cell/cell_methods/organization/`](../../crates/cell-methods/src/cell/cell_methods/organization/)) decodes cell methods 8–19 and routes on the id each carries (D-ORG05, D-ORG06): CM 8 with a cell-issued request id, CM 9 with a squad-range org id, and CM 18 go to the squad handlers in `squad/`; CM 9 with a Team or Command id is forwarded to the base (`OrgCellToBase::ForwardCellCall`, ORG-06); CM 94 goes to the creation handler in `creation/` ([Creation](#creation-org-05)); everything else logs `UNIMPLEMENTED` at DEBUG on the `org` target (the text length, never the text) and is answered with `onErrorCode` and the feedback line "Organizations are not available yet." (`forward.rs`, which ORG-07 turns into a forward to the base). The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) forwards `organizationInviteByType` type 0 and `organizationKick` with a squad id to the cell, refuses a type above 2, and answers every other well-formed call with the same pair, so the press is not silent.
+- **Dispatch.** The cell router ([`crates/cell-methods/src/cell/cell_methods/organization/`](../../crates/cell-methods/src/cell/cell_methods/organization/)) decodes cell methods 8–19 and routes on the id each carries (D-ORG05, D-ORG06): CM 8 with a cell-issued request id, CM 9 with a squad-range org id, and CM 18 go to the squad handlers in `squad/`; CM 8 with a base request id, and CM 9, 10 and 13-17 with a Team or Command id, are forwarded to the base (`OrgCellToBase::ForwardCellCall`), and CM 19 with one as `OrgCellToBase::TransferCash`; CM 11 and 12 are refused as unsolicited; CM 94 goes to the creation handler in `creation/` ([Creation](#creation-org-05)); a squad-range id on a method squads do not have logs `UNIMPLEMENTED` at DEBUG on the `org` target (the text length, never the text) and is answered with `onErrorCode` and the feedback line "Organizations are not available yet." ([Cell routing](#cell-routing)). The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) forwards `organizationInviteByType` type 0 (after the Ignore check) and `organizationKick` with a squad id to the cell, refuses a type above 2, answers a rank change with a squad id with the "not available yet" pair, and hands every Team and Command call to the ORG-07 handlers.
 - **Outbound serializers** for client methods 34–51, `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) in [`crates/wire/src/cell/client_methods/organization/`](../../crates/wire/src/cell/client_methods/organization/) and `player.rs`, each byte-tested. The squad handlers send 34–40 and 51.
-- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`. `SquadInvite` and `SquadKick` reach the cell's squad handlers. On the base, a forwarded CM 9 and `GmDisband` reach the ORG-06 handlers, and the creation messages (`RegistrarOpen`, `Create` and `GmCreate` to the base; `RegistrarEligible` and `CreateResult` back) reach the ORG-05 creation handlers; the other `OrgCellToBase` arms are still logged no-ops.
+- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`. `SquadInvite` and `SquadKick` reach the cell's squad handlers. On the base, a forwarded CM 9 and `GmDisband` reach the ORG-06 handlers, a forwarded CM 8, `GmJoin` and `GmRank` the ORG-07 handlers, and the creation messages (`RegistrarOpen`, `Create` and `GmCreate` to the base; `RegistrarEligible` and `CreateResult` back) the ORG-05 creation handlers; a forwarded CM 10 or 13-17 and `TransferCash` are answered "not available yet".
 - **Squads** ([group-system.md § Squads](group-system.md#squads-org-03)): the service-wide `SquadRegistry` on `SpaceManager` and `CellEntity::squad_id`.
 
 The schema and the base-side persistence layer came with ORG-02; see [Persistence](#persistence).
@@ -32,24 +32,24 @@ The schema and the base-side persistence layer came with ORG-02; see [Persistenc
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Organization types | DEFINED | Command, Squad, Team in entity defs; typed models in `cimmeria_entity::organization` |
-| Invite response | PARTIAL | `organizationInviteResponse` (CM 8): squads DONE; a base-issued request id (Team, Command) is answered "not available yet" |
+| Invite response | DONE | `organizationInviteResponse` (CM 8): squads (ORG-03); Teams and Commands on the base, single use and re-validated under ORG-LOCK (ORG-07, [below](#invite-response)) |
 | Leave | DONE | `organizationLeave` (CM 9): squads (ORG-03); Teams and Commands on the base, with D-ORG12's leader rule and D-ORG20's vault check before a last-member disband (ORG-06, [below](#login-restore-presence-leave-and-disband-org-06)) |
-| Minimap ping | PARTIAL | `BroadcastMinimapPing` (CM 10): squads validated (own squad, one a second) and logged, never relayed, since no client method shows another member's ping (ORG-E1 Q3, ORG-04); a Team or Command id is answered "not available yet" |
-| Strike team (PvP) | STUB | `strikeTeamResponse` (CM 11) decodes, logs, drops |
-| PvP leave confirmation | STUB | `pvpOrganizationLeaveResponse` (CM 12) decodes, logs, drops |
-| MOTD | STUB | `organizationMOTD` (CM 13) decodes the org id and the MOTD, logs, drops |
-| Member note | STUB | `organizationNote` (CM 14) decodes the org id and the note, logs, drops |
-| Officer note | STUB | `organizationOfficerNote` (CM 15) decodes the org id, the member name and the note, logs, drops |
-| Rank permissions | STUB | `organizationSetRankPermissions` (CM 16) decodes, logs, drops |
-| Custom rank names | STUB | `organizationSetRankName` (CM 17) decodes the org id, rank and name, logs, drops |
+| Minimap ping | PARTIAL | `BroadcastMinimapPing` (CM 10): squads validated (own squad, one a second) and logged, never relayed, since no client method shows another member's ping (ORG-E1 Q3, ORG-04); a Team or Command id is forwarded to the base and answered "not available yet" |
+| Strike team (PvP) | REFUSED | `strikeTeamResponse` (CM 11): refused as unsolicited, since no strike-team request is ever sent (CAT-M-16) |
+| PvP leave confirmation | REFUSED | `pvpOrganizationLeaveResponse` (CM 12): refused as unsolicited (CAT-M-17) |
+| MOTD | STUB | `organizationMOTD` (CM 13): a Team or Command id is forwarded to the base and answered "not available yet" until ORG-08 |
+| Member note | STUB | `organizationNote` (CM 14): as CM 13 |
+| Officer note | STUB | `organizationOfficerNote` (CM 15): as CM 13 |
+| Rank permissions | STUB | `organizationSetRankPermissions` (CM 16): as CM 13 |
+| Custom rank names | STUB | `organizationSetRankName` (CM 17): as CM 13 |
 | Loot mode | DONE | `squadSetLootMode` (CM 18): the leader only, 0 or 1, then `onSquadLootType` to every member |
-| Cash management | STUB | `organizationTransferCash` (CM 19) decodes, logs, drops |
+| Cash management | STUB | `organizationTransferCash` (CM 19): a Team or Command id is forwarded as `TransferCash` and answered "not available yet" until the Bank campaign's BV-08 |
 | Creation | DONE | A registrar NPC opens the naming dialog (`launchOrganizationCreation`, 135) for an eligible player; `onOrganizationCreation` (SGWPlayer CM 94) founds the Team or Command against that offer and answers with `onOrganizationCreationResult` (134) and the founder's roster. GM `.org_create` skips the NPC. See [Creation](#creation-org-05) (ORG-05) |
-| Invite issue / kick / rank change | PARTIAL | 0xD0 type 0 (squad invite) and 0xD1 with a squad id (squad kick) are DONE; a type above 2 is refused; 0xCF, 0xD2 and the Team and Command forms answer with `onErrorCode` and a feedback line |
+| Invite issue / kick / rank change | DONE | Squads: 0xD0 type 0 and 0xD1 with a squad id (ORG-03). Teams and Commands: 0xCF, 0xD0 types 1 and 2, 0xD1 and 0xD2 under ORG-LOCK and D-ORG09 (ORG-07, [below](#invite-kick-and-rank-change-org-07)); GM `.org_join` and `.org_rank`. A type above 2 is refused; a rank change with a squad id answers "not available yet" |
 | Roster info | DONE | `onOrganizationRosterInfo` (38): squads (ORG-03); Teams and Commands at every world entry, followed by `onMemberJoinedOrganization` (37) for each online member, and presence updates on login and logout (ORG-06) |
 | Disband | PARTIAL | The last member leaving, and `.org_disband <orgId>` for GMs (ORG-06); both refused while the vault is not empty |
 | Experience tracking | NOT IMPL | `onOrganizationExperienceUpdate` (CM 44) never sent |
-| Persistence | IMPLEMENTED | Tables, constraints, the leader trigger and the locked write API (ORG-02, [Persistence](#persistence)); the creation handlers (ORG-05) and the ORG-06 handlers use them |
+| Persistence | IMPLEMENTED | Tables, constraints, the leader trigger and the locked write API (ORG-02, [Persistence](#persistence)); the creation handlers (ORG-05), the ORG-06 and the ORG-07 handlers use them |
 | Organization vault | NOT IMPL | Only `onClearOrgVaultInventory` reference |
 
 ## Creation (ORG-05)
@@ -167,7 +167,7 @@ The same hook tells contact-list watchers (CM 89 `LoggedInStatus`, offline). Bef
 
 `.org_disband <orgId>` is a GM console command. The cell forwards it (`OrgCellToBase::GmDisband`); the base re-reads the caller's access level from its own session (GameMaster or above), locks the organization, and refuses while the vault holds anything. It also disbands a memberless organization (D-ORG20's recovery case) once its vault is empty. Every online member gets `onOrganizationLeft` [36] with `Disbanded`, and the GM gets a line with the member count.
 
-Beside every `onOrganizationLeft` [36] to an online player (a leave, a disband), the base sends the cell `OrgBaseToCell::OrgMembershipEnded { player_id, entity_id, org_id, reason }` after the commit. The cell logs `org.membership_ended`; the Bank campaign's BV-07 extends that arm to close an open Team or Command vault session, and ORG-07 sends it on a kick too.
+Beside every `onOrganizationLeft` [36] to an online player (a leave, a disband, a kick), the base sends the cell `OrgBaseToCell::OrgMembershipEnded { player_id, entity_id, org_id, reason }` after the commit. The cell logs `org.membership_ended`; the Bank campaign's BV-07 extends that arm to close an open Team or Command vault session.
 
 The vault predicate is still the stub that returns true. The Bank campaign replaces `api::org_vault_is_empty`; until then, the tests drive the refusal through a test-only override of the stub.
 
@@ -183,6 +183,70 @@ Everything logs on the `org` target, and each action counts once on `org_actions
 | A GM disband | `event = 'org.disband' AND org_id = <id>`, and `event = 'org.gm_action'` for the GM's identity |
 | A message a member did not get | `event = 'org.send_failed'` (`reason`, `target_player_id`) |
 | A forwarded call from a stale session | `event = 'org.actor_mismatch'` |
+
+## Invite, kick and rank change (ORG-07)
+
+The handlers are in [`crates/base-session/src/base/organization/handlers/`](../../crates/base-session/src/base/organization/handlers/) (`invite.rs`, `invite_response.rs`, `kick.rs`, `rank.rs`, `gm.rs`, `broadcast.rs`). The base methods 0xCF-0xD2 reach them from [`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs); the invite response arrives as a forwarded CM 8. Every check that authorizes runs under ORG-LOCK (D-ORG04): one transaction, the organization row locked first, the actor's rank and permissions read inside it. Every refusal gets a feedback line (`answer.rs`); `onErrorCode` is not sent, because the client has no organization text for it (ORG-E1 Q4).
+
+### Invite
+
+`organizationInvite` (0xCF, an org id) and `organizationInviteByType` (0xD0, type 1 or 2). Invite-by-type only ever finds the inviter's existing Team or Command; it never creates one (CAT-M-02; only type 0, a squad, founds on accept).
+
+1. The inviter's rate limit, from their own session: five invites in any 30 s.
+2. The invitee: an online character other than the inviter (exact name, then a unique case-insensitive match), not mid world entry or gate travel, and not ignoring the inviter (SS-C1's cached Ignore list, by character id and name).
+3. Under the lock: the inviter is a member whose rank holds `Invite` (CAT-M-01), and the invitee is in no organization of that type (D-ORG18).
+4. The invite is recorded **on the invitee's session** (`organization::invites`), keyed by the invitee's character and the request id (D-ORG06). Request ids carry `BASE_INVITE_REQUEST_FLAG` (bit 29) and count up from one process-wide counter, never reused. One pending invite per inviter and invitee, five per invitee, 60 s to answer. The session dies with its invites on every teardown path; `logOff` (either variant) drops them too, since a return to character select keeps the session.
+5. The invitee gets `onOrganizationInvite` [34] (inviter name, type, request id, organization name); the inviter gets a line.
+
+The base checks the Ignore list before it forwards a **squad** invite (0xD0 type 0) to the cell as well (carried from ORG-03), and refuses it the same way.
+
+### Invite response
+
+`organizationInviteResponse` (CM 8) with bit 29 set is forwarded by the cell. The base takes the entry from the responder's own session in one step, so the first response consumes it, accept or decline (CAT-M-18); a replay, an expired entry and another player's id all read "That invitation is no longer valid." (the log tells them apart). A decline tells an online inviter. An accept re-validates under the lock: the organization still exists, the inviter is still a member whose rank holds `Invite` (so an inviter kicked or demoted in between no longer vouches), and the responder is in no organization of that type. Teams and Commands have no member cap in the ledger, so there is no room check. The responder joins at the type's entry rank (D-ORG07: Team `Member` 2, Command `Initiate` 1), gets the organization's full state (`push_org_state`, `onOrganizationJoined` [35] with `aNewMember = 1` first), and every other online member gets `onMemberJoinedOrganization` [37] with `aNewMember = 1`.
+
+`add_member` takes the joining character's creation advisory lock (ORG-05's key), after its membership check. An accept and a Team creation by the same character therefore serialise, and the losing creation is refused before it draws an organization id.
+
+### Kick and rank change
+
+| Check (all under the lock) | Kick (0xD1) | Rank change (0xD2) |
+|---|---|---|
+| The actor is a member | `not_member` | `not_member` |
+| The target, by name among the organization's members (offline members included) | `target_not_member`, `target_ambiguous` | same |
+| Not the actor | `self_target` | `self_target` |
+| The rank is one the type uses: 0, Team rank 5 and anything above 8 are refused (D-ORG09 (5)) | | `rank_not_in_type` |
+| Never `Leader` (D-ORG09 (4)) | | `leader_not_assignable` |
+| A different rank from the current one | | `rank_unchanged` |
+| The bit: `Eject`; `Promote` to raise, `Demote` to lower (D-ORG09 (1)) | `missing_permission` | `missing_permission` |
+| The actor's rank strictly above the target's, and above the rank assigned (D-ORG09 (2)) | `rank_too_low` | `rank_too_low` |
+
+After a kick commits, the kicked player (if online) gets `onOrganizationLeft` [36] with `Kicked` and a line, and the cell gets `OrgBaseToCell::OrgMembershipEnded` with `Kicked` (the Bank's vault-session hook); every remaining online member gets `onMemberLeftOrganization` [39] with the kicked player's live entity id, or 0 when offline. After a rank change, every online member, the target included, gets `onMemberRankChangedOrganization` [40]. A rank change with a squad id keeps the "not available yet" answer: whether `/squadpromote` uses 0xD2 is unconfirmed (ORG-E1 follow-up 1).
+
+The client reads rank permissions from the login push ([49]); no member-side cache of a rank's permissions exists on the server, so a demotion takes effect at the next authorization, which always reads under the lock.
+
+### Cell routing
+
+The cell router forwards every Team and Command cell method to the base: CM 8 with a base request id, and CM 9, 10 and 13-17 with a Team or Command id (`OrgCellToBase::ForwardCellCall`), and CM 19 as `OrgCellToBase::TransferCash`. CM 10 and 13-17 are answered there with "not available yet" until ORG-08; CM 19 stays the Bank campaign's reject stub until BV-08. CM 11 `strikeTeamResponse` and CM 12 `pvpOrganizationLeaveResponse` are refused on the cell as unsolicited, since no strike-team or PvP-leave request is ever sent (CAT-M-16, CAT-M-17). Squad-range ids on methods squads do not have keep the cell's "not available yet" answer.
+
+### `broadcast_to_org`
+
+`api::broadcast_to_org(ctx, org_id, method_idx, args, required)` sends one client method to every online member of a Team or Command, or, with `required`, only to members whose rank holds all of those bits (the Bank uses `ViewBankLogs`). Call it after the commit: it reads the roster and the rank table without the lock. Kick and rank change use it.
+
+### GM commands
+
+`.org_join <orgId> [player]` and `.org_rank <player> <rank> [orgId]` are forwarded to the base (`OrgCellToBase::GmJoin`, `GmRank`), which re-reads the GM's access level from the session playing that character on that entity (a recycled entity id finds nobody; `.org_disband` now checks the same way). They skip the member permission and rank checks, and keep every data rule: `.org_join` adds an online player at the entry rank, or as `Leader` to a memberless organization, and refuses a second organization of the type; `.org_rank` refuses `Leader` and ranks the type does not use, and without an org id acts on the member's only Team or Command.
+
+### Telemetry (ORG-07)
+
+Everything logs on the `org` target; each action counts once on `org_actions_total{action, outcome, reason}` (`action` = `invite` \| `invite_response` \| `kick` \| `rank_change` \| `gm_org_join` \| `gm_org_rank` \| `strike_team_response` \| `pvp_leave_response`).
+
+| Question | SigNoz Logs filter (`service.name = 'cimmeria-server' AND scope_name = 'org' AND ...`) |
+|---|---|
+| Who invited whom, and why it was refused | `event = 'org.invite' AND player_id = <id>` (`outcome`, `reason`, `target_player_id`, `request_id`, `actor_rank`) |
+| What happened to an invite | `request_id = <id> AND event IN ('invite_created', 'invite_consumed', 'invite_expired', 'org.invite_response')` |
+| Kicks and rank changes | `event IN ('org.kick', 'org.rank_change') AND org_id = <id>` (`actor_rank`, `target_rank`, `to_rank`), then `event IN ('member_left', 'rank_changed')` for the before and after |
+| GM joins and rank sets | `event IN ('org.gm_join', 'org.gm_rank', 'org.gm_action')` |
+| Where a cell call went | `event = 'org.forward' AND method_index = <n>` (`route` = `squad` \| `base` \| `rejected`) |
+| A fanout that missed someone | `event IN ('org.send_failed', 'org.broadcast_failed')` (`what`, `reason`) |
 
 ## Entity Definition (OrganizationMember.def)
 
@@ -245,7 +309,7 @@ Key exposed (client-invoked) methods:
 | Method | Exposed | Args | Purpose |
 |--------|---------|------|---------|
 | `organizationInvite` | YES | OrgId, PlayerName | Invite by org ID |
-| `organizationInviteByType` | YES | OrgType, PlayerName | Invite by org type (auto-create) |
+| `organizationInviteByType` | YES | OrgType, PlayerName | Invite into the inviter's organization of that type; only a squad (type 0) is founded on accept, a Team or Command never (CAT-M-02) |
 | `organizationKick` | YES | OrgId, PlayerName | Kick member |
 | `organizationRankChange` | YES | OrgId, PlayerName, Rank | Change member rank |
 

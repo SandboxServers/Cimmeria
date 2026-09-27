@@ -47,7 +47,7 @@ Cimmeria does not build squads on `GroupAuthority`. A squad is ephemeral, so it 
 | Squad chat | DONE | `sendPlayerCommunication` on `CHAN_SQUAD` (4), past the base's chat flood limit and text rules → [`chat/squad.rs`](../../crates/cell-console/src/cell/console/chat/squad.rs) (ORG-04) |
 | Minimap ping | DONE (validated, not relayed) | CM 10 `BroadcastMinimapPing` with a squad id → [`squad/ping.rs`](../../crates/cell-methods/src/cell/cell_methods/organization/squad/ping.rs). No client method shows another member's ping (ORG-E1 Q3), so nothing is sent (ORG-04) |
 | GM console | DONE | `.squad_invite <name>`, `.squad_join <name>`, `.squad_info [name]` → [`console/squad.rs`](../../crates/cell-console/src/cell/console/squad.rs) (the GM check, name resolution, the listing and the audit row), which calls the thin [`squad/gm.rs`](../../crates/cell-methods/src/cell/cell_methods/organization/squad/gm.rs) for the invite and the join (ORG-04) |
-| Ignore-list check on invite | NOT IMPL | Ignore lists are base-side database rows; the cell has no copy |
+| Ignore-list check on invite | DONE | The base checks the invitee's cached Ignore list (SS-C1) before it forwards `organizationInviteByType` type 0 to the cell, and refuses with a line and a `squad.invite` row (`reason = ignored`) (ORG-07) |
 
 ### Rules
 
