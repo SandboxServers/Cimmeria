@@ -9,6 +9,8 @@
 //! Module layout:
 //! - [`defs`] — flag/code constants plus [`AbilityDef`], [`EffectDef`],
 //!   [`AbilityTreeData`].
+//! - [`implemented`] — [`ability_is_unimplemented`]: whether a cast has any
+//!   visible result (damage, an effect script or an event set).
 //! - [`manager`] — [`AbilityManager`] and its [`CooldownEntry`].
 //! - [`wire`] — client-message serializers ([`ClientEffectResult`],
 //!   [`serialize_timer_update`], [`serialize_effect_results`]).
@@ -17,9 +19,11 @@
 //! flat `crate::abilities::Item` paths.
 
 mod defs;
+mod implemented;
 mod manager;
 mod wire;
 
 pub use defs::*;
+pub use implemented::{ability_is_unimplemented, effect_is_implemented};
 pub use manager::{AbilityManager, CooldownEntry};
 pub use wire::{serialize_effect_results, serialize_timer_update, ClientEffectResult};

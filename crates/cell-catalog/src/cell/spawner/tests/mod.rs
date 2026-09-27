@@ -20,6 +20,9 @@
 //!   PT-S): `pet_summons` rows name pet templates 350-359, pets are never in
 //!   `spawnlist`, Summon Straegis carries its event set, and the Straegis pet
 //!   template keeps its body, name and kit.
+//! - [`live_db_pet_roster`]: live-DB guards for the rest of the Servant Lord
+//!   roster (PT-11): Jaffa, Prime and Lo'taur summons resolve to unplaced pet
+//!   templates 351-353 with their kits, looks and names.
 //! - [`live_db_pet_trainer`]: live-DB guards for the debug hub's pet trainer
 //!   (pets campaign PT-07): template 360, spawn 450 in the stasis room, and
 //!   trainer list 350 offering the Goa'uld pet summons.
@@ -35,6 +38,7 @@ mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_debug_hub;
 mod live_db_loaders;
+mod live_db_pet_roster;
 mod live_db_pet_summons;
 mod live_db_pet_trainer;
 mod live_db_spawnlist_sequence;

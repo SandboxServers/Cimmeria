@@ -80,7 +80,8 @@ pub(crate) const FEEDBACK_OUTSIDE_WEAPON_RANGE: u16 = 42;
 /// ability-cooldown code; this is the nearest.
 pub(crate) const FEEDBACK_NOT_READY: u16 = 99;
 /// `CONDITION_FEEDBACK_EntityDoesNotHaveAbility`: the ability is not on the
-/// pet's bar, or the owner toggled it off.
+/// pet's bar, the owner toggled it off, or it does nothing on this server
+/// yet (`ability_not_implemented`).
 pub(crate) const FEEDBACK_NO_SUCH_PET_ABILITY: u16 = 167;
 /// `CONDITION_FEEDBACK_EntityDoesNotHavePet`: the registry still lists the
 /// pet but its entity is gone (the teardown sweep has not run yet).

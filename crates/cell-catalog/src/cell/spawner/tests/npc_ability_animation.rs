@@ -17,8 +17,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use cimmeria_entity::abilities::ability_is_unimplemented;
+
 use crate::cell::spawner::{
-    load_ability_defs, load_event_set_sequences, load_spawn_templates, EVENT_ABILITY_END,
+    load_ability_defs, load_effect_defs, load_event_set_sequences, load_spawn_templates,
+    EVENT_ABILITY_END,
 };
 use crate::test_support::require_db_or_skip;
 
@@ -28,9 +31,39 @@ use crate::test_support::require_db_or_skip;
 const NPC_DEFAULT_ABILITY: i32 = 592;
 
 /// Abilities allowed to reach an NPC without a resolvable Ability_End. Each
-/// entry needs a reason. Empty on purpose: every NPC combat ability animates
-/// today, and a new exception should be argued in review.
-const ANIMATION_ALLOWLIST: &[(i32, &str)] = &[];
+/// entry needs a reason, argued in review.
+///
+/// The pets PT-11 entries are pet-kit abilities that deal no damage: their
+/// effects have no damage values and no script, so "damage with no
+/// animation" cannot happen. The 2009 rows carry no event set, and the data
+/// offers no set that matches them without guessing (1652 Double Blast, a
+/// staff shot, got set 3 instead).
+const ANIMATION_ALLOWLIST: &[(i32, &str)] = &[
+    (
+        1653,
+        "PT-11 Lo'taur pet heal; effect 4065 unscripted; needs ally-target AI first",
+    ),
+    (
+        1654,
+        "PT-11 Prime pet focus drain; effect 4086 unscripted, no event set in the data",
+    ),
+    (
+        3326,
+        "PT-11 Lo'taur pet focus heal; effect 4924 unscripted; needs ally-target AI first",
+    ),
+    (
+        3327,
+        "PT-11 Lo'taur pet focus-regen buff; effects 4925/4926 unscripted",
+    ),
+    (
+        3328,
+        "PT-11 Lo'taur pet defense buff; effects 4927/4928 unscripted",
+    ),
+    (
+        3329,
+        "PT-11 Lo'taur pet defense debuff; effects 4929/4930 unscripted",
+    ),
+];
 
 /// `items_event_sets.event_id` for a weapon's ranged auto attack (6 is
 /// melee). Item 21's pair is (595, 6) and (559, 7).
@@ -228,6 +261,46 @@ async fn a_hostile_template_fires_its_weapons_ranged_auto_attack() {
     assert!(
         failures.is_empty(),
         "hostile NPCs whose attack does not match the weapon they hold:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// The allowlist's premise holds: every allowlisted ability is still
+/// unimplemented by the shared predicate the pet command gate and the pet AI
+/// use (`cimmeria_entity::abilities::ability_is_unimplemented`): no event
+/// set, no damage values, no effect script. So letting it through without an
+/// animation cannot hide a silent hit. Fails when someone wires damage, a
+/// script or an event set onto an allowlisted ability (drop the entry then),
+/// when one of its effects stops loading, and when an entry names an ability
+/// the seed no longer has.
+#[tokio::test]
+async fn animation_allowlist_entries_deal_no_damage() {
+    let pool = require_db_or_skip!();
+    let defs = load_ability_defs(&pool).await.expect("ability defs load");
+    let effects = load_effect_defs(&pool).await.expect("effect defs load");
+
+    let mut failures = Vec::new();
+    for (ability_id, reason) in ANIMATION_ALLOWLIST {
+        let Some(def) = defs.get(ability_id) else {
+            failures.push(format!("{ability_id} ({reason}): no abilities row"));
+            continue;
+        };
+        for effect_id in &def.effect_ids {
+            if !effects.contains_key(effect_id) {
+                failures.push(format!("{ability_id}: effect {effect_id} did not load"));
+            }
+        }
+        if !ability_is_unimplemented(def, &effects) {
+            failures.push(format!(
+                "{ability_id} ({reason}): now does something (event set {:?}, effects {:?}); \
+                 drop the entry",
+                def.event_set_id, def.effect_ids
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "animation allowlist entries that no longer hold:\n{}",
         failures.join("\n")
     );
 }

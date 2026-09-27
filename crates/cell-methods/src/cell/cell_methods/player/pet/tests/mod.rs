@@ -44,6 +44,9 @@ const NOBODY: u32 = 4_000_000;
 const PET_ABILITY: i32 = PET_FIXTURE_ABILITIES[0];
 /// An ability the fixture pet does not have.
 const NOT_A_PET_ABILITY: i32 = 597;
+/// Event set the fixture abilities carry (3, the staff single shot), so
+/// they count as implemented.
+const FIXTURE_EVENT_SET: i32 = 3;
 
 struct World {
     mgr: SpaceManager,
@@ -76,6 +79,12 @@ fn world() -> World {
     seed_pet_template(&mut mgr, PET_FIXTURE_TEMPLATE_ID);
     seed_ability_defs(&mut mgr, &PET_FIXTURE_ABILITIES);
     seed_ability_defs(&mut mgr, &[NOT_A_PET_ABILITY]);
+    // The bare fixture defs have no effect and no event set, which CM 88
+    // refuses as `ability_not_implemented` (PT-11). Give them the staff
+    // shot's event set so they are ordinary, visible casts.
+    for id in PET_FIXTURE_ABILITIES.iter().chain([&NOT_A_PET_ABILITY]) {
+        mgr.ability_defs.get_mut(id).unwrap().event_set_id = Some(FIXTURE_EVENT_SET);
+    }
     add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
     // `add_pet_owner` sets `account_id = entity id`; give the owner a
     // character id too, so identity fields are distinguishable in logs.

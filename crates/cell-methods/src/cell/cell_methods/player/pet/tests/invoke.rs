@@ -395,3 +395,61 @@ fn mob_health(mgr: &SpaceManager) -> Option<i32> {
         .get(cimmeria_entity::stats::HEALTH)
         .map(|s| s.cur)
 }
+
+/// PT-11: an order for an ability with no visible result (no damage, no
+/// effect script, no event set: `ability_is_unimplemented`) is refused
+/// before the pet casts, so the owner's press is answered with
+/// `onErrorCode`, a chat line and a DEBUG `ability_not_implemented` row
+/// instead of an invisible empty hit. The seed's 1654 and Lo'taur kit are
+/// such abilities. Fails with the CM 88 gate removed: the cast commits.
+#[tokio::test]
+async fn an_ability_that_does_nothing_is_refused_before_casting() {
+    let World { mut mgr, pet, .. } = world();
+    mgr.ability_defs.get_mut(&PET_ABILITY).unwrap().event_set_id = None;
+
+    let capture = crate::test_support::LogCapture::install();
+    let sent = invoke(&mut mgr, OWNER, pet, PET_ABILITY, MOB).await;
+    assert_eq!(
+        sent.error_codes_to(OWNER),
+        vec![(PET_ABILITY, FEEDBACK_NO_SUCH_PET_ABILITY)]
+    );
+    assert_eq!(sent.feedback_lines_to(OWNER), 1, "a visible chat line");
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.target == "pets.command" && c.has_field("reason", "ability_not_implemented")));
+    assert_pet_idle(&mgr, pet, PET_ABILITY);
+    assert_eq!(
+        cimmeria_cell_world::cell::pets::order_feedback_text("ability_not_implemented"),
+        "Your pet can't use that ability yet."
+    );
+}
+
+/// The gate's other side: an ability with no event set whose effect deals
+/// damage is an ordinary order. Fails if the gate refuses on the event set
+/// alone.
+#[tokio::test]
+async fn an_ability_with_a_damaging_effect_is_obeyed_without_an_event_set() {
+    let World { mut mgr, pet, .. } = world();
+    const EFFECT: i32 = 7_001;
+    let def = mgr.ability_defs.get_mut(&PET_ABILITY).unwrap();
+    def.event_set_id = None;
+    def.effect_ids = vec![EFFECT];
+    let mut effect = cimmeria_entity::abilities::EffectDef {
+        effect_id: EFFECT,
+        ability_id: PET_ABILITY,
+        ..Default::default()
+    };
+    effect
+        .params
+        .insert("HealthDamage".to_string(), "25".to_string());
+    mgr.effect_defs.insert(EFFECT, effect);
+
+    let sent = invoke(&mut mgr, OWNER, pet, PET_ABILITY, MOB).await;
+    assert_eq!(sent.all_error_codes(), 0, "no refusal");
+    assert!(mgr
+        .get_entity(pet)
+        .unwrap()
+        .abilities
+        .is_on_cooldown(PET_ABILITY));
+}

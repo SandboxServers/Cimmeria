@@ -951,16 +951,46 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   creature (MOB_) body our server spawns.
 --   name_id 27377 'Summoned Straegis Fighter': the pet's own moniker 28894
 --   DN_Pet_Straegis_Tier_1 has empty text and would leave a blank nameplate.
---   flags 1032 = Pet | NoPetLeveling: pets gain no XP of their own (D-PT02
---   sends kill XP to the owner and takes the owner's level at summon).
---   level 1 is a placeholder the summon overwrites; a GM or content spawn of
---   this template gets 250 HP. faction 1 is friendly (78 is hostile 10; the
+--   flags 1024 = ENTITYFLAG_Pet. No NoPetLeveling (8): with it the summon
+--   keeps the template's level, and this L50 capstone pet would spawn at
+--   level 1 (PT-11). Pets gain no XP of their own whatever the flag (D-PT02
+--   sends kill XP to the owner). level 1 is a placeholder the summon
+--   overwrites with the owner's level; a GM or content spawn of this
+--   template gets 250 HP. faction 1 is friendly (78 is hostile 10; the
 --   summon applies the owner's faction, D-PT06). ability set 350 (see
 --   ability_set_abilities.sql). move_speed 0.9 keeps pace with a running
 --   player, as the Col Marsh escort (10) does. use_cover false so the cover
 --   scorer never parks the pet, whatever faction it takes. respawn_secs NULL:
 --   a pet never respawns on its own.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (350, NULL, 'MOB_StraegisFighter.BS_MOB_StraegisFighter', '{MOB_StraegisFighter.MOB_StraegisFighter00_00}', 1032, 0, 570, 1, 0, 1, 27377, NULL, NULL, NULL, 'Summoned Straegis Fighter', 'pet', NULL, NULL, NULL, NULL, 350, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (350, NULL, 'MOB_StraegisFighter.BS_MOB_StraegisFighter', '{MOB_StraegisFighter.MOB_StraegisFighter00_00}', 1024, 0, 570, 1, 0, 1, 27377, NULL, NULL, NULL, 'Summoned Straegis Fighter', 'pet', NULL, NULL, NULL, NULL, 350, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+
+-- PT-11, the rest of the Goa'uld Servant Lord roster (D-PT13 order). Same
+-- shape as 350 (class 'pet', faction 1, no loot, no respawn, move_speed 0.9,
+-- use_cover false, level 1 placeholder, flags 1024 = ENTITYFLAG_Pet alone,
+-- so the summon gives the pet its owner's level, D-PT02).
+-- Each name_id is the pet's own DN_Pet_*_Tier_1 moniker, which has text.
+-- Guards: crates/cell-catalog/src/cell/spawner/tests/live_db_pet_roster.rs.
+-- 351 "Jaffa Soldier" (1643 Summon Jaffa): a copy of 160 Praxis Jaffa Guard,
+--   the Jaffa body and AR_J_Praxis armour already proven in Harset. No WP-*
+--   component, like 160 (the staff is mimed). name 8087
+--   DN_Pet_Jaffa_Tier_1. Ability set 351.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (351, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 1024, 0, 570, 1, 0, 1, 8087, NULL, NULL, NULL, 'Jaffa Soldier', 'pet', NULL, NULL, NULL, NULL, 351, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+-- 352 "Jaffa Prime" (1645 Summon Prime): a copy of 159 Praxis Jaffa
+--   Lieutenant, whose torso piece adds the shoulder armour. name 28892
+--   DN_Pet_Prime_Tier_1. Ability set 352.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (352, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 1024, 0, 570, 1, 0, 1, 28892, NULL, NULL, NULL, 'Jaffa Prime', 'pet', NULL, NULL, NULL, NULL, 352, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+-- 353 "Lo'Taur Servant" (1644 Summon Lo'taur): no seeded template wears the
+--   AR_G_Underlings servant dress, so this one is composed. The body is the
+--   bare Goa'uld male of 211 Ashrak Assassin (face, hands, legs, torso and
+--   skin tint; boots and hair dropped because the servant pieces fill
+--   those slots). The dress is the male Underling set from
+--   AR_G_Underlings.upk: body armour (UT1_UT100, no pauldron), dress
+--   (UL1_US100), feet (UB1_UH100), bracers (UG1_UB100), plus the slave
+--   headwrap (SH1_SH100). Every piece has a body_components row for
+--   BS_GoauldMale and exists in the shipped package; the composite has never
+--   been rendered, so UAT checks it. No weapon: the Lo'taur kit is heals.
+--   name 28891 DN_Pet_Lo'Taur_Tier_1. Ability set 353.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (353, NULL, 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Underlings.AR_GM_UT1_UT100,AR_G_Underlings.AR_GM_UL1_US100,AR_G_Underlings.AR_GM_UB1_UH100,AR_G_Underlings.AR_GM_UG1_UB100,AR_G_Underlings.AR_GM_SH1_SH100,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Head_00,BS_GoauldMale.BS_GM_Legs_00,BS_GoauldMale.BS_GM_Torso_00}', 1024, 0, 570, 1, 0, 1, 28891, NULL, NULL, NULL, 'Lo''Taur Servant', 'pet', NULL, NULL, NULL, NULL, 353, NULL, NULL, 0, 0, -1772406528, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
 
 -- Pets campaign, PT-07: 360-369 are pet-campaign NPCs, not pets (350-359 are the
 -- pets). They are ordinary placed NPCs, so they are class 'mob' without
