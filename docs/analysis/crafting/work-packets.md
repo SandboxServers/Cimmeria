@@ -266,7 +266,9 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 **Scope:** audit C-29. When an item's `container_sets` lists a storage container (17-20) first, the grant path falls through to the next listed player container (15, then 1) instead of refusing. The loot-into-bank refusal BV-01 adds stays for items that list only storage containers. Every caller benefits: loot, content `grant_item`, GM `gmGiveItem`, vendors, and CR-06's transaction if it reuses the grant path.
 
-**Acceptance:** a live-DB test that a `{17,15}` component granted by loot, by the content engine and by a GM lands in bag 15; a guard that fails when the fall-through is removed; the BV-01 refusal test still passes for a storage-only item.
+Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes the item from the corpse on the cell **before** the base accepts the grant, so a refused grant destroys the item. Remove from the corpse only after the base confirms, or restore it on refusal.
+
+**Acceptance:** a live-DB test that a `{17,15}` component granted by loot, by the content engine and by a GM lands in bag 15; a test that a refused loot grant leaves the item on the corpse; a guard that fails when the fall-through is removed; the BV-01 refusal test still passes for a storage-only item.
 
 ## Wave 3
 
