@@ -10842,11 +10842,16 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100103, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - Livewire bark holder (never displayed)');
 
+-- Social-systems campaign, SS-U3: the Gate Mail Clerk (template 390). One
+-- screen, one Generic 1 button; the button fires chain 7011, which sends the
+-- test mail. Drawn by the client from DIALOG_OVERRIDES like 100100.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (100104, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - Gate Mail Clerk');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309
 -- Name: dialogs_dialog_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialogs_dialog_id_seq', 100103, true);
+SELECT pg_catalog.setval('dialogs_dialog_id_seq', 100104, true);
 

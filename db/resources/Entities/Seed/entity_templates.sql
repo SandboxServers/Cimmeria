@@ -1026,6 +1026,22 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   client's TextStrings.pak, the Omega Site banker's own name.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, vault_scope) VALUES (370, NULL, 'BS_HumanFemale.BS_HumanFemale', '{AR_H_SGC.AR_HM_SL1_SL100,AR_H_SGC.AR_HM_ST1_ST100,BS_HumanFemale.BS_HF_Base_Boots00_00,BS_HumanFemale.BS_HF_Base_Hands00_00,BS_HumanFemale.BS_HF_Base_Legs00_00,BS_HumanFemale.BS_HF_Base_Torso00_00,BS_HumanFemale.BS_HF_Head_00}', 0, 2, 570, 1, 0, 1, 29462, NULL, NULL, NULL, 'Debug Hub - Banker', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL, 'personal');
 
+-- Social-systems campaign, SS-U3: 390-399 are the campaign's placed NPCs; 391-399
+-- stay reserved.
+-- 390 'Gate Mail Clerk' in the stasis-room debug hub (spawn 490,
+--   docs/content/debug-hub.md). Clicking him fires chain 7010
+--   (debug_hub_chains.sql), which opens dialog 100104; its one button fires chain
+--   7011, whose `send_system_mail` action mails the clicking player a stack of
+--   Health Slappacks and 50 naquadah, at most once per 10 minutes per player.
+--   INT_NonAStoryMissionAvaliable (134217728) gives the talk cursor, as on the
+--   hub's dialog NPC (302); without a bit the client never sends the click.
+--   Body, head and speaker are template 58's Walter Harriman (SGC_W1), a look the
+--   server already spawns; level 1 and no ability set, so he cannot fight.
+-- moniker 26715 `DN_npc_int_Harriman_SGCW1` ('Sgt. Harriman'), shipped in the
+--   client's TextStrings.pak. No moniker says 'Mail Clerk'; the dialog and the
+--   mail's sender name say it instead. Speaker 843 is 'Sgt. Harriman'.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (390, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,NPC_Human.NPC_HM_WalterHarriman_Head_BC}', 0, 134217728, 570, 1, 0, 1, 26715, NULL, NULL, NULL, 'Debug Hub - Gate Mail Clerk', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 843, true, NULL, NULL, NULL);
+
 --
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210

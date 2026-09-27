@@ -28,14 +28,18 @@ mod live_db {
     const DIALOG: i32 = 302;
     const LIVEWIRE: i32 = 303;
     const CRATE: i32 = 304;
+    /// The Gate Mail Clerk (social-systems SS-U3, spawn 490). Its role
+    /// columns are pinned in `live_db_mail_clerk.rs`; here it is placed.
+    const MAIL_CLERK: i32 = 390;
 
     /// `(spawnlist.tag, template_id)` for every hub NPC.
-    const HUB: [(&str, i32); 5] = [
+    const HUB: [(&str, i32); 6] = [
         ("DebugHub_Vendor", VENDOR),
         ("DebugHub_Trainer", TRAINER),
         ("DebugHub_DialogNpc", DIALOG),
         ("DebugHub_LivewireTerminal", LIVEWIRE),
         ("DebugHub_LootCrate", CRATE),
+        ("DebugHub_MailClerk", MAIL_CLERK),
     ];
 
     /// The stasis room (point set 2032) and the respawner every new
@@ -210,9 +214,11 @@ mod live_db {
     }
 
     /// Every hub NPC is a world 12 spawn inside the stasis room's polygon, at
-    /// the respawner's floor height, clear of the respawner and of each
-    /// other. Only the crate respawns, holds position and has an aggression
-    /// override (NEUTRAL, so it never aggroes on proximity).
+    /// the respawner's floor height, clear of the respawner and of every
+    /// other spawn in the room (the pet trainer and any later corner
+    /// included, not only the hub's own). Only the crate respawns, holds
+    /// position and has an aggression override (NEUTRAL, so it never aggroes
+    /// on proximity).
     #[tokio::test]
     async fn debug_hub_spawns_sit_inside_the_stasis_room() {
         let pool = require_db_or_skip!();
@@ -263,8 +269,14 @@ mod live_db {
                  appears there, so keep at least {MIN_RESPAWNER_CLEARANCE}"
             );
         }
-        for (i, a) in spawns.iter().enumerate() {
-            for b in &spawns[i + 1..] {
+        let in_room: Vec<&SpawnRecord> = records
+            .iter()
+            .filter(|r| {
+                r.world_name == "Castle_CellBlock" && region_contains_xz(&room.points, r.x, r.z)
+            })
+            .collect();
+        for a in &spawns {
+            for b in in_room.iter().filter(|b| b.spawn_id != a.spawn_id) {
                 let d = xz_distance([a.x, a.y, a.z], [b.x, b.y, b.z]);
                 assert!(
                     d >= MIN_NPC_SPACING,

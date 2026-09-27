@@ -8617,13 +8617,18 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 -- Decline, as type 2 (Accept) would. Clicking it sends ButtonID 8.
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200000, 8, 200001, 4, 'Send my choice');
 
+-- Social-systems campaign, SS-U3: the Gate Mail Clerk's button, on dialog
+-- 100104's only (so final) screen. Generic 1 (type 4), ButtonID 8; chain 7011
+-- fires on the choice.
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200001, 8, 200005, 4, 'Send me a mail');
+
 --
 -- TOC entry 3307 (class 0 OID 0)
 -- Dependencies: 303
 -- Name: dialog_screen_buttons_2_screen_button_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 200000, true);
+SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 200001, true);
 
 --
 -- TOC entry 3308 (class 0 OID 0)

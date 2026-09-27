@@ -233,6 +233,29 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             buttons: &[],
         }],
     },
+    // Social-systems campaign, SS-U3: the Gate Mail Clerk (template 390,
+    // Sgt. Harriman, speaker 843), chains 7010-7011 in debug_hub_chains.sql.
+    // One screen, one Generic 1 button (the 100100 reasoning): pressing it
+    // sends `dialogButtonChoice(100104, 8)` and chain 7011 mails the player.
+    // Closing with X sends nothing, so nothing is mailed.
+    DialogOverride {
+        dialog_id: 100104,
+        dialog_flags: 0,
+        kismet_event_set_id: 0,
+        ui_screen_type: 2,
+        screens: &[DialogScreen {
+            screen_id: 200005,
+            speaker_id: 843,
+            text: "Gate Mail. I can send you a test mail with a stack of Health Slappacks \
+                   and 50 naquadah. Open your mail afterwards to take them. One mail every \
+                   10 minutes.",
+            buttons: &[DialogButton {
+                button_type: 4,
+                button_id: 8,
+                text: "Send me a mail",
+            }],
+        }],
+    },
 ];
 
 /// Build the emitter's model from an authored override. Raw text is

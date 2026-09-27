@@ -11,8 +11,12 @@
 //!   meant to contain them, missing display names, missing respawn timers.
 //! - [`live_db_debug_hub`]: live-DB guards for the Castle_CellBlock
 //!   stasis-room debug hub seed (templates 300-304, spawns 400-404): role
-//!   columns, placement, the crate's harmless ability set, the vendor lists,
-//!   loot table 3 and the hub dialogs.
+//!   columns, placement (the Gate Mail Clerk's spawn 490 included), the
+//!   crate's harmless ability set, the vendor lists, loot table 3 and the hub
+//!   dialogs.
+//! - [`live_db_mail_clerk`]: live-DB guards for the debug hub's Gate Mail
+//!   Clerk (social-systems SS-U3): template 390's role columns and dialog
+//!   100104.
 //! - [`live_db_ability_animation_links`]: live-DB guards that weapon-bound
 //!   damage abilities carry the weapon family's event set, so their hits
 //!   animate.
@@ -42,6 +46,7 @@ mod live_db_content_loaders;
 mod live_db_debug_banker;
 mod live_db_debug_hub;
 mod live_db_loaders;
+mod live_db_mail_clerk;
 mod live_db_pet_roster;
 mod live_db_pet_summons;
 mod live_db_pet_trainer;

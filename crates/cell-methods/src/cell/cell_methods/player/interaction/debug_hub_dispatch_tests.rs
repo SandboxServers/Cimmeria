@@ -12,6 +12,7 @@
 //! | loot crate| 304      | alive: combat reroute; dead: `onLootDisplay` with table 3 |
 //! | pet trainer | 360    | `onTrainerOpen` with list 350 (pets campaign PT-07) |
 //! | Banker    | 370      | `onVaultOpen` and a personal vault session (bank-vault BV-04) |
+//! | mail clerk | 390     | chain 7010 → `onDialogDisplay` 100104 (SS-U3)    |
 //!
 //! The vendor row is the one that regressed silently: nothing ever set
 //! `NpcInteractionType::Vendor`, so a vendor-only template reached the `None`
@@ -95,8 +96,9 @@ fn staged_hub(seed: HubSeed) -> (SpaceManager, Vec<(String, u32)>) {
     }
     assert_eq!(
         hub.len(),
-        7,
-        "the hub seeds seven NPCs (#846's five, the PT-07 pet trainer and the BV-04 Banker): {hub:?}"
+        8,
+        "the hub seeds eight NPCs (#846's five, the PT-07 pet trainer, the \
+         BV-04 Banker and the SS-U3 mail clerk): {hub:?}"
     );
 
     // Any archetype list 1 offers, so the trainer has something to show.
@@ -165,6 +167,23 @@ fn methods(msgs: &[CellToBaseMsg]) -> Vec<u16> {
         .collect()
 }
 
+/// `(speaker_entity_id, dialog_id)` of every `onDialogDisplay`.
+fn dialog_displays(msgs: &[CellToBaseMsg]) -> Vec<(i32, i32)> {
+    msgs.iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::EntityMethodCall {
+                method_index: ON_DIALOG_DISPLAY,
+                args,
+                ..
+            } => Some((
+                i32::from_le_bytes(args[0..4].try_into().unwrap()),
+                i32::from_le_bytes(args[4..8].try_into().unwrap()),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
 fn opened_store(msgs: &[CellToBaseMsg]) -> Vec<Option<i32>> {
     msgs.iter()
         .filter_map(|m| match m {
@@ -209,24 +228,26 @@ async fn debug_hub_npcs_answer_a_click_with_their_own_interaction() {
     // Dialog NPC: chain 7001 shows dialog 100100, spoken by that NPC.
     let dialog_npc = eid_of(&hub, "DebugHub_DialogNpc");
     let msgs = click(&mut mgr, &engine, dialog_npc).await;
-    let displays: Vec<(i32, i32)> = msgs
-        .iter()
-        .filter_map(|m| match m {
-            CellToBaseMsg::EntityMethodCall {
-                method_index: ON_DIALOG_DISPLAY,
-                args,
-                ..
-            } => Some((
-                i32::from_le_bytes(args[0..4].try_into().unwrap()),
-                i32::from_le_bytes(args[4..8].try_into().unwrap()),
-            )),
-            _ => None,
-        })
-        .collect();
     assert_eq!(
-        displays,
+        dialog_displays(&msgs),
         vec![(dialog_npc as i32, 100100)],
         "dialog NPC: {msgs:?}"
+    );
+
+    // Mail clerk (SS-U3): chain 7010 shows dialog 100104, spoken by the
+    // clerk. The click alone mails nothing; the dialog's button does.
+    let clerk = eid_of(&hub, "DebugHub_MailClerk");
+    let msgs = click(&mut mgr, &engine, clerk).await;
+    assert_eq!(
+        dialog_displays(&msgs),
+        vec![(clerk as i32, 100104)],
+        "mail clerk: {msgs:?}"
+    );
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::ContentSystemMail(_))),
+        "the click must not mail anything: {msgs:?}"
     );
 
     // Livewire terminal: chain 7004 starts one Livewire session.
@@ -249,8 +270,8 @@ async fn debug_hub_npcs_answer_a_click_with_their_own_interaction() {
         "terminal: {msgs:?}"
     );
 
-    // None of the four is a vendor except the vendor.
-    for npc in [trainer, dialog_npc, terminal] {
+    // None of the others is a vendor.
+    for npc in [trainer, dialog_npc, terminal, clerk] {
         assert_eq!(mgr.get_entity(npc).unwrap().interaction_type, None);
     }
 }

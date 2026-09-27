@@ -25,11 +25,13 @@
 //! `CellToBaseMsg` traffic — a resolve-only test cannot tell a wired
 //! executor arm from the `other =>` catch-all. [`debug_hub`] belongs to no
 //! mission either (the Cellblock stasis-room debug NPCs) and executes its
-//! chains the same way.
+//! chains the same way, as does [`debug_hub_mail_clerk`] (the hub's Gate
+//! Mail Clerk, SS-U3, the `send_system_mail` verb).
 
 mod castle_702_704_executor;
 mod cellblock_dialog_closes;
 mod debug_hub;
+mod debug_hub_mail_clerk;
 mod entity_health_below;
 mod gc1_escort;
 mod grant_xp;
