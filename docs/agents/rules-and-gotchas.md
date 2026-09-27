@@ -1,6 +1,6 @@
 # Project Rules and Gotchas
 
-> **Last updated**: 2026-09-26
+> **Last updated**: 2026-09-27
 > **Audience**: Contributors and their agents, before proposing an approach
 > **Type**: Reference
 
@@ -60,6 +60,7 @@ Classify before you design.
 - **sccache and `CARGO_INCREMENTAL=1` don't mix.** sccache refuses to run when `CARGO_INCREMENTAL` is set to anything but `0`. The lane drops sccache for such a job; a direct `cargo` call with sccache as `RUSTC_WRAPPER` fails. Leave `CARGO_INCREMENTAL` unset: the dev profile already builds workspace crates incrementally.
 - **Don't run `tools/build-hygiene/sweep.ps1` while anything builds.** cargo-sweep can delete files a running build is about to use.
 - **A PR with merge conflicts gets no CI run at all.** Merge `main` first.
+- **Never hand-edit a generated block.** Counts that PRs used to bump by hand (workspace test totals, the inventory threshold, the RE findings count, the gap-analysis totals, the docs count) and the crate graph sit between `<!-- gen:NAME -->` / `<!-- /gen:NAME -->` or `crate-graph` markers and belong to [`tools/docs-gen/regen.py`](../../tools/docs-gen/README.md). The `regen-docs` workflow reruns it on `main` after every merge and commits the result, so a PR never needs to. Run `python tools/docs-gen/regen.py` locally to see the numbers, and commit its output only when your PR adds the marker. Why: two PRs that both bump one number conflict with each other, and a CI gate on a stale count failed PRs whose only fault was that `main` had moved.
 - **Don't stack PRs.** Open every PR against `main`. PRs here are squash-merged, often in quick succession, and releases build from `main`. When #751 was squash-merged, #752 (stacked on it) then merged into its now-dead base branch instead of `main`, and the release went out without it; it had to be re-landed as #753.
 - **Replacing a data file? Run the tests of every crate that loads it.** Grep the whole workspace for the file name, not just the crate you touched. Swapping `data/spaces/castle_cellblock.nav` (#694) broke `nav_roundtrip_castle_cellblock` in the navmesh-extractor crate, which pins the shipped file's header.
 - **Two doc-side CI jobs block a merge**, unlike markdownlint, which only warns: `figure-sources-in-sync` (a figure source under `docs/drafts/spec/figures/sources/` committed without its re-rendered SVG) and `figure-style-lint`. Both fire on changes under `docs/drafts/spec/`. Run `tools/check-figure-sources.sh` and `tools/lint-figure-style.sh` before pushing any change there, including a text-only edit to a draft chapter.
@@ -84,6 +85,7 @@ Classify before you design.
 ## Where project state lives
 
 - Status and gaps: [`docs/project-status.md`](../project-status.md), [`docs/gap-analysis.md`](../gap-analysis.md). Not `docs/architecture/migration-roadmap.md`, which describes the deprecated C++ tree.
+- **Update the status docs once per campaign, in its close-out or release packet.** Per-packet progress goes in the campaign's own ledger under `docs/analysis/<campaign>/`. Why: on 2026-09-27 most rebase conflicts came from shared docs rather than code, with parallel packets each editing the same status rows and totals.
 - Long-running campaigns keep their own ledgers and resume notes under `docs/analysis/` (for example `docs/analysis/castle-rebuild/handoffs/`). Read the newest resume note before continuing one.
 - **A ledger that says "not started" does not mean nobody is on it.** Before dispatching workers for a ledgered campaign, look for campaign branches and worktrees created or committed in the last few hours (`git worktree list`, `git log --since`), and ask whether another session owns the work. A packet that was dispatched minutes ago looks exactly like an abandoned one: a clean worktree at `main`'s head.
 - Playtest reports: `docs/analysis/playtests/`.

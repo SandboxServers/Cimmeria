@@ -2,12 +2,12 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-09-27 (header figures and live counts re-counted with `tools/extract_tests.py`; catalogue tables are still the 2026-06-12 snapshot, plus `wireclient.md`'s social-systems rows)  
-> **Total tests catalogued**: 1,351 *(stale snapshot; current workspace count is **7,337 tests across 1,192 files** (2026-09-27, `python tools/extract_tests.py`) — inventory regeneration is pending the next sweep)*  
+> **Last updated**: 2026-07-25 (header figures re-counted; catalogue tables are still the 2026-06-12 snapshot)  
+> **Total tests catalogued**: 1,351 *(stale snapshot; the current workspace count is in [Workspace totals](#workspace-totals). Inventory regeneration is pending the next sweep)*  
 > **Companion docs**: [TESTING.md](../../../TESTING.md) (the playbook for *how to write* tests), [maintenance.md](maintenance.md), [review-report.md](review-report.md) (audit findings — owned by the testing-validation-engineer agent)
 
-> **Catalogue drift warning.** The per-crate tables below cover 1,351 tests
-> against a workspace that now has 7,337 — they are missing more than half
+> **Catalogue drift warning.** The per-crate tables below cover 1,351 tests,
+> far fewer than the [workspace total](#workspace-totals). They are missing most of
 > the suite, and several crates added since the snapshot have no file at all
 > (`admin-api`, `discord`, `navmesh-extractor`, `observability`,
 > `client-telemetry`, and every `base-*` and `cell-*` crate from the services
@@ -20,11 +20,34 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 
 ## Totals
 
+### Workspace totals
+
+The canonical workspace test count. Other docs link here rather than repeat the
+numbers. `tools/docs-gen/regen.py` generates this block from
+`tools/extract_tests.py`, and the `regen-docs` workflow reruns it on `main` after
+every merge, so don't edit it by hand or bump it in a PR. "Gated in CI" leaves out
+the crates on CI's exclude list (`WORKSPACE_EXCLUDES` in
+[test.yml](../../../.github/workflows/test.yml)). The last row is the threshold in
+[maintenance.md](maintenance.md#when-to-update): a PR that adds or removes that
+many tests also updates the catalogue.
+
+<!-- gen:tests-totals -->
+
+| Metric | Count |
+|---|---:|
+| Tests (`#[test]` / `#[tokio::test]`) | 7,718 |
+| Files with tests | 1,271 |
+| Gated in CI (every crate but CI's exclude list) | 7,300 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,326 |
+| Inventory threshold (5% of the tests) | 386 |
+
+<!-- /gen:tests-totals -->
+
 ### By crate
 
 *Snapshot as of 2026-06-12 except where noted. The `Tests` column is what the
 catalogue files contain, not what the crate has today — see the drift warning
-above. Live per-crate counts as of 2026-09-27 are in the second table.*
+above. Live per-crate counts are in [Live counts by crate](#live-counts-by-crate).*
 
 | Crate | Tests | File |
 |---|---:|---|
@@ -54,72 +77,63 @@ above. Live per-crate counts as of 2026-09-27 are in the second table.*
 > `crates/launcher`'s real 176-test suite was catalogued nowhere. It is now in
 > [launcher.md](launcher.md).
 
-### Live counts (2026-09-27)
+### Live counts by crate
 
-Counted with `python tools/extract_tests.py --list-crates` over every workspace
-member. The services split moved most tests out of `cimmeria-services` into
-the `base-*` and `cell-*` crates, none of which has a catalogue file yet (✗).
+Generated from `tools/extract_tests.py`, like the workspace totals above. `In CI`
+is `no` for the crates on CI's exclude list; `Catalogue` is `none` for crates
+with no file in this directory yet.
 
-| Crate | Tests | Files | Live-DB | In CI | Catalogued? |
-|---|---:|---:|---:|---|---|
-| `cimmeria-cell-content` | 763 | 110 | 460 | yes | ✗ |
-| `cimmeria-cell-combat` | 532 | 84 | 38 | yes | ✗ |
-| `cimmeria-cell-world` | 492 | 82 | 29 | yes | ✗ |
-| `cimmeria-cell` | 477 | 99 | 17 | yes | ✗ |
-| `cimmeria-base-session` | 465 | 81 | 184 | yes | ✗ |
-| `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | ✗ |
-| `cimmeria-entity` | 363 | 43 | 0 | yes | ✓ [entity.md](entity.md) |
-| `cimmeria-cell-console` | 362 | 54 | 0 | yes | ✗ |
-| `cimmeria-base-methods` | 353 | 73 | 265 | yes | ✗ |
-| `cimmeria-cell-methods` | 339 | 50 | 5 | yes | ✗ |
-| `cimmeria-mercury` | 287 | 48 | 0 | yes | ✓ [mercury.md](mercury.md) |
-| `cimmeria-wire` | 259 | 41 | 0 | yes | ✗ |
-| `cimmeria-content-engine` | 258 | 23 | 0 | yes | ✓ [content-engine.md](content-engine.md) |
-| `cimmeria-cell-interactions` | 154 | 27 | 0 | yes | ✗ |
-| `sgw-launcher` | 150 | 19 | 0 | no | ✓ [launcher.md](launcher.md) |
-| `cimmeria-base` | 146 | 24 | 9 | yes | ✗ |
-| `cimmeria-base-world-entry` | 141 | 39 | 29 | yes | ✗ |
-| `cimmeria-cell-catalog` | 138 | 31 | 71 | yes | ✗ |
-| `cimmeria-client-telemetry` | 134 | 30 | 0 | no | ✗ |
-| `cimmeria-resources` | 122 | 19 | 0 | yes | ✗ |
-| `cimmeria-discord` | 76 | 15 | 0 | yes | ✗ |
-| `cimmeria-upk-objects` | 76 | 8 | 0 | yes | ✓ [upk-objects.md](upk-objects.md) |
-| `cimmeria-cell-cover` | 71 | 5 | 6 | yes | ✗ |
-| `cimmeria-game` | 64 | 17 | 0 | yes | ✓ [game.md](game.md) |
-| `cimmeria-server` | 60 | 12 | 0 | yes | ✓ [server.md](server.md) |
-| `cimmeria-wireclient` | 60 | 15 | 0 | yes | ✓ [wireclient.md](wireclient.md) |
-| `cimmeria-client-patches` | 59 | 11 | 0 | no | ✗ |
-| `cimmeria-lab` | 57 | 14 | 0 | no | ✗ |
-| `cimmeria-admin-api` | 52 | 4 | 0 | yes | ✗ |
-| `cimmeria-auth` | 52 | 10 | 8 | yes | ✗ |
-| `cimmeria-patch-wire` | 45 | 5 | 0 | yes | ✗ |
-| `cimmeria-minigame` | 37 | 5 | 0 | yes | ✗ |
-| `cimmeria-common` | 36 | 4 | 0 | yes | ✓ [common.md](common.md) |
-| `cimmeria-occluder` | 30 | 3 | 0 | yes | ✗ |
-| `cimmeria-services` | 30 | 9 | 12 | yes | ✓ [services.md](services.md) |
-| `cimmeria-commands` | 29 | 3 | 0 | yes | ✓ [commands.md](commands.md) |
-| `cimmeria-client-launch` | 26 | 3 | 0 | yes | ✗ |
-| `cimmeria-wire-log` | 24 | 6 | 0 | yes | ✗ |
-| `cimmeria-test-support` | 19 | 3 | 0 | yes | ✗ |
-| `cimmeria-content-editor` | 12 | 1 | 0 | no | ✓ [tools-contenteditor.md](tools-contenteditor.md) |
-| `cimmeria-upk` | 12 | 3 | 0 | yes | ✗ |
-| `cimmeria-observability` | 8 | 2 | 0 | yes | ✗ |
-| `cimmeria-lab-mcp` | 7 | 2 | 0 | yes | ✗ |
-| `cimmeria-app` | 6 | 2 | 0 | no | ✓ [tauri-app.md](tauri-app.md) |
-| `cimmeria-defs` | 5 | 1 | 0 | yes | ✓ [defs.md](defs.md) |
-| **Total** | **7,337** | **1,192** | **1,133** | | |
+<!-- gen:tests-by-crate -->
 
-Of these, **6,919** are gated on every PR. CI excludes the crates marked "no":
+| Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
+|---|---|---:|---:|---:|---|---|
+| `crates/cell-content` | `cimmeria-cell-content` | 764 | 110 | 460 | yes | none |
+| `crates/base-session` | `cimmeria-base-session` | 613 | 111 | 304 | yes | none |
+| `crates/cell-combat` | `cimmeria-cell-combat` | 532 | 84 | 38 | yes | none |
+| `crates/cell-world` | `cimmeria-cell-world` | 500 | 83 | 29 | yes | none |
+| `crates/cell` | `cimmeria-cell` | 484 | 101 | 17 | yes | none |
+| `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
+| `crates/base-methods` | `cimmeria-base-methods` | 444 | 96 | 328 | yes | none |
+| `crates/cell-console` | `cimmeria-cell-console` | 392 | 61 | 0 | yes | none |
+| `crates/entity` | `cimmeria-entity` | 365 | 43 | 0 | yes | [entity.md](entity.md) |
+| `crates/cell-methods` | `cimmeria-cell-methods` | 361 | 54 | 6 | yes | none |
+| `crates/mercury` | `cimmeria-mercury` | 287 | 48 | 0 | yes | [mercury.md](mercury.md) |
+| `crates/wire` | `cimmeria-wire` | 263 | 41 | 0 | yes | none |
+| `crates/content-engine` | `cimmeria-content-engine` | 258 | 23 | 0 | yes | [content-engine.md](content-engine.md) |
+| `crates/cell-interactions` | `cimmeria-cell-interactions` | 183 | 31 | 0 | yes | none |
+| `crates/base` | `cimmeria-base` | 153 | 27 | 10 | yes | none |
+| `crates/cell-catalog` | `cimmeria-cell-catalog` | 153 | 34 | 79 | yes | none |
+| `crates/base-world-entry` | `cimmeria-base-world-entry` | 152 | 40 | 29 | yes | none |
+| `crates/launcher` | `sgw-launcher` | 150 | 19 | 0 | no | [launcher.md](launcher.md) |
+| `crates/client-telemetry` | `cimmeria-client-telemetry` | 134 | 30 | 0 | no | none |
+| `crates/resources` | `cimmeria-resources` | 127 | 19 | 0 | yes | none |
+| `crates/discord` | `cimmeria-discord` | 76 | 15 | 0 | yes | none |
+| `crates/upk-objects` | `cimmeria-upk-objects` | 76 | 8 | 0 | yes | [upk-objects.md](upk-objects.md) |
+| `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
+| `crates/game` | `cimmeria-game` | 64 | 17 | 0 | yes | [game.md](game.md) |
+| `crates/wireclient` | `cimmeria-wireclient` | 61 | 16 | 0 | yes | [wireclient.md](wireclient.md) |
+| `crates/server` | `cimmeria-server` | 60 | 12 | 0 | yes | [server.md](server.md) |
+| `crates/client-patches` | `cimmeria-client-patches` | 59 | 11 | 0 | no | none |
+| `crates/lab` | `cimmeria-lab` | 57 | 14 | 0 | no | none |
+| `crates/admin-api` | `cimmeria-admin-api` | 52 | 4 | 0 | yes | none |
+| `crates/auth` | `cimmeria-auth` | 52 | 10 | 8 | yes | none |
+| `crates/patch-wire` | `cimmeria-patch-wire` | 45 | 5 | 0 | yes | none |
+| `crates/minigame` | `cimmeria-minigame` | 37 | 5 | 0 | yes | none |
+| `crates/common` | `cimmeria-common` | 36 | 4 | 0 | yes | [common.md](common.md) |
+| `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
+| `crates/services` | `cimmeria-services` | 30 | 9 | 12 | yes | [services.md](services.md) |
+| `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
+| `crates/client-launch` | `cimmeria-client-launch` | 26 | 3 | 0 | yes | none |
+| `crates/wire-log` | `cimmeria-wire-log` | 24 | 6 | 0 | yes | none |
+| `crates/test-support` | `cimmeria-test-support` | 19 | 3 | 0 | yes | none |
+| `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
+| `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
+| `crates/observability` | `cimmeria-observability` | 8 | 2 | 0 | yes | none |
+| `crates/lab-mcp` | `cimmeria-lab-mcp` | 7 | 2 | 0 | yes | none |
+| `src-tauri` | `cimmeria-app` | 6 | 2 | 0 | no | [tauri-app.md](tauri-app.md) |
+| `crates/defs` | `cimmeria-defs` | 5 | 1 | 0 | yes | [defs.md](defs.md) |
 
-| Excluded crate | Tests | Note |
-|---|---:|---|
-| `sgw-launcher` | 150 | The egui launcher. Includes ed25519 manifest-signature verification, a path-traversal guard and hostname-injection validation — see [launcher.md](launcher.md#ci-exclusion). |
-| `cimmeria-client-telemetry` | 134 | Windows-only cdylib; excluded so Linux dev hosts need no extra toolchain. |
-| `cimmeria-client-patches` | 59 | Windows-only injected DLL (Black Market client patch). |
-| `cimmeria-lab` | 57 | Live research lab supervisor (GUI / Windows host). |
-| `cimmeria-content-editor` | 12 | GUI app. |
-| `cimmeria-app` | 6 | GUI app (`src-tauri`). |
-| **Total** | **418** | |
+<!-- /gen:tests-by-crate -->
 
 The exclusions exist for build-environment reasons (GUI toolkits, Windows-only
 cdylibs, linker memory), not because the tests are low-value. Run the excluded
@@ -193,4 +207,4 @@ See [review-report.md](review-report.md) for audit findings — that file is own
 
 ## Keeping this inventory current
 
-See [maintenance.md](maintenance.md) — when you add or remove a test, you also update the relevant per-crate file and the totals on this page in the same PR. CI does not yet drift-check the inventory; reviewers do.
+See [maintenance.md](maintenance.md) — a PR that adds or removes more tests than the threshold in [Workspace totals](#workspace-totals) also updates the relevant per-crate file. The totals and live counts on this page are generated; don't edit them. CI does not drift-check the catalogue tables; reviewers do.

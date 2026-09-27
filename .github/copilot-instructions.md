@@ -54,13 +54,18 @@ A PR that changes runtime behaviour must add or update a test. **Read [TESTING.m
 - Live-DB tests use `require_db_or_skip!` and run serialised — `tools/test-live-db.sh` (or `.ps1`) runs `cargo nextest run --profile=ci-live-db --lib` over every crate with live-DB tests (the profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`), or `cargo test ... -- --test-threads=1` if you're not on nextest. A new crate with a `cimmeria-test-support` dev-dependency goes in that script's list.
 - Test names match the assertion. If the assertion changes, rename.
 - No PR or issue numbers in source comments — provenance lives in the PR body.
-- Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) **only when a single PR adds or removes ≥5% of the workspace test count** (~301 tests against the current 6,019 baseline). Smaller drifts get folded in by periodic sweep updates — don't block review on per-PR inventory churn for a handful of tests in a 6,019-test repo.
+- Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) **only when a single PR adds or removes ≥5% of the workspace test count** (the current threshold is the last row of the generated totals in [docs/testing/inventory/README.md](../docs/testing/inventory/README.md#workspace-totals)). Smaller drifts get folded in by periodic sweep updates — don't block review on per-PR inventory churn for a handful of tests.
 
 If a single feature touches several layers (handler logic + serializer + SQL + cross-handler invariant), expect to add several test types — see TESTING.md "When one feature needs more than one test".
 
 ## Required docs on every PR
 
 A PR that changes user-visible behaviour, public surface, file layout, build steps, or test policy must update the corresponding doc(s). For non-trivial doc work, prefer the **Documentation Writer** agent over freehand edits — it follows the Diátaxis framework (tutorials / how-to / reference / explanations) and keeps voice consistent with the rest of `docs/`. The mapping of "what changed → what to update" is in [CLAUDE.md](../CLAUDE.md) under "Required documentation for every PR". Index entries in `docs/readme.md` and per-section `README.md` files must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
+
+Two rules keep shared docs from conflicting between PRs; flag PRs that break them:
+
+- **Generated blocks are not hand-edited.** Text between `<!-- gen:NAME -->` and `<!-- /gen:NAME -->` markers (test counts, findings counts, the gap-analysis totals) and the crate graph between the `crate-graph` markers belong to `tools/docs-gen/regen.py`. The `regen-docs` workflow reruns it on `main` after every merge. A PR changes a generated block only when it adds the marker.
+- **Status docs change once per campaign.** `docs/gap-analysis.md` and `docs/project-status.md` are updated in a campaign's close-out or release packet. Per-packet progress goes in the campaign's ledger under `docs/analysis/<campaign>/`.
 
 Run the markdown lint as the doc-side equivalent of `cargo clippy`: `tools/lint-md.sh` (or `.ps1` on Windows). Same ruleset CodeRabbit applies in PR review — local catches every cosmetic finding before the bot has to type it. Warn-only in CI for now; Phase 2 hardens to blocking. Config: [.markdownlint-cli2.yaml](../.markdownlint-cli2.yaml).
 

@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 285 (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 6,019 across 950 files (5,604 gated in CI) |
-| Live-DB regression guards | 811 |
+| Documentation files | <!-- gen:docs-md-count -->597<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->7,718<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,271<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->7,300<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,326<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -224,7 +224,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 38 documents.
+How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->41<!-- /gen:section-table-rows --> documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|

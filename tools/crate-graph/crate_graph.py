@@ -9,7 +9,7 @@ The diagram in README.md and crates/README.md lives between these markers:
 
 Usage:
     python tools/crate-graph/crate_graph.py            # rewrite both READMEs
-    python tools/crate-graph/crate_graph.py --check    # exit 1 if either is stale (CI)
+    python tools/crate-graph/crate_graph.py --check    # exit 1 if either is stale
     python tools/crate-graph/crate_graph.py --print    # print the Mermaid block
 
 Rules:
@@ -201,8 +201,8 @@ def render(full: bool = False) -> str:
             f"longer path; edges into the shared {shared_titles} layers are drawn as {layer_count} "
             "layer-to-layer arrows)"
         )
-        + ". Dev-dependencies are not drawn. Regenerate with `python tools/crate-graph/crate_graph.py`; "
-        "`--full` draws every edge. CI fails when this block is stale.*"
+        + ". Dev-dependencies are not drawn. The `regen-docs` workflow regenerates this block on `main` "
+        "after every merge (`python tools/docs-gen/regen.py`); `crate_graph.py --full` draws every edge.*"
     )
     return "\n".join(lines) + "\n\n" + caption
 

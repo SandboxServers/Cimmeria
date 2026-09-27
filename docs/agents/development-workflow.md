@@ -1,6 +1,6 @@
 # Development Workflow for AI-Assisted Work
 
-> **Last updated**: 2026-09-26
+> **Last updated**: 2026-09-27
 > **Audience**: Contributors doing AI-assisted work, and their agents
 > **Type**: How-to
 
@@ -24,7 +24,7 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 5. **Implement** with `rust-gameserver-dev` (or directly), iterating with `cargo check -p <crate>` on the crate you changed, through the build lane (see [Builds, worktrees and test databases](#builds-worktrees-and-test-databases)). The review rules for code under `crates/services/` are in [`.github/instructions/rust-services.instructions.md`](../../.github/instructions/rust-services.instructions.md); content chains have their own in [`content-chains.instructions.md`](../../.github/instructions/content-chains.instructions.md).
 6. **Ask "what if the client lies?"** Run `server-authority-enforcer` over any handler that takes client-supplied data into server state.
 7. **Prove the guard.** First commit your work (a WIP commit is fine). Then undo only the fix by editing it out of the one file, run the test, and confirm it fails. Restore with `git checkout HEAD -- <that one file>`. Never restore with `git checkout .`, `git reset --hard`, or `git stash`: other sessions may share the checkout and the stash. `testing-validation-engineer` does this review.
-8. **Update the docs** named by the `CLAUDE.md` doc-update map, preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync.
+8. **Update the docs** named by the `CLAUDE.md` doc-update map, preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync. Leave generated blocks and the status docs alone; see [Shared docs without conflicts](#shared-docs-without-conflicts).
 9. **Run the pre-PR checklist** from `CLAUDE.md`. `rust-toolchain.toml` pins the toolchain CI uses, so your clippy run is CI's.
 10. **Open the PR** with the template filled in, including what you could not test.
 11. **Commit project memory.** If a subagent or the main session wrote findings under `.claude/agent-memory/`, stage them with the change. Check the root checkout too: subagents that worked in a worktree have been seen writing their memory files into the root checkout's `.claude/agent-memory/` instead (observed through 2026-09). Rules for what belongs there: [Project memory](#project-memory).
@@ -80,6 +80,16 @@ Subagents with `memory: project` in their definition write to their own folder a
 - **Date what can go stale.** When a memory stops being true, add a dated status line rather than silently rewriting it, and reword its index line so the always-loaded index asserts nothing stale.
 - **Promote, then trim.** When a memory's claim is verified to `docs/` standard, move it into the right doc (a finding, an ADR, [`rules-and-gotchas.md`](rules-and-gotchas.md)) in the same PR, and reduce the memory to a pointer or delete it.
 - **Merge indexes, never overwrite them.** `MEMORY.md` files change often and deliberately list one file under several sections. When landing memory from another branch, apply the diff 3-way (`git diff … | git apply --3way`) and don't copy an index over or de-duplicate it.
+
+## Shared docs without conflicts
+
+Parallel PRs used to conflict mostly in docs, not code: each one bumped the same test count, findings count or gap-analysis total, and each packet edited the same status rows. Three rules prevent that.
+
+- **Generated blocks belong to `tools/docs-gen/regen.py`.** Counts and tables between `<!-- gen:NAME -->` and `<!-- /gen:NAME -->` markers, and the crate graph between the `crate-graph` markers, are generated. The `regen-docs` workflow runs the script on `main` after every merge and commits whatever changed, so a PR never bumps them. Run `python tools/docs-gen/regen.py` locally to see the numbers, and commit its output only when your PR adds a marker. [`tools/docs-gen/README.md`](../../tools/docs-gen/README.md) lists the generators.
+- **Status docs change once per campaign.** `docs/gap-analysis.md` and `docs/project-status.md` are updated in the campaign's close-out or release packet. Record per-packet progress in the campaign's own ledger under `docs/analysis/<campaign>/`.
+- **Append-only lists merge by union.** [`.gitattributes`](../../.gitattributes) marks the `.claude/agent-memory/*/MEMORY.md` indexes, `docs/reverse-engineering/findings/README.md` and `docs/readme.md` with `merge=union`, so two PRs that append rows at the same spot both keep their rows instead of conflicting. Union applies only to local merges and rebases: GitHub's own conflict check ignores it, so rebase locally when GitHub reports a conflict. When both sides edit the same line, union keeps both versions, so read the result. Files whose rows are edited in place, such as the gap analysis, the test inventory tables and `crates/README.md`, are left on the normal merge driver.
+
+Tip: `git config rerere.enabled true` makes git remember how you resolved a conflict and replay it on the next rebase.
 
 ## Builds, worktrees and test databases
 
