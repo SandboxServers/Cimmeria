@@ -177,6 +177,9 @@ pub(super) enum NoKillXp {
     PetUnregistered,
     /// The pet's `transfer_xp` is non-finite or not above zero.
     TransferXpInvalid(f32),
+    /// The pet's `transfer_xp` is finite but so large that the scaled
+    /// payout exceeds [`MAX_KILL_XP`] (bad seed data).
+    XpOverflow(f32),
     /// The payout rounds to zero XP (a level-0 victim, or a tiny scale).
     ZeroXp,
 }
@@ -188,10 +191,22 @@ impl NoKillXp {
             Self::CreditRefused => "credit_refused",
             Self::PetUnregistered => "pet_unregistered",
             Self::TransferXpInvalid(_) => "transfer_xp_invalid",
+            Self::XpOverflow(_) => "xp_overflow",
             Self::ZeroXp => "zero_xp",
         }
     }
 }
+
+/// The largest kill payout a scaled pet kill may grant: `u32::MAX`.
+///
+/// `kill_xp` pays at most a few thousand XP, and D-PT02 ships
+/// `transfer_xp = 1.0`, so any scaled payout above this is a seed fault. The
+/// bound exists because a finite but huge `transfer_xp` (`f32::MAX`) makes
+/// the `f64` product exceed `u64`, and an `as u64` cast saturates rather
+/// than failing: the owner would be granted `u64::MAX` XP. `u32::MAX` rather
+/// than `u64::MAX` also keeps the value inside every integer width the base
+/// progression path stores XP in.
+pub(super) const MAX_KILL_XP: u64 = u32::MAX as u64;
 
 /// Resolve `attacker_id` to the credited player and scale `base_xp` by the
 /// pet's `transfer_xp` when the attacker is a pet (1.0 per D-PT02; a
@@ -199,7 +214,9 @@ impl NoKillXp {
 ///
 /// `Err` when nobody is credited, or when the scale leaves nothing to pay:
 /// a template authored with `transfer_xp = 0`, or a non-finite or negative
-/// value, which fails closed to zero rather than minting XP.
+/// value, which fails closed to zero rather than minting XP. A finite scale
+/// whose payout would exceed [`MAX_KILL_XP`] also fails closed
+/// (`XpOverflow`), checked on the `f64` product before the integer cast.
 pub(super) fn kill_xp_payout(
     space_mgr: &SpaceManager,
     attacker_id: u32,
@@ -222,7 +239,11 @@ pub(super) fn kill_xp_payout(
     let xp = if scale == 1.0 {
         base_xp
     } else if scale.is_finite() && scale > 0.0 {
-        (base_xp as f64 * f64::from(scale)).round() as u64
+        let scaled = (base_xp as f64 * f64::from(scale)).round();
+        if scaled > MAX_KILL_XP as f64 {
+            return Err(NoKillXp::XpOverflow(scale));
+        }
+        scaled as u64
     } else {
         return Err(NoKillXp::TransferXpInvalid(scale));
     };
@@ -236,8 +257,8 @@ pub(super) fn kill_xp_payout(
 ///
 /// Levels follow the negative-logging convention: DEBUG for outcomes play
 /// produces every minute (a mob kills a pet, an NPC fight, an orphaned
-/// pet's last hit), WARN only for `transfer_xp_invalid`, a data fault no
-/// client can cause. Pet-related rows go on `pets.credit` with the owner's
+/// pet's last hit), WARN only for `transfer_xp_invalid` and `xp_overflow`,
+/// data faults no client can cause. Pet-related rows go on `pets.credit` with the owner's
 /// identity; the plain NPC-kills-NPC row stays on the module target.
 /// `CreditRefused` logs nothing: `credit_recipient` already wrote its WARN.
 fn log_no_kill_xp(
@@ -285,7 +306,7 @@ fn log_no_kill_xp(
     };
     let (account_id, player_id) = (id.account_id, id.player_id);
 
-    if let NoKillXp::TransferXpInvalid(transfer_xp) = no_xp {
+    if let NoKillXp::TransferXpInvalid(transfer_xp) | NoKillXp::XpOverflow(transfer_xp) = no_xp {
         tracing::warn!(
             target: "pets.credit",
             event = "kill_xp_not_granted",
@@ -298,7 +319,8 @@ fn log_no_kill_xp(
             victim_id = target_eid,
             base_xp,
             transfer_xp,
-            "pet kill paid no XP: transfer_xp is not a positive finite number"
+            max_kill_xp = MAX_KILL_XP,
+            "pet kill paid no XP: transfer_xp is out of range (not positive and finite, or the payout overflows)"
         );
     } else if owner_id.is_some() {
         tracing::debug!(

@@ -201,3 +201,38 @@ async fn a_zero_xp_pet_kill_logs_zero_xp() {
     assert_pet(&row, pet);
     assert_owner_identity(&row);
 }
+
+/// **Guard (#889).** Seam: a finite but huge `transfer_xp` (`f32::MAX`)
+/// would overflow the payout, and the `as u64` cast would saturate to
+/// `u64::MAX` XP. The kill pays nothing and logs one WARN
+/// (`reason = xp_overflow`, bad seed data) with the offending scale and the
+/// same identity fields as `zero_xp`. Reverted (no range check before the
+/// cast), a `GrantXP` of `u64::MAX` goes to the owner.
+#[tokio::test]
+async fn an_overflowing_transfer_xp_logs_xp_overflow_at_warn() {
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(pet)
+        .unwrap()
+        .pet
+        .as_mut()
+        .unwrap()
+        .transfer_xp = f32::MAX;
+    let capture = LogCapture::install();
+    assert_eq!(kill(&mut mgr, mob, pet).await, vec![], "no GrantXP");
+
+    let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+    assert_eq!(row.level, Level::WARN);
+    assert!(row.has_field("reason", "xp_overflow"), "{row:?}");
+    // Recorded through `f64`, so compare the value, not the f32 spelling.
+    assert_eq!(
+        row.fields
+            .get("transfer_xp")
+            .and_then(|v| v.parse::<f64>().ok()),
+        Some(f64::from(f32::MAX)),
+        "{row:?}"
+    );
+    assert!(row.has_field("victim_id", &mob.to_string()), "{row:?}");
+    assert!(row.has_field("base_xp", &MOB_XP.to_string()), "{row:?}");
+    assert_pet(&row, pet);
+    assert_owner_identity(&row);
+}
