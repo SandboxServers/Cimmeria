@@ -7,9 +7,13 @@
 //! the vault or buyback. An item that resolves to buyback is refused with
 //! `not_grantable_container`.
 //!
-//! Sentinels: accounts/players `0x7000_C420..=0x7000_C427`, entities
-//! `0x7000_C4E8..=0x7000_C4EB`, synthetic item types `0x7000_C4F2` (`{16}`)
-//! and `0x7000_C4F3` (`{16,17,15}`).
+//! With both carried bags full, an item that lists the vault first and both
+//! carried bags (`{17,1,15}`) is refused the same way, for a plain grant and
+//! for loot.
+//!
+//! Sentinels: accounts/players `0x7000_C420..=0x7000_C42B`, entities
+//! `0x7000_C4E8..=0x7000_C4ED`, synthetic item types `0x7000_C4F2` (`{16}`),
+//! `0x7000_C4F3` (`{16,17,15}`) and `0x7000_C4F4` (`{17,1,15}`).
 
 use tokio::sync::mpsc;
 use tracing::Level;
@@ -23,18 +27,26 @@ use crate::test_support::{
 
 const BUYBACK_ONLY: i32 = 0x7000_C4F2;
 const BUYBACK_FIRST: i32 = 0x7000_C4F3;
+const VAULT_FIRST_BOTH_BAGS: i32 = 0x7000_C4F4;
 
 async fn fill_crafting_bag(pool: &PgPool, player_id: i32, type_id: i32) {
+    fill_bag(pool, player_id, type_id, 15, 100).await;
+}
+
+/// Fill `slots` slots (0..slots) of `container_id` with one-item stacks.
+async fn fill_bag(pool: &PgPool, player_id: i32, type_id: i32, container_id: i32, slots: i32) {
     sqlx::query(
         "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id, \
                                     bound, durability, charges) \
-         SELECT $1, $2, 1, s, 15, false, 100, 0 FROM generate_series(0, 99) s",
+         SELECT $1, $2, 1, s, $3, false, 100, 0 FROM generate_series(0, $4 - 1) s",
     )
     .bind(player_id)
     .bind(type_id)
+    .bind(container_id)
+    .bind(slots)
     .execute(pool)
     .await
-    .expect("fill the crafting bag");
+    .expect("fill the bag");
 }
 
 async fn insert_item_type(pool: &PgPool, item_id: i32, container_sets: &str) {
@@ -55,7 +67,7 @@ async fn insert_item_type(pool: &PgPool, item_id: i32, container_sets: &str) {
 }
 
 async fn delete_item_types(pool: &PgPool) {
-    for id in [BUYBACK_ONLY, BUYBACK_FIRST] {
+    for id in [BUYBACK_ONLY, BUYBACK_FIRST, VAULT_FIRST_BOTH_BAGS] {
         let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
             .bind(id)
             .execute(pool)
@@ -276,6 +288,170 @@ async fn buyback_is_never_a_grant_target() {
     )
     .await;
     assert_eq!(bags(&pool, player_id).await, vec![(15, 1, 1)]);
+
+    cleanup(&pool, account_id, player_id, entity_id).await;
+    delete_item_types(&pool).await;
+}
+
+/// Both fall-through targets full: a `{17,1,15}` item asked into the vault
+/// by `gmGiveItem` (the same request shape as a content `grant_item`) with
+/// the main bag (40) and the crafting bag (100) full is refused with
+/// `grant_refused reason=container_full` and the full identity, the GM is
+/// told why, and it lands in no container: no new row anywhere, nothing in
+/// 16-20.
+#[tokio::test]
+async fn both_carried_bags_full_refuses_a_vault_first_grant() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id, entity_id) = (0x7000_C428, 0x7000_C429, 0x7000_C4EC_u32);
+    cleanup(&pool, account_id, player_id, entity_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    insert_item_type(&pool, VAULT_FIRST_BOTH_BAGS, "{17,1,15}").await;
+    fill_bag(&pool, player_id, VAULT_FIRST_BOTH_BAGS, 1, 40).await;
+    fill_bag(&pool, player_id, VAULT_FIRST_BOTH_BAGS, 15, 100).await;
+    let before = bags(&pool, player_id).await;
+    assert_eq!(before, vec![(1, 40, 40), (15, 100, 100)]);
+
+    let addr: SocketAddr = "127.0.0.1:54621".parse().unwrap();
+    let mut session = test_default_connected_client_state();
+    session.player_entity_id = Some(entity_id);
+    let conn = Arc::new(Mutex::new(HashMap::from([(addr, session)])));
+    let e2a = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let test_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = test_transport.clone();
+    let db_pool = Some(Arc::new(pool.clone()));
+    let capture = LogCapture::install();
+
+    handle_grant_item(
+        entity_id,
+        player_id,
+        VAULT_FIRST_BOTH_BAGS,
+        17,
+        1,
+        true,
+        &db_pool,
+        &None,
+        &transport,
+        &conn,
+        &e2a,
+    )
+    .await;
+
+    assert_eq!(
+        bags(&pool, player_id).await,
+        before,
+        "no new row in any container"
+    );
+    assert_eq!(
+        ungrantable_rows(&pool, player_id).await,
+        0,
+        "nothing in 16-20"
+    );
+    let event = capture
+        .find_event(Level::INFO, "grant_refused", "container_full")
+        .expect("grant_refused reason=container_full");
+    assert_eq!(event.target, "inventory");
+    for (key, value) in [
+        ("event", "grant_refused".to_string()),
+        ("account_id", account_id.to_string()),
+        ("player_id", player_id.to_string()),
+        ("entity_id", entity_id.to_string()),
+        ("type_id", VAULT_FIRST_BOTH_BAGS.to_string()),
+        ("quantity", "1".to_string()),
+    ] {
+        assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
+    }
+    assert!(
+        capture
+            .find_event(
+                Level::WARN,
+                "grant_rejected",
+                "grant_into_storage_container"
+            )
+            .is_none(),
+        "an item that lists a carried bag is not the vault guard's refusal"
+    );
+    let texts = sent_texts(&test_transport);
+    assert!(
+        texts.iter().any(|t| t.contains("that bag is full")),
+        "the player must see why the grant was refused: {texts:?}"
+    );
+
+    cleanup(&pool, account_id, player_id, entity_id).await;
+    delete_item_types(&pool).await;
+}
+
+/// The loot variant: with both carried bags full the loot grant is refused
+/// and handed back to the cell (which puts it back on the corpse and tells
+/// the looter, pinned by the cell's
+/// `loot::restore_tests::refused_grant_goes_back_on_the_emptied_corpse`);
+/// no row is written, nothing lands in 16-20.
+#[tokio::test]
+async fn both_carried_bags_full_hands_vault_first_loot_back() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id, entity_id) = (0x7000_C42A, 0x7000_C42B, 0x7000_C4ED_u32);
+    cleanup(&pool, account_id, player_id, entity_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    insert_item_type(&pool, VAULT_FIRST_BOTH_BAGS, "{17,1,15}").await;
+    fill_bag(&pool, player_id, VAULT_FIRST_BOTH_BAGS, 1, 40).await;
+    fill_bag(&pool, player_id, VAULT_FIRST_BOTH_BAGS, 15, 100).await;
+    let before = bags(&pool, player_id).await;
+    let (transport, conn, e2a) = state();
+    let db_pool = Some(Arc::new(pool.clone()));
+    let (tx, mut rx) = mpsc::channel(8);
+    let source = LootGrantSource {
+        corpse_id: 0x7000_C4D3,
+        index: 2,
+        corpse_respawn_at: None,
+        corpse_template_id: None,
+    };
+    let capture = LogCapture::install();
+
+    handle_loot_grant(
+        entity_id,
+        player_id,
+        VAULT_FIRST_BOTH_BAGS,
+        17,
+        1,
+        source,
+        &db_pool,
+        &Some(tx),
+        &transport,
+        &conn,
+        &e2a,
+    )
+    .await;
+
+    assert_eq!(
+        bags(&pool, player_id).await,
+        before,
+        "no new row in any container"
+    );
+    assert_eq!(
+        ungrantable_rows(&pool, player_id).await,
+        0,
+        "nothing in 16-20"
+    );
+    match rx.try_recv() {
+        Ok(BaseToCellMsg::LootGrantRefused {
+            source: back,
+            reason,
+            design_id,
+            quantity,
+            ..
+        }) => {
+            assert_eq!(back, source);
+            assert_eq!(reason, GrantRefusal::ContainerFull);
+            assert_eq!((design_id, quantity), (VAULT_FIRST_BOTH_BAGS, 1));
+        }
+        _ => panic!("the refused loot must go back to the cell"),
+    }
+    let event = capture
+        .find_event(Level::INFO, "grant_refused", "container_full")
+        .expect("grant_refused reason=container_full");
+    assert_eq!(
+        event.fields.get("account_id"),
+        Some(&account_id.to_string())
+    );
 
     cleanup(&pool, account_id, player_id, entity_id).await;
     delete_item_types(&pool).await;
