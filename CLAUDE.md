@@ -70,14 +70,15 @@ bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
 bash tools/build-lane/lane.sh cargo test -p cimmeria-cell
 
 # Full workspace check — skip the GUI apps (Tauri editors and the egui
-# launcher), and the Windows-only client-telemetry cdylib so CI's Linux
-# runners don't need xkbcommon/xcb dev packages. Same six exclusions as CI.
+# launcher), and the Windows-only client-telemetry and client-patches cdylibs
+# so CI's Linux runners don't need xkbcommon/xcb dev packages. Same seven
+# exclusions as CI.
 bash tools/build-lane/lane.sh --exclusive cargo check --workspace \
   --exclude cimmeria-app \
   --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor \
   --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Full debug info for a debugger session (builds into target/dev-debug/)
 bash tools/build-lane/lane.sh cargo build -p cimmeria-server --profile dev-debug
@@ -110,16 +111,16 @@ cargo hakari generate --diff && cargo hakari manage-deps --dry-run
 cargo clippy --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab \
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab \
   --all-targets -- -D warnings
 cargo build --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab --all-targets
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 # Doctests aren't run by nextest — only cimmeria-commands has runnable
 # doctests today, so this is a one-crate sanity check:
 cargo test --doc -p cimmeria-commands

@@ -69,6 +69,8 @@ CI_EXCLUDED_PACKAGES = frozenset(
         "cimmeria-scene-editor",
         "sgw-launcher",
         "cimmeria-client-telemetry",
+        "cimmeria-client-patches",
+        "cimmeria-lab",
     }
 )
 

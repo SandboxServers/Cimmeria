@@ -170,17 +170,18 @@ You've verified the server runs. Now verify your build can also run the tests CI
 cargo check -p cimmeria-cell
 
 # Full workspace check (skip the GUI apps, the Windows-only client-telemetry
-# cdylib and the lab supervisor: the same six crates CI skips):
+# and client-patches cdylibs and the lab supervisor: the same seven crates CI
+# skips):
 cargo check --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Run the test suite (no live DB needed):
 cargo nextest run --profile=ci --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 ```
 
 If you don't have nextest installed yet: `cargo install cargo-nextest --locked`.
