@@ -11,6 +11,21 @@
 
 use cimmeria_entity::cell_entity::VaultScope;
 
+/// The Banker's "Expand vault" dialog (bank-vault BV-05, D-BV02): one
+/// screen with one Generic 1 button, authored as a Cimmeria cooked-data
+/// override (`cimmeria-resources` `DIALOG_OVERRIDES`). The Bank campaign
+/// owns dialog ids 60110-60119 and screen ids 200010-200019.
+///
+/// The client's reply (`dialogButtonChoice`) is routed by this id to the
+/// purchase path, never to a content chain. The reply is not an authority
+/// check: the purchase re-checks the vault session, the Banker's
+/// proximity, the cash and the ceiling.
+pub const VAULT_EXPAND_DIALOG_ID: i32 = 60110;
+
+/// Slots one expansion adds (D-BV02: 40 to 100 in steps of 10). The
+/// `bank_slots_sanity` CHECK on `sgw_player` enforces the same grid.
+pub const VAULT_EXPAND_STEP: i16 = 10;
+
 /// Serialize the `(INT32 EntityId, VECTOR3 Position)` args of a vault-open
 /// method: 4 bytes of LE `i32`, then three LE `f32` (x, y, z). 16 bytes.
 pub fn build_vault_open_args(entity_id: i32, position: [f32; 3]) -> Vec<u8> {

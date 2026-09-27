@@ -4,6 +4,7 @@
 //! handlers to this file rather than to `mod.rs`.
 
 use crate::base::bank_dump::{handle_gm_dump, DumpCaller};
+use crate::base::bank_expand::{handle_expand, handle_expansion_quote, ExpandCaller};
 use crate::cell::messages::BankCellToBase;
 
 use super::DispatchCtx;
@@ -25,6 +26,51 @@ pub(super) async fn route(msg: BankCellToBase, ctx: &DispatchCtx<'_>) {
             handle_gm_dump(
                 caller,
                 subject,
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
+        BankCellToBase::ExpansionQuote {
+            entity_id,
+            account_id,
+            player_id,
+            speaker_id,
+        } => {
+            let caller = ExpandCaller {
+                entity_id,
+                account_id,
+                player_id,
+            };
+            handle_expansion_quote(
+                caller,
+                speaker_id,
+                ctx.db_pool,
+                ctx.cell_tx,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
+        BankCellToBase::Expand {
+            entity_id,
+            account_id,
+            player_id,
+            from_slots,
+            vault,
+        } => {
+            let caller = ExpandCaller {
+                entity_id,
+                account_id,
+                player_id,
+            };
+            handle_expand(
+                caller,
+                from_slots,
+                vault,
                 ctx.db_pool,
                 ctx.transport,
                 ctx.connected,

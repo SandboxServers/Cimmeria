@@ -8622,13 +8622,19 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 -- fires on the choice.
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200001, 8, 200005, 4, 'Send me a mail');
 
+-- Bank and Vault campaign, BV-05: the Expand vault button, on dialog 60110's
+-- only screen. Generic 1 (type 4) so the label is drawn; ButtonID 8. The
+-- server does not trust the button: the purchase re-checks the session,
+-- the Banker's range, the cash and the ceiling.
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200010, 8, 200010, 4, 'Expand vault');
+
 --
 -- TOC entry 3307 (class 0 OID 0)
 -- Dependencies: 303
 -- Name: dialog_screen_buttons_2_screen_button_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 200001, true);
+SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 200010, true);
 
 --
 -- TOC entry 3308 (class 0 OID 0)

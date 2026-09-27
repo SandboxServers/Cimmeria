@@ -10850,6 +10850,13 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 -- test mail. Drawn by the client from DIALOG_OVERRIDES like 60100.
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60104, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Hub - Gate Mail Clerk');
 
+-- Bank and Vault campaign, BV-05: the Banker's Expand vault offer (D-BV02).
+-- The bank owns dialog ids 60110-60119. One screen, one Generic 1 button.
+-- The server shows it beside onVaultOpen while bank_slots < 100, and routes
+-- its answer to the purchase path (crates/cell-interactions bank/expand.rs),
+-- not to a content chain. Drawn by the client from DIALOG_OVERRIDES.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60110, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Banker - Expand vault');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309

@@ -618,6 +618,7 @@ async fn gm_remove_takes_the_gms_own_vault_verdict() {
         banker_id: None,
         space_id,
         opened_at: std::time::Instant::now(),
+        expansion_offer: None,
     });
     let (tx, mut rx) = mpsc::channel(8);
 

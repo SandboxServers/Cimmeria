@@ -307,6 +307,35 @@ pub const QUARANTINED_DIALOG_OVERRIDES: &[DialogOverride] = &[
             }],
         }],
     },
+    // Bank and Vault campaign, BV-05: the Banker's Expand vault offer
+    // (`cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_ID`). One screen,
+    // one Generic 1 button (the 60100 reasoning). The server shows it beside
+    // `onVaultOpen` while the vault is below 100 slots; the answer goes to
+    // the purchase path, which re-checks everything. Closing with X sends
+    // nothing, so nothing is bought. Speaker 0, because any Banker (or the
+    // GM's own entity after `.bank`) speaks it.
+    //
+    // Authored under quarantine: it shares two of the suspects above (screen
+    // id 200010, button type 4), so it is not served until RE names the
+    // field. Until then the server still sends `onDialogDisplay(60110)` and
+    // the client shows nothing, so no expansion can be bought from the UI.
+    DialogOverride {
+        dialog_id: 60110,
+        dialog_flags: 0,
+        kismet_event_set_id: 0,
+        ui_screen_type: 2,
+        screens: &[DialogScreen {
+            screen_id: 200010,
+            speaker_id: 0,
+            text: "Vault expansion. I can add 10 slots to your vault, up to 100 in all. The \
+                   price of the next 10 slots is in your chat window.",
+            buttons: &[DialogButton {
+                button_type: 4,
+                button_id: 8,
+                text: "Expand vault",
+            }],
+        }],
+    },
 ];
 
 /// Build the emitter's model from an authored override. Raw text is
@@ -546,7 +575,7 @@ mod tests {
             .iter()
             .map(|ov| ov.dialog_id)
             .collect();
-        assert_eq!(ids, [60100, 60101, 60104]);
+        assert_eq!(ids, [60100, 60101, 60104, 60110]);
         let xml = |id: u32| {
             let ov = QUARANTINED_DIALOG_OVERRIDES
                 .iter()
@@ -560,6 +589,12 @@ mod tests {
         assert!(!xml(60101).contains("<Buttons"));
         assert!(xml(60104)
             .contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send me a mail\">"));
+        // BV-05: exactly one Generic 1 button, the one the purchase buys on.
+        let expand = xml(60110);
+        assert!(
+            expand.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Expand vault\">")
+        );
+        assert_eq!(expand.matches("<Buttons").count(), 1, "{expand}");
     }
 
     /// The two mission-622 overrides must keep zero buttons. A button here

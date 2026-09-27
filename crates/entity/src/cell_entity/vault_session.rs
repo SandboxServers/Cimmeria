@@ -89,6 +89,10 @@ pub struct VaultSession {
     pub space_id: u32,
     /// When the vault was opened (server-local clock).
     pub opened_at: std::time::Instant,
+    /// The `bank_slots` the Expand dialog was offered at (BV-05), set when
+    /// the base's offer arrives and taken by the first answer, so one offer
+    /// buys at most one step. It dies with the session.
+    pub expansion_offer: Option<i16>,
 }
 
 impl super::CellEntity {
@@ -126,6 +130,7 @@ mod tests {
             banker_id,
             space_id: 1,
             opened_at: std::time::Instant::now(),
+            expansion_offer: None,
         }
     }
 
