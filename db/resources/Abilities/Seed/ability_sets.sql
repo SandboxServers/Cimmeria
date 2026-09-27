@@ -48,6 +48,12 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (5, 'Goa''uld ribb
 -- Pistol Shot.
 INSERT INTO ability_sets (ability_set_id, description) VALUES (6, 'Debug hub loot crate: zero-damage melee only');
 
+-- Pets campaign (docs/analysis/pets/): pet ability sets use ids 350-369,
+-- matching the pet templates, so they cannot collide with the low ids other
+-- content takes. Set 350 is the Straegis pet (template 350): 221 Energy Shock
+-- as the repeatable primary and 1156 Straegis: Disengage as the fallback.
+INSERT INTO ability_sets (ability_set_id, description) VALUES (350, 'Straegis pet: Energy Shock + Disengage');
+
 --
 -- TOC entry 3306 (class 0 OID 0)
 -- Dependencies: 185

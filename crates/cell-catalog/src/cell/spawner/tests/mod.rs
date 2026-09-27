@@ -16,6 +16,10 @@
 //! - [`live_db_ability_animation_links`]: live-DB guards that weapon-bound
 //!   damage abilities carry the weapon family's event set, so their hits
 //!   animate.
+//! - [`live_db_pet_summons`]: live-DB guards for the pet seed (pets campaign
+//!   PT-S): `pet_summons` rows name pet templates 350-369, pets are never in
+//!   `spawnlist`, Summon Straegis carries its event set, and the Straegis pet
+//!   template keeps its body, name and kit.
 //! - [`npc_ability_animation`]: live-DB seed linter (NA43) that every NPC combat
 //!   ability resolves one Ability_End sequence, that 559 resolves the SMG
 //!   burst, and that an armed hostile fires its weapon's ranged attack.
@@ -25,4 +29,5 @@ mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_debug_hub;
 mod live_db_loaders;
+mod live_db_pet_summons;
 mod npc_ability_animation;
