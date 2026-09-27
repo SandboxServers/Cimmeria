@@ -158,6 +158,7 @@ All ran from the worktree root, through the lane. The exit codes are the lane's 
 | After the rebase: `bash tools/build-lane/live-db-test.sh mail` | 106 run, 106 passed, 0 skipped |
 | After the rebase: `bash tools/build-lane/live-db-test.sh "::"` | exit 0: 4,674 run, 4,674 passed, 0 skipped (223 s) |
 | After the second rebase onto `5faa795d1`: fmt check, clippy on the five crates, nextest on the touched crates, `live-db-test.sh mail` | exit 0; 1,184 of 1,184; 106 of 106, 0 skipped |
+| After the archive fix and the rebase onto `c18144ae5` (SS-U1, SS-D3): fmt check, clippy on the five crates, nextest on the touched crates, `live-db-test.sh mail` | exit 0; 1,198 of 1,198; 128 of 128, 0 skipped (includes SS-U1's `system_live` and `gm_live`) |
 
 ## Tests
 
