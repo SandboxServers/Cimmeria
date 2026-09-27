@@ -1,9 +1,10 @@
 //! The Black Market's mail payouts: the one place auction settlement writes
 //! `sgw_gate_mail`.
 //!
-//! The expiry sweep mails the winning bid to the seller, the item to the
-//! buyer, and an unsold item back to its seller, through
-//! [`send_mail_to_player`] and the subject/body texts below. Everything that
+//! Settlement (`super::settle`) mails the winning bid to the seller and a
+//! notice to the buyer and to the seller of an unsold item, through
+//! [`send_mail_to_player`] and the subject/body texts below. The item itself
+//! moves from escrow (container 18) straight into the recipient's bags. Everything that
 //! writes auction mail is in this file, so moving the payouts onto the
 //! social-systems mail API (packet BM-02b in `docs/analysis/black-market/`)
 //! replaces this module and leaves the settlement logic alone.
@@ -18,11 +19,12 @@ pub(super) const SOLD_SELLER_BODY: &str =
     "Your Black Market auction sold. The winning bid is attached.";
 /// Mail subject/body for a sold auction's buyer delivery.
 pub(super) const SOLD_BUYER_SUBJECT: &str = "Auction Won";
-pub(super) const SOLD_BUYER_BODY: &str = "You won a Black Market auction. Your item is attached.";
+pub(super) const SOLD_BUYER_BODY: &str =
+    "You won a Black Market auction. Your item has been placed in your bags.";
 /// Mail subject/body for an unsold auction returned to the seller.
 pub(super) const UNSOLD_SUBJECT: &str = "Auction Expired";
 pub(super) const UNSOLD_BODY: &str =
-    "Your Black Market auction expired with no bids. Your item is returned.";
+    "Your Black Market auction expired with no bids. Your item is back in your bags.";
 /// Mail `sender_name` used for all system-generated auction mail.
 pub(super) const BM_SENDER_NAME: &str = "Black Market";
 

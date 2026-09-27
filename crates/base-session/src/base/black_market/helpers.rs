@@ -1,13 +1,6 @@
 //! Reusable persistence helpers shared by the Black Market state machine and
-//! the expiry sweep — and intentionally generic enough to reuse elsewhere
-//! (cash adjustment, item escrow/return). The mail payout writer is in
-//! [`super::payout_mail`].
-//!
-//! Every helper is generic over [`sqlx::PgExecutor`] so it runs against either a
-//! bare `&PgPool` or `&mut Transaction`, letting the auction flows compose them
-//! atomically inside a single transaction.
-
-use sqlx::PgExecutor;
+//! the expiry sweep: the clock and the cash adjustment. Item escrow is in
+//! [`super::escrow`], the mail payout writer in [`super::payout_mail`].
 
 /// Current unix epoch seconds, saturating into `i32` (matches the schema's
 /// INTEGER time columns: `sent_time`, `created_at`, `expires_at`).
@@ -86,86 +79,4 @@ pub async fn adjust_player_cash(
     } else {
         Err(CashError::NoSuchPlayer)
     }
-}
-
-/// Remove an item instance from a player's inventory so the auction can hold it
-/// in escrow. Returns the deleted row's auctionable snapshot (def id, stack,
-/// durability, charges) so the caller can record it on `sgw_auction`. Returns
-/// `Ok(None)` if the player does not own that instance (validation failure).
-///
-/// This is a full DELETE of the instance row — auctions escrow whole instances,
-/// not partial stacks (matching the client's single-item create flow).
-pub async fn escrow_item<'e, E>(
-    exec: E,
-    player_id: i32,
-    item_id: i32,
-) -> Result<Option<EscrowedItem>, sqlx::Error>
-where
-    E: PgExecutor<'e>,
-{
-    sqlx::query_as::<_, EscrowedItem>(
-        "DELETE FROM sgw_inventory \
-         WHERE character_id = $1 AND item_id = $2 \
-         RETURNING item_id, type_id AS item_def_id, stack_size, durability, charges",
-    )
-    .bind(player_id)
-    .bind(item_id)
-    .fetch_optional(exec)
-    .await
-}
-
-/// The snapshot of an escrowed inventory instance.
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
-pub struct EscrowedItem {
-    pub item_id: i32,
-    pub item_def_id: i32,
-    pub stack_size: i32,
-    pub durability: i32,
-    pub charges: i32,
-}
-
-/// Return an escrowed item to a player's inventory by re-inserting an instance
-/// in the default backpack container (container_id 0) at the next free slot.
-///
-/// Used by `cancelAuction` (seller reclaim) and the sweep's unsold path. The
-/// instance gets a fresh `item_id` from the sequence — the original instance id
-/// was consumed by the escrow DELETE. Returns the new instance id.
-///
-/// Slot placement mirrors `grant_item`: the new row lands at
-/// `COALESCE(MAX(slot_id), -1) + 1` for this character's container 0, i.e. the
-/// first slot past the current high-water mark. It must never insert at
-/// `slot_id = -1` — that value is the inventory swap sentinel elsewhere in the
-/// codebase, and a global row parked there breaks the inventory move/swap path.
-pub async fn return_item<'e, E>(
-    exec: E,
-    player_id: i32,
-    item_def_id: i32,
-    stack_size: i32,
-    durability: i32,
-    charges: i32,
-) -> Result<i32, sqlx::Error>
-where
-    E: PgExecutor<'e>,
-{
-    sqlx::query_scalar::<_, i32>(
-        "INSERT INTO sgw_inventory \
-            (character_id, type_id, stack_size, slot_id, container_id, \
-             bound, durability, charges, \
-             ammo_type, ammo_types, ammo, flags) \
-         SELECT $1, ri.item_id, $2, \
-                (SELECT COALESCE(MAX(inv.slot_id), -1) + 1 FROM sgw_inventory inv \
-                  WHERE inv.character_id = $1 AND inv.container_id = 0), \
-                0, false, $3, $4, \
-                COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
-                ri.ammo_types, ri.charges, 0 \
-         FROM resources.items ri WHERE ri.item_id = $5 \
-         RETURNING item_id",
-    )
-    .bind(player_id)
-    .bind(stack_size)
-    .bind(durability)
-    .bind(charges)
-    .bind(item_def_id)
-    .fetch_one(exec)
-    .await
 }

@@ -7,6 +7,7 @@
 //! service loop).
 
 pub mod arrival;
+pub mod black_market;
 pub mod combat;
 pub mod content_events;
 pub mod cover;

@@ -248,6 +248,9 @@ pub(super) async fn handle_disconnect_entity(
     crate::cell::cell_methods::organization::squad::on_disconnect(entity_id, tx, space_mgr).await;
     // ORG-05: an open registrar offer ends with the session.
     crate::cell::cell_methods::organization::creation::on_disconnect(entity_id, space_mgr);
+    // BM-02: the Black Market session ends with the login; this is where a
+    // window the client never answered is logged.
+    crate::cell::cell_methods::black_market::on_disconnect(entity_id, space_mgr);
     // Persist the last known world + position BEFORE the teardown below
     // removes the entity. This is the only write of `sgw_player.pos_*` on
     // the way out of a session: gate travel and the GM teleport write their

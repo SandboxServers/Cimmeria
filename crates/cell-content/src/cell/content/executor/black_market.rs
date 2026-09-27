@@ -6,6 +6,10 @@
 //! `onBMOpen(entityId)` client method (index 90) through the
 //! cell→base `EntityMethodCall` channel — the same path dialogs and
 //! kismet sequences use.
+//!
+//! It also records the auctioneer in the player's Black Market session
+//! (`cell::black_market`, BM-02): cell methods 62-64 are honoured only for
+//! a player the server sent to an auctioneer this way.
 
 use cimmeria_wire::black_market::serialize_on_bm_open;
 use tokio::sync::mpsc;
@@ -48,7 +52,7 @@ pub(super) async fn open(
     chain_id: i64,
     params: &std::collections::HashMap<String, serde_json::Value>,
     tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) {
     let id = space_mgr.player_identity(entity_id);
     let span = tracing::Span::current();
@@ -116,6 +120,24 @@ pub(super) async fn open(
             chain_id,
             "OpenBlackMarket: cell→base send failed -- Black Market not opened on client: {e}"
         );
+        return;
+    }
+
+    // The window is open: this auctioneer is now the one cell methods 62-64
+    // are checked against. A negative id names no entity, so it opens
+    // nothing to trade at.
+    if let (Some(player_id), Ok(auctioneer)) = (id.player_id, u32::try_from(auctioneer_entity_id)) {
+        space_mgr.black_market.open(player_id, auctioneer);
+        let opens = space_mgr.black_market.get(player_id).map_or(0, |s| s.opens);
+        tracing::debug!(
+            event = "bm.open",
+            entity_id,
+            account_id = id.account_id,
+            player_id,
+            auctioneer_entity_id,
+            opens,
+            "Black Market session opened at an auctioneer"
+        );
     }
 }
 
@@ -147,7 +169,7 @@ mod tests {
 
         let (tx, mut rx) = mpsc::channel(4);
         open(
-            /* entity_id */ 1, /* chain_id */ 7000, &params, &tx, &mgr,
+            /* entity_id */ 1, /* chain_id */ 7000, &params, &tx, &mut mgr,
         )
         .await;
 
@@ -189,7 +211,7 @@ mod tests {
 
         let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        open(1, 7001, &params, &tx, &mgr).await;
+        open(1, 7001, &params, &tx, &mut mgr).await;
 
         let msg = rx.try_recv().expect("must emit onBMOpen");
         match msg {
@@ -214,7 +236,7 @@ mod tests {
 
         let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        open(1, 9999, &params, &tx, &mgr).await;
+        open(1, 9999, &params, &tx, &mut mgr).await;
 
         assert!(
             rx.try_recv().is_err(),
@@ -226,5 +248,41 @@ mod tests {
                 .is_some(),
             "abort must surface a WARN — silent return masks a mis-wired chain"
         );
+    }
+
+    /// BM-02 authority: a successful open records the auctioneer in the
+    /// player's session, which is what cell methods 62-64 are checked
+    /// against. Without it every create, bid and cancel is refused.
+    #[tokio::test]
+    async fn open_records_the_auctioneer_in_the_session() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.get_entity_mut(1).unwrap().player_id = Some(77);
+        let mut params = empty_params();
+        params.insert("target_entity_id".into(), serde_json::json!(0xA5C7u64));
+
+        let (tx, _rx) = mpsc::channel(4);
+        open(1, 7002, &params, &tx, &mut mgr).await;
+
+        let session = mgr.black_market.get(77).expect("session recorded");
+        assert_eq!(session.auctioneer_id, Some(0xA5C7));
+        assert_eq!(session.opens, 1);
+    }
+
+    /// No session is recorded when `onBMOpen` could not be sent: the player
+    /// never saw a window, so there is nothing to trade at.
+    #[tokio::test]
+    async fn failed_open_records_no_session() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.get_entity_mut(1).unwrap().player_id = Some(78);
+        let mut params = empty_params();
+        params.insert("target_entity_id".into(), serde_json::json!(0xA5C7u64));
+
+        let (tx, rx) = mpsc::channel(4);
+        drop(rx);
+        open(1, 7003, &params, &tx, &mut mgr).await;
+
+        assert!(mgr.black_market.get(78).is_none());
     }
 }

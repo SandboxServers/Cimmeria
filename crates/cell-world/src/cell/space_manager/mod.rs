@@ -446,6 +446,9 @@ pub struct SpaceManager {
     /// Open organization-registrar offers awaiting a name (ORG-05), keyed
     /// by `player_id`; see `cell::org_creation`.
     pub org_creations: super::org_creation::PendingCreations,
+    /// Black Market sessions (BM-02): the auctioneer each player was sent
+    /// to, keyed by `player_id`; see `cell::black_market`.
+    pub black_market: super::black_market::BlackMarketSessions,
 }
 
 impl SpaceManager {
@@ -509,6 +512,7 @@ impl SpaceManager {
             pending_crossings: HashMap::new(),
             squads: super::squad::SquadRegistry::new(),
             org_creations: super::org_creation::PendingCreations::new(),
+            black_market: super::black_market::BlackMarketSessions::new(),
         }
     }
 }

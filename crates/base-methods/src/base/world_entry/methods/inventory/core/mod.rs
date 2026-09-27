@@ -79,19 +79,25 @@ pub(crate) use org_vault_items::{org_vault_update_args, send_org_vault_items_via
 /// `inventory_item_select_matches_player_load_copy_byte_for_byte`. Both
 /// paths must produce identical row layouts; if they ever diverge, every
 /// downstream `InvItem` consumer breaks in a hard-to-diagnose way.
+///
+/// Container 18 (`INV_AUCTION`) is excluded: it holds the rows the player
+/// has listed on the Black Market (BM-02), which are server-held and never
+/// shown to the client.
 pub(crate) const INVENTORY_ITEM_SELECT: &str = concat!(
     inventory_item_select_head!(),
-    "WHERE inv.character_id = $1\n",
+    "WHERE inv.character_id = $1 AND inv.container_id <> 18\n",
     "ORDER BY inv.container_id, inv.slot_id\n",
 );
 
 /// One inventory row, by instance id, and only if the player owns it: the
 /// same row layout as [`INVENTORY_ITEM_SELECT`] (shared head), filtered in
 /// SQL so a single-item read costs one indexed row, not the whole bag set.
-/// `$1` is the player, `$2` the `item_id`.
+/// `$1` is the player, `$2` the `item_id`. A listed row (container 18) is
+/// not the player's to see, so a refused move's snap-back resync of a
+/// remembered listed id sends nothing.
 pub(crate) const INVENTORY_ONE_ITEM_SELECT: &str = concat!(
     inventory_item_select_head!(),
-    "WHERE inv.character_id = $1 AND inv.item_id = $2\n",
+    "WHERE inv.character_id = $1 AND inv.item_id = $2 AND inv.container_id <> 18\n",
 );
 
 #[derive(sqlx::FromRow)]

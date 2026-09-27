@@ -18,6 +18,7 @@ use crate::mercury::method_idx;
 
 /// The inventory row select of the world-entry load and the generic
 /// inventory resync, with an optional `item_id` filter (`$2`, NULL = all).
+/// Container 18 (Black Market escrow) is server-held and never sent.
 const INVENTORY_ITEMS_SELECT: &str = r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
@@ -30,7 +31,8 @@ SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        END AS cur_ammo_type_id
 FROM sgw_inventory inv
 LEFT JOIN resources.items ri ON ri.item_id = inv.type_id
-WHERE inv.character_id = $1 AND ($2::int4[] IS NULL OR inv.item_id = ANY($2))
+WHERE inv.character_id = $1 AND inv.container_id <> 18
+  AND ($2::int4[] IS NULL OR inv.item_id = ANY($2))
 ORDER BY inv.container_id, inv.slot_id
 "#;
 

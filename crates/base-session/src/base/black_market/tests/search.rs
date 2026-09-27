@@ -1,363 +1,302 @@
-//! Live-DB integration tests for the `BMSearch` handler.
+//! Live-DB integration tests for `BMSearch`: the `clientKey` views and
+//! their scoping to the caller (S2, S3), the filters, the cursor and the
+//! page bound with the full `totalResults` (S7), and seller names from the
+//! database (S8).
 //!
 //! Skip cleanly when `DATABASE_URL` is unset (via `require_db_or_skip!`).
-//! Verifies that `handle_search` queries active `sgw_auction` rows and emits
-//! an `onBMAuctions` packet to the requesting entity's transport.
+//! The payload itself is pinned byte for byte by `wire/tests.rs`; these call
+//! [`search::run_search`], the query seam `handle_search` sends from, so they
+//! can assert on rows without decrypting a Mercury packet. Every test but
+//! one scopes itself with the My Auctions or My Bids view, so rows another
+//! test left behind cannot leak in.
 //!
-//! Sentinel range: TEST_BASE + 0x500 … +0x5FF (distinct from create_bid_cancel,
-//! helpers, sweep ranges to avoid collisions under serialised ci-live-db runs).
-//!
-//! # Payload assertion strategy
-//!
-//! `TestTransport` captures fully-encrypted Mercury packets, so we cannot
-//! decode the `onBMAuctions` body without reimplementing the Mercury framing
-//! and encryption. Instead we assert at the handler-contract level via a
-//! **test seam**: `search::fetch_active_auctions` is the extracted DB query
-//! that `handle_search` calls internally. Tests call it directly on the same
-//! pool they seeded to assert the actual result-set shape (row count, total,
-//! `item_def_id` and `sequence_id` values, absence of non-active rows).
-//!
-//! Each test asserts two things:
-//!   1. A packet was sent (`!tt.is_empty()`) — proves the send path fired.
-//!   2. The result set returned by `fetch_active_auctions` contains the exact
-//!      rows (or is empty) that `handle_search` would have passed to
-//!      `send_bm_auctions` — proves the query reads the right data and the
-//!      `WHERE status = ACTIVE` predicate is in force.
-//!
-//! Regression-guard shape: any test here MUST FAIL if the corresponding
-//! invariant is removed from `handle_search`/`fetch_active_auctions`.
+//! Sentinel range: TEST_BASE + 0x500 … +0x5FF.
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-
-use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use super::{cleanup, insert_account_and_player, insert_item, ITEM_DEF_ID, TEST_BASE};
+use super::{
+    cleanup, insert_account_and_player, insert_item, last_auction_of, Harness, ITEM_DEF_ID,
+    TEST_BASE,
+};
+use crate::base::black_market::helpers::now_unix_secs;
+use crate::base::black_market::search::{self, SEARCH_PAGE_ROWS};
 use crate::base::black_market::types::{auction_status, BMSearchOptions};
-use crate::base::black_market::{create, search};
-use crate::base::ConnectedClientState;
-use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
+use crate::base::black_market::wire::BMError;
+use crate::test_support::{require_db_or_skip, LogCapture};
 
 const SEARCH_BASE: i32 = TEST_BASE + 0x500;
 
-// ── helpers ───────────────────────────────────────────────────────────────
-
-/// Build the transport + session maps with a concrete `Arc<TestTransport>` so
-/// tests can call `.drain()` / `.len()` / `.clear()` without downcasting.
-///
-/// `connected` is populated with a `ConnectedClientState` for the fake address
-/// so `send_to_witness_reliable` finds the session and actually enqueues the
-/// packet. Without this entry the helper returns `ClientDisconnected` and
-/// `tt.len()` would always be 0 regardless of handler correctness.
-type ConnectedMap = Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>;
-type EntityToAddrMap = Arc<Mutex<HashMap<u32, SocketAddr>>>;
-
-fn make_test_state(
-    entity_id: u32,
-) -> (
-    Arc<TestTransport>,
-    Arc<dyn Transport>,
-    EntityToAddrMap,
-    ConnectedMap,
-) {
-    let tt = Arc::new(TestTransport::new());
-    let transport: Arc<dyn Transport> = tt.clone();
-    let fake_addr: SocketAddr = "127.0.0.1:65534".parse().unwrap();
-    let entity_to_addr = Arc::new(Mutex::new({
-        let mut m = HashMap::new();
-        m.insert(entity_id, fake_addr);
-        m
-    }));
-    let connected = Arc::new(Mutex::new({
-        let mut m = HashMap::new();
-        m.insert(fake_addr, test_default_connected_client_state());
-        m
-    }));
-    (tt, transport, entity_to_addr, connected)
-}
-
-/// Build a minimal all-default `BMSearchOptions`.
-fn default_opts() -> BMSearchOptions {
-    BMSearchOptions::default()
-}
-
-/// Open one auction via `handle_create_auction` (uses escrow — requires a real
-/// inventory row). Returns after the create handler has run.
-async fn open_one_auction(
-    pool: &PgPool,
-    entity_id: u32,
-    seller: i32,
-    transport: &Arc<dyn Transport>,
-    connected: &ConnectedMap,
-    entity_to_addr: &EntityToAddrMap,
-) {
-    let item = insert_item(pool, seller, ITEM_DEF_ID).await;
-    let db_pool = Some(Arc::new(pool.clone()));
-    create::handle_create_auction(
-        entity_id,
-        seller,
-        item,
-        10,
-        500,
-        0,
-        &db_pool,
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await;
-}
-
-// ── tests ─────────────────────────────────────────────────────────────────
-
-/// `handle_search` returns the correct active listing rows and emits
-/// `onBMAuctions`.
-///
-/// Regression guard shape:
-/// - If `send_bm_auctions` is removed from `handle_search`, `tt.len() == 0`
-///   fails the delivery assertion.
-/// - If the `WHERE status = ACTIVE` filter is broadened to all rows (or the
-///   query is removed entirely), `fetch_active_auctions` would still return
-///   exactly the two active rows we inserted — but if the handler's SQL were
-///   changed to fetch by seller only, the global result would differ from a
-///   cross-seller seed. The count/item_def_id/sequence_id assertions directly
-///   verify the global result set shape.
-#[tokio::test]
-async fn search_returns_active_listings_as_on_bm_auctions() {
-    let pool = require_db_or_skip!();
-    let entity_id: u32 = 0x7000_AA01;
-    let account_id = SEARCH_BASE;
-    let seller = SEARCH_BASE + 1;
-
-    cleanup(&pool, &[account_id], &[seller]).await;
-    insert_account_and_player(&pool, account_id, seller, 0).await;
-
-    let (tt, transport, e2a, conn) = make_test_state(entity_id);
-
-    // Open two auctions so the DB has active rows.
-    open_one_auction(&pool, entity_id, seller, &transport, &conn, &e2a).await;
-    open_one_auction(&pool, entity_id, seller, &transport, &conn, &e2a).await;
-
-    // Flush create replies so only the search response counts.
-    tt.clear();
-
-    // ── Payload assertion via the fetch_active_auctions seam ──────────────
-    //
-    // Call the same query that handle_search will call, on the same pool,
-    // and assert the exact result-set shape before running the handler.
-    // If the handler's SQL were changed (e.g., scoped to seller_id instead
-    // of global, or the status filter removed), this assertion catches it.
-    let active_rows = search::fetch_active_auctions(&pool)
-        .await
-        .expect("fetch_active_auctions must not fail");
-    assert_eq!(
-        active_rows.len(),
-        2,
-        "fetch_active_auctions must return exactly 2 active rows globally"
-    );
-    // Both rows must carry the expected item_def_id (the only type seeded
-    // in this test). If the query returns wrong rows, this fails.
-    for row in &active_rows {
-        assert_eq!(
-            row.item_def_id, ITEM_DEF_ID,
-            "every returned row must have the seeded item_def_id"
-        );
-        assert_eq!(
-            row.status,
-            auction_status::ACTIVE,
-            "every returned row must be status=ACTIVE"
-        );
+fn view(client_key: i32) -> BMSearchOptions {
+    BMSearchOptions {
+        client_key,
+        quality: 2000,
+        ..Default::default()
     }
-    // ── end seam assertion ────────────────────────────────────────────────
-
-    let db_pool = Some(Arc::new(pool.clone()));
-    search::handle_search(
-        entity_id,
-        seller,
-        default_opts(),
-        &db_pool,
-        &transport,
-        &conn,
-        &e2a,
-    )
-    .await;
-
-    // Delivery check: the handler must emit the onBMAuctions packet.
-    assert!(
-        !tt.is_empty(),
-        "onBMAuctions must emit at least one packet when active listings exist"
-    );
-
-    cleanup(&pool, &[account_id], &[seller]).await;
 }
 
-/// `handle_search` with no active listings globally sends `onBMAuctions` with
-/// count = 0 (the client must receive the packet to clear its listing panel).
-///
-/// Regression guard shape:
-/// - An early-return guard on empty results would leave `tt.len() == 0`,
-///   failing the delivery assertion.
-/// - `fetch_active_auctions` returning non-empty would prove the empty-path
-///   logic is broken (wrong seed or missing DELETE).
-#[tokio::test]
-async fn search_with_no_active_listings_sends_empty_response() {
-    let pool = require_db_or_skip!();
-    let entity_id: u32 = 0x7000_AA11;
-    let account_id = SEARCH_BASE + 0x10;
-    let seller = SEARCH_BASE + 0x11;
-
-    cleanup(&pool, &[account_id], &[seller]).await;
-    insert_account_and_player(&pool, account_id, seller, 0).await;
-    // Remove any active rows for this sentinel (cleanup already covers
-    // seller-scoped rows; the global DELETE here covers the unlikely case
-    // another test left a cross-sentinel active row in a concurrent run).
-    let _ = sqlx::query("DELETE FROM sgw_auction WHERE seller_id = $1")
-        .bind(seller)
-        .execute(&pool)
-        .await;
-
-    // ── Payload assertion via the fetch_active_auctions seam ──────────────
-    //
-    // Assert globally zero active rows exist. This is stronger than a
-    // seller-scoped COUNT: it proves that handle_search (which queries all
-    // sellers) will assemble total=0 and pass an empty slice to
-    // send_bm_auctions. If any stale active row from a different sentinel
-    // were present, this assertion would catch it and the test would need
-    // to broaden its cleanup — not silently pass.
-    //
-    // Note: this assumes the test runs serialised (ci-live-db profile).
-    // Under ci-live-db, no other test is inserting active rows concurrently.
-    let active_rows = search::fetch_active_auctions(&pool)
-        .await
-        .expect("fetch_active_auctions must not fail");
-    assert_eq!(
-        active_rows.len(),
-        0,
-        "globally zero active auctions must exist at this point in the serialised run"
-    );
-    // ── end seam assertion ────────────────────────────────────────────────
-
-    let (tt, transport, e2a, conn) = make_test_state(entity_id);
-    let db_pool = Some(Arc::new(pool.clone()));
-
-    search::handle_search(
-        entity_id,
-        seller,
-        default_opts(),
-        &db_pool,
-        &transport,
-        &conn,
-        &e2a,
-    )
-    .await;
-
-    // The handler must always send onBMAuctions — even for an empty result set.
-    // The packet encodes count = 0; the client needs it to clear its panel.
-    assert!(
-        !tt.is_empty(),
-        "handle_search must send onBMAuctions even for an empty result set (count=0)"
-    );
-
-    cleanup(&pool, &[account_id], &[seller]).await;
-}
-
-/// Cancelled or expired listings are NOT returned by search.
-///
-/// Regression guard shape:
-/// - If the `WHERE status = ACTIVE` predicate is removed from
-///   `fetch_active_auctions`, the cancelled sentinel row is included and
-///   `active_rows.len() > 0` fails the count assertion.
-/// - If the row's `status` field is not checked, the status assertion fails.
-/// - The delivery check confirms the handler ran to completion even for the
-///   zero-active case.
-#[tokio::test]
-async fn search_excludes_non_active_listings() {
-    let pool = require_db_or_skip!();
-    let entity_id: u32 = 0x7000_AA21;
-    let account_id = SEARCH_BASE + 0x20;
-    let seller = SEARCH_BASE + 0x21;
-
-    cleanup(&pool, &[account_id], &[seller]).await;
-    insert_account_and_player(&pool, account_id, seller, 0).await;
-
-    // Ensure no active auctions for this sentinel seller.
-    let _ = sqlx::query("DELETE FROM sgw_auction WHERE seller_id = $1")
-        .bind(seller)
-        .execute(&pool)
-        .await;
-
-    // Insert a cancelled auction row directly (no item needed — direct SQL,
-    // item_id = -1 as a sentinel that can't collide with real inventory).
-    sqlx::query(
+/// Insert an open listing for `seller` straight into `sgw_auction` (search
+/// needs no item row). Returns its id.
+async fn insert_listing(pool: &PgPool, seller: i32, expires_at: i32, status: i16) -> i32 {
+    sqlx::query_scalar(
         "INSERT INTO sgw_auction \
             (seller_id, item_id, item_def_id, stack_size, durability, charges, \
              starting_price, buyout_price, current_bid, current_bidder, \
              auction_length, created_at, expires_at, status) \
-         VALUES ($1, -1, 21, 1, 100, 0, 10, 100, 0, NULL, 1, 0, 0, $2)",
+         VALUES ($1, 0, $2, 1, 100, 0, 10, 0, 0, NULL, 5, 0, $3, $4) \
+         RETURNING sequence_id",
     )
     .bind(seller)
-    .bind(auction_status::CANCELLED)
-    .execute(&pool)
+    .bind(ITEM_DEF_ID)
+    .bind(expires_at)
+    .bind(status)
+    .fetch_one(pool)
     .await
-    .expect("insert cancelled auction sentinel");
+    .expect("insert listing")
+}
 
-    // ── Payload assertion via the fetch_active_auctions seam ──────────────
-    //
-    // The cancelled row must NOT appear in the fetch_active_auctions result.
-    // If the `WHERE status = ACTIVE` predicate were removed, the cancelled
-    // row would be present and this assertion would fail with len == 1.
-    //
-    // We also confirm the cancelled row exists in the DB so any future
-    // schema change that causes the INSERT to silently no-op would surface
-    // as a failed total-row-count check rather than a vacuous pass.
-    let all_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sgw_auction WHERE seller_id = $1")
-        .bind(seller)
-        .fetch_one(&pool)
+async fn page(pool: &PgPool, player: i32, opts: &BMSearchOptions) -> search::SearchPage {
+    search::run_search(pool, player, opts, now_unix_secs())
         .await
-        .unwrap();
+        .expect("query runs")
+        .expect("valid view")
+}
+
+/// S3 regression guard: My Auctions is the **caller's** listings. The
+/// client's `sellerName` names someone else here, and is ignored. Bug shape:
+/// the branch returned every listing (and a seller-name filter would trust
+/// the client).
+#[tokio::test]
+async fn my_auctions_is_scoped_to_the_caller() {
+    let pool = require_db_or_skip!();
+    let (acc_a, acc_b) = (SEARCH_BASE, SEARCH_BASE + 1);
+    let (a, b) = (SEARCH_BASE + 2, SEARCH_BASE + 3);
+    cleanup(&pool, &[acc_a, acc_b], &[a, b]).await;
+    insert_account_and_player(&pool, acc_a, a, 0).await;
+    insert_account_and_player(&pool, acc_b, b, 0).await;
+    let later = now_unix_secs() + 3_600;
+    let mine = insert_listing(&pool, a, later, auction_status::ACTIVE).await;
+    insert_listing(&pool, b, later, auction_status::ACTIVE).await;
+
+    let mut opts = view(1);
+    opts.seller_name = format!("bmp-{b}");
+    let p = page(&pool, a, &opts).await;
+    assert_eq!(p.total, 1);
     assert_eq!(
-        all_rows, 1,
-        "exactly one row (the cancelled sentinel) must exist for this seller"
+        p.rows
+            .iter()
+            .map(|(r, _)| r.sequence_id)
+            .collect::<Vec<_>>(),
+        vec![mine]
     );
 
-    let active_rows = search::fetch_active_auctions(&pool)
-        .await
-        .expect("fetch_active_auctions must not fail");
-    // No active rows exist for any seller at this point in the serialised run.
-    // If fetch_active_auctions returned the cancelled row (status filter broken),
-    // the count would be >= 1 and the assertion would fail.
-    for row in &active_rows {
-        assert_ne!(
-            row.seller_id, seller,
-            "the cancelled sentinel row (seller_id={seller}) must never appear \
-             in fetch_active_auctions — status filter is broken"
-        );
-        assert_eq!(
-            row.status,
-            auction_status::ACTIVE,
-            "every row returned by fetch_active_auctions must be status=ACTIVE"
-        );
+    cleanup(&pool, &[acc_a, acc_b], &[a, b]).await;
+}
+
+/// S3: My Bids is every open auction the caller has bid on, still shown
+/// after they are outbid; someone else's bids are not.
+#[tokio::test]
+async fn my_bids_is_what_the_caller_bid_on() {
+    let pool = require_db_or_skip!();
+    let (acc_s, acc_c, acc_d) = (SEARCH_BASE + 0x10, SEARCH_BASE + 0x11, SEARCH_BASE + 0x12);
+    let (seller, c, d) = (SEARCH_BASE + 0x13, SEARCH_BASE + 0x14, SEARCH_BASE + 0x15);
+    cleanup(&pool, &[acc_s, acc_c, acc_d], &[seller, c, d]).await;
+    insert_account_and_player(&pool, acc_s, seller, 0).await;
+    insert_account_and_player(&pool, acc_c, c, 10_000).await;
+    insert_account_and_player(&pool, acc_d, d, 10_000).await;
+    let h = Harness::new(
+        &pool,
+        &[
+            (0x7000_AA41, acc_c, c),
+            (0x7000_AA42, acc_d, d),
+            (0x7000_AA43, acc_s, seller),
+        ],
+    );
+    let item = insert_item(&pool, seller, ITEM_DEF_ID).await;
+    h.create((0x7000_AA43, acc_s, seller), item, 100, 0, 5)
+        .await;
+    let seq = last_auction_of(&pool, seller).await;
+    h.bid((0x7000_AA41, acc_c, c), seq, 100).await;
+    h.bid((0x7000_AA42, acc_d, d), seq, 200).await;
+
+    let for_c = page(&pool, c, &view(2)).await;
+    assert_eq!(for_c.total, 1, "C was outbid but still bid on it");
+    assert_eq!(for_c.rows[0].0.sequence_id, seq);
+    assert_eq!(for_c.rows[0].0.current_bidder, Some(d));
+    let for_seller = page(&pool, seller, &view(2)).await;
+    assert_eq!(for_seller.total, 0, "the seller bid on nothing");
+
+    cleanup(&pool, &[acc_s, acc_c, acc_d], &[seller, c, d]).await;
+}
+
+/// A cancelled row and a row past `expires_at` that the sweep has not
+/// reached are not offered.
+#[tokio::test]
+async fn closed_and_due_listings_are_not_offered() {
+    let pool = require_db_or_skip!();
+    let (acc, seller) = (SEARCH_BASE + 0x20, SEARCH_BASE + 0x21);
+    cleanup(&pool, &[acc], &[seller]).await;
+    insert_account_and_player(&pool, acc, seller, 0).await;
+    let now = now_unix_secs();
+    let open = insert_listing(&pool, seller, now + 3_600, auction_status::ACTIVE).await;
+    insert_listing(&pool, seller, now + 3_600, auction_status::CANCELLED).await;
+    insert_listing(&pool, seller, now - 1, auction_status::ACTIVE).await;
+
+    let p = page(&pool, seller, &view(1)).await;
+    assert_eq!(p.total, 1);
+    assert_eq!(p.rows[0].0.sequence_id, open);
+
+    cleanup(&pool, &[acc], &[seller]).await;
+}
+
+/// S7 regression guard: the read is bounded by [`SEARCH_PAGE_ROWS`], the
+/// cursor pages both ways, and `total` stays the full match count. Bug
+/// shape: the branch read every row and reported the page size as total.
+#[tokio::test]
+async fn search_pages_with_a_cursor_and_keeps_the_full_total() {
+    let pool = require_db_or_skip!();
+    let (acc, seller) = (SEARCH_BASE + 0x30, SEARCH_BASE + 0x31);
+    cleanup(&pool, &[acc], &[seller]).await;
+    insert_account_and_player(&pool, acc, seller, 0).await;
+    let later = now_unix_secs() + 3_600;
+    let n = SEARCH_PAGE_ROWS as usize + 10;
+    let mut ids = Vec::new();
+    for _ in 0..n {
+        ids.push(insert_listing(&pool, seller, later, auction_status::ACTIVE).await);
     }
-    // ── end seam assertion ────────────────────────────────────────────────
 
-    let (tt, transport, e2a, conn) = make_test_state(entity_id);
-    let db_pool = Some(Arc::new(pool.clone()));
+    let first = page(&pool, seller, &view(1)).await;
+    assert_eq!(first.total, n as i64, "total counts every match");
+    assert_eq!(
+        first.rows.len(),
+        SEARCH_PAGE_ROWS as usize,
+        "the read is bounded"
+    );
+    assert_eq!(first.rows[0].0.sequence_id, ids[0]);
 
-    search::handle_search(
-        entity_id,
+    let mut fwd = view(1);
+    fwd.sequence_id = ids[SEARCH_PAGE_ROWS as usize - 1];
+    fwd.b_forward = 1;
+    let next = page(&pool, seller, &fwd).await;
+    assert_eq!(
+        next.rows
+            .iter()
+            .map(|(r, _)| r.sequence_id)
+            .collect::<Vec<_>>(),
+        ids[SEARCH_PAGE_ROWS as usize..].to_vec()
+    );
+    assert_eq!(next.total, n as i64);
+
+    let mut back = view(1);
+    back.sequence_id = ids[3];
+    back.b_forward = 0;
+    let prev = page(&pool, seller, &back).await;
+    assert_eq!(
+        prev.rows
+            .iter()
+            .map(|(r, _)| r.sequence_id)
+            .collect::<Vec<_>>(),
+        ids[..3].to_vec(),
+        "a backward page is the rows before the cursor, in ascending order"
+    );
+
+    cleanup(&pool, &[acc], &[seller]).await;
+}
+
+/// `itemName` matches a substring of the item's name, case-insensitively;
+/// `minTC` / `maxTC` bound the tech competency.
+#[tokio::test]
+async fn item_name_and_tech_competency_filter() {
+    let pool = require_db_or_skip!();
+    let (acc, seller) = (SEARCH_BASE + 0x40, SEARCH_BASE + 0x41);
+    cleanup(&pool, &[acc], &[seller]).await;
+    insert_account_and_player(&pool, acc, seller, 0).await;
+    insert_listing(
+        &pool,
         seller,
-        default_opts(),
-        &db_pool,
-        &transport,
-        &conn,
-        &e2a,
+        now_unix_secs() + 3_600,
+        auction_status::ACTIVE,
+    )
+    .await;
+    let (name, tc): (String, i32) =
+        sqlx::query_as("SELECT name, tech_comp FROM resources.items WHERE item_id = $1")
+            .bind(ITEM_DEF_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    let mut opts = view(1);
+    opts.item_name = name
+        .chars()
+        .skip(1)
+        .take(3)
+        .collect::<String>()
+        .to_uppercase();
+    assert_eq!(
+        page(&pool, seller, &opts).await.total,
+        1,
+        "substring of {name:?}"
+    );
+    opts.item_name = "zz%no such item%".into();
+    assert_eq!(page(&pool, seller, &opts).await.total, 0);
+
+    let mut opts = view(1);
+    opts.min_tc = tc + 1;
+    assert_eq!(page(&pool, seller, &opts).await.total, 0);
+    opts.min_tc = tc;
+    opts.max_tc = tc;
+    assert_eq!(page(&pool, seller, &opts).await.total, 1);
+
+    cleanup(&pool, &[acc], &[seller]).await;
+}
+
+/// S2: a `clientKey` that names no view is refused, not served.
+#[tokio::test]
+async fn unknown_client_key_is_refused() {
+    let pool = require_db_or_skip!();
+    let res = search::run_search(&pool, SEARCH_BASE + 0x50, &view(7), now_unix_secs())
+        .await
+        .unwrap();
+    assert_eq!(res, Err(BMError::InvalidSortType));
+}
+
+/// S8: an offline seller's name comes from the database, and the handler
+/// sends `onBMAuctions` with the search telemetry row.
+#[tokio::test]
+async fn offline_seller_names_come_from_the_db() {
+    let pool = require_db_or_skip!();
+    let (acc, seller) = (SEARCH_BASE + 0x60, SEARCH_BASE + 0x61);
+    let (acc_c, caller) = (SEARCH_BASE + 0x62, SEARCH_BASE + 0x63);
+    cleanup(&pool, &[acc, acc_c], &[seller, caller]).await;
+    insert_account_and_player(&pool, acc, seller, 0).await;
+    insert_account_and_player(&pool, acc_c, caller, 0).await;
+    insert_listing(
+        &pool,
+        seller,
+        now_unix_secs() + 3_600,
+        auction_status::ACTIVE,
     )
     .await;
 
-    // The handler must always send onBMAuctions (even for an empty result set).
-    assert!(!tt.is_empty(), "must always emit onBMAuctions");
+    let p = page(&pool, seller, &view(1)).await;
+    assert_eq!(p.rows[0].1, format!("bmp-{seller}"), "no session needed");
 
-    cleanup(&pool, &[account_id], &[seller]).await;
+    let capture = LogCapture::install();
+    let me = (0x7000_AA61, acc, seller);
+    let h = Harness::new(&pool, &[me]);
+    h.search(me, view(1)).await;
+    assert!(!h.tt.is_empty(), "onBMAuctions sent");
+    let ev = capture
+        .find_message(tracing::Level::INFO, "search: returning listings")
+        .expect("search row");
+    for (k, v) in [
+        ("client_key", "1".to_string()),
+        ("total_results", "1".to_string()),
+        ("rows_returned", "1".to_string()),
+        ("player_id", seller.to_string()),
+        ("account_id", acc.to_string()),
+    ] {
+        assert!(ev.has_field(k, &v), "{k}: {:?}", ev.fields);
+    }
+
+    cleanup(&pool, &[acc, acc_c], &[seller, caller]).await;
 }

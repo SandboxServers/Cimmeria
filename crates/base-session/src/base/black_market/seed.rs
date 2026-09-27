@@ -25,6 +25,7 @@ use sqlx::PgPool;
 use super::helpers::now_unix_secs;
 use super::types::auction_status;
 use super::wire::auction_length_seconds;
+use cimmeria_wire::black_market::UIAuctionTime;
 
 /// Reserved account_id for the system seller — below the sequence start of 2,
 /// so it can never be allocated to a real account.
@@ -42,9 +43,9 @@ struct SeedSpec {
     stack_size: i32,
     starting_price: i32,
     buyout_price: i32,
-    /// `EBlackMarketTime` duration enum (0..=4) — drives both the client's
-    /// displayed time and the server's `expires_at`.
-    auction_length: u8,
+    /// The listing's duration tier; drives `expires_at`, and is stored as
+    /// its 1-based `UIAuctionTime` value.
+    auction_length: UIAuctionTime,
 }
 
 /// The fixed set of seed listings. Pure data, unit-testable without a DB.
@@ -56,7 +57,7 @@ fn seed_specs() -> Vec<SeedSpec> {
             stack_size: 1,
             starting_price: 50,
             buyout_price: 500,
-            auction_length: 4,
+            auction_length: UIAuctionTime::Long,
         },
         // P90 (item def 21) — SMG; items_event_sets (21, RANGED) → 559.
         SeedSpec {
@@ -64,7 +65,7 @@ fn seed_specs() -> Vec<SeedSpec> {
             stack_size: 1,
             starting_price: 120,
             buyout_price: 1000,
-            auction_length: 4,
+            auction_length: UIAuctionTime::Long,
         },
         // Health Slappack TC1 (item def 2893) — stackable consumable, bid-only.
         SeedSpec {
@@ -72,7 +73,7 @@ fn seed_specs() -> Vec<SeedSpec> {
             stack_size: 5,
             starting_price: 30,
             buyout_price: 0, // bid-only (no buyout)
-            auction_length: 4,
+            auction_length: UIAuctionTime::Long,
         },
     ]
 }
@@ -168,7 +169,7 @@ async fn seed_active_auctions(pool: &PgPool) {
         .bind(spec.stack_size)
         .bind(spec.starting_price)
         .bind(spec.buyout_price)
-        .bind(spec.auction_length as i16)
+        .bind(i16::from(spec.auction_length as u8))
         .bind(now)
         .bind(expires_at)
         .bind(auction_status::ACTIVE)
@@ -197,7 +198,7 @@ mod tests {
     use crate::test_support::require_db_or_skip;
 
     /// The seed data must be internally consistent: positive stacks/prices and
-    /// a valid duration enum, with buyout either disabled or >= the start bid.
+    /// a duration tier, with buyout either disabled or >= the start bid.
     #[test]
     fn seed_specs_are_well_formed() {
         let specs = seed_specs();
@@ -208,10 +209,6 @@ mod tests {
             assert!(
                 s.buyout_price == 0 || s.buyout_price >= s.starting_price,
                 "buyout is either disabled (0) or at least the starting price"
-            );
-            assert!(
-                s.auction_length <= 4,
-                "auction_length is the EBlackMarketTime enum (0..=4)"
             );
         }
     }

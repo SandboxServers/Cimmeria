@@ -135,7 +135,8 @@ async fn item_disciplines(
     item_id: i32,
 ) -> Result<Vec<i32>, sqlx::Error> {
     let type_id: Option<i32> = sqlx::query_scalar(
-        "SELECT type_id FROM sgw_inventory WHERE item_id = $1 AND character_id = $2",
+        "SELECT type_id FROM sgw_inventory \
+         WHERE item_id = $1 AND character_id = $2 AND container_id <> 18",
     )
     .bind(item_id)
     .bind(player_id)

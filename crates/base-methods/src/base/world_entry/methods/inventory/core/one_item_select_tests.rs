@@ -34,8 +34,9 @@ fn one_item_select_shares_the_row_layout_and_filters_in_sql() {
     );
     assert_eq!(
         &INVENTORY_ONE_ITEM_SELECT[head_end..],
-        "WHERE inv.character_id = $1 AND inv.item_id = $2\n",
-        "owner check and item filter both in SQL, no ORDER BY"
+        "WHERE inv.character_id = $1 AND inv.item_id = $2 AND inv.container_id <> 18\n",
+        "owner check, item filter and the Black Market escrow exclusion all in SQL, \
+         no ORDER BY"
     );
 }
 
@@ -171,6 +172,66 @@ async fn one_item_send_is_owner_checked_in_sql() {
         "the player's own item reads its row"
     );
     assert_eq!(transport.send_count_to(addr), 1, "one packet for one item");
+
+    cleanup(&pool).await;
+}
+
+/// BM-02: a row the player has listed on the Black Market sits in their
+/// container 18 and is server-held. The full inventory read (login and
+/// every resync) and the one-item read (a refused move's snap-back) both
+/// leave it out, so the client never sees or re-learns a listed item. Bug
+/// shape: without the `container_id <> 18` filter the login sends it back
+/// into the player's bags.
+#[tokio::test]
+async fn listed_rows_in_container_18_are_never_read_for_the_client() {
+    let pool = require_db_or_skip!();
+    let entity_id: u32 = 0x7000_B1E9;
+    cleanup(&pool).await;
+    insert_player(&pool, 0x7000_B1A0, 0x7000_B1A1).await;
+    let in_bag = insert_item(&pool, 0x7000_B1A1, 0).await;
+    let listed = insert_item(&pool, 0x7000_B1A1, 1).await;
+    sqlx::query("UPDATE sgw_inventory SET container_id = 18, slot_id = 0 WHERE item_id = $1")
+        .bind(listed)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let ids: Vec<i32> = sqlx::query(INVENTORY_ITEM_SELECT)
+        .bind(0x7000_B1A1_i32)
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| sqlx::Row::get::<i32, _>(row, "item_id"))
+        .collect();
+    assert_eq!(
+        ids,
+        vec![in_bag],
+        "the listed row is not part of the inventory"
+    );
+
+    let transport = Arc::new(TestTransport::new());
+    let dyn_transport: Arc<dyn Transport> = transport.clone();
+    let addr: SocketAddr = "127.0.0.1:40820".parse().unwrap();
+    let e2a: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+        Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let conn: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> = Arc::new(Mutex::new(
+        HashMap::from([(addr, test_default_connected_client_state())]),
+    ));
+    assert!(
+        !send_inventory_item_update_via(
+            entity_id,
+            0x7000_B1A1,
+            listed,
+            &pool,
+            &dyn_transport,
+            &conn,
+            &e2a,
+        )
+        .await,
+        "a remembered listed id reads no row"
+    );
+    assert_eq!(transport.send_count_to(addr), 0);
 
     cleanup(&pool).await;
 }

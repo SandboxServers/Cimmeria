@@ -272,3 +272,55 @@ BEGIN
     RETURN OLD;
 END;
 $$;
+
+--
+-- Function: bm_player_before_delete()
+-- Trigger:  sgw_player_before_delete_auctions (_triggers.sql)
+--
+-- Keeps the Black Market consistent when a character is deleted, from any
+-- path (decision D-BM09 in docs/analysis/black-market/README.md):
+--
+-- - Open auctions the character is selling go with it: sgw_auction.seller_id
+--   is ON DELETE CASCADE, and the listed item (a container-18 row of the
+--   seller's inventory) cascades with the inventory. Their standing bidders
+--   are refunded here first, so nobody else loses held cash.
+-- - Open auctions the character is the standing bidder on reopen: the bid
+--   is cleared here (the held cash leaves with the character, like the rest
+--   of its naquadah), and current_bidder is ON DELETE SET NULL for settled
+--   rows, which keep their history.
+--
+-- Lock order: the sgw_player row being deleted (locked before a BEFORE
+-- trigger runs), then the affected auction rows in sequence_id order, then
+-- the refunded bidders' sgw_player rows. A bid in flight on one of these
+-- auctions holds the auction row and waits on bidder rows, which is the
+-- same order; a buyout settling to this seller can deadlock with it, which
+-- Postgres detects and rolls back (the player retries).
+--
+-- A refund is capped at the integer maximum rather than overflowing, which
+-- would abort the delete.
+--
+
+CREATE FUNCTION bm_player_before_delete() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    PERFORM 1
+       FROM sgw_auction
+      WHERE status = 0
+        AND (seller_id = OLD.player_id OR current_bidder = OLD.player_id)
+      ORDER BY sequence_id
+        FOR UPDATE;
+    UPDATE sgw_auction
+       SET current_bid = 0, current_bidder = NULL
+     WHERE status = 0 AND current_bidder = OLD.player_id;
+    UPDATE sgw_player p
+       SET naquadah = LEAST(p.naquadah::bigint + r.total, 2147483647)::integer
+      FROM (SELECT current_bidder AS player_id, SUM(current_bid)::bigint AS total
+              FROM sgw_auction
+             WHERE status = 0 AND seller_id = OLD.player_id
+               AND current_bidder IS NOT NULL AND current_bid > 0
+             GROUP BY current_bidder) r
+     WHERE p.player_id = r.player_id;
+    RETURN OLD;
+END;
+$$;

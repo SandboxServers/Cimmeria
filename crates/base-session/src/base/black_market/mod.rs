@@ -2,44 +2,47 @@
 //!
 //! `SGWBlackMarket` is a ServerOnly BASE entity. Client RPCs land at the cell
 //! methods 61–66 (`cimmeria_cell_methods::cell::cell_methods::black_market`),
-//! which decode and forward to the base via `CellToBaseMsg::BlackMarket`
-//! (routed by `cimmeria-base-world-entry`'s `cell_dispatch`). The base side
-//! (here) owns all DB + escrow/cash/mail work and sends the `onBM*` (client
-//! indices 90–95) replies back to the player's own client. `cimmeria-base`
-//! spawns the boot seed and the expiry sweep at startup.
+//! which decode them with the shared codec, check that 62-64 come from a
+//! player at an auctioneer, and forward to the base via
+//! `CellToBaseMsg::BlackMarket` (routed by `cimmeria-base-world-entry`'s
+//! `cell_dispatch`). The base side (here) owns all DB, escrow, cash and mail
+//! work and sends the `onBM*` (client indices 90–95) replies back to the
+//! player's own client. `cimmeria-base` spawns the boot seed and the expiry
+//! sweep at startup. The contract and its decisions are in
+//! `docs/analysis/black-market/README.md`.
 //!
 //! Module map:
-//! - [`types`]   — the `AuctionRow` model + status constants, and a re-export
-//!   of `BMSearchOptions` (its wire deserializer is in `cimmeria-wire`).
-//! - [`wire`]    — `onBM*` serializers + the x64dbg-blocked placeholders
-//!   (D.1 error codes, D.5 duration→seconds, D.6 next-min-bid).
-//! - [`helpers`] — reusable persistence: `adjust_player_cash`, item
-//!   `escrow_item` / `return_item`.
-//! - [`payout_mail`] — `send_mail_to_player` and the settlement mail texts,
-//!   the only code that writes auction mail.
-//! - [`validate`] — pure accept/reject predicates (unit-tested).
-//! - [`send`]    — `onBM*` server→client send wrappers.
-//! - [`search`]  — the `BMSearch` handler: queries active listings, resolves
-//!   seller names, and sends `onBMAuctions` back to the requesting entity.
+//! - [`types`]   — the `AuctionRow` model, status constants, the listing cap
+//!   and listable bags.
+//! - [`wire`]    — `onBM*` arguments through the shared codec, durations,
+//!   the time-left bucket, the next minimum bid, and search paging.
+//! - [`validate`] — pure accept/reject rules, each refusal a `BMError`.
+//! - [`telemetry`] — the `bm.<transition>` events, refusal rows and the
+//!   `bm_outcome_total` counter.
+//! - [`helpers`] — the clock and `adjust_player_cash`.
+//! - [`escrow`]  — moving the listed row into container 18 and back out.
+//! - [`payout_mail`] — `send_mail_to_player` and the settlement mail texts.
+//! - [`send`]    — `onBM*` and item-update sends.
+//! - [`search`]  — the `BMSearch` handler and query.
 //! - [`create`] / [`bid`] / [`cancel`] — the create/bid/cancel state machine.
+//! - [`settle`]  — settling one auction (sweep and buyout).
 //! - [`sweep`]   — the periodic expiry-settlement background task.
 //! - [`seed`]    — the boot seed of system-seller listings.
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-
-use crate::base::ConnectedClientState;
+use sqlx::PgPool;
 
 pub mod bid;
 pub mod cancel;
 pub mod create;
+pub mod escrow;
 pub mod helpers;
 pub mod payout_mail;
 pub mod search;
 pub mod seed;
 pub mod send;
+pub mod settle;
 pub mod sweep;
+pub mod telemetry;
 pub mod types;
 pub mod validate;
 pub mod wire;
@@ -49,51 +52,14 @@ pub use types::BMSearchOptions;
 #[cfg(test)]
 mod tests;
 
-/// Resolve the display name of the player owning `entity_id` from the connected
-/// session map. Falls back to an empty string when unknown (the name is only a
-/// cosmetic field on `onBMAuctionUpdate`).
-fn player_name_for_entity(
-    entity_id: u32,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) -> String {
-    let addr = {
-        let map = entity_to_addr.lock().unwrap_or_else(|p| p.into_inner());
-        map.get(&entity_id).copied()
-    };
-    let Some(addr) = addr else {
-        return String::new();
-    };
-    let clients = connected.lock().unwrap_or_else(|p| p.into_inner());
-    clients
-        .get(&addr)
-        .and_then(|c| c.player_name.clone())
+/// A player's display name from `sgw_player` (S8: offline sellers too).
+/// Empty when the row is gone or the read fails; it is a label only.
+async fn player_name(pool: &PgPool, player_id: i32) -> String {
+    sqlx::query_scalar::<_, String>("SELECT player_name FROM sgw_player WHERE player_id = $1")
+        .bind(player_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
         .unwrap_or_default()
-}
-
-/// Resolve a player's display name by `player_id` (DB character id) by scanning
-/// the connected session map. Returns `None` when the player is offline.
-fn player_name_for_player_id(
-    player_id: i32,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    _entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) -> Option<String> {
-    let clients = connected.lock().unwrap_or_else(|p| p.into_inner());
-    clients
-        .values()
-        .find(|c| c.active_player_id == Some(player_id))
-        .and_then(|c| c.player_name.clone())
-}
-
-/// Resolve the live `entity_id` for an online player by `player_id`, or `None`
-/// if the player is offline.
-fn entity_id_for_player_id(
-    player_id: i32,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-) -> Option<u32> {
-    let clients = connected.lock().unwrap_or_else(|p| p.into_inner());
-    clients
-        .values()
-        .find(|c| c.active_player_id == Some(player_id))
-        .and_then(|c| c.player_entity_id)
 }

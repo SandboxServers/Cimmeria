@@ -36,6 +36,9 @@ pub const EQUIPMENT_CONTAINERS: &[i32] = &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 // update the other site too — the two paths must produce identical row layouts.
 // The SQL drift-guard test in `mod tests` below pins the two copies
 // byte-for-byte to catch silent divergence.
+//
+// Container 18 (`INV_AUCTION`) is server-held: it holds the rows a player
+// has listed on the Black Market (BM-02), which must never reach the client.
 pub(crate) const INVENTORY_ITEM_SELECT: &str = r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
@@ -48,7 +51,7 @@ SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        END AS cur_ammo_type_id
 FROM sgw_inventory inv
 LEFT JOIN resources.items ri ON ri.item_id = inv.type_id
-WHERE inv.character_id = $1
+WHERE inv.character_id = $1 AND inv.container_id <> 18
 ORDER BY inv.container_id, inv.slot_id
 "#;
 

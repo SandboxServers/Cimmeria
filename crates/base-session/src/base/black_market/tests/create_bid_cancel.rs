@@ -2,8 +2,9 @@
 //!
 //! Skip cleanly when `DATABASE_URL` is unset (via `require_db_or_skip!`).
 //! Against the bundled local Postgres they exercise: createAuction (row insert
-//! plus escrow), placeBid (current_bid update, prior-bidder refund, bid-history
-//! row), cancelAuction (item return plus bidder refund).
+//! plus the escrow move into container 18), placeBid (current_bid update,
+//! prior-bidder refund, bid-history row), cancelAuction (the escrowed row back
+//! into the bags, plus bidder refund).
 //!
 //! Shared fixtures (`cleanup`, `insert_account_and_player`, `insert_item`,
 //! `naquadah_of`, `inventory_count`, `make_state`, `TEST_BASE`, `ITEM_DEF_ID`)
@@ -11,18 +12,24 @@
 
 use std::sync::Arc;
 
+use cimmeria_entity::inventory::{INV_AUCTION, INV_MAIN};
+
 use super::{
-    cleanup, insert_account_and_player, insert_item, inventory_count, make_state, naquadah_of,
-    ITEM_DEF_ID, TEST_BASE,
+    cleanup, insert_account_and_player, insert_item, inventory_count, item_state, make_state,
+    naquadah_of, ITEM_DEF_ID, TEST_BASE,
 };
+use crate::base::black_market::helpers::now_unix_secs;
 use crate::base::black_market::types::auction_status;
 use crate::base::black_market::{bid, cancel, create};
 use crate::test_support::require_db_or_skip;
 
 // ── createAuction ─────────────────────────────────────────────────────────
 
-/// createAuction inserts an active `sgw_auction` row and escrows the item out
-/// of the seller's inventory (inventory count drops to 0).
+/// createAuction inserts an active `sgw_auction` row and moves the item row
+/// into the seller's container 18: same instance id, still the seller's,
+/// gone from the bags. This is the shape BM-02b's mail settlement needs
+/// (`SystemItem::ExistingInstance` takes only a container-18 row of its
+/// owner). Bug shape: the branch's DELETE leaves no row at all.
 #[tokio::test]
 async fn create_auction_inserts_row_and_escrows_item() {
     let pool = require_db_or_skip!();
@@ -37,9 +44,29 @@ async fn create_auction_inserts_row_and_escrows_item() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     create::handle_create_auction(
-        entity_id, seller, item, 100, 0, 1, &db_pool, &transport, &conn, &e2a,
+        entity_id, seller, item, 100, 0, 5, &db_pool, &transport, &conn, &e2a,
     )
     .await;
+
+    let (listed_item, length, expires_at): (i32, i16, i32) = sqlx::query_as(
+        "SELECT item_id, auction_length, expires_at FROM sgw_auction WHERE seller_id = $1",
+    )
+    .bind(seller)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(listed_item, item, "the auction points at the escrowed row");
+    assert_eq!(length, 5, "VeryLong is stored 1-based");
+    let hours = (expires_at - now_unix_secs()) / 3_600;
+    assert!(
+        (95..=96).contains(&hours),
+        "VeryLong runs 96 h, got {hours}"
+    );
+    assert_eq!(
+        item_state(&pool, item).await,
+        Some((seller, INV_AUCTION, 77, 3)),
+        "the row sits in container 18, owned by the seller, columns intact"
+    );
 
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM sgw_auction WHERE seller_id = $1 AND status = $2")
@@ -87,7 +114,7 @@ async fn place_bid_updates_refunds_prior_and_records_bid() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     create::handle_create_auction(
-        entity_id, seller, item, 100, 0, 1, &db_pool, &transport, &conn, &e2a,
+        entity_id, seller, item, 100, 0, 5, &db_pool, &transport, &conn, &e2a,
     )
     .await;
     let seq: i32 = sqlx::query_scalar("SELECT sequence_id FROM sgw_auction WHERE seller_id = $1")
@@ -156,8 +183,8 @@ async fn place_bid_updates_refunds_prior_and_records_bid() {
 
 // ── cancelAuction ───────────────────────────────────────────────────────────
 
-/// cancelAuction returns the escrowed item to the seller and refunds the
-/// current bidder.
+/// cancelAuction moves the escrowed row back into the seller's bags (the
+/// same instance) and refunds the current bidder.
 #[tokio::test]
 async fn cancel_auction_returns_item_and_refunds_bidder() {
     let pool = require_db_or_skip!();
@@ -175,7 +202,7 @@ async fn cancel_auction_returns_item_and_refunds_bidder() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     create::handle_create_auction(
-        entity_id, seller, item, 100, 0, 1, &db_pool, &transport, &conn, &e2a,
+        entity_id, seller, item, 100, 0, 5, &db_pool, &transport, &conn, &e2a,
     )
     .await;
     let seq: i32 = sqlx::query_scalar("SELECT sequence_id FROM sgw_auction WHERE seller_id = $1")
@@ -202,6 +229,11 @@ async fn cancel_auction_returns_item_and_refunds_bidder() {
         inventory_count(&pool, seller).await,
         1,
         "escrowed item returned to seller"
+    );
+    assert_eq!(
+        item_state(&pool, item).await.map(|s| (s.0, s.1)),
+        Some((seller, INV_MAIN)),
+        "the same row is back in the main bag, out of container 18"
     );
     assert_eq!(
         naquadah_of(&pool, bidder).await,
@@ -236,7 +268,7 @@ async fn place_bid_self_raise_credits_held_bid() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     create::handle_create_auction(
-        entity_id, seller, item, 100, 0, 1, &db_pool, &transport, &conn, &e2a,
+        entity_id, seller, item, 100, 0, 5, &db_pool, &transport, &conn, &e2a,
     )
     .await;
     let seq: i32 = sqlx::query_scalar("SELECT sequence_id FROM sgw_auction WHERE seller_id = $1")

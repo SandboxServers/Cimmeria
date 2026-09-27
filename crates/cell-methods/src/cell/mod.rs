@@ -15,6 +15,6 @@ pub(crate) use cimmeria_cell_interactions::cell::{
     gate_travel, interactions, mail, respawn, trade,
 };
 pub(crate) use cimmeria_cell_world::cell::{
-    duel, org_creation, pets, playtest_friction, space_manager, squad,
+    black_market, duel, org_creation, pets, playtest_friction, space_manager, squad,
 };
 pub(crate) use cimmeria_wire::cell::{client_methods, messages, player_journal};
