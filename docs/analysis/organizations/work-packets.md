@@ -10,6 +10,7 @@
 - Rust is pinned to 1.98.1 by `rust-toolchain.toml`. After any dependency change, run `cargo hakari generate && cargo hakari manage-deps --yes` and `python tools/crate-graph/crate_graph.py --check`.
 - Remove a worktree's `external` junction non-recursively (`cmd /c rmdir <wt>\external`) before removing the worktree.
 - Squash-merge on green CI **and** a clean Copilot review (owner rule, 2026-09-27). The coordinator requests it with `MSYS_NO_PATHCONV=1 gh api -X POST repos/SandboxServers/Cimmeria/pulls/<N>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'`, fixes or answers every comment, and re-requests after a substantive fix. When a PR's CI predates the current `main`, rebase and re-test first.
+- **Amendment (owner, relayed 2026-09-27):** Copilot reviews are suspended because the review spend is exhausted. Until the owner lifts that, squash-merge on green CI plus the coordinator's own review of the diff (D-ORG25). Everything else in the rule above stands.
 - Initial state: documentation only, against `main` @ `70795027`. ORG-E1 and ORG-01 started on 2026-09-27 from `95366c59`.
 
 Status vocabulary: **Ready**, **BlockedDependency**, **BlockedDecision**, **Writing**, **Review**, **Integrated**, **UATPending**, **Done**.
@@ -45,15 +46,26 @@ Every enum value is pinned by a literal test against `enumerations.xml`, never a
 
 The leader is the member whose rank is 8; there is no `leader_player_id` column to keep in step.
 
+ORG-02 (#881) also ships two `BEFORE DELETE` triggers that make every delete path take the ORG-LOCK order before the cascade reaches the member rows (`db/sgw/_functions.sql`, `db/sgw/_triggers.sql`):
+
+- `sgw_player_before_delete_lock_orgs` (function `org_player_before_delete`) locks the deleted character's organization rows, in `org_id` order.
+- `account_before_delete_lock_orgs` on `account` (function `org_account_before_delete`) locks all of the account's `sgw_player` rows in `player_id` order, then all of their organizations in `org_id` order. Without it, an account delete cascading over two characters would lock organizations character by character and could deadlock against a single-character delete.
+
+Organization live-DB tests use the sentinel range `0x7000_4800..=0x7000_4BFF` (`crates/base-session/src/base/organization/persistence/tests/mod.rs`).
+
 ### Bank campaign API (ORG-API)
 
-The Bank / Vault campaign (cimmeria-97) builds the Team and Command vaults and the treasury on top of this. ORG-02 and ORG-07 deliver it, in `crates/base-session/src/base/organization/api.rs`:
+The Bank / Vault campaign (cimmeria-79) builds the Team and Command vaults and the treasury on top of this. ORG-02 and ORG-07 deliver it, in `crates/base-session/src/base/organization/api.rs`:
 
 - `lock_org(tx: &mut Transaction, org_id) -> Result<Option<OrgHeader>>`: `SELECT … FOR UPDATE` on the org row. **It is always the first lock a transaction takes** (ORG-LOCK, D-ORG04); the bank then locks `sgw_player`, then item rows.
 - `member_access_locked(tx, org_id, player_id) -> Result<Option<OrgAccess>>`, where `OrgAccess { org_id, org_type, rank, permissions }`, read inside that same transaction. `None` means not a member, so the caller rejects. There is deliberately **no** pool-level variant: never authorize from a read outside the lock.
 - `broadcast_to_org(ctx, org_id, method_idx, args, required: Option<OrgPermission>)`: sends a client method to every online member, optionally only those whose rank holds a permission (for example `ViewBankLogs`). Call it after the commit.
 - `build_on_organization_cash_update` in `crates/wire`, and the `cash` value in the login header (ORG-06).
 - The CM 19 route: the cell forwards `OrgCellToBase::TransferCash { player_id, entity_id, org_id, amount }`, with `player_id` and `entity_id` taken from the session. Until the bank lands, the base arm rejects it with feedback (`onErrorCode`) and logs `org.transfer_cash_unimplemented`. The bank replaces that one arm and owns its acceptance list: `amount != 0` on the signed `i32`, with the sign choosing deposit or withdraw; `DepositCash` or `WithdrawCash` by direction (distinct bits); no overflow of the wallet or of `cash`; the D-ORG19 cap; and one transaction under ORG-LOCK.
+
+**Delivered so far.** ORG-02 (#881) shipped `lock_org`, `member_access_locked` (the `OrgAccess` it returns is tied to its transaction; using it in another one fails with `OrgStoreError::StaleAccess` or `ActorMismatch`), `org_vault_is_empty` (stub, returns true), the SQL stub `org_vault_is_empty_sql`, and the `cash` column. `broadcast_to_org` and the CM 9-19 non-squad forward come with ORG-07. The CM 19 base arm stays the reject stub (`org.transfer_cash_unimplemented`), and replacing it is the bank's **BV-08**.
+
+**Known gap for the bank.** Neither ORG-06 nor ORG-07 closes an org vault window that is already open when its holder leaves, is kicked, or the organization disbands. BV-07 closes it on `onOrganizationLeft` [36].
 
 ## CAT-M coverage
 
@@ -90,14 +102,23 @@ The critical path is ORG-01 → ORG-02 → ORG-06 → ORG-07. ORG-01 is kept sma
 
 **Contended files.** The coordinator merges these one packet at a time, in the order shown:
 
-- `crates/cell-methods/src/cell/cell_methods/organization.rs`: ORG-01 (decoders) → ORG-03 (squad arms and the id-range router) → ORG-07 (forwarding to the base) → ORG-08. ORG-03 splits the file into `organization/` (`mod.rs` router, `squad.rs`, `forward.rs`) so later packets add files.
+- `crates/cell-methods/src/cell/cell_methods/organization/`: ORG-03 split the old `organization.rs` into `mod.rs` (the id-range router), `forward.rs` and a `squad/` directory, with tests in `organization/tests/`. ORG-07 (forwarding to the base) → ORG-08 add files there.
 - `crates/base/src/base/dispatch/mod.rs`: ORG-01 (constants and one `organization` arm that calls `dispatch/organization.rs`), then ORG-03 and ORG-07 edit only `organization.rs`.
-- `crates/cell-console/src/cell/console/chat.rs`: ORG-04 (squad arm) → ORG-09 (team, command and officer arms).
-- `crates/base-session/src/base/world_entry_chat.rs` (`DEFAULT_CHAT_CHANNELS`): ORG-09 only.
+- `crates/cell-console/src/cell/console/chat/` (`mod.rs`, `spatial.rs`, `feedback.rs`, `squad.rs`, and `chat/tests/`; #885 split the old `chat.rs`, ORG-04 added `squad.rs`) → ORG-09 (team, command and officer). Generic chat logs in these submodules use `target: CHAT_LOG_TARGET`; squad and org chat rows stay on the `squad` and `org` targets (D-ORG24).
+- `crates/base-session/src/base/world_entry_chat.rs` (`DEFAULT_CHAT_CHANNELS`) and the `CHAN_*` constants: owned by the social campaign's SS-C4 (D-ORG26), no longer by ORG-09.
 - `crates/base-world-entry/src/base/world_entry_appearance/client_ready/mod.rs`: ORG-06 only (one call after `push_contact_lists_on_login`).
 - `crates/base-session/src/base/helpers/mod.rs` (`destroy_client_entities`): ORG-06 only. It also adds the missing contact-list offline fanout there (audit A-35).
 - `crates/cell-interactions/src/cell/interactions/dispatch/interact.rs`: ORG-05 only, one call beside `try_open_dhd`.
-- `db/resources/**/entity_templates.sql`, `spawnlist.sql`: ORG-05 only, inside templates 330-349 and spawns 430-449. Rebase onto the stasis hub PR (#846) first.
+- `db/resources/**/entity_templates.sql`, `spawnlist.sql`: ORG-05 only, inside templates 330-349 and spawns 430-449. The stasis hub PR (#846) has merged.
+
+**Carried gaps.** ORG-03 and ORG-04 merged with these open. The packet that inherits each one lists it too.
+
+- No ignore-list check on squad invites. ORG-07 adds the base-side ignore check for `SquadInvite` as well as for Team and Command invites.
+- No `/squadpromote`: the 0xD2 path is unconfirmed (ORG-E1 follow-up 1, and [README § Where confidence is low](README.md#where-confidence-is-low)).
+- An inviter in gate transit cannot found a squad, and a member in gate transit misses squad chat lines. ORG-UAT step 3 watches for the second.
+- The client may display a squad line twice if it also echoes it locally. ORG-UAT step 2 checks this on a real client.
+- `crates/entity/src/cell_entity/entity_struct.rs` is over the 700-line hard cap (775 lines on `main`; 751 before ORG-03) and needs a split. No packet owns it yet.
+- ORG-04 added the crate edge `cimmeria-cell-console -> cimmeria-cell-methods` (the `.squad_*` commands call the squad handlers). It is the only edge that way.
 
 ## Common acceptance
 
@@ -119,14 +140,14 @@ A support question such as "player X tried Y at time T and it failed" must be an
 - ORG-LOCK (D-ORG04): every Team/Command mutation takes `lock_org` first and authorizes inside the transaction. ORG-07 adds a concurrency test (TESTING.md type 5): a kick or demotion racing a transaction that holds the org lock never lets the kicked member act.
 - Every rejected action gives the player visible feedback on the first press: a re-send of the true state, a line on the feedback channel, or both. `onErrorCode` alone is not enough, because its text needs a cooked-data category Cimmeria does not serve (ORG-E1 Q4). A silent drop is a bug.
 - Log targets `org` and `squad` are added to `OTEL_FILTER` with its pinning assertion.
-- Each packet updates the docs it owes: `docs/gameplay/organization-system.md` and `group-system.md`, `docs/protocol/` for any wire message, `docs/gap-analysis.md` §23, and `docs/project-status.md`.
+- Each packet updates the docs it owes: `docs/gameplay/organization-system.md` and `group-system.md`, and `docs/protocol/` for any wire message. `docs/gap-analysis.md` §23 and `docs/project-status.md` are close-out only (ORG-11), per the 2026-09-27 rule.
 - Workers write a worknote at `docs/analysis/organizations/worknotes/<packet>.md` (CRLF). They do not edit this file or the README; the coordinator owns the ledger.
 
 ## Wave 0
 
 ### ORG-E1: Client evidence
 
-Status: **Integrated** (this PR). Writer: `game-archaeology-specialist`. Static Ghidra and Lua only; no debugger on the live client. Answers: [worknote](worknotes/org-e1.md).
+Status: **Integrated** (#861). Writer: `game-archaeology-specialist`. Static Ghidra and Lua only; no debugger on the live client. Answers: [worknote](worknotes/org-e1.md).
 
 Answer, with addresses and a verdict each, into `docs/reverse-engineering/findings/organization-restoration.md` (close its open questions) and `organization-wire-formats.md`:
 
@@ -141,7 +162,7 @@ Deliverable: a docs-only PR. It blocks nothing; ORG-03, ORG-06 and ORG-09 read i
 
 ### ORG-01: Contract foundation
 
-Status: **Ready**. Writer: `rust-gameserver-dev`. Advisor: `social-systems-engineer`.
+Status: **Integrated** (#871). Writer: `rust-gameserver-dev`. Advisor: `social-systems-engineer`.
 
 Build the whole [contract](#contract-fixed-by-this-ledger) except the schema:
 
@@ -159,7 +180,7 @@ No gameplay behaviour changes. Acceptance: byte tests for every builder and deco
 
 ### ORG-02: Schema, persistence and the bank API
 
-Status: **BlockedDependency** (ORG-01). Writer: `rust-gameserver-dev`. Reviewer: `database-persistence`.
+Status: **Integrated** (#881). Writer: `rust-gameserver-dev`. Reviewer: `database-persistence`.
 
 - The three tables, the sequence and their constraints, wired into `db/database.sql` and the `_primary_keys`, `_foreign_keys`, `_indexes` and `_sequence_ownership` aggregates. No seed rows. No `db/scripts/` migration.
 - `crates/base-session/src/base/organization/persistence/`: `create_org` (the org row, one rank row per `OrgRank::for_type`, and the leader, in one transaction), `load_memberships(player_id)`, `load_roster(org_id)`, `add_member`, `remove_member`, `set_rank`, `set_text` (MOTD, note, officer note, rank name), `set_rank_permissions`, `disband`, and the name-uniqueness check.
@@ -167,12 +188,13 @@ Status: **BlockedDependency** (ORG-01). Writer: `rust-gameserver-dev`. Reviewer:
 - The D-ORG12 leader-deletion trigger, and the `org_vault_is_empty_sql(org_id)` SQL stub it calls (D-ORG20: a last-member delete with a non-empty vault leaves a memberless org). A memberless org is skipped by login restore and fanout, and listed by `.org_list`.
 - Live-DB tests: creation writes every rank row; a second Team for the same player fails on `UNIQUE (player_id, org_type)`; a duplicate `name_key` fails; the member `org_type` cannot drift from its org; an `org_id` at or above `0x4000_0000` is refused; disband cascades; `cash` cannot go negative; deleting the leader's character promotes the next member, or disbands a one-member org, and no leaderless org remains (`leader_delete_leaves_no_leaderless_org`); `rows_affected == 0` paths return a typed miss, not `Ok`.
 
-Message cimmeria-97 when this merges.
 - Telemetry: every persistence function logs DEBUG `event` = its name with `org_id`, `player_id` where there is one, `rows_affected`, and before/after values for rank and permission changes; a typed miss logs WARN with `reason`. The leader-deletion trigger runs outside Rust, so it writes each promotion, disband or memberless result to an `sgw_organization_events` table with immutable identities captured at delete time (`org_id`, `event`, `reason = character_deleted`, `from_player_id`, `from_account_id`, `to_player_id`, `to_account_id`, `at`, `exported_at`). The Rust character-delete handler (`crates/base-world-entry/src/base/character/`) exports the rows its own transaction produced immediately after commit, as `org` `event = leader_changed` / `disbanded` / `left_memberless`, and stamps `exported_at`. A startup sweep exports any row still unstamped (from a GM or test delete that bypassed the handler). Export is at-least-once: a crash between the send and the stamp re-sends the row at the next startup, so every exported event carries the table's `org_event_id`, and a query deduplicates on it. A live-DB test proves both paths.
+
+Message cimmeria-79 when this merges.
 
 ### ORG-03: Squad core
 
-Status: **BlockedDependency** (ORG-01). Writer: `rust-gameserver-dev`. Reviewers: `social-systems-engineer`, `server-authority-enforcer`, `testing-validation-engineer` (test plan).
+Status: **Integrated** (#886). Writer: `rust-gameserver-dev`. Reviewers: `social-systems-engineer`, `server-authority-enforcer`, `testing-validation-engineer` (test plan).
 
 - A service-wide `SquadRegistry` owned by the cell service beside `SpaceManager` (D-ORG03): squads keyed by id from `SQUAD_ORG_ID_MIN` (monotonic, never reused), members (by `player_id`), members in join order, the leader, the loot type, and pending invites (D-ORG06). A `squad_id: Option<i32>` field on `CellEntity` stands in for the `squad` CELL_PUBLIC property, which is never sent to clients (audit A-19).
 - `organizationInviteByType(0, name)` at the base resolves nothing itself: it forwards `OrgBaseToCell::SquadInvite { inviter_entity_id, target_name }`. The cell resolves the name with `find_online_player_by_name`. `Ambiguous`, `InTransition` ("that player is travelling, try again"), `NotFound`, self and non-player targets are rejected with feedback; the first match is never guessed. It then checks both sides: the target is not in a squad, the inviter is the leader or has no squad, the squad has room for 6, no duplicate pending invite for the pair, at most 5 pending invites per invitee, at most 5 invites per inviter per 30 seconds, and the target is not ignoring the inviter. It creates the squad on the first accept and sends `onOrganizationInvite` [34].
@@ -188,7 +210,7 @@ Status: **BlockedDependency** (ORG-01). Writer: `rust-gameserver-dev`. Reviewers
 
 ### ORG-04: Squad chat and minimap ping
 
-Status: **BlockedDependency** (ORG-03). Writer: `rust-gameserver-dev`.
+Status: **Integrated** (#922). Writer: `rust-gameserver-dev`.
 
 - A `CHAN_SQUAD` (4) arm in the cell's chat match: the sender's squad members get `onPlayerCommunication`, wherever they are. The flood limit is the social campaign's `base::rate_limit` `RateCategory::Chat` (SS-00, applied before the cell forward) and the text filter is `org_text::validate(TextField::ChatText)`; neither is re-implemented here. A sender with no squad gets feedback.
 - CM 10 `BroadcastMinimapPing` for squads: validate (the id must be the caller's squad; at most one ping per second per member) and log. ORG-E1 Q3 found no receive-side message in the client, so there is nothing to fan out.
@@ -198,7 +220,7 @@ Status: **BlockedDependency** (ORG-03). Writer: `rust-gameserver-dev`.
 
 ### ORG-05: Creation and the registrar NPCs
 
-Status: **BlockedDependency** (ORG-02; the hub seed also waits for #846). Writer: `rust-gameserver-dev`. Reviewer: `server-authority-enforcer`. Owner decision D-ORG15: free (the constants are 0).
+Status: **Writing** (dispatched 2026-09-27, branch `org/05-creation`). Writer: `rust-gameserver-dev`. Reviewer: `server-authority-enforcer`. Owner decision D-ORG15: free (the constants are 0).
 
 - An `OrganizationCreation` interaction: `try_open_org_registrar` in `crates/cell-interactions/src/cell/interactions/org_registrar.rs`, called beside `try_open_dhd`. It is keyed on seed data (a template column naming Team or Command, or the `INT_ORGANIZATION` flag plus the type), never on an entity id. It checks distance and eligibility (not already in an organization of that type), records a pending creation keyed by `player_id` with the type, a 5-minute expiry and 3 attempts, and sends `launchOrganizationCreation(type)` [135]. An ineligible player gets feedback instead of a dialog.
 - CM 94 `onOrganizationCreation(name)`: requires the pending creation (the type comes from it, never from the wire), validates the name (D-ORG10), and forwards `OrgCellToBase::Create`. The base re-checks eligibility and runs `create_org`, debiting the D-ORG15 cost in the same transaction, and replies. A rejection uses one attempt; a success, a disconnect or a change of space clears the pending creation. The client gets `onOrganizationCreationResult` [134], then `onOrganizationJoined` [35], the header and the roster (reusing ORG-06's login push).
@@ -209,7 +231,7 @@ Status: **BlockedDependency** (ORG-02; the hub seed also waits for #846). Writer
 
 ### ORG-06: Login restore, leave, disband and presence
 
-Status: **BlockedDependency** (ORG-02). Writer: `rust-gameserver-dev`. Advisor: `social-systems-engineer`.
+Status: **Writing** (dispatched 2026-09-27, branch `org/06-presence`). Writer: `rust-gameserver-dev`. Advisor: `social-systems-engineer`.
 
 - On `onClientReady`, after `push_contact_lists_on_login`: for each Team and Command the player belongs to, send `onOrganizationJoined` [35] (`aNewMember = 0`), the name [43], MOTD [45], cash [48], experience [44], rank permissions [49], rank names [50] and the roster [38]. ORG-E1 Q1 fixes the order: the roster first, which the client stores with every member id 0 ("Offline"), then `onMemberJoinedOrganization` [37] with `aNewMember = 0` and the member's entity id for each online member, which is the only message that sets an id.
 - Presence fanout: login and every disconnect path (hook `destroy_client_entities`, which covers crash, timeout and quit) tell the online members: `onMemberJoinedOrganization` with the entity id on login, and on logout the same message with id 0 (never `onMemberLeftOrganization`, which removes the row). Confirm the id-0 update against the handler at `0x00e4e4c0` before relying on it. The same hook adds the contact-list offline fanout that is missing today (audit A-35).
@@ -225,9 +247,10 @@ Status: **BlockedDependency** (ORG-02). Writer: `rust-gameserver-dev`. Advisor: 
 Status: **BlockedDependency** (ORG-05, ORG-06). Writer: `rust-gameserver-dev`. Reviewers: `server-authority-enforcer`, `testing-validation-engineer`.
 
 - Base methods `organizationInvite` (0xCF) and `organizationInviteByType` (0xD0, types 1 and 2; above 2 is rejected, and neither type is ever created implicitly): the inviter must be a member holding `Invite` in that org, checked under ORG-LOCK; the target must be online (not ambiguous, not self), not already in an org of that type (D-ORG18) and not ignoring the inviter. The ORG-03 invite rate limits apply. The base records the pending invite (D-ORG06, base range) and sends `onOrganizationInvite` [34]. CM 8 with `BASE_INVITE_REQUEST_FLAG` set is forwarded to the base, which consumes and re-validates the entry under ORG-LOCK (D-ORG06), adds the member at the D-ORG07 entry rank, and fans out as ORG-03 does. Base pending invites are cleared on every disconnect path (`destroy_client_entities`).
+- Carried from ORG-03: the base also checks the ignore list for `SquadInvite` before forwarding it to the cell, so squad invites get the same ignore rule as Team and Command invites.
 - `organizationKick` (0xD1) and `organizationRankChange` (0xD2) under D-ORG09, then `onOrganizationLeft` [36] with `Kicked` and `onMemberLeftOrganization` [39], or `onMemberRankChangedOrganization` [40], to the online members.
 - The cell's org-id router forwards CM 9-19 for non-squad ids to the base. CM 11 and 12 (strike team and PvP leave) are rejected and logged as unsolicited, since no strike-team request is ever issued (CAT-M-16, M-17). CM 19 gets the ORG-API stub.
-- Deliver `broadcast_to_org` and message cimmeria-97 that the ORG-API is complete.
+- Deliver `broadcast_to_org` and message cimmeria-79 that the ORG-API is complete. This packet does not close an open org vault window on kick; that is BV-07's (see the ORG-API known gap).
 - `.org_join <orgId> [player]` and `.org_rank <player> <rank>` for GMs; they bypass the permission checks but not the type and uniqueness rules.
 - Telemetry: `org.invite`, `org.invite_response`, `org.kick`, `org.rank_change` outcome rows with the actor's and target's identity and ranks (`actor_rank`, `target_rank`, `to_rank`) and every D-ORG09 reason (`missing_permission`, `rank_too_low`, `rank_not_in_type`, `leader_not_assignable`, `self_target`); the forward router logs `org.forward` with `route` (`squad` / `base` / `rejected`); `org.strike_team_response` and `org.pvp_leave_response` log `rejected` with `reason = unsolicited`. `broadcast_to_org` logs `recipients` and, at WARN, each failed send.
 - Tests: the CAT-M names for M-01, M-02, M-05, M-06, M-16, M-17 and M-18; the ORG-LOCK concurrency test; a two-client wireclient invite into a Command.
@@ -245,13 +268,14 @@ Status: **BlockedDependency** (ORG-07). Writer: `rust-gameserver-dev`. Reviewer:
 
 ### ORG-09: Team, Command and officer chat
 
-Status: **BlockedDependency** (ORG-07). Writer: `rust-gameserver-dev`.
+Status: **BlockedDependency** (ORG-07, and the social campaign's SS-C4). Writer: `rust-gameserver-dev`.
 
 - Chat on team (3), command (5) and officer (6) reaches the online members of the sender's organization of that type. Officer requires `OfficerChat`. SS-00's `RateCategory::Chat` limit and `org_text::validate(TextField::ChatText)` apply; neither is re-implemented. Membership comes from the base, so these channels are routed base-side before the message is forwarded to the cell.
 - Register officer (6) with the client when the player holds `OfficerChat` in a Command.
-- Apply D-ORG14 (confirmed): register server as 8 and tell as 10, move every server-to-client message that uses 7 or 9 to the right channel (GM feedback goes on feedback, 9), and update `docs/gameplay/chat-system.md` in the same PR. This fixes the client's view of every existing server message, so test the welcome text and GM feedback in game.
-- Telemetry: `org.chat` per message at INFO (`ok` or `rejected`; the SS-00 flood limit bounds the rate), with `channel`, `org_id`, `recipients`, `text_units` and the reason; the channel-id change logs the registered set once per login at DEBUG (`event = channels_registered`).
-- Tests: fanout per channel; officer chat without the permission is rejected with feedback; the registered channel set is pinned.
+- **Scope change (D-ORG26, agreed with the social coordinator 2026-09-27).** The D-ORG14 channel-id alignment moved to the social campaign's SS-C4: registering server 8 and tell 10 in `DEFAULT_CHAT_CHANNELS`, moving server-to-client sends off 7 and 9 onto the right channels (GM feedback on 9), realigning `CHAN_*` to `enumerations.xml`, swapping the social locals (the `chat_gates.rs` allowlist, `dispatch::tell::TELL_CHANNEL`, SS-C2's `CHAN_SERVER`), `docs/gameplay/chat-system.md`, the DEBUG `channels_registered` event and the pinned registered-set test. This packet builds on SS-C4 and does not repeat any of it.
+- Do not re-implement mute. SS-C3 (#925) already routes channels 3-6 unchanged through the base allowlist and applies `.mute` to every channel, the org ones included. `ChatCellToBase` has `Mute` and `Unmute`; this packet may add variants.
+- Telemetry: `org.chat` per message at INFO (`ok` or `rejected`; the SS-00 flood limit bounds the rate), with `channel`, `org_id`, `recipients`, `text_units` and the reason.
+- Tests: fanout per channel; officer chat without the permission is rejected with feedback; officer (6) is registered only for a player holding `OfficerChat`.
 
 ### ORG-10: GM suite and UAT checklist
 
@@ -278,7 +302,7 @@ Status: **BlockedDependency** (every packet). Writer: coordinator, with `documen
 Status: **BlockedDependency** (ORG-11). Run by the owner, as GM, with two accounts (A and B). Use `.bug <note>` at each oddity.
 
 1. **Squad invite.** A types `/squadinvite B`. B sees the invite and accepts. Both squad frames show the other. *Solo fallback:* `.squad_join` a sentinel character.
-2. **Squad chat and loot.** Both chat on `/squad`. B (not leader) changes the loot mode: the menu snaps back with an error. A changes it: both see the change.
+2. **Squad chat and loot.** Both chat on `/squad`; each line shows once, not twice (a client-side echo would double it). B (not leader) changes the loot mode: the menu snaps back with an error. A changes it: both see the change.
 3. **Squad across worlds.** B gates to another world. The squad survives, and squad chat still arrives.
 4. **Squad leave.** A leaves. B becomes leader, and the squad disbands when B leaves.
 5. **Create a Command.** A talks to the Command registrar in the stasis-room debug hub, names the Command, and sees the Command window with A as leader. A second try with the same name is rejected visibly.
