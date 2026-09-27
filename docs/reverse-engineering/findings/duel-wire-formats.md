@@ -250,9 +250,10 @@ moniker-id wire path pending stronger evidence.
 
 ## Correction to this file (A-47)
 
-The `SGWDuelMarker` entity type index in "SGWDuelMarker entity" below is wrong; see
-`duel-restoration.md`'s corrected entry (audit A-47, SS-E1 2026-09-27): the client entity-type
-index is **6**, matching `entities.xml`'s row count, not 2. The `FUN_00c67420` registration-order
-read that produced "2" was not re-verified this session; `entities.xml`'s row order plus the
-project's standing "wire typeID = clientIndex" rule (`CLAUDE.md`,
-`reference_entity_typeid_clientindex`) is the higher-confidence source and is treated as correct.
+The `SGWDuelMarker` entity type index given in `duel-restoration.md`'s "SGWDuelMarker entity"
+section was wrong (audit A-47, SS-E1 2026-09-27): the wire entity-type id is **6**, not 2. The
+wire typeID is the client's `clientIndex`, which the client assigns in `entities.xml` order while
+skipping `<ServerOnly/>` entries; the client-verified table is
+`docs/protocol/client-verified-wire-formats.md:148` (`0x06 SGWDuelMarker`). The
+`FUN_00c67420` registration-order read that produced "2" is a C++ factory slot, not a wire id,
+and was not re-verified this session.

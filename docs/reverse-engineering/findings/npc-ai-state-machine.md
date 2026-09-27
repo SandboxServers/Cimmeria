@@ -54,7 +54,7 @@ GameEntityBase → GameEntity → GameBeing → GameMob
                             → GamePlayer
 ```
 
-> **Scope: these are C++ factory registration slots, not wire entity type ids.** Do not use this `Index` column on the wire. The wire typeID is the client's `clientIndex`: the `entities/entities.xml` order with `<ServerOnly/>` entries skipped. So `Account` is `0x07` and `SGWDuelMarker` is `6` on the wire (see `duel-restoration.md` and `crates/wire/src/cell/spawn_record.rs:128`). This table's SGWPlayer at slot 6 already shows the two numberings differ.
+> **Scope: these are C++ factory registration slots, not wire entity type ids.** Do not use this `Index` column on the wire. The wire typeID is the client's `clientIndex`: the `entities/entities.xml` order with `<ServerOnly/>` entries skipped. So `Account` is `0x07` and `SGWDuelMarker` is `6` on the wire (see `docs/protocol/client-verified-wire-formats.md:148`). This table's SGWPlayer at slot 6 already shows the two numberings differ.
 
 | Index | Entity Type | C++ Class | Source |
 |-------|------------|-----------|--------|
