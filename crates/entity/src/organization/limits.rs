@@ -35,6 +35,52 @@ pub const SQUAD_ORG_ID_MAX: i32 = i32::MAX;
 /// mistaken for each other.
 pub const BASE_INVITE_REQUEST_FLAG: i32 = 1 << 29;
 
+/// Where a client-supplied organization id is handled (D-ORG05).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrgRoute {
+    /// `[SQUAD_ORG_ID_MIN, SQUAD_ORG_ID_MAX]`: the cell's squad registry.
+    Squad,
+    /// `[1, MAX_ORG_ID]`: a Team or Command, on the base.
+    Base,
+}
+
+/// Route an organization id from the wire. Zero and negative ids route
+/// nowhere (`None`) and the caller rejects them. Routing is not
+/// authorization: the handler still checks membership.
+pub fn route_org_id(org_id: i32) -> Option<OrgRoute> {
+    if org_id <= 0 {
+        None
+    } else if org_id >= SQUAD_ORG_ID_MIN {
+        Some(OrgRoute::Squad)
+    } else {
+        Some(OrgRoute::Base)
+    }
+}
+
+/// Where an invite response (CM 8) is matched (D-ORG06).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InviteRoute {
+    /// Flag clear: a squad invite the cell issued.
+    Cell,
+    /// [`BASE_INVITE_REQUEST_FLAG`] set: a Team or Command invite the base
+    /// issued.
+    Base,
+}
+
+/// Route an invite request id from the wire. Zero and negative ids route
+/// nowhere (`None`): neither side ever issues one, and checking the flag
+/// only on positive values keeps a forged negative id (whose bit 29 may be
+/// set) from reaching the base map.
+pub fn route_invite_request(request_id: i32) -> Option<InviteRoute> {
+    if request_id <= 0 {
+        None
+    } else if request_id & BASE_INVITE_REQUEST_FLAG != 0 {
+        Some(InviteRoute::Base)
+    } else {
+        Some(InviteRoute::Cell)
+    }
+}
+
 /// Most members a squad holds (audit A-18: six unit frames in the client).
 pub const MAX_SQUAD_SIZE: usize = 6;
 

@@ -464,3 +464,202 @@ fn id_constants_are_disjoint_bits() {
         (128, 128, 32)
     );
 }
+
+// ── D-ORG22: rank-permission edits ──────────────────────────────────────
+
+/// An Officer (D-ORG21 default) edits the Member row of a Command.
+const OFFICER: OrgPermission = OrgPermission::from_bits_truncate(1_377_650);
+const MEMBER: OrgPermission = OrgPermission::from_bits_truncate(1_376_288);
+
+/// The client's editor never shows RosterNotes (32) or ViewBankLogs
+/// (1048576), so its mask arrives without them. Stripping them would be a
+/// change; they are preserved instead, and only the shown bits move.
+#[test]
+fn apply_edit_preserves_bits_the_editor_does_not_show() {
+    // The editor echoes Member's shown bits (DepositBank 65536, DepositCash
+    // 262144) and adds MOTD 1024, which the Officer holds.
+    let wire = OrgPermission::from_bits_truncate(65536 + 262144 + 1024);
+    let stored = OrgPermission::apply_edit(MEMBER, wire, OrgType::Command, OFFICER).unwrap();
+    assert_eq!(stored.bits(), 1_376_288 + 1024);
+    // And a strip of a shown bit the Officer holds: DepositCash off.
+    let wire = OrgPermission::from_bits_truncate(65536);
+    let stored = OrgPermission::apply_edit(MEMBER, wire, OrgType::Command, OFFICER).unwrap();
+    assert_eq!(stored.bits(), 1_376_288 - 262144);
+}
+
+/// D-ORG09 (6): an actor cannot grant a bit it does not hold, such as
+/// WithdrawCash (524288) for a default Officer.
+#[test]
+fn apply_edit_rejects_granting_an_unheld_bit() {
+    let wire = OrgPermission::from_bits_truncate(65536 + 262144 + 524288);
+    assert_eq!(
+        OrgPermission::apply_edit(MEMBER, wire, OrgType::Command, OFFICER),
+        Err(PermEditReject::ChangesUnheldBits(
+            OrgPermission::WITHDRAW_CASH
+        ))
+    );
+    // Revoking an unheld bit is a change too.
+    let old = MEMBER | OrgPermission::WITHDRAW_BANK;
+    let wire = OrgPermission::from_bits_truncate(65536 + 262144);
+    assert_eq!(
+        OrgPermission::apply_edit(old, wire, OrgType::Command, OFFICER),
+        Err(PermEditReject::ChangesUnheldBits(
+            OrgPermission::WITHDRAW_BANK
+        ))
+    );
+}
+
+/// An unheld bit the edit leaves as it was does not block the edit.
+#[test]
+fn apply_edit_allows_an_untouched_unheld_bit() {
+    let old = MEMBER | OrgPermission::WITHDRAW_BANK; // Officer lacks 131072
+    let wire = OrgPermission::from_bits_truncate(65536 + 262144 + 131072 + 1024);
+    let stored = OrgPermission::apply_edit(old, wire, OrgType::Command, OFFICER).unwrap();
+    assert_eq!(stored.bits(), 1_376_288 + 131072 + 1024);
+    // Team's editor does not show OfficerChat (256): a Team mask carrying it
+    // cannot set it, and it is not a change.
+    let wire = OrgPermission::from_bits_truncate(65536 + 262144 + 256);
+    let stored = OrgPermission::apply_edit(MEMBER, wire, OrgType::Team, OFFICER).unwrap();
+    assert_eq!(stored, MEMBER);
+}
+
+/// `apply_edit` has no notion of rank: applied to the Leader row it would
+/// strip the editable bits a Leader-actor holds. The caller must refuse an
+/// edit of the Leader row before calling it (D-ORG08); this pins why.
+#[test]
+fn apply_edit_does_not_protect_the_leader_row_itself() {
+    let stored = OrgPermission::apply_edit(
+        OrgPermission::ALL,
+        OrgPermission::NONE,
+        OrgType::Command,
+        OrgPermission::ALL,
+    )
+    .unwrap();
+    assert_ne!(
+        stored,
+        OrgPermission::ALL,
+        "the caller must reject the Leader row"
+    );
+    assert_eq!(
+        stored.bits(),
+        0x3FF_FFFF & !OrgPermission::editable_for(OrgType::Command).bits()
+    );
+}
+
+// ── D-ORG23: format characters and separators ───────────────────────────
+
+#[test]
+fn every_field_rejects_each_format_class() {
+    let fields = [
+        TextField::Name,
+        TextField::Motd,
+        TextField::Note,
+        TextField::OfficerNote,
+        TextField::RankName,
+    ];
+    let cases = [
+        // Bidi marks.
+        ('\u{200E}', TextReject::Bidi('\u{200E}')), // LRM
+        ('\u{200F}', TextReject::Bidi('\u{200F}')), // RLM
+        ('\u{061C}', TextReject::Bidi('\u{061C}')), // ALM
+        // Zero-width.
+        ('\u{2060}', TextReject::ZeroWidth('\u{2060}')), // word joiner
+        // Other Cf.
+        ('\u{00AD}', TextReject::Format('\u{00AD}')), // soft hyphen
+        ('\u{180E}', TextReject::Format('\u{180E}')), // Mongolian vowel separator
+        ('\u{2061}', TextReject::Format('\u{2061}')), // function application
+        ('\u{2064}', TextReject::Format('\u{2064}')), // invisible plus
+        ('\u{206F}', TextReject::Format('\u{206F}')), // nominal digit shapes
+        ('\u{0600}', TextReject::Format('\u{0600}')), // Arabic number sign
+        ('\u{FFF9}', TextReject::Format('\u{FFF9}')), // interlinear anchor
+        ('\u{E0000}', TextReject::Format('\u{E0000}')), // tag block start
+        ('\u{E0041}', TextReject::Format('\u{E0041}')), // tag LATIN CAPITAL A
+        ('\u{E007F}', TextReject::Format('\u{E007F}')), // cancel tag
+        // Zl, Zp.
+        ('\u{2028}', TextReject::LineSeparator('\u{2028}')),
+        ('\u{2029}', TextReject::LineSeparator('\u{2029}')),
+    ];
+    for field in fields {
+        for (c, want) in cases {
+            let text = format!("a{c}b");
+            assert_eq!(
+                validate(field, &text),
+                Err(want),
+                "{field:?} U+{:04X}",
+                c as u32
+            );
+        }
+    }
+    // Neighbours of the ranges stay allowed in free text.
+    assert!(validate(TextField::Motd, "\u{2065}\u{00AC}\u{E0080}").is_ok());
+}
+
+#[test]
+fn rank_names_are_trimmed_and_collapsed() {
+    assert_eq!(
+        validate(TextField::RankName, "  First \u{3000} Prime  ").unwrap(),
+        "First Prime"
+    );
+    // Free text stays free: non-Latin letters are fine in a rank name.
+    assert_eq!(
+        validate(TextField::RankName, " Jaffa\u{A0}Prim\u{E9} ").unwrap(),
+        "Jaffa Prim\u{E9}"
+    );
+    for blank in ["", "   ", "\u{A0}\u{3000}"] {
+        assert_eq!(
+            validate(TextField::RankName, blank),
+            Err(TextReject::TooShort { units: 0, min: 1 }),
+            "{blank:?}"
+        );
+    }
+    // The cap applies after collapsing.
+    let padded = format!("  {}  ", "x".repeat(32));
+    assert_eq!(
+        validate(TextField::RankName, &padded).unwrap(),
+        "x".repeat(32)
+    );
+}
+
+// ── D-ORG05 / D-ORG06 routing ───────────────────────────────────────────
+
+#[test]
+fn org_ids_route_by_range() {
+    assert_eq!(route_org_id(0), None);
+    assert_eq!(route_org_id(-1), None);
+    assert_eq!(route_org_id(i32::MIN), None);
+    assert_eq!(route_org_id(1), Some(OrgRoute::Base));
+    assert_eq!(route_org_id(0x3FFF_FFFF), Some(OrgRoute::Base));
+    assert_eq!(route_org_id(0x4000_0000), Some(OrgRoute::Squad));
+    assert_eq!(route_org_id(i32::MAX), Some(OrgRoute::Squad));
+}
+
+#[test]
+fn invite_request_ids_route_on_the_flag_when_positive() {
+    assert_eq!(route_invite_request(0), None);
+    assert_eq!(route_invite_request(-1), None); // bit 29 set, still None
+    assert_eq!(route_invite_request(i32::MIN), None);
+    assert_eq!(route_invite_request(1), Some(InviteRoute::Cell));
+    assert_eq!(route_invite_request(0x1FFF_FFFF), Some(InviteRoute::Cell));
+    assert_eq!(route_invite_request(0x2000_0000), Some(InviteRoute::Base));
+    assert_eq!(route_invite_request(0x3FFF_FFFF), Some(InviteRoute::Base));
+    // Bit 30 alone (the squad org-id threshold) is not the request flag.
+    assert_eq!(route_invite_request(0x4000_0000), Some(InviteRoute::Cell));
+}
+
+// ── CM 19 cash direction ────────────────────────────────────────────────
+
+#[test]
+fn cash_direction_follows_the_client_sign() {
+    assert_eq!(CashDir::from_wire(0), None);
+    assert_eq!(CashDir::from_wire(250), Some(CashDir::Deposit(250)));
+    assert_eq!(CashDir::from_wire(-250), Some(CashDir::Withdraw(250)));
+    assert_eq!(
+        CashDir::from_wire(i32::MAX),
+        Some(CashDir::Deposit(2_147_483_647))
+    );
+    // i32::MIN has no positive i32 twin; unsigned_abs keeps it exact.
+    assert_eq!(
+        CashDir::from_wire(i32::MIN),
+        Some(CashDir::Withdraw(2_147_483_648))
+    );
+}

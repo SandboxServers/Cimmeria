@@ -230,3 +230,30 @@ impl TryFrom<i32> for SquadLootType {
         }
     }
 }
+
+/// The direction and size of `organizationTransferCash` (CM 19).
+///
+/// The wire carries one signed `INT32 aCash`; the client sends a deposit as
+/// a positive amount and a withdrawal as its negation
+/// (`Command.lua` `CommandMod.onWithdrawClicked` calls
+/// `commandTransferCash(-cashAmt)`, `onDepositClicked` passes `cashAmt`;
+/// `Team.lua` is the same). The magnitude is taken with `unsigned_abs`, so
+/// `i32::MIN` is a withdrawal of 2,147,483,648 rather than an overflow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CashDir {
+    /// From the player's wallet into the organization.
+    Deposit(u32),
+    /// From the organization into the player's wallet.
+    Withdraw(u32),
+}
+
+impl CashDir {
+    /// Split the wire amount. Zero moves nothing and is `None`.
+    pub fn from_wire(amount: i32) -> Option<CashDir> {
+        match amount {
+            0 => None,
+            a if a > 0 => Some(CashDir::Deposit(a.unsigned_abs())),
+            a => Some(CashDir::Withdraw(a.unsigned_abs())),
+        }
+    }
+}

@@ -111,6 +111,50 @@ impl OrgPermission {
             OrgType::Command => Self::COMMAND_EDITABLE,
         }
     }
+
+    /// Apply a rank-permission edit from the client (CM 16) to a rank's
+    /// stored mask `old` (D-ORG09 (6), semantics D-ORG22).
+    ///
+    /// Only the bits the type's editor exposes can change:
+    /// `stored = (old & !editable) | (wire & editable)`, so a bit the editor
+    /// does not show (`RosterNotes`, `ViewBankLogs`, ...) keeps its stored
+    /// value whatever the client sends. The edit is rejected when any bit it
+    /// actually changes, granted or revoked, is one `actor` does not hold;
+    /// an unheld bit left as it was is fine.
+    ///
+    /// The `Leader` row is never editable, and this function does not know
+    /// the rank: the caller refuses an edit of the `Leader` row before
+    /// calling it (D-ORG08).
+    pub fn apply_edit(
+        old: OrgPermission,
+        wire: OrgPermission,
+        org_type: OrgType,
+        actor: OrgPermission,
+    ) -> Result<OrgPermission, PermEditReject> {
+        let editable = Self::editable_for(org_type);
+        let stored = OrgPermission((old.0 & !editable.0) | (wire.0 & editable.0));
+        let unheld = (stored.0 ^ old.0) & !actor.0;
+        if unheld != 0 {
+            return Err(PermEditReject::ChangesUnheldBits(OrgPermission(unheld)));
+        }
+        Ok(stored)
+    }
+}
+
+/// Why [`OrgPermission::apply_edit`] refused an edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermEditReject {
+    /// The edit changes these bits, which the editing actor does not hold.
+    ChangesUnheldBits(OrgPermission),
+}
+
+impl PermEditReject {
+    /// Stable value for the `reason` log field.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            PermEditReject::ChangesUnheldBits(_) => "changes_unheld_bits",
+        }
+    }
 }
 
 impl BitOr for OrgPermission {

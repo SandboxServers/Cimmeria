@@ -21,6 +21,22 @@
 //! what the player typed. Widening the whitelist past ASCII would need NFC
 //! (and a `unicode-normalization` dependency) first.
 //!
+//! # Rank names
+//!
+//! Free text (any script), but normalised like a name: ends trimmed and
+//! every internal run of whitespace collapsed to one space; empty after
+//! that is rejected.
+//!
+//! # Forbidden characters (D-ORG10, D-ORG23)
+//!
+//! Every field rejects C0/C1 controls (a newline is allowed in MOTD and
+//! notes), every Unicode format character (general category `Cf`: bidi
+//! marks and embeddings, zero-width characters, the soft hyphen, the
+//! Mongolian vowel separator, invisible operators, tag characters and the
+//! rest of the class) and the line and paragraph separators (`Zl`, `Zp`).
+//! The `Cf` set is a fixed range table, [`FORMAT_RANGES`], so no Unicode
+//! data dependency is needed.
+//!
 //! # Lone surrogates
 //!
 //! A `&str` cannot hold one, so this module never sees them: the `WSTRING`
@@ -101,11 +117,17 @@ pub enum TextReject {
     LoneSurrogate,
     /// A C0 or C1 control character (a newline is allowed in MOTD and notes).
     Control(char),
-    /// A bidirectional embedding, override or isolate (U+202A-202E,
-    /// U+2066-2069).
+    /// A bidirectional mark, embedding, override or isolate (U+061C,
+    /// U+200E-200F, U+202A-202E, U+2066-2069).
     Bidi(char),
-    /// A zero-width character (U+200B-200D, U+FEFF).
+    /// A zero-width character (U+200B-200D, U+2060, U+FEFF).
     ZeroWidth(char),
+    /// Any other format character (general category `Cf`): the soft hyphen,
+    /// U+180E, invisible operators U+2061-2064, tag characters
+    /// U+E0000-E007F, and the rest of [`FORMAT_RANGES`].
+    Format(char),
+    /// A line or paragraph separator (U+2028, U+2029; categories `Zl`, `Zp`).
+    LineSeparator(char),
     /// A name character outside ASCII letters, digits, space, `'`, `-`, `.`.
     NameCharset(char),
 }
@@ -119,6 +141,8 @@ impl TextReject {
             TextReject::Control(_) => "control_char",
             TextReject::Bidi(_) => "bidi_control",
             TextReject::ZeroWidth(_) => "zero_width",
+            TextReject::Format(_) => "format_char",
+            TextReject::LineSeparator(_) => "line_separator",
             TextReject::NameCharset(_) => "name_charset",
         }
     }
@@ -139,6 +163,10 @@ impl fmt::Display for TextReject {
             TextReject::ZeroWidth(c) => {
                 write!(f, "zero-width character U+{:04X}", u32::from(*c))
             }
+            TextReject::Format(c) => write!(f, "format character U+{:04X}", u32::from(*c)),
+            TextReject::LineSeparator(c) => {
+                write!(f, "line separator U+{:04X}", u32::from(*c))
+            }
             TextReject::NameCharset(c) => write!(
                 f,
                 "'{}' is not allowed (letters, digits, spaces, ' - . only)",
@@ -150,12 +178,45 @@ impl fmt::Display for TextReject {
 
 impl std::error::Error for TextReject {}
 
+/// Unicode general category `Cf` (format characters), as inclusive
+/// ranges. From the Unicode 15.1 `UnicodeData.txt` `Cf` entries, with the
+/// tag block widened to the whole of U+E0000-E007F.
+pub const FORMAT_RANGES: &[(char, char)] = &[
+    ('\u{00AD}', '\u{00AD}'),
+    ('\u{0600}', '\u{0605}'),
+    ('\u{061C}', '\u{061C}'),
+    ('\u{06DD}', '\u{06DD}'),
+    ('\u{070F}', '\u{070F}'),
+    ('\u{0890}', '\u{0891}'),
+    ('\u{08E2}', '\u{08E2}'),
+    ('\u{180E}', '\u{180E}'),
+    ('\u{200B}', '\u{200F}'),
+    ('\u{202A}', '\u{202E}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{206F}'),
+    ('\u{FEFF}', '\u{FEFF}'),
+    ('\u{FFF9}', '\u{FFFB}'),
+    ('\u{110BD}', '\u{110BD}'),
+    ('\u{110CD}', '\u{110CD}'),
+    ('\u{13430}', '\u{1343F}'),
+    ('\u{1BCA0}', '\u{1BCA3}'),
+    ('\u{1D173}', '\u{1D17A}'),
+    ('\u{E0000}', '\u{E007F}'),
+];
+
+fn is_format(c: char) -> bool {
+    FORMAT_RANGES.iter().any(|&(lo, hi)| (lo..=hi).contains(&c))
+}
+
 fn is_bidi_control(c: char) -> bool {
-    matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+    matches!(
+        c,
+        '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+    )
 }
 
 fn is_zero_width(c: char) -> bool {
-    matches!(c, '\u{200B}'..='\u{200D}' | '\u{FEFF}')
+    matches!(c, '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}')
 }
 
 fn is_name_char(c: char) -> bool {
@@ -178,6 +239,12 @@ fn check_forbidden(field: TextField, text: &str) -> Result<(), TextReject> {
         if is_zero_width(c) {
             return Err(TextReject::ZeroWidth(c));
         }
+        if is_format(c) {
+            return Err(TextReject::Format(c));
+        }
+        if matches!(c, '\u{2028}' | '\u{2029}') {
+            return Err(TextReject::LineSeparator(c));
+        }
     }
     Ok(())
 }
@@ -199,20 +266,23 @@ fn check_length(field: TextField, text: &str) -> Result<(), TextReject> {
     Ok(())
 }
 
-/// Trim both ends and collapse every internal run of spaces to one.
-fn normalise_name(text: &str) -> String {
-    text.split(' ')
-        .filter(|w| !w.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
+/// Trim both ends and collapse every internal run of whitespace to one
+/// ASCII space.
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Validate `text` as `field` under D-ORG10.
 ///
-/// Returns the text to store: the normalised name for [`TextField::Name`],
-/// the input unchanged for every other field.
+/// Returns the text to store: the normalised text for [`TextField::Name`]
+/// and [`TextField::RankName`], the input unchanged for every other field.
 pub fn validate(field: TextField, text: &str) -> Result<String, TextReject> {
     check_forbidden(field, text)?;
+    if field == TextField::RankName {
+        let name = collapse_whitespace(text);
+        check_length(field, &name)?;
+        return Ok(name);
+    }
     if field != TextField::Name {
         check_length(field, text)?;
         return Ok(text.to_owned());
@@ -222,7 +292,7 @@ pub fn validate(field: TextField, text: &str) -> Result<String, TextReject> {
     if let Some(c) = text.chars().find(|&c| !is_name_char(c)) {
         return Err(TextReject::NameCharset(c));
     }
-    let name = normalise_name(text);
+    let name = collapse_whitespace(text);
     check_length(field, &name)?;
     Ok(name)
 }
