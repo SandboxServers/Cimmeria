@@ -11,8 +11,8 @@
 //! `EntityDeath` on the owner. A pet whose owner's entity id now belongs to
 //! another player (destroyed and reused before the sweep) credits nobody.
 //!
-//! Depends on PT-06 (#889): before it, a pet's kill sent `GrantXP` to the
-//! pet's own id and raised no `EntityDeath`.
+//! The seam is PT-06's (#889). Without it a pet's kill sent `GrantXP` to
+//! the pet's own id and raised no `EntityDeath`.
 
 use std::time::{Duration, Instant};
 
