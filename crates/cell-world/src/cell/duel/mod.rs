@@ -35,6 +35,7 @@
 
 pub mod challenge;
 mod combat;
+mod effects;
 pub mod end;
 mod engage;
 pub mod limits;
@@ -47,6 +48,7 @@ pub mod tick;
 mod tests;
 
 pub use end::{end_engaged, EndReason};
+pub use outbound::send_player_line;
 pub use registry::{
     ChallengeRefusal, Duel, DuelId, DuelRegistry, DuelState, PendingChallenge, ResponseRefusal,
 };
@@ -88,21 +90,27 @@ pub(crate) fn connected_player(
     })
 }
 
-/// The connected player entity playing `player_id` right now, if any. A
-/// linear scan over connected players: called once per duel event. The
-/// safety sweep, which runs every tick, uses [`connected_player`] instead.
-/// The entity of the other duelist, when `player_id` is in an engaged duel:
-/// the one player a duelist's ground AoE or cone may add to its NPC
-/// candidates. Always the entity that was engaged.
+/// The entity of the other duelist, when `player_id` is in an engaged duel
+/// and that entity is still the connected player playing the opponent.
+///
+/// Used where the duel adds one entity to a set of "things a duelist
+/// fights": the ground-AoE and cone candidates (`combat::area_candidates`)
+/// and the pet owner's combat sources (`npc_ai::pet::defend`). The stored
+/// engaged entity id is re-checked with [`connected_player`], so an id the
+/// opponent's entity released, and something else was given, is never
+/// returned (entity ids are recycled; the sweep ends such a duel next tick).
 pub fn engaged_opponent_entity(space_mgr: &SpaceManager, player_id: i32) -> Option<u32> {
     let opponent = space_mgr.duels.engaged_opponent(player_id)?;
     let duel = space_mgr.duels.duel_of(player_id)?;
     let entities = duel.engaged_entities?;
-    Some(if opponent == duel.challenger {
+    let eid = if opponent == duel.challenger {
         entities[0]
     } else {
         entities[1]
-    })
+    };
+    connected_player(space_mgr, eid, opponent)
+        .filter(|p| p.space_id == duel.space_id)
+        .map(|p| p.entity_id)
 }
 
 /// The PvP-flag replay for a witness meeting `observee` on the AoI enter
@@ -133,6 +141,9 @@ pub fn pvp_flag_on_enter(
     })
 }
 
+/// The connected player entity playing `player_id` right now, if any. A
+/// linear scan over connected players: called once per duel event. The
+/// safety sweep, which runs every tick, uses [`connected_player`] instead.
 pub(crate) fn find_player(space_mgr: &SpaceManager, player_id: i32) -> Option<PlayerAt> {
     space_mgr.spaces.values().find_map(|space| {
         space.players.iter().find_map(|&eid| {

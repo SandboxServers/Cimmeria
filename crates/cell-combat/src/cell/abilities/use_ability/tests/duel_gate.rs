@@ -69,10 +69,11 @@ fn duel_mgr() -> SpaceManager {
 fn engage(mgr: &mut SpaceManager) {
     let now = Instant::now();
     mgr.duels.open_challenge(A_PID, B_PID, now).unwrap();
+    let space = mgr.get_entity_space_id(A).expect("A has a space");
     let p = mgr.duels.take_pending_for(B_PID, now).unwrap();
     let duel = mgr
         .duels
-        .start_duel(&p, 1, Vector3::new(1.5, 0.0, 0.0), now);
+        .start_duel(&p, space, Vector3::new(1.5, 0.0, 0.0), now);
     mgr.duels.engage(duel.duel_id, [A, B], now).unwrap();
     assert!(mgr.duels.can_harm(A_PID, B_PID) && mgr.duels.can_harm(B_PID, A_PID));
 }
@@ -253,10 +254,11 @@ async fn duel_opponent_cannot_harm_partner_pet() {
     // A and B duel.
     let now = Instant::now();
     mgr.duels.open_challenge(a_pid, b_pid, now).unwrap();
+    let space = mgr.get_entity_space_id(A).expect("A has a space");
     let p = mgr.duels.take_pending_for(b_pid, now).unwrap();
     let duel = mgr
         .duels
-        .start_duel(&p, 1, Vector3::new(15.0, 0.0, 0.0), now);
+        .start_duel(&p, space, Vector3::new(15.0, 0.0, 0.0), now);
     mgr.duels.engage(duel.duel_id, [A, B], now).unwrap();
     let (attacker, pet_e) = (mgr.get_entity(A).unwrap(), mgr.get_entity(pet).unwrap());
     assert!(!player_may_attack(attacker, pet_e, &mgr.duels), "the rule");

@@ -167,6 +167,32 @@ The pet-side check stays inside `fight_refusal`, so the no-duel rule covers pet 
 
 Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-cell-methods`; `lane.sh cargo clippy` on those five plus `cimmeria-services`, `--all-targets -- -D warnings`; `lane.sh cargo fmt --all -- --check`. Results in the final report.
 
+## Security review fixes (PR #911, d2-review)
+
+The review found the core invariant holds, conditional on five side paths. All are fixed in this PR, each with a guard proven by revert.
+
+| # | Finding | Fix | Guard |
+|---|---|---|---|
+| 1 | MEDIUM: the effect pulse never re-checks hostility and `end_engaged` stripped no effects, so a partner's DoT, stun or snare kept working after the end | `end_engaged` removes every active effect on each duelist whose `invoker_id` is the other duelist's engaged entity (`duel/effects.rs::strip_from`), running the script's `on_remove`, the stat flush and the zero `onTimerUpdate`, the same cleanup as the pulse sweep. The effect scripts live in `cell-world`, so no hook was needed. `duel.ended` gains `effects_removed` / `target_effects_removed` | `partner_dot_stops_when_the_duel_ends` (cell-combat, `use_ability/tests/duel_end.rs`): both DoTs pulse while engaged; after `end_engaged` only a bystander's DoT remains and lands, the partner DoT's icon is cleared |
+| 2 | MEDIUM: an auto-cycle loop on the ex-partner re-fired every 100 ms into the #444 WARN with the button lit | `auto_cycle_tick` treats a player target that fails `player_may_attack` as invalid: clears the loop, sends `onStateFieldUpdate`, sends "Auto-attack stopped: that player is not your duel opponent." and logs `duel.auto_cycle_stopped` (`reason = not_duel_opponent`) | `auto_cycle_on_the_partner_fires_during_the_duel_and_stops_after_it` (cell, `ticks/auto_cycle_duel_tests.rs`): fires while engaged; after the end the loop is cleared, un-lit, one line, one row, no further sends, no #444 WARN |
+| 3 | LOW-MEDIUM: `pet::defend::sync_owner_combat` treated the duel opponent in `threatened_mobs` as a stale mob, dropping the owner out of combat mid-duel | its stale filter skips `duel::engaged_opponent_entity` (one filter line and a comment in the pets campaign's file) | `pet_owner_stays_in_combat_during_a_duel` (cell-combat, `duel_end.rs`): three AI ticks with B's pet summoned leave A in B's combat sources and `BSF_InCombat` set |
+| 4 | LOW: `area_candidates` added the stored engaged entity id without re-checking it | `engaged_opponent_entity` re-checks `connected_player` (the id must still be the connected player playing the opponent, in the duel's space), which covers `area_candidates` and the pet filter | `recycled_partner_entity_is_not_offered_as_the_partner` (cell-world): after the partner's entity is destroyed and its id given to an NPC, the id is no longer the partner and is a candidate once |
+| 5 | Telemetry | `duel.ended` captures both identities before teardown and adds `target_account_id`; the `requestEntityUpdate` `duel.send_failed` row adds `duel_id`; the effect-cleanup send failure carries `account_id` / `player_id` | `engaged_limit_ends_the_duel_and_clears_both_flags` now asserts `account_id` and `target_account_id` |
+| 6 | Doc | `find_player`'s doc comment is back on `find_player`; `engaged_opponent_entity` has its own | -- |
+
+Revert proof (each applied, the guard run, the file restored byte for byte):
+
+| Mutation | Result |
+|---|---|
+| `end_engaged` without `strip_from` | `partner_dot_stops_when_the_duel_ends` FAILED "only the bystander's effect remains" |
+| auto-cycle without the `player_may_attack` check | `auto_cycle_on_the_partner_...` FAILED "the loop is cleared" |
+| pet stale filter without the opponent skip | `pet_owner_stays_in_combat_during_a_duel` FAILED "the pet sweep dropped the duel opponent as a stale mob" |
+| `engaged_opponent_entity` returning the stored id unchecked | `recycled_partner_entity_is_not_offered_as_the_partner` FAILED "a recycled id is not the partner" |
+
+Also: the fixtures in `duel_gate.rs` passed a literal space id 1 to `start_duel`; they now use the attacker's real space, which the connected re-check needs. The reviewer's memory note `.claude/agent-memory/server-authority-enforcer/reference_duel_harm_gate.md` (and its index line) is committed, with a status line saying which of its side paths this PR closed. The copy in the main checkout is untracked there and was not touched.
+
+Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-cell-methods` (1919 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-services`, `--all-targets -- -D warnings` (clean); `lane.sh cargo fmt --all -- --check` (clean).
+
 ## Docs
 
 - `docs/reverse-engineering/findings/duel-wire-formats.md`: the SS-D2 receiver trace (D-Q4 resolved, D-Q1 driver), both headings updated.

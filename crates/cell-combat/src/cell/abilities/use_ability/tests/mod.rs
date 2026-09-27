@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 
 mod auto_cycle;
 mod content_events;
+mod duel_end;
 mod duel_gate;
 mod fire_los;
 mod gating;

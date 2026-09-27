@@ -64,6 +64,26 @@ pub(super) async fn send_line(
     send(tx, to, ON_PLAYER_COMMUNICATION, args, duel_id).await
 }
 
+/// Queue a duel feedback line to player entity `entity_id`'s own client,
+/// for callers outside the duel module (the auto-cycle tick). The other
+/// duelist, if any, is logged on a send failure. `false` when not queued.
+pub async fn send_player_line(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    mgr: &SpaceManager,
+    entity_id: u32,
+    other_player_id: Option<i32>,
+    text: &str,
+) -> bool {
+    let id = mgr.player_identity(entity_id);
+    let to = Recipient {
+        entity_id,
+        account_id: id.account_id,
+        player_id: id.player_id.unwrap_or_default(),
+        other_player_id,
+    };
+    send_line(tx, to, text, None).await
+}
+
 /// Queue `onDuelChallenge(challenger, [])` [143] to the target: the client's
 /// Yes/No prompt. The squad list is empty, squad duels being refused.
 /// `false` when it could not be queued (already logged).

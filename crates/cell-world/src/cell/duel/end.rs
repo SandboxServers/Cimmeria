@@ -6,9 +6,13 @@
 //!
 //! 1. the PvP flag back to 0, to them and their witnesses;
 //! 2. `onDuelEntitiesClear()` [153] to their own client;
-//! 3. the other duelist dropped as a combat source (`BSF_InCombat` clears
+//! 3. every active effect the other duelist's engaged entity applied to
+//!    them (a bleed, a stun, a snare) removed, with its `on_remove` and the
+//!    zero timer, so no partner harm lands after the end
+//!    ([`effects::strip_from`](super::effects));
+//! 4. the other duelist dropped as a combat source (`BSF_InCombat` clears
 //!    unless a mob still holds them);
-//! 4. "Duel aborted" (878).
+//! 5. "Duel aborted" (878).
 //!
 //! SS-D2 has only the safety ends ([`sweep`]): an engaged duel older than
 //! [`ENGAGED_LIMIT`](super::limits::ENGAGED_LIMIT), and one whose duelist is
@@ -70,9 +74,16 @@ pub async fn end_engaged(
     let (DuelState::Engaged { .. }, Some(entities)) = (duel.state, duel.engaged_entities) else {
         return None;
     };
+    // Identity before teardown: the log row must not depend on what is
+    // still in the world after the clear.
+    let ids = [
+        mgr.player_identity(entities[0]),
+        mgr.player_identity(entities[1]),
+    ];
     mgr.duels.end_duel(duel_id);
 
     let mut cleared = [false; 2];
+    let mut effects_removed = [0usize; 2];
     for (i, (my_pid, other_pid, my_eid, other_eid)) in [
         (duel.challenger, duel.target, entities[0], entities[1]),
         (duel.target, duel.challenger, entities[1], entities[0]),
@@ -87,6 +98,7 @@ pub async fn end_engaged(
             let to = Recipient::at(&p, my_pid, Some(other_pid));
             send_pvp_flag(tx, mgr, to, false, duel_id).await;
             send_duel_entities_clear(tx, to, duel_id).await;
+            effects_removed[i] = super::effects::strip_from(tx, mgr, my_eid, other_eid).await;
             if let Some(state) = combat::exit(mgr, my_eid, other_eid) {
                 send_state_field(tx, mgr, to, state, duel_id).await;
             }
@@ -101,15 +113,18 @@ pub async fn end_engaged(
         target: "duel",
         event = "duel.ended",
         duel_id,
-        account_id = mgr.get_entity(entities[0]).and_then(|e| e.account_id),
+        account_id = ids[0].account_id,
         player_id = duel.challenger,
         entity_id = entities[0],
         target_player_id = duel.target,
         target_entity_id = entities[1],
+        target_account_id = ids[1].account_id,
         space_id = duel.space_id,
         state = "engaged",
         cleared = cleared[0],
         target_cleared = cleared[1],
+        effects_removed = effects_removed[0],
+        target_effects_removed = effects_removed[1],
         reason = reason.reason(),
         "duel ended: PvP flags, duel entities and the combat pair cleared"
     );

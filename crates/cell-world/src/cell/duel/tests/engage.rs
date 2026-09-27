@@ -223,7 +223,10 @@ async fn engaged_limit_ends_the_duel_and_clears_both_flags() {
     assert!(capture
         .all()
         .iter()
-        .any(|c| c.has_field("event", "duel.ended") && c.has_field("reason", "engaged_limit")));
+        .any(|c| c.has_field("event", "duel.ended")
+            && c.has_field("reason", "engaged_limit")
+            && c.has_field("account_id", "500")
+            && c.has_field("target_account_id", "600")));
 }
 
 /// A duelist who leaves the world ends the duel on the next tick; the one
@@ -318,4 +321,38 @@ async fn gm_end_of_an_engaged_duel_clears_through_end_engaged() {
         .await
         .is_none());
     assert!(drain(&mut rx).is_empty());
+}
+
+/// Entity ids are recycled. If the partner's engaged entity goes away and
+/// the id is handed to an NPC before the sweep ends the duel, the duel must
+/// not add that id to the area candidates a second time (it is already
+/// there as an NPC), nor offer it as the partner at all.
+#[tokio::test]
+async fn recycled_partner_entity_is_not_offered_as_the_partner() {
+    let mut mgr = aoi_mgr();
+    let (tx, mut rx) = mpsc::channel(256);
+    engage(&mut mgr, &tx, &mut rx).await;
+    assert_eq!(
+        crate::cell::duel::engaged_opponent_entity(&mgr, A_PID),
+        Some(B_EID)
+    );
+
+    mgr.destroy_entity(B_EID);
+    mgr.spawn_npc(B_EID, "Agnos", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    assert!(
+        mgr.duels.duel_of(A_PID).is_some(),
+        "the sweep has not run yet"
+    );
+    assert_eq!(
+        crate::cell::duel::engaged_opponent_entity(&mgr, A_PID),
+        None,
+        "a recycled id is not the partner"
+    );
+    let candidates = crate::cell::combat::area_candidates(&mgr, A_EID);
+    assert_eq!(
+        candidates.iter().filter(|&&e| e == B_EID).count(),
+        1,
+        "the recycled id is a candidate once, as the NPC it now is: {candidates:?}"
+    );
 }

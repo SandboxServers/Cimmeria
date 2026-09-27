@@ -71,6 +71,10 @@ pub const TEXT_CHALLENGE_SENT: &str = "Duel challenge sent.";
 pub const TEXT_NO_PENDING_CHALLENGE: &str = "You have no duel challenge to answer.";
 /// Accept: both sides, before the countdown.
 pub const TEXT_DUEL_ACCEPTED: &str = "Duel accepted. The duel starts in 5 seconds.";
+/// An auto-attack loop on a player stopped because that player is no
+/// longer (or never was) the caster's engaged duel opponent.
+pub const TEXT_AUTO_ATTACK_STOPPED: &str =
+    "Auto-attack stopped: that player is not your duel opponent.";
 /// The countdown ran out and the duel is engaged: both sides.
 pub const TEXT_DUEL_ENGAGED: &str = "The duel has begun.";
 

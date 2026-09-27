@@ -155,6 +155,10 @@ pub(super) async fn handle(
                     account_id = space_mgr.player_identity(witness_id).account_id,
                     player_id = space_mgr.player_identity(witness_id).player_id,
                     target_player_id = other.player_id,
+                    duel_id = other
+                        .player_id
+                        .and_then(|p| space_mgr.duels.duel_of(p))
+                        .map(|d| d.duel_id),
                     error = %e,
                     "RequestEntityUpdate: PvP flag re-emit cell\u{2192}base send failed"
                 );

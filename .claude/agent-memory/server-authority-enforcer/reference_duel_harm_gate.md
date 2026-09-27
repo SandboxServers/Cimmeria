@@ -14,3 +14,5 @@ Paths that apply harm or state WITHOUT re-running the gate (review these on ever
 - `use_ability/handle.rs` launch gate has no same-space check for NPC targets (fire_los returns `NotChecked("other_space")`); only the warmup re-check tests space. Duel targets are safe because `player_may_attack` checks space itself.
 
 `threatened_mobs` now holds a player entity id during a duel — any new code that iterates it as "mobs" must tolerate that. See [[reference-combat-exploit-classes]], [[exploit-entity-id-recycling]].
+
+**Status (2026-09-27, PR 911 follow-up):** the first three side paths are closed in the same PR: `end_engaged` strips every active effect the partner's engaged entity invoked (`duel/effects.rs`), the auto-cycle tick stops a loop on a player the caster may not harm (`duel.auto_cycle_stopped`), and `sync_owner_combat` skips `engaged_opponent_entity` in its stale filter. `engaged_opponent_entity` now re-checks `connected_player`, so a recycled id is never offered as the partner. Mid-duel pulses still don't re-run the gate (they can't target a non-partner; SS-D3's clamp must still sit in the pulse seam). The launch same-space note is unchanged.
