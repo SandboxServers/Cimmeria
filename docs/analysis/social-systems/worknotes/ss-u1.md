@@ -7,7 +7,7 @@
 
 - **Packet:** SS-U1, GM mail tooling, plus the shared system-mail entry point (scope added by the coordinator: the Black Market's BM-02b depends on it).
 - **Decisions in force:** D-SS03 (server-generated mail ignores the cap), D-SS08 (escrow in `sgw_gate_mail_item`, every instance column kept), D-SS09 (COD needs an item and a price; the payment goes to the sender), D-SS10 (no `sender_id` means not returnable), the owner's plain-English preference for GM commands.
-- **Base:** `origin/main` @ `23e97ac58` (SS-M1 #894, SS-M2 #912 merged). Branch `social/u1-gm-mail-tooling`, worktree `.claude/worktrees/ss-u1`.
+- **Base:** written on `origin/main` @ `23e97ac58` (SS-M1 #894, SS-M2 #912 merged), then rebased onto `5faa795d1` (SS-C3 #925, BV-02 #921, PT-08/PT-11). Rebase conflicts were additive only (`.mute`/`.unmute` and `.bank` beside the mail commands in `dispatch.rs`, `registry/commands/social.rs`, `tests/mod.rs`, `commands.md`; SS-C3's `chat` row beside this packet's `mail` row in `observability.md`). After the rebase: fmt and clippy clean, nextest on the four crates 1,037 passed, `live-db-test.sh mail` 99 passed. Branch `social/u1-gm-mail-tooling`, worktree `.claude/worktrees/ss-u1`.
 - **Owned paths (new):**
   - `crates/base-methods/src/base/world_entry/methods/mail/system/{mod.rs, write.rs}`: the writer
   - `crates/base-methods/src/base/world_entry/methods/mail/gm.rs`: the base half of the GM tools
