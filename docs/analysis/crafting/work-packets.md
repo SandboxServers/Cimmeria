@@ -56,9 +56,10 @@ Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` 
   - `queue_dropped` (`reason = logout | world_change`, `jobs_dropped`);
   - `options_changed` (the station entity ids and tool item ids per section);
   - `learned`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values).
-- **Negative seams.** Every expectation seam logs its failure at the level the convention sets, and has a `LogCapture` test (TESTING.md type 12): a transaction with `rows_affected == 0`, a catalog or inventory lookup miss, a failed client send (`let _ = send` is not allowed), a rollback (`persist_failed` WARN with `stage` and the SQL error class).
+- **Negative seams.** Every expectation seam logs its failure at the level the convention sets, and has a `LogCapture` test (TESTING.md type 12): a transaction with `rows_affected == 0`, a catalog or inventory lookup miss, a failed client send (`let _ = send` is not allowed), a rollback (`persist_failed` WARN with `phase` and the SQL error class). A DB write that changes fewer rows than it should logs the paired `rows_affected` and `expected` fields, and names its sub-step `phase`, as the convention requires.
 - **Metrics.** Enumerated labels only (rule 4): `crafting_requests_total{verb, outcome}` with `outcome` in `accepted | rejected | completed | failed`, and `crafting_rejections_total{verb, reason}`. No ids in labels.
-- **Acceptance.** Each packet's tests include at least one `LogCapture` assertion per new rejection reason and per new transition event, and one that the event carries `account_id` and `player_id`.
+- **Catalog.** This section is the plan; the canonical list is the `crafting` row of `docs/architecture/observability.md`. The packet that first emits an event or a metric adds it to that row in the same PR.
+- **Acceptance.** Each packet's tests include at least one `LogCapture` assertion per new rejection reason and per new transition event, one that the events carry `account_id`, `player_id` and `entity_id`, and a counter-emission assertion for each new metric.
 
 ## Dependency graph and waves
 
@@ -167,7 +168,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - Every ASP change (GM grant, spend, respec, earning) pushes `onEntityProperty(2, total)`, the **total** (audit C-06, C-57). Fix the doc comment (C-63).
 - Paradigm defaults per D-CR03 (Common at 5, the other four at 1), applied when a character has no stored levels, so existing characters are covered without a migration. The seed's column default and the character-creation path give new characters the same values.
 
-**Telemetry:** `event=login_sync` (INFO) with the counts sent (`disciplines`, `paradigms`, `blueprints`, `asp`) and `defaults_applied` (bool); a failed load or send is a WARN with `reason`. The GM ASP grant logs `asp_before` / `asp_after`.
+**Telemetry:** `event=login_sync` (INFO) with the counts sent (`disciplines`, `paradigms`, `blueprints`, `asp`) and `defaults_applied` (bool); a failed load or send is a WARN with `reason`. The GM ASP grant logs `event=asp_granted` with `asp_before` / `asp_after`.
 
 **Acceptance:** a byte-exact test of the login crafting bundle for a fixture state; a live-DB test that a relog restores disciplines, expertise, paradigms and blueprints; a guard that the GM ASP grant pushes the property.
 
@@ -198,7 +199,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `.allcraft` and "craft anywhere" per D-CR17, GM-gated.
 - Spawning a flagged entity needs no new AoI path. If it does, message cimmeria-b5 first.
 
-**Telemetry:** `event=options_changed` with the station entity ids and tool item ids per section and the cause (`moved | station_despawned | world_change | bag15_changed | login | gm_anywhere`); the gate's refusal as `event=rejected reason=no_station_or_tool` with the verb, the station mask and the tools considered. `.allcraft` logs the before and after counts. No per-tick events for the station scan.
+**Telemetry:** `event=options_changed` with the station entity ids and tool item ids per section and the cause (`moved | station_despawned | world_change | bag15_changed | login | gm_anywhere`); the gate's refusal as `event=rejected reason=no_station_or_tool` with the verb, the station mask and the tools considered. `.allcraft` logs `event=gm_allcraft` with the before and after counts (disciplines, blueprints, paradigm levels). No per-tick events for the station scan.
 
 **Acceptance:** unit tests of the station set against positions and of the tool rule (science, `tech_comp`, bag 15 only); a byte-exact 140 test; a guard that a forged request with no station or tool is rejected; a test that "craft anywhere" is refused for a non-GM.
 
@@ -213,7 +214,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - An injectable RNG for the verbs that roll.
 - No verb uses it yet; CR-07 to CR-09 plug in.
 
-**Telemetry:** `queued`, `induction_started`, `induction_expired`, `completed` and `queue_dropped` per the contract, with a `job_id` that correlates them; `persist_failed` (WARN) names the rollback `stage`; the full consumed and granted item lists with before and after quantities, so an item question is answerable without the database.
+**Telemetry:** `queued`, `induction_started`, `induction_expired`, `completed` and `queue_dropped` per the contract, with a `job_id` that correlates them; `persist_failed` (WARN) names the rollback `phase`; the full consumed and granted item lists with before and after quantities, so an item question is answerable without the database.
 
 **Acceptance:** live-DB tests for a partial stack, a drained stack, a full inventory (rollback plus feedback), an item moved to the bank mid-induction (rollback), and a logout mid-induction (nothing consumed); a queue test for the eleventh request.
 
@@ -342,18 +343,20 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 15. `.respeccraft`: the prompt shows a cost of 0; confirm; disciplines and expertise clear, ASP is refunded, and blueprints and paradigm levels stay.
 16. `.allcraft`: every tab enables anywhere, and every discipline shows 100.
 
-**SigNoz queries for the tester and the coordinator.** Logs view, service `cimmeria-server`, filter `target = crafting` plus the row below, and `player_id = <the tester's character>`:
+**SigNoz queries for the tester and the coordinator.** Logs view. Every row starts from the base expression `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND player_id = <the tester's character id>` (the Rust `target` is stored as `scope_name`) and adds the filter shown:
 
 | UAT step | Filter | What it shows |
 |---|---|---|
-| 1, 4 | `event = login_sync` | What the login sent, and whether defaults were applied |
-| 2, 3 | `event IN (learned, rejected)` | ASP before and after, or the refusal `reason` and the values compared |
-| 5, 6 | `event = options_changed` | The station and tool ids the client was given, and why |
-| 7, 8 | `event IN (blueprint_learned, paradigm_raised, rejected)` | Item use results |
-| 9-13 | `job_id = <id>` after `event = queued` | The whole life of one craft: queue, induction, completion or failure, items before and after |
-| 10 | `event = rejected AND reason = insufficient_components` | The refusal and the counts compared |
-| 14 | `event = queue_dropped` | Jobs dropped at logout, with nothing consumed |
-| 15 | `event IN (respec_prompted, respec)` | The respec, and the ASP refunded |
-| any | `level = WARN` | Anything that failed an expectation: rollbacks, lookup misses, failed sends |
+| 1, 4 | `event = 'login_sync'` | What the login sent, and whether defaults were applied |
+| 2 | `event = 'asp_granted'` | The GM grant, with ASP before and after |
+| 3 | `event IN ('learned', 'rejected')` | ASP before and after, or the refusal `reason` and the values compared |
+| 5, 6 | `event = 'options_changed'` | The station and tool ids the client was given, and why |
+| 7, 8 | `event IN ('blueprint_learned', 'paradigm_raised', 'rejected')` | Item use results |
+| 9-13 | `job_id = <id>`, after finding the id with `event = 'queued'` | The whole life of one craft: queue, induction, completion or failure, items before and after |
+| 10 | `event = 'rejected' AND reason = 'insufficient_components'` | The refusal and the counts compared |
+| 14 | `event = 'queue_dropped'` | Jobs dropped at logout, with nothing consumed |
+| 15 | `event IN ('respec_prompted', 'respec')` | The respec, and the ASP refunded |
+| 16 | `event = 'gm_allcraft'` | What `.allcraft` granted, before and after |
+| any | `severity_text = 'WARN'` | Anything that failed an expectation: rollbacks, lookup misses, failed sends |
 
 Metrics: `crafting_requests_total` by `verb` and `outcome`, and `crafting_rejections_total` by `reason`.
