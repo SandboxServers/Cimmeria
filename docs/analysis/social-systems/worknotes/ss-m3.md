@@ -100,6 +100,8 @@ The client supplies only `mail_id`, plus `ContainerId`/`SlotId` on CM 50. The ce
   - `returned = true`, `read_time = 0` (it arrives unread) and `sent_time = now` (SS-M4's TTL restarts).
   - No "Returned:" subject prefix, because the 128-character subject could overflow.
   - Return is allowed on a mail with nothing attached; D-SS10 says "any".
+- **Archive refuses an unpaid COD (PR #926 security review, MEDIUM).** Before, `archive` set `MAIL_Archive` unconditionally. An archived unpaid COD could then never leave: return refuses archived mail (D-SS10), archived mail never expires (D-SS04), delete refuses `cash > 0`, and take refuses an unpaid COD. The seller's item was stranded for good. The archive `UPDATE` now carries `AND (flags & MAIL_COD) = 0`; a zero-row result on a COD mail logs WARN `mail.archive_refused reason=cod_unpaid` and answers "Pay for or return this COD delivery before archiving it." with no `onMailHeaderRemove`, so the mail stays in the inbox. A paid COD has the flag cleared and archives normally. A mail archived before this fix, if any exists, needs a GM (none can exist on the colo: the colo rebuilds from the seed and SS-M2 is new).
+- **Refusal telemetry (review nits).** `mail.op_refused` carries `target_player_id`, the mail's `sender_id`, read owner-scoped after the rollback (absent for server mail and for someone else's mail). `mail.cod_cancelled` logs the stored `sender_name`. The seller's take of a payment mail cannot name the payer (a payment mail's `sender_id` is NULL by design, so it cannot be returned); the join key is `mail.cash_taken.mail_id` = `mail.cod_paid.payment_mail_id`, whose `player_id` is the payer.
 - **Header refresh after a take or a payment:** `onMailHeaderRemove`, then `onMailHeaderInfo` with only that row (`headers.rs::refresh_one`). The client upserts by id and writes the attachment fields only from an attachment row (M-Q7), so the remove guarantees a fresh record. **Inference, not client-tested:** if the client's read view closes on the remove, that is a UAT item. A return and a not-found answer send only the remove.
 - **Refusals** carry a result through one helper (`claim::answer_failure`):
   - a WARN `mail.op_refused` with `op` and `reason`;
@@ -162,6 +164,7 @@ All ran from the worktree root, through the lane. The exit codes are the lane's 
 - **CAT-G-02:** `take_cash_twice_credits_once`, `take_cash_rejects_cod_mail`, plus `take_cash_refuses_balance_overflow`.
 - **CAT-G-03:** `take_item_twice_moves_once` (also every instance column restored), `take_item_ignores_client_container_and_slot`, `take_item_never_writes_outside_callers_inventory`, `take_item_full_bags_keeps_escrow`.
 - **CAT-G-04 (type 5):** `concurrent_take_cash_and_item_pays_out_once`, `concurrent_pay_cod_and_takes_never_pay_out_the_price`, and (`return_race.rs`) `concurrent_pay_and_return_exactly_one_wins` (either the payment or the return commits, never both; the item exists once) and `concurrent_take_cash_and_return_move_the_cash_once` (the 500 is credited or returned, not both).
+- **Archive of an unpaid COD (PR #926 security review, MEDIUM):** `archive_refuses_unpaid_cod_so_it_can_still_be_returned`. Archiving is refused with feedback and no header remove, the mail stays unarchived in the inbox, the return to the seller still works (item and all), and a paid COD archives normally.
 - **Type 12 `mail.op_failed`:** `take_item_db_failure_logs_op_failed_and_keeps_escrow`. A real failure, not an injected one: the escrowed id already exists in `sgw_inventory` under another character, so the restore hits the key. Feedback, ERROR `mail.op_failed reason=db_error` with the identity fields and `error`, and a full rollback.
 - **CAT-G-05:** `pay_cod_twice_debits_once`, `pay_cod_rejects_insufficient_cash`, `pay_cod_amount_read_from_row`.
 - **Packet acceptance:** `paid_cod_credits_sender_once_by_mail_while_offline`.
@@ -211,6 +214,9 @@ Each batch was applied by a script, then the `mail` live-DB tests were run again
 | R21 `target_player_id` dropped from both send refusal rows | `send_rejects_bound_item` (rerun after the rebase: still fails) |
 | R22 advisory lock, mail row `FOR UPDATE` and return's `AND NOT cod_paid` removed together | three runs: `concurrent_pay_and_return_exactly_one_wins` failed in 2 (the payment and the return both committed: the seller got the mail back as well as the payment), `concurrent_take_cash_and_return_move_the_cash_once` failed in 2; every run failed at least one. Each test catches the revert only when the unguarded order runs first, so neither alone is a deterministic guard; the deterministic single-layer gates are R12, R19 and R20 |
 | R23 `event = "mail.op_failed"` removed from the `db_error` arm | `take_item_db_failure_logs_op_failed_and_keeps_escrow` |
+| R24 the archive's `(flags & MAIL_COD) = 0` removed | `archive_refuses_unpaid_cod_so_it_can_still_be_returned` |
+| R25 `target_player_id` dropped from `mail.op_refused` | `take_cash_rejects_cod_mail` |
+| R26 `sender_name` dropped from `mail.cod_cancelled` | `pay_cod_with_deleted_sender_cancels_cod_and_frees_item` |
 
 The layers back each other up, so removing any one of R17's three alone still passes the race test. The single-layer gates are pinned by R1 and R2.
 
@@ -253,6 +259,7 @@ The layers back each other up, so removing any one of R17's three alone still pa
 2. **work-packets.md contract:**
    - `MailOp::TakeItem` keeps `container_id` and `slot_id` as the contract says, for the log only.
    - SS-M4 should call `return_::return_tx(pool, owner, mail_id, now)` for expiry path 1. It already cancels an unpaid COD with its price zeroed, and refuses returned, archived, paid-COD and system mail.
+   - **`lock_mail` must filter `quarantined`** once SS-M4 adds that column (`AND NOT quarantined` in `claim.rs::lock_mail`), so a quarantined mail can be neither taken, paid nor returned by its owner; only the GM recovery path touches it. The archive `UPDATE` (`read.rs::archive_unless_cod`) and the delete guard need the same filter.
    - **SS-M4 integration edit (coordinator decision):** a paid, untaken COD (`cod_paid = true`, escrow row present) belongs to its recipient. Expiry must **never** return it: it takes the quarantine path (D-SS04 path 3), like an already-returned mail that still holds an item. `return_tx` refuses it with `cod_paid`, so the sweep must branch on `cod_paid` (or on that refusal) before choosing path 1. SS-M4's quarantine and cap queries read both `returned` and `cod_paid`.
 3. **Local databases need `db/database.sql` re-run** for the new column (`reload-db.sh` does it). The colo rebuilds from the seed on deploy.
 4. **Advisor memory:** the server-authority-enforcer wrote its notes into the main checkout. The coordinator's patch is applied in this branch (`39269c843`); the coordinator reverts the main checkout's copies.
