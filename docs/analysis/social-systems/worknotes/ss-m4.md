@@ -170,7 +170,7 @@ Every file was restored with `git checkout HEAD --` and touched; `git status` wa
 
 ## Integration edits for the coordinator
 
-1. **Black Market (BM-02b) and SS-U3:** after committing a `send_system_mail_tx` / `send_system_mail`, call `sent.notify(pool, &FeedbackCtx { transport, connected })` beside `sent.log_sent()` so an online recipient is told. System mail now expires after 30 days; unclaimed payouts with value are quarantined, not lost.
+1. **SS-U3's content mail is wired** (`mail/content.rs` calls `SystemMailSent::notify` after its commit and its own clerk line; covered by `every_delivery_path_notifies_the_online_recipient`). **Black Market (BM-02b):** after committing a `send_system_mail_tx` / `send_system_mail`, call `sent.notify(pool, &FeedbackCtx { transport, connected })` beside `sent.log_sent()` so an online recipient is told. System mail now expires after 30 days; unclaimed payouts with value are quarantined, not lost.
 2. **SS-U3 / UAT docs:** `.mail_expire <id>` now works (returns, deletes or quarantines at once); `.mailbox` shows quarantined mail and the next expiry.
 3. **Bank campaign (cimmeria-97):** the mail-as-storage question above touches vault sizing.
 4. **Follow-up ticket:** `.mail_release` (gap 1).

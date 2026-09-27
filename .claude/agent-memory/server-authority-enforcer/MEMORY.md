@@ -59,4 +59,4 @@
 - [project_mail_escrow_ss_m2.md](project_mail_escrow_ss_m2.md) — SS-M2 escrow + SS-M3 take/COD/return cleared; residual: archived unpaid COD strands escrow, buyback lock inversion
 - [reference_duel_harm_gate.md](reference_duel_harm_gate.md) — Duel harm gate authority (SS-D2) + side paths that skip it: pulses, auto-cycle, pet defend sweep, launch same-space
 - [reference_org_lock_authority.md](reference_org_lock_authority.md) — ORG-02 authority map: authz-by-convention gap, no leader UPDATE guard, at-most-once audit export
-- [project_mail_expiry_ss_m4_review.md](project_mail_expiry_ss_m4_review.md) — SS-M4 expiry/quarantine cleared shape; paid-COD TTL not restamped, no GM release, archive-storage question
+- [project_mail_expiry_ss_m4_review.md](project_mail_expiry_ss_m4_review.md) — SS-M4 expiry/quarantine cleared shape; no GM release, archive-storage question

@@ -277,6 +277,45 @@ async fn every_delivery_path_notifies_the_online_recipient() {
         "You have new gate-mail from Black Market.",
     );
 
+    // The content engine's mail (SS-U3, the Gate Mail Clerk): B gets the
+    // clerk's own line, then the notification.
+    super::super::handle_content_system_mail(
+        crate::cell::messages::ContentSystemMail {
+            entity_id: sb.entity_id,
+            player_id: b,
+            account_id: Some(0x7300_0001),
+            chain_id: 7011,
+            sender_name: "Gate Mail Clerk".into(),
+            subject: "Gate Mail test delivery".into(),
+            body: "A test mail.".into(),
+            cash: 50,
+            item: None,
+            cooldown: None,
+        },
+        &room.dyn_transport,
+        &room.connected,
+        &room.entity_to_addr,
+        &Some(Arc::new(pool.clone())),
+    )
+    .await;
+    let clerk_mail: i32 =
+        sqlx::query_scalar("SELECT MAX(mail_id) FROM sgw_gate_mail WHERE character_id = $1")
+            .bind(b)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let got = room.take(&[sb]);
+    assert!(
+        matches!(got[0].first(), Some(Received::Feedback(t)) if t.starts_with("Gate Mail Clerk sent you mail")),
+        "the clerk's line first: {:?}",
+        got[0]
+    );
+    assert_notified(
+        &got[0][1..],
+        clerk_mail,
+        "You have new gate-mail from Gate Mail Clerk.",
+    );
+
     // A GM `.mail` to B: B is told; the GM gets their confirmation only.
     super::super::handle_mail_gm(
         MailGmCellToBase::Send {
