@@ -11,7 +11,7 @@ The plan PR adds this ledger and fixes three docs that disagreed with the `.def`
 |---|---|---|
 | Plan | Review | (this PR) |
 | ORG-E1 | Integrated | (this PR) |
-| ORG-01 | Writing | |
+| ORG-01 | Review | (PR pending) |
 | ORG-02, ORG-03 | BlockedDependency (ORG-01) | |
 | ORG-04 to ORG-11 | BlockedDependency | |
 
