@@ -69,7 +69,21 @@ Counter: `org_actions_total{action = invite | invite_response | kick | rank_chan
 
 All from the worktree root through the lane (`target=B:\targets/org-07`). Every live-DB run reloads `sgw_org_07`; no live-DB test self-skipped (the tier sets `DATABASE_URL`).
 
-COMMANDS_TABLE
+| Command | Exit | Result |
+|---|---|---|
+| `lane.sh cargo check -p cimmeria-wire -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-cell-methods -p cimmeria-cell-console -p cimmeria-base-methods -p cimmeria-services --all-targets` | 0 | |
+| `lane.sh cargo nextest run -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-cell-methods -p cimmeria-cell-console -p cimmeria-wire --lib --no-fail-fast` (first run) | 100 | 8 failed: the ORG-01/03/06 routing tests that pinned the old "not available yet" answers; updated to the new routing |
+| same, after the updates | 0 | 1806 passed |
+| `live-db-test.sh organization::handlers organization::invites --no-fail-fast` | 0 | 52 passed |
+| `DATABASE_URL=.../sgw_org_07 lane.sh cargo test -p cimmeria-wireclient --test it two_client_command_invite -- --test-threads=1` | 0 | 1 passed in 3.2 s, not skipped |
+| `python mutations.py run` (the 22 proofs below) | 0 | each guard failed with exit 100; `git status` clean after |
+| `git rebase origin/main` (onto `3ad5e571b`, #939, after #943 and #944; no conflicts) | 0 | |
+| `lane.sh cargo fmt --all -- --check` | 0 | |
+| `lane.sh cargo clippy -p cimmeria-wire -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-cell-methods -p cimmeria-cell-console -p cimmeria-base-methods -p cimmeria-services -p cimmeria-wireclient -p cimmeria-cell --all-targets -- -D warnings` | 101, then 0 | `doc_lazy_continuation` on a test module header ("1)" at a line start); reworded |
+| `lane.sh cargo nextest run` (the ten crates above) `--lib --no-fail-fast` | 0 | 2785 passed |
+| `live-db-test.sh "::"` (the whole live-DB tier, after the rebase) | 0 | 5144 passed, 0 skipped |
+| `reload-db.sh`, then `lane.sh cargo test -p cimmeria-wireclient --test it two_client -- --test-threads=1` | 101 | 8 passed (`two_client_command_invite`, `two_client_squad`, `two_client_tell`, both visibility suites); `two_client_mail_cod::cod_item_round_trip_between_two_clients` failed ("never received B's header without the item (method 76)"). **Pre-existing:** it fails identically on a clean `origin/main` @ `3ad5e571b` worktree (checked, then retired). Not caused by this packet |
+| `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` | 0 | 55 passed (no new log target) |
 
 ## Regression proof
 
