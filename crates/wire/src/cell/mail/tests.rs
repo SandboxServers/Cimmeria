@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn serialize_empty_mail_headers() {
-    let args = serialize_on_mail_header_info(0, &[]);
+    let args = serialize_on_mail_header_info(0, &[], &[]);
     // ResetCategory(1) + bArchive(1) + headers count(4) + attachments count(4)
     assert_eq!(args.len(), 1 + 1 + 4 + 4);
     assert_eq!(args[0], 0); // ResetCategory
@@ -27,7 +27,7 @@ fn serialize_one_mail_header() {
         read_time: 0.0,
         flags: 0,
     }];
-    let args = serialize_on_mail_header_info(1, &headers);
+    let args = serialize_on_mail_header_info(1, &headers, &[]);
 
     // Verify basic structure
     assert_eq!(args[0], 0); // ResetCategory
@@ -46,6 +46,55 @@ fn serialize_one_mail_header() {
         args[offset + 3],
     ]);
     assert_eq!(id, 42);
+}
+
+/// Byte-exact `onMailHeaderInfo` with one header and its attachment:
+/// the attachment array follows every header, each entry is the five
+/// `alias.xml:103-111` INT32s in order, and `id` is the mail id.
+#[test]
+fn message_attachment_bytes_are_alias_ordered() {
+    let headers = vec![MailHeader {
+        id: 42,
+        from_text: "Al".to_string(),
+        from_id: 7,
+        subject_text: "S".to_string(),
+        cash: 500,
+        sent_time: 2.0,
+        read_time: 0.0,
+        flags: 2,
+    }];
+    let attachments = [MailAttachment {
+        id: 42,
+        item_id: 1_234,
+        stack_size: 5,
+        durability: -1,
+        charges: 3,
+    }];
+    let args = serialize_on_mail_header_info(0, &headers, &attachments);
+
+    let mut want = vec![0u8, 0];
+    want.extend_from_slice(&1u32.to_le_bytes());
+    want.extend_from_slice(&42i32.to_le_bytes());
+    want.extend_from_slice(&2u32.to_le_bytes());
+    want.extend_from_slice(&[b'A', 0, b'l', 0]);
+    want.extend_from_slice(&7i32.to_le_bytes());
+    want.extend_from_slice(&1u32.to_le_bytes());
+    want.extend_from_slice(&[b'S', 0]);
+    want.extend_from_slice(&0i32.to_le_bytes()); // subjectId
+    want.extend_from_slice(&500i32.to_le_bytes());
+    want.extend_from_slice(&2.0f32.to_le_bytes());
+    want.extend_from_slice(&0.0f32.to_le_bytes());
+    want.extend_from_slice(&2i32.to_le_bytes());
+    // MessageAttachments: count, then id, itemId, stackSize, durability, charges.
+    want.extend_from_slice(&1u32.to_le_bytes());
+    for v in [42i32, 1_234, 5, -1, 3] {
+        want.extend_from_slice(&v.to_le_bytes());
+    }
+    assert_eq!(args, want);
+
+    let mut one = Vec::new();
+    attachments[0].serialize(&mut one);
+    assert_eq!(one.len(), 20, "MessageAttachment is five INT32s");
 }
 
 #[test]
