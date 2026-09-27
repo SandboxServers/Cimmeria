@@ -2,12 +2,12 @@
 title: "Finding: Ability Trainer UI Client Evidence (AT-E1)"
 type: reference
 audience: contributors doing RE, ability-trees campaign workers
-last_updated: 2026-09-25
+last_updated: 2026-09-27
 ---
 
 # Finding: Ability Trainer UI Client Evidence (AT-E1)
 
-> **Status**: Partial — four of five questions answered with direct evidence (client Lua source plus Ghidra decompiles); question 2 (`onErrorCode` rendering) is **UNRESOLVED**, marked explicitly below. Written under a tightened budget; no further Ghidra sweeps were run once the open items were identified — see "Open questions" for what would close them.
+> **Status**: Partial — four of five questions answered with direct evidence (client Lua source plus Ghidra decompiles); question 2 (`onErrorCode` rendering) is **UNRESOLVED**, marked explicitly below. **Update 2026-09-27:** a native (non-Lua) subscriber to `Event_NetIn_onErrorCode` does exist, found from RTTI; whether it renders anything is still open. See §2. Written under a tightened budget; no further Ghidra sweeps were run once the open items were identified — see "Open questions" for what would close them.
 >
 > **Binary**: `SGW.exe` (32-bit x86 PE). **Client Lua**: `Content/UI/Core/Ability/Ability.lua`, `Content/UI/Core/ExpBar/ExpBar.lua`, `Content/UI/Core/Trainer/Trainer.toc`.
 > **Companion campaign docs**: `docs/analysis/ability-trees/work-packets.md` (AT-E1), `docs/analysis/ability-trees/audit.md` (A-21..A-25), `docs/analysis/ability-trees/README.md` (D-AT08, D-AT10).
@@ -48,18 +48,42 @@ The client exposes five Lua-bound natives for the trainer/ability system. All ar
 
 ## 2. `onErrorCode` rendering — UNRESOLVED
 
-**Confidence: none established — treat as an open question, not a negative finding.**
+**Confidence: HIGH that a native subscriber type is compiled in (RTTI, 2026-09-27); none established for what it shows — treat rendering as an open question, not a negative finding.**
 
 What was checked, all with negative results:
 
 - A case-insensitive search for `ErrorCode` across the **entire** client tree (`Content/UI` and the whole `SGWGame` working copy) returns **zero matches in any `.lua` file**. No UI module subscribes to any `Events.*` signal whose name mentions error codes.
 - `writeLocalFeedback` — the native chat/system-feedback print function used elsewhere for user-facing text (`GateMail.lua:286`, `Social.lua:101-109`, `Trade.lua:308`, etc.) — has no call site anywhere near an error-code path.
-- Ghidra function-name search for `.*ErrorCode.*`, `.*ConditionFeedback.*`, `.*ConditionHandler.*`, `.*ErrorFeedback.*` returns only the registration/RTTI stubs already known (`register_NetIn_onErrorCode` at `0x00d77f00`, `CME_EventSignal_...vfunc_0` at `0x00d77fe0`) — no behavioral handler with a suggestive name exists.
+- Ghidra function-name search for `.*ErrorCode.*`, `.*ConditionFeedback.*`, `.*ConditionHandler.*`, `.*ErrorFeedback.*` returns only the registration/RTTI stubs already known (`register_NetIn_onErrorCode` at `0x00d77f00`, `CME_EventSignal_...vfunc_0` at `0x00d77fe0`) — no behavioral handler with a suggestive name exists. **Superseded in part (2026-09-27):** the name search was right that no *named* handler exists, but a native subscriber does; see ["A native subscriber exists"](#a-native-subscriber-exists-rtti-2026-09-27) below.
 - No `CONDITION_FEEDBACK` string is embedded in the binary at all (`search_strings` returns zero hits) — the enum names in `entities/defs/enumerations.xml` are a documentation reconstruction, not literal client-side text; there is no evidence the client ever had per-code localized strings for this system.
 
 This is exactly the open question flagged in `docs/analysis/harset-rebuild/worknotes/H06.md`: *"nobody has traced `onErrorCode`'s handler in the binary."* This finding does not close it. What was ruled out: **no Lua-scripted consumer exists.** What remains open: whether a purely native (non-Lua) C++ listener is subscribed to `Event_NetIn_onErrorCode` and does something silent-but-real (e.g. a floating combat-text style flash, or a debug-only log), versus the event having zero listeners and being dropped entirely. Distinguishing those requires tracing the CME event's subscriber list at runtime or via the generic `vfunc_5` invoke-dispatch mechanism (see `docs/reverse-engineering/findings/cme-event-signal.md`), which was not attempted here under the tightened budget.
 
 **Wire format** (already documented, restated for the mapping table below): `onErrorCode` = `UINT8 SystemID, INT32 InstanceID, UINT16 ErrorCodeID` (client method 121). Under `SystemID = 0` (`ERRORCODE_SYSTEM_Ability`, the only token `EErrorCodeSystem` defines), `InstanceID` is read by the client as an ability id (confirmed in `docs/gameplay/gate-travel.md`).
+
+> [!NOTE]
+> **Superseded in part (2026-09-27).** The "zero listeners, dropped entirely" branch of the "This is exactly the open question" paragraph above is ruled out. A native subscriber exists; what it does is still open. The evidence is below.
+
+### A native subscriber exists (RTTI, 2026-09-27)
+
+A headless-Ghidra pass over `SGW.exe` (read-only, `-noanalysis`, using the script in [tools/re/ghidra-headless/](../../../tools/re/ghidra-headless/README.md)) found this MSVC RTTI type-name string at `0x01e20da8`:
+
+```text
+.?AV?$FreeCallback@UNoSubject@EventSignal@CME@@PAVCommunicator@@P6AXPBVEvent_NetIn_onErrorCode@@PAXPAV4@@ZV5@@EventSignal@CME@@
+```
+
+Demangled by hand (Ghidra's demangler does not accept raw RTTI type-name strings):
+
+```cpp
+CME::EventSignal::FreeCallback<
+    NoSubject,
+    Communicator*,
+    void (__cdecl*)(Event_NetIn_onErrorCode const*, void*, Communicator*)>
+```
+
+A `FreeCallback` is the free-function counterpart of the `MemberCallback` described in [cme-event-signal.md](cme-event-signal.md#cmemembercallback-struct-layout): instead of calling a method on a bound object, it calls a plain `__cdecl` function and passes the bound context, here a `Communicator*`, as the last argument. So some native function receives every `onErrorCode` together with a `Communicator`. `Communicator` has no named methods in the Ghidra project; from its name it is plausibly the chat/communication delivery class, which would make a visible line possible, but that is inference, not evidence.
+
+**What this settles:** `Event_NetIn_onErrorCode` has at least one listener, so the event is not dropped on the floor. Strictly, RTTI proves the callback type is compiled into the client, not that it is subscribed at runtime; since the type exists only to be subscribed, a live subscription is near-certain, and the live trace in Open questions would confirm it. **What it does not settle:** whether that listener renders a line, a flash, or nothing a player sees (a log, a counter). The function's address and body were not resolved. The trade result has the same shape of open item, a native `Trade` member subscriber with unknown behaviour; see [trade-result-client-handling.md](trade-result-client-handling.md#a-native-trade-subscriber-exists-rtti-2026-09-27).
 
 ### D-AT08 error-code mapping recommendation
 
@@ -153,6 +177,7 @@ Both `getExperience()` and `getMaxExperience()` are cached property reads with *
 | No `.lua` file in the client mentions `ErrorCode` | Full-tree grep, `Content/UI` and `SGWGame` root | Grep (2026-09-25) |
 | No Ghidra function name matches `ErrorCode`/`ConditionFeedback`/`ConditionHandler` beyond registration stubs | `search_functions_enhanced` regex sweep | Ghidra (2026-09-25) |
 | `register_NetIn_onErrorCode` / CME emit-info stub | `0x00d77f00` / `0x00d77fe0` | Decompile |
+| Native `FreeCallback<NoSubject, Communicator*, void(__cdecl*)(Event_NetIn_onErrorCode const*, void*, Communicator*)>` subscriber | RTTI type-name string `0x01e20da8` | Headless Ghidra string search (2026-09-27) |
 | `EConditionHandlerFeedback` enum, no trainer-specific tokens | `entities/defs/enumerations.xml:1207-1460` | Direct read |
 | `Ability.lua` full source (Q1/Q3/Q5 evidence) | `Content/UI/Core/Ability/Ability.lua` | Direct read |
 | `ExpBar.lua` full source (Q4 evidence) | `Content/UI/Core/ExpBar/ExpBar.lua` | Direct read |
@@ -161,6 +186,6 @@ Both `getExperience()` and `getMaxExperience()` are cached property reads with *
 
 ## Open questions
 
-1. **`onErrorCode` client rendering (Q2) — UNRESOLVED.** Does a native (non-Lua) listener exist for `Event_NetIn_onErrorCode`? Resolving this needs either a live-client trace (breakpoint on the CME event's invoke dispatch, non-freezing per project convention) or a manual walk of the event's subscriber list via the `vfunc_5` invoke mechanism documented in `cme-event-signal.md`. Until resolved, assume the server-side `onErrorCode` send is **correct-but-unverified presentation** — it satisfies the "every button press gets feedback" rule at the wire level, but whether the player actually sees anything is unknown.
+1. **`onErrorCode` client rendering (Q2) — UNRESOLVED, re-scoped 2026-09-27.** A native listener *does* exist (a `FreeCallback` bound to a `Communicator*`, see §2); the open part is what it does. Resolving it needs either a live-client trace of the `Event_NetIn_onErrorCode` dispatch (a non-freezing breakpoint, condition `0` plus a log, on `CmeEventSignal_Subscribe` at `0x00a5c150` filtered to this event, or on the callback's invoke; see [sgw-live-debugging.md](../../guides/sgw-live-debugging.md)) or a full GUI RTTI re-analysis in Ghidra that resolves the callback's vtable and function pointer. Until resolved, assume the server-side `onErrorCode` send is **correct-but-unverified presentation** — it satisfies the "every button press gets feedback" rule at the wire level, but whether the player actually sees anything is unknown.
 2. **`onKnownAbilitiesUpdate` add/remove diffing** — not traced. The native bridge that turns the flat `ARRAY<INT32>` into per-id `Events.AbilityUpdate(groupId, abilityId)` calls was not located; whether it fires once per newly-known id, once per newly-*unknown* id (post-respec), or requires the array to represent a delta rather than the full set, is unconfirmed. This bears directly on whether AT-08's respec response (which must reduce the known set) will visually refresh the Ability window correctly.
 3. **`getAbilityInfo` behavior for a no-longer-known ability id** — not checked. If it still resolves ability metadata regardless of ownership (likely, since ability defs are static content), the stale action-bar button described in section 5 will render normally right up until a doomed `useAbility` call.

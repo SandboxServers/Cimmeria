@@ -39,23 +39,27 @@ public class Probe extends GhidraScript {
 }
 ```
 
-Full working version (with all four token types) is at
-`C:\Users\Steve\AppData\Local\Temp\claude\C--Users-Steve-source-projects-Cimmeria\
-13c6afcb-2df4-4497-b1aa-157737231c3c\scratchpad\ghs2\Probe.java` as of this session — copy it
-rather than starting from the minimal template above.
+The full working version, with every token type documented in its header comment, is committed
+at `tools/re/ghidra-headless/Probe.java`, with the repro command and caveats in
+`tools/re/ghidra-headless/README.md` (2026-09-27). Use that copy; don't start from the minimal
+template above or from old scratchpad copies.
 
-2. Save the script under its own directory (NOT inside a Ghidra install/project dir) —
-   `-scriptPath` takes that directory.
+2. `-scriptPath` takes the directory holding the script: point it at
+   `<repo>/tools/re/ghidra-headless` (NOT inside a Ghidra install/project dir). Put ad-hoc
+   variants in your scratchpad, and fold useful new token types back into the committed script.
 
 3. Invoke from Git Bash (or PowerShell — use Windows-style paths either way since this is calling a
    `.bat`):
 
+   Placeholders: `<ghidra>` is the Ghidra install (default install path `C:\ghidra_12.0.4_PUBLIC`,
+   adjust to yours), `<SGW client>` is your client's `Stargate Worlds-QA` folder, and `<repo>` is
+   your Cimmeria checkout.
+
 ```bash
-cd "/c/Users/Steve/source/projects/SGW/Stargate Worlds-QA/Working/binaries"
-/c/ghidra_12.0.4_PUBLIC/support/analyzeHeadless.bat \
-  "C:\\Users\\Steve\\source\\projects\\SGW\\Stargate Worlds-QA\\Working\\binaries" SGW \
+"<ghidra>/support/analyzeHeadless.bat" \
+  "<SGW client>\\Working\\binaries" SGW \
   -process SGW.exe -noanalysis -readOnly \
-  -scriptPath "C:\\...\\ghs2" \
+  -scriptPath "<repo>\\tools\\re\\ghidra-headless" \
   -postScript Probe.java D:0x00441630 X:0x00441630 N:0x00443c10 S:CookedDataDialogs \
   > out.txt 2>&1
 ```
@@ -80,6 +84,10 @@ modified. Output (including your script's `println`) lands in the redirected fil
   here silently skips your *entire* script for that run (the error appears in the output but the
   run still exits 0), so check the output for `error:`/`skipping` before trusting a clean-looking
   result.
+- **`FINDPTR` misleads on RTTI chains.** A raw pointer scan for a Complete Object Locator returns
+  hits that can lead to the wrong vtable (the `Trade` trade-result callback scan landed on
+  `0x019d8928`, an unrelated `MemberCallback` specialization). Leads only. `DEM` does not accept
+  raw `.?AV...` RTTI type-name strings; demangle those by hand.
 - **Template-instantiated functions need per-instantiation triage, not one address.** SGW.exe's
   cooked-data `ServerSource<N,...>` code (and likely other C++ templates) is compiled once per
   category — `cooked-data-pipeline.md`'s documented addresses for `onVersionInfo`/
