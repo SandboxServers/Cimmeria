@@ -19,6 +19,8 @@ mod dialog;
 #[cfg(test)]
 mod dialog_choice_gate_tests;
 mod interact;
+#[cfg(test)]
+mod registrar_dispatch_tests;
 
 pub async fn dispatch(
     entity_id: u32,

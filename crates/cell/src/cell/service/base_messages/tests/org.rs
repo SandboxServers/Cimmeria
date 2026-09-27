@@ -294,3 +294,53 @@ async fn membership_ended_reaches_the_org_arm() {
         "{ev:?}"
     );
 }
+
+/// ORG-05 wiring: the base's `RegistrarEligible` reaches the creation
+/// handler (the offer is recorded and `launchOrganizationCreation` [135]
+/// goes out), `CreateResult` settles the offer, and `DisconnectEntity` drops
+/// an offer still open.
+#[tokio::test]
+async fn creation_arms_reach_the_creation_handlers() {
+    use cimmeria_entity::organization::OrgType;
+
+    let mut mgr = make_space_manager();
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+    player(&mut mgr, 11, 1, "Alice");
+    let eligible = |org_type| {
+        BaseToCellMsg::Org(OrgBaseToCell::RegistrarEligible {
+            player_id: 1,
+            entity_id: 11,
+            npc_entity_id: 900,
+            org_type,
+        })
+    };
+
+    handle_base_message(eligible(OrgType::Team), &tx, &mut mgr, &engine, &[]).await;
+    assert_eq!(calls(&mut rx), [(11, 135)]);
+    assert!(mgr.org_creations.get(1).is_some());
+
+    let created = OrgBaseToCell::CreateResult {
+        player_id: 1,
+        entity_id: 11,
+        org_type: OrgType::Team,
+        created: true,
+    };
+    handle_base_message(BaseToCellMsg::Org(created), &tx, &mut mgr, &engine, &[]).await;
+    assert!(
+        mgr.org_creations.get(1).is_none(),
+        "a creation closes the offer"
+    );
+
+    handle_base_message(eligible(OrgType::Command), &tx, &mut mgr, &engine, &[]).await;
+    calls(&mut rx);
+    handle_base_message(
+        BaseToCellMsg::DisconnectEntity { entity_id: 11 },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+    assert!(mgr.org_creations.is_empty(), "logging out drops the offer");
+}

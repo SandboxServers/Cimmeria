@@ -434,6 +434,9 @@ pub struct SpaceManager {
     /// another world keeps their squad. Keyed by `player_id`, never entity
     /// id; see `cell::squad`.
     pub squads: super::squad::SquadRegistry,
+    /// Open organization-registrar offers awaiting a name (ORG-05), keyed
+    /// by `player_id`; see `cell::org_creation`.
+    pub org_creations: super::org_creation::PendingCreations,
 }
 
 impl SpaceManager {
@@ -495,6 +498,7 @@ impl SpaceManager {
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
             squads: super::squad::SquadRegistry::new(),
+            org_creations: super::org_creation::PendingCreations::new(),
         }
     }
 }

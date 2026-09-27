@@ -172,8 +172,17 @@ pub(super) async fn handle_interact(
     {
         // A too-far click on most NPCs stays a silent drop (the client
         // shows its own range cue); a Banker answers with a chat line and
-        // `vault_open_rejected reason=out_of_range` (bank-vault BV-02).
+        // `vault_open_rejected reason=out_of_range` (bank-vault BV-02), and
+        // an organization registrar with a line and an
+        // `org.registrar_open reason=too_far` row (ORG-05).
         crate::cell::interactions::reject_banker_out_of_range(
+            entity_id,
+            target_entity_u32,
+            tx,
+            space_mgr,
+        )
+        .await;
+        crate::cell::interactions::reject_registrar_out_of_range(
             entity_id,
             target_entity_u32,
             tx,

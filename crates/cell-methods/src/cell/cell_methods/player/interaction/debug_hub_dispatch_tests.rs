@@ -13,6 +13,7 @@
 //! | pet trainer | 360    | `onTrainerOpen` with list 350 (pets campaign PT-07) |
 //! | Banker    | 370      | `onVaultOpen` and a personal vault session (bank-vault BV-04) |
 //! | mail clerk | 390     | chain 7010 → `onDialogDisplay` 60104 (SS-U3)    |
+//! | registrars | 330, 331 | `RegistrarOpen` to the base, Team / Command (ORG-05) |
 //!
 //! The vendor row is the one that regressed silently: nothing ever set
 //! `NpcInteractionType::Vendor`, so a vendor-only template reached the `None`
@@ -26,9 +27,10 @@ use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::cell_entity::NpcInteractionType;
+use cimmeria_entity::organization::OrgType;
 
 use crate::cell::cell_methods::player::{dispatch, INTERACT, RESET_MY_ABILITIES};
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{CellToBaseMsg, OrgCellToBase};
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner;
 use crate::test_support::require_db_or_skip;
@@ -96,9 +98,10 @@ fn staged_hub(seed: HubSeed) -> (SpaceManager, Vec<(String, u32)>) {
     }
     assert_eq!(
         hub.len(),
-        8,
-        "the hub seeds eight NPCs (#846's five, the PT-07 pet trainer, the \
-         BV-04 Banker and the SS-U3 mail clerk): {hub:?}"
+        10,
+        "the hub seeds ten NPCs (#846's five, the PT-07 pet trainer, the \
+         BV-04 Banker, the SS-U3 mail clerk and the ORG-05 Team and Command \
+         registrars): {hub:?}"
     );
 
     // Any archetype list 1 offers, so the trainer has something to show.
@@ -269,6 +272,34 @@ async fn debug_hub_npcs_answer_a_click_with_their_own_interaction() {
         vec![("Livewire", &[7005i64][..])],
         "terminal: {msgs:?}"
     );
+
+    // Registrars (ORG-05): the click asks the base whether the player may
+    // found the registrar's type, and sends the client nothing yet.
+    for (tag, org_type) in [
+        ("DebugHub_TeamRegistrar", OrgType::Team),
+        ("DebugHub_CommandRegistrar", OrgType::Command),
+    ] {
+        let registrar = eid_of(&hub, tag);
+        let msgs = click(&mut mgr, &engine, registrar).await;
+        let asked: Vec<&OrgCellToBase> = msgs
+            .iter()
+            .filter_map(|m| match m {
+                CellToBaseMsg::Org(o) => Some(o),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            asked,
+            vec![&OrgCellToBase::RegistrarOpen {
+                player_id: PLAYER_ID,
+                entity_id: PLAYER,
+                npc_entity_id: registrar,
+                org_type,
+            }],
+            "{tag}: {msgs:?}"
+        );
+        assert!(methods(&msgs).is_empty(), "{tag}: {msgs:?}");
+    }
 
     // None of the others is a vendor.
     for npc in [trainer, dialog_npc, terminal, clerk] {
