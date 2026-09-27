@@ -239,3 +239,35 @@ async fn gm_mailbox_reports_counts_and_escrow() {
 
     cleanup(&pool, acct).await;
 }
+
+/// Type 12: the base re-checks the COD rules the cell parses, so a COD mail
+/// that could never be paid (a price below 1) is never written:
+/// `mail.gm_rejected reason=cod_price_invalid` with what the GM asked for.
+#[tokio::test]
+async fn gm_mail_refuses_cod_without_a_price() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (acct, gm) = (0x7300_5184, 0x7300_5185);
+    cleanup(&pool, acct).await;
+    insert_players(&pool, acct, &[(gm, "SsuOneGmZeroCod")]).await;
+    let type_id = any_type_id(&pool).await;
+    let c = Client::new(0x7300_5194, gm, 54_764, "SsuOneGmZeroCod");
+
+    c.gm(send(&c, None, 0, Some((type_id, 1)), Some(0)), &pool)
+        .await;
+
+    assert_eq!(mail_count(&pool, gm).await, 0);
+    assert!(escrow_for(&pool, gm).await.is_empty());
+    assert_eq!(lines(c.take()).len(), 1);
+    let row = capture
+        .find_event(
+            tracing::Level::WARN,
+            "GM mail command refused",
+            "cod_price_invalid",
+        )
+        .expect("mail.gm_rejected reason=cod_price_invalid");
+    assert!(row.has_field("cod", "0"));
+    assert!(row.has_field("type_id", &type_id.to_string()));
+
+    cleanup(&pool, acct).await;
+}

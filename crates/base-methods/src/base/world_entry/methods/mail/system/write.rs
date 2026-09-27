@@ -72,7 +72,7 @@ pub(in super::super) async fn write_mail(
     item: SystemItem,
     now: i32,
 ) -> Result<Written, SystemMailError> {
-    let prepared = prepare_item(&mut *conn, item).await?;
+    let prepared = prepare_item(&mut *conn, item, header.recipient_player_id).await?;
 
     let recipient: Option<i32> =
         sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE player_id = $1 FOR UPDATE")
@@ -152,6 +152,7 @@ pub(in super::super) async fn write_mail(
 async fn prepare_item(
     conn: &mut PgConnection,
     item: SystemItem,
+    recipient_player_id: i32,
 ) -> Result<Prepared, SystemMailError> {
     match item {
         SystemItem::None => Ok(Prepared::None),
@@ -171,7 +172,10 @@ async fn prepare_item(
             }
             Ok(Prepared::Minted { type_id, qty })
         }
-        SystemItem::ExistingInstance { item_id } => {
+        SystemItem::ExistingInstance {
+            item_id,
+            owner_player_id,
+        } => {
             // The owner is needed for the advisory lock, which must come
             // before the row lock; read it, lock, then re-read the row
             // under its lock and check it again, in case it moved between.
@@ -184,6 +188,11 @@ async fn prepare_item(
             let Some((owner, container_id)) = found else {
                 return Err(SystemMailError::ItemNotFound);
             };
+            // A wrong id (an off-by-one listing, a stale cache) must not
+            // take another seller's row.
+            if owner != owner_player_id {
+                return Err(SystemMailError::ItemOwnerMismatch { owner });
+            }
             require_server_held(owner, container_id)?;
             take_inventory_locks(&mut *conn, owner, &[container_id]).await?;
             let source: Option<SourceItem> = sqlx::query_as(
@@ -198,14 +207,20 @@ async fn prepare_item(
                 return Err(SystemMailError::ItemNotFound);
             };
             require_server_held(owner, source.container_id)?;
+            // A bound item never changes hands, the rule every player path
+            // enforces: it may only go back to its owner (a cancelled or
+            // expired listing).
+            if source.bound && recipient_player_id != owner {
+                return Err(SystemMailError::ItemBound { owner });
+            }
             Ok(Prepared::Existing { owner, source })
         }
     }
 }
 
 /// Refuse a row a player holds. The system is a trusted sender, so the
-/// player send path's allowlist (main bag, not bound) does not apply; this
-/// is the check that stands in for it.
+/// player send path's allowlist (main bag) does not apply; this is the
+/// check that stands in for it.
 fn require_server_held(owner: i32, container_id: i32) -> Result<(), SystemMailError> {
     if SERVER_HELD_CONTAINERS.contains(&container_id) {
         Ok(())

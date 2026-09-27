@@ -31,7 +31,9 @@
 //!   auction container, 18): a container no player can move items in or out
 //!   of (`inventory/move_/container_policy.rs` makes it `Movable::No`). Any
 //!   other container, a bag, equipment, a vault, buyback, is a live item a
-//!   player holds, and is refused, so a caller bug cannot yank one.
+//!   player holds, and is refused, so a caller bug cannot yank one. The
+//!   caller names the owner it expects, so a wrong id cannot take another
+//!   seller's row, and a bound row only ever goes back to its owner.
 //!
 //! [`send_system_mail_tx`] runs inside the caller's transaction and commits
 //! nothing; [`send_system_mail`] wraps it in a transaction of its own. The
@@ -89,8 +91,13 @@ pub enum SystemItem {
     },
     /// An existing `sgw_inventory` row in a [`SERVER_HELD_CONTAINERS`]
     /// container, moved whole.
+    ///
+    /// `owner_player_id` is the character the caller expects to hold it
+    /// (the seller); any other owner is refused. A bound row may only be
+    /// mailed back to its owner.
     ExistingInstance {
         item_id: i32,
+        owner_player_id: i32,
     },
 }
 
@@ -180,6 +187,14 @@ pub enum SystemMailError {
         container_id: i32,
         owner: i32,
     },
+    /// The row belongs to someone other than the owner the caller named.
+    ItemOwnerMismatch {
+        owner: i32,
+    },
+    /// The row is bound and the recipient is not its owner.
+    ItemBound {
+        owner: i32,
+    },
     /// No `sgw_player` row has that id.
     RecipientNotFound,
     Db(sqlx::Error),
@@ -197,6 +212,8 @@ impl SystemMailError {
             SystemMailError::QuantityExceedsStack { .. } => "item_quantity_exceeds_stack",
             SystemMailError::ItemNotFound => "item_not_found",
             SystemMailError::ItemNotServerHeld { .. } => "item_not_server_held",
+            SystemMailError::ItemOwnerMismatch { .. } => "item_owner_mismatch",
+            SystemMailError::ItemBound { .. } => "item_bound",
             SystemMailError::RecipientNotFound => "recipient_not_found",
             SystemMailError::Db(_) => "db_error",
         }
@@ -337,11 +354,17 @@ fn log_refused(mail: &SystemMail, e: &SystemMailError) {
             container_id,
             owner,
         } => (Some(*container_id), Some(*owner)),
+        SystemMailError::ItemOwnerMismatch { owner } | SystemMailError::ItemBound { owner } => {
+            (None, Some(*owner))
+        }
         _ => (None, None),
     };
-    let item_id = match mail.item {
-        SystemItem::ExistingInstance { item_id } => Some(item_id),
-        _ => None,
+    let (item_id, expected_owner) = match mail.item {
+        SystemItem::ExistingInstance {
+            item_id,
+            owner_player_id,
+        } => (Some(item_id), Some(owner_player_id)),
+        _ => (None, None),
     };
     let type_id = match mail.item {
         SystemItem::Minted { type_id, .. } => Some(type_id),
@@ -359,6 +382,7 @@ fn log_refused(mail: &SystemMail, e: &SystemMailError) {
         type_id,
         container_id,
         owner_player_id = owner,
+        expected_owner_player_id = expected_owner,
         error = %e,
         "system gate-mail refused; nothing written",
     );

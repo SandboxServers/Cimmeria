@@ -122,6 +122,14 @@ impl From<SystemMailError> for GmRefusal {
 }
 
 impl GmRefusal {
+    /// The underlying error, for the log.
+    fn detail(&self) -> String {
+        match self {
+            GmRefusal::Mail(e) => e.to_string(),
+            other => other.reason().to_string(),
+        }
+    }
+
     fn reason(&self) -> &'static str {
         match self {
             GmRefusal::GmMissing => "gm_missing",
@@ -138,9 +146,9 @@ impl GmRefusal {
                 format!(".mail: more than one character is called {name}; type the exact name.")
             }
             GmRefusal::Recipient(_, name) => format!(".mail: no character is called {name}."),
-            GmRefusal::BadCod(_) => {
-                ".mail: cod needs an item and cannot be combined with cash.".to_string()
-            }
+            GmRefusal::BadCod(_) => ".mail: cod needs an item and a price of 1 or more, \
+                                     and cannot be combined with cash."
+                .to_string(),
             GmRefusal::Mail(e) => format!(".mail: not sent ({e})."),
         }
     }
@@ -171,6 +179,9 @@ pub(super) async fn gm_send(
                 target: "mail",
                 event = "mail.gm_action",
                 action = "mail",
+                // The cash and the item were created, not moved from anyone:
+                // a currency-flow query tells GM minting from player mail.
+                minted = true,
                 entity_id = actor.entity_id,
                 account_id = actor.account_id,
                 player_id = actor.player_id,
@@ -208,7 +219,24 @@ pub(super) async fn gm_send(
             .await;
         }
         Err(refusal) => {
-            rejected(actor, "send", refusal.reason());
+            // Everything the GM asked for, so a refused mint can be read
+            // back from SigNoz alone.
+            tracing::warn!(
+                target: "mail",
+                event = "mail.gm_rejected",
+                command = "send",
+                reason = refusal.reason(),
+                entity_id = actor.entity_id,
+                account_id = actor.account_id,
+                player_id = actor.player_id,
+                to = request.to.as_deref(),
+                cash = request.cash,
+                cod = request.cod,
+                type_id = request.item.map(|(t, _)| t),
+                quantity = request.item.map(|(_, q)| q),
+                error = %refusal.detail(),
+                "GM mail command refused",
+            );
             feedback(caller, &refusal.text()).await;
         }
     }
@@ -224,12 +252,21 @@ async fn write_gm_send(
         Some((type_id, qty)) => SystemItem::Minted { type_id, qty },
         None => SystemItem::None,
     };
-    if request.cod.is_some() && (request.item.is_none() || request.cash != 0) {
-        return Err(GmRefusal::BadCod(if request.item.is_none() {
-            "cod_without_item"
+    // The cell checks these too; the base re-checks, because a COD mail
+    // with no item or no price could never be paid or taken.
+    if let Some(price) = request.cod {
+        let bad = if request.item.is_none() {
+            Some("cod_without_item")
+        } else if request.cash != 0 {
+            Some("cod_with_cash")
+        } else if price < 1 {
+            Some("cod_price_invalid")
         } else {
-            "cod_with_cash"
-        }));
+            None
+        };
+        if let Some(reason) = bad {
+            return Err(GmRefusal::BadCod(reason));
+        }
     }
 
     let mut tx = pool.begin().await?;

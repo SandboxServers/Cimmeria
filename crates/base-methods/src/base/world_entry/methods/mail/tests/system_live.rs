@@ -192,7 +192,6 @@ async fn system_mail_moves_server_held_instance() {
     let (type_id, _) = type_with_stack(&pool, true).await;
     let item = TestItem {
         container_id: INV_AUCTION,
-        bound: true,
         ..TestItem::main(0x7300_5200, seller, 4, 2)
     };
     insert_item(&pool, item, type_id).await;
@@ -204,6 +203,7 @@ async fn system_mail_moves_server_held_instance() {
             0,
             SystemItem::ExistingInstance {
                 item_id: item.item_id,
+                owner_player_id: seller,
             },
         ),
     )
@@ -220,7 +220,7 @@ async fn system_mail_moves_server_held_instance() {
             stack_size: 2,
             durability: TEST_DURABILITY,
             charges: TEST_CHARGES,
-            bound: true,
+            bound: false,
             source_character_id: seller,
         }]
     );
@@ -274,6 +274,7 @@ async fn system_mail_refuses_instance_in_player_inventory() {
                 100,
                 SystemItem::ExistingInstance {
                     item_id: item.item_id,
+                    owner_player_id: owner,
                 },
             ),
         )
@@ -297,6 +298,7 @@ async fn system_mail_refuses_instance_in_player_inventory() {
             0,
             SystemItem::ExistingInstance {
                 item_id: 0x7300_52FF,
+                owner_player_id: owner,
             },
         ),
     )
@@ -347,6 +349,7 @@ async fn system_mail_rolls_back_with_callers_transaction() {
             250,
             SystemItem::ExistingInstance {
                 item_id: item.item_id,
+                owner_player_id: seller,
             },
         ),
     )
@@ -399,6 +402,107 @@ async fn system_mail_ignores_mailbox_cap() {
     assert!(row.has_field("mail_id", &sent.mail_id.to_string()));
     assert!(row.has_field("target_player_id", &rcpt.to_string()));
     assert!(row.has_field("over_cap", "true"));
+
+    cleanup(&pool, acct).await;
+}
+
+/// A payout that names the wrong seller (an off-by-one listing id, a stale
+/// cache) cannot take another seller's listed row, and a bound row only
+/// ever goes back to its owner: to a third party it is refused, to the
+/// owner it moves. Nothing is written by either refusal. Fails if the owner
+/// check or the bound check is removed.
+#[tokio::test]
+async fn system_mail_existing_instance_owner_and_bound_rules() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (acct, seller, other, buyer) = (0x7300_5158, 0x7300_5159, 0x7300_515A, 0x7300_515B);
+    setup(
+        &pool,
+        acct,
+        &[
+            (seller, "SsuOneOwnSeller"),
+            (other, "SsuOneOwnOther"),
+            (buyer, "SsuOneOwnBuyer"),
+        ],
+    )
+    .await;
+    let (type_id, _) = type_with_stack(&pool, false).await;
+    let listed = TestItem {
+        container_id: INV_AUCTION,
+        ..TestItem::main(0x7300_5230, seller, 0, 1)
+    };
+    let bound = TestItem {
+        container_id: INV_AUCTION,
+        bound: true,
+        ..TestItem::main(0x7300_5231, seller, 1, 1)
+    };
+    insert_item(&pool, listed, type_id).await;
+    insert_item(&pool, bound, type_id).await;
+
+    // The caller thinks `other` listed it.
+    let err = send_system_mail(
+        &pool,
+        &mail_to(
+            buyer,
+            0,
+            SystemItem::ExistingInstance {
+                item_id: listed.item_id,
+                owner_player_id: other,
+            },
+        ),
+    )
+    .await
+    .expect_err("wrong owner");
+    assert_eq!(err.reason(), "item_owner_mismatch", "{err}");
+    // A bound row to a buyer.
+    let err = send_system_mail(
+        &pool,
+        &mail_to(
+            buyer,
+            0,
+            SystemItem::ExistingInstance {
+                item_id: bound.item_id,
+                owner_player_id: seller,
+            },
+        ),
+    )
+    .await
+    .expect_err("bound to a third party");
+    assert_eq!(err.reason(), "item_bound", "{err}");
+    assert_eq!(mail_count(&pool, buyer).await, 0);
+    assert_eq!(
+        inventory_row(&pool, listed.item_id).await,
+        Some((seller, 1))
+    );
+    assert_eq!(inventory_row(&pool, bound.item_id).await, Some((seller, 1)));
+    let row = capture
+        .find_event(
+            tracing::Level::WARN,
+            "system gate-mail refused",
+            "item_owner_mismatch",
+        )
+        .expect("mail.system_refused reason=item_owner_mismatch");
+    assert!(row.has_field("owner_player_id", &seller.to_string()));
+    assert!(row.has_field("expected_owner_player_id", &other.to_string()));
+
+    // The same bound row back to its owner (a cancelled listing) moves.
+    send_system_mail(
+        &pool,
+        &mail_to(
+            seller,
+            0,
+            SystemItem::ExistingInstance {
+                item_id: bound.item_id,
+                owner_player_id: seller,
+            },
+        ),
+    )
+    .await
+    .expect("a bound row goes back to its owner");
+    assert_eq!(inventory_row(&pool, bound.item_id).await, None);
+    let escrow = escrow_for(&pool, seller).await;
+    assert_eq!(escrow.len(), 1);
+    assert!(escrow[0].bound);
 
     cleanup(&pool, acct).await;
 }
