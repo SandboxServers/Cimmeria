@@ -76,7 +76,8 @@ The addresses and their evidence are in
   drop callee. Both use MinHook, which relocates an existing `E9 rel32` into
   its trampoline, so whichever DLL hooks second chains onto the first. The
   gate accepts a leading `E9` at those two sites only when the bytes after it
-  are intact. The two MinHook copies do not coordinate, so this DLL re-reads a
+  are intact and the jump lands inside the loaded telemetry DLL's image.
+  The two MinHook copies do not coordinate, so this DLL re-reads a
   prologue after MinHook has copied it and rebuilds the hook if the bytes
   changed. The launcher should still inject the DLLs one after the other.
   Neither DLL may unhook while the other is loaded, because MinHook's unhook

@@ -40,7 +40,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | 285 (`find docs -name '*.md' \| wc -l`) |
 | Rust tests (`#[test]` / `#[tokio::test]`) | 6,019 across 950 files (5,604 gated in CI) |
-| Live-DB regression guards | 224 |
+| Live-DB regression guards | 811 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map

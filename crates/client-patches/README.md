@@ -46,7 +46,9 @@ harness is `cimmeria_client_patches-<hash>.exe`.
    bytes. On any mismatch it installs nothing and logs which site differed.
    `FEngineLoop::Tick` and the drop callee may already start with `E9 rel32`,
    because the telemetry DLL hooks them with MinHook too. In that case, if
-   everything after the jump still matches, the hook chains on top.
+   everything after the jump still matches and the jump lands inside the
+   loaded telemetry DLL's image, the hook chains on top. A jump anywhere
+   else fails the gate.
 2. **Receive**, on the Mercury network thread (`receive/`). A detour on the
    entity-method dispatcher records `(entity, stream)` in a thread-local for
    the length of the call. A detour on the drop callee, which the dispatcher

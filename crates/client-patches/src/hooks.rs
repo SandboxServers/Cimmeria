@@ -13,6 +13,7 @@
 //! between, the hook is removed and rebuilt on top of the new bytes.
 
 use core::ffi::c_void;
+use core::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use minhook_sys::{
@@ -36,6 +37,8 @@ pub(crate) fn init() -> Result<(), String> {
 
 /// Hook `site` with `detour`, storing the trampoline in `original` before
 /// the hook goes live. Returns what the prologue was when it was hooked.
+/// `hook_owners` are passed to [`classify`]: an earlier hook is chained only
+/// if it jumps into one of them.
 ///
 /// # Safety
 ///
@@ -45,13 +48,14 @@ pub(crate) unsafe fn install(
     site: &Site,
     detour: usize,
     original: &AtomicUsize,
+    hook_owners: &[Range<usize>],
 ) -> Result<Prologue, String> {
     let target = site.address as *mut c_void;
     for _ in 0..ATTEMPTS {
         let Some(before) = ProcessMemory.read_bytes(site.address, site.expected.len()) else {
             return Err(format!("{}: prologue unreadable", site.name));
         };
-        let prologue = classify(site, Some(&before));
+        let prologue = classify(site, Some(&before), hook_owners);
         if !prologue.is_usable() {
             return Err(format!(
                 "{}: prologue is now {}, not hooking",

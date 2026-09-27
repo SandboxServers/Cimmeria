@@ -12,9 +12,25 @@
 //! bytes and leaves the rest, so such a site is accepted as
 //! [`Prologue::Chained`] when everything after the jump still matches, and
 //! MinHook chains on top of the earlier hook.
+//!
+//! The jump must also land inside a module known to hook these sites: the
+//! telemetry DLL, whose MinHook (x86, so no relay) jumps straight to its
+//! detour. A jump anywhere else, such as a stale patch or an unknown DLL,
+//! is [`Prologue::UnknownHook`] and fails the gate: chaining would run
+//! code nobody has vetted.
+
+use core::ops::Range;
 
 use crate::addresses;
 use crate::memory::MemoryReader;
+
+/// Modules whose MinHook detours may already sit on a chainable site: the
+/// telemetry DLL, under the name the launcher installs it as and under
+/// cargo's output name.
+pub const HOOK_OWNER_MODULES: [&str; 2] = [
+    "cimmeria-client-telemetry.dll",
+    "cimmeria_client_telemetry.dll",
+];
 
 /// Length of the `E9 rel32` jump MinHook writes over a prologue.
 pub const JMP_REL32_LEN: usize = 5;
@@ -90,6 +106,12 @@ pub enum Prologue {
         /// Where the existing jump goes.
         jump_to: usize,
     },
+    /// An `E9 rel32` with the rest intact, but jumping outside every
+    /// module in [`HOOK_OWNER_MODULES`]: not a hook this DLL may chain.
+    UnknownHook {
+        /// Where the existing jump goes.
+        jump_to: usize,
+    },
     /// Something else: a different build, or a patch this DLL does not
     /// know how to chain.
     Mismatch {
@@ -108,7 +130,9 @@ impl Prologue {
 }
 
 /// Classify `actual`, the bytes read at `site` (or `None` if unreadable).
-pub fn classify(site: &Site, actual: Option<&[u8]>) -> Prologue {
+/// `hook_owners` are the address ranges a chainable jump may land in: the
+/// images of the loaded [`HOOK_OWNER_MODULES`].
+pub fn classify(site: &Site, actual: Option<&[u8]>, hook_owners: &[Range<usize>]) -> Prologue {
     let Some(actual) = actual else {
         return Prologue::Unreadable;
     };
@@ -125,7 +149,10 @@ pub fn classify(site: &Site, actual: Option<&[u8]>) -> Prologue {
         let jump_to = (site.address as u32)
             .wrapping_add(JMP_REL32_LEN as u32)
             .wrapping_add(rel as u32) as usize;
-        return Prologue::Chained { jump_to };
+        if hook_owners.iter().any(|owner| owner.contains(&jump_to)) {
+            return Prologue::Chained { jump_to };
+        }
+        return Prologue::UnknownHook { jump_to };
     }
     Prologue::Mismatch {
         actual: actual.to_vec(),
@@ -133,16 +160,36 @@ pub fn classify(site: &Site, actual: Option<&[u8]>) -> Prologue {
 }
 
 /// Read and classify one site.
-pub fn check<M: MemoryReader>(mem: &M, site: &Site) -> Prologue {
+pub fn check<M: MemoryReader>(mem: &M, site: &Site, hook_owners: &[Range<usize>]) -> Prologue {
     classify(
         site,
         mem.read_bytes(site.address, site.expected.len()).as_deref(),
+        hook_owners,
     )
 }
 
 /// Read and classify every site in [`SITES`].
-pub fn check_all<M: MemoryReader>(mem: &M) -> Vec<(Site, Prologue)> {
-    SITES.iter().map(|s| (*s, check(mem, s))).collect()
+pub fn check_all<M: MemoryReader>(mem: &M, hook_owners: &[Range<usize>]) -> Vec<(Site, Prologue)> {
+    SITES
+        .iter()
+        .map(|s| (*s, check(mem, s, hook_owners)))
+        .collect()
+}
+
+/// The address range of the PE image loaded at `base`, from its
+/// `SizeOfImage`. `None` unless `base` holds a readable `MZ`/`PE` header.
+pub fn image_range<M: MemoryReader>(mem: &M, base: usize) -> Option<Range<usize>> {
+    if mem.read_bytes(base, 2)? != b"MZ" {
+        return None;
+    }
+    let nt = base.checked_add(mem.read_u32(base.checked_add(0x3C)?)? as usize)?;
+    if mem.read_bytes(nt, 4)? != b"PE\0\0" {
+        return None;
+    }
+    // IMAGE_NT_HEADERS: 4-byte signature, 20-byte file header, then the
+    // optional header, whose SizeOfImage is at +0x38.
+    let size = mem.read_u32(nt.checked_add(0x50)?)? as usize;
+    Some(base..base.checked_add(size)?)
 }
 
 /// Space-separated hex, for the log.
@@ -161,6 +208,9 @@ mod tests {
 
     /// What MinHook leaves at `site` when it hooks it with a detour at
     /// `detour`: `E9 rel32`, then the original bytes from offset 5 on.
+    /// A telemetry DLL image the test detours live in.
+    const OWNER: Range<usize> = 0x7000_0000..0x7010_0000;
+
     fn minhooked(site: &Site, detour: usize) -> Vec<u8> {
         let mut bytes = site.expected.to_vec();
         let rel = (detour as u32).wrapping_sub(site.address as u32 + 5);
@@ -172,7 +222,7 @@ mod tests {
     #[test]
     fn stock_bytes_pass() {
         for site in SITES {
-            assert_eq!(classify(&site, Some(site.expected)), Prologue::Stock);
+            assert_eq!(classify(&site, Some(site.expected), &[]), Prologue::Stock);
         }
     }
 
@@ -183,7 +233,7 @@ mod tests {
         for site in [DROP_CALLEE, ENGINE_TICK] {
             let bytes = minhooked(&site, 0x7000_1000);
             assert_eq!(
-                classify(&site, Some(&bytes)),
+                classify(&site, Some(&bytes), &[OWNER]),
                 Prologue::Chained {
                     jump_to: 0x7000_1000
                 },
@@ -196,13 +246,63 @@ mod tests {
     /// A backwards jump (detour below the target) decodes too.
     #[test]
     fn chained_jump_target_handles_negative_displacement() {
+        const LOW_OWNER: Range<usize> = 0x0010_0000..0x0020_0000;
         let bytes = minhooked(&ENGINE_TICK, 0x0010_0000);
         assert_eq!(
-            classify(&ENGINE_TICK, Some(&bytes)),
+            classify(&ENGINE_TICK, Some(&bytes), &[LOW_OWNER]),
             Prologue::Chained {
                 jump_to: 0x0010_0000
             }
         );
+    }
+
+    /// A MinHook-shaped jump that lands outside every known hook owner, or
+    /// with no owner loaded at all, fails the gate instead of being chained
+    /// through.
+    #[test]
+    fn a_chainable_site_jumping_outside_a_known_module_is_refused() {
+        for site in [DROP_CALLEE, ENGINE_TICK] {
+            for target in [OWNER.start - 1, OWNER.end, 0x1234_5678] {
+                let bytes = minhooked(&site, target);
+                let prologue = classify(&site, Some(&bytes), &[OWNER]);
+                assert_eq!(
+                    prologue,
+                    Prologue::UnknownHook { jump_to: target },
+                    "{} -> 0x{target:08x}",
+                    site.name
+                );
+                assert!(!prologue.is_usable());
+            }
+            let bytes = minhooked(&site, OWNER.start);
+            assert!(
+                matches!(
+                    classify(&site, Some(&bytes), &[]),
+                    Prologue::UnknownHook { .. }
+                ),
+                "no telemetry DLL loaded: {}",
+                site.name
+            );
+        }
+    }
+
+    /// A PE header yields its image range; anything else yields nothing.
+    #[test]
+    fn image_range_reads_size_of_image() {
+        const BASE: usize = 0x6000_0000;
+        let mut header = vec![0u8; 0x100];
+        header[..2].copy_from_slice(b"MZ");
+        header[0x3C..0x40].copy_from_slice(&0x80u32.to_le_bytes());
+        header[0x80..0x84].copy_from_slice(b"PE\0\0");
+        header[0xD0..0xD4].copy_from_slice(&0x0004_2000u32.to_le_bytes());
+        let mut mem = FakeMemory::default();
+        mem.put(BASE, &header);
+        assert_eq!(image_range(&mem, BASE), Some(BASE..BASE + 0x0004_2000));
+
+        header[0x80] = b'X';
+        let mut bad = FakeMemory::default();
+        bad.put(BASE, &header);
+        assert_eq!(image_range(&bad, BASE), None, "no PE signature");
+        assert_eq!(image_range(&FakeMemory::default(), BASE), None, "unmapped");
     }
 
     #[test]
@@ -210,7 +310,10 @@ mod tests {
         for site in [DISPATCHER, START_ENTITY_MESSAGE] {
             let bytes = minhooked(&site, 0x7000_1000);
             assert!(
-                matches!(classify(&site, Some(&bytes)), Prologue::Mismatch { .. }),
+                matches!(
+                    classify(&site, Some(&bytes), &[OWNER]),
+                    Prologue::Mismatch { .. }
+                ),
                 "{}",
                 site.name
             );
@@ -224,7 +327,7 @@ mod tests {
         let mut bytes = minhooked(&ENGINE_TICK, 0x7000_1000);
         bytes[6] = 0x90;
         assert!(matches!(
-            classify(&ENGINE_TICK, Some(&bytes)),
+            classify(&ENGINE_TICK, Some(&bytes), &[OWNER]),
             Prologue::Mismatch { .. }
         ));
     }
@@ -236,7 +339,7 @@ mod tests {
                 let mut bytes = site.expected.to_vec();
                 bytes[i] ^= 0x01;
                 assert!(
-                    !classify(&site, Some(&bytes)).is_usable(),
+                    !classify(&site, Some(&bytes), &[OWNER]).is_usable(),
                     "{} byte {i}",
                     site.name
                 );
@@ -246,8 +349,8 @@ mod tests {
 
     #[test]
     fn unreadable_or_short_is_refused() {
-        assert_eq!(classify(&DISPATCHER, None), Prologue::Unreadable);
-        assert!(!classify(&ENGINE_TICK, Some(&ENGINE_TICK.expected[..5])).is_usable());
+        assert_eq!(classify(&DISPATCHER, None, &[OWNER]), Prologue::Unreadable);
+        assert!(!classify(&ENGINE_TICK, Some(&ENGINE_TICK.expected[..5]), &[OWNER]).is_usable());
         assert!(!Prologue::Unreadable.is_usable());
     }
 
@@ -257,7 +360,7 @@ mod tests {
         mem.put(DISPATCHER.address, DISPATCHER.expected)
             .put(DROP_CALLEE.address, &minhooked(&DROP_CALLEE, 0x7000_0000))
             .put(ENGINE_TICK.address, &[0xCC; 13]);
-        let results = check_all(&mem);
+        let results = check_all(&mem, &[OWNER]);
         assert_eq!(results.len(), 4);
         assert_eq!(results[0].1, Prologue::Stock);
         assert!(matches!(results[1].1, Prologue::Chained { .. }));

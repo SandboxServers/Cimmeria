@@ -7,7 +7,8 @@
 //! 1. opens the log next to `SGW.exe`;
 //! 2. resolves the `lua51.dll` exports, waiting for the DLL if it is not
 //!    loaded yet (it is a static import of `SGW.exe`, so it normally is);
-//! 3. runs the [fingerprint gate](crate::fingerprint) over every site;
+//! 3. runs the [fingerprint gate](crate::fingerprint) over every site,
+//!    accepting an earlier hook only from a loaded telemetry DLL;
 //! 4. hooks `FEngineLoop::Tick` (deliver), then the dispatcher and the drop
 //!    callee (receive), stopping at the first failure;
 //! 5. exits. The hooks and statics live for the rest of the process; the
@@ -18,17 +19,21 @@
 //! forward to the original functions until there is something to claim.
 
 use core::ffi::c_void;
+use core::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use windows_sys::core::BOOL;
 use windows_sys::Win32::Foundation::{CloseHandle, HMODULE, TRUE};
+use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows_sys::Win32::System::Threading::CreateThread;
 
 use crate::deliver::lua_api::{LuaApi, ResolveError};
 use crate::deliver::tick::{engine_tick_detour, LUA_API, TICK_ORIGINAL};
-use crate::fingerprint::{self, hex, Prologue, DISPATCHER, DROP_CALLEE, ENGINE_TICK};
+use crate::fingerprint::{
+    self, hex, Prologue, DISPATCHER, DROP_CALLEE, ENGINE_TICK, HOOK_OWNER_MODULES,
+};
 use crate::memory::ProcessMemory;
 use crate::receive::detours::{dispatch_detour, lookup_detour, DISPATCH_ORIGINAL, LOOKUP_ORIGINAL};
 use crate::{hooks, log};
@@ -100,8 +105,9 @@ fn bootstrap() {
     };
     log::line("lua51.dll exports resolved");
 
+    let hook_owners = hook_owner_ranges();
     let mut usable = true;
-    for (site, prologue) in fingerprint::check_all(&ProcessMemory) {
+    for (site, prologue) in fingerprint::check_all(&ProcessMemory, &hook_owners) {
         match &prologue {
             Prologue::Stock => log::line(format_args!(
                 "{} at 0x{:08x}: stock",
@@ -109,6 +115,11 @@ fn bootstrap() {
             )),
             Prologue::Chained { jump_to } => log::line(format_args!(
                 "{} at 0x{:08x}: already hooked (jump to 0x{jump_to:08x}), chaining",
+                site.name, site.address
+            )),
+            Prologue::UnknownHook { jump_to } => log::line(format_args!(
+                "{} at 0x{:08x}: already hooked by a jump to 0x{jump_to:08x}, outside every \
+                 known hook owner; not chaining",
                 site.name, site.address
             )),
             Prologue::Mismatch { actual } => log::line(format_args!(
@@ -163,7 +174,7 @@ fn bootstrap() {
         ),
     ];
     for (site, detour, original) in steps {
-        match unsafe { hooks::install(site, detour, original) } {
+        match unsafe { hooks::install(site, detour, original, &hook_owners) } {
             Ok(_) => log::line(format_args!("hooked {}", site.name)),
             Err(e) => {
                 log::line(format_args!("{e}; stopping, the Black Market stays off"));
@@ -172,6 +183,35 @@ fn bootstrap() {
         }
     }
     log::line("Black Market receive path installed; calls go to the Lua table CimmeriaBM");
+}
+
+/// The image ranges of the loaded [`HOOK_OWNER_MODULES`]: where an earlier
+/// hook on a chainable site may jump to. Empty when none is loaded, and
+/// then no earlier hook is accepted.
+fn hook_owner_ranges() -> Vec<Range<usize>> {
+    HOOK_OWNER_MODULES
+        .iter()
+        .filter_map(|name| {
+            let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+            // SAFETY: a NUL-terminated wide string; no reference is taken.
+            let base = unsafe { GetModuleHandleW(wide.as_ptr()) };
+            if base.is_null() {
+                return None;
+            }
+            let range = fingerprint::image_range(&ProcessMemory, base as usize);
+            match &range {
+                Some(r) => log::line(format_args!(
+                    "{name} loaded at 0x{:08x}..0x{:08x}; its hooks may be chained",
+                    r.start, r.end
+                )),
+                None => log::line(format_args!(
+                    "{name} loaded at 0x{:08x} but its PE header is unreadable",
+                    base as usize
+                )),
+            }
+            range
+        })
+        .collect()
 }
 
 /// Resolve the `lua51.dll` exports, waiting up to [`LUA_WAIT`] for the
