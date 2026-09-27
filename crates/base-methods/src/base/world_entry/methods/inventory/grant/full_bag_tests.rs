@@ -85,10 +85,8 @@ fn sent_texts(transport: &TestTransport) -> Vec<String> {
         .flat_map(|pt| {
             // The text may start at either byte parity; read both.
             [0usize, 1].map(|skip| {
-                let units: Vec<u16> = pt[skip..]
-                    .chunks_exact(2)
-                    .map(|b| u16::from_le_bytes([b[0], b[1]]))
-                    .collect();
+                let (pairs, _) = pt[skip..].as_chunks::<2>();
+                let units: Vec<u16> = pairs.iter().map(|b| u16::from_le_bytes(*b)).collect();
                 String::from_utf16_lossy(&units)
             })
         })
