@@ -6,6 +6,7 @@
 //! character before acting. Later packets add their handlers to this file
 //! rather than to `mod.rs`.
 
+use cimmeria_entity::cell_entity::VaultCloseReason;
 use cimmeria_entity::organization::OrgLeaveReason;
 use tokio::sync::mpsc;
 
@@ -70,16 +71,20 @@ pub(super) async fn handle(
 /// An online player stopped being a member of a Team or Command (ORG-06's
 /// Bank hook, sent by the base beside every `onOrganizationLeft` [36]).
 ///
-/// For now it only logs DEBUG `org.membership_ended`. **The Bank / Vault
-/// campaign (BV-07) extends this function** to close any Team or Command
-/// vault session the player has open (`vault_session_closed`,
-/// `reason = org_left`); ORG-07 sends it on a kick too.
+/// Logs DEBUG `org.membership_ended`, then ends a Team or Command vault
+/// session of that organization the player still has open
+/// (`vault_session_closed`, `reason = org_left`; bank-vault BV-07), so the
+/// window's next move is refused at the cell as `no_vault_session`. The base
+/// would refuse it anyway, since every move re-checks membership under the
+/// organization lock; this makes the refusal immediate and visible in the
+/// log. A personal session, or another organization's, is left alone.
+/// ORG-07 sends the message on a kick too.
 fn membership_ended(
     player_id: i32,
     entity_id: u32,
     org_id: i32,
     reason: OrgLeaveReason,
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) {
     let live = space_mgr.player_identity(entity_id);
     tracing::debug!(
@@ -93,4 +98,14 @@ fn membership_ended(
         live_entity = live.player_id == Some(player_id),
         "a player left a Team or Command"
     );
+    if live.player_id != Some(player_id) {
+        return;
+    }
+    let org_session = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.vault_session.as_ref())
+        .is_some_and(|s| s.org_id == Some(org_id));
+    if org_session {
+        space_mgr.end_vault_session(entity_id, VaultCloseReason::OrgLeft);
+    }
 }

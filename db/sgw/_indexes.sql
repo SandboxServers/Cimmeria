@@ -71,3 +71,11 @@ CREATE UNIQUE INDEX sgw_organization_members_one_leader_idx ON sgw_organization_
 
 CREATE INDEX sgw_organization_events_unexported_idx ON sgw_organization_events USING btree (tx_id, org_event_id) WHERE exported_at IS NULL;
 
+--
+-- Index: sgw_organization_vault_log_org_idx
+-- The ViewBankLogs read and support queries: one organization's vault
+-- moves in time order (bank-vault BV-07).
+--
+
+CREATE INDEX sgw_organization_vault_log_org_idx ON sgw_organization_vault_log USING btree (org_id, logged_at);
+

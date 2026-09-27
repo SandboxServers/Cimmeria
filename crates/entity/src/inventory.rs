@@ -46,12 +46,13 @@ pub const INV_COMMAND_BANK: i32 = 20;
 ///
 /// - The personal vault (17) is sized per player by `sgw_player.bank_slots`
 ///   (see [`Inventory::with_bank_slots`]).
-/// - The Team (19) and Command (20) vaults are sized per organization. The
-///   client derives their visible grid from the declared container size
-///   (`Team.lua` / `Command.lua` `ValidateScrollbar`, "40 to 100, in
-///   intervals of 10"; organizations audit A-15). No per-organization size
-///   is stored or sent yet, so `onBagInfo` declares them at the ceiling
-///   until the org-vault packets add one.
+/// - The Team vault (19) is sized per Team by `sgw_organizations.vault_slots`
+///   (40 to 100, in steps of 10: `Team.lua` `ValidateScrollbar`,
+///   organizations audit A-15; D-BV14) and the Command vault (20) is fixed
+///   at 100. The client derives the visible grid from the declared size.
+///   World entry declares both at the ceiling; opening an org vault
+///   re-sends `onBagInfo` with the Team's own size (see
+///   [`Inventory::with_org_vault_slots`], bank-vault BV-07).
 ///
 /// A non-zero capacity does not make a container player-movable: the move
 /// path's allowlist decides that.
@@ -71,6 +72,13 @@ pub const fn bag_max_slots(container_id: i32) -> i32 {
 /// Personal vault size of a player who has never expanded it: the
 /// `sgw_player.bank_slots` column default.
 pub const BANK_SLOTS_DEFAULT: i32 = 40;
+
+/// Team vault (19) size of a Team that has never expanded it: the
+/// `sgw_organizations.vault_slots` column default (D-BV14).
+pub const TEAM_VAULT_SLOTS_DEFAULT: i32 = 40;
+
+/// Command vault (20) size: fixed (D-BV14).
+pub const COMMAND_VAULT_SLOTS: i32 = 100;
 
 /// Every container `onBagInfo` declares, with its capacity, in id order.
 ///
@@ -193,6 +201,23 @@ impl Inventory {
                 slots,
             },
         );
+        self
+    }
+
+    /// Declare an org vault (19 or 20) at `slots` instead of the ceiling,
+    /// clamped to `0..=bag_max_slots(container_id)` like
+    /// [`Self::with_bank_slots`]. Any other container is left unchanged.
+    pub fn with_org_vault_slots(mut self, container_id: i32, slots: i32) -> Self {
+        if matches!(container_id, INV_TEAM_BANK | INV_COMMAND_BANK) {
+            let slots = slots.clamp(0, bag_max_slots(container_id));
+            self.bags.insert(
+                container_id,
+                Bag {
+                    bag_id: container_id,
+                    slots,
+                },
+            );
+        }
         self
     }
 
@@ -377,6 +402,19 @@ mod tests {
     /// Before BV-01 they were two hand-written tables that disagreed on
     /// 17-20 (audit A-20, A-21): the client was told about slots the
     /// server refused.
+    /// An org vault is declared at the size given, clamped to its ceiling;
+    /// no other container can be resized through it (BV-07).
+    #[test]
+    fn with_org_vault_slots_sizes_only_the_org_vaults() {
+        let inv = Inventory::new(0)
+            .with_org_vault_slots(INV_TEAM_BANK, 60)
+            .with_org_vault_slots(INV_COMMAND_BANK, 150)
+            .with_org_vault_slots(INV_MAIN, 5);
+        assert_eq!(inv.get_bag(INV_TEAM_BANK).unwrap().slots, 60);
+        assert_eq!(inv.get_bag(INV_COMMAND_BANK).unwrap().slots, 100);
+        assert_eq!(inv.get_bag(INV_MAIN).unwrap().slots, 40);
+    }
+
     #[test]
     fn bag_max_slots_agrees_with_bag_sizes_for_every_container() {
         assert_eq!(BAG_SIZES.len(), 20, "onBagInfo declares containers 1-20");

@@ -4,8 +4,10 @@
 //! The session lives on the `CellEntity`, so it cannot outlive the entity;
 //! this module makes each end visible. `disconnect_entity` ends it with
 //! `logout` before the teardown, `destroy_entity` with `space_change` (every
-//! other player destroy is a move to another space), and the interaction
-//! pin (`cimmeria-cell-interactions`) with `re_pin`. Opening lives beside
+//! other player destroy is a move to another space), the interaction
+//! pin (`cimmeria-cell-interactions`) with `re_pin`, and the end of the
+//! player's membership of the organization whose vault is open (the cell's
+//! `OrgMembershipEnded` arm, BV-07) with `org_left`. Opening lives beside
 //! the Banker arm in `cell::interactions::bank`.
 
 use cimmeria_entity::cell_entity::{PlayerIdentity, VaultCloseReason, VaultSession};
@@ -42,6 +44,7 @@ pub fn log_vault_session_closed(
         entity_id,
         reason = reason.as_str(),
         scope = session.scope.as_str(),
+        org_id = session.org_id,
         banker_id = session.banker_id,
         gm_override = session.banker_id.is_none(),
         space_id = session.space_id,
@@ -68,6 +71,7 @@ mod tests {
         p.account_id = Some(6);
         p.player_id = Some(12);
         p.vault_session = Some(VaultSession {
+            org_id: None,
             scope: VaultScope::Personal,
             banker_id: Some(100_001),
             space_id: 1,

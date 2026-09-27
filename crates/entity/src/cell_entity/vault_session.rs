@@ -32,6 +32,35 @@ impl VaultScope {
             VaultScope::Command => "command",
         }
     }
+
+    /// The container this scope's vault is: 17, 19 or 20.
+    pub fn container_id(self) -> i32 {
+        match self {
+            VaultScope::Personal => crate::inventory::INV_BANK,
+            VaultScope::Team => crate::inventory::INV_TEAM_BANK,
+            VaultScope::Command => crate::inventory::INV_COMMAND_BANK,
+        }
+    }
+
+    /// The org vault scope of `container_id`: `Team` for 19, `Command` for
+    /// 20, `None` for anything else (the personal vault included).
+    pub fn org_vault_for_container(container_id: i32) -> Option<VaultScope> {
+        match container_id {
+            crate::inventory::INV_TEAM_BANK => Some(VaultScope::Team),
+            crate::inventory::INV_COMMAND_BANK => Some(VaultScope::Command),
+            _ => None,
+        }
+    }
+
+    /// The `org_type` (1 Team, 2 Command) an org vault scope belongs to;
+    /// `None` for the personal vault.
+    pub fn org_type(self) -> Option<crate::organization::OrgType> {
+        match self {
+            VaultScope::Personal => None,
+            VaultScope::Team => Some(crate::organization::OrgType::Team),
+            VaultScope::Command => Some(crate::organization::OrgType::Command),
+        }
+    }
 }
 
 /// Parse the `entity_templates.vault_scope` column. The column's `CHECK`
@@ -61,6 +90,9 @@ pub enum VaultCloseReason {
     Logout,
     /// A later `interact` pinned a different target.
     RePin,
+    /// The player left, was kicked from, or disbanded the Team or Command
+    /// whose vault was open (BV-07, ORG-06's `OrgMembershipEnded`).
+    OrgLeft,
 }
 
 impl VaultCloseReason {
@@ -70,6 +102,7 @@ impl VaultCloseReason {
             VaultCloseReason::SpaceChange => "space_change",
             VaultCloseReason::Logout => "logout",
             VaultCloseReason::RePin => "re_pin",
+            VaultCloseReason::OrgLeft => "org_left",
         }
     }
 }
@@ -79,9 +112,12 @@ impl VaultCloseReason {
 /// Set only by the Banker interaction arm and by the GM `.bank` command.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VaultSession {
-    /// Which vault is open. Only `Personal` is ever set until the org
-    /// vaults land (Wave 4).
+    /// Which vault is open.
     pub scope: VaultScope,
+    /// The Team or Command whose vault is open: `Some` exactly when `scope`
+    /// is `Team` or `Command`. The base granted it after checking
+    /// membership under the organization lock (BV-07); every move re-checks.
+    pub org_id: Option<i32>,
     /// The Banker the session is pinned to. `None` is a GM `.bank` session,
     /// which has no counter and skips the proximity check.
     pub banker_id: Option<u32>,
@@ -139,6 +175,7 @@ mod tests {
     fn session(banker_id: Option<u32>) -> VaultSession {
         VaultSession {
             scope: VaultScope::Personal,
+            org_id: None,
             banker_id,
             space_id: 1,
             opened_at: std::time::Instant::now(),
@@ -165,6 +202,26 @@ mod tests {
         p.vault_session = Some(session(None));
         assert!(p.pin_interaction_target(500).is_some());
         assert!(p.vault_session.is_none(), "a GM session ends on any pin");
+    }
+
+    /// Each scope's container, and back for the org vaults only.
+    #[test]
+    fn scopes_map_to_their_containers() {
+        assert_eq!(VaultScope::Personal.container_id(), 17);
+        assert_eq!(VaultScope::Team.container_id(), 19);
+        assert_eq!(VaultScope::Command.container_id(), 20);
+        assert_eq!(
+            VaultScope::org_vault_for_container(19),
+            Some(VaultScope::Team)
+        );
+        assert_eq!(
+            VaultScope::org_vault_for_container(20),
+            Some(VaultScope::Command)
+        );
+        for other in [17, 18, 1, 0, 21] {
+            assert_eq!(VaultScope::org_vault_for_container(other), None, "{other}");
+        }
+        assert_eq!(VaultScope::Personal.org_type(), None);
     }
 
     /// Every value the column's CHECK allows round-trips; anything else is

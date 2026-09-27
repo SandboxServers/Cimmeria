@@ -39,6 +39,7 @@ pub(super) const BANKER: u32 = 0x7000_BBD0;
 
 /// Next to the Banker, 2.5 units away.
 pub(super) const AT_BANKER: VaultAccess = VaultAccess::Open {
+    org_id: None,
     scope: VaultScope::Personal,
     banker_id: Some(BANKER),
     distance: Some(2.5),
@@ -283,6 +284,7 @@ async fn a_gm_session_expands_without_a_banker() {
     setup(&pool, c, 60, 100).await;
     let client = in_world(c, 40901);
     let gm = VaultAccess::Open {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id: None,
         distance: None,

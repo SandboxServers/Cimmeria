@@ -18,6 +18,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 
 /// A GM `.bank` session: open, no Banker.
 const GM_SESSION: VaultAccess = VaultAccess::Open {
+    org_id: None,
     scope: VaultScope::Personal,
     banker_id: None,
     distance: None,

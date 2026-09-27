@@ -18,6 +18,7 @@
 //! - `LootGrantRefused` goes straight to `cell::interactions` (the item goes
 //!   back on its corpse)
 //! - [`org`] — `Org` (organization traffic: the squad invite and kick)
+//! - [`bank`] — `Bank` (the Team and Command vault grant, BV-07)
 //! - `Duel` goes straight to `cell::duel::challenge` (SS-D1)
 //! - [`ignore`] — `UpdateIgnoreList` (the Ignore set spatial chat reads, SS-C1)
 

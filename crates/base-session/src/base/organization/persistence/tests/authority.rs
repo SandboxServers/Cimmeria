@@ -174,8 +174,8 @@ async fn rank_rows_are_per_type_in_sql() {
     teardown(&pool, &fx).await;
 }
 
-/// The Rust vault predicate and its SQL twin must agree (both stubs today;
-/// the Bank campaign replaces both).
+/// The Rust vault predicate and its SQL twin agree on an empty vault. Their
+/// agreement on items and cash is `vault::vault_predicate_follows_items_and_cash`.
 #[tokio::test]
 async fn vault_stubs_agree() {
     let pool = require_db_or_skip!();

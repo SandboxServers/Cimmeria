@@ -19,7 +19,8 @@
 //!   another transaction (`OrgStoreError::ActorMismatch`,
 //!   `OrgStoreError::StaleAccess`).
 //! - [`org_vault_is_empty`] is the vault predicate every voluntary disband
-//!   checks (D-ORG20). A stub until the Bank campaign's vault lands.
+//!   checks (D-ORG20): no rows in `sgw_organization_vault_items` and no
+//!   treasury cash (bank-vault BV-07).
 //!
 //! - [`broadcast_to_org`] sends one client method to every online member,
 //!   optionally only those whose rank holds a permission (ORG-07). Call it
@@ -74,6 +75,16 @@
 //! account-delete path must drop the account's sessions first. A new path
 //! that waits on a member's `sgw_player` row while holding the organization
 //! breaks this and must take the row first, as in (2).
+//!
+//! The Team and Command vaults (bank-vault BV-07) are such a path. A
+//! withdrawal inserts into `sgw_inventory`, whose foreign key takes `KEY
+//! SHARE` on the mover's `sgw_player` row, and a GM or account delete of an
+//! online mover would hold that row while waiting on its organizations. So
+//! every vault action takes `FOR KEY SHARE` on the actor's `sgw_player` row
+//! **before** [`lock_org`] (`inventory::org_vault::access::lock_actor`):
+//! the delete then waits on the action, or the action on the delete, with
+//! no cycle. `KEY SHARE` does not conflict with the `NO KEY UPDATE` a cash
+//! change takes.
 //!
 //! All of this assumes READ COMMITTED, the server's isolation level: a
 //! statement after the lock wait sees what the previous lock holder
@@ -364,32 +375,36 @@ pub async fn member_access_locked(
     Ok(Some(access))
 }
 
-/// `true` when the organization's vault holds no items and its treasury no
-/// cash (D-ORG20). Every voluntary disband checks it under ORG-LOCK and
-/// refuses when it is `false`.
+/// `true` when the organization's vault holds no items
+/// (`sgw_organization_vault_items`) and its treasury no cash (D-ORG20,
+/// D-BV13). Every voluntary disband checks it under ORG-LOCK and refuses
+/// when it is `false`.
 ///
-/// **Stub:** always `true` until the Bank / Vault campaign replaces it. Its
-/// SQL twin, `org_vault_is_empty_sql(org_id)` (`db/sgw/_functions.sql`), is
-/// what the member-delete trigger calls when a character delete removes the
-/// last member; the Bank campaign replaces both, and they must agree.
+/// It runs `org_vault_is_empty_sql(org_id)` (`db/sgw/_functions.sql`), the
+/// function the member-delete trigger calls when a character delete removes
+/// the last member, rather than repeating its query, so the two cannot
+/// disagree. The caller holds the organization lock, which every vault and
+/// cash write takes first, so the answer holds until it commits.
 pub async fn org_vault_is_empty(
-    _tx: &mut Transaction<'_, Postgres>,
-    _org_id: i32,
+    tx: &mut Transaction<'_, Postgres>,
+    org_id: i32,
 ) -> Result<bool, sqlx::Error> {
     #[cfg(test)]
     if let Ok(empty) = VAULT_EMPTY_OVERRIDE.try_with(|v| *v) {
         return Ok(empty);
     }
-    Ok(true)
+    sqlx::query_scalar("SELECT org_vault_is_empty_sql($1)")
+        .bind(org_id)
+        .fetch_one(&mut **tx)
+        .await
 }
 
 #[cfg(test)]
 tokio::task_local! {
-    /// Test seam for the stub: a test scopes `false` to drive the
-    /// `vault_not_empty` refusal (ORG-06) before the Bank's real vault
-    /// exists. Task-local, so parallel tests never see each other's value.
-    /// The Bank campaign replaces the stub, and its tests use real vault
-    /// rows instead.
+    /// Test seam: a test scopes `false` to drive the `vault_not_empty`
+    /// refusal (ORG-06) without staging vault rows. Task-local, so parallel
+    /// tests never see each other's value. The real predicate is guarded by
+    /// the Bank campaign's live-DB tests on real vault rows (BV-07).
     pub(crate) static VAULT_EMPTY_OVERRIDE: bool;
 }
 

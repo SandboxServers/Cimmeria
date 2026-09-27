@@ -51,7 +51,7 @@ The schema and the base-side persistence layer came with ORG-02; see [Persistenc
 | Experience tracking | NOT IMPL | `onOrganizationExperienceUpdate` (CM 44) never sent |
 | Persistence | IMPLEMENTED | Tables, constraints, the leader trigger and the locked write API (ORG-02, [Persistence](#persistence)); the creation handlers (ORG-05), the ORG-06 and the ORG-07 handlers use them |
 | Organization chat | DONE (not client-tested) | Team (3), command (5) and officer (6) lines are handled on the base and reach the online members of the speaker's Team or Command; officer needs `OfficerChat` (ORG-09, [below](#team-command-and-officer-chat-org-09)). Squad chat (4) is ORG-04 |
-| Organization vault | NOT IMPL | Only `onClearOrgVaultInventory` reference |
+| Organization vault | PARTIAL | Storage (`sgw_organization_vault_items`), the Team/Command Banker open and the vault session (bank-vault BV-07a); moves are BV-07b. See [inventory-system.md](inventory-system.md#opening-a-team-or-command-vault) |
 
 ## Creation (ORG-05)
 
@@ -92,7 +92,7 @@ An `AFTER DELETE` trigger on `sgw_organization_members` (`org_member_after_delet
 2. Otherwise it promotes the highest-ranked member to Leader, the longest-standing (earliest `joined_at`, then lowest `player_id`) among equals.
 3. If nobody remains, it calls `org_vault_is_empty_sql(org_id)`. An empty vault disbands the organization. A non-empty one leaves a **memberless organization** that keeps its vault for GM recovery; a memberless organization accepts a new member only as Leader.
 
-`org_vault_is_empty_sql` is a stub that returns true. The Bank / Vault campaign replaces it, and its Rust twin `api::org_vault_is_empty`, when the vaults land.
+`org_vault_is_empty_sql` is true when the organization has no rows in `sgw_organization_vault_items` and no treasury cash (bank-vault BV-07). Its Rust twin `api::org_vault_is_empty` runs the SQL function, so the two cannot disagree. The vault's key to the organization is `ON DELETE RESTRICT`, so the trigger's delete of an organization whose vault still holds items could not succeed; the predicate is why it never tries.
 
 Every character delete keeps the lock order in the database, whatever issued it. A `BEFORE DELETE` trigger on `sgw_player` (`org_player_before_delete()`) locks the character's organizations in `org_id` order after the character row and before the member rows cascade. An account delete deletes all its characters in one statement, so a `BEFORE DELETE` trigger on `account` (`org_account_before_delete()`) first locks every character row in `player_id` order, then all their organizations in `org_id` order. The game's delete path, `organization::character_delete::delete_character`, adds an ownership check (another account's request locks nothing) and logs the trigger's results after its commit.
 
@@ -100,7 +100,7 @@ Every character delete keeps the lock order in the database, whatever issued it.
 
 The code is in [`crates/base-session/src/base/organization/`](../../crates/base-session/src/base/organization/):
 
-- `api.rs` (the ORG-API the Bank campaign builds on): `lock_org(tx, org_id)` takes `SELECT ... FOR UPDATE` on the organization row and returns its `OrgHeader`; `member_access_locked(tx, org_id, player_id)` takes that lock and returns the member's `OrgAccess` (type, rank, permissions) read under it; `OrgAccess::system(tx, org_id, actor)` builds one for a GM or server action and logs it (`org.gm_access` or `system_action`; ORG-10 renamed the GM row so that `org.gm_action` is only ever a GM command's result row); `org_vault_is_empty(tx, org_id)` is the vault stub. There is no pool-level membership check.
+- `api.rs` (the ORG-API the Bank campaign builds on): `lock_org(tx, org_id)` takes `SELECT ... FOR UPDATE` on the organization row and returns its `OrgHeader`; `member_access_locked(tx, org_id, player_id)` takes that lock and returns the member's `OrgAccess` (type, rank, permissions) read under it; `OrgAccess::system(tx, org_id, actor)` builds one for a GM or server action and logs it (`org.gm_access` or `system_action`; ORG-10 renamed the GM row so that `org.gm_action` is only ever a GM command's result row); `org_vault_is_empty(tx, org_id)` is the vault predicate (D-ORG20, D-BV13). There is no pool-level membership check.
 - `persistence/`: `create_org` (the organization, one rank row per `default_rank_permissions` entry, and the leader, all under a savepoint), `add_member`, `remove_member` (which reports what the trigger did: nothing, a promotion, a disband, or a memberless organization), `set_rank`, `set_text` (MOTD, note, officer note, rank name), `set_rank_permissions`, `disband` (refused while the vault is not empty), and the display reads `load_memberships`, `load_roster`, `load_ranks` and `name_available`.
 
 Every mutation takes a transaction and an `actor: &OrgAccess`, and locks the organization row first. It refuses an `OrgAccess` for another organization (`ActorMismatch`) or one read in another transaction (`StaleAccess`), so authorization is always read under the same lock as the write. The lock order is the organization row, then `sgw_player` rows, then item rows (D-ORG04); character deletes are the one exception, described in `api.rs` § "Lock order". Deciding who may invite, kick, promote or edit belongs to the handler, from that `OrgAccess`. The persistence layer enforces the data invariants:
@@ -168,9 +168,9 @@ The same hook tells contact-list watchers (CM 89 `LoggedInStatus`, offline). Bef
 
 `.org_disband <orgId>` is a GM console command. The cell forwards it (`OrgCellToBase::GmDisband`); the base re-reads the caller's access level from its own session (GameMaster or above), locks the organization, and refuses while the vault holds anything. It also disbands a memberless organization (D-ORG20's recovery case) once its vault is empty. Every online member gets `onOrganizationLeft` [36] with `Disbanded`, and the GM gets a line with the member count.
 
-Beside every `onOrganizationLeft` [36] to an online player (a leave, a disband, a kick), the base sends the cell `OrgBaseToCell::OrgMembershipEnded { player_id, entity_id, org_id, reason }` after the commit. The cell logs `org.membership_ended`; the Bank campaign's BV-07 extends that arm to close an open Team or Command vault session.
+Beside every `onOrganizationLeft` [36] to an online player (a leave, a disband, a kick), the base sends the cell `OrgBaseToCell::OrgMembershipEnded { player_id, entity_id, org_id, reason }` after the commit. The cell logs `org.membership_ended` and ends an open Team or Command vault session of that organization (`vault_session_closed reason=org_left`, bank-vault BV-07).
 
-The vault predicate is still the stub that returns true. The Bank campaign replaces `api::org_vault_is_empty`; until then, the tests drive the refusal through a test-only override of the stub.
+The vault predicate reads the real vault and treasury (bank-vault BV-07); its live-DB guards are in `persistence/tests/vault.rs`. The ORG-06 refusal tests still drive `vault_not_empty` through the test-only `VAULT_EMPTY_OVERRIDE`, so they need no vault rows.
 
 ### Telemetry (ORG-06)
 

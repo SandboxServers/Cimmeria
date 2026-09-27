@@ -148,13 +148,14 @@ async fn far_banker_click_logs_vault_open_rejected_out_of_range() {
     assert_eq!(rows(&capture, "vault_open_rejected").len(), 1);
 }
 
-/// Org Bankers: WARN `vault_open_rejected reason=org_vault_not_available`
-/// for both scopes, with the Banker and distance.
+/// Org Bankers: DEBUG `org_vault_open_requested` for both scopes, with
+/// the Banker, the space and the distance, and no `vault_open_rejected`.
 #[tokio::test]
-async fn org_banker_click_logs_vault_open_rejected_org_vault_not_available() {
+async fn org_banker_click_logs_org_vault_open_requested() {
     for scope in [VaultScope::Team, VaultScope::Command] {
         let mut mgr = two_space_manager();
         let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], scope);
+        let space = mgr.get_entity_space_id(PLAYER).unwrap().to_string();
         let (tx, _rx) = mpsc::channel(16);
         let capture = LogCapture::install();
 
@@ -162,16 +163,38 @@ async fn org_banker_click_logs_vault_open_rejected_org_vault_not_available() {
 
         one(
             &capture,
-            "vault_open_rejected",
-            Level::WARN,
+            "org_vault_open_requested",
+            Level::DEBUG,
             &[
-                ("reason", "org_vault_not_available"),
+                ("scope", scope.as_str()),
                 ("banker_id", &banker.to_string()),
+                ("space_id", &space),
                 ("distance", "2.0"),
             ],
         );
+        assert!(rows(&capture, "vault_open_rejected").is_empty());
         assert!(rows(&capture, "vault_session_opened").is_empty());
     }
+}
+
+/// A closed base channel on the org request: WARN `vault_open_send_failed
+/// reason=base_channel_closed` with the scope.
+#[tokio::test]
+async fn closed_channel_on_the_org_request_logs_vault_open_send_failed() {
+    let mut mgr = two_space_manager();
+    let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Team);
+    let (tx, rx) = mpsc::channel(16);
+    drop(rx);
+    let capture = LogCapture::install();
+
+    handle_interact(PLAYER, banker, &tx, &mut mgr).await;
+
+    one(
+        &capture,
+        "vault_open_send_failed",
+        Level::WARN,
+        &[("reason", "base_channel_closed"), ("scope", "team")],
+    );
 }
 
 /// Banker lookup miss: WARN `vault_open_rejected reason=banker_missing`,
@@ -245,7 +268,8 @@ async fn closed_channel_logs_vault_open_send_failed() {
 #[tokio::test]
 async fn closed_channel_logs_bank_feedback_send_failed() {
     let mut mgr = two_space_manager();
-    let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Team);
+    // Out of range, so the refusal has a line to send.
+    let banker = spawn_banker(&mut mgr, "Agnos", [10.0, 0.0, 0.0], VaultScope::Personal);
     let (tx, rx) = mpsc::channel(16);
     drop(rx);
     let capture = LogCapture::install();
@@ -265,18 +289,9 @@ async fn closed_channel_logs_bank_feedback_send_failed() {
 fn vault_open_reject_reasons_are_the_catalog_strings() {
     let all = [
         VaultOpenReject::OutOfRange,
-        VaultOpenReject::OrgVaultNotAvailable,
         VaultOpenReject::NotGm,
         VaultOpenReject::BankerMissing,
     ];
     let reasons: Vec<_> = all.iter().map(|r| r.reason()).collect();
-    assert_eq!(
-        reasons,
-        [
-            "out_of_range",
-            "org_vault_not_available",
-            "not_gm",
-            "banker_missing"
-        ]
-    );
+    assert_eq!(reasons, ["out_of_range", "not_gm", "banker_missing"]);
 }

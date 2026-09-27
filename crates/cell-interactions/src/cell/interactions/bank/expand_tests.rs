@@ -348,6 +348,7 @@ async fn the_answer_carries_the_offer_once_with_an_open_verdict() {
     answer_vault_expansion(PLAYER, 8, &tx, &mut mgr).await;
 
     let open = VaultAccess::Open {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id: Some(banker),
         distance: Some(2.0),

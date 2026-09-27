@@ -25,6 +25,7 @@ mod constraints;
 mod mutations;
 mod telemetry;
 mod trigger;
+mod vault;
 
 use std::time::Duration;
 

@@ -13,17 +13,26 @@
 -- organization, a non-empty one leaves it memberless so a GM can recover the
 -- contents (D-ORG20).
 --
--- STUB. The organizations campaign ships it returning TRUE; the Bank / Vault
--- campaign replaces it (CREATE OR REPLACE, same signature) when the Team and
--- Command vaults land. Its Rust twin is
+-- The vault is sgw_organization_vault_items (bank-vault BV-07) and the
+-- treasury is sgw_organizations.cash. A missing organization counts as
+-- empty (there is nothing to keep). Its Rust twin,
 -- cimmeria_base_session::base::organization::api::org_vault_is_empty, which
--- every voluntary disband calls; the two must agree.
+-- every voluntary disband calls, runs this function rather than repeating
+-- the query, so the two cannot disagree. Callers hold the organization row
+-- lock, and every vault or cash write takes it first, so the answer holds
+-- until they commit.
 --
 
 CREATE FUNCTION org_vault_is_empty_sql(p_org_id integer) RETURNS boolean
     LANGUAGE sql STABLE
     AS $$
-    SELECT true
+    SELECT NOT EXISTS (
+               SELECT 1 FROM sgw_organization_vault_items WHERE org_id = p_org_id
+           )
+       AND COALESCE(
+               (SELECT cash = 0 FROM sgw_organizations WHERE org_id = p_org_id),
+               true
+           )
 $$;
 
 --

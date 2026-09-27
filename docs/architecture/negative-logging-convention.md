@@ -346,7 +346,7 @@ because `onErrorCode` has no Lua consumer in the shipped client (AT-E1).
 
 | `event` | `reason` | Fields |
 |---|---|---|
-| `vault_open_rejected` | `out_of_range` (a Banker click from beyond the interact distance, or from another space), `org_vault_not_available` (a `team` or `command` Banker), `not_gm` (`.bank` from a player), `banker_missing` (the Banker vanished between the range gate and the arm) | `banker_id`, `distance` (absent when the Banker is in another space or gone) |
+| `vault_open_rejected` | `out_of_range` (a Banker click from beyond the interact distance, or from another space), `not_gm` (`.bank` from a player), `banker_missing` (the Banker vanished between the range gate and the arm) | `banker_id`, `distance` (absent when the Banker is in another space or gone) |
 | `vault_open_send_failed` | `base_channel_closed` (the `onVaultOpen` send to the base failed: the session is open but the window never appeared) | `banker_id`, `error` |
 | `bank_feedback_send_failed` | `base_channel_closed` (a refusal line could not be queued) | `error` |
 
@@ -358,6 +358,28 @@ query on the target finds every open refusal). The `LogCapture`
 guards are in `cell-interactions` `cell/interactions/bank/telemetry_tests.rs`
 (one per reason and seam) and `cell-console` `console/tests/bv02_bank.rs`
 (`not_gm`).
+
+## Team and Command vault open refusals (BV-07)
+
+Target `bank`, WARN. `org_vault_open_rejected` carries `reason`, `org_id`
+(when known), `org_type`, `scope`, `banker_id`, and on the base
+`space_id` and `distance`. Each reason with a player to tell also sends a
+`CHAN_FEEDBACK` line.
+
+| Side | `reason` | Meaning |
+|---|---|---|
+| base | `not_in_org` | the player is in no Team or Command of that type |
+| base | `not_a_member`, `no_such_org`, `wrong_org_type`, `player_missing` | the check under the organization lock failed |
+| base | `player_unknown` | the cell sent no `player_id` |
+| base | `open_query_failed` | a database error, logged at ERROR with it first |
+| base | `cell_channel_closed` | the grant could not reach the cell; no window opens |
+| cell | `banker_not_pinned`, `out_of_range`, `banker_missing` | the grant arrived after the player moved on |
+| cell | `stale_entity`, `player_entity_missing` | the entity is another character, or gone; no line |
+
+A closed base channel on the cell's request is `vault_open_send_failed
+reason=base_channel_closed` with the `scope`. The `LogCapture` guards are
+`cell-interactions` `bank/org_open_tests.rs` and `bank/telemetry_tests.rs`,
+and `base-methods` `inventory/org_vault/tests/open.rs`.
 
 ## Vault moves, use and removal (BV-03)
 
