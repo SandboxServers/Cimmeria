@@ -271,7 +271,7 @@ Each is an effect script or a target redirect ("the owner's pet") and gets its o
 
 ### PT-11
 
-**Status:** Review (branch `pets/pt-11-roster`; worknote [pt-11](worknotes/pt-11.md)). **Scope title:** the rest of the Servant Lord roster (D-PT13 order). **Agent:** rust-gameserver-dev.
+**Status:** Review (PR #918; worknote [pt-11](worknotes/pt-11.md)). **Scope title:** the rest of the Servant Lord roster (D-PT13 order). **Agent:** rust-gameserver-dev.
 **Scope:**
 
 - templates 351-353 and `pet_summons` rows for Jaffa (1643 → 351, a clone of 160, name 8087), Prime (1645, Praxis Jaffa Lieutenant look, name 28892) and Lo'taur (1644, Goa'uld servant dress, name 28891);
