@@ -7,10 +7,10 @@
 
 use super::super::*;
 use super::one_session;
+use crate::base::crafting::feedback::feedback_text_args;
 use crate::cell::messages::{CraftRequest, CraftVerb};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{LogCapture, TestTransport};
-use cimmeria_base_session::base::gm_feedback::feedback_line_args;
 
 #[tokio::test]
 async fn crafting_request_is_logged_and_answered_with_feedback() {
@@ -51,10 +51,12 @@ async fn crafting_request_is_logged_and_answered_with_feedback() {
         &[],
         entity_id,
         method_idx::ON_PLAYER_COMMUNICATION,
-        &feedback_line_args("Alloying is not available yet."),
+        &feedback_text_args("Alloying is not available yet."),
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
-    assert_eq!(sent[0], expected, "the feedback line, byte for byte");
+    // `feedback_text_args` is speaker SYSTEM on CHAN_FEEDBACK, so this pins
+    // the channel as well as the text.
+    assert_eq!(sent[0], expected, "the CHAN_FEEDBACK line, byte for byte");
 
     let event = capture
         .find_message(tracing::Level::INFO, "crafting request")

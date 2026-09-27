@@ -1,11 +1,12 @@
 //! The crafting rejection path (D-CR14): every refused request gets a
 //! visible text line, and an `onErrorCode` where a condition code fits.
 //!
-//! The text rides the same `onPlayerCommunication` feedback line as the GM
-//! command confirmations (`base::gm_feedback`): speaker `SYSTEM` on the
-//! registered `tell` channel, which every client shows in chat. Whether the
-//! client prints anything for `onErrorCode` is unresolved (CR-E1 Q3), so the
-//! code is never the only feedback.
+//! The text is the legacy `feedback()` line: `onPlayerCommunication` from
+//! speaker `SYSTEM` on `CHAN_FEEDBACK`, built by the one shared serializer in
+//! `cimmeria_wire::cell::chat`. That is the path CR-E1 found reaching the
+//! player's chat. Whether the client shows anything for `onErrorCode` is
+//! unresolved (CR-E1), so the code is only ever a secondary signal, sent
+//! after the text and only for the ASP codes 213/214.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -13,11 +14,11 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 
-use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::CraftVerb;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 /// Why a crafting request was refused. Later packets add one variant per
 /// reason; each needs a `reason`, a `text` and an `error_code` arm.
@@ -60,9 +61,10 @@ impl CraftReject {
         }
     }
 
-    /// The `EConditionHandlerFeedback` value sent as `onErrorCode`, where one
-    /// fits (the `CONDITION_FEEDBACK_*` constants in
-    /// `cimmeria_cell_catalog::crafting`).
+    /// The `EConditionHandlerFeedback` value sent as a secondary
+    /// `onErrorCode`. Only the ASP codes qualify (213/214, the
+    /// `CONDITION_FEEDBACK_*` constants in `cimmeria_cell_catalog::crafting`);
+    /// every other reason is text only.
     pub fn error_code(&self) -> Option<u16> {
         match self {
             CraftReject::NotAvailableYet { .. } => None,
@@ -85,9 +87,15 @@ pub fn error_code_args(code: u16) -> Vec<u8> {
     args
 }
 
-/// Refuse a crafting request: log `crafting` `rejected`, send the text line
-/// to the player's client and, where [`CraftReject::error_code`] maps one,
-/// `onErrorCode` after it.
+/// The `onPlayerCommunication` argument bytes of a crafting feedback line:
+/// speaker `SYSTEM`, flags 0, channel `CHAN_FEEDBACK`, then `text`.
+pub fn feedback_text_args(text: &str) -> Vec<u8> {
+    serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text)
+}
+
+/// Refuse a crafting request: log `crafting` `rejected`, send the
+/// `CHAN_FEEDBACK` text line to the player's own client and, where
+/// [`CraftReject::error_code`] maps one, `onErrorCode` after it.
 pub async fn reject(
     entity_id: u32,
     player_id: i32,
@@ -104,12 +112,23 @@ pub async fn reject(
         reason = reject.reason(),
         "crafting request rejected"
     );
-    send_gm_feedback_to_client(
-        entity_id,
-        &reject.text(),
+    let text_args = feedback_text_args(&reject.text());
+    send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
+        entity_id,
+        |key, version, seq, acks| {
+            build_player_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_PLAYER_COMMUNICATION,
+                &text_args,
+                version,
+            )
+        },
     )
     .await;
     if let Some(code) = reject.error_code() {
@@ -138,7 +157,6 @@ pub async fn reject(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::base::gm_feedback::feedback_line_args;
     use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
     use cimmeria_mercury::encryption::EncryptionVersion;
 
@@ -160,9 +178,10 @@ mod tests {
     }
 
     /// `reject` sends exactly one packet to the player's own client: the
-    /// feedback line carrying the rejection text, byte for byte. It also
-    /// logs `crafting` `rejected` with the reason. Removing the send (a
-    /// silent rejection, the D-CR14 bug shape) fails the packet count.
+    /// `CHAN_FEEDBACK` line carrying the rejection text, byte for byte. It
+    /// also logs `crafting` `rejected` with the reason. Removing the send (a
+    /// silent rejection, the D-CR14 bug shape) fails the packet count; a
+    /// line on any other channel fails the byte comparison.
     #[tokio::test]
     async fn reject_sends_the_text_line_to_the_players_client() {
         let capture = LogCapture::install();
@@ -190,7 +209,7 @@ mod tests {
             &[],
             ENTITY,
             method_idx::ON_PLAYER_COMMUNICATION,
-            &feedback_line_args("Crafting respec is not available yet."),
+            &feedback_text_args("Crafting respec is not available yet."),
             EncryptionVersion::V1,
         );
         assert_eq!(sent[0], expected);
@@ -247,6 +266,22 @@ mod tests {
             text(CraftVerb::Respec),
             "Crafting respec is not available yet."
         );
+    }
+
+    /// The line is `SYSTEM`, flags 0, on `CHAN_FEEDBACK` (9), then the text.
+    #[test]
+    fn feedback_text_rides_chan_feedback() {
+        let args = feedback_text_args("hi");
+        let speaker_end = 4 + "SYSTEM".len() * 2;
+        assert_eq!(u32::from_le_bytes(args[0..4].try_into().unwrap()), 6);
+        assert_eq!(args[speaker_end], 0, "speaker flags");
+        assert_eq!(args[speaker_end + 1], CHAN_FEEDBACK, "channel");
+        assert_eq!(
+            CHAN_FEEDBACK, 9,
+            "CHAN_feedback rides the registered tell channel"
+        );
+        assert_eq!(&args[speaker_end + 2..speaker_end + 6], &2u32.to_le_bytes());
+        assert_eq!(&args[speaker_end + 6..], &[b'h', 0, b'i', 0]);
     }
 
     /// `onErrorCode`: system 0, instance 0, then the code as UINT16.

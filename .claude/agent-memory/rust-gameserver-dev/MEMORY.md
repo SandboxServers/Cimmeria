@@ -36,7 +36,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns bytes consumed: `offset += n`, never `offset = n`.
 - [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — a bind pushes only `InteractionType`; method 104 is never emitted.
 - [cooked-pak-and-dialog-override-traps.md](cooked-pak-and-dialog-override-traps.md) — `data/cache/*.pak` IS in git; fail-closed patcher vs seed linter diverge silently.
-- [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — four method-28 serializers; `CHAN_FEEDBACK` is 9; `notify_gm` -> `gm_feedback_to` migration still owed; it is also the player text path.
+- [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — four method-28 serializers; `CHAN_FEEDBACK` is 9; `notify_gm` -> `gm_feedback_to` migration still owed; player text lines use `cell::chat` + `CHAN_FEEDBACK`.
 - [witness-entity-method-dual-fn.md](witness-entity-method-dual-fn.md) — two `witness_entity_method` fns; idbase 61 player / 62 NPC matters for index >= 61.
 - [cell-entity-direction-semantics.md](cell-entity-direction-semantics.md) — `direction` is `[pitch, yaw, roll]` radians for all entities; `[i8; 3]` param zeroes facing.
 
