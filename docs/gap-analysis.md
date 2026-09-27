@@ -729,7 +729,7 @@ last_updated: 2026-09-25
 | Pre-defined channels | IM | -- | base/world_entry_chat.rs:20-29 | **Corrected 2026-07-25.** All 8 canonical channels (say/emote/yell/team/squad/command/server=7/tell=9) are auto-joined on world entry and pushed as `onChatJoined` (world_entry_appearance/builders.rs:89). `chatJoin` is acknowledged as a no-op (dispatch/chat.rs:113-125). **No cross-player routing on the non-spatial channels yet** |
 | AFK / DND status | IM | -- | base/dispatch/chat.rs:82-90, 147-219 | `dnd_message` sets `SPEAKER_DND` on outgoing messages, matching `Chat.py::getSpeakerFlags`; stored text truncated to 128 chars (#739). `chatSetAFKMessage` is acknowledged but the auto-reply is not implemented (dispatch/chat.rs:134-145). The 2026-09-18 playtest logged one `chatSetDNDMessage: WSTRING decode failed` WARN (appendix-session-timeline.md line 124), not yet explained |
 | Channel ops | KM | -- | -- | setPlayerOp not ported |
-| Chat flood protection | KM | -- | -- | No rate limiting |
+| Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Per-player token bucket on every player channel, burst 5 then 1 line/s (D-SS14), GameMaster and above exempt; lines over 255 UTF-16 units refused (D-SS12). Both run on the base before the cell forward; the player gets one feedback line (at most one per 5 s) and SigNoz a `rate_limit.exceeded` / `chat.rejected` event. Type-12 guards; no in-client test on record |
 | Profanity filter | KM | -- | -- | No filtering |
 | Mute system | KM | -- | -- | No per-player muting |
 | GM broadcast | KM | Admin | -- | No system-wide message tool. GM feedback rides the `tell` channel to the caller only (cell/console/chat.rs:33-40) |
@@ -1128,13 +1128,13 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 
 ### Rate Limiting --- KM
 
-- **Confidence**: HIGH (code searched 2026-09-25: no chat, action, trade or login throttle anywhere in `crates/services`)
+- **Confidence**: HIGH (code searched 2026-09-25: no chat, action, trade or login throttle anywhere in `crates/services`; chat limit added 2026-09-27 by SS-00)
 - **Recent PRs**: #740 (dev-session token mint and refresh quotas, closes #441)
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
 | Ability cooldown enforcement | CW | -- | cell/abilities/ | Per-ability timers |
-| Chat flood protection | KM | -- | -- | No rate limit on messages |
+| Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Base-side token bucket (burst 5, 1/s) before the cell forward, not the cell-tick design in `server-infrastructure-proposals.md` §2, and enforced from day one (D-SS14). The same `rate_limit` module holds the mail-send (burst 3, 1/10 s) and duel-challenge (burst 2, 1/15 s) buckets, which SS-M1 and SS-D1 wire up. No in-client test on record |
 | Action throttling | KM | -- | -- | No per-action rate tracking |
 | Trade request spam | KM | Trade | -- | No request cooldown |
 | Login attempt limiting | KM | -- | -- | No brute-force protection on the auth service |
@@ -1269,7 +1269,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 18 | XP and Leveling | 11 | 9 | 0 | 1 | 1 | 0 |
 | 19 | Crafting | 9 | 0 | 0 | 2 | 7 | 0 |
 | 20 | Stargate Travel | 10 | 2 | 4 | 3 | 1 | 0 |
-| 21 | Chat | 10 | 0 | 1 | 2 | 7 | 0 |
+| 21 | Chat | 10 | 0 | 2 | 2 | 6 | 0 |
 | 22 | Trading | 8 | 0 | 0 | 8 | 0 | 0 |
 | 23 | Organizations / Guilds | 15 | 0 | 0 | 0 | 15 | 0 |
 | 24 | Mail | 13 | 0 | 2 | 2 | 8 | 1 |
@@ -1287,14 +1287,14 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 36 | Tauri Admin App + Tools | 13 | 2 | 2 | 6 | 3 | 0 |
 | 37 | Ring Transport | 9 | 3 | 4 | 2 | 0 | 0 |
 | -- | Session Management | 7 | 0 | 0 | 4 | 3 | 0 |
-| -- | Rate Limiting | 6 | 1 | 1 | 0 | 4 | 0 |
+| -- | Rate Limiting | 6 | 1 | 2 | 0 | 3 | 0 |
 | -- | Anti-Cheat Validation | 7 | 1 | 0 | 5 | 1 | 0 |
 | -- | Economy Sinks / Faucets | 7 | 0 | 4 | 0 | 3 | 0 |
 | -- | World State Persistence | 6 | 1 | 1 | 1 | 3 | 0 |
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 1 | 5 | 3 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **58** | **98** | **142** | **4** |
+| | **TOTALS** | **471** | **169** | **60** | **98** | **140** | **4** |
 
 ### Summary Percentages
 
@@ -1407,7 +1407,7 @@ Re-ranked 2026-09-25. #5 (speed-hack detection) is implemented but deliberately 
 | 1 | Crafting verbs | HIGH — entire skill tree unplayable | KM | Phase 1 state landed (#427); craft / research / RE / alloy / ASP-spend all log `UNIMPLEMENTED` |
 | 2 | AoI entity-introduction drop | HIGH — entities silently invisible | IM | Known-open. Address-gate hypothesis disproved 2026-06-20; Mercury delivery retired 2026-09-19 (every create ACKed first try), so the drop is client-side. `aoi.create_emit` now actually exports to SigNoz. The first-login cinematic hold (#747) is the experiment on the n=1 cinematic lead, and as of 2026-09-25 nobody has recorded an in-game look since it shipped |
 | 3 | Organizations / guilds | MEDIUM — no persistent social layer | KM | 200 lines of stubs, no schema |
-| 4 | Rate Limiting | MEDIUM — exploitable | KM | No throttle on chat / trade-request / login. Trading shipped without a request cooldown, so this got *worse* |
+| 4 | Rate Limiting | MEDIUM — exploitable | KM | Chat is limited since SS-00 (2026-09-27); trade requests and login are still unthrottled. Trading shipped without a request cooldown, so this got *worse* |
 | 5 | Speed-hack enforcement | MEDIUM — detection lands, action doesn't | IM | Layer is live but warn-only by design pending tolerance calibration from SigNoz |
 | 6 | Damage sanity checking | MEDIUM — no max-damage cap | KM | The one anti-cheat layer with no implementation at all |
 | 7 | Mission rewards | MEDIUM — missions pay nothing | KM | `GrantXP` action exists (#618) but no seed rows use it and `reward_xp` is 0 everywhere; cash and item rewards are never dispatched (#310) |

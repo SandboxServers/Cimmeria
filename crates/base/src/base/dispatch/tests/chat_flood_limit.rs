@@ -134,6 +134,15 @@ async fn chat_bucket_drops_sixth_line_in_one_second() {
         vec!["You are sending messages too quickly."],
         "the first drop tells the player, once"
     );
+    let accepted_rows = capture
+        .all()
+        .iter()
+        .filter(|c| c.level == Level::INFO && c.message_contains("sendPlayerCommunication"))
+        .count();
+    assert_eq!(
+        accepted_rows, 5,
+        "the per-line INFO row logs accepted lines only, so a flood cannot flood the log"
+    );
 }
 
 /// The feedback for a flood is itself limited to one line per 5 seconds;

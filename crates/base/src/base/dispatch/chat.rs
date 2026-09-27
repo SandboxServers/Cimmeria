@@ -97,15 +97,6 @@ pub(super) async fn send_player_communication_at(
 
     let speaker = player_name.as_deref().unwrap_or("Unknown");
 
-    tracing::info!(
-        %addr,
-        speaker,
-        channel,
-        target = if target.is_empty() { "<none>" } else { &target },
-        text_len = text.len(),
-        "sendPlayerCommunication"
-    );
-
     // Read player_eid + speaker flags and take the chat token under a
     // single lock acquisition. Computing `speaker_flags` matches
     // `python/base/Chat.py::getSpeakerFlags`:
@@ -166,6 +157,17 @@ pub(super) async fn send_player_communication_at(
         send_feedback_line(&feedback, addr, CHAT_TOO_LONG_TEXT).await;
         return;
     }
+
+    // Logged only once both gates pass: every field here is client-supplied,
+    // so a flooding client must not get one INFO row per packet.
+    tracing::info!(
+        %addr,
+        speaker,
+        channel,
+        target = if target.is_empty() { "<none>" } else { &target },
+        text_len = text.len(),
+        "sendPlayerCommunication"
+    );
 
     if let Some(player_eid) = player_eid {
         if let Some(ref tx) = cell_tx {
