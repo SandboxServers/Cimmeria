@@ -20,10 +20,18 @@
 -- note is the member's own roster note; officer_note is written by officers
 -- (D-ORG10 caps: 128 UTF-16 units each).
 --
+-- account_id is the owning account, copied from sgw_player when the member
+-- is added. A character never changes account, so the copy cannot go stale.
+-- It exists for the member-delete trigger: by the time the trigger runs on
+-- a character delete the sgw_player row is already gone, and the audit row
+-- in sgw_organization_events must still name the account (the telemetry
+-- identity rule).
+--
 
 CREATE TABLE sgw_organization_members (
     org_id integer NOT NULL,
     player_id integer NOT NULL,
+    account_id integer NOT NULL,
     org_type smallint NOT NULL,
     rank smallint NOT NULL,
     note character varying(128) NOT NULL DEFAULT '',

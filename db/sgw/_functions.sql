@@ -52,6 +52,10 @@ $$;
 -- Rules 2 and 3 run for any deleted member, not only the leader, so a
 -- leaderless organization, however it arose, is healed on the next delete.
 --
+-- Every promotion, disband and memberless result also writes a row to
+-- sgw_organization_events (reason character_deleted or member_removed), which
+-- Rust exports to the `org` log target: tracing cannot see inside Postgres.
+--
 -- Lock order (D-ORG04: organization row, then sgw_player, then items).
 -- Deleting a member row without holding its organization's lock inverts
 -- that order: the member row stays locked until commit while this trigger
@@ -81,6 +85,8 @@ CREATE FUNCTION org_member_after_delete() RETURNS trigger
     AS $$
 DECLARE
     v_next_leader integer;
+    v_next_account integer;
+    v_reason varchar(32);
 BEGIN
     PERFORM 1 FROM sgw_organizations WHERE org_id = OLD.org_id FOR UPDATE;
     IF NOT FOUND THEN
@@ -94,7 +100,15 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT player_id INTO v_next_leader
+    -- The character row goes first in a character delete (the member row
+    -- is its cascade), so a missing sgw_player row names the cause.
+    IF EXISTS (SELECT 1 FROM sgw_player WHERE player_id = OLD.player_id) THEN
+        v_reason := 'member_removed';
+    ELSE
+        v_reason := 'character_deleted';
+    END IF;
+
+    SELECT player_id, account_id INTO v_next_leader, v_next_account
       FROM sgw_organization_members
      WHERE org_id = OLD.org_id
      ORDER BY rank DESC, joined_at ASC, player_id ASC
@@ -104,11 +118,25 @@ BEGIN
         UPDATE sgw_organization_members
            SET rank = 8
          WHERE org_id = OLD.org_id AND player_id = v_next_leader;
+        INSERT INTO sgw_organization_events
+            (org_id, event, reason, from_player_id, from_account_id, to_player_id, to_account_id)
+        VALUES
+            (OLD.org_id, 'leader_changed', v_reason, OLD.player_id, OLD.account_id,
+             v_next_leader, v_next_account);
         RETURN NULL;
     END IF;
 
     IF org_vault_is_empty_sql(OLD.org_id) THEN
         DELETE FROM sgw_organizations WHERE org_id = OLD.org_id;
+        INSERT INTO sgw_organization_events
+            (org_id, event, reason, from_player_id, from_account_id)
+        VALUES
+            (OLD.org_id, 'disbanded', v_reason, OLD.player_id, OLD.account_id);
+    ELSE
+        INSERT INTO sgw_organization_events
+            (org_id, event, reason, from_player_id, from_account_id)
+        VALUES
+            (OLD.org_id, 'left_memberless', v_reason, OLD.player_id, OLD.account_id);
     END IF;
     RETURN NULL;
 END;

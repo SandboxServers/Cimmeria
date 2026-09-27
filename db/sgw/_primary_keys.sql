@@ -135,3 +135,10 @@ ALTER TABLE ONLY sgw_organization_members
 ALTER TABLE ONLY sgw_organization_members
     ADD CONSTRAINT sgw_organization_members_player_id_org_type_key UNIQUE (player_id, org_type);
 
+--
+-- Name: sgw_organization_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organization_events
+    ADD CONSTRAINT sgw_organization_events_pkey PRIMARY KEY (event_id);
+

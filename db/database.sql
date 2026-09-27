@@ -377,6 +377,7 @@
 \ir sgw/Players/Sequences/sgw_characters_character_id_seq.sql
 \ir sgw/Social/Sequences/sgw_contact_list_list_id_seq.sql
 \ir sgw/Organizations/Sequences/sgw_organizations_org_id_seq.sql
+\ir sgw/Organizations/Sequences/sgw_organization_events_event_id_seq.sql
 
 -- Tables
 \ir sgw/Accounts/Tables/account.sql
@@ -392,6 +393,7 @@
 \ir sgw/Organizations/Tables/sgw_organizations.sql
 \ir sgw/Organizations/Tables/sgw_organization_ranks.sql
 \ir sgw/Organizations/Tables/sgw_organization_members.sql
+\ir sgw/Organizations/Tables/sgw_organization_events.sql
 \ir sgw/Shards/Tables/shards.sql
 \ir sgw/Audit/Tables/login_audit.sql
 \ir sgw/Outbox/Tables/cell_event_outbox.sql

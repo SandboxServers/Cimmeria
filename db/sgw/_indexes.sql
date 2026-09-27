@@ -56,3 +56,11 @@ CREATE INDEX sgw_player_player_name_lower_idx ON sgw_player USING btree (lower((
 
 CREATE UNIQUE INDEX sgw_organization_members_one_leader_idx ON sgw_organization_members USING btree (org_id) WHERE rank = 8;
 
+--
+-- Index: sgw_organization_events_unexported_idx
+-- The exporters' work queue: rows not yet logged, by writing transaction
+-- (the character-delete handler) or in id order (the startup sweep).
+--
+
+CREATE INDEX sgw_organization_events_unexported_idx ON sgw_organization_events USING btree (tx_id, event_id) WHERE exported_at IS NULL;
+
