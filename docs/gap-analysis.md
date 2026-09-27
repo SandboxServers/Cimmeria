@@ -767,21 +767,21 @@ last_updated: 2026-09-25
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Organization creation | KM | DB schema | stub | `UNIMPLEMENTED: onOrganizationCreation` (cell_methods/player/social.rs:62) |
-| Invite/accept | KM | Creation | stub | `UNIMPLEMENTED: organizationInviteResponse` (organization.rs:36) |
-| Leave organization | KM | -- | stub | `UNIMPLEMENTED: organizationLeave` (organization.rs:44) |
+| Organization creation | KM | DB schema | decoded | CM 94 `onOrganizationCreation` (`player/social.rs`, `ORG_CREATION` arm): decoded; answered with `onErrorCode` and a feedback line (ORG-05) |
+| Invite/accept | KM | Creation | decoded | CM 8 and base 0xCF/0xD0: decoded; answered with `onErrorCode` and a feedback line (ORG-03, ORG-07) |
+| Leave organization | KM | -- | decoded | CM 9: decoded; answered with `onErrorCode` and a feedback line (ORG-03, ORG-06) |
 | Rank system (9 ranks) | KM | Creation | entity/organization/types.rs | `OrgRank` and the ranks each type uses (D-ORG07); no rank is stored or enforced yet |
 | Permission system (26 perms) | KM | Ranks | entity/organization/permissions.rs | `OrgPermission`, the Team (12) and Command (14) editable bits and the default rank table (D-ORG08; D-ORG21: every rank below Leader may deposit and read the bank log, none may withdraw); nothing enforces them yet |
-| MOTD | KM | Creation | stub | organization.rs:94 |
-| Officer notes | KM | Ranks | stub | organization.rs:108 |
-| Rank name customization | KM | Ranks | stub | organization.rs:135 |
-| Permission editing | KM | Ranks | stub | organization.rs:122 |
-| Cash transfer to bank | KM | Creation | stub | organization.rs:155 |
+| MOTD | KM | Creation | decoded | CM 13, text now read (ORG-08) |
+| Officer notes | KM | Ranks | decoded | CM 15, both strings now read (ORG-08) |
+| Rank name customization | KM | Ranks | decoded | CM 17, name now read (ORG-08) |
+| Permission editing | KM | Ranks | decoded | CM 16; `OrgPermission::apply_edit` defines the edit rule (D-ORG22, ORG-08) |
+| Cash transfer to bank | KM | Creation | decoded | CM 19 decodes to `CashDir`; the Bank campaign implements it |
 | Organization vault | KM | Creation, Inventory | -- | INV_TeamBank, INV_CommandBank |
-| Squad loot mode | KM | Groups | stub | organization.rs:143 |
-| Minimap ping | KM | -- | stub | organization.rs:60 |
-| Strike teams | KM | -- | stub | organization.rs:73 |
-| PvP org leave | KM | -- | stub | organization.rs:86 |
+| Squad loot mode | KM | Groups | decoded | CM 18 (ORG-03) |
+| Minimap ping | KM | -- | decoded | CM 10, non-finite coordinates rejected (ORG-04) |
+| Strike teams | KM | -- | decoded | CM 11; rejected as unsolicited in ORG-07 |
+| PvP org leave | KM | -- | decoded | CM 12; rejected as unsolicited in ORG-07 |
 
 ### 24. Mail --- IM (read side only; sending, attachments and COD are stubs)
 
