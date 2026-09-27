@@ -49,6 +49,10 @@ use super::handle::handle_use_ability;
 /// don't need to thread a `ContentEvents` through. Keeping the bare
 /// function callable from those sites preserves both invariants.
 ///
+/// The exception is a pet (pets PT-06): its kills credit its owner, so the
+/// NPC AI fight tick and the pet command path call this wrapper for a pet
+/// caster, and [`credited_player`] swaps in the owner.
+///
 /// Mirrors the python `useAbility` → `attemptDeath` → `_doDeath` chain
 /// where the cell-side death callback was the canonical credit point.
 ///
@@ -89,6 +93,18 @@ pub(super) fn is_live_npc(space_mgr: &SpaceManager, target_id: i32) -> bool {
         && space_mgr
             .get_entity(target_id as u32)
             .is_some_and(|t| !t.is_player && t.stats.get(HEALTH).is_some_and(|s| s.cur > 0))
+}
+
+/// The player a kill by `attacker` is credited to, as `(entity id,
+/// player_id)`: the attacker itself when it is a player, the owner when it
+/// is a pet (pets PT-06), `None` for any other NPC or an owner that is no
+/// longer in the world. The `EntityDeath` event is raised on the credited
+/// entity, so chain conditions read the owner's mission context and
+/// `IncrementCounter` bumps the owner's counters.
+pub(crate) fn credited_player(space_mgr: &SpaceManager, attacker: u32) -> Option<(u32, i32)> {
+    let credited = space_mgr.credit_recipient_quiet(attacker)?;
+    let player_id = space_mgr.get_entity(credited)?.player_id?;
+    Some((credited, player_id))
 }
 
 /// The credit half of [`handle_use_ability_with_kill_credit`]: drain the
@@ -132,34 +148,33 @@ pub(super) async fn credit_single_target(
     }
 
     // Resolve the target's content-engine tag (the chain trigger key,
-    // e.g. "Hallway01_Guard") and the killer's `player_id` (the
-    // mission-context key). Either being absent is benign — a tagless
-    // NPC just doesn't progress any chain; a player_id-less killer
-    // (NPC AI shouldn't reach this helper, but be defensive) skips
-    // with a warn so the unexpected case stays visible.
+    // e.g. "Hallway01_Guard") and the credited player (the mission-context
+    // key). Either being absent is benign — a tagless NPC just doesn't
+    // progress any chain; a killer that credits no player (a plain NPC,
+    // or a pet whose owner already left) skips with a warn so the
+    // unexpected case stays visible.
     let tag = match space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone()) {
         Some(t) => t,
         None => return,
     };
-    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
-        Some(pid) => pid,
-        None => {
-            tracing::warn!(
-                entity_id, npc_tag = %tag,
-                "handle_use_ability_with_kill_credit: killer has no player_id — skipping EntityDeath event"
-            );
-            return;
-        }
+    let Some((credited, player_id)) = credited_player(space_mgr, entity_id) else {
+        tracing::warn!(
+            entity_id, npc_tag = %tag, reason = "no_credited_player",
+            "handle_use_ability_with_kill_credit: killer credits no player — skipping EntityDeath event"
+        );
+        return;
     };
 
     events
-        .entity_death(entity_id, player_id, &tag, tx, space_mgr)
+        .entity_death(credited, player_id, &tag, tx, space_mgr)
         .await;
 
     // Cone AoE kill credit: drain the per-attacker scratchpad that
     // `handle_use_ability` populated with cone-secondary deaths and
     // fire `entity_death` for each tagged kill. Matches the same
-    // discipline as `handle_use_ability_on_ground`.
+    // discipline as `handle_use_ability_on_ground`. The scratchpad lives
+    // on the caster (the pet, for a pet cast); the credit goes to the
+    // credited player.
     let cone_dead_ids: Vec<u32> = space_mgr
         .get_entity_mut(entity_id)
         .map(|att| std::mem::take(&mut att.last_aoe_deaths))
@@ -168,7 +183,7 @@ pub(super) async fn credit_single_target(
         let dead_tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
         if let Some(t) = dead_tag {
             events
-                .entity_death(entity_id, player_id, &t, tx, space_mgr)
+                .entity_death(credited, player_id, &t, tx, space_mgr)
                 .await;
         }
     }
@@ -200,20 +215,20 @@ pub async fn credit_ground_deaths(
     if deaths.is_empty() {
         return;
     }
-    // Resolve player_id once — it doesn't change across kills.
-    let player_id = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);
+    // Resolve the credited player once — it doesn't change across kills.
+    let credit = credited_player(space_mgr, entity_id);
     for dead_eid in deaths {
         let tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
         if let Some(tag) = tag {
-            match player_id {
-                Some(pid) => {
+            match credit {
+                Some((credited, pid)) => {
                     events
-                        .entity_death(entity_id, pid, &tag, tx, space_mgr)
+                        .entity_death(credited, pid, &tag, tx, space_mgr)
                         .await;
                 }
                 None => {
                     tracing::warn!(
-                        entity_id, npc_tag = %tag, dead_eid,
+                        entity_id, npc_tag = %tag, dead_eid, reason = "no_credited_player",
                         "Skipping entity_death event (ground target): killer entity has no player_id"
                     );
                 }

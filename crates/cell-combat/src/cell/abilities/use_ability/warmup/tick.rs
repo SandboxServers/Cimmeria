@@ -224,14 +224,14 @@ async fn fire_due_cast(
     // Take the cast before firing, so a re-entrant launch from inside the
     // resolution (a content chain, an auto-reload) is not refused as busy
     // and the cast can never fire twice.
-    let is_player = match space_mgr.get_entity_mut(entity_id) {
-        Some(e) => {
-            e.pending_cast = None;
-            e.is_player
-        }
-        None => false,
-    };
+    if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+        e.pending_cast = None;
+    }
     space_mgr.pending_casts.remove(&entity_id);
+    // Mission kill credit runs for a caster that credits a player: a player
+    // itself, or a pet (credited to its owner, pets PT-06). A plain NPC's
+    // warmed-up cast credits nobody.
+    let is_player = space_mgr.credit_recipient_quiet(entity_id).is_some();
 
     tracing::debug!(
         target: "abilities",

@@ -101,6 +101,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cross-world-transfer-flow.md](cross-world-transfer-flow.md) — `handle_gate_travel` is the back half; fake default-instance mechanisms.
 - [destroy-entity-vs-despawn-npc.md](destroy-entity-vs-despawn-npc.md) — `destroy_entity` sends no LeftAoI; use `despawn_npc` for visible removals.
 - [effect-scripts-run-after-the-death-check.md](effect-scripts-run-after-the-death-check.md) — `abilities::death::resolve_death` is the only kill path.
+- [kill-credit-seams-and-loot-ownership.md](kill-credit-seams-and-loot-ownership.md) — XP decided in `grant_kill_xp`, mission credit via `credited_player` (4 callers); corpses have no loot owner.
 - [throttle-key-hides-transitions.md](throttle-key-hides-transitions.md) — key throttles by `(entity_id, kind)`; `destroy_space` is a second teardown path.
 - [ability-launch-fire-split.md](ability-launch-fire-split.md) — AT-10: handle_use_ability is launch-only; damage may fire a tick later via fire.rs; ground-AoE tests need class_id 0x04.
 - [pet-owner-lifecycle-hooks.md](pet-owner-lifecycle-hooks.md) — PT-02: every GateTravel/TeleportPlayer site calls a pets hook (scan-guarded); owner gets no LeftAoI on travel.

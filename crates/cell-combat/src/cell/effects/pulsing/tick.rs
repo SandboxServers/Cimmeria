@@ -260,16 +260,19 @@ async fn dot_kill_credit(
     }
 
     // Mission credit is player-only and tag-only, matching
-    // `handle_use_ability_with_kill_credit`. A tagless mob or an NPC-owned
-    // DoT still died above; there is just no chain to advance.
+    // `handle_use_ability_with_kill_credit`: a player's DoT credits the
+    // player, a pet's credits its owner (pets PT-06). A tagless mob or an
+    // NPC-owned DoT still died above; there is just no chain to advance.
     let Some(tag) = tag else {
         return;
     };
-    let Some(player_id) = space_mgr.get_entity(invoker_id).and_then(|e| e.player_id) else {
+    let Some((credited, player_id)) =
+        crate::cell::abilities::credited_player(space_mgr, invoker_id)
+    else {
         return;
     };
     events
-        .entity_death(invoker_id, player_id, &tag, tx, space_mgr)
+        .entity_death(credited, player_id, &tag, tx, space_mgr)
         .await;
 }
 

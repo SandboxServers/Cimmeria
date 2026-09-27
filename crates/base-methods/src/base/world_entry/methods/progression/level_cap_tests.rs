@@ -278,3 +278,21 @@ async fn level_sanity_accepts_50_and_rejects_51() {
         "level 51 must be rejected by level_sanity, got: {err}"
     );
 }
+
+/// **Guard (#889).** A grant that carries the total past `i32::MAX` (the
+/// `sgw_player.exp` ceiling) leaves the session and the row holding the
+/// same clamped value. Before the fix the row held `i32::MAX` and the
+/// session held the unclamped `u64`, so a later read of memory disagreed
+/// with the DB until relog.
+#[tokio::test]
+async fn handle_grant_xp_clamps_memory_to_the_persisted_i32_ceiling() {
+    let pool = require_db_or_skip!();
+    let near_cap = i32::MAX - 10;
+    let (persisted, in_memory) = grant_persisted(&pool, 650, 50, near_cap, 50, 1_000).await;
+    assert_eq!(persisted, (50, i32::MAX, 50));
+    assert_eq!(
+        in_memory,
+        (Some(50), Some(i32::MAX as u64), Some(50)),
+        "memory must hold what the row holds"
+    );
+}
