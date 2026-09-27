@@ -8,7 +8,9 @@ last_updated: 2026-09-27
 # Stasis-Room Debug Hub
 
 Eight NPCs in the Castle_CellBlock stasis room let a tester exercise one server
-system each from a single spot. The stasis room is where every new character
+system each from a single spot. A second group along the opposite wall, four
+crafting stations and a crafting supplies vendor, covers crafting (see
+[Crafting corner](#crafting-corner)). The stasis room is where every new character
 wakes up, so the hub is reachable a few seconds after character creation, with
 no travel and no mission state.
 
@@ -198,6 +200,83 @@ Right-click opens your personal vault (`onVaultOpen`).
   straight into the vault (the grant path refuses 17 by design); a tester
   drags items in from the main bag once BV-03 lands. See
   [commands.md](../commands.md#dev-console--commands).
+## Crafting corner
+
+Four crafting stations and a crafting supplies vendor stand along the room's
+D-A wall, D(-338.39, -213.94) to A(-347.17, -230.14), 3 units in from it and
+2.6 units apart, the vendor nearest A. They were added by the crafting
+campaign (`docs/analysis/crafting/`, packet CR-11), whose id blocks are
+templates 310-329 and spawns 410-429. Their spawn tags start with `CraftHub_`,
+not `DebugHub_`, so the hub's own guards, which count `DebugHub_` tags, stay as
+they were.
+
+| Spawn | Template | Tag | Name shown | Position (x, y, z) | Heading |
+|---:|---:|---|---|---|---:|
+| 414 | 314 | `CraftHub_Supplies` | Common Materials Components | (-341.67, 73.47, -226.29) | 1.6889 |
+| 410 | 310 | `CraftHub_Station_BioMedical` | BioMedical Crafting Station | (-340.43, 73.47, -224.01) | 1.9913 |
+| 411 | 311 | `CraftHub_Station_Electronics` | Electronics Crafting Station | (-339.20, 73.47, -221.72) | 2.3079 |
+| 412 | 312 | `CraftHub_Station_PowerSystems` | Power Systems Crafting Station | (-337.96, 73.47, -219.44) | 2.5830 |
+| 413 | 313 | `CraftHub_Station_Materials` | Materials Crafting Station | (-336.72, 73.47, -217.15) | 2.7937 |
+
+The nearest is 7.4 units from the respawner and 3.1 from the hub vendor
+(spawn 400). The same placement warning applies: nothing here has been checked
+in the client.
+
+### Crafting stations (templates 310-313)
+
+Stand within 5 units of any station and open the crafting window (J). The
+window shows the station as the machine, and every crafting page is enabled.
+
+- Each station carries all four `ENTITYFLAG_Craft_*` bits (craft 2048,
+  research 4096, reverse engineering 8192, alloying 16384), so any one of them
+  enables every page. The name is only a label. The station gate does not
+  check the science.
+- A station is found by proximity. The cell's 1 Hz station tick reports the
+  nearest station per verb to the base, which sends
+  `onUpdateCraftingOptions` (140). There is nothing to click: a station has no
+  interaction bit. The `INT_Machine_*` bits would give a cursor and a minimap
+  icon, but nothing on the server answers a click on one, and the hub's rule
+  is that every click gets feedback.
+- The names are the client's own monikers (27180, 27182, 27184, 27186). The
+  mesh is the Cellblock terminal screen of template 19, which already renders
+  in this world.
+
+### Crafting supplies vendor (template 314)
+
+Right-click opens a store that only sells, at 1 naquadah each (buy list 310):
+
+| Group | Items |
+|---|---|
+| UAT recipe components | 5254 Steel Core, 5256 Titanium Core, 5401 Titanium Plating, 5192 Cell (Bio-Medical), 5189 T1 Cell (Bio-Medical) |
+| Research and reverse-engineering target | 5481 Crafted Pistol of the Whale |
+| Research kickers | 5668 BioMedical, 5669 Electronics, 5670 Power Systems, 5671 Materials |
+| Field Crafting Tools | BMAS-5 (5369), BMAS-50 (8415), EAS-5 (8402), EAS-50 (8441), PSAS-5 (8405), PSAS-50 (8461), MAS-5 (8406), MAS-50 (8451) |
+| Racial Paradigm Guides | 7805 Human, 7806 Common, 7807 Asgard, 7808 Goa'uld, 7809 Ancient |
+| Blueprint item | 6483 Blueprint: Steel Plating (teaches blueprint 25) |
+
+- A purchase lands in the main bag (1). The crafting verbs consume components
+  from the main and crafting bags, and a Blueprint item or a guide is used from
+  either bag, so these work straight away.
+- A Field Crafting Tool counts only in the crafting bag (15). Move it there to
+  enable crafting without a station.
+- The vendor has no sell, repair or recharge list.
+- The name is the client's "Common Materials Components" vendor moniker
+  (27239). No moniker in the client says "Crafting Supplies".
+
+### A crafting test run
+
+1. Buy 13 Steel Cores and Blueprint item 6483, then use the Blueprint item.
+   Blueprint 25 (Steel Plating) is now known. Instead, a GM can run
+   `.learnblueprint 25` on the tester, and `.craftkit 25` to grant the 13
+   cores into the crafting bag.
+2. Learn discipline 78 (Materials Engineering) at the discipline trainer
+   (Ctrl+J). Every character starts with the ASP and the Common paradigm level
+   it needs.
+3. Stand next to a station, open the crafting window and craft blueprint 25.
+
+The other UAT recipes (blueprints 412 and 161, alloy 42, research and reverse
+engineering with the kickers) are in section 2 of
+`docs/analysis/crafting/audit.md`.
 
 ### Gate Mail Clerk (template 390)
 
@@ -233,7 +312,7 @@ and take the naquadah and the slappacks.
 | Bank (partly) | The Banker (template 370) opens the personal vault. Moving items into and out of it is the bank campaign's BV-03, the vault-size purchase BV-05, and the Squad, Team and Command vaults BV-07 ([docs/analysis/bank-vault/](../analysis/bank-vault/README.md), [gap-analysis.md §23](../gap-analysis.md)). No hub NPC is an organization Banker: those need an organization, which the hub cannot give a new character. |
 | Guilds / organizations | Known missing on the server ([gap-analysis.md §23](../gap-analysis.md)). |
 | Black market | Known missing on `main` ([gap-analysis.md §25](../gap-analysis.md)). |
-| Crafting | Known missing: the crafting verbs are still stubs ([gap-analysis.md §19](../gap-analysis.md)). |
+| Crafting verbs | The [crafting corner](#crafting-corner) gives stations and supplies. Whether each verb works depends on the crafting campaign's progress ([gap-analysis.md §19](../gap-analysis.md)). |
 | Pets (partly) | The pet trainer (template 360) sells the summon abilities, but a pet needs a tester, not a hub NPC: summon with `.pet summon 2826` or the ability (`.giveability 1643`, `1644` or `1645` for the Jaffa, Lo'taur or Prime), then walk, fight and change stance. Every pets-campaign packet has merged; the owner's UAT checklist is in [the pets session resume](../analysis/pets/handoffs/session-resume.md) ([docs/analysis/pets/](../analysis/pets/README.md), [gap-analysis.md §28](../gap-analysis.md)). |
 | Player-to-player trade | Needs two players. An NPC cannot be a trade partner ([gap-analysis.md §22](../gap-analysis.md)). |
 
@@ -250,6 +329,7 @@ and take the naquadah and the slappacks.
 | Loot table 3 (loot rows 14-17) | `db/resources/Loot/Seed/` |
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
 | Vendor and Banker derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
+| Crafting corner: templates 310-314, spawns 410-414, buy list 310 (rows 3101-3124) | `entity_templates.sql`, `spawnlist.sql`, `db/resources/Items/Seed/item_lists.sql` and `item_list_items.sql` |
 
 Every seed row is commented `NEW CONTENT (debug hub)`, except the pet
 trainer's, which are commented `Pets campaign, PT-07`, and the Banker's,
@@ -257,7 +337,8 @@ commented `Bank and Vault campaign, BV-04`, and the mail clerk's,
 commented `Social-systems campaign, SS-U3`. The `trainer_abilities`
 rows carry no comment: that file is regenerated by
 `tools/ability_trees/generate_seed.py`, which keeps other lists' rows but not
-comments.
+comments. The crafting corner's rows are commented `NEW CONTENT (debug
+hub, crafting)`.
 
 ## Tests
 
@@ -274,3 +355,6 @@ comments.
 | `cell-world` `tests/npc_spawn.rs` | Any `INT_Vendor*` bit derives `Vendor`; no other bit derives anything |
 | `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The overrides of 100100, 100101 and 100104 and the dialog seed agree screen for screen and button for button |
 | `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001, 7004 and 7010 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
+| `cell-catalog` `spawner/tests/live_db_crafting_hub.rs` | Stations carry all four craft bits and no interaction bit, with the client's station monikers; the vendor sells only list 310; the crafting spawns stand inside Region1, on the floor, clear of the respawner and of every other spawn in the room; list 310 is exactly the supplies, each a real item at 1 naquadah and no item cost, and covers the UAT recipes |
+| `cell-methods` `interaction/crafting_hub_station_tests.rs` | Spawned from their real rows, the stations are reported for every verb to a player at the supplies vendor, and none reaches the respawn spot |
+| `base-methods` `vendor/purchase/crafting_supplies_tests.rs` | Bought supplies land in the main bag: the guide and the Blueprint item are used from there, and the cores are consumed by a crafting transaction |
