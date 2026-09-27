@@ -138,6 +138,15 @@ async fn lethal_partner_hit_clamps_to_one_hp() {
         "the DoT this hit registered is stripped by the end"
     );
     assert_health_end(&logs, B_PID);
+    let ended = logs
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "duel.ended"))
+        .unwrap();
+    assert!(
+        ended.has_field("clamped", "true") && ended.has_field("killer_entity_id", "1"),
+        "a clamped end names the partner: {ended:?}"
+    );
     let clamp = logs
         .all()
         .into_iter()
@@ -145,6 +154,7 @@ async fn lethal_partner_hit_clamps_to_one_hp() {
         .expect("duel.lethal_clamped row");
     for (k, v) in [
         ("source", "ability"),
+        ("ability_id", "51"),
         ("player_id", "101"),
         ("target_player_id", "102"),
         ("health_after", "1"),
@@ -223,6 +233,60 @@ async fn lethal_partner_bleed_clamps_to_one_hp() {
     make_due(&mut mgr, B);
     effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
     assert!(health(&mgr, B) <= 0, "no clamp outside a duel");
+}
+
+/// **D-SS20, PR #924 review.** A two-cone ability: A fires at the mob and
+/// B, the partner at 2 HP, stands in both cones. The cones' targets are
+/// collected up front and applied in turn. The first cone's hit is held at
+/// 1 HP and ends the duel; the second must then be refused by the harm gate
+/// at apply time, not land as a normal kill on the ex-partner.
+#[tokio::test]
+async fn second_cone_after_a_clamped_end_does_not_kill() {
+    use cimmeria_entity::abilities::TCM_AE_CONE;
+    let logs = LogCapture::install();
+    let mut mgr = duel_mgr();
+    engage(&mut mgr);
+    set_health(&mut mgr, B, 2);
+    for id in [601, 602] {
+        let mut params = std::collections::HashMap::new();
+        params.insert("HealthDamage".to_string(), "5".to_string());
+        mgr.effect_defs.insert(
+            id,
+            EffectDef {
+                effect_id: id,
+                target_collection_method: TCM_AE_CONE.to_string(),
+                tcm_param1: "Medium".to_string(),
+                tcm_param2: "Medium".to_string(),
+                params,
+                ..Default::default()
+            },
+        );
+    }
+    let def = super::warmup::cast_ability(60, 0.0);
+    let def = Some(cimmeria_entity::abilities::AbilityDef {
+        effect_ids: vec![601, 602],
+        ..def
+    });
+    let (tx, mut rx) = mpsc::channel(1024);
+
+    crate::cell::abilities::fan_out_cone_effects(A, MOB, 60, &def, &tx, &mut mgr).await;
+    let msgs = drain(&mut rx);
+    assert_eq!(
+        health(&mgr, B),
+        1,
+        "the second cone did not land on the ex-partner"
+    );
+    assert_no_death(&mgr, &msgs, &logs, B);
+    assert_health_end(&logs, B_PID);
+    assert!(
+        !mgr.get_entity(B).unwrap().threatened_mobs.contains(&A),
+        "no combat pair re-created after the end"
+    );
+    assert!(logs
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "duel.hit_refused")
+            && c.has_field("reason", "not_duel_opponent")));
 }
 
 /// **D-SS20.** A third party's kill is a normal death: the corpse, the

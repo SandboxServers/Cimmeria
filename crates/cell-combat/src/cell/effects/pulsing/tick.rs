@@ -465,7 +465,11 @@ async fn fire_pulse(
         space_mgr,
         inst.invoker_id,
         target_id,
-        "effect_pulse",
+        cimmeria_cell_world::cell::duel::ClampSource {
+            path: "effect_pulse",
+            ability_id: Some(inst.ability_id),
+            effect_id: Some(inst.effect_id),
+        },
     );
 
     // Flush any stat changes the pulse produced so the client renders

@@ -218,6 +218,35 @@ impl DuelRegistry {
         self.engaged_opponent(attacker) == Some(target)
     }
 
+    /// [`Self::can_harm`], and the two entities are exactly the ones the
+    /// engage recorded (`engaged_entities`). What the harm gate asks, so it
+    /// admits exactly the hits the non-lethal clamp covers
+    /// (`paths::clamp_partner_lethal` keys on the same entity pair): a stale
+    /// or later entity of either duelist is not the duelist.
+    pub fn can_harm_entities(
+        &self,
+        attacker: i32,
+        attacker_eid: u32,
+        target: i32,
+        target_eid: u32,
+    ) -> bool {
+        if !self.can_harm(attacker, target) {
+            return false;
+        }
+        let Some(d) = self.duel_of(attacker) else {
+            return false;
+        };
+        let Some([challenger_eid, target_side_eid]) = d.engaged_entities else {
+            return false;
+        };
+        let expect = if d.challenger == attacker {
+            [challenger_eid, target_side_eid]
+        } else {
+            [target_side_eid, challenger_eid]
+        };
+        expect == [attacker_eid, target_eid]
+    }
+
     /// The other duelist, when `player_id` is in an engaged duel. What the
     /// PvP-flag replay and the AoE/cone candidate scan ask.
     pub fn engaged_opponent(&self, player_id: i32) -> Option<i32> {

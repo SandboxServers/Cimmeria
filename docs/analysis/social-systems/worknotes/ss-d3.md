@@ -60,11 +60,12 @@ No new log target (`duel` since SS-D1). No span inside a tick.
 
 | Event | Level | Where | Fields beyond the ids | Test |
 |---|---|---|---|---|
-| `duel.ended` (extended) | DEBUG | `end_engaged` | `reason` (`forfeit`, `health`, `connection`, `range`, `teleport`, `engaged_limit`, `duelist_gone`, `gm_aborted`), `outcome` (`decided` or `aborted`), `loser_player_id`, `winner_player_id`, `defeat_reason` (`EDuelDefeatReason` value), and SS-D2's `cleared`, `effects_removed`, `space_id` | `forfeit_ends_the_duel_with_the_caller_as_loser` and every end-path test assert the ids and outcome |
+| `duel.ended` (extended) | DEBUG | `end_engaged` | `reason` (`forfeit`, `health`, `connection`, `range`, `teleport`, `engaged_limit`, `duelist_gone`, `gm_aborted`), `outcome` (`decided` or `aborted`), `loser_player_id`, `winner_player_id`, `defeat_reason` (`EDuelDefeatReason` value), `clamped`, `killer_entity_id`, and SS-D2's `cleared`, `effects_removed`, `space_id` | `forfeit_ends_the_duel_with_the_caller_as_loser` and every end-path test assert the ids and outcome |
 | `duel.forfeit` | INFO span | CM 103 | `account_id`, `player_id`, `entity_id` | — |
 | `duel.forfeit_refused` | DEBUG | forfeit | `reason = not_engaged`, `stage` (`none`, `challenge`, `countdown`, `engaged_elsewhere`), `duel_id`, `target_player_id` | `forfeit_rejected_when_not_engaged` (type 12) |
 | `duel.forfeit_refused` | WARN | forfeit | `reason = not_a_player` | — (an entity that is not a connected player) |
-| `duel.lethal_clamped` | DEBUG | the clamp | `source` (`ability`, `ability_script`, `effect_pulse`), `health_before`, `health_after = 1`, `target_entity_id`, `target_account_id` | `lethal_partner_hit_clamps_to_one_hp` |
+| `duel.lethal_clamped` | DEBUG | the clamp | `source` (`ability`, `ability_script`, `effect_pulse`), `ability_id`, `effect_id`, `health_before`, `health_after = 1`, `target_entity_id`, `target_account_id` | `lethal_partner_hit_clamps_to_one_hp` |
+| `duel.hit_refused` | DEBUG | `apply_damage_to_target` | `reason = not_duel_opponent`, `target_entity_id`, `ability_id` (review fix 1) | `second_cone_after_a_clamped_end_does_not_kill` |
 | `duel.out_of_range` / `duel.back_in_range` | DEBUG | the tick | `distance`, `arena_radius`, `grace_ms` / `outside_ms` | `range_ends_duel` counts both |
 | `duel.withdrawn` | DEBUG | leave paths | `stage` (`challenge`, `countdown`), `reason` (`connection`, `teleport`, `health`) | `leaving_withdraws_a_challenge_and_a_countdown` |
 
@@ -178,6 +179,28 @@ Each mutation applied by a script, the named tests run with `--no-fail-fast`, th
 - SS-U2's `duel::gm::gm_end` calls `end_engaged(tx, mgr, duel_id, EndReason::GmAborted)`, which still aborts with 878 to both; its tests pass. SS-U2 added no `TeleportPlayer` / `GateTravel` site (`every_travel_site_ends_the_duel` passes).
 - `gap-analysis.md` and `project-status.md` restored to main's version (owner rule); the deltas are below.
 - After the rebase: `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell-methods -p cimmeria-cell-console -p cimmeria-cell-content -p cimmeria-cell-interactions -p cimmeria-cell -p cimmeria-wireclient`: 3298 passed, 1 skipped (SS-U2's `#[ignore]` sparbot keep-alive test; the wireclient DB tests self-skip without `DATABASE_URL` in that run). Clippy on those crates plus `cimmeria-services`, `--all-targets -D warnings`: clean. fmt: clean. `reload-db.sh`, then `cargo test -p cimmeria-wireclient --test it duel -- --test-threads=1` with `sgw_ss_d3`: 3 passed (this packet's forfeit extension and SS-U2's two sparbot tests), 1 ignored.
+
+## Security review fixes (PR #924)
+
+| # | Finding | Fix | Guard |
+|---|---|---|---|
+| 1 | MEDIUM: a hit already in flight after the duel ends can kill the ex-partner. `cone_aoe/fan_out.rs` collects every cone's targets up front and applies them in turn; `apply_damage_to_target` never re-ran the harm gate, so cone 1 clamped and ended the duel and cone 2 killed B as a normal death (and `generate_threat` re-made the combat pair) | `apply_damage_to_target` starts with `player_hit_refusal`: two different players the gate (`combat::player_may_attack`) no longer admits → ammo flushed, `duel.hit_refused` (DEBUG, `reason = not_duel_opponent`), return. Closes cones, AoE secondaries and any future multi-hit; self-casts and NPC paths are unchanged | `second_cone_after_a_clamped_end_does_not_kill` (cell-combat): a two-cone ability, NPC primary, B at 2 HP in both cones; HEALTH 1, no death, one `duel.ended`, no combat pair, the refusal row |
+| 2 | LOW: the gate keyed on `player_id` (`can_harm`) while the clamp needs the exact engaged entities | `player_may_attack` now calls `DuelRegistry::can_harm_entities(a_pid, a_eid, t_pid, t_eid)`: `can_harm` plus the attacker and target entities are the engaged pair's, in order. The gate and the clamp now cover the same hits | `harm_gate_requires_the_engaged_entities` (cell-world): a second entity of B's player is refused both ways while `can_harm(A, B)` is true |
+| 3a | Nit: an early `return` between the clamp and `finish_clamped` in `damage_apply` | that branch calls `finish_clamped` | — (unreachable: the target was just written) |
+| 3b | Nit: telemetry could not tell a clamp from a third-party death | `duel.lethal_clamped` gains `ability_id` and `effect_id` (`ClampSource`); `duel.ended` gains `clamped` and `killer_entity_id` (`EndReason::Defeated` gains `killer`, `clamped`; `EndReason::defeat(loser, reason)` builds the plain form; `duel::on_death` takes the killer) | `lethal_partner_hit_clamps_to_one_hp` asserts `ability_id`, `clamped = true`, `killer_entity_id` |
+| 3c | Nit: rustfmt hung three comments in `gm/travel.rs` off a trailing comment | a blank line before each | — |
+| 4 | The reviewer's memory append | committed (`.claude/agent-memory/server-authority-enforcer/reference_duel_harm_gate.md`) | — |
+
+Two existing `damage_apply` tests drove a player-on-player hit with no duel, which the apply-time gate now refuses. `lethal_hit_against_player_target_emits_on_begin_aid_wait` now kills the player with an NPC (the only way a player dies), and `spectator_receives_effect_results_and_stat_update_from_pvp_hit` engages A and B first. After the fixes: `lane.sh cargo nextest run` over wire, cell-world, cell-combat, cell-methods, cell-console, cell-content, cell-interactions, cell and wireclient: 3384 passed, 1 skipped (SS-U2's `#[ignore]` keep-alive). Clippy on those plus services: clean. fmt: clean.
+
+Accepted in review (finding 3): a duelist already at 0 HP (for example a third-party DoT, which kills no player today) whom a partner hit reaches is raised to 1 HP by the clamp, and the duel ends on health.
+
+Revert proof (each applied, the guard run, the file restored with `git checkout` and touched):
+
+| Mutation | Result |
+|---|---|
+| `player_hit_refusal` result ignored | `second_cone_after_a_clamped_end_does_not_kill` FAILED "the second cone did not land on the ex-partner" (HEALTH 0) |
+| `can_harm_entities` ignoring the entities | `harm_gate_requires_the_engaged_entities` FAILED "another entity of the partner's player is not the duelist" |
 
 ## Close-out edits for SS-99
 

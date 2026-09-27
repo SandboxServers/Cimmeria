@@ -435,7 +435,7 @@ pub(super) async fn resolve_death(
         // partner's damage never gets here: it is clamped at 1 HP, D-SS20).
         // The partner hears "You won the duel"; a challenge or countdown is
         // withdrawn.
-        cimmeria_cell_world::cell::duel::on_death(tx, space_mgr, target_eid).await;
+        cimmeria_cell_world::cell::duel::on_death(tx, space_mgr, target_eid, attacker_id).await;
         // D-PT08: the owner's pets go with the owner's death, now rather than
         // on the next pet sweep. The owner sees them leave (its client stays).
         cimmeria_cell_world::cell::pets::on_owner_left(

@@ -32,7 +32,7 @@ pub async fn on_disconnect(
     mgr: &mut SpaceManager,
     entity_id: u32,
 ) {
-    leave(tx, mgr, entity_id, DefeatReason::Connection).await;
+    leave(tx, mgr, entity_id, DefeatReason::Connection, None).await;
 }
 
 /// The player at `entity_id` is being teleported (in its space) or sent
@@ -40,13 +40,19 @@ pub async fn on_disconnect(
 /// `GateTravel` for a player calls this before the send
 /// (`every_travel_site_ends_the_duel` scans for it).
 pub async fn on_travel(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, entity_id: u32) {
-    leave(tx, mgr, entity_id, DefeatReason::Teleport).await;
+    leave(tx, mgr, entity_id, DefeatReason::Teleport, None).await;
 }
 
-/// The player at `entity_id` died: killed by anyone but the duel partner,
-/// whose damage never kills (D-SS20). Called from the death resolver.
-pub async fn on_death(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, entity_id: u32) {
-    leave(tx, mgr, entity_id, DefeatReason::Health).await;
+/// The player at `entity_id` died, killed by `killer`: anyone but the duel
+/// partner, whose damage never kills (D-SS20). Called from the death
+/// resolver.
+pub async fn on_death(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    mgr: &mut SpaceManager,
+    entity_id: u32,
+    killer: u32,
+) {
+    leave(tx, mgr, entity_id, DefeatReason::Health, Some(killer)).await;
 }
 
 async fn leave(
@@ -54,6 +60,7 @@ async fn leave(
     mgr: &mut SpaceManager,
     entity_id: u32,
     reason: DefeatReason,
+    killer: Option<u32>,
 ) {
     let Some(pid) = mgr
         .get_entity(entity_id)
@@ -71,7 +78,12 @@ async fn leave(
                     tx,
                     mgr,
                     duel.duel_id,
-                    EndReason::Defeated { loser: pid, reason },
+                    EndReason::Defeated {
+                        loser: pid,
+                        reason,
+                        killer,
+                        clamped: false,
+                    },
                 )
                 .await;
             }
@@ -131,6 +143,17 @@ pub struct ClampedHit {
     pub duel_id: DuelId,
     /// The duelist held at 1 HP: the loser.
     pub loser: i32,
+    /// The partner's entity whose damage was held.
+    pub attacker_eid: u32,
+}
+
+/// Which damage a clamp held, for the `duel.lethal_clamped` row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClampSource {
+    /// `ability`, `ability_script` or `effect_pulse`.
+    pub path: &'static str,
+    pub ability_id: Option<i32>,
+    pub effect_id: Option<i32>,
 }
 
 /// The non-lethal clamp (D-SS20), called after damage from `attacker_eid`
@@ -151,7 +174,7 @@ pub fn clamp_partner_lethal(
     mgr: &mut SpaceManager,
     attacker_eid: u32,
     target_eid: u32,
-    source: &'static str,
+    source: ClampSource,
 ) -> Option<ClampedHit> {
     let tpid = mgr
         .get_entity(target_eid)
@@ -192,7 +215,9 @@ pub fn clamp_partner_lethal(
         target_player_id = tpid,
         target_account_id = target_account,
         target_entity_id = target_eid,
-        source,
+        source = source.path,
+        ability_id = source.ability_id,
+        effect_id = source.effect_id,
         health_before = before,
         health_after = 1,
         "partner damage would have killed a duelist: held at 1 HP, the duel ends"
@@ -200,6 +225,7 @@ pub fn clamp_partner_lethal(
     Some(ClampedHit {
         duel_id: duel.duel_id,
         loser: tpid,
+        attacker_eid,
     })
 }
 
@@ -217,6 +243,8 @@ pub async fn finish_clamped(
         EndReason::Defeated {
             loser: hit.loser,
             reason: DefeatReason::Health,
+            killer: Some(hit.attacker_eid),
+            clamped: true,
         },
     )
     .await;

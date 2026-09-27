@@ -356,7 +356,7 @@ async fn third_party_death_loses_the_duel() {
         if via_sweep {
             run_at(&tx, &mut mgr, t0).await;
         } else {
-            crate::cell::duel::on_death(&tx, &mut mgr, B_EID).await;
+            crate::cell::duel::on_death(&tx, &mut mgr, B_EID, C_EID).await;
         }
         let sent = drain(&mut rx);
         assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_LOST], "{via_sweep}");

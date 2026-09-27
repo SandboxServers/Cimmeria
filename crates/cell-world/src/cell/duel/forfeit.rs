@@ -80,10 +80,7 @@ async fn forfeit(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut Spa
         tx,
         mgr,
         duel.duel_id,
-        EndReason::Defeated {
-            loser: pid,
-            reason: DefeatReason::Forfeit,
-        },
+        EndReason::defeat(pid, DefeatReason::Forfeit),
     )
     .await;
 }

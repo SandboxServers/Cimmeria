@@ -120,11 +120,30 @@ pub enum EndReason {
     /// An abort.
     GmAborted,
     /// Decided: `loser` (a `player_id`, one of the two) lost for `reason`;
-    /// the other duelist won.
-    Defeated { loser: i32, reason: DefeatReason },
+    /// the other duelist won. `killer` is the entity whose damage decided a
+    /// `Health` end (the partner for a clamped hit, anyone else for a
+    /// death), and `clamped` says it was the partner's hit held at 1 HP; both
+    /// are for the log row only.
+    Defeated {
+        loser: i32,
+        reason: DefeatReason,
+        killer: Option<u32>,
+        clamped: bool,
+    },
 }
 
 impl EndReason {
+    /// A decided end with no killer to name (forfeit, disconnect, travel,
+    /// range, a death the tick found).
+    pub fn defeat(loser: i32, reason: DefeatReason) -> Self {
+        EndReason::Defeated {
+            loser,
+            reason,
+            killer: None,
+            clamped: false,
+        }
+    }
+
     /// Stable value for the `reason` log field.
     pub fn reason(self) -> &'static str {
         match self {
@@ -151,11 +170,14 @@ pub async fn end_engaged(
     let (DuelState::Engaged { .. }, Some(entities)) = (duel.state, duel.engaged_entities) else {
         return None;
     };
-    let defeat = match reason {
-        EndReason::Defeated { loser, reason } if duel.opponent_of(loser).is_some() => {
-            Some((loser, reason))
-        }
-        _ => None,
+    let (defeat, killer, clamped) = match reason {
+        EndReason::Defeated {
+            loser,
+            reason,
+            killer,
+            clamped,
+        } if duel.opponent_of(loser).is_some() => (Some((loser, reason)), killer, clamped),
+        _ => (None, None, false),
     };
     // Identity before teardown: the log row must not depend on what is
     // still in the world after the clear. A duelist whose engaged entity is
@@ -223,6 +245,8 @@ pub async fn end_engaged(
         loser_player_id = loser,
         winner_player_id = loser.and_then(|l| duel.opponent_of(l)),
         defeat_reason = defeat.map(|(_, r)| r.value()),
+        killer_entity_id = killer,
+        clamped,
         "duel ended: PvP flags, duel entities and the combat pair cleared"
     );
     Some(duel)
@@ -255,15 +279,9 @@ pub(super) async fn sweep(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManag
         } else if let Some(reason) = gone_reason(mgr, &pids, &at) {
             reason
         } else if let Some(loser) = dead_duelist(mgr, &pids, &entities) {
-            EndReason::Defeated {
-                loser,
-                reason: DefeatReason::Health,
-            }
+            EndReason::defeat(loser, DefeatReason::Health)
         } else if let Some(loser) = range_loser(tx, mgr, &duel, &at, now).await {
-            EndReason::Defeated {
-                loser,
-                reason: DefeatReason::Range,
-            }
+            EndReason::defeat(loser, DefeatReason::Range)
         } else {
             continue;
         };
@@ -286,7 +304,7 @@ fn gone_reason(
             } else {
                 DefeatReason::Connection
             };
-            Some(EndReason::Defeated { loser, reason })
+            Some(EndReason::defeat(loser, reason))
         }
     }
 }

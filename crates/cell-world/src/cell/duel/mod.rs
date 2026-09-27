@@ -62,7 +62,8 @@ mod tests;
 pub use end::{end_engaged, DefeatReason, EndReason};
 pub use outbound::send_player_line;
 pub use paths::{
-    clamp_partner_lethal, finish_clamped, on_death, on_disconnect, on_travel, ClampedHit,
+    clamp_partner_lethal, finish_clamped, on_death, on_disconnect, on_travel, ClampSource,
+    ClampedHit,
 };
 pub use registry::{
     ChallengeRefusal, Duel, DuelId, DuelRegistry, DuelState, GmAborted, PendingChallenge,

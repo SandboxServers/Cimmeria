@@ -81,11 +81,20 @@ async fn take(
                 .get_mut(HEALTH)
                 .unwrap();
             hp.update(hp.min, -5, hp.max);
-            let hit = crate::cell::duel::clamp_partner_lethal(mgr, A_EID, B_EID, "test")
-                .expect("A's lethal hit on B is clamped");
+            let hit = crate::cell::duel::clamp_partner_lethal(
+                mgr,
+                A_EID,
+                B_EID,
+                crate::cell::duel::ClampSource {
+                    path: "test",
+                    ability_id: None,
+                    effect_id: None,
+                },
+            )
+            .expect("A's lethal hit on B is clamped");
             crate::cell::duel::finish_clamped(tx, mgr, hit).await;
         }
-        Path::ThirdPartyDeath => crate::cell::duel::on_death(tx, mgr, B_EID).await,
+        Path::ThirdPartyDeath => crate::cell::duel::on_death(tx, mgr, B_EID, C_EID).await,
         Path::Disconnect => mgr.disconnect_entity(B_EID, tx).await,
         Path::Travel => crate::cell::duel::on_travel(tx, mgr, B_EID).await,
         Path::Range => {
@@ -180,6 +189,34 @@ async fn every_end_path_clears_pvp_flag() {
         }
     }
     assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// PR #924 review: the harm gate admits exactly the hits the non-lethal
+/// clamp covers. Both key on the engaged entities, so an entity of the
+/// partner's player that is not the engaged one (a stale or later entity) is
+/// refused by the gate even though `can_harm` on the player ids is true.
+#[tokio::test]
+async fn harm_gate_requires_the_engaged_entities() {
+    let mut mgr = aoi_mgr();
+    let (tx, mut rx) = mpsc::channel(256);
+    engage(&mut mgr, &tx, &mut rx).await;
+    // A second entity playing B's player, beside B.
+    add_player(&mut mgr, 21, B_PID, 600, "Agnos", [6.0, 0.0, 0.0]);
+
+    let a = mgr.get_entity(A_EID).unwrap();
+    let may =
+        |t: u32| crate::cell::combat::player_may_attack(a, mgr.get_entity(t).unwrap(), &mgr.duels);
+    assert!(mgr.duels.can_harm(A_PID, B_PID));
+    assert!(may(B_EID), "the engaged partner entity");
+    assert!(
+        !may(21),
+        "another entity of the partner's player is not the duelist"
+    );
+    let b2 = mgr.get_entity(21).unwrap();
+    assert!(
+        !crate::cell::combat::player_may_attack(b2, a, &mgr.duels),
+        "nor may it attack"
+    );
 }
 
 /// Every cell path that sends `TeleportPlayer` or `GateTravel` calls
