@@ -235,6 +235,46 @@ Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
 Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
 logging the credential.
 
+## NPC attack-animation seams (NA43)
+
+An NPC attack that cannot resolve its Ability_End `onSequence` still
+deals its damage, so the player takes hits from a guard that never
+visibly fires. `cell/abilities/use_ability/sequence.rs` WARNs on target
+`abilities.sequence` (`event = "ability_end"`) for **NPC attackers
+only**. Most player abilities have no event set (1851 of the 1886
+seeded), so the same condition on a player click is not a defect. The
+WARN fires when the cast fires (`use_ability/fire.rs`), which for a
+warmup ability is the warmup tick, not the launch (AT-10).
+
+| `outcome` | Seam | Fields |
+|---|---|---|
+| `no_ability_def` | the ability has no loaded `resources.abilities` row | `source_id`, `target_id`, `ability_id`, `suppressed` |
+| `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
+| `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
+| `no_witnesses` | the Ability_End went out to zero AoI witnesses | same, plus `sequence_id` |
+
+This is a Pattern D seam with one deliberate difference: the throttle
+(`SpaceManager::ability_sequence_log`, 60 s window) is keyed by
+**ability id**, not entity. The first three outcomes are facts about a
+seed row, and every NPC firing that ability repeats the same fact. The
+state is bounded by the ability table, so nothing is released in
+`destroy_entity`. The success rows (`ability_begin`, `ability_end`,
+`ability_interrupt`, at DEBUG) carry `witness_count`.
+
+Ability_Begin and Ability_Interrupt are deliberately not WARN seams. A
+missing Begin leaves only the charge unanimated, and the Ability_End
+WARN names the same seed row when the shot fires. An interrupted cast
+deals no damage, so a missing Interrupt is not a hit from an invisible
+attacker.
+
+The guards are `use_ability/tests/sequence.rs` (each WARN, the NPC-only
+scope, and the burst and independence throttle guards),
+`use_ability/tests/sequence_phases.rs` (the WARN rides the Ability_End
+into the warmup tick; Interrupt never WARNs) and
+`service/tests/npc_ai/attack_sequence.rs` (`witness_count = 2` on a real
+fight tick). The seed side is linted by the live-DB
+`spawner/tests/npc_ability_animation.rs`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

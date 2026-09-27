@@ -17,6 +17,8 @@ mod content_events;
 mod fire_los;
 mod gating;
 mod holster_queue;
+mod sequence;
+mod sequence_phases;
 mod target_validity;
 mod warmup;
 mod warmup_interrupt;

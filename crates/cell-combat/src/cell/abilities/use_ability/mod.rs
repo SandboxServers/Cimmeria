@@ -14,7 +14,9 @@
 //!   resolution), run at once for a zero warmup or by the warmup tick.
 //! - `warmup` — the pending cast between `Ability_Begin` and the fire: the
 //!   launch side, the 100 ms tick, and the interrupt (AT-10).
-//! - `sequence` — the shared `onSequence` packing for the ability phases.
+//! - `sequence` — the Ability_Begin / Ability_End / Ability_Interrupt
+//!   `onSequence`: shared packing, owner + witnesses routing, and the NPC
+//!   attack-animation WARNs (NA43).
 
 mod auto_reload;
 mod fire;

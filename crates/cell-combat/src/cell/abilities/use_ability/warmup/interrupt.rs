@@ -17,7 +17,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::super::messaging::send_entity_method;
-use super::super::sequence::ability_sequence_args;
+use super::super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 
 /// Why a warmup was interrupted. The label is the `reason` log field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,26 +114,19 @@ pub(crate) async fn interrupt_pending_cast(
         .ability_defs
         .get(&pc.ability_id)
         .and_then(|d| d.event_set_id);
-    if let Some(event_set_id) = event_set_id {
-        use crate::cell::spawner::EVENT_ABILITY_INTERRUPT;
-        if let Some(&seq_id) = space_mgr
-            .sequence_map
-            .get(&(event_set_id, EVENT_ABILITY_INTERRUPT))
-        {
-            let seq_args = ability_sequence_args(seq_id, entity_id, pc.target_id, pc.effect_seq);
-            send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
-            tracing::debug!(
-                target: "abilities.sequence",
-                event = "ability_interrupt",
-                source_id = entity_id,
-                target_id = pc.target_id,
-                ability_id = pc.ability_id,
-                sequence_id = seq_id,
-                event_set_id,
-                "onSequence broadcast: Ability_Interrupt (warmup cancelled)"
-            );
-        }
-    }
+    play_ability_sequence(
+        PhaseSequence {
+            phase: AbilityPhase::Interrupt,
+            entity_id,
+            ability_id: pc.ability_id,
+            target_id: pc.target_id,
+            instance_id: pc.effect_seq,
+            event_set_id,
+        },
+        tx,
+        space_mgr,
+    )
+    .await;
 
     if loop_was_on_this_ability {
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {

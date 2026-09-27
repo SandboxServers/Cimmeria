@@ -35,7 +35,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::messaging::send_entity_method;
-use super::sequence::ability_sequence_args;
+use super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 
 pub(crate) use interrupt::{interrupt_pending_cast, InterruptReason};
 #[cfg(test)]
@@ -172,27 +172,21 @@ pub(super) async fn begin_warmup(
         "ability warmup started; the cast fires when it expires"
     );
 
-    // Send Ability_Begin (event_id 1000), the warmup animation.
-    if let Some(event_set_id) = event_set_id {
-        use super::super::super::spawner::EVENT_ABILITY_BEGIN;
-        if let Some(&begin_seq_id) = space_mgr
-            .sequence_map
-            .get(&(event_set_id, EVENT_ABILITY_BEGIN))
-        {
-            let seq_args = ability_sequence_args(begin_seq_id, entity_id, target_id, effect_seq);
-            send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
-            tracing::debug!(
-                target: "abilities.sequence",
-                event = "ability_begin",
-                source_id = entity_id,
-                target_id,
-                ability_id,
-                sequence_id = begin_seq_id,
-                event_set_id,
-                "onSequence broadcast: Ability_Begin (warmup animation)"
-            );
-        }
-    }
+    // Send Ability_Begin (event_id 1000), the warmup animation, to the
+    // caster and its witnesses.
+    play_ability_sequence(
+        PhaseSequence {
+            phase: AbilityPhase::Begin,
+            entity_id,
+            ability_id,
+            target_id,
+            instance_id: effect_seq,
+            event_set_id,
+        },
+        tx,
+        space_mgr,
+    )
+    .await;
 
     if is_player {
         let timer_args = serialize_timer_update(
