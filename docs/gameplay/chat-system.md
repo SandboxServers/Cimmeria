@@ -8,21 +8,21 @@ last_updated: 2026-09-27
 # Chat System
 
 > **Last updated**: 2026-09-27
-> **Status**: Spatial chat (say / emote / yell) works. Channel management, moderation, tells, and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server. Sending on any non-spatial channel (team, squad, command, server, tell) no longer disappears silently: the sender gets a feedback line on the registered `tell`/feedback channel explaining why, matching the legacy `onError` reply the Python cell sent for the same unsupported channels (`python/cell/SGWPlayer.py::processPlayerCommunication`).
+> **Status**: Spatial chat (say / emote / yell) works. Tells, `chatIgnore` and the Ignore filter work on the server (SS-C1, 2026-09-27; not yet tested with two real clients). Channel management, moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server. Sending on any non-spatial channel (team, squad, command, server, tell) no longer disappears silently: the sender gets a feedback line on the registered `tell`/feedback channel explaining why, matching the legacy `onError` reply the Python cell sent for the same unsupported channels (`python/cell/SGWPlayer.py::processPlayerCommunication`).
 
 ## Overview
 
 The chat system provides multi-channel text communication between players. It supports system channels (say, emote, yell, team, squad, command, officer, server, feedback, tell, splash) and user-created channels (chat, roleplay, alliance). Messages on cell-based channels are forwarded to the CellApp for spatial distribution; other messages are handled on the BaseApp.
 
-The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/base/src/base/dispatch/chat.rs) (inbound base methods), [`cell/console/chat/`](../../crates/cell-console/src/cell/console/chat/mod.rs) (spatial fanout), and [`base/world_entry_chat.rs`](../../crates/base-session/src/base/world_entry_chat.rs) (channel registration at world entry).
+The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/base/src/base/dispatch/chat.rs) (inbound base methods), [`cell/console/chat/`](../../crates/cell-console/src/cell/console/chat/mod.rs) (spatial fanout), [`base/dispatch/tell.rs`](../../crates/base/src/base/dispatch/tell.rs) and [`base/dispatch/ignore.rs`](../../crates/base/src/base/dispatch/ignore.rs) (tells and `chatIgnore`), [`base/contact_list/ignore/`](../../crates/base-session/src/base/contact_list/ignore/) (the Ignore cache), and [`base/world_entry_chat.rs`](../../crates/base-session/src/base/world_entry_chat.rs) (channel registration at world entry).
 
 ## Implementation Status
 
-Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `chatLeave` (0xC1), `sendPlayerCommunication` (0xC2), `chatSetAFKMessage` (0xC3), and `chatSetDNDMessage` (0xC4). Every other base method in the interface below is undispatched: a client that sends it falls into the unhandled-method path.
+Only six SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `chatLeave` (0xC1), `sendPlayerCommunication` (0xC2), `chatSetAFKMessage` (0xC3), `chatSetDNDMessage` (0xC4) and `chatIgnore` (0xC5). Every other base method in the interface below is undispatched: a client that sends it falls into the unhandled-method path.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every AoI witness of the speaker |
+| Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every player AoI witness of the speaker, except a witness who ignores the speaker |
 | Channel registration on login | DONE | 8 channels pushed at `onClientReady` — see [System Channels](#system-channels) |
 | DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |
@@ -30,21 +30,21 @@ Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `c
 | Text rules | DONE (not client-tested) | A line over 255 UTF-16 units, or with a control, bidi, zero-width or other invisible formatting character, is refused, not truncated or cleaned |
 | GM console passthrough | DONE | A `.`-prefixed say from a GM is routed to the console handler; from a non-GM it falls through as ordinary chat |
 | Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. Channels are auto-joined at login; there is no join/leave state to change |
-| AFK status | ACK-ONLY | `chatSetAFKMessage` is deliberately log-only — AFK is not a speaker flag, and the auto-reply-tell path it feeds is unported |
+| AFK status | DONE (not client-tested) | `chatSetAFKMessage` stores the away message under the DND rules (2+ characters sets it, 128-scalar bound). It is not a speaker flag; a tell to an away player is answered with it. See [Tells and Ignore](#tells-and-ignore) |
 | Non-spatial channels (team / squad / command / server) | NOT IMPL | Registered with the client so the UI shows them, but the cell has no group/organization backing (team/squad/command) or is server-broadcast-only (server) to distribute the message; the sender gets a feedback line (`onPlayerCommunication` on the feedback channel) instead of a silent drop — see [System Channels](#system-channels) |
-| Player-to-player tell | NOT IMPL | `tell` (channel 9) is registered and used for one-way server→client messages (welcome text, GM feedback), but no player-originated tell is routed; the sender gets the same "not supported yet" feedback line rather than silence |
+| Player-to-player tell | DONE (not client-tested) | Handled on the base, never forwarded to the cell: the client sends tells on channel 10 and the recipient gets them on 10. See [Tells and Ignore](#tells-and-ignore) |
 | User channels | NOT IMPL | No create / delete / password / member list |
 | Channel operator system | NOT IMPL | `chatOp` undispatched |
 | Channel moderation | NOT IMPL | `chatMute`, `chatKick`, `chatBan` undispatched |
 | Channel password | NOT IMPL | `chatPassword` undispatched |
-| Ignore list | NOT IMPL | `chatIgnore` undispatched. The [contact list](contact-list.md) system does persist an `Ignore` list, but nothing consults it to suppress messages |
+| Ignore list | DONE (not client-tested) | `chatIgnore` edits the [contact list](contact-list.md)'s `Ignore` list; tells and spatial chat honour it, one way (D-SS15). See [Tells and Ignore](#tells-and-ignore) |
 | Friend list (nicknames) | NOT IMPL | `chatFriend` / `onNickChanged` undispatched |
 | Petition system | NOT IMPL | `petition`, `announcePetition` undispatched |
 | GM broadcast | DONE (not client-tested) | `/gmshout` (cell method 222 `sendGMShout`) and `.announce [space] <text>` send the GM's line to the GM's space or to every online player, on the server channel with the GM speaker flag. GameMaster and above only. See [GM broadcast](#gm-broadcast). The legacy `hearGMShout` hop is not used |
 | Localized communication | NOT IMPL | `onLocalizedCommunication` never sent |
 | Channel list | NOT IMPL | `chatList` undispatched |
 
-DND text is capped server-side at 128 Unicode scalar values, not UTF-8 bytes or UTF-16 code units. This is a Cimmeria input policy; no client limit was reverse-engineered. A longer message still turns DND on, so the player sees `/dnd` take effect, but only the first 128 scalars are stored; truncation logs at DEBUG with `reason = "dnd_message_truncated"`, the length and the limit, without the message body. Malformed WSTRING input also preserves the previous state. DND auto-replies remain unimplemented.
+DND text is capped server-side at 128 Unicode scalar values, not UTF-8 bytes or UTF-16 code units. This is a Cimmeria input policy; no client limit was reverse-engineered. A longer message still turns DND on, so the player sees `/dnd` take effect, but only the first 128 scalars are stored; truncation logs at DEBUG with `reason = "dnd_message_truncated"`, the length and the limit, without the message body. Malformed WSTRING input also preserves the previous state. A tell to a player in DND is still delivered, and the sender gets the DND text back (see [Tells and Ignore](#tells-and-ignore)).
 
 ## Entity Definition (Communicator.def)
 
@@ -112,7 +112,7 @@ Eight channels are registered with the client at `onClientReady` (`DEFAULT_CHAT_
 | tell | 9 | yes | Used server-to-client for the welcome message and GM feedback. There is no dedicated feedback channel (8 is unregistered), so GM feedback — and now the "channel not supported" reply for team/squad/command/officer/server/tell — rides `tell` |
 | splash | — | **no** | Not registered |
 
-> **Id conflict (2026-09-27).** `EChannel` in `entities/defs/enumerations.xml:113-128` numbers the channels server 8, feedback 9, tell 10, splash 11 and user channels from 12, with 7 unused; the legacy `deprecated/python/base/Chat.py:144-154` builds every channel from those values. The ids in this table are what the Rust server registers today (`DEFAULT_CHAT_CHANNELS`), not the enum. Whether the client hardcodes any `EChannel` id, or takes every id from `onChatJoined`, is still to be checked; the organizations campaign changes the registered ids only with that evidence ([decision D-ORG14](../analysis/organizations/README.md#decisions), [audit A-40](../analysis/organizations/audit.md)).
+> **Id conflict (2026-09-27).** `EChannel` in `entities/defs/enumerations.xml:113-128` numbers the channels server 8, feedback 9, tell 10, splash 11 and user channels from 12, with 7 unused; the legacy `deprecated/python/base/Chat.py:144-154` builds every channel from those values. The ids in this table are what the Rust server registers today (`DEFAULT_CHAT_CHANNELS`), not the enum. Whether the client hardcodes any `EChannel` id, or takes every id from `onChatJoined`, is still to be checked; the organizations campaign changes the registered ids only with that evidence ([decision D-ORG14](../analysis/organizations/README.md#decisions), [audit A-40](../analysis/organizations/audit.md)). ORG-E1 has since found that the client hardcodes the enum values, so a player's `/tell` arrives on **10**, not 9. The tell path uses 10 in both directions through its own constant (`dispatch/tell.rs::TELL_CHANNEL`); the registration and the `CHAN_*` constants change once, in ORG-09 (D-SS17).
 
 ## Channel Flags
 
@@ -163,15 +163,34 @@ The GM gate runs before anything else: cell method 222 is in the SGWGmPlayer tai
 
 SigNoz: `chat.gm_broadcast` (INFO, the audit row: actor ids, `scope`, `source` = `native` or `console`, `space_id`, the text), `chat.gm_broadcast_delivered` (INFO, the recipient count per scope), `chat.gm_broadcast_rejected` (WARN, `reason` = `empty_text`, `too_long`, `malformed_args`, `no_text`, ...).
 
+## Tells and Ignore
+
+SS-C1 (2026-09-27), decisions D-SS13, D-SS15 and D-SS17 in `docs/analysis/social-systems/README.md`.
+
+**Tells.** `sendPlayerCommunication` on the tell channel (10) passes the flood limit and text rules above and is then handled on the base; it never reaches the cell. The target name resolves against the players online now: the exact name first, then a case-insensitive match if exactly one player has it. The recipient gets `onPlayerCommunication(sender, flags, 10, text)` and the sender `onTellSent(recipient, text)` (client method 30). If the recipient is away, the tell is still delivered, and the sender also gets the recipient's DND message (or, without one, their AFK message) on channel 10, spoken by the recipient. Every refusal is one feedback line to the sender and nothing to anyone else:
+
+| Case | Feedback |
+|------|----------|
+| No target | "Who do you want to send a tell to?" |
+| Own name | "You cannot send a tell to yourself." |
+| Nobody online by that name | "Player X is not online." (the legacy `Chat.py:351-354` reply) |
+| Two online players match after case folding | "More than one player is named X. Type the exact name." |
+| The recipient ignores the sender | "X is not accepting your messages." |
+
+**Ignore.** The contact list's `Ignore` list (flags 301) is the only source. If A has B on it, B's tells to A are refused as above and B's say, emote and yell are not sent to A. It works one way only: A's lines still reach B, and nobody is hidden from anyone's AoI. The list is copied to the base session (for tells) and the cell entity (for spatial chat) at every world entry and after every change, from `chatIgnore` or from the contact-list window.
+
+`chatIgnore(name, 1)` adds a real character by its exact stored name (the typed name is resolved the same way as a tell target, offline characters included). It refuses the player's own character, a name already on the list, and a list that already holds 100 names (a project cap from the CAT-L-04 audit finding, not a recovered limit). `chatIgnore(name, 0)` removes a name on the list. Both go through the contact-list member operations, so the contact-list window updates, and both answer with a feedback line ("You are now ignoring X." / "You are no longer ignoring X." or the reason for a refusal).
+
+Returning to character select clears the AFK message and the Ignore cache with the rest of the per-character state.
+
+Events, all on the `chat` target: `chat.tell_delivered` (INFO), `chat.tell_refused` (with `reason`), `chat.ignore_added` / `chat.ignore_removed` (with `before` / `after`), `chat.ignore_refused`, `chat.ignore_synced` / `chat.ignore_sync_failed`, `chat.spatial_ignored` (the count of withheld witnesses), `chat.ignore_set_applied` / `chat.ignore_set_dropped` (cell) and `chat.afk_set`. Message text is never logged, only its length.
+
 ## Remaining Work
 
-1. **Player-to-player tell** — the highest-value gap; `tell` is registered and the client UI expects it
-2. **Group / organization channels** — team, squad, command are registered but have no membership backing; blocked on the [group system](group-system.md)
-3. **Yell radius** — say, emote, and yell all fan out to the same AoI witness set; yell should use a wider range
-4. **Ignore enforcement** — wire the contact-list `Ignore` list into the chat fanout
-5. **User channels + moderation** — create/join/password/op/mute/kick/ban are all undispatched
-6. **AFK auto-reply** — `chatSetAFKMessage` is accepted but the auto-reply-tell path it feeds does not exist
-7. **NPC speech** — how `onSystemCommunication`'s Speaker field works for NPCs is still unrecovered
+1. **Group / organization channels** — team, squad, command are registered but have no membership backing; blocked on the [group system](group-system.md)
+2. **Yell radius** — say, emote, and yell all fan out to the same AoI witness set; yell should use a wider range
+3. **User channels + moderation** — create/join/password/op/mute/kick/ban are all undispatched (a muted sender's tells are refused once SS-C3 adds mutes)
+4. **NPC speech** — how `onSystemCommunication`'s Speaker field works for NPCs is still unrecovered
 
 ## Related Docs
 

@@ -39,8 +39,8 @@ Source: `entities/defs/interfaces/Communicator.def`
 | 2 | 0xC2 | sendPlayerCommunication | UINT8 channel, WSTRING target, WSTRING text |
 | 3 | 0xC3 | chatSetAFKMessage | WSTRING message |
 | 4 | 0xC4 | chatSetDNDMessage | WSTRING message |
-| 5 | 0xC5 | chatIgnore | WSTRING playerName |
-| 6 | 0xC6 | chatFriend | WSTRING playerName |
+| 5 | 0xC5 | chatIgnore | WSTRING aPlayerName, UINT8 aFlag (1 ignore, 0 stop ignoring). Handled: `dispatch/ignore.rs` (SS-C1) |
+| 6 | 0xC6 | chatFriend | WSTRING aPlayerName, WSTRING aPlayerNick, UINT8 aFlag |
 | 7 | 0xC7 | chatList | UINT8 channelId |
 | 8 | 0xC8 | chatMute | WSTRING playerName, UINT8 channelId |
 | 9 | 0xC9 | chatKick | WSTRING playerName, UINT8 channelId |

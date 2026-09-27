@@ -1,0 +1,133 @@
+# SS-C1 Worknote: Tells and Ignore
+
+> Type: reference. Audience: the social-systems coordinator.
+> Companions: [README.md](../README.md), [work-packets.md](../work-packets.md#ss-c1-tells-and-ignore), [audit.md](../audit.md).
+
+## Contract
+
+- **Packet:** SS-C1, tells and Ignore (work-packets.md § SS-C1).
+- **Decisions in force:** D-SS12 (text rules, applied by SS-00 before the tell branch), D-SS13 (name resolution), D-SS14 (the chat bucket covers tells), D-SS15 (Ignore: the flags-301 list, one direction, chat/duel/mail only, no AoI hiding), D-SS17 (channel ids follow D-ORG14; this packet does not edit `CHAN_*`). Security rows: CAT-L-01 (the Ignore half) and CAT-L-07 (`chatIgnore` only), with CAT-L-04's cap.
+- **Tell channel byte:** 10, per ORG-E1 Q5 / D-ORG14, which SS-E1 C-Q1 cites (`git show origin/social/se1-re:docs/reverse-engineering/findings/chat-wire-formats.md`). No named constant for 10 exists (`world_entry_chat::CHAN_TELL` and `cimmeria_wire::cell::chat::CHAN_TELL` both still say 9), so `crates/base/src/base/dispatch/tell.rs` defines `TELL_CHANNEL = 10` locally with the citation.
+- **Base:** `origin/main` @ `88d7da73a` (SS-00 merged as #880). Branch `social/c1-tells-ignore`.
+- **Commits:**
+  1. `fb657944a` refactor(chat): split cell-console chat.rs into chat/ (no behaviour change)
+  2. `fcf94e6b0` feat(chat): spatial chat skips a witness who ignores the speaker
+  3. `d9818657c` feat(contact-list): Ignore cache on the base session, synced to the cell
+  4. `f62c39ed2` feat(chat): tells and chatIgnore on the base
+  5. `2ee41d865` test(wireclient): two clients exchange a tell
+  6. docs and this worknote (the commit after these)
+- **Owned paths (new):** `crates/base/src/base/dispatch/{tell,ignore}.rs`, `crates/base/src/base/dispatch/tests/{tell,chat_ignore}.rs`, `crates/base-session/src/base/contact_list/ignore/`, `crates/cell/src/cell/service/base_messages/ignore.rs` and its test, `crates/cell-console/src/cell/console/chat/` (the split), `crates/wireclient/tests/it/two_client_tell.rs`, this file.
+- **Read set:** SS-WORKER-RULES.md; work-packets.md (contract, contended files, SS-C1); README.md D-SS12..D-SS17; audit.md A-26, A-27, A-31, § 6; CAT-L-chat-contact.md (L-04, L-07); SS-E1's chat findings (unmerged #875); PR #585's diff; `deprecated/python/base/Chat.py:314-358` and `SGWPlayer.py:195-210`; the SS-00 modules (`player_index`, `rate_limit`, `feedback`); the contact-list handlers and persistence; `client_ready/mod.rs`; `Communicator.def`.
+
+## Evidence
+
+- **Tells never worked.** Before this packet the base forwarded every `sendPlayerCommunication` to the cell. The client's `/tell` byte, 10, is `CHAN_SPLASH` in the Rust constants, so the cell answered "Speaking on channel 10 is not supported yet!".
+- **Legacy tell shape** (`Chat.py:339-358`): an empty target is refused; a missing recipient gets a feedback line; otherwise `onTellSent(target, message)` goes to the sender and `onPlayerCommunication(sender, flags, CHAN_tell, message)` to the recipient. Legacy had no AFK auto-reply (`chatSetAFKMessage` only stored the text). The packet asks for the auto-reply, so it is a Cimmeria addition built on the stored text.
+- **`chatIgnore`** takes `WSTRING aPlayerName, UINT8 aFlag` (`Communicator.def`; SS-E1 records 1 = ignore, 0 = stop). The dispatch table omitted the flag (A-27); rows 5 and 6 are fixed.
+- **Ignore list identity:** `ensure_system_lists` creates it by name `'Ignore'` with flags 301. Reads use `flags = 301` (D-SS15); writes use the id `ensure_system_lists` returns.
+- **Gate travel** re-runs `onClientReady` for a character that is still listed (`client_ready/mod.rs`, the `listed_online` comment), and it creates a fresh cell entity. So seeding the cell set at `onClientReady` covers gate travel with no extra hook.
+
+## Design decisions
+
+- **The chat.rs split comes first and is pure** (commit 1): `chat/mod.rs` (the handler, re-exports, the method index), `spatial.rs`, `feedback.rs`, `tests/{spatial,dot_command,feedback}.rs`. Bodies are moved verbatim; import paths are unchanged, and the log targets stay under `…::console::chat` by prefix. The 7 existing chat tests pass unchanged.
+- **Three copies of the list, one resync.** `contact_list::ignore::resync_ignore_cache` reloads the flags-301 names and rewrites `ConnectedClientState::ignore` (an `IgnoreCache`) and the cell entity's `ignore_names` (`BaseToCellMsg::UpdateIgnoreList`). It runs (a) at every `onClientReady`, after `InitPlayerState`, and (b) inside `handle_add_members` / `handle_remove_members` when the changed list has flags 301. Because it is in (b), the contact-list UI path and `chatIgnore` share one code path. The resync writes the session only if it still plays the same `player_id`, so a logOff between the load and the write cannot move char A's list onto char B.
+- **One direction, the line only (D-SS15).** The cell skips a witness whose set holds the speaker's name. The speaker's own echo is unchanged, so being ignored is not revealed, and nothing touches AoI. PR #585's symmetric check and AoI hiding are not taken.
+- **Names compare exactly.** `sgw_player.player_name` is case-sensitive UNIQUE. `chatIgnore` stores the canonical name that `resolve_character` returns (D-SS13 against `sgw_player`, offline characters included). A remove matches the typed name against the list itself (exact, then a unique case-fold), so the entry for a deleted character can still be removed.
+- **The cap is 100 names** (`MAX_IGNORE_LIST_MEMBERS`), project policy from CAT-L-04's remediation text ("e.g. 100 per list"). The audit's aside "the original SGW limit was 50 friends / 50 ignores" has no source, so it is not used.
+- **The tell runs after the SS-00 gates**: bucket, then text rules, then `channel == TELL_CHANNEL`. A tell costs a chat token, as D-SS14 says.
+- **Away reply:** the DND text wins over AFK. The reply carries the recipient's speaker flags, so `SPEAKER_DND` is set on a DND reply. The tell itself is always delivered.
+- **The send primitive:** `feedback::send_player_method` is the reliable single-session send that already sat under `send_feedback_line`, now public so tells can send methods 28 and 30 to any session. `send_feedback_to_entity` calls it.
+- **Feedback for a malformed `chatIgnore`:** a real client never sends one, but the rule is visible feedback for every refusal, so one line is sent anyway.
+
+## API for SS-M1 (mail) and SS-D1 (duels)
+
+In `cimmeria_base_session::base::contact_list::ignore` (reached as `crate::base::contact_list::ignore` in `cimmeria-base`):
+
+- `player_ignores(pool, recipient_player_id, sender_name) -> Result<bool, sqlx::Error>`: the database check, which works for an offline recipient. Use it for mail send; it reads the flags-301 list only.
+- `session_ignores(&clients, recipient_addr, sender_name) -> bool`: the cached check for an online recipient (the caller holds the `connected` lock). Tells use it; duel challenges can too.
+- `IgnoreCache::ignores(name)` on `ConnectedClientState::ignore`.
+- `resolve_character(pool, typed) -> CharacterLookup { Found { player_id, name }, Ambiguous, NotFound }`: D-SS13 against `sgw_player`. SS-M1 may want to reuse it rather than write a second resolver.
+- `match_name(names, typed) -> NameMatch`: the exact-then-unique-case-fold rule over any name set.
+- Refusal text: `dispatch::tell::not_accepting_text(recipient)` gives "X is not accepting your messages." It is `pub(super)`; mail should build the same wording or ask for it to be made public.
+
+## Telemetry
+
+All events are on target `chat`, which SS-00 already registered in `OTEL_FILTER` at debug. No new target was added.
+
+| Event | Level | Fields |
+|---|---|---|
+| `chat.tell_delivered` | INFO | `player_id`, `account_id`, `entity_id`, `target_player_id`, `target_account_id`, `target_entity_id`, `text_units`, `away_reply` |
+| `chat.tell_refused` | DEBUG | the sender ids, `target_player_id` (when resolved), `target_name` (64-char prefix), `reason`: `no_target`, `self`, `not_online`, `ambiguous`, `recipient_ignores_sender`, `recipient_not_in_world` or `recipient_send_failed` |
+| `chat.ignore_added` / `chat.ignore_removed` | INFO | `player_id`, `account_id`, `entity_id`, `target_player_id` (add), `before`, `after` |
+| `chat.ignore_refused` | DEBUG (ERROR for `db_error`) | `reason`: `not_in_world`, `decode_failed`, `bad_flag`, `no_target`, `no_db_pool`, `unknown_character`, `ambiguous`, `self`, `already_ignored`, `list_full`, `not_ignored`, `write_failed` or `db_error` |
+| `chat.ignore_synced` | DEBUG | `path` (`world_entry`, `contact_list`), `before`, `after`, the ids |
+| `chat.ignore_sync_failed` | WARN (`no_db_pool`, `cell_send_failed`), ERROR (`db_error`), DEBUG (`session_changed`, `entity_to_addr_miss`) | `reason`, `path` |
+| `chat.spatial_ignored` | DEBUG | `entity_id`, `player_id`, `account_id`, `channel`, `skipped`, `reason = witness_ignores_speaker` |
+| `chat.ignore_set_applied` / `chat.ignore_set_dropped` | DEBUG (cell) | `entity_id`, `player_id`, `before`, `after` / `reason = entity_missing` |
+| `chat.afk_set` | DEBUG | the ids, `afk_active` |
+
+Spans: `chat.tell` and `chat.ignore` at INFO.
+
+SigNoz queries for a tester: `target = 'chat' AND event IN ('chat.tell_delivered','chat.tell_refused') AND player_id = <id>` for tells; `event LIKE 'chat.ignore%'` for Ignore edits and syncs; `event = 'chat.spatial_ignored'` for say lines withheld by an Ignore.
+
+## Commands run
+
+All run from the ss-c1 worktree through the lane. The lane's own exit code does not show a cargo failure, so each output file was also grepped for `^error`, the result lines and `[lane] released (exit 0`.
+
+| Command | Result |
+|---|---|
+| `lane.sh cargo test -p cimmeria-cell-console --lib chat::` (after the split) | 7 passed, exit 0 |
+| `lane.sh cargo check -p cimmeria-cell -p cimmeria-cell-console --all-targets` | exit 0 |
+| `lane.sh cargo test -p cimmeria-base --lib dispatch::` | 41 passed (live-DB cases self-skipped in this run) |
+| `lane.sh cargo test -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-wire -p cimmeria-cell -p cimmeria-cell-console -p cimmeria-entity --lib` | 146 / 125 / 450 / 269 / 341 / 210 passed, 0 failed |
+| `live-db-test.sh ignore` | 41 of 42 passed; the one failure was a test-decoder bug (extended method encoding for CM 87), fixed |
+| `live-db-test.sh chat_ignore` | 4 passed, 0 skipped |
+| `reload-db.sh`, then `DATABASE_URL=…/sgw_ss_c1 lane.sh cargo test -p cimmeria-wireclient --test it two_client_tell -- --test-threads=1` | 1 passed in 2.94 s (real orchestrator, not skipped) |
+| `lane.sh cargo clippy -p cimmeria-wire -p cimmeria-entity -p cimmeria-cell -p cimmeria-cell-console -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-base-methods -p cimmeria-services -p cimmeria-wireclient --all-targets -- -D warnings` | exit 0, no warnings |
+| `lane.sh cargo test -p cimmeria-server --bins logging` | 52 passed (target scan and filter parity) |
+| `lane.sh cargo fmt --all -- --check` | clean |
+
+## Regression proof
+
+Each guard was run with its fix disabled in place, then the file was restored from a copy.
+
+| Guard | Fix disabled | Result |
+|---|---|---|
+| `tell_to_ignoring_player_not_delivered` | `if false && recipient.ignores_sender` in `tell.rs` | FAILED |
+| `spatial_chat_skips_ignoring_witness` | `false &&` in the partition predicate in `spatial.rs` | FAILED |
+| `chat_ignore_rejects_self` (live DB) | `if false && target_player_id == caller.player_id` in `dispatch/ignore.rs` | FAILED |
+| `on_client_ready_seeds_ignore_list_after_init_player_state` (live DB) | the `resync_ignore_cache(.., "world_entry")` call wrapped in `if false` | FAILED |
+| `contact_list_ui_edit_of_ignore_list_resyncs_session_and_cell` (live DB) | early `return` in `resync_if_ignore_list` | FAILED |
+
+Not proven by revert: `tell_reaches_exactly_one_recipient`. Without the tell branch, Bob receives nothing, so the test fails by construction, but no revert run was recorded for it.
+
+## Tests added (the audit § 6 names are kept)
+
+- Type 8 (`cimmeria-base` `dispatch::tests::tell`): `tell_reaches_exactly_one_recipient`, `tell_to_ignoring_player_not_delivered`, `tell_from_player_who_ignores_recipient_is_delivered`, `tell_resolves_a_case_folded_name`, `tell_to_ambiguous_name_is_refused`, `tell_refusals_feed_back_with_reason`, `tell_to_away_player_replies_with_away_message`, `tell_to_dnd_player_replies_with_dnd_message`.
+- Cell: `spatial_chat_skips_ignoring_witness`, `spatial_chat_reaches_witness_the_speaker_ignores`, `update_ignore_list_replaces_the_cell_entity_set`, `update_ignore_list_for_missing_entity_logs_reason`.
+- Live DB: `chat_ignore_adds_to_own_ignore_list`, `chat_ignore_rejects_self`, `chat_ignore_refuses_unknown_duplicate_absent_and_full`, `player_ignores_reads_only_the_ignore_list`, `resolve_character_follows_d_ss13`, `resync_ignore_cache_updates_session_and_cell`, `contact_list_ui_edit_of_ignore_list_resyncs_session_and_cell`, `on_client_ready_seeds_ignore_list_after_init_player_state`.
+- Type 12, no DB: `chat_ignore_refusals_before_the_database`.
+- Unit: `match_name_prefers_exact_then_unique_case_fold`, `session_ignores_reads_the_recipient_cache_only`, `chat_set_afk_stores_clears_and_bounds_the_away_message`, the extended logOff reset test (AFK and Ignore cleared).
+- Wire (type 2): `serialize_on_tell_sent_is_two_wstrings`.
+- Type 11: `two_client_tell::two_clients_exchange_a_tell` (not in CI, A-60).
+
+Sentinels: `0x7300_C1xx` (ignore module), `0x7300_C2xx` (chatIgnore dispatch), `0x7300_C300`/`C301` (client_ready); wireclient accounts 900_311-900_314.
+
+## Known gaps
+
+1. **Mute (SS-C3).** `tell.rs` has a `TODO(SS-C3)` where a muted sender is refused.
+2. **Names added through the UI in the wrong case** (for example "bob" for "Bob") never match, because comparisons are exact. `chatIgnore` always stores the canonical name; the contact-list UI's `contactListAddMembers` does not resolve names, and that path is not in this packet's scope.
+3. **Deleting the Ignore list or changing its flags** in the contact-list window does not resync; the next world entry does. Only member adds and removes resync.
+4. **`chatIgnore` has no rate limit.** Each call is a few indexed queries. It could share the chat bucket if SigNoz shows abuse.
+5. **The Ignore list is identified two ways.** Writes use the list named `Ignore` (from `ensure_system_lists`) and reads use flags 301. A player who renames the system list or sets 301 on a custom list makes the two disagree. Pre-existing contact-list behaviour.
+6. **Client rendering of `onTellSent` and of an away reply on channel 10 is unverified** (SS-E1 C-Q4 is still open). The wireclient test proves the bytes, not the UI.
+7. **Pre-existing, out of scope:** `spatial::broadcast_to_witnesses` returns before the speaker echo when the speaker has no player witnesses, so a lone speaker never sees their own say. The Ignore filter runs after that return and changes nothing about it.
+
+## Integration edits for the coordinator
+
+1. **ORG-09 / SS-C4:** when `CHAN_TELL` becomes 10, replace `dispatch::tell::TELL_CHANNEL` with it and delete the local constant. The test files import `TELL_CHANNEL` from `tell`.
+2. **Contended files touched, in merge order:** `crates/base/src/base/dispatch/mod.rs` (the 0xC5 arm, `mod ignore; mod tell;`, the `CHAT_SET_AFK` arm now passes `payload, connected`); `dispatch/chat.rs` (the tell branch after the text rules, and `handle_chat_set_afk` now stores the message); `crates/base-session/src/base/mod.rs` (`ConnectedClientState` gains `afk_message` and `ignore`, initialised at 7 struct literals); `cell-console/…/chat.rs` → `chat/` (ORG-04 and ORG-09 rebase onto `fb657944a`).
+3. **Signature change:** `contact_list::handlers::handle_add_members` / `handle_remove_members` take `cell_tx` and return the changed names. The only caller is `contact_list_dispatch.rs`, which is updated.
+4. **`crates/base/src/base/mod.rs`** now re-exports `player_index` from base-session.
+5. **gap-analysis:** § 21 rows and its matrix row are updated (11 rows: 5 NT, 1 IM, 5 KM; a new "Ignore enforcement" row). The document's headline totals (the NT count and so on) are not recounted; that belongs to SS-99.
+6. **Doc owned by D-ORG14:** in `chat-system.md` only the id-conflict note gained a sentence (tells use 10); the channel table is left to ORG-09.
