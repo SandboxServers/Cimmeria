@@ -667,15 +667,15 @@ last_updated: 2026-09-25
 | XP from missions | IM | Content / design | cell/content/executor/mod.rs:512 | **KM → IM 2026-09-25.** A delivery path now exists: `Action::GrantXP` has loader and executor arms (#618, chain-replay guard). No XP flows yet. There are zero `grant_xp` seed rows (Harset chains carry `-- GC3: grant_xp` placeholders), `reward_xp = 0` on all 1,041 missions, and completion does not read it (#310). Playtest recorded 0 mission XP. Re-verified 2026-09-25 |
 | ASP on level-up | KM | -- | -- | No ASP grant on level-up (ASP is granted only by GM `gmGiveAppliedSciencePoints`) |
 
-### 19. Crafting --- KM (Phase 1 landed; the crafting *verbs* are still stubs)
+### 19. Crafting --- KM (state, login sync and discipline learning landed; the item verbs are still stubs)
 
 - **Confidence**: HIGH (code re-read 2026-09-25; no crafting runtime change since 2026-07-25)
 - **Documentation**: [gameplay/crafting-system.md](gameplay/crafting-system.md), [reverse-engineering/findings/crafting-wire-formats.md](reverse-engineering/findings/crafting-wire-formats.md), [reverse-engineering/findings/crafting-state-machine.md](reverse-engineering/findings/crafting-state-machine.md)
-- **Rust code**: [`crates/entity/src/crafting.rs`](../crates/entity/src/crafting.rs) (191 — `CraftingState`), [`crates/base-session/src/base/crafting/`](../crates/base-session/src/base/crafting/) (1,103 — handlers.rs 440, persistence.rs 645, mod.rs 18), [`crates/cell-methods/src/cell/cell_methods/player/crafting/`](../crates/cell-methods/src/cell/cell_methods/player/crafting/) (argument parsing and the forward to the base), [`crates/cell-catalog/src/crafting/`](../crates/cell-catalog/src/crafting/) (`CraftingCatalog` and the crafting enumerations), [`crates/wire/src/crafting/`](../crates/wire/src/crafting/) (serializers for 112 and 136-140, `CraftRequest`), [`crates/cell-console/src/cell/console/crafting.rs`](../crates/cell-console/src/cell/console/crafting.rs) (136)
+- **Rust code**: [`crates/entity/src/crafting.rs`](../crates/entity/src/crafting.rs) (191 — `CraftingState`), [`crates/base-session/src/base/crafting/`](../crates/base-session/src/base/crafting/) (persistence, GM grants, `sync/` login and state pushes, `spend/` discipline learning, `request.rs`, `feedback.rs`), [`crates/cell-methods/src/cell/cell_methods/player/crafting/`](../crates/cell-methods/src/cell/cell_methods/player/crafting/) (argument parsing and the forward to the base), [`crates/cell-catalog/src/crafting/`](../crates/cell-catalog/src/crafting/) (`CraftingCatalog` and the crafting enumerations), [`crates/wire/src/crafting/`](../crates/wire/src/crafting/) (serializers for 112 and 136-140, `CraftRequest`), [`crates/cell-console/src/cell/console/crafting.rs`](../crates/cell-console/src/cell/console/crafting.rs) (136)
 - **Recent PRs**: **#427 (Phase 1 — `CraftingState` + persistence + ASP dispatch fix, #53)**, #521 (GM crafting grants), #728 (docs only, 2026-09-25: records the method-138 racial-paradigm wire schema `INT32 paradigmId + INT8 level` and confirms Rust has no progression, emission, or login sync for it; follow-up #723)
 - **Open issues**: #567 (crafting activity handlers), #723 (racial-paradigm progression + client sync), #465 (security audit CAT-F)
-- **State of play**: Phase 1 shipped the *state* layer. `sgw_player.discipline_ids`, `blueprint_ids`, `applied_science_points` and `racial_paradigm_levels` load and save transactionally, and GM grant commands drive expertise. Crafting campaign CR-01 (2026-09-26) added the catalog, the byte-exact serializers and the request path: the cell parses every argument of methods 95-100 and forwards a `CraftRequest`, and the base answers every verb with a "not available yet" line (`base/crafting/request.rs`). No verb changes state yet.
-- **Path forward**: Phase 2 (#567): ASP-spend validation (paradigm gate + prerequisite expertise + DB UPDATE), then the craft / research / reverse-engineer / alloy flows. #723: emit method 138 on paradigm change and at login.
+- **State of play**: Phase 1 shipped the *state* layer. `sgw_player.discipline_ids`, `blueprint_ids`, `applied_science_points` and `racial_paradigm_levels` load and save transactionally, and GM grant commands drive expertise. Crafting campaign CR-01 (2026-09-26) added the catalog, the byte-exact serializers and the request path: the cell parses every argument of methods 95-100 and forwards a `CraftRequest`, and the base answers every verb with a "not available yet" line (`base/crafting/request.rs`). CR-03 pushes the whole crafting state at world entry (136, 138, 139, the ASP total), makes the GM ASP grant push the total, and starts every character at Common 5 and the other paradigms at 1 (D-CR03). CR-04 implements `spendAppliedSciencePoints`: one locked transaction checks the catalog, known, ASP, paradigm level and prerequisites at expertise 50, and every refusal is a visible line (214 as `onErrorCode` for no ASP).
+- **Path forward**: the crafting campaign (`docs/analysis/crafting/`): stations and tools (CR-05), the induction engine (CR-06), then craft / research / reverse-engineer / alloy (CR-07 to CR-09), respec (CR-10), ASP earning (CR-12), and Blueprint and Paradigm Guide items (CR-15). #723: method 138 is sent at login (CR-03); nothing raises a paradigm level until CR-15.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -683,10 +683,10 @@ last_updated: 2026-09-25
 | Research item | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
 | Reverse engineer | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
 | Alloy | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
-| Discipline learning | KM | -- | stub | `spendAppliedSciencePoints` is parsed and forwarded but does not mutate; answered "not available yet" (CR-01) |
+| Discipline learning | IM | -- | base/crafting/spend/ | `spendAppliedSciencePoints` learns at expertise 1 for one ASP in one `FOR UPDATE` transaction; every refusal is a visible line; replay-safe; no blueprints (D-CR04). Live-DB tested per refusal (CR-04). No in-client record yet |
 | Expertise system (0-100) | IM | -- | entity/crafting.rs, base/crafting/handlers.rs:36 | **Corrected 2026-07-25.** `set_expertise` with an explicit `[0,100]` clamp, first-grant discipline registration, transactional save, and an `onUpdateDiscipline` client push (handlers.rs:86-140). Driven only by GM grants; no in-client record |
-| Racial paradigm gating | KM | -- | state only | `racial_paradigm_levels` loads/saves as a `{paradigm_id → level}` map (persistence.rs:132-152) but **no gate function consumes it**, and method 138 is never emitted (#728 audit, #723). Re-verified 2026-09-25 |
-| Blueprint management | IM | -- | base/crafting/persistence.rs:91 | **Corrected 2026-07-25.** `blueprint_ids` round-trips through `load_crafting_state` / `save_crafting_state`; no acquire/dedupe verbs yet |
+| Racial paradigm gating | IM | -- | base/crafting/spend/, sync/ | The spend gate checks the discipline's paradigm level. Characters start at Common 5 and the rest at 1 (D-CR03, applied on load and by the column default), and 138 is sent for all five at world entry (CR-03). Nothing raises a level yet (CR-15) |
+| Blueprint management | IM | -- | base/crafting/persistence/mod.rs | **Corrected 2026-07-25.** `blueprint_ids` round-trips through `load_crafting_state` / `save_crafting_state`; no acquire/dedupe verbs yet |
 | Crafting respec | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
 
 ### 20. Stargate Travel --- IM
@@ -1267,7 +1267,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 16 | NPC AI and Behavior | 26 | 8 | 6 | 9 | 3 | 0 |
 | 17 | Spawn System | 23 | 7 | 0 | 1 | 14 | 1 |
 | 18 | XP and Leveling | 11 | 9 | 0 | 1 | 1 | 0 |
-| 19 | Crafting | 9 | 0 | 0 | 2 | 7 | 0 |
+| 19 | Crafting | 9 | 0 | 0 | 4 | 5 | 0 |
 | 20 | Stargate Travel | 10 | 2 | 4 | 3 | 1 | 0 |
 | 21 | Chat | 10 | 0 | 2 | 2 | 6 | 0 |
 | 22 | Trading | 8 | 0 | 0 | 8 | 0 | 0 |
@@ -1294,7 +1294,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 1 | 5 | 3 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **60** | **98** | **140** | **4** |
+| | **TOTALS** | **471** | **169** | **60** | **100** | **138** | **4** |
 
 ### Summary Percentages
 
@@ -1303,13 +1303,13 @@ Recomputed 2026-09-25 directly from the rows above; the columns sum to the total
 | Status | Count | Percentage |
 |--------|-------|-----------|
 | Confirmed Working (CW) | 169 | 35.9% |
-| Needs Test (NT) | 58 | 12.3% |
-| Implemented (IM) | 98 | 20.8% |
-| Known/Missing (KM) | 142 | 30.1% |
+| Needs Test (NT) | 60 | 12.7% |
+| Implemented (IM) | 100 | 21.2% |
+| Known/Missing (KM) | 138 | 29.3% |
 | Needed/Unknown (NU) | 4 | 0.8% |
 
-**Code exists (CW + NT + IM)**: 325 features (69.0%)
-**Missing (KM + NU)**: 146 features (31.0%)
+**Code exists (CW + NT + IM)**: 329 features (69.9%)
+**Missing (KM + NU)**: 142 features (30.1%)
 
 **Tested end-to-end (CW)**: 169 features (35.9%).
 
@@ -1356,7 +1356,7 @@ Re-ranked 2026-09-25.
 2. **Effect-script content coverage** — the framework works but the long tail of the 3,216 effect rows still needs scripts, and the clear-on-damage / clear-on-revive / clear-on-bandolier-swap flags are not implemented. `cell/effects/scripts.rs` is 1,648 lines
 3. **AoI invisible-entity defect** — a witness can be correctly introduced to an entity and still not render it (Castle Cellblock GuardBody corpse). The 2026-09-19 repro put the drop inside the client, after a fully ACKed delivery, and fixed the `OTEL_FILTER` gap that had kept `aoi.create_emit` out of SigNoz. The first-login cinematic hold ships as the experiment on the one remaining lead; this needs an in-game repro to confirm or kill it, not more code
 4. **Mission rewards** — the `GrantXP` action exists (#618), but `mission.reward_xp` is 0 in every seed row and the reward formula needs a maintainer decision. Mission cash and item rewards are not dispatched at all (#310)
-5. **Crafting Phase 2** — state and persistence landed (#427); every player-facing verb still logs `UNIMPLEMENTED`
+5. **Crafting Phase 2** — state, persistence, the login sync and discipline learning landed (#427, CR-03, CR-04); craft, research, reverse engineering, alloying and respec still answer "not available yet"
 6. **Multi-zone end-to-end** — Castle Cellblock and Castle have been played in a client (2026-09-18 colo playtest); Harset is rebuilt but unplayed; the other spaces have navmeshes but no content campaign
 7. **Two-client verification** — trading, player-to-player introduction (#737) and chat between players have never been exercised with two clients
 
@@ -1372,7 +1372,7 @@ Corrected 2026-07-25 — trading and contact lists have left this table.
 
 | System | Gameplay Doc | Wire Format Doc | Rust Code Status |
 |--------|-------------|----------------|-------------------|
-| Crafting | crafting-system.md | crafting-wire-formats.md | State + persistence ported (#427); all crafting verbs still stubs |
+| Crafting | crafting-system.md | crafting-wire-formats.md | State, persistence, login sync and ASP spend ported (#427, CR-03, CR-04); the item verbs are still stubs |
 | Organizations | organization-system.md | organization-wire-formats.md | 200 lines stubs — unchanged |
 | Black Market | black-market.md | black-market-wire-formats.md | 94 lines stubs on `main`; full Phase 1 waiting on `feat/571-black-market-phase1` |
 | Dueling | duel-system.md | duel-wire-formats.md | Not ported |
@@ -1404,7 +1404,7 @@ Re-ranked 2026-09-25. #5 (speed-hack detection) is implemented but deliberately 
 
 | Rank | System | Impact | Status | Notes |
 |------|--------|--------|--------|-------|
-| 1 | Crafting verbs | HIGH — entire skill tree unplayable | KM | Phase 1 state landed (#427); craft / research / RE / alloy / ASP-spend all log `UNIMPLEMENTED` |
+| 1 | Crafting verbs | HIGH — no item can be crafted | KM | State (#427), login sync (CR-03) and ASP spend (CR-04) landed; craft / research / RE / alloy answer "not available yet" |
 | 2 | AoI entity-introduction drop | HIGH — entities silently invisible | IM | Known-open. Address-gate hypothesis disproved 2026-06-20; Mercury delivery retired 2026-09-19 (every create ACKed first try), so the drop is client-side. `aoi.create_emit` now actually exports to SigNoz. The first-login cinematic hold (#747) is the experiment on the n=1 cinematic lead, and as of 2026-09-25 nobody has recorded an in-game look since it shipped |
 | 3 | Organizations / guilds | MEDIUM — no persistent social layer | KM | 200 lines of stubs, no schema |
 | 4 | Rate Limiting | MEDIUM — exploitable | KM | Chat is limited since SS-00 (2026-09-27); trade requests and login are still unthrottled. Trading shipped without a request cooldown, so this got *worse* |

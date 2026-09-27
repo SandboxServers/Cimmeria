@@ -320,6 +320,9 @@ The server-side serializers are in `crates/wire/src/crafting/client_methods.rs`,
 | 138 | `i32 aRacialParadigmId, i8 aLevel` (5 bytes) |
 | 139 | `u32 count, count × i32 blueprint id` |
 | 140 | `CraftingOptions`: four `CraftingInfo`, each `u32 n, n × i32 items` then `u32 m, m × i32 entities` |
+| 7 (ASP) | `onEntityProperty(i32 2, i32 total)`: `GENERICPROPERTY_AppliedSciencePoints`, always the unspent total |
+
+Where the server sends them: the `mapLoaded` bundle carries 139 and the ASP property from the `sgw_player` row. After the `onClientReady` burst, `base/crafting/sync/` sends one reliable bundle with 136 per known discipline, 138 per racial paradigm (all five), 139 and the ASP property ([crafting CR-03](../analysis/crafting/work-packets.md#cr-03)). Learning a discipline (95) answers with 136 and the ASP property; the GM ASP grant answers with the ASP property.
 
 `CraftingOptions` is a `FIXED_DICT`, which goes on the wire as its fields in declaration order with no header. The order in [`entities/defs/alias.xml`](../../entities/defs/alias.xml) (`CraftingOptions`, `CraftingInfo`) is:
 
