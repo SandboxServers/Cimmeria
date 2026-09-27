@@ -50,6 +50,24 @@
 13. **`cell-methods/.../organization.rs` stays one file** (under 200 lines). ORG-03 splits it into `organization/` per the contended-file list.
 14. **Docs not touched because #855 already fixes them:** `docs/protocol/sgwplayer-base-method-dispatch-table.md` (argument order) and `docs/protocol/cell-method-dispatch-table.md`. Editing them here would conflict.
 
+## Round 2: authority-review fixes (coordinator, 2026-09-27)
+
+Decision clarifications for the ledger (the coordinator records (a) as D-ORG22 and (b) as D-ORG23):
+
+- **(a) Permission-edit semantics, `OrgPermission::apply_edit(old, wire, org_type, actor)`.** `stored = (old & !editable) | (wire & editable)`: a bit the type's editor does not show (`RosterNotes`, `ViewBankLogs`, `TransferLeader`, ...) keeps its stored value whatever the client sends, so the client's mask can neither strip nor set it. The edit is rejected (`PermEditReject::ChangesUnheldBits(bits)`) when `(stored ^ old) & !actor` is non-zero: only the bits the edit actually changes, granted or revoked, must be held by the actor. An unheld bit left as it was does not block the edit. The function knows no rank, so the caller refuses an edit of the `Leader` row first; `apply_edit_does_not_protect_the_leader_row_itself` pins why.
+- **(b) Text classes.** Every field rejects general category `Cf` wholesale through a const range table (`org_text::FORMAT_RANGES`, from Unicode 15.1 with the tag block widened to U+E0000-E007F), and `Zl`/`Zp` (U+2028, U+2029). Reject reasons: `Bidi` (U+061C, U+200E-200F, U+202A-202E, U+2066-2069), `ZeroWidth` (U+200B-200D, U+2060, U+FEFF), `Format` (the rest of `Cf`: U+00AD, U+0600-0605, U+180E, U+2061-2064, U+206A-206F, U+FFF9-FFFB, tags, ...), `LineSeparator` (U+2028-2029). No Unicode-data dependency.
+- **(c) Rank names** are free text (any script) but are trimmed and have every internal run of whitespace (`char::is_whitespace`, so NBSP and U+3000 too) collapsed to one ASCII space; empty after that is `TooShort`, and the 32-unit cap applies after collapsing. `validate(RankName, ..)` returns the normalised text.
+- **(d)** `limits::route_org_id` (`<= 0` is `None`, `>= 0x4000_0000` is `Squad`, else `Base`) and `route_invite_request` (`<= 0` is `None`; the bit-29 flag is tested on positive ids only, so `-1`, whose bit 29 is set, routes nowhere).
+- **(e)** `CashDir { Deposit(u32), Withdraw(u32) }` from CM 19's signed amount via `unsigned_abs`; zero is `OrgDecodeError::InvalidValue { field: "aCash" }`. The sign convention is the client's: `Command.lua:180-194` (`onWithdrawClicked` sends `commandTransferCash(-cashAmt)`, `onDepositClicked` sends `cashAmt`), and `Team.lua:184-199` likewise. `i32::MIN` is `Withdraw(2_147_483_648)`. `OrgCellCall::TransferCash` and `OrgCellToBase::TransferCash` carry the `CashDir`.
+- **(f)** CM 10 rejects NaN and the infinities at decode (`InvalidValue { field: "aLocation.x|y|z" }`).
+- **(g)** The base `ForwardCellCall` arm refuses a `method_index` outside `8..=17` before decoding (WARN `org.forward_rejected`, `reason = method_out_of_range`), then decodes and logs; a decode failure is WARN `org.forward_rejected` with the decoder's reason.
+- **(h)** Cell methods 8-19 and 94 now answer every well-formed call like the base arm: `onErrorCode(0, org id or 0, 0)` then the feedback line, sent as two `EntityMethodCall`s (`organization::send_unavailable_feedback`), and log at DEBUG instead of INFO. Malformed calls still get no answer. The feedback text and the two error-code constants moved into `cimmeria-wire` (`client_methods::organization::ORG_NOT_AVAILABLE_TEXT`, `player::ERRORCODE_SYSTEM_ABILITY`, `CONDITION_FEEDBACK_INVALID_ENTITY`) so both services send the same bytes. The `("org", INFO)` pin left `scan_finds_known_targets`, since no org INFO row remains.
+- The `organization-system.md` client-method heading now says 18 methods.
+
+Round 2 regression proof: with the forward range gate disabled, the cell feedback call removed and the `Cf` table check disabled, `lane.sh cargo test -p cimmeria-entity -p cimmeria-cell-methods -p cimmeria-base-world-entry --lib org --no-fail-fast` exited 101 (`forward_outside_8_to_17_or_malformed_is_rejected`, `every_org_method_is_answered`, `motd_is_decoded_and_answered`, `every_field_rejects_each_format_class` FAILED); restored, all pass.
+
+Round 2 commands (all exit 0): the seven-crate `--lib` test run (entity 341, wire 194, cell-methods 224, cell 448, base 72, base-world-entry 120, wireclient 37); `cargo test -p cimmeria-server --bin cimmeria-server logging` (52); `cargo fmt --all -- --check`; `cargo clippy --all-targets -- -D warnings` over the 8 touched crates plus the 14 that name the message enums.
+
 ## Commands run
 
 All from the worktree root, through the lane (`target=B:\targets/org-01`). No live-DB run: ORG-01 has no database code.
