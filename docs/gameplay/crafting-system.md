@@ -7,8 +7,8 @@ last_updated: 2026-07-25
 
 # Crafting System
 
-> **Last updated**: 2026-09-26
-> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work. Craft, research, reverse engineering, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Last updated**: 2026-09-27
+> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15). Craft, research, reverse engineering, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -47,6 +47,8 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Station gate | DONE | Crafting, research, reverse engineering and alloying are refused with "No crafting station or tool for <verb> nearby." unless a station, a covering tool or "craft anywhere" allows them. CR-05 |
 | `onUpdateCraftingOptions` | DONE | Sent last in the login crafting bundle after `onClientReady` (every world entry), then on every change of stations, tools or "craft anywhere". CR-05 |
 | `.allcraft` | DONE | GM: every paradigm at 7, every discipline at 100, every blueprint, persisted, plus "craft anywhere" until logout (D-CR17). CR-05 |
+| Blueprint items | DONE | Using one of the 193 mapped "Blueprint: …" items teaches its blueprint(s) and consumes it (D-CR04, D-CR26). CR-15, see [Blueprint items and Racial Paradigm Guides](#blueprint-items-and-racial-paradigm-guides) |
+| Racial Paradigm Guides | DONE | Using a guide (items 7805-7809) raises its paradigm by 1, to at most 10, and consumes it (D-CR03). CR-15 |
 
 ## Earning applied science points
 
@@ -86,6 +88,26 @@ Each crafting verb except learning a discipline and respec needs a way to work (
 The gate runs on the base in `handle_craft_request`, before any verb handler (`base/crafting/gate.rs`). A refused request gets the text line "No crafting station or tool for crafting nearby." (or research, reverse engineering, alloying) on the feedback channel.
 
 `onUpdateCraftingOptions` (140) carries, per section, the station as the machine and the best tool (highest `tech_comp`, then lowest instance id) as the tool; alloying never names a tool. The client keeps only the last id of each array and checks neither distance nor existence (CR-E1 Q2), so the gate on the server is the only enforcement. The base sends it in the login crafting bundle after every `onClientReady` (after 136, 138, 139 and the ASP total) and then only on change: a station report, a tool entering or leaving the crafting bag (re-read after every inventory commit, in `send_full_inventory_update`), or `.allcraft`. Code: `base/crafting/options.rs`.
+
+## Blueprint items and Racial Paradigm Guides
+
+Blueprints and paradigm levels come from items the player uses (crafting campaign CR-15; decisions D-CR03, D-CR04, D-CR22, D-CR26). The client sends the ordinary `useItem(item_id, target_id)`.
+
+- **What an item does** is the seed table `resources.crafting_item_effects` (`item_id`, then `blueprint_id` or `racial_paradigm_id`). It holds 193 Blueprint items (194 rows: item 8882 "Health Antidote" teaches blueprints 367 and 369) and the five guides, 7805 Human, 7806 Common, 7807 Asgard, 7808 Goa'uld and 7809 Ancient. The seed is generated from `docs/analysis/crafting/source/blueprint-items.csv` by [`tools/crafting/generate_item_effects.py`](../../tools/crafting/README.md); the 96 Blueprint items whose blueprint the cooked data does not settle are not seeded, so using one does what any other item does (it fires `OnItemUse`, and no chain listens).
+- **The item-use path** (`handle_use_inventory_item`) sends an item with rows to `base/crafting/item_use/` instead of firing `OnItemUse`, so no content chain can consume it a second time.
+- **One transaction** takes the player's inventory advisory lock, locks the item row (owner in the `WHERE`), locks the crafting state, decides, consumes one of the item and saves the new state. Nothing is consumed without the change, and no change is saved without the item.
+- **After the commit** the client gets `onUpdateKnownCrafts` (139, the whole list) or `onUpdateRacialParadigmLevel` (138), then `onRemoveItem` when the stack is gone and the inventory update. The cell is told the item was removed through the outbox.
+
+| Refusal | Text | `reason` |
+|---|---|---|
+| Every blueprint the item teaches is known | "You already know this blueprint. The item was not used." ("these blueprints" for 8882) | `already_known` |
+| The guide's paradigm is at 10 | "Your <paradigm> racial paradigm is already at 10, the maximum. The guide was not used." | `paradigm_max` |
+| The instance is gone (used, traded, never the player's) | "That item is no longer in your inventory." | `item_missing` |
+| The item is not in the main bag or the crafting bag (bank, buyback list) | "Move that item to your crafting bag to use it." | `not_carried` |
+
+A refusal consumes nothing. An item that names a known and an unknown blueprint teaches the unknown one and is used. `target_id` plays no part: the effect always applies to the user. Events: `blueprint_learned` and `paradigm_raised` with the values before and after, in the `crafting` row of [observability.md](../architecture/observability.md).
+
+Sources today are GM grants (`gmGiveItem` puts the item in the main bag, where it can be used) and, later, the crafting-supplies vendor (CR-11). No loot table drops these items yet: loot and the content engine's `grant_item` put an item in the first container of its `container_sets`, which for all 198 items is the bank (17), until the grant path falls through to the crafting bag (CR-16). An item in the bank must be moved to the crafting bag before it can be used.
 
 ## Crafting Operations
 
@@ -207,6 +229,7 @@ Rolls (research success, reverse-engineering recovery) go through an injectable 
 ## Data References
 
 - **Recipes/Blueprints**: 498 in `db/resources/Entities/Seed/blueprints.sql`
+- **Blueprint items and guides**: `db/resources/Items/Seed/crafting_item_effects.sql` (generated, see [Blueprint items and Racial Paradigm Guides](#blueprint-items-and-racial-paradigm-guides))
 - **Disciplines**: Defined in resources
 - **Racial paradigms**: Faction-based, initialized at level 1
 - **Constants**: `ALLOYING_ELEMENTARY_COUNTS` (quality-based count table)
