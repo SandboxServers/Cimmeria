@@ -11,9 +11,8 @@
 //!   CM 10 (the minimap ping) still gets ORG-01's "not available yet" pair;
 //!   CM 11 and 12 never reach the base (the cell refuses them as
 //!   unsolicited), so a forward of either is a forged message.
-//! - `TransferCash` (CM 19) is the Bank campaign's route: the reject stub
-//!   answers with the "not available yet" pair and logs
-//!   `org.transfer_cash_unimplemented` until BV-08 replaces this arm.
+//! - `TransferCash` (CM 19) is the Bank campaign's route: a treasury
+//!   deposit or withdrawal, `base::org_cash::handle_transfer_cash` (BV-08).
 //! - The GM commands `GmDisband` (ORG-06), `GmJoin` and `GmRank` (ORG-07),
 //!   and `GmInfo`, `GmList`, `GmSetPerms` and `GmReload` (ORG-10).
 //!
@@ -22,6 +21,7 @@
 use std::ops::RangeInclusive;
 use std::time::Instant;
 
+use cimmeria_base_session::base::org_cash::handle_transfer_cash;
 use cimmeria_base_session::base::organization::creation::handler::{
     handle_create, handle_gm_create, handle_registrar_open, CreationCtx,
 };
@@ -67,7 +67,6 @@ fn creation_ctx<'a>(ctx: &DispatchCtx<'a>) -> CreationCtx<'a> {
 /// Route one organization message from the cell.
 pub(super) async fn route(msg: OrgCellToBase, ctx: &DispatchCtx<'_>) {
     let (player_id, entity_id) = msg.actor();
-    let kind = msg.kind();
     let gm = GmCaller {
         entity_id,
         player_id,
@@ -95,24 +94,8 @@ pub(super) async fn route(msg: OrgCellToBase, ctx: &DispatchCtx<'_>) {
             handle_gm_create(&creation_ctx(ctx), player_id, entity_id, org_type, &name).await
         }
         OrgCellToBase::TransferCash { org_id, dir, .. } => {
-            // The Bank campaign's BV-08 replaces this arm. Until then the
-            // press is answered, never silent.
-            let octx = org_ctx(ctx);
-            let live = resolve_actor(&octx, player_id, entity_id).is_some();
-            tracing::debug!(
-                target: "org",
-                event = "org.transfer_cash_unimplemented",
-                player_id,
-                entity_id,
-                kind,
-                org_id,
-                dir = ?dir,
-                answered = live,
-                "organizationTransferCash has no handler yet; answered with feedback"
-            );
-            if live {
-                not_available(&octx, entity_id, org_id).await;
-            }
+            // BV-08: the treasury deposit or withdrawal.
+            handle_transfer_cash(&org_ctx(ctx), player_id, entity_id, org_id, dir).await
         }
         OrgCellToBase::ForwardCellCall {
             method_index, args, ..

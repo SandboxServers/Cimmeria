@@ -27,10 +27,11 @@ async fn route(msg: OrgCellToBase) -> Arc<TestTransport> {
     typed_transport
 }
 
-/// `TransferCash` (the Bank's stub) and a forwarded call reach the org arm
-/// and log the actor the cell named. With no session behind entity 21 the
-/// stub answers nobody, and the forward is dropped as a stale actor before
-/// it is served (WARN `org.actor_mismatch`).
+/// `TransferCash` (BV-08) and a forwarded call reach the org arm and log
+/// the actor the cell named. With no session behind entity 21 both are
+/// dropped as a stale actor before they are served: the transfer as WARN
+/// `org_cash_rejected reason=actor_mismatch` on `bank`, the forward as WARN
+/// `org.actor_mismatch` on `org`. Neither can answer anybody.
 #[tokio::test]
 async fn every_org_variant_reaches_the_org_arm() {
     let capture = LogCapture::install();
@@ -42,8 +43,9 @@ async fn every_org_variant_reaches_the_org_arm() {
                 org_id: 5,
                 dir: CashDir::Withdraw(100),
             },
-            "org.transfer_cash_unimplemented",
-            tracing::Level::DEBUG,
+            "org_cash_rejected",
+            "bank",
+            tracing::Level::WARN,
         ),
         (
             OrgCellToBase::ForwardCellCall {
@@ -53,10 +55,11 @@ async fn every_org_variant_reaches_the_org_arm() {
                 args: vec![5, 0, 0, 0, 0, 0, 0, 0],
             },
             "org.actor_mismatch",
+            "org",
             tracing::Level::WARN,
         ),
     ];
-    for (msg, event, level) in msgs {
+    for (msg, event, target, level) in msgs {
         let transport = route(msg).await;
         assert!(transport.is_empty(), "{event}: nobody to answer");
         let ev = capture
@@ -64,59 +67,97 @@ async fn every_org_variant_reaches_the_org_arm() {
             .into_iter()
             .find(|c| c.has_field("event", event))
             .unwrap_or_else(|| panic!("{event} not logged"));
-        assert_eq!(ev.target, "org");
+        assert_eq!(ev.target, target);
         assert_eq!(ev.level, level);
         // The actor comes from the cell's session state and is logged.
         assert!(ev.has_field("player_id", "11") && ev.has_field("entity_id", "21"));
     }
 }
 
+/// Route `msg` with one live session: character 11 as entity 21, no
+/// database. Returns the transport and that session's address.
+async fn route_live(msg: OrgCellToBase) -> (Arc<TestTransport>, std::net::SocketAddr) {
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let (connected, entity_to_addr) = empty_maps();
+    let addr: std::net::SocketAddr = "127.0.0.1:54321".parse().unwrap();
+    let mut s = crate::test_support::test_default_connected_client_state();
+    s.active_player_id = Some(11);
+    s.player_entity_id = Some(21);
+    s.listed_online = true;
+    connected.lock().unwrap().insert(addr, s);
+    entity_to_addr.lock().unwrap().insert(21, addr);
+    handle_cell_message(
+        CellToBaseMsg::Org(msg),
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+    (typed_transport, addr)
+}
+
 /// A call no packet serves yet (CM 10, the Team / Command minimap ping)
-/// and the Bank's CM 19 stub answer a live session with ORG-01's pair, so
-/// the press is never silent.
+/// answers a live session with ORG-01's pair, so the press is never silent.
 #[tokio::test]
 async fn unserved_calls_from_a_live_session_are_answered() {
-    let msgs = [
-        OrgCellToBase::ForwardCellCall {
-            player_id: 11,
-            entity_id: 21,
-            method_index: 10,
-            args: [&5i32.to_le_bytes()[..], &[0u8; 12]].concat(),
-        },
-        OrgCellToBase::TransferCash {
-            player_id: 11,
-            entity_id: 21,
-            org_id: 5,
-            dir: CashDir::Deposit(100),
-        },
-    ];
-    for msg in msgs {
-        let kind = msg.kind();
-        let typed_transport = Arc::new(TestTransport::new());
-        let transport: Arc<dyn Transport> = typed_transport.clone();
-        let (connected, entity_to_addr) = empty_maps();
-        let addr: std::net::SocketAddr = "127.0.0.1:54321".parse().unwrap();
-        let mut s = crate::test_support::test_default_connected_client_state();
-        s.active_player_id = Some(11);
-        s.player_entity_id = Some(21);
-        s.listed_online = true;
-        connected.lock().unwrap().insert(addr, s);
-        entity_to_addr.lock().unwrap().insert(21, addr);
-        handle_cell_message(
-            CellToBaseMsg::Org(msg),
-            &transport,
-            &connected,
-            &entity_to_addr,
-            &None,
-            &None,
-            &None,
-            "127.0.0.1",
-            7777,
-        )
-        .await;
-        // onErrorCode, then the feedback line.
-        assert_eq!(typed_transport.filter_to(addr).len(), 2, "{kind}");
+    let (transport, addr) = route_live(OrgCellToBase::ForwardCellCall {
+        player_id: 11,
+        entity_id: 21,
+        method_index: 10,
+        args: [&5i32.to_le_bytes()[..], &[0u8; 12]].concat(),
+    })
+    .await;
+    // onErrorCode, then the feedback line.
+    assert_eq!(transport.filter_to(addr).len(), 2);
+}
+
+/// BV-08: CM 19 from a live session reaches the treasury handler, not
+/// ORG-01's "not available yet" pair. With no database it is refused WARN
+/// `org_cash_rejected reason=db_unavailable` on `bank`, with the direction
+/// and the amount, and the player gets one chat line (no `onErrorCode`).
+#[tokio::test]
+async fn transfer_cash_from_a_live_session_reaches_the_treasury_handler() {
+    let capture = LogCapture::install();
+    let (transport, addr) = route_live(OrgCellToBase::TransferCash {
+        player_id: 11,
+        entity_id: 21,
+        org_id: 5,
+        dir: CashDir::Deposit(100),
+    })
+    .await;
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "org_cash_rejected"))
+        .expect("org_cash_rejected row");
+    assert_eq!(
+        (row.target.as_str(), row.level),
+        ("bank", tracing::Level::WARN)
+    );
+    for (k, v) in [
+        ("reason", "db_unavailable"),
+        ("player_id", "11"),
+        ("entity_id", "21"),
+        ("org_id", "5"),
+        ("direction", "deposit"),
+        ("amount", "100"),
+    ] {
+        assert!(row.has_field(k, v), "{k}={v}: {row:?}");
     }
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "org.transfer_cash_unimplemented")),
+        "the BV-08 stub arm is gone"
+    );
+    assert_eq!(transport.filter_to(addr).len(), 1, "one feedback line");
 }
 
 /// ORG-05: `RegistrarOpen`, `Create` and `GmCreate` reach the creation
