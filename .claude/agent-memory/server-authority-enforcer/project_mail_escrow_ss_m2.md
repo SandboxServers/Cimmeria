@@ -16,10 +16,13 @@ for dupe/double-credit/overflow/owner-scoping/redirection/deadlock. Mail row loc
 advisory locks; every write conditional + rows_affected; COD price zeroed on pay AND on return; payment mail sender_id NULL;
 return destination is stored sender_id, `returned` flag stops loops; client ContainerId/SlotId only logged.
 
-Residual (flagged): COD whose sender character was deleted (FK SET NULL) can be neither paid, returned, taken nor deleted,
-so escrow is stranded forever. Paying a COD then returning hands the sender item + price (self-harm, UX).
-Escrow still cascades on recipient character delete.
+Residual after the final pass (2026-09-27): the sender-deleted COD is now cancelled on pay (buyer gets the item free,
+coordinator-approved) and `cod_paid` refuses returning a paid COD. Still open: `archiveMailMessage` (read.rs archive) ORs
+MAIL_ARCHIVE onto an unpaid COD with no check; archived mail cannot be returned, never expires (D-SS04) and cannot be
+deleted, so a buyer can lock the seller's item away for good. Vendor buyback locks its inventory rows and `sgw_player`
+before the (player, INV_MAIN) advisory key, the reverse of claim.rs, so same-player buyback vs take-cash/pay-COD can
+deadlock (Postgres aborts one; no value loss). Escrow still cascades on recipient character delete.
 
-**Why:** SS-M4 expiry sweep reuses `return_tx`; it must handle the sender-gone COD case instead of quarantining silently.
-**How to apply:** on SS-M4 review, check the sender_id-NULL COD path and that the sweep takes the same lock order.
+**Why:** SS-M4 expiry sweep reuses `return_tx`; it must skip archived mail but the archive path must first refuse unpaid COD.
+**How to apply:** on SS-M4 review, check the archive-COD gate landed and that the sweep takes the claim.rs lock order.
 See [[project-mail-handlers-unimplemented]].

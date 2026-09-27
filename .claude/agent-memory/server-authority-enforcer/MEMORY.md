@@ -56,5 +56,5 @@
 - [pr-427-crafting-phase1.md](pr-427-crafting-phase1.md) — Phase 1 dispatch+persist; no mutation surface yet; Phase 2 is where the real adversarial review lands
 - [open-followup-runtime-navmesh-load.md](open-followup-runtime-navmesh-load.md) — NavMesh::load in cimmeria-entity has the same unguarded count*stride pattern; worth a follow-up issue
 - [project_crafting_induction_review_2026-09-27.md](project_crafting_induction_review_2026-09-27.md) — CR06 induction/tx: trade lock-order cycle, qty<=0 fail-open, world_name never updated on gate travel
-- [project_mail_escrow_ss_m2.md](project_mail_escrow_ss_m2.md) — SS-M2 escrow + SS-M3 take/COD/return cleared; residual: sender-deleted COD strands escrow
+- [project_mail_escrow_ss_m2.md](project_mail_escrow_ss_m2.md) — SS-M2 escrow + SS-M3 take/COD/return cleared; residual: archived unpaid COD strands escrow, buyback lock inversion
 - [reference_duel_harm_gate.md](reference_duel_harm_gate.md) — Duel harm gate authority (SS-D2) + side paths that skip it: pulses, auto-cycle, pet defend sweep, launch same-space
