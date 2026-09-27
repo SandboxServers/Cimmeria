@@ -98,6 +98,24 @@ async fn grant_into_vault_is_refused() {
         )
         .expect("refusal must log grant_rejected with reason=grant_into_storage_container");
     assert_eq!(event.target, "bank");
+    // A grant names a type, not an instance: no instance `item_id`, no
+    // source position.
+    for (key, value) in [
+        ("account_id", ACCOUNT_ID.to_string()),
+        ("player_id", PLAYER_ID.to_string()),
+        ("entity_id", ENTITY_ID.to_string()),
+        ("type_id", type_id.to_string()),
+        ("quantity", "1".to_string()),
+        ("target_container_id", "17".to_string()),
+    ] {
+        assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
+    }
+    for key in ["item_id", "source_container_id", "source_slot_id"] {
+        assert!(
+            !event.fields.contains_key(key),
+            "field `{key}` must be absent"
+        );
+    }
 
     cleanup(&pool).await;
 }

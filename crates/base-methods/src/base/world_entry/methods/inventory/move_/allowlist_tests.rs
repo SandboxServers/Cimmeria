@@ -66,6 +66,31 @@ async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
         .expect("naquadah_of query")
 }
 
+/// Assert a captured event carries each `(field, value)` exactly, and none
+/// of `absent`. Values compare as the capture layer records them (integers
+/// in decimal, strings verbatim).
+fn assert_fields(
+    event: &crate::test_support::Captured,
+    present: &[(&str, String)],
+    absent: &[&str],
+) {
+    for (key, value) in present {
+        assert_eq!(
+            event.fields.get(*key),
+            Some(value),
+            "field `{key}` on {:?}",
+            event.message
+        );
+    }
+    for key in absent {
+        assert!(
+            !event.fields.contains_key(*key),
+            "field `{key}` must be absent on {:?}",
+            event.message
+        );
+    }
+}
+
 type ClientState = (
     Arc<TestTransport>,
     Arc<dyn Transport>,
@@ -153,6 +178,23 @@ async fn move_out_of_buyback_is_refused_and_no_row_changes() {
         )
         .expect("refusal must log move_rejected with reason=source_container_not_player_movable");
     assert_eq!(event.target, "bank");
+    assert_fields(
+        &event,
+        &[
+            ("account_id", account_id.to_string()),
+            ("player_id", player_id.to_string()),
+            ("entity_id", entity_id.to_string()),
+            ("item_id", sold.to_string()),
+            ("type_id", SYNTH_TYPE_ID.to_string()),
+            ("quantity", "-1".into()),
+            ("stack_size", "1".into()),
+            ("source_container_id", "16".into()),
+            ("source_slot_id", "0".into()),
+            ("target_container_id", "1".into()),
+            ("target_slot_id", "5".into()),
+        ],
+        &[],
+    );
     assert!(
         transport.send_count_to(addr) > 0,
         "the refusal must resync the client so the dragged item snaps back"
@@ -199,15 +241,31 @@ async fn move_into_vault_is_still_refused() {
         Some((1, 0, 1, 0)),
         "a move into the vault without a vault session must leave the row in (1, 0)"
     );
-    assert!(
-        capture
-            .find_event(
-                Level::WARN,
-                "move_rejected",
-                "target_container_needs_vault_session",
-            )
-            .is_some(),
-        "refusal must log move_rejected with reason=target_container_needs_vault_session"
+    let event = capture
+        .find_event(
+            Level::WARN,
+            "move_rejected",
+            "target_container_needs_vault_session",
+        )
+        .expect("refusal must log move_rejected with reason=target_container_needs_vault_session");
+    assert_eq!(event.target, "bank");
+    // Refused at the target end, before the move path reads the source row:
+    // the refusal reads the source position itself.
+    assert_fields(
+        &event,
+        &[
+            ("account_id", account_id.to_string()),
+            ("player_id", player_id.to_string()),
+            ("entity_id", entity_id.to_string()),
+            ("item_id", item.to_string()),
+            ("type_id", SYNTH_TYPE_ID.to_string()),
+            ("quantity", "-1".into()),
+            ("source_container_id", "1".into()),
+            ("source_slot_id", "0".into()),
+            ("target_container_id", "17".into()),
+            ("target_slot_id", "0".into()),
+        ],
+        &[],
     );
     assert!(
         transport.send_count_to(addr) > 0,
@@ -478,15 +536,43 @@ async fn refusal_of_an_unknown_item_sends_nothing() {
     )
     .await;
 
-    assert!(
-        capture
-            .find_event(
-                Level::WARN,
-                "move_rejected",
-                "target_container_needs_vault_session",
-            )
-            .is_some(),
-        "the refusal is still logged"
+    let forged = owned + 1_000_000;
+    let rejected = capture
+        .find_event(
+            Level::WARN,
+            "move_rejected",
+            "target_container_needs_vault_session",
+        )
+        .expect("the refusal is still logged");
+    assert_eq!(rejected.target, "bank");
+    assert_fields(
+        &rejected,
+        &[
+            ("account_id", account_id.to_string()),
+            ("player_id", player_id.to_string()),
+            ("item_id", forged.to_string()),
+            ("target_container_id", "17".into()),
+        ],
+        &[
+            "type_id",
+            "stack_size",
+            "source_container_id",
+            "source_slot_id",
+        ],
+    );
+    let skipped = capture
+        .find_event(Level::WARN, "move_resync_skipped", "refused_item_not_owned")
+        .expect("a refusal with nothing to resend must log move_resync_skipped");
+    assert_eq!(skipped.target, "bank");
+    assert_fields(
+        &skipped,
+        &[
+            ("account_id", account_id.to_string()),
+            ("player_id", player_id.to_string()),
+            ("entity_id", entity_id.to_string()),
+            ("item_id", forged.to_string()),
+        ],
+        &[],
     );
     assert_eq!(
         transport.send_count_to(addr),

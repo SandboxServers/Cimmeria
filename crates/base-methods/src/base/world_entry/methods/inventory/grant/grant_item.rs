@@ -60,16 +60,16 @@ pub async fn handle_grant_item(
         }
     };
 
-    if super::validation::grant_container_refused(container_id) {
-        tracing::warn!(
-            target: "bank",
-            entity_id,
-            player_id,
-            item_id,
-            container_id,
-            reason = "grant_into_storage_container",
-            "grant_rejected: grants never write into the vaults or auction escrow"
-        );
+    if super::validation::refuse_storage_grant(
+        pool,
+        entity_id,
+        player_id,
+        item_id,
+        container_id,
+        count,
+    )
+    .await
+    {
         return;
     }
 
