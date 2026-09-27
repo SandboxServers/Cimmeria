@@ -44,6 +44,8 @@ pub mod base {
     pub mod contact_list {
         pub mod wire;
     }
+    /// `sendDuelChallenge` (0xD9) and its decoder.
+    pub mod duel;
     /// The organization base methods (0xCF-0xD2) and their decoders.
     pub mod organization;
 }

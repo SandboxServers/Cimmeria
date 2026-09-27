@@ -11,6 +11,7 @@ pub mod combat;
 pub mod content_events;
 pub mod cover;
 pub mod dispatch;
+pub mod duel;
 pub mod effects;
 pub mod pets;
 pub mod playtest_friction;

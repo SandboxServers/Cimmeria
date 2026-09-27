@@ -21,6 +21,7 @@ pub mod client_cache;
 pub mod combatant;
 pub mod communicator;
 pub mod contact_list;
+pub mod duel;
 pub mod gate_travel;
 pub mod inventory;
 pub mod mail;

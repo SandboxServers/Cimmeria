@@ -160,7 +160,7 @@ Features matchmaking, spectating, and helper systems.
 
 PvP duel system with challenge/accept/decline, forfeit, and duel area management.
 
-**Data:** Entity defined. **Server:** Not implemented — `sendDuelResponse` (CM 102) and `duelForfeit` (CM 103) are dispatched but only log and drop. No challenge method is dispatched at all.
+**Data:** Entity defined. **Server:** Challenge and response implemented (SS-D1): `sendDuelChallenge` (base 0xD9) prompts the target with `onDuelChallenge` [143], and `sendDuelResponse` (CM 102) accepts or declines. There is no engaged duel yet (SS-D2): the countdown after an accept ends in "Duel aborted". `duelForfeit` (CM 103) still only logs. See [gameplay/duel-system.md](gameplay/duel-system.md).
 
 ## Trading
 

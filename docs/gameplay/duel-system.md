@@ -2,13 +2,13 @@
 title: "Duel System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Duel System
 
-> **Last updated**: 2026-07-25
-> **Status**: Not implemented. Two inbound cell methods are dispatched but only log and drop.
+> **Last updated**: 2026-09-27
+> **Status**: Challenge and response implemented (SS-D1); no engaged duel, PvP flag or end paths yet (SS-D2, SS-D3).
 
 ## Overview
 
@@ -18,20 +18,26 @@ The `SGWDuelMarker` entity is defined in `entities/defs/SGWDuelMarker.def` (pare
 
 ## Implementation Status
 
-The Rust server reserves and dispatches two duel cell methods in `crates/cell-methods/src/cell/cell_methods/player/social.rs`, but both handlers log `UNIMPLEMENTED` and return without acting:
+The challenge and the answer are implemented (social-systems campaign SS-D1, [work packets](../analysis/social-systems/work-packets.md)). The duel state lives on the cell in `DuelRegistry` (`crates/cell-world/src/cell/duel/`), keyed by `player_id`.
 
 | Method | Index | Handler |
 |--------|-------|---------|
-| `sendDuelResponse` | 102 | `social.rs:92` — logs and drops |
-| `duelForfeit` | 103 | `social.rs:100` — logs and drops |
+| `sendDuelChallenge` | base 0xD9 | `crates/base/src/base/dispatch/duel.rs`: duel rate limit (D-SS21), squad duels refused, target resolved online (D-SS13), Ignore seam (D-SS15), then `DuelBaseToCell::Challenge` to the cell |
+| `sendDuelResponse` | 102 | `cell::duel::response`: acts only on the challenge addressed to the caller, consumed once, expired after 30 s |
+| `duelForfeit` | 103 | `social.rs` — still logs `UNIMPLEMENTED` (SS-D3) |
+
+On the cell, `cell::duel::challenge` refuses a self-challenge (text 872), a target in another space or beyond 20 units (877), either side already in a challenge or duel (873), and the same pair within 60 s of a decline or expiry. Otherwise it stores the challenge and sends the target `onDuelChallenge` [143] with the challenger's entity id and an empty squad list. Decline or expiry tells both players "Duel aborted" (878). Accept starts a 5-second countdown. Every refusal is a feedback line to the challenger. The duel texts are sent as literal feedback lines, because the client has no path that renders a duel moniker by id (SS-E1 D-Q6).
+
+Until SS-D2 engages duels, the end of the countdown aborts the duel with 878, so neither player is left marked busy. The server sends no `onDuelEntitiesSet` [151] or `Clear` [153] (D-SS25). The 30 s, 5 s, 20-unit and 60 s values are project policy, not recovered data.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Duel marker entity | DEFINED | `SGWDuelMarker` with detector and entity tracking; no Rust spawner support |
-| Duel response | STUB | `sendDuelResponse` (CM 102) dispatched, logs `UNIMPLEMENTED` |
+| Duel response | IMPLEMENTED | `sendDuelResponse` (CM 102): accept, decline and expiry (SS-D1) |
 | Duel forfeit | STUB | `duelForfeit` (CM 103) dispatched, logs `UNIMPLEMENTED` |
 | Defeat detection | NOT IMPL | `onEntityDefeated` cell method defined on the marker, no handler |
-| Duel challenge issue | NOT IMPL | No inbound challenge method is dispatched |
+| Duel challenge issue | IMPLEMENTED | `sendDuelChallenge` (base 0xD9) and `onDuelChallenge` [143] (SS-D1) |
+| Engaged duel, PvP flag | NOT IMPL | SS-D2; the countdown currently ends in "Duel aborted" |
 | Duel area enforcement | NOT IMPL | `duelDetectorID` property exists; no proximity controller |
 | Win/loss tracking | NOT IMPL | No outcome recording |
 

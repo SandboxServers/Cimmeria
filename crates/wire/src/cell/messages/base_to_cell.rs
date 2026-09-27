@@ -1,6 +1,7 @@
 //! `BaseToCellMsg` — messages sent from BaseApp to CellApp.
 
 use super::data::SavedMission;
+use super::duel_base_to_cell::DuelBaseToCell;
 use super::lab::{LabQuery, LabQueryResult};
 use super::org_base_to_cell::OrgBaseToCell;
 
@@ -428,4 +429,8 @@ pub enum BaseToCellMsg {
     /// organization packets add variants in `org_base_to_cell.rs` instead
     /// of here (work-packets.md § Messages).
     Org(OrgBaseToCell),
+
+    /// Duel traffic. One nested enum, so the duel packets add variants in
+    /// `duel_base_to_cell.rs` instead of here (work-packets.md § Messages).
+    Duel(DuelBaseToCell),
 }

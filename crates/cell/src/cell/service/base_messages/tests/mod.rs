@@ -11,6 +11,7 @@ mod bandolier_update;
 mod broadcast_to_witnesses;
 mod create_entity_instance;
 mod disconnect_persist_position;
+mod duel;
 mod general;
 mod gm_spawn_ready;
 mod identity_propagation;

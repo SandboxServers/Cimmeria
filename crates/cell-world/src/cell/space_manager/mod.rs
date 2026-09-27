@@ -424,6 +424,9 @@ pub struct SpaceManager {
     /// already holds is the exclusive token. See
     /// `content::event_dispatch::step_activation`.
     pub step_region_replay: StepRegionReplayGuard,
+    /// Pending duel challenges, duels and their cooldowns, keyed by
+    /// `player_id` (SS-D1). See `cell::duel`.
+    pub duels: super::duel::DuelRegistry,
 }
 
 impl SpaceManager {
@@ -481,6 +484,7 @@ impl SpaceManager {
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
             step_region_replay: StepRegionReplayGuard::default(),
+            duels: super::duel::DuelRegistry::default(),
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
         }

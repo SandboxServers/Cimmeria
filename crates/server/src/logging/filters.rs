@@ -190,6 +190,10 @@ use crate::otel;
 /// (`mail.send_decoded`, `mail.send_decode_rejected`), each failed
 /// recipient (`mail.recipient_failed`), an attachment seen
 /// (`mail.attachment_seen`) and each header list sent (`mail.headers_sent`).
+/// `duel` (SS-D1) is the duel challenge and response path on both the base
+/// (`sendDuelChallenge`) and the cell (the registry, the response, the
+/// tick): DEBUG rows for every refusal (`reason=`) and state transition,
+/// WARN for a payload that does not decode.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -255,6 +259,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 org=debug,squad=debug,\
                 chat=debug,rate_limit=debug,online_index=debug,\
                 mail=debug,\
+                duel=debug,\
                 console.feedback=debug,\
                 client.native=debug,\
                 launcher=debug,\

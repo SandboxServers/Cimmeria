@@ -14,5 +14,5 @@ pub(crate) use cimmeria_cell_content::cell::{content, missions, ring_transport};
 pub(crate) use cimmeria_cell_interactions::cell::{
     gate_travel, interactions, mail, respawn, trade,
 };
-pub(crate) use cimmeria_cell_world::cell::{playtest_friction, space_manager};
+pub(crate) use cimmeria_cell_world::cell::{duel, playtest_friction, space_manager};
 pub(crate) use cimmeria_wire::cell::{client_methods, messages, player_journal};

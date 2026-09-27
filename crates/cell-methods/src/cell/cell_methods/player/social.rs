@@ -11,7 +11,7 @@ pub async fn dispatch(
     method_index: u16,
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
-    _space_mgr: &mut SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) -> bool {
     match method_index {
         PET_INVOKE_ABILITY => {
@@ -124,10 +124,7 @@ pub async fn dispatch(
         }
 
         SEND_DUEL_RESPONSE => {
-            if !args.is_empty() {
-                let response = args[0] as i8;
-                tracing::info!(entity_id, response, "UNIMPLEMENTED: sendDuelResponse");
-            }
+            crate::cell::duel::response::handle(entity_id, args, tx, space_mgr).await;
             true
         }
 
@@ -185,6 +182,50 @@ mod tests {
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[0], (121, vec![0, 0, 0, 0, 0, 0, 0]));
         assert_eq!(sent[1].0, 28);
+    }
+
+    /// CM 102 reaches the duel handler through the player router: an accept
+    /// from the target of a pending challenge starts the duel. The old stub
+    /// logged `UNIMPLEMENTED: sendDuelResponse` and changed nothing.
+    #[tokio::test]
+    async fn send_duel_response_routes_to_the_duel_handler() {
+        let mut mgr = make_space_manager_with_player(1);
+        mgr.create_entity(2, "Agnos", [3.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        for (eid, pid) in [(1u32, 100i32), (2, 200)] {
+            mgr.connect_entity(eid);
+            mgr.get_entity_mut(eid).unwrap().player_id = Some(pid);
+        }
+        let (tx, mut rx) = mpsc::channel(8);
+        crate::cell::duel::challenge::handle(
+            crate::cell::messages::DuelBaseToCell::Challenge {
+                player_id: 100,
+                entity_id: 1,
+                account_id: 0,
+                target_player_id: 200,
+                target_entity_id: 2,
+            },
+            &tx,
+            &mut mgr,
+        )
+        .await;
+        while rx.try_recv().is_ok() {}
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        assert!(
+            crate::cell::cell_methods::player::dispatch(
+                2,
+                SEND_DUEL_RESPONSE,
+                &[1],
+                &tx,
+                &mut mgr,
+                &engine
+            )
+            .await
+        );
+        assert!(
+            mgr.duels.duel_of(100).is_some(),
+            "the accept started the duel"
+        );
     }
 
     #[tokio::test]
