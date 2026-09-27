@@ -1,0 +1,123 @@
+784	2026-09-25	2026-09-25	needs-triage	Line of sight from collision geometry (per-space occluder sidecar)
+735	2026-09-19	2026-09-19	needs-triage	docs(protocol): settle BASEMSG_REPLY_MESSAGE (0xFF) length type — WORD vs DWORD
+733	2026-09-19	2026-09-19	needs-triage	mercury: Bundle::encode clamps >64KiB payloads to the 0xFFFF escape sentinel
+727	2026-09-19	2026-09-19	needs-triage	DHD text feedback: method 100 has no production emitter
+723	2026-09-19	2026-09-19	needs-triage	Crafting: wire racial-paradigm progression and client synchronization
+720	2026-09-19	2026-09-19	needs-triage	verify: weapon reload onTimerUpdate uses Type=2 but the binary has a dedicated reload handler for types 12/13
+715	2026-09-19	2026-09-19		Mission frames are not suppressed for hidden missions (reference gates all of them on isHidden)
+690	2026-09-19	2026-09-19	enhancement	Epic: Live research lab — MCP access to the running client and server
+689	2026-09-19	2026-09-19	enhancement	Live research lab 6/6: merged timeline, research rulebook, setup docs, colo WireGuard wiring
+688	2026-09-19	2026-09-19	enhancement	Live research lab 5/6: server live state (LabQuery, entity and witness queries, packet taps)
+687	2026-09-19	2026-09-19	enhancement	Live research lab 4/6: in-server MCP endpoint v1 (console passthrough, sessions, logs, read-only SQL)
+686	2026-09-19	2026-09-19	enhancement	Live research lab 3/6: native probes (dynamic logging hooks, memory write, native calls, quarantine)
+685	2026-09-19	2026-09-19	enhancement	Live research lab 2/6: cimmeria-lab supervisor (lifecycle, autologin, screenshots, crash recovery)
+684	2026-09-19	2026-09-19	enhancement	Live research lab 1/6: client bridge core (inbound channel + Lua eval in the telemetry DLL)
+616	2026-07-26	2026-07-26	bug	move_waypoint emits no position broadcast — chain-repositioned NPCs may not visibly move
+612	2026-07-26	2026-07-26	documentation,enhancement	RE + content: fail_objective is blocked — no failed-objective status exists and the client wire value is unknown
+610	2026-07-26	2026-09-19	bug,enhancement,needs-info	content-engine: no effect_* trigger is ever dispatched — effects_chains.sql is inert
+587	2026-06-21	2026-06-21		Launcher: integrate Black Market client-window runtime patch (deferred wide-Lua-injection)
+572	2026-06-20	2026-06-20	enhancement	Implement contact list system (friends/ignore, presence fanout, persistence)
+571	2026-06-20	2026-06-20	enhancement	Implement Black Market / Auction House system (listings, bids, expiry, CoD delivery)
+570	2026-06-20	2026-06-20	enhancement	Implement pet / companion system (spawn, command dispatch, ownership, AoI sync)
+569	2026-06-20	2026-06-20	enhancement	Implement duel system — challenge handshake, arena marker, PvP flag lifecycle
+568	2026-06-20	2026-06-20	enhancement	Implement Organization / Squad / Guild system (create, invite, ranks, roster, permissions, fanout)
+567	2026-06-20	2026-06-20	enhancement	Implement crafting activity handlers (craft/research/reverse-engineer/alloy/spendASP)
+534	2026-06-19	2026-06-19	bug,documentation	RE: settle requestAmmoChange.ItemId semantics (instance vs design vs slot token) + consider adding a slot id to the message
+532	2026-06-19	2026-06-19	security	Harden minigame SFS server against DoS (no connection cap / read timeout) + ticket TTL/replay
+531	2026-06-19	2026-06-20	enhancement	Test gaps surfaced during the 700-line split effort (#529)
+529	2026-06-19	2026-06-20	enhancement	Tech debt: split 46 files exceeding the 700-line hard cap
+484	2026-06-01	2026-06-01		test-infra: in-process MeterProvider tap for byte-exact counter/histogram assertions
+480	2026-06-01	2026-06-01	enhancement	Tier 4 client-side testing: shim-DLL test-driver IPC via UE3 ProcessEvent (extends #434, complements #281)
+477	2026-06-01	2026-06-01	security	[security-audit P0-3] Crypto + anti-replay foundation: per-packet IV, inbound dedup, position replay sequence (CAT-A-02 + CAT-A-03 + CAT-B-05)
+476	2026-06-01	2026-06-01	security	[security-audit P0-2] Move SOAP auth (Phase 1/2) to TLS — passwords + session keys currently plaintext (CAT-A-01)
+474	2026-06-01	2026-09-19	security,ready-for-human	[security-audit] CAT-O — World / Space / Gate / Ring (6 findings)
+473	2026-06-01	2026-06-01	security	[security-audit] CAT-N — GM / Debug / Cheat commands (40 findings)
+472	2026-06-01	2026-06-01	security	[security-audit] CAT-M — Organization / Squad / Duel (18 findings)
+471	2026-06-01	2026-09-19	security	[security-audit] CAT-L — Chat / Contact list / Communication (9 findings)
+470	2026-06-01	2026-06-01	security	[security-audit] CAT-K — Minigame (9 findings)
+469	2026-06-01	2026-09-19	security	[security-audit] CAT-J — Mission / Dialog / Interaction (9 findings)
+468	2026-06-01	2026-06-01	security	[security-audit] CAT-I — Black Market / Auction (6 findings)
+467	2026-06-01	2026-06-01	security	[security-audit] CAT-H — Trade (P2P) (10 findings)
+466	2026-06-01	2026-06-01	security	[security-audit] CAT-G — Mail (8 findings)
+465	2026-06-01	2026-06-01	security	[security-audit] CAT-F — Crafting / R&D (8 findings)
+464	2026-06-01	2026-06-01	security	[security-audit] CAT-E — Vendor (6 findings)
+463	2026-06-01	2026-09-19	security	[security-audit] CAT-D — Inventory / Items (9 findings)
+462	2026-06-01	2026-06-01	security	[security-audit] CAT-C — Combat / Abilities (15 findings)
+461	2026-06-01	2026-06-01	security	[security-audit] CAT-B — Movement / Teleport / Position (10 findings)
+460	2026-06-01	2026-06-01	security	[security-audit] CAT-A — Auth / Session / Character lifecycle (14 findings)
+459	2026-06-01	2026-06-01	documentation,security	[security-audit] Server-authority / anti-cheat / anti-replay full sweep — 177 findings across 15 categories
+458	2026-06-01	2026-06-01	enhancement	Test-suite remediation: 2026-05-31 codebase-wide audit rollup
+448	2026-05-31	2026-05-31	bug,security	[Low] requestAmmoChange falls open on missing weapon definition
+447	2026-05-31	2026-05-31	bug,security	[Medium] Auth XML response builders use format! with no entity escaping — latent injection
+443	2026-05-31	2026-09-19	bug,security,ready-for-human	[Critical] AVATAR_UPDATE_EXPLICIT trusts client position — teleport + speed hack
+439	2026-05-31	2026-09-19	bug,security	[Critical] Admin API on 0.0.0.0:8443 has zero authentication
+434	2026-05-31	2026-06-20	enhancement,security	Encryption modernization: HTTPS for auth, argon2id passwords, hardened Mercury wire crypto
+417	2026-05-26	2026-05-26	enhancement	Client-side observability: side-loaded telemetry DLL for full SGW.exe instrumentation
+416	2026-05-26	2026-05-26	documentation,enhancement	Workspace coverage uplift to ~88% — exclusions, prioritized tests, and ratcheted component targets
+407	2026-05-26	2026-05-26	enhancement	NPC AI: structured decision_outcome + zone field to surface no-path stationary mobs
+406	2026-05-26	2026-05-26	enhancement	Ring transport: server-driven cinematic camera via onSequence (Ghidra-confirmed)
+393	2026-05-25	2026-05-25	documentation,enhancement	MCP server for the in-game Atrea editor (UnrealEd) — full implementation path
+359	2026-05-23	2026-05-23	enhancement	mercury: two latent wire-format gaps from C++ Nub deep-dive (REPLY piggyback XOR, ACK batching)
+353	2026-05-23	2026-05-23		Widen Mercury TX window from 32 → 64 via SGW.exe binary patch
+335	2026-05-18	2026-05-18	enhancement	epic(content): port SGC_W1 missions 1562-1568 + space script to content-engine chains
+334	2026-05-18	2026-05-18	bug	fix(seed): add items_event_sets entry for Radio (item 5168) — unblocks SGC_W1 mission 1561
+330	2026-05-18	2026-05-18	enhancement	feat(cell): aggression-override server→client wire-out (onAggressionOverrideUpdate / Cleared)
+318	2026-05-17	2026-05-17	documentation	docs(spec): document two-counter sequencing model in mercury-wire-format §1.7 (follow-up to #317)
+316	2026-05-17	2026-05-17	enhancement	Schema MD5 digest (PROTOCOL_DIGEST) is hardcoded — should be computed from entity definitions at startup
+314	2026-05-17	2026-09-19	bug,ready-for-human	createBasePlayer omits SGWPlayer's BASE properties (account mailbox + perfStatsByChannel)
+310	2026-05-17	2026-05-17	enhancement	T1-12: Implement mission reward dispatch (xp/cash/items)
+304	2026-05-16	2026-05-24	enhancement	Negative-logging audit: 40+ expectation seams across cell/base/content
+302	2026-05-16	2026-05-16	enhancement	[Enhancement] Implement restoreClient (msg 0x34) + restoreClientAck round-trip for fault recovery
+301	2026-05-16	2026-05-16	enhancement	[Enhancement] Add detailedPosition (msg 0x30) full-precision non-controlled-entity emit
+300	2026-05-16	2026-05-16	enhancement	[Enhancement] Add the 31 missing UPDATE_AVATAR variants (msg_ids 0x11..0x2F)
+299	2026-05-16	2026-05-16	enhancement	[Enhancement] AUTHENTICATE (msg 0x00) DWORD_LENGTH emit path
+298	2026-05-16	2026-05-16	enhancement	[Enhancement] Add 512-entry received-sequence dedup hash (spec §1.7)
+297	2026-05-16	2026-05-16	enhancement	[Enhancement] Add InterfaceElement length-encoding table (CONSTANT / WORD / DWORD / compressed widths)
+295	2026-05-16	2026-09-19	documentation,ready-for-human	[Docs] Mercury chapter wire-format corrections from V3-V5 audit (flag bits, sub-slot threshold, createEntity size)
+294	2026-05-16	2026-09-19	bug,ready-for-human	[Security] Implement per-tick authenticate token validation (msg 0x01) — replay-attack vector
+293	2026-05-16	2026-09-19	bug	[Major] Reconcile three inactivity-timeout constants (15s spec vs 60s tick-sync vs 300s Mercury)
+282	2026-05-14	2026-05-14		chore(bible): Phase 0.6 — workflow skills across doc / dev / testing / validation
+281	2026-05-14	2026-05-14	documentation,enhancement	Headless wire-level test client ("wireclient") — Castle Cellblock end-to-end harness
+279	2026-05-13	2026-05-13	documentation,enhancement	BeingAppearance recomposite broadcast on equip-change (parent of #240/#249)
+278	2026-05-13	2026-05-13	documentation,enhancement	Witness-fanout helper for entity-method dispatch (parent of #219/#232/#240/#249/#270)
+277	2026-05-13	2026-09-19	bug,documentation	Verify: onUpdateRacialParadigmLevel emit on racial-paradigm level change
+276	2026-05-13	2026-09-19	bug,documentation	Verify: onDHDReply emit targets VCommunicator (not VGateTravel)
+271	2026-05-13	2026-09-19	enhancement	Ability cooldown bigWorldTimeComplete: emit absolute game-time of expiry
+269	2026-05-13	2026-05-13	enhancement	Content engine small hookups: RemoveItem wire, StartMinigame difficulty, clip-sizes from DB
+268	2026-05-13	2026-05-13	documentation,enhancement	Content engine SystemMessage action: client wire format unknown
+266	2026-05-13	2026-09-19	bug,documentation,ready-for-human	MissionTaskStatus.count wire format: alias.xml says INT8, binary reads INT32
+265	2026-05-13	2026-05-13	documentation,enhancement	Content engine: 25 gaps against client/binary expectations (V5-grounded analysis)
+264	2026-05-13	2026-05-14	documentation,enhancement	Cimmeria Bible: canonical, evidence-backed spec for the SGW server emulator
+262	2026-05-12	2026-05-12	documentation,enhancement	Adopt a Spec-Extraction Development framework: evidence ledger, reachability graph, round-trip verification
+261	2026-05-10	2026-05-10		Add correlation IDs / trace context across cell↔base boundaries to make distributed logs greppable
+246	2026-05-08	2026-05-08		Follow-ups from #245 / #244 review: pre-existing bugs and code-quality nits surfaced by the file splits
+242	2026-05-07	2026-05-07		Seed cleanup: chains 5020 and 5021 are byte-identical duplicates
+233	2026-05-06	2026-05-06		Gate respawn-point availability by player progression (per-player unlocked-respawners set)
+213	2026-05-05	2026-05-05	enhancement	Game enum / constant data has no canonical source — drift across PG enums, Rust consts, and python/Atrea + python/common/Constants.py
+209	2026-05-05	2026-09-19	bug,enhancement,ready-for-human	NPC AI ignores cover system — guards path straight at the player
+205	2026-05-04	2026-05-04		Test coverage residuals from #123 (Group A leftovers)
+191	2026-05-04	2026-09-19	ready-for-human	test(cell/service): npc_ai_leash should pin its onStatUpdate + onStateFieldUpdate wire packets
+190	2026-05-04	2026-09-19	ready-for-human	test(cell/service): npc_ai_fight should pin top-threat selection across multiple live targets
+171	2026-05-03	2026-05-03		Two parallel method-index constant tables: consolidate mercury::method_idx and cell::client_methods
+167	2026-05-03	2026-05-03		Test coverage: DB-driven testing opportunities beyond group A
+166	2026-05-03	2026-05-03		Live-DB test fixtures: hard-coded resource ids + outbox cleanup pattern across merged group A tests
+165	2026-05-03	2026-05-03		update_bandolier_ammo TOCTOU guard uses type_id, not item_id — same-type weapon swap silently overwrites ammo
+76	2026-04-26	2026-04-26	enhancement	Legacy code audit: archive C++ src/ and identify Python scripts still needed as reference
+75	2026-04-26	2026-04-26		CI/CD: Azure Pipelines patch publishing pipeline for blob storage
+74	2026-04-25	2026-04-26		Refactor sgw-launcher for Azure blob patch delivery + fix atomicity issues
+72	2026-03-29	2026-05-31	enhancement	Mail system: send, receive, attachments, COD
+69	2026-03-29	2026-05-31	enhancement	Pet system: summoning, abilities, stances
+66	2026-03-29	2026-05-31	enhancement	Minigame framework: port Livewire, GoauldCrystals, Alignment from Python
+64	2026-03-29	2026-05-31	enhancement	GM commands: spawn, teleport, kill, giveitem, setlevel, shutdown
+63	2026-03-29	2026-05-31	enhancement	Movement validation: speed checks, navmesh containment, anti-cheat
+62	2026-03-29	2026-05-31	enhancement	Respawn timer, corpse lifecycle, and NPC repopulation
+48	2026-03-29	2026-05-31	enhancement	NPC AI state machine (10 missing behavior states)
+46	2026-03-28	2026-05-31		Extract collision geometry from UE3 .umap chunks and regenerate navmeshes
+30	2026-03-12	2026-03-12	enhancement	Admin API: Implement editor draft storage and mission filtering
+29	2026-03-12	2026-03-12	enhancement	Admin API: Implement content, space, and config endpoints
+28	2026-03-12	2026-03-12	enhancement	Admin API: Implement player management endpoints
+27	2026-03-12	2026-03-12	enhancement	Admin API: Implement WebSocket entity property stream
+26	2026-03-12	2026-03-12	enhancement	Admin API: Implement entity management endpoints
+25	2026-03-12	2026-03-12	enhancement	Admin API: Implement JWT authentication middleware
+18	2026-03-08	2026-03-08		Frontend: Add publish, review, diff, and rollback workflow for content changes
+16	2026-03-08	2026-03-08		Frontend: Add multi-select and bulk actions to the chain editor
