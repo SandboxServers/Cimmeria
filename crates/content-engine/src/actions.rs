@@ -447,6 +447,25 @@ pub enum Action {
     /// (`removeStargateAddress`), and no shipped content used it; a
     /// `revoke_stargate_address` verb can be added when a chain needs one.
     GrantStargateAddress { stargate_id: i32 },
+
+    /// Mail the acting player a system mail (SS-U3): no sender character,
+    /// so it cannot be returned, and the cash and item are minted. The base
+    /// writes it through `mail::system`, the one writer every server mail
+    /// uses, so the recipient takes the cash and the item like any mail.
+    ///
+    /// `cooldown_secs` is a per-player limit, kept in
+    /// `sgw_player_content_cooldown` under a key derived from the chain id
+    /// and claimed in the same transaction as the mail. A firing inside the
+    /// window writes nothing and tells the player how long to wait.
+    SendSystemMail {
+        sender_name: String,
+        subject: String,
+        body: String,
+        cash: i64,
+        /// `(type_id, quantity)`.
+        item: Option<(i32, i32)>,
+        cooldown_secs: Option<u32>,
+    },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].

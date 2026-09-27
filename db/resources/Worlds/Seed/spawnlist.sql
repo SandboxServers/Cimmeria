@@ -911,6 +911,17 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- aggression override.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (470, -325.92, 73.472, -231.18, -1.0739, 12, 370, 'DebugHub_Banker', NULL);
 
+-- Social-systems campaign, SS-U3: spawn 490, the debug hub's Gate Mail Clerk
+-- (template 390, docs/content/debug-hub.md). Social owns spawns 490-499;
+-- 491-499 stay reserved. The A-B line is full (its only open slot, next to the
+-- respawner, stays empty on purpose), the crafting corner takes the D-A wall and
+-- the Banker (470) the middle of the B-C wall. So the clerk stands on the B-C
+-- wall past the Banker, towards C: 3 units in from it and 13 units along it
+-- from B, which is 3.8 from the Banker, 5.4 from the C-D exit wall and 10.1
+-- from the respawner. Heading faces the room centre, yaw = atan2(dx, dz). He
+-- cannot die, so no respawn_secs, is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (490, -324.11, 73.472, -227.84, -1.5123, 12, 390, 'DebugHub_MailClerk', NULL);
+
 --
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256

@@ -63,6 +63,23 @@ impl Client {
         .await;
     }
 
+    /// Run one content-engine `send_system_mail` firing (SS-U3) for this
+    /// client, with or without a database.
+    pub(super) async fn content(
+        &self,
+        msg: crate::cell::messages::ContentSystemMail,
+        pool: Option<&PgPool>,
+    ) {
+        super::super::handle_content_system_mail(
+            msg,
+            &self.dyn_transport,
+            &self.connected,
+            &self.entity_to_addr,
+            &pool.map(|p| Arc::new(p.clone())),
+        )
+        .await;
+    }
+
     /// Everything sent to this client since the last call, decoded.
     pub(super) fn take(&self) -> Vec<Received> {
         self.transport

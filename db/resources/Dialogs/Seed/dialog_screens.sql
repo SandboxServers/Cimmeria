@@ -28633,11 +28633,16 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100103, 200004, 'Livewire round trip complete: the minigame reported your win to the server.', 0, 0);
 
+-- Social-systems campaign, SS-U3: the Gate Mail Clerk's one screen, spoken by
+-- speaker 843 (Sgt. Harriman, template 390's speaker), so the server binds the
+-- NPC and not the player.
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (100104, 200005, 'Gate Mail. I can send you a test mail with a stack of Health Slappacks and 50 naquadah. Open your mail afterwards to take them. One mail every 10 minutes.', 843, 0);
+
 --
 -- TOC entry 3309 (class 0 OID 0)
 -- Dependencies: 310
 -- Name: dialog_screens_screen_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200004, true);
+SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200005, true);
 

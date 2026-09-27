@@ -83,9 +83,37 @@ Three rules that trip people up:
 
 1. **`Option<T>` for forward-compat.** Use it for any field a future seed might omit. The chain replay test will pin existing behaviour, but the loader must tolerate older rows.
 2. **List fields use `Vec<T>` typed by sub-action.** See `StartMinigame.on_victory_chains` for the canonical pattern.
-3. **Idempotency.** Actions can re-run if the chain is re-triggered. If your action grants currency or items, it must guard against double-application (most existing actions check a flag on `ExecutionContext` or use the `chain_completions` table — see existing examples).
+3. **Idempotency.** Actions can re-run if the chain is re-triggered. If your action grants currency or items, it must guard against double-application (most existing actions check a flag on `ExecutionContext` or use the `chain_completions` table — see existing examples). An action a player can re-trigger at will, such as one behind a dialog button, needs a per-player limit instead: `send_system_mail`'s `cooldown_secs` is the worked example (below).
 
 ---
+
+## Worked example: an action whose work happens on the base
+
+Most actions change cell state. An action that writes player data the base
+owns, such as mail, has the executor send one `CellToBaseMsg` and lets the
+base do the whole write in one transaction. `send_system_mail` (social-systems
+SS-U3) is the example to copy:
+
+| Layer | File | What it does |
+|---|---|---|
+| Variant | [`actions.rs`](../../crates/content-engine/src/actions.rs) | `Action::SendSystemMail { sender_name, subject, body, cash, item, cooldown_secs }` |
+| Loader | [`loader/action_mail.rs`](../../crates/content-engine/src/loader/action_mail.rs) | Validates every param against the mail writer's limits and drops a bad row with a `warn!`, so a seed mistake never reaches a player as a refusal |
+| Message | [`content_mail_cell_to_base.rs`](../../crates/wire/src/cell/messages/content_mail_cell_to_base.rs) | `CellToBaseMsg::ContentSystemMail`, with the player's ids taken from the cell entity |
+| Executor | [`executor/mail.rs`](../../crates/cell-content/src/cell/content/executor/mail.rs) | Refuses a non-player actor and forwards the rest |
+| Base | [`mail/content.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/content.rs) | Locks the player row, claims the cooldown, writes the mail, commits, and answers the player |
+| Tests | loader unit tests, [`executor/tests/mail.rs`](../../crates/cell-content/src/cell/content/executor/tests/mail.rs), the chain replay [`debug_hub_mail_clerk.rs`](../../crates/cell-content/src/cell/content/chain_replay_tests/debug_hub_mail_clerk.rs), and the base's live-DB [`content_live.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/tests/content_live.rs) | Each layer is tested on its own; the chain replay stops at the `CellToBaseMsg`, and the live-DB tests start from it |
+
+Two rules this example follows:
+
+- **Keep the limit and the grant in one transaction.** The cooldown claim
+  commits with the mail, so a refused mail cannot use up the player's window,
+  and a crash between the two cannot give a second mail.
+- **Answer every firing.** The base sends the player one line whether the
+  mail went out or not. A button that does nothing on the first press breaks
+  a project rule.
+
+The params and the telemetry are in
+[content-engine.md, `send_system_mail` params](../content/content-engine.md#send_system_mail-params).
 
 ## When something doesn't fit
 

@@ -84,9 +84,9 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
         .expect("dialogs must appear in the returned map");
     assert_eq!(
         ids.as_slice(),
-        &[3995u32, 3996u32, 100100u32, 100101u32],
+        &[3995u32, 3996u32, 100100u32, 100101u32, 100104u32],
         "overridden_elements must name every regenerated dialog id (the two \
-         mission-622 corpses and the two debug-hub dialogs) in ascending order",
+         mission-622 corpses and the three debug-hub dialogs) in ascending order",
     );
 
     // The debug-hub dialogs are absent from the PAK, like 3996, so both are
@@ -113,6 +113,19 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
     assert!(
         !d100101.contains("<Buttons"),
         "100101 must stay button-less so its close sends -1; got: {d100101}",
+    );
+    // SS-U3: the Gate Mail Clerk's dialog must ship its button, or the
+    // player can never ask for the mail.
+    let d100104 = std::str::from_utf8(
+        dialogs
+            .elements
+            .get(&100104)
+            .expect("the Gate Mail Clerk's dialog 100104 must be inserted"),
+    )
+    .unwrap();
+    assert!(
+        d100104.contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send me a mail\">"),
+        "100104 must ship its Generic 1 button; got: {d100104}",
     );
 }
 

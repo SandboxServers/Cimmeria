@@ -16,6 +16,7 @@
 //! - [`transport`] — teleport, ring transporter
 //! - [`stargate`]  — `GrantStargateAddress` (the address book: cell entity,
 //!   client method 66, and the base persistence request)
+//! - [`mail`]      — `SendSystemMail`, forwarded to the base's mail writer
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
@@ -39,6 +40,7 @@ mod counter;
 mod deferred;
 mod dialog;
 mod inventory;
+mod mail;
 mod mission;
 mod spawn;
 mod stargate;
@@ -551,6 +553,9 @@ async fn execute_one(
                 space_mgr,
             )
             .await;
+        }
+        action @ Action::SendSystemMail { .. } => {
+            mail::send_system_mail(action, entity_id, player_id, chain_id, tx, space_mgr).await;
         }
         Action::MoveEntity {
             entity_tag,

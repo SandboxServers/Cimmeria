@@ -293,6 +293,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         // all reject-on-bad rather than default-through, and inlining the
         // warns would push this file past the 500-line soft cap.
         "npc_bark" => super::action_bark::convert_npc_bark(row),
+        "send_system_mail" => super::action_mail::convert_send_system_mail(row),
         "qr_combat_damage" => {
             let stat_id = params.get("stat_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let source_id = params

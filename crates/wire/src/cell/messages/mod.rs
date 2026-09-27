@@ -19,11 +19,14 @@
 //!   `BaseToCellMsg::Duel`.
 //! - `mail_gm_cell_to_base` — the GM mail tools (SS-U1), carried by
 //!   `CellToBaseMsg::MailGm`.
+//! - `content_mail_cell_to_base` — the content engine's `send_system_mail`
+//!   action (SS-U3), carried by `CellToBaseMsg::ContentSystemMail`.
 
 mod bank_cell_to_base;
 mod base_to_cell;
 mod cell_to_base;
 mod chat_cell_to_base;
+mod content_mail_cell_to_base;
 mod data;
 mod duel_base_to_cell;
 mod lab;
@@ -38,6 +41,7 @@ pub use bank_cell_to_base::{BankCellToBase, BankSubject};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
 pub use chat_cell_to_base::{ChatCellToBase, MAX_MUTE_MINUTES};
+pub use content_mail_cell_to_base::{ContentMailCooldown, ContentSystemMail};
 pub use data::{
     MailOp, MailSend, MailSendReject, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission,
 };
