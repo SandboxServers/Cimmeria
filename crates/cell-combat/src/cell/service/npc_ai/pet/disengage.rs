@@ -37,9 +37,15 @@ use super::{defend, fight_refusal, live_owner, owner_follow, owner_identity};
 /// `reason` on the `target_dropped` row.
 fn not_worth_fighting(
     mob: &CellEntity,
+    pet_space: cimmeria_common::SpaceId,
     owner: Option<&CellEntity>,
     now: std::time::Instant,
 ) -> Option<&'static str> {
+    // Not in the pet's space (an instance is its own space): however it got
+    // on the list, the pet cannot fight it, and it cannot fight the pet.
+    if mob.space_id != pet_space {
+        return Some("target_other_space");
+    }
     // Something the pet may not fight: not a combatant mob, or an NPC its
     // owner could not attack (content turned it friendly mid-fight, or it
     // reached the threat list some other way). Checked every pet turn before
@@ -78,7 +84,8 @@ fn not_worth_fighting(
 fn releases_target(reason: &str) -> bool {
     matches!(
         reason,
-        "target_not_combatant"
+        "target_other_space"
+            | "target_not_combatant"
             | "target_not_hostile"
             | "target_resetting"
             | "target_just_reset"
@@ -152,7 +159,7 @@ pub(super) fn drop_targets_not_worth_fighting(
         .filter_map(|&t| {
             space_mgr
                 .get_entity(t)
-                .and_then(|m| not_worth_fighting(m, owner, now))
+                .and_then(|m| not_worth_fighting(m, pet.space_id, owner, now))
                 .map(|why| (t, why))
         })
         .collect();

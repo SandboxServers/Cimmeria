@@ -61,6 +61,41 @@ fn world_with_pet(owner_pos: [f32; 3]) -> (SpaceManager, u32) {
     (mgr, pet)
 }
 
+/// Agnos and Castle, the owner in Agnos with its pet: for the cross-space
+/// guards (a target or attacker in Castle at the pet's own coordinates).
+fn two_space_world_with_pet() -> (SpaceManager, u32) {
+    let mut mgr = SpaceManager::new(1);
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces>
+        <Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" />
+        <Space WorldName="Castle" Instanced="false" MinX="-2400" MaxX="2400" MinY="-2400" MaxY="2400" />
+        </Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    seed_pet_template(&mut mgr, PET_FIXTURE_TEMPLATE_ID);
+    add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
+    mgr.get_entity_mut(OWNER).unwrap().player_id = Some(OWNER_PLAYER_ID);
+    let pet = mgr
+        .spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 0)
+        .expect("pet spawns");
+    (mgr, pet)
+}
+
+/// [`add_mob`] in `world`.
+fn add_mob_in(mgr: &mut SpaceManager, id: u32, world: &str, pos: [f32; 3], faction: u8) {
+    mgr.spawn_npc(id, world, pos, [0.0; 3]).unwrap();
+    let mob = mgr.get_entity_mut(id).unwrap();
+    mob.faction = faction;
+    if let Some(h) = mob.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+        h.update(0, 100, 100);
+        h.clear_dirty();
+    }
+}
+
 /// A living mob of `faction` at `pos`, 100/100 HEALTH.
 fn add_mob(mgr: &mut SpaceManager, id: u32, pos: [f32; 3], faction: u8) {
     mgr.spawn_npc(id, "Agnos", pos, [0.0; 3]).unwrap();

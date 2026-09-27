@@ -142,6 +142,10 @@ pub(in crate::cell) fn threat_refusal(
     }
     let owner = live_owner(space_mgr, target.entity_id.0 as u32, pet.owner_id).ok();
     let attacker = space_mgr.get_entity(attacker_id);
+    // An attacker outside the pet's space never gets on its list.
+    if attacker.is_some_and(|a| a.space_id != target.space_id) {
+        return Some("attacker_other_space");
+    }
     match (owner, attacker) {
         (Some(o), Some(a)) if fight_refusal(o, a).is_none() => None,
         _ => Some("attacker_not_hostile"),

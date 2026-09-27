@@ -204,3 +204,77 @@ async fn the_pets_target_dying_ends_the_fight_cleanly() {
         .threatened_mobs
         .contains(&MOB));
 }
+
+/// A dismissed (despawned) pet: nothing in the pet AI releases it, the mob's
+/// fight handler prunes the vanished target, and the mob's own reset takes
+/// the owner out of combat with it.
+#[tokio::test]
+async fn a_dismissed_pets_attacker_lets_it_go_and_the_owner_leaves_combat() {
+    let (mut mgr, pet) = engaged([10.0, 0.0, 10.0], [10.0, 0.0, 8.0], [14.0, 0.0, 8.0]).await;
+    tick(&mut mgr).await;
+    assert!(owner_in_fight_with_mob(&mgr), "precondition");
+    let (tx, _rx) = mpsc::channel(256);
+    let _ = crate::cell::pets::despawn_pet(
+        &mut mgr,
+        pet,
+        crate::cell::pets::PetDespawnReason::Dismissed,
+        &tx,
+    )
+    .await;
+    assert!(
+        mgr.get_entity(pet).is_none(),
+        "precondition: the pet is gone"
+    );
+
+    tick(&mut mgr).await;
+
+    assert!(!mob_lists_pet(&mgr, pet), "the mob pruned the vanished pet");
+    assert!(
+        !owner_in_fight_with_mob(&mgr),
+        "and the owner left the fight"
+    );
+}
+
+/// A target in another space on the pet's list (however it got there) is
+/// dropped as `target_other_space` and forgets the pet.
+#[tokio::test]
+async fn a_target_in_another_space_is_dropped() {
+    let (mut mgr, pet) = two_space_world_with_pet();
+    add_mob_in(&mut mgr, MOB, "Castle", [10.0, 0.0, 8.0], HOSTILE);
+    let p = mgr.get_entity_mut(pet).unwrap();
+    crate::cell::service::npc_ai::force_ai_state(p, AiState::Fighting);
+    p.threat_list.insert(MOB, 10.0);
+    mgr.get_entity_mut(MOB)
+        .unwrap()
+        .threat_list
+        .insert(pet, 10.0);
+
+    let logs = LogCapture::install();
+    tick(&mut mgr).await;
+
+    assert!(!mgr.get_entity(pet).unwrap().threat_list.contains_key(&MOB));
+    assert!(!mob_lists_pet(&mgr, pet));
+    let row = pets_ai_row(&logs, "pet_target_dropped").expect("drop row");
+    assert!(row.has_field("reason", "target_other_space"), "{row:?}");
+}
+
+/// Nor does a pet take threat from an attacker in another space.
+#[tokio::test]
+async fn a_pet_refuses_threat_from_another_space() {
+    let (mut mgr, pet) = two_space_world_with_pet();
+    add_mob_in(&mut mgr, MOB, "Castle", [10.0, 0.0, 8.0], HOSTILE);
+
+    let logs = LogCapture::install();
+    let _ = crate::cell::combat::generate_threat(
+        &mut mgr,
+        MOB,
+        pet,
+        50.0,
+        crate::cell::combat::AggroCause::Damage,
+    );
+
+    assert!(mgr.get_entity(pet).unwrap().threat_list.is_empty());
+    assert_ne!(state(&mgr, pet), AiState::Fighting);
+    let row = pets_ai_row(&logs, "pet_threat_refused").expect("refusal row");
+    assert!(row.has_field("reason", "attacker_other_space"), "{row:?}");
+}
