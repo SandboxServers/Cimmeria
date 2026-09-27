@@ -55,6 +55,7 @@ mod live_db_content_loaders;
 mod live_db_crafting_hub;
 mod live_db_debug_banker;
 mod live_db_debug_hub;
+mod live_db_debug_org_bankers;
 mod live_db_debug_registrars;
 mod live_db_loaders;
 mod live_db_mail_clerk;
