@@ -22,8 +22,9 @@ Learned authoring PT-11 (templates 351-353, 2026-09-27).
   guard `seeded_summons_match_the_summon_path` checks it (plus Self target,
   warmup > 0, SpeedPet). The Goa'uld summons use 1121; the 1122 target PFX is
   hard-coded in `use_ability/summon.rs` for every summon.
-- **Pet-kit abilities are mostly empty.** 1652, 1654, 1653, 3326-3329: no
-  effect NVPs, no script, no event set. The NA43 linter
+- **Pet-kit abilities are mostly empty.** 1654, 1653, 3326-3329: no effect
+  NVPs, no script, no event set. (1652 Double Blast was the same, but PT-11
+  gave it event set 3, the staff shot, so it needs no allowlist entry.) The NA43 linter
   (`npc_ability_animation.rs`) fails any template-set ability with no event
   set, so a pet kit needs either a data-backed event set or an
   `ANIMATION_ALLOWLIST` entry; `animation_allowlist_entries_deal_no_damage`
