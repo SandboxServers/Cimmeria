@@ -415,6 +415,7 @@ pub fn destroy_client_entities(
         let account_name = c.account_name.clone();
         let player_name = c.player_name.clone();
         let session_secs = c.connected_at.elapsed().as_secs();
+        crate::base::player_index::log_unlisted(addr, c, reason);
         clients.remove(&addr);
         (
             account_eid,

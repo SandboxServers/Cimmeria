@@ -20,7 +20,7 @@ use tokio::sync::mpsc;
 use super::play_character::handle_play_character;
 use super::reanchor_player::handle_reanchor_player;
 use crate::cell::messages::BaseToCellMsg;
-use crate::test_support::{test_default_connected_client_state, TestTransport};
+use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 
 /// `playCharacter` (no-DB path) lists the character under its name.
 /// Regression shape: drop `listed_online = true` from the world-entry store
@@ -36,6 +36,7 @@ async fn play_character_lists_the_character_in_the_online_index() {
     let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
     let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = None;
     const PLAYER_ID: i32 = 7;
+    let capture = LogCapture::install();
 
     handle_play_character(
         &transport,
@@ -70,6 +71,17 @@ async fn play_character_lists_the_character_in_the_online_index() {
         }),
         "and by case fold"
     );
+    // Telemetry: one DEBUG `online_index.insert` with the ids and the path.
+    let inserted: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "online_index" && c.has_field("event", "online_index.insert"))
+        .collect();
+    assert_eq!(inserted.len(), 1);
+    assert!(inserted[0].has_field("path", "world_entry"));
+    assert!(inserted[0].has_field("player_id", "7"));
+    let account_id = connected.lock().unwrap()[&addr].account_id;
+    assert!(inserted[0].has_field("account_id", &account_id.to_string()));
 }
 
 /// A reanchor (respawn) re-creates the client's pawn on the same session:

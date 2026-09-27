@@ -20,7 +20,7 @@ use super::super::feedback::{send_feedback_line, FeedbackCtx};
 use cimmeria_entity::organization::org_text::{validate, TextField, TextReject};
 
 use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_UNITS};
-use super::super::rate_limit::{log_exceeded, RateCategory, RateDecision};
+use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 use super::speaker_flags;
 
@@ -109,7 +109,7 @@ pub(super) async fn send_player_communication_at(
     //   - SPEAKER_DND if dndMessage is not None
     // SPEAKER_Petition (0x02) is in the enum but never set by the
     // Python reference, so it is intentionally not computed.
-    let (player_eid, speaker_flags_value, player_id, decision) = {
+    let (player_eid, speaker_flags_value, player_id, account_id, decision) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
@@ -125,7 +125,23 @@ pub(super) async fn send_player_communication_at(
                 } else {
                     c.rate_limits.check(RateCategory::Chat, now)
                 };
-                (c.player_entity_id, flags, c.active_player_id, decision)
+                if let RateDecision::Limited { notify } = decision {
+                    // Logged here, under the lock, so the event carries the
+                    // bucket state the decision was made on.
+                    let actor = RateActor {
+                        addr,
+                        player_id: c.active_player_id,
+                        account_id: c.account_id,
+                    };
+                    log_exceeded(RateCategory::Chat, actor, notify, &c.rate_limits, now);
+                }
+                (
+                    c.player_entity_id,
+                    flags,
+                    c.active_player_id,
+                    c.account_id,
+                    decision,
+                )
             }
             None => return,
         }
@@ -137,7 +153,6 @@ pub(super) async fn send_player_communication_at(
     };
 
     if let RateDecision::Limited { notify } = decision {
-        log_exceeded(RateCategory::Chat, addr, player_id, notify);
         if notify {
             send_feedback_line(&feedback, addr, RateCategory::Chat.feedback_text()).await;
         }
@@ -152,6 +167,7 @@ pub(super) async fn send_player_communication_at(
             event = "chat.rejected",
             %addr,
             player_id,
+            account_id,
             channel,
             text_units = text.encode_utf16().count(),
             max_units = MAX_CHAT_TEXT_UNITS,

@@ -11,7 +11,19 @@ use cimmeria_entity::manager::EntityManager;
 
 use super::*;
 use crate::base::helpers::destroy_client_entities;
-use crate::test_support::test_default_connected_client_state;
+use crate::test_support::{
+    test_default_connected_client_state, Captured, LogCapture, LogCaptureGuard,
+};
+use tracing::Level;
+
+/// Every `online_index` row with `event = <event>`.
+fn index_events(capture: &LogCaptureGuard, event: &str) -> Vec<Captured> {
+    capture
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "online_index" && c.has_field("event", event))
+        .collect()
+}
 
 fn addr(port: u16) -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], port))
@@ -144,6 +156,7 @@ fn destroy_client_entities_leaves_no_listing_for_any_reason() {
         let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
         let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(1007u32, addr(1))])));
         assert_eq!(lookup_online(&connected, "Lomiada"), found(1, 7));
+        let capture = LogCapture::install();
 
         destroy_client_entities(
             &connected,
@@ -165,7 +178,51 @@ fn destroy_client_entities_leaves_no_listing_for_any_reason() {
             "{reason}: nor resolve by case fold"
         );
         assert_eq!(lookup_online(&connected, "Teal"), found(2, 8), "{reason}");
+        let removed = index_events(&capture, "online_index.remove");
+        assert_eq!(removed.len(), 1, "{reason}: one remove event");
+        assert_eq!(removed[0].level, Level::DEBUG);
+        assert!(
+            removed[0].has_field("path", reason),
+            "{reason}: path is the teardown reason"
+        );
+        assert!(removed[0].has_field("player_id", "7"));
+        assert!(removed[0].has_field("account_id", "0"));
         let clients = connected.lock().unwrap();
         assert_eq!(OnlinePlayerIndex::new(&clients).entries().count(), 1);
     }
+}
+
+/// Telemetry: a miss and an ambiguous match each log one DEBUG
+/// `online_index.lookup` row with `reason`; a hit logs nothing.
+#[test]
+fn lookup_misses_and_ambiguity_log_their_reason() {
+    let clients = index_of(vec![(1, in_world("Bob", 1)), (2, in_world("bob", 2))]);
+    let index = OnlinePlayerIndex::new(&clients);
+    let capture = LogCapture::install();
+
+    assert_eq!(index.lookup("Bob"), found(1, 1));
+    assert!(index_events(&capture, "online_index.lookup").is_empty());
+
+    assert_eq!(index.lookup("Nobody"), NameLookup::NotFound);
+    let miss = capture
+        .find_event(Level::DEBUG, "did not resolve", "missing")
+        .expect("a miss logs reason=missing");
+    assert_eq!(miss.target, "online_index");
+    assert!(miss.has_field("name", "Nobody"));
+    assert!(miss.has_field("listed", "2"));
+
+    assert_eq!(index.lookup("BOB"), NameLookup::Ambiguous);
+    assert!(capture
+        .find_event(Level::DEBUG, "did not resolve", "ambiguous")
+        .is_some());
+
+    // A hostile name is logged as a bounded prefix.
+    let long = "x".repeat(500);
+    assert_eq!(index.lookup(&long), NameLookup::NotFound);
+    let row = capture
+        .all()
+        .into_iter()
+        .rfind(|c| c.has_field("name_chars", "500"))
+        .expect("the long lookup logged");
+    assert_eq!(row.fields["name"].chars().count(), 64);
 }

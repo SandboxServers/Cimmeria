@@ -319,6 +319,7 @@ fn scan_finds_known_targets() {
         ("chat", Level::WARN),
         ("rate_limit", Level::WARN),
         ("rate_limit", Level::DEBUG),
+        ("online_index", Level::DEBUG),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),

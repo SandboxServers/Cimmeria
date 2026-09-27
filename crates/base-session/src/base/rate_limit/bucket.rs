@@ -48,6 +48,25 @@ impl TokenBucket {
         RateDecision::Limited { notify }
     }
 
+    /// Tokens left now (as of the last `check`).
+    pub fn tokens(&self) -> u32 {
+        self.tokens
+    }
+
+    /// This bucket's burst and refill period.
+    pub fn spec(&self) -> BucketSpec {
+        self.spec
+    }
+
+    /// How long until the next token is credited, from `now`. Zero when the
+    /// bucket is full.
+    pub fn until_next_token(&self, now: Instant) -> std::time::Duration {
+        if self.tokens >= self.spec.burst {
+            return std::time::Duration::ZERO;
+        }
+        (self.last_refill + self.spec.refill_every).saturating_duration_since(now)
+    }
+
     fn refill(&mut self, now: Instant) {
         if self.tokens >= self.spec.burst {
             // Full: time spent full earns nothing, so restart the period here.

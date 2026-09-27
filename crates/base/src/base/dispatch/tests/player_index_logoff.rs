@@ -4,7 +4,7 @@
 //! must not be reachable by tells or duel challenges in that window.
 
 use super::super::*;
-use crate::test_support::{test_default_connected_client_state, TestTransport};
+use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 use cimmeria_base_session::base::player_index::{lookup_online, NameLookup, OnlinePlayer};
 
 async fn log_off(disconnect: u8) -> Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> {
@@ -35,6 +35,7 @@ async fn log_off(disconnect: u8) -> Arc<Mutex<HashMap<SocketAddr, ConnectedClien
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
     let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
     let (tx, _rx) = mpsc::channel::<BaseToCellMsg>(8);
+    let capture = LogCapture::install();
 
     dispatch_sgw_player_base_method(
         sgw_player_base::LOG_OFF,
@@ -60,6 +61,20 @@ async fn log_off(disconnect: u8) -> Arc<Mutex<HashMap<SocketAddr, ConnectedClien
         }),
         "another player's listing is untouched"
     );
+    // Telemetry: one DEBUG `online_index.remove` naming the logoff variant.
+    let path = if disconnect != 0 {
+        "logoff_full_exit"
+    } else {
+        "logoff_character_select"
+    };
+    let removed: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "online_index" && c.has_field("event", "online_index.remove"))
+        .collect();
+    assert_eq!(removed.len(), 1);
+    assert!(removed[0].has_field("path", path));
+    assert!(removed[0].has_field("player_id", "7"));
     connected
 }
 

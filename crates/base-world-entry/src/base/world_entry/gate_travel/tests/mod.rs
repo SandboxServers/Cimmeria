@@ -399,9 +399,16 @@ async fn abandoned_unspaced_session_leaves_no_player_index_listing() {
         NameLookup::Found(OnlinePlayer { addr, player_id: 7 })
     );
 
+    let capture = crate::test_support::LogCapture::install();
     abandon_unspaced_session(addr, 42, &connected, &entity_to_addr, &None).await;
 
     assert_eq!(lookup_online(&connected, "Lomiada"), NameLookup::NotFound);
+    assert!(
+        capture.all().iter().any(|c| c.target == "online_index"
+            && c.has_field("event", "online_index.remove")
+            && c.has_field("path", "gate_travel_abandon")),
+        "the abandon logs online_index.remove path=gate_travel_abandon"
+    );
     assert_eq!(
         lookup_online(&connected, "Teal"),
         NameLookup::Found(OnlinePlayer {

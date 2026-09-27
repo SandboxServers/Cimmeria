@@ -131,6 +131,14 @@ async fn chat_bucket_drops_sixth_line_in_one_second() {
     assert_eq!(event.target, "rate_limit");
     assert!(event.has_field("category", "chat"));
     assert!(event.has_field("event", "rate_limit.exceeded"));
+    // Telemetry: who, and the bucket state the drop was decided on.
+    assert!(event.has_field("player_id", "77"));
+    assert!(event.has_field("account_id", "0"));
+    assert!(event.has_field("tokens", "0"));
+    assert!(event.has_field("burst", "5"));
+    assert!(event.has_field("refill_ms", "1000"));
+    // 750 ms into the first period (the sixth line is at t0 + 750 ms).
+    assert!(event.has_field("next_token_ms", "250"));
     assert_eq!(
         h.feedback(),
         vec!["You are sending messages too quickly."],
@@ -226,6 +234,8 @@ async fn chat_rejects_text_over_cap() {
     assert_eq!(event.target, "chat");
     assert!(event.has_field("event", "chat.rejected"));
     assert!(event.has_field("text_units", "256"));
+    assert!(event.has_field("player_id", "77"));
+    assert!(event.has_field("account_id", "0"));
     assert_eq!(h.feedback(), vec![CHAT_TOO_LONG_TEXT]);
 }
 

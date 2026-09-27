@@ -43,6 +43,12 @@ pub(super) async fn handle_log_off(
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
+                let path = if disconnect != 0 {
+                    "logoff_full_exit"
+                } else {
+                    "logoff_character_select"
+                };
+                cimmeria_base_session::base::player_index::log_unlisted(addr, c, path);
                 c.listed_online = false;
                 (c.player_entity_id, c.enc_version, c.player_name.clone())
             }

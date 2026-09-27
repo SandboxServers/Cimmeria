@@ -104,19 +104,50 @@ impl PlayerRateState {
             .get_or_insert_with(|| TokenBucket::new(category.spec(), now))
             .check(now)
     }
+
+    /// `category`'s bucket, if this player has used it yet.
+    pub fn bucket(&self, category: RateCategory) -> Option<&TokenBucket> {
+        self.buckets[category.slot()].as_ref()
+    }
 }
 
-/// Log a dropped action as `rate_limit.exceeded`.
+/// Who was limited, for [`log_exceeded`]: server session state only.
+#[derive(Debug, Clone, Copy)]
+pub struct RateActor {
+    pub addr: SocketAddr,
+    pub player_id: Option<i32>,
+    pub account_id: u32,
+}
+
+/// Log a dropped action as `rate_limit.exceeded` and count it.
 ///
 /// WARN for the drop that also notifies the player (at most one per
 /// category per 5 seconds per player, so a flood cannot flood the log);
-/// DEBUG for the silent drops between them.
+/// DEBUG for the silent drops between them. Both carry the bucket state
+/// (`tokens`, `burst`, `refill_ms`, `next_token_ms`) so SigNoz alone shows
+/// how far over the limit the player was. Every drop, notified or not,
+/// increments `rate_limit_exceeded_total{category}`.
 pub fn log_exceeded(
     category: RateCategory,
-    addr: SocketAddr,
-    player_id: Option<i32>,
+    actor: RateActor,
     notify: bool,
+    state: &PlayerRateState,
+    now: Instant,
 ) {
+    cimmeria_observability::counter!(
+        "rate_limit_exceeded_total",
+        "category" => category.name(),
+    );
+    let spec = category.spec();
+    let (tokens, next_token_ms) = state
+        .bucket(category)
+        .map(|b| (b.tokens(), b.until_next_token(now).as_millis() as u64))
+        .unwrap_or((spec.burst, 0));
+    let burst = spec.burst;
+    let refill_ms = spec.refill_every.as_millis() as u64;
+    let addr = actor.addr;
+    let player_id = actor.player_id;
+    let account_id = actor.account_id;
     if notify {
         tracing::warn!(
             target: "rate_limit",
@@ -124,6 +155,11 @@ pub fn log_exceeded(
             category = category.name(),
             %addr,
             player_id,
+            account_id,
+            tokens,
+            burst,
+            refill_ms,
+            next_token_ms,
             reason = "bucket_empty",
             notified = true,
             "rate_limit.exceeded: action dropped, player notified",
@@ -135,6 +171,11 @@ pub fn log_exceeded(
             category = category.name(),
             %addr,
             player_id,
+            account_id,
+            tokens,
+            burst,
+            refill_ms,
+            next_token_ms,
             reason = "bucket_empty",
             notified = false,
             "rate_limit.exceeded: action dropped, notify suppressed",

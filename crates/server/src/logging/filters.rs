@@ -175,8 +175,11 @@ use crate::otel;
 /// path's decisions and the per-player flood limits. `rate_limit` logs
 /// `rate_limit.exceeded` at WARN for a drop that notifies the player (at
 /// most one per category per player per 5 s) and at DEBUG for the silent
-/// drops between; `chat` logs the D-SS12 length-cap refusal. Both are
+/// drops between; `chat` logs the D-SS12 text-rule refusals. Both are
 /// `debug` so the suppressed drops reach SigNoz during flood triage.
+/// `online_index` (SS-00) is the online name index: DEBUG `insert` /
+/// `remove` rows with the teardown `path`, and a DEBUG `lookup` row with
+/// `reason = missing | ambiguous` for every lookup that does not resolve.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -239,7 +242,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 player.journal=debug,\
                 trade.atomic_swap=debug,\
                 org=debug,squad=debug,\
-                chat=debug,rate_limit=debug,\
+                chat=debug,rate_limit=debug,online_index=debug,\
                 console.feedback=debug,\
                 client.native=debug,\
                 launcher=debug,\

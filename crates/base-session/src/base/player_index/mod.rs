@@ -82,18 +82,38 @@ impl<'a> OnlinePlayerIndex<'a> {
             .filter_map(|(addr, c)| listing(*addr, c))
     }
 
-    /// Resolve `name` per D-SS13. An empty name is never found.
+    /// Resolve `name` per D-SS13. An empty name is never found. A miss or an
+    /// ambiguous match logs at DEBUG on `online_index` with `reason`.
     pub fn lookup(&self, name: &str) -> NameLookup {
-        if name.is_empty() {
-            return NameLookup::NotFound;
-        }
-        match self.unique(|n| n == name) {
-            NameLookup::NotFound => {
-                let folded = name.to_lowercase();
-                self.unique(|n| n.to_lowercase() == folded)
+        let result = if name.is_empty() {
+            NameLookup::NotFound
+        } else {
+            match self.unique(|n| n == name) {
+                NameLookup::NotFound => {
+                    let folded = name.to_lowercase();
+                    self.unique(|n| n.to_lowercase() == folded)
+                }
+                found_or_ambiguous => found_or_ambiguous,
             }
-            found_or_ambiguous => found_or_ambiguous,
-        }
+        };
+        let reason = match result {
+            NameLookup::Found(_) => return result,
+            NameLookup::NotFound => "missing",
+            NameLookup::Ambiguous => "ambiguous",
+        };
+        // The name is player-typed: log a bounded prefix, never the whole
+        // string, so a caller that forgot its rate limit cannot bloat the log.
+        let shown: String = name.chars().take(LOGGED_NAME_CHARS).collect();
+        tracing::debug!(
+            target: "online_index",
+            event = "online_index.lookup",
+            reason,
+            name = %shown,
+            name_chars = name.chars().count(),
+            listed = self.entries().count(),
+            "online name lookup did not resolve to one player",
+        );
+        result
     }
 
     fn unique(&self, matches: impl Fn(&str) -> bool) -> NameLookup {
@@ -104,6 +124,45 @@ impl<'a> OnlinePlayerIndex<'a> {
             (Some(_), Some(_)) => NameLookup::Ambiguous,
         }
     }
+}
+
+/// Longest prefix of a looked-up name that a DEBUG row carries. Character
+/// names are far shorter; this only bounds a hostile one.
+const LOGGED_NAME_CHARS: usize = 64;
+
+/// Log that `c` just became listed (`event = online_index.insert`). Call it
+/// where `listed_online` is set; `path` names the transition.
+pub fn log_listed(addr: SocketAddr, c: &ConnectedClientState, path: &'static str) {
+    tracing::debug!(
+        target: "online_index",
+        event = "online_index.insert",
+        %addr,
+        player_id = c.active_player_id,
+        account_id = c.account_id,
+        player_name = c.player_name.as_deref(),
+        path,
+        "character listed in the online name index",
+    );
+}
+
+/// Log that `c` is leaving the index (`event = online_index.remove`), if it
+/// was listed. Call it where `listed_online` is cleared or the session is
+/// removed from the map; `path` is the teardown path (a
+/// `destroy_client_entities` reason, `logoff_*`, `gate_travel_abandon`).
+pub fn log_unlisted(addr: SocketAddr, c: &ConnectedClientState, path: &'static str) {
+    if !c.listed_online {
+        return;
+    }
+    tracing::debug!(
+        target: "online_index",
+        event = "online_index.remove",
+        %addr,
+        player_id = c.active_player_id,
+        account_id = c.account_id,
+        player_name = c.player_name.as_deref(),
+        path,
+        "character removed from the online name index",
+    );
 }
 
 fn listing(addr: SocketAddr, c: &ConnectedClientState) -> Option<(&str, OnlinePlayer)> {

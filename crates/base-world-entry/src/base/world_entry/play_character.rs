@@ -178,6 +178,7 @@ pub async fn handle_play_character(
             // Listed in the online name index (tells, duel challenges) from
             // here until logOff or the session's teardown.
             c.listed_online = true;
+            cimmeria_base_session::base::player_index::log_listed(addr, c, "world_entry");
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
             c.pending_client_ready = None;
