@@ -84,7 +84,15 @@
 //! **before** [`lock_org`] (`inventory::org_vault::access::lock_actor`):
 //! the delete then waits on the action, or the action on the delete, with
 //! no cycle. `KEY SHARE` does not conflict with the `NO KEY UPDATE` a cash
-//! change takes.
+//! change takes. Two rules follow (agreed with the organizations campaign
+//! for BV-07 and BV-08):
+//!
+//! - a cash change (BV-08) takes the `KEY SHARE` first and makes its plain
+//!   `UPDATE` of the actor's row after [`lock_org`], never a `SELECT … FOR
+//!   UPDATE`;
+//! - a vault transaction that touches another member's `sgw_player` row
+//!   takes every player row it needs, `FOR KEY SHARE` in `player_id`
+//!   order, before [`lock_org`].
 //!
 //! All of this assumes READ COMMITTED, the server's isolation level: a
 //! statement after the lock wait sees what the previous lock holder

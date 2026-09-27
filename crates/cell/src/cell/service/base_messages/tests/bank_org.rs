@@ -50,12 +50,16 @@ fn open(mgr: &mut SpaceManager, scope: VaultScope, org_id: Option<i32>) {
 }
 
 async fn ended(mgr: &mut SpaceManager, player_id: i32, org_id: i32) {
+    ended_for(mgr, player_id, org_id, OrgLeaveReason::Requested).await;
+}
+
+async fn ended_for(mgr: &mut SpaceManager, player_id: i32, org_id: i32, reason: OrgLeaveReason) {
     let (tx, _rx) = mpsc::channel(64);
     let msg = OrgBaseToCell::OrgMembershipEnded {
         player_id,
         entity_id: ENTITY,
         org_id,
-        reason: OrgLeaveReason::Requested,
+        reason,
     };
     handle_base_message(BaseToCellMsg::Org(msg), &tx, mgr, &ChainEngine::new(), &[]).await;
 }
@@ -150,4 +154,21 @@ async fn membership_ended_leaves_other_sessions_alone() {
         mgr.get_entity(ENTITY).unwrap().vault_session.is_some(),
         "stale entity"
     );
+}
+
+/// Every way a membership ends closes the org's vault session: a leave, a
+/// kick (ORG-07 sends `OrgMembershipEnded` with `Kicked`) and a disband.
+/// Fails if the close keys on the reason.
+#[tokio::test]
+async fn a_kick_or_a_disband_closes_the_vault_session_too() {
+    for reason in [OrgLeaveReason::Kicked, OrgLeaveReason::Disbanded] {
+        let (mut mgr, _) = staged();
+        open(&mut mgr, VaultScope::Team, Some(ORG));
+        ended_for(&mut mgr, PLAYER_ID, ORG, reason).await;
+        assert_eq!(
+            mgr.get_entity(ENTITY).unwrap().vault_session,
+            None,
+            "{reason:?}"
+        );
+    }
 }
