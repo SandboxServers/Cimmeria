@@ -8,6 +8,10 @@ INSERT INTO item_lists (item_list_id, name) VALUES (2, 'Test vendor sell/repair/
 
 INSERT INTO item_lists (item_list_id, name) VALUES (1, 'Test vendor buy list');
 
+-- NEW CONTENT (debug hub, crafting): the crafting supplies vendor's buy list
+--   (template 314), in the crafting campaign's 310 id block.
+INSERT INTO item_lists (item_list_id, name) VALUES (310, 'Debug hub crafting supplies');
+
 --
 -- TOC entry 3320 (class 0 OID 0)
 -- Dependencies: 222

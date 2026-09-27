@@ -923,6 +923,32 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (490, -324.11, 73.472, -227.84, -1.5123, 12, 390, 'DebugHub_MailClerk', NULL);
 
 --
+-- NEW CONTENT (debug hub, crafting): spawns 410-414, the crafting stations
+-- (templates 310-313) and the crafting supplies vendor (314) in the stasis
+-- room. The crafting campaign owns spawns 410-429. Always seeded, like
+-- 400-404 (same owner decision, docs/content/debug-hub.md).
+--
+-- Placement. The A-B wall holds 400-404 and the pet trainer, so these stand
+-- along the D-A wall, D(-338.39, -213.94) to A(-347.17, -230.14): 3 units in
+-- from it, at 6.0, 8.6, 11.2, 13.8 and 16.4 units from A (2.6 apart, the
+-- vendor nearest A), at the respawner's floor height (y 73.472). The nearest
+-- is 7.4 units from the respawner and 3.1 from the hub vendor (400). Headings
+-- face the room centre (-333.03, -227.32), yaw = atan2(dx, dz). The station
+-- reach is 5 units, so a player standing between two stations reaches both.
+-- As for 400-404, there is no navmesh or occluder data for this room: the
+-- placement still needs an in-client check.
+--
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (414, -341.67, 73.472, -226.29, 1.6889, 12, 314, 'DebugHub_CraftingSupplies', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (410, -340.43, 73.472, -224.01, 1.9913, 12, 310, 'DebugHub_CraftStation_BioMedical', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (411, -339.2, 73.472, -221.72, 2.3079, 12, 311, 'DebugHub_CraftStation_Electronics', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (412, -337.96, 73.472, -219.44, 2.583, 12, 312, 'DebugHub_CraftStation_PowerSystems', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (413, -336.72, 73.472, -217.15, 2.7937, 12, 313, 'DebugHub_CraftStation_Materials', NULL);
+
+--
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
