@@ -14,6 +14,7 @@ use super::ConnectedClientState;
 
 mod chat;
 mod diagnostics;
+mod organization;
 mod session;
 
 /// `ESpeakerFlags` bitfield constants from `entities/defs/enumerations.xml`.
@@ -43,6 +44,13 @@ pub(crate) mod sgw_player_base {
     pub(crate) const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
     pub(crate) const CHAT_SET_AFK: u8 = 0xC3;
     pub(crate) const CHAT_SET_DND: u8 = 0xC4;
+    /// OrganizationMember base methods 0xCF-0xD2 (`organizationInvite`,
+    /// `organizationInviteByType`, `organizationKick`,
+    /// `organizationRankChange`). Handled in `dispatch/organization.rs`.
+    pub(crate) const ORGANIZATION_INVITE: u8 =
+        cimmeria_wire::base::organization::ORGANIZATION_INVITE;
+    pub(crate) const ORGANIZATION_RANK_CHANGE: u8 =
+        cimmeria_wire::base::organization::ORGANIZATION_RANK_CHANGE;
     /// SGWPlayer.elementDataRequest(UINT16 categoryId, UINT32 key) — cache
     /// miss request for a server resource. Same wire shape as the
     /// pre-world-entry 0xC1 cache flow (handled in `cooked_data.rs`),
@@ -146,6 +154,18 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
         sgw_player_base::PERF_STATS => {
             diagnostics::handle_perf_stats(payload, addr);
+        }
+
+        sgw_player_base::ORGANIZATION_INVITE..=sgw_player_base::ORGANIZATION_RANK_CHANGE => {
+            organization::handle_org_base_method(
+                msg_id,
+                payload,
+                addr,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
 
         _ => {
