@@ -14,6 +14,9 @@ use super::appearance::refresh_player_appearance;
 use super::core::send_full_inventory_update;
 use super::grant::item_allows_container;
 use crate::cell::messages::BaseToCellMsg;
+use container_policy::{refusal, refuse_move, MoveEnd};
+
+mod container_policy;
 
 #[derive(sqlx::FromRow)]
 struct InventoryInstanceRow {
@@ -60,6 +63,27 @@ pub async fn handle_move_inventory_item(
             return;
         }
     };
+
+    // D-BV07 allowlist, target end. Checked before the slot range: 17-20
+    // have a capacity now, so the range check alone would accept them.
+    if let Some(verdict) = refusal(target_container_id) {
+        refuse_move(
+            MoveEnd::Target,
+            verdict,
+            entity_id,
+            player_id,
+            item_id,
+            None,
+            target_container_id,
+            target_slot_id,
+            pool,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        return;
+    }
 
     let max_slots = bag_max_slots(target_container_id);
     let min_slot = bag_min_slot(target_container_id);
@@ -188,6 +212,28 @@ pub async fn handle_move_inventory_item(
             return;
         }
     };
+
+    // D-BV07 allowlist, source end (#798). The source container is only
+    // known from the locked row, so this sits after the FOR UPDATE read.
+    if let Some(verdict) = refusal(source.container_id) {
+        let _ = tx.rollback().await;
+        refuse_move(
+            MoveEnd::Source,
+            verdict,
+            entity_id,
+            player_id,
+            item_id,
+            Some(source.container_id),
+            target_container_id,
+            target_slot_id,
+            pool,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        return;
+    }
 
     // Resolve the whole-stack sentinel (client sends `quantity = -1`
     // for drag-to-equip / drag-to-bag — see the deferred-validation
@@ -636,6 +682,8 @@ pub async fn handle_move_inventory_item(
     }
 }
 
+#[cfg(test)]
+mod allowlist_tests;
 #[cfg(test)]
 mod concurrency_tests;
 #[cfg(test)]

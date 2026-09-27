@@ -35,3 +35,5 @@ use crate::base::ConnectedClientState;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod vault_guard_tests;

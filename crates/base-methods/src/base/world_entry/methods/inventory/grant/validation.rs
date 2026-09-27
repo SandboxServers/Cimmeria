@@ -51,3 +51,17 @@ pub async fn item_allows_container(pool: &Arc<PgPool>, type_id: i32, container_i
         _ => container_id == 1,
     }
 }
+
+/// Containers a grant never writes into: the vaults and auction escrow,
+/// 17-20.
+///
+/// Before BV-01 these had no capacity (`bag_max_slots` returned 0), so every
+/// grant into them failed at slot reservation. That mattered because loot
+/// and content grants pick `container_sets[1]` as the target, and 752 seeded
+/// items list 17 first (`{17,15}`). BV-01 gave 17-20 a capacity for
+/// `onBagInfo`; this check keeps those grants refused rather than letting
+/// loot land in the bank (D-BV04: the bank is storage the player fills).
+pub(super) fn grant_container_refused(container_id: i32) -> bool {
+    use cimmeria_entity::inventory::{INV_BANK, INV_COMMAND_BANK};
+    (INV_BANK..=INV_COMMAND_BANK).contains(&container_id)
+}
