@@ -44,12 +44,12 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 | Logout / client disconnect | `SpaceManager::disconnect_entity` (via `forget_owner`) | Despawned at once |
 | Base `DestroyEntity` | `service/base_messages/lifecycle.rs` `flush_and_destroy` | Despawned before the owner's destroy |
 | Owner death | `abilities::death::resolve_death` (player branch) | Despawned at once (D-PT08); the owner sees it go |
-| Cross-world respawn | `respawn/mod.rs` | Despawned before the owner's destroy |
+| Cross-world respawn | `respawn/mod.rs` | Despawned before the owner's destroy, once the `GateTravel` send is confirmed |
 | Stargate travel | `gate_travel/mod.rs` | Despawned after the `GateTravel` send is confirmed |
 | GM / console transfer to another space | `space_transfer/mod.rs`, `gm/travel.rs` (`gmGotoLocation`) | Despawned; a rejected transfer keeps it |
-| Content cross-world teleport | `content/executor/transport.rs` | Despawned |
-| Cross-world ring | `ring_transport/dispatch.rs` (`TeleportCrossWorld`) | Despawned |
-| Same-world respawn (a GM respawn of a living owner) | `respawn/mod.rs`, after `ReanchorPlayer` | Moved beside the owner |
+| Content cross-world teleport | `content/executor/transport.rs` | Despawned once the `GateTravel` send is confirmed |
+| Cross-world ring | `ring_transport/dispatch.rs` (`TeleportCrossWorld`) | Despawned once the `GateTravel` send is confirmed |
+| Same-world respawn (a GM respawn of a living owner) | `respawn/mod.rs`, after `ReanchorPlayer` | Moved beside the owner, only once the reanchor is sent |
 | `.goto` / `.summon` / `.gotolocation` in the same space, `.location`, `gmGoto`, `gmGotoXYZ`, `gmSummon` | `console/travel`, `console/placement.rs`, `gm/travel.rs`, after `TeleportPlayer` | Moved beside the owner |
 | Content `teleport` action | `content/executor/transport.rs`, after `TeleportPlayer` | Moved beside the owner, only once the owner's snap is sent |
 | Same-world ring | `ring_transport/dispatch.rs`, at `ShowPlayer` | Moved beside the owner when the owner reappears at the destination, not while the owner is still hidden. Only if the ring's `TeleportPlayer` really went out: an aborted or failed trip leaves the pet where it is, and an abort after the move still brings it |
@@ -57,6 +57,7 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 
 - **Despawn** (`on_owner_left`) goes through `despawn_npc`, so every witness gets `LeftAoI` and the witness sets are scrubbed. On travel, disconnect and base destroy the owner itself gets no `LeftAoI`: its client is about to be reset (`RESET_ENTITIES`) or is closing, and a leave queued behind the `GateTravel` would reach the new world's view. On owner death the owner does get it.
 - **Move** (`on_owner_teleported`) puts each live pet 2 u behind the owner's new spot, walked there along the navmesh from the owner's feet so it stops at walls and stands on the floor. The pet is stopped and faces the owner's heading, `last_teleport_at` is stamped (the clock the PT-05 follow teleport rate-limits on), and each witness gets an `EntityMoved`. A pet is an NPC, so it never gets `TeleportPlayer` / `onPlayerTeleport`. A dead pet is left where it fell.
+- **Only after the owner's move is sent.** Every hook runs after the owner's own `TeleportPlayer`, `ReanchorPlayer` or `GateTravel` has been sent. If that send fails, the owner stays where it is (a cross-world path does not tear it out of its space) and so does its pet.
 - **Ownership is the summoner, not the id.** Entity ids are reused, so the hooks decide ownership with the identity captured when the pet was summoned (`PetRegistry::summoner_matches`), not the bare owner id. A player given a destroyed owner's id is not that pet's owner: a teleport never pulls such a pet after it, and the pet is despawned instead (`teleport_skipped reason=owner_identity_mismatch`).
 - **Pet death.** A pet that dies stays as a corpse, then despawns 10 s after the pet sweep first sees it dead (`PET_CORPSE_DESPAWN`, D-PT08). It never respawns as an NPC.
 - **Backstop.** `pet_owner_sweep` runs every AoI tick and despawns any pet whose owner is gone, dead or in another space, so a future owner path that forgets the hooks costs at most one tick. A source-scan test (`every_owner_travel_site_calls_the_pet_hooks`) fails when a cell file sends `GateTravel` without `on_owner_left`, or `TeleportPlayer` without `on_owner_teleported`.
