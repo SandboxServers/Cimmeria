@@ -106,7 +106,8 @@ impl Fixture {
     async fn org09(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
         assert!((0..16).contains(&block));
         Self::at(pool, BASE_ORG09, "Org09P", block, n, org_names).await
-    /// [`Fixture::new`] in ORG-10's range: block `block` (0..16), names
+    }
+
     /// [`Fixture::new`] in ORG-10's range: block `block` (0..32), names
     /// `Org10P<i>`.
     async fn org10(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
