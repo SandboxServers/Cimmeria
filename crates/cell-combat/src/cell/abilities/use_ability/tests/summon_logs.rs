@@ -238,3 +238,25 @@ async fn untrained_summon_press_gets_the_feedback_line_and_summon_refused() {
     assert!(!owner.abilities.is_on_cooldown(SUMMON));
     assert!(owner.pending_cast.is_none());
 }
+
+/// Seam: the 1122 `Effect_Init` sequence is not loaded, so the pet arrives
+/// without its ground VFX and DEBUG `arrival_vfx_skipped reason=no_sequence`
+/// names the pet (`entity_id`), its template and the owner's identity.
+#[tokio::test]
+async fn missing_target_sequence_logs_arrival_vfx_skipped() {
+    let mut mgr = mgr_with_identity();
+    mgr.sequence_map.remove(&(1122, 2000));
+    let (tx, mut rx) = mpsc::channel(256);
+
+    let logs = LogCapture::install();
+    cast_and_complete(&mut mgr, 0, &tx, &mut rx).await;
+    let pet = mgr.pets.pets_of(OWNER)[0];
+    let c = row(&logs.all(), "arrival_vfx_skipped");
+    assert_eq!(c.level, Level::DEBUG, "{c:?}");
+    assert!(c.has_field("reason", "no_sequence"), "{c:?}");
+    assert!(c.has_field("entity_id", &pet.to_string()), "{c:?}");
+    assert!(c.has_field("template_id", &TEMPLATE.to_string()), "{c:?}");
+    assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
+    assert!(c.has_field("player_id", &PLAYER_ID.to_string()), "{c:?}");
+    assert!(mgr.pets.pending_arrival(pet).is_none(), "nothing queued");
+}

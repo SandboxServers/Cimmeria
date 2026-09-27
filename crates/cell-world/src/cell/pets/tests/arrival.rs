@@ -14,7 +14,7 @@ use crate::cell::pets::{
 };
 
 fn arrival() -> PetArrival {
-    PetArrival::new(OWNER, 2293, vec![1, 2, 3])
+    PetArrival::new(OWNER, PET_FIXTURE_TEMPLATE_ID, 2293, vec![1, 2, 3])
 }
 
 /// Every teardown path goes through `forget_pet`, which drops the queued
@@ -80,6 +80,10 @@ async fn never_witnessed_drop_logs_warn_with_reason() {
     assert!(c.has_field("event", "arrival_vfx_dropped"), "{c:?}");
     assert!(c.has_field("pet_id", &pet.to_string()), "{c:?}");
     assert!(c.has_field("owner_id", &OWNER.to_string()), "{c:?}");
+    assert!(
+        c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()),
+        "{c:?}"
+    );
     assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
     assert!(c.has_field("player_id", "77"), "{c:?}");
 }
@@ -90,8 +94,10 @@ async fn never_witnessed_drop_logs_warn_with_reason() {
 #[tokio::test]
 async fn owner_mismatch_drop_logs_warn_with_reason() {
     let (mut mgr, pet) = world_with_pet();
-    mgr.pets
-        .queue_arrival(pet, PetArrival::new(OTHER, 2293, vec![1, 2, 3]));
+    mgr.pets.queue_arrival(
+        pet,
+        PetArrival::new(OTHER, PET_FIXTURE_TEMPLATE_ID, 2293, vec![1, 2, 3]),
+    );
     let (tx, mut rx) = mpsc::channel(64);
 
     let logs = LogCapture::install();
@@ -100,6 +106,10 @@ async fn owner_mismatch_drop_logs_warn_with_reason() {
         .find_event(Level::WARN, "summon VFX dropped", "owner_mismatch")
         .expect("WARN arrival_vfx_dropped reason=owner_mismatch");
     assert!(c.has_field("owner_id", &OTHER.to_string()), "{c:?}");
+    assert!(
+        c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()),
+        "{c:?}"
+    );
     assert!(
         c.has_field("registered_owner_id", &OWNER.to_string()),
         "{c:?}"
@@ -125,6 +135,10 @@ async fn pet_gone_drop_logs_debug_with_reason() {
         .find_event(Level::DEBUG, "summon VFX dropped", "pet_gone")
         .expect("DEBUG arrival_vfx_dropped reason=pet_gone");
     assert!(c.has_field("pet_id", &pet.to_string()), "{c:?}");
+    assert!(
+        c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()),
+        "{c:?}"
+    );
     assert!(mgr.pets.pending_arrival(pet).is_none());
 }
 
@@ -154,6 +168,10 @@ async fn reused_owner_id_drops_the_vfx_with_identity_mismatch() {
     assert!(
         c.has_field("player_id", "77"),
         "the summoner, not 4243: {c:?}"
+    );
+    assert!(
+        c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()),
+        "{c:?}"
     );
     assert!(mgr.pets.pending_arrival(pet).is_none());
     assert!(rx.try_recv().is_err(), "nothing sent");
@@ -203,6 +221,10 @@ async fn delivered_vfx_is_counted_and_logs_sent_with_correlators() {
     assert!(c.has_field("entity_id", &pet.to_string()), "{c:?}");
     assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
     assert!(c.has_field("player_id", "77"), "{c:?}");
+    assert!(
+        c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()),
+        "{c:?}"
+    );
     assert!(c.has_field("delivered_count", "1"), "{c:?}");
 }
 
@@ -229,5 +251,9 @@ async fn vfx_with_every_send_failing_is_undelivered_not_sent() {
         assert!(c.has_field("entity_id", &pet.to_string()), "{c:?}");
         assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
         assert!(c.has_field("player_id", "77"), "{c:?}");
+        assert!(
+            c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()),
+            "{c:?}"
+        );
     }
 }

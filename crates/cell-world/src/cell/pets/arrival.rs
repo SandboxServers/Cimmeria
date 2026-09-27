@@ -39,6 +39,9 @@ pub const ARRIVAL_TIMEOUT: Duration = Duration::from_secs(2);
 pub struct PetArrival {
     /// The summoner, whose view of the pet releases the VFX.
     pub owner_id: u32,
+    /// The pet's template, captured at summon so every row about the VFX
+    /// names it, even one written after the pet entity is gone.
+    pub template_id: i32,
     /// The resolved sequence id, for the log.
     pub sequence_id: i32,
     /// The `onSequence` arguments, built by the summon.
@@ -49,9 +52,10 @@ pub struct PetArrival {
 
 impl PetArrival {
     /// A VFX queued now.
-    pub fn new(owner_id: u32, sequence_id: i32, args: Vec<u8>) -> Self {
+    pub fn new(owner_id: u32, template_id: i32, sequence_id: i32, args: Vec<u8>) -> Self {
         Self {
             owner_id,
+            template_id,
             sequence_id,
             args,
             queued_at: Instant::now(),
@@ -173,6 +177,7 @@ pub async fn drain_arrivals(
                         owner_id,
                         account_id = id.account_id,
                         player_id = id.player_id,
+                        template_id = arrival.template_id,
                         sequence_id = arrival.sequence_id,
                         waited_ms,
                         reason,
@@ -189,6 +194,7 @@ pub async fn drain_arrivals(
                         registered_owner_id = registered_owner,
                         account_id = id.account_id,
                         player_id = id.player_id,
+                        template_id = arrival.template_id,
                         sequence_id = arrival.sequence_id,
                         waited_ms,
                         reason,
@@ -227,6 +233,7 @@ pub async fn drain_arrivals(
                             owner_id = arrival.owner_id,
                             account_id = id.account_id,
                             player_id = id.player_id,
+                            template_id = arrival.template_id,
                             witness_id,
                             "summon VFX could not be queued (base channel closed)"
                         );
@@ -244,6 +251,7 @@ pub async fn drain_arrivals(
                         owner_id = arrival.owner_id,
                         account_id = id.account_id,
                         player_id = id.player_id,
+                        template_id = arrival.template_id,
                         sequence_id = arrival.sequence_id,
                         witness_count = witnesses.len(),
                         reason = "cell_to_base_closed",
@@ -260,6 +268,7 @@ pub async fn drain_arrivals(
                     owner_id = arrival.owner_id,
                     account_id = id.account_id,
                     player_id = id.player_id,
+                    template_id = arrival.template_id,
                     sequence_id = arrival.sequence_id,
                     witness_count = witnesses.len(),
                     delivered_count = delivered,

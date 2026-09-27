@@ -339,7 +339,7 @@ pub(super) async fn fire_summon(
         pet_id,
         "summoned pet spawned beside its owner"
     );
-    queue_arrival_vfx(space_mgr, entity_id, pet_id);
+    queue_arrival_vfx(space_mgr, entity_id, pet_id, summon.template_id);
 }
 
 /// Rule 2 events for a committed summon launch: `summon_launched`, and
@@ -410,7 +410,7 @@ pub(super) fn log_summon_interrupted(
 
 /// Queue the summon's target VFX for `pet_id`. It is sent once the owner
 /// witnesses the pet, i.e. after the pet's CREATE_ENTITY, never ahead of it.
-fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32) {
+fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32, template_id: i32) {
     let id = space_mgr.player_identity(owner);
     let Some(&sequence_id) = space_mgr
         .sequence_map
@@ -425,6 +425,7 @@ fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32) {
             account_id = id.account_id,
             player_id = id.player_id,
             pet_id,
+            template_id,
             event_set_id = SUMMON_TARGET_EVENT_SET,
             "summon target VFX not in the sequence map; the pet arrives without it"
         );
@@ -433,9 +434,10 @@ fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32) {
     // Python effect sequences: played on the effect's target, source = the
     // invoker, InstanceId 0 (`AbilityManager.py:300-308`, `playSequence`).
     let args = ability_sequence_args(sequence_id, owner, pet_id as i32, 0);
-    space_mgr
-        .pets
-        .queue_arrival(pet_id, PetArrival::new(owner, sequence_id, args));
+    space_mgr.pets.queue_arrival(
+        pet_id,
+        PetArrival::new(owner, template_id, sequence_id, args),
+    );
 }
 
 /// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, code)` and a
