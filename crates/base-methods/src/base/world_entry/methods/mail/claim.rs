@@ -5,8 +5,11 @@
 //! **Lock order.** Every op takes, in this order:
 //!
 //! 1. the caller's inventory advisory locks (`take_inventory_locks(caller,
-//!    [INV_MAIN])`, the same keys and order as the SS-M2 send, crafting,
-//!    the move path and vendor purchase);
+//!    [INV_MAIN, INV_CRAFTING])`: key 0, then bag 1, then bag 15, the same
+//!    keys and order as the SS-M2 send, crafting, the move path and vendor
+//!    purchase). Both carried bags, because a take places an item by its
+//!    `container_sets` and a crafting component goes to bag 15, and the
+//!    destination is only known once the escrow row is read;
 //! 2. the mail row, `FOR UPDATE`, found by `mail_id` **and** the caller's
 //!    `character_id`;
 //! 3. the escrow row and any inventory rows;
@@ -27,7 +30,7 @@
 //! conditional on the state it was decided on, with `rows_affected`
 //! checked, so a missing lock degrades to a refusal, never a double payout.
 
-use cimmeria_entity::inventory::INV_MAIN;
+use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
 use sqlx::PgConnection;
 
 use super::MailCtx;
@@ -73,7 +76,7 @@ pub(super) async fn lock_mail(
     player_id: i32,
     mail_id: i32,
 ) -> Result<Option<LockedMail>, sqlx::Error> {
-    take_inventory_locks(&mut *conn, player_id, &[INV_MAIN]).await?;
+    take_inventory_locks(&mut *conn, player_id, &[INV_MAIN, INV_CRAFTING]).await?;
     sqlx::query_as::<_, LockedMail>(
         "SELECT cash, flags, sender_id, returned, cod_paid, subject, sender_name, expires_at \
          FROM sgw_gate_mail \

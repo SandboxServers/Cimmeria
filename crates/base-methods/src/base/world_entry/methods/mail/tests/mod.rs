@@ -38,6 +38,7 @@ mod send_live;
 mod send_race;
 mod system_live;
 mod take_live;
+mod take_placement;
 mod take_race;
 
 pub(super) async fn cleanup(pool: &PgPool, account_id: i32) {
@@ -195,13 +196,20 @@ pub(super) async fn naquadah(pool: &PgPool, player_id: i32) -> i32 {
         .unwrap()
 }
 
-/// Any item type the resources schema holds; the mail path does not care
-/// which.
+/// An item type that belongs in the backpack (`container_sets` lists bag 1,
+/// or nothing). The send path does not care which type; a take places the
+/// item by its `container_sets` (SS-M4), so a mission-only type (the lowest
+/// id, 10, is `{2}`) would be refused `no_carried_bag`.
 pub(super) async fn any_type_id(pool: &PgPool) -> i32 {
-    sqlx::query_scalar("SELECT item_id FROM resources.items ORDER BY item_id LIMIT 1")
-        .fetch_one(pool)
-        .await
-        .expect("resources.items has a row")
+    sqlx::query_scalar(
+        "SELECT item_id FROM resources.items \
+         WHERE container_sets IS NULL OR cardinality(container_sets) = 0 \
+            OR 1 = container_sets[1] \
+         ORDER BY item_id LIMIT 1",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("resources.items has a row")
 }
 
 /// One inventory item for a test: its fixed instance id and where it sits.

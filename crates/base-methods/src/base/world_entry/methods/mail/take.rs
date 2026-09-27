@@ -4,7 +4,8 @@
 
 use std::sync::Arc;
 
-use cimmeria_entity::inventory::INV_MAIN;
+use cimmeria_cell_catalog::item_placement::first_player_container;
+use cimmeria_entity::inventory::INV_CRAFTING;
 use sqlx::PgPool;
 
 use super::super::inventory::core::send_full_inventory_update;
@@ -43,6 +44,16 @@ const BAGS_FULL: Refusal = Refusal {
     reason: "bags_full",
     text: "Your backpack is full. Make room and take the item again; it stays in \
            the message until then.",
+};
+const CRAFTING_BAG_FULL: Refusal = Refusal {
+    reason: "crafting_bag_full",
+    text: "Your crafting bag is full. Make room and take the item again; it stays in \
+           the message until then.",
+};
+const NO_CARRIED_BAG: Refusal = Refusal {
+    reason: "no_carried_bag",
+    text: "That item cannot be carried in your backpack or crafting bag, so it stays \
+           in the message.",
 };
 
 /// A committed cash take.
@@ -140,6 +151,8 @@ pub(super) async fn take_cash(ctx: &MailCtx<'_>, mail_id: i32) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ItemTaken {
     pub(super) item: EscrowItem,
+    /// The bag it landed in: 1, or 15 for a crafting component.
+    pub(super) container_id: i32,
     pub(super) slot_id: i32,
     pub(super) sender_id: Option<i32>,
 }
@@ -153,15 +166,21 @@ const RESTORE_SQL: &str = "INSERT INTO sgw_inventory \
             ammo, cur_ammo_type, ammo_type, ammo_types \
      FROM sgw_gate_mail_item WHERE mail_id = $1";
 
-/// CAT-G-03: move a mail's escrowed item to its owner's backpack, once.
+/// CAT-G-03: move a mail's escrowed item to its owner's carried bags, once.
 ///
 /// The escrow row is found by the locked mail's id, never by type. The
-/// destination is chosen here: the first free slot of the owner's main bag
-/// (`INV_MAIN`), reserved under the bag's advisory lock. Never a vault
-/// container and never anything the client names: `takeItemFromMailMessage`'s
-/// `ContainerId` and `SlotId` are uninitialised stack in the shipped client
-/// (SS-E1 M-Q5), so this function does not take them. A full bag leaves the
-/// item in escrow. The escrow row is deleted with `rows_affected == 1`.
+/// destination is chosen here, by the item's `resources.items.container_sets`
+/// and the grant rule (`item_placement::first_player_container`, crafting
+/// CR-06): the first carried bag it lists, so the backpack (1) for most
+/// items and the crafting bag (15) for a crafting component (`{17,15}`);
+/// storage, bandolier and equipment entries are passed over, so never a
+/// vault. Its first free slot is reserved under the bag's advisory lock
+/// (already held from `lock_mail`). Never anything the client names:
+/// `takeItemFromMailMessage`'s `ContainerId` and `SlotId` are uninitialised
+/// stack in the shipped client (SS-E1 M-Q5), so this function does not take
+/// them. An item with no carried bag, or a full destination bag, leaves the
+/// item in escrow; a full bag never spills into another bag. The escrow row
+/// is deleted with `rows_affected == 1`.
 pub(super) async fn take_item_tx(
     pool: &PgPool,
     player_id: i32,
@@ -175,14 +194,29 @@ pub(super) async fn take_item_tx(
         return Err(COD_UNPAID_ITEM.into());
     }
     let item = lock_escrow(&mut tx, mail_id).await?.ok_or(NO_ITEM)?;
-    let slot_id = reserve_free_inventory_slots(&mut tx, player_id, INV_MAIN, 1)
+    let container_sets: Option<Vec<i32>> = sqlx::query_scalar(
+        "SELECT COALESCE(container_sets, '{}') FROM resources.items WHERE item_id = $1",
+    )
+    .bind(item.type_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let container_id = container_sets
+        .as_deref()
+        .and_then(first_player_container)
+        .ok_or(NO_CARRIED_BAG)?;
+    let full = if container_id == INV_CRAFTING {
+        CRAFTING_BAG_FULL
+    } else {
+        BAGS_FULL
+    };
+    let slot_id = reserve_free_inventory_slots(&mut tx, player_id, container_id, 1)
         .await?
         .and_then(|slots| slots.first().copied())
-        .ok_or(BAGS_FULL)?;
+        .ok_or(full)?;
     let restored = sqlx::query(RESTORE_SQL)
         .bind(mail_id)
         .bind(player_id)
-        .bind(INV_MAIN)
+        .bind(container_id)
         .bind(slot_id)
         .execute(&mut *tx)
         .await?
@@ -201,6 +235,7 @@ pub(super) async fn take_item_tx(
     tx.commit().await?;
     Ok(ItemTaken {
         item,
+        container_id,
         slot_id,
         sender_id: mail.sender_id,
     })
@@ -236,7 +271,7 @@ pub(super) async fn take_item(
                 item_id = taken.item.item_id,
                 type_id = taken.item.type_id,
                 stack_size = taken.item.stack_size,
-                container_id = INV_MAIN,
+                container_id = taken.container_id,
                 slot_id = taken.slot_id,
                 "gate-mail item moved from escrow to its owner's backpack",
             );
