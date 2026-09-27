@@ -44,17 +44,18 @@ base: validate against CraftingCatalog + DB state
 ## Dependency graph and waves
 
 ```text
-Wave 0 (now, parallel)        Wave 1 (after CR-01, parallel)          Wave 2 (parallel where marked)            Wave 3
+Wave 0 (now, parallel)        Wave 1 (after CR-01, parallel)          Wave 2 (parallel where marked)               Wave 3
 CR-01 foundation ─────┬──► CR-03 login sync + paradigm defaults ──┐
-CR-E1 client evidence │    CR-04 spend ASP (+ D-CR04 blueprints) ─┼──► CR-07 craft ─────────────┐
-CR-02 game clock ─────┼──► CR-05 stations + options gate + GM ────┤    CR-08 research + rev-eng ─┼──► CR-13 close-out ─► CR-14 owner UAT
-                      └──► CR-06 induction engine + transaction ──┘    CR-09 alloy ──────────────┤     + /release
-                                                                       CR-10 respec (D-CR02) ─────┤
-                                                                       CR-11 debug hub (#846) ────┤
-                                                                       CR-12 ASP earning (D-CR01) ┘
+CR-E1 client evidence │    CR-04 spend ASP ───────────────────────┼──► CR-07 craft ────────────────┐
+CR-E2 cooked items ───┤    CR-05 stations + tools + options + GM ─┤    CR-08 research + rev-eng ────┤
+CR-02 game clock ─────┼──► CR-06 induction engine + transaction ──┘    CR-09 alloy ─────────────────┼──► CR-13 close-out ─► CR-14 owner UAT
+                      │                                                CR-10 respec ────────────────┤     + /release
+                      │                                                CR-11 debug hub (#846) ──────┤
+                      │                                                CR-12 ASP earning ───────────┤
+                      └──────────────────────────────────────────────► CR-15 blueprint/guide items ─┘
 ```
 
-CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers, argument parsing and the message shape, with **no behaviour change**. CR-E1 and CR-02 touch no file CR-01 owns.
+CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers, argument parsing and the message shape, with **no behaviour change**. CR-E1, CR-E2 and CR-02 touch no file CR-01 owns.
 
 **Contended files.** The coordinator merges these one packet at a time:
 
@@ -108,6 +109,19 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 **Output:** `docs/reverse-engineering/findings/crafting-client-ui.md`, indexed in the findings README; corrections for audit C-61 and C-62 in the existing crafting findings and in the Ghidra PRE_COMMENT at `0x00e465d0`; a short `worknotes/cr-e1.md` that feeds D-CR16 and D-CR20.
 
+### CR-E2
+
+**Status:** Ready. **Scope title:** Blueprint items, Paradigm Guide items and Field Crafting Tools in the client's cooked data. **Depends:** none. **Writer:** game-archaeology-specialist (cooked PAKs through `crates/resources`, Ghidra read-only). Documentation plus a proposed mapping file; no Rust.
+
+**Questions, each answered with evidence:**
+
+1. How does the client link a "Blueprint: …" item (289 in the seed; texts `DN_It_Cft_Blueprint_*`) to a blueprint id? Look for a field in the cooked item or blueprint records (`CookedItems`, `CookedBlueprints`), then fall back to name matching. Produce the full item → blueprint mapping with its method and the unmatched rows.
+2. Do the "Racial Paradigm Guide: <paradigm>" items (texts 28224-28234) exist in the client's cooked item data? If so, their item ids and the field that names the paradigm. If not, what a seed-only item needs for the client to render it.
+3. Field Crafting Tools (5369, 8402-8466): does cooked data carry an applied-science or tool-type field, or only the name prefix?
+4. The use path: what the client sends when the player uses such an item, and whether the client refuses to send it for an item type it considers unusable.
+
+**Output:** `docs/reverse-engineering/findings/crafting-items.md`, indexed in the findings README; the mapping as `docs/analysis/crafting/source/blueprint-items.csv` (item id, blueprint id, method); `worknotes/cr-e2.md` feeding D-CR21 and D-CR22.
+
 ### CR-02
 
 **Status:** Ready. **Scope title:** One consistent game clock for timer expiries. **Depends:** none. **Advisor:** bigworld-engine-advisor, combat-systems-advisor.
@@ -124,40 +138,42 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-03
 
-**Status:** BlockedDependency (CR-01); paradigm defaults BlockedDecision (D-CR03). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
+**Status:** BlockedDependency (CR-01). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
 
 **Scope:**
 
 - Call `load_crafting_state` at player load. Send, owner-only: 136 per known discipline, 138 per paradigm, 139, 140 (empty unless CR-05's gate says otherwise), and the ASP property.
 - Every ASP change (GM grant, spend, respec, earning) pushes `onEntityProperty(2, total)`, the **total** (audit C-06, C-57). Fix the doc comment (C-63).
-- Paradigm defaults per D-CR03, applied when a character has no stored levels, so existing characters are covered without a migration.
+- Paradigm defaults per D-CR03 (Common at 5, the other four at 1), applied when a character has no stored levels, so existing characters are covered without a migration. The seed's column default and the character-creation path give new characters the same values.
 
 **Acceptance:** a byte-exact test of the login crafting bundle for a fixture state; a live-DB test that a relog restores disciplines, expertise, paradigms and blueprints; a guard that the GM ASP grant pushes the property.
 
 ### CR-04
 
-**Status:** BlockedDependency (CR-01); the blueprint grant BlockedDecision (D-CR04). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** BlockedDependency (CR-01). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:**
 
-- `base/crafting/spend.rs`: one transaction that checks ASP ≥ 1, the discipline exists, it is not already known, the paradigm level, and every prerequisite known at expertise ≥ 50; learns it at expertise 1, spends 1 ASP, and grants blueprints per D-CR04. It is replay-safe: a second identical request finds the discipline known and changes nothing (CAT-F F-02).
-- Then 136, the ASP property and (if blueprints changed) 139.
+- `base/crafting/spend.rs`: one transaction that checks ASP ≥ 1, the discipline exists, it is not already known, the paradigm level, and every prerequisite known at expertise ≥ 50; learns it at expertise 1 and spends 1 ASP. It grants no blueprints (D-CR04). It is replay-safe: a second identical request finds the discipline known and changes nothing (CAT-F F-02).
+- Then 136 and the ASP property.
 - Every rejection sends feedback: 214 `NotEnoughAppliedSciencePoints` where it fits, text otherwise (D-CR14).
 
 **Acceptance:** a live-DB test per rejection reason and for the success path; a replay test; a guard that fails when the prerequisite check is removed.
 
 ### CR-05
 
-**Status:** BlockedDependency (CR-01); stations vs tools BlockedDecision (D-CR05) for tools only. **Scope title:** Station gate, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer.
+**Status:** BlockedDependency (CR-01); the tool rule waits on CR-E2 Q3 only for the science field. **Scope title:** Stations, tools, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer, items-systems-advisor.
 
 **Scope:**
 
-- A station is any entity whose template `entity_flags` carries `ENTITYFLAG_Craft_*` bits. For each player the cell tracks the nearest station per verb within interaction range (`MAX_INTERACT_DISTANCE`), and sends 140 when that set changes: entering or leaving range, the station despawning, or a world change. The state lives in a new file (the entity struct is over its cap).
-- The forward to the base carries `allowed`; the base rejects a verb whose bit is missing, with the text "No crafting station for …" (D-CR14).
+- **Stations (cell).** A station is any entity whose template `entity_flags` carries `ENTITYFLAG_Craft_*` bits. For each player the cell tracks the nearest station per verb within interaction range (`MAX_INTERACT_DISTANCE`), and reports changes to the base (`CellToBaseMsg::CraftingStations`): entering or leaving range, the station despawning, a world change. The per-player state lives in a new file (the entity struct is over its cap). `CraftRequest.allowed` carries the station mask at request time.
+- **Tools (base).** Per D-CR21: a Field Crafting Tool in bag 15 enables craft, research and reverse engineering for its science up to its `tech_comp`. The base re-evaluates when bag 15 changes.
+- **Options (base).** The base owns `onUpdateCraftingOptions` (140): per section, the station entity id and the tool item id. It sends it when either input changes, and at login (with CR-03).
+- **Gate (base).** A verb is allowed by the station mask, or by a tool whose science and `tech_comp` cover the blueprint's discipline (for research and reverse engineering, one of the item's disciplines). Otherwise it is rejected with the text "No crafting station or tool for …" (D-CR14).
 - `.allcraft` and "craft anywhere" per D-CR17, GM-gated.
 - Spawning a flagged entity needs no new AoI path. If it does, message cimmeria-b5 first.
 
-**Acceptance:** a unit test of the options set against positions; a byte-exact 140 test; a guard that a forged request with no station in range is rejected; a test that "craft anywhere" is refused for a non-GM.
+**Acceptance:** unit tests of the station set against positions and of the tool rule (science, `tech_comp`, bag 15 only); a byte-exact 140 test; a guard that a forged request with no station or tool is rejected; a test that "craft anywhere" is refused for a non-GM.
 
 ### CR-06
 
@@ -184,14 +200,14 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-08
 
-**Status:** BlockedDependency (CR-05, CR-06); reverse engineering BlockedDecision (D-CR06). **Scope title:** `research` (97) and `reverseEngineer` (98).
+**Status:** BlockedDependency (CR-05, CR-06). **Scope title:** `research` (97) and `reverseEngineer` (98).
 
 **Scope:**
 
-- `research.rs`: item researchable (`Craft_Research`), kickers flagged `Kicker`, at most one per applied science and none from the item's own (D-CR11). At completion: consume the item and kickers, roll per D-CR15, +5 on success, and a text line either way.
+- `research.rs`: item researchable (`Craft_Research`), kickers flagged `Kicker`, at most one per applied science and none from the item's own (D-CR11). At completion: consume the item and kickers, roll per D-CR15, +5 expertise on success, and a text line either way. A success also teaches the blueprint that makes the researched item, when that blueprint's discipline is known (D-CR04), and sends 139.
 - `reverse_engineer.rs`: item reverse-engineerable (`Craft_RevEng`) and produced by at least one blueprint. At completion: consume the item, pick a blueprint and a component set uniformly (no C-50), recover per D-CR06, grant. Up to 10 queued (C-34).
 
-**Acceptance:** seeded-RNG tests for success and failure; a burst of 10 reverse-engineer requests completes 10 times; guards for the kicker rules and the zero-expertise case.
+**Acceptance:** seeded-RNG tests for success and failure, and for the blueprint taught on success; a burst of 10 reverse-engineer requests completes 10 times; guards for the kicker rules and the zero-expertise case.
 
 ### CR-09
 
@@ -203,20 +219,20 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-10
 
-**Status:** BlockedDecision (D-CR02) and BlockedDependency (CR-E1 Q1, CR-04). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** BlockedDependency (CR-E1 Q1, CR-04). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
 
-**Scope:** `respec.rs`, per D-CR16 as corrected by CR-E1: the prompt, the pending window, then one transaction that charges the cost, clears disciplines, expertise and discipline-granted blueprints, and refunds ASP per D-CR02. Then 137, the ASP property and 139. Not enough naquadah or nothing to reset gets feedback. Replay-safe.
+**Scope:** `respec.rs`, per D-CR16 as corrected by CR-E1: the prompt (cost 0, D-CR02), the pending window, then one transaction that clears disciplines and expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept. Then 137 and the ASP property. Nothing to reset gets feedback. Replay-safe.
 
-**Acceptance:** live-DB tests for the charge, the refund and the clear; a guard that a single send never wipes; a replay test.
+**Acceptance:** live-DB tests for the refund, the clear, and the kept blueprints and paradigms; a guard that a single send never wipes; a replay test.
 
 ### CR-11
 
-**Status:** BlockedDependency (#846 merged, CR-05); BlockedDecision (D-CR05) for station placement beyond the hub. **Scope title:** Crafting stations and supplies in the stasis-room debug hub. **Advisor:** items-systems-advisor.
+**Status:** BlockedDependency (#846 merged, CR-05, CR-15 for the item rows). **Scope title:** Crafting stations and supplies in the stasis-room debug hub. **Advisor:** items-systems-advisor.
 
 **Scope:**
 
 - Templates 310-313: the four "<Science> Crafting Station" entities, named from the existing texts (audit C-25), with all four `ENTITYFLAG_Craft_*` bits. Spawns 410-413 in the stasis room, placed per `docs/content/debug-hub.md` (read its placement warning and the hub worker's authoring traps in `.claude/agent-memory/rust-gameserver-dev/debug-hub-npc-authoring-traps.md`).
-- Template 314 / spawn 414: a "crafting supplies" vendor selling the components of the UAT recipes (audit §2) and the four kickers at 1 naquadah.
+- Template 314 / spawn 414: a "crafting supplies" vendor, at 1 naquadah each: the components of the UAT recipes (audit §2), the four kickers, one Field Crafting Tool per science (the -5 and -50 grades), the Paradigm Guides, and the Blueprint items for the UAT recipes (blueprints 412, 161, 42 and 1).
 - `.craftkit <blueprint> [count]` (D-CR17).
 - Add the stations to `docs/content/debug-hub.md`.
 
@@ -224,11 +240,23 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-12
 
-**Status:** BlockedDecision (D-CR01). **Scope title:** Earning ASP. **Advisor:** combat-systems-advisor (the `grant_xp` path).
+**Status:** BlockedDependency (CR-03 for the property push). **Scope title:** Earning ASP. **Advisor:** combat-systems-advisor (the `grant_xp` path).
 
-**Scope:** per D-CR01. With the recommendation: `grant_xp` adds the levels gained to `applied_science_points` in the same statement that raises the level, and pushes the property; new characters start with 1.
+**Scope:** per D-CR01: `grant_xp` adds the levels gained to `applied_science_points` in the same statement that raises the level, and pushes the property; new characters start with 1.
 
 **Acceptance:** a live-DB test that a level-up grants ASP atomically with the level; a guard that fails when the grant is removed.
+
+### CR-15
+
+**Status:** BlockedDependency (CR-E2, CR-03). **Scope title:** Blueprint items and Racial Paradigm Guides. **Advisor:** items-systems-advisor, server-authority-enforcer, database-persistence.
+
+**Scope:**
+
+- A seed table (for example `resources.crafting_item_effects (item_id, blueprint_id, racial_paradigm_id)`) filled from CR-E2's mapping, plus the Guide items if CR-E2 shows the client can render them (D-CR22).
+- The item-use path recognises these items. A Blueprint item teaches its blueprint (139). A Guide raises its paradigm by 1, to at most 10 (138). Either way the item is consumed in the same transaction that changes the crafting state. A known blueprint or a guide at 10 is refused with feedback and consumes nothing.
+- Loot: add Guides and Blueprint items to a loot table only where existing content already places crafting drops; otherwise the vendor (CR-11) is the only source for now.
+
+**Acceptance:** live-DB tests for each item kind, including the refused cases (nothing consumed); a replay test; a seed guard that every mapped blueprint and paradigm id exists.
 
 ## Wave 3
 
@@ -247,11 +275,14 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 3. Learn Biomedical Engineering (21). Its expertise reads 1 and the ASP count drops by 1. Click it again: a message says it is already known.
 4. Relog. Disciplines, expertise, ASP and blueprints are all still there.
 5. Open J away from the stations: every tab says "Disabled". Walk to the Materials Crafting Station: the tabs enable. Walk away: they disable again.
-6. Buy 14× Steel Core (5254) from the supplies vendor, or `.craftkit 412`. Craft Titanium Plating (blueprint 412): the 3 s induction bar shows, the components go, the plating arrives, and expertise rises by 1.
-7. Craft with too few components: a message explains why and nothing is consumed.
-8. Research Crafted Pistol of the Whale (5481) with one kicker: a message reports the result; on success expertise rises by 5.
-9. Put 10 items in reverse engineering and confirm: all 10 complete in turn, and components arrive.
-10. Alloy with blueprint 42 and 10 Normal tier-1 elementary components: 2× Blend (Bio-Medical Alloy) arrives.
-11. Log out during an induction and log back in: nothing was consumed.
-12. `/respeccraft` (or the respec path CR-E1 finds): the cost prompt shows; confirm; disciplines clear, ASP is refunded, naquadah is charged.
-13. `.allcraft`: every tab enables anywhere, and every discipline shows 100.
+6. Buy an MAS-5 Field Crafting Tool and put it in the crafting bag: craft, research and reverse engineer enable anywhere for Materials; alloy stays disabled. Move the tool to the main bag: they disable.
+7. Buy and use the Blueprint item that CR-E2 maps to blueprint 412: the blueprint appears in the J window. Use a second copy: a message says it is already known and the item stays.
+8. Buy and use a Racial Paradigm Guide: Human. `/showracialparadigmlevels` reports Human at 2.
+9. Buy 14× Steel Core (5254) from the supplies vendor, or `.craftkit 412`. Craft Titanium Plating (blueprint 412): the 3 s induction bar shows, the components go, the plating arrives, and expertise rises by 1.
+10. Craft with too few components: a message explains why and nothing is consumed.
+11. Research Crafted Pistol of the Whale (5481) with one kicker: a message reports the result; on success expertise rises by 5.
+12. Put 10 items in reverse engineering and confirm: all 10 complete in turn, and components arrive.
+13. Alloy with blueprint 42 and 10 Normal tier-1 elementary components: 2× Blend (Bio-Medical Alloy) arrives.
+14. Log out during an induction and log back in: nothing was consumed.
+15. `/respeccraft` (or the respec path CR-E1 finds): the prompt shows a cost of 0; confirm; disciplines and expertise clear, ASP is refunded, and blueprints and paradigm levels stay.
+16. `.allcraft`: every tab enables anywhere, and every discipline shows 100.

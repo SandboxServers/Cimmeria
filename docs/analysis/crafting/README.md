@@ -12,14 +12,13 @@ This campaign makes the client's existing Crafting (J) and Applied Science (Ctrl
 - crafting respec;
 - the login sync that restores all of it after a relog.
 
-It builds on the Phase 1 state layer (#427) and closes #567, #723 (as far as the owner's paradigm decision allows) and the crafting findings of the CAT-F security audit (#465, F-02 to F-07).
+It builds on the Phase 1 state layer (#427) and closes #567, #723 and the crafting findings of the CAT-F security audit (#465, F-02 to F-07).
 
 **No client patch is needed.** The 2009 client already sends methods 95-100 and handles 112 and 136-140 (audit C-30 to C-40).
 
 Out of scope:
 
-- crafting stations in playable worlds beyond the debug hub (content work, after the owner decides D-CR05);
-- a racial-paradigm progression system, unless the owner designs one (D-CR03);
+- crafting stations in playable worlds beyond the debug hub (a later content decision, D-CR05);
 - black-market or auction trading of crafted goods;
 - fixing the seed's loose discipline assignments (audit C-22). The seed is Project Giza's reconstruction, and the client validates against its own cooked blueprints, so the seed stays as it is unless a UAT shows a mismatch.
 
@@ -35,22 +34,25 @@ Against `main` @ `70795027`, the [audit](audit.md) has the evidence for each row
 | Catalog | No Rust loader for disciplines, blueprints, components or crafting item attributes. | CR-01 |
 | Induction timer | The client draws the bar from `onTimerUpdate` type 16, which needs an absolute expiry in the client's clock. The server's clock is inconsistent today. | CR-02, CR-06 |
 | Stations and tools | The client enables a verb only when `onUpdateCraftingOptions` names a tool or a machine. No template is a station, and no item is flagged as a tool. | CR-05, CR-11 |
-| Paradigm gate | The four real root disciplines need Common paradigm level 5; every character has level 1 or none. **Nothing is learnable without a decision.** | D-CR03, CR-03 |
+| Blueprint and paradigm items | 289 "Blueprint: …" items exist with no link to a blueprint; the client's "Racial Paradigm Guide" items are missing from the seed. | CR-E2, CR-15 |
+| Paradigm gate | The four real root disciplines need Common paradigm level 5; every character has level 1 or none, so nothing is learnable today. | D-CR03, CR-03, CR-15 |
 | Feedback | Neither the client nor the legacy server tells the player why a request failed, and three pages empty their slots on confirm. | D-CR14, every verb packet |
 | Legacy reference | `Crafter.py` is complete but has nine defects (audit C-50 to C-58). | D-CR11 |
 
 ## Owner decisions
 
-**These need the owner.** The sources leave them undefined, and each changes game balance. Each row carries the coordinator's recommendation. Work that does not depend on a row goes ahead; the packets that do depend on it say so and stay **BlockedDecision** until it is answered.
+Asked on 2026-09-26 with the coordinator's recommendation beside each. All six are answered.
 
-| ID | Status | Question | Recommendation | Blocks |
-|---|---|---|---|---|
-| D-CR01 | **PROPOSED, ask owner** | How do players earn ASP? Even the 2009-era server granted it only by GM command (audit C-03). | 1 ASP at level 1 and +1 per level gained, granted where training points are granted (`grant_xp`), so 50 at the cap. 78 disciplines against 50 points forces specialisation, and respec (D-CR02) lets a player change course. The GM grant stays. | CR-12 |
-| D-CR02 | **PROPOSED, ask owner** | What does crafting respec cost, and what does it clear? | A flat 1000 naquadah, the same as the ability respec (D-AT10). It clears every discipline, all expertise and every blueprint granted by a discipline; it refunds one ASP per learned discipline. | CR-10 |
-| D-CR03 | **PROPOSED, ask owner** | Starting racial-paradigm levels, and how they rise (audit C-21). | Every character starts every paradigm at level 7, the highest level any discipline asks for. The gate then reduces to prerequisites and ASP, and no progression system has to be invented. #723's progression waits until the owner designs one. The alternative is Common at 5 and the others at 1, which makes only the Common tree learnable. | CR-03 |
-| D-CR04 | **PROPOSED, ask owner** | How are blueprints acquired? Python only ever granted them by GM command. | Learning a discipline grants every blueprint of that discipline. Only 16 disciplines have blueprints, so most learned disciplines add none; research and vendors can add blueprint sources later. | CR-04 |
-| D-CR05 | **PROPOSED, ask owner** | Stations, tools, or both? Where do stations go? | Version 1 uses stations only: four per-science "Crafting Station" entities, each allowing all four verbs, in the stasis-room debug hub. The 48 Field Crafting Tools stay unflagged. Placing stations in playable worlds is a later content decision. | CR-05, CR-11 |
-| D-CR06 | **PROPOSED, ask owner** | Reverse-engineer recovery. Python rewards low expertise and divides by zero at expertise 0 (audit C-51, C-52). | Recovery rises with expertise: per component `floor(rand × min(1, max(exp, 1) / tc) × qty)` below the product's tech competency, and `floor(rand × qty)` with a floor of 1 at or above it. Reverse engineering needs no known discipline. | CR-08 |
+| ID | Status | Question | Owner answer |
+|---|---|---|---|
+| D-CR01 | **APPROVED** (owner, 2026-09-26) | How do players earn ASP? Even the 2009-era server granted it only by GM command (audit C-03). | 1 ASP at level 1 and +1 per level gained, granted where training points are granted (`grant_xp`), so 50 at the cap. The GM grant stays. |
+| D-CR02 | **APPROVED** (owner, 2026-09-26) | What does crafting respec cost, and what does it clear? | **Free**, full reset: it clears every discipline and all expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept, because under D-CR04 and D-CR03 they come from items the player used, not from disciplines. |
+| D-CR03 | **APPROVED** (owner, 2026-09-26) | Starting racial-paradigm levels, and how they rise (audit C-21). | A designed progression, following the client's own item text. New characters start **Common at 5** (the roots become learnable) and the other four paradigms at 1. Using a **"Racial Paradigm Guide: <paradigm>"** item raises that paradigm by 1, to a maximum of 10 (client text 28224-28234: "Permanently increases player's Racial Paradigm score by one, to a maximum of 10"). Guides are sold by the crafting-supplies vendor and can drop as loot. |
+| D-CR04 | **APPROVED** (owner, 2026-09-26) | How are blueprints acquired? Python only granted them by GM command. | **Blueprint items and research.** Using a "Blueprint: …" item (289 in the seed) teaches its blueprint and consumes the item; crafting vendors sell them. A successful research of a researchable item also teaches the blueprint that makes it, when that blueprint's discipline is known. Learning a discipline grants no blueprints. |
+| D-CR05 | **APPROVED** (owner, 2026-09-26) | Stations, tools, or both? | **Both.** Four per-science Crafting Stations in the stasis-room debug hub, each allowing all four verbs, and the 48 Field Crafting Tools as portable tools (rule in D-CR21). Stations in playable worlds are a later content decision. |
+| D-CR06 | **APPROVED** (owner, 2026-09-26) | Reverse-engineer recovery (audit C-51, C-52). | Recovery rises with expertise: per component `floor(rand × min(1, max(exp, 1) / tc) × qty)`, where `tc` is the product's tech competency, with at least one unit of some component recovered. Reverse engineering needs no known discipline. |
+
+The 2009 def supports the item-driven design: `SGWPlayer.def:894-909` declares `gainRacialParadigmLevels`, `gainExpertise` and `gainAppliedSciencePoints`, each "with transaction", the shape of a reward granted by item use or a mission.
 
 ## Coordinator decisions
 
@@ -69,15 +71,17 @@ These are PROPOSED coordinator defaults. Under the owner's autonomous-run author
 | D-CR18 | PROPOSED | One shared `CraftingCatalog`, loaded once and consumed by cell and base: disciplines, blueprints with component sets, and the crafting attributes of items (flags, tier, quality, tech competency, disciplines). Researchable is `Craft_Research`, reverse-engineerable is `Craft_RevEng`, kicker is `Kicker`. `ElementaryComponent` is ignored because every item has it (C-24); alloy inputs are validated by tier and quality. | One source of truth, like `AbilityTreeCatalog` in the ability-tree campaign. |
 | D-CR19 | PROPOSED | The ID blocks are templates 310-329 and spawns 410-429. The branch prefix is `craft/`. | Agreed with the debug-hub, guilds and pets sessions on 2026-09-26 (C-28). |
 | D-CR20 | PROPOSED | The induction bar needs an absolute expiry (C-32). CR-02 makes the server's game clock consistent and gives one `game_time_secs()` for every timer sender. If CR-02 cannot land in time, the induction still completes on the server, and the inventory update plus a text line carry the result. | The bar is cosmetic; the craft result must not depend on it. |
+| D-CR21 | PROPOSED | A **Field Crafting Tool** counts only in the crafting bag (`INV_Crafting`, 15), the only inventory bag its `container_sets` allows. Its science comes from the name prefix (BMAS = Biomedical, EAS = Electronic, PSAS = Power Systems, MAS = Materials) unless CR-E2 finds a cooked-data field. A tool enables craft, research and reverse engineering for disciplines of its science whose `tech_competency` is at most the tool's `tech_comp`. Alloying needs a station. Tools are not consumed. | Owner answer D-CR05. The tools' `tech_comp` runs 5-55 in steps of 5, which lines up with the disciplines' `tech_competency` (1-50). |
+| D-CR22 | PROPOSED | Blueprint and Paradigm Guide items are used through the ordinary `useItem` path. A seed table maps each item to its blueprint or paradigm, built from the client's cooked data by CR-E2; items the client does not ship are added to the seed only if the client can render them. Using an already-known blueprint or a guide at 10 is refused with feedback, and consumes nothing. | Owner answers D-CR03 and D-CR04. Seeds are the source of truth. |
 
 ## Coordinator launch prompt
 
 You are the Claude Code coordinator for the crafting campaign. Implement [work-packets.md](work-packets.md) as small reviewed PRs.
 
 1. Record `git rev-parse origin/main` and check the audit's file references still hold. Check `ListAgents` for a live peer on this campaign (`craft/*` branches). If one exists, message it and stand down.
-2. **Wave 0:** dispatch CR-01, CR-E1 and CR-02 in parallel worktrees (`bash tools/build-lane/mk-worktree.sh craft/<packet>-<slug> <name>`). CR-01 is the bottleneck; review and merge it first.
+2. **Wave 0:** dispatch CR-01, CR-E1, CR-E2 and CR-02 in parallel worktrees (`bash tools/build-lane/mk-worktree.sh craft/<packet>-<slug> <name>`). CR-01 is the bottleneck; review and merge it first.
 3. **Wave 1:** once CR-01 is on `main`, dispatch CR-03, CR-04, CR-05 and CR-06. Merge in the order the contended-file list gives.
-4. **Wave 2:** CR-07 to CR-11; then CR-12 once D-CR01 is answered.
+4. **Wave 2:** CR-07 to CR-12 and CR-15.
 5. **Wave 3:** CR-13 close-out, with the UAT checklist and `/release` (PowerShell, or `MSYS_NO_PATHCONV=1` in Git Bash).
 6. Give each worker the rules file (`%TEMP%\cimmeria-castle\CRAFT-WORKER-RULES.md`), its packet, the decisions it cites and the audit rows it cites. Each worker uses the lane, its own `sgw_<worktree>` database and the `external` junction.
 7. When blocked, leave `handoffs/<packet>.md` with the exact next action, and keep `handoffs/session-resume.md` current.

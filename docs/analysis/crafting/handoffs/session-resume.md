@@ -3,19 +3,20 @@
 > Type: how-to. Audience: any later session and the owner.
 > Updated: 2026-09-26. Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
 
-## State: plan written, Wave 0 dispatching
+## State: plan PR #851 open, Wave 0 dispatched on `main` @ `95366c59`
 
 | Packet | Status | Branch / PR | Notes |
 |---|---|---|---|
 | Plan | Review | `docs/crafting-campaign-plan` | This ledger |
-| CR-01 | Ready | | Bottleneck; merge first |
-| CR-E1 | Ready | | Documentation only |
-| CR-02 | Ready | | May stop with a report if the clock needs a client patch |
-| CR-03 to CR-12 | BlockedDependency / BlockedDecision | | See work-packets.md |
+| CR-01 | Writing | `craft/cr01-catalog` | Bottleneck; merge first |
+| CR-E1 | Writing | `craft/cre1-client-evidence` | Documentation only |
+| CR-02 | Writing | `craft/cr02-game-clock` | May stop with a report if the clock needs a client patch |
+| CR-E2 | Writing | `craft/cre2-cooked-items` | Blueprint items, Paradigm Guides, Field Tools |
+| CR-03 to CR-15 | BlockedDependency | | See work-packets.md |
 
-## Open owner decisions
+## Owner decisions
 
-D-CR01 (earning ASP), D-CR02 (respec cost and scope), D-CR03 (paradigm levels), D-CR04 (blueprint acquisition), D-CR05 (stations and tools), D-CR06 (reverse-engineer recovery). The questions and recommendations are in the [README](../README.md#owner-decisions).
+All six were answered on 2026-09-26 and are recorded in the [README](../README.md#owner-decisions): ASP 1 at level 1 plus 1 per level; free full respec; Common 5 and Racial Paradigm Guide items; blueprints from Blueprint items and research; stations and Field Tools; reverse-engineer recovery that rises with expertise.
 
 ## Coordination
 
