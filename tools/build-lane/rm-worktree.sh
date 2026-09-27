@@ -64,9 +64,19 @@ run() { if [ $DRY -eq 1 ]; then echo "  would: $*"; else "$@"; fi; }
 # dropped; hand-made databases (sgw_harset and the like) are never swept.
 PSQL="${PSQL:-$MAIN/external/postgresql_server/bin/psql.exe}"
 [ -x "$PSQL" ] || PSQL="$(command -v psql 2>/dev/null || true)"
+db_name() { printf 'sgw_%s' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9_' '_' | tr 'A-Z' 'a-z')"; }
 drop_db() {  # $1 = worktree name
-  local db="sgw_$(printf '%s' "$1" | tr -c 'A-Za-z0-9_' '_' | tr 'A-Z' 'a-z')"
+  local db other
+  db="$(db_name "$1")"
   [ -n "$PSQL" ] || return 0
+  # The mapping isn't one-to-one (foo-bar and foo_bar both give sgw_foo_bar): keep a
+  # database that another registered worktree also maps to.
+  while IFS= read -r other; do
+    other="$(basename "$other")"
+    if [ "$other" != "$1" ] && [ "$(db_name "$other")" = "$db" ]; then
+      echo "  kept database $db: worktree $other maps to it too"; return 0
+    fi
+  done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
   local q=(-h localhost -p "${PGPORT:-5433}" -U w-testing -d postgres -tAq -v ON_ERROR_STOP=1)
   local exists
   # psql.exe prints CRLF; an untrimmed \r makes every name "not exist".
@@ -82,11 +92,15 @@ drop_db() {  # $1 = worktree name
   fi
 }
 
-# lane.sh writes "HH:MM:SS <worktree name> :: <command>" into each held slot.
+# lane.sh writes "HH:MM:SS <worktree name> :: <command>" into each held slot, right after
+# the mkdir that takes it. A slot caught between the two can't be attributed yet, so it
+# counts as building here: lane.sh only checks for the retiring mark after `what` exists.
 building() {
-  local f
-  for f in "$LANE_ROOT"/lane/slot.*/what; do
-    [ -f "$f" ] && [ "$(awk '{print $2; exit}' "$f")" = "$1" ] && return 0
+  local d w
+  for d in "$LANE_ROOT"/lane/slot.*/; do
+    [ -d "$d" ] || continue
+    w="$(awk '{print $2; exit}' "$d/what" 2>/dev/null)"
+    [ -z "$w" ] || [ "$w" = "$1" ] && return 0
   done
   return 1
 }

@@ -136,7 +136,8 @@ while :; do
 done
 
 # rm-worktree.sh marks a worktree before it checks the slots; this checks for the mark
-# after taking a slot, so a build never starts in a worktree that is being deleted.
+# after taking a slot and writing its `what` (rm-worktree.sh counts a slot without one as
+# busy), so a build never starts in a worktree that is being deleted.
 if [ -d "$LOCKDIR/retiring.$NAME" ]; then
   echo "[lane] $NAME is being retired by rm-worktree.sh; not building" >&2; exit 75
 fi
