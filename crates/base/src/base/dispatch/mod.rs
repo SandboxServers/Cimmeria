@@ -153,6 +153,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 entity_to_addr,
                 cell_tx,
                 db_pool,
+                std::time::Instant::now(),
             )
             .await;
         }

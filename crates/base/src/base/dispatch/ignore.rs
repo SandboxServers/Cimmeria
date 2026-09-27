@@ -16,10 +16,15 @@
 //! remove matches the typed name against the list itself, so a name whose
 //! character was since deleted can still be removed. Every outcome, refusals
 //! included, is one feedback line.
+//!
+//! Each call spends a token from the chat bucket (D-SS14) before anything
+//! else, so `chatIgnore` cannot be used to hammer the database; an
+//! over-limit call gets the usual "too quickly" line at most once per 5 s.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
@@ -30,10 +35,12 @@ use crate::mercury::read_wstring;
 
 use super::super::contact_list::handlers::{handle_add_members, handle_remove_members};
 use super::super::contact_list::ignore::{
-    ensure_ignore_list, load_ignore_names, match_name, resolve_character, CharacterLookup,
-    NameMatch, MAX_IGNORE_LIST_MEMBERS,
+    ensure_ignore_list, fold_name, load_ignore_names, match_name, resolve_character,
+    CharacterLookup, NameMatch, MAX_IGNORE_LIST_MEMBERS,
 };
 use super::super::feedback::{send_feedback_line, FeedbackCtx};
+use super::super::rate_limit::limits::CHAT_EXEMPT_ACCESS_LEVEL;
+use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 
 /// Longest prefix of a typed name echoed back or logged.
@@ -61,8 +68,10 @@ struct Caller {
     entity_id: u32,
 }
 
-/// Handle `chatIgnore`. Every path ends in one feedback line.
+/// Handle `chatIgnore`. Every path ends in one feedback line, except a rate
+/// limited call after the first in its 5 s notify window.
 #[tracing::instrument(name = "chat.ignore", level = "info", skip_all, fields(peer = %addr))]
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_chat_ignore(
     payload: &[u8],
     addr: SocketAddr,
@@ -71,22 +80,50 @@ pub(super) async fn handle_chat_ignore(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     db_pool: &Option<Arc<PgPool>>,
+    now: Instant,
 ) {
     let feedback = FeedbackCtx {
         transport,
         connected,
     };
 
-    let caller = {
-        let clients = connected.lock().unwrap();
-        clients.get(&addr).and_then(|c| {
-            Some(Caller {
-                player_id: c.active_player_id?,
-                account_id: c.account_id,
-                entity_id: c.player_entity_id?,
-            })
-        })
+    let (caller, decision) = {
+        let mut clients = connected.lock().unwrap();
+        match clients.get_mut(&addr) {
+            Some(c) => {
+                let caller =
+                    c.active_player_id
+                        .zip(c.player_entity_id)
+                        .map(|(player_id, entity_id)| Caller {
+                            player_id,
+                            account_id: c.account_id,
+                            entity_id,
+                        });
+                let decision = if caller.is_none() || c.access_level >= CHAT_EXEMPT_ACCESS_LEVEL {
+                    RateDecision::Allowed
+                } else {
+                    c.rate_limits.check(RateCategory::Chat, now)
+                };
+                if let RateDecision::Limited { notify } = decision {
+                    let actor = RateActor {
+                        addr,
+                        player_id: c.active_player_id,
+                        account_id: c.account_id,
+                        entity_id: c.player_entity_id,
+                    };
+                    log_exceeded(RateCategory::Chat, actor, notify, &c.rate_limits, now);
+                }
+                (caller, decision)
+            }
+            None => (None, RateDecision::Allowed),
+        }
     };
+    if let RateDecision::Limited { notify } = decision {
+        if notify {
+            send_feedback_line(&feedback, addr, RateCategory::Chat.feedback_text()).await;
+        }
+        return;
+    }
     let Some(caller) = caller else {
         tracing::debug!(
             target: "chat",
@@ -202,7 +239,7 @@ pub(super) async fn handle_chat_ignore(
             send_feedback_line(&feedback, addr, IGNORE_SELF_TEXT).await;
             return;
         }
-        if current.contains(&name) {
+        if current.iter().any(|n| fold_name(n) == fold_name(&name)) {
             refuse("already_ignored", &name);
             let text = format!("{name} is already on your Ignore list.");
             send_feedback_line(&feedback, addr, &text).await;

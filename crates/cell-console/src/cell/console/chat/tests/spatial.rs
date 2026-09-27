@@ -235,3 +235,44 @@ async fn spatial_chat_reaches_witness_the_speaker_ignores() {
         .insert("Bob".to_string());
     assert_eq!(recipients_of_alice(&mut mgr, CHAN_SAY).await, vec![1, 2, 3]);
 }
+
+/// D-SS13 fold: an Ignore entry stored as "alice" (the contact-list window
+/// keeps whatever case was typed) still withholds Alice's lines. Fails when
+/// the spatial filter compares names exactly.
+#[tokio::test]
+async fn spatial_chat_ignore_matches_case_insensitively() {
+    let mut mgr = three_player_space();
+    mgr.get_entity_mut(2)
+        .unwrap()
+        .ignore_names
+        .insert("aLiCe".to_string());
+    assert_eq!(recipients_of_alice(&mut mgr, CHAN_SAY).await, vec![1, 3]);
+}
+
+/// A speaker with no player in range still gets their own echo: the client
+/// does not echo say locally, so without it the first line of a lone player
+/// shows nothing (the visible-feedback rule). Fails when the early return
+/// on an empty witness list is restored in `broadcast_to_witnesses`.
+#[tokio::test]
+async fn lone_speaker_still_gets_own_echo() {
+    let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(cxml).unwrap();
+    mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(1);
+    // An NPC in range is not a chat recipient, so the player list is empty.
+    mgr.create_entity(100009, "Agnos", [12.0, 0.0, 12.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(1)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(100009));
+    assert_eq!(
+        recipients_of_alice(&mut mgr, CHAN_SAY).await,
+        vec![1],
+        "exactly the speaker's own echo"
+    );
+}

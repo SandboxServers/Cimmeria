@@ -10,11 +10,10 @@ use std::time::Instant;
 
 use super::super::chat::send_player_communication_at;
 use super::super::tell::{
-    ambiguous_text, not_accepting_text, not_online_text, TELL_CHANNEL, TELL_NO_TARGET_TEXT,
-    TELL_SELF_TEXT,
+    ambiguous_text, not_online_text, TELL_CHANNEL, TELL_NO_TARGET_TEXT, TELL_SELF_TEXT,
 };
 use super::super::*;
-use crate::base::contact_list::ignore::IgnoreCache;
+use crate::base::contact_list::ignore::{not_accepting_text, IgnoreCache};
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 use cimmeria_wire::cell::client_methods::communicator::{ON_PLAYER_COMMUNICATION, ON_TELL_SENT};
 
@@ -325,4 +324,17 @@ async fn tell_to_dnd_player_replies_with_dnd_message() {
             "in a raid".to_string()
         )
     );
+}
+
+/// D-SS13 fold: Bob's Ignore entry stored as "aLICE" still blocks Alice.
+/// Fails when `IgnoreCache::ignores` compares names exactly.
+#[tokio::test]
+async fn tell_ignore_matches_case_insensitively() {
+    let h = Harness::three();
+    h.edit(BOB, |c| {
+        c.ignore = IgnoreCache::new(["aLICE".to_string()].into())
+    });
+    h.alice_tells("Bob", "hello").await;
+    assert!(h.to(BOB).is_empty());
+    assert_eq!(h.alice_feedback(), not_accepting_text("Bob"));
 }

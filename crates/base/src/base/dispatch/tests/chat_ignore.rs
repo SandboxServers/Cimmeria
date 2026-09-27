@@ -75,7 +75,16 @@ impl Harness {
         .expect("chatIgnore never propagates Err");
     }
 
+    /// One `chatIgnore` call. The chat bucket is refilled first: these tests
+    /// exercise the list rules, and `chat_ignore_spends_a_chat_token` pins
+    /// the bucket on its own.
     async fn ignore(&self, name: &str, flag: u8) {
+        self.connected
+            .lock()
+            .unwrap()
+            .get_mut(&self.addr)
+            .unwrap()
+            .rate_limits = Default::default();
         let mut payload = Vec::new();
         crate::mercury::write_wstring(&mut payload, name);
         payload.push(flag);
@@ -182,6 +191,50 @@ async fn chat_ignore_refusals_before_the_database() {
     assert!(refused(&capture, "no_db_pool"));
 
     assert!(h.cell_sets().is_empty(), "no refusal pushes an Ignore set");
+}
+
+/// D-SS14: `chatIgnore` spends a chat token. Five calls in one instant go
+/// through (each refused here for the missing pool); the sixth is limited:
+/// the "too quickly" line and `rate_limit.exceeded category=chat`. Fails
+/// when the bucket check is removed from `handle_chat_ignore`.
+#[tokio::test]
+async fn chat_ignore_spends_a_chat_token() {
+    let capture = LogCapture::install();
+    let h = Harness::new(1, None);
+    let now = std::time::Instant::now();
+    let mut payload = Vec::new();
+    crate::mercury::write_wstring(&mut payload, "Bob");
+    payload.push(1);
+    for i in 0..6 {
+        super::super::ignore::handle_chat_ignore(
+            &payload,
+            h.addr,
+            &h.dyn_transport,
+            &h.connected,
+            &h.entity_to_addr,
+            &h.cell_tx,
+            &h.db_pool,
+            now,
+        )
+        .await;
+        let text = Harness::last_feedback(&h.take());
+        if i < 5 {
+            assert_eq!(
+                text, IGNORE_UNAVAILABLE_TEXT,
+                "call {i} is within the burst"
+            );
+        } else {
+            assert_eq!(
+                text,
+                crate::base::rate_limit::RateCategory::Chat.feedback_text(),
+                "the sixth call in one instant is limited"
+            );
+        }
+    }
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "rate_limit.exceeded") && c.has_field("category", "chat")));
 }
 
 // ── live DB ────────────────────────────────────────────────────────────────

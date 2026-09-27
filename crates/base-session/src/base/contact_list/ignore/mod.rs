@@ -27,9 +27,16 @@
 //!   not. Mail send (SS-M1) and duel challenges (SS-D1) use it; the cache
 //!   may be absent for an offline recipient.
 //!
-//! Names compare exactly (`sgw_player.player_name` is `UNIQUE` but
-//! case-sensitive, so "Bob" and "bob" are two characters). `chatIgnore`
-//! stores the canonical name it resolved, never the typed spelling.
+//! Names compare case-insensitively, the D-SS13 case fold: an entry the
+//! contact-list window stored as "bob" still ignores "Bob". `sgw_player`
+//! names are `UNIQUE` but case-sensitive, so an entry can cover two
+//! characters that differ only in case; the owner accepted that (it is the
+//! safe direction for an Ignore). `chatIgnore` still stores the canonical
+//! name it resolved, never the typed spelling.
+//!
+//! - [`IgnoreCache::ignores_player`]: the cached answer by `player_id`,
+//!   for callers that hold the other player's id rather than a name (the
+//!   SS-D1 duel seam `dispatch::duel::ignores`).
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -51,37 +58,55 @@ pub const IGNORE_LIST_FLAGS: i32 = 301;
 /// limit.
 pub const MAX_IGNORE_LIST_MEMBERS: usize = 100;
 
-/// The owner's Ignore list as the base session caches it.
+/// The comparison key for an Ignore entry or a speaker name (D-SS13 fold).
+pub fn fold_name(name: &str) -> String {
+    name.to_lowercase()
+}
+
+/// The owner's Ignore list as the base session caches it: the folded names,
+/// and the `player_id`s of the characters those names resolve to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IgnoreCache {
-    names: HashSet<String>,
+    folded: HashSet<String>,
+    player_ids: HashSet<i32>,
 }
 
 impl IgnoreCache {
+    /// A cache from the stored names alone (no `player_id`s).
     pub fn new(names: HashSet<String>) -> Self {
-        Self { names }
+        Self::with_player_ids(names, HashSet::new())
     }
 
-    /// Whether `speaker` (a canonical character name) is on the list.
+    pub fn with_player_ids(names: HashSet<String>, player_ids: HashSet<i32>) -> Self {
+        Self {
+            folded: names.iter().map(|n| fold_name(n)).collect(),
+            player_ids,
+        }
+    }
+
+    /// Whether `speaker` is on the list, case-insensitively.
     pub fn ignores(&self, speaker: &str) -> bool {
-        self.names.contains(speaker)
+        self.folded.contains(&fold_name(speaker))
+    }
+
+    /// Whether the character `player_id` is on the list. Filled by
+    /// [`resync_ignore_cache`] from `sgw_player`.
+    pub fn ignores_player(&self, player_id: i32) -> bool {
+        self.player_ids.contains(&player_id)
     }
 
     pub fn len(&self) -> usize {
-        self.names.len()
+        self.folded.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.names.is_empty()
-    }
-
-    pub fn names(&self) -> &HashSet<String> {
-        &self.names
+        self.folded.is_empty()
     }
 }
 
-/// Whether the session at `recipient` ignores `speaker`. A missing session
-/// ignores nobody (the caller has already resolved it as online).
+/// Whether the session at `recipient` ignores `speaker` (case-insensitive).
+/// A missing session ignores nobody (the caller has already resolved it as
+/// online).
 pub fn session_ignores(
     clients: &HashMap<SocketAddr, ConnectedClientState>,
     recipient: SocketAddr,
@@ -93,7 +118,7 @@ pub fn session_ignores(
 }
 
 /// Whether `recipient_player_id` has `speaker` on their Ignore list, from the
-/// database. Works for an offline recipient.
+/// database, case-insensitively. Works for an offline recipient.
 pub async fn player_ignores(
     pool: &PgPool,
     recipient_player_id: i32,
@@ -103,7 +128,7 @@ pub async fn player_ignores(
         "SELECT EXISTS ( \
              SELECT 1 FROM sgw_contact_list_member m \
              JOIN sgw_contact_list cl USING (list_id) \
-             WHERE cl.player_id = $1 AND cl.flags = $2 AND m.player_name = $3 \
+             WHERE cl.player_id = $1 AND cl.flags = $2 AND lower(m.player_name) = lower($3) \
          )",
     )
     .bind(recipient_player_id)
@@ -136,6 +161,28 @@ pub async fn load_ignore_names(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().collect())
+}
+
+/// The `player_id`s of the characters whose names match (case-insensitively)
+/// an entry on `player_id`'s Ignore list.
+pub async fn load_ignored_player_ids(
+    pool: &PgPool,
+    player_id: i32,
+) -> Result<HashSet<i32>, sqlx::Error> {
+    let rows: Vec<i32> = sqlx::query_scalar(
+        "SELECT DISTINCT p.player_id FROM sgw_contact_list_member m          JOIN sgw_contact_list cl USING (list_id)          JOIN sgw_player p ON lower(p.player_name) = lower(m.player_name)          WHERE cl.player_id = $1 AND cl.flags = $2",
+    )
+    .bind(player_id)
+    .bind(IGNORE_LIST_FLAGS)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
+}
+
+/// "X is not accepting your messages.": the one refusal line for a tell,
+/// mail or duel challenge to a player who ignores the sender (D-SS15).
+pub fn not_accepting_text(recipient: &str) -> String {
+    format!("{recipient} is not accepting your messages.")
 }
 
 /// Result of matching a typed name against a set of real names (D-SS13:
@@ -230,8 +277,14 @@ pub async fn resync_ignore_cache(
         );
         return None;
     };
-    let names = match load_ignore_names(pool, player_id).await {
-        Ok(n) => n,
+    let loaded = match load_ignore_names(pool, player_id).await {
+        Ok(n) => load_ignored_player_ids(pool, player_id)
+            .await
+            .map(|ids| (n, ids)),
+        Err(e) => Err(e),
+    };
+    let (names, ignored_ids) = match loaded {
+        Ok(v) => v,
         Err(e) => {
             tracing::error!(
                 target: "chat",
@@ -256,7 +309,7 @@ pub async fn resync_ignore_cache(
             // hand char A's list to char B.
             Some(c) if c.active_player_id == Some(player_id) => {
                 let before = c.ignore.len();
-                c.ignore = IgnoreCache::new(names.clone());
+                c.ignore = IgnoreCache::with_player_ids(names.clone(), ignored_ids);
                 (Some(c.account_id), Some(before))
             }
             Some(c) => (Some(c.account_id), None),

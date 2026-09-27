@@ -41,8 +41,8 @@ fn session_ignores_reads_the_recipient_cache_only() {
     let clients = HashMap::from([(a, sa), (b, test_default_connected_client_state())]);
     assert!(session_ignores(&clients, a, "Spammer"));
     assert!(
-        !session_ignores(&clients, a, "spammer"),
-        "names compare exactly"
+        session_ignores(&clients, a, "sPAMMER"),
+        "names compare case-insensitively (D-SS13 fold)"
     );
     assert!(!session_ignores(&clients, b, "Spammer"));
     let gone: SocketAddr = "127.0.0.1:54702".parse().unwrap();
@@ -108,7 +108,10 @@ async fn player_ignores_reads_only_the_ignore_list() {
         !player_ignores(&pool, player_id, "Pal").await.unwrap(),
         "a Friends entry is not an ignore"
     );
-    assert!(!player_ignores(&pool, player_id, "spammer").await.unwrap());
+    assert!(
+        player_ignores(&pool, player_id, "sPAMMER").await.unwrap(),
+        "the database check folds case too"
+    );
     assert_eq!(
         load_ignore_names(&pool, player_id).await.unwrap(),
         set(&["Spammer"])
@@ -165,7 +168,12 @@ async fn resync_ignore_cache_updates_session_and_cell() {
     cleanup(&pool, account_id, player_id).await;
     insert_player(&pool, account_id, player_id, "ssc1-owner-2").await;
     let (_friends, ignore) = ensure_system_lists(&pool, player_id).await.unwrap();
-    add_members(&pool, player_id, ignore, &["Jerk".to_string()])
+    // A real character stored in the wrong case, as the contact-list window
+    // can: the cache still ignores it by name and by player_id.
+    let (jerk_account, jerk_id) = (TEST_BASE + 22, TEST_BASE + 23);
+    cleanup(&pool, jerk_account, jerk_id).await;
+    insert_player(&pool, jerk_account, jerk_id, "SsC1Jerk").await;
+    add_members(&pool, player_id, ignore, &["ssc1jerk".to_string()])
         .await
         .unwrap();
 
@@ -183,8 +191,18 @@ async fn resync_ignore_cache_updates_session_and_cell() {
     };
 
     let got = resync_ignore_cache(ctx, addr, player_id, 9001, "test").await;
-    assert_eq!(got, Some(set(&["Jerk"])));
-    assert!(connected.lock().unwrap()[&addr].ignore.ignores("Jerk"));
+    assert_eq!(got, Some(set(&["ssc1jerk"])));
+    {
+        let g = connected.lock().unwrap();
+        assert!(
+            g[&addr].ignore.ignores("SsC1Jerk"),
+            "case-folded name match"
+        );
+        assert!(
+            g[&addr].ignore.ignores_player(jerk_id),
+            "the entry resolves to the character's player_id (the SS-D1 duel seam)"
+        );
+    }
     match rx.try_recv() {
         Ok(BaseToCellMsg::UpdateIgnoreList {
             entity_id,
@@ -192,7 +210,7 @@ async fn resync_ignore_cache_updates_session_and_cell() {
             ignore_names,
         }) => {
             assert_eq!((entity_id, pid), (9001, player_id));
-            assert_eq!(ignore_names, set(&["Jerk"]));
+            assert_eq!(ignore_names, set(&["ssc1jerk"]));
         }
         _ => panic!("expected UpdateIgnoreList on the cell channel"),
     }
@@ -212,6 +230,7 @@ async fn resync_ignore_cache_updates_session_and_cell() {
     assert!(connected.lock().unwrap()[&addr].ignore.is_empty());
     assert!(rx.try_recv().is_err(), "no push for a stale character");
     cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, jerk_account, jerk_id).await;
 }
 
 /// A contact-list UI edit of the Ignore list (the `ContactListAddMembers`

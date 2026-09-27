@@ -47,23 +47,30 @@ pub(super) async fn broadcast_to_witnesses(
         .filter(|&wid| space_mgr.get_entity(wid).is_some_and(|e| e.is_player))
         .collect();
 
+    // No early return when nobody is in range: the speaker's own echo below
+    // must still go out. The client does not echo say (channel 0) locally, so
+    // a lone speaker would otherwise see nothing for their first line.
     if witnesses.is_empty() {
-        tracing::trace!(target: CHAT_LOG_TARGET, sender_id, "Chat: no witnesses to broadcast to");
-        return;
+        tracing::trace!(target: CHAT_LOG_TARGET, sender_id, "Chat: no witnesses; echo to the speaker only");
     }
 
     // D-SS15: a witness who ignores the speaker does not hear them. One
     // direction only (a witness the speaker ignores still hears the speaker),
-    // and it filters the line, not the AoI. Applied after the empty-witness return above so the
-    // speaker's own echo below is unchanged: being ignored is not revealed.
+    // and it filters the line, not the AoI. The speaker's own echo below is
+    // unchanged, so being ignored is not revealed. Names compare
+    // case-insensitively (the D-SS13 fold), so an entry stored as "bob"
+    // matches the speaker "Bob".
+    let folded_speaker = speaker_name.to_lowercase();
     let (witnesses, ignored_by): (Vec<u32>, Vec<u32>) = witnesses.into_iter().partition(|&wid| {
-        !space_mgr
-            .get_entity(wid)
-            .is_some_and(|w| w.ignore_names.contains(speaker_name))
+        !space_mgr.get_entity(wid).is_some_and(|w| {
+            w.ignore_names
+                .iter()
+                .any(|n| n.to_lowercase() == folded_speaker)
+        })
     });
     if !ignored_by.is_empty() {
         tracing::debug!(
-            target: "chat",
+            target: CHAT_LOG_TARGET,
             event = "chat.spatial_ignored",
             entity_id = sender_id,
             player_id = entity.player_id,

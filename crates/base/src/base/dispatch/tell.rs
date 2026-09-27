@@ -23,7 +23,7 @@ use std::net::SocketAddr;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, serialize_on_tell_sent};
 use cimmeria_wire::cell::client_methods::communicator::{ON_PLAYER_COMMUNICATION, ON_TELL_SENT};
 
-use super::super::contact_list::ignore::session_ignores;
+use super::super::contact_list::ignore::{not_accepting_text, session_ignores};
 use super::super::feedback::{
     send_feedback_line, send_player_method, FeedbackCtx, FeedbackOutcome,
 };
@@ -57,11 +57,6 @@ pub(super) fn ambiguous_text(target: &str) -> String {
         "More than one player is named {}. Type the exact name.",
         shown(target)
     )
-}
-
-/// D-SS15: the recipient ignores the sender.
-pub(super) fn not_accepting_text(recipient: &str) -> String {
-    format!("{recipient} is not accepting your messages.")
 }
 
 fn shown(name: &str) -> String {
