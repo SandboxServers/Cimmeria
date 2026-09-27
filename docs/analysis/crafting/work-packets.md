@@ -112,7 +112,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-E2
 
-**Status:** Writing. **Scope title:** Blueprint items, Paradigm Guide items and Field Crafting Tools in the client's cooked data. **Depends:** none. **Writer:** game-archaeology-specialist (cooked PAKs through `crates/resources`, Ghidra read-only). Documentation plus a proposed mapping file; no Rust.
+**Status:** Review (#868). **Scope title:** Blueprint items, Paradigm Guide items and Field Crafting Tools in the client's cooked data. **Depends:** none. **Writer:** game-archaeology-specialist (cooked PAKs through `crates/resources`, Ghidra read-only). Documentation plus a proposed mapping file; no Rust.
 
 **Questions, each answered with evidence:**
 
@@ -233,8 +233,8 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 **Scope:**
 
 - Templates 310-313: the four "<Science> Crafting Station" entities, named from the existing texts (audit C-25), with all four `ENTITYFLAG_Craft_*` bits. Spawns 410-413 in the stasis room, placed per `docs/content/debug-hub.md` (read its placement warning and the hub worker's authoring traps in `.claude/agent-memory/rust-gameserver-dev/debug-hub-npc-authoring-traps.md`).
-- Template 314 / spawn 414: a "crafting supplies" vendor, at 1 naquadah each: the components of the UAT recipes (audit §2), the four kickers, one Field Crafting Tool per science (the -5 and -50 grades), the Paradigm Guides, and the Blueprint items for the UAT recipes (blueprints 412, 161, 42 and 1).
-- `.craftkit <blueprint> [count]` (D-CR17).
+- Template 314 / spawn 414: a "crafting supplies" vendor, at 1 naquadah each: the components of the UAT recipes (audit §2), the four kickers, one Field Crafting Tool per science (the -5 and -50 grades), the Paradigm Guides (7805-7809), and Blueprint item 6483 (teaches blueprint 25).
+- `.craftkit <blueprint> [count]` and `.learnblueprint <id>` (D-CR17).
 - Add the stations to `docs/content/debug-hub.md`.
 
 **Acceptance:** a live-DB seed guard that the templates carry the flags and the spawns sit in world 12; the vendor list resolves; a `.craftkit` test.
@@ -253,7 +253,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 **Scope:**
 
-- A seed table (for example `resources.crafting_item_effects (item_id, blueprint_id, racial_paradigm_id)`) filled from CR-E2's mapping, plus the Guide items if CR-E2 shows the client can render them (D-CR22).
+- A seed table (for example `resources.crafting_item_effects (item_id, blueprint_id, racial_paradigm_id)`) filled from CR-E2's mapping per D-CR26 (193 Blueprint items, 8882 teaching two blueprints), plus the five existing Guide items 7805-7809. A generator under `tools/crafting/` builds the seed rows from `source/blueprint-items.csv`, so the mapping has one source.
 - The item-use path recognises these items. A Blueprint item teaches its blueprint (139). A Guide raises its paradigm by 1, to at most 10 (138). Either way the item is consumed in the same transaction that changes the crafting state. A known blueprint or a guide at 10 is refused with feedback and consumes nothing.
 - Loot: add Guides and Blueprint items to a loot table only where existing content already places crafting drops; otherwise the vendor (CR-11) is the only source for now.
 
@@ -273,13 +273,13 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 
 1. Log in with a new character. Open Ctrl+J: the ASP count shows, and the tree is drawn (green where learnable, per D-CR03).
 2. `/gmgiveappliedsciencepoints 5` (or the native GM console). The count updates without a relog.
-3. Learn Biomedical Engineering (21). Its expertise reads 1 and the ASP count drops by 1. Click it again: a message says it is already known.
+3. Learn Materials Engineering (78). Its expertise reads 1 and the ASP count drops by 1. Click it again: a message says it is already known.
 4. Relog. Disciplines, expertise, ASP and blueprints are all still there.
 5. Open J away from the stations: every tab says "Disabled". Walk to the Materials Crafting Station: the tabs enable. Walk away: they disable again.
 6. Buy an MAS-5 Field Crafting Tool and put it in the crafting bag: craft, research and reverse engineer enable anywhere for Materials; alloy stays disabled. Move the tool to the main bag: they disable.
-7. Buy and use the Blueprint item that CR-E2 maps to blueprint 412: the blueprint appears in the J window. Use a second copy: a message says it is already known and the item stays.
+7. Buy and use "Blueprint: Steel Plating (Materials Subcombine A)" (item 6483): blueprint 25 appears in the J window. Use a second copy: a message says it is already known and the item stays.
 8. Buy and use a Racial Paradigm Guide: Human. `/showracialparadigmlevels` reports Human at 2.
-9. Buy 14× Steel Core (5254) from the supplies vendor, or `.craftkit 412`. Craft Titanium Plating (blueprint 412): the 3 s induction bar shows, the components go, the plating arrives, and expertise rises by 1.
+9. Buy 13× Steel Core (5254) from the supplies vendor, or `.craftkit 25`. At the Materials Crafting Station, craft Steel Plating (blueprint 25): the 3 s induction bar shows, the components go, the plating arrives, and Materials Engineering expertise rises by 1.
 10. Craft with too few components: a message explains why and nothing is consumed.
 11. Research Crafted Pistol of the Whale (5481) with one kicker: a message reports the result; on success expertise rises by 5.
 12. Put 10 items in reverse engineering and confirm: all 10 complete in turn, and components arrive.

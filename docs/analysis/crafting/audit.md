@@ -42,7 +42,8 @@ Every row was checked against the code, the seed, the client Lua or the client b
 
 UAT-friendly recipes (from C-22 and C-23):
 
-- **Craft:** blueprint 412 (discipline 21) makes 5401 "Titanium Plating" from 14× 5254 "Steel Core" (set 1), or 1× 5254 + 5× 5256 (set 2). Blueprint 161 chains after it: 1× 5401 + 1× 5254 → 5339.
+- **Craft (primary UAT path):** blueprint 25 (discipline 78, Materials Engineering, a root) makes 5398 "Steel Plating" from 13× 5254 "Steel Core" (set 1), and Blueprint item 6483 teaches it (CR-E2).
+- **Craft (alternative sets):** blueprint 412 (discipline 21) makes 5401 "Titanium Plating" from 14× 5254 "Steel Core" (set 1), or 1× 5254 + 5× 5256 (set 2). Blueprint 161 chains after it: 1× 5401 + 1× 5254 → 5339.
 - **Alloy:** blueprint 42 (discipline 21) turns 1× 5192 "Cell (Bio-Medical)" (tier 2, Good) plus tier-1 elementary components into 2× 5191 "Blend".
 - **Research and reverse engineer:** 5481 "Crafted Pistol of the Whale" (tc 20, disciplines {21, 22}), made by blueprint 1. Kickers 5668-5671.
 
