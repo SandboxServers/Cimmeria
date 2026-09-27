@@ -75,15 +75,7 @@ impl GameSession {
     /// independently of the socket connect (e.g. to control the exact
     /// interleaving of two clients' world-entry sequences).
     pub async fn from_auth_session(session: &AuthSession, request_id: u32) -> Result<Self> {
-        // Loopback for a local server; any interface for a remote one (the
-        // `sparbot` binary against a shared server), since a socket bound to
-        // 127.0.0.1 cannot reach a routable address.
-        let bind_addr = if session.base_addr.ip().is_loopback() {
-            "127.0.0.1:0"
-        } else {
-            "0.0.0.0:0"
-        };
-        let socket = UdpSocket::bind(bind_addr).await?;
+        let socket = UdpSocket::bind(local_bind_addr(session.base_addr)).await?;
 
         let login_pkt =
             handshake::build_baseapp_login(request_id, session.account_id, &session.ticket)?;
@@ -287,6 +279,22 @@ impl GameSession {
     }
 }
 
+/// The local address to bind for a session to `base_addr`: the loopback
+/// of the same IP family for a local server, the family's wildcard for a
+/// remote one (the `sparbot` binary against a shared server), since a
+/// loopback-bound socket cannot reach a routable address and an IPv4
+/// socket cannot reach an IPv6 one. Port 0: the OS picks.
+fn local_bind_addr(base_addr: SocketAddr) -> SocketAddr {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    let ip = match (base_addr.ip(), base_addr.ip().is_loopback()) {
+        (IpAddr::V4(_), true) => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        (IpAddr::V4(_), false) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        (IpAddr::V6(_), true) => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        (IpAddr::V6(_), false) => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+    };
+    SocketAddr::new(ip, 0)
+}
+
 /// Build `[msg_id][u16 LE payload.len()][payload]` -- the WORD_LENGTH
 /// framing every account/cell/entity-method client message beyond the
 /// CONSTANT_LENGTH system range uses.
@@ -301,7 +309,18 @@ fn word_len_msg(msg_id: u8, payload: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::GameSession;
+    use super::{local_bind_addr, GameSession};
+
+    /// The bind address follows the BaseApp's IP family: loopback to
+    /// loopback, anything else to that family's wildcard.
+    #[test]
+    fn bind_address_matches_the_base_family() {
+        let bind = |a: &str| local_bind_addr(a.parse().unwrap()).to_string();
+        assert_eq!(bind("127.0.0.1:32832"), "127.0.0.1:0");
+        assert_eq!(bind("203.0.113.7:32832"), "0.0.0.0:0");
+        assert_eq!(bind("[::1]:32832"), "[::1]:0");
+        assert_eq!(bind("[2001:db8::7]:32832"), "[::]:0");
+    }
 
     /// `organizationMOTD` (CM 13) on entity 0x1234: direct encoding,
     /// `0x80 | 13`, word length 4 + args.

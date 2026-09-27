@@ -84,11 +84,15 @@ fn sparbot_wire_matches_the_server() {
     );
 }
 
-/// Sentinel ids for this module: accounts and players 900_4xx.
-const BOT_ACCOUNT: i32 = 900_401;
-const CHALLENGER_ACCOUNT: i32 = 900_402;
-const BOT_PLAYER: i32 = 900_403;
-const CHALLENGER_PLAYER: i32 = 900_404;
+/// Sentinel ids: this module reserves the block 900_600-900_699 for its
+/// accounts and players. Every module of the `it` binary shares one test
+/// database and may run concurrently, so each keeps a disjoint block:
+/// 900_1xx/2xx `two_client_castle_visibility`, 900_3xx/4xx/5xx
+/// `two_client_castle_visibility_chaos`.
+const BOT_ACCOUNT: i32 = 900_601;
+const CHALLENGER_ACCOUNT: i32 = 900_602;
+const BOT_PLAYER: i32 = 900_603;
+const CHALLENGER_PLAYER: i32 = 900_604;
 const BOT_NAME: &str = "SsuSparBot";
 
 /// Both characters in Castle, 10 units apart (inside the 20-unit

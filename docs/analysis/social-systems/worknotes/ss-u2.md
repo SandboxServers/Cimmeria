@@ -133,6 +133,17 @@ Each mutation was applied, the named filter was run, and the file was restored a
 | `gm_end` does not send 878 | `duel_end_clears_both_entries_and_tells_both` and `duel_end_withdraws_a_pending_challenge` failed |
 | `.duel_end` spec `min` back to 1 | `bare_duel_end_logs_no_name` and `help_duel_end_shows_argument_detail` failed |
 
+## PR #910 review
+
+- **Sentinel collision.** The accounts and players in `tests/it/sparbot_duel.rs` were 900_401-900_404, which overlap `two_client_castle_visibility_chaos.rs` (900_401-900_403). Both are modules of one test binary and can run concurrently. They moved to 900_601-900_604, and the module now reserves the block 900_600-900_699 in a comment. Every sentinel in `tests/it/` was checked: 1xx and 2xx are `two_client_castle_visibility`, and 3xx, 4xx and 5xx are the chaos module.
+- **IPv6 BaseApp.** The bind address was IPv4-only. `session::local_bind_addr` now picks by IP family: a loopback BaseApp gets the same family's loopback, and any other address gets that family's wildcard (`0.0.0.0:0` or `[::]:0`). Guard: `session::tests::bind_address_matches_the_base_family` covers both families, loopback and routable.
+- **Rebased** onto `origin/main` with no conflicts.
+- **Commands:**
+  - `lane.sh cargo fmt --all -- --check`: clean.
+  - clippy on wireclient, cell-world and cell-console with `--all-targets -- -D warnings`: clean.
+  - nextest on the same three crates: 777 passed, 1 skipped (the ignored 70 s test).
+  - the live-DB `it` binary on `sgw_ss_u2` with `--test-threads=1`: 11 passed, 1 ignored.
+
 ## Known gaps
 
 - **Cross-space moves strand the bot.** A cross-world `.summon` or a gate trip restarts the world-entry handshake, and `run` does not answer it. The documented workflow logs the bot's character into the tester's world and uses a same-space `.summon`. Handling the re-entry (`RESET_ENTITIES`, then `ENABLE_ENTITIES`, `mapLoaded` and `onClientReady` again) is a follow-up if testers need it.
