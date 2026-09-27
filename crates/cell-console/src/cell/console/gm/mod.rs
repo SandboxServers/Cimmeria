@@ -29,6 +29,8 @@
 //! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
 //! - [`physics`] — `onPhysics` movement-validator bypass (backs
 //!   `/gmsetfly`, `/gmsetghost`).
+//! - [`shout`] — `sendGMShout` GM broadcast (backs `/gmshout`; `.announce`
+//!   calls the same [`shout::broadcast`]).
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
@@ -40,6 +42,7 @@ mod give_training_points;
 mod missions;
 mod physics;
 mod query;
+pub(crate) mod shout;
 mod spawn;
 mod stats;
 mod travel;
@@ -198,6 +201,12 @@ pub const TEST_LOS: u16 = 216;
 /// [`physics::handle_physics`].
 pub const GM_PHYSICS: u16 = 221;
 
+// -- GM broadcast (222) ---------------------------------------------------------
+/// `sendGMShout(UINT8 isGlobal, WSTRING Text)` — def line 650. Offset 113.
+/// Backs `/gmshout`. `isGlobal = 0` reaches the GM's space, anything else
+/// every online player (D-SS16). See [`shout::handle_send_gm_shout`].
+pub const GM_SEND_GM_SHOUT: u16 = 222;
+
 /// Dispatch an SGWGmPlayer own cell method (flattened index >= 109).
 ///
 /// Returns `true` if the index was handled, `false` if it's an unimplemented
@@ -275,6 +284,8 @@ pub async fn dispatch(
         GM_DEBUG_MOB_DATA => query::handle_debug_mob_data(entity_id, args, tx, space_mgr).await,
         // -- physics bypass --
         GM_PHYSICS => physics::handle_physics(entity_id, args, tx, space_mgr).await,
+        // -- GM broadcast --
+        GM_SEND_GM_SHOUT => shout::handle_send_gm_shout(entity_id, args, tx, space_mgr).await,
         // Any other 109+ index is an unimplemented (but authorized) gm*
         // method — let the router fall through to its warn arm.
         _ => false,

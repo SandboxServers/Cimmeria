@@ -53,6 +53,8 @@
 //!   `gotolocation`).
 //! - [`placement`] — selected-entity read/set position + orientation
 //!   (`location`, `rotation`).
+//! - [`social`] — the GM broadcast (`announce`), the console twin of the
+//!   native `/gmshout`.
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -85,6 +87,7 @@ mod query;
 mod registry;
 mod seed;
 mod server;
+mod social;
 mod spawn;
 mod stats;
 mod travel;
