@@ -1919,6 +1919,30 @@ Full range `[0x01576000, 0x0158efff]` annotated. 145 functions renamed in Ghidra
 | `DAT_018d4858` | Mercury global packet count | Atomically maintained by Packet__dtor |
 | `DAT_018cad90` | `BW_TO_UE3_SCALE` | 100.0f — confirmed in world-entry pipeline |
 
+## Render Thread Options / Shadow Resolution (2026-09-21)
+
+Source: [findings/render-thread-options.md](findings/render-thread-options.md). Client-only.
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0057a440` | `RenderThreadOptionManager::UpdateRenderThreadOptions` | Game thread. Reads 8 system options, builds the 16-byte option block, enqueues `UpdateOptions`. `RenderThreadOptions.cpp`. |
+| `0x0057a3b0` | `UpdateOptions` render-command ctor | vtable `0x018403f4` |
+| `0x0057a330` | `UpdateOptions` execute body | Render thread. Copies block; on change calls `UpdateRHI` on `GSceneRenderTargets`. |
+| `0x0057b1e0` | `RenderThreadOptionManager::GetInstance` | Lazy singleton; Ghidra label `FSceneRenderTargets__unknown_0057b1e0` is wrong |
+| `0x0057b160` | `RenderThreadOptionManager` ctor | Subscribes to `Event_Option_Rendering` |
+| `0x0057a2d0`–`0x0057a320` | option-block accessors (`+0`,`+1`,`+2`,`+4`,`+8`,`+0xC`) | `0x0057a300` (min) and `0x0057a310` (max shadow res) have **no xrefs** |
+| `0x0041f620` | launch-time system-options init | `LaunchMisc.cpp`. Reads `ShaderModel` once; valid `{0,3,4,5}`, default 4 → `FUN_00ec48b0` |
+| `0x00950200` | `FSceneRenderTargets::InitDynamicRHI` | Shadow depth RTs gated on `allowDynamicShadows`, sized by `DAT_01e6ea4c` |
+| `0x0094fb50` | `FSceneRenderTargets::GetShadowDepthTextureResolution` | `return DAT_01e6ea4c;` |
+| `0x009dde70` | `FSceneRenderer::CreateProjectedShadow` | Clamps Min/Max shadow res to `GetShadowDepthTextureResolution() - 10` |
+| `0x009de780` | `FSceneRenderer::InitDynamicShadows` | Called from `0x00906ea0` when `ShowFlags & 0x20` and `DAT_01db58f4` |
+| `0x005f5350` | `FRenderResource::UpdateRHI` | `RenderResource.cpp:0x30` |
+| `DAT_01ee2ac8` | `RenderThreadOptionManager::INSTANCE` | 16-byte heap object = render-thread option block |
+| `DAT_01ee6860` | `GSceneRenderTargets` | |
+| `DAT_01e6ea4c` | shadow depth buffer size | Static `0x400` (1024); never written |
+| `DAT_01db58f4` | `allowDynamicShadows` game-thread mirror | |
+| `DAT_01db5900` / `DAT_01db5904` / `DAT_01db5908` | `ppMotionBlur` / `ppDepthOfField` / `ppBloom` mirrors | Forced 0 when `postprocessing` is off |
+
 ---
 
 ## Naming Conventions

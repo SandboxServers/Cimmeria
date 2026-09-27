@@ -74,6 +74,8 @@ The 2026-09-26 colo-log fix pass adds [`client-generic-region-hit-test.md`](find
 
 The Bank and Vault campaign's BV-E1 packet adds [`bank-vault-client.md`](findings/bank-vault-client.md). The world-entry `onBagInfo` declaration for container 17 is enough on its own — `onVaultOpen` triggers no fresh bag request — and the Vault subscribes to `Events.InventoryUpdateContainerSize`, so a later `onBagInfo` that changes the declared size is *inferred* to resize an open window (the native emit site is not yet traced). Most load-bearing: a Banker can already offer a single-button "Expand vault" choice through the existing dialog seed tables and the existing `dialogButtonChoice`/content-engine path, no new wire method or client patch required, so long as the offered dialog carries exactly one clickable button. `onVaultOpen`'s `Position` argument has no client-side consumer found in Lua or in the traced native path, so proximity enforcement must stay entirely server-side.
 
+Client-render findings sit here too: [`render-thread-options.md`](findings/render-thread-options.md) maps `RenderThreadOptionManager` and shows which client shadow settings reach the renderer (the `max`/`minShadowResolution` system options do not; the shadow depth buffer is a fixed 1024).
+
 See [`findings/README.md`](findings/README.md) for the full per-doc index.
 
 ## Bible relationship
