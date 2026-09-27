@@ -52,6 +52,8 @@ mod pt07_telemetry;
 mod ss_c2_announce;
 #[cfg(test)]
 mod ss_u2_duel;
+#[cfg(test)]
+mod ss_c3_mute;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.

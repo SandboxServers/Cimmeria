@@ -175,9 +175,23 @@ const DUEL_END_ARGS: &[ArgSpec] = &[arg(
     "str",
     "Required. The character whose duel or duel challenge to end (exact case)",
 )];
+/// `.mute` / `.unmute` (social-systems SS-C3, D-SS26) have no legacy
+/// counterpart; written from `console/social.rs`.
+const MUTE_ARGS: &[ArgSpec] = &[
+    arg(
+        "name",
+        "str",
+        "Required. An online character; a mute holds across relog until it ends or the server restarts",
+    ),
+    arg("minutes", "int", "Required. 1 to 10080 (7 days)"),
+    arg("reason", "str", "Optional. Logged for the other GMs, not shown to the player"),
+];
+const UNMUTE_ARGS: &[ArgSpec] = &[arg("name", "str", "Required. An online, muted character")];
 
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
+        "mute" => MUTE_ARGS,
+        "unmute" => UNMUTE_ARGS,
         "help" => HELP_ARGS,
         "searchitem" => SEARCH_ITEM_ARGS,
         "searchmission" => SEARCH_MISSION_ARGS,

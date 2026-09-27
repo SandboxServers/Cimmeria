@@ -30,7 +30,7 @@ pub use crate::crafting::{
 };
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
-pub use chat_cell_to_base::ChatCellToBase;
+pub use chat_cell_to_base::{ChatCellToBase, MAX_MUTE_MINUTES};
 pub use data::{
     MailOp, MailSend, MailSendReject, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission,
 };
