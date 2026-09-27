@@ -43,6 +43,12 @@ mod p47;
 #[cfg(test)]
 mod pets;
 #[cfg(test)]
+mod pt07_giveability;
+#[cfg(test)]
+mod pt07_pet;
+#[cfg(test)]
+mod pt07_telemetry;
+#[cfg(test)]
 mod ss_c2_announce;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an

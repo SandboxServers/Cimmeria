@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    aggro, bookmark, crafting, entity, give, mission, net, patrol, placement, query, seed, server,
-    social, spawn, stats, travel,
+    aggro, bookmark, crafting, entity, give, give_ability, mission, net, patrol, pet, placement,
+    query, seed, server, social, spawn, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -37,7 +37,7 @@ pub async fn handle_console_command(
     };
     let args: Vec<&str> = parts[1..].to_vec();
 
-    let Some(spec) = COMMANDS.iter().find(|c| c.name == name) else {
+    let Some(spec) = find_command(name) else {
         send_gm_feedback(
             caller_id,
             &format!("Unknown command: .{name} (try .help)"),
@@ -126,6 +126,76 @@ pub async fn handle_console_command(
     cimmeria_discord::emit_gm_command(gm_name, format!(".{name}"), args.join(" "));
 
     exec(name, caller_id, &args, target_id, tx, space_mgr, engine).await;
+}
+
+/// The registered command named `name`, matched exactly. The one lookup
+/// both this dispatcher and the chat channel's non-GM refusal use, so the
+/// two can never disagree about what counts as a console command.
+pub(crate) fn find_command(name: &str) -> Option<&'static Spec> {
+    COMMANDS.iter().find(|c| c.name == name)
+}
+
+/// The registered command a `.`-line names, if any: its first
+/// whitespace-separated word after the `.`.
+pub(crate) fn command_named_by(text: &str) -> Option<&'static Spec> {
+    let body = text.strip_prefix('.')?;
+    find_command(body.split_whitespace().next()?)
+}
+
+/// The channel gate's answer to a non-GM `.`-line: when `text` names a
+/// registered command, tell the sender it is a GM command and return `true`
+/// (the line is consumed, never broadcast). Returns `false` for any other
+/// `.`-text, which stays ordinary chat.
+///
+/// The arguments are neither echoed nor logged. The refusal is one DEBUG
+/// line with `reason = "not_gm"` and the sender's identity, never a WARN, so
+/// a player cannot flood the WARN stream by typing commands.
+pub(crate) async fn refuse_non_gm_command(
+    entity_id: u32,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> bool {
+    let Some(spec) = command_named_by(text) else {
+        return false;
+    };
+    // Not `playtest_friction::console_rejected`: its streak detector is a
+    // "GM hunting for a command" WARN, and a player must not be able to raise
+    // it by typing. `.pet` refusals join the other pet commands on
+    // `pets.command`; the rest use the console's module-path target.
+    let id = space_mgr.player_identity(entity_id);
+    let access_level = space_mgr.get_entity(entity_id).map(|e| e.access_level);
+    if spec.name == "pet" {
+        tracing::debug!(
+            target: "pets.command",
+            decision_outcome = "gm_refused",
+            reason = "not_gm",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            access_level,
+            command = spec.name,
+            "non-GM .-console command refused"
+        );
+    } else {
+        tracing::debug!(
+            decision_outcome = "refused",
+            reason = "not_gm",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            access_level,
+            command = spec.name,
+            "non-GM .-console command refused"
+        );
+    }
+    send_gm_feedback(
+        entity_id,
+        &format!(".{} is a GM command; you do not have GM rights", spec.name),
+        tx,
+    )
+    .await;
+    true
 }
 
 /// Resolve the caller's current target and validate it against `spec.target`.
@@ -278,6 +348,11 @@ pub async fn exec(
             )
             .await
         }
+        "giveability" => {
+            give_ability::give_ability(caller_id, target_id, args, tx, space_mgr).await
+        }
+        // Pets campaign PT-07
+        "pet" => pet::dispatch(caller_id, args, target_id, tx, space_mgr).await,
         // Playtest bookmark
         "bug" => bookmark::bug(caller_id, target_id, args, tx, space_mgr).await,
         // Travel

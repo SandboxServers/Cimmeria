@@ -939,7 +939,8 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- moniker 7054 `DN_Ob_Ms_Human_Castle_Crate` ('Crate').
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (304, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, 1, 0, 10, 7054, NULL, NULL, NULL, 'Debug Hub - Loot Crate', 'mob', NULL, NULL, NULL, NULL, 6, NULL, 3, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
--- Pets campaign (docs/analysis/pets/): templates 350-369 are pets. A pet
+-- Pets campaign (docs/analysis/pets/): templates 350-359 are pets (360-369 are
+-- the campaign's placed NPCs, see template 360 below). A pet
 -- template is class 'pet', carries ENTITYFLAG_Pet (1024), has no loot table
 -- and is never placed in spawnlist: resources.pet_summons names it and the
 -- summon ability spawns it next to its owner. Guards:
@@ -960,6 +961,22 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   scorer never parks the pet, whatever faction it takes. respawn_secs NULL:
 --   a pet never respawns on its own.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (350, NULL, 'MOB_StraegisFighter.BS_MOB_StraegisFighter', '{MOB_StraegisFighter.MOB_StraegisFighter00_00}', 1032, 0, 570, 1, 0, 1, 27377, NULL, NULL, NULL, 'Summoned Straegis Fighter', 'pet', NULL, NULL, NULL, NULL, 350, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, 0.9, NULL, false);
+
+-- Pets campaign, PT-07: 360-369 are pet-campaign NPCs, not pets (350-359 are the
+-- pets). They are ordinary placed NPCs, so they are class 'mob' without
+-- ENTITYFLAG_Pet, and the pet guards in live_db_pet_summons.rs cover 350-359.
+-- 360 'Pet trainer' in the stasis-room debug hub (spawn 450, docs/content/debug-hub.md).
+--   Trainer list 350 offers the Goa'uld Servant Lord pet nodes: 2826 Summon Straegis,
+--   then 1643/1644/1645/1652/1654 for the later pets. The ability-tree gates still
+--   apply (archetype tree, level, prerequisites, spend), so only a Goa'uld sees a
+--   trainable row, and 2826 needs level 50; UAT uses the GM `.giveability 2826`.
+--   INT_Trainer (128) gives the trainer cursor; the trainer check answers the click
+--   through template_trainer_lists. No vendor lists, no dialog, no ability set.
+--   Body: Prisoner 329's (template 17, spawn 6 in this world) Praxis-armoured
+--   Goa'uld, a look this server already spawns. Event set 570 as templates 300-302.
+-- moniker 8000 `DN_npc_trn_TBD_Harset_Goa'uldAdvancedSkills` ('Goa'uld Advanced
+--   Skills'), shipped in the client's TextStrings.pak. No moniker says 'Pet Trainer'.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (360, NULL, 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL101,AR_G_Praxis.AR_GM_PT1_PT101,AR_G_Praxis.AR_GM_PT1_PT106,BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Torso_00,NPC_Goauld.NPC_GM_Letha_Head_BC}', 0, 128, 570, 1, 0, 1, 8000, NULL, NULL, NULL, 'Debug Hub - Pet Trainer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -1772406528, NULL, '{}', 350, NULL, true, NULL, NULL, NULL);
 
 --
 -- TOC entry 3316 (class 0 OID 0)

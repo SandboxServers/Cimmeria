@@ -501,6 +501,27 @@ pub enum CellToBaseMsg {
         gm_feedback_to: Option<u32>,
     },
 
+    /// Grant one ability and persist it (the GM `.giveability` console
+    /// command, pets campaign PT-07). **Only `cimmeria-cell-console` builds
+    /// this**: the base does not re-check GM rights, it trusts that the
+    /// console's channel gate (`is_gm` on the server-side `access_level`)
+    /// already ran.
+    ///
+    /// The base appends `ability_id` to `sgw_player.abilities` in one guarded
+    /// `UPDATE` (a no-op when already known), never to `trained_abilities`,
+    /// so a trainer respec keeps it and refunds nothing for it. It answers
+    /// the cell with
+    /// [`crate::cell::messages::BaseToCellMsg::GmAbilityGranted`] and sends
+    /// the outcome line to the GM, but only while `gm_entity_id`'s session
+    /// still plays `gm_player_id` (an entity id is recycled on relog).
+    GmGrantAbility {
+        entity_id: u32,
+        player_id: i32,
+        ability_id: i32,
+        gm_entity_id: u32,
+        gm_player_id: i32,
+    },
+
     /// Grant applied-science points and persist to the database
     /// (`gmGiveAppliedSciencePoints`). One-way sink, mirroring `GrantCash`:
     /// the base loads the `CraftingState`, adds `amount` to

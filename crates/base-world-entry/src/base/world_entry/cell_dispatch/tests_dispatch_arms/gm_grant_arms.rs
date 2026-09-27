@@ -1,5 +1,6 @@
 //! Routing tests for the GM-command dispatch arms: `GrantExpertise`,
-//! `GrantAppliedSciencePoints`, `GrantTrainingPoints` and `GmSpawnNpc`.
+//! `GrantAppliedSciencePoints`, `GrantTrainingPoints`, `GmGrantAbility` and
+//! `GmSpawnNpc`.
 //!
 //! These arms delegate directly to a handler that owns its own DB-touching
 //! tests. The dispatcher's only job is to route the right `CellToBaseMsg`
@@ -153,6 +154,57 @@ async fn grant_training_points_routes_to_handler_and_warns_when_no_pool() {
     assert!(
         event.has_field("amount", "6"),
         "GrantTrainingPoints warn must forward amount: {event:#?}"
+    );
+}
+
+/// PT-07 `.giveability`: the arm must reach `handle_gm_grant_ability` with
+/// the subject's ids intact.
+#[tokio::test]
+async fn gm_grant_ability_routes_to_handler_and_warns_when_no_pool() {
+    let capture = LogCapture::install();
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let (connected, entity_to_addr) = empty_maps();
+
+    handle_cell_message(
+        CellToBaseMsg::GmGrantAbility {
+            entity_id: 4246,
+            player_id: 101,
+            ability_id: 2826,
+            gm_entity_id: 4247,
+            gm_player_id: 102,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "GmGrantAbility: no DB pool, dropping grant",
+        )
+        .expect(
+            "dispatch must reach handle_gm_grant_ability's no-pool branch. \
+             If this fails the GmGrantAbility arm was removed or mis-routed.",
+        );
+    assert!(
+        event.has_field("subject_player_id", "101") && event.has_field("player_id", "102"),
+        "GmGrantAbility warn must name the subject and the GM: {event:#?}"
+    );
+    assert!(
+        event.has_field("reason", "no_database") && event.has_field("persisted", "false"),
+        "GmGrantAbility warn must say why and that nothing persisted: {event:#?}"
+    );
+    assert!(
+        event.has_field("ability_id", "2826"),
+        "GmGrantAbility warn must forward ability_id: {event:#?}"
     );
 }
 

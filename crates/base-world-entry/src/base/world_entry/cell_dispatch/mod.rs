@@ -141,6 +141,7 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::GrantItem { .. }
         | CellToBaseMsg::GrantCash { .. }
         | CellToBaseMsg::GrantTrainingPoints { .. }
+        | CellToBaseMsg::GmGrantAbility { .. }
         | CellToBaseMsg::GrantExpertise { .. }
         | CellToBaseMsg::GrantAppliedSciencePoints { .. }
         | CellToBaseMsg::ExecuteAuthoringSql { .. }

@@ -1,4 +1,5 @@
-//! Player-grant console commands: `.givecash`, `.givexp`.
+//! Player-grant console commands: `.givecash`, `.givexp`. `.giveability` is
+//! its sibling [`super::give_ability`].
 //!
 //! Both route through the same base-side grant sinks the native `gmGiveCash`/
 //! `gmGiveXp` methods use (`crates/cell-console/src/cell/console/gm/give.rs`

@@ -1,6 +1,6 @@
 //! Live-DB guards for the pet seed (pets campaign PT-S,
 //! `docs/analysis/pets/`): `resources.pet_summons`, the pet templates
-//! 350-369, the Straegis pet's ability set and the summon VFX on ability
+//! 350-359, the Straegis pet's ability set and the summon VFX on ability
 //! 2826.
 //!
 //! Each guard is about seed content that loads without error and is still
@@ -27,8 +27,10 @@ mod live_db {
     const ENTITYFLAG_PET: i64 = 1024;
     /// `ENTITYFLAG_NoPetLeveling`.
     const ENTITYFLAG_NO_PET_LEVELING: i64 = 8;
-    /// The template ids the pets campaign owns.
-    const PET_TEMPLATES: std::ops::RangeInclusive<i32> = 350..=369;
+    /// The pet templates. The campaign owns 350-369; PT-07 split off
+    /// 360-369 for its placed NPCs (the debug-hub pet trainer, 360), which
+    /// are ordinary class-'mob' spawns, so the pet guards cover 350-359.
+    const PET_TEMPLATES: std::ops::RangeInclusive<i32> = 350..=359;
     /// The faction every hostile NPC carries; anything else is friendly to
     /// players (D-PT06).
     const HOSTILE_FACTION: i32 = 10;
@@ -53,7 +55,7 @@ mod live_db {
     const EFFECT_INIT: i32 = 2000;
     const SUMMON_TARGET_PFX: i32 = 2293;
 
-    /// Every `pet_summons` row names a pet template: in 350-369, class
+    /// Every `pet_summons` row names a pet template: in 350-359, class
     /// `pet`, `ENTITYFLAG_Pet` set, no loot table. Read through the startup
     /// loaders, so a broken loader query fails here too.
     #[tokio::test]
@@ -83,7 +85,7 @@ mod live_db {
         for (ability_id, template_id, max_active) in rows {
             if !PET_TEMPLATES.contains(&template_id) {
                 bad.push(format!(
-                    "{ability_id}: template {template_id} is outside 350-369"
+                    "{ability_id}: template {template_id} is outside 350-359"
                 ));
             }
             if max_active < 1 {
@@ -126,7 +128,7 @@ mod live_db {
 
         let pets: Vec<(i32, String, i64)> = sqlx::query_as(
             "SELECT template_id, class, flags FROM resources.entity_templates \
-             WHERE template_id BETWEEN 350 AND 369 OR class = 'pet' OR flags & 1024 <> 0 \
+             WHERE template_id BETWEEN 350 AND 359 OR class = 'pet' OR flags & 1024 <> 0 \
              ORDER BY template_id",
         )
         .fetch_all(&pool)
@@ -140,7 +142,7 @@ mod live_db {
         for (id, class, flags) in &pets {
             assert!(
                 PET_TEMPLATES.contains(id),
-                "pet-like template {id} is outside 350-369"
+                "pet-like template {id} is outside 350-359"
             );
             assert_eq!(
                 class, "pet",
@@ -156,7 +158,7 @@ mod live_db {
         let placed: Vec<(i32, i32)> = sqlx::query_as(
             "SELECT s.spawn_id, s.template_id FROM resources.spawnlist s \
              JOIN resources.entity_templates t ON t.template_id = s.template_id \
-             WHERE t.template_id BETWEEN 350 AND 369 OR t.class = 'pet' OR t.flags & 1024 <> 0",
+             WHERE t.template_id BETWEEN 350 AND 359 OR t.class = 'pet' OR t.flags & 1024 <> 0",
         )
         .fetch_all(&pool)
         .await

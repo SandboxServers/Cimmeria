@@ -25,6 +25,7 @@ mod maintenance;
 mod meta;
 mod net_debug;
 mod patrol;
+mod pet;
 mod progression;
 mod query;
 mod social;
@@ -46,6 +47,7 @@ const GROUPS: &[&[Spec]] = &[
     spawn::SPECS,
     patrol::SPECS,
     social::SPECS,
+    pet::SPECS,
 ];
 
 /// Total registered commands across every family.

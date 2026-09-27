@@ -893,6 +893,14 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, aggression_override) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL, true, 30, 3);
 
+-- Pets campaign, PT-07: spawn 450, the debug hub's pet trainer (template 360,
+-- docs/content/debug-hub.md). Pets own spawns 450-469. It takes the next slot
+-- on the hub line after the crate: 3 units in from the A-B wall, 3 units past
+-- spawn 404, about 2.1 units in from the B-C wall and 10.9 from the respawner.
+-- Heading faces the room centre, yaw = atan2(dx, dz). It cannot die, so no
+-- respawn_secs, is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (450, -328.08, 73.472, -237.07, -0.4698, 12, 360, 'DebugHub_PetTrainer', NULL);
+
 --
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
@@ -900,5 +908,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 --
 
 
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 404, true);
+-- Past every seeded row and every reserved campaign spawn block (debug hub
+-- 400-404, crafting 410-429, organizations 430-449, pets 450-469, bank
+-- 470-489, social 490-499), so a row inserted without a spawn_id (the
+-- `.savespawn` seed SQL) never takes a used or reserved id. Raise the floor
+-- when a new block is reserved above 499; live_db_spawnlist_sequence.rs
+-- guards it. Same form as the crafting CR-11 footers.
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), 499), true);
 
