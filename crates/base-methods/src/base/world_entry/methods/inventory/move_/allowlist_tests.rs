@@ -6,7 +6,9 @@
 //! from `player_movable`. No seeded item allows both 1 and 15 today, so the
 //! 1 <-> 15 guard needs the synthetic type anyway.
 //!
-//! Sentinels: accounts and players `0x7000_B100..=0x7000_B131`, the item
+//! Sentinels: accounts and players `0x7000_B100..=0x7000_B131` and
+//! `0x7000_B160..=0x7000_B171` (B140/B141 and B150/B151 belong to the grant
+//! and player-load guards), the item
 //! type `0x7000_B1F0`, entities `0x7000_B1E0..`. Skip when `DATABASE_URL`
 //! is unset.
 
@@ -274,21 +276,53 @@ async fn moves_between_main_and_crafting_succeed_both_ways() {
     cleanup_all(&pool, account_id, player_id).await;
 }
 
-/// Concurrency guard: the refusal's resync snapshot is read and sent under
-/// the per-player move lock.
-///
-/// A second connection plays a move that is mid-commit: it holds the
-/// `(player, 0)` move lock and has already moved the item from slot 0 to
-/// slot 4. The refused move must not send anything while that lock is held,
-/// and once it commits, the one packet the refusal sends must show slot 4.
-///
-/// Without the lock the refusal read its snapshot straight away: it saw
-/// slot 0 (the other move had not committed yet) and sent it at once, so a
-/// stale snapshot could land after the committed move's own update.
-#[tokio::test]
-async fn refusal_resync_waits_for_the_move_lock_and_sends_the_committed_state() {
+/// The one `onUpdateItem` packet a refusal should send for a synthetic-type
+/// item at `(container, db_slot)`: an array of exactly that item. Packet
+/// sequence 0, the first packet on a fresh test client.
+fn expected_item_resync(entity_id: u32, item_id: i32, container_id: i32, db_slot: i32) -> Vec<u8> {
     use crate::mercury::{build_player_entity_method_packet, method_idx};
     use cimmeria_entity::inventory::InvItem;
+
+    let mut args = Vec::new();
+    args.extend_from_slice(&1u32.to_le_bytes());
+    InvItem {
+        id: item_id,
+        dbid: SYNTH_TYPE_ID,
+        stack_size: 1,
+        slot_id: db_slot + 1, // wire slots are 1-based
+        container_id,
+        is_bound: false,
+        durability: 100,
+        ammo_types: vec![],
+        cur_ammo_type: 0,
+        charges: 0,
+    }
+    .serialize(&mut args);
+    build_player_entity_method_packet(
+        &[0u8; 32],
+        0,
+        &[],
+        entity_id,
+        method_idx::ON_UPDATE_ITEM,
+        &args,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    )
+}
+
+/// Concurrency guard: the refusal resends the refused item under the
+/// per-player move lock, so a move of the SAME item that is mid-commit is
+/// finished first and the client gets its committed slot.
+///
+/// A second connection plays that move: it holds the `(player, 0)` move lock
+/// and has moved the item from slot 0 to slot 4 without committing. The
+/// refused move must send nothing while that lock is held, and after the
+/// commit its one packet must show slot 4.
+///
+/// Without the lock the refusal read the row straight away, saw slot 0 and
+/// sent it at once, so the stale position could land after the committed
+/// move's own update.
+#[tokio::test]
+async fn refusal_resync_waits_for_the_move_lock_and_sends_the_committed_state() {
     use std::time::Duration;
 
     let pool = require_db_or_skip!();
@@ -303,7 +337,8 @@ async fn refusal_resync_waits_for_the_move_lock_and_sends_the_committed_state() 
     let (transport, dyn_transport, addr, e2a, conn) = connected_client(entity_id, 40814);
     let db_pool = Some(Arc::new(pool.clone()));
 
-    // The concurrent move: lock taken, row moved, not yet committed.
+    // The concurrent move of the same item: lock taken, row moved, not yet
+    // committed.
     let mut other = pool.begin().await.expect("begin concurrent move");
     sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
         .bind(player_id)
@@ -351,33 +386,112 @@ async fn refusal_resync_waits_for_the_move_lock_and_sends_the_committed_state() 
 
     let sent = transport.drain();
     assert_eq!(sent.len(), 1, "exactly one resync packet");
-    let mut args = Vec::new();
-    args.extend_from_slice(&1u32.to_le_bytes());
-    InvItem {
-        id: item,
-        dbid: SYNTH_TYPE_ID,
-        stack_size: 1,
-        slot_id: 5, // DB slot 4, wire slots are 1-based
-        container_id: 1,
-        is_bound: false,
-        durability: 100,
-        ammo_types: vec![],
-        cur_ammo_type: 0,
-        charges: 0,
-    }
-    .serialize(&mut args);
-    let expected = build_player_entity_method_packet(
-        &[0u8; 32],
-        0,
-        &[],
+    assert_eq!(
+        sent[0].1,
+        expected_item_resync(entity_id, item, 1, 4),
+        "the resync must carry the committed slot (4), not the pre-commit one"
+    );
+
+    cleanup_all(&pool, account_id, player_id).await;
+}
+
+/// A refusal resends only the item the refused move named: one
+/// `onUpdateItem` whose array holds that item and nothing else, even when
+/// the player owns other items.
+///
+/// A full-inventory snapshot here would also carry every other row as of
+/// the read, and a grant committing between that read and the send (grants
+/// take per-container locks, not the move lock) would then be hidden on the
+/// client by the older snapshot.
+#[tokio::test]
+async fn refusal_resends_only_the_refused_item() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 0x60;
+    let player_id = TEST_BASE + 0x61;
+    let entity_id: u32 = 0x7000_B1E5;
+    cleanup_all(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    insert_synth_item_type(&pool).await;
+    let _other_item = insert_item(&pool, player_id, SYNTH_TYPE_ID, 1, 0, 1).await;
+    let sold = insert_item(&pool, player_id, SYNTH_TYPE_ID, 16, 2, 1).await;
+
+    let (transport, dyn_transport, addr, e2a, conn) = connected_client(entity_id, 40815);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_move_inventory_item(
         entity_id,
-        method_idx::ON_UPDATE_ITEM,
-        &args,
-        cimmeria_mercury::encryption::EncryptionVersion::V1,
+        player_id,
+        sold,
+        1,
+        5,
+        -1,
+        &db_pool,
+        &None,
+        &dyn_transport,
+        &conn,
+        &e2a,
+    )
+    .await;
+
+    let sent = transport.drain();
+    assert_eq!(sent.len(), 1, "a refusal sends exactly one packet");
+    assert_eq!(sent[0].0, addr, "to the refused player's own client");
+    assert_eq!(
+        sent[0].1,
+        expected_item_resync(entity_id, sold, 16, 2),
+        "the packet is onUpdateItem for the refused item alone, at its unchanged position"
+    );
+
+    cleanup_all(&pool, account_id, player_id).await;
+}
+
+/// A refused move naming an `item_id` the player does not own (a forged
+/// packet) sends nothing: there is no row to snap back, and the refusal is
+/// already logged.
+#[tokio::test]
+async fn refusal_of_an_unknown_item_sends_nothing() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 0x70;
+    let player_id = TEST_BASE + 0x71;
+    let entity_id: u32 = 0x7000_B1E6;
+    cleanup_all(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    insert_synth_item_type(&pool).await;
+    let owned = insert_item(&pool, player_id, SYNTH_TYPE_ID, 1, 0, 1).await;
+
+    let (transport, dyn_transport, addr, e2a, conn) = connected_client(entity_id, 40816);
+    let db_pool = Some(Arc::new(pool.clone()));
+    let capture = LogCapture::install();
+
+    handle_move_inventory_item(
+        entity_id,
+        player_id,
+        owned + 1_000_000,
+        17,
+        0,
+        -1,
+        &db_pool,
+        &None,
+        &dyn_transport,
+        &conn,
+        &e2a,
+    )
+    .await;
+
+    assert!(
+        capture
+            .find_event(
+                Level::WARN,
+                "move_rejected",
+                "target_container_needs_vault_session",
+            )
+            .is_some(),
+        "the refusal is still logged"
     );
     assert_eq!(
-        sent[0].1, expected,
-        "the resync must carry the committed state (slot 4), not the pre-commit snapshot"
+        transport.send_count_to(addr),
+        0,
+        "no packet for an item the player does not own"
     );
 
     cleanup_all(&pool, account_id, player_id).await;

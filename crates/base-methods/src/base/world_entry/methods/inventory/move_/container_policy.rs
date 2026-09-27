@@ -23,7 +23,7 @@ use cimmeria_entity::inventory::{
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use super::super::core::{send_full_inventory_update, send_full_inventory_update_via};
+use super::super::core::send_inventory_item_update_via;
 use crate::base::ConnectedClientState;
 
 /// Whether a player may move an item into or out of a container.
@@ -82,11 +82,15 @@ pub(super) fn refusal(container_id: i32) -> Option<Movable> {
     }
 }
 
-/// Log a refused move under the `bank` target and resync the player's
-/// inventory, so the client snaps the dragged item back to where the server
-/// still has it. The legacy server did the same (`Inventory.py:377-382`:
-/// mark the item dirty, then flush). No `onErrorCode` exists for "cannot
-/// move item", so the snap-back is the whole of the feedback.
+/// Log a refused move under the `bank` target and resend the dragged item,
+/// so the client snaps it back to where the server still has it. The legacy
+/// server did the same (`Inventory.py:377-382`: mark the item dirty, then
+/// flush). No `onErrorCode` exists for "cannot move item", so the snap-back
+/// is the whole of the feedback.
+///
+/// Only the named item is resent, never the whole inventory: see
+/// [`send_inventory_item_update_via`]. An `item_id` the player does not own
+/// sends nothing beyond the log line.
 ///
 /// The caller has already rolled back any transaction it opened.
 pub(super) async fn refuse_move(
@@ -114,9 +118,10 @@ pub(super) async fn refuse_move(
         reason = refusal_reason(end, verdict),
         "move_rejected: container is not player-movable; item stays put, client resynced"
     );
-    resync_under_move_lock(
+    resync_item_under_move_lock(
         entity_id,
         player_id,
+        item_id,
         pool,
         transport,
         connected,
@@ -125,21 +130,20 @@ pub(super) async fn refuse_move(
     .await;
 }
 
-/// Send the refusal's snapshot while holding the per-player move lock, the
+/// Resend the refused item while holding the per-player move lock, the
 /// `(player_id, 0)` advisory lock every move takes before it touches a row.
 ///
-/// Reading the snapshot outside the lock let it go stale against a move that
-/// was committing at the same moment: that move's own update could reach the
-/// client first, and the older refusal snapshot then undid it on screen.
-/// Under the lock the snapshot includes every move committed before it, and
-/// no later move can commit until the snapshot has been sent. The
-/// transaction only reads, so it is rolled back to release the lock.
+/// A move of the same item that is committing at the same moment finishes
+/// before the read, so the row sent is its committed position, and no later
+/// move of it can commit until the packet has gone. The transaction only
+/// reads, so it is rolled back to release the lock.
 ///
-/// If the lock cannot be taken, the resync is still sent without it: the
+/// If the lock cannot be taken, the item is still resent without it: the
 /// player must see the snap-back.
-async fn resync_under_move_lock(
+async fn resync_item_under_move_lock(
     entity_id: u32,
     player_id: i32,
+    item_id: i32,
     pool: &Arc<PgPool>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -174,9 +178,10 @@ async fn resync_under_move_lock(
 
     match locked {
         Some(mut tx) => {
-            send_full_inventory_update_via(
+            send_inventory_item_update_via(
                 entity_id,
                 player_id,
+                item_id,
                 &mut *tx,
                 transport,
                 connected,
@@ -186,10 +191,11 @@ async fn resync_under_move_lock(
             let _ = tx.rollback().await;
         }
         None => {
-            send_full_inventory_update(
+            send_inventory_item_update_via(
                 entity_id,
                 player_id,
-                pool,
+                item_id,
+                pool.as_ref(),
                 transport,
                 connected,
                 entity_to_addr,

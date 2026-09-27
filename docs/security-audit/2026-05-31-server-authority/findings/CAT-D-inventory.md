@@ -398,17 +398,18 @@ allowlist, `player_movable` in
 `crates/base-methods/src/base/world_entry/methods/inventory/move_/container_policy.rs`.
 Buyback (16) is refused in both directions, so a sold item can no longer
 be dragged back out for free either. Containers 17-20 now have a capacity
-(`bag_max_slots` returns 100), so the "not reachable because
-`bag_max_slots(17..=20)` returns 0" reasoning below no longer holds; the
-allowlist is what refuses them now. A refused move changes nothing, logs
-`move_rejected` under the `bank` target and resyncs the client.
+(`bag_max_slots` returns 100) and are refused by the allowlist, not by the
+slot-range check. A refused move changes nothing, logs `move_rejected`
+under the `bank` target and resends the refused item so the client snaps
+it back. The "Trust violation" and "Evidence" sections below describe the
+code as audited, before BV-01.
 
 **Severity**: Medium
 **Class**: Container ACL — wire-controlled `target_container_id`
 **Wire surface**: `Event_NetOut_MoveItem` (cell method 38)
 **Demonstrable / Likely-theoretical**: Likely-theoretical
 
-**Trust violation**
+**Trust violation** (state before BV-01)
 `bag_max_slots(target_container_id)` returns nonzero for container 16
 (`INV_BUYBACK`, 12 slots). The MoveItem handler accepts any
 `target_container_id > 0` with `bag_max_slots(...) > target_slot_id` — it
@@ -419,12 +420,15 @@ consults the per-item `container_sets` array; if any seeded item has
 `16` in its `container_sets`, the client can manually move that item
 into the buyback container outside the normal vendor flow. Buyback rows
 have special semantics (price, expiry) — landing a player-owned item
-there outside a sell flow creates dangling state. INV_BANK (17),
-INV_AUCTION (18), INV_TEAM_BANK (19), INV_COMMAND_BANK (20) are NOT
-reachable because `bag_max_slots(17..=20)` returns 0 (default match arm),
-so the slot-range check at move.rs:79 rejects.
+there outside a sell flow creates dangling state. At audit time INV_BANK
+(17), INV_AUCTION (18), INV_TEAM_BANK (19) and INV_COMMAND_BANK (20) were
+not reachable only because `bag_max_slots(17..=20)` returned 0 (default
+match arm), so the slot-range check at move.rs:79 rejected them. Since
+BV-01 they return 100 and the `player_movable` allowlist refuses them
+instead (17 until a vault session exists, 18-20 outright).
 
-**Evidence**
+**Evidence** (paths and line numbers before BV-01; the table now lives in
+`crates/entity/src/inventory.rs` and the allowlist in `move_/container_policy.rs`)
 - `crates/services/src/base/resources/mod.rs:28-38` — `bag_max_slots(16) = 12`
   (the buyback container) but no flag distinguishes "system-managed" from
   "player-movable" containers.
@@ -432,9 +436,10 @@ so the slot-range check at move.rs:79 rejects.
   — only checks `target_container_id > 0` and `slot_id` range; no
   player-movable whitelist.
 - `crates/entity/src/inventory.rs:13-32` — defines `INV_BANK..INV_COMMAND_BANK`
-  constants which are NOT in `bag_max_slots`'s match (return 0, so they're
-  already blocked). Buyback is at 16 in both lists, but listed in
-  `bag_max_slots` (so it IS reachable).
+  constants which were NOT in `bag_max_slots`'s match at audit time
+  (returned 0, so they were blocked by capacity alone; BV-01 gave them 100
+  and moved the blocking to the allowlist). Buyback is at 16 in both lists,
+  and was listed in `bag_max_slots` (so it WAS reachable).
 
 **Attack scenario**
 1. Find any item whose `resources.items.container_sets` includes 16

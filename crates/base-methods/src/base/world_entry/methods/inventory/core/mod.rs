@@ -264,36 +264,11 @@ pub async fn send_full_inventory_update(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> usize {
-    send_full_inventory_update_via(
-        entity_id,
-        player_id,
-        pool.as_ref(),
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await
-}
-
-/// [`send_full_inventory_update`] with the snapshot read through `executor`,
-/// so a caller can read it inside its own transaction, under a lock it
-/// holds (the move refusal does, under the per-player move lock).
-pub(crate) async fn send_full_inventory_update_via<'c, E>(
-    entity_id: u32,
-    player_id: i32,
-    executor: E,
-    transport: &Arc<dyn Transport>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) -> usize
-where
-    E: sqlx::PgExecutor<'c>,
-{
     let all_items: Vec<InventoryRow> = match sqlx::query_as::<_, InventoryRow>(
         INVENTORY_ITEM_SELECT,
     )
     .bind(player_id)
-    .fetch_all(executor)
+    .fetch_all(pool.as_ref())
     .await
     {
         Ok(rows) => rows,
@@ -307,9 +282,95 @@ where
         }
     };
 
-    let mut args = Vec::with_capacity(4 + all_items.len() * 48);
-    args.extend_from_slice(&(all_items.len() as u32).to_le_bytes());
-    for row in all_items.iter() {
+    send_update_item(entity_id, &all_items, transport, connected, entity_to_addr).await;
+
+    // Every inventory commit ends in this resync, so it is where the
+    // crafting options learn that a Field Crafting Tool entered or left the
+    // crafting bag. No second query: the rows above carry the
+    // container.
+    refresh_tools_from_rows(
+        entity_id,
+        player_id,
+        pool,
+        all_items
+            .iter()
+            .map(|r| (r.item_id, r.type_id, r.container_id)),
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+
+    all_items.len()
+}
+
+/// Send `onUpdateItem` for one inventory instance only, read through
+/// `executor` so the caller can read it inside its own transaction, under a
+/// lock it holds. Returns `false`, and sends nothing, when the player has no
+/// such row (a forged or stale `item_id`) or the read fails.
+///
+/// The move refusal uses this to snap one dragged item back. A full
+/// snapshot would also carry every other row as of the read, and a grant
+/// committing between that read and the send would then be hidden on the
+/// client by the older snapshot. One row avoids that: grants never touch an
+/// existing row, and moves of the same row serialize on the move lock.
+pub(crate) async fn send_inventory_item_update_via<'c, E>(
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+    executor: E,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> bool
+where
+    E: sqlx::PgExecutor<'c>,
+{
+    // Reuses the canonical select (it has no item filter, and it is pinned
+    // byte-for-byte against the player-load copy) and keeps the one row.
+    // Refusals are rare, so reading the player's rows here costs nothing
+    // that matters.
+    let row = match sqlx::query_as::<_, InventoryRow>(INVENTORY_ITEM_SELECT)
+        .bind(player_id)
+        .fetch_all(executor)
+        .await
+    {
+        Ok(rows) => rows.into_iter().find(|row| row.item_id == item_id),
+        Err(e) => {
+            tracing::error!(
+                entity_id,
+                player_id,
+                item_id,
+                "send_inventory_item_update_via: query failed: {e}"
+            );
+            return false;
+        }
+    };
+    let Some(row) = row else {
+        return false;
+    };
+    send_update_item(
+        entity_id,
+        std::slice::from_ref(&row),
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+    true
+}
+
+/// `onUpdateItem(ARRAY<InvItem>)` for `rows`, to the player's own client.
+async fn send_update_item(
+    entity_id: u32,
+    rows: &[InventoryRow],
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let mut args = Vec::with_capacity(4 + rows.len() * 48);
+    args.extend_from_slice(&(rows.len() as u32).to_le_bytes());
+    for row in rows {
         let item = cimmeria_entity::inventory::InvItem {
             id: row.item_id,
             dbid: row.type_id,
@@ -343,25 +404,6 @@ where
         },
     )
     .await;
-
-    // Every inventory commit ends in this resync, so it is where the
-    // crafting options learn that a Field Crafting Tool entered or left the
-    // crafting bag. No second query: the rows above carry the
-    // container.
-    refresh_tools_from_rows(
-        entity_id,
-        player_id,
-        pool,
-        all_items
-            .iter()
-            .map(|r| (r.item_id, r.type_id, r.container_id)),
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await;
-
-    all_items.len()
 }
 
 /// Tell the player's client to drop an inventory item instance from its
