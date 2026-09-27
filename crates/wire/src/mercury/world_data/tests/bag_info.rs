@@ -10,7 +10,9 @@ use super::sample_player_load_data;
 
 /// `onBagInfo` args for containers 1-20, written out by hand so the pin
 /// does not share code with the serializer: `count:u32`, then per bag
-/// `bagId:i32, numberOfSlots:i32`, in id order.
+/// `bagId:i32, numberOfSlots:i32`, in id order. The sizes are typed in from
+/// `BAG_SIZES` in `deprecated/python/common/Constants.py:142-163`, with the
+/// vault (17) replaced by the player's `bank_slots`.
 fn expected_bag_info(vault_slots: i32) -> Vec<u8> {
     let slots: [i32; 20] = [
         40,

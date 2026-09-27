@@ -4,7 +4,7 @@
 //! container (D-BV07). Before it, the move path checked only the target, and
 //! only through `bag_max_slots`, so any container with a capacity was a legal
 //! target and every container was a legal source. That let a sold item be
-//! dragged back out of the vendor buyback bag (16) without paying (#798).
+//! dragged back out of the vendor buyback bag (16) without paying.
 //!
 //! Every container a player could move into or out of before BV-01 is still
 //! `Yes`: 1 (main), 2 (mission), 3 (bandolier), 4-14 (equipment) and 15
@@ -23,7 +23,7 @@ use cimmeria_entity::inventory::{
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use super::super::core::send_full_inventory_update;
+use super::super::core::{send_full_inventory_update, send_full_inventory_update_via};
 use crate::base::ConnectedClientState;
 
 /// Whether a player may move an item into or out of a container.
@@ -45,7 +45,7 @@ pub(crate) fn player_movable(container_id: i32) -> Movable {
     match container_id {
         // 1 main, 2 mission, 3 bandolier, 4-14 equipment, 15 crafting.
         INV_MAIN..=INV_ARTIFACT2 | INV_CRAFTING => Movable::Yes,
-        // Buyback leaves only through `buybackItems`, which charges (#798).
+        // Buyback leaves only through `buybackItems`, which charges.
         INV_BUYBACK => Movable::No,
         INV_BANK => Movable::VaultSession,
         // Auction escrow and the Team and Command vaults: refused until
@@ -114,7 +114,7 @@ pub(super) async fn refuse_move(
         reason = refusal_reason(end, verdict),
         "move_rejected: container is not player-movable; item stays put, client resynced"
     );
-    send_full_inventory_update(
+    resync_under_move_lock(
         entity_id,
         player_id,
         pool,
@@ -123,6 +123,80 @@ pub(super) async fn refuse_move(
         entity_to_addr,
     )
     .await;
+}
+
+/// Send the refusal's snapshot while holding the per-player move lock, the
+/// `(player_id, 0)` advisory lock every move takes before it touches a row.
+///
+/// Reading the snapshot outside the lock let it go stale against a move that
+/// was committing at the same moment: that move's own update could reach the
+/// client first, and the older refusal snapshot then undid it on screen.
+/// Under the lock the snapshot includes every move committed before it, and
+/// no later move can commit until the snapshot has been sent. The
+/// transaction only reads, so it is rolled back to release the lock.
+///
+/// If the lock cannot be taken, the resync is still sent without it: the
+/// player must see the snap-back.
+async fn resync_under_move_lock(
+    entity_id: u32,
+    player_id: i32,
+    pool: &Arc<PgPool>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let locked = match pool.begin().await {
+        Ok(mut tx) => match sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
+            .bind(player_id)
+            .execute(&mut *tx)
+            .await
+        {
+            Ok(_) => Some(tx),
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::warn!(
+                    target: "bank",
+                    player_id,
+                    "move_rejected: move lock failed, resyncing without it: {e}"
+                );
+                None
+            }
+        },
+        Err(e) => {
+            tracing::warn!(
+                target: "bank",
+                player_id,
+                "move_rejected: begin failed, resyncing without the move lock: {e}"
+            );
+            None
+        }
+    };
+
+    match locked {
+        Some(mut tx) => {
+            send_full_inventory_update_via(
+                entity_id,
+                player_id,
+                &mut *tx,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+            let _ = tx.rollback().await;
+        }
+        None => {
+            send_full_inventory_update(
+                entity_id,
+                player_id,
+                pool,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -140,7 +214,7 @@ mod tests {
                 "container {container_id} was movable before BV-01 and must stay movable"
             );
         }
-        assert_eq!(player_movable(16), Movable::No, "buyback (#798)");
+        assert_eq!(player_movable(16), Movable::No, "buyback");
         assert_eq!(player_movable(17), Movable::VaultSession, "personal vault");
         for container_id in [18, 19, 20] {
             assert_eq!(

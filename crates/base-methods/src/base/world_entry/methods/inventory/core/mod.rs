@@ -264,11 +264,36 @@ pub async fn send_full_inventory_update(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> usize {
+    send_full_inventory_update_via(
+        entity_id,
+        player_id,
+        pool.as_ref(),
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await
+}
+
+/// [`send_full_inventory_update`] with the snapshot read through `executor`,
+/// so a caller can read it inside its own transaction, under a lock it
+/// holds (the move refusal does, under the per-player move lock).
+pub(crate) async fn send_full_inventory_update_via<'c, E>(
+    entity_id: u32,
+    player_id: i32,
+    executor: E,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> usize
+where
+    E: sqlx::PgExecutor<'c>,
+{
     let all_items: Vec<InventoryRow> = match sqlx::query_as::<_, InventoryRow>(
         INVENTORY_ITEM_SELECT,
     )
     .bind(player_id)
-    .fetch_all(pool.as_ref())
+    .fetch_all(executor)
     .await
     {
         Ok(rows) => rows,

@@ -213,7 +213,7 @@ pub async fn handle_move_inventory_item(
         }
     };
 
-    // D-BV07 allowlist, source end (#798). The source container is only
+    // D-BV07 allowlist, source end. The source container is only
     // known from the locked row, so this sits after the FOR UPDATE read.
     if let Some(verdict) = refusal(source.container_id) {
         let _ = tx.rollback().await;

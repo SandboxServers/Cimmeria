@@ -33,7 +33,7 @@ pub const INV_COMMAND_BANK: i32 = 20;
 
 /// Max items per container: the one capacity table.
 ///
-/// Values are `BAG_SIZES` in `python/common/Constants.py:142-163`. Every
+/// Values are `BAG_SIZES` in `deprecated/python/common/Constants.py:142-163`. Every
 /// other view of container capacity derives from this function:
 /// [`BAG_SIZES`] (what `onBagInfo` declares) is built from it at compile
 /// time, and `cimmeria_wire::containers::bag_max_slots` re-exports it. It
@@ -41,10 +41,19 @@ pub const INV_COMMAND_BANK: i32 = 20;
 /// depends on this crate, not the other way round.
 ///
 /// Containers 17-20 (bank, auction, Team vault, Command vault) return
-/// their ceiling of 100. For the personal vault (17) that is the maximum
-/// a player can expand to; the size a given player actually has is
-/// `sgw_player.bank_slots` (see [`Inventory::with_bank_slots`]). A
-/// non-zero capacity does not make a container player-movable: the move
+/// their ceiling of 100. For the three vaults that is the most they can
+/// expand to, not the size they have:
+///
+/// - The personal vault (17) is sized per player by `sgw_player.bank_slots`
+///   (see [`Inventory::with_bank_slots`]).
+/// - The Team (19) and Command (20) vaults are sized per organization. The
+///   client derives their visible grid from the declared container size
+///   (`Team.lua` / `Command.lua` `ValidateScrollbar`, "40 to 100, in
+///   intervals of 10"; organizations audit A-15). No per-organization size
+///   is stored or sent yet, so `onBagInfo` declares them at the ceiling
+///   until the org-vault packets add one.
+///
+/// A non-zero capacity does not make a container player-movable: the move
 /// path's allowlist decides that.
 pub const fn bag_max_slots(container_id: i32) -> i32 {
     match container_id {
@@ -384,7 +393,10 @@ mod tests {
         }
     }
 
-    /// Values from `Constants.py` BAG_SIZES, including the vault ceilings.
+    /// Independent fixture: typed in by hand from `BAG_SIZES` in
+    /// `deprecated/python/common/Constants.py:142-163` (the legacy server's
+    /// table), not derived from `bag_max_slots`, so a wrong edit to the
+    /// table fails here.
     #[test]
     fn bag_max_slots_matches_constants_py() {
         let expected = [
@@ -433,7 +445,9 @@ mod tests {
     }
 
     /// Wire-format, byte-exact: a default player's `onBagInfo` declares
-    /// containers 1-20 in id order, with the vault (17) at 40.
+    /// containers 1-20 in id order, with the vault (17) at 40. The expected
+    /// sizes are typed in from `deprecated/python/common/Constants.py:142-163`,
+    /// with 17 replaced by the `sgw_player.bank_slots` default.
     #[test]
     fn default_player_bag_info_declares_vault_at_40_byte_exact() {
         let data = Inventory::new(0)

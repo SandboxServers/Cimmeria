@@ -1,14 +1,12 @@
-//! Inventory container capacities.
+//! Inventory container capacities: a re-export, not a table.
 //!
-//! The cell's bandolier slot check reads the capacity table from here so
-//! the combat code does not depend on the base's resource loaders;
-//! `cimmeria-resources` re-exports it again at its old
-//! `base::resources::bag_max_slots` path, and its `inventory_slots` tests pin
-//! the values.
+//! The one capacity table is `cimmeria_entity::inventory::bag_max_slots`
+//! (D-BV06). It lives in `cimmeria-entity` because `BAG_SIZES`, which
+//! `onBagInfo` sends, is derived from it there, and this crate depends on
+//! `cimmeria-entity` rather than the other way round.
 //!
-//! The table itself is `cimmeria_entity::inventory::bag_max_slots`, the one
-//! copy (D-BV06). It moved there so `BAG_SIZES`, which `onBagInfo` sends,
-//! can be derived from it: this crate depends on `cimmeria-entity`, so the
-//! table has to live in the lower crate.
+//! This path is kept for the callers that already use it: the cell's
+//! bandolier slot check, and `cimmeria-resources`, which re-exports it again
+//! as `base::resources::bag_max_slots`.
 
 pub use cimmeria_entity::inventory::bag_max_slots;
