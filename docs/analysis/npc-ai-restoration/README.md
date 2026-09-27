@@ -69,6 +69,8 @@ You are the Claude Code coordinator for the NPC AI restoration. Implement the pa
 
 ## UAT milestones
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#npc-ai).
+
 The owner plays on the colo, as GM with `.aggro off` unset once NA13 lands, using `.bug <note>` at every oddity. The coordinator reads SigNoz afterwards with the queries in [telemetry.md §3](telemetry.md#3-live-session-runbook).
 
 | Milestone | After | Owner checks | Telemetry must show |

@@ -141,6 +141,8 @@ Agents are run as defined in `.claude/agents/` with their own model settings.
 
 ## Validation And UAT Gates
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#harset).
+
 Tests must fail when the seed rows or the Rust change are removed. Chain-replay tests assert exact resolved action lists for both the matching and the adjacent non-matching state. Executor arms need a unit test on the side effect. Live-DB tests use `require_db_or_skip!` and serialized execution. Arrival coordinates additionally need a runtime `is_point_valid` assertion against the loaded `harset.nav` where a mesh exists.
 
 | Milestone | User-assisted in-client acceptance; all pending |

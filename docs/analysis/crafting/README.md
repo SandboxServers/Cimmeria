@@ -93,6 +93,8 @@ You are the Claude Code coordinator for the crafting campaign. Implement [work-p
 
 ## UAT milestone
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#crafting).
+
 The owner runs [CR-14](work-packets.md#cr-14-owner-uat-colo-after-the-release) on the colo after the `/release` deploy, from the stasis-room debug hub, as GM, and uses `.bug <note>` at each oddity. Every step has a SigNoz query that shows what the server did (CR-14's query table), so an oddity can be diagnosed from telemetry without a repro.
 
 ## Where confidence is low

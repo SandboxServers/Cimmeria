@@ -60,6 +60,10 @@ Follow-up issues:
 - #919: ability `min_range` / `max_range` look like centimetres but are compared as world units, so a Jaffa fires 1652 (range 3000) from any distance.
 - #891: `LogCapture` tests flake under plain `cargo test` (a callsite-interest race between threads).
 
+## UAT
+
+The in-game checklist (U1-U20) and its SigNoz queries are in [handoffs/session-resume.md](handoffs/session-resume.md#uat-checklist-owner-colo-after-the-pt-13-release). Also in the unified guide: [docs/guides/unified-uat.md](../../guides/unified-uat.md#pets).
+
 ## What was found
 
 Against `main` @ `95366c59`. The [audit](audit.md) has the evidence for each row. This table is the pre-campaign snapshot. Since then every planned packet has merged: PT-E1 (#863), PT-S (#865), PT-01 (#870), PT-02 (#892), PT-06 (#889), PT-03 (#890), PT-05 (#896), PT-04 (#901), PT-07 (#908), PT-11 (#918) and PT-08 (#920); see [Campaign outcome](#campaign-outcome). Each packet's status is in [work-packets.md](work-packets.md).

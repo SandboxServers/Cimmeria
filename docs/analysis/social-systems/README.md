@@ -163,6 +163,8 @@ You are the coordinator for the social-systems campaign (mail, chat, 1v1 duels).
 
 ## UAT milestone
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#mail-chat-and-duels).
+
 The owner runs [SS-UAT](work-packets.md#ss-uat-owner-uat-colo-after-the-release) on the colo after the release. Mail and GM broadcast work with one client. Tells, Ignore and duels need two clients (two accounts); each step lists a solo fallback where one exists. The coordinator reads SigNoz afterwards for the `mail`, `chat`, `duel` and `rate_limit` targets. Issues #72 (mail) and #569 (duels) close with a pointer to this ledger; the follow-ups the campaign filed are #906, #913, #914 and #928 ([session resume](handoffs/session-resume.md#follow-up-issues)).
 
 ## Where confidence is low

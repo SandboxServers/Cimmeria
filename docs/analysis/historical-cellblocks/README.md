@@ -82,6 +82,8 @@ The corrected package renames those 192 files to the dash form. File contents ar
 
 ## What the UAT must settle
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#historical-cellblocks).
+
 These are properties of the recovered packages that no server change can fix. Each could stop a map from loading or rendering correctly.
 
 - **Package version.** The historical packages are Epic 486 with licensee version 6 (7 for 63682). The client's own are licensee 8. Older licensee versions load only as far as SGW's own serializers kept back-compat branches. `UNRESOLVED`

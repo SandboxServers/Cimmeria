@@ -85,6 +85,8 @@ You are the Claude Code coordinator for the bank campaign. Implement [work-packe
 
 ## UAT
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#bank-and-vault).
+
 The owner runs the checklist in [session-resume.md](handoffs/session-resume.md#uat-checklist) on the colo after each release, as a GM, and uses `.bug <note>` at each oddity. The coordinator then reads SigNoz for the `bank` target.
 
 ## Where confidence is low
