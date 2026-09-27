@@ -363,3 +363,39 @@ async fn a_player_kill_of_a_huge_level_victim_logs_xp_overflow_off_pets() {
     assert!(row.has_field("attacker", &OWNER.to_string()), "{row:?}");
     assert_ne!(row.target, "pets.credit", "{row:?}");
 }
+
+/// **Guard (#889).** The cell -> base channel is closed, so the owner's
+/// `GrantXP` cannot be delivered. `pet_kill_credited` must not be logged
+/// (the owner got nothing); one ERROR `pet_kill_credit_undelivered`
+/// (`reason = send_failed`) carries the same fields instead. Reverted (the
+/// success row written before the send), `pet_kill_credited` appears.
+#[tokio::test]
+async fn a_pet_kill_on_a_closed_channel_logs_undelivered_not_credited() {
+    let (mut mgr, pet, mob) = world();
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    drop(rx);
+    let capture = LogCapture::install();
+    let _ = super::kill_npc_out_of_band(mob, pet, false, true, &tx, &mut mgr).await;
+
+    let logs = capture.all();
+    assert!(
+        !logs
+            .iter()
+            .any(|c| c.has_field("event", "pet_kill_credited")),
+        "no success row for XP that never left the cell: {logs:#?}"
+    );
+    let row = only_event(&logs, "pets.credit", "pet_kill_credit_undelivered");
+    assert_eq!(row.level, Level::ERROR);
+    assert!(row.has_field("reason", "send_failed"), "{row:?}");
+    assert!(row.has_field("victim_id", &mob.to_string()), "{row:?}");
+    assert!(row.has_field("xp_granted", &MOB_XP.to_string()), "{row:?}");
+    assert_pet(&row, pet);
+    assert_owner_identity(&row);
+    assert!(
+        !logs.iter().any(|c| c
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("player kill credit lost"))),
+        "one row per lost pet grant, not a second module-target line: {logs:#?}"
+    );
+}

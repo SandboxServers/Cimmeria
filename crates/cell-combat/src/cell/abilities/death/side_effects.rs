@@ -79,10 +79,11 @@ pub(super) async fn send_death_sequence(
 /// and a mob that killed a pet sent `GrantXP` to the mob's id.
 ///
 /// Telemetry: a pet's kill logs `event = "pet_kill_credited"` on
-/// `pets.credit`; every kill that pays nothing logs its `reason` (see
-/// [`NoKillXp`]). The `GrantXP` hop is the only thing standing between a
-/// kill and the player's level bar, so a send failure is an `error!`, not a
-/// silent drop.
+/// `pets.credit` once the `GrantXP` send succeeded, or
+/// `pet_kill_credit_undelivered` if it failed; every kill that pays nothing
+/// logs its `reason` (see [`NoKillXp`]). The `GrantXP` hop is the only thing
+/// standing between a kill and the player's level bar, so a send failure is
+/// an `error!`, not a silent drop.
 pub(super) async fn grant_kill_xp(
     target_eid: u32,
     attacker_id: u32,
@@ -113,16 +114,37 @@ pub(super) async fn grant_kill_xp(
         xp,
         "Granting kill XP"
     );
-    if let Some(pet) = space_mgr
+    let sent = tx
+        .send(CellToBaseMsg::GrantXP {
+            entity_id: recipient,
+            xp_amount: xp,
+            // Mob-kill XP is not GM-sourced — no GM feedback line.
+            gm_feedback_to: None,
+        })
+        .await;
+
+    let Some(pet) = space_mgr
         .get_entity(attacker_id)
         .and_then(|e| e.pet.as_ref())
-    {
-        // `xp_before` is not logged: the cell holds no XP total. The base's
-        // `progression.grant_xp` span (keyed on the owner's `entity_id`) is
-        // where the before/after lives. The identity is the summon-time
-        // capture, the same one `credit_recipient` just matched.
-        let id = space_mgr.pets.summoner_identity(attacker_id);
-        tracing::debug!(
+    else {
+        if let Err(e) = sent {
+            tracing::error!(
+                attacker = attacker_id, credited = recipient, target = target_eid, xp,
+                error = %e,
+                "GrantXP send to base failed -- player kill credit lost"
+            );
+        }
+        return;
+    };
+    // A pet kill's row is written only once the send's outcome is known, so
+    // `pet_kill_credited` never claims XP the owner did not get (#889).
+    // `xp_before` is not logged: the cell holds no XP total. The base's
+    // `progression.grant_xp` span (keyed on the owner's `entity_id`) is where
+    // the before/after lives. The identity is the summon-time capture, the
+    // same one `credit_recipient` just matched.
+    let id = space_mgr.pets.summoner_identity(attacker_id);
+    match sent {
+        Ok(()) => tracing::debug!(
             target: "pets.credit",
             event = "pet_kill_credited",
             entity_id = attacker_id,
@@ -137,22 +159,28 @@ pub(super) async fn grant_kill_xp(
             xp_granted = xp,
             transfer_xp = pet.transfer_xp,
             "pet kill credited to its owner"
-        );
-    }
-    if let Err(e) = tx
-        .send(CellToBaseMsg::GrantXP {
-            entity_id: recipient,
-            xp_amount: xp,
-            // Mob-kill XP is not GM-sourced — no GM feedback line.
-            gm_feedback_to: None,
-        })
-        .await
-    {
-        tracing::error!(
-            attacker = attacker_id, credited = recipient, target = target_eid, xp,
+        ),
+        // ERROR, like the player-kill send failure above: the XP is lost and
+        // the cell -> base channel is closed, which needs fixing. One row,
+        // on the pets target, instead of the module-target line.
+        Err(e) => tracing::error!(
+            target: "pets.credit",
+            event = "pet_kill_credit_undelivered",
+            reason = "send_failed",
+            entity_id = attacker_id,
+            pet_id = attacker_id,
+            owner_id = recipient,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            victim_id = target_eid,
+            victim_template_id = target.template_id,
+            victim_level = target.level,
+            base_xp,
+            xp_granted = xp,
+            transfer_xp = pet.transfer_xp,
             error = %e,
-            "GrantXP send to base failed -- player kill credit lost"
-        );
+            "pet kill XP lost: GrantXP send to base failed"
+        ),
     }
 }
 
