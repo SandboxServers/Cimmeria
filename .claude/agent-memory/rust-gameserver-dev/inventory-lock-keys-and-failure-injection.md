@@ -9,7 +9,8 @@ Inventory writers take different locks (verified 2026-09-27, BV-01 round 4, PR #
 
 - `moveItem`: advisory `(player_id, 0)`, then `(player_id, container)` for target and source, then row `FOR UPDATE`.
 - grants: advisory `(player_id, container)` only; `grant_item.rs` MERGES into an existing stack with `UPDATE ... stack_size = stack_size + $1` (so "grants never touch an existing row" is false).
-- removes / uses / trades / vendor sale: row `FOR UPDATE` or a bare `UPDATE`/`DELETE`, no advisory lock.
+- removes: row `FOR UPDATE` or a bare `UPDATE`/`DELETE`, no advisory lock.
+- trade (since 2026-09-27) and crafting item use: `take_inventory_locks` (key 0, then 1, 15), rows, then player rows. Vendor buyback (keys 0,1,16) and sell (keys 0,16) too since the same change; guards in `vendor/lock_order_tests.rs`.
 
 **Why:** a read-then-send under only the `(player, 0)` move lock can be overtaken by a stack merge; the stale packet lands after the writer's own `onUpdateItem`. Every writer row-locks the row it changes, so `SELECT 1 ... WHERE character_id=$1 AND item_id=$2 FOR UPDATE` (after the advisory lock, same order as the move path) closes it for one-row resends. `FOR UPDATE` cannot sit on the nullable side of a `LEFT JOIN`, so lock with a separate statement.
 

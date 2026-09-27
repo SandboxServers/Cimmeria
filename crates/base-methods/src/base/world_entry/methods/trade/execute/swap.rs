@@ -1,28 +1,53 @@
 //! Atomic-swap transaction internals.
 //!
 //! Owns the actual `BEGIN`-to-`COMMIT` pipeline: advisory locks,
-//! `FOR UPDATE` reads of naquadah + items, the validation gauntlet,
-//! the two-phase parked-row item move, and the cash debit/credit.
-//! Public entry is [`atomic_swap`]; helpers (`lock_items`,
-//! `reserve_main_slots_excluding`, `park_*`, `move_item_to_recipient`)
-//! are crate-private but exposed as `pub(super)` so the unit-test
-//! modules in [`super::tests`] can pin their invariants.
+//! `FOR UPDATE` reads of the offered items, the recipients' destination
+//! bags and naquadah, the validation gauntlet, the two-phase parked-row
+//! item move, and the cash debit/credit. Public entry is [`atomic_swap`];
+//! where each item lands and which slots it takes live in
+//! [`super::placement`].
+//!
+//! ## Lock order
+//!
+//! The shared inventory order
+//! (`crate::base::crafting::inventory_locks`): every advisory lock first,
+//! then inventory rows, then `sgw_player` rows. For two players:
+//!
+//! 1. the lower `player_id`'s keys `(p, 0)`, `(p, 1)`, `(p, 15)`, then the
+//!    higher's, via `take_inventory_locks`. Both tradeable bags are locked
+//!    whichever holds the items: the destinations are only known once the
+//!    rows are read, and the advisory locks must come first;
+//! 2. the offered item rows, then every row in each recipient's
+//!    destination bags;
+//! 3. both `sgw_player` rows, ascending `player_id`.
+//!
+//! Crafting completions, vendor purchase, the move path, item use and the
+//! gate-mail ops all take `(p, 0)` before any row, so each of them queues
+//! behind a trade on the same player (or the trade behind it) instead of
+//! holding a row the other needs.
 
 use std::sync::Arc;
 
 use cimmeria_entity::inventory::INV_MAIN;
 use sqlx::{PgPool, Postgres, Transaction};
 
-use super::super::super::vendor::serializers::free_inventory_slots;
-use super::{TradeAbort, TradeFinalBalances, TradeSide};
-use crate::base::resources::{bag_max_slots, bag_min_slot};
+use super::placement::{plan_destinations, reserve_slots, ItemMove, TRADEABLE_CONTAINERS};
+use super::{TradeAbort, TradeCommitted, TradeFinalBalances, TradeSide};
+use crate::base::crafting::inventory_locks::take_inventory_locks;
 
-#[derive(sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub(super) struct TradeItemRow {
     pub(super) item_id: i32,
+    pub(super) type_id: i32,
     pub(super) container_id: i32,
     pub(super) slot_id: i32,
     pub(super) bound: bool,
+    /// The type's `resources.items.container_sets`; `None` when the type
+    /// has no `resources.items` row (see `known_type`) or the column is
+    /// NULL.
+    pub(super) container_sets: Option<Vec<i32>>,
+    /// Whether `resources.items` has a row for `type_id`.
+    pub(super) known_type: bool,
 }
 
 #[tracing::instrument(
@@ -42,7 +67,7 @@ pub(super) async fn atomic_swap(
     pool: &Arc<PgPool>,
     p1: &TradeSide,
     p2: &TradeSide,
-) -> Result<TradeFinalBalances, TradeAbort> {
+) -> Result<TradeCommitted, TradeAbort> {
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
 
     // Per-phase debug! checkpoints fire BEFORE each `await?` so a
@@ -53,9 +78,8 @@ pub(super) async fn atomic_swap(
     // rule 2 — these are sub-state breadcrumbs inside the parent
     // `trade.atomic_swap` span.
 
-    // Lock both players' rows in a deterministic order to avoid
-    // deadlocks against any other paths that lock multiple players at
-    // once. Ascending player_id is the convention.
+    // Ascending player_id is the convention for every path that locks
+    // two players, so two trades sharing a player cannot deadlock.
     let (lo, hi) = if p1.player_id <= p2.player_id {
         (p1, p2)
     } else {
@@ -68,13 +92,47 @@ pub(super) async fn atomic_swap(
         hi_player = hi.player_id,
         "trade.atomic_swap: acquiring per-player advisory locks"
     );
-    take_advisory_lock(&mut tx, lo.player_id).await?;
-    take_advisory_lock(&mut tx, hi.player_id).await?;
+    take_inventory_locks(&mut tx, lo.player_id, TRADEABLE_CONTAINERS).await?;
+    take_inventory_locks(&mut tx, hi.player_id, TRADEABLE_CONTAINERS).await?;
 
-    // Read + lock both naquadah balances. SELECT FOR UPDATE serializes
-    // against vendor purchase / sell / loot / mission grant paths.
-    let p1_balance = read_naquadah_for_update(&mut tx, p1.player_id, "p1").await?;
-    let p2_balance = read_naquadah_for_update(&mut tx, p2.player_id, "p2").await?;
+    // Validate + lock items from each side. We pull the full row so we
+    // can check `bound` (soul-bound items never change hands), detect
+    // items the player claimed but doesn't actually own, and gate on
+    // `container_id` against `TRADEABLE_CONTAINERS`.
+    tracing::debug!(
+        target: "trade.atomic_swap",
+        phase = "lock_items",
+        p1_count = p1.item_instance_ids.len(),
+        p2_count = p2.item_instance_ids.len(),
+        "trade.atomic_swap: SELECT FOR UPDATE on offered item rows"
+    );
+    let p1_items = lock_items(&mut tx, p1.player_id, &p1.item_instance_ids, "p1").await?;
+    let p2_items = lock_items(&mut tx, p2.player_id, &p2.item_instance_ids, "p2").await?;
+
+    // Where each item lands in its recipient's bags: decided by the
+    // item's own `container_sets`, never by the client.
+    let p1_dest = plan_destinations(&p1_items, p1.player_id, "p1")?;
+    let p2_dest = plan_destinations(&p2_items, p2.player_id, "p2")?;
+
+    tracing::debug!(
+        target: "trade.atomic_swap",
+        phase = "reserve_slots",
+        p1_needed = p2_items.len(),
+        p2_needed = p1_items.len(),
+        "trade.atomic_swap: picking free destination slots for each recipient"
+    );
+    let p2_new_slots = reserve_slots(&mut tx, p2.player_id, &p1_dest, &p2_items).await?;
+    let p1_new_slots = reserve_slots(&mut tx, p1.player_id, &p2_dest, &p1_items).await?;
+
+    // Player rows last, ascending. SELECT FOR UPDATE serializes against
+    // vendor purchase / sell / loot / mission grant paths.
+    let lo_balance = read_naquadah_for_update(&mut tx, lo.player_id, which_of(lo, p1)).await?;
+    let hi_balance = read_naquadah_for_update(&mut tx, hi.player_id, which_of(hi, p1)).await?;
+    let (p1_balance, p2_balance) = if std::ptr::eq(lo, p1) {
+        (lo_balance, hi_balance)
+    } else {
+        (hi_balance, lo_balance)
+    };
 
     if p1_balance < p1.cash {
         let _ = tx.rollback().await;
@@ -95,52 +153,6 @@ pub(super) async fn atomic_swap(
         });
     }
 
-    // Validate + lock items from each side. We pull the full row so we
-    // can check `bound` (soul-bound items never change hands), detect
-    // items the player claimed but doesn't actually own, and gate on
-    // `container_id` — only INV_MAIN is on the tradeable whitelist
-    // (buyback / bank / mission / equip slots / bandolier are all
-    // rejected). See `TRADEABLE_CONTAINERS` below for rationale.
-    tracing::debug!(
-        target: "trade.atomic_swap",
-        phase = "lock_items",
-        p1_count = p1.item_instance_ids.len(),
-        p2_count = p2.item_instance_ids.len(),
-        "trade.atomic_swap: SELECT FOR UPDATE on offered item rows"
-    );
-    let p1_items = lock_items(&mut tx, p1.player_id, &p1.item_instance_ids, "p1").await?;
-    let p2_items = lock_items(&mut tx, p2.player_id, &p2.item_instance_ids, "p2").await?;
-
-    // Slot reservation: recipient must have room in INV_MAIN for the
-    // items they're about to receive. Slots are taken from MIN→MAX so a
-    // recipient with a full main bag fails fast.
-    //
-    // The recipient of p1's items is p2, and vice versa.
-    //
-    // Important: the recipient's OWN outgoing INV_MAIN items count as
-    // "currently occupied" in the raw SELECT, but they're about to be
-    // moved to the other side in this same transaction — so for the
-    // purposes of slot reservation they should be treated as free.
-    // Without this exclusion, a valid full-bag swap (e.g., P2's bag is
-    // full but one of those slots holds the item P2 is trading away)
-    // would fail spuriously. The atomic-commit transaction makes this
-    // sound: either both sides' UPDATEs land, or neither does.
-    let p2_vacating_slots = main_slot_ids_of(&p2_items);
-    let p1_vacating_slots = main_slot_ids_of(&p1_items);
-    tracing::debug!(
-        target: "trade.atomic_swap",
-        phase = "reserve_main_slots_excluding",
-        p1_needed = p2_items.len(),
-        p2_needed = p1_items.len(),
-        "trade.atomic_swap: picking free INV_MAIN slots for each recipient"
-    );
-    let p2_new_slots =
-        reserve_main_slots_excluding(&mut tx, p2.player_id, p1_items.len(), &p2_vacating_slots)
-            .await?;
-    let p1_new_slots =
-        reserve_main_slots_excluding(&mut tx, p1.player_id, p2_items.len(), &p1_vacating_slots)
-            .await?;
-
     // Apply the item moves in two phases to avoid violating the
     // `sgw_inventory_unique_slot` UNIQUE INDEX on
     // `(character_id, container_id, slot_id)`. A single-statement re-key
@@ -152,29 +164,31 @@ pub(super) async fn atomic_swap(
     //
     // The two-phase shape mirrors the swap pattern in `inventory/move_`:
     //   Phase 1: park every outgoing item in a unique negative sentinel
-    //            slot in INV_MAIN. character_id and container_id are left
-    //            on the sender so the parked rows still belong to
-    //            someone (FK + observability), only slot_id changes.
+    //            slot in INV_MAIN. character_id is left on the sender so
+    //            the parked rows still belong to someone (FK +
+    //            observability), only container_id/slot_id change.
     //   Phase 2: re-key each parked row to the recipient and into the
-    //            reserved destination slot. By this point every original
-    //            slot is vacant on both sides, so no UNIQUE collision.
+    //            reserved destination bag and slot. By this point every
+    //            original slot is vacant on both sides, so no UNIQUE
+    //            collision.
     //
     // Each parked item gets its OWN distinct negative slot so the parked
     // set itself can't collide. (The single-sentinel approach in
     // `inventory/move_` works there because that path swaps at most two
-    // items; trade can move up to 40 per side.) The (player_id, INV_MAIN)
-    // advisory lock taken upstream serializes against any other path
-    // that might also be parking rows for either player.
+    // items; trade can move up to 40 per side.)
     let total_items = p1_items.len() + p2_items.len();
     for (parked_index, row) in (0_i32..).zip(p1_items.iter().chain(p2_items.iter())) {
         let sentinel = park_sentinel_slot(parked_index, total_items);
         park_item_at_sentinel(&mut tx, row.item_id, sentinel).await?;
     }
-    for (row, &new_slot) in p1_items.iter().zip(p2_new_slots.iter()) {
-        move_item_to_recipient(&mut tx, row.item_id, p2.player_id, new_slot).await?;
+    let mut moves = Vec::with_capacity(total_items);
+    for (row, &(container_id, slot_id)) in p1_items.iter().zip(p2_new_slots.iter()) {
+        move_item_to_recipient(&mut tx, row.item_id, p2.player_id, container_id, slot_id).await?;
+        moves.push(ItemMove::new(row, p1, p2, container_id, slot_id));
     }
-    for (row, &new_slot) in p2_items.iter().zip(p1_new_slots.iter()) {
-        move_item_to_recipient(&mut tx, row.item_id, p1.player_id, new_slot).await?;
+    for (row, &(container_id, slot_id)) in p2_items.iter().zip(p1_new_slots.iter()) {
+        move_item_to_recipient(&mut tx, row.item_id, p1.player_id, container_id, slot_id).await?;
+        moves.push(ItemMove::new(row, p2, p1, container_id, slot_id));
     }
 
     // Cash debits & credits. Net delta per side avoids a redundant
@@ -198,54 +212,32 @@ pub(super) async fn atomic_swap(
 
     // Compute final balances arithmetically rather than re-reading
     // `sgw_player.naquadah` post-UPDATE. We already hold the
-    // pre-UPDATE balance (`p1_balance` / `p2_balance`) under
-    // `FOR UPDATE` locks, and the delta is the only mutation to
-    // naquadah in this transaction. A re-read would just round-trip
-    // the same value (the row is locked, no concurrent writer can
-    // change it). Sourcing the totals from inside the tx is what
-    // closes the race window the post-commit `read_cash` opened —
-    // see the design note in `super::handle_execute_trade`.
-    let final_balances = TradeFinalBalances {
+    // pre-UPDATE balance under `FOR UPDATE` locks, and the delta is the
+    // only mutation to naquadah in this transaction. Sourcing the totals
+    // from inside the tx is what closes the race window a post-commit
+    // `read_cash` would open — see the design note in
+    // `super::handle_execute_trade`.
+    let balances = TradeFinalBalances {
         p1: p1_balance + p1_delta,
         p2: p2_balance + p2_delta,
     };
 
     tx.commit().await?;
-    Ok(final_balances)
+    Ok(TradeCommitted {
+        balances,
+        p1_before: p1_balance,
+        p2_before: p2_balance,
+        moves,
+    })
 }
 
-/// Acquire the per-player advisory lock for the trade transaction.
-///
-/// The namespace MUST match the vendor stack's lock shape — vendor
-/// uses `pg_advisory_xact_lock(player_id, container_id)` with
-/// `container_id = INV_MAIN` in `reserve_free_inventory_slots`. Trade
-/// previously used `(player_id, 0)` which gave Postgres two
-/// independent lock keys for the same logical lock, so a concurrent
-/// trade and vendor purchase on the same player wouldn't serialize at
-/// the advisory layer (`FOR UPDATE` on the row remains correct, but
-/// the deadlock detector surfaces ABBA failures noisily under load).
-///
-/// `pg_advisory_xact_lock` is idempotent within a single transaction
-/// (see the comment in `inventory::grant`), so the redundant lock
-/// acquired by `reserve_free_inventory_slots` for INV_MAIN later in
-/// the same trade tx is a no-op.
-///
-/// The SQL form for the advisory lock — extracted into a constant so
-/// the alignment test below can assert it byte-for-byte against the
-/// vendor stack's lock SQL. Any divergence (single-arg form, different
-/// namespace) breaks the alignment guarantee.
-pub(super) const ADVISORY_LOCK_SQL: &str = "SELECT pg_advisory_xact_lock($1, $2)";
-
-async fn take_advisory_lock(
-    tx: &mut Transaction<'_, Postgres>,
-    player_id: i32,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(ADVISORY_LOCK_SQL)
-        .bind(player_id)
-        .bind(INV_MAIN)
-        .execute(&mut **tx)
-        .await?;
-    Ok(())
+/// `"p1"` or `"p2"` for `side`, by identity against `p1`.
+fn which_of(side: &TradeSide, p1: &TradeSide) -> &'static str {
+    if std::ptr::eq(side, p1) {
+        "p1"
+    } else {
+        "p2"
+    }
 }
 
 async fn read_naquadah_for_update(
@@ -260,24 +252,6 @@ async fn read_naquadah_for_update(
             .await?;
     row.ok_or(TradeAbort::PlayerMissing { which, player_id })
 }
-
-/// Whitelist of containers an item may sit in to be eligible for trade.
-///
-/// Only `INV_MAIN` (the visible main bag) is on the wire-trade allowlist.
-/// Players who want to trade equipped gear, banked items, or bandolier
-/// ammo must unequip / withdraw / unload first — the same flow the
-/// canonical SGW client uses, and the same intent as the Python
-/// `canSell()` check (Trade.py only operates on main-bag rows).
-///
-/// Anything outside this list is rejected with
-/// [`TradeAbort::IneligibleContainer`]. This is the **server-authority**
-/// version of the check: the wire only carries `instance_id`, so the
-/// server independently decides which rows are trade-eligible.
-///
-/// **Do not add `INV_BUYBACK` (16) here** — buyback bag items must
-/// remain reclaimable only by their original seller. The whitelist
-/// subsumes the old buyback blacklist.
-const TRADEABLE_CONTAINERS: &[i32] = &[INV_MAIN];
 
 /// SELECT FOR UPDATE every item instance from the player's inventory,
 /// returning rows in input order. Fails with `ItemMissing` /
@@ -302,9 +276,15 @@ async fn lock_items(
 
     let mut rows = Vec::with_capacity(instance_ids.len());
     for &item_id in instance_ids {
+        // `FOR UPDATE OF i`: only the inventory row is locked; the
+        // `resources.items` side of the outer join is read-only content.
         let row: Option<TradeItemRow> = sqlx::query_as::<_, TradeItemRow>(
-            "SELECT item_id, container_id, slot_id, bound FROM sgw_inventory \
-             WHERE character_id = $1 AND item_id = $2 FOR UPDATE",
+            "SELECT i.item_id, i.type_id, i.container_id, i.slot_id, i.bound, \
+                    ri.container_sets, (ri.item_id IS NOT NULL) AS known_type \
+             FROM sgw_inventory i \
+             LEFT JOIN resources.items ri ON ri.item_id = i.type_id \
+             WHERE i.character_id = $1 AND i.item_id = $2 \
+             FOR UPDATE OF i",
         )
         .bind(player_id)
         .bind(item_id)
@@ -322,12 +302,11 @@ async fn lock_items(
                 item_id,
             });
         }
-        // Whitelist gate: only INV_MAIN is trade-eligible. The blacklist
-        // pre-fix only blocked INV_BUYBACK; every other container
-        // (equipped gear, mission items, bank, bandolier, crafting,
-        // auction, team/command bank) silently passed. That's a
-        // dupe-strip exploit on equip slots and a bypass of the
-        // banker-NPC gate on bank items.
+        // Whitelist gate, not a blacklist: equipped gear, mission items,
+        // the bandolier, buyback and the vaults are all refused, and a
+        // container added later is refused until someone decides
+        // otherwise. Trading equipped gear would strip it while the cell
+        // keeps its stats; vault items would bypass the banker gate.
         if !TRADEABLE_CONTAINERS.contains(&row.container_id) {
             return Err(TradeAbort::IneligibleContainer {
                 which,
@@ -341,115 +320,12 @@ async fn lock_items(
     Ok(rows)
 }
 
-/// Slot IDs of every TradeItemRow that lives in INV_MAIN — these are
-/// the slots that will become free in the same transaction as the
-/// recipient's slot reservation, so they must be excluded from the
-/// recipient's "currently occupied" set.
-///
-/// Non-INV_MAIN items can't appear in the trade today (the
-/// `TRADEABLE_CONTAINERS` whitelist rejects them in [`lock_items`]) but
-/// the filter is kept defensive so a future whitelist expansion doesn't
-/// silently misaccount.
-fn main_slot_ids_of(rows: &[TradeItemRow]) -> Vec<i32> {
-    rows.iter()
-        .filter(|r| r.container_id == INV_MAIN)
-        .map(|r| r.slot_id)
-        .collect()
-}
-
-/// Reserve `needed` free slots in the recipient's INV_MAIN, excluding
-/// any slot IDs the same transaction is about to vacate.
-///
-/// Without the exclusion, a valid full-bag swap fails: if the
-/// recipient's bag is full but contains an item they're trading away,
-/// `reserve_free_inventory_slots` sees that slot as occupied and
-/// rejects the trade even though the slot will be free by commit time.
-/// The transaction is atomic — either every `UPDATE sgw_inventory`
-/// statement lands or none do — so excluding the soon-to-vacate slots
-/// is correct.
-///
-/// We inline the slot query rather than calling
-/// `reserve_free_inventory_slots` directly because that helper has no
-/// exclusion hook. Composition via the pure [`pick_free_main_slots_excluding`]
-/// keeps the slot-pick logic shared, only the occupancy assembly
-/// differs.
-async fn reserve_main_slots_excluding(
-    tx: &mut Transaction<'_, Postgres>,
-    recipient_player_id: i32,
-    needed: usize,
-    excluding_slots: &[i32],
-) -> Result<Vec<i32>, TradeAbort> {
-    if needed == 0 {
-        return Ok(Vec::new());
-    }
-
-    // Per-(player, container) advisory lock — mirror the lock shape
-    // `reserve_free_inventory_slots` uses, since concurrent vendor /
-    // grant paths serialize against this namespace.
-    sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
-        .bind(recipient_player_id)
-        .bind(INV_MAIN)
-        .execute(&mut **tx)
-        .await?;
-
-    #[derive(sqlx::FromRow)]
-    struct InventorySlotRow {
-        slot_id: i32,
-    }
-
-    let rows = sqlx::query_as::<_, InventorySlotRow>(
-        "SELECT slot_id FROM sgw_inventory \
-         WHERE character_id = $1 AND container_id = $2 \
-         FOR UPDATE",
-    )
-    .bind(recipient_player_id)
-    .bind(INV_MAIN)
-    .fetch_all(&mut **tx)
-    .await?;
-
-    let raw_occupied: Vec<i32> = rows.into_iter().map(|row| row.slot_id).collect();
-    match pick_free_main_slots_excluding(&raw_occupied, excluding_slots, needed) {
-        Some(slots) => Ok(slots),
-        None => Err(TradeAbort::NotEnoughSlots {
-            recipient_player_id,
-            needed,
-        }),
-    }
-}
-
-/// Pure slot-pick: given the recipient's current INV_MAIN occupancy and
-/// the slot IDs they're about to vacate in the same transaction, return
-/// the lowest-indexed `needed` slots that will be free post-swap, or
-/// `None` if the bag can't fit them.
-///
-/// Split out from [`reserve_main_slots_excluding`] so the unit test
-/// path exercises the same algorithmic core the production async fn
-/// uses — a revert of the exclusion logic here trips the unit-level
-/// regression guard, not just the live-DB integration test.
-pub(super) fn pick_free_main_slots_excluding(
-    raw_occupied: &[i32],
-    vacating: &[i32],
-    needed: usize,
-) -> Option<Vec<i32>> {
-    let excluding: std::collections::HashSet<i32> = vacating.iter().copied().collect();
-    let occupied_after_exclusion: Vec<i32> = raw_occupied
-        .iter()
-        .copied()
-        .filter(|slot| !excluding.contains(slot))
-        .collect();
-    free_inventory_slots(
-        bag_min_slot(INV_MAIN),
-        bag_max_slots(INV_MAIN),
-        &occupied_after_exclusion,
-        needed,
-    )
-}
-
 async fn move_item_to_recipient(
     tx: &mut Transaction<'_, Postgres>,
     item_id: i32,
     recipient_player_id: i32,
-    new_slot_id: i32,
+    container_id: i32,
+    slot_id: i32,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE sgw_inventory \
@@ -457,8 +333,8 @@ async fn move_item_to_recipient(
          WHERE item_id = $4",
     )
     .bind(recipient_player_id)
-    .bind(INV_MAIN)
-    .bind(new_slot_id)
+    .bind(container_id)
+    .bind(slot_id)
     .bind(item_id)
     .execute(&mut **tx)
     .await?;

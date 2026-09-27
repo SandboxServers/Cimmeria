@@ -112,7 +112,7 @@ fn on_trade_state_stub_invitem_carries_sentinel_not_lying_values() {
         container_bytes,
         &0_i32.to_le_bytes(),
         "container_id stays 0 — no informative meaning, since the \
-         item is being offered from INV_MAIN-only via the whitelist"
+         item is being offered from a whitelisted bag (1 or 15)"
     );
 
     let bound_byte = buf[inv_item_start + 20];

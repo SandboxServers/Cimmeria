@@ -252,7 +252,7 @@ Every other service that takes an item reads only carried bags, so a banked item
 
 | Service | Containers it reads | Where |
 |---|---|---|
-| Trade | the backpack (1) only; anything else aborts the trade with `TradeAbort::IneligibleContainer` | `TRADEABLE_CONTAINERS` in [`trade/execute/swap.rs`](../../crates/base-methods/src/base/world_entry/methods/trade/execute/swap.rs) |
+| Trade | the backpack and the crafting bag (1, 15); anything else aborts the trade with `TradeAbort::IneligibleContainer`. Each item lands in the recipient's bag its `container_sets` allows (1 or 15), never 16-20 | `TRADEABLE_CONTAINERS` in [`trade/execute/placement.rs`](../../crates/base-methods/src/base/world_entry/methods/trade/execute/placement.rs), [trade-system.md](trade-system.md#which-items-can-be-traded) |
 | Vendors (sell, repair, recharge) | the backpack, the bandolier, the eleven equipment slots and the crafting bag (1, 3-15); 17 is never listed | `VENDOR_FILTER_BAGS` in [`vendor/mod.rs`](../../crates/base-methods/src/base/world_entry/methods/vendor/mod.rs) |
 | Crafting | the backpack and the crafting bag (1, 15); a bank stack never counts toward a recipe | [crafting-system.md](crafting-system.md) |
 | Mail attachments | the backpack and the crafting bag (1, 15), D-BV30; 17-20 are refused with `item_in_vault` and 16 with `item_in_buyback` | `MAILABLE_CONTAINERS` in [`mail/send/escrow.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/send/escrow.rs), [mail-system.md](mail-system.md) |
@@ -319,7 +319,7 @@ The `Inventory.flushUpdates()` method sends updates to the client in this order:
 
 - [stat-system.md](stat-system.md) - Stats modified by equipped items
 - [crafting-system.md](crafting-system.md) - Crafting uses inventory items
-- [trade-system.md](trade-system.md) - Trading moves items between inventories
+- [trade-system.md](trade-system.md) - Trading moves items between inventories, from the backpack and the crafting bag; each item lands in the recipient's bag its `container_sets` allows
 - [mail-system.md](mail-system.md) - Mail attachments come from the backpack and the crafting bag only
 - [Bank and Vault campaign ledger](../analysis/bank-vault/README.md) - Decisions, telemetry catalog and UAT checklist for the personal bank
 - [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) - Client evidence for the vault window, its size and the Expand dialog
