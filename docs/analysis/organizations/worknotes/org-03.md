@@ -139,7 +139,7 @@ SS-00 (#880) landed `OnlinePlayerIndex`, the rate limiter and `send_feedback_lin
 - `crates/server/src/logging/target_scan_tests.rs`: ORG-03's `("squad", INFO)` / `("squad", WARN)` pins and SS-00's `chat`, `rate_limit` and `online_index` pins.
 - `docs/architecture/observability.md`: ORG-03's extended `org` / `squad` row, then SS-00's new `rate_limit`, `online_index` and `chat` rows.
 
-All from the worktree root, through `tools/build-lane/lane.sh` (`target=B:	argets/org-03`).
+All from the worktree root, through `tools/build-lane/lane.sh` (`target=B:\targets/org-03`).
 
 | Command | Exit | Result |
 |---|---|---|
@@ -174,7 +174,7 @@ Regression proof, each on the committed tree, restored with `git checkout HEAD -
 | The stale-id check skipped (the old id removes the live member) | `lane.sh cargo test -p cimmeria-cell --lib -- base_messages::tests::org` | 101 | `disconnect_of_a_stale_entity_id_keeps_the_member_and_warns` |
 | The base's `counter!` compiled out | `lane.sh cargo test -p cimmeria-base --lib -- organization` | 101 | `squad_forward_failure_counts_on_squad_actions_total` |
 
-Commands (through `tools/build-lane/lane.sh`, target `B:	argets/org-03`):
+Commands (through `tools/build-lane/lane.sh`, target `B:\targets/org-03`):
 
 | Command | Exit | Result |
 |---|---|---|
