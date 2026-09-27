@@ -38,7 +38,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
 | Organization vault | DONE (no client test) | Team (19) and Command (20) vaults: storage, the open round trip and the session (BV-07a), and moves in, out and within (BV-07b); see [Opening a Team or Command vault](#opening-a-team-or-command-vault) and [Moving items in and out of a Team or Command vault](#moving-items-in-and-out-of-a-team-or-command-vault). Every committed move is fanned out to the organization's other online members. `onClearOrgVaultInventory` (74) and `onOrgMoveItemResult` (a server-internal cell method) are not used: no client Lua consumes either (bank-vault audit A-13) |
 | Personal vault window | DONE | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Deposits and withdrawals: [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
-| Vault expansion | PARTIAL (server done; GM `.bankexpand` only) | +10 slots per purchase, 40 to 100, priced by `resources.bank_expansion_price`. The Banker's Expand dialog is not served until the #943 crash is explained; see [Expanding the vault](#expanding-the-vault) |
+| Vault expansion | PARTIAL (server done; GM `.bankexpand` only) | +10 slots per purchase, 40 to 100, priced by `resources.bank_expansion_price`. The Banker's Expand dialog is not served until the #943 crash is explained (pending #967); see [Expanding the vault](#expanding-the-vault) |
 | Team vault expansion | PARTIAL (server done; GM `.orgvaultexpand` only) | +10 slots per purchase, 40 to 100, at the same price, paid from the Team treasury by the Team's leader (bank-vault BV-09); see [Expanding the Team vault](#expanding-the-team-vault-bv-09). The Command vault is fixed at 100. The treasury itself is in [organization-system.md](organization-system.md#the-treasury-bank-vault-bv-08) |
 
 ### Vendor caveat
@@ -321,7 +321,7 @@ A refused move logs `org_move_rejected` (WARN, `bank`) with a stable `reason`, s
 
 The Team vault (19) grows from 40 to 100 in +10 steps (D-BV14). A step costs the personal vault's price, the `resources.bank_expansion_price` row for the new size (100 naquadah, D-BV02), and it is paid from the Team's treasury (`sgw_organizations.cash`), not from anyone's wallet. Only the Team's leader may buy it, with no permission bit for it (D-BV28). The Command vault is fixed at 100 and is refused.
 
-**The trigger.** There is no client UI: the Banker's Expand dialog is quarantined (#943). A GM uses `.orgvaultexpand [team|command] [from_slots]`:
+**The trigger.** There is no client UI: the Banker's Expand dialog is quarantined (#943; lifting it is #967). A GM uses `.orgvaultexpand [team|command] [from_slots]`:
 
 - with no size it **quotes**: "the Team vault has 40 slots. The next +10 costs 100 from the treasury, which holds 250. Type .orgvaultexpand 40 to buy it." Nothing changes;
 - with the current size it **buys**, keyed on that size, so a repeated command, or two sent at once, buys once and the other is `replay`.

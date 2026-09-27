@@ -244,7 +244,7 @@ Telemetry: emit `gm_action` as the catalog specifies, including refusals with a 
 
 ## BV-05 vault expansion
 
-**Status: Done** (PR #947, `6607fbdc2`). Server side and GM `.bankexpand` done; the player-facing Expand button waits on the #943 dialog quarantine (D-BV35). Decisions D-BV02 and D-BV27 (the purchase keeps `bank_slots` grow-only, now held by `persist_expansion`, D-BV32), plus D-BV31 to D-BV35. Worknote: [bv-05.md](worknotes/bv-05.md).
+**Status: Done** (PR #947, `6607fbdc2`). Server side and GM `.bankexpand` done; the player-facing Expand button is pending #967 (the #943 quarantine; D-BV35). Decisions D-BV02 and D-BV27 (the purchase keeps `bank_slots` grow-only, now held by `persist_expansion`, D-BV32), plus D-BV31 to D-BV35. Worknote: [bv-05.md](worknotes/bv-05.md).
 
 As built, against the scope below:
 

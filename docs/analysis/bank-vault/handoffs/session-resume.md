@@ -47,11 +47,11 @@ Cross-campaign agreements:
 1. Read the status lines above and in [work-packets.md](../work-packets.md).
 2. For any packet in Review, check its PR's CI. If the CI is older than `main`, rebase and re-test before merging.
 3. Once BV-10 merges, post `/release` on it from PowerShell (D-BV11), then hand the owner the [UAT checklist](#uat-checklist): steps 1-14 for the personal bank, 15-25 for the org vaults, the treasury and the Team vault expansion.
-4. Open work after release 2 is in [Known gaps](#known-gaps-carried-forward): the vault mail aliases (D-BV29), the player-facing Expand button (#943), and the follow-ups the owner's UAT turns up. Retire the campaign's worktrees the day each PR merges.
+4. Open work after release 2 is in [Known gaps](#known-gaps-carried-forward): the vault mail aliases (D-BV29), the player-facing Expand button (pending #967, the #943 quarantine), and the follow-ups the owner's UAT turns up. Retire the campaign's worktrees the day each PR merges.
 
 ## Lifting the #943 quarantine
 
-Dialog 60110 ("Expand vault") is quarantined with the debug-hub dialogs until reverse engineering names the field that crashed the client (#943 is the containment PR; no issue tracks the root cause yet). Lift it only after that field is known and 60110 is shown not to carry it, or has been reshaped so it does not. Then, in one PR:
+Dialog 60110 ("Expand vault") is quarantined with the debug-hub dialogs until reverse engineering names the field that crashed the client (#943 is the containment PR; issue #967 tracks finding the field and lifting the quarantine). Lift it only after that field is known and 60110 is shown not to carry it, or has been reshaped so it does not. Then, in one PR:
 
 1. Move the 60110 entry from `QUARANTINED_DIALOG_OVERRIDES` to `DIALOG_OVERRIDES` in `crates/resources/src/base/dialog_overrides/mod.rs`.
 2. Set `VAULT_EXPAND_DIALOG_SERVED` to `true` in `crates/wire/src/cell/vault.rs`. `the_expand_dialog_flag_matches_the_served_list` (resources) fails if only one of steps 1 and 2 is done.
@@ -64,7 +64,7 @@ Record the lift as a new decision row that supersedes D-BV35.
 
 ## Known gaps (carried forward)
 
-- **Players cannot buy an expansion.** Dialog 60110 is quarantined (D-BV35), so a Banker offers nothing and only a GM can buy, with `.bankexpand` for the personal vault and `.orgvaultexpand` for a Team vault. See [Lifting the #943 quarantine](#lifting-the-943-quarantine).
+- **Players cannot buy an expansion.** Dialog 60110 is quarantined (D-BV35), so a Banker offers nothing and only a GM can buy, with `.bankexpand` for the personal vault and `.orgvaultexpand` for a Team vault. The player-facing button is pending #967 (the #943 quarantine). See [Lifting the #943 quarantine](#lifting-the-943-quarantine).
 - **Vault mail aliases are not built** (D-BV29). Every `MAIL_ToVault` bit is still refused with `reason=vault_alias_unsupported`; no packet in this ledger took the `resolve_recipient_flags` seam. It needs its own packet, which also decides what `MAIL_ToCommandRank6` (4092) means.
 
 Org vaults, the treasury and the Team expansion (BV-07 to BV-10a):
@@ -84,7 +84,7 @@ Org vaults, the treasury and the Team expansion (BV-07 to BV-10a):
   - BV-08: `bank_feedback_send_failed` for the treasury sends (the same seam is guarded for BV-05).
   - BV-09: `expand_rejected` with `price_missing` (above), `row_changed` (unreachable under the lock), `no_such_org`, `wrong_org_type`, `player_missing` and the cell's `base_channel_closed`.
 - **Files over the soft cap from Wave 4:** `move_/org/mod.rs` (520 lines) and `debug_hub_dispatch_tests.rs` (545).
-- **`docs/known-issues.md` § Organizations is stale.** It still lists `organizationTransferCash` and most organization calls as stubbed. It predates the organizations campaign and is for its owner or the docs-regen owner to rewrite.
+- **`docs/known-issues.md` KI-19 § Organizations is stale for the non-bank calls.** The bank rows are fixed (CM 19 and the vaults are listed as no longer stubbed), but it still lists the other organization calls as stubbed and Team/Command persistence as off `main`. That part belongs to the organizations campaign.
 
 Personal bank (BV-01 to BV-06):
 
@@ -135,7 +135,7 @@ Each step ends with the SigNoz query that verifies it. Filter the logs by the at
    - SigNoz: there is no `bank` row, because these paths never read 17. A mail attachment from the vault is `target=mail event=mail.attachment_refused reason=item_in_vault`. A trade that names a banked item aborts: the `trade_swaps_total` counter with `outcome=ineligible_container`, and a WARN from the trade executor whose `reason` names the ineligible container. The vendor's sell list simply leaves 17 out (`VENDOR_FILTER_BAGS`), so the check there is only that the item is not listed.
 10. **Buyback (#798).** Sell an item, then try to drag it out of the buyback tab without paying. It is refused.
     - SigNoz: `target=bank event=move_rejected reason=source_container_not_player_movable source_container_id=16`.
-11. **Expansion (GM).** As a GM, `.bank`, then `.bankexpand`. Chat says "Your vault now has 50 slots. You paid 100 naquadah."; the cash drops by 100; if the vault window is open, its scroll range grows to 50 (BV-E1 Q2, confirm this). Repeat until 100 slots. At 100, `.bankexpand` refuses with "Your vault is already at its full size of 100 slots." and nothing changes. `.bankexpand` with no vault open refuses with "bankexpand: open your vault first (.bank, or a Banker in range). Nothing was charged." A non-GM's `.bankexpand` is refused with ".bankexpand needs GM access. Nothing was charged." and is not said aloud. The player-facing Expand button is pending #943 (D-BV35): until the dialog is served, a player at a Banker sees no Expand offer.
+11. **Expansion (GM).** As a GM, `.bank`, then `.bankexpand`. Chat says "Your vault now has 50 slots. You paid 100 naquadah."; the cash drops by 100; if the vault window is open, its scroll range grows to 50 (BV-E1 Q2, confirm this). Repeat until 100 slots. At 100, `.bankexpand` refuses with "Your vault is already at its full size of 100 slots." and nothing changes. `.bankexpand` with no vault open refuses with "bankexpand: open your vault first (.bank, or a Banker in range). Nothing was charged." A non-GM's `.bankexpand` is refused with ".bankexpand needs GM access. Nothing was charged." and is not said aloud. The player-facing Expand button is pending #967 (the #943 quarantine; D-BV35): until the dialog is served, a player at a Banker sees no Expand offer.
     - SigNoz: `target=bank event=expand trigger=gm_console gm_override=true bank_slots_before=40 bank_slots_after=50 price=100`, with `cash_before - cash_after = 100`, in the spans `bank.console_expand` (cell) and `bank.expand_purchase` (base); one `expand` row per step, up to `bank_slots_after=100`. At the ceiling: `target=bank event=expand_rejected reason=at_ceiling trigger=gm_console bank_slots=100`. With no vault open: `target=bank event=expand_rejected reason=no_vault_session trigger=gm_console`. A non-GM: `target=bank event=expand_rejected reason=not_gm trigger=gm_console`.
 12. **Not enough cash (GM).** With less than 100 naquadah, `.bankexpand` refuses with "You need 100 naquadah to expand your vault. Nothing was charged." and nothing changes.
     - SigNoz: `target=bank event=expand_rejected reason=insufficient_cash trigger=gm_console`, with `cash` below `price` and `bank_slots` unchanged; no `expand` row follows.
