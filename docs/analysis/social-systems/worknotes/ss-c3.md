@@ -7,13 +7,13 @@
 
 - **Packet:** SS-C3 (work-packets.md § SS-C3).
 - **Decisions in force:** D-SS14 (the chat bucket, which every SS-C3 refusal still charges), D-SS17 (channel ids follow D-ORG14; this packet does not edit `CHAN_*` or `world_entry_chat.rs`), D-SS26 (GM mutes, not persisted; a feedback line for 0xC6-0xCE), D-ORG14 (the client sends the `enumerations.xml` channel ids). Security rows: CAT-L-03 (channel byte) and the D-SS26 half of CAT-L-01. Audit A-27 (the dispatch-table rows).
-- **Base:** `origin/main` @ `f2af64cf4` (SS-C1 merged as #893). Branch `social/c3-allowlist-mute`.
+- **Base:** written on `origin/main` @ `f2af64cf4` (SS-C1 merged as #893), rebased onto `origin/main` @ `fed09c4ce` (after SS-U2 #910, SS-M2 #912 and PT-08 #920). The cell-console registry, `dispatch.rs` and `tests/mod.rs` conflicts with SS-U2's `.duel_status` / `.duel_end` kept both sides; `observability.md` kept SS-M2's mail row and took the SS-C3 chat additions. Branch `social/c3-allowlist-mute`.
 - **Commits:**
-  1. `cd39eea25` feat(chat): GM .mute / .unmute and the base MuteTable
-  2. `2e2b99f53` feat(chat): channel allowlist, the mute gate and 0xC6-0xCE feedback arms
-  3. `87a07f329` docs(chat): channel allowlist, GM mutes and the 0xC6-0xCE rows
-  4. `20188ccef` fix(chat): a muted player's away text and a stale GM answer (advisor review)
-  5. `a3c1c0868` docs(chat): a muted player's away text is withheld
+  1. `31430b7b6` feat(chat): GM .mute / .unmute and the base MuteTable
+  2. `8f178c0d3` feat(chat): channel allowlist, the mute gate and 0xC6-0xCE feedback arms
+  3. `db8366546` docs(chat): channel allowlist, GM mutes and the 0xC6-0xCE rows
+  4. `440c8eab1` fix(chat): a muted player's away text and a stale GM answer (advisor review)
+  5. `d4863235c` docs(chat): a muted player's away text is withheld
   6. this worknote
 - **Owned paths (new):** `crates/base-session/src/base/mutes/` (`mod.rs`, `gm.rs`, `tests.rs`), `crates/base/src/base/dispatch/chat_gates.rs`, `crates/base/src/base/dispatch/communicator_unsupported.rs`, `crates/base/src/base/dispatch/tests/{chat_channel_mute,communicator_unsupported}.rs`, `crates/cell-console/src/cell/console/tests/ss_c3_mute.rs`, this file.
 - **Edited:** `dispatch/mod.rs` (contended: `mod chat_gates; mod communicator_unsupported;`, nine `sgw_player_base` constants, one arm group), `dispatch/chat.rs` (two gate calls, `access_level` read under the existing lock, `now` passed to the tell), `dispatch/tell.rs` (the TODO replaced, `now` parameter, away reply withheld from a muted recipient), `wire/…/chat_cell_to_base.rs` (`Mute`, `Unmute`, `MAX_MUTE_MINUTES`), `base-world-entry/…/chat_dispatch.rs` (two arms), `cell-console/…/social.rs` and `registry/{mod.rs,commands/social.rs}` and `dispatch.rs` (`.mute`, `.unmute`), the `mutes` re-exports in `base/mod.rs` and `base-world-entry/base/mod.rs`, the `OTEL_FILTER` comment in `server/src/logging/filters.rs`.
@@ -136,9 +136,9 @@ The mute tests use the process-wide table, each with its own `0x7300_03xx` playe
 
 ## Known gaps
 
-1. **An alt escapes a mute.** The table is keyed by `player_id` (D-SS26), so the muted player can switch to another character on the same account and chat. Owner call: key by `account_id` too, or record the per-character scope in D-SS26.
+1. **Owner question: an alt escapes a mute.** The table is keyed by `player_id`, so the muted player can switch to another character on the same account and chat. **Current behaviour, and the default until the owner rules: mutes stay per character, as D-SS26 says.** The alternative is to key by `account_id` as well.
 2. **Offline characters** cannot be muted or unmuted: the name resolves through the online index only.
-3. **Mail is not muted.** D-SS26 covers chat and tells. A muted player can still send gate mail (SS-M1). Record it in D-SS26 or extend the gate to `MailOp::Send`.
+3. **Owner question: mail is not muted.** D-SS26 covers chat and tells, so a muted player can still send gate mail (SS-M1). **Current behaviour, and the default until the owner rules: mail is not muted.** The alternative is a mute check on `MailOp::Send` on the base.
 4. **A session with no `player_id`** skips the mute gate (there is no character to mute), and the tell path does not require one. That is harmless as long as `player_name` and `active_player_id` are set together at world entry; an explicit fail-closed refusal for tells would be cheap.
 5. **The organization channels are forwarded unchecked.** The cell still answers "not supported yet" for 3-6, so nothing leaks today. ORG-09 must check membership on the cell before it delivers anything on them.
 6. **No in-client test.** The feedback lines are proven at the byte level only. SS-E1 C-Q4 (how the client renders feedback on channel 9) still applies.
