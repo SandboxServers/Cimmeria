@@ -36,6 +36,21 @@ pub(in crate::cell::abilities) async fn fire_cast(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // A pet summon spawns its pet instead of resolving a target (PT-03).
+    if let Some(summon) = super::summon::player_summon(space_mgr, entity_id, ability_id) {
+        super::summon::fire_summon(
+            entity_id,
+            ability_id,
+            effect_seq,
+            summon,
+            ability_def,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return;
+    }
+
     // Consume ammo (players only). Routes through `set_slot_ammo` so the
     // AmmoSlot{N} stat updates and the slot is marked dirty for batched
     // persistence (drained on reload completion / slot swap / ammo change /

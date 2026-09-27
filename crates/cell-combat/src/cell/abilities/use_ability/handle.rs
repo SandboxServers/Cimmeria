@@ -11,7 +11,8 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
-    serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE, TIMER_ABILITY_COOLDOWN,
+    serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE, AF_DO_NOT_ACTIVATE_AUTO_CYCLE,
+    TIMER_ABILITY_COOLDOWN,
 };
 
 use super::super::super::combat;
@@ -87,6 +88,14 @@ pub async fn handle_use_ability(
     // + scope limits.
     let (ability_id, ability_def) =
         resolve_weapon_redirect(entity_id, ability_id, ability_def, space_mgr);
+
+    // ── Pet summon (pets PT-03) ──
+    //
+    // A summon is a Self ability: the client's target is discarded here,
+    // before anything reads it, so the #444 gate below never sees a summon
+    // and stays exactly as strict for every other ability. See `summon`.
+    let summon = super::summon::player_summon(space_mgr, entity_id, ability_id);
+    let target_id = if summon.is_some() { 0 } else { target_id };
 
     // ── Auto-cycle manual-override gate ──
     //
@@ -303,6 +312,12 @@ pub async fn handle_use_ability(
         return false;
     }
 
+    if let Some(summon) = summon {
+        if super::summon::refuse_summon_launch(entity_id, ability_id, summon, tx, space_mgr).await {
+            return false;
+        }
+    }
+
     // Fire-time line of sight, players only (NA31, D-NA14): refused with
     // onErrorCode 39 when the world's occluder puts a wall between the eyes.
     // See `fire_los` for where it applies and the tolerance rays.
@@ -466,8 +481,14 @@ pub async fn handle_use_ability(
     // `auto_cycle_ability_id` (the LOOP's committed ability, cleared
     // on stop): this field persists across auto-cycle on/off cycles
     // for the whole session. NPCs use `chooseAbility` per-fire and
-    // don't need the stash.
-    if entity.is_player {
+    // don't need the stash. An ability flagged out of auto-cycle
+    // (`DoNotActivate_AutoCycle` / `Deactivate_AutoCycle`, e.g. a pet
+    // summon) is not stashed, or the next `setAutoCycle(1)` press would
+    // re-fire it (python kept 512 abilities out, `SGWPlayer.py:1177`).
+    let auto_cycle_excluded = ability_def
+        .as_ref()
+        .is_some_and(|d| d.flags & (AF_DO_NOT_ACTIVATE_AUTO_CYCLE | AF_DEACTIVATE_AUTO_CYCLE) != 0);
+    if entity.is_player && !auto_cycle_excluded {
         entity.abilities.last_fired_ability_id = Some(ability_id);
     }
 

@@ -1,0 +1,194 @@
+//! The summon's target VFX, held until the pet has been introduced.
+//!
+//! A summon (PT-03) spawns the pet into the space; the next AoI tick sends
+//! its CREATE_ENTITY. The Goa'uld summon's ground effect (event set 1122,
+//! `Effect_Init` -> sequence 2293) is an `onSequence` whose target is the
+//! pet, so it must not reach a client before that client knows the pet.
+//! The summon therefore queues the finished `onSequence` bytes here, and
+//! [`pet_arrival_tick`] sends them, once, when the owner witnesses the pet:
+//! to every player who witnesses it at that moment (the AoI tick put each of
+//! them in the witness set in the same pass that sent their `EnteredAoI`).
+//!
+//! Python played an effect sequence on the effect's target entity, to its
+//! client and its witnesses (`AbilityManager.playSequence`); a pet has no
+//! client, so the witnesses are the whole send.
+//!
+//! The queue lives on `PetRegistry` and `forget_pet` scrubs it, so every
+//! teardown path drops a pending VFX with its pet. The drain also checks
+//! that the pet still belongs to the queued owner, which covers an id
+//! reused before a scrub.
+
+use std::time::{Duration, Instant};
+
+use tokio::sync::mpsc;
+
+use super::super::messages::CellToBaseMsg;
+use super::super::space_manager::SpaceManager;
+
+/// How long a queued VFX waits for the owner to witness its pet. The intro
+/// normally lands on the next 100 ms AoI tick; past this the effect would
+/// play on a pet the player has long been looking at, so it is dropped.
+pub const ARRIVAL_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// One queued summon VFX.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PetArrival {
+    /// The summoner, whose view of the pet releases the VFX.
+    pub owner_id: u32,
+    /// The resolved sequence id, for the log.
+    pub sequence_id: i32,
+    /// The `onSequence` arguments, built by the summon.
+    pub args: Vec<u8>,
+    /// When the summon queued it.
+    pub queued_at: Instant,
+}
+
+impl PetArrival {
+    /// A VFX queued now.
+    pub fn new(owner_id: u32, sequence_id: i32, args: Vec<u8>) -> Self {
+        Self {
+            owner_id,
+            sequence_id,
+            args,
+            queued_at: Instant::now(),
+        }
+    }
+}
+
+impl super::PetRegistry {
+    /// Queue `arrival` for `pet`, replacing any earlier one. Ignored when
+    /// `pet` is not a registered pet, so the queue never outlives the maps.
+    pub fn queue_arrival(&mut self, pet: u32, arrival: PetArrival) {
+        if self.is_pet(pet) {
+            self.arrivals.insert(pet, arrival);
+        }
+    }
+
+    /// The queued VFX for `pet`, if any.
+    pub fn pending_arrival(&self, pet: u32) -> Option<&PetArrival> {
+        self.arrivals.get(&pet)
+    }
+}
+
+/// What the drain does with one queued VFX.
+enum ArrivalStep {
+    /// Keep waiting for the owner to witness the pet.
+    Wait,
+    /// Send to these witnesses.
+    Send(Vec<u32>),
+    /// Drop it, with this `reason`.
+    Drop(&'static str),
+}
+
+fn arrival_step(
+    space_mgr: &SpaceManager,
+    pet: u32,
+    arrival: &PetArrival,
+    now: Instant,
+) -> ArrivalStep {
+    if space_mgr.pets.owner_of(pet) != Some(arrival.owner_id) || space_mgr.get_entity(pet).is_none()
+    {
+        return ArrivalStep::Drop("pet_gone");
+    }
+    let witnesses = space_mgr.get_witnesses_of(pet);
+    if witnesses.contains(&arrival.owner_id) {
+        return ArrivalStep::Send(witnesses);
+    }
+    if now.duration_since(arrival.queued_at) >= ARRIVAL_TIMEOUT {
+        return ArrivalStep::Drop("owner_never_witnessed");
+    }
+    ArrivalStep::Wait
+}
+
+/// Per-tick drain, run after the AoI tick. Returns how many VFX were sent.
+/// Returns at once when nothing is queued.
+pub async fn pet_arrival_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> usize {
+    drain_arrivals(Instant::now(), tx, space_mgr).await
+}
+
+/// [`pet_arrival_tick`] with the clock as a parameter, for tests.
+pub async fn drain_arrivals(
+    now: Instant,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> usize {
+    if space_mgr.pets.arrivals.is_empty() {
+        return 0;
+    }
+    let mut pets: Vec<u32> = space_mgr.pets.arrivals.keys().copied().collect();
+    pets.sort_unstable();
+
+    let mut sent = 0;
+    for pet in pets {
+        let Some(arrival) = space_mgr.pets.arrivals.get(&pet) else {
+            continue;
+        };
+        match arrival_step(space_mgr, pet, arrival, now) {
+            ArrivalStep::Wait => {}
+            ArrivalStep::Drop(reason) => {
+                let arrival = space_mgr.pets.arrivals.remove(&pet);
+                // A pet gone before its intro is ordinary (despawned at
+                // once); an owner who never saw its live pet means the
+                // intro went missing, which is worth a WARN.
+                if reason == "owner_never_witnessed" {
+                    tracing::warn!(
+                        target: "pets.lifecycle",
+                        decision_outcome = "arrival_vfx_dropped",
+                        pet_id = pet,
+                        owner_id = arrival.map_or(0, |a| a.owner_id),
+                        reason,
+                        "summon VFX dropped: the owner never witnessed the pet"
+                    );
+                } else {
+                    tracing::debug!(
+                        target: "pets.lifecycle",
+                        decision_outcome = "arrival_vfx_dropped",
+                        pet_id = pet,
+                        reason,
+                        "summon VFX dropped with its pet"
+                    );
+                }
+            }
+            ArrivalStep::Send(witnesses) => {
+                let Some(arrival) = space_mgr.pets.arrivals.remove(&pet) else {
+                    continue;
+                };
+                for &witness_id in &witnesses {
+                    if tx
+                        .send(CellToBaseMsg::WitnessEntityMethod {
+                            witness_id,
+                            entity_id: pet,
+                            method_index: crate::mercury::method_idx::ON_SEQUENCE,
+                            args: arrival.args.clone(),
+                            entity_is_player: false,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            target: "pets.lifecycle",
+                            decision_outcome = "arrival_vfx_send_failed",
+                            pet_id = pet,
+                            witness_id,
+                            "summon VFX could not be queued (base channel closed)"
+                        );
+                    }
+                }
+                tracing::debug!(
+                    target: "pets.lifecycle",
+                    decision_outcome = "arrival_vfx_sent",
+                    pet_id = pet,
+                    owner_id = arrival.owner_id,
+                    sequence_id = arrival.sequence_id,
+                    witness_count = witnesses.len(),
+                    "summon VFX sent to the pet's witnesses"
+                );
+                sent += 1;
+            }
+        }
+    }
+    sent
+}

@@ -4,6 +4,7 @@
 use crate::cell::space_manager::SpaceManager;
 use crate::test_fixtures::{add_pet_owner, seed_pet_template, PET_FIXTURE_TEMPLATE_ID};
 
+mod arrival;
 mod class_filters;
 mod create_on_client;
 mod owner_hooks;
