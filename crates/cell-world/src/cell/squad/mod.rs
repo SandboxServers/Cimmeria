@@ -19,17 +19,24 @@
 //!
 //! - [`registry`]: squads, membership, leave / kick / disconnect, loot mode.
 //! - [`invites`]: pending invites (D-ORG06) and the invite rate limits.
+//! - [`ping`]: the minimap ping check and its one-per-second limit (ORG-04).
 
 use std::time::Duration;
 
 mod invites;
+mod ping;
 mod registry;
 
 pub use invites::{
     ExpiredInvite, InviteReject, IssuedInvite, PendingInvite, ResponseReject, TakeMiss,
 };
-pub use registry::{Departure, JoinOutcome, KickReject, LootReject, Squad, SquadRegistry};
+pub use ping::{PingReject, PING_MIN_INTERVAL};
+pub use registry::{
+    Departure, ForceJoinReject, JoinOutcome, KickReject, LootReject, Squad, SquadRegistry,
+};
 
+#[cfg(test)]
+mod ping_and_join_tests;
 #[cfg(test)]
 mod tests;
 

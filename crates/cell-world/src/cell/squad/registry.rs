@@ -136,6 +136,28 @@ impl LootReject {
     }
 }
 
+/// Why a GM join (`.squad_join`) was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForceJoinReject {
+    /// The GM named themselves.
+    SelfTarget,
+    /// The GM is already in a squad; they leave it first.
+    AlreadyInSquad,
+    SquadFull,
+    SquadIdsExhausted,
+}
+
+impl ForceJoinReject {
+    pub fn reason(self) -> &'static str {
+        match self {
+            ForceJoinReject::SelfTarget => "self_target",
+            ForceJoinReject::AlreadyInSquad => "already_in_squad",
+            ForceJoinReject::SquadFull => "squad_full",
+            ForceJoinReject::SquadIdsExhausted => "ids_exhausted",
+        }
+    }
+}
+
 /// Every squad on this cell, and the pending squad invites.
 #[derive(Debug)]
 pub struct SquadRegistry {
@@ -162,6 +184,9 @@ pub struct SquadRegistry {
     pub(super) entity_of: HashMap<i32, u32>,
     /// Invites that expired since the last `drain_expired`.
     pub(super) expired: Vec<super::invites::ExpiredInvite>,
+    /// When each member's last accepted minimap ping was, for the one per
+    /// second limit (`ping`). Cleared when they leave their squad.
+    pub(super) last_ping: HashMap<i32, Instant>,
 }
 
 impl Default for SquadRegistry {
@@ -182,6 +207,7 @@ impl SquadRegistry {
             owed_left: HashMap::new(),
             entity_of: HashMap::new(),
             expired: Vec::new(),
+            last_ping: HashMap::new(),
         }
     }
 
@@ -292,6 +318,57 @@ impl SquadRegistry {
         }
     }
 
+    /// A GM joins `host`'s squad with no invite (`.squad_join`, ORG-04). A
+    /// host in no squad founds one and leads it, as if they had invited the
+    /// joiner and the joiner had accepted. The GM path skips the invite
+    /// handshake, the rate limits and the leader check (any member's squad
+    /// can be joined), but not the membership rules: the joiner must be in
+    /// no squad and the squad must have room.
+    pub fn force_join(
+        &mut self,
+        joiner: SquadMember,
+        host: SquadMember,
+    ) -> Result<JoinOutcome, ForceJoinReject> {
+        if joiner.player_id == host.player_id {
+            return Err(ForceJoinReject::SelfTarget);
+        }
+        if self.member_of.contains_key(&joiner.player_id) {
+            return Err(ForceJoinReject::AlreadyInSquad);
+        }
+        if let Some(sid) = self.squad_of(host.player_id) {
+            let squad = self.squads.get_mut(&sid).expect("member_of is in step");
+            if squad.is_full() {
+                return Err(ForceJoinReject::SquadFull);
+            }
+            self.member_of.insert(joiner.player_id, sid);
+            squad.members.push(joiner);
+            return Ok(JoinOutcome {
+                squad_id: sid,
+                created: false,
+            });
+        }
+        let Some(sid) = self.next_squad_id else {
+            return Err(ForceJoinReject::SquadIdsExhausted);
+        };
+        self.next_squad_id = sid.checked_add(1);
+        self.member_of.insert(host.player_id, sid);
+        self.member_of.insert(joiner.player_id, sid);
+        let leader = host.player_id;
+        self.squads.insert(
+            sid,
+            Squad {
+                id: sid,
+                members: vec![host, joiner],
+                leader,
+                loot: SquadLootType::default(),
+            },
+        );
+        Ok(JoinOutcome {
+            squad_id: sid,
+            created: true,
+        })
+    }
+
     /// `player_id` leaves their squad of their own accord (CM 9).
     pub fn leave(&mut self, player_id: i32) -> Option<Departure> {
         self.remove_member(player_id, OrgLeaveReason::Requested)
@@ -340,6 +417,7 @@ impl SquadRegistry {
     fn remove_member(&mut self, player_id: i32, reason: OrgLeaveReason) -> Option<Departure> {
         let squad_id = self.member_of.remove(&player_id)?;
         let departed_entity = self.entity_of.remove(&player_id);
+        self.last_ping.remove(&player_id);
         let squad = self
             .squads
             .get_mut(&squad_id)
@@ -353,6 +431,7 @@ impl SquadRegistry {
             for m in &remaining {
                 self.member_of.remove(&m.player_id);
                 self.entity_of.remove(&m.player_id);
+                self.last_ping.remove(&m.player_id);
             }
             // Invites into a squad that no longer exists can never be
             // accepted; drop them now rather than at their expiry.
