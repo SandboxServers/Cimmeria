@@ -154,6 +154,17 @@ pub fn ephemeral_port() -> u16 {
     port
 }
 
+/// A free **UDP** port, for the BaseApp's Mercury socket. An
+/// [`ephemeral_port`] is a free TCP port, and on a Windows host with
+/// Hyper-V UDP port exclusions (`netsh interface ipv4 show
+/// excludedportrange protocol=udp`) the TCP allocator can hand out ports
+/// inside an excluded UDP range for long stretches, so every bind fails
+/// with `WSAEACCES` (10013). Asking the UDP stack avoids that.
+pub fn ephemeral_udp_port() -> u16 {
+    let socket = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind ephemeral UDP socket");
+    socket.local_addr().expect("local_addr").port()
+}
+
 pub struct RunningServer {
     pub orchestrator: Orchestrator,
     pub auth_url: String,
@@ -219,7 +230,7 @@ pub async fn start_server(db_url: &str) -> RunningServer {
     const MAX_ATTEMPTS: usize = 5;
     let mut last_err = None;
     for _ in 0..MAX_ATTEMPTS {
-        let config = base_config(db_url, ephemeral_port());
+        let config = base_config(db_url, ephemeral_udp_port());
         let auth_url = format!("http://127.0.0.1:{}", config.logon_port);
         let orchestrator = Orchestrator::new(config);
         match orchestrator.start_all().await {

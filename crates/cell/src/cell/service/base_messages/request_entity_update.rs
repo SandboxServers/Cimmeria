@@ -140,6 +140,31 @@ pub(super) async fn handle(
                 return;
             }
         }
+        // A re-emitted engaged duelist needs the PvP flag again (SS-D2):
+        // the re-create resets the client's copy to 0.
+        if let Some(msg) =
+            cimmeria_cell_world::cell::duel::pvp_flag_on_enter(&space_mgr.duels, witness_id, other)
+        {
+            if let Err(e) = tx.send(msg).await {
+                tracing::warn!(
+                    target: "duel",
+                    event = "duel.send_failed",
+                    reason = "cell_to_base_closed",
+                    entity_id,
+                    witness_id,
+                    account_id = space_mgr.player_identity(witness_id).account_id,
+                    player_id = space_mgr.player_identity(witness_id).player_id,
+                    target_player_id = other.player_id,
+                    duel_id = other
+                        .player_id
+                        .and_then(|p| space_mgr.duels.duel_of(p))
+                        .map(|d| d.duel_id),
+                    error = %e,
+                    "RequestEntityUpdate: PvP flag re-emit cell\u{2192}base send failed"
+                );
+                return;
+            }
+        }
         emitted += 1;
     }
 

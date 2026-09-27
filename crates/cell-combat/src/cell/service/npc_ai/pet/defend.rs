@@ -90,6 +90,10 @@ pub(super) async fn sync_owner_combat(
         .map(|o| o.threatened_mobs.iter().copied().collect::<Vec<u32>>())
         .unwrap_or_default()
         .into_iter()
+        // Only NPC sources are this sweep's to prune: a player source (a duel
+        // opponent, SS-D2) has no threat list to consult and is cleared by
+        // the system that added it, never here.
+        .filter(|m| !space_mgr.get_entity(*m).is_some_and(|e| e.is_player))
         .filter(|m| {
             space_mgr.get_entity(*m).is_none_or(|e| {
                 combat::is_dead_state(e.state_field)

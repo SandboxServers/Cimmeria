@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use cimmeria_common::Vector3;
 
-use super::limits::{CHALLENGE_TIMEOUT, COUNTDOWN, PAIR_COOLDOWN};
+use super::limits::{CHALLENGE_TIMEOUT, COUNTDOWN, ENGAGED_LIMIT, PAIR_COOLDOWN};
 
 /// Correlates every log row of one challenge and the duel it becomes.
 /// Allocated per cell process, never reused while it runs.
@@ -33,8 +33,10 @@ pub enum DuelState {
     /// Accepted; the countdown runs until `engage_at` (D-SS18).
     StartPending { engage_at: Instant },
     /// Fighting. Only this state lets [`DuelRegistry::can_harm`] answer
-    /// true. SS-D2 makes the transition; SS-D1 never enters it.
-    Engaged,
+    /// true. `until` is the safety end ([`ENGAGED_LIMIT`]): a duel that no
+    /// end path has closed by then is aborted by the tick, so a missed end
+    /// can never leave two players attackable for the life of the cell.
+    Engaged { until: Instant },
 }
 
 /// One accepted duel.
@@ -48,6 +50,10 @@ pub struct Duel {
     /// (D-SS19) SS-D2's range check measures from.
     pub centre: Vector3,
     pub state: DuelState,
+    /// `[challenger, target]` entity ids at the engage: the entities that got
+    /// the PvP flag, `onDuelEntitiesSet` and each other as a combat source.
+    /// The end clears exactly these. `None` before the engage.
+    pub engaged_entities: Option<[u32; 2]>,
 }
 
 impl Duel {
@@ -153,9 +159,46 @@ impl DuelRegistry {
     /// True only for the two players of one engaged duel, in either order.
     /// The contract predicate SS-D2's harm gate calls.
     pub fn can_harm(&self, attacker: i32, target: i32) -> bool {
-        self.duel_of(attacker).is_some_and(|d| {
-            d.state == DuelState::Engaged && d.opponent_of(attacker) == Some(target)
-        })
+        self.engaged_opponent(attacker) == Some(target)
+    }
+
+    /// The other duelist, when `player_id` is in an engaged duel. What the
+    /// PvP-flag replay and the AoE/cone candidate scan ask.
+    pub fn engaged_opponent(&self, player_id: i32) -> Option<i32> {
+        self.duel_of(player_id)
+            .filter(|d| matches!(d.state, DuelState::Engaged { .. }))
+            .and_then(|d| d.opponent_of(player_id))
+    }
+
+    /// Move a duel whose countdown ran out to `Engaged`. `None` when the
+    /// duel is gone or not in its countdown.
+    pub fn engage(&mut self, duel_id: DuelId, entities: [u32; 2], now: Instant) -> Option<Duel> {
+        let duel = self.duels.get_mut(&duel_id)?;
+        if !matches!(duel.state, DuelState::StartPending { .. }) {
+            return None;
+        }
+        duel.state = DuelState::Engaged {
+            until: now + ENGAGED_LIMIT,
+        };
+        duel.engaged_entities = Some(entities);
+        Some(*duel)
+    }
+
+    /// The duel with this id, in any state.
+    pub fn duel(&self, duel_id: DuelId) -> Option<&Duel> {
+        self.duels.get(&duel_id)
+    }
+
+    /// Every engaged duel, oldest first.
+    pub fn engaged(&self) -> Vec<Duel> {
+        let mut out: Vec<Duel> = self
+            .duels
+            .values()
+            .filter(|d| matches!(d.state, DuelState::Engaged { .. }))
+            .copied()
+            .collect();
+        out.sort_by_key(|d| d.duel_id);
+        out
     }
 
     /// Open a challenge, or say why not. Checked in the ledger's order:
@@ -239,6 +282,7 @@ impl DuelRegistry {
             state: DuelState::StartPending {
                 engage_at: now + COUNTDOWN,
             },
+            engaged_entities: None,
         };
         self.duels.insert(duel.duel_id, duel);
         self.in_duel.insert(duel.challenger, duel.duel_id);

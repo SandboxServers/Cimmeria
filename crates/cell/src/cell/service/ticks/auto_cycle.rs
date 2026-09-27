@@ -23,6 +23,12 @@ use crate::cell::space_manager::SpaceManager;
 ///   `self.entity().targetId` live read. Switching targets via the
 ///   cursor mid-loop redirects the re-fires automatically;
 ///   deselecting (target = 0) clears the loop.
+/// - **A player target the caster may not harm** → clear the loop, with a
+///   feedback line (SS-D2). The only harmable player is the caster's
+///   engaged duel partner (`combat::player_may_attack`); once a duel ends,
+///   a loop still aimed at the ex-partner would otherwise re-invoke
+///   `handle_use_ability` every tick and trip its #444 "forged target"
+///   WARN about ten times a second with the button still lit.
 /// - **No target / invalid target** → clear the loop. Invalid means
 ///   despawned, dead, or surrendered — see
 ///   [`crate::cell::combat::is_auto_cycle_target_valid`]. The death
@@ -73,6 +79,9 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
     // Snapshot armed players. Drop the borrow before re-invoking
     // `handle_use_ability` (takes `&mut space_mgr`).
     let mut los_notices: Vec<(u32, bool)> = Vec::new();
+    // Loops stopped because their player target is not a duel partner:
+    // `(caster, target player_id)`, for the feedback line and the log.
+    let mut pvp_stops: Vec<(u32, Option<i32>)> = Vec::new();
     let ready: Vec<(u32, i32, i32, bool)> = space_mgr
         .all_player_entity_ids()
         .into_iter()
@@ -106,6 +115,14 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // unintended re-fire at the new target.
             if !target_alive_or_existed {
                 return Some((eid, ability_id, target_id, false));
+            }
+            // A player target is legal only as the caster's engaged duel
+            // partner; anything else stops the loop (SS-D2).
+            if let Some(t) = target.filter(|t| t.is_player) {
+                if !crate::cell::combat::player_may_attack(e, t, &space_mgr.duels) {
+                    pvp_stops.push((eid, t.player_id));
+                    return Some((eid, ability_id, target_id, false));
+                }
             }
 
             // Line-of-sight gate (NA31). A target behind a wall gets one
@@ -194,12 +211,39 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // Target despawned, died without the death sweep catching
             // it, or surrendered. Clear the loop and broadcast so the
             // client un-highlights the button.
+            let pvp = pvp_stops
+                .iter()
+                .find(|(e, _)| *e == entity_id)
+                .map(|&(_, p)| p);
             if let Some(new_state) = crate::cell::combat::clear_auto_cycle(space_mgr, entity_id) {
-                tracing::info!(
-                    entity_id,
-                    target_id,
-                    "auto_cycle_tick: target gone or disengaged — clearing loop"
-                );
+                if let Some(target_player_id) = pvp {
+                    let id = space_mgr.player_identity(entity_id);
+                    tracing::info!(
+                        target: "duel",
+                        event = "duel.auto_cycle_stopped",
+                        account_id = id.account_id,
+                        player_id = id.player_id,
+                        entity_id,
+                        target_player_id,
+                        target_entity_id = target_id,
+                        reason = "not_duel_opponent",
+                        "auto_cycle_tick: player target is not the caster's duel opponent — clearing loop"
+                    );
+                    cimmeria_cell_world::cell::duel::send_player_line(
+                        tx,
+                        space_mgr,
+                        entity_id,
+                        target_player_id,
+                        cimmeria_wire::cell::client_methods::duel::TEXT_AUTO_ATTACK_STOPPED,
+                    )
+                    .await;
+                } else {
+                    tracing::info!(
+                        entity_id,
+                        target_id,
+                        "auto_cycle_tick: target gone or disengaged — clearing loop"
+                    );
+                }
                 crate::cell::abilities::send_entity_method(
                     entity_id,
                     crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
@@ -241,3 +285,7 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
 #[cfg(test)]
 #[path = "auto_cycle_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "auto_cycle_duel_tests.rs"]
+mod duel_tests;

@@ -603,6 +603,16 @@ the hooks in `handle.rs`, `fire.rs` and `sequence.rs`, and
 `use_ability/tests/summon.rs` and `pets/tests/arrival.rs`; the evidence and the
 regression proofs are in the [PT-03 worknote](../analysis/pets/worknotes/pt-03.md).
 
+### 24. One hostility rule for every gate; a duel partner is the only player target (social systems SS-D2)
+
+**Decision:** `combat::player_may_attack(attacker, target, &duels)` (`crates/cell-world/src/cell/combat/aggression.rs`) is the single rule for what a player may damage. An NPC target must be a hostile-faction non-pet, as before. A player target is admitted only when `DuelRegistry::can_harm` says the two are an engaged duel pair, in the same space. The four hostility gates all call it: the single-target launch (`use_ability/handle.rs`), the warmup re-check at fire (`use_ability/warmup/tick.rs`), and the ground-AoE and cone collectors (`dispatch/mod.rs`, `cone_aoe/geometry.rs`). The two collectors scan `combat::area_candidates` (every NPC, plus the caster's engaged partner) and filter with `combat::may_hit_in_area`, which is `player_may_attack` for a player caster and the historical hostile-faction rule for an NPC caster.
+
+**Why:** the gates had drifted into four inline copies of "hostile NPC only" (audit A-42), so a duel had to widen all four or leak through one. A candidate scan that adds only the partner means no filter mistake can reach a bystander. The client's PvP flag (`onEntityProperty(4, v)`, decision D-SS23) is never read back: a stuck flag cannot make anyone attackable.
+
+**Consequences:** NPC-versus-player and pet targeting are unchanged; a pet never joins its owner's duel: `pet::fight_refusal` uses the no-duel form, `player_may_attack_pve`, which is also the NPC half of `player_may_attack`. Player-on-player damage creates no threat, so the duel supplies its own combat source (`cell::duel::combat`). The effect pulse does not re-run the rule, so the duel's single end (`duel::end_engaged`) strips every active effect the partner's engaged entity invoked on each duelist, with the normal `on_remove` and zero timer; an auto-cycle loop on a player the caster may no longer harm is cleared. Partner damage is still lethal until SS-D3's 1 HP clamp lands, and that clamp must also sit in the pulse seam.
+
+**Code and tests:** `aggression.rs`, the four gates above, `crates/cell-world/src/cell/duel/`. `use_ability/tests/duel_gate.rs` (`duel_partner_damage_allowed_at_all_four_gates`, `bystander_untouchable_during_duel`) fails when any one gate is reverted; the proof is in the [SS-D2 worknote](../analysis/social-systems/worknotes/ss-d2.md).
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:

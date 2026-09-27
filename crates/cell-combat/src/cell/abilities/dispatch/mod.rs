@@ -108,7 +108,7 @@ pub async fn handle_use_ability_on_ground(
     // Collect every hostile NPC within the AoE radius, sorted by distance
     // from the click point. The first becomes the primary (consumes
     // cooldown/ammo), the rest get damage applied directly.
-    let targets = collect_ground_targets(space_mgr, attacker_space, ground, radius_sq);
+    let targets = collect_ground_targets(space_mgr, entity_id, attacker_space, ground, radius_sq);
 
     // Primary range check: the closest target must also be within the
     // ability's own `max_range` from the attacker, otherwise
@@ -236,9 +236,15 @@ pub(super) async fn fire_ground_cast_after_warmup(
     };
     let mut targets = vec![(primary_eid, 0.0)];
     targets.extend(
-        collect_ground_targets(space_mgr, attacker_space, ground, radius * radius)
-            .into_iter()
-            .filter(|&(eid, _)| eid != primary_eid),
+        collect_ground_targets(
+            space_mgr,
+            entity_id,
+            attacker_space,
+            ground,
+            radius * radius,
+        )
+        .into_iter()
+        .filter(|&(eid, _)| eid != primary_eid),
     );
     let alive_before = alive_snapshot(space_mgr, &targets);
 
@@ -264,22 +270,25 @@ pub(super) async fn fire_ground_cast_after_warmup(
     deaths_since(space_mgr, alive_before)
 }
 
-/// Every live hostile NPC in `attacker_space` within `radius_sq` of
-/// `ground`, nearest first.
+/// Every live entity in `attacker_space` within `radius_sq` of `ground`
+/// that the attacker may hit, nearest first.
 ///
-/// Hostile-faction sentinel matches `cell_methods/player/interaction.rs`'s
-/// hostile check. Without it, AoE would happily damage vendors,
-/// quest givers, and neutral wildlife. Imported from `combat::`
-/// so the single sentinel is the source of truth.
+/// The candidates are every NPC plus the attacker's engaged duel partner
+/// (`combat::area_candidates`), filtered by `combat::may_hit_in_area`: a
+/// player's AoE obeys `player_may_attack` (hostile NPCs and the duel
+/// partner, never a vendor, quest giver, neutral NPC or bystander player).
 fn collect_ground_targets(
     space_mgr: &SpaceManager,
+    attacker_id: u32,
     attacker_space: cimmeria_common::SpaceId,
     ground: [f32; 3],
     radius_sq: f32,
 ) -> Vec<(u32, f32)> {
-    use crate::cell::combat::HOSTILE_FACTION;
     let mut targets: Vec<(u32, f32)> = Vec::new();
-    for npc_eid in space_mgr.all_npc_entity_ids() {
+    let Some(attacker) = space_mgr.get_entity(attacker_id) else {
+        return targets;
+    };
+    for npc_eid in combat::area_candidates(space_mgr, attacker_id) {
         if let Some(npc) = space_mgr.get_entity(npc_eid) {
             if npc.space_id != attacker_space {
                 continue;
@@ -287,7 +296,7 @@ fn collect_ground_targets(
             if combat::is_dead_state(npc.state_field) {
                 continue;
             }
-            if npc.faction != HOSTILE_FACTION {
+            if !combat::may_hit_in_area(attacker, npc, &space_mgr.duels) {
                 continue;
             }
             let dx = npc.position.x - ground[0];

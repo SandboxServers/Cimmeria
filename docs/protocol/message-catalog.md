@@ -370,7 +370,7 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 | Crafting | 6 | Parsed and forwarded to the base; answered "not available yet" (crafting CR-01) |
 | Black Market | 5 | Not implemented |
 | Minigames | 12 | Not implemented |
-| Dueling | 4 | Partial: `onDuelChallenge` (SS-D1); 151-153 not sent for duels |
+| Dueling | 4 | Partial: `onDuelChallenge` (SS-D1); `onDuelEntitiesSet` and `Clear` (SS-D2); 152 is AoI's only |
 | UI & Navigation | 13 | Partial |
 | Media | 2 | Not implemented |
 | Misc | 5 | Partial |
@@ -467,13 +467,13 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | Crafting | 0 | 6 | 0 | 6 | 0% |
 | Stargates | 1 | 5 | 1 | 8 | 15% |
 | Minigames | 0 | 14 | 0 | 12 | 0% |
-| Dueling | 2 | 3 | 1 | 4 | 43% |
+| Dueling | 2 | 3 | 3 | 4 | 71% |
 | Pets | 0 | 3 | 0 | 3 | 0% |
 | Contact Lists | 6 | 6 | 5 | 5 | 100% |
 | World/Entity | — | — | 13 | 13 | 100% |
 | GM/Debug | ~20 | 59 | — | — | ~34% |
 | Protocol | 4 | 7 | — | — | 57% |
-| **TOTAL** | **~64** | **253** | **~47** | **167** | **~26%** |
+| **TOTAL** | **~64** | **253** | **~49** | **167** | **~27%** |
 
 ---
 

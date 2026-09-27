@@ -169,7 +169,10 @@ async fn decline_tells_both_sides() {
 }
 
 /// Accept puts both in one `StartPending` duel centred between them, tells
-/// both, and sends nothing else (no PvP flag, no `onDuelEntities*`).
+/// both, and starts both clients' countdown: `onTimerUpdate` type 14
+/// (DuelTimer) on each player's own entity, 5 s long, expiring 5 s from
+/// now on the game clock. Nothing else: no PvP flag, no `onDuelEntities*`,
+/// and no harm, until the engage.
 #[tokio::test]
 async fn accept_starts_the_countdown_for_both() {
     let _capture = LogCapture::install();
@@ -177,11 +180,31 @@ async fn accept_starts_the_countdown_for_both() {
     let (tx, mut rx) = mpsc::channel(16);
     let t0 = Instant::now();
     pending_a_to_b(&mut mgr, &tx, &mut rx, t0).await;
+    let before = cimmeria_wire::mercury::game_clock::game_time_secs();
     respond(B_EID, &[1], &tx, &mut mgr, t0).await;
+    let after = cimmeria_wire::mercury::game_clock::game_time_secs();
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ACCEPTED.to_string()]);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ACCEPTED.to_string()]);
-    assert_eq!(sent.len(), 2, "feedback only: {sent:?}");
+    for eid in [A_EID, B_EID] {
+        let timers = own(&sent, eid, 12);
+        assert_eq!(timers.len(), 1, "one countdown to {eid}: {sent:?}");
+        let t = &timers[0];
+        assert_eq!(t.len(), 21);
+        assert_eq!(t[4], 14, "Type = DuelTimer");
+        assert_eq!(
+            &t[5..9],
+            &(eid as i32).to_le_bytes(),
+            "SourceID = own entity"
+        );
+        assert_eq!(&t[13..17], &5.0f32.to_le_bytes(), "TotalTime");
+        let complete = f32::from_le_bytes(t[17..21].try_into().unwrap());
+        assert!(
+            (before + 5.0..=after + 5.0).contains(&complete),
+            "BigWorldTimeComplete {complete} is not game time + 5"
+        );
+    }
+    assert_eq!(sent.len(), 4, "two lines and two countdowns: {sent:?}");
     let duel = *mgr.duels.duel_of(A_PID).expect("A in the duel");
     assert_eq!(
         mgr.duels.duel_of(B_PID).map(|d| d.duel_id),

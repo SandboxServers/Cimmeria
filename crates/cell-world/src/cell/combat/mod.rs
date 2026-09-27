@@ -18,9 +18,10 @@ pub mod faction_reaction;
 pub mod health_threshold;
 
 pub use aggression::{
-    aggression_toward_players, aggro_radius, assist_radius, effective_aggression,
-    is_hostile_to_players, override_from_content_level, player_may_attack, AGGRO_VERTICAL_BAND,
-    DEFAULT_AGGRO_RADIUS, DEFAULT_ASSIST_RADIUS, NPC_DEFAULT_ABILITY, PLAYER_REACTION_FACTION,
+    aggression_toward_players, aggro_radius, area_candidates, assist_radius, effective_aggression,
+    is_hostile_to_players, may_hit_in_area, override_from_content_level, player_may_attack,
+    player_may_attack_pve, AGGRO_VERTICAL_BAND, DEFAULT_AGGRO_RADIUS, DEFAULT_ASSIST_RADIUS,
+    NPC_DEFAULT_ABILITY, PLAYER_REACTION_FACTION,
 };
 pub use faction_reaction::HOSTILE_FACTION;
 pub use health_threshold::{health_pct, health_pct_from, HealthBelowSample, HealthPct};

@@ -20,6 +20,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Tooling quirks
 
+- [offline-client-event-trace-and-udp-port-trap.md](offline-client-event-trace-and-udp-port-trap.md) — no Ghidra: client Lua + PE bytes + RTTI name the CME event a handler raises; wireclient UDP port from a TCP bind hits WSAEACCES (10013).
 - [python-write-mangles-utf8-and-crlf.md](python-write-mangles-utf8-and-crlf.md) — `write_text` encodes cp1252: use bytes + restore CRLF; `sed -i` strips CR; the Bash tool turns `\\` into `\` (use scratch scripts).
 - [i686-test-exe-uac-installer-detection.md](i686-test-exe-uac-installer-detection.md) — a 32-bit test exe named `*patch*` fails with os error 740 under UAC; embed an asInvoker manifest via build.rs `rustc-link-arg`.
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt pulls a standalone comment into the previous line's trailing column; add a blank line.

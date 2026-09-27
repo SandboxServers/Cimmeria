@@ -1,14 +1,13 @@
 //! Cone geometry — the containment test and the per-effect recognizer.
 //!
 //! `is_cone_effect` classifies an effect as cone-collected; `collect_cone_targets`
-//! does the planar (X/Z) cone-containment scan against hostile NPCs.
+//! does the planar (X/Z) cone-containment scan against every entity the
+//! attacker may hit (hostile NPCs, and a duel partner).
 
 use cimmeria_entity::abilities::{EffectDef, TCM_AE_CONE};
 
 use super::super::super::combat;
 use super::super::super::space_manager::SpaceManager;
-
-use super::super::super::combat::HOSTILE_FACTION;
 
 /// Should this effect drive a cone fan-out at primary-cast time?
 ///
@@ -70,7 +69,9 @@ pub fn collect_cone_targets(
     let length_sq = cone_length * cone_length;
 
     let mut hits: Vec<(u32, f32)> = Vec::new();
-    for npc_eid in space_mgr.all_npc_entity_ids() {
+    // Every NPC plus the attacker's engaged duel partner, filtered below by
+    // the shared area rule (`combat::may_hit_in_area`, SS-D2).
+    for npc_eid in combat::area_candidates(space_mgr, attacker_id) {
         if npc_eid == primary_target_id || npc_eid == attacker_id {
             continue;
         }
@@ -84,7 +85,7 @@ pub fn collect_cone_targets(
         if combat::is_dead_state(npc.state_field) {
             continue;
         }
-        if npc.faction != HOSTILE_FACTION {
+        if !combat::may_hit_in_area(attacker, npc, &space_mgr.duels) {
             continue;
         }
         let ex = npc.position.x - apex[0];

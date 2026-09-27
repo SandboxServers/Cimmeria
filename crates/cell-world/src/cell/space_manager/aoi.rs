@@ -167,6 +167,19 @@ impl SpaceManager {
                             }
                         }
 
+                        // ── createOnClient: an engaged duelist's PvP flag (SS-D2) ──
+                        //
+                        // The flag is sent when the duel engages, to the duelists
+                        // and their witnesses at that moment. A player who comes
+                        // into range mid-duel gets it here, after the create, or
+                        // their client would show the duelist unflagged until the
+                        // end. The flag is presentation only (D-SS23).
+                        if let Some(msg) =
+                            crate::cell::duel::pvp_flag_on_enter(&self.duels, player_id, other)
+                        {
+                            events.push(msg);
+                        }
+
                         // ── createOnClient: a pet's owner-only lists (PT-01) ──
                         //
                         // `onPetAbilityList` / `onPetStanceList` /
@@ -214,11 +227,16 @@ impl SpaceManager {
                                         entity_is_player: other.is_player,
                                     });
 
-                                    // Register the entity as interactable on the client.
-                                    // GameBeing::isInteractable() checks player+0x16c;
-                                    // onDuelEntitiesRemove (method 152) adds to this set.
-                                    // Must arrive AFTER CREATE_ENTITY so the client can
-                                    // find the entity and refresh its interaction state.
+                                    // Make the client recompute the NPC's interactability.
+                                    // `onDuelEntitiesRemove` (152) ERASES the id from the
+                                    // local player's duel-entity set (`GamePlayer+0x16c`),
+                                    // a no-op for an NPC that was never in it, then forces
+                                    // the per-entity interaction-flags recompute. That
+                                    // recompute is what makes the NPC clickable; the set
+                                    // itself is never read by the interactability check
+                                    // (SS-E1 D-Q5, `duel-wire-formats.md`). So the duel's
+                                    // own 151/153 cannot affect this. Must arrive AFTER
+                                    // CREATE_ENTITY so the client can find the entity.
                                     events.push(CellToBaseMsg::EntityMethodCall {
                                         entity_id: player_id,
                                         method_index: 152, // onDuelEntitiesRemove

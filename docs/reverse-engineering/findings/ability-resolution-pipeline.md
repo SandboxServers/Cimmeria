@@ -232,7 +232,7 @@ All five handlers subscribe to the **same** `Event_NetIn_TimerUpdate` signal. Th
 | 11 | `\v` | MissionSet — mission completion timer | same |
 | 12 | `\f` | GameBeing — weapon reload | `GameBeing_HandleOnTimerUpdate_Reload` (0x00e02380) |
 | 13 | `\r` | GameBeing — deployment reload | same |
-| 14 | `\x0E` | GameProxyPlayer — BigWorld time-complete | `SGWBeing_onBigWorldTimeComplete` (0x00dec9e0) |
+| 14 | `\x0E` | GameProxyPlayer — duel countdown (`ETimerUpdateType.DuelTimer`), raises `Event_UI_DuelTimerStart` | `SGWBeing_onBigWorldTimeComplete` (0x00dec9e0) |
 | 16 | `\x10` | SGW::Crafting — crafting job timer | `FUN_00e47800` (0x00e47800) |
 
 **Note on types 4, 7, 8**: `CooldownManager_HandleOnTimerUpdate` has NO type-based early-return — it processes
@@ -328,11 +328,13 @@ Wrapper: `FUN_00dfb2a0` (GameProxyPlayer path) / `FUN_00dfaaf0` (SGWMob path).
 1. Computes `delta = (float)(BigWorldTimeComplete - currentBWTime)`.
 2. Clamps delta to 0.0f if negative.
 3. `scalable_malloc(4)` → stores delta as a float.
-4. Publishes via `FUN_00dfdcb0` (CME emit for a BW-time-remaining signal).
+4. Publishes via `FUN_00dfdcb0`, which queues `Event_UI_DuelTimerStart` (RTTI of the event node
+   built in `0x00df57c0`: type descriptor `0x01e0da40`, vtable `0x019d52d0`).
 
-**Purpose**: Converts the server's absolute "BigWorld time complete" timestamp into a client-local
-float countdown (seconds remaining). Used for zone timers, match timers, and event countdowns that
-are driven by BigWorld server time rather than entity-specific cooldown logic.
+**Purpose**: the duel countdown. `ETimerUpdateType.DuelTimer = 14`, and the float it emits is the
+`Event_UI_DuelTimerStart(duration)` the Lua shows as splash numbers (`Duel.lua`). **Corrected
+2026-09-27 (SS-D2)**: this section used to call it a generic zone or match timer; the byte trace is in
+`duel-wire-formats.md`'s SS-D2 section. The function name is a Ghidra auto-label, kept for continuity.
 
 ### SGW::Crafting_HandleOnTimerUpdate (0x00e47800) — NEW (W-misc-gaps)
 

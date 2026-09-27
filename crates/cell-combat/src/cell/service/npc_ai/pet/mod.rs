@@ -118,7 +118,9 @@ pub fn fight_refusal(owner: &CellEntity, target: &CellEntity) -> Option<&'static
     if target.is_player || target.class_id != crate::mercury::SGWMOB_CLASS_ID {
         return Some("target_not_combatant");
     }
-    if !combat::player_may_attack(owner, target) {
+    // The no-duel form of the rule: a pet never joins its owner's duel (the
+    // default until the owner decides otherwise), so no duel can widen it.
+    if !combat::player_may_attack_pve(owner, target) {
         return Some("target_not_hostile");
     }
     None

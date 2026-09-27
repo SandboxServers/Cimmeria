@@ -57,6 +57,7 @@ async fn challenge_prompts_the_target_byte_exact() {
             entity_id: B_EID,
             method_index: 143,
             args: vec![A_EID as u8, 0, 0, 0, 0, 0, 0, 0],
+            witness: None,
         }
     );
     assert_eq!(

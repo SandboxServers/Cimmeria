@@ -13,6 +13,12 @@ pub const CHALLENGE_TIMEOUT: Duration = Duration::from_secs(30);
 /// From the accept to the engaged duel (D-SS18).
 pub const COUNTDOWN: Duration = Duration::from_secs(5);
 
+/// The safety end of an engaged duel. SS-D3 owns the real end paths
+/// (health, forfeit, range, disconnect, teleport); until they exist, and as a
+/// backstop if one is ever missed, the tick aborts an engaged duel this old
+/// (reason `engaged_limit`). Long enough that no real duel reaches it.
+pub const ENGAGED_LIMIT: Duration = Duration::from_secs(10 * 60);
+
 /// After a decline or an expiry, the same challenger may not challenge the
 /// same target again for this long (D-SS21).
 pub const PAIR_COOLDOWN: Duration = Duration::from_secs(60);

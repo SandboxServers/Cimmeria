@@ -98,7 +98,7 @@ fn push_def_methods(def: &str, out: &mut Vec<String>) {
 }
 
 /// The flattened client-method table of entity `name`: index = position.
-fn flattened_client_methods(name: &str) -> Vec<String> {
+pub(super) fn flattened_client_methods(name: &str) -> Vec<String> {
     let def = read_def(&format!("{ENTITIES}/defs/{name}.def"));
     let mut out = match tag_texts(&def, "Parent").first() {
         Some(parent) => flattened_client_methods(parent),
@@ -108,7 +108,7 @@ fn flattened_client_methods(name: &str) -> Vec<String> {
     out
 }
 
-fn index_of(table: &[String], method: &str) -> u16 {
+pub(super) fn index_of(table: &[String], method: &str) -> u16 {
     let i = table
         .iter()
         .position(|m| m == method)
@@ -117,7 +117,7 @@ fn index_of(table: &[String], method: &str) -> u16 {
 }
 
 /// `<Value>` of the enumeration token named `token` in `enumerations.xml`.
-fn enum_value(token: &str) -> u64 {
+pub(super) fn enum_value(token: &str) -> u64 {
     let xml = read_def(&format!("{ENTITIES}/defs/enumerations.xml"));
     for entry in xml.split("<Token>").skip(1) {
         let name = tag_texts(entry, "Name");

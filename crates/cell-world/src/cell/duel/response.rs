@@ -20,7 +20,8 @@ use cimmeria_wire::cell::client_methods::duel::{
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::outbound::{send_line, Recipient};
+use super::limits::COUNTDOWN;
+use super::outbound::{send_countdown, send_line, Recipient};
 use super::registry::{PendingChallenge, ResponseRefusal};
 use super::{connected_player, find_player};
 
@@ -197,20 +198,15 @@ async fn respond(
                 state = "start_pending",
                 "duel accepted: countdown started"
             );
-            send_line(
-                tx,
+            // The line, then the countdown the client shows as splash numbers
+            // (`onTimerUpdate` type 14, SS-D2's trace of D-Q1).
+            for to in [
                 Recipient::at(&challenger, pending.challenger, Some(responder_pid)),
-                TEXT_DUEL_ACCEPTED,
-                Some(duel.duel_id),
-            )
-            .await;
-            send_line(
-                tx,
                 Recipient::at(&responder, responder_pid, Some(pending.challenger)),
-                TEXT_DUEL_ACCEPTED,
-                Some(duel.duel_id),
-            )
-            .await;
+            ] {
+                send_line(tx, to, TEXT_DUEL_ACCEPTED, Some(duel.duel_id)).await;
+                send_countdown(tx, to, COUNTDOWN.as_secs_f32(), duel.duel_id).await;
+            }
         }
     }
 }
