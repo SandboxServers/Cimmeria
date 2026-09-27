@@ -908,10 +908,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 --
 
 
--- Past every reserved campaign spawn block (debug hub 400-404, crafting
--- 410-429, organizations 430-449, pets 450-469, bank 470-489, social
--- 490-499), so a row inserted without a spawn_id (the `.savespawn` seed SQL)
--- never takes a reserved id. Raise it when a new block is reserved above 499;
--- live_db_spawnlist_sequence.rs guards it.
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 499, true);
+-- Past every seeded row and every reserved campaign spawn block (debug hub
+-- 400-404, crafting 410-429, organizations 430-449, pets 450-469, bank
+-- 470-489, social 490-499), so a row inserted without a spawn_id (the
+-- `.savespawn` seed SQL) never takes a used or reserved id. Raise the floor
+-- when a new block is reserved above 499; live_db_spawnlist_sequence.rs
+-- guards it. Same form as the crafting CR-11 footers.
+SELECT setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), 499));
 

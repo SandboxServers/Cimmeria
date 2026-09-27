@@ -21,16 +21,16 @@ mod live_db {
                 .fetch_one(&pool)
                 .await
                 .expect("read spawnlist_spawn_id_seq");
-        // With is_called = false, nextval returns last_value itself.
-        let next = if is_called {
-            last_value + 1
-        } else {
-            last_value
-        };
+        // The floor is checked on the sequence itself, not only against
+        // MAX(spawn_id), so a reserved block with no seeded rows yet stays
+        // protected.
         assert!(
-            next > HIGHEST_RESERVED_SPAWN_ID,
-            "the next default spawn_id is {next}, inside the reserved blocks (<= {HIGHEST_RESERVED_SPAWN_ID})"
+            is_called && last_value >= HIGHEST_RESERVED_SPAWN_ID,
+            "spawnlist_spawn_id_seq is at {last_value} (is_called {is_called}); it must be set to at least {HIGHEST_RESERVED_SPAWN_ID}"
         );
+        // Read, not nextval: the test must not advance the sequence. With
+        // is_called = true, nextval returns last_value + 1.
+        let next = last_value + 1;
         let max_seeded: i64 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(spawn_id), 0)::bigint FROM resources.spawnlist",
         )
