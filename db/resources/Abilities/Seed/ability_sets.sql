@@ -53,6 +53,11 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (6, 'Debug hub loo
 -- content takes. Set 350 is the Straegis pet (template 350): 221 Energy Shock
 -- as the repeatable primary and 1156 Straegis: Disengage as the fallback.
 INSERT INTO ability_sets (ability_set_id, description) VALUES (350, 'Straegis pet: Energy Shock + Disengage');
+-- PT-11: sets 351-353 are the Jaffa, Prime and Lo'taur pets (templates
+-- 351-353). See ability_set_abilities.sql for what each ability does today.
+INSERT INTO ability_sets (ability_set_id, description) VALUES (351, 'Jaffa pet: staff (set 4) + Double Blast');
+INSERT INTO ability_sets (ability_set_id, description) VALUES (352, 'Jaffa Prime pet: staff (set 4) + Focus Degeneration');
+INSERT INTO ability_sets (ability_set_id, description) VALUES (353, 'Lo''taur pet: heals and buffs');
 
 --
 -- TOC entry 3306 (class 0 OID 0)

@@ -82,3 +82,48 @@ INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (6, 710);
 INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (350, 221);
 
 INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (350, 1156);
+
+-- PT-11, the Servant Lord roster. The pet AI casts the lowest-id
+-- off-cooldown ability in reach, so the lowest id is each pet's primary.
+-- Set 351, the Jaffa (template 351): set 4's staff pair (584 Staff Auto
+-- Attack, the ranged primary whose effect 646 deals HealthDamage 25; 710
+-- Staff Melee AA, whose effect 736 has no damage values) plus 1652 Jaffa:
+-- Double Blast. 1652 is PetTrained: in the original the owner trains it
+-- (Servant Lord L20) and SGWPlayer.knownPetAbilities carries it to the pet.
+-- The server has no knownPetAbilities path, so the pet's own set carries
+-- it. Today 1652 deals nothing (effect 2015 has no damage values or
+-- script); it plays the staff shot (event set 3, see abilities.sql).
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (351, 584);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (351, 710);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (351, 1652);
+
+-- Set 352, the Jaffa Prime (template 352, a copy of 159, which carries set
+-- 4): the same staff pair plus 1654 Prime: Focus Degeneration (PetTrained,
+-- Servant Lord L20). 1654 alone would leave the Prime with no working
+-- attack: its effect 4086 (-10% focus over 8 ticks) has no script, so it
+-- does nothing today, and it has no event set, so it plays nothing either.
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (352, 584);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (352, 710);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (352, 1654);
+
+-- Set 353, the Lo'taur (template 353): 1653 Heal Health and the four
+-- Lo'taur variants 3326 (focus heal), 3327 (focus regen buff), 3328
+-- (defense buff) and 3329 (defense debuff). None of their effects (4065,
+-- 4924-4930) has a script or damage values, and none has an event set, so
+-- all five do nothing and play nothing today. The pet AI also aims every
+-- ability at its enemy: the Lo'taur has no
+-- ally-heal behaviour yet. Binding HealHealth/HealFocus to these effects
+-- needs that behaviour first, or the Lo'taur would heal what it fights.
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 1653);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3326);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3327);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3328);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3329);
