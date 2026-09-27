@@ -7,10 +7,13 @@ use super::failure::{at, expect_rows};
 use super::{BlueprintsLearned, CraftApplied, CraftTxError};
 use crate::base::crafting::telemetry::JobIds;
 
-/// Add every blueprint in `teach` the player does not know yet to
-/// `sgw_player.blueprint_ids`, keeping the list sorted. Nothing is written
-/// when all of them are known already, and `applied.blueprints` stays
-/// `None`.
+/// Add every `(blueprint_id, discipline_id)` in `teach` whose discipline
+/// the player knows and whose blueprint they do not know yet to
+/// `sgw_player.blueprint_ids`, keeping the list sorted. The discipline is
+/// checked here, under the row lock, because the plan was built from a
+/// read taken before the transaction: a discipline dropped in between
+/// teaches nothing. Nothing is written when no blueprint qualifies, and
+/// `applied.blueprints` stays `None`.
 ///
 /// This is the one step that locks `sgw_player`, and it runs after every
 /// inventory row the transaction touches is locked: the vendor paths take
@@ -21,16 +24,17 @@ use crate::base::crafting::telemetry::JobIds;
 pub(super) async fn teach_blueprints(
     tx: &mut Transaction<'_, Postgres>,
     ids: &JobIds,
-    teach: &[i32],
+    teach: &[(i32, i32)],
     applied: &mut CraftApplied,
 ) -> Result<(), CraftTxError> {
-    let known: Option<Vec<i32>> =
-        sqlx::query_scalar("SELECT blueprint_ids FROM sgw_player WHERE player_id = $1 FOR UPDATE")
-            .bind(ids.player_id)
-            .fetch_optional(&mut **tx)
-            .await
-            .map_err(at("learn_blueprints"))?;
-    let Some(before) = known else {
+    let row: Option<(Vec<i32>, Vec<i32>)> = sqlx::query_as(
+        "SELECT blueprint_ids, discipline_ids FROM sgw_player WHERE player_id = $1 FOR UPDATE",
+    )
+    .bind(ids.player_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(at("learn_blueprints"))?;
+    let Some((before, disciplines)) = row else {
         return Err(CraftTxError::Invalid {
             phase: "learn_blueprints",
             reason: "player_missing",
@@ -38,8 +42,8 @@ pub(super) async fn teach_blueprints(
     };
     let mut taught: Vec<i32> = teach
         .iter()
-        .copied()
-        .filter(|id| !before.contains(id))
+        .filter(|(id, discipline)| disciplines.contains(discipline) && !before.contains(id))
+        .map(|&(id, _)| id)
         .collect();
     taught.sort_unstable();
     taught.dedup();

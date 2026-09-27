@@ -123,22 +123,25 @@ pub fn roll(
     }
 }
 
-/// The blueprints a successful research of `type_id` teaches: every one
-/// whose product it is and whose discipline the player knows, that the
-/// player does not know yet, in id order.
+/// The blueprints a successful research of `type_id` teaches, as
+/// `(blueprint_id, discipline_id)`: every one whose product it is and whose
+/// discipline the player knows, that the player does not know yet, in id
+/// order. The transaction checks the discipline again under its lock.
 pub fn blueprints_taught(
     catalog: &CraftingCatalog,
     state: &CraftingState,
     type_id: i32,
-) -> Vec<i32> {
-    let mut ids: Vec<i32> = catalog
+) -> Vec<(i32, i32)> {
+    let mut found: Vec<(i32, i32)> = catalog
         .blueprints
         .values()
         .filter(|b| b.product_id == Some(type_id))
-        .filter(|b| b.discipline_id.is_some_and(|d| state.knows_discipline(d)))
-        .map(|b| b.blueprint_id)
-        .filter(|id| !state.blueprint_ids.contains(id))
+        .filter(|b| !state.blueprint_ids.contains(&b.blueprint_id))
+        .filter_map(|b| {
+            let d = b.discipline_id?;
+            state.knows_discipline(d).then_some((b.blueprint_id, d))
+        })
         .collect();
-    ids.sort_unstable();
-    ids
+    found.sort_unstable();
+    found
 }

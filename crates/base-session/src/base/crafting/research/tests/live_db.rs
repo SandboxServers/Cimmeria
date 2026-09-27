@@ -253,3 +253,45 @@ async fn a_research_request_queues_an_induction_and_consumes_nothing_yet() {
     assert!(f.holds(item).await && f.holds(kicker).await);
     f.cleanup().await;
 }
+
+/// A plan built from a read taken before the transaction may name a
+/// blueprint whose discipline the player dropped in between (a respec).
+/// The transaction checks the discipline under its row lock: nothing is
+/// taught, while the rest of the plan still applies.
+#[tokio::test]
+async fn a_blueprint_whose_discipline_was_dropped_before_the_transaction_is_not_taught() {
+    use crate::base::crafting::telemetry::JobIds;
+    use crate::base::crafting::transaction::{
+        apply_craft_transaction, CraftTransaction, NamedItem,
+    };
+
+    let pool = require_db_or_skip!();
+    let f = VerbFixture::new(&pool, 6).await;
+    // The player knows 22 only; the stale plan still teaches blueprint 1
+    // of discipline 21.
+    f.know(22, 10).await;
+    let item = f.stack(ITEM, INV_CRAFTING, 0).await;
+    let plan = CraftTransaction {
+        named_items: vec![NamedItem::new(item, ITEM)],
+        consume_named: vec![(item, 1)],
+        learn_blueprints: vec![(1, 21)],
+        ..CraftTransaction::default()
+    };
+    let ids = JobIds {
+        job_id: 0,
+        verb: "research",
+        account_id: f.account_id as u32,
+        player_id: f.player_id,
+        entity_id: f.entity_id,
+    };
+
+    let applied = apply_craft_transaction(&f.env, &ids, &plan)
+        .await
+        .expect("the transaction commits");
+
+    assert!(applied.blueprints.is_none());
+    assert!(f.blueprints().await.is_empty());
+    assert!(!f.holds(item).await, "the rest of the plan applied");
+    assert!(args_of(&f, method_idx::ON_UPDATE_KNOWN_CRAFTS).is_empty());
+    f.cleanup().await;
+}

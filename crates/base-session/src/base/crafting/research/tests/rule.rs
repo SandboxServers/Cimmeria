@@ -220,11 +220,11 @@ fn the_discipline_is_picked_uniformly_and_the_chance_counts_kickers() {
 fn a_success_teaches_the_blueprints_of_known_disciplines_only() {
     let c = catalog();
     let mut state = knowing(&[(21, 10)]);
-    assert_eq!(blueprints_taught(&c, &state, ITEM), vec![1]);
+    assert_eq!(blueprints_taught(&c, &state, ITEM), vec![(1, 21)]);
     state.blueprint_ids = vec![1];
     assert!(blueprints_taught(&c, &state, ITEM).is_empty());
     let state = knowing(&[(21, 10), (22, 3)]);
-    assert_eq!(blueprints_taught(&c, &state, ITEM), vec![1, 7]);
+    assert_eq!(blueprints_taught(&c, &state, ITEM), vec![(1, 21), (7, 22)]);
     assert!(blueprints_taught(&c, &knowing(&[]), ITEM).is_empty());
 }
 

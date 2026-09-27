@@ -87,7 +87,7 @@ pub struct ResearchJob {
 impl ResearchJob {
     /// The transaction for `outcome`: the item and every kicker, exactly;
     /// on a success the expertise and the blueprints to teach.
-    pub fn plan(&self, outcome: &ResearchRoll, teach: Vec<i32>) -> CraftTransaction {
+    pub fn plan(&self, outcome: &ResearchRoll, teach: Vec<(i32, i32)>) -> CraftTransaction {
         let inputs = std::iter::once(&self.item).chain(&self.kickers);
         let expertise = match (outcome.success, outcome.discipline_id) {
             (true, Some(d)) => vec![(d, RESEARCH_EXPERTISE_GAIN)],
