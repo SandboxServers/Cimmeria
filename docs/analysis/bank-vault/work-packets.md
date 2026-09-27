@@ -90,7 +90,7 @@ The coordinator merges these one packet at a time, and tells the named campaign 
 
 ## BV-01 capacity and the player-movable allowlist
 
-**Status: Writing** (worktree `bank-bv01`). Audit rows A-20, A-21, A-22, A-29 and A-31; decisions D-BV06, D-BV07 and D-BV17.
+**Status: Review** (PR #872). Audit rows A-20, A-21, A-22, A-29 and A-31; decisions D-BV06, D-BV07 and D-BV17.
 
 Scope:
 
@@ -113,7 +113,7 @@ Docs to update: `docs/gameplay/inventory-system.md` (the capacity source), `TEST
 
 ## BV-E1 client evidence
 
-**Status: Writing** (worktree `bank-bve1`). Read-only. The writer is `game-archaeology-specialist`. Audit rows A-02, A-09 and A-12.
+**Status: Review** (PR #867). Findings: `docs/reverse-engineering/findings/bank-vault-client.md`. Read-only. The writer is `game-archaeology-specialist`. Audit rows A-02, A-09 and A-12.
 
 Answer, with Ghidra addresses and Lua lines, in `docs/reverse-engineering/findings/bank-vault-client.md`, and index it:
 
@@ -158,6 +158,9 @@ Scope:
 - Mission items are refused.
 - Moves both into and out of 17 cover deposit, withdraw, swap, stack merge and split. Reuse the existing split and merge path.
 - A rejection sends feedback, then re-syncs the affected slots with `onUpdateItem`, so the client's drag snaps back.
+- **The slot bound is the player's `bank_slots`, read inside the move transaction.** It is not `bag_max_slots(17)`, which is the ceiling of 100. Apply the same bound wherever `reserve_free_inventory_slots` can reach 17. Without it, a 40-slot player can use slots 40-99 without buying the expansion (BV-01 review, follow-up 2).
+- **Player-accessible containers for use and removal.** `useItem`, `removeItem` and content `RemoveItem` (`use_instance.rs`, `remove_instance.rs`, `remove_by_type.rs`) find an item by id without checking its container. So an item sitting in buyback (16) can be used today, and a banked item would be usable from anywhere. Add one shared check next to `player_movable`: 1-15, and 17 only with a vault session (BV-01 review, follow-up 1).
+- Split `move_/mod.rs` first (690 of the 700-line cap): move the post-commit side effects into `move_/after_commit.rs`.
 
 Tests:
 
@@ -196,9 +199,11 @@ Tests:
 Scope:
 
 - The `bank_expansion_price` seed table.
-- A Banker dialog option, shaped by BV-E1 question 3.
+- A Banker dialog option, per BV-E1:
+  - On a Banker click, send `onVaultOpen`, and, while `bank_slots < 100`, also send a single-button "Expand vault" dialog. It is a Generic1 button (`button_type = 4`), not Accept.
+  - The dialog's `dialogButtonChoice` is **not** an authority check: the server ignores `button_id`, and `OnDialogChoice` matches only the dialog id. The purchase handler must re-check the vault session and the proximity rule itself, then the cash and the ceiling.
 - Buying one step debits naquadah and raises `bank_slots` by 10, in one statement or one transaction, so the purchase is atomic and replay-safe.
-- It re-declares container 17 with `onBagInfo` (behaviour per BV-E1 question 2) and updates the cash.
+- It re-declares container 17 with `onBagInfo` and updates the cash. BV-E1 infers that an open window resizes live (through `InventoryUpdateContainerSize`); confirm this in UAT. Every outcome also sends a chat line, so there is feedback even when the window is closed.
 - At 100 slots, or without the cash, the player gets feedback.
 
 Tests:
