@@ -13,5 +13,7 @@ Found 2026-09-26 building the Castle_CellBlock stasis-room debug hub (PR on bran
 - **`system_message` is log-only**; visible chain feedback = `npc_bark` + a never-displayed holder dialog whose screen carries the text (loaded into `dialog_screen_text` at startup).
 - **New Cimmeria dialogs**: seed rows + `DIALOG_OVERRIDES` entry (append at END; tests read `[0]`), and edit the id list pinned in `resources/src/base/resources/tests/dialog_overrides.rs` and the 3995/3996-only `shipped_overrides_carry_no_buttons`. Use screen ids >= 200000 (PAK screens reach 120383). Generic button type 4, not Accept 2.
 - **`cimmeria-cell-methods` has no `sqlx` dep**: a live-DB test there cannot name `PgPool`; load via a local `macro_rules!` that calls the `spawner::load_*` fns on the `require_db_or_skip!()` value.
+- **Hub placement (2026-09-27, BV-04):** the A-B line is full to corner B (pet trainer 450 is 2.1 from the B-C wall), crafting's `CraftHub_*` take the A-D side, the C-D wall is the exit. The Banker 470 went mid B-C wall, 3 in. `staged_hub` counts `DebugHub_*` spawns: 7 after BV-04.
+- **`sgw_player.player_name` is UNIQUE** (`sgw_player_player_name_key`): a name-based GM lookup has no ambiguous case, and a fixture cannot insert two characters with one name.
 
 Related: [[content-chain-authoring-traps]], [[seed-name-id-and-asset-naming]], [[npc-range-gate-and-weapon-range-columns]].
