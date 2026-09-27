@@ -18,6 +18,7 @@ mod fire_los;
 mod gating;
 mod holster_queue;
 mod pet_kill_credit;
+mod registered_pet_kill_credit;
 mod sequence;
 mod sequence_phases;
 mod target_validity;

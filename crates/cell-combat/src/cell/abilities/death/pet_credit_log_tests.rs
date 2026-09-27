@@ -176,3 +176,28 @@ async fn a_refused_pet_kill_logs_only_credit_refused() {
         "no duplicate row for a refusal credit_recipient already logged: {logs:#?}"
     );
 }
+
+/// Seam: the pet's payout rounds to zero (a tiny `transfer_xp`: 50 XP x
+/// 0.001 rounds to 0). DEBUG (a template can author it; nothing is broken),
+/// `reason = zero_xp`, on `pets.credit` with the pet, the owner and the
+/// summoner's identity, and no `GrantXP`.
+#[tokio::test]
+async fn a_zero_xp_pet_kill_logs_zero_xp() {
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(pet)
+        .unwrap()
+        .pet
+        .as_mut()
+        .unwrap()
+        .transfer_xp = 0.001;
+    let capture = LogCapture::install();
+    assert_eq!(kill(&mut mgr, mob, pet).await, vec![], "nothing is paid");
+
+    let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+    assert_eq!(row.level, Level::DEBUG);
+    assert!(row.has_field("reason", "zero_xp"), "{row:?}");
+    assert!(row.has_field("victim_id", &mob.to_string()), "{row:?}");
+    assert!(row.has_field("base_xp", &MOB_XP.to_string()), "{row:?}");
+    assert_pet(&row, pet);
+    assert_owner_identity(&row);
+}
