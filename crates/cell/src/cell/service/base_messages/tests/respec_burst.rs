@@ -16,6 +16,7 @@ use crate::mercury::method_idx;
 use cimmeria_entity::cell_entity::{PendingCast, TreeProgress};
 
 const PLAYER: u32 = 1;
+const PLAYER_ID: i32 = 100;
 const TRAINER: u32 = 200;
 const STARTER: i32 = 1646;
 const ROOT: i32 = 597;
@@ -31,7 +32,7 @@ fn fixture() -> SpaceManager {
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(PLAYER) {
         p.is_player = true;
-        p.player_id = Some(100);
+        p.player_id = Some(PLAYER_ID);
         p.archetype_id = Some(2);
         p.level = 1;
         for id in [STARTER, ROOT, NODE] {
@@ -61,10 +62,20 @@ fn fixture() -> SpaceManager {
 }
 
 async fn deliver(mgr: &mut SpaceManager, outcome: RespecOutcome) -> Vec<(u16, Vec<u8>)> {
+    deliver_as(mgr, PLAYER_ID, outcome).await
+}
+
+/// Deliver an `AbilitiesReset` the base addressed to character `player_id`.
+async fn deliver_as(
+    mgr: &mut SpaceManager,
+    player_id: i32,
+    outcome: RespecOutcome,
+) -> Vec<(u16, Vec<u8>)> {
     let (tx, mut rx) = mpsc::channel(32);
     let engine = ChainEngine::new();
     let msg = BaseToCellMsg::AbilitiesReset {
         entity_id: PLAYER,
+        player_id,
         outcome,
     };
     handle_base_message(msg, &tx, mgr, &engine, &[]).await;
@@ -264,4 +275,19 @@ async fn nothing_to_reset_from_the_base_sends_code_167_then_resend() {
         vec![0x00, 0x00, 0x00, 0x00, 0x00, 0xA7, 0x00],
         "onErrorCode(Ability, 0, EntityDoesNotHaveAbility = 167)"
     );
+}
+
+/// Bug shape: the base checked the session before its `UPDATE`; if the
+/// entity id was reused by another character meanwhile, that character
+/// must not lose abilities or get the first one's balance.
+#[tokio::test]
+async fn reset_for_another_character_is_ignored() {
+    let mut mgr = fixture();
+    let before = mgr.get_entity(PLAYER).unwrap().tree_progress.clone();
+    let frames = deliver_as(&mut mgr, PLAYER_ID + 1, reset()).await;
+
+    assert!(frames.is_empty(), "nothing is sent to the other character");
+    let p = mgr.get_entity(PLAYER).unwrap();
+    assert_eq!(p.tree_progress, before);
+    assert!(p.abilities.has_ability(ROOT));
 }

@@ -71,7 +71,9 @@ async fn setup_trained(pool: &sqlx::PgPool, id: i32, points_left: i32, naquadah:
 async fn respec_removes_only_trainer_abilities_refunds_the_spend_and_charges_once() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0801;
-    setup_trained(&pool, ID, 2, 1500).await;
+    // Enough naquadah for two respecs, so only the "something trainer-bought"
+    // clause can hold the replay back.
+    setup_trained(&pool, ID, 2, 2500).await;
 
     let first = persist_respec(&pool, ID, RESPEC_COST_NAQUADAH)
         .await
@@ -88,13 +90,13 @@ async fn respec_removes_only_trainer_abilities_refunds_the_spend_and_charges_onc
         Some(RespecOutcome::Reset {
             refunded: vec![ROOT, NODE],
             training_points: 5,
-            naquadah: 500,
+            naquadah: 1500,
         }),
         "the refund is exactly the 3 points spent; the charge is the price"
     );
     assert_eq!(
         after_first,
-        (vec![STARTER, QUEST], vec![], 5, 0, 500),
+        (vec![STARTER, QUEST], vec![], 5, 0, 1500),
         "the starter and quest grants survive in order; provenance and spend reset"
     );
     assert_eq!(

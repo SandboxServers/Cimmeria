@@ -261,8 +261,13 @@ pub enum BaseToCellMsg {
     /// `Reset` the cell drops the refunded abilities, clears its tree
     /// progress and sends the respec burst. On a refusal it sends the
     /// rejection feedback. Either way the row is already final.
+    ///
+    /// `player_id` is the character the base reset. The cell ignores the
+    /// message when `entity_id` now belongs to another character (a relog
+    /// that reused the id while the `UPDATE` ran).
     AbilitiesReset {
         entity_id: u32,
+        player_id: i32,
         outcome: crate::ability_tree::RespecOutcome,
     },
 

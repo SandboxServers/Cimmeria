@@ -36,10 +36,26 @@ use super::player_init::send_known_abilities_update;
 /// Handle `BaseToCellMsg::AbilitiesReset`.
 pub(super) async fn handle_abilities_reset(
     entity_id: u32,
+    player_id: i32,
     outcome: RespecOutcome,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // The base checked the session before its `UPDATE`, not before this
+    // reply. If the id now belongs to another character, neither the mirror
+    // nor the feedback is theirs.
+    let current = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);
+    if current != Some(player_id) {
+        tracing::warn!(
+            target: "abilities",
+            event = "respec_player_mismatch",
+            entity_id,
+            player_id,
+            current_player_id = ?current,
+            "AbilitiesReset: entity no longer plays the reset character — ignoring"
+        );
+        return;
+    }
     let (refunded, training_points, naquadah) = match outcome {
         RespecOutcome::Reset {
             refunded,
@@ -73,14 +89,7 @@ pub(super) async fn handle_abilities_reset(
     // Mirror before any send, so the trainer re-send computes `trainable`
     // from the reset spend and points: a root is buyable again at once.
     let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
-        tracing::warn!(
-            target: "abilities",
-            event = "respec_entity_missing",
-            entity_id,
-            refunded = ?refunded,
-            "AbilitiesReset: no cell entity; the row is reset but nothing is mirrored"
-        );
-        return;
+        return; // checked above
     };
     for &ability_id in &refunded {
         entity.abilities.remove_ability(ability_id);

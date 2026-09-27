@@ -211,3 +211,30 @@ async fn player_without_a_player_id_is_silent() {
     mgr.get_entity_mut(PLAYER).unwrap().player_id = None;
     assert!(respec(&mut mgr).await.is_empty());
 }
+
+/// A double-click or a spamming client: the second press inside the retry
+/// window never reaches the base, so a player short of naquadah (which the
+/// cell cannot see) cannot drive one row-locking `UPDATE` per packet.
+#[tokio::test]
+async fn repeat_press_inside_the_retry_window_is_dropped() {
+    let mut mgr = fixture();
+    assert_eq!(respec(&mut mgr).await.len(), 1, "first press forwarded");
+    assert!(
+        respec(&mut mgr).await.is_empty(),
+        "the repeat is neither forwarded nor answered: the first answer is on its way"
+    );
+}
+
+#[tokio::test]
+async fn press_after_the_retry_window_is_forwarded_again() {
+    let mut mgr = fixture();
+    mgr.get_entity_mut(PLAYER).unwrap().respec_requested_at =
+        Some(std::time::Instant::now() - std::time::Duration::from_secs(2));
+    assert_eq!(
+        respec(&mut mgr).await,
+        vec![Sent::Reset {
+            player_id: PLAYER_ID,
+            cost: RESPEC_COST_NAQUADAH,
+        }]
+    );
+}

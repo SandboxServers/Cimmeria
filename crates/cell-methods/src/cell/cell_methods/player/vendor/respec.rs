@@ -7,6 +7,8 @@
 //! `BaseToCellMsg::AbilitiesReset`, handled in
 //! `service/base_messages/respec.rs`.
 
+use std::time::{Duration, Instant};
+
 use tokio::sync::mpsc;
 
 use crate::ability_tree::{
@@ -16,6 +18,14 @@ use crate::ability_tree::{
 use crate::cell::interactions::{send_respec_rejection, trainer_pin};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+
+/// How long after a forwarded respec another press is dropped. The base
+/// answers well inside it, so the press it drops is a double-click or a
+/// spamming client, and the first press's answer is still on its way. It
+/// bounds the base's row-locking `UPDATE` to one per player per window,
+/// which matters for a player short of naquadah: the cell cannot see the
+/// balance, so every such press would otherwise reach the base.
+const RESPEC_RETRY_WINDOW: Duration = Duration::from_secs(1);
 
 /// Why the cell refused a respec before asking the base.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +48,10 @@ enum Refusal {
 /// 3. Something is trainer-bought (`tree_progress`). A replay after a
 ///    successful respec stops here without a DB round trip; the base's
 ///    `UPDATE` guard is the authority when the two race.
+///
+/// A press that passes all three within `RESPEC_RETRY_WINDOW` of the last
+/// forwarded one is dropped silently: the earlier press's answer is still
+/// coming, so it is not a first press.
 ///
 /// Refusals 2 and 3 answer with `onErrorCode` and the pinned trainer's
 /// re-send (`send_respec_rejection`). Refusal 3 is a first press too: the
@@ -83,6 +97,27 @@ pub(crate) async fn handle_reset_my_abilities(
         };
         (player_id, refusal)
     };
+
+    let now = Instant::now();
+    if refusal.is_none() {
+        let recent = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.respec_requested_at)
+            .is_some_and(|at| now.duration_since(at) < RESPEC_RETRY_WINDOW);
+        if recent {
+            tracing::debug!(
+                target: "abilities",
+                event = "respec_dropped",
+                entity_id,
+                player_id,
+                "resetMyAbilities: a respec is already on its way — dropping the repeat"
+            );
+            return;
+        }
+        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+            e.respec_requested_at = Some(now);
+        }
+    }
 
     match refusal {
         Some(Refusal::NotAtTrainer(reason)) => {

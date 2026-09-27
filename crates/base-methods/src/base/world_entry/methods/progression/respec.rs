@@ -245,7 +245,11 @@ pub async fn handle_reset_abilities(
 
     if let Some(tx) = cell_tx {
         if let Err(e) = tx
-            .send(crate::cell::messages::BaseToCellMsg::AbilitiesReset { entity_id, outcome })
+            .send(crate::cell::messages::BaseToCellMsg::AbilitiesReset {
+                entity_id,
+                player_id,
+                outcome,
+            })
             .await
         {
             tracing::error!(

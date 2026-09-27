@@ -407,8 +407,12 @@ pub(super) async fn handle_base_message(
             );
         }
 
-        BaseToCellMsg::AbilitiesReset { entity_id, outcome } => {
-            respec::handle_abilities_reset(entity_id, outcome, tx, space_mgr).await;
+        BaseToCellMsg::AbilitiesReset {
+            entity_id,
+            player_id,
+            outcome,
+        } => {
+            respec::handle_abilities_reset(entity_id, player_id, outcome, tx, space_mgr).await;
         }
 
         BaseToCellMsg::ItemUsed {

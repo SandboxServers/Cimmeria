@@ -740,4 +740,8 @@ pub struct CellEntity {
     /// Ability-tree provenance (`sgw_player.trained_abilities`,
     /// `tree_points_spent`), stamped by `InitPlayerState`.
     pub tree_progress: TreeProgress,
+    /// When this player's last respec went to the base (AT-08). A press
+    /// within `RESPEC_RETRY_WINDOW` of it is dropped, which bounds the base
+    /// round trips a spamming client can cause.
+    pub respec_requested_at: Option<std::time::Instant>,
 }
