@@ -61,7 +61,8 @@ async fn full_bag_rolls_back_and_tells_the_player() {
 
     let result = f
         .apply(&CraftTransaction {
-            named_items: vec![component],
+            named_items: vec![NamedItem::new(component, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 2)],
             grant: vec![(BANK_FIRST_PRODUCT, 1)],
             expertise: vec![],
@@ -109,7 +110,8 @@ async fn a_component_moved_to_the_bank_before_completion_rolls_back() {
 
     let result = f
         .apply(&CraftTransaction {
-            named_items: vec![named],
+            named_items: vec![NamedItem::new(named, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 1)],
             grant: vec![(BANK_FIRST_PRODUCT, 1)],
             expertise: vec![],
@@ -146,7 +148,8 @@ async fn bank_stacks_do_not_count_toward_consumption() {
 
     let result = f
         .apply(&CraftTransaction {
-            named_items: vec![named],
+            named_items: vec![NamedItem::new(named, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 2)],
             grant: vec![(BANK_FIRST_PRODUCT, 1)],
             expertise: vec![],
@@ -184,7 +187,8 @@ async fn a_component_of_another_player_is_missing() {
 
     let result = f
         .apply(&CraftTransaction {
-            named_items: vec![theirs],
+            named_items: vec![NamedItem::new(theirs, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 1)],
             grant: vec![(BANK_FIRST_PRODUCT, 1)],
             expertise: vec![],
@@ -217,7 +221,8 @@ async fn a_product_with_no_carried_bag_is_refused() {
 
     let result = f
         .apply(&CraftTransaction {
-            named_items: vec![component],
+            named_items: vec![NamedItem::new(component, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 1)],
             grant: vec![(MISSION_ONLY, 1)],
             expertise: vec![],
@@ -302,6 +307,8 @@ async fn no_database_is_reported_to_the_player() {
         )
         .expect("rejected induction_failed");
     assert!(e.has_field("event", "rejected"));
+    // The queued job's account, not whatever the live session map says.
+    assert!(e.has_field("account_id", "76"), "{e:#?}");
     assert!(e.has_field("player_id", "78"), "{e:#?}");
     assert!(e.has_field("entity_id", "77"), "{e:#?}");
     // The request was answered when the job was queued: a completion
@@ -322,7 +329,8 @@ async fn a_non_positive_consume_quantity_refuses_the_grant() {
 
     let result = f
         .apply(&CraftTransaction {
-            named_items: vec![component],
+            named_items: vec![NamedItem::new(component, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, -1)],
             grant: vec![(BANK_FIRST_PRODUCT, 1)],
             expertise: vec![],
@@ -348,7 +356,8 @@ async fn an_unknown_product_is_refused() {
 
     let result = f
         .apply(&CraftTransaction {
-            named_items: vec![component],
+            named_items: vec![NamedItem::new(component, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 1)],
             grant: vec![(TEST_BASE + 0xFFF, 1)],
             expertise: vec![],
@@ -385,7 +394,7 @@ async fn a_database_failure_rolls_back_and_is_reported() {
     assert_eq!(result, Err(CraftReject::InductionFailed));
     assert!(f.stacks_of(BANK_FIRST_PRODUCT).await.is_empty());
     assert_refused_with(&f, "Crafting failed. Nothing was used.", 0);
-    assert_persist_failed(&capture, &f, "lock_player", "player_missing");
+    assert_persist_failed(&capture, &f, "check_player", "player_missing");
     f.cleanup().await;
 }
 

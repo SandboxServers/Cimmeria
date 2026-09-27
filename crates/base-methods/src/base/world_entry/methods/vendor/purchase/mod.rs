@@ -17,6 +17,8 @@ use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
 #[cfg(test)]
+mod concurrency_tests;
+#[cfg(test)]
 mod tests;
 
 const INV_MAIN: i32 = 1;
@@ -105,6 +107,26 @@ pub async fn handle_purchase_vendor_items(
             return;
         }
     };
+
+    // The player-wide inventory lock comes first, before any row: inventory
+    // moves and crafting completions take it first too, and both then take
+    // per-bag advisory locks before inventory rows, the reverse of the row
+    // -> player -> bag order below. Holding it for the whole purchase
+    // serializes the purchase with them instead of letting the two orders
+    // deadlock.
+    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
+        .bind(player_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        tracing::error!(
+            entity_id,
+            player_id,
+            "PurchaseVendorItems: player inventory lock failed: {e}"
+        );
+        return;
+    }
 
     // Lock acquisition order: sgw_inventory rows (via consume_design_quantity's
     // FOR UPDATE prereq lookup) BEFORE sgw_player.naquadah (FOR UPDATE balance

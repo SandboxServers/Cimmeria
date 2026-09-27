@@ -119,11 +119,11 @@ impl Harness {
             .await;
     }
 
-    fn calls(&self) -> Vec<MethodCall> {
+    pub(super) fn calls(&self) -> Vec<MethodCall> {
         decode_all(&self.transport.filter_to(self.addr))
     }
 
-    fn timer_ids(&self) -> Vec<i32> {
+    pub(super) fn timer_ids(&self) -> Vec<i32> {
         self.calls()
             .iter()
             .filter(|c| c.method == ON_TIMER_UPDATE)

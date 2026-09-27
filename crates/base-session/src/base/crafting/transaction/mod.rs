@@ -35,6 +35,7 @@ mod client_sync;
 mod consume;
 mod failure;
 mod grant;
+mod plan;
 
 #[cfg(test)]
 mod tests;
@@ -42,6 +43,7 @@ mod tests;
 pub use applied::{ConsumedStack, CraftApplied, ExpertiseChange, GrantedStack};
 pub use client_sync::resync_inventory;
 pub use failure::CraftTxError;
+pub use plan::{CraftTransaction, NamedItem};
 
 use failure::{at, expect_rows, log_persist_failed};
 
@@ -52,24 +54,6 @@ pub const CRAFTING_INPUT_BAGS: [i32; 2] = [
     cimmeria_cell_catalog::item_placement::INV_MAIN,
 ];
 
-/// What one induction consumes and produces. The verb builds it from the
-/// catalog and the request; this module applies it.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CraftTransaction {
-    /// Item instances the request named. Each must still belong to the
-    /// player and sit in the main or crafting bag.
-    pub named_items: Vec<i32>,
-    /// `(design_id, quantity)` to consume across the main and crafting
-    /// bags. A non-positive quantity refuses the whole transaction.
-    pub consume: Vec<(i32, i32)>,
-    /// `(design_id, quantity)` to grant. Non-positive quantities are
-    /// skipped.
-    pub grant: Vec<(i32, i32)>,
-    /// `(discipline_id, delta)` for disciplines the player knows, clamped
-    /// to `[0, 100]`. Unknown disciplines are skipped.
-    pub expertise: Vec<(i32, i32)>,
-}
-
 /// Run `plan` as one transaction and commit it. Returns what changed and
 /// the outbox rows to dispatch to the cell. Nothing is sent to the client
 /// and nothing is logged for a failure; [`apply_craft_transaction`] does
@@ -79,6 +63,7 @@ pub async fn run_craft_transaction(
     ids: &JobIds,
     plan: &CraftTransaction,
 ) -> Result<(CraftApplied, Vec<(i64, CellOutboxPayload)>), CraftTxError> {
+    plan.check_shape()?;
     let mut tx = pool.begin().await.map_err(at("begin"))?;
     match apply_in_tx(&mut tx, ids, plan).await {
         Ok(done) => {
@@ -101,14 +86,17 @@ async fn apply_in_tx(
 ) -> Result<(CraftApplied, Vec<(i64, CellOutboxPayload)>), CraftTxError> {
     let player_id = ids.player_id;
     // Lock order: advisory locks first (the player-wide move lock, then
-    // each bag), then the player row, then inventory rows. See
-    // `grant::lock_containers`.
+    // each bag), then inventory rows. The player row is read, never
+    // locked. See `grant::lock_containers` and `consume::check_player`.
     let placements = grant::resolve(tx, &plan.grant).await?;
     grant::lock_containers(tx, player_id, &placements).await?;
-    consume::lock_player(tx, player_id).await?;
-    consume::check_named_items(tx, player_id, &plan.named_items).await?;
+    consume::check_player(tx, player_id).await?;
+    let mut named = consume::check_named_items(tx, player_id, &plan.named_items).await?;
 
     let mut applied = CraftApplied::default();
+    for &(item_id, quantity) in &plan.consume_named {
+        consume::consume_instance(tx, ids, &mut named, item_id, quantity, &mut applied).await?;
+    }
     for &(design_id, quantity) in &plan.consume {
         consume::consume_design(tx, ids, design_id, quantity, &mut applied).await?;
     }
@@ -222,5 +210,5 @@ pub async fn apply_craft_transaction(
 }
 
 async fn send_reject(env: &InductionEnv, ids: &JobIds, why: &CraftReject) {
-    reject_at_completion(ids.verb, ids.entity_id, ids.player_id, why, env.client()).await;
+    reject_at_completion(ids, why, env.client()).await;
 }

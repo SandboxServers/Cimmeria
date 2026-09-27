@@ -15,15 +15,18 @@ use crate::base::crafting::telemetry::JobIds;
 use crate::base::crafting::test_packets::{decode_all, MethodCall};
 use crate::test_support::{test_default_connected_client_state, TestTransport};
 
+mod concurrency;
 mod consumption;
 mod induction;
+mod named;
+mod notify;
 mod refusals;
 
 /// Inside crafting's `0x7000_Cxxx` block, clear of the persistence
 /// (`0x7000_C000`..), GM-grant (`0x7000_CC00`..), login-sync, spend and
 /// station (`0x7000_CD00`..`0x7000_CE1F`) and world-entry (`0x7000_CF00`,
 /// `0x7000_CF01`) tests. Each test takes a 4-id slot (account, player,
-/// entity), sixteen slots in all: `0x7000_CF40..=0x7000_CF7F`.
+/// entity), 24 slots in all: `0x7000_CF40..=0x7000_CF9F`.
 const TEST_BASE: i32 = 0x7000_CF40;
 
 /// Dross Kit: Tier 2. A crafting component: `{17,15}`, stacks to 2.

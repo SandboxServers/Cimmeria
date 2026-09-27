@@ -78,6 +78,13 @@ pub enum CraftReject {
     /// A component the request named is no longer in the main bag or the
     /// crafting bag (moved to the bank, equipped, ...).
     ComponentNotInCraftingBags { item_id: i32, container_id: i32 },
+    /// A component the request named is not of the design it was named
+    /// for (a forged or stale request).
+    ComponentMismatch {
+        item_id: i32,
+        expected_design_id: i32,
+        type_id: i32,
+    },
     /// The main and crafting bags hold fewer of a component than needed.
     NotEnoughComponents {
         design_id: i32,
@@ -108,8 +115,11 @@ pub struct Compared {
     pub station_mask: Option<u8>,
     /// The item instance a component check refused.
     pub item_id: Option<i32>,
-    /// The item design a consumption or placement refused.
+    /// The item design a consumption or placement refused, or the design a
+    /// named instance was expected to be.
     pub design_id: Option<i32>,
+    /// The design a named instance actually is.
+    pub type_id: Option<i32>,
     /// The bag the refused instance sits in, or the product's bag.
     pub container_id: Option<i32>,
     /// How many of `design_id` the plan needs, against `available` in the
@@ -150,6 +160,7 @@ impl CraftReject {
             CraftReject::QueueFull { .. } => "queue_full",
             CraftReject::ComponentMissing { .. } => "component_missing",
             CraftReject::ComponentNotInCraftingBags { .. } => "component_not_in_crafting_bags",
+            CraftReject::ComponentMismatch { .. } => "component_mismatch",
             CraftReject::NotEnoughComponents { .. } => "not_enough_components",
             CraftReject::InventoryFull { .. } => "inventory_full",
             CraftReject::NoCarriedBagForProduct { .. } => "no_carried_bag_for_product",
@@ -214,6 +225,9 @@ impl CraftReject {
             CraftReject::ComponentNotInCraftingBags { .. } => {
                 "Components must be in your backpack or crafting bag. Nothing was used.".to_string()
             }
+            CraftReject::ComponentMismatch { .. } => {
+                "A chosen component is not the one this needs. Nothing was used.".to_string()
+            }
             CraftReject::NotEnoughComponents { .. } => {
                 "You do not have enough components. Nothing was used.".to_string()
             }
@@ -247,6 +261,16 @@ impl CraftReject {
             } => Compared {
                 item_id: Some(item_id),
                 container_id: Some(container_id),
+                ..Compared::default()
+            },
+            CraftReject::ComponentMismatch {
+                item_id,
+                expected_design_id,
+                type_id,
+            } => Compared {
+                item_id: Some(item_id),
+                design_id: Some(expected_design_id),
+                type_id: Some(type_id),
                 ..Compared::default()
             },
             CraftReject::NotEnoughComponents {
@@ -350,6 +374,7 @@ impl CraftReject {
             | CraftReject::QueueFull { .. }
             | CraftReject::ComponentMissing { .. }
             | CraftReject::ComponentNotInCraftingBags { .. }
+            | CraftReject::ComponentMismatch { .. }
             | CraftReject::NotEnoughComponents { .. }
             | CraftReject::InventoryFull { .. }
             | CraftReject::NoCarriedBagForProduct { .. }
@@ -359,163 +384,5 @@ impl CraftReject {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn not_available_text_names_the_action() {
-        let text = |verb| CraftReject::not_available(&verb).text();
-        assert_eq!(
-            text(CraftVerb::Spend { discipline_id: 21 }),
-            "Learning disciplines is not available yet."
-        );
-        assert_eq!(
-            text(CraftVerb::Craft {
-                blueprint_id: 412,
-                items: vec![],
-                quantity: 1
-            }),
-            "Crafting is not available yet."
-        );
-        assert_eq!(
-            text(CraftVerb::Research {
-                item_id: 1,
-                kickers: vec![]
-            }),
-            "Research is not available yet."
-        );
-        assert_eq!(
-            text(CraftVerb::ReverseEngineer { item_id: 1 }),
-            "Reverse engineering is not available yet."
-        );
-        assert_eq!(
-            text(CraftVerb::Alloy {
-                blueprint_id: 42,
-                current_tier_item_id: 1,
-                lower_tier_items: vec![]
-            }),
-            "Alloying is not available yet."
-        );
-        assert_eq!(
-            text(CraftVerb::Respec),
-            "Crafting respec is not available yet."
-        );
-    }
-
-    #[test]
-    fn no_station_text_names_the_verb() {
-        let text = |verb| {
-            CraftReject::NoStationOrTool {
-                verb,
-                station_mask: 0,
-                tools: vec![],
-            }
-            .text()
-        };
-        assert_eq!(
-            text(CraftType::Craft),
-            "No crafting station or tool for crafting nearby."
-        );
-        assert_eq!(
-            text(CraftType::Research),
-            "No crafting station or tool for research nearby."
-        );
-        assert_eq!(
-            text(CraftType::ReverseEngineering),
-            "No crafting station or tool for reverse engineering nearby."
-        );
-        assert_eq!(
-            text(CraftType::Alloying),
-            "No crafting station or tool for alloying nearby."
-        );
-    }
-
-    fn spend_reasons() -> Vec<CraftReject> {
-        vec![
-            CraftReject::Unavailable {
-                action: "Learning disciplines",
-            },
-            CraftReject::UnknownDiscipline { discipline_id: 9 },
-            CraftReject::DisciplineAlreadyKnown {
-                discipline_id: 78,
-                name: "X".into(),
-            },
-            CraftReject::NoAppliedSciencePoints { asp: 0 },
-            CraftReject::ParadigmTooLow {
-                discipline_id: 82,
-                discipline: "X".into(),
-                paradigm_id: 2,
-                paradigm: "Human",
-                required: 3,
-                have: 1,
-            },
-            CraftReject::PrerequisiteMissing {
-                discipline_id: 79,
-                discipline: "X".into(),
-                prerequisite_id: 78,
-                prerequisite: "Y".into(),
-            },
-            CraftReject::PrerequisiteExpertise {
-                discipline_id: 79,
-                discipline: "X".into(),
-                prerequisite_id: 78,
-                prerequisite: "Y".into(),
-                expertise: 49,
-                required: 50,
-            },
-        ]
-    }
-
-    /// Only the ASP reason carries a code; every other spend reason is text
-    /// only.
-    #[test]
-    fn only_no_asp_maps_a_condition_code() {
-        for why in spend_reasons() {
-            let expected = matches!(why, CraftReject::NoAppliedSciencePoints { .. }).then_some(214);
-            assert_eq!(why.error_code(), expected, "{why:?}");
-        }
-    }
-
-    /// The reason vocabulary is the fixed label set the metric documents.
-    #[test]
-    fn reasons_are_the_documented_labels() {
-        let reasons: Vec<&str> = spend_reasons().iter().map(CraftReject::reason).collect();
-        assert_eq!(
-            reasons,
-            [
-                "unavailable",
-                "unknown_discipline",
-                "already_known",
-                "no_asp",
-                "paradigm_too_low",
-                "prerequisite_missing",
-                "prerequisite_expertise",
-            ]
-        );
-    }
-
-    /// Each rule refusal reports the two values it compared.
-    #[test]
-    fn compared_values_name_both_sides() {
-        let reasons = spend_reasons();
-        assert_eq!(reasons[3].compared().asp, Some(0));
-        let paradigm = reasons[4].compared();
-        assert_eq!(
-            (
-                paradigm.paradigm_id,
-                paradigm.paradigm_level,
-                paradigm.required_level
-            ),
-            (Some(2), Some(1), Some(3))
-        );
-        let expertise = reasons[6].compared();
-        assert_eq!(
-            (
-                expertise.prerequisite_id,
-                expertise.prerequisite_expertise,
-                expertise.required_expertise
-            ),
-            (Some(78), Some(49), Some(50))
-        );
-    }
-}
+#[path = "reason_tests.rs"]
+mod tests;

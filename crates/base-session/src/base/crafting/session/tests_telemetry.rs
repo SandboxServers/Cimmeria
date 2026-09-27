@@ -261,3 +261,65 @@ async fn a_job_for_an_unconnected_entity_is_logged_as_dropped() {
     assert!(dropped[0].has_field("player_id", &PLAYER_ID.to_string()));
     assert!(dropped[0].has_field("entity_id", &ENTITY.to_string()));
 }
+
+/// The recycled entity's next owner: another character on another
+/// account, same entity id and address.
+fn recycle_entity(h: &Harness) {
+    let mut connected = h.env.connected.lock().unwrap();
+    let state = connected.get_mut(&h.addr).unwrap();
+    state.active_player_id = Some(PLAYER_ID + 1);
+    state.account_id = ACCOUNT_ID + 1;
+}
+
+/// A job whose start runs after its queue was dropped and the entity
+/// recycled (the window between releasing the session lock and sending
+/// the bar) sends nothing to the new player and schedules nothing.
+#[tokio::test]
+async fn a_late_start_for_a_dropped_job_sends_no_bar() {
+    let h = Harness::new();
+    assert_eq!(h.submit("a", 7).await, SubmitOutcome::Started);
+    let scheduled = h.scheduler.take();
+    assert_eq!(scheduled.len(), 1);
+    let bars = h.timer_ids().len();
+
+    h.sessions.drop_player(ENTITY, DropReason::Logout, "test");
+    recycle_entity(&h);
+    let ids = JobIds {
+        job_id: scheduled[0].job_id,
+        verb: "fake",
+        account_id: ACCOUNT_ID,
+        player_id: PLAYER_ID,
+        entity_id: ENTITY,
+    };
+    let started = Started {
+        job_id: scheduled[0].job_id,
+        deadline: scheduled[0].deadline,
+        timer_id: 7,
+        verb: "fake",
+    };
+    h.sessions.start(&ids, started, 1, &h.env).await;
+
+    assert_eq!(h.timer_ids().len(), bars, "no bar for the new player");
+    assert!(h.scheduler.take().is_empty(), "no wake-up scheduled");
+}
+
+/// Jobs left on a recycled entity id are dropped under the character and
+/// account that queued them, not the new owner's.
+#[tokio::test]
+async fn stale_jobs_are_dropped_under_the_session_that_queued_them() {
+    let capture = LogCapture::install();
+    let h = Harness::new();
+    h.submit("a", 1).await;
+    h.submit("b", 2).await;
+    recycle_entity(&h);
+    h.sessions
+        .submit(ENTITY, PLAYER_ID + 1, job("c", 3, &h.log), &h.env)
+        .await;
+
+    let dropped = events(&capture, "queue_dropped");
+    assert_eq!(dropped.len(), 1, "{dropped:#?}");
+    let e = &dropped[0];
+    assert!(e.has_field("reason", "stale_session"), "{e:#?}");
+    assert!(e.has_field("jobs_dropped", "2"), "{e:#?}");
+    assert_identity(e);
+}

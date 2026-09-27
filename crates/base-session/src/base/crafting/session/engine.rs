@@ -199,19 +199,30 @@ impl CraftingSessions {
             let session = sessions.entry(entity_id).or_insert_with(|| {
                 CraftingSession::new(owner.account_id, player_id, owner.world.clone())
             });
-            let mut stale = Vec::new();
+            let mut stale = None;
             if session.player_id() != player_id || session.world() != owner.world.as_deref() {
                 // A leftover from an earlier character or world on a
-                // recycled entity id: never run it for this one.
-                stale = session.held_jobs();
+                // recycled entity id: never run it for this one. The drop
+                // is logged under the session that queued it.
+                let held = session.held_jobs();
+                if !held.is_empty() {
+                    let old = JobIds {
+                        job_id: held[0].0,
+                        verb: held[0].1,
+                        account_id: session.account_id(),
+                        player_id: session.player_id(),
+                        entity_id,
+                    };
+                    stale = Some((old, held));
+                }
                 *session = CraftingSession::new(owner.account_id, player_id, owner.world.clone());
             }
             let enqueued = session.enqueue(job, job_id, Instant::now());
             let resync = enqueued == Enqueued::Full && session.note_refusal();
             (enqueued, resync, session.len(), stale)
         };
-        if !stale.is_empty() {
-            log_dropped(&ids, DropReason::StaleSession, "submit", &stale);
+        if let Some((old, held)) = stale {
+            log_dropped(&old, DropReason::StaleSession, "submit", &held);
         }
         match enqueued {
             Enqueued::Started(started) => {
@@ -394,13 +405,48 @@ impl CraftingSessions {
         held.len()
     }
 
-    async fn start(
+    /// Whether `job_id` is still the active induction of `ids`'s session,
+    /// and the entity still belongs to that session's character, account
+    /// and world.
+    fn still_active(&self, ids: &JobIds, job_id: u64, env: &InductionEnv) -> bool {
+        let world = {
+            let sessions = self.sessions.lock().unwrap();
+            match sessions.get(&ids.entity_id) {
+                Some(s) if s.active_job_id() == Some(job_id) && s.player_id() == ids.player_id => {
+                    s.world().map(str::to_owned)
+                }
+                _ => return false,
+            }
+        };
+        env.session_owner(ids.entity_id, ids.player_id)
+            .is_some_and(|o| o.account_id == ids.account_id && o.world == world)
+    }
+
+    /// Send a newly active induction's bar and schedule its wake-up. The
+    /// session lock was released before this runs, so a logout, a world
+    /// change or an entity recycle may have happened in between: the job
+    /// is re-checked first, and a job no longer active for the same
+    /// session sends nothing (its drop was already logged and counted).
+    pub(super) async fn start(
         self: &Arc<Self>,
         ids: &JobIds,
         started: Started,
         queue_len: usize,
         env: &InductionEnv,
     ) {
+        if !self.still_active(ids, started.job_id, env) {
+            tracing::debug!(
+                target: "crafting",
+                event = "induction_start_skipped",
+                job_id = started.job_id,
+                verb = started.verb,
+                account_id = ids.account_id,
+                player_id = ids.player_id,
+                entity_id = ids.entity_id,
+                "crafting induction no longer active; no bar sent"
+            );
+            return;
+        }
         let expires_at = send_induction_timer(env, ids, started.timer_id).await;
         tracing::info!(
             target: "crafting",

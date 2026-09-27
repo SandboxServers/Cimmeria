@@ -18,7 +18,8 @@ async fn partial_stack_shrinks_and_a_bank_first_product_lands_in_the_crafting_ba
 
     let applied = f
         .apply(&CraftTransaction {
-            named_items: vec![component],
+            named_items: vec![NamedItem::new(component, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 1)],
             grant: vec![(BANK_FIRST_PRODUCT, 1)],
             expertise: vec![],
@@ -76,7 +77,8 @@ async fn consumption_by_design_drains_across_both_bags_and_the_product_merges() 
 
     let applied = f
         .apply(&CraftTransaction {
-            named_items: vec![in_main],
+            named_items: vec![NamedItem::new(in_main, COMPONENT)],
+            consume_named: vec![],
             consume: vec![(COMPONENT, 3)],
             grant: vec![(STACKABLE_PRODUCT, 3)],
             expertise: vec![],

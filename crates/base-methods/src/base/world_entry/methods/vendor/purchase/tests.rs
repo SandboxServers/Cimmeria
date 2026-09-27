@@ -19,7 +19,7 @@ const TEST_BASE: i32 = 0x7000_0A00;
 /// populated buy_item_list. Verified via `SELECT template_id FROM
 /// resources.entity_templates WHERE buy_item_list IS NOT NULL` — the
 /// only seeded buy-vendor.
-const SEEDED_BUY_VENDOR_TEMPLATE_ID: i32 = 25;
+pub(super) const SEEDED_BUY_VENDOR_TEMPLATE_ID: i32 = 25;
 
 /// store_index 0 in vendor 25's buy list (item_list_id=1):
 /// design_id=5228, quantity=1, naquadah=100, no item costs.
@@ -31,11 +31,11 @@ const PURE_CASH_PRICE: i32 = 100;
 /// 1× design_id 55 (the only item_list_prices row keyed off this list).
 /// This line lets us cover the consume_design_quantity prereq path
 /// without paying any cash.
-const ITEM_COST_STORE_INDEX: i32 = 1;
-const ITEM_COST_DESIGN_ID: i32 = 5192;
-const ITEM_COST_PREREQ_DESIGN_ID: i32 = 55;
+pub(super) const ITEM_COST_STORE_INDEX: i32 = 1;
+pub(super) const ITEM_COST_DESIGN_ID: i32 = 5192;
+pub(super) const ITEM_COST_PREREQ_DESIGN_ID: i32 = 55;
 
-async fn cleanup(pool: &PgPool, entity_id: i32, account_id: i32, player_id: i32) {
+pub(super) async fn cleanup(pool: &PgPool, entity_id: i32, account_id: i32, player_id: i32) {
     // Delete the outbox rows the test enqueues so a shared live DB
     // doesn't accumulate stale entries from successful runs.
     let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
@@ -52,7 +52,12 @@ async fn cleanup(pool: &PgPool, entity_id: i32, account_id: i32, player_id: i32)
         .await;
 }
 
-async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32, naquadah: i32) {
+pub(super) async fn insert_account_and_player(
+    pool: &PgPool,
+    account_id: i32,
+    player_id: i32,
+    naquadah: i32,
+) {
     sqlx::query(
         "INSERT INTO account (account_id, account_name, password) \
          VALUES ($1, $2, '')",
@@ -82,7 +87,7 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
 
 /// Insert a sgw_inventory row at a known (container, slot) and return
 /// the auto-generated item_id.
-async fn insert_item(
+pub(super) async fn insert_item(
     pool: &PgPool,
     player_id: i32,
     type_id: i32,
@@ -108,7 +113,12 @@ async fn insert_item(
 }
 
 /// Count rows in a player's container with a given design (`type_id`).
-async fn count_in_container(pool: &PgPool, player_id: i32, container_id: i32, type_id: i32) -> i64 {
+pub(super) async fn count_in_container(
+    pool: &PgPool,
+    player_id: i32,
+    container_id: i32,
+    type_id: i32,
+) -> i64 {
     sqlx::query_scalar(
         "SELECT COUNT(*) FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = $2 AND type_id = $3",
@@ -122,7 +132,12 @@ async fn count_in_container(pool: &PgPool, player_id: i32, container_id: i32, ty
 }
 
 /// Sum stack_size across all rows of a given design in a container.
-async fn stack_sum(pool: &PgPool, player_id: i32, container_id: i32, type_id: i32) -> i64 {
+pub(super) async fn stack_sum(
+    pool: &PgPool,
+    player_id: i32,
+    container_id: i32,
+    type_id: i32,
+) -> i64 {
     sqlx::query_scalar(
         "SELECT COALESCE(SUM(stack_size), 0)::BIGINT FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = $2 AND type_id = $3",
@@ -143,7 +158,7 @@ async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
         .unwrap()
 }
 
-fn make_state(
+pub(super) fn make_state(
     entity_id: u32,
 ) -> (
     Arc<dyn Transport>,

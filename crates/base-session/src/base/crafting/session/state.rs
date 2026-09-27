@@ -91,6 +91,11 @@ impl CraftingSession {
         self.len() == 0
     }
 
+    /// The active induction's job id, if one is running.
+    pub fn active_job_id(&self) -> Option<u64> {
+        self.active.as_ref().map(|a| a.job_id)
+    }
+
     /// The active induction's deadline, if one is running.
     pub fn deadline(&self) -> Option<Instant> {
         self.active.as_ref().map(|a| a.deadline)

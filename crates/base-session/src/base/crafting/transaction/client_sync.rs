@@ -49,8 +49,13 @@ struct InventoryRow {
 
 /// Tell the client what a committed transaction changed: `onRemoveItem`
 /// for the drained stacks, one `onUpdateItem` for the shrunk and granted
-/// stacks, `onUpdateDiscipline` per changed discipline. If the item read
-/// fails, fall back to a full resync.
+/// stacks, `onUpdateDiscipline` per changed discipline.
+///
+/// If any item notification failed (a send, or the item read), the client
+/// gets one recovery pass after the rest: `onRemoveItem` for the drained
+/// stacks again, then a full `onUpdateItem`. The removal is repeated
+/// because `onUpdateItem` only adds and updates: a full list alone would
+/// leave a drained stack on screen.
 pub(super) async fn send_applied(
     env: &InductionEnv,
     pool: &Arc<PgPool>,
@@ -58,8 +63,9 @@ pub(super) async fn send_applied(
     applied: &CraftApplied,
 ) {
     let drained: Vec<i32> = applied.drained().iter().map(|d| d.item_id).collect();
+    let mut items_ok = true;
     if !drained.is_empty() {
-        send_to_player(
+        items_ok &= send_to_player(
             env,
             ids,
             method_idx::ON_REMOVE_ITEM,
@@ -69,7 +75,20 @@ pub(super) async fn send_applied(
         .await;
     }
     let updated = applied.updated_item_ids();
-    if !updated.is_empty() && !send_items(env, pool, ids, Some(&updated)).await {
+    if !updated.is_empty() {
+        items_ok &= send_items(env, pool, ids, Some(&updated)).await;
+    }
+    if !items_ok {
+        if !drained.is_empty() {
+            send_to_player(
+                env,
+                ids,
+                method_idx::ON_REMOVE_ITEM,
+                &remove_item_args(&drained),
+                "resync_remove",
+            )
+            .await;
+        }
         resync_inventory(env, pool, ids).await;
     }
     for e in &applied.expertise {

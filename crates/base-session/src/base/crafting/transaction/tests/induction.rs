@@ -51,7 +51,8 @@ async fn logout_mid_induction_consumes_nothing() {
     let f = Fixture::new(&pool, 10).await;
     let component = f.stack(COMPONENT, INV_CRAFTING, 0, 2).await;
     let plan = CraftTransaction {
-        named_items: vec![component],
+        named_items: vec![NamedItem::new(component, COMPONENT)],
+        consume_named: vec![],
         consume: vec![(COMPONENT, 1)],
         grant: vec![(BANK_FIRST_PRODUCT, 1)],
         expertise: vec![],

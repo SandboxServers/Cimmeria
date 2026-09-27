@@ -1,30 +1,33 @@
-//! The input half of the crafting transaction: lock the player, re-check
-//! the named instances, consume by design.
+//! The input half of the crafting transaction: check the player, re-check
+//! the named instances, consume them exactly or by design.
 
 use sqlx::{Postgres, Transaction};
 
 use super::failure::{at, expect_rows};
-use super::{ConsumedStack, CraftApplied, CraftTxError, CRAFTING_INPUT_BAGS};
+use super::{ConsumedStack, CraftApplied, CraftTxError, NamedItem, CRAFTING_INPUT_BAGS};
 use crate::base::crafting::feedback::CraftReject;
 use crate::base::crafting::telemetry::JobIds;
 
-/// Lock the player's row for the rest of the transaction, so a completion
-/// never interleaves with another `FOR UPDATE` writer of the player (a
-/// second completion, a crafting spend, a vendor purchase).
-pub(super) async fn lock_player(
+/// Check the player's row exists, without locking it. The transaction
+/// writes nothing on `sgw_player`, and the vendor stack (purchase, sell,
+/// repair, buyback) locks inventory rows before the player row: holding
+/// the player row here while waiting for an inventory row would close a
+/// deadlock cycle with any of them. A second completion for the same
+/// player is serialized by the player-wide advisory lock instead.
+pub(super) async fn check_player(
     tx: &mut Transaction<'_, Postgres>,
     player_id: i32,
 ) -> Result<(), CraftTxError> {
     let found: Option<i32> =
-        sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE player_id = $1 FOR UPDATE")
+        sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE player_id = $1")
             .bind(player_id)
             .fetch_optional(&mut **tx)
             .await
-            .map_err(at("lock_player"))?;
+            .map_err(at("check_player"))?;
     match found {
         Some(_) => Ok(()),
         None => Err(CraftTxError::Invalid {
-            phase: "lock_player",
+            phase: "check_player",
             reason: "player_missing",
         }),
     }
@@ -34,35 +37,50 @@ pub(super) async fn lock_player(
 struct NamedRow {
     item_id: i32,
     character_id: i32,
+    type_id: i32,
+    stack_size: i32,
     container_id: i32,
 }
 
-/// Lock the named instances and check each still belongs to the player
-/// and sits in the main or crafting bag. The request was validated when
-/// it was queued; this is the re-check at completion, three seconds later.
+/// Lock the named instances and check each still belongs to the player,
+/// is of the design the plan expects, and sits in the main or crafting
+/// bag. The request was validated when it was queued; this is the
+/// re-check at completion, three seconds later. Returns the locked rows
+/// for [`consume_instance`].
 pub(super) async fn check_named_items(
     tx: &mut Transaction<'_, Postgres>,
     player_id: i32,
-    named: &[i32],
-) -> Result<(), CraftTxError> {
+    named: &[NamedItem],
+) -> Result<Vec<NamedStack>, CraftTxError> {
     if named.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
+    let item_ids: Vec<i32> = named.iter().map(|n| n.item_id).collect();
     let rows: Vec<NamedRow> = sqlx::query_as(
-        "SELECT item_id, character_id, container_id FROM sgw_inventory \
+        "SELECT item_id, character_id, type_id, stack_size, container_id FROM sgw_inventory \
          WHERE item_id = ANY($1) ORDER BY item_id FOR UPDATE",
     )
-    .bind(named)
+    .bind(&item_ids)
     .fetch_all(&mut **tx)
     .await
     .map_err(at("check_named"))?;
-    for &item_id in named {
+    let mut locked = Vec::with_capacity(named.len());
+    for n in named {
+        let item_id = n.item_id;
         let Some(row) = rows
             .iter()
             .find(|r| r.item_id == item_id && r.character_id == player_id)
         else {
             return Err(CraftReject::ComponentMissing { item_id }.into());
         };
+        if row.type_id != n.design_id {
+            return Err(CraftReject::ComponentMismatch {
+                item_id,
+                expected_design_id: n.design_id,
+                type_id: row.type_id,
+            }
+            .into());
+        }
         if !CRAFTING_INPUT_BAGS.contains(&row.container_id) {
             return Err(CraftReject::ComponentNotInCraftingBags {
                 item_id,
@@ -70,7 +88,79 @@ pub(super) async fn check_named_items(
             }
             .into());
         }
+        locked.push(NamedStack {
+            item_id,
+            type_id: row.type_id,
+            stack_size: row.stack_size,
+            container_id: row.container_id,
+        });
     }
+    Ok(locked)
+}
+
+/// A named instance as [`check_named_items`] locked it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct NamedStack {
+    item_id: i32,
+    type_id: i32,
+    stack_size: i32,
+    container_id: i32,
+}
+
+/// Take `quantity` from exactly the named instance `item_id`, never from
+/// another stack of its design. Fewer than `quantity` on the instance
+/// refuses the transaction; a stack taken to nothing is deleted.
+pub(super) async fn consume_instance(
+    tx: &mut Transaction<'_, Postgres>,
+    ids: &JobIds,
+    named: &mut [NamedStack],
+    item_id: i32,
+    quantity: i32,
+    applied: &mut CraftApplied,
+) -> Result<(), CraftTxError> {
+    let Some(stack) = named.iter_mut().find(|s| s.item_id == item_id) else {
+        // `check_shape` guarantees every exact consumption is named.
+        return Err(CraftTxError::Invalid {
+            phase: "consume_named",
+            reason: "unnamed_instance",
+        });
+    };
+    if stack.stack_size < quantity {
+        return Err(CraftReject::NotEnoughComponents {
+            design_id: stack.type_id,
+            needed: quantity,
+            available: i64::from(stack.stack_size),
+        }
+        .into());
+    }
+    let player_id = ids.player_id;
+    let done = if quantity == stack.stack_size {
+        sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1 AND item_id = $2")
+            .bind(player_id)
+            .bind(item_id)
+            .execute(&mut **tx)
+            .await
+    } else {
+        sqlx::query(
+            "UPDATE sgw_inventory SET stack_size = stack_size - $1 \
+             WHERE character_id = $2 AND item_id = $3",
+        )
+        .bind(quantity)
+        .bind(player_id)
+        .bind(item_id)
+        .execute(&mut **tx)
+        .await
+    }
+    .map_err(at("consume_named"))?;
+    expect_rows(ids, "consume_named", done, 1)?;
+    applied.consumed.push(ConsumedStack {
+        item_id,
+        type_id: stack.type_id,
+        container_id: stack.container_id,
+        before: stack.stack_size,
+        after: stack.stack_size - quantity,
+    });
+    stack.stack_size -= quantity;
     Ok(())
 }
 

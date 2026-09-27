@@ -16,7 +16,7 @@ pub use reason::{Compared, CraftReject};
 
 use crate::base::crafting::sync::CraftClient;
 use crate::base::crafting::telemetry::{
-    account_id_of, record_rejection, record_request, witness_send_failure, Outcome,
+    account_id_of, record_rejection, record_request, witness_send_failure, JobIds, Outcome,
 };
 use crate::base::helpers::send_to_witness_reliable;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -55,31 +55,37 @@ pub async fn reject(
     why: &CraftReject,
     client: CraftClient<'_>,
 ) {
-    refuse(verb, entity_id, player_id, why, client, true).await;
+    let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
+    refuse(verb, entity_id, player_id, account_id, why, client, true).await;
 }
 
 /// [`reject`] for an induction whose work is refused when it completes.
 /// Its request was answered (and counted) when the job was queued, so this
-/// counts the rejection but not a second request.
-pub async fn reject_at_completion(
-    verb: &'static str,
-    entity_id: u32,
-    player_id: i32,
-    why: &CraftReject,
-    client: CraftClient<'_>,
-) {
-    refuse(verb, entity_id, player_id, why, client, false).await;
+/// counts the rejection but not a second request. The identity is the
+/// queued job's, never re-read from the live session map: by now the
+/// client may have left, or its entity id may belong to someone else.
+pub async fn reject_at_completion(ids: &JobIds, why: &CraftReject, client: CraftClient<'_>) {
+    refuse(
+        ids.verb,
+        ids.entity_id,
+        ids.player_id,
+        Some(ids.account_id),
+        why,
+        client,
+        false,
+    )
+    .await;
 }
 
 async fn refuse(
     verb: &'static str,
     entity_id: u32,
     player_id: i32,
+    account_id: Option<u32>,
     why: &CraftReject,
     client: CraftClient<'_>,
     answers_request: bool,
 ) {
-    let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
     let reason = why.reason();
     let c = why.compared();
     tracing::info!(
@@ -101,6 +107,7 @@ async fn refuse(
         station_mask = c.station_mask,
         item_id = c.item_id,
         design_id = c.design_id,
+        type_id = c.type_id,
         container_id = c.container_id,
         needed = c.needed,
         available = c.available,
