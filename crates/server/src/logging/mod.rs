@@ -392,6 +392,9 @@ mod tests {
             // Covers `npc_ai.transition`, `npc_ai.aggro` and every other
             // `npc_ai.*` target by prefix -- see the behavioural test below.
             "npc_ai=debug",
+            // Pets (#570): `pets.lifecycle` (INFO summon/despawn, DEBUG
+            // registry scrub), `pets.command` and `pets.ai` by prefix.
+            "pets=debug",
             // `content` WARN rows (`set_aggression_tag_miss`) and INFO
             // rows would pass at the default `info`; named so the target
             // is explicit and a later global raise cannot drop it.

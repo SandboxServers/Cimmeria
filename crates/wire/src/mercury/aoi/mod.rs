@@ -23,6 +23,8 @@ mod update;
 #[cfg(test)]
 mod npc_live_state_tests;
 #[cfg(test)]
+mod pet_tests;
+#[cfg(test)]
 mod tests;
 
 pub use create::{build_create_entity_base, build_create_entity_cascade};

@@ -241,7 +241,7 @@ pub(super) async fn entered_aoi(
                     position,
                     direction,
                     level,
-                    npc_data,
+                    npc_data: npc_data.map(Box::new),
                     player_data,
                 },
             );
@@ -480,7 +480,7 @@ pub(super) async fn witness_entity_method(
     // this method would reach a client with no such entity and be dropped
     // for good. Buffer it behind the create. Logged above so a held call
     // appears once on the wire log; the replay does not re-log.
-    if let Some(addr) = held_witness_addr(witness_id, connected, entity_to_addr) {
+    if let Some(addr) = held_witness_addr(witness_id, entity_id, connected, entity_to_addr) {
         deferred_aoi::push_deferred(
             connected,
             addr,
@@ -515,9 +515,10 @@ pub(super) async fn entity_invisible(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Cinematic hold: keep the invisibility behind the buffered create it
-    // applies to, or the entity pops in visible when the hold releases.
-    if let Some(addr) = held_witness_addr(witness_id, connected, entity_to_addr) {
+    // Keep the invisibility behind the buffered create it applies to (pre-
+    // ready window or cinematic hold), or the entity pops in visible when
+    // the buffer flushes.
+    if let Some(addr) = held_witness_addr(witness_id, entity_id, connected, entity_to_addr) {
         deferred_aoi::push_deferred(
             connected,
             addr,
@@ -528,10 +529,14 @@ pub(super) async fn entity_invisible(
     aoi::entity_invisible(witness_id, entity_id, transport, connected, entity_to_addr).await;
 }
 
-/// The witness's address iff its session is inside the first-login cinematic
-/// hold. Gates the two arms the pre-`onClientReady` window leaves ungated.
+/// The witness's address iff a `WitnessEntityMethod` / `EntityInvisible`
+/// about `entity_id` must be buffered: about another entity, while the
+/// session is pre-`onClientReady` or in the first-login cinematic hold
+/// ([`deferred_aoi::should_hold_entity_traffic`]); about the witness itself,
+/// in the cinematic hold only.
 fn held_witness_addr(
     witness_id: u32,
+    entity_id: u32,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Option<SocketAddr> {
@@ -539,5 +544,14 @@ fn held_witness_addr(
         .lock()
         .ok()
         .and_then(|m| m.get(&witness_id).copied())?;
-    deferred_aoi::cinematic_hold_active(connected, addr).then_some(addr)
+    // Pre-`onClientReady` the observee's CREATE_ENTITY is buffered too, so a
+    // method about ANOTHER entity must queue behind it (e.g. the owner-only
+    // pet lists replayed right after `EnteredAoI`). The witness's own entity
+    // is never buffered, so self-traffic keeps flowing pre-ready.
+    let hold = if entity_id == witness_id {
+        deferred_aoi::cinematic_hold_active(connected, addr)
+    } else {
+        deferred_aoi::should_hold_entity_traffic(connected, addr)
+    };
+    hold.then_some(addr)
 }

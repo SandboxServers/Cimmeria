@@ -22,8 +22,8 @@ cannot statically resolve.
 - `python3 - <<'PY' ... PY` when combined with anything else on the line.
 - `cat >> file <<'EOF'` to append to a source file.
 
-What works: spell the binary out in full (`/c/Users/.../lane.sh cargo
-...`), put env vars as a plain `FOO=bar cmd` prefix (that form *is*
+What works: spell the binary out in full (the absolute path to your
+worktree's `tools/build-lane/lane.sh`), put env vars as a plain `FOO=bar cmd` prefix (that form *is*
 accepted), write commit messages to a scratch file and `git commit -F
 <path>` as a separate call, and use the Edit/Write tools instead of
 heredoc appends.
@@ -39,6 +39,32 @@ variable (`for f in ...; do "$BIN" "$f"`). Inline heredoc Python also broke on a
 `\` just before a closing `'''`. The reliable pattern is to Write the script
 into the scratchpad and run `python <path>` (or `bash <path>`) as its own call,
 with every path absolute inside the script.
+
+Pets PT-01 (2026-09-26) confirmed three scratchpad tools that work in one
+call each:
+
+- A `lane.sh` wrapper that exports `CIMMERIA_TARGET_ROOT`, `cd`s to the
+  worktree, runs `tools/build-lane/lane.sh "$@"` into a log file and greps the
+  result.
+- An `edit.py` that reads a spec file of `(path, [(old, new)])` pairs and
+  does exact, count-checked, CRLF-preserving replacements. Several commands
+  chained with `&&` after a heredoc, or two `git commit`s in one call, are
+  refused.
+- A revert-proof driver that mutates a file, runs the test, then restores
+  with `git checkout HEAD -- <file>` from a Python `subprocess`. It needs a
+  commit first.
+
+**The session scratchpad is shared by every agent in the session.** During
+PT-01 another worker overwrote `revert_proof.py` with a copy whose `ROOT`
+pointed at *its* worktree; running it would have mutated and `git checkout`ed
+another agent's files. Give scratch scripts a packet-unique name
+(`pt01_*.py`), hard-code your own worktree in `ROOT`, and re-read a script
+before re-running it.
+
+Also, when the Dev Drive that holds the build-lane target dirs fills up
+("no space on device"), delete only your own worktree's target dir under
+`CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch
+directory on a drive with free space.
 
 ## A test against a rebuilt C++ binary needs an explicit opt-in
 

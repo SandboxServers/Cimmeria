@@ -2,13 +2,13 @@
 title: "Pet System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-26
 ---
 
 # Pet System
 
-> **Last updated**: 2026-07-25
-> **Status**: ~10% — engine support, content, and client are complete; the server-side summon/command/despawn lifecycle is unimplemented (tracked in #570). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
+> **Last updated**: 2026-09-26
+> **Status**: ~25%. Engine support, content and client are complete. The server can now spawn an owned pet, introduce it to its owner and tear it down (pets campaign PT-01); summoning by ability, pet commands and pet AI are still missing (tracked in #570, ledger `docs/analysis/pets/`). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Overview
 
@@ -18,14 +18,32 @@ The `SGWPet` entity is defined in `entities/defs/SGWPet.def` (parent: `SGWMob`).
 
 ## Implementation Status
 
-Nothing in `crates/` implements the pet lifecycle — there is no pet module, and the `SGWPet` cell/client methods below have no Rust handlers. The table records what the *entity definitions* provide versus what any server has ever done with them.
+The foundation is in (PT-01). The pieces:
+
+- **Pet state.** `crates/entity/src/cell_entity/pet.rs` holds `PetState`: owner, stance, ability list, toggled-off list, `transfer_xp` and stance mask. It also holds `PetStance`. A pet is an ordinary NPC `CellEntity` with `pet: Some(..)` and wire class `SGWPet` (0x05).
+- **Wire contract.** `crates/wire/src/cell/client_methods/pet.rs` has client methods 29/30/31, `GENERICPROPERTY_PET_OWNER_ID = 5`, the pet `EEntityFlags` bits and the three argument builders. The indices and the owner binding are confirmed against the client in [`pet-client-contract.md`](../reverse-engineering/findings/pet-client-contract.md).
+- **Pets module.** `crates/cell-world/src/cell/pets/` has four parts:
+  - `PetRegistry`, the ownership source of truth, with `SpaceManager::owned_pet` and `SpaceManager::credit_recipient`;
+  - `SpaceManager::spawn_pet_from_template`;
+  - the owner-only list replay on AoI entry;
+  - teardown.
+
+How a spawned pet behaves:
+
+- **Introduction.** Every witness gets the pet's CREATE_ENTITY (class 0x05) and a cascade that carries `ENTITYFLAG_Pet` and `onEntityProperty(PetOwnerId, owner)`. Only the owner gets `onPetAbilityList` and `onPetStanceList`, plus `onPetStanceUpdate` when the stance is not the default. The owner's client binds the pet into `Unit.Pet1..4` from the flag, the owner property and the stance list. The replay runs on the AoI tick and on the client's `requestEntityUpdate`.
+- **Spawn values.** The pet takes the owner's faction (D-PT06) and the owner's level (D-PT02, unless the template sets `ENTITYFLAG_NoPetLeveling`). It starts Defensive. It has no loot, respawn, patrol, wander, cover or tag.
+- **Queries.** The AI and movement ticks include pets. Player AoE, cone, the respawn tick and the NA14 assist fan-out leave them out.
+- **Teardown.** An owner disconnect despawns the owner's pets at once. The sweep runs every AoI tick and despawns any pet whose owner is gone, dead (D-PT08) or in another space. Any pet removal scrubs the registry. Log target: `pets.lifecycle`.
+
+Nothing spawns a pet yet except code and tests. Summon by ability is PT-03 and the `.pet` console is PT-07. The table records what the entity definitions provide and what the server does with them.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Pet entity definition | DONE | Full property and method set defined |
-| Owner tracking | DEFINED | `ownerID`, `ownerBase` properties |
-| Ability list | STUB | `onPetAbilityList` sends list to client |
-| Stance list | STUB | `onPetStanceList` sends list to client |
+| Owner tracking | DONE (PT-01) | `PetRegistry` on the cell. `ownerID` reaches the client as `onEntityProperty(GENERICPROPERTY_PetOwnerId)` in the create cascade |
+| Ability list | DONE (PT-01) | `onPetAbilityList` to the owner only, on AoI entry |
+| Stance list | DONE (PT-01) | `onPetStanceList` to the owner only, filtered by `ENTITYFLAG_NoPassive` / `NoDefensive` / `NoAggressive` |
+| Spawn and teardown | DONE (PT-01) | `spawn_pet_from_template`. Despawn on owner disconnect, death, leaving the space, or the instance being torn down |
 | Ability toggling | STUB | `toggleAbility` with on/off flag |
 | Stance changing | STUB | `changePetStance` with `onPetStanceUpdate` |
 | Pet leveling | STUB | `setPetLevel` defined |

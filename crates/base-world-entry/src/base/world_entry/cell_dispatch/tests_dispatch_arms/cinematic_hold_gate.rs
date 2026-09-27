@@ -6,7 +6,7 @@
 //! 1. **Hold ignored on an entity-scoped arm** — the create reaches a client
 //!    that is playing a fullscreen movie, which is the invisible-corpse repro.
 //! 2. **Dependent traffic overtakes the held create** — `WitnessEntityMethod`
-//!    and `EntityInvisible` are ungated pre-ready; under the hold they must
+//!    and `EntityInvisible` about other entities are gated pre-ready too; under the hold they must
 //!    buffer, or they hit a client with no such entity and are lost.
 //! 3. **Hold leaks onto player-self traffic** — mission, dialog and hotbar
 //!    calls must still flow during the movie.
@@ -153,7 +153,7 @@ async fn left_aoi_buffers_and_entity_moved_drops_during_cinematic_hold() {
     );
 }
 
-/// `WitnessEntityMethod` and `EntityInvisible` are ungated pre-ready, so the
+/// `WitnessEntityMethod` and `EntityInvisible` about another entity are also gated pre-ready; here the
 /// hold is the only thing keeping them behind the create they depend on.
 /// Reverting `held_witness_addr` on either arm sends one packet here.
 #[tokio::test]

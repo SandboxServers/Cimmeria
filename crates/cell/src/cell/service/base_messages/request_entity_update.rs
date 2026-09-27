@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use super::super::super::messages::{CellToBaseMsg, NpcAoIData};
 use super::super::super::space_manager::SpaceManager;
+use cimmeria_cell_world::cell::pets::pet_create_on_client_events;
 
 /// Cap on entity ids honoured per `RequestEntityUpdate` payload.
 ///
@@ -118,6 +119,26 @@ pub(super) async fn handle(
             );
             // Bail — the channel is closed, no point processing further ids.
             return;
+        }
+        // A re-emitted pet needs its owner-only lists again, after the
+        // EnteredAoI (the same replay the AoI tick does, A-23). Only the
+        // summoner gets them, not a player holding a reused owner id.
+        for msg in pet_create_on_client_events(witness, other, &space_mgr.pets) {
+            if let Err(e) = tx.send(msg).await {
+                tracing::warn!(
+                    target: "pets.lifecycle",
+                    event = "pet_list_replay_failed",
+                    reason = "cell_to_base_closed",
+                    entity_id,
+                    witness_id,
+                    account_id = space_mgr.player_identity(witness_id).account_id,
+                    player_id = space_mgr.player_identity(witness_id).player_id,
+                    pet_id = entity_id,
+                    error = %e,
+                    "RequestEntityUpdate: pet list re-emit cell\u{2192}base send failed"
+                );
+                return;
+            }
         }
         emitted += 1;
     }

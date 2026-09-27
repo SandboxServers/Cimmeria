@@ -126,6 +126,7 @@ impl CellEntity {
             system_options: SystemOptions::default(),
             tree_progress: TreeProgress::default(),
             respec_requested_at: None,
+            pet: None,
         }
     }
 }

@@ -131,6 +131,9 @@ pub fn class_id_for_class(class: &str) -> u8 {
         "spawnable" => 0x00, // SGWSpawnableEntity
         "being" => 0x01,     // SGWBeing
         "mob" => 0x04,       // SGWMob
-        _ => 0x04,           // Default to SGWMob
+        // A pet template (`class = 'pet'`, PT-S). Only a summon ever spawns
+        // one; pet templates are never placed in `spawnlist`.
+        "pet" => crate::mercury::SGWPET_CLASS_ID,
+        _ => 0x04, // Default to SGWMob
     }
 }

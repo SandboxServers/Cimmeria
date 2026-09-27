@@ -11,6 +11,9 @@
 //!
 //! See `docs/protocol/client-method-dispatch-table.md` for the complete
 //! 157-method table with args and wire encoding details.
+//!
+//! Exception: [`pet`] numbers **SGWPet**'s table (SGWMob 0-28 plus its own
+//! 29-31), not SGWPlayer's.
 
 pub mod being;
 pub mod black_market;
@@ -24,5 +27,8 @@ pub mod mail;
 pub mod minigame;
 pub mod missionary;
 pub mod organization;
+pub mod pet;
+#[cfg(test)]
+mod pet_def_tests;
 pub mod player;
 pub mod spawnable_entity;

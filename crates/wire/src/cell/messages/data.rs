@@ -53,6 +53,10 @@ pub struct NpcAoIData {
     /// keeps the cascade's template defaults. Boxed so the deferred-AoI
     /// buffer enum stays under clippy's `large_enum_variant` bound.
     pub vitals: Option<Box<NpcVitals>>,
+    /// Owning player's entity id when the NPC is a pet (class 0x05). The
+    /// cascade sends it as `onEntityProperty(GENERICPROPERTY_PetOwnerId,
+    /// owner)` to every witness, since `SGWPet.ownerID` is CELL_PUBLIC.
+    pub pet_owner_id: Option<u32>,
 }
 
 /// Live HEALTH and FOCUS of an NPC, each as `[min, cur, max]` — the
@@ -95,6 +99,7 @@ impl NpcAoIData {
                 health: triple(HEALTH),
                 focus: triple(FOCUS),
             })),
+            pet_owner_id: entity.pet.as_ref().map(|p| p.owner_id),
         }
     }
 }

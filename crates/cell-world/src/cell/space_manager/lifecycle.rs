@@ -264,6 +264,8 @@ impl SpaceManager {
                 // this path did not.
                 self.zero_health_npc_log.forget(eid);
                 self.npc_detectors.forget(eid);
+                // A pet dies with its instance; drop it from the owner map.
+                self.pets.forget_pet(eid);
             }
             self.npc_detectors.forget_world(&space.world_name);
 

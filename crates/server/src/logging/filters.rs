@@ -224,6 +224,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
                 npc_ai=debug,\
+                pets=debug,\
                 cover=debug,\
                 spawner=debug,\
                 content=info,\
