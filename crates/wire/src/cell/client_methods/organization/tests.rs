@@ -68,7 +68,7 @@ fn cm35_on_organization_joined() {
     assert_eq!(got, [9, 0, 0, 0, 1, 2, 0]);
 }
 
-/// Reason first, then the id (the order PR #584 once got wrong, A-30).
+/// Reason first, then the id, per the .def (audit A-30).
 #[test]
 fn cm36_on_organization_left() {
     assert_eq!(

@@ -164,7 +164,7 @@ impl TryFrom<i32> for OrgRank {
 /// organization, carried by `onOrganizationLeft` [36] and
 /// `onMemberLeftOrganization` [39].
 ///
-/// PR #584 had these wrong (disbanded 0, left 1, kicked 2; audit A-30).
+/// Not disbanded 0 / left 1 / kicked 2, as an earlier draft had it (audit A-30).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum OrgLeaveReason {
@@ -201,7 +201,7 @@ impl TryFrom<u8> for OrgLeaveReason {
 /// `EGroupLootType` (`enumerations.xml:674`): the squad loot mode, carried
 /// as an `INT32` by `squadSetLootMode` (CM 18) and `onSquadLootType` [51].
 ///
-/// Two values only (audit A-16); PR #584's comment guessed four. D-ORG16
+/// Two values only (audit A-16); not the four an earlier draft guessed. D-ORG16
 /// rejects anything else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(i32)]

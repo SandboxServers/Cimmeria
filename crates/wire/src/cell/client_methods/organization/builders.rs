@@ -88,7 +88,7 @@ pub fn build_on_organization_joined(
 
 /// `onOrganizationLeft` [36]: `UINT8 aReason, INT32 aOrganizationId`.
 ///
-/// Reason first: PR #584 once sent the org id first (audit A-30).
+/// Reason first, then the org id (`OrganizationMember.def`; audit A-30).
 pub fn build_on_organization_left(reason: OrgLeaveReason, org_id: i32) -> Vec<u8> {
     let mut buf = Vec::with_capacity(5);
     buf.push(reason.as_u8());

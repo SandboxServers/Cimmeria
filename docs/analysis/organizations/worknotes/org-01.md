@@ -108,7 +108,6 @@ Restored; `git status` clean.
 - `send_gm_feedback_to_client` is named for GM feedback but is the only base-side single-line feedback sender; the org arm reuses it. A neutral name would help when ORG-03/07 add more feedback.
 - `RosterInfo` is a wire struct (`cimmeria_wire::cell::client_methods::organization::RosterInfo`), not an entity model; ORG-06 fills it from the roster query.
 - Nothing is sent to a client except the base arm's feedback; every builder is exercised only by its byte test.
-- `docs/gameplay/organization-system.md` still heads its client-method table "16 methods" (there are 18); pre-existing, not fixed.
 - The message-catalog Organizations table still lists a non-existent `createOrganization` and attributes cell methods to `OrganizationMember.setMOTD` and similar names; I added a note rather than rewriting the table.
 
 ## Integration edits for the coordinator

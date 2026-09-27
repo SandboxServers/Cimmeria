@@ -121,7 +121,7 @@ fn ranks_for_type_follow_d_org07() {
 
 #[test]
 fn leave_reason_matches_enumerations_xml() {
-    // PR #584 had disbanded 0 / left 1 / kicked 2 (audit A-30).
+    // An earlier draft had disbanded 0 / left 1 / kicked 2 (audit A-30).
     assert_eq!(OrgLeaveReason::Requested.as_u8(), 0);
     assert_eq!(OrgLeaveReason::Kicked.as_u8(), 1);
     assert_eq!(OrgLeaveReason::Disbanded.as_u8(), 2);

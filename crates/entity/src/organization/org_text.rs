@@ -152,10 +152,10 @@ impl fmt::Display for TextReject {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TextReject::TooShort { units, min } => {
-                write!(f, "too short ({units} < {min} characters)")
+                write!(f, "too short ({units} < {min} UTF-16 units)")
             }
             TextReject::TooLong { units, max } => {
-                write!(f, "too long ({units} > {max} characters)")
+                write!(f, "too long ({units} > {max} UTF-16 units)")
             }
             TextReject::LoneSurrogate => f.write_str("invalid UTF-16 (unpaired surrogate)"),
             TextReject::Control(c) => write!(f, "control character U+{:04X}", u32::from(*c)),
