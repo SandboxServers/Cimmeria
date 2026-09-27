@@ -32,10 +32,9 @@ pub use cimmeria_wire::cell::cell_methods::organization::{
     SET_RANK_NAME, SET_RANK_PERMISSIONS, SQUAD_SET_LOOT_MODE, STRIKE_TEAM_RESPONSE, TRANSFER_CASH,
 };
 
+pub mod creation;
 mod forward;
 pub mod squad;
-
-pub(crate) use forward::send_unavailable_feedback;
 
 #[cfg(test)]
 mod tests;

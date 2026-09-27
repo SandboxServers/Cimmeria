@@ -26,6 +26,7 @@ mod maintenance;
 mod meta;
 mod net_debug;
 mod org;
+mod org_create;
 mod patrol;
 mod pet;
 mod progression;
@@ -54,6 +55,7 @@ const GROUPS: &[&[Spec]] = &[
     bank::SPECS,
     squad::SPECS,
     org::SPECS,
+    org_create::SPECS,
 ];
 
 /// Total registered commands across every family.

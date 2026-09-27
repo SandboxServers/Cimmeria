@@ -9,7 +9,7 @@
 use cimmeria_entity::organization::OrgLeaveReason;
 use tokio::sync::mpsc;
 
-use super::super::super::cell_methods::organization::squad;
+use super::super::super::cell_methods::organization::{creation, squad};
 use super::super::super::messages::{CellToBaseMsg, OrgBaseToCell};
 use super::super::super::space_manager::SpaceManager;
 
@@ -41,6 +41,29 @@ pub(super) async fn handle(
             org_id,
             reason,
         } => membership_ended(player_id, entity_id, org_id, reason, space_mgr),
+        // ORG-05: creation.
+        OrgBaseToCell::RegistrarEligible {
+            player_id,
+            entity_id,
+            npc_entity_id,
+            org_type,
+        } => {
+            creation::on_registrar_eligible(
+                player_id,
+                entity_id,
+                npc_entity_id,
+                org_type,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        OrgBaseToCell::CreateResult {
+            player_id,
+            entity_id,
+            created,
+            ..
+        } => creation::on_create_result(player_id, entity_id, created, space_mgr),
     }
 }
 

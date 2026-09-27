@@ -922,6 +922,21 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- cannot die, so no respawn_secs, is_stationary or aggression override.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (490, -324.11, 73.472, -227.84, -1.5123, 12, 390, 'DebugHub_MailClerk', NULL);
 
+-- Organizations campaign, ORG-05: spawns 430 and 431, the debug hub's Team and
+-- Command registrars (templates 330 and 331, docs/content/debug-hub.md).
+-- Organizations own spawns 430-449; 432-449 stay reserved. The A-B line is full,
+-- the crafting corner takes the D-A wall, and the Banker (470) and the mail
+-- clerk (490) the B-C wall from its middle towards C. So the registrars stand
+-- as a pair between the pet trainer (450) and the Banker: the Team registrar on
+-- the B-C wall, 3 units in from it and 6.1 along it from B, and the Command
+-- registrar 3 units further into the room, level with it. That is 3.0 apart,
+-- at least 3.1 from every other NPC (the Banker, the pet trainer and
+-- the crate) and 6.1 from the
+-- respawner. Heading faces the room centre, yaw = atan2(dx, dz). They cannot
+-- die, so no respawn_secs, is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (430, -327.40, 73.472, -233.91, -0.7086, 12, 330, 'DebugHub_TeamRegistrar', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (431, -330.04, 73.472, -232.48, -0.5276, 12, 331, 'DebugHub_CommandRegistrar', NULL);
+
 --
 -- NEW CONTENT (debug hub, crafting): spawns 410-414, the crafting stations
 -- (templates 310-313) and the crafting supplies vendor (314) in the stasis

@@ -11,7 +11,7 @@ use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
     aggro, bank, bookmark, crafting, duel, entity, give, give_ability, mail, mission, net, org,
-    patrol, pet, placement, query, seed, server, social, spawn, squad, stats, travel,
+    org_create, patrol, pet, placement, query, seed, server, social, spawn, squad, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -402,6 +402,8 @@ pub async fn exec(
         }
         // Teams and Commands (ORG-06)
         "org_disband" => org::disband(caller_id, args, tx, space_mgr).await,
+        // Organizations (ORG-05)
+        "org_create" => org_create::org_create(caller_id, args, tx, space_mgr).await,
         // G. server / maintenance
         "save" | "reloadmap" | "reloadres" | "removerespawner" | "loglevel" | "logclient" => {
             server::dispatch(name, caller_id, args, target_id, tx, space_mgr).await

@@ -13,6 +13,7 @@ pub mod cover;
 pub mod dispatch;
 pub mod duel;
 pub mod effects;
+pub mod org_creation;
 pub mod pets;
 pub mod playtest_friction;
 pub mod playtest_friction_watch;

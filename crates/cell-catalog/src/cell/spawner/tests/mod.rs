@@ -36,6 +36,10 @@
 //! - [`live_db_debug_banker`]: live-DB guards for the debug hub's Banker
 //!   (bank-vault BV-04): template 370 is a personal Banker and nothing else,
 //!   and spawn 470 stands in the stasis room clear of every other NPC.
+//! - [`live_db_debug_registrars`]: live-DB guards for the debug hub's
+//!   organization registrars (ORG-05): templates 330 and 331 are Team and
+//!   Command registrars and nothing else, the only ones, and spawns 430 and
+//!   431 stand in the stasis room clear of every other NPC.
 //! - [`live_db_spawnlist_sequence`]: live-DB guard that the `spawnlist` id
 //!   sequence starts past every reserved campaign spawn block, so a row
 //!   inserted without an id (`.savespawn`) never takes a reserved one.
@@ -51,6 +55,7 @@ mod live_db_content_loaders;
 mod live_db_crafting_hub;
 mod live_db_debug_banker;
 mod live_db_debug_hub;
+mod live_db_debug_registrars;
 mod live_db_loaders;
 mod live_db_mail_clerk;
 mod live_db_pet_roster;

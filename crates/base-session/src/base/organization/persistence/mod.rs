@@ -102,8 +102,25 @@ pub async fn create_org(
     .await
 }
 
+/// `pg_advisory_xact_lock` class keys for [`insert_org`]'s pre-checks.
+/// Negative, so they never meet the inventory's `(player_id, container)`
+/// keys, whose first half is a positive character id.
+const CREATE_LOCK_PLAYER: i32 = -0x4F52_4701;
+const CREATE_LOCK_NAME: i32 = -0x4F52_4702;
+
 /// The writes of [`create_org`]: the organization row, its rank rows and
 /// its leader.
+///
+/// The organization id comes from a `NO CYCLE` sequence that a refused
+/// insert still advances, so the two refusals a player can provoke at will
+/// (a taken name, a second organization of the type) are checked **before**
+/// the insert (ORG-05). Two transaction-scoped advisory locks, always the
+/// founder's and then the name's, serialise concurrent creations by the same
+/// player or of the same name, so neither check can go stale before the
+/// insert. Only creation takes them, in that one order, and before any row
+/// lock, so they add no ORG-LOCK cycle. The insert keeps its
+/// `ON CONFLICT` guard for anything that bypasses them (an invite accepted
+/// meanwhile, a raw insert).
 async fn insert_org(
     tx: &mut Transaction<'_, Postgres>,
     org_type: OrgType,
@@ -111,6 +128,34 @@ async fn insert_org(
     leader_player_id: i32,
 ) -> Result<CreatedOrg, OrgStoreError> {
     let name_key = org_text::name_key(&name);
+    let type_db = i16::from(org_type.as_u8());
+
+    sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(CREATE_LOCK_PLAYER)
+        .bind(leader_player_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1, hashtext($2))")
+        .bind(CREATE_LOCK_NAME)
+        .bind(format!("{type_db}:{name_key}"))
+        .execute(&mut **tx)
+        .await?;
+    let (name_taken, in_type): (bool, bool) = sqlx::query_as(
+        "SELECT EXISTS (SELECT 1 FROM sgw_organizations WHERE org_type = $1 AND name_key = $2), \
+                EXISTS (SELECT 1 FROM sgw_organization_members \
+                        WHERE player_id = $3 AND org_type = $1)",
+    )
+    .bind(type_db)
+    .bind(&name_key)
+    .bind(leader_player_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if in_type {
+        return Err(OrgStoreError::AlreadyInType);
+    }
+    if name_taken {
+        return Err(OrgStoreError::NameTaken);
+    }
 
     // ON CONFLICT on the name key alone, so a taken name is a typed refusal
     // and the transaction stays usable for the caller's feedback.
@@ -118,7 +163,7 @@ async fn insert_org(
         "INSERT INTO sgw_organizations (org_type, name, name_key) VALUES ($1, $2, $3) \
          ON CONFLICT (org_type, name_key) DO NOTHING RETURNING org_id",
     )
-    .bind(i16::from(org_type.as_u8()))
+    .bind(type_db)
     .bind(&name)
     .bind(&name_key)
     .fetch_optional(&mut **tx)

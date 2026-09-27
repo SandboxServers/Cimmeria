@@ -15,6 +15,7 @@ use crate::test_support::{make_space_manager, LogCaptureGuard};
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use cimmeria_wire::cell::client_methods::player::build_on_error_code;
 
+mod org_creation;
 mod router;
 mod squad_invite;
 mod squad_loot_entry;

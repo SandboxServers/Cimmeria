@@ -317,7 +317,7 @@ Every method in this block has an argument serializer, `build_on_<method>`, in [
 | 155 | `onPlayMovie` | `WSTRING MovieName, UINT8 FullScreen` |
 | 156 | `onCancelMovie` | `WSTRING MovieName, INT32 EntityId` |
 
-`onErrorCode` (121), `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) have serializers in [`crates/wire/src/cell/client_methods/player.rs`](../../crates/wire/src/cell/client_methods/player.rs) (`build_on_error_code`, `build_on_organization_creation_result`, `build_launch_organization_creation`), each with a byte test. 134 and 135 go out with the extended encoding (sub-slot 73 and 74).
+`onErrorCode` (121), `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) have serializers in [`crates/wire/src/cell/client_methods/player.rs`](../../crates/wire/src/cell/client_methods/player.rs) (`build_on_error_code`, `build_on_organization_creation_result`, `build_launch_organization_creation`), each with a byte test. 134 and 135 go out with the extended encoding (sub-slot 73 and 74). Since ORG-05 the cell sends 135 when an eligible player right-clicks an organization registrar, and the base sends 134 for every named creation: `(1, 0)` on success, or `(0, RetCode)` on a refusal. The `Result` and `RetCode` values are project policy, not recovered data (`org_creation_ret_code` in `player.rs`; [organization-system.md § Creation](../gameplay/organization-system.md#creation-org-05)).
 
 #### Crafting payloads (112, 136-140)
 

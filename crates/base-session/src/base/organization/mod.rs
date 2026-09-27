@@ -14,6 +14,9 @@
 //!   character's organizations before the member rows cascade.
 //! - [`audit`]: exports the member-delete trigger's `sgw_organization_events`
 //!   rows to the `org` log target.
+//! - [`creation`]: founding a Team or Command (ORG-05): the registrar's
+//!   eligibility check, the named creation with its D-ORG15 cost, the GM
+//!   `.org_create`, and the founder's push.
 //!
 //! - [`handlers`]: login restore, presence, leave and disband (ORG-06), and
 //!   the fanout the later packets build on.
@@ -24,5 +27,6 @@
 pub mod api;
 pub mod audit;
 pub mod character_delete;
+pub mod creation;
 pub mod handlers;
 pub mod persistence;

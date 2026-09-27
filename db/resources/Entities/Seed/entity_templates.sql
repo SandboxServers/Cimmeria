@@ -1087,6 +1087,29 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   mail's sender name say it instead. Speaker 843 is 'Sgt. Harriman'.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (390, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,NPC_Human.NPC_HM_WalterHarriman_Head_BC}', 0, 134217728, 570, 1, 0, 1, 26715, NULL, NULL, NULL, 'Debug Hub - Gate Mail Clerk', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 843, true, NULL, NULL, NULL);
 
+-- Organizations campaign, ORG-05: templates 330-349 are the campaign's placed
+-- NPCs (docs/analysis/organizations/); 332-349 stay reserved.
+-- 330 and 331 'Organization Registrar', the stasis-room debug hub's Team and
+--   Command registrars (spawns 430 and 431, docs/content/debug-hub.md). A
+--   right-click opens the founding dialog (launchOrganizationCreation) once the
+--   base finds the player eligible. The registrar is recognised by seed data
+--   alone: INT_Organization (64), which also gives the client its organization
+--   cursor, plus static_interaction_sets naming the type, 7447 for a Team and
+--   7448 for a Command. Those are the 2009 server's
+--   INTERACTION_OrganizationRegisterTeam / ...Command interaction set maps
+--   (deprecated/python/common/Constants.py). Nothing may answer the click
+--   before the registrar arm, so no trainer list, no vendor lists or bits, no
+--   dialog, no chain tag, no DHD or Banker bit. Faction 1 and no ability set,
+--   so they cannot fight or die.
+--   Bodies: 330 wears template 302's SGC uniform, 331 template 301's armour,
+--   looks this server already spawns in world 12. Event set 570 as templates
+--   300-302.
+-- moniker 29068 `DN_npc_reg_OmegaSite_TeamCommandRegistrar` ('Organization
+--   Registrar'), shipped in the client's TextStrings.pak: the Omega Site
+--   registrar's own name, which serves both types.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (330, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_04}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Debug Hub - Team Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7447}', NULL, NULL, true, NULL, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (331, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Ablative.AR_HM_AT3_AT300,AR_H_Ballistic00.AR_HM_BG3_BG300,NPC_Human.NPC_HM_Marsh_Head_BC,AR_H_Ablative.AR_HM_AL3_AL300AH300}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Debug Hub - Command Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7448}', NULL, NULL, true, NULL, NULL, NULL);
+
 --
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210

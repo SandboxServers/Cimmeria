@@ -76,6 +76,13 @@ pub async fn handle_interact(
         tracing::info!(entity_id, target_entity_id, dist, "interact: too far away");
         super::super::bank::reject_banker_out_of_range(entity_id, target_entity_id, tx, space_mgr)
             .await;
+        super::super::org_registrar::reject_registrar_out_of_range(
+            entity_id,
+            target_entity_id,
+            tx,
+            space_mgr,
+        )
+        .await;
         return None;
     }
 
@@ -151,6 +158,19 @@ pub async fn handle_interact(
     // DHD prop still wins. Mirrors `deprecated/python/cell/interactions/DHD.py`,
     // which is an `Interaction` subclass on the prop itself.
     if super::super::dhd::try_open_dhd(entity_id, target_entity_id, tx, space_mgr).await {
+        return None;
+    }
+    // Organization registrar (ORG-05): also a static seed flag
+    // (`INT_Organization` plus a registrar interaction set), so it sits
+    // beside the DHD, after any content bind.
+    if super::super::org_registrar::try_open_org_registrar(
+        entity_id,
+        target_entity_id,
+        tx,
+        space_mgr,
+    )
+    .await
+    {
         return None;
     }
 

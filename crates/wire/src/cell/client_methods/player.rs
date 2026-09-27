@@ -151,6 +151,38 @@ pub fn build_on_organization_creation_result(result: u8, ret_code: u8) -> Vec<u8
     vec![result, ret_code]
 }
 
+/// `onOrganizationCreationResult` `Result`: the organization was created.
+///
+/// Project policy (ORG-05), not recovered data: nothing in the client names
+/// either byte (audit A-14), so 1 / 0 follow the usual success / failure
+/// reading and the player's readable answer is the feedback line the server
+/// sends beside it.
+pub const ORG_CREATION_RESULT_CREATED: u8 = 1;
+/// `onOrganizationCreationResult` `Result`: the creation was refused.
+pub const ORG_CREATION_RESULT_REFUSED: u8 = 0;
+
+/// `onOrganizationCreationResult` `RetCode` values (ORG-05 project policy,
+/// like [`ORG_CREATION_RESULT_CREATED`]): one per refusal family, so a
+/// packet capture says why without the log. `OK` goes with a success.
+pub mod org_creation_ret_code {
+    /// Created.
+    pub const OK: u8 = 0;
+    /// Another organization of that type has the name (D-ORG10 name key).
+    pub const NAME_TAKEN: u8 = 1;
+    /// The name fails the D-ORG10 text rules.
+    pub const NAME_INVALID: u8 = 2;
+    /// The player already belongs to an organization of that type (D-ORG18).
+    pub const ALREADY_IN_ORG_TYPE: u8 = 3;
+    /// The player cannot pay the D-ORG15 creation cost.
+    pub const INSUFFICIENT_FUNDS: u8 = 4;
+    /// No open naming dialog: no pending creation, or it expired.
+    pub const NO_PENDING_CREATION: u8 = 5;
+    /// Too many attempts, or one is already being processed.
+    pub const RATE_LIMITED: u8 = 6;
+    /// The server could not complete the request (database or channel).
+    pub const SERVER_ERROR: u8 = 7;
+}
+
 /// `launchOrganizationCreation` [135]: `UINT8 aOrgType`
 /// (`SGWPlayer.def:1331-1333`). Opens `CreateTeamWin` or `CreateCommandWin`
 /// (audit A-20); the type never comes back on the wire (CM 94 carries only
@@ -185,6 +217,30 @@ mod tests {
     #[test]
     fn cm134_on_organization_creation_result() {
         assert_eq!(build_on_organization_creation_result(1, 5), [1, 5]);
+    }
+
+    /// The creation `Result` / `RetCode` bytes are policy; pinned so a
+    /// renumbering is a visible change to the packet captures.
+    #[test]
+    fn cm134_result_and_ret_codes_are_pinned() {
+        use org_creation_ret_code::*;
+        assert_eq!(
+            (ORG_CREATION_RESULT_CREATED, ORG_CREATION_RESULT_REFUSED),
+            (1, 0)
+        );
+        assert_eq!(
+            [
+                OK,
+                NAME_TAKEN,
+                NAME_INVALID,
+                ALREADY_IN_ORG_TYPE,
+                INSUFFICIENT_FUNDS,
+                NO_PENDING_CREATION,
+                RATE_LIMITED,
+                SERVER_ERROR
+            ],
+            [0, 1, 2, 3, 4, 5, 6, 7]
+        );
     }
 
     #[test]
