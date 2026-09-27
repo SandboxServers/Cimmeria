@@ -52,7 +52,8 @@ CR-02 game clock ─────┼──► CR-06 induction engine + transactio
                       │                                                CR-10 respec ────────────────┤     + /release
                       │                                                CR-11 debug hub (#846) ──────┤
                       │                                                CR-12 ASP earning ───────────┤
-                      └──────────────────────────────────────────────► CR-15 blueprint/guide items ─┘
+                      ├──────────────────────────────────────────────► CR-15 blueprint/guide items ─┤
+  Bank BV-01 (#872) ──┴──────────────────────────────────────────────► CR-16 grant fall-through ─────┘
 ```
 
 CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers, argument parsing and the message shape, with **no behaviour change**. CR-E1, CR-E2 and CR-02 touch no file CR-01 owns.
@@ -63,6 +64,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `crates/cell-methods/.../player/crafting/mod.rs`: CR-01, then CR-05 (gate), then CR-10 (respec arm). Verb packets add files only.
 - `crates/base-session/src/base/crafting/mod.rs` and the base dispatch arm: CR-01 adds the `Crafting` arm; later packets add files and `mod` lines only.
 - `base/world_entry/methods/progression/mod.rs` (`grant_xp`): CR-12 only.
+- `crates/wire/src/cell/messages/cell_to_base.rs` is **over the 700-line cap** (793 lines after CR-01). An enum's variants cannot move to another file, and the only natural seam (the contact-list family) would rename about 40 call sites while two other campaigns add variants. So crafting adds tuple variants whose payloads live in `crates/wire/src/crafting/`, and the split is a separate PR once the parallel campaigns settle.
 - `crates/entity/src/cell_entity/entity_struct.rs` is **over the 700-line cap**. CR-05's per-player station state goes in a new file, not in that struct's body.
 - `db/resources/Entities/Seed/entity_templates.sql`, `Worlds/Seed/spawnlist.sql`: CR-11 only, inside 310-329 and 410-429. Message the guilds session (cimmeria-fa) and the pets session (cimmeria-b5) before merging.
 - `crates/wire/src/containers.rs`, `crates/entity/src/inventory.rs` (`BAG_SIZES`), `inventory/move_/mod.rs` and `inventory/grant/validation.rs`: owned by the Bank/Vault campaign (cimmeria-97, BV-01 lands first; it keeps container 15 movable) and the guilds vault packet (cimmeria-fa, containers 19 and 20). CR-05 may add a post-commit bag-15 notification in `move_/mod.rs`; message both sessions before that packet starts and rebase onto their changes.
@@ -81,7 +83,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-01
 
-**Status:** Ready. **Scope title:** Catalog, constants, serializers, argument parsing, request message. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
+**Status:** Integrated (#862). **Scope title:** Catalog, constants, serializers, argument parsing, request message. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
 
 **Scope:**
 
@@ -96,7 +98,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-E1
 
-**Status:** Ready. **Scope title:** Client evidence for the crafting UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra, read-only on the client; the client Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only, plus Ghidra comment fixes.
+**Status:** Integrated (#858). **Scope title:** Client evidence for the crafting UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra, read-only on the client; the client Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only, plus Ghidra comment fixes.
 
 **Questions, each answered with an address or file:line:**
 
@@ -111,7 +113,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-E2
 
-**Status:** Ready. **Scope title:** Blueprint items, Paradigm Guide items and Field Crafting Tools in the client's cooked data. **Depends:** none. **Writer:** game-archaeology-specialist (cooked PAKs through `crates/resources`, Ghidra read-only). Documentation plus a proposed mapping file; no Rust.
+**Status:** Review (#868). **Scope title:** Blueprint items, Paradigm Guide items and Field Crafting Tools in the client's cooked data. **Depends:** none. **Writer:** game-archaeology-specialist (cooked PAKs through `crates/resources`, Ghidra read-only). Documentation plus a proposed mapping file; no Rust.
 
 **Questions, each answered with evidence:**
 
@@ -124,7 +126,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-02
 
-**Status:** Ready. **Scope title:** One consistent game clock for timer expiries. **Depends:** none. **Advisor:** bigworld-engine-advisor, combat-systems-advisor.
+**Status:** Review (#864). **Scope title:** One consistent game clock for timer expiries. **Depends:** none. **Advisor:** bigworld-engine-advisor, combat-systems-advisor.
 
 **Scope:**
 
@@ -138,7 +140,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-03
 
-**Status:** BlockedDependency (CR-01). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
+**Status:** Writing (with CR-04, branch `craft/cr03-login-sync-spend`). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
 
 **Scope:**
 
@@ -150,7 +152,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-04
 
-**Status:** BlockedDependency (CR-01). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** Writing (with CR-03). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:**
 
@@ -162,7 +164,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-05
 
-**Status:** BlockedDependency (CR-01); the tool rule waits on CR-E2 Q3 only for the science field. **Scope title:** Stations, tools, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer, items-systems-advisor.
+**Status:** Writing (branch `craft/cr05-stations-tools`). **Scope title:** Stations, tools, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer, items-systems-advisor.
 
 **Scope:**
 
@@ -177,11 +179,11 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-06
 
-**Status:** BlockedDependency (CR-01). CR-02 is soft: until it lands, the timer uses the best available clock. **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
+**Status:** BlockedDependency (CR-01, CR-02). **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
 
 **Scope:**
 
-- `session.rs`: a per-player `CraftingSession` with one active induction and a FIFO queue of at most 10 (D-CR13). Starting an induction sends `onTimerUpdate(type 16, SourceID = entity, TotalTime = 3.0, expiry)`. Dropped on logout or world change without consuming. A test clock drives expiry.
+- `session.rs`: a per-player `CraftingSession` with one active induction and a FIFO queue of at most 10 (D-CR13). Starting an induction sends `onTimerUpdate(type 16, SourceID = entity, TotalTime = 3.0, BigWorldTimeComplete = game_time_secs() + 3.0)` (D-CR24). Dropped on logout or world change without consuming. A test clock drives expiry.
 - `transaction.rs`: one transaction that locks the player and the named items, checks that each is owned and sits in bag 1 or 15, consumes by design across bags 1 and 15 (C-31), grants outputs by stack merge or free slot, and adjusts expertise. After commit: `onRemoveItem` for drained stacks, `onUpdateItem` for changed ones, and a full resync as the fallback. A failure rolls back and sends feedback.
 - An injectable RNG for the verbs that roll.
 - No verb uses it yet; CR-07 to CR-09 plug in.
@@ -232,8 +234,8 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 **Scope:**
 
 - Templates 310-313: the four "<Science> Crafting Station" entities, named from the existing texts (audit C-25), with all four `ENTITYFLAG_Craft_*` bits. Spawns 410-413 in the stasis room, placed per `docs/content/debug-hub.md` (read its placement warning and the hub worker's authoring traps in `.claude/agent-memory/rust-gameserver-dev/debug-hub-npc-authoring-traps.md`).
-- Template 314 / spawn 414: a "crafting supplies" vendor, at 1 naquadah each: the components of the UAT recipes (audit §2), the four kickers, one Field Crafting Tool per science (the -5 and -50 grades), the Paradigm Guides, and the Blueprint items for the UAT recipes (blueprints 412, 161, 42 and 1).
-- `.craftkit <blueprint> [count]` (D-CR17).
+- Template 314 / spawn 414: a "crafting supplies" vendor, at 1 naquadah each: the components of the UAT recipes (audit §2), the four kickers, one Field Crafting Tool per science (the -5 and -50 grades), the Paradigm Guides (7805-7809), and Blueprint item 6483 (teaches blueprint 25).
+- `.craftkit <blueprint> [count]` and `.learnblueprint <id>` (D-CR17).
 - Add the stations to `docs/content/debug-hub.md`.
 
 **Acceptance:** a live-DB seed guard that the templates carry the flags and the spawns sit in world 12; the vendor list resolves; a `.craftkit` test.
@@ -252,11 +254,21 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 **Scope:**
 
-- A seed table (for example `resources.crafting_item_effects (item_id, blueprint_id, racial_paradigm_id)`) filled from CR-E2's mapping, plus the Guide items if CR-E2 shows the client can render them (D-CR22).
+- A seed table (for example `resources.crafting_item_effects (item_id, blueprint_id, racial_paradigm_id)`) filled from CR-E2's mapping per D-CR26 (193 Blueprint items, 8882 teaching two blueprints), plus the five existing Guide items 7805-7809. A generator under `tools/crafting/` builds the seed rows from `source/blueprint-items.csv`, so the mapping has one source.
 - The item-use path recognises these items. A Blueprint item teaches its blueprint (139). A Guide raises its paradigm by 1, to at most 10 (138). Either way the item is consumed in the same transaction that changes the crafting state. A known blueprint or a guide at 10 is refused with feedback and consumes nothing.
 - Loot: add Guides and Blueprint items to a loot table only where existing content already places crafting drops; otherwise the vendor (CR-11) is the only source for now.
 
 **Acceptance:** live-DB tests for each item kind, including the refused cases (nothing consumed); a replay test; a seed guard that every mapped blueprint and paradigm id exists.
+
+### CR-16
+
+**Status:** BlockedDependency (Bank BV-01, #872). **Scope title:** Grant into the first allowed player container. **Advisor:** items-systems-advisor. Tell cimmeria-97 when it starts.
+
+**Scope:** audit C-29. When an item's `container_sets` lists a storage container (17-20) first, the grant path falls through to the next listed player container (15, then 1) instead of refusing. The loot-into-bank refusal BV-01 adds stays for items that list only storage containers. Every caller benefits: loot, content `grant_item`, GM `gmGiveItem`, vendors, and CR-06's transaction if it reuses the grant path.
+
+Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes the item from the corpse on the cell **before** the base accepts the grant, so a refused grant destroys the item. Remove from the corpse only after the base confirms, or restore it on refusal.
+
+**Acceptance:** a live-DB test that a `{17,15}` component granted by loot, by the content engine and by a GM lands in bag 15; a test that a refused loot grant leaves the item on the corpse; a guard that fails when the fall-through is removed; the BV-01 refusal test still passes for a storage-only item.
 
 ## Wave 3
 
@@ -272,13 +284,13 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 
 1. Log in with a new character. Open Ctrl+J: the ASP count shows, and the tree is drawn (green where learnable, per D-CR03).
 2. `/gmgiveappliedsciencepoints 5` (or the native GM console). The count updates without a relog.
-3. Learn Biomedical Engineering (21). Its expertise reads 1 and the ASP count drops by 1. Click it again: a message says it is already known.
+3. Learn Materials Engineering (78). Its expertise reads 1 and the ASP count drops by 1. Click it again: a message says it is already known.
 4. Relog. Disciplines, expertise, ASP and blueprints are all still there.
 5. Open J away from the stations: every tab says "Disabled". Walk to the Materials Crafting Station: the tabs enable. Walk away: they disable again.
 6. Buy an MAS-5 Field Crafting Tool and put it in the crafting bag: craft, research and reverse engineer enable anywhere for Materials; alloy stays disabled. Move the tool to the main bag: they disable.
-7. Buy and use the Blueprint item that CR-E2 maps to blueprint 412: the blueprint appears in the J window. Use a second copy: a message says it is already known and the item stays.
+7. Buy and use "Blueprint: Steel Plating (Materials Subcombine A)" (item 6483): blueprint 25 appears in the J window. Use a second copy: a message says it is already known and the item stays.
 8. Buy and use a Racial Paradigm Guide: Human. `/showracialparadigmlevels` reports Human at 2.
-9. Buy 14× Steel Core (5254) from the supplies vendor, or `.craftkit 412`. Craft Titanium Plating (blueprint 412): the 3 s induction bar shows, the components go, the plating arrives, and expertise rises by 1.
+9. Buy 13× Steel Core (5254) from the supplies vendor, or `.craftkit 25`. At the Materials Crafting Station, craft Steel Plating (blueprint 25): the 3 s induction bar shows, the components go, the plating arrives, and Materials Engineering expertise rises by 1.
 10. Craft with too few components: a message explains why and nothing is consumed.
 11. Research Crafted Pistol of the Whale (5481) with one kicker: a message reports the result; on success expertise rises by 5.
 12. Put 10 items in reverse engineering and confirm: all 10 complete in turn, and components arrive.
