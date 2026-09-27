@@ -153,6 +153,18 @@ Each mutation was applied, the named filter run, and the file restored (`/tmp/ss
 - **No rebase** this round; head still sits on `origin/main` @ `a53c6c3c8`.
 - **Commands:** `lane.sh cargo fmt --all -- --check` (clean); `lane.sh cargo clippy -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods -p cimmeria-base --all-targets -- -D warnings` (clean); `lane.sh cargo nextest run` on those five with the `duel` filter (50 passed).
 
+### Rebase onto SS-M1
+
+- **Rebased** onto `origin/main` @ `e44af31dd` (SS-M1, #894), after the coordinator's `8041783a8`.
+- **Conflicts:** all were lines added side by side, and both sides were kept.
+  - `messages/mod.rs`: the new `MailSend` / `MailSendReject` re-exports, plus `DuelBaseToCell`.
+  - `logging/filters.rs`: the `mail` and `duel` doc paragraphs and the `mail=debug` and `duel=debug` rows.
+  - `target_scan_tests.rs`: the `mail` and `duel` pins.
+  - `observability.md`: the `chat`, `mail` and `duel` rows, one each.
+- **Gap-analysis totals:** recomputed from the rows. Dueling is now 6 = 2 IM + 4 KM, and the totals are 471 / CW 169 / NT 65 / IM 100 / KM 133 / NU 4, which the 45 rows sum to. The summary percentages and the wire-doc table row were updated, and so was the Dueling row in `docs/project-status.md`.
+- **Out of scope:** the overall table in `docs/project-status.md` still carries the 2026-09-25 numbers (NT 58, KM 142) and was already out of step with gap-analysis before this packet.
+- **Commands:** `lane.sh cargo fmt --all -- --check` (clean); clippy on wire, cell-world, cell, cell-methods, base and server, `--all-targets -- -D warnings` (clean); nextest on the five crates (1444 passed, 0 skipped); server logging tests (52 passed).
+
 ## Docs
 
 - `docs/gameplay/duel-system.md`: status, the implementation table and the feature rows.

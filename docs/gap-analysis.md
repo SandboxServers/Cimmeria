@@ -1275,7 +1275,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 24 | Mail | 13 | 0 | 5 | 0 | 7 | 1 |
 | 25 | Black Market | 10 | 0 | 0 | 0 | 9 | 1 |
 | 26 | Contact Lists | 10 | 10 | 0 | 0 | 0 | 0 |
-| 27 | Dueling | 6 | 0 | 0 | 0 | 6 | 0 |
+| 27 | Dueling | 6 | 0 | 0 | 2 | 4 | 0 |
 | 28 | Pets | 7 | 0 | 0 | 0 | 7 | 0 |
 | 29 | Minigames | 9 | 5 | 0 | 1 | 3 | 0 |
 | 30 | Groups / Parties | 7 | 0 | 0 | 0 | 7 | 0 |
@@ -1294,22 +1294,22 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **65** | **98** | **135** | **4** |
+| | **TOTALS** | **471** | **169** | **65** | **100** | **133** | **4** |
 
 ### Summary Percentages
 
-Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row); the columns sum to the totals line and the totals line sums to 471.
+Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row and SS-D1 the two Dueling rows); the columns sum to the totals line and the totals line sums to 471.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
 | Confirmed Working (CW) | 169 | 35.9% |
 | Needs Test (NT) | 65 | 13.8% |
-| Implemented (IM) | 98 | 20.8% |
-| Known/Missing (KM) | 135 | 28.7% |
+| Implemented (IM) | 100 | 21.2% |
+| Known/Missing (KM) | 133 | 28.2% |
 | Needed/Unknown (NU) | 4 | 0.8% |
 
-**Code exists (CW + NT + IM)**: 332 features (70.5%)
-**Missing (KM + NU)**: 139 features (29.5%)
+**Code exists (CW + NT + IM)**: 334 features (70.9%)
+**Missing (KM + NU)**: 137 features (29.1%)
 
 **Tested end-to-end (CW)**: 169 features (35.9%).
 
@@ -1375,7 +1375,7 @@ Corrected 2026-07-25 — trading and contact lists have left this table.
 | Crafting | crafting-system.md | crafting-wire-formats.md | State, persistence, login sync and ASP spend ported (#427, CR-03, CR-04); the item verbs are still stubs |
 | Organizations | organization-system.md | organization-wire-formats.md | 200 lines stubs — unchanged |
 | Black Market | black-market.md | black-market-wire-formats.md | 94 lines stubs on `main`; full Phase 1 waiting on `feat/571-black-market-phase1` |
-| Dueling | duel-system.md | duel-wire-formats.md | Not ported |
+| Dueling | duel-system.md | duel-wire-formats.md | Challenge and response (SS-D1); no engaged duel, forfeit or end paths |
 | Pets | pet-system.md | pet-wire-formats.md | Not ported |
 | Groups | group-system.md | group-wire-formats.md | Not ported |
 
