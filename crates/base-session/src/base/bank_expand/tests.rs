@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_entity::cell_entity::VaultScope;
+use cimmeria_entity::cell_entity::{ExpansionOffer, VaultScope};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tracing::Level;
@@ -48,12 +48,19 @@ pub(super) struct TestClient {
     pub(super) conn: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 }
 
-pub(super) fn in_world(entity_id: u32, port: u16) -> TestClient {
+/// The session at `port` playing `c`'s character as `c.entity_id`.
+pub(super) fn in_world(c: ExpandCaller, port: u16) -> TestClient {
+    in_world_as(c.entity_id, c.player_id, port)
+}
+
+/// A session playing `player_id` as `entity_id`.
+pub(super) fn in_world_as(entity_id: u32, player_id: i32, port: u16) -> TestClient {
     let transport = Arc::new(TestTransport::new());
     let dyn_transport: Arc<dyn Transport> = transport.clone();
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(player_id);
     TestClient {
         transport,
         dyn_transport,
@@ -150,21 +157,28 @@ pub(super) async fn row(pool: &PgPool, player_id: i32) -> (i16, i32) {
         .expect("player row")
 }
 
+/// The offer the seed quotes at `from_slots`: 100 naquadah a step.
+pub(super) fn offered(from_slots: i16) -> Option<ExpansionOffer> {
+    Some(ExpansionOffer {
+        from_slots,
+        price: 100,
+    })
+}
+
 pub(super) async fn expand(
     pool: &PgPool,
     client: &TestClient,
     c: ExpandCaller,
-    from_slots: Option<i16>,
+    offer: Option<ExpansionOffer>,
     vault: VaultAccess,
 ) {
     handle_expand(
         c,
-        from_slots,
+        offer,
         vault,
         &Some(Arc::new(pool.clone())),
         &client.dyn_transport,
         &client.conn,
-        &client.e2a,
     )
     .await;
 }
@@ -214,10 +228,10 @@ async fn a_purchase_adds_ten_slots_charges_the_price_and_redeclares_the_vault() 
     let pool = require_db_or_skip!();
     let c = caller(0x00, 0x7000_BBE0);
     setup(&pool, c, 40, 250).await;
-    let client = in_world(c.entity_id, 40900);
+    let client = in_world(c, 40900);
     let capture = LogCapture::install();
 
-    expand(&pool, &client, c, Some(40), AT_BANKER).await;
+    expand(&pool, &client, c, offered(40), AT_BANKER).await;
     let after = row(&pool, c.player_id).await;
     cleanup(&pool, c).await;
 
@@ -262,7 +276,7 @@ async fn a_gm_session_expands_without_a_banker() {
     let pool = require_db_or_skip!();
     let c = caller(0x10, 0x7000_BBE1);
     setup(&pool, c, 60, 100).await;
-    let client = in_world(c.entity_id, 40901);
+    let client = in_world(c, 40901);
     let gm = VaultAccess::Open {
         scope: VaultScope::Personal,
         banker_id: None,
@@ -270,7 +284,7 @@ async fn a_gm_session_expands_without_a_banker() {
     };
     let capture = LogCapture::install();
 
-    expand(&pool, &client, c, Some(60), gm).await;
+    expand(&pool, &client, c, offered(60), gm).await;
     let after = row(&pool, c.player_id).await;
     cleanup(&pool, c).await;
 
@@ -296,17 +310,17 @@ async fn a_double_purchase_from_one_click_is_charged_once() {
     let pool = require_db_or_skip!();
     let c = caller(0x20, 0x7000_BBE2);
     setup(&pool, c, 40, 1000).await;
-    let client = in_world(c.entity_id, 40902);
+    let client = in_world(c, 40902);
     let capture = LogCapture::install();
 
-    expand(&pool, &client, c, Some(40), AT_BANKER).await;
-    expand(&pool, &client, c, Some(40), AT_BANKER).await;
+    expand(&pool, &client, c, offered(40), AT_BANKER).await;
+    expand(&pool, &client, c, offered(40), AT_BANKER).await;
     let sequential = row(&pool, c.player_id).await;
 
     // Concurrently: two statements on two connections for one offer at 50.
     let (a, b) = tokio::join!(
-        persist_expansion(&pool, c.player_id, 50),
-        persist_expansion(&pool, c.player_id, 50)
+        persist_expansion(&pool, c.player_id, offered(50).unwrap()),
+        persist_expansion(&pool, c.player_id, offered(50).unwrap())
     );
     let concurrent = row(&pool, c.player_id).await;
     cleanup(&pool, c).await;
@@ -327,6 +341,7 @@ async fn a_double_purchase_from_one_click_is_charged_once() {
         &[
             ("reason", "replay"),
             ("offered_slots", "40"),
+            ("offered_price", "100"),
             ("bank_slots", "50"),
             ("cash", "900"),
         ],
@@ -355,10 +370,10 @@ async fn insufficient_funds_change_nothing() {
     let pool = require_db_or_skip!();
     let c = caller(0x30, 0x7000_BBE3);
     setup(&pool, c, 40, 99).await;
-    let client = in_world(c.entity_id, 40903);
+    let client = in_world(c, 40903);
     let capture = LogCapture::install();
 
-    expand(&pool, &client, c, Some(40), AT_BANKER).await;
+    expand(&pool, &client, c, offered(40), AT_BANKER).await;
     let after = row(&pool, c.player_id).await;
     cleanup(&pool, c).await;
 
@@ -390,12 +405,12 @@ async fn the_ceiling_is_100() {
     let pool = require_db_or_skip!();
     let c = caller(0x40, 0x7000_BBE4);
     setup(&pool, c, 90, 1000).await;
-    let client = in_world(c.entity_id, 40904);
+    let client = in_world(c, 40904);
     let capture = LogCapture::install();
 
-    expand(&pool, &client, c, Some(90), AT_BANKER).await;
+    expand(&pool, &client, c, offered(90), AT_BANKER).await;
     let at_full = row(&pool, c.player_id).await;
-    expand(&pool, &client, c, Some(100), AT_BANKER).await;
+    expand(&pool, &client, c, offered(100), AT_BANKER).await;
     let after = row(&pool, c.player_id).await;
     cleanup(&pool, c).await;
 
@@ -452,10 +467,10 @@ async fn a_closed_vault_verdict_buys_nothing() {
     for (n, entity_id, vault, reason, line) in cases {
         let c = caller(n, entity_id);
         setup(&pool, c, 40, 500).await;
-        let client = in_world(c.entity_id, 40905);
+        let client = in_world(c, 40905);
         let capture = LogCapture::install();
 
-        expand(&pool, &client, c, Some(40), vault).await;
+        expand(&pool, &client, c, offered(40), vault).await;
         let after = row(&pool, c.player_id).await;
         cleanup(&pool, c).await;
 
@@ -478,7 +493,7 @@ async fn an_answer_without_an_offer_buys_nothing() {
     let pool = require_db_or_skip!();
     let c = caller(0x70, 0x7000_BBE7);
     setup(&pool, c, 40, 500).await;
-    let client = in_world(c.entity_id, 40906);
+    let client = in_world(c, 40906);
     let capture = LogCapture::install();
 
     expand(&pool, &client, c, None, AT_BANKER).await;
@@ -503,10 +518,10 @@ async fn a_missing_player_row_is_refused() {
     let pool = require_db_or_skip!();
     let c = caller(0x80, 0x7000_BBE8);
     cleanup(&pool, c).await;
-    let client = in_world(c.entity_id, 40907);
+    let client = in_world(c, 40907);
     let capture = LogCapture::install();
 
-    expand(&pool, &client, c, Some(40), AT_BANKER).await;
+    expand(&pool, &client, c, offered(40), AT_BANKER).await;
 
     one(
         &capture,
@@ -522,17 +537,16 @@ async fn a_missing_player_row_is_refused() {
 #[tokio::test]
 async fn no_pool_logs_db_unavailable() {
     let c = caller(0x90, 0x7000_BBE9);
-    let client = in_world(c.entity_id, 40908);
+    let client = in_world(c, 40908);
     let capture = LogCapture::install();
 
     handle_expand(
         c,
-        Some(40),
+        offered(40),
         AT_BANKER,
         &None,
         &client.dyn_transport,
         &client.conn,
-        &client.e2a,
     )
     .await;
 
@@ -554,10 +568,10 @@ async fn an_unreachable_database_logs_query_failed() {
         .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
         .expect("lazy pool");
     let c = caller(0xA0, 0x7000_BBEA);
-    let client = in_world(c.entity_id, 40909);
+    let client = in_world(c, 40909);
     let capture = LogCapture::install();
 
-    expand(&unreachable, &client, c, Some(40), AT_BANKER).await;
+    expand(&unreachable, &client, c, offered(40), AT_BANKER).await;
 
     let e = one(
         &capture,
@@ -575,12 +589,11 @@ async fn an_unreachable_database_logs_query_failed() {
 #[tokio::test]
 async fn price_missing_logs_its_reason_and_tells_the_player() {
     let c = caller(0xB0, 0x7000_BBEB);
-    let client = in_world(c.entity_id, 40910);
+    let client = in_world(c, 40910);
     let sends = Client {
         caller: c,
         transport: &client.dyn_transport,
         connected: &client.conn,
-        entity_to_addr: &client.e2a,
     };
     let capture = LogCapture::install();
 
@@ -593,7 +606,7 @@ async fn price_missing_logs_its_reason_and_tells_the_player() {
         &sends,
         ExpandRefusal::PriceMissing,
         &AT_BANKER,
-        Some(40),
+        offered(40),
         snapshot,
         None,
     )
@@ -614,7 +627,7 @@ async fn price_missing_logs_its_reason_and_tells_the_player() {
     assert!(client.saw_text("Your vault could not be expanded right now. Nothing was charged."));
 }
 
-/// The entity logged off before the answer: the purchase still commits,
+/// The character logged off before the answer: the purchase still commits,
 /// and the dropped sends log `bank_feedback_send_failed
 /// reason=no_client_address`.
 #[tokio::test]
@@ -622,10 +635,11 @@ async fn a_player_with_no_client_address_logs_the_dropped_sends() {
     let pool = require_db_or_skip!();
     let c = caller(0xC0, 0x7000_BBEC);
     setup(&pool, c, 40, 100).await;
-    let client = in_world(0x7000_BBEF, 40911); // a different entity
+    // A session playing another character only.
+    let client = in_world_as(0x7000_BBEF, c.player_id + 0x100, 40911);
     let capture = LogCapture::install();
 
-    expand(&pool, &client, c, Some(40), AT_BANKER).await;
+    expand(&pool, &client, c, offered(40), AT_BANKER).await;
     let after = row(&pool, c.player_id).await;
     cleanup(&pool, c).await;
 
@@ -637,4 +651,66 @@ async fn a_player_with_no_client_address_logs_the_dropped_sends() {
         assert!(d.has_field("reason", "no_client_address"), "{d:#?}");
         assert!(d.has_field("player_id", &c.player_id.to_string()), "{d:#?}");
     }
+}
+
+/// The entity id the cell sent now belongs to **another** character's
+/// session (the buyer gated and the id was reused): the purchase commits,
+/// and nothing reaches that session, neither the buyer's vault size nor the
+/// buyer's balance. Each dropped send logs `bank_feedback_send_failed
+/// reason=no_client_address`. Fails if the sends are addressed by entity id.
+#[tokio::test]
+async fn a_recycled_entity_id_receives_nothing() {
+    let pool = require_db_or_skip!();
+    let c = caller(0xD0, 0x7000_BBED);
+    setup(&pool, c, 40, 300).await;
+    // The same entity id, played by someone else.
+    let other = in_world_as(c.entity_id, c.player_id + 0x100, 40912);
+    let capture = LogCapture::install();
+
+    expand(&pool, &other, c, offered(40), AT_BANKER).await;
+    let after = row(&pool, c.player_id).await;
+    cleanup(&pool, c).await;
+
+    assert_eq!(after, (50, 200), "the purchase itself commits");
+    assert_eq!(
+        other.sent(),
+        0,
+        "the other character's session gets nothing"
+    );
+    let dropped = bank_rows(&capture, "bank_feedback_send_failed");
+    assert_eq!(dropped.len(), 3, "{dropped:#?}");
+}
+
+/// The price was retuned while the offer was open: nothing is charged,
+/// WARN `expand_rejected reason=price_changed`. The seed price stays 100;
+/// the offer claims 90.
+#[tokio::test]
+async fn a_price_the_player_was_not_shown_is_never_charged() {
+    let pool = require_db_or_skip!();
+    let c = caller(0xE0, 0x7000_BBEE);
+    setup(&pool, c, 40, 300).await;
+    let client = in_world(c, 40913);
+    let capture = LogCapture::install();
+
+    let shown = Some(ExpansionOffer {
+        from_slots: 40,
+        price: 90,
+    });
+    expand(&pool, &client, c, shown, AT_BANKER).await;
+    let after = row(&pool, c.player_id).await;
+    cleanup(&pool, c).await;
+
+    assert_eq!(after, (40, 300));
+    one(
+        &capture,
+        "expand_rejected",
+        Level::WARN,
+        c,
+        &[
+            ("reason", "price_changed"),
+            ("offered_price", "90"),
+            ("price", "100"),
+        ],
+    );
+    assert!(client.saw_text("Talk to a Banker again to expand your vault. Nothing was charged."));
 }

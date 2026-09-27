@@ -172,14 +172,15 @@ async fn the_expand_dialog_answer_reaches_the_purchase_path_once() {
     let sent = choose(&mut mgr, VAULT_EXPAND_DIALOG_ID, 8).await;
     let [BankCellToBase::Expand {
         player_id,
-        from_slots,
+        offer,
         vault,
         ..
     }] = sent.as_slice()
     else {
         panic!("one Expand: {sent:?}");
     };
-    assert_eq!((*player_id, *from_slots), (42, Some(40)));
+    assert_eq!(*player_id, 42);
+    assert_eq!(offer.map(|o| (o.from_slots, o.price)), Some((40, 100)));
     assert!(vault.opens_personal_vault(), "{vault:?}");
     assert_eq!(vault.banker_id(), Some(banker));
 

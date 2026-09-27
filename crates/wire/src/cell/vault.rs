@@ -22,6 +22,11 @@ use cimmeria_entity::cell_entity::VaultScope;
 /// proximity, the cash and the ceiling.
 pub const VAULT_EXPAND_DIALOG_ID: i32 = 60110;
 
+/// The cooked `ButtonID` of the Expand dialog's one button. Only this id
+/// buys: a close sends `-1`, and any other id is not a press of the button
+/// the player was shown.
+pub const VAULT_EXPAND_BUTTON_ID: i32 = 8;
+
 /// Slots one expansion adds (D-BV02: 40 to 100 in steps of 10). The
 /// `bank_slots_sanity` CHECK on `sgw_player` enforces the same grid.
 pub const VAULT_EXPAND_STEP: i16 = 10;

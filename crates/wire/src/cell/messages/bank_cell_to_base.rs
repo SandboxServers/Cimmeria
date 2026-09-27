@@ -8,6 +8,7 @@
 //! passed the GM gate on the server-side `access_level`.
 
 use crate::cell::vault::VaultAccess;
+use cimmeria_entity::cell_entity::ExpansionOffer;
 
 /// Whose vault a GM tool is about.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,11 +65,12 @@ pub enum BankCellToBase {
         account_id: Option<u32>,
         /// `sgw_player.player_id`.
         player_id: i32,
-        /// The `bank_slots` the dialog was offered at, taken (one-shot)
-        /// from the vault session. The purchase only matches a row still at
-        /// this size, so a second send for the same offer is a replay and
-        /// charges nothing. `None`: the session holds no offer.
-        from_slots: Option<i16>,
+        /// The offer the dialog showed, taken (one-shot) from the vault
+        /// session. The purchase only matches a row still at its size and a
+        /// price row still at its price, so a second send for the same offer
+        /// is a replay and charges nothing. `None`: the session holds no
+        /// offer.
+        offer: Option<ExpansionOffer>,
         /// The cell's fresh vault-session verdict, the one a bank move
         /// takes (`vault_access`). Only a `Personal` open verdict may buy.
         vault: VaultAccess,

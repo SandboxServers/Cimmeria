@@ -61,3 +61,4 @@
 - [reference_org_lock_authority.md](reference_org_lock_authority.md) — ORG-02 authority map: authz-by-convention gap, no leader UPDATE guard, at-most-once audit export
 - [project_mail_expiry_ss_m4_review.md](project_mail_expiry_ss_m4_review.md) — SS-M4 expiry/quarantine cleared shape; no GM release, archive-storage question
 - [project_bank_vault_bv03_review.md](project_bank_vault_bv03_review.md) — BV-03 vault moves: cleared verdict/TOCTOU shape, three fixed findings, bank_slots grow-only invariant for BV-05
+- [project_bank_vault_bv05_review.md](project_bank_vault_bv05_review.md) — BV-05 vault expansion: size-keyed single UPDATE cleared; entity-keyed sends + ignored button_id residual

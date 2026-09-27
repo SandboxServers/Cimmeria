@@ -4,6 +4,7 @@
 
 use super::persist::{classify_refusal, ExpandOutcome, ExpansionState, VAULT_CEILING};
 use super::*;
+use cimmeria_entity::cell_entity::ExpansionOffer;
 
 /// `onBagInfo` args for containers 1-20, written out by hand so the pin
 /// does not share code with the serializer: `count:u32`, then per bag
@@ -72,26 +73,39 @@ fn state(bank_slots: i16, naquadah: i32, next_price: Option<i32>) -> ExpansionSt
     }
 }
 
+fn offer(from_slots: i16, price: i32) -> ExpansionOffer {
+    ExpansionOffer { from_slots, price }
+}
+
 /// A zero-row purchase is classified from the row as it is now, replay
 /// key first: a size the vault has left behind is a replay whatever the
-/// cash; then the ceiling, the missing price and the cash.
+/// cash; then the ceiling, the missing price, a price the player was not
+/// shown, the cash, and last a row that changed between the two reads.
 #[test]
 fn a_refused_purchase_is_classified_replay_first() {
     let s = state(50, 0, Some(100));
-    assert_eq!(classify_refusal(s, 40), ExpandOutcome::Replay { state: s });
+    assert_eq!(
+        classify_refusal(s, offer(40, 100)),
+        ExpandOutcome::Replay { state: s }
+    );
     let s = state(100, 1000, None);
     assert_eq!(
-        classify_refusal(s, 100),
+        classify_refusal(s, offer(100, 100)),
         ExpandOutcome::AtCeiling { state: s }
     );
     let s = state(40, 1000, None);
     assert_eq!(
-        classify_refusal(s, 40),
+        classify_refusal(s, offer(40, 100)),
         ExpandOutcome::PriceMissing { state: s }
+    );
+    let s = state(40, 1000, Some(120));
+    assert_eq!(
+        classify_refusal(s, offer(40, 100)),
+        ExpandOutcome::PriceChanged { state: s }
     );
     let s = state(40, 99, Some(100));
     assert_eq!(
-        classify_refusal(s, 40),
+        classify_refusal(s, offer(40, 100)),
         ExpandOutcome::InsufficientCash {
             state: s,
             price: 100
@@ -99,7 +113,10 @@ fn a_refused_purchase_is_classified_replay_first() {
     );
     // Everything holds now: the row moved between the write and the read.
     let s = state(40, 100, Some(100));
-    assert_eq!(classify_refusal(s, 40), ExpandOutcome::Replay { state: s });
+    assert_eq!(
+        classify_refusal(s, offer(40, 100)),
+        ExpandOutcome::RowChanged { state: s }
+    );
 }
 
 #[test]
@@ -115,6 +132,8 @@ fn refusal_reasons_are_stable() {
         (ExpandRefusal::AtCeiling, "at_ceiling"),
         (ExpandRefusal::InsufficientCash, "insufficient_cash"),
         (ExpandRefusal::PriceMissing, "price_missing"),
+        (ExpandRefusal::PriceChanged, "price_changed"),
+        (ExpandRefusal::RowChanged, "row_changed"),
         (ExpandRefusal::PlayerRowMissing, "player_row_missing"),
         (ExpandRefusal::DbUnavailable, "db_unavailable"),
         (ExpandRefusal::QueryFailed, "query_failed"),

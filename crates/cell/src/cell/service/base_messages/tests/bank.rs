@@ -35,7 +35,13 @@ async fn an_expansion_offer_reaches_the_vault_session() {
     handle_base_message(msg, &tx, &mut mgr, &engine, &[]).await;
 
     let session = mgr.get_entity(10).unwrap().vault_session.clone().unwrap();
-    assert_eq!(session.expansion_offer, Some(60));
+    assert_eq!(
+        session.expansion_offer,
+        Some(cimmeria_entity::cell_entity::ExpansionOffer {
+            from_slots: 60,
+            price: 100
+        })
+    );
     match rx.try_recv() {
         Ok(CellToBaseMsg::EntityMethodCall {
             entity_id,

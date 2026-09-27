@@ -9,10 +9,11 @@
 //!
 //! - [`handle_expansion_quote`] (`BankCellToBase::ExpansionQuote`): a vault
 //!   opened. Below the ceiling, tell the cell the current size and the next
-//!   step's price, so it can record the offer and show the dialog.
+//!   step's price, so it can record the offer and show the dialog. At the
+//!   ceiling, offer nothing.
 //! - [`handle_expand`] (`BankCellToBase::Expand`): the player pressed the
-//!   button. Check the cell's fresh verdict and the offer, then buy in one
-//!   statement ([`persist::persist_expansion`]). On success, re-declare the
+//!   button. Check the cell's fresh verdict and the offer (size and
+//!   price), then buy in one statement ([`persist::persist_expansion`]). On success, re-declare the
 //!   vault's size with `onBagInfo` (69), send the new balance with
 //!   `onCashChanged` (75) and confirm in chat. Every refusal gets a chat line
 //!   too, so the press is acknowledged even with the vault window closed.
@@ -37,6 +38,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_entity::cell_entity::ExpansionOffer;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::cell::messages::{BankBaseToCell, BaseToCellMsg};
 use cimmeria_wire::cell::vault::{VaultAccess, VAULT_EXPAND_STEP};
@@ -78,6 +80,10 @@ pub enum ExpandRefusal {
     InsufficientCash,
     /// No price row for the next step.
     PriceMissing,
+    /// The step's price is not the one the player was shown.
+    PriceChanged,
+    /// The row changed between the write and the classifying read.
+    RowChanged,
     /// No `sgw_player` row.
     PlayerRowMissing,
     /// The base has no database pool.
@@ -96,6 +102,8 @@ impl ExpandRefusal {
             ExpandRefusal::AtCeiling => "at_ceiling",
             ExpandRefusal::InsufficientCash => "insufficient_cash",
             ExpandRefusal::PriceMissing => "price_missing",
+            ExpandRefusal::PriceChanged => "price_changed",
+            ExpandRefusal::RowChanged => "row_changed",
             ExpandRefusal::PlayerRowMissing => "player_row_missing",
             ExpandRefusal::DbUnavailable => "db_unavailable",
             ExpandRefusal::QueryFailed => "query_failed",
@@ -109,7 +117,10 @@ impl ExpandRefusal {
             ExpandRefusal::Vault("banker_out_of_range") => {
                 "You are too far from the Banker. Your vault was not expanded.".to_string()
             }
-            ExpandRefusal::Vault(_) | ExpandRefusal::NoOffer => {
+            ExpandRefusal::Vault(_)
+            | ExpandRefusal::NoOffer
+            | ExpandRefusal::PriceChanged
+            | ExpandRefusal::RowChanged => {
                 "Talk to a Banker again to expand your vault. Nothing was charged.".to_string()
             }
             ExpandRefusal::Replay => {
@@ -161,25 +172,23 @@ impl From<ExpansionState> for Snapshot {
 )]
 pub async fn handle_expand(
     caller: ExpandCaller,
-    from_slots: Option<i16>,
+    offer: Option<ExpansionOffer>,
     vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let client = Client {
         caller,
         transport,
         connected,
-        entity_to_addr,
     };
     let Some(pool) = db_pool.as_deref() else {
         reject(
             &client,
             ExpandRefusal::DbUnavailable,
             &vault,
-            from_slots,
+            offer,
             Snapshot::default(),
             None,
         )
@@ -189,7 +198,7 @@ pub async fn handle_expand(
 
     // The verdict and the offer first: neither needs the database, but the
     // refusal log reads the vault and the cash so it is answerable alone.
-    let early = match (vault.personal_vault_refusal(), from_slots) {
+    let early = match (vault.personal_vault_refusal(), offer) {
         (Some(label), _) => Some(ExpandRefusal::Vault(label)),
         (None, None) => Some(ExpandRefusal::NoOffer),
         (None, Some(_)) => None,
@@ -199,12 +208,14 @@ pub async fn handle_expand(
             Ok(state) => state.map(Snapshot::from).unwrap_or_default(),
             Err(_) => Snapshot::default(),
         };
-        reject(&client, refusal, &vault, from_slots, snapshot, None).await;
+        reject(&client, refusal, &vault, offer, snapshot, None).await;
         return;
     }
-    let from = from_slots.unwrap_or_default();
+    let Some(offered) = offer else {
+        return; // `early` refused a missing offer above.
+    };
 
-    match persist_expansion(pool, caller.player_id, from).await {
+    match persist_expansion(pool, caller.player_id, offered).await {
         Ok(ExpandOutcome::Expanded {
             bank_slots_after,
             cash_after,
@@ -234,7 +245,7 @@ pub async fn handle_expand(
         }
         Ok(outcome) => {
             let (refusal, snapshot) = refusal_of(outcome);
-            reject(&client, refusal, &vault, from_slots, snapshot, None).await;
+            reject(&client, refusal, &vault, offer, snapshot, None).await;
         }
         Err(e) => {
             let error = e.to_string();
@@ -242,7 +253,7 @@ pub async fn handle_expand(
                 &client,
                 ExpandRefusal::QueryFailed,
                 &vault,
-                from_slots,
+                offer,
                 Snapshot::default(),
                 Some(&error),
             )
@@ -257,6 +268,8 @@ fn refusal_of(outcome: ExpandOutcome) -> (ExpandRefusal, Snapshot) {
         ExpandOutcome::Replay { state } => (ExpandRefusal::Replay, state.into()),
         ExpandOutcome::AtCeiling { state } => (ExpandRefusal::AtCeiling, state.into()),
         ExpandOutcome::PriceMissing { state } => (ExpandRefusal::PriceMissing, state.into()),
+        ExpandOutcome::PriceChanged { state } => (ExpandRefusal::PriceChanged, state.into()),
+        ExpandOutcome::RowChanged { state } => (ExpandRefusal::RowChanged, state.into()),
         ExpandOutcome::InsufficientCash { state, price } => (
             ExpandRefusal::InsufficientCash,
             Snapshot {
@@ -274,7 +287,7 @@ async fn reject(
     client: &Client<'_>,
     refusal: ExpandRefusal,
     vault: &VaultAccess,
-    from_slots: Option<i16>,
+    offer: Option<ExpansionOffer>,
     snapshot: Snapshot,
     error: Option<&str>,
 ) {
@@ -286,7 +299,8 @@ async fn reject(
         player_id = caller.player_id,
         entity_id = caller.entity_id,
         reason = refusal.reason(),
-        offered_slots = from_slots,
+        offered_slots = offer.map(|o| o.from_slots),
+        offered_price = offer.map(|o| o.price),
         bank_slots = snapshot.bank_slots,
         cash = snapshot.cash,
         price = snapshot.price,
@@ -300,7 +314,9 @@ async fn reject(
 }
 
 /// `BankCellToBase::ExpansionQuote`: below the ceiling, send the cell the
-/// offer; at the ceiling, tell the player the vault is full.
+/// offer. At the ceiling nothing is offered and nothing is said: the vault
+/// window opening is the click's feedback, and a "full" line on every
+/// Banker visit would be noise.
 #[tracing::instrument(
     name = "bank.expansion_quote",
     level = "info",
@@ -312,16 +328,7 @@ pub async fn handle_expansion_quote(
     speaker_id: u32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    transport: &Arc<dyn Transport>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let client = Client {
-        caller,
-        transport,
-        connected,
-        entity_to_addr,
-    };
     let state = match db_pool.as_deref() {
         None => Err(("db_unavailable", None)),
         Some(pool) => match read_expansion_state(pool, caller.player_id).await {
@@ -339,9 +346,6 @@ pub async fn handle_expansion_quote(
     };
     if state.bank_slots >= VAULT_CEILING {
         quote_debug(caller, &state, false, Some("at_ceiling"));
-        client
-            .send_line(&ExpandRefusal::AtCeiling.feedback(None))
-            .await;
         return;
     }
     let Some(price) = state.next_price else {

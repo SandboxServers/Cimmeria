@@ -64,12 +64,13 @@ async fn bank_expand_arms_reach_the_expand_handlers() {
 
     let capture = LogCapture::install();
     let (addr, connected, entity_to_addr) = one_session(4243, false);
-    connected
-        .lock()
-        .unwrap()
-        .get_mut(&addr)
-        .unwrap()
-        .player_entity_id = Some(4243);
+    {
+        let mut clients = connected.lock().unwrap();
+        let session = clients.get_mut(&addr).unwrap();
+        session.player_entity_id = Some(4243);
+        // The purchase answers the character, not the entity id.
+        session.active_player_id = Some(5);
+    }
     let typed_transport = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed_transport.clone();
 
@@ -78,7 +79,10 @@ async fn bank_expand_arms_reach_the_expand_handlers() {
             entity_id: 4243,
             account_id: Some(6),
             player_id: 5,
-            from_slots: Some(40),
+            offer: Some(cimmeria_entity::cell_entity::ExpansionOffer {
+                from_slots: 40,
+                price: 100,
+            }),
             vault: VaultAccess::NO_SESSION,
         },
         BankCellToBase::ExpansionQuote {

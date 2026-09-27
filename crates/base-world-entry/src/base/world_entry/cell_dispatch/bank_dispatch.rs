@@ -44,22 +44,13 @@ pub(super) async fn route(msg: BankCellToBase, ctx: &DispatchCtx<'_>) {
                 account_id,
                 player_id,
             };
-            handle_expansion_quote(
-                caller,
-                speaker_id,
-                ctx.db_pool,
-                ctx.cell_tx,
-                ctx.transport,
-                ctx.connected,
-                ctx.entity_to_addr,
-            )
-            .await
+            handle_expansion_quote(caller, speaker_id, ctx.db_pool, ctx.cell_tx).await
         }
         BankCellToBase::Expand {
             entity_id,
             account_id,
             player_id,
-            from_slots,
+            offer,
             vault,
         } => {
             let caller = ExpandCaller {
@@ -69,12 +60,11 @@ pub(super) async fn route(msg: BankCellToBase, ctx: &DispatchCtx<'_>) {
             };
             handle_expand(
                 caller,
-                from_slots,
+                offer,
                 vault,
                 ctx.db_pool,
                 ctx.transport,
                 ctx.connected,
-                ctx.entity_to_addr,
             )
             .await
         }

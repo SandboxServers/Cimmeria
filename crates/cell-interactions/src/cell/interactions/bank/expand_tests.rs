@@ -7,7 +7,7 @@
 use tokio::sync::mpsc;
 use tracing::Level;
 
-use cimmeria_entity::cell_entity::VaultScope;
+use cimmeria_entity::cell_entity::{ExpansionOffer, VaultScope};
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use cimmeria_wire::cell::client_methods::player::ON_DIALOG_DISPLAY;
@@ -59,11 +59,16 @@ fn dialog_display_args(speaker: u32) -> Vec<u8> {
     args
 }
 
-fn offer(mgr: &SpaceManager) -> Option<i16> {
+fn offer(mgr: &SpaceManager) -> Option<ExpansionOffer> {
     mgr.get_entity(PLAYER)
         .and_then(|p| p.vault_session.as_ref())
         .and_then(|s| s.expansion_offer)
 }
+
+const OFFER_40: ExpansionOffer = ExpansionOffer {
+    from_slots: 40,
+    price: 100,
+};
 
 fn rows(capture: &LogCaptureGuard, name: &str) -> Vec<Captured> {
     capture
@@ -145,7 +150,7 @@ async fn an_offer_is_recorded_and_shows_the_expand_dialog_and_the_price() {
 
     offer_vault_expansion(PLAYER, PLAYER_ID, banker, 40, 100, &tx, &mut mgr).await;
 
-    assert_eq!(offer(&mgr), Some(40));
+    assert_eq!(offer(&mgr), Some(OFFER_40));
     let line = "Your vault has 40 slots. 10 more cost 100 naquadah: press Expand vault in the \
                 Banker's dialog to buy them.";
     assert_eq!(
@@ -230,14 +235,17 @@ async fn the_answer_carries_the_offer_once_with_an_open_verdict() {
         banker_id: Some(banker),
         distance: Some(2.0),
     };
-    let expand = |from_slots| BankCellToBase::Expand {
+    let expand = |offer| BankCellToBase::Expand {
         entity_id: PLAYER,
         account_id: Some(6),
         player_id: PLAYER_ID,
-        from_slots,
+        offer,
         vault: open,
     };
-    assert_eq!(bank_msgs(&mut rx), vec![expand(Some(40)), expand(None)]);
+    assert_eq!(
+        bank_msgs(&mut rx),
+        vec![expand(Some(OFFER_40)), expand(None)]
+    );
     assert!(capture
         .all()
         .iter()
@@ -260,34 +268,44 @@ async fn walking_away_before_pressing_sends_a_fresh_closed_verdict() {
     answer_vault_expansion(PLAYER, 8, &tx, &mut mgr).await;
 
     let msgs = bank_msgs(&mut rx);
-    let [BankCellToBase::Expand {
-        vault, from_slots, ..
-    }] = msgs.as_slice()
-    else {
+    let [BankCellToBase::Expand { vault, offer, .. }] = msgs.as_slice() else {
         panic!("one Expand: {msgs:?}");
     };
-    assert_eq!(*from_slots, Some(40));
+    assert_eq!(*offer, Some(OFFER_40));
     assert_eq!(vault.personal_vault_refusal(), Some("banker_out_of_range"));
     assert_eq!(vault.distance(), Some(10.0));
 }
 
-/// A close (`-1`) is never a purchase: nothing goes to the base, the offer
-/// stays, and DEBUG `expand_dismissed` records it.
+/// Only the authored button buys. A close (`-1`) and any other button id
+/// send nothing to the base, keep the offer, and log DEBUG
+/// `expand_dismissed` with `reason` `closed` or `unexpected_button`. Fails
+/// if the button check is removed (the answer would buy).
 #[tokio::test]
-async fn closing_the_dialog_buys_nothing() {
+async fn only_the_expand_button_buys() {
     let mut mgr = two_space_manager();
     let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Personal);
     let (tx, mut rx) = mpsc::channel(16);
     handle_interact(PLAYER, banker, &tx, &mut mgr).await;
     offer_vault_expansion(PLAYER, PLAYER_ID, banker, 40, 100, &tx, &mut mgr).await;
     let _ = bank_msgs(&mut rx);
-    let capture = LogCapture::install();
 
-    answer_vault_expansion(PLAYER, -1, &tx, &mut mgr).await;
+    for (button_id, reason) in [
+        (-1, "closed"),
+        (0, "unexpected_button"),
+        (9, "unexpected_button"),
+    ] {
+        let capture = LogCapture::install();
+        answer_vault_expansion(PLAYER, button_id, &tx, &mut mgr).await;
 
-    assert!(bank_msgs(&mut rx).is_empty());
-    assert_eq!(offer(&mgr), Some(40));
-    one(&capture, "expand_dismissed", Level::DEBUG, &[]);
+        assert!(bank_msgs(&mut rx).is_empty(), "button {button_id}");
+        assert_eq!(offer(&mgr), Some(OFFER_40), "button {button_id}");
+        one(
+            &capture,
+            "expand_dismissed",
+            Level::DEBUG,
+            &[("reason", reason), ("button_id", &button_id.to_string())],
+        );
+    }
 }
 
 /// A closed base channel: WARN `expand_rejected reason=base_channel_closed`
@@ -308,7 +326,11 @@ async fn a_closed_base_channel_logs_the_lost_purchase() {
         &capture,
         "expand_rejected",
         Level::WARN,
-        &[("reason", "base_channel_closed"), ("bank_slots", "40")],
+        &[
+            ("reason", "base_channel_closed"),
+            ("bank_slots", "40"),
+            ("price", "100"),
+        ],
     );
 }
 

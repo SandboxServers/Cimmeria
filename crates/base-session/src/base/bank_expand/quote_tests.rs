@@ -22,16 +22,7 @@ async fn quote(
     c: ExpandCaller,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
-    handle_expansion_quote(
-        c,
-        SPEAKER,
-        &pool.map(|p| Arc::new(p.clone())),
-        cell_tx,
-        &client.dyn_transport,
-        &client.conn,
-        &client.e2a,
-    )
-    .await;
+    handle_expansion_quote(c, SPEAKER, &pool.map(|p| Arc::new(p.clone())), cell_tx).await;
 }
 
 fn offers(rx: &mut mpsc::Receiver<BaseToCellMsg>) -> Vec<BankBaseToCell> {
@@ -53,7 +44,7 @@ async fn below_the_ceiling_the_cell_is_sent_the_offer() {
     let pool = require_db_or_skip!();
     let c = caller(0x80 + 0x10, 0x7000_BBF0);
     setup(&pool, c, 70, 300).await;
-    let client = in_world(c.entity_id, 40920);
+    let client = in_world(c, 40920);
     let (tx, mut rx) = mpsc::channel(8);
     let capture = LogCapture::install();
 
@@ -85,16 +76,16 @@ async fn below_the_ceiling_the_cell_is_sent_the_offer() {
     assert_eq!(client.sent(), 0);
 }
 
-/// At 100 slots: no offer, DEBUG `expand_quote offered=false
-/// reason=at_ceiling`, and a line so the player knows why there is no
-/// Expand dialog. Fails if the ceiling check is removed (the quote then
-/// finds no price row for 110 and logs `price_missing` instead).
+/// At 100 slots: no offer and no line (the open window is the feedback),
+/// DEBUG `expand_quote offered=false reason=at_ceiling`. Fails if the
+/// ceiling check is removed (the quote then finds no price row for 110 and
+/// logs WARN `price_missing` instead).
 #[tokio::test]
 async fn at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
     let pool = require_db_or_skip!();
     let c = caller(0x80 + 0x20, 0x7000_BBF1);
     setup(&pool, c, 100, 300).await;
-    let client = in_world(c.entity_id, 40921);
+    let client = in_world(c, 40921);
     let (tx, mut rx) = mpsc::channel(8);
     let capture = LogCapture::install();
 
@@ -113,7 +104,7 @@ async fn at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
             ("bank_slots", "100"),
         ],
     );
-    assert!(client.saw_text("Your vault is already at its full size of 100 slots."));
+    assert_eq!(client.sent(), 0);
 }
 
 /// The failures: no pool, no row, no cell channel. Each is WARN
@@ -123,7 +114,7 @@ async fn quote_failures_log_their_reason() {
     let pool = require_db_or_skip!();
 
     let c = caller(0x80 + 0x30, 0x7000_BBF2);
-    let client = in_world(c.entity_id, 40922);
+    let client = in_world(c, 40922);
     let capture = LogCapture::install();
     quote(None, &client, c, &None).await;
     one(
@@ -174,7 +165,7 @@ async fn an_unreachable_database_logs_quote_query_failed() {
         .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
         .expect("lazy pool");
     let c = caller(0x80 + 0x60, 0x7000_BBF5);
-    let client = in_world(c.entity_id, 40923);
+    let client = in_world(c, 40923);
     let capture = LogCapture::install();
 
     quote(Some(&unreachable), &client, c, &None).await;

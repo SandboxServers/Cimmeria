@@ -8,8 +8,8 @@
 //! 1. **Quote.** A personal vault opens (Banker click or GM `.bank`), and
 //!    [`request_expansion_quote`] asks the base whether the vault can grow.
 //!    Below the ceiling the base answers with `OfferExpansion`, and
-//!    [`offer_vault_expansion`] records the size it was offered at on the
-//!    vault session and shows the one-button Expand dialog
+//!    [`offer_vault_expansion`] records the size and the price it was
+//!    offered at on the vault session and shows the one-button Expand dialog
 //!    ([`VAULT_EXPAND_DIALOG_ID`]), plus a chat line with the price.
 //! 2. **Purchase.** The dialog's reply reaches [`answer_vault_expansion`]
 //!    after the #479 offered-dialog gate. It takes the recorded offer
@@ -29,19 +29,17 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::cell_entity::VaultScope;
+use cimmeria_entity::cell_entity::{ExpansionOffer, VaultScope};
 use cimmeria_wire::cell::messages::BankCellToBase;
-use cimmeria_wire::cell::vault::{VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_STEP};
+use cimmeria_wire::cell::vault::{
+    VAULT_EXPAND_BUTTON_ID, VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_STEP,
+};
 
 use super::rejection::send_bank_feedback;
 use super::vault_access;
 use crate::cell::interactions::send_dialog_display;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
-
-/// The button id a dialog close sends. The Expand dialog has a button, so
-/// the client sends nothing on close; a `-1` is never a purchase.
-const DIALOG_CLOSED: i32 = -1;
 
 /// A personal vault just opened for `entity_id`: ask the base whether to
 /// offer the next expansion. `speaker_id` is the Banker, or the player's
@@ -114,7 +112,7 @@ pub async fn offer_vault_expansion(
             // A GM session speaks through the player's own entity.
             Some(s) if s.banker_id.unwrap_or(entity_id) != speaker_id => Some("speaker_changed"),
             Some(s) => {
-                s.expansion_offer = Some(from_slots);
+                s.expansion_offer = Some(ExpansionOffer { from_slots, price });
                 None
             }
         },
@@ -162,10 +160,11 @@ pub async fn offer_vault_expansion(
     send_bank_feedback(entity_id, &text, tx, space_mgr).await;
 }
 
-/// The player answered the Expand dialog. `button_id` is whatever the
-/// client sent; only a close (`-1`) is treated differently, because a close
-/// is never a purchase. Everything else goes to the base with the recorded
-/// offer and a fresh verdict, and the base decides.
+/// The player answered the Expand dialog. Only the authored button
+/// ([`VAULT_EXPAND_BUTTON_ID`]) buys: a close sends `-1`, and any other id
+/// is not a press of the button the player was shown, so neither is ever a
+/// purchase (DEBUG `expand_dismissed`). A press goes to the base with the
+/// recorded offer and a fresh verdict, and the base decides.
 #[tracing::instrument(
     name = "bank.expand",
     level = "info",
@@ -179,14 +178,16 @@ pub async fn answer_vault_expansion(
     space_mgr: &mut SpaceManager,
 ) {
     let id = space_mgr.player_identity(entity_id);
-    if button_id == DIALOG_CLOSED {
+    if button_id != VAULT_EXPAND_BUTTON_ID {
         tracing::debug!(
             target: "bank",
             event = "expand_dismissed",
             account_id = id.account_id,
             player_id = id.player_id,
             entity_id,
-            "expand_dismissed: the Expand dialog was closed without buying"
+            button_id,
+            reason = if button_id == -1 { "closed" } else { "unexpected_button" },
+            "expand_dismissed: the Expand dialog was answered without its button -- nothing bought"
         );
         return;
     }
@@ -210,7 +211,7 @@ pub async fn answer_vault_expansion(
     };
     // The verdict first, then the take: both read the session as it is now.
     let vault = vault_access(entity_id, space_mgr);
-    let from_slots = space_mgr
+    let offer = space_mgr
         .get_entity_mut(entity_id)
         .and_then(|p| p.vault_session.as_mut())
         .and_then(|s| s.expansion_offer.take());
@@ -218,7 +219,7 @@ pub async fn answer_vault_expansion(
         entity_id,
         account_id: id.account_id,
         player_id,
-        from_slots,
+        offer,
         vault,
     });
     if let Err(e) = tx.send(msg).await {
@@ -230,7 +231,8 @@ pub async fn answer_vault_expansion(
             player_id,
             entity_id,
             reason = "base_channel_closed",
-            bank_slots = from_slots,
+            bank_slots = offer.map(|o| o.from_slots),
+            price = offer.map(|o| o.price),
             error = %e,
             "expand_rejected: the purchase could not reach the base -- nothing bought, and \
              the player cannot be told"
