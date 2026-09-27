@@ -13,7 +13,7 @@ Where the Cimmeria server emulator stands today and what's ahead.
 >
 > **Re-verified 2026-09-25** against the code at `acbcc22e`, after about 160 PRs landed since the previous (2026-07-25) edition. Every row was re-read, and a feature counts as Confirmed Working only when there is a written record of an in-client test: the 2026-09-18 colo playtest, the 2026-09-25 NPC AI UAT, a PR or issue note, or a recorded confirmation. That stricter bar moved some rows down (vendors, spawn population, mission cash, mail sending, effect clear-flags) while the playtest moved others up (character creation, minigames, ring trips, damage, loot). The previous edition's headline also did not match its own table: it printed 443 / CW 159 / KM 128 against rows that summed to 444 / CW 164 / KM 124. The figures below are recomputed from the rows.
 >
-> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). Other rows keep their 2026-09-25 prose.
+> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory and Organizations notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)); their counts are unchanged. Other rows keep their 2026-09-25 prose.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -66,7 +66,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58 
 | Combat & abilities | IM | 24 (6 CW, 14 IM, 4 KM) | About 11,400 production lines and 194 tests. Damage application is CW (26 kills and 19 player deaths in the colo playtest). Line of sight is enforced on the NPC side but **not** on player `useAbility`; no facing check, min range, prerequisite monikers or threat decay. Two #673 divergences (`EF_DONT_USE_QR` value, damage-type wire values) are still open |
 | Effects & buffs | IM | 13 (3 CW, 5 IM, 5 KM) | Framework works. The clear-on-damage, clear-on-revive and clear-on-bandolier-swap flags do not exist; permanent vs non-permanent stat tracking does not exist. Long tail of 3,216 effect rows needs script coverage |
 | Stats | IM | 8 (5 CW, 2 KM, 1 NU) | Stat list + dirty sync + per-level scaling shipped. Equipment bonuses + derived formulas pending |
-| Inventory & items | IM | 13 (8 CW, 3 NT, 1 IM, 1 KM) | About 5,600-line dispatcher with stacking (#405), bandolier discipline, Slappack PAK override. Item binding is respected by trade, sell and stack |
+| Inventory & items | IM | 13 (8 CW, 3 NT, 1 IM, 1 KM) | About 5,600-line dispatcher with stacking (#405), bandolier discipline, Slappack PAK override. Item binding is respected by trade, sell and stack. **Personal bank done server-side 2026-09-27, awaiting the owner's UAT** (Bank and Vault campaign BV-01 to BV-05, [ledger](analysis/bank-vault/README.md)): a Banker or GM `.bank` opens the vault, every move re-checks the session and the Banker's range, and the vault grows from 40 to 100 slots. Players cannot buy a step yet (the Expand dialog is quarantined after #943), so only GM `.bankexpand` buys. Organization vaults are in progress (BV-07) |
 | Missions | IM | 12 (7 CW, 3 IM, 2 KM) | Content-engine driven. About 30 missions have content chains and about 22 were played in the client (Castle Cellblock, Castle 701-706). Completion works, but **missions pay no cash or items** (#310) and mission XP is 0 in the data. #657 (objectives lost on relog) is fixed on `main` (#682) and awaiting a relog test |
 | Loot | IM | 9 (4 CW, 1 NT, 4 KM) | Loot generation, take-all and bag drop verified in the colo playtest; looter distance re-validated per item (#446). Tables mostly empty; there is **no** per-player eligibility list in Rust |
 | Vendors | NT | 8 (1 CW, 6 NT, 1 IM) | About 7,450 lines across buyback / purchase / sell / paid_repair / paid_recharge. #609 found that the vendor window had been routed to the mission handler, so earlier vendor testing was void, and no client has tested the store since. **No world currently spawns a vendor** (`.spawn 25` is the only way to reach one) |
@@ -94,7 +94,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58 
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| Organizations / guilds | KM | 17 (3 NT, 14 KM) | Squads work (ORG-03, 2026-09-27): invite, accept, leave, kick, loot mode, disconnect and gate travel, tested with two wire clients but not a real client. Teams and Commands are the ORG-01 contract only; DB schema is ORG-02 |
+| Organizations / guilds | KM | 17 (3 NT, 14 KM) | Squads work (ORG-03, 2026-09-27): invite, accept, leave, kick, loot mode, disconnect and gate travel, tested with two wire clients but not a real client. Teams and Commands are the ORG-01 contract only; DB schema is ORG-02. Team and Command vaults are in progress in the Bank and Vault campaign (BV-07), with org cash (BV-08) after ORG-07 |
 | Mail | NT | 17 (15 NT, 2 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Text mail to up to 10 recipients, offline ones included (SS-M1); gift cash, an item or COD to one recipient, with 25 naquadah postage and the item held in escrow (SS-M2); taking cash and items, paying COD (the price reaches the sender by mail, online or not) and return-to-sender (SS-M3); a new-mail line and live header push, and a 30-day expiry that returns, deletes or quarantines (SS-M4). A server-side system-mail API and GM `.mail` / `.mailbox` / `.mail_expire` (SS-U1), and the debug hub's Gate Mail Clerk (SS-U3). Missing: a GM release for quarantined mail, and vault and organization aliases (Bank and organizations campaigns) |
 | Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 is on the unmerged `feat/571-black-market-phase1` (PR #586), and the client window additionally needs a client patch (#587) |
 | Dueling | IM | 6 (5 IM, 1 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Challenge, response, the countdown, the engaged duel and every end implemented (SS-D1 to SS-D3): duelists are PvP-flagged, can damage each other and only each other, and are in combat together. A duel ends on forfeit, on partner damage that would kill (held at 1 HP instead, D-SS20), on death from anyone else, disconnect, teleport or range; the winner hears 879, nothing is awarded (D-SS22). A `sparbot` wireclient partner and GM `.duel_status` / `.duel_end` help testing (SS-U2). The duel marker is not ported (D-SS24); squad duels are refused |
@@ -215,6 +215,7 @@ Quality-of-life items (organizations, black market merge, remaining minigame por
 ### Near-term — close critical-path gaps
 
 - Client-test the NT rows, starting with the NPC AI post-UAT changes, gate travel with two observers, and vendors
+- The owner's UAT of the personal bank on the colo after release 1 ([checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)), and serving the Expand dialog once #943's crashing field is known
 - Effect-script coverage for the most-played encounters
 - Observe the AoI first-login hold in game
 - Mission reward formula and cash/item dispatch
@@ -224,6 +225,7 @@ Quality-of-life items (organizations, black market merge, remaining minigame por
 
 - Crafting Phase 2 (the verbs, on top of the shipped state layer)
 - Org / guild lifecycle + schema
+- Organization vaults and treasuries (Bank and Vault BV-07 to BV-10), then release 2
 - Merge `feat/571-black-market-phase1`
 - Spawn population control (SpawnRegion / SpawnSet, #62)
 
