@@ -80,12 +80,15 @@ fn nothing_in_reach_is_all_empty() {
     );
 }
 
+type Connected = Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>;
+type EntityToAddr = Arc<Mutex<HashMap<u32, SocketAddr>>>;
+
 fn session() -> (
     Arc<TestTransport>,
     Arc<dyn Transport>,
     SocketAddr,
-    Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    Connected,
+    EntityToAddr,
 ) {
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
