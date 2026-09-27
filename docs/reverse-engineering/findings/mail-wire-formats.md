@@ -395,7 +395,7 @@ Evidence: `ghidra://SGW.exe@0x00aa4890` (Lua binding, drops args 2/3), `0x00ad82
 forward), `0x00e151e0` (`ZipFileSystem__unknown_00e151e0`, reads uninitialized stack for
 `ContainerId`/`SlotId`).
 
-### M-Q6 — unsolicited `onMailHeaderInfo` (UNRESOLVED)
+### M-Q6 — unsolicited `onMailHeaderInfo` (PARTIALLY RESOLVED, SS-M4)
 
 Not independently re-traced this session beyond confirming the wire decoder itself (M-Q3/M-Q4/
 M-Q7) always upserts by id regardless of whether the mailbox UI is open. I did not find or check
@@ -405,6 +405,17 @@ other client method exists for "you have mail," D-SS11's plan (a feedback line, 
 followed by a fresh `onMailHeaderInfo`) is not contradicted by anything found here, but it is not
 independently confirmed either. Flag for a future pass if D-SS11's specific delivery mechanism
 needs stronger evidence before SS-M4 ships.
+
+**SS-M4 addendum (client Lua, 2026-09-27).** The only Lua reader of the mailbox lists is
+`Content/UI/Core/GateMail/GateMail.lua`. Its refresh, `GateMailMod.onUpdateMailbox` (lines
+40-69, subscribed to `Events.MailUpdateMailbox` at line 408), redraws the rows of
+`GateMailInboxWin` and re-renders an open read window; it has no visibility early-out but touches
+only the mailbox's own widgets. No other UI Lua subscribes to a mail event, and there is no
+new-mail icon or sound (the minimap mail button is commented out, `MinimapButtons.lua:34`). So an
+unsolicited one-row `onMailHeaderInfo` with `ResetCategory` 0 is an upsert that shows at once in
+an open mailbox and is invisible otherwise, which is why SS-M4 pairs it with a feedback line.
+Still unconfirmed: whether the native decoder raises anything besides the refresh event; a
+capture with the window closed would settle it (MEDIUM).
 
 ### M-Q7 — `ResetCategory`/`bArchive` and the archive/inbox split (CLOSED)
 

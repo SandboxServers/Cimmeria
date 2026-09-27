@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Mail System
 
 > **Last updated**: 2026-09-27
-> **Status**: Read side implemented (headers / body / delete / archive), player sending with text (social-systems SS-M1) and with cash, an item or COD attached, held in escrow (SS-M2), and taking cash, taking the item, paying COD and return-to-sender (SS-M3). New-mail notification and expiry are SS-M4.
+> **Status**: Read side implemented (headers / body / delete / archive), player sending with text (social-systems SS-M1) and with cash, an item or COD attached, held in escrow (SS-M2), taking cash, taking the item, paying COD and return-to-sender (SS-M3), and new-mail notification and the 30-day expiry (SS-M4).
 
 ## Overview
 
@@ -70,7 +70,34 @@ After a take or a payment the client gets `onMailHeaderRemove` and then `onMailH
 
 Archiving an unpaid COD is refused ("Pay for or return this COD delivery before archiving it."), and the mail stays in the inbox: archived mail can be neither returned nor expired, so an archived unpaid COD would otherwise strand the seller's item for good. A paid COD archives normally.
 
+Paying a COD, or cancelling one because its sender is gone, restarts the mail's 30 days (see [Expiry](#expiry-ss-m4)): the item is now the payer's, and a COD paid on its last day must not be quarantined hours later.
+
 Every refusal answers with a feedback line on the first press and logs `mail.op_refused` with its `reason`. A request naming a mail the caller does not own also removes that stale header from the caller's list.
+
+### New-mail notification (SS-M4)
+
+The def has no client method for "you have mail": `onNewMail` is a cell method and `notifyPlayersOfNewMail` a base method (audit A-13). After every delivery commits (a player send, a return, a COD payment mail, an expiry return, server mail, a GM `.mail`), a recipient who is online, meaning listed in the online index (in the world, not logged off), gets two things on their current player entity (`notify.rs`):
+
+1. a feedback line: "You have new gate-mail from X." (a return: "X returned your gate-mail. It is back in your mailbox."; a COD payment: "X paid for your COD delivery. The payment is in your gate-mail."; an expiry return: "Your gate-mail to X expired unclaimed and was returned to your mailbox.");
+2. a one-row `onMailHeaderInfo` for the new mail, with `ResetCategory` 0, so it is upserted without touching the rest of the list.
+
+The client decodes `onMailHeaderInfo` whether or not the mailbox is open, upserting by id ([`mail-wire-formats.md`](../reverse-engineering/findings/mail-wire-formats.md) M-Q7), and its only reader, `GateMailMod.onUpdateMailbox`, redraws the mailbox window's own rows. So an open mailbox shows the mail at once, and a closed one is unaffected until it opens. The line is the visible cue: the client has no new-mail icon or sound (the minimap mail button is commented out in `MinimapButtons.lua`). An offline recipient sees the mail when the mailbox next opens. The header is read back from the database after the commit, so a delivery that rolled back is never announced.
+
+A caller of `send_system_mail` that holds the session map calls `SystemMailSent::notify` after its commit.
+
+### Expiry (SS-M4)
+
+Mail expires after 30 days, the client's own constant: `MessageHeader` has no expiry field, and the client computes the Expires column as `720 - hours` since the mail was sent (`0x2d0`, M-Q3). Every writer stamps `expires_at = sent_time + 720 h` at insert (player send, the COD payment mail, server mail, the GM COD mail). A return and a COD payment restart it. Archiving clears it: archived mail never expires, and the client shows "Never" for it. The length is HIGH confidence; that the client counts from `sentTime` is MEDIUM (M-Q3), so a capture could move the anchor but not the 30 days.
+
+A base task sweeps every 5 minutes, 100 mails per query, oldest expiry first, at most 1,000 per run. When a player enters the world, their own mailbox is swept too, so mail that expired while they were away has taken its path before they can open the mailbox. Each mail expires in a transaction of its own, taking the same locks in the same order as the attachment ops, so a sweep racing a take, a payment or a return is one more op on the mail row. It takes one of three paths (D-SS04):
+
+1. **Return.** A mail that still holds an item or gift cash, or is an unpaid COD, and can still go back (never returned, not a paid COD, a player sender) goes back to its sender once, by the SS-M3 return. An unpaid COD is cancelled with its price zeroed, so the price never becomes gift cash. The sender is told if online.
+2. **Delete.** A mail with no item and no gift cash is deleted. So is an unpaid COD with no item that has nobody to return it to: a price is not value.
+3. **Quarantine.** A mail that still holds an item or gift cash but cannot go back is kept, never deleted: an already-returned mail, a paid COD whose item was never taken (the item is the payer's; returning it would give the seller the item and the price), server mail, or mail whose sender's character is gone. `quarantined` is set, `expires_at` cleared, any COD price zeroed, and the escrow row stays. A quarantined mail is out of the mailbox: it is not listed, does not count toward the 100-message cap, and no player op reaches it (take, pay, return, archive, delete, body). A GM recovers it by id.
+
+After the commit, an online owner loses the header (`onMailHeaderRemove`); a quarantined mail also gets a line saying why.
+
+The full header list now sets `ResetCategory` 1, so the client clears the requested list before the rows arrive and a mail deleted, returned, expired or quarantined server-side drops out instead of lingering until relog (M-Q7). A one-row refresh or notification leaves it at 0.
 
 ### Server and GM mail (SS-U1)
 
@@ -90,8 +117,8 @@ The GM tools use the same writer (see [commands](../commands.md)):
 
 - `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>] [<subject>]` mints the cash and the item into a system mail from the GM's name, to the GM or to `<name>`, online or not.
 - With `cod <n>`, the mail comes from the GM's character instead (`sender_id` is the GM, `MAIL_COD`, the price in `cash`), so the payment comes back to the GM. It needs an item and no cash, and charges no postage.
-- `.mailbox [name]` reports open and archived counts, system mail, and what is in escrow: items, gift cash and unpaid COD.
-- `.mail_expire <mailId>` is refused with a feedback line until SS-M4 adds `expires_at`.
+- `.mailbox [name]` reports open and archived counts, system mail, quarantined mail, what is in escrow (items, gift cash and unpaid COD) and the next expiry.
+- `.mail_expire <mailId>` makes any mail that can expire due now and expires it at once, by the sweep's own path, then says which path it took. Archived and quarantined mail are refused.
 
 Content chains use the same writer through the `send_system_mail` action (SS-U3,
 [content-engine.md](../content/content-engine.md#send_system_mail-params)). Its first
@@ -110,15 +137,16 @@ mail's own transaction, so deleting the mail does not reset it.
 | Delete mail | DONE | `deleteMailMessage` → `MailOp::Delete` → `onMailHeaderRemove` (CM 77). A mail that still holds an item, gift cash or an unpaid COD is refused with a feedback line and kept (SS-M2) |
 | Archive mail | DONE | `archiveMailMessage` → `MailOp::Archive` → `onMailHeaderRemove` (CM 77). An unpaid COD is refused with a feedback line and stays in the inbox (SS-M3): archived mail cannot be returned and never expires, so it would strand the seller's item |
 | Server-generated mail | DONE | `send_system_mail` / `send_system_mail_tx` (SS-U1): cash, a minted item or a server-held instance, no postage, no COD, not returnable. See [Server and GM mail](#server-and-gm-mail-ss-u1) |
-| GM mail tools | DONE | `.mail`, `.mailbox`; `.mail_expire` refused until SS-M4 |
-| Content-engine mail | DONE | `send_system_mail` action with an optional per-player cooldown (SS-U3); the debug hub's Gate Mail Clerk uses it |
+| GM mail tools | DONE | `.mail`, `.mailbox`, `.mail_expire` (SS-U1, SS-M4) |
+| Content-engine mail | DONE | `send_system_mail` action with an optional per-player cooldown (SS-U3); the debug hub's Gate Mail Clerk uses it. An online recipient is told (SS-M4) |
 | Send mail (player compose) | DONE (text only) | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
 | Cash, item or COD attachment on send | DONE | One recipient; 25 naquadah postage; item into escrow (`sgw_gate_mail_item`); one transaction. See [Sending with an attachment](#sending-with-an-attachment-ss-m2) |
 | Return to sender | DONE | `returnMailMessage` (CM 47) → `MailOp::Return`. To the stored `sender_id`, once; not archived or server mail; COD cancelled. See [Taking attachments](#taking-attachments-paying-cod-returning-ss-m3) |
 | Cash attachment claim | DONE | `takeCashFromMailMessage` (CM 49) → `MailOp::TakeCash`. Once; never from an unpaid COD; overflow-checked |
 | Item attachment claim | DONE | `takeItemFromMailMessage` (CM 50) → `MailOp::TakeItem`. First free main-bag slot chosen by the server; the client's container and slot are ignored; a full bag keeps the item in escrow |
 | Cash On Delivery | DONE | `payCODForMailMessage` (CM 51) → `MailOp::PayCod`. Stored price; the payment is mailed to the sender |
-| New mail notification | STUB | `onNewMail`, `notifyPlayersOfNewMail` not wired |
+| New mail notification | DONE | A feedback line and a one-row `onMailHeaderInfo` upsert to an online recipient after every delivery commits (SS-M4). `onNewMail` and `notifyPlayersOfNewMail` stay unused. See [New-mail notification](#new-mail-notification-ss-m4) |
+| Mail expiry | DONE | 30 days (`expires_at`); a 5-minute base sweep and a login sweep take the D-SS04 paths: return, delete or quarantine. See [Expiry](#expiry-ss-m4) |
 | Multiple recipients | DONE | Up to 10 per text mail, de-duplicated; one row each |
 | Send result feedback | DONE | `sendMailResult` (CM 79) answers every send, flood-limited ones included, with `FailedRecipients`. A feedback line with the reason follows every refusal, except that the flood line is sent at most once every 5 seconds |
 
@@ -170,7 +198,7 @@ mail's own transaction, so deleting the mail does not reset it.
 Recovered and implemented as `mail::MailHeader`, serialized by `mail::serialize_on_mail_header_info`. The full `onMailHeaderInfo` envelope is:
 
 ```
-UINT8  ResetCategory        -- always 0
+UINT8  ResetCategory        -- 1 on a full list reply (clear that list first), 0 on a one-row upsert
 UINT8  bArchive             -- echoed from the request
 UINT32 headerCount
   repeated headerCount times:
@@ -244,11 +272,11 @@ Ownership is enforced by a `character_id = $2` predicate on every mutating query
 
 Archiving is a flag flip, not a move: `UPDATE sgw_gate_mail SET flags = flags | 1`. Bit 0 of `flags` means archived.
 
-The header query filters by `bArchive` (SS-M1), and the delete is refused while the mail holds an attachment (SS-M2).
+The header query filters by `bArchive` (SS-M1) and skips quarantined mail (SS-M4), and the delete is refused while the mail holds an attachment (SS-M2).
 
 ## Mail Send Flow
 
-See [Sending a text mail](#sending-a-text-mail-ss-m1) and [Sending with an attachment](#sending-with-an-attachment-ss-m2). The recipient is not notified yet (`onNewMail`, SS-M4).
+See [Sending a text mail](#sending-a-text-mail-ss-m1) and [Sending with an attachment](#sending-with-an-attachment-ss-m2). An online recipient is told after the commit (see [New-mail notification](#new-mail-notification-ss-m4)).
 
 ## Persistence
 
@@ -268,7 +296,9 @@ CREATE TABLE sgw_gate_mail (
     item_id      integer,
     sender_name  character varying(128) NOT NULL,
     returned     boolean DEFAULT false NOT NULL,  -- SS-M3: returned once, never again
-    cod_paid     boolean DEFAULT false NOT NULL   -- SS-M3: a paid COD is the buyer's; never returned
+    cod_paid     boolean DEFAULT false NOT NULL,  -- SS-M3: a paid COD is the buyer's; never returned
+    expires_at   integer,                         -- SS-M4: sent_time + 720 h; NULL never expires
+    quarantined  boolean DEFAULT false NOT NULL   -- SS-M4: expired, kept for a GM, out of the mailbox
 );
 ```
 
@@ -291,8 +321,9 @@ It is a standalone table, not `INHERITS (sgw_inventory_base)`, so no inventory q
 ## Remaining Work
 
 1. **RecipientFlags** — the vault and organization aliases are refused until the Bank and organizations campaigns land them
-2. **New-mail notification and expiry (SS-M4)** — a sender is not told when a payment or a returned mail arrives; it shows on their next header request
+2. **GM recovery of quarantined mail** — quarantine keeps the mail and its escrow row, but there is no `.mail_release` yet; `.mailbox` counts them
 3. **Rate limiting** — the `lastMailGetTime` throttle on header requests is not implemented
+4. **Archive as storage** — archived mail is exempt from the cap and never expires, so mailing yourself and archiving is unlimited storage at 25 naquadah per item; an owner decision (SS-M4 worknote)
 
 ## Related Docs
 

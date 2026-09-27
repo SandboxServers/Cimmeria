@@ -81,9 +81,11 @@ async fn take_then_sweep(
 /// exists once.
 ///
 /// Revert that proves it: drop the advisory lock and `FOR UPDATE` from
-/// `claim::lock_mail`. The sweep then reads `cash = 500` before the take
-/// commits and its return `UPDATE` (which re-checks the owner, not the
-/// cash) writes 500 back onto the returned mail: 1,000 in total.
+/// `claim::lock_mail`. The sweep no longer waits for the parked take, so
+/// the take-first ordering assert fails (observed: the sweep's return
+/// committed first). A stale read is also exposed: the return `UPDATE`
+/// re-checks the owner, not the cash, so a sweep that read `cash = 500`
+/// before the take committed would write it back onto the returned mail.
 #[tokio::test]
 async fn sweep_racing_take_cash_pays_out_once() {
     let pool = require_db_or_skip!();
