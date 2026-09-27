@@ -1,0 +1,100 @@
+//! Squads (ORG-03): the handlers that turn client calls and base-forwarded
+//! squad calls into `SquadRegistry` changes and client messages.
+//!
+//! Entry points:
+//!
+//! - [`handle_invite`], [`handle_kick`]: `OrgBaseToCell::SquadInvite` and
+//!   `SquadKick`, which the base forwards from `organizationInviteByType`
+//!   (0xD0, type 0) and `organizationKick` (0xD1, squad-range id). ORG-E1 Q2:
+//!   the client's `squadInvite` / `squadKick` natives use these shared wire
+//!   methods; there is no squad-specific path.
+//! - [`respond`], [`leave`], [`set_loot_mode`]: cell methods 8, 9 and 18,
+//!   from the organization router.
+//! - [`on_disconnect`]: the `DisconnectEntity` arm.
+//! - [`on_world_entry`]: `InitPlayerState`, which re-sends the squad after a
+//!   gate trip re-created the player.
+//!
+//! State is the service-wide `SpaceManager::squads` (D-ORG03); every
+//! refusal answers with `onErrorCode` and a feedback line, so no press is
+//! silent. Logs use the `squad` target.
+
+use tokio::sync::mpsc;
+
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
+use crate::cell::squad::SquadMember;
+
+mod fanout;
+mod feedback;
+mod invite;
+mod loot;
+mod membership;
+mod world_entry;
+
+pub use invite::{handle_invite, respond};
+pub use loot::set_loot_mode;
+pub use membership::{handle_kick, leave, on_disconnect};
+pub use world_entry::on_world_entry;
+
+/// The roster snapshot of the player behind `entity_id`, or `None` when it
+/// is not a fully initialised player.
+fn actor(space_mgr: &SpaceManager, entity_id: u32) -> Option<SquadMember> {
+    space_mgr
+        .get_entity(entity_id)
+        .and_then(fanout::member_snapshot)
+}
+
+/// [`actor`] for tests that seed the registry directly.
+#[cfg(test)]
+pub(super) fn test_snapshot(space_mgr: &SpaceManager, entity_id: u32) -> SquadMember {
+    actor(space_mgr, entity_id).expect("an initialised player")
+}
+
+/// A base-forwarded call names both ids from the base's session. Check the
+/// cell entity is still that character before acting: entity ids are
+/// recycled, and a stale id must not act for whoever holds it now.
+fn forwarded_actor(
+    space_mgr: &SpaceManager,
+    player_id: i32,
+    entity_id: u32,
+) -> Option<SquadMember> {
+    let member = actor(space_mgr, entity_id).filter(|m| m.player_id == player_id);
+    if member.is_none() {
+        tracing::warn!(
+            target: "squad",
+            event = "squad.actor_mismatch",
+            player_id,
+            entity_id,
+            "forwarded squad call names an entity that is not that player's -- dropped"
+        );
+    }
+    member
+}
+
+/// Refuse with `onErrorCode(0, instance_id, 0)` and `text`.
+async fn reject(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    entity_id: u32,
+    method_index: u16,
+    instance_id: i32,
+    text: &str,
+) {
+    super::forward::send_error_and_line(entity_id, method_index, instance_id, text, tx).await;
+}
+
+/// A confirmation line on the feedback channel, with no error code.
+async fn confirm(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &str) {
+    if tx
+        .send(super::forward::feedback_line(entity_id, text))
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            target: "squad",
+            event = "squad.send_failed",
+            entity_id,
+            reason = "cell_to_base_closed",
+            "squad confirmation line could not be queued"
+        );
+    }
+}
