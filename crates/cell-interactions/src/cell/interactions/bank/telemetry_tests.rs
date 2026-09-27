@@ -194,20 +194,31 @@ async fn missing_banker_logs_vault_open_rejected_banker_missing() {
     assert!(mgr.get_entity(PLAYER).unwrap().vault_session.is_none());
 }
 
-/// Player lookup miss on `.bank`: WARN `reason=player_missing`. No
-/// correlators exist for an unknown entity, so only the reason is checked.
+/// Player lookup miss on `.bank`: a WARN negative log with
+/// `reason=player_entity_missing` on the crate's own target, and no `bank`
+/// row (the catalog's `vault_open_rejected` reasons are the four
+/// player-visible refusals only).
 #[tokio::test]
-async fn gm_open_for_a_missing_entity_logs_player_missing() {
+async fn gm_open_for_a_missing_entity_logs_player_entity_missing() {
     let mut mgr = two_space_manager();
     let (tx, _rx) = mpsc::channel(16);
     let capture = LogCapture::install();
 
     assert!(!open_vault_gm(4242, &tx, &mut mgr).await);
 
-    let found = rows(&capture, "vault_open_rejected");
-    assert_eq!(found.len(), 1, "{found:#?}");
-    assert_eq!(found[0].level, Level::WARN);
-    assert!(found[0].has_field("reason", "player_missing"));
+    assert!(
+        capture.all().iter().all(|c| c.target != "bank"),
+        "{:#?}",
+        capture.all()
+    );
+    let miss = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("reason", "player_entity_missing"))
+        .expect("the lookup miss is logged");
+    assert_eq!(miss.level, Level::WARN);
+    assert!(miss.target.starts_with("cimmeria_cell_interactions"));
+    assert!(miss.has_field("entity_id", "4242"));
 }
 
 /// Closed base channel on the open: WARN `vault_open_send_failed
@@ -250,8 +261,7 @@ async fn closed_channel_logs_bank_feedback_send_failed() {
     );
 }
 
-/// Every `vault_open_rejected` reason is one of the D-BV19 catalog strings
-/// (plus `player_missing`, the lookup-miss addition).
+/// `vault_open_rejected`'s reasons are exactly the D-BV19 catalog strings.
 #[test]
 fn vault_open_reject_reasons_are_the_catalog_strings() {
     let all = [
@@ -259,7 +269,6 @@ fn vault_open_reject_reasons_are_the_catalog_strings() {
         VaultOpenReject::OrgVaultNotAvailable,
         VaultOpenReject::NotGm,
         VaultOpenReject::BankerMissing,
-        VaultOpenReject::PlayerMissing,
     ];
     let reasons: Vec<_> = all.iter().map(|r| r.reason()).collect();
     assert_eq!(
@@ -268,8 +277,7 @@ fn vault_open_reject_reasons_are_the_catalog_strings() {
             "out_of_range",
             "org_vault_not_available",
             "not_gm",
-            "banker_missing",
-            "player_missing"
+            "banker_missing"
         ]
     );
 }

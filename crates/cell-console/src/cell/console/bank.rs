@@ -28,15 +28,12 @@ pub(super) async fn open(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    // A failure has already been refused, with its own line and log.
-    if crate::cell::interactions::open_vault_gm(caller_id, tx, space_mgr).await {
-        send_gm_feedback(
-            caller_id,
-            "bank: personal vault opened (GM session, no Banker; any interact closes it)",
-            tx,
-        )
-        .await;
-    }
+    let text = if crate::cell::interactions::open_vault_gm(caller_id, tx, space_mgr).await {
+        "bank: personal vault opened (GM session, no Banker; any interact closes it)"
+    } else {
+        "bank: could not open the vault -- this entity is not in a space"
+    };
+    send_gm_feedback(caller_id, text, tx).await;
 }
 
 /// Is `text` a `.bank` line? Matched on the command word only, so

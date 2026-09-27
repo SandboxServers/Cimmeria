@@ -132,16 +132,7 @@ pub async fn open_vault_gm(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let Some(pos) = space_mgr.get_entity(entity_id).map(|e| e.position) else {
-        reject_vault_open(
-            entity_id,
-            VaultOpenReject::PlayerMissing,
-            None,
-            None,
-            "",
-            tx,
-            space_mgr,
-        )
-        .await;
+        log_player_entity_missing(entity_id, None);
         return false;
     };
     open_personal_vault(
@@ -168,16 +159,7 @@ async fn open_personal_vault(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let Some(space_id) = space_mgr.get_entity_space_id(entity_id) else {
-        reject_vault_open(
-            entity_id,
-            VaultOpenReject::PlayerMissing,
-            banker_id,
-            distance,
-            "",
-            tx,
-            space_mgr,
-        )
-        .await;
+        log_player_entity_missing(entity_id, banker_id);
         return false;
     };
     // `get_entity_space_id` resolved it, so the entity exists.
@@ -227,4 +209,19 @@ async fn open_personal_vault(
         );
     }
     true
+}
+
+/// Negative log for a lookup miss on the player's own entity. Not a
+/// `bank` event: the D-BV19 catalog fixes `vault_open_rejected`'s reasons
+/// to the four player-visible refusals, and this one has no player to tell
+/// (the entity is in no space). It logs under this crate's own target,
+/// which `OTEL_FILTER` exports at DEBUG and above.
+fn log_player_entity_missing(entity_id: u32, banker_id: Option<u32>) {
+    tracing::warn!(
+        entity_id,
+        banker_id,
+        reason = "player_entity_missing",
+        "bank: vault open found no cell entity for the player -- no vault session and no \
+         window; the player may hold stale state"
+    );
 }

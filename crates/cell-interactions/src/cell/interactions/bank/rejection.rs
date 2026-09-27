@@ -25,9 +25,6 @@ pub enum VaultOpenReject {
     /// The Banker passed the range gate but was gone by the time the arm
     /// looked it up (a lookup miss).
     BankerMissing,
-    /// The player's own entity is in no space (a lookup miss; not reachable
-    /// from a live click or console line).
-    PlayerMissing,
 }
 
 impl VaultOpenReject {
@@ -38,7 +35,6 @@ impl VaultOpenReject {
             VaultOpenReject::OrgVaultNotAvailable => "org_vault_not_available",
             VaultOpenReject::NotGm => "not_gm",
             VaultOpenReject::BankerMissing => "banker_missing",
-            VaultOpenReject::PlayerMissing => "player_missing",
         }
     }
 
@@ -55,7 +51,6 @@ impl VaultOpenReject {
             VaultOpenReject::BankerMissing => {
                 "That Banker is no longer here. Your vault did not open.".to_string()
             }
-            VaultOpenReject::PlayerMissing => "Your vault could not open.".to_string(),
         }
     }
 }

@@ -158,7 +158,7 @@ The personal vault is container 17 (`INV_Bank`). Its rows load at login with the
 2. sends `onVaultOpen(banker_id, banker_position)` (`INT32`, then `VECTOR3`) from the cell;
 3. logs `vault_session_opened` (DEBUG) under the `bank` target, inside the INFO span `bank.banker_interact`.
 
-Every refusal sends the player a chat line and logs `vault_open_rejected` (WARN) with a stable `reason`: `out_of_range` (a click on a Banker from beyond the interact distance or from another space; it opens no session), `org_vault_not_available` (a `team` or `command` Banker, until the organization vaults land), `not_gm` (`.bank` from a player), `banker_missing` (the Banker vanished between the range gate and the arm) or `player_missing`.
+Every refusal sends the player a chat line and logs `vault_open_rejected` (WARN) with a stable `reason`: `out_of_range` (a click on a Banker from beyond the interact distance or from another space; it opens no session), `org_vault_not_available` (a `team` or `command` Banker, until the organization vaults land), `not_gm` (`.bank` from a player), or `banker_missing` (the Banker vanished between the range gate and the arm).
 
 **GM `.bank`.** Opens the same window wherever the GM stands, with a session whose `banker_id` is `None`, and `onVaultOpen` addressed to the GM's own entity and position. A player without GM access gets a refusal line ([commands.md](../commands.md)).
 
