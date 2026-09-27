@@ -89,6 +89,14 @@ SS-00 is the bottleneck and is kept small: the index, the limiter, the feedback 
 - The security table in [audit.md § 6](audit.md#6-security-coverage) names the guard for every in-scope finding. Keep the names.
 - Every rejected action gives visible feedback on the first press: `sendMailResult`, a feedback line, a duel text, or a re-send of the true state. A silent drop is a bug.
 - New log targets (`mail`, `chat`, `duel`, `rate_limit`) are registered per the CLAUDE.md `OTEL_FILTER` rules, with its pinning assertion.
+- **Telemetry is first-class (owner rule, 2026-09-27).** Every packet must leave its behaviour debuggable from SigNoz alone. Following [instrumentation discipline](../../architecture/instrumentation-discipline.md), that means:
+  - an info span on each dispatch entrypoint;
+  - a debug `event="..."` on each state transition (mail sent, taken, returned, expired or quarantined; a tell delivered or refused; a duel challenged, engaged or ended, with its end reason);
+  - `account_id` and `player_id` on every player-activity event;
+  - the correlating ids (`mail_id`, `item_id`, the duel pair);
+  - the before and after values of every cash, item or points change.
+
+  Every refusal carries `reason=`, per the [negative-logging convention](../../architecture/negative-logging-convention.md). Each packet's acceptance includes a type 12 test for its refusal events, and its worknote lists the events added and the SigNoz query that answers "what happened to player X at time T".
 - Each packet updates the docs it owes: `docs/gameplay/mail-system.md`, `chat-system.md`, `contact-list.md` or `duel-system.md`; `docs/protocol/` for any wire message; `docs/gap-analysis.md` §21, §24 or §27; `docs/project-status.md`; and the stale docs listed in [audit.md § 5](audit.md#5-stale-or-wrong-statements-this-ledger-corrects).
 
 ## Wave 0
