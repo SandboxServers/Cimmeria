@@ -52,6 +52,7 @@ Against `main` @ `004bccb4`. The [audit](audit.md) has the evidence for each row
 
 | D-BV18 | **APPROVED** (owner, 2026-09-27) | When an org's last member deletes their character and the org's vault is not empty, cimmeria-fa's D-ORG12 trigger keeps a memberless org that still holds the vault, for GM recovery. Vault tables do not cascade-delete with the org. An empty vault disbands normally. | This is the one disband path D-BV13 cannot refuse. Nothing is silently destroyed. |
 
+| D-BV19 | **APPROVED** (owner rule, relayed by cimmeria-19, 2026-09-27) | Telemetry is first-class. Every packet must make "player X did Y at time T and it failed" answerable from SigNoz alone. That means the path that ran, a stable `reason=` on every refusal, the before and after values for cash, items and capacity, and correlating ids (`account_id`, `player_id`, `entity_id`). It follows `instrumentation-discipline.md`, `negative-logging-convention.md` (a `LogCapture` test per seam) and `observability.md` (the `OTEL_FILTER` rows). | So the owner can debug from telemetry, with no repro and no debugger. |
 PROPOSED rows are adopted at these defaults unless the owner objects. A change is recorded as a new row, never by editing an old one.
 
 ## Coordinator launch prompt
