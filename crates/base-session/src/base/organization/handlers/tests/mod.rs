@@ -10,12 +10,10 @@
 //! `Org06P<n>`, [`Fixture::new`]); ORG-07 owns `0x7000_4F00..=0x7000_4FFF`
 //! and `0x7000_5200..=0x7000_53EF` (47 blocks in all, names `Org07P<n>`,
 //! [`Fixture::org07`]); ORG-09 owns `0x7000_5600..=0x7000_56FF` (16 blocks,
-//! names `Org09P<n>`, [`Fixture::org09`]). Organizations are cleaned by
-//! exact name key ("Org06 ..." / "Org07 ..." / "Org09 ..." names).
-//! [`Fixture::org07`]); ORG-10 owns `0x7000_5800..=0x7000_58FF` (16 blocks,
-//! [`Fixture::org07`]); ORG-10 owns `0x7000_5A00..=0x7000_5BFF` (32 blocks,
-//! names `Org10P<n>`, [`Fixture::org10`]). Organizations are cleaned by
-//! exact name key ("Org06 ..." / "Org07 ..." / "Org10 ..." names).
+//! names `Org09P<n>`, [`Fixture::org09`]); ORG-10 owns
+//! `0x7000_5A00..=0x7000_5BFF` (32 blocks, names `Org10P<n>`,
+//! [`Fixture::org10`]). Organizations are cleaned by exact name key
+//! ("Org06 ..." / "Org07 ..." / "Org09 ..." / "Org10 ..." names).
 
 mod broadcast;
 mod chat;
