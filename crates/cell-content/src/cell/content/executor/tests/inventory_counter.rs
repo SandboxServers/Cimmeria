@@ -49,6 +49,66 @@ async fn remove_item_action_emits_remove_inventory_by_type() {
     }
 }
 
+/// BV-03: with a vault window open (a GM `.bank` session here), a
+/// by-instance removal (the item the player just used) carries the live,
+/// open verdict, while a by-type removal (a turn-in) still never reaches
+/// into the vault. Fails if the executor stops taking the verdict for the
+/// instance, or starts passing it to the by-type search.
+#[tokio::test]
+async fn remove_item_takes_the_vault_verdict_only_by_instance() {
+    use cimmeria_entity::cell_entity::{VaultScope, VaultSession};
+    use cimmeria_wire::cell::vault::VaultAccess;
+
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let space_id = mgr.get_entity_space_id(1).unwrap();
+    mgr.get_entity_mut(1).unwrap().vault_session = Some(VaultSession {
+        scope: VaultScope::Personal,
+        banker_id: None,
+        space_id,
+        opened_at: std::time::Instant::now(),
+    });
+    let (tx, mut rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let remove = |params: std::collections::HashMap<String, serde_json::Value>| ResolvedActions {
+        action_delays: Vec::new(),
+        params,
+        actions: vec![(
+            1034,
+            Action::RemoveItem {
+                item_id: 19,
+                count: 1,
+            },
+        )],
+    };
+
+    execute_actions(remove(Default::default()), 1, 42, &tx, &mut mgr, &engine).await;
+    match rx.try_recv().expect("by-type removal") {
+        CellToBaseMsg::RemoveInventoryItemByType { vault, .. } => {
+            assert_eq!(
+                vault,
+                VaultAccess::NO_SESSION,
+                "a turn-in never searches the vault"
+            )
+        }
+        other => panic!("expected RemoveInventoryItemByType, got {other:?}"),
+    }
+
+    let by_instance = std::collections::HashMap::from([(
+        "instance_id".to_string(),
+        serde_json::Value::from(5001),
+    )]);
+    execute_actions(remove(by_instance), 1, 42, &tx, &mut mgr, &engine).await;
+    match rx.try_recv().expect("by-instance removal") {
+        CellToBaseMsg::RemoveInventoryItem { item_id, vault, .. } => {
+            assert_eq!(item_id, 5001);
+            assert!(vault.opens_personal_vault(), "{vault:?}");
+        }
+        other => panic!("expected RemoveInventoryItem, got {other:?}"),
+    }
+}
+
 /// `Action::IncrementCounter` mutates `entity.counters`. Previously
 /// a stub that only logged; now load-bearing for kill-counter
 /// missions like Mess Hall (counter `messhall_kills`) and Hallway05

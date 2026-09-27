@@ -5,7 +5,7 @@
 //! It lives here, below `cimmeria-cell-interactions` (which re-exports it
 //! beside the Banker), so the content executor can take the verdict too.
 
-use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::cell_entity::{CellEntity, VaultScope};
 use cimmeria_wire::cell::vault::VaultAccess;
 
 use super::interact_range::{interact_range, InteractRangeFail};
@@ -98,6 +98,11 @@ pub fn vault_access(entity_id: u32, space_mgr: &SpaceManager) -> VaultAccess {
     let banker_id = player.vault_session.as_ref().and_then(|s| s.banker_id);
     match vault_move_allowed(player, space_mgr) {
         Ok(()) => VaultAccess::Open {
+            // `vault_move_allowed` passed, so there is a session.
+            scope: player
+                .vault_session
+                .as_ref()
+                .map_or(VaultScope::Personal, |s| s.scope),
             banker_id,
             distance: banker_id.and_then(|b| banker_distance(entity_id, b, space_mgr)),
         },

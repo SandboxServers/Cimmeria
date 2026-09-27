@@ -68,7 +68,7 @@ pub(crate) fn player_movable(container_id: i32) -> Movable {
 pub(crate) fn player_accessible(container_id: i32, vault: &VaultAccess) -> bool {
     match player_movable(container_id) {
         Movable::Yes => true,
-        Movable::VaultSession => vault.is_open(),
+        Movable::VaultSession => vault.opens_personal_vault(),
         Movable::No => false,
     }
 }
@@ -467,6 +467,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_entity::cell_entity::VaultScope;
 
     /// Pins the allowlist per container. A change here changes what a
     /// player can drag where, so it must be deliberate.
@@ -501,6 +502,7 @@ mod tests {
     }
 
     const OPEN: VaultAccess = VaultAccess::Open {
+        scope: VaultScope::Personal,
         banker_id: Some(7),
         distance: Some(2.0),
     };
@@ -524,6 +526,25 @@ mod tests {
             container_refusal(MoveEnd::Target, INV_CRAFTING, &closed),
             None
         );
+    }
+
+    /// A Team or Command session does not open the personal vault, for a
+    /// move or for a use: the verdict's scope must be `Personal`.
+    #[test]
+    fn an_org_session_does_not_open_the_personal_vault() {
+        for scope in [VaultScope::Team, VaultScope::Command] {
+            let org = VaultAccess::Open {
+                scope,
+                banker_id: Some(7),
+                distance: Some(1.0),
+            };
+            assert_eq!(
+                container_refusal(MoveEnd::Target, INV_BANK, &org).map(MoveRefusal::reason),
+                Some("vault_scope_mismatch"),
+                "{scope:?}"
+            );
+            assert!(!player_accessible(INV_BANK, &org), "{scope:?}");
+        }
     }
 
     /// Use and removal: 1-15 always, 17 only with a session, buyback and

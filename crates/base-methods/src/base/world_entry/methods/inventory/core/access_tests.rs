@@ -10,6 +10,7 @@
 //! `container_sets = {1,17}`, not bandolier-eligible), so a use fires
 //! `ItemUsed` rather than the auto-equip move.
 
+use cimmeria_entity::cell_entity::VaultScope;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -33,6 +34,7 @@ use crate::test_support::{
 const BASE: i32 = 0x7000_B600;
 const SLAPPACK: i32 = 2893;
 const OPEN: VaultAccess = VaultAccess::Open {
+    scope: VaultScope::Personal,
     banker_id: Some(0x7000_B6D0),
     distance: Some(1.0),
 };

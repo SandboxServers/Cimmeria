@@ -9,6 +9,8 @@
 //! `Position` (BV-E1 Q4), so it is sent for wire fidelity and no server
 //! behaviour depends on the client using it.
 
+use cimmeria_entity::cell_entity::VaultScope;
+
 /// Serialize the `(INT32 EntityId, VECTOR3 Position)` args of a vault-open
 /// method: 4 bytes of LE `i32`, then three LE `f32` (x, y, z). 16 bytes.
 pub fn build_vault_open_args(entity_id: i32, position: [f32; 3]) -> Vec<u8> {
@@ -34,6 +36,9 @@ pub fn build_vault_open_args(entity_id: i32, position: [f32; 3]) -> Vec<u8> {
 pub enum VaultAccess {
     /// A session is open in the player's space and passed its check.
     Open {
+        /// Which vault the session opened. Only a `Personal` session opens
+        /// container 17; the org vaults will need their own scope.
+        scope: VaultScope,
         /// The pinned Banker; `None` for a GM `.bank` session, which skips
         /// the proximity check.
         banker_id: Option<u32>,
@@ -62,12 +67,39 @@ impl VaultAccess {
         distance: None,
     };
 
-    /// Whether container 17 may be touched by this request.
+    /// Whether a session of any scope is open and passed its check.
     pub fn is_open(&self) -> bool {
         matches!(self, VaultAccess::Open { .. })
     }
 
-    /// The refusal label, `None` when open.
+    /// Whether the personal vault (17) may be touched by this request: an
+    /// open session of the `Personal` scope. A Team or Command session does
+    /// not open it.
+    pub fn opens_personal_vault(&self) -> bool {
+        matches!(
+            self,
+            VaultAccess::Open {
+                scope: VaultScope::Personal,
+                ..
+            }
+        )
+    }
+
+    /// Why the personal vault is shut to this request: the check's refusal
+    /// label, or `vault_scope_mismatch` for an open org-vault session.
+    /// `None` when [`Self::opens_personal_vault`].
+    pub fn personal_vault_refusal(&self) -> Option<&'static str> {
+        match self {
+            VaultAccess::Open {
+                scope: VaultScope::Personal,
+                ..
+            } => None,
+            VaultAccess::Open { .. } => Some("vault_scope_mismatch"),
+            VaultAccess::Closed { reason, .. } => Some(reason),
+        }
+    }
+
+    /// The check's refusal label, `None` when open (any scope).
     pub fn reason(&self) -> Option<&'static str> {
         match self {
             VaultAccess::Open { .. } => None,
@@ -106,6 +138,32 @@ impl VaultAccess {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a personal session opens the personal vault; an org session
+    /// is refused as `vault_scope_mismatch`, a closed one with its reason.
+    #[test]
+    fn only_a_personal_session_opens_the_personal_vault() {
+        let open = |scope| VaultAccess::Open {
+            scope,
+            banker_id: Some(9),
+            distance: Some(1.0),
+        };
+        assert!(open(VaultScope::Personal).opens_personal_vault());
+        assert_eq!(open(VaultScope::Personal).personal_vault_refusal(), None);
+        for scope in [VaultScope::Team, VaultScope::Command] {
+            assert!(open(scope).is_open());
+            assert!(!open(scope).opens_personal_vault());
+            assert_eq!(
+                open(scope).personal_vault_refusal(),
+                Some("vault_scope_mismatch")
+            );
+        }
+        assert_eq!(
+            VaultAccess::NO_SESSION.personal_vault_refusal(),
+            Some("no_vault_session")
+        );
+        assert!(!VaultAccess::NO_SESSION.opens_personal_vault());
+    }
 
     /// Byte-exact: INT32 id, then x, y, z as LE f32, no marker or padding.
     /// A reordered or widened field shifts every byte after it.

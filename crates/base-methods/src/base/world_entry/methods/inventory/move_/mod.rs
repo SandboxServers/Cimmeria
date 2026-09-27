@@ -50,6 +50,9 @@ struct Occupant {
     item_id: i32,
     type_id: i32,
     stack_size: i32,
+    bound: bool,
+    durability: i32,
+    charges: i32,
 }
 
 /// One `moveItem` request, as the cell forwarded it.
@@ -245,7 +248,10 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
     // every drag-to-bandolier interaction. Treat `<= 0` as the
     // whole-stack sentinel, resolved against `source.stack_size`
     // once we've read the row inside the tx.
-    if target_container_id <= 0 || target_slot_id < min_slot || target_slot_id >= max_slots {
+    // The vault's upper bound is the player's own `bank_slots` (at most the
+    // ceiling), checked in the transaction so the refusal is visible.
+    let over_ceiling = target_slot_id >= max_slots && target_container_id != INV_BANK;
+    if target_container_id <= 0 || target_slot_id < min_slot || over_ceiling {
         tracing::warn!(
             player_id,
             item_id,
@@ -454,3 +460,5 @@ mod vault_concurrency_tests;
 mod vault_move_shape_tests;
 #[cfg(test)]
 mod vault_move_tests;
+#[cfg(test)]
+mod vault_refusal_tests;

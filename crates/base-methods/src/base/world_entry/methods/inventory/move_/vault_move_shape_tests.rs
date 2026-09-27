@@ -10,6 +10,7 @@ use super::vault_move_tests::{
 };
 use super::*;
 use crate::test_support::{require_db_or_skip, LogCapture};
+use cimmeria_entity::cell_entity::VaultScope;
 
 /// A split into the vault conserves the count: 10 becomes 6 carried and a
 /// new vault row of 4, and `move_accepted` records both stacks.
@@ -127,6 +128,45 @@ async fn a_full_same_type_stack_swaps_instead_of_merging() {
     teardown(&pool, account_id, player_id).await;
 }
 
+/// A bound stack never merges into an unbound one of the same type (BV-03
+/// review): the merge would make the bound count sellable, tradable and
+/// mailable. The move swaps instead, and each row keeps its own `bound`.
+/// Fails if the merge ignores `bound` (one row of 7).
+#[tokio::test]
+async fn a_bound_stack_does_not_merge_into_an_unbound_one() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id, entity_id) = (BASE + 0xB2, BASE + 0xB3, 0x7000_B5EE);
+    setup(&pool, account_id, player_id).await;
+    let bound = insert_item(&pool, player_id, BANKABLE, 1, 0, 3).await;
+    sqlx::query("UPDATE sgw_inventory SET bound = true WHERE item_id = $1")
+        .bind(bound)
+        .execute(&pool)
+        .await
+        .expect("bind the stack");
+    let unbound = insert_item(&pool, player_id, BANKABLE, 17, 5, 4).await;
+    let client = in_world(entity_id, 40842);
+
+    mv(
+        &pool, &client, entity_id, player_id, bound, 17, 5, -1, AT_BANKER,
+    )
+    .await;
+
+    assert_eq!(
+        rows(&pool, player_id).await,
+        vec![(unbound, 1, 0, 4), (bound, 17, 5, 3)],
+        "swapped, not merged"
+    );
+    let still_bound: bool =
+        sqlx::query_scalar("SELECT bound FROM sgw_inventory WHERE item_id = $1")
+            .bind(bound)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(still_bound);
+
+    teardown(&pool, account_id, player_id).await;
+}
+
 /// A GM `.bank` session has no Banker and skips proximity: the deposit is
 /// accepted and `move_accepted` says `gm_override=true`.
 #[tokio::test]
@@ -138,6 +178,7 @@ async fn a_gm_session_deposits_without_a_banker() {
     let client = in_world(entity_id, 40840);
     let capture = LogCapture::install();
     let gm = VaultAccess::Open {
+        scope: VaultScope::Personal,
         banker_id: None,
         distance: None,
     };

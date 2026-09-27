@@ -28,6 +28,12 @@ pub(super) enum MoveRefusal {
     BankSlotLocked { bank_slots: i32 },
     /// A mission item bound for the vault (D-BV08).
     MissionItem,
+    /// A vault move whose item (`Target`: the dragged item into the target
+    /// container; `Source`: a swap occupant into the source container) is
+    /// not allowed there by its `container_sets`.
+    ItemNotAllowed { end: MoveEnd },
+    /// A vault move that splits a stack onto an occupied slot.
+    SplitOntoOccupied,
 }
 
 impl MoveRefusal {
@@ -39,6 +45,8 @@ impl MoveRefusal {
             MoveRefusal::VaultSession { reason, .. } => reason,
             MoveRefusal::BankSlotLocked { .. } => "target_slot_beyond_bank_slots",
             MoveRefusal::MissionItem => "mission_item_not_bankable",
+            MoveRefusal::ItemNotAllowed { .. } => "item_not_allowed_in_container",
+            MoveRefusal::SplitOntoOccupied => "split_onto_occupied_slot",
         }
     }
 
@@ -47,7 +55,10 @@ impl MoveRefusal {
     pub(super) fn vault_end(self) -> Option<&'static str> {
         match self {
             MoveRefusal::VaultSession { end, .. } => Some(end.label()),
-            MoveRefusal::BankSlotLocked { .. } | MoveRefusal::MissionItem => Some("target"),
+            MoveRefusal::ItemNotAllowed { end } => Some(end.label()),
+            MoveRefusal::BankSlotLocked { .. }
+            | MoveRefusal::MissionItem
+            | MoveRefusal::SplitOntoOccupied => Some("target"),
             MoveRefusal::NotPlayerMovable(_) => None,
         }
     }
@@ -79,6 +90,8 @@ impl MoveRefusal {
                 ));
             }
             MoveRefusal::MissionItem => "Mission items cannot be stored in the vault.",
+            MoveRefusal::ItemNotAllowed { .. } => "That item cannot be placed there.",
+            MoveRefusal::SplitOntoOccupied => "Split a stack onto an empty slot.",
         };
         Some(text.to_owned())
     }
@@ -88,7 +101,7 @@ impl MoveRefusal {
 /// `None` when the cell's verdict is open.
 pub(super) fn vault_session_refusal(end: MoveEnd, vault: &VaultAccess) -> Option<MoveRefusal> {
     vault
-        .reason()
+        .personal_vault_refusal()
         .map(|reason| MoveRefusal::VaultSession { end, reason })
 }
 
@@ -226,6 +239,7 @@ pub(super) enum MoveShape {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_entity::cell_entity::VaultScope;
 
     /// The labels are what SigNoz queries and the `LogCapture` guards
     /// match, so a rename must be deliberate.
@@ -257,6 +271,7 @@ mod tests {
     #[test]
     fn an_open_verdict_refuses_nothing() {
         let open = VaultAccess::Open {
+            scope: VaultScope::Personal,
             banker_id: Some(7),
             distance: Some(1.0),
         };

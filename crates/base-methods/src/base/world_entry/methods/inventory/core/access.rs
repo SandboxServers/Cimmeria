@@ -125,12 +125,14 @@ pub(super) async fn refuse_inaccessible(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_entity::cell_entity::VaultScope;
 
     #[test]
     fn by_type_search_covers_the_vault_only_when_open() {
         let closed = accessible_containers(&VaultAccess::NO_SESSION);
         assert_eq!(closed, (1..=15).collect::<Vec<_>>());
         let open = accessible_containers(&VaultAccess::Open {
+            scope: VaultScope::Personal,
             banker_id: None,
             distance: None,
         });

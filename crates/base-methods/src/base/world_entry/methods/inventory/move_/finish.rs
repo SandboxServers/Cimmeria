@@ -11,6 +11,7 @@ use super::bank_rules::{
     is_mission_item, log_move_accepted, move_kind, read_vault_owner, touches_vault,
     AcceptedVaultMove, MoveRefusal, MoveShape, VaultOwner,
 };
+use super::container_policy::MoveEnd;
 use super::{apply, refuse, InventoryInstanceRow, MoveCtx, MoveRequest, Occupant};
 
 type MoveTx = Transaction<'static, Postgres>;
@@ -62,13 +63,21 @@ pub(super) async fn finish_move(
             target_container_id,
             "MoveInventoryItem: item cannot be moved into target container"
         );
+        // A vault move is refused visibly (`bank` log, line, snap-back);
+        // other moves keep their quiet refusal.
+        if owner.is_some() {
+            let refusal = MoveRefusal::ItemNotAllowed {
+                end: MoveEnd::Target,
+            };
+            refuse(&req, refusal, vault, ctx).await;
+        }
         return;
     }
 
     // The occupant, locked for the rest of the tx, so the merge and swap
     // arms can rely on its cached type and stack.
     let occupied: Option<Occupant> = match sqlx::query_as::<_, Occupant>(
-        "SELECT item_id, type_id, stack_size FROM sgw_inventory \
+        "SELECT item_id, type_id, stack_size, bound, durability, charges FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = $2 AND slot_id = $3 AND item_id <> $4 LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)
@@ -86,10 +95,15 @@ pub(super) async fn finish_move(
         }
     };
 
-    let Some(shape) = choose_shape(&mut tx, &req, quantity, &source, occupied.as_ref()).await
-    else {
-        let _ = tx.rollback().await;
-        return;
+    let shape = match choose_shape(&mut tx, &req, quantity, &source, occupied.as_ref()).await {
+        Ok(shape) => shape,
+        Err(refusal) => {
+            let _ = tx.rollback().await;
+            if let (Some(refusal), Some(_)) = (refusal, owner) {
+                refuse(&req, refusal, vault, ctx).await;
+            }
+            return;
+        }
     };
 
     // A swap out of the vault puts the occupant into it: the occupant must
@@ -114,19 +128,8 @@ pub(super) async fn finish_move(
                     return;
                 }
             }
-            if !item_allows_container(ctx.pool, occ.type_id, source.container_id).await {
-                let _ = tx.rollback().await;
-                tracing::warn!(
-                    player_id,
-                    item_id,
-                    occupied_item_id = occ.item_id,
-                    occupied_item_type = occ.type_id,
-                    source_container_id = source.container_id,
-                    "MoveInventoryItem: occupied item cannot be swapped into source container"
-                );
-                return;
-            }
-        } else if !item_allows_container(ctx.pool, occ.type_id, source.container_id).await {
+        }
+        if !item_allows_container(ctx.pool, occ.type_id, source.container_id).await {
             let _ = tx.rollback().await;
             tracing::warn!(
                 player_id,
@@ -136,13 +139,20 @@ pub(super) async fn finish_move(
                 source_container_id = source.container_id,
                 "MoveInventoryItem: occupied item cannot be swapped into source container"
             );
+            if owner.is_some() {
+                let refusal = MoveRefusal::ItemNotAllowed {
+                    end: MoveEnd::Source,
+                };
+                refuse(&req, refusal, vault, ctx).await;
+            }
             return;
         }
     }
 
-    // The id we report on `InventoryItemMoveApplied`: the row that now sits
-    // in the target slot. The source row for a whole move or swap, the new
-    // row for a split, the occupant for a merge.
+    // The id we report on `InventoryItemMoveApplied`: the instance that
+    // moved. The source row for a whole move, a swap or a merge (it pairs
+    // with `source_container_id`; a whole merge has just deleted it), and the
+    // new row for a split.
     let applied = match (shape, occupied.as_ref()) {
         (MoveShape::Whole, _) => apply::whole(
             &mut tx,
@@ -167,7 +177,7 @@ pub(super) async fn finish_move(
         (MoveShape::Merge, Some(occ)) => {
             apply::merge(&mut tx, player_id, item_id, quantity, &source, occ)
                 .await
-                .map(|deleted| (occ.item_id, deleted))
+                .map(|deleted| (item_id, deleted))
         }
         (MoveShape::Swap, Some(occ)) => apply::swap(
             &mut tx,
@@ -286,12 +296,15 @@ async fn deposit_refusal(
     }
 }
 
-/// Pick the write. `None` (logged) refuses the move.
+/// Pick the write. `Err` (logged) refuses the move: with the refusal a
+/// vault move reports, or `None` for an infrastructure failure.
 ///
 /// - Empty target: the whole stack, or a split.
-/// - A same-type occupant with room for `quantity`: a merge (legacy
+/// - A same-type occupant with the same `bound`, `durability` and
+///   `charges`, and room for `quantity`: a merge (legacy
 ///   `Inventory.py:391-395`; a partial merge too, which the legacy server
-///   left unimplemented).
+///   left unimplemented). A bound stack never merges into an unbound one,
+///   which would make its count sellable, tradable and mailable.
 /// - Any other occupant: a swap of the whole stack; a split onto it is
 ///   refused.
 async fn choose_shape(
@@ -300,15 +313,18 @@ async fn choose_shape(
     quantity: i32,
     source: &InventoryInstanceRow,
     occupied: Option<&Occupant>,
-) -> Option<MoveShape> {
+) -> Result<MoveShape, Option<MoveRefusal>> {
     let Some(occ) = occupied else {
-        return Some(if quantity < source.stack_size {
+        return Ok(if quantity < source.stack_size {
             MoveShape::Split
         } else {
             MoveShape::Whole
         });
     };
-    if occ.type_id == source.type_id {
+    let same_instance_state = occ.bound == source.bound
+        && occ.durability == source.durability
+        && occ.charges == source.charges;
+    if occ.type_id == source.type_id && same_instance_state {
         let max_stack: Option<i32> = match sqlx::query_scalar(
             "SELECT max_stack_size FROM resources.items WHERE item_id = $1",
         )
@@ -323,11 +339,12 @@ async fn choose_shape(
                     item_id = req.item_id,
                     "MoveInventoryItem: max_stack_size lookup failed: {e}"
                 );
-                return None;
+                return Err(None);
             }
         };
-        if max_stack.is_some_and(|max| occ.stack_size + quantity <= max) {
-            return Some(MoveShape::Merge);
+        let merged = occ.stack_size.checked_add(quantity);
+        if max_stack.zip(merged).is_some_and(|(max, n)| n <= max) {
+            return Ok(MoveShape::Merge);
         }
     }
     if quantity < source.stack_size {
@@ -338,9 +355,9 @@ async fn choose_shape(
             target_slot_id = req.target_slot_id,
             "MoveInventoryItem: cannot split onto occupied slot"
         );
-        return None;
+        return Err(Some(MoveRefusal::SplitOntoOccupied));
     }
-    Some(MoveShape::Swap)
+    Ok(MoveShape::Swap)
 }
 
 /// The `move_accepted` record of a committed vault move: the stacks at both

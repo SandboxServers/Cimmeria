@@ -9,12 +9,14 @@
 //! `cimmeria-cell-interactions` `bank/tests.rs`. These tests pin what the
 //! base does with it.
 //!
-//! Sentinels: accounts and players `0x7000_B500..=0x7000_B5B1`, entities
+//! Sentinels: accounts and players `0x7000_B500..=0x7000_B5B3`, entities
 //! `0x7000_B5E0..=0x7000_B5EF`, item types `0x7000_B5F0` (bankable,
-//! `{1,17}`, max stack 20) and `0x7000_B5F1` (a mission item that also
-//! lists the vault, `{1,2,17}`, so only the mission rule can refuse it).
+//! `{1,17}`, max stack 20), `0x7000_B5F1` (a mission item that also
+//! lists the vault, `{1,2,17}`, so only the mission rule can refuse it) and
+//! `0x7000_B5F2` (carried only, `{1}`).
 //! Ports 40830-40849. Skip when `DATABASE_URL` is unset.
 
+use cimmeria_entity::cell_entity::VaultScope;
 use tracing::Level;
 
 use super::allowlist_tests::assert_fields;
@@ -27,16 +29,23 @@ use crate::test_support::{
 pub(super) const BASE: i32 = 0x7000_B500;
 pub(super) const BANKABLE: i32 = 0x7000_B5F0;
 pub(super) const MISSION: i32 = 0x7000_B5F1;
+/// Carried only (`{1}`): not allowed in the vault by its `container_sets`.
+pub(super) const CARRIED_ONLY: i32 = 0x7000_B5F2;
 pub(super) const BANKER: u32 = 0x7000_B5D0;
 
 /// Next to the Banker, 2.5 units away.
 pub(super) const AT_BANKER: VaultAccess = VaultAccess::Open {
+    scope: VaultScope::Personal,
     banker_id: Some(BANKER),
     distance: Some(2.5),
 };
 
 pub(super) async fn insert_types(pool: &PgPool) {
-    for (id, sets) in [(BANKABLE, "{1,17}"), (MISSION, "{1,2,17}")] {
+    for (id, sets) in [
+        (BANKABLE, "{1,17}"),
+        (MISSION, "{1,2,17}"),
+        (CARRIED_ONLY, "{1}"),
+    ] {
         sqlx::query(
             "INSERT INTO resources.items (\
                 item_id, description, name, quality_id, tech_comp, tier, \
@@ -62,7 +71,7 @@ pub(super) async fn setup(pool: &PgPool, account_id: i32, player_id: i32) {
 pub(super) async fn teardown(pool: &PgPool, account_id: i32, player_id: i32) {
     cleanup(pool, account_id, player_id).await;
     let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = ANY($1)")
-        .bind(vec![BANKABLE, MISSION])
+        .bind(vec![BANKABLE, MISSION, CARRIED_ONLY])
         .execute(pool)
         .await;
 }
@@ -159,7 +168,7 @@ pub(super) fn bank_events(
 
 /// The one `move_rejected` with `reason`, checked for the fields every
 /// BV-03 refusal carries.
-fn rejected(
+pub(super) fn rejected(
     capture: &crate::test_support::LogCaptureGuard,
     reason: &str,
     account_id: i32,
