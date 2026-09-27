@@ -574,6 +574,17 @@ pub async fn handle_use_ability(
         // broadcast.
     }
 
+    if let Some(summon) = summon {
+        super::summon::log_summon_launched(
+            space_mgr,
+            entity_id,
+            ability_id,
+            summon,
+            warmup_secs,
+            charged_secs,
+        );
+    }
+
     // Note on BSF_InCombat (bit 3): intentionally NOT set here. The bit is
     // derived from `threatened_mobs` and flips on via
     // `combat::generate_threat` → `enter_player_combat` when this attack

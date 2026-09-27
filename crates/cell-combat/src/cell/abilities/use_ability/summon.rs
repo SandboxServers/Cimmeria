@@ -134,15 +134,39 @@ pub(super) async fn refuse_summon_launch(
     let Some((reason, code, text)) = refusal else {
         return false;
     };
-    tracing::warn!(
-        target: "pets.lifecycle",
-        decision_outcome = "summon_refused",
-        owner_id = entity_id,
-        summon_ability_id = ability_id,
-        template_id = summon.template_id,
-        reason,
-        "summon refused at launch; no cooldown charged"
-    );
+    let id = space_mgr.player_identity(entity_id);
+    // Negative-logging levels: a client can press an untrained summon at
+    // will (DEBUG); a summon row naming an uncached template is a seed
+    // defect no client can cause (WARN).
+    if reason == "not_trained" {
+        tracing::debug!(
+            target: "pets.lifecycle",
+            event = "summon_refused",
+            decision_outcome = "summon_refused",
+            stage = "launch",
+            owner_id = entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            ability_id,
+            template_id = summon.template_id,
+            reason,
+            "summon refused at launch; no cooldown charged"
+        );
+    } else {
+        tracing::warn!(
+            target: "pets.lifecycle",
+            event = "summon_refused",
+            decision_outcome = "summon_refused",
+            stage = "launch",
+            owner_id = entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            ability_id,
+            template_id = summon.template_id,
+            reason,
+            "summon refused at launch; no cooldown charged"
+        );
+    }
     send_summon_feedback(entity_id, ability_id, code, text, tx).await;
     true
 }
@@ -191,12 +215,19 @@ pub(super) async fn fire_summon(
         event_set_id,
     };
 
+    let id = space_mgr.player_identity(entity_id);
     if let Some(reason) = fire_refusal(space_mgr, entity_id, summon) {
+        // WARN: the warmup's own death/space interrupts should have caught
+        // the owner cases, and a missing template is a seed defect.
         tracing::warn!(
             target: "pets.lifecycle",
+            event = "summon_refused",
             decision_outcome = "summon_refused",
+            stage = "fire",
             owner_id = entity_id,
-            summon_ability_id = ability_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            ability_id,
             template_id = summon.template_id,
             reason,
             "summon refused after its warmup; nothing spawned"
@@ -214,6 +245,16 @@ pub(super) async fn fire_summon(
         return;
     }
 
+    tracing::debug!(
+        target: "pets.lifecycle",
+        event = "summon_fired",
+        owner_id = entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        ability_id,
+        template_id = summon.template_id,
+        "summon warmup complete; spawning the pet"
+    );
     play_ability_sequence(phase(AbilityPhase::End), tx, space_mgr).await;
 
     // D-PT04: one active pet per owner. Count every pet the owner has, not
@@ -224,6 +265,18 @@ pub(super) async fn fire_summon(
     let cap = summon.max_active.max(1) as usize;
     let excess = (current.len() + 1).saturating_sub(cap);
     for &old_pet in current.iter().take(excess) {
+        tracing::debug!(
+            target: "pets.lifecycle",
+            event = "summon_replaced_pet",
+            owner_id = entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            ability_id,
+            template_id = summon.template_id,
+            replaced_pet_id = old_pet,
+            max_active = summon.max_active,
+            "summon replaces the owner's current pet (D-PT04)"
+        );
         // `despawn_pet` logs its own outcome and scrubs the registry
         // either way, so the new pet never counts against a stale entry.
         let _outcome = despawn_pet(space_mgr, old_pet, PetDespawnReason::Dismissed, tx).await;
@@ -232,8 +285,22 @@ pub(super) async fn fire_summon(
     let pet_id = match space_mgr.spawn_pet_from_template(entity_id, summon.template_id, ability_id)
     {
         Ok(pet_id) => pet_id,
-        Err(_) => {
-            // `spawn_pet_from_template` has logged the WARN with its reason.
+        Err(e) => {
+            // `spawn_pet_from_template` has logged the WARN with its reason;
+            // this row ties it to the summon and the owner's identity.
+            tracing::warn!(
+                target: "pets.lifecycle",
+                event = "summon_refused",
+                decision_outcome = "summon_refused",
+                stage = "spawn",
+                owner_id = entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
+                ability_id,
+                template_id = summon.template_id,
+                reason = e.reason(),
+                "summon's pet spawn failed; nothing spawned"
+            );
             send_summon_feedback(
                 entity_id,
                 ability_id,
@@ -246,7 +313,81 @@ pub(super) async fn fire_summon(
         }
     };
 
+    tracing::debug!(
+        target: "pets.lifecycle",
+        event = "summon_spawned",
+        owner_id = entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        ability_id,
+        template_id = summon.template_id,
+        pet_id,
+        "summoned pet spawned beside its owner"
+    );
     queue_arrival_vfx(space_mgr, entity_id, pet_id);
+}
+
+/// Rule 2 events for a committed summon launch: `summon_launched`, and
+/// `summon_warmup_started` when the spawn waits on a warmup.
+pub(super) fn log_summon_launched(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    ability_id: i32,
+    summon: PetSummon,
+    warmup_secs: f32,
+    cooldown_secs: f32,
+) {
+    let id = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        target: "pets.lifecycle",
+        event = "summon_launched",
+        owner_id = entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        ability_id,
+        template_id = summon.template_id,
+        warmup_secs,
+        cooldown_secs,
+        "summon cast committed"
+    );
+    if warmup_secs > 0.0 {
+        tracing::debug!(
+            target: "pets.lifecycle",
+            event = "summon_warmup_started",
+            owner_id = entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            ability_id,
+            template_id = summon.template_id,
+            warmup_secs,
+            "summon warmup started; the pet spawns when it expires"
+        );
+    }
+}
+
+/// Rule 2 event for an interrupted summon warmup (nothing spawns). A no-op
+/// for any cast that is not a player summon.
+pub(super) fn log_summon_interrupted(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    ability_id: i32,
+    reason: &'static str,
+) {
+    let Some(summon) = player_summon(space_mgr, entity_id, ability_id) else {
+        return;
+    };
+    let id = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        target: "pets.lifecycle",
+        event = "summon_interrupted",
+        owner_id = entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        ability_id,
+        template_id = summon.template_id,
+        reason,
+        "summon warmup interrupted; no pet spawned"
+    );
 }
 
 /// Queue the summon's target VFX for `pet_id`. It is sent once the owner
@@ -258,6 +399,8 @@ fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32) {
     else {
         tracing::debug!(
             target: "pets.lifecycle",
+            event = "arrival_vfx_skipped",
+            reason = "no_sequence",
             owner_id = owner,
             pet_id,
             event_set_id = SUMMON_TARGET_EVENT_SET,
@@ -302,9 +445,10 @@ async fn send_summon_feedback(
         {
             tracing::warn!(
                 target: "pets.lifecycle",
+                event = "summon_feedback_send_failed",
                 decision_outcome = "summon_feedback_send_failed",
                 owner_id = entity_id,
-                summon_ability_id = ability_id,
+                ability_id,
                 method_index,
                 "summon feedback could not be queued (base channel closed)"
             );

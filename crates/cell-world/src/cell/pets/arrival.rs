@@ -86,8 +86,14 @@ fn arrival_step(
     arrival: &PetArrival,
     now: Instant,
 ) -> ArrivalStep {
-    if space_mgr.pets.owner_of(pet) != Some(arrival.owner_id) || space_mgr.get_entity(pet).is_none()
-    {
+    match space_mgr.pets.owner_of(pet) {
+        None => return ArrivalStep::Drop("pet_gone"),
+        // `forget_pet` scrubs the queue on every removal, so a different
+        // owner means the id was reused past a missed scrub.
+        Some(owner) if owner != arrival.owner_id => return ArrivalStep::Drop("owner_mismatch"),
+        Some(_) => {}
+    }
+    if space_mgr.get_entity(pet).is_none() {
         return ArrivalStep::Drop("pet_gone");
     }
     let witnesses = space_mgr.get_witnesses_of(pet);
@@ -129,26 +135,46 @@ pub async fn drain_arrivals(
         match arrival_step(space_mgr, pet, arrival, now) {
             ArrivalStep::Wait => {}
             ArrivalStep::Drop(reason) => {
-                let arrival = space_mgr.pets.arrivals.remove(&pet);
+                let Some(arrival) = space_mgr.pets.arrivals.remove(&pet) else {
+                    continue;
+                };
+                let owner_id = arrival.owner_id;
+                let id = space_mgr.player_identity(owner_id);
+                let registered_owner = space_mgr.pets.owner_of(pet);
+                let waited_ms = now.duration_since(arrival.queued_at).as_millis() as u64;
                 // A pet gone before its intro is ordinary (despawned at
-                // once); an owner who never saw its live pet means the
-                // intro went missing, which is worth a WARN.
-                if reason == "owner_never_witnessed" {
-                    tracing::warn!(
-                        target: "pets.lifecycle",
-                        decision_outcome = "arrival_vfx_dropped",
-                        pet_id = pet,
-                        owner_id = arrival.map_or(0, |a| a.owner_id),
-                        reason,
-                        "summon VFX dropped: the owner never witnessed the pet"
-                    );
-                } else {
+                // once): DEBUG. An owner who never saw its live pet means the
+                // intro went missing, and an owner mismatch means a missed
+                // registry scrub: both server faults no client can cause,
+                // so WARN.
+                if reason == "pet_gone" {
                     tracing::debug!(
                         target: "pets.lifecycle",
+                        event = "arrival_vfx_dropped",
                         decision_outcome = "arrival_vfx_dropped",
                         pet_id = pet,
+                        owner_id,
+                        account_id = id.account_id,
+                        player_id = id.player_id,
+                        sequence_id = arrival.sequence_id,
+                        waited_ms,
                         reason,
                         "summon VFX dropped with its pet"
+                    );
+                } else {
+                    tracing::warn!(
+                        target: "pets.lifecycle",
+                        event = "arrival_vfx_dropped",
+                        decision_outcome = "arrival_vfx_dropped",
+                        pet_id = pet,
+                        owner_id,
+                        registered_owner_id = registered_owner,
+                        account_id = id.account_id,
+                        player_id = id.player_id,
+                        sequence_id = arrival.sequence_id,
+                        waited_ms,
+                        reason,
+                        "summon VFX dropped before reaching the owner"
                     );
                 }
             }
@@ -170,18 +196,24 @@ pub async fn drain_arrivals(
                     {
                         tracing::warn!(
                             target: "pets.lifecycle",
+                            event = "arrival_vfx_send_failed",
                             decision_outcome = "arrival_vfx_send_failed",
                             pet_id = pet,
+                            owner_id = arrival.owner_id,
                             witness_id,
                             "summon VFX could not be queued (base channel closed)"
                         );
                     }
                 }
+                let id = space_mgr.player_identity(arrival.owner_id);
                 tracing::debug!(
                     target: "pets.lifecycle",
+                    event = "arrival_vfx_sent",
                     decision_outcome = "arrival_vfx_sent",
                     pet_id = pet,
                     owner_id = arrival.owner_id,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
                     sequence_id = arrival.sequence_id,
                     witness_count = witnesses.len(),
                     "summon VFX sent to the pet's witnesses"

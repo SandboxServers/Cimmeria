@@ -4,6 +4,9 @@
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
+use tracing::Level;
+
+use crate::test_support::LogCapture;
 
 use super::*;
 use crate::cell::pets::{
@@ -52,4 +55,70 @@ fn queue_arrival_ignores_an_entity_that_is_not_a_pet() {
     add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
     mgr.pets.queue_arrival(OWNER, arrival());
     assert!(mgr.pets.pending_arrival(OWNER).is_none());
+}
+
+/// Seam: the 2 s drop is a WARN with `reason=owner_never_witnessed` and the
+/// owner's identity (the intro went missing; no client can cause it).
+#[tokio::test]
+async fn never_witnessed_drop_logs_warn_with_reason() {
+    let (mut mgr, pet) = world_with_pet();
+    mgr.get_entity_mut(OWNER).unwrap().player_id = Some(77);
+    mgr.pets.queue_arrival(pet, arrival());
+    let (tx, _rx) = mpsc::channel(64);
+
+    let logs = LogCapture::install();
+    let late = Instant::now() + ARRIVAL_TIMEOUT + Duration::from_millis(10);
+    drain_arrivals(late, &tx, &mut mgr).await;
+    let c = logs
+        .find_event(Level::WARN, "summon VFX dropped", "owner_never_witnessed")
+        .expect("WARN arrival_vfx_dropped reason=owner_never_witnessed");
+    assert!(c.has_field("event", "arrival_vfx_dropped"), "{c:?}");
+    assert!(c.has_field("pet_id", &pet.to_string()), "{c:?}");
+    assert!(c.has_field("owner_id", &OWNER.to_string()), "{c:?}");
+    assert!(c.has_field("account_id", &OWNER.to_string()), "{c:?}");
+    assert!(c.has_field("player_id", "77"), "{c:?}");
+}
+
+/// Seam: a queued VFX whose owner no longer matches the registry (an id
+/// reused past a missed scrub) is dropped with a WARN
+/// `reason=owner_mismatch`, and never sent.
+#[tokio::test]
+async fn owner_mismatch_drop_logs_warn_with_reason() {
+    let (mut mgr, pet) = world_with_pet();
+    mgr.pets
+        .queue_arrival(pet, PetArrival::new(OTHER, 2293, vec![1, 2, 3]));
+    let (tx, mut rx) = mpsc::channel(64);
+
+    let logs = LogCapture::install();
+    assert_eq!(drain_arrivals(Instant::now(), &tx, &mut mgr).await, 0);
+    let c = logs
+        .find_event(Level::WARN, "summon VFX dropped", "owner_mismatch")
+        .expect("WARN arrival_vfx_dropped reason=owner_mismatch");
+    assert!(c.has_field("owner_id", &OTHER.to_string()), "{c:?}");
+    assert!(
+        c.has_field("registered_owner_id", &OWNER.to_string()),
+        "{c:?}"
+    );
+    assert!(mgr.pets.pending_arrival(pet).is_none());
+    assert!(rx.try_recv().is_err(), "nothing sent");
+}
+
+/// Seam: the pet's entity is gone while the registry still lists it (the
+/// sweep has not scrubbed it yet): DEBUG `reason=pet_gone`.
+#[tokio::test]
+async fn pet_gone_drop_logs_debug_with_reason() {
+    let (mut mgr, pet) = world_with_pet();
+    mgr.pets.queue_arrival(pet, arrival());
+    // Remove the entity without the registry scrub `destroy_entity` does.
+    let space_id = mgr.get_entity_space_id(pet).unwrap();
+    mgr.spaces.get_mut(&space_id).unwrap().entities.remove(&pet);
+    let (tx, _rx) = mpsc::channel(64);
+
+    let logs = LogCapture::install();
+    drain_arrivals(Instant::now(), &tx, &mut mgr).await;
+    let c = logs
+        .find_event(Level::DEBUG, "summon VFX dropped", "pet_gone")
+        .expect("DEBUG arrival_vfx_dropped reason=pet_gone");
+    assert!(c.has_field("pet_id", &pet.to_string()), "{c:?}");
+    assert!(mgr.pets.pending_arrival(pet).is_none());
 }

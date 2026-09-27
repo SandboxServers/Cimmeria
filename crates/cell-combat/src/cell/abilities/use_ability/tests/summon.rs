@@ -21,21 +21,21 @@ use crate::cell::spawner::{PetSummon, PetSummonCatalog};
 use crate::mercury::SGWPET_CLASS_ID;
 use crate::test_support::NoContentEvents;
 
-const OWNER: u32 = 1;
+pub(super) const OWNER: u32 = 1;
 const WATCHER: u32 = 3;
-const SUMMON: i32 = 2826;
-const TEMPLATE: i32 = 350;
+pub(super) const SUMMON: i32 = 2826;
+pub(super) const TEMPLATE: i32 = 350;
 const SUMMON_SET: i32 = 1121;
 const SEQ_END: i32 = 2292;
-const SEQ_INTERRUPT: i32 = 2904;
+pub(super) const SEQ_INTERRUPT: i32 = 2904;
 const TARGET_SET: i32 = 1122;
 const SEQ_TARGET: i32 = 2293;
 /// Seeded flags of 2826: SpeedPet | Deactivate_AutoCycle |
 /// DoNotActivate_AutoCycle | ForceStanding | Response.
 const SUMMON_FLAGS: u32 = 18192;
-const WARMUP: f32 = 6.0;
+pub(super) const WARMUP: f32 = 6.0;
 
-fn summon_def(id: i32) -> AbilityDef {
+pub(super) fn summon_def(id: i32) -> AbilityDef {
     AbilityDef {
         ability_id: id,
         name: "Summon Straegis".to_string(),
@@ -56,7 +56,7 @@ fn summon_def(id: i32) -> AbilityDef {
 
 /// The seeded world: 2826 known by `OWNER`, its summon row and template,
 /// and the two event sets' sequences.
-fn summon_mgr() -> SpaceManager {
+pub(super) fn summon_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
@@ -84,13 +84,13 @@ fn summon_mgr() -> SpaceManager {
     mgr
 }
 
-fn after_summon_warmup() -> Instant {
+pub(super) fn after_summon_warmup() -> Instant {
     Instant::now() + Duration::from_secs_f32(WARMUP) + Duration::from_millis(50)
 }
 
 /// Cast, check the launch committed with no pet yet, then run the warmup
 /// tick past the warmup. Returns everything sent.
-async fn cast_and_complete(
+pub(super) async fn cast_and_complete(
     mgr: &mut SpaceManager,
     target_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -114,7 +114,7 @@ async fn cast_and_complete(
 }
 
 /// Clear the cooldown so a test can cast again at once.
-fn ready_again(mgr: &mut SpaceManager) {
+pub(super) fn ready_again(mgr: &mut SpaceManager) {
     mgr.get_entity_mut(OWNER)
         .unwrap()
         .abilities

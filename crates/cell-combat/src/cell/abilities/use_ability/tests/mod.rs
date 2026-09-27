@@ -23,6 +23,7 @@ mod sequence;
 mod sequence_phases;
 mod summon;
 mod summon_live_db;
+mod summon_logs;
 mod target_validity;
 mod warmup;
 mod warmup_interrupt;
