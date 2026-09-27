@@ -10,7 +10,7 @@ pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
     args: &[u8],
-    _tx: &mpsc::Sender<CellToBaseMsg>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
     _space_mgr: &mut SpaceManager,
 ) -> bool {
     match method_index {
@@ -64,16 +64,26 @@ pub async fn dispatch(
             // `onOrganizationCreation(WSTRING aOrganizationName)`. The name
             // used to be dropped (audit A-02); the pending-creation check,
             // D-ORG10 validation and the forward to the base are ORG-05's.
+            // Until then the press is answered like every other org method.
             match decode_on_organization_creation(args) {
-                Ok(name) => tracing::info!(
-                    target: "org",
-                    event = "org.cell_method_unimplemented",
-                    entity_id,
-                    method_index,
-                    method = "onOrganizationCreation",
-                    text_units = name.encode_utf16().count(),
-                    "UNIMPLEMENTED: onOrganizationCreation"
-                ),
+                Ok(name) => {
+                    tracing::debug!(
+                        target: "org",
+                        event = "org.cell_method_unimplemented",
+                        entity_id,
+                        method_index,
+                        method = "onOrganizationCreation",
+                        text_units = name.encode_utf16().count(),
+                        "UNIMPLEMENTED: onOrganizationCreation"
+                    );
+                    crate::cell::cell_methods::organization::send_unavailable_feedback(
+                        entity_id,
+                        method_index,
+                        0,
+                        tx,
+                    )
+                    .await;
+                }
                 Err(e) => tracing::warn!(
                     target: "org",
                     event = "org.cell_method_malformed",
@@ -151,30 +161,42 @@ mod tests {
     use crate::test_support::{make_space_manager_with_player, LogCapture};
 
     /// CM 94 carries only the name (audit A-09). It used to be ignored
-    /// entirely; the dispatcher now decodes it: "SG-1" is four units.
+    /// entirely; the dispatcher now decodes it ("SG-1" is four units) and
+    /// answers with `onErrorCode` (instance 0) and the feedback line.
     #[tokio::test]
-    async fn org_creation_decodes_the_name() {
+    async fn org_creation_decodes_the_name_and_answers() {
         let capture = LogCapture::install();
         let mut mgr = make_space_manager_with_player(1);
-        let (tx, _rx) = mpsc::channel(8);
+        let (tx, mut rx) = mpsc::channel(8);
         let args = [4, 0, 0, 0, 0x53, 0, 0x47, 0, 0x2D, 0, 0x31, 0];
         assert!(dispatch(1, ORG_CREATION, &args, &tx, &mut mgr).await);
         let ev = capture
-            .find_message(Level::INFO, "UNIMPLEMENTED: onOrganizationCreation")
+            .find_message(Level::DEBUG, "UNIMPLEMENTED: onOrganizationCreation")
             .expect("decoded creation log");
         assert_eq!(ev.target, "org");
         assert!(ev.has_field("text_units", "4"), "{:?}", ev.fields);
+        let mut sent = Vec::new();
+        while let Ok(CellToBaseMsg::EntityMethodCall {
+            method_index, args, ..
+        }) = rx.try_recv()
+        {
+            sent.push((method_index, args));
+        }
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[0], (121, vec![0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(sent[1].0, 28);
     }
 
     #[tokio::test]
     async fn org_creation_rejects_a_forged_length() {
         let capture = LogCapture::install();
         let mut mgr = make_space_manager_with_player(1);
-        let (tx, _rx) = mpsc::channel(8);
+        let (tx, mut rx) = mpsc::channel(8);
         let args = [0x10, 0, 0, 0, 0x53, 0];
         assert!(dispatch(1, ORG_CREATION, &args, &tx, &mut mgr).await);
         assert!(capture
             .find_event(Level::WARN, "did not decode", "truncated")
             .is_some());
+        assert!(rx.try_recv().is_err(), "a malformed call is not answered");
     }
 }

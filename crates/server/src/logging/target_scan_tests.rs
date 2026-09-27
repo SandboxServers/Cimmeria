@@ -309,9 +309,8 @@ fn scan_finds_known_targets() {
         ("crafting", Level::WARN),
         // The organizations campaign (ORG-01): the base-method arm in
         // crates/base, the cell arm's squad no-ops in crates/cell and the
-        // cell-method decoders in crates/cell-methods.
+        // cell-method arms in crates/cell-methods (DEBUG, WARN on malformed).
         ("org", Level::DEBUG),
-        ("org", Level::INFO),
         ("org", Level::WARN),
         ("squad", Level::DEBUG),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
