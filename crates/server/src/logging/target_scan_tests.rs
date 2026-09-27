@@ -344,6 +344,11 @@ fn scan_finds_known_targets() {
         // registry, response and tick (crates/cell-world).
         ("duel", Level::DEBUG),
         ("duel", Level::WARN),
+        // The bank-vault campaign (BV-02): the Banker open path in
+        // crates/cell-interactions, the `.bank` refusal in crates/cell-console
+        // and the session teardown in crates/cell-world.
+        ("bank", Level::INFO),
+        ("bank", Level::DEBUG),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),
