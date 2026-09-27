@@ -6,8 +6,8 @@
 //! fails the count below.
 //!
 //! The request carries the alloying station bit, so it passes the station
-//! gate and reaches the verb's "not available yet" answer. The gate
-//! itself is pinned in [`super::crafting_gate`].
+//! gate and reaches the alloy verb, which has no database here and answers
+//! "unavailable". The gate itself is pinned in [`super::crafting_gate`].
 
 use super::super::*;
 use super::one_session;
@@ -56,7 +56,7 @@ async fn crafting_request_is_logged_and_answered_with_feedback() {
         &[],
         entity_id,
         method_idx::ON_PLAYER_COMMUNICATION,
-        &feedback_text_args("Alloying is not available yet."),
+        &feedback_text_args("Alloying is unavailable right now. Nothing was changed."),
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     // `feedback_text_args` is speaker SYSTEM on CHAN_FEEDBACK, so this pins
@@ -79,7 +79,7 @@ async fn crafting_request_is_logged_and_answered_with_feedback() {
     );
     assert!(
         capture
-            .find_event(tracing::Level::INFO, "rejected", "not_available_yet")
+            .find_event(tracing::Level::INFO, "rejected", "unavailable")
             .is_some(),
         "the rejection is logged with its reason"
     );

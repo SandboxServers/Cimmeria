@@ -34,6 +34,11 @@ pub struct Compared {
     pub queue_limit: Option<usize>,
     /// The applied science a kicker rule compared.
     pub applied_science_id: Option<i32>,
+    /// The blueprint a blueprint rule refused.
+    pub blueprint_id: Option<i32>,
+    /// An elementary component's tier, against the tier the alloy needs.
+    pub tier: Option<i32>,
+    pub required_tier: Option<i32>,
 }
 
 impl CraftReject {
@@ -192,6 +197,34 @@ impl CraftReject {
                 container_id: Some(container_id),
                 ..Compared::default()
             },
+            CraftReject::UnknownBlueprint { blueprint_id }
+            | CraftReject::NotAlloy { blueprint_id } => Compared {
+                blueprint_id: Some(blueprint_id),
+                ..Compared::default()
+            },
+            CraftReject::DisciplineUnknown {
+                blueprint_id,
+                discipline_id,
+            } => Compared {
+                blueprint_id: Some(blueprint_id),
+                discipline_id: Some(discipline_id),
+                ..Compared::default()
+            },
+            CraftReject::WrongTier {
+                item_id,
+                type_id,
+                tier,
+                required_tier,
+            } => Compared {
+                item_id: Some(item_id),
+                type_id: Some(type_id),
+                tier: Some(tier),
+                required_tier: Some(required_tier),
+                ..Compared::default()
+            },
+            CraftReject::CountNotMet { .. } | CraftReject::MultipleBuckets { .. } => {
+                Compared::default()
+            }
         }
     }
 }

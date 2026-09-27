@@ -362,6 +362,8 @@ impl CraftingSessions {
                     bias = %opt(report.bias),
                     rolls = %report.rolls,
                     blueprints_learned = %report.blueprints_learned,
+                    quality_bucket = report.quality_bucket.unwrap_or(""),
+                    elementary = %report.elementary,
                     "crafting induction completed"
                 );
                 count_job(verb, JobEnd::Completed);

@@ -8,6 +8,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use super::alloy::{handle_alloy, AlloyRequest};
 use super::feedback::{reject, CraftReject};
 use super::research::handle_research;
 use super::reverse_engineer::handle_reverse_engineer;
@@ -43,10 +44,10 @@ impl CraftCtx<'_> {
 /// `crafting.request` span per request.
 ///
 /// `Spend` is decided by [`super::spend`], `Research` by
-/// [`super::research`] and `ReverseEngineer` by
-/// [`super::reverse_engineer`]. Every other verb that passes the
-/// gate is answered with a "not available yet" line until it is
-/// implemented, so a press is never silent.
+/// [`super::research`], `ReverseEngineer` by [`super::reverse_engineer`]
+/// and `Alloy` by [`super::alloy`]. Every other verb that passes the gate
+/// is answered with a "not available yet" line until it is implemented,
+/// so a press is never silent.
 #[tracing::instrument(
     name = "crafting.request",
     level = "info",
@@ -89,6 +90,19 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
         }
         CraftVerb::ReverseEngineer { item_id } => {
             handle_reverse_engineer(entity_id, player_id, item_id, ctx).await;
+            return;
+        }
+        CraftVerb::Alloy {
+            blueprint_id,
+            current_tier_item_id,
+            ref lower_tier_items,
+        } => {
+            let request = AlloyRequest {
+                blueprint_id,
+                current_tier_item_id,
+                lower_tier_items,
+            };
+            handle_alloy(entity_id, player_id, request, ctx).await;
             return;
         }
         _ => {}
