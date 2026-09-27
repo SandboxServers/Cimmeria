@@ -118,7 +118,7 @@ Base (world_entry/methods/trade/execute/):
      plus a feedback line to each player naming the cause
 ```
 
-The lock order is the shared inventory order (`crates/base-session/src/base/crafting/inventory_locks.rs`): every advisory lock, then inventory rows, then player rows. Crafting completions, vendor purchase, the move path, item use and gate mail take the player-wide key 0 first too, so a trade and any of them on the same player wait for each other instead of deadlocking. The live-DB guard is `trade::tests::crafting_bag::trade_and_crafting_completion_on_one_player_serialize`.
+The lock order is the shared inventory order (`crates/base-session/src/base/crafting/inventory_locks.rs`): every advisory lock, then inventory rows, then player rows. Crafting completions, vendor purchase, sale and buyback, the move path, item use and gate mail take the player-wide key 0 first too, so a trade and any of them on the same player wait for each other instead of deadlocking. The live-DB guard is `trade::tests::crafting_bag::trade_and_crafting_completion_on_one_player_serialize`.
 
 ## Which items can be traded
 
