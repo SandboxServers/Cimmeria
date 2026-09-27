@@ -19,6 +19,8 @@ use crate::cell::messages::BaseToCellMsg;
 #[cfg(test)]
 mod concurrency_tests;
 #[cfg(test)]
+mod crafting_supplies_tests;
+#[cfg(test)]
 mod tests;
 
 const INV_MAIN: i32 = 1;

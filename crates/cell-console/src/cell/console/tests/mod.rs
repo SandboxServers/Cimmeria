@@ -21,6 +21,8 @@ mod bv04_bankdump;
 #[cfg(test)]
 mod cr05_allcraft;
 #[cfg(test)]
+mod craft_grants;
+#[cfg(test)]
 mod gm_audit_identity;
 #[cfg(test)]
 mod na13_aggro;

@@ -61,6 +61,7 @@ pub(super) fn expect_rows(
         job_id = ids.job_id,
         account_id = ids.account_id,
         player_id = ids.player_id,
+        gm_entity_id = ids.gm_entity_id,
         entity_id = ids.entity_id,
         phase,
         reason = "rows_affected_mismatch",
@@ -87,6 +88,7 @@ pub(super) fn log_persist_failed(ids: &JobIds, err: &CraftTxError) {
             job_id = ids.job_id,
             account_id = ids.account_id,
             player_id = ids.player_id,
+            gm_entity_id = ids.gm_entity_id,
             entity_id = ids.entity_id,
             phase,
             reason = "db_error",
@@ -101,6 +103,7 @@ pub(super) fn log_persist_failed(ids: &JobIds, err: &CraftTxError) {
             job_id = ids.job_id,
             account_id = ids.account_id,
             player_id = ids.player_id,
+            gm_entity_id = ids.gm_entity_id,
             entity_id = ids.entity_id,
             phase,
             reason,
@@ -121,6 +124,7 @@ mod tests {
         account_id: 42,
         player_id: 43,
         entity_id: 44,
+        gm_entity_id: None,
     };
 
     fn assert_identity(e: &crate::test_support::Captured) {

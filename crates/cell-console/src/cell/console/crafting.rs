@@ -1,19 +1,21 @@
 //! Crafting / discipline console commands (category E): `.learndiscipline`,
-//! `.forgetdiscipline`, `.allcraft`.
+//! `.forgetdiscipline`, `.allcraft`, `.craftkit`, `.learnblueprint`.
 //!
 //! The discipline commands route through the existing crafting grant
 //! plumbing (`CellToBaseMsg::GrantExpertise` → `base::crafting::handlers`).
 //! Discipline expertise is clamped `[0, 100]` base-side, so "forget" zeroes
 //! the expertise (a full row delete would need a dedicated base path, noted
 //! in feedback). `.allcraft` sends `CellToBaseMsg::GmAllCraft` to
-//! `base::crafting::allcraft`.
+//! `base::crafting::allcraft`. `.craftkit` and `.learnblueprint` send
+//! `CellToBaseMsg::GmCraftGrant` to `base::crafting::gm_grant`; the base holds
+//! the catalog, re-checks the caller's access level and answers the GM.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Crafting.py`.
 
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use crate::cell::messages::{CellToBaseMsg, GmAllCraft};
+use crate::cell::messages::{CellToBaseMsg, GmAllCraft, GmCraftGrant, GmCraftGrantKind};
 use crate::cell::space_manager::SpaceManager;
 
 pub(super) async fn dispatch(
@@ -37,10 +39,15 @@ pub(super) async fn dispatch(
         send_gm_feedback(caller_id, &format!(".{name}: target has no player id."), tx).await;
         return;
     };
+    let account_id = space_mgr.player_identity(target).account_id;
     match name {
         "learndiscipline" => learn(caller_id, target, player_id, args, tx).await,
         "forgetdiscipline" => forget(caller_id, target, player_id, args, tx).await,
         "allcraft" => all_craft(caller_id, target, player_id, tx).await,
+        "craftkit" => craft_kit(caller_id, (target, account_id, player_id), args, tx).await,
+        "learnblueprint" => {
+            learn_blueprint(caller_id, (target, account_id, player_id), args, tx).await
+        }
         _ => {}
     }
 }
@@ -141,6 +148,88 @@ async fn all_craft(caller_id: u32, target: u32, player_id: i32, tx: &mpsc::Sende
             target,
             error = %e,
             "allcraft could not be queued (base channel closed)"
+        );
+    }
+}
+
+/// `.craftkit <blueprintId> [count=1]`: the target gets the blueprint's
+/// component set 1, `count` times over. The base checks the blueprint and
+/// the count range, so the cell only parses.
+async fn craft_kit(
+    caller_id: u32,
+    target: GrantTarget,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    let Some(blueprint_id) = super::parse_i32(caller_id, args, 0, "blueprintId", tx).await else {
+        return;
+    };
+    let count = match args.get(1) {
+        Some(_) => match super::parse_i32(caller_id, args, 1, "count", tx).await {
+            Some(count) => count,
+            None => return,
+        },
+        None => 1,
+    };
+    send_grant(
+        caller_id,
+        target,
+        GmCraftGrantKind::Kit {
+            blueprint_id,
+            count,
+        },
+        tx,
+    )
+    .await;
+}
+
+/// `.learnblueprint <blueprintId>`: teach the target one blueprint.
+async fn learn_blueprint(
+    caller_id: u32,
+    target: GrantTarget,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    let Some(blueprint_id) = super::parse_i32(caller_id, args, 0, "blueprintId", tx).await else {
+        return;
+    };
+    send_grant(
+        caller_id,
+        target,
+        GmCraftGrantKind::LearnBlueprint { blueprint_id },
+        tx,
+    )
+    .await;
+}
+
+/// The target of a GM crafting grant: cell entity id, account id (from
+/// the cell's player identity; `None` when not threaded in) and player id.
+type GrantTarget = (u32, Option<u32>, i32);
+
+/// Forward a GM crafting grant; the base answers the GM.
+async fn send_grant(
+    caller_id: u32,
+    (entity_id, account_id, player_id): GrantTarget,
+    grant: GmCraftGrantKind,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    let msg = GmCraftGrant {
+        entity_id,
+        player_id,
+        gm_entity_id: caller_id,
+        grant,
+    };
+    if let Err(e) = tx.send(CellToBaseMsg::GmCraftGrant(msg)).await {
+        tracing::warn!(
+            target: "crafting",
+            event = "forward_failed",
+            kind = "gm_craft_grant",
+            account_id,
+            player_id,
+            entity_id,
+            gm_entity_id = caller_id,
+            error = %e,
+            "GM crafting grant could not be queued (base channel closed)"
         );
     }
 }

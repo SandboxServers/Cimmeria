@@ -35,7 +35,8 @@ mod org_base_to_cell;
 mod org_cell_to_base;
 
 pub use crate::crafting::{
-    CraftRequest, CraftVerb, CraftingStations, GmAllCraft, StationChangeCause, StationSet,
+    CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
+    StationChangeCause, StationSet,
 };
 pub use bank_cell_to_base::{BankCellToBase, BankSubject};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};

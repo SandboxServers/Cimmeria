@@ -32,6 +32,8 @@
 //!   with a visible feedback line.
 //! - [`crafting_gate`]     — the station gate, "craft anywhere", station
 //!   reports and the `.allcraft` access check.
+//! - [`crafting_gm_grant`] — `.craftkit` and `.learnblueprint` reach their
+//!   own handlers, which re-check the caller's access level.
 //! - [`fallible_handlers`] — `GateTravel` / `ReanchorPlayer` error-log
 //!   seams.
 //! - [`gm_broadcast_arm`]  — `Chat(GmBroadcast)` fans out to the online
@@ -55,6 +57,7 @@ mod bank_arm;
 mod cinematic_hold_gate;
 mod crafting_arm;
 mod crafting_gate;
+mod crafting_gm_grant;
 mod fallible_handlers;
 mod gm_broadcast_arm;
 mod gm_grant_arms;

@@ -326,3 +326,42 @@ async fn allcraft_for_a_missing_player_logs_the_shortfall() {
     );
     assert!(!craft_anywhere_on(&sessions));
 }
+
+/// Live DB: `.allcraft` rewrites every expertise row from its load, so it
+/// takes the player-wide advisory key a crafting completion holds while it
+/// writes expertise (the completion never locks the `sgw_player` row). A
+/// connection holding only that key makes the grant wait; without the key
+/// the grant commits straight through.
+#[tokio::test]
+async fn allcraft_waits_for_a_completion_holding_the_player_wide_key() {
+    let pool = require_db_or_skip!();
+    cleanup(&pool).await;
+    insert_player(&pool).await;
+    let sessions = sessions(2);
+
+    let mut completion = pool.begin().await.expect("begin");
+    sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
+        .bind(PLAYER)
+        .execute(&mut *completion)
+        .await
+        .expect("player-wide key");
+    let (grant_pool, grant_sessions) = (pool.clone(), sessions.clone());
+    let grant = tokio::spawn(async move {
+        run(&grant_pool, &grant_sessions).await;
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let finished_while_held = grant.is_finished();
+    completion.commit().await.expect("commit");
+    tokio::time::timeout(std::time::Duration::from_secs(10), grant)
+        .await
+        .expect("the grant finishes once the key is free")
+        .expect("grant task");
+    let reloaded = load_crafting_state(&pool, PLAYER).await;
+    cleanup(&pool).await;
+
+    assert!(
+        !finished_while_held,
+        "the grant waits for the player-wide key"
+    );
+    assert_eq!(reloaded.expect("reload").discipline_ids.len(), 78);
+}

@@ -12,6 +12,8 @@ use super::constants::*;
 #[cfg(test)]
 mod bank_dispatch_tests;
 #[cfg(test)]
+mod crafting_hub_station_tests;
+#[cfg(test)]
 mod debug_hub_dispatch_tests;
 mod dialog;
 #[cfg(test)]

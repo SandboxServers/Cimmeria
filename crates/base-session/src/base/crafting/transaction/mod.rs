@@ -24,6 +24,8 @@
 //!   (the `completed` event's fields).
 //! - [`failure`]: why a transaction did not commit, and `persist_failed`.
 
+use std::sync::Arc;
+
 use sqlx::{PgPool, Postgres, Transaction};
 
 use super::feedback::{reject_at_completion, CraftReject};
@@ -218,6 +220,42 @@ pub async fn apply_craft_transaction(
             send_reject(env, ids, &why).await;
             resync_inventory(env, pool, ids).await;
             Err(why)
+        }
+    }
+}
+
+/// Run a plan that is not a player's induction (a GM grant) and, when it
+/// commits, bring the client up to date and dispatch the cell's inventory
+/// events, as [`apply_craft_transaction`] does. A failure sends the player
+/// nothing and changes nothing; a rollback that is not a game-rule refusal
+/// logs `persist_failed`, and the caller reports the error to whoever
+/// asked.
+pub async fn apply_grant_transaction(
+    env: &InductionEnv,
+    pool: &Arc<PgPool>,
+    ids: &JobIds,
+    plan: &CraftTransaction,
+) -> Result<CraftApplied, CraftTxError> {
+    match run_craft_transaction(pool, ids, plan).await {
+        Ok((applied, pending)) => {
+            client_sync::send_applied(env, pool, ids, &applied).await;
+            if let Some(cell_tx) = &env.cell_tx {
+                for (outbox_id, payload) in pending {
+                    outbox::try_dispatch_now(
+                        pool.as_ref(),
+                        cell_tx,
+                        outbox_id,
+                        ids.entity_id,
+                        payload,
+                    )
+                    .await;
+                }
+            }
+            Ok(applied)
+        }
+        Err(err) => {
+            log_persist_failed(ids, &err);
+            Err(err)
         }
     }
 }

@@ -190,6 +190,7 @@ impl Fixture {
             account_id: self.account_id as u32,
             player_id: self.player_id,
             entity_id: self.entity_id,
+            gm_entity_id: None,
         }
     }
 

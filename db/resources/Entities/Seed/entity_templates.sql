@@ -939,6 +939,51 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- moniker 7054 `DN_Ob_Ms_Human_Castle_Crate` ('Crate').
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (304, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, 1, 0, 10, 7054, NULL, NULL, NULL, 'Debug Hub - Loot Crate', 'mob', NULL, NULL, NULL, NULL, 6, NULL, 3, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
+--
+-- NEW CONTENT (debug hub, crafting): templates 310-314, four crafting
+-- stations and a crafting supplies vendor in the Castle_CellBlock stasis room
+-- (spawnlist 410-414, docs/content/debug-hub.md). The crafting campaign owns
+-- templates 310-329 (docs/analysis/crafting/).
+--
+-- A station is any entity whose `flags` carry an ENTITYFLAG_Craft_* bit; the
+-- cell's 1 Hz station tick reports every one within 5 units to the base,
+-- which names it as the machine in onUpdateCraftingOptions (140). Each
+-- station carries all four bits, Craft 2048 | Research 4096 | RevEng 8192 |
+-- Alloying 16384, so any one of them opens every crafting page. The
+-- remaining 4 (ENTITYFLAG_DoNotDrop) and the mesh, body set, faction and
+-- level copy template 19, the Cellblock terminal prop that already renders
+-- in this world. The names are the client's own station monikers.
+--
+-- interaction_type is 0 on purpose. The INT_Machine_* bits (56-60) would give
+-- a machine cursor and minimap icon, but nothing on the server answers a
+-- click on one, and a cursor that does nothing breaks the rule that every
+-- click gets feedback. The station works by proximity, not by a click: stand
+-- next to it and open the crafting window (J).
+--
+-- moniker 27180 `DN_Cft_Ob_CraftingStation_BM_001` ('BioMedical Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (310, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27180, NULL, NULL, NULL, 'Debug Hub - BioMedical Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- moniker 27182 `DN_Cft_Ob_CraftingStation_Elec_001` ('Electronics Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (311, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27182, NULL, NULL, NULL, 'Debug Hub - Electronics Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- moniker 27184 `DN_Cft_Ob_CraftingStation_Pow_001` ('Power Systems Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (312, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27184, NULL, NULL, NULL, 'Debug Hub - Power Systems Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- moniker 27186 `DN_Cft_Ob_CraftingStation_Mat_001` ('Materials Crafting Station').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (313, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27186, NULL, NULL, NULL, 'Debug Hub - Materials Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- NEW CONTENT (debug hub, crafting): crafting supplies vendor. Buy list 310
+--   sells everything the crafting UAT recipes need at 1 naquadah each (see
+--   item_list_items.sql). A purchase lands in the main bag (1), where the
+--   crafting verbs, Blueprint items and Paradigm Guides all accept it; a
+--   Field Crafting Tool counts only once the player moves it to the crafting
+--   bag (15). No sell, repair or recharge list: this vendor only sells.
+--   INT_VendorGeneral (65536) routes the click to the store, as on 300.
+-- moniker 27239 `DN_npc_ven_OmegaSite_CommonCraftingMat` ('Common Materials
+--   Components'), a crafting vendor name the client ships; no moniker says
+--   'Crafting Supplies'.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (314, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Boots00_00,BS_HumanMale.BS_HM_Base_Hands00_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Head_04,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 65536, 570, 1, 0, 1, 27239, NULL, NULL, NULL, 'Debug Hub - Crafting Supplies', 'mob', 310, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
 -- Pets campaign (docs/analysis/pets/): templates 350-359 are pets (360-369 are
 -- the campaign's placed NPCs, see template 360 below). A pet
 -- template is class 'pet', carries ENTITYFLAG_Pet (1024), has no loot table
@@ -1048,5 +1093,11 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- Name: entity_templates_template_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('entity_templates_template_id_seq', 304, true);
+-- Past every seeded row and every reserved campaign template block (Harset
+-- 200-299, debug hub 300-304, crafting 310-329, organizations 330-349, pets
+-- 350-369, bank 370-389, social 390-399), and never lowered, so a row
+-- inserted without a template_id never takes a seeded or reserved id. Raise
+-- the floor when a block is reserved above 399; live_db_seed_sequences.rs
+-- guards it.
+SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 399), true);
 
