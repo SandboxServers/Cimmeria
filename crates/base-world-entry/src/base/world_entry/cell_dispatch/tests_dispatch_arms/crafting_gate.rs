@@ -273,13 +273,12 @@ async fn station_report_sends_options_only_after_login_and_on_change() {
     assert!(typed.filter_to(addr).is_empty(), "no send before login");
 
     // The login send has happened (all sections empty).
-    connected
-        .lock()
-        .unwrap()
-        .get_mut(&addr)
-        .unwrap()
-        .crafting_options
-        .last_sent = Some(CraftingOptions::default());
+    {
+        let mut clients = connected.lock().unwrap();
+        let inputs = &mut clients.get_mut(&addr).unwrap().crafting_options;
+        inputs.armed = true;
+        inputs.last_sent = Some(CraftingOptions::default());
+    }
 
     dispatch(
         report([Some(900), Some(901), None, Some(902)]),

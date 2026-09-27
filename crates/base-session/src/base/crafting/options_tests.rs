@@ -26,6 +26,7 @@ fn station_and_tool_fixture() -> CraftingSessionOptions {
         stations: [Some(900), None, Some(901), Some(902)],
         tools: vec![tool(20_001, 10), tool(20_002, 35)],
         craft_anywhere: false,
+        armed: false,
         last_sent: None,
     }
 }
@@ -326,6 +327,110 @@ impl Transport for FailingTransport {
     fn local_addr(&self) -> std::io::Result<SocketAddr> {
         Ok("127.0.0.1:1".parse().unwrap())
     }
+}
+
+/// A change send that did not go out is not recorded as received: the next
+/// identical report sends it again. Recording before the send would
+/// suppress every identical report after a transient failure, leaving the
+/// window on stale options until something else changed.
+#[tokio::test]
+async fn a_failed_change_send_is_retried_by_the_next_identical_report() {
+    let (typed, transport, addr, connected, entity_to_addr) = session();
+    let failing: Arc<dyn Transport> = Arc::new(FailingTransport);
+    login_options(ENTITY, PLAYER_ID, &None, &connected, &entity_to_addr).await;
+    let near = [Some(900), None, None, None];
+
+    handle_station_report(report(near), &failing, &connected, &entity_to_addr).await;
+    handle_station_report(report(near), &transport, &connected, &entity_to_addr).await;
+
+    let expected = CraftingOptions {
+        crafting: CraftingInfo {
+            items: vec![],
+            entities: vec![900],
+        },
+        ..CraftingOptions::default()
+    };
+    // The failed attempt consumed sequence 0.
+    assert_eq!(typed.filter_to(addr), vec![packet(&expected, 1)]);
+}
+
+/// A login bundle that did not go out leaves nothing recorded, so the next
+/// report sends 140 even when it matches the login options (here: nothing
+/// in reach either time).
+#[tokio::test]
+async fn a_failed_login_bundle_is_retried_by_the_next_report() {
+    let (typed, transport, addr, connected, entity_to_addr) = session();
+    let failing: Arc<dyn Transport> = Arc::new(FailingTransport);
+    push_crafting_on_login(
+        ENTITY,
+        PLAYER_ID,
+        &None,
+        client(&failing, &connected, &entity_to_addr),
+    )
+    .await;
+
+    handle_station_report(report([None; 4]), &transport, &connected, &entity_to_addr).await;
+
+    assert_eq!(
+        typed.filter_to(addr),
+        vec![packet(&CraftingOptions::default(), 1)],
+        "the failed bundle consumed sequence 0"
+    );
+}
+
+/// A crafting-bag read that fails at login clears the session's tools, so
+/// the login options name no tool, as the `lookup_failed` WARN says. Keeping
+/// the old tools would show a tool the player may no longer carry.
+#[tokio::test]
+async fn a_failed_login_tool_read_sends_no_tool() {
+    let (_typed, _transport, addr, connected, entity_to_addr) = session();
+    connected
+        .lock()
+        .unwrap()
+        .get_mut(&addr)
+        .unwrap()
+        .crafting_options
+        .tools = vec![tool(20_002, 35)];
+    // Nothing listens on port 1, so the bag read fails fast.
+    let unreachable = sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(200))
+        .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
+        .expect("lazy pool");
+
+    let options = login_options(
+        ENTITY,
+        PLAYER_ID,
+        &Some(Arc::new(unreachable)),
+        &connected,
+        &entity_to_addr,
+    )
+    .await
+    .expect("the login always yields options");
+
+    assert_eq!(options, CraftingOptions::default(), "no tool named");
+    assert!(connected.lock().unwrap()[&addr]
+        .crafting_options
+        .tools
+        .is_empty());
+}
+
+/// A world entry forgets the stations of the world being left and holds
+/// change sends until the next login send. The tools and craft anywhere
+/// stay.
+#[test]
+fn begin_world_entry_forgets_stations_and_disarms() {
+    let mut inputs = station_and_tool_fixture();
+    inputs.craft_anywhere = true;
+    inputs.armed = true;
+    inputs.last_sent = Some(CraftingOptions::default());
+
+    inputs.begin_world_entry();
+
+    assert_eq!(inputs.stations, [None; 4]);
+    assert!(!inputs.armed);
+    assert_eq!(inputs.last_sent, None);
+    assert_eq!(inputs.tools, station_and_tool_fixture().tools);
+    assert!(inputs.craft_anywhere);
 }
 
 /// A 140 change that fails to send is a WARN `push_failed` with the

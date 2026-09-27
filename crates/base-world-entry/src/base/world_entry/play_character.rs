@@ -49,6 +49,13 @@ pub async fn handle_play_character(
         if let Some(c) = clients.get_mut(&addr) {
             if !c.world_entry_sent {
                 c.world_entry_sent = true;
+                // A new character enters the world: no crafting stations,
+                // tools or "craft anywhere" carry over from whatever this
+                // connection played before, and no crafting options go out
+                // until this entry's login send. Before the cell entity is
+                // created, so every station report that follows is this
+                // character's.
+                c.crafting_options = Default::default();
                 Some((
                     Arc::clone(&c.pending_acks),
                     Arc::clone(&c.next_seq),

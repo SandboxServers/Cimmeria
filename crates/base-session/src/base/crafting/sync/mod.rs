@@ -43,7 +43,7 @@ use cimmeria_wire::crafting::{
 };
 use sqlx::PgPool;
 
-use super::options::login_options;
+use super::options::{login_options, record_sent};
 use super::persistence::load_crafting_state_reporting;
 use super::telemetry::{account_id_of, bundle_send_failure, sql_error_class, witness_send_failure};
 use crate::base::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
@@ -221,20 +221,25 @@ pub async fn push_crafting_on_login(
     }
     let state = loaded.as_ref().map(|(state, _)| state);
     match push_login_bundle(entity_id, state, options.as_ref(), client).await {
-        Ok(()) => tracing::info!(
-            target: "crafting",
-            event = "login_sync",
-            account_id,
-            player_id,
-            entity_id,
-            disciplines = state.map(|s| s.discipline_ids.len()),
-            paradigms = state.map(|s| s.racial_paradigm_levels.len()),
-            blueprints = state.map(|s| s.blueprint_ids.len()),
-            asp = state.map(|s| s.applied_science_points),
-            defaults_applied = loaded.as_ref().map(|&(_, applied)| applied),
-            crafting_options = options.is_some(),
-            "crafting state pushed at login"
-        ),
+        Ok(()) => {
+            tracing::info!(
+                target: "crafting",
+                event = "login_sync",
+                account_id,
+                player_id,
+                entity_id,
+                disciplines = state.map(|s| s.discipline_ids.len()),
+                paradigms = state.map(|s| s.racial_paradigm_levels.len()),
+                blueprints = state.map(|s| s.blueprint_ids.len()),
+                asp = state.map(|s| s.applied_science_points),
+                defaults_applied = loaded.as_ref().map(|&(_, applied)| applied),
+                crafting_options = options.is_some(),
+                "crafting state pushed at login"
+            );
+            if let Some(options) = options {
+                record_sent(entity_id, options, client.connected, client.entity_to_addr);
+            }
+        }
         Err(error_class) => tracing::warn!(
             target: "crafting",
             event = "login_sync_failed",

@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
+use super::super::persistence::load_crafting_state;
 use super::*;
 use crate::base::ConnectedClientState;
 use crate::test_support::{
@@ -256,7 +257,48 @@ async fn allcraft_from_a_non_gm_writes_nothing() {
     assert!(!craft_anywhere_on(&sessions));
 }
 
-/// A save that matches no player row is a WARN `persist_failed` naming the
+/// Live DB, the lost-update guard: `.allcraft` reads and writes under the
+/// player-row lock. A writer holding the row with an uncommitted ASP change
+/// makes the grant wait, and the committed change survives it. A read
+/// outside the lock sees the old ASP, and the save (which waits on the row
+/// anyway) writes that stale value back over the committed change.
+#[tokio::test]
+async fn allcraft_waits_for_a_concurrent_writer_and_keeps_its_change() {
+    let pool = require_db_or_skip!();
+    cleanup(&pool).await;
+    insert_player(&pool).await;
+    let sessions = sessions(2);
+
+    let mut holder = pool.begin().await.expect("begin");
+    sqlx::query("UPDATE sgw_player SET applied_science_points = 9 WHERE player_id = $1")
+        .bind(PLAYER)
+        .execute(&mut *holder)
+        .await
+        .expect("hold the row with an uncommitted change");
+    let (grant_pool, grant_sessions) = (pool.clone(), sessions.clone());
+    let grant = tokio::spawn(async move {
+        run(&grant_pool, &grant_sessions).await;
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let finished_while_held = grant.is_finished();
+    holder.commit().await.expect("commit");
+    tokio::time::timeout(std::time::Duration::from_secs(10), grant)
+        .await
+        .expect("the grant finishes once the row is free")
+        .expect("grant task");
+    let reloaded = load_crafting_state(&pool, PLAYER).await;
+    cleanup(&pool).await;
+    let reloaded = reloaded.expect("reload");
+
+    assert!(!finished_while_held, "the grant waits for the row lock");
+    assert_eq!(
+        reloaded.applied_science_points, 9,
+        "the concurrent writer's committed ASP survives the grant"
+    );
+    assert_eq!(reloaded.discipline_ids.len(), 78, "and the grant landed");
+}
+
+/// A player row that is not there is a WARN `persist_failed` naming the
 /// phase, with the paired `rows_affected` / `expected`, and turns nothing on.
 #[tokio::test]
 async fn allcraft_for_a_missing_player_logs_the_shortfall() {
@@ -272,7 +314,7 @@ async fn allcraft_for_a_missing_player_logs_the_shortfall() {
         .expect("persist_failed is logged");
     for (field, value) in [
         ("event", "persist_failed"),
-        ("phase", "save_crafting_state"),
+        ("phase", "load_crafting_state_locked"),
         ("rows_affected", "0"),
         ("expected", "1"),
     ] {

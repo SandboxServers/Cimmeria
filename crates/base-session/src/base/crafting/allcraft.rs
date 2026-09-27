@@ -17,7 +17,7 @@ use cimmeria_entity::crafting::CraftingState;
 use cimmeria_wire::crafting::GmAllCraft;
 
 use super::options::enable_craft_anywhere;
-use super::persistence::{load_crafting_state, save_crafting_state};
+use super::persistence::{load_crafting_state_locked, save_crafting_state_in};
 use super::request::CraftCtx;
 use super::sync::build_crafting_state_bundle;
 use super::telemetry::sql_error_class;
@@ -169,8 +169,42 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
                 return;
             }
         };
-    let mut state = match load_crafting_state(pool, player_id).await {
-        Ok(s) => s,
+    // Load, grant and save in one transaction holding the player row
+    // `FOR UPDATE`, like every other crafting write: a spend or GM grant
+    // racing `.allcraft` waits for it instead of being overwritten by a
+    // save built from a stale read.
+    let persist_failed = |phase: &'static str, e: &sqlx::Error| {
+        // A player row that is not there is `RowNotFound`: no row matched.
+        let rows_affected: Option<u64> = matches!(e, sqlx::Error::RowNotFound).then_some(0);
+        tracing::warn!(
+            target: "crafting",
+            event = "persist_failed",
+            phase,
+            rows_affected,
+            expected = 1u64,
+            error_class = sql_error_class(e),
+            account_id,
+            player_id,
+            entity_id,
+            error = %e,
+            "allcraft save failed; nothing was granted"
+        );
+    };
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            persist_failed("begin", &e);
+            feedback("allcraft: failed, the crafting state could not be saved.".into()).await;
+            return;
+        }
+    };
+    let mut state = match load_crafting_state_locked(&mut tx, player_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            persist_failed("load_crafting_state_locked", &sqlx::Error::RowNotFound);
+            feedback("allcraft: failed, the crafting state could not be saved.".into()).await;
+            return;
+        }
         Err(e) => {
             lookup_failed("load_state", &e);
             feedback("allcraft: failed, the crafting state could not be loaded.".into()).await;
@@ -187,23 +221,12 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
     discipline_ids.sort_unstable();
     blueprint_ids.sort_unstable();
     apply_all_craft(&mut state, &discipline_ids, &blueprint_ids, &paradigm_ids);
-    if let Err(e) = save_crafting_state(pool, player_id, &state).await {
-        // `save_crafting_state` reports an UPDATE that matched no player row
-        // as `RowNotFound`.
-        let rows_affected: Option<u64> = matches!(e, sqlx::Error::RowNotFound).then_some(0);
-        tracing::warn!(
-            target: "crafting",
-            event = "persist_failed",
-            phase = "save_crafting_state",
-            rows_affected,
-            expected = 1u64,
-            error_class = sql_error_class(&e),
-            account_id,
-            player_id,
-            entity_id,
-            error = %e,
-            "allcraft save failed; nothing was granted"
-        );
+    let saved = match save_crafting_state_in(&mut tx, player_id, &state).await {
+        Ok(()) => tx.commit().await.map_err(|e| ("commit", e)),
+        Err(e) => Err(("save_crafting_state", e)),
+    };
+    if let Err((phase, e)) = saved {
+        persist_failed(phase, &e);
         feedback("allcraft: failed, the crafting state could not be saved.".into()).await;
         return;
     }

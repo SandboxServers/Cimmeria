@@ -42,7 +42,9 @@ use crate::mercury::build_player_entity_method_packet;
 
 /// A session's crafting-options inputs and the last options sent. One per
 /// connection (`ConnectedClientState::crafting_options`), so it dies with
-/// the connection and survives a world change.
+/// the connection. A world entry clears the stations and disarms the
+/// change sends ([`Self::begin_world_entry`]); the tools and "craft
+/// anywhere" carry over a world change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CraftingSessionOptions {
     /// The nearest station per verb, as the cell last reported.
@@ -52,8 +54,26 @@ pub struct CraftingSessionOptions {
     /// `.allcraft`'s "craft anywhere": every verb allowed, with the player
     /// named as its own machine.
     pub craft_anywhere: bool,
-    /// The options last sent; `None` until the login send.
+    /// Whether the login send of this world entry has been attempted.
+    /// Change sends wait for it, so none reaches an entity the client has
+    /// not created yet.
+    pub armed: bool,
+    /// The options the client last received: recorded only after a send
+    /// went out, so a failed send is retried by the next report.
     pub last_sent: Option<CraftingOptions>,
+}
+
+impl CraftingSessionOptions {
+    /// A world entry is starting: the stations in reach belong to the old
+    /// world, and the client is about to drop its player entity. Forget the
+    /// stations and wait for the next login send. Called before the base
+    /// asks the cell for the new entity, so every station report that
+    /// follows is the new world's.
+    pub fn begin_world_entry(&mut self) {
+        self.stations = StationSet::default();
+        self.armed = false;
+        self.last_sent = None;
+    }
 }
 
 /// Why the options were re-evaluated: the `cause` field of
@@ -136,10 +156,12 @@ fn per_section(options: &CraftingOptions, pick: impl Fn(&CraftingInfo) -> &[i32]
 }
 
 /// Apply `update` to `entity_id`'s session inputs and decide whether 140 is
-/// due: always when `force`, otherwise only after the login send and only
-/// when the options changed. A due send is recorded as sent and logged
-/// (`options_changed`); the caller sends it. `None` when nothing is due or
-/// the entity has no session (a `lookup_failed` WARN).
+/// due: always when `force` (which also arms the change sends), otherwise
+/// only after the login send and only when the options differ from what
+/// the client last received. A due send is logged (`options_changed`); the
+/// caller sends it and, once it went out, records it with [`record_sent`].
+/// `None` when nothing is due or the entity has no session (a
+/// `lookup_failed` WARN).
 fn update_options(
     entity_id: u32,
     force: bool,
@@ -159,13 +181,9 @@ fn update_options(
         let inputs = &mut client.crafting_options;
         update(inputs);
         let options = build_options(entity_id, inputs);
-        let due = force
-            || inputs
-                .last_sent
-                .as_ref()
-                .is_some_and(|sent| *sent != options);
-        if due {
-            inputs.last_sent = Some(options.clone());
+        let due = force || (inputs.armed && inputs.last_sent.as_ref() != Some(&options));
+        if force {
+            inputs.armed = true;
         }
         Some((identity, due.then_some(options)))
     });
@@ -214,7 +232,7 @@ async fn update_and_send(
     else {
         return false;
     };
-    send_options(
+    if send_options(
         entity_id,
         identity,
         &options,
@@ -222,12 +240,42 @@ async fn update_and_send(
         connected,
         entity_to_addr,
     )
-    .await;
+    .await
+    {
+        record_sent(entity_id, options, connected, entity_to_addr);
+    }
     true
 }
 
+/// Record `options` as what `entity_id`'s client last received. Call only
+/// after the send went out: an unrecorded failure leaves the next identical
+/// report due, so the client is not stuck on stale options.
+pub fn record_sent(
+    entity_id: u32,
+    options: CraftingOptions,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let Some(addr) = entity_to_addr
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&entity_id).copied())
+    else {
+        return;
+    };
+    if let Some(client) = connected
+        .lock()
+        .ok()
+        .as_mut()
+        .and_then(|c| c.get_mut(&addr))
+    {
+        client.crafting_options.last_sent = Some(options);
+    }
+}
+
 /// Send one `onUpdateCraftingOptions` to the player's own client; a failed
-/// send is a `push_failed` WARN (`what = "crafting_options"`).
+/// send is a `push_failed` WARN (`what = "crafting_options"`). Returns
+/// whether it went out.
 async fn send_options(
     entity_id: u32,
     (account_id, player_id): (u32, Option<i32>),
@@ -235,7 +283,7 @@ async fn send_options(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
+) -> bool {
     let args = crafting_options_args(options);
     let outcome = send_to_witness_reliable(
         transport,
@@ -255,18 +303,20 @@ async fn send_options(
         },
     )
     .await;
-    if let Some(reason) = outcome.failure_reason() {
-        tracing::warn!(
-            target: "crafting",
-            event = "push_failed",
-            what = "crafting_options",
-            reason,
-            account_id,
-            player_id,
-            entity_id,
-            "onUpdateCraftingOptions did not reach the client"
-        );
-    }
+    let Some(reason) = outcome.failure_reason() else {
+        return true;
+    };
+    tracing::warn!(
+        target: "crafting",
+        event = "push_failed",
+        what = "crafting_options",
+        reason,
+        account_id,
+        player_id,
+        entity_id,
+        "onUpdateCraftingOptions did not reach the client"
+    );
+    false
 }
 
 /// The cell reported a new station set (`CellToBaseMsg::CraftingStations`).
@@ -369,11 +419,13 @@ pub fn craft_anywhere(
         .unwrap_or(false)
 }
 
-/// The login options: read the crafting bag, record the options as sent
-/// and return them for the login crafting bundle, which carries them even
-/// when every section is empty, so the window starts from the server's
-/// state. A world change runs this again. `None` when the entity has no
-/// session.
+/// The login options: read the crafting bag, arm the change sends and
+/// return the options for the login crafting bundle, which carries them
+/// even when every section is empty, so the window starts from the
+/// server's state. The caller records them with [`record_sent`] once the
+/// bundle went out. A world change runs this again. A failed bag read
+/// clears the tools, so the options go out without any. `None` when the
+/// entity has no session.
 pub async fn login_options(
     entity_id: u32,
     player_id: i32,
@@ -395,9 +447,10 @@ pub async fn login_options(
                     error = %e,
                     "crafting bag read failed at login; sending options without tools"
                 );
-                None
+                Some(Vec::new())
             }
         },
+        // No database: nothing to read, the session's tools stand.
         None => None,
     };
     update_options(

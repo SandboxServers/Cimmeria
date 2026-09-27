@@ -28,6 +28,8 @@ mod play_character;
 mod reanchor_player;
 mod teleport;
 
+#[cfg(test)]
+mod crafting_options_world_entry_tests;
 /// SS-00: the online name index across world entry and reanchor.
 #[cfg(test)]
 mod player_index_lifecycle_tests;
