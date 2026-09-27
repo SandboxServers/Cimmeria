@@ -63,6 +63,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `crates/cell-methods/.../player/crafting/mod.rs`: CR-01, then CR-05 (gate), then CR-10 (respec arm). Verb packets add files only.
 - `crates/base-session/src/base/crafting/mod.rs` and the base dispatch arm: CR-01 adds the `Crafting` arm; later packets add files and `mod` lines only.
 - `base/world_entry/methods/progression/mod.rs` (`grant_xp`): CR-12 only.
+- `crates/wire/src/cell/messages/cell_to_base.rs` is **over the 700-line cap** (793 lines after CR-01). The first Wave 1 packet that adds a `CellToBaseMsg` variant (CR-05's `CraftingStations`) splits the crafting variants out into their own file first.
 - `crates/entity/src/cell_entity/entity_struct.rs` is **over the 700-line cap**. CR-05's per-player station state goes in a new file, not in that struct's body.
 - `db/resources/Entities/Seed/entity_templates.sql`, `Worlds/Seed/spawnlist.sql`: CR-11 only, inside 310-329 and 410-429. Message the guilds session (cimmeria-fa) and the pets session (cimmeria-b5) before merging.
 - `crates/wire/src/containers.rs`, `crates/entity/src/inventory.rs` (`BAG_SIZES`), `inventory/move_/mod.rs` and `inventory/grant/validation.rs`: owned by the Bank/Vault campaign (cimmeria-97, BV-01 lands first; it keeps container 15 movable) and the guilds vault packet (cimmeria-fa, containers 19 and 20). CR-05 may add a post-commit bag-15 notification in `move_/mod.rs`; message both sessions before that packet starts and rebase onto their changes.
@@ -81,7 +82,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-01
 
-**Status:** Ready. **Scope title:** Catalog, constants, serializers, argument parsing, request message. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
+**Status:** Review (#862). **Scope title:** Catalog, constants, serializers, argument parsing, request message. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
 
 **Scope:**
 
@@ -96,7 +97,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-E1
 
-**Status:** Ready. **Scope title:** Client evidence for the crafting UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra, read-only on the client; the client Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only, plus Ghidra comment fixes.
+**Status:** Review (#858). **Scope title:** Client evidence for the crafting UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra, read-only on the client; the client Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only, plus Ghidra comment fixes.
 
 **Questions, each answered with an address or file:line:**
 
@@ -111,7 +112,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-E2
 
-**Status:** Ready. **Scope title:** Blueprint items, Paradigm Guide items and Field Crafting Tools in the client's cooked data. **Depends:** none. **Writer:** game-archaeology-specialist (cooked PAKs through `crates/resources`, Ghidra read-only). Documentation plus a proposed mapping file; no Rust.
+**Status:** Writing. **Scope title:** Blueprint items, Paradigm Guide items and Field Crafting Tools in the client's cooked data. **Depends:** none. **Writer:** game-archaeology-specialist (cooked PAKs through `crates/resources`, Ghidra read-only). Documentation plus a proposed mapping file; no Rust.
 
 **Questions, each answered with evidence:**
 
@@ -124,7 +125,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-02
 
-**Status:** Ready. **Scope title:** One consistent game clock for timer expiries. **Depends:** none. **Advisor:** bigworld-engine-advisor, combat-systems-advisor.
+**Status:** Review (#864). **Scope title:** One consistent game clock for timer expiries. **Depends:** none. **Advisor:** bigworld-engine-advisor, combat-systems-advisor.
 
 **Scope:**
 
@@ -177,11 +178,11 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-06
 
-**Status:** BlockedDependency (CR-01). CR-02 is soft: until it lands, the timer uses the best available clock. **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
+**Status:** BlockedDependency (CR-01, CR-02). **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
 
 **Scope:**
 
-- `session.rs`: a per-player `CraftingSession` with one active induction and a FIFO queue of at most 10 (D-CR13). Starting an induction sends `onTimerUpdate(type 16, SourceID = entity, TotalTime = 3.0, expiry)`. Dropped on logout or world change without consuming. A test clock drives expiry.
+- `session.rs`: a per-player `CraftingSession` with one active induction and a FIFO queue of at most 10 (D-CR13). Starting an induction sends `onTimerUpdate(type 16, SourceID = entity, TotalTime = 3.0, BigWorldTimeComplete = game_time_secs() + 3.0)` (D-CR24). Dropped on logout or world change without consuming. A test clock drives expiry.
 - `transaction.rs`: one transaction that locks the player and the named items, checks that each is owned and sits in bag 1 or 15, consumes by design across bags 1 and 15 (C-31), grants outputs by stack merge or free slot, and adjusts expertise. After commit: `onRemoveItem` for drained stacks, `onUpdateItem` for changed ones, and a full resync as the fallback. A failure rolls back and sends feedback.
 - An injectable RNG for the verbs that roll.
 - No verb uses it yet; CR-07 to CR-09 plug in.

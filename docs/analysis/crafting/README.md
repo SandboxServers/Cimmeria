@@ -74,6 +74,8 @@ These are PROPOSED coordinator defaults. Under the owner's autonomous-run author
 | D-CR21 | PROPOSED | A **Field Crafting Tool** counts only in the crafting bag (`INV_Crafting`, 15), the only inventory bag its `container_sets` allows. Its science comes from the name prefix (BMAS = Biomedical, EAS = Electronic, PSAS = Power Systems, MAS = Materials) unless CR-E2 finds a cooked-data field. A tool enables craft, research and reverse engineering for disciplines of its science whose `tech_competency` is at most the tool's `tech_comp`. Alloying needs a station. Tools are not consumed. | Owner answer D-CR05. The tools' `tech_comp` runs 5-55 in steps of 5, which lines up with the disciplines' `tech_competency` (1-50). |
 | D-CR22 | PROPOSED | Blueprint and Paradigm Guide items are used through the ordinary `useItem` path. A seed table maps each item to its blueprint or paradigm, built from the client's cooked data by CR-E2; items the client does not ship are added to the seed only if the client can render them. Using an already-known blueprint or a guide at 10 is refused with feedback, and consumes nothing. | Owner answers D-CR03 and D-CR04. Seeds are the source of truth. |
 | D-CR23 | PROPOSED | **Opening a respec is server-side.** CR-E1 found that the client sends `respecCrafting` (100) only from the Yes button of the 112 prompt, and no client UI sends a first request. So a player-usable `.respeccraft` console command sends `onCraftingRespecPrompt(0)`, records a 60 s pending respec, and the following 100 executes it. A 100 with nothing pending is refused with feedback. This refines D-CR16. | [crafting-client-ui.md](../../reverse-engineering/findings/crafting-client-ui.md) Q1. |
+| D-CR24 | **LANDED** (CR-02, #864) | D-CR20's fallback is not needed. The server has one process-wide game clock (`crates/wire/src/mercury/game_clock/`), and the client's clock is proven to follow `SET_GAME_TIME`, `TICK_SYNC` and `updateFrequencyNotification`. The induction starts its timer with `game_time_secs() + 3.0`. Stored induction state keeps the time remaining, not the absolute expiry, because a server restart resets the clock. | CR-E1 (#858) and CR-02 (#864): handler registration and clock object traced in SGW.exe. |
+| D-CR25 | PROPOSED | A malformed crafting request (truncated arguments, forged array count) is dropped with a WARN at target `crafting` and no player feedback. Only a forged packet can produce one, so D-CR14 does not apply. | CR-01. |
 
 ## Coordinator launch prompt
 
@@ -93,6 +95,5 @@ The owner runs [CR-14](work-packets.md#cr-14-owner-uat-colo-after-the-release) o
 
 ## Where confidence is low
 
-- The client's clock domain for `BigWorldTimeComplete` (C-13, C-32). Until CR-02 lands, the bar may not draw.
 - Whether `onErrorCode` shows any text in the client, and which of the feedback paths the player actually sees (the same open question as AT-E1 Q2).
 - The seed is Project Giza's reconstruction, while the client checks against its own cooked blueprints and disciplines. A mismatch shows up only in UAT, as a request the client refuses to send.

@@ -3,14 +3,14 @@
 > Type: how-to. Audience: any later session and the owner.
 > Updated: 2026-09-26. Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
 
-## State: plan PR #851 open, Wave 0 dispatched on `main` @ `95366c59`
+## State: plan merged (#851), Wave 0 in review
 
 | Packet | Status | Branch / PR | Notes |
 |---|---|---|---|
-| Plan | Review | `docs/crafting-campaign-plan` | This ledger |
-| CR-01 | Writing | `craft/cr01-catalog` | Bottleneck; merge first |
-| CR-E1 | Writing | `craft/cre1-client-evidence` | Documentation only |
-| CR-02 | Writing | `craft/cr02-game-clock` | May stop with a report if the clock needs a client patch |
+| Plan | Integrated | #851 | This ledger |
+| CR-01 | Review | #862 | Bottleneck; merge first |
+| CR-E1 | Review | #858 | Documentation only |
+| CR-02 | Review | #864 | No client patch needed (D-CR24); closes #271; #718 is superseded, left for its author |
 | CR-E2 | Writing | `craft/cre2-cooked-items` | Blueprint items, Paradigm Guides, Field Tools |
 | CR-03 to CR-15 | BlockedDependency | | See work-packets.md |
 
