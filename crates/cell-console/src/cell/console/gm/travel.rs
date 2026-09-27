@@ -70,6 +70,9 @@ pub(super) async fn handle_goto_xyz(
     // destination, not a facing, so the GM keeps looking where they were.
     space_mgr.update_position_preserving_facing(entity_id, position, [0.0; 3]);
     space_mgr.note_authorized_teleport(entity_id); // reseed validator clock
+                                                   // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+                                                   // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
     if !forward_to_base(
         tx,
         CellToBaseMsg::TeleportPlayer {
@@ -177,6 +180,9 @@ pub(super) async fn handle_goto_location(
         "gmGotoLocation: teleporting to {} ({}, {}, {})",
         world_name, position[0], position[1], position[2]
     );
+    // SS-D3: a gate travel ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+    // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
     // Enqueue the transfer first; only tear the entity out of the space once the
     // send is confirmed. A closed channel must not leave the GM removed locally
     // with no transfer in flight.
@@ -363,6 +369,9 @@ pub(super) async fn handle_goto(
     // point them at it.
     space_mgr.update_position_preserving_facing(entity_id, dest, [0.0; 3]);
     space_mgr.note_authorized_teleport(entity_id); // reseed validator clock
+                                                   // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+                                                   // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
     if !forward_to_base(
         tx,
         CellToBaseMsg::TeleportPlayer {
@@ -464,6 +473,9 @@ pub(super) async fn handle_summon(
     // whichever way it was.
     space_mgr.update_position_preserving_facing(target_eid, caller_pos, [0.0; 3]);
     space_mgr.note_authorized_teleport(target_eid); // reseed validator clock
+                                                    // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+                                                    // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, target_eid).await;
     if is_player
         && !forward_to_base(
             tx,

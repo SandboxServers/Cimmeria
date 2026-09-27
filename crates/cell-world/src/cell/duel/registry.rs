@@ -64,6 +64,11 @@ pub struct Duel {
     /// the PvP flag, `onDuelEntitiesSet` and each other as a combat source.
     /// The end clears exactly these. `None` before the engage.
     pub engaged_entities: Option<[u32; 2]>,
+    /// `[challenger, target]`: since when each duelist has been outside the
+    /// arena (D-SS19), or `None` while inside. SS-D3's range end fires when
+    /// one of these is older than
+    /// [`RANGE_GRACE`](super::limits::RANGE_GRACE).
+    pub out_of_range_since: [Option<Instant>; 2],
 }
 
 impl Duel {
@@ -147,6 +152,15 @@ impl GmAborted {
             GmAborted::Challenge(_) => "challenge",
         }
     }
+}
+
+/// What [`DuelRegistry::withdraw`] removed.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Withdrawn {
+    /// Challenges to or from the player, now gone.
+    pub challenges: Vec<PendingChallenge>,
+    /// A duel that was still in its countdown, now gone.
+    pub countdown: Option<Duel>,
 }
 
 /// Every pending challenge and duel on this cell.
@@ -351,6 +365,7 @@ impl DuelRegistry {
                 engage_at: now + COUNTDOWN,
             },
             engaged_entities: None,
+            out_of_range_since: [None, None],
         };
         self.duels.insert(duel.duel_id, duel);
         self.in_duel.insert(duel.challenger, duel.duel_id);
@@ -392,6 +407,45 @@ impl DuelRegistry {
             .collect();
         due.sort_unstable();
         due
+    }
+
+    /// Record whether duelist `side` (0 = challenger, 1 = target) is outside
+    /// the arena: `Some(since)` starts or keeps the clock, `None` clears it.
+    /// Returns the previous value, so the caller can log the transition.
+    pub fn set_out_of_range(
+        &mut self,
+        duel_id: DuelId,
+        side: usize,
+        since: Option<Instant>,
+    ) -> Option<Instant> {
+        let duel = self.duels.get_mut(&duel_id)?;
+        std::mem::replace(&mut duel.out_of_range_since[side], since)
+    }
+
+    /// Withdraw everything `player_id` has open short of an engaged duel:
+    /// the challenge addressed to them, the challenge they sent, and a duel
+    /// still in its countdown. No cooldown starts: nobody declined. Used
+    /// when the player disconnects, travels or dies (SS-D3), so the other
+    /// side is told at once instead of at the expiry or the engage.
+    pub fn withdraw(&mut self, player_id: i32) -> Withdrawn {
+        let mut challenges = Vec::new();
+        if let Some(p) = self.remove_pending(player_id) {
+            challenges.push(p);
+        }
+        if let Some(&target) = self.pending_from.get(&player_id) {
+            if let Some(p) = self.remove_pending(target) {
+                challenges.push(p);
+            }
+        }
+        let countdown = self
+            .duel_of(player_id)
+            .filter(|d| matches!(d.state, DuelState::StartPending { .. }))
+            .map(|d| d.duel_id)
+            .and_then(|id| self.end_duel(id));
+        Withdrawn {
+            challenges,
+            countdown,
+        }
     }
 
     /// Remove a duel and both players' index entries.
