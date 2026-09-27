@@ -36,7 +36,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 - `MailOp` (`crates/wire/src/cell/messages/data.rs`) gains `Send(MailSend)`, `TakeCash { mail_id }`, `TakeItem { mail_id, container_id, slot_id }`, `PayCod { mail_id }` and `Return { mail_id }`. `MailSend` holds the decoded, length-checked `CM 44` arguments; the cell does no SQL and no name lookup.
 - Duels follow the organizations pattern: `BaseToCellMsg::Duel(DuelBaseToCell)` and, if a packet needs one, `CellToBaseMsg::Duel(DuelCellToBase)`, each a nested enum in its own file, so later packets add variants without editing `base_to_cell.rs` or `cell_to_base.rs`. Every variant carries `player_id` and `entity_id` from server session state, never from a payload.
 
-**Wire** (`crates/wire`): `EMailFlags` and `EMailResultCodes` constants pinned by a literal test against `enumerations.xml` (including the 4092 and 8196 anomalies, audit A-12); `build_send_mail_result`; a `MessageAttachment` serializer (`alias.xml:103-111`); `build_on_duel_challenge` [143]; the PvP-flag `onEntityProperty(4, v)`; and, only after SS-E1 D-Q5, builders for 151-153. Each has a byte-exact test.
+**Wire** (`crates/wire`): `EMailFlags` and `EMailResultCodes` constants pinned by a test that **parses `entities/defs/enumerations.xml` and compares each Rust constant with the value it finds there**. A test that asserts a constant against a hard-coded copy of itself (such as `assert_eq!(CONST, 4092)`) does not count, because it would pass if the constant and the test changed together. This follows the organizations convention (`docs/analysis/organizations/work-packets.md:32`) and covers the 4092 and 8196 anomalies (audit A-12); `build_send_mail_result`; a `MessageAttachment` serializer (`alias.xml:103-111`); `build_on_duel_challenge` [143]; the PvP-flag `onEntityProperty(4, v)`; and, only after SS-E1 D-Q5, builders for 151-153. Each has a byte-exact test.
 
 **Schema** (`db/sgw/Mail/`, edited in place, no migration):
 
@@ -46,6 +46,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 | `sgw_gate_mail_item`: the escrowed item row, one per `mail_id`, every instance column kept (D-SS08) | SS-M2 |
 | `sgw_gate_mail.returned boolean NOT NULL DEFAULT false` | SS-M3 |
 | `sgw_gate_mail.expires_at integer` (epoch seconds, like `sent_time`), NULL for archived mail | SS-M4 |
+| `sgw_gate_mail.quarantined boolean NOT NULL DEFAULT false`: an already-returned mail that expired while still holding an item or gift cash. It is excluded from the mailbox list and the cap, and its escrow row is kept (D-SS04 path 3) | SS-M4 |
 
 **Mail code layout.** SS-M1 turns `crates/base-methods/src/base/world_entry/methods/mail/mod.rs` (316 lines) into a directory: `mod.rs` (the `MailOp` router), `read.rs` (headers, body, archive, delete), `send.rs`, then `take.rs`, `cod.rs`, `return_.rs` and `expiry.rs` from later packets. The Bank campaign's vault aliases replace one function, `send::resolve_recipient_flags` (D-SS07).
 
@@ -283,10 +284,15 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 **Scope:**
 
 - D-SS11: on every delivery (player send, return, COD payment, expiry return) an online recipient is told, through `OnlinePlayerIndex`.
-- D-SS04: `expires_at` set at insert and cleared by archive; a base sweep task (interval and batch size as constants, one transaction per mail) returns or deletes expired mail by the SS-M3 return path; a login-time sweep for the player's own mailbox.
+- D-SS04: `expires_at` set at insert and cleared by archive; a base sweep task (interval and batch size as constants, one transaction per mail) takes the three D-SS04 terminal paths: return by the SS-M3 path with an unpaid COD cancelled and its amount zeroed, delete when nothing is attached, or quarantine an already-returned mail that still holds an item or gift cash; a login-time sweep for the player's own mailbox.
 - The Expires column shown by the client matches `expires_at` (the SS-E1 M-Q3 constant).
 
-**Acceptance:** live-DB sweep tests on an injected clock: an unpaid COD returns once and its item stays in escrow; plain mail is deleted; archived mail never expires; a sweep racing a take moves the item once (type 5); the notification fanout reaches only an online recipient.
+**Acceptance:** live-DB sweep tests on an injected clock:
+
+- an unpaid COD returns once, its item stays in escrow, and **its COD amount is zeroed**, never readable as gift cash (`expired_cod_returns_without_its_price`);
+- an already-returned mail that expires with an item is quarantined, not deleted, and its escrow row survives (`expired_returned_mail_is_quarantined_not_deleted`);
+- no escrow row is ever left without its mail row (`no_orphaned_escrow_after_sweep`);
+- plain mail is deleted; archived mail never expires; a sweep racing a take moves the item once (type 5); the notification fanout reaches only an online recipient.
 
 ### SS-U1: GM mail tooling
 
