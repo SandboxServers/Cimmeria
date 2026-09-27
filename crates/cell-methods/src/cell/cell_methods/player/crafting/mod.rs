@@ -1,112 +1,151 @@
-use crate::cell::client_methods::player::ON_UPDATE_DISCIPLINE;
-use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+//! Crafting cell methods 95-100: argument parsing and the forward to the
+//! base.
+//!
+//! The cell parses every argument per `entities/defs/SGWPlayer.def:914-949`
+//! and forwards one `CellToBaseMsg::Crafting` per request ([`forward`]). The
+//! base owns the rules, the database and the feedback
+//! (`cimmeria-base-session`'s `base::crafting`). Campaign ledger:
+//! `docs/analysis/crafting/`.
+//!
+//! A request whose bytes do not parse is dropped with a WARN at target
+//! `crafting` and no feedback: the 2009 client always sends the def's exact
+//! shape, so only a forged or corrupted packet lands there.
+
 use tokio::sync::mpsc;
+
+use crate::cell::client_methods::player::ON_UPDATE_DISCIPLINE;
+use crate::cell::messages::{CellToBaseMsg, CraftVerb};
+use crate::cell::space_manager::SpaceManager;
 
 use super::constants::*;
 
-// onUpdateDiscipline (method 136) is the canonical client callback constant
-// in crate::cell::client_methods::player — imported above. Wire payload:
-// `[disciplineSeqId: i32 LE][expertise: i32 LE]` — 8 bytes total. See
-// `cimmeria_entity::crafting::serialize_on_update_discipline` for the
-// serializer; `docs/protocol/client-method-dispatch-table.md` row 136 for
-// the source.
+mod forward;
 
+#[cfg(test)]
+mod tests;
+
+/// Route one crafting method. Returns `false` only for an index outside
+/// 95-100, so the caller can report it as unhandled.
 pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
     args: &[u8],
-    _tx: &mpsc::Sender<CellToBaseMsg>,
-    _space_mgr: &mut SpaceManager,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
 ) -> bool {
-    match method_index {
-        SPEND_APPLIED_SCIENCE_POINTS => {
-            // Phase 1: route only — full ASP-spend validation (paradigm
-            // gate, prerequisite expertise, DB UPDATE) lands in Phase 2.
-            // We parse the discipline id so the trace is debuggable even
-            // before the mutation logic exists.
-            if args.len() >= 4 {
-                let discipline_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(
-                    entity_id,
-                    discipline_id,
-                    "UNIMPLEMENTED: spendAppliedSciencePoints (Phase 2)"
-                );
-            } else {
-                tracing::warn!(
-                    entity_id,
-                    args_len = args.len(),
-                    "spendAppliedSciencePoints: malformed/truncated args (need 4 bytes)"
-                );
-            }
-            true
+    if !(SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING).contains(&method_index) {
+        return false;
+    }
+    match parse_verb(method_index, args) {
+        Ok(verb) => forward::forward(entity_id, verb, tx, space_mgr).await,
+        Err(error) => {
+            tracing::warn!(
+                target: "crafting",
+                event = "malformed",
+                entity_id,
+                method_index,
+                args_len = args.len(),
+                ?error,
+                "crafting request arguments did not parse; dropped"
+            );
         }
+    }
+    true
+}
 
-        CRAFT => {
-            if args.len() >= 4 {
-                let craft_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, craft_id, "UNIMPLEMENTED: craft");
-            } else {
-                tracing::warn!(
-                    entity_id,
-                    args_len = args.len(),
-                    "craft: malformed/truncated args"
-                );
-            }
-            true
+/// Why a crafting method's arguments did not parse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArgsError {
+    /// The payload ended inside the argument starting at `offset`.
+    Truncated { offset: usize },
+    /// Bytes were left over after the last argument.
+    TrailingBytes { extra: usize },
+    /// `method_index` is not one of 95-100.
+    NotACraftingMethod,
+}
+
+/// Parse the arguments of crafting method `method_index` into its verb.
+///
+/// `ItemID` is an `INT32` alias (`alias.xml`), and an `ARRAY<ItemID>` is a
+/// `u32` count followed by that many `INT32`s. The whole payload must be
+/// consumed.
+pub fn parse_verb(method_index: u16, args: &[u8]) -> Result<CraftVerb, ArgsError> {
+    let mut r = ArgReader { args, offset: 0 };
+    let verb = match method_index {
+        SPEND_APPLIED_SCIENCE_POINTS => CraftVerb::Spend {
+            discipline_id: r.i32()?,
+        },
+        CRAFT => CraftVerb::Craft {
+            blueprint_id: r.i32()?,
+            items: r.i32_array()?,
+            quantity: r.i32()?,
+        },
+        RESEARCH => CraftVerb::Research {
+            item_id: r.i32()?,
+            kickers: r.i32_array()?,
+        },
+        REVERSE_ENGINEER => CraftVerb::ReverseEngineer { item_id: r.i32()? },
+        ALLOYING => CraftVerb::Alloy {
+            blueprint_id: r.i32()?,
+            current_tier_item_id: r.i32()?,
+            lower_tier_items: r.i32_array()?,
+        },
+        RESPEC_CRAFTING => CraftVerb::Respec,
+        _ => return Err(ArgsError::NotACraftingMethod),
+    };
+    match args.len() - r.offset {
+        0 => Ok(verb),
+        extra => Err(ArgsError::TrailingBytes { extra }),
+    }
+}
+
+/// A little-endian cursor over one method's arguments.
+struct ArgReader<'a> {
+    args: &'a [u8],
+    offset: usize,
+}
+
+impl ArgReader<'_> {
+    fn i32(&mut self) -> Result<i32, ArgsError> {
+        let bytes = self
+            .args
+            .get(self.offset..self.offset + 4)
+            .ok_or(ArgsError::Truncated {
+                offset: self.offset,
+            })?;
+        self.offset += 4;
+        Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    fn i32_array(&mut self) -> Result<Vec<i32>, ArgsError> {
+        let start = self.offset;
+        let count = self.i32()? as u32 as usize;
+        // Bound the count by the bytes present before allocating: a forged
+        // count of u32::MAX must not reserve 16 GiB.
+        if count.saturating_mul(4) > self.args.len() - self.offset {
+            return Err(ArgsError::Truncated { offset: start });
         }
-
-        RESEARCH => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: research");
-            true
-        }
-
-        REVERSE_ENGINEER => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: reverseEngineer");
-            true
-        }
-
-        ALLOYING => {
-            if args.len() >= 4 {
-                let craft_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, craft_id, "UNIMPLEMENTED: alloying");
-            } else {
-                tracing::warn!(
-                    entity_id,
-                    args_len = args.len(),
-                    "alloying: malformed/truncated args"
-                );
-            }
-            true
-        }
-
-        RESPEC_CRAFTING => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: respecCrafting");
-            true
-        }
-
-        _ => false,
+        (0..count).map(|_| self.i32()).collect()
     }
 }
 
 /// Emit an `onUpdateDiscipline` callback to the client.
 ///
 /// Sends a `CellToBaseMsg::EntityMethodCall` with method index 136 and the
-/// 8-byte payload from `cimmeria_entity::crafting::serialize_on_update_discipline`.
+/// 8-byte payload from `cimmeria_wire::crafting::update_discipline_args`.
 /// The BaseApp encodes the extended-encoding wire bytes and ships the packet.
 ///
-/// Phase 1 only: nothing inside this module calls this yet — the actual
-/// expertise-mutating activities (craft/research/alloy/spendASP) land in
-/// Phase 2 and will invoke this. We expose it on the public surface now
-/// so the wire shape is locked in by [`tests::send_on_update_discipline_emits_correct_message`].
-#[allow(dead_code)] // Phase 2 callers (spendAppliedSciencePoints, gainExpertise) wire this up.
+/// Nothing calls this yet: the expertise-changing verbs run on the base and
+/// send 136 from there. The wire shape stays pinned by
+/// [`tests::send_on_update_discipline_emits_correct_message`].
+#[allow(dead_code)] // Kept for a cell-side expertise change (e.g. `.allcraft`, CR-05).
 pub async fn send_on_update_discipline(
     entity_id: u32,
     discipline_id: i32,
     expertise: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
-    let args = cimmeria_entity::crafting::serialize_on_update_discipline(discipline_id, expertise);
+    let args = cimmeria_wire::crafting::update_discipline_args(discipline_id, expertise);
     // mpsc::Sender::send().await returns Err only when the receiver has been
     // dropped — i.e., the base task is shutting down. A dropped client at
     // this point isn't actionable from the cell, so we log-and-continue.
@@ -125,108 +164,5 @@ pub async fn send_on_update_discipline(
             error = %e,
             "onUpdateDiscipline send dropped — base receiver gone",
         );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::make_space_manager_with_player;
-
-    /// Routing regression guard for the SPEND_APPLIED_SCIENCE_POINTS (95)
-    /// dispatch fix. The original code routed only `CRAFT..=RESPEC_CRAFTING`
-    /// (96..=100) to crafting; index 95 fell through to the social arm,
-    /// which has no case for 95 either, so the message silently dropped
-    /// (now warn-logged by the unhandled-dispatcher path, but still
-    /// wrong-handler).
-    ///
-    /// Bug shape: a refactor that re-narrows the crafting sub-range back to
-    /// `CRAFT..=RESPEC_CRAFTING` (or sets the lower bound to a constant
-    /// that compares > 95) will fail this test. The outer dispatcher
-    /// must return `true` for method 95 — meaning the crafting handler
-    /// matched it and returned `true`, not that the social arm caught
-    /// it without a body (which would also return false here).
-    #[tokio::test]
-    async fn spend_applied_science_points_routes_to_crafting() {
-        let mut mgr = make_space_manager_with_player(1);
-        let (tx, _rx) = mpsc::channel(8);
-
-        // Send 4 bytes of payload (a discipline_id) so the handler takes
-        // the parse-and-log path, not the truncated-args warn path.
-        // Either path returns `true`, but the parse path is the realistic
-        // success shape.
-        let args = 42i32.to_le_bytes();
-        let handled = dispatch(1, SPEND_APPLIED_SCIENCE_POINTS, &args, &tx, &mut mgr).await;
-        assert!(
-            handled,
-            "SPEND_APPLIED_SCIENCE_POINTS (95) must route to the crafting handler \
-             and return true. If this fails, the dispatch range in dispatch.rs has \
-             regressed to exclude 95.",
-        );
-    }
-
-    /// Companion to `spend_applied_science_points_routes_to_crafting`:
-    /// pin that `CRAFT` (96) also reaches this handler. The two indices
-    /// are the two ends of the "crafting initiating activity" wedge —
-    /// SPEND_ASP (95) is the unlock entry, CRAFT (96) is the most-used
-    /// command. A routing regression that narrowed the range to
-    /// `CRAFT..=RESPEC_CRAFTING - 1` would still pass the 95 test if
-    /// 95 were left in the range, but would fail this one.
-    #[tokio::test]
-    async fn craft_routes_to_crafting() {
-        let mut mgr = make_space_manager_with_player(1);
-        let (tx, _rx) = mpsc::channel(8);
-
-        let args = 7i32.to_le_bytes();
-        let handled = dispatch(1, CRAFT, &args, &tx, &mut mgr).await;
-        assert!(
-            handled,
-            "CRAFT (96) must route to the crafting handler and return true. \
-             A false here means the crafting sub-range in dispatch.rs no \
-             longer covers 96 — either the upper bound shifted down or the \
-             arm itself was removed.",
-        );
-    }
-
-    /// `send_on_update_discipline` enqueues an `EntityMethodCall` with
-    /// method index 136 and the 8-byte payload `[disciplineId LE][expertise LE]`.
-    /// Pins the wire-message shape end-to-end — entity-crate serializer
-    /// produces the bytes, cell module wraps them in the right
-    /// CellToBaseMsg variant with the right method_index.
-    ///
-    /// Bug shape this catches: an off-by-one in method_index (e.g., 135 or
-    /// 137), a swap of disciplineId/expertise in the wire bytes, or a
-    /// regression that changes the args length.
-    #[tokio::test]
-    async fn send_on_update_discipline_emits_correct_message() {
-        let (tx, mut rx) = mpsc::channel(8);
-
-        send_on_update_discipline(42, 7, 50, &tx).await;
-
-        let msg = rx
-            .recv()
-            .await
-            .expect("send_on_update_discipline must enqueue exactly one CellToBaseMsg");
-
-        match msg {
-            CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index,
-                args,
-            } => {
-                assert_eq!(entity_id, 42);
-                assert_eq!(
-                    method_index, 136,
-                    "onUpdateDiscipline method index per docs/protocol/client-method-dispatch-table.md \
-                     is 136 — a change here desyncs the client's crafting UI",
-                );
-                assert_eq!(
-                    args,
-                    vec![0x07, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00],
-                    "wire payload: disciplineId=7 LE, expertise=50 LE (0x32)",
-                );
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
     }
 }

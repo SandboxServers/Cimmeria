@@ -65,6 +65,13 @@ fn serialize_on_player_communication(
     args
 }
 
+/// The `onPlayerCommunication` argument bytes of one feedback line: speaker
+/// `"SYSTEM"`, flags `0`, channel `CHAN_FEEDBACK`. Player-facing feedback
+/// (`base::crafting::feedback`) rides the same line.
+pub fn feedback_line_args(text: &str) -> Vec<u8> {
+    serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text)
+}
+
 /// Send a single definitive GM-feedback line to the entity's own client.
 ///
 /// Speaker is `"SYSTEM"`, flags `0`, channel `CHAN_FEEDBACK`. Mirrors how
@@ -83,7 +90,7 @@ pub async fn send_gm_feedback_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let payload = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
+    let payload = feedback_line_args(text);
     send_to_witness_reliable(
         transport,
         connected,

@@ -1,6 +1,7 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
+use crate::crafting::CraftRequest;
 
 /// Messages sent from CellApp to BaseApp.
 #[derive(Debug)]
@@ -510,6 +511,12 @@ pub enum CellToBaseMsg {
         player_id: i32,
         amount: i32,
     },
+
+    /// A crafting request from the client (methods 95-100), parsed and
+    /// station-gated by the cell. The base validates it against the
+    /// `CraftingCatalog` and the player's state, and answers every outcome,
+    /// rejections included, with visible feedback (D-CR14).
+    Crafting(CraftRequest),
 
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol

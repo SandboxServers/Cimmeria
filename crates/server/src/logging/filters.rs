@@ -138,6 +138,13 @@ use crate::otel;
 /// catalog, interactions, methods, console), so removing any of their rows
 /// above would change nothing and no guard could tell it was gone.
 ///
+/// `crafting` (CR-01, `docs/analysis/crafting/`) is the crafting campaign's
+/// event target on both halves of the split: the cell's malformed-request
+/// drops and forwards, the catalog load, and the base's `request` and
+/// `rejected` events (later `induction_started`, `completed`,
+/// `persist_failed`). It is `debug` so a later DEBUG row reaches SigNoz
+/// without a filter change.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -166,6 +173,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire::base=debug,\
                 cimmeria_wire::cell=debug,\
                 cimmeria_wire::containers=debug,\
+                cimmeria_wire::crafting=debug,\
                 cimmeria_wire::firehose=debug,\
                 cimmeria_wire::hex=debug,\
                 cimmeria_wire::mercury=debug,\
@@ -209,6 +217,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 world_entry=info,\
                 vendor=info,mail=info,progression=info,inventory=info,mission=info,\
                 abilities=debug,\
+                crafting=debug,\
                 content.resolve=debug,\
                 dialog.display=debug,\
                 mission.step_context=debug,\

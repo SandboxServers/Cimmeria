@@ -303,6 +303,10 @@ fn scan_finds_known_targets() {
         // Emitted only by crates/base-methods (wave B2).
         ("trade.atomic_swap", Level::DEBUG),
         ("progression", Level::WARN),
+        // Emitted by crates/base-session (the crafting request and its
+        // rejection, CR-01) and crates/cell-methods (malformed requests).
+        ("crafting", Level::INFO),
+        ("crafting", Level::WARN),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),
