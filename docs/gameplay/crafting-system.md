@@ -168,18 +168,19 @@ Every crafting verb that takes time (craft, research, reverse engineer, alloy) w
 
 **The transaction.** A completing item verb runs one database transaction:
 
-1. Take the player-wide inventory lock and the per-bag locks (main bag, crafting bag, and every product's bag), then lock the player row.
-2. Lock each item instance the request named and check that it still belongs to the player and sits in the main bag (1) or the crafting bag (15).
-3. Consume each component by design across those two bags, the crafting bag first. The client names only one instance per component type, so a requirement that spans several stacks is met by design, not by the named instance. A bank stack never counts.
+1. Take the player-wide inventory lock and the per-bag locks (main bag, crafting bag, and every product's bag). The player row is read but never locked: the vendor stack locks inventory rows before the player row, and vendor purchase takes the same player-wide lock first, so neither can deadlock with a completion.
+2. Lock each item instance the request named and check that it still belongs to the player, is of the design the verb named it for, and sits in the main bag (1) or the crafting bag (15).
+3. Take any exact consumption from its named instance only (reverse engineering consumes the one item it names). Then consume each component by design across those two bags, the crafting bag first. The client names only one instance per component type, so a requirement that spans several stacks is met by design, not by the named instance. A bank stack never counts.
 4. Place each product in the first main or crafting bag its `container_sets` list. The 752 crafting components list `{17,15}` (bank first) and land in the crafting bag. A product merges into one unbound stack with room for the whole quantity, or takes free slots, one per full stack.
 5. Add expertise to disciplines the player knows, capped at 100.
 
-After the commit the client gets `onRemoveItem` for emptied stacks, one `onUpdateItem` for changed ones and `onUpdateDiscipline` for each changed discipline; the cell gets the inventory events through the outbox. If anything fails, nothing is applied and the player gets one of these lines, followed by a full inventory resync:
+After the commit the client gets `onRemoveItem` for emptied stacks, one `onUpdateItem` for changed ones and `onUpdateDiscipline` for each changed discipline (if an item update fails to go out, the removal is sent again with a full `onUpdateItem`); the cell gets the inventory events through the outbox. If anything fails, nothing is applied and the player gets one of these lines, followed by a full inventory resync:
 
 | Why | Line |
 |---|---|
 | A named component is gone or not the player's | A component is no longer in your inventory. Nothing was used. |
 | A named component left the main and crafting bags | Components must be in your backpack or crafting bag. Nothing was used. |
+| A named component is of another design | A chosen component is not the one this needs. Nothing was used. |
 | Too few components in the two bags | You do not have enough components. Nothing was used. |
 | No room for the product | Not enough room in your bags for the result. Nothing was used. |
 | The product fits no carried bag | The result cannot be placed in your bags. Nothing was used. |
