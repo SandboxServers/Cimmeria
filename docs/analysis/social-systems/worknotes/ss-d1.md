@@ -45,7 +45,7 @@ New log target `duel`, `duel=debug` in `OTEL_FILTER`, pinned at DEBUG and WARN i
 |---|---|---|---|---|
 | `duel.challenge_refused` | DEBUG (WARN for `not_in_world`, `no_cell_channel`, `cell_channel_closed`) | base | `reason = not_in_world \| challenger_loading \| squad_duel \| target_not_online \| target_loading \| target_ambiguous \| target_not_in_world \| target_ignoring \| no_cell_channel \| cell_channel_closed`, `target_name` (first 64 chars), `squad_duel` | `challenge_rejects_squad_duel`, `challenge_rejects_offline_target`, `challenge_rejects_ambiguous_target` |
 | `duel.challenge_malformed` | WARN | base | `reason` from the decoder (`truncated`, `trailing_bytes`, `lone_surrogate`) | `challenge_malformed_payload_is_dropped` |
-| `duel.challenge_forwarded` | DEBUG | base | `target_entity_id` | `challenge_forwards_session_ids_to_the_cell` (forward asserted) |
+| `duel.challenge_forwarded` | DEBUG | base | logged only after the cell channel accepted the challenge; `target_entity_id` | `challenge_forwards_session_ids_to_the_cell` (forward asserted) |
 | `rate_limit.exceeded` | WARN / DEBUG | base (SS-00 helper) | `category = duel_challenge` and the bucket state | `challenge_rate_limited` |
 | `duel.challenge_refused` | DEBUG | cell | `reason = challenger_gone \| self_challenge \| target_gone \| cross_space \| out_of_range \| challenger_busy \| target_busy \| pair_cooldown`, `distance`, `range` | one test per reason in `tests/challenge.rs` |
 | `duel.challenge_sent` | DEBUG | cell | logged only after the prompt was queued; `duel_id`, `target_entity_id`, `target_account_id`, `space_id`, `distance`, `expires_in_ms` | `challenge_prompts_the_target_byte_exact` |
@@ -144,6 +144,14 @@ Each mutation was applied, the named filter run, and the file restored (`/tmp/ss
 - **`duel.challenge_sent` after the prompt is queued.** It was logged before `send_challenge_prompt`, so a failed send produced both `challenge_sent` and `challenge_undelivered`. It is now logged only after a successful queue, so each challenge logs exactly one of the two. `undelivered_prompt_withdraws_the_challenge` now asserts that no `challenge_sent` row exists; logging it early again failed that test and `challenge_prompts_the_target_byte_exact`. The SigNoz queries above were updated.
 - **Rebased** onto `origin/main` @ `a53c6c3c8` (SS-C2, #887). Two conflicts, both adjacent-line additions: the `messages/mod.rs` module doc (SS-C2's `chat_cell_to_base` line and this packet's `duel_base_to_cell` line, both kept) and the `observability.md` target table (SS-C2's `chat` row and the `duel` row, both kept once each).
 - **Commands (after the rebase, restored files touched first):** `lane.sh cargo fmt --all -- --check` (clean); `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods -p cimmeria-base` (1403 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-server`, `--all-targets -- -D warnings` (clean); `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` (52 passed).
+
+### PR #888 review round 4
+
+- **Feedback when the cell is unreachable.** The `no_cell_channel` and `cell_channel_closed` refusals returned silently, although the challenger has a valid entity. Both now send "Your duel challenge could not be delivered." (`TEXT_CHALLENGE_UNDELIVERED`, the line the cell uses for an undelivered prompt) before returning. This follows the visible-feedback-on-first-press rule.
+- **`duel.challenge_forwarded` after the send.** It is now logged only after `tx.send` succeeds. The error path logs only `cell_channel_closed`.
+- **Guards:** `challenge_with_no_cell_channel_tells_the_challenger` covers both branches (a dropped receiver and `cell_tx = None`). It asserts the line, the refusal row with `target_player_id`, and no `challenge_forwarded` row. `challenge_forwards_session_ids_to_the_cell` now also asserts the `challenge_forwarded` row on success. Removing either feedback line failed the new test, and so did logging `challenge_forwarded` before the send.
+- **No rebase** this round; head still sits on `origin/main` @ `a53c6c3c8`.
+- **Commands:** `lane.sh cargo fmt --all -- --check` (clean); `lane.sh cargo clippy -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods -p cimmeria-base --all-targets -- -D warnings` (clean); `lane.sh cargo nextest run` on those five with the `duel` filter (50 passed).
 
 ## Docs
 

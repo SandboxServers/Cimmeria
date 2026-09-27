@@ -9,8 +9,8 @@
 use std::time::{Duration, Instant};
 
 use cimmeria_wire::cell::client_methods::duel::{
-    TEXT_CHALLENGER_LOADING, TEXT_SQUAD_DUEL_UNSUPPORTED, TEXT_TARGET_AMBIGUOUS,
-    TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
+    TEXT_CHALLENGER_LOADING, TEXT_CHALLENGE_UNDELIVERED, TEXT_SQUAD_DUEL_UNSUPPORTED,
+    TEXT_TARGET_AMBIGUOUS, TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
 };
 use cimmeria_wire::mercury::types::WorldEntryInfo;
 
@@ -153,6 +153,7 @@ fn refused_naming(capture: &LogCaptureGuard, reason: &str, target_player_id: &st
 /// and the squad byte.
 #[tokio::test]
 async fn challenge_forwards_session_ids_to_the_cell() {
+    let capture = LogCapture::install();
     let mut h = Harness::new();
     h.challenge("teal'c", 0, Instant::now()).await;
     assert_eq!(
@@ -169,6 +170,11 @@ async fn challenge_forwards_session_ids_to_the_cell() {
         h.feedback().is_empty(),
         "the cell answers a forwarded challenge"
     );
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "duel.challenge_forwarded")
+            && c.has_field("target_player_id", "8")));
 }
 
 /// D-SS21: burst 2, one more every 15 s. The third challenge inside the
@@ -356,6 +362,35 @@ async fn out_of_world_flood_is_rate_limited() {
     assert!(ev.has_field("category", "duel_challenge"));
     assert!(ev.has_field("player_id", "7"));
     assert!(ev.has_field("account_id", "70"));
+}
+
+/// No path to the cell (the channel closed, or none at all): the challenger
+/// still gets a line on the first press, the refusal is logged, and no
+/// `duel.challenge_forwarded` row claims the cell has it.
+#[tokio::test]
+async fn challenge_with_no_cell_channel_tells_the_challenger() {
+    let capture = LogCapture::install();
+    let mut h = Harness::new();
+    let (tx, rx) = mpsc::channel::<BaseToCellMsg>(1);
+    drop(rx);
+    h.cell_tx = Some(tx);
+    h.challenge("Teal'c", 0, Instant::now()).await;
+    assert_eq!(h.feedback(), vec![TEXT_CHALLENGE_UNDELIVERED.to_string()]);
+    assert!(refused_naming(&capture, "cell_channel_closed", "8"));
+
+    let mut h = Harness::new();
+    h.cell_tx = None;
+    h.challenge("Teal'c", 0, Instant::now()).await;
+    assert_eq!(h.feedback(), vec![TEXT_CHALLENGE_UNDELIVERED.to_string()]);
+    assert!(refused_naming(&capture, "no_cell_channel", "8"));
+
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "duel.challenge_forwarded")),
+        "nothing reached the cell, so nothing may log challenge_forwarded"
+    );
 }
 
 /// A payload that does not decode is logged at WARN and not answered.

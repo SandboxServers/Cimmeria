@@ -28,8 +28,8 @@ use std::time::Instant;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::base::duel::decode_send_duel_challenge;
 use cimmeria_wire::cell::client_methods::duel::{
-    TEXT_CHALLENGER_LOADING, TEXT_SQUAD_DUEL_UNSUPPORTED, TEXT_TARGET_AMBIGUOUS,
-    TEXT_TARGET_IGNORING, TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
+    TEXT_CHALLENGER_LOADING, TEXT_CHALLENGE_UNDELIVERED, TEXT_SQUAD_DUEL_UNSUPPORTED,
+    TEXT_TARGET_AMBIGUOUS, TEXT_TARGET_IGNORING, TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
 };
 use tokio::sync::mpsc;
 
@@ -244,19 +244,9 @@ pub(super) async fn send_duel_challenge_at(
             reason = "no_cell_channel",
             "duel challenge not forwarded: no cell channel"
         );
+        send_feedback_line(&feedback, addr, TEXT_CHALLENGE_UNDELIVERED).await;
         return;
     };
-    tracing::debug!(
-        target: "duel",
-        event = "duel.challenge_forwarded",
-        %addr,
-        account_id = actor.account_id,
-        player_id = actor.player_id,
-        entity_id = actor.entity_id,
-        target_player_id,
-        target_entity_id,
-        "duel challenge passed the base checks; forwarded to the cell"
-    );
     let msg = BaseToCellMsg::Duel(DuelBaseToCell::Challenge {
         player_id: actor.player_id,
         entity_id: actor.entity_id,
@@ -276,7 +266,22 @@ pub(super) async fn send_duel_challenge_at(
             reason = "cell_channel_closed",
             "duel challenge could not be forwarded to the cell"
         );
+        send_feedback_line(&feedback, addr, TEXT_CHALLENGE_UNDELIVERED).await;
+        return;
     }
+    // Logged only once the cell has the challenge: the error path above
+    // logs `cell_channel_closed` instead, never both.
+    tracing::debug!(
+        target: "duel",
+        event = "duel.challenge_forwarded",
+        %addr,
+        account_id = actor.account_id,
+        player_id = actor.player_id,
+        entity_id = actor.entity_id,
+        target_player_id,
+        target_entity_id,
+        "duel challenge passed the base checks; forwarded to the cell"
+    );
 }
 
 /// The session's character is in the world and its client has created the
