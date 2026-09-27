@@ -16,6 +16,7 @@ use super::super::chat_gates::{
 use super::super::*;
 use crate::base::mutes::{mute_table, muted_text, MuteEntry};
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
+use cimmeria_base_session::base::organization::handlers::chat::ORG_CHAT_UNAVAILABLE_TEXT;
 use cimmeria_wire::cell::chat::{
     CHAN_CHAT, CHAN_COMMAND, CHAN_EMOTE, CHAN_FEEDBACK, CHAN_OFFICER, CHAN_SAY, CHAN_SERVER,
     CHAN_SPLASH, CHAN_SQUAD, CHAN_TEAM, CHAN_TELL, CHAN_YELL,
@@ -85,7 +86,11 @@ impl Harness {
             addr(SPEAKER_PORT),
             &self.dyn_transport,
             &self.connected,
-            &self.cell_tx,
+            super::super::chat::ChatRoutes {
+                cell_tx: &self.cell_tx,
+                entity_to_addr: &Arc::new(Mutex::new(HashMap::new())),
+                db_pool: &None,
+            },
             now,
         )
         .await;
@@ -223,9 +228,11 @@ async fn chat_rejects_unknown_channel_at_base() {
     }
 }
 
-/// The allowlist does not over-block: say, emote, yell and the four
-/// organization channels still reach the cell (the organizations campaign
-/// handles team, squad, command and officer there).
+/// The allowlist does not over-block: say, emote, yell and squad still
+/// reach the cell, and team, command and officer pass the allowlist to the
+/// base's organization chat (ORG-09), which never forwards them. With no
+/// database here, each of those three is answered with the "unavailable"
+/// line instead of the old cell "not supported yet".
 #[tokio::test]
 async fn chat_forwards_allowlisted_channels_to_the_cell() {
     let mut h = Harness::new(0x7300_0312, 0);
@@ -245,8 +252,47 @@ async fn chat_forwards_allowlisted_channels_to_the_cell() {
             .await;
     }
     let got: Vec<u8> = h.forwarded().into_iter().map(|(c, _)| c).collect();
-    assert_eq!(got, channels.to_vec());
-    assert!(h.feedback().is_empty());
+    assert_eq!(got, vec![CHAN_SAY, CHAN_EMOTE, CHAN_YELL, CHAN_SQUAD]);
+    assert_eq!(h.feedback(), vec![ORG_CHAT_UNAVAILABLE_TEXT; 3]);
+}
+
+/// ORG-09 runs after SS-C3's mute gate: a muted player's team, command or
+/// officer line gets the mute line, and the organization chat never sees
+/// it (no `org.chat` row, no "unavailable" line).
+#[tokio::test]
+async fn muted_player_org_line_refused_before_org_chat() {
+    const PID: i32 = 0x7300_0318;
+    let capture = LogCapture::install();
+    let mut h = Harness::new(PID, 0);
+    let t0 = Instant::now();
+    mute(PID, t0 + Duration::from_secs(60), t0);
+    for (i, channel) in [CHAN_TEAM, CHAN_COMMAND, CHAN_OFFICER].iter().enumerate() {
+        h.speak(*channel, "", "hi", t0 + Duration::from_secs(i as u64))
+            .await;
+    }
+    mute_table().unmute(PID, t0);
+    assert!(h.forwarded().is_empty());
+    let feedback = h.feedback();
+    assert_eq!(feedback.len(), 3, "{feedback:?}");
+    assert!(
+        !feedback.iter().any(|t| t == ORG_CHAT_UNAVAILABLE_TEXT),
+        "the org chat ran before the mute gate: {feedback:?}"
+    );
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "org.chat")),
+        "org.chat row for a muted line"
+    );
+    assert_eq!(
+        capture
+            .all()
+            .iter()
+            .filter(|c| c.has_field("event", "chat.muted_refused"))
+            .count(),
+        3
+    );
 }
 
 /// The allowlist accepts exactly the channels a player may use, by byte:

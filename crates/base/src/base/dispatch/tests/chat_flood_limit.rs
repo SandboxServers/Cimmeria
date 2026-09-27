@@ -61,7 +61,11 @@ impl Harness {
             self.addr,
             &self.dyn_transport,
             &self.connected,
-            &self.cell_tx,
+            super::super::chat::ChatRoutes {
+                cell_tx: &self.cell_tx,
+                entity_to_addr: &Arc::new(Mutex::new(HashMap::new())),
+                db_pool: &None,
+            },
             now,
         )
         .await;

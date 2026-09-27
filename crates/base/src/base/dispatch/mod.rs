@@ -139,7 +139,11 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 addr,
                 transport,
                 connected,
-                cell_tx,
+                chat::ChatRoutes {
+                    cell_tx,
+                    entity_to_addr,
+                    db_pool,
+                },
             )
             .await;
         }
