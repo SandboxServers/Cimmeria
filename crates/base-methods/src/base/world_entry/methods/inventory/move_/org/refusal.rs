@@ -54,6 +54,9 @@ pub(super) enum OrgMoveRefusal {
     QuantityExceedsStack,
     /// A bound item bound for a shared vault.
     BoundItem,
+    /// A database failure or a write that matched the wrong rows; logged
+    /// where it happened. The move rolled back.
+    MoveFailed,
 }
 
 impl OrgMoveRefusal {
@@ -67,6 +70,7 @@ impl OrgMoveRefusal {
             OrgMoveRefusal::InvalidSlot => "invalid_target_slot",
             OrgMoveRefusal::QuantityExceedsStack => "quantity_exceeds_stack",
             OrgMoveRefusal::BoundItem => "bound_item_not_org_storable",
+            OrgMoveRefusal::MoveFailed => "move_failed",
         }
     }
 
@@ -130,6 +134,9 @@ impl OrgMoveRefusal {
             OrgMoveRefusal::QuantityExceedsStack => "That stack is not that large.".to_owned(),
             OrgMoveRefusal::BoundItem => {
                 format!("Bound items cannot be stored in the {org} vault.")
+            }
+            OrgMoveRefusal::MoveFailed => {
+                "The item could not be moved. Please try again.".to_owned()
             }
         }
     }
@@ -285,24 +292,37 @@ pub(super) async fn refuse_org_move(
     let _ = tx.rollback().await; // Defensible silent: a read-only transaction; the locks go either way.
 }
 
-/// Take the move's locks in its order and find the dragged item.
+/// Take the move's locks in its order (the move lock, the actor's
+/// `sgw_player` row, the organization) and find the dragged item. A vault
+/// row is resent only while the player is a member of that organization.
 async fn lock_and_find(
     tx: &mut Transaction<'static, Postgres>,
     req: &MoveRequest,
     org_id: Option<i32>,
 ) -> Result<(Option<i32>, Option<Where>), sqlx::Error> {
+    sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
+        .bind(req.player_id)
+        .execute(&mut **tx)
+        .await?;
     let account_id: Option<i32> =
         sqlx::query_scalar("SELECT account_id FROM sgw_player WHERE player_id = $1 FOR KEY SHARE")
             .bind(req.player_id)
             .fetch_optional(&mut **tx)
             .await?;
-    if let Some(org_id) = org_id {
-        lock_org(tx, org_id).await?;
-    }
-    sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
-        .bind(req.player_id)
-        .execute(&mut **tx)
-        .await?;
+    let member_org = match org_id {
+        Some(org_id) if lock_org(tx, org_id).await?.is_some() => {
+            let member: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM sgw_organization_members \
+                 WHERE org_id = $1 AND player_id = $2)",
+            )
+            .bind(org_id)
+            .bind(req.player_id)
+            .fetch_one(&mut **tx)
+            .await?;
+            member.then_some(org_id)
+        }
+        _ => None,
+    };
     let carried: Option<Found> = sqlx::query_as(
         "SELECT type_id, stack_size, container_id, slot_id FROM sgw_inventory \
          WHERE character_id = $1 AND item_id = $2 FOR UPDATE",
@@ -314,7 +334,7 @@ async fn lock_and_find(
     if let Some(f) = carried {
         return Ok((account_id, Some(Where::Carried(f))));
     }
-    if let Some(org_id) = org_id {
+    if let Some(org_id) = member_org {
         let vaulted: Option<Found> = sqlx::query_as(
             "SELECT type_id, stack_size, container_id, slot_id FROM sgw_organization_vault_items \
              WHERE org_id = $1 AND item_id = $2 FOR UPDATE",

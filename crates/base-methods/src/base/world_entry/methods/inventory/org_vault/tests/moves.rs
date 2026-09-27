@@ -380,6 +380,27 @@ async fn the_verdict_must_open_this_orgs_vault() {
         &[("org_id", &team.to_string())],
     );
     assert_eq!(fx.vault(other).await, vec![(theirs, 0, 2)], "untouched");
+
+    // Server-authority review B1: with no session, the refusal must not
+    // resend (or lock) the organization the forged id points at. Fails if
+    // the verdict refusal uses the routing read's organization.
+    for vault in [
+        VaultAccess::NO_SESSION,
+        at_banker(VaultScope::Command, team),
+    ] {
+        client.transport.clear();
+        let capture = LogCapture::install();
+        mv(&fx, &client, 0, theirs, 1, 5, -1, vault).await;
+        let row = &bank(&capture, "org_move_rejected")[0];
+        assert!(
+            !row.has_field("org_id", &other.to_string()),
+            "the refusal names the victim org: {row:#?}"
+        );
+        assert!(
+            !client.saw_bytes(&inv_item(theirs, BANKABLE, 2, 0, 19)),
+            "another org's vault row reached this client"
+        );
+    }
     fx.teardown().await;
 }
 

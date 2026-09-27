@@ -24,6 +24,7 @@ use sqlx::PgPool;
 use crate::base::ConnectedClientState;
 use crate::test_support::{test_default_connected_client_state, TestTransport};
 
+mod move_bits;
 mod move_shapes;
 mod moves;
 mod open;

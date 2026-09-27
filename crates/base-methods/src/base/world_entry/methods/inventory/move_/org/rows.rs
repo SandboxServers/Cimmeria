@@ -2,8 +2,38 @@
 //! advisory locks, the dragged item's row and the target slot's occupant,
 //! each `FOR UPDATE`, from whichever table holds it (bank-vault BV-07).
 
+use super::super::container_policy::MoveEnd;
 use super::super::{InventoryInstanceRow, MoveRequest, Occupant};
 use super::{MoveTx, Side};
+
+/// The per-player advisory locks a move takes before ORG-LOCK: the move lock
+/// `(player, 0)`, then the carried container's `(player, container)`. For a
+/// withdrawal the carried container is the target; otherwise it is where
+/// the player's own row sits, read here without a row lock (the move lock
+/// already excludes the player's other moves) and re-checked once the row
+/// is locked. Returns the carried container locked, if any.
+pub(super) async fn move_locks(
+    tx: &mut MoveTx,
+    req: &MoveRequest,
+    vault_end: MoveEnd,
+) -> Result<Option<i32>, sqlx::Error> {
+    advisory(tx, req.player_id, 0).await?;
+    let carried =
+        match vault_end {
+            MoveEnd::Source => Some(req.target_container_id),
+            MoveEnd::Target => sqlx::query_scalar(
+                "SELECT container_id FROM sgw_inventory WHERE character_id = $1 AND item_id = $2",
+            )
+            .bind(req.player_id)
+            .bind(req.item_id)
+            .fetch_optional(&mut **tx)
+            .await?,
+        };
+    if let Some(c) = carried {
+        advisory(tx, req.player_id, c).await?;
+    }
+    Ok(carried)
+}
 
 /// `pg_advisory_xact_lock(player_id, key)`: `key` 0 is the move lock, a
 /// container id that container's lock (the personal move path's keys).

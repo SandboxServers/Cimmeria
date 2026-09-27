@@ -40,7 +40,7 @@ use crate::base::world_entry::methods::inventory::org_vault::access::{
 };
 use crate::base::world_entry::methods::inventory::org_vault::org_label;
 use refusal::{refuse_org_move, OrgMoveRefusal};
-use rows::{advisory, read_occupant, read_source};
+use rows::{move_locks, read_occupant, read_source};
 use rules::{entering_vault, has_bit};
 
 mod apply;
@@ -183,17 +183,23 @@ async fn run(
         refuse_org_move(&req, refusal, org_id, label, actor, vault, ctx).await;
     };
 
-    // 1. The cell's verdict for this vault.
-    if let Some(reason) = vault.org_vault_refusal(vault_container) {
-        let r = OrgMoveRefusal::Shared(MoveRefusal::VaultSession {
-            end: vault_end,
-            reason,
-        });
-        refuse(r, item_org, None).await;
-        return;
-    }
-    let Some((_, org_id)) = vault.open_org_vault() else {
-        return;
+    // 1. The cell's verdict for this vault. A refusal names the session's
+    // organization, never the routing read's: that one is whatever the
+    // client's `item_id` points at, and the snap-back would lock it and
+    // send its row to this client.
+    let org_id = match (
+        vault.org_vault_refusal(vault_container),
+        vault.open_org_vault(),
+    ) {
+        (None, Some((_, org_id))) => org_id,
+        (reason, session) => {
+            let r = OrgMoveRefusal::Shared(MoveRefusal::VaultSession {
+                end: vault_end,
+                reason: reason.unwrap_or("vault_scope_mismatch"),
+            });
+            refuse(r, session.map(|(_, o)| o), None).await;
+            return;
+        }
     };
     if item_org.is_some_and(|o| o != org_id) {
         // The item is in another organization's vault.
@@ -224,10 +230,23 @@ async fn run(
         Ok(tx) => tx,
         Err(e) => {
             tracing::error!(target: "bank", player_id = req.player_id, "org vault move: begin failed: {e}");
+            refuse(OrgMoveRefusal::MoveFailed, Some(org_id), None).await;
             return;
         }
     };
-    // 3. ORG-LOCK.
+    // 3. The per-player locks first (the personal move path's keys), then
+    // ORG-LOCK: nothing that holds an organization lock waits on a
+    // per-player advisory lock, and vendor and trade take their advisory
+    // locks before the `sgw_player` row, as this does.
+    let carried = match move_locks(&mut tx, &req, vault_end).await {
+        Ok(carried) => carried,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: move locks failed: {e}");
+            refuse(OrgMoveRefusal::MoveFailed, Some(org_id), None).await;
+            return;
+        }
+    };
     let actor = match lock_actor(&mut tx, req.player_id, org_id, scope).await {
         Ok(Ok(actor)) => actor,
         Ok(Err(miss)) => {
@@ -238,43 +257,62 @@ async fn run(
         Err(e) => {
             let _ = tx.rollback().await;
             tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: lock failed: {e}");
+            refuse(OrgMoveRefusal::MoveFailed, Some(org_id), None).await;
             return;
         }
     };
     let view = Some(OrgActorView::from(&actor));
-    match locked(&mut tx, &req, org_id, vault_container, &actor, vault, ctx).await {
-        Ok(Some(accepted)) => {
-            if let Err(e) = record::insert_log(&mut tx, &accepted, &actor).await {
-                let _ = tx.rollback().await;
-                tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: log insert failed, rolled back: {e}");
-                return;
-            }
-            if let Err(e) = tx.commit().await {
-                tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: commit failed: {e}");
-                return;
-            }
-            record::after_org_commit(&accepted, &actor, vault, ctx).await;
-        }
+    let outcome = locked(
+        &mut tx,
+        &req,
+        org_id,
+        vault_container,
+        carried,
+        &actor,
+        vault,
+        ctx,
+    )
+    .await;
+    let accepted = match outcome {
+        Ok(Some(accepted)) => accepted,
         Ok(None) => {
-            // A no-op (same slot) or an infrastructure failure, logged.
+            // Dropped on its own slot: nothing to do.
             let _ = tx.rollback().await;
+            return;
         }
         Err(refusal) => {
             let _ = tx.rollback().await;
             refuse(refusal, Some(org_id), view).await;
+            return;
         }
+    };
+    let committed = match record::insert_log(&mut tx, &accepted, &actor).await {
+        Ok(()) => tx.commit().await,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            Err(e)
+        }
+    };
+    if let Err(e) = committed {
+        tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: log or commit failed, rolled back: {e}");
+        refuse(OrgMoveRefusal::MoveFailed, Some(org_id), view).await;
+        return;
     }
+    record::after_org_commit(&accepted, &actor, vault, ctx).await;
 }
 
 pub(super) type MoveTx = Transaction<'static, Postgres>;
 
-/// Everything after ORG-LOCK, up to the write. `Ok(None)` is a no-op or an
-/// infrastructure failure (logged); `Err` a refusal.
+/// Everything after ORG-LOCK, up to the write. `Ok(None)` is a drop on the
+/// item's own slot; `Err` a refusal (`MoveFailed` for an infrastructure
+/// failure, logged here). `carried` is the carried container
+/// [`move_locks`] locked.
 async fn locked(
     tx: &mut MoveTx,
     req: &MoveRequest,
     org_id: i32,
     vault_container: i32,
+    carried: Option<i32>,
     actor: &OrgVaultActor,
     vault: &VaultAccess,
     ctx: &MoveCtx<'_>,
@@ -288,17 +326,13 @@ async fn locked(
             "org vault move: {what} failed: {e}"
         );
     };
-    // 4. The move lock, then the source row.
-    if let Err(e) = advisory(tx, req.player_id, 0).await {
-        infra("move lock", e);
-        return Ok(None);
-    }
+    // 4. The source row, locked.
     let (source_side, source) = match read_source(tx, req, org_id).await {
         Ok(Some(found)) => found,
         Ok(None) => return Err(OrgMoveRefusal::ItemNotInVault),
         Err(e) => {
             infra("source read", e);
-            return Ok(None);
+            return Err(OrgMoveRefusal::MoveFailed);
         }
     };
     let target_side = if req.target_container_id == vault_container {
@@ -318,16 +352,26 @@ async fn locked(
             return Err(OrgMoveRefusal::Shared(r));
         }
     }
-    let carried_container = match direction {
+    // The carried container must be the one `move_locks` locked. The move
+    // lock keeps the player's own moves out, so only another writer (a
+    // trade, a vendor sale) could have moved the row since; refuse and let
+    // the player retry.
+    let carried_end = match direction {
         Direction::Deposit => Some(source.container_id),
         Direction::Withdraw => Some(req.target_container_id),
         Direction::Within => None,
     };
-    if let Some(c) = carried_container {
-        if let Err(e) = advisory(tx, req.player_id, c).await {
-            infra("container lock", e);
-            return Ok(None);
-        }
+    if carried_end.is_some() && carried_end != carried {
+        tracing::warn!(
+            target: "bank",
+            player_id = req.player_id,
+            org_id,
+            item_id = req.item_id,
+            locked_container = carried,
+            source_container_id = source.container_id,
+            "org vault move: the carried row moved between the lock and the read"
+        );
+        return Err(OrgMoveRefusal::MoveFailed);
     }
 
     // 5. The bank bit.
@@ -384,13 +428,14 @@ async fn locked(
         Ok(o) => o,
         Err(e) => {
             infra("occupant read", e);
-            return Ok(None);
+            return Err(OrgMoveRefusal::MoveFailed);
         }
     };
     let shape = match choose_shape(tx, req, quantity, &source, occupant.as_ref()).await {
         Ok(shape) => shape,
         Err(Some(r)) => return Err(OrgMoveRefusal::Shared(r)),
-        Err(None) => return Ok(None),
+        // Logged by `choose_shape`.
+        Err(None) => return Err(OrgMoveRefusal::MoveFailed),
     };
     let mut perm = needed.name();
     if let (MoveShape::Swap, Some(occ)) = (shape, occupant.as_ref()) {
@@ -437,8 +482,9 @@ async fn locked(
         target_container_id: req.target_container_id,
         target_slot_id: req.target_slot_id,
     };
+    // A write that matched the wrong rows is logged by `apply`.
     let Some(applied) = apply::apply(tx, &plan).await else {
-        return Ok(None);
+        return Err(OrgMoveRefusal::MoveFailed);
     };
     Ok(Some(record::Accepted {
         plan,
