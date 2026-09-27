@@ -211,6 +211,12 @@ impl DuelRegistry {
         Ok(pending)
     }
 
+    /// Withdraw the challenge addressed to `target` without a cooldown: the
+    /// prompt never reached the target, so the pair did nothing to cool off.
+    pub fn cancel_pending(&mut self, target: i32) -> Option<PendingChallenge> {
+        self.remove_pending(target)
+    }
+
     /// Record a decline: the pair cooldown starts (D-SS21).
     pub fn decline(&mut self, pending: &PendingChallenge, now: Instant) {
         self.start_cooldown(pending, now);

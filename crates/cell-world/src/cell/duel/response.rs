@@ -68,12 +68,15 @@ async fn respond(
         Err(e) => {
             // A forged or corrupted call: logged, not answered, and the
             // pending challenge (if any) is left for a well-formed answer.
+            let pending = id.player_id.and_then(|pid| mgr.duels.pending_for(pid));
             tracing::warn!(
                 target: "duel",
                 event = "duel.response_malformed",
                 account_id = id.account_id,
                 player_id = id.player_id,
                 entity_id,
+                target_player_id = pending.map(|p| p.challenger),
+                duel_id = pending.map(|p| p.duel_id),
                 args_len = args.len(),
                 reason = e.reason(),
                 error = ?e,
@@ -232,13 +235,14 @@ pub(super) async fn abort_both(
                     TEXT_DUEL_ABORTED,
                     Some(pending.duel_id),
                 )
-                .await
+                .await;
             }
             None => tracing::debug!(
                 target: "duel",
                 event = "duel.notify_skipped",
                 duel_id = pending.duel_id,
                 player_id,
+                target_player_id = other,
                 why,
                 reason = "player_not_in_world",
                 "duel abort line not sent: the player is no longer in the world"

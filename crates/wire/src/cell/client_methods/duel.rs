@@ -35,6 +35,13 @@ pub const TEXT_TARGET_AMBIGUOUS: &str =
     "More than one player matches that name. Type the exact name.";
 /// The target ignores the challenger (D-SS15).
 pub const TEXT_TARGET_IGNORING: &str = "That player is not accepting your duel challenges.";
+/// The challenger is not yet client-ready (world entry or gate travel).
+pub const TEXT_CHALLENGER_LOADING: &str =
+    "You cannot send a duel challenge while entering the world.";
+/// The target is entering the world (world entry or gate travel).
+pub const TEXT_TARGET_LOADING: &str = "That player is entering the world. Try again in a moment.";
+/// The prompt to the target could not be queued; the challenge is dropped.
+pub const TEXT_CHALLENGE_UNDELIVERED: &str = "Your duel challenge could not be delivered.";
 /// The target is already in a duel or a pending challenge (D-SS21).
 pub const TEXT_TARGET_BUSY: &str = "That player is already involved in a duel.";
 /// The per-pair cooldown after a decline or expiry is running (D-SS21).

@@ -7,11 +7,13 @@
 //! 1. the duel bucket (D-SS21): first, so every refused challenge costs a
 //!    token and a client cannot turn a flood of bad packets into a flood of
 //!    feedback lines (the chat path's order, `dispatch/chat.rs`);
-//! 2. squad duels are refused (the ledger's first check; see
+//! 2. the challenger must be client-ready ([`is_client_ready`]): not mid
+//!    world entry or gate travel;
+//! 3. squad duels are refused (the ledger's first check; see
 //!    [`TEXT_SQUAD_DUEL_UNSUPPORTED`] for why not text 874);
-//! 3. the target, resolved against the online index (D-SS13): exact name,
-//!    else a unique case-insensitive match;
-//! 4. Ignore (D-SS15): a target who ignores the challenger refuses it.
+//! 4. the target, resolved against the online index (D-SS13): exact name,
+//!    else a unique case-insensitive match, and client-ready too;
+//! 5. Ignore (D-SS15): a target who ignores the challenger refuses it.
 //!
 //! The cell then checks self, space, range, busy and the pair cooldown
 //! (`cell::duel::challenge`). Every id in the forward is read from this
@@ -26,8 +28,8 @@ use std::time::Instant;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::base::duel::decode_send_duel_challenge;
 use cimmeria_wire::cell::client_methods::duel::{
-    TEXT_SQUAD_DUEL_UNSUPPORTED, TEXT_TARGET_AMBIGUOUS, TEXT_TARGET_IGNORING,
-    TEXT_TARGET_NOT_ONLINE,
+    TEXT_CHALLENGER_LOADING, TEXT_SQUAD_DUEL_UNSUPPORTED, TEXT_TARGET_AMBIGUOUS,
+    TEXT_TARGET_IGNORING, TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
 };
 use tokio::sync::mpsc;
 
@@ -83,7 +85,7 @@ pub(super) async fn send_duel_challenge_at(
     };
 
     // Identity and the bucket, under one lock.
-    let (actor, decision) = {
+    let (actor, decision, challenger_ready) = {
         let mut clients = connected.lock().unwrap();
         let Some(c) = clients.get_mut(&addr) else {
             return;
@@ -122,7 +124,7 @@ pub(super) async fn send_duel_challenge_at(
                 now,
             );
         }
-        (actor, decision)
+        (actor, decision, is_client_ready(c))
     };
 
     if let RateDecision::Limited { notify } = decision {
@@ -168,6 +170,12 @@ pub(super) async fn send_duel_challenge_at(
         );
     };
 
+    if !challenger_ready {
+        refuse("challenger_loading", None);
+        send_feedback_line(&feedback, addr, TEXT_CHALLENGER_LOADING).await;
+        return;
+    }
+
     if call.is_squad() {
         refuse("squad_duel", None);
         send_feedback_line(&feedback, addr, TEXT_SQUAD_DUEL_UNSUPPORTED).await;
@@ -181,6 +189,9 @@ pub(super) async fn send_duel_challenge_at(
             NameLookup::Found(target) => {
                 let target_state = clients.get(&target.addr);
                 match target_state.and_then(|t| t.player_entity_id) {
+                    Some(_) if !target_state.is_some_and(is_client_ready) => {
+                        Err(("target_loading", TEXT_TARGET_LOADING))
+                    }
                     Some(target_entity_id) => Ok((
                         target.player_id,
                         target_entity_id,
@@ -252,6 +263,18 @@ pub(super) async fn send_duel_challenge_at(
             "duel challenge could not be forwarded to the cell"
         );
     }
+}
+
+/// The session's character is in the world and its client has created the
+/// player entity: listed online (`onClientReady` done, no `logOff`) and no
+/// world-entry step outstanding. Gate travel keeps the listing but sets
+/// `pending_world_entry`, then `pending_map_loaded`, then
+/// `pending_client_ready`, so a traveller mid-load is not ready either.
+fn is_client_ready(c: &ConnectedClientState) -> bool {
+    c.listed_online
+        && c.pending_world_entry.is_none()
+        && c.pending_map_loaded.is_none()
+        && c.pending_client_ready.is_none()
 }
 
 /// D-SS15 seam: does the target's session ignore `challenger_player_id`?

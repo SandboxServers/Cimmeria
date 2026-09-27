@@ -40,27 +40,29 @@ impl Recipient {
 }
 
 /// Queue one `onPlayerCommunication("SYSTEM", 0, CHAN_FEEDBACK, text)` to
-/// the recipient's own client.
+/// the recipient's own client. `false` when it could not be queued (already
+/// logged as `duel.send_failed`).
 pub(super) async fn send_line(
     tx: &mpsc::Sender<CellToBaseMsg>,
     to: Recipient,
     text: &str,
     duel_id: Option<DuelId>,
-) {
+) -> bool {
     let args = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
-    send(tx, to, ON_PLAYER_COMMUNICATION, args, duel_id).await;
+    send(tx, to, ON_PLAYER_COMMUNICATION, args, duel_id).await
 }
 
 /// Queue `onDuelChallenge(challenger, [])` [143] to the target: the client's
 /// Yes/No prompt. The squad list is empty, squad duels being refused.
+/// `false` when it could not be queued (already logged).
 pub(super) async fn send_challenge_prompt(
     tx: &mpsc::Sender<CellToBaseMsg>,
     to: Recipient,
     challenger_entity_id: u32,
     duel_id: DuelId,
-) {
+) -> bool {
     let args = build_on_duel_challenge(challenger_entity_id as i32, &[]);
-    send(tx, to, ON_DUEL_CHALLENGE, args, Some(duel_id)).await;
+    send(tx, to, ON_DUEL_CHALLENGE, args, Some(duel_id)).await
 }
 
 async fn send(
@@ -69,7 +71,7 @@ async fn send(
     method_index: u16,
     args: Vec<u8>,
     duel_id: Option<DuelId>,
-) {
+) -> bool {
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: to.entity_id,
@@ -91,5 +93,7 @@ async fn send(
             reason = "cell_to_base_closed",
             "duel client method could not be queued to the base"
         );
+        return false;
     }
+    true
 }

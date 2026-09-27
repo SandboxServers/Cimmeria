@@ -210,9 +210,13 @@ async fn malformed_response_does_not_consume_the_challenge() {
     respond(B_EID, &[], &tx, &mut mgr, t0).await;
     assert!(drain(&mut rx).is_empty());
     assert!(mgr.duels.pending_for(B_PID).is_some());
-    assert!(capture
+    let ev = capture
         .find_event(Level::WARN, "did not decode", "unknown_response")
-        .is_some());
+        .expect("malformed row");
+    assert!(
+        ev.has_field("target_player_id", &A_PID.to_string()),
+        "the malformed row names the challenger: {ev:?}"
+    );
     assert!(capture
         .find_event(Level::WARN, "did not decode", "bad_length")
         .is_some());
@@ -238,4 +242,14 @@ async fn accept_after_the_challenger_left_aborts() {
         .iter()
         .any(|c| c.has_field("event", "duel.accept_refused")
             && c.has_field("reason", "challenger_gone")));
+    let skipped = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "duel.notify_skipped"))
+        .expect("the gone challenger's line is skipped");
+    assert!(skipped.has_field("player_id", &A_PID.to_string()));
+    assert!(
+        skipped.has_field("target_player_id", &B_PID.to_string()),
+        "notify_skipped names the other duelist: {skipped:?}"
+    );
 }

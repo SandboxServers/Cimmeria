@@ -7,8 +7,8 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 
 use cimmeria_wire::cell::client_methods::duel::{
-    TEXT_ALREADY_IN_DUEL, TEXT_CHALLENGE_SELF, TEXT_CHALLENGE_SENT, TEXT_NOT_CLOSE_ENOUGH,
-    TEXT_PAIR_COOLDOWN, TEXT_TARGET_BUSY, TEXT_TARGET_NOT_ONLINE,
+    TEXT_ALREADY_IN_DUEL, TEXT_CHALLENGE_SELF, TEXT_CHALLENGE_SENT, TEXT_CHALLENGE_UNDELIVERED,
+    TEXT_NOT_CLOSE_ENOUGH, TEXT_PAIR_COOLDOWN, TEXT_TARGET_BUSY, TEXT_TARGET_NOT_ONLINE,
 };
 
 use crate::cell::messages::{CellToBaseMsg, DuelBaseToCell};
@@ -145,16 +145,42 @@ async fn challenge(
         expires_in_ms = (pending.expires_at - now).as_millis() as u64,
         "duel challenge pending: target prompted"
     );
-    send_challenge_prompt(
+    let delivered = send_challenge_prompt(
         tx,
         Recipient::at(&target, req.target_player_id, Some(req.player_id)),
         challenger.entity_id,
         pending.duel_id,
     )
     .await;
+    let challenger_to = Recipient::at(&challenger, req.player_id, Some(req.target_player_id));
+    if !delivered {
+        // The target never saw the prompt: withdraw the challenge now rather
+        // than leave both players busy until the 30 s expiry.
+        mgr.duels.cancel_pending(req.target_player_id);
+        tracing::warn!(
+            target: "duel",
+            event = "duel.challenge_undelivered",
+            duel_id = pending.duel_id,
+            account_id = req.account_id,
+            player_id = req.player_id,
+            entity_id = req.entity_id,
+            target_player_id = req.target_player_id,
+            target_entity_id = target.entity_id,
+            reason = "prompt_not_queued",
+            "duel prompt could not be queued; challenge withdrawn"
+        );
+        send_line(
+            tx,
+            challenger_to,
+            TEXT_CHALLENGE_UNDELIVERED,
+            Some(pending.duel_id),
+        )
+        .await;
+        return;
+    }
     send_line(
         tx,
-        Recipient::at(&challenger, req.player_id, Some(req.target_player_id)),
+        challenger_to,
         TEXT_CHALLENGE_SENT,
         Some(pending.duel_id),
     )

@@ -9,8 +9,10 @@
 use std::time::{Duration, Instant};
 
 use cimmeria_wire::cell::client_methods::duel::{
-    TEXT_SQUAD_DUEL_UNSUPPORTED, TEXT_TARGET_AMBIGUOUS, TEXT_TARGET_NOT_ONLINE,
+    TEXT_CHALLENGER_LOADING, TEXT_SQUAD_DUEL_UNSUPPORTED, TEXT_TARGET_AMBIGUOUS,
+    TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
 };
+use cimmeria_wire::mercury::types::WorldEntryInfo;
 
 use super::super::duel::send_duel_challenge_at;
 use super::super::*;
@@ -226,6 +228,66 @@ async fn challenge_rejects_ambiguous_target() {
     assert!(h.forwarded().is_empty());
     assert_eq!(h.feedback(), vec![TEXT_TARGET_AMBIGUOUS.to_string()]);
     assert!(refused(&capture, "target_ambiguous"));
+}
+
+/// A world-entry step in flight: what gate travel sets on a listed session.
+fn loading_entry(entity_id: u32) -> WorldEntryInfo {
+    WorldEntryInfo {
+        player_entity_id: entity_id,
+        space_id: 1,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "Agnos".into(),
+        class_id: 2,
+        world_stargates: Vec::new(),
+    }
+}
+
+/// A challenger still entering the world (before `onClientReady`, or mid
+/// gate travel with the listing kept) is refused before the lookup.
+#[tokio::test]
+async fn challenge_rejects_a_challenger_still_loading() {
+    let capture = LogCapture::install();
+    let mut h = Harness::new();
+    h.connected
+        .lock()
+        .unwrap()
+        .get_mut(&h.addr)
+        .unwrap()
+        .pending_map_loaded = Some(loading_entry(CHALLENGER_EID));
+    h.challenge("Teal'c", 0, Instant::now()).await;
+    assert!(h.forwarded().is_empty());
+    assert_eq!(h.feedback(), vec![TEXT_CHALLENGER_LOADING.to_string()]);
+    assert!(refused(&capture, "challenger_loading"));
+
+    // Not yet listed (before the first `onClientReady`) is not ready either.
+    let mut h = Harness::new();
+    {
+        let mut clients = h.connected.lock().unwrap();
+        let c = clients.get_mut(&h.addr).unwrap();
+        c.listed_online = false;
+    }
+    h.challenge("Teal'c", 0, Instant::now()).await;
+    assert!(h.forwarded().is_empty());
+}
+
+/// A target mid gate travel stays listed but is not client-ready: refused
+/// at the base, never prompted.
+#[tokio::test]
+async fn challenge_rejects_a_target_still_loading() {
+    let capture = LogCapture::install();
+    let mut h = Harness::new();
+    let target: SocketAddr = TARGET.parse().unwrap();
+    h.connected
+        .lock()
+        .unwrap()
+        .get_mut(&target)
+        .unwrap()
+        .pending_world_entry = Some(loading_entry(TARGET_EID));
+    h.challenge("Teal'c", 0, Instant::now()).await;
+    assert!(h.forwarded().is_empty());
+    assert_eq!(h.feedback(), vec![TEXT_TARGET_LOADING.to_string()]);
+    assert!(refused(&capture, "target_loading"));
 }
 
 /// A payload that does not decode is logged at WARN and not answered.
