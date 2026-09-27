@@ -27,7 +27,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 - `SquadLootType { RoundRobin = 0, FreeForAll = 1 }`.
 - `SQUAD_ORG_ID_MIN = 0x4000_0000` (squad org ids, D-ORG05), `BASE_INVITE_REQUEST_FLAG = 1 << 29` (base-issued request ids, D-ORG06), `MAX_SQUAD_SIZE = 6`, and the D-ORG10 caps. The doc comment on each of the two id constants names the other, because they are different bits with different owners.
 - `org_text::validate(field, &str) -> Result<String, TextReject>`: the one implementation of D-ORG10, including the name normaliser that produces `name_key`.
-- `default_rank_permissions(OrgType) -> [(OrgRank, OrgPermission)]` (D-ORG08). Both the Rust creation path and any seed read this one table.
+- `default_rank_permissions(OrgType) -> [(OrgRank, OrgPermission)]` (D-ORG08 as amended by D-ORG21). Both the Rust creation path and any seed read this one table.
 
 Every enum value is pinned by a literal test against `enumerations.xml`, never against itself.
 
@@ -196,7 +196,7 @@ Status: **BlockedDependency** (ORG-02). Writer: `rust-gameserver-dev`. Advisor: 
 
 - On `onClientReady`, after `push_contact_lists_on_login`: for each Team and Command the player belongs to, send `onOrganizationJoined` [35] (`aNewMember = 0`), the name [43], MOTD [45], cash [48], experience [44], rank permissions [49], rank names [50] and the roster [38]. Order and member ids follow ORG-E1 Q1.
 - Presence fanout: login and every disconnect path (hook `destroy_client_entities`, which covers crash, timeout and quit) tell the online members, following D-ORG11 and ORG-E1 Q1. The same hook adds the contact-list offline fanout that is missing today (audit A-35).
-- CM 9 leave for Teams and Commands, routed to the base (D-ORG05): D-ORG12's leader rule, `onOrganizationLeft` [36] with `Requested`, and `onMemberLeftOrganization` [39] to the online members. The last member leaving disbands the organization, and any online members get `onOrganizationLeft` with `Disbanded`.
+- CM 9 leave for Teams and Commands, routed to the base (D-ORG05): D-ORG12's leader rule, D-ORG20's vault check before any disband (ship the `org_vault_is_empty` stub), `onOrganizationLeft` [36] with `Requested`, and `onMemberLeftOrganization` [39] to the online members. The last member leaving disbands the organization, and any online members get `onOrganizationLeft` with `Disbanded`.
 - `.org_disband <orgId>` for GMs.
 - Tests: a live-DB login push for a two-organization player (byte-exact sequence); fanout on each disconnect path; a leader-leave rejection; a disband cascade.
 
