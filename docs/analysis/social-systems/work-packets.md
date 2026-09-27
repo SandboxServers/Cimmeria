@@ -95,7 +95,7 @@ SS-00 is the bottleneck and is kept small: the index, the limiter, the feedback 
 
 ### SS-E1: Client evidence
 
-**Status:** Ready. **Writer:** `game-archaeology-specialist`. Static Ghidra and client Lua only; no debugger on the live client (`feedback_x64dbg_nonfreezing_breakpoints`). **Depends:** none. Documentation only.
+**Status:** Integrated (this PR). Verdicts are in `worknotes/ss-e1.md`. **Writer:** `game-archaeology-specialist`. Static Ghidra and client Lua only; no debugger on the live client (`feedback_x64dbg_nonfreezing_breakpoints`). **Depends:** none. Documentation only.
 
 Answer each with an address or file:line and a verdict, into `docs/reverse-engineering/findings/mail-wire-formats.md`, `chat-wire-formats.md` and `duel-wire-formats.md` (and correct `duel-restoration.md:50`, audit A-47):
 
