@@ -260,6 +260,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `launch_ability` | `LaunchAbility` | 3 |
 | `apply_effect` | `ApplyEffect` | 1 |
 | `grant_stargate_address` | `GrantStargateAddress` | 1 |
+| `send_system_mail` | `SendSystemMail` | 1 |
 
 > An `open_black_market` / `OpenBlackMarket` action exists on the unmerged
 > `feat/571-black-market-phase1` branch (PR #586) and is **not** on `main`. It is
@@ -405,6 +406,69 @@ globally unique). It is a startup cache for the same reason
 `spawn_entity` caches `entity_templates`: the executor has no DB pool at
 action time, and a cell→base round trip mid-chain would break the chain's
 ordered action list.
+
+##### `send_system_mail` params
+
+Mails the chain's player one **system mail** (social-systems SS-U3): no
+sender character, so it can never be returned, and the cash and the item are
+minted, not taken from anyone. The base writes it through the one writer
+every server mail uses (`mail::system`, SS-U1), so the player takes the cash
+and the item from the mail window like any other attachment. The first user
+is the Gate Mail Clerk in the stasis-room debug hub (chain 7011,
+[debug-hub.md](debug-hub.md#gate-mail-clerk-template-390)).
+
+`target_id` and `target_key` are unused. Every param is in `params`:
+
+| Param | Required | Meaning |
+|---|---|---|
+| `sender` | **yes** | The name shown as the sender. One line, 1-128 characters |
+| `subject` | **yes** | One line, 1-128 characters |
+| `body` | no (empty) | Up to 1,000 characters |
+| `cash` | no (0) | Naquadah, `0` to `2147483647` |
+| `item_id` | no | A `resources.items` id, minted into the mail's escrow row |
+| `qty` | no (1) | Stack size of the item, at least 1. The writer refuses more than the item's `max_stack_size` |
+| `cooldown_secs` | no | At least 1. Each player gets at most one mail from this chain per window |
+
+A bad value drops the row at load with a `warn!` naming the chain, the same
+reject-not-default rule as `npc_bark`: the base would refuse the same mail
+on every firing, and the player would be told about an authoring mistake.
+`qty` without `item_id` is also rejected.
+
+The cell does not write the mail. The executor arm
+([`executor/mail.rs`](../../crates/cell-content/src/cell/content/executor/mail.rs))
+sends the base one `CellToBaseMsg::ContentSystemMail` carrying the player's
+ids from the cell entity. The base
+([`mail/content.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/content.rs))
+then runs one transaction:
+
+1. locks the player's `sgw_player` row;
+2. with `cooldown_secs`, claims the cooldown in `sgw_player_content_cooldown`
+   (key `send_system_mail/<chain_id>`) with one conditional upsert that
+   succeeds only when the last claim is at least `cooldown_secs` old;
+3. writes the mail.
+
+The claim and the mail commit together. A refused mail leaves the previous
+claim in place, and deleting the mail after taking its attachments does not
+reopen the window. The window also survives a relog and a server restart.
+
+This is the one content verb with a built-in per-player limit, and it needs
+one, because the "Idempotency" rule in
+[extend-the-content-engine.md](../guides/extend-the-content-engine.md) is
+about re-runs of one chain, and a dialog button can be pressed again. Author
+a `cooldown_secs` on any chain a player can re-trigger at will.
+
+Every firing sends the player one feedback line. A sent mail names the mail
+id and what it carries. A refusal gives the time left on the cooldown ("You
+can ask again in 7 minutes", rounded up), or the reason. Telemetry:
+
+| Event | Target | Level | When |
+|---|---|---|---|
+| `content.send_system_mail` `outcome=requested` | `content` | INFO | the cell forwarded the firing |
+| `content.send_system_mail` `outcome=sent` | `content` | INFO | the base committed the mail; carries `mail_id`, `item_id`, `cooldown_key` |
+| `mail.system_sent` | `mail` | INFO | the writer's own row, after the commit |
+| `content.send_system_mail` `reason=...` | `content` | WARN | nothing sent: `cooldown` (with `last_used_at`, `remaining_secs`), `no_player`, `base_channel_closed`, `no_db_pool`, or the writer's reason (`unknown_item_type`, `recipient_not_found`, ...) |
+
+Each row carries `entity_id`, `account_id`, `player_id` and `chain_id`.
 
 #### Entity-lifecycle verbs
 

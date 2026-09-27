@@ -93,6 +93,14 @@ The GM tools use the same writer (see [commands](../commands.md)):
 - `.mailbox [name]` reports open and archived counts, system mail, and what is in escrow: items, gift cash and unpaid COD.
 - `.mail_expire <mailId>` is refused with a feedback line until SS-M4 adds `expires_at`.
 
+Content chains use the same writer through the `send_system_mail` action (SS-U3,
+[content-engine.md](../content/content-engine.md#send_system_mail-params)). Its first
+user is the Gate Mail Clerk in the stasis-room debug hub
+([debug-hub.md](../content/debug-hub.md#gate-mail-clerk-template-390)): a dialog button
+mails the player 5 Health Slappack TC1 and 50 naquadah, at most once per character
+every 10 minutes. The limit is a row in `sgw_player_content_cooldown`, claimed in the
+mail's own transaction, so deleting the mail does not reset it.
+
 ## Implementation Status
 
 | Feature | Status | Notes |
@@ -103,6 +111,7 @@ The GM tools use the same writer (see [commands](../commands.md)):
 | Archive mail | DONE | `archiveMailMessage` → `MailOp::Archive` → `onMailHeaderRemove` (CM 77). An unpaid COD is refused with a feedback line and stays in the inbox (SS-M3): archived mail cannot be returned and never expires, so it would strand the seller's item |
 | Server-generated mail | DONE | `send_system_mail` / `send_system_mail_tx` (SS-U1): cash, a minted item or a server-held instance, no postage, no COD, not returnable. See [Server and GM mail](#server-and-gm-mail-ss-u1) |
 | GM mail tools | DONE | `.mail`, `.mailbox`; `.mail_expire` refused until SS-M4 |
+| Content-engine mail | DONE | `send_system_mail` action with an optional per-player cooldown (SS-U3); the debug hub's Gate Mail Clerk uses it |
 | Send mail (player compose) | DONE (text only) | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
 | Cash, item or COD attachment on send | DONE | One recipient; 25 naquadah postage; item into escrow (`sgw_gate_mail_item`); one transaction. See [Sending with an attachment](#sending-with-an-attachment-ss-m2) |
 | Return to sender | DONE | `returnMailMessage` (CM 47) → `MailOp::Return`. To the stored `sender_id`, once; not archived or server mail; COD cancelled. See [Taking attachments](#taking-attachments-paying-cod-returning-ss-m3) |

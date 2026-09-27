@@ -7,12 +7,12 @@ last_updated: 2026-09-27
 
 # Stasis-Room Debug Hub
 
-Seven NPCs in the Castle_CellBlock stasis room let a tester exercise one server
+Eight NPCs in the Castle_CellBlock stasis room let a tester exercise one server
 system each from a single spot. The stasis room is where every new character
 wakes up, so the hub is reachable a few seconds after character creation, with
 no travel and no mission state.
 
-All seven are ordinary seeded spawns. Every player sees them. This was an owner
+All eight are ordinary seeded spawns. Every player sees them. This was an owner
 decision (2026-09-26): `spawnlist` has no dev or enabled column, and the owner
 chose visible-to-all over gating. Compare Harset packet H13, which deleted the
 old debug NPCs (templates 23 and 25) from the Harset gate plaza because they
@@ -37,6 +37,7 @@ a new character appears.
 | 404 | 304 | `DebugHub_LootCrate` | Crate | (-330.72, 73.47, -235.64) | -0.2710 |
 | 450 | 360 | `DebugHub_PetTrainer` | Goa'uld Advanced Skills | (-328.08, 73.47, -237.07) | -0.4698 |
 | 470 | 370 | `DebugHub_Banker` | Storage Officer | (-325.92, 73.47, -231.18) | -1.0739 |
+| 490 | 390 | `DebugHub_MailClerk` | Sgt. Harriman | (-324.11, 73.47, -227.84) | -1.5123 |
 
 The pet trainer (pets campaign PT-07) takes the next slot on the line after the
 crate, about 2.1 units in from the room's B-C wall. Its ids come from the pets
@@ -49,10 +50,19 @@ units from the respawner, at least 6.3 from every other hub NPC and 9.2 from
 the C-D exit wall. Its ids come from the bank block (templates 370-389, spawns
 470-489).
 
+The Gate Mail Clerk (social-systems SS-U3) stands on the same B-C wall,
+past the Banker towards corner C: 3 units in from the wall and 13 units
+along it from B. That puts it 3.8 units from the Banker, 5.4 from the C-D
+exit wall and 10.1 from the respawner. Its ids come from the social block
+(templates 390-399, spawns 490-499).
+
 The names are monikers the client PAK already ships. A new `texts.sql` id
 cannot render, so the templates reuse existing ones. No shipped moniker says
 "Pet Trainer", so template 360 shows "Goa'uld Advanced Skills" (8000). The
-Banker uses the Omega Site banker's own name, "Storage Officer" (29462).
+Banker uses the Omega Site banker's own name, "Storage Officer" (29462). No
+shipped moniker says "Mail Clerk", so template 390 shows "Sgt. Harriman"
+(26715), with Walter Harriman's SGC_W1 look (template 58). The dialog and the
+mail's sender name say "Gate Mail Clerk".
 
 > **Placement is unchecked in the client.** There is no navmesh or occluder
 > data for this room. The coordinates are derived from the region corners and
@@ -189,11 +199,37 @@ Right-click opens your personal vault (`onVaultOpen`).
   drags items in from the main bag once BV-03 lands. See
   [commands.md](../commands.md#dev-console--commands).
 
+### Gate Mail Clerk (template 390)
+
+Right-click shows dialog 100104, which has one button, "Send me a mail".
+Pressing it mails you a test mail from "Gate Mail Clerk" with 5 Health
+Slappack TC1 and 50 naquadah. A chat line names the mail. Open the mail window
+and take the naquadah and the slappacks.
+
+- Tests the mail window with a system mail: the header, take-cash and
+  take-item (SS-M3). A tester needs no GM rights.
+- **One mail per character every 10 minutes.** Pressing the button again
+  inside the window mails nothing, and a chat line says how long to wait
+  ("You can ask again in 7 minutes"). The window is stored in the database
+  (`sgw_player_content_cooldown`), so it holds across a relog, a server
+  restart and deleting the mail.
+- The mail has no sender character, so it cannot be returned, and its cash is
+  not a COD. For COD and return, use `.mail ... cod <n>` or two players (see
+  below).
+- Closing the dialog with X sends nothing, so nothing is mailed. Click the
+  clerk again to get the dialog back.
+- Chain 7010 opens the dialog. Chain 7011 runs the `send_system_mail` content
+  action ([content-engine.md](content-engine.md#send_system_mail-params)).
+- Deviation from plain intent: none. The cooldown is per character, not per
+  account, because mail is per character.
+
 ## What the hub cannot test, and why
 
 | System | Why there is no hub NPC |
 |---|---|
-| Mail | The mail window opens from the client UI, not from a mailbox or NPC, so there is nothing for the hub to add. Only the read side works on the server; sending is a stub ([gap-analysis.md §24](../gap-analysis.md)). |
+| Mail (partly) | The Gate Mail Clerk covers receiving a mail and taking its cash and item. Sending mail, postage, COD, return and expiry need a sender, not an NPC: send from the mail window to a second character, or as a GM use `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>]`, `.mailbox [name]` and `.mail_expire <mailId>` ([commands.md](../commands.md#command-families)). The two-player checks are SS-UAT steps 1-6 ([work-packets.md](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release)). |
+| Chat | Tells and ignore need a second player; an NPC does not chat. Alone you can still check the refusals: a tell to your own name ("You cannot send a tell to yourself.") or to an offline name, and the flood limit (paste ten lines into say). As a GM, `.mute <name> <minutes>` and `.unmute <name>` mute a player, and `.announce` (or `/gmshout`) broadcasts ([commands.md](../commands.md#command-families)). The two-player checks are SS-UAT steps 7-10. |
+| Duels | A duel needs a second player. Alone, run `sparbot`, a second account that accepts every challenge and forfeits after a set time ([wireclient.md](../architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing)). As a GM, `.duel_status [name]` shows a duel's stage and `.duel_end <name>` ends it. The duel checks are SS-UAT steps 11-13. |
 | Bank (partly) | The Banker (template 370) opens the personal vault. Moving items into and out of it is the bank campaign's BV-03, the vault-size purchase BV-05, and the Squad, Team and Command vaults BV-07 ([docs/analysis/bank-vault/](../analysis/bank-vault/README.md), [gap-analysis.md §23](../gap-analysis.md)). No hub NPC is an organization Banker: those need an organization, which the hub cannot give a new character. |
 | Guilds / organizations | Known missing on the server ([gap-analysis.md §23](../gap-analysis.md)). |
 | Black market | Known missing on `main` ([gap-analysis.md §25](../gap-analysis.md)). |
@@ -205,18 +241,20 @@ Right-click opens your personal vault (`onVaultOpen`).
 
 | What | Where |
 |---|---|
-| Templates 300-304, 360, 370 | `db/resources/Entities/Seed/entity_templates.sql` |
-| Spawns 400-404, 450, 470 | `db/resources/Worlds/Seed/spawnlist.sql` |
+| Templates 300-304, 360, 370, 390 | `db/resources/Entities/Seed/entity_templates.sql` |
+| Spawns 400-404, 450, 470, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
 | Trainer list 350 | `db/resources/Abilities/Seed/trainer_ability_lists.sql`, `trainer_abilities.sql` |
-| Chains 7001-7005 | `db/resources/Content/Seed/debug_hub_chains.sql` |
-| Dialogs 100100-100103, screens 200000-200004, button 200000 | `db/resources/Dialogs/Seed/` and `DIALOG_OVERRIDES` |
+| Chains 7001-7005, 7010-7011 | `db/resources/Content/Seed/debug_hub_chains.sql` |
+| Dialogs 100100-100104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `DIALOG_OVERRIDES` |
+| The clerk's mail and cooldown | `mail/content.rs` in `crates/base-methods`; table `db/sgw/Players/Tables/sgw_player_content_cooldown.sql` |
 | Loot table 3 (loot rows 14-17) | `db/resources/Loot/Seed/` |
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
 | Vendor and Banker derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
 
 Every seed row is commented `NEW CONTENT (debug hub)`, except the pet
 trainer's, which are commented `Pets campaign, PT-07`, and the Banker's,
-commented `Bank and Vault campaign, BV-04`. The `trainer_abilities`
+commented `Bank and Vault campaign, BV-04`, and the mail clerk's,
+commented `Social-systems campaign, SS-U3`. The `trainer_abilities`
 rows carry no comment: that file is regenerated by
 `tools/ability_trees/generate_seed.py`, which keeps other lists' rows but not
 comments.
@@ -225,11 +263,14 @@ comments.
 
 | Guard | What it pins |
 |---|---|
-| `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns inside Region1, on the floor, at least 5 units from the respawner and 2.5 from each other; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, with every loot row at probability 1; dialog screens and buttons, and neither dialog is a monologue |
-| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction; the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself |
+| `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns (the mail clerk's 490 included) inside Region1, on the floor, at least 5 units from the respawner and 2.5 from every other spawn in the room; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, with every loot row at probability 1; dialog screens and buttons, and neither dialog is a monologue |
+| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself |
 | `cell-catalog` `spawner/tests/live_db_debug_banker.rs` | Template 370 is a personal Banker and nothing else: exactly `INT_Banker`, `vault_scope = 'personal'`, a shipped name, no trainer list or vendor lists, not faction 10; spawn 470 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_pet_trainer.rs` | Template 360's role columns and name; spawn 450 inside Region1, on the floor, clear of the respawner and the other hub NPCs; list 350 keyed to the Goa'uld only, with exactly the six pet nodes, each a Goa'uld tree node |
+| `cell-catalog` `spawner/tests/live_db_mail_clerk.rs` | Template 390's role columns and name; dialog 100104 is one clerk screen with one Generic 1 button, and not a monologue |
 | `cell-content` `chain_replay_tests/debug_hub.rs` | Chains 7001-7005 resolve and execute: the `onDialogDisplay` speakers, the `StartMinigame` message, and both chat lines |
+| `cell-content` `chain_replay_tests/debug_hub_mail_clerk.rs` | Chain 7010 opens 100104 as the clerk; chain 7011 sends the base exactly one `ContentSystemMail` with the seeded contents and cooldown |
+| `base-methods` `mail/tests/content_live.rs` | One mail per press, refused with the wait inside 10 minutes; the window outlives the mail and ends on time; the claim rolls back with a refused mail; two simultaneous presses write one mail |
 | `cell-world` `tests/npc_spawn.rs` | Any `INT_Vendor*` bit derives `Vendor`; no other bit derives anything |
-| `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The overrides and the dialog seed agree screen for screen and button for button |
-| `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001 and 7004 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
+| `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The overrides of 100100, 100101 and 100104 and the dialog seed agree screen for screen and button for button |
+| `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001, 7004 and 7010 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
