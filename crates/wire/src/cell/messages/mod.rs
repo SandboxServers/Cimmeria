@@ -11,9 +11,12 @@
 //! - `lab` — the live-research-lab read-only query contract (`LabQuery`).
 //! - `org_cell_to_base` / `org_base_to_cell` — the nested organization
 //!   enums carried by `CellToBaseMsg::Org` and `BaseToCellMsg::Org`.
+//! - `chat_cell_to_base` — the nested chat enum carried by
+//!   `CellToBaseMsg::Chat`.
 
 mod base_to_cell;
 mod cell_to_base;
+mod chat_cell_to_base;
 mod data;
 mod lab;
 mod org_base_to_cell;
@@ -22,6 +25,7 @@ mod org_cell_to_base;
 pub use crate::crafting::{CraftRequest, CraftVerb};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
+pub use chat_cell_to_base::ChatCellToBase;
 pub use data::{MailOp, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission};
 pub use lab::{
     LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,

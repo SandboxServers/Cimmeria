@@ -1,5 +1,6 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
+use super::chat_cell_to_base::ChatCellToBase;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::org_cell_to_base::OrgCellToBase;
 use crate::crafting::CraftRequest;
@@ -796,4 +797,8 @@ pub enum CellToBaseMsg {
     /// organization packets add variants in `org_cell_to_base.rs` instead
     /// of here (work-packets.md § Messages).
     Org(OrgCellToBase),
+
+    /// Chat traffic (the GM broadcast today). One nested enum, so chat
+    /// packets add variants in `chat_cell_to_base.rs` instead of here.
+    Chat(ChatCellToBase),
 }
