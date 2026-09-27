@@ -192,7 +192,7 @@ Each mutation was applied, the named filter run, and the file restored (`/tmp/ss
 
 1. **SS-C1 (Ignore):** replace the body of `crates/base/src/base/dispatch/duel.rs::ignores(target, challenger_player_id)` with the Ignore-cache check on the target's `ConnectedClientState`, then add a test beside `challenge_rejects_offline_target` asserting `TEXT_TARGET_IGNORING` and `reason = target_ignoring` with no forward. The call site already reads the target's session under the same lock as the lookup.
 2. **`dispatch/mod.rs` merge order with SS-C1:** both packets add one `mod` line and one arm; the arms are independent.
-3. **SS-D2:** replace `crates/cell-world/src/cell/duel/tick.rs::on_countdown_end` with the engage (set `DuelState::Engaged`, the PvP flag, 151), and call `DuelRegistry::can_harm` from `combat::player_may_harm`. If the driver of `Event_UI_DuelTimerStart` is found, send it on accept in `response.rs`.
+3. **SS-D2:** replace `crates/cell-world/src/cell/duel/tick.rs::on_countdown_end` with the engage (set `DuelState::Engaged`, the PvP flag, 151), and call `DuelRegistry::can_harm` from `combat::player_may_attack` (the shared predicate the pets campaign added in #896, widened by SS-D2 for an engaged duel pair; it replaced the ledger's original `player_may_harm`). If the driver of `Event_UI_DuelTimerStart` is found, send it on accept in `response.rs`.
 4. **SS-D3:** `duelForfeit` (CM 103) in `social.rs`, and the `disconnect_entity` hook should call `DuelRegistry` to end a duel or drop a pending challenge (`end_duel`, and a new `drop_player` if needed).
 5. `cimmeria-services` does not re-export `cell::duel`; add it to `crates/services/src/cell/mod.rs` only if a facade caller needs it.
 
