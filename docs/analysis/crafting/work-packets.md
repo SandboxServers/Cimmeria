@@ -38,7 +38,7 @@ base: validate against CraftingCatalog + DB state
 - `crates/cell-catalog/src/crafting/`: `CraftingCatalog { disciplines, blueprints (with component sets), items: CraftItemAttrs }`, one loader, and the enums `CraftType` (1/2/4/8), `ItemFlags` (all `EItemFlag` bits), `ENTITYFLAG_CRAFT_*`, `TIMER_CRAFT_INDUCTION = 16`, the crafting `CONDITION_FEEDBACK_*` values.
 - `crates/wire`: serializers for 112, 137, 138, 139 (moved out of `map_loaded.rs`) and 140, next to the existing 136, each byte-exact tested. `CellToBaseMsg::Crafting(CraftRequest)` with `CraftRequest { entity_id, player_id, verb: CraftVerb, allowed: u8 }`, where `CraftVerb` is `Spend { discipline_id } | Craft { blueprint_id, items, quantity } | Research { item_id, kickers } | ReverseEngineer { item_id } | Alloy { blueprint_id, current_tier_item_id, lower_tier_items } | Respec`, and `allowed` is the `CraftType` mask the station gate granted.
 - `crates/cell-methods/.../player/crafting/`: a directory from day one. `mod.rs` holds dispatch and argument parsing; the verbs forward through one `forward.rs`.
-- `crates/base-session/src/base/crafting/`: `session.rs` (the queue, CR-06), `transaction.rs` (consume and grant, CR-06), then one file per verb: `spend.rs`, `craft.rs`, `research.rs`, `reverse_engineer.rs`, `alloy.rs`, `respec.rs`, and `feedback.rs` (CR-01) for the rejection path. `handlers.rs` keeps the GM grants.
+- `crates/base-session/src/base/crafting/`: `session/` (the queue, CR-06), `transaction/` (consume and grant, CR-06), `sync/` (client pushes, CR-03), `telemetry.rs` (shared job ids, counters and checked sends), then one file per verb: `spend.rs`, `craft.rs`, `research.rs`, `reverse_engineer.rs`, `alloy.rs`, `respec.rs`, and `feedback.rs` (CR-01) for the rejection path. `handlers.rs` keeps the GM grants.
 - Log target `crafting`; events, fields and metrics per the [telemetry contract](#telemetry-contract).
 
 ## Telemetry contract
@@ -46,19 +46,19 @@ base: validate against CraftingCatalog + DB state
 Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` (the five rules), `docs/architecture/negative-logging-convention.md` and the target catalog in `docs/architecture/observability.md`.
 
 - **Target.** Everything logs under `crafting` (already in `OTEL_FILTER` with its pin). A new target needs its own `OTEL_FILTER` row and pin in the same packet.
-- **Identity on every event.** Every player-activity event carries `account_id`, `player_id` and `entity_id` **on the event itself**, not only on a span (rule 5; OTLP log records do not inherit span fields). CR-01's merged `request` and `rejected` events carry `entity_id` and `player_id` but no `account_id`; CR-03/CR-04 retrofits them, with an identity test.
+- **Identity on every event.** Every player-activity event carries `account_id`, `player_id` and `entity_id` **on the event itself**, not only on a span (rule 5; OTLP log records do not inherit span fields). CR-03/CR-04 (#884) retrofitted CR-01's `request` and `rejected` events with `account_id`; every refusal goes through `feedback::reject(verb, entity_id, player_id, &why, client)` (or `reject_at_completion` for a refusal raised when a queued job ends, which counts the rejection but not a second request).
 - **Spans.** One INFO span per dispatch entrypoint (`crafting.request` on the base, with `verb`); none inside per-tick work such as the induction queue tick (rules 1 and 3).
 - **Events.** A DEBUG or INFO event with `event = "…"` on every state transition (rule 2):
   - `request` (the verb and every parsed argument);
   - `rejected` (INFO, with an enumerated `reason`, the same value as the `CraftReject` variant);
-  - `queued` / `induction_started` / `induction_expired` (`job_id`, `verb`, `queue_len`, `expires_at`);
+  - `queued` / `induction_started` / `induction_expired` (`job_id`, `verb`, `queue_len`; `induction_started` also carries `timer_id` and `expires_at`, the only one of the three that has a deadline);
   - `completed` (`job_id`, `verb`, `blueprint_id` or `item_id`, the consumed inputs as `item_id:type_id:qty_before→qty_after`, the granted outputs as `type_id:bag:slot:qty_before→qty_after` so a stack merge is distinguishable from a new slot, a `result` for verbs that roll (`success | failure`), `expertise_before` / `expertise_after`, `asp_before` / `asp_after`, the RNG roll and chance where a roll was made);
-  - `queue_dropped` (`reason = logout | world_change`, `jobs_dropped`);
+  - `queue_dropped` (`reason = logout | world_change | session_changed | stale_session | not_connected`, `cause`, `jobs_dropped`, `job_ids`);
   - `options_changed` (the station entity ids and tool item ids per section);
   - `learned`, `respec_prompted`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values);
   - `login_sync` (what the login sent) and `login_sync_failed` (WARN, `reason = load | send`), `asp_granted`, `gm_allcraft` and `gm_craftkit` (GM grants, before and after), `asp_earned` (level-up grant: `level_before` / `level_after`, `asp_before` / `asp_after`);
   - already on `main` from CR-01: `malformed`, `no_player`, `forward_failed` (WARN, cell side), `catalog_loaded`, `catalog_load_failed`;
-  - negative seams: `persist_failed` (WARN).
+  - negative seams: `persist_failed` (WARN, `phase`, `reason`), `client_sync_failed` (WARN; DEBUG once the session has ended), `push_failed` (WARN, `what`), `lookup_failed` (WARN, `phase`), `feedback_send_failed` (WARN).
 
   This is the complete list of events under the `crafting` target. A packet that needs another adds it here, in the same PR, before using it. CR-16's grant-path events (`grant_container_chosen`, `loot_restored`) belong to the inventory grant path's own target, not `crafting`.
 - **Negative seams.** Every expectation seam logs its failure at the level the convention sets, and has a `LogCapture` test (TESTING.md type 12): a transaction with `rows_affected == 0`, a catalog or inventory lookup miss, a failed client send (`let _ = send` is not allowed), a rollback (`persist_failed` WARN with `phase` and the SQL error class). A DB write that changes fewer rows than it should logs the paired `rows_affected` and `expected` fields, and names its sub-step `phase`, as the convention requires.
@@ -170,7 +170,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-03
 
-**Status:** Writing (with CR-04, branch `craft/cr03-login-sync-spend`). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
+**Status:** Integrated (#884, with CR-04). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
 
 **Scope:**
 
@@ -184,7 +184,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-04
 
-**Status:** Writing (with CR-03). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** Integrated (#884, with CR-03). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:**
 
@@ -198,7 +198,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-05
 
-**Status:** Writing (branch `craft/cr05-stations-tools`). **Scope title:** Stations, tools, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer, items-systems-advisor.
+**Status:** Integrated (#895). **Scope title:** Stations, tools, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer, items-systems-advisor.
 
 **Scope:**
 
@@ -215,7 +215,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-06
 
-**Status:** Writing (branch `craft/cr06-induction`). **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
+**Status:** Review (#897). **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
 
 **Scope:**
 
@@ -247,7 +247,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 **Scope:**
 
 - `research.rs`: item researchable (`Craft_Research`), kickers flagged `Kicker`, at most one per applied science and none from the item's own (D-CR11). At completion: consume the item and kickers, roll per D-CR15, +5 expertise on success, and a text line either way. A success also teaches the blueprint that makes the researched item, when that blueprint's discipline is known (D-CR04), and sends 139.
-- `reverse_engineer.rs`: item reverse-engineerable (`Craft_RevEng`) and produced by at least one blueprint. At completion: consume the item, pick a blueprint and a component set uniformly (no C-50), recover per D-CR06, grant. Up to 10 queued (C-34).
+- `reverse_engineer.rs`: item reverse-engineerable (`Craft_RevEng`) and produced by at least one blueprint. At completion: consume exactly the named instance (CR-06's transaction checks a named instance's owner and bag but consumes by design, so this packet adds an instance-exact consume step to `transaction/consume.rs`), pick a blueprint and a component set uniformly (no C-50), recover per D-CR06, grant. Up to 10 queued (C-34).
 
 **Telemetry:** both verbs use the contract's `queued` → `induction_started` → `completed` chain and `rejected` for refusals. Research's `completed` adds `eligible_disciplines`, `discipline_id`, `chance`, `roll`, `result`, `expertise_before` / `expertise_after` and any `blueprint_learned` it triggers (also emitted as its own event). Reverse engineering's `completed` adds the chosen `blueprint_id` and `component_set_id`, `bias`, and each component's roll with its recovered quantity. Refusal reasons: `not_researchable`, `not_kicker`, `kicker_same_science`, `kicker_duplicate_science`, `not_reverse_engineerable`, `no_blueprint_for_item`.
 
@@ -265,7 +265,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-10
 
-**Status:** BlockedDependency (CR-04). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** Ready (CR-04 integrated). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:** `respec.rs`, per D-CR16 and D-CR23: a player-usable `.respeccraft` sends the prompt (cost 0, D-CR02), the pending window, then one transaction that clears disciplines and expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept. Then 137 and the ASP property. Nothing to reset gets feedback. Replay-safe.
 
@@ -290,7 +290,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-12
 
-**Status:** BlockedDependency (CR-03 for the property push). **Scope title:** Earning ASP. **Advisor:** combat-systems-advisor (the `grant_xp` path).
+**Status:** Ready (CR-03 integrated). **Scope title:** Earning ASP. **Advisor:** combat-systems-advisor (the `grant_xp` path).
 
 **Scope:** per D-CR01: `grant_xp` adds the levels gained to `applied_science_points` in the same statement that raises the level, and pushes the property; new characters start with 1.
 
@@ -300,7 +300,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-15
 
-**Status:** BlockedDependency (CR-E2, CR-03). **Scope title:** Blueprint items and Racial Paradigm Guides. **Advisor:** items-systems-advisor, server-authority-enforcer, database-persistence.
+**Status:** Ready (CR-E2, CR-03 integrated). **Scope title:** Blueprint items and Racial Paradigm Guides. **Advisor:** items-systems-advisor, server-authority-enforcer, database-persistence.
 
 **Scope:**
 
