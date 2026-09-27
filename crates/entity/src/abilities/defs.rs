@@ -11,10 +11,19 @@
 
 pub const AF_USE_WEAPON_RANGE: u32 = 4;
 pub const AF_RESPONSE: u32 = 16;
+/// `DoNotActivate_AutoCycle`: the ability never starts or joins the
+/// auto-cycle loop (python `SGWPlayer.py:1177`).
+pub const AF_DO_NOT_ACTIVATE_AUTO_CYCLE: u32 = 512;
 pub const AF_DEACTIVATE_AUTO_CYCLE: u32 = 1024;
 pub const AF_SPEED_GRENADE: u32 = 2048;
 pub const AF_SPEED_DEPLOY: u32 = 4096;
 pub const AF_SPEED_ATTACK: u32 = 8192;
+/// `SpeedPet` (`entities/defs/enumerations.xml` `EAbilityFlags`): the warmup
+/// scales by the caster's `speedPet` stat (111), like the three flags above.
+/// The seed sets it on the 14 summon abilities (Goa'uld 1643-1645, 2825,
+/// 2826 and the 3491-3497 copies; turrets 962-966) and nowhere else (pets
+/// campaign D-PT10).
+pub const AF_SPEED_PET: u32 = 16384;
 /// Channelled abilities normally cancel when the channeller moves more
 /// than `CHANNEL_INTERRUPT_DISTANCE` from their channel-start position.
 /// Setting this flag exempts the ability — useful for "channels while
@@ -22,9 +31,11 @@ pub const AF_SPEED_ATTACK: u32 = 8192;
 ///
 /// Default for every authored ability today is 0 (cancel-on-move). Flip
 /// the bit per-ability as content lands that should be movement-tolerant.
-/// Reserved bit 14 — not in any python reference; original game's
-/// canonical name unknown, this is the Cimmeria-side name.
-pub const AF_CHANNEL_ALLOWS_MOVEMENT: u32 = 16384;
+/// Cimmeria-side bit, not in the client's `EAbilityFlags` (whose highest
+/// token is `PetCommand` = 65536). It used to be bit 14, which is the
+/// client's `SpeedPet`: every seeded summon then warmed up immune to the
+/// move interrupt (pets campaign PT-03). Bit 20 is clear on every seed row.
+pub const AF_CHANNEL_ALLOWS_MOVEMENT: u32 = 1 << 20;
 
 // ── Target types ──────────────────────────────────────────────────────────
 
