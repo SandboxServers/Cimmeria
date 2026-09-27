@@ -6,7 +6,9 @@
 //!
 //! - [`lock_org`] takes the organization row lock. **ORG-LOCK (D-ORG04):**
 //!   every Team or Command mutation opens a transaction and takes it before
-//!   it reads or writes anything else about the organization.
+//!   it reads or writes anything else about the organization. It is the
+//!   first row lock the transaction takes, except for the members'
+//!   `sgw_player` rows a path must pre-lock (see "Lock order" below).
 //! - [`member_access_locked`] reads a player's rank and permissions inside
 //!   that transaction and returns an [`OrgAccess`]. There is deliberately no
 //!   pool-level variant: an authorization read outside the lock lets a
@@ -26,42 +28,52 @@
 //! ## Lock order
 //!
 //! 1. **Organization-scoped work** (every persistence mutation, the Bank's
-//!    cash and vault changes): the organization row, then `sgw_player`
-//!    rows, then item rows (the order trade and vendor use for players and
-//!    items).
-//! 2. **Character deletes** (from any path, an account delete cascading to
-//!    its characters included): the character's `sgw_player` row, then its
-//!    organization rows in `org_id` order (the
+//!    cash and vault changes): the organization row, then non-member
+//!    `sgw_player` rows, then item rows (the order trade and vendor use for
+//!    players and items).
+//! 2. **Organization work that waits on a member's `sgw_player` row** (the
+//!    Bank's vault withdraw, which inserts `sgw_inventory` rows referencing
+//!    the character, and its cash `UPDATE`): take those player rows
+//!    `FOR KEY SHARE` **before** [`lock_org`], in `player_id` order when
+//!    there are several, then the organization row, then item rows. This
+//!    mirrors the character-delete order below, so the two never cross.
+//!    The Bank's write to the acting character's row stays a plain
+//!    `UPDATE` (no key change), never `SELECT … FOR UPDATE`, so it does not
+//!    block `add_member`'s `FOR KEY SHARE` on a joining character.
+//! 3. **Character deletes** (from any path, an account delete cascading to
+//!    its characters included): the character's `sgw_player` row
+//!    (`FOR UPDATE`), then its organization rows in `org_id` order (the
 //!    `sgw_player_before_delete_lock_orgs` trigger), then its member rows.
 //!    An account delete takes this order for all its characters at once
 //!    (`account_before_delete_lock_orgs`): every character row in
 //!    `player_id` order, then all their organizations in `org_id` order,
 //!    so two characters in two organizations never lock them out of order.
-//!
-//! 3. **Creation** (ORG-05): the founder's creation advisory lock, then the
+//!    A character can be deleted while it is in the world (an admin
+//!    account delete), so no path may assume a member's row is safe to wait
+//!    on because its owner is online.
+//! 4. **Creation** (ORG-05): the founder's creation advisory lock, then the
 //!    name's, then the new organization row, then the founder's
 //!    `sgw_player` row. It never waits on an existing organization row.
 //!    `add_member` takes the joining character's creation lock too (ORG-07),
 //!    after its membership check and before the `FOR KEY SHARE`, so an
-//!    accepted invite and a creation by the same character serialise.
+//!    accepted invite and a creation by the same character serialise. The
+//!    advisory locks come before any row lock.
 //!
 //! The orders never form a cycle because no transaction holding an
-//! organization waits on the `sgw_player` row, or the creation lock, of
-//! one of that organization's members: `add_member` checks membership
-//! before it takes either for the joining character, so it only waits on a
-//! non-member's, and kicks and rank changes touch member rows, not player
+//! organization waits on the `sgw_player` row, or the creation lock, of one
+//! of that organization's members: a path that needs a member's row takes
+//! it before the organization (2); `add_member` checks membership before it
+//! takes either for the joining character, so it only waits on a
+//! non-member's; and kicks and rank changes touch member rows, not player
 //! rows. One reachable exception: an account delete
 //! (`account_before_delete_lock_orgs`) locks every character on the
 //! account, so it can hold a non-member character that an `add_member`
 //! waits on while itself waiting on an organization a sibling character
 //! belongs to. Postgres detects that cycle (40P01) rather than hanging, and
 //! it is reachable only from credential cleanup and tests; a future
-//! account-delete path must drop the account's sessions first. The Bank locks the acting (online) character's
-//! `sgw_player` row after the organization; a character is deleted only
-//! from the character list, never while it is in the world, so that row
-//! is never one a character delete holds. A new path that waits on a
-//! member's `sgw_player` row while holding the organization breaks this
-//! and must lock the player row first.
+//! account-delete path must drop the account's sessions first. A new path
+//! that waits on a member's `sgw_player` row while holding the organization
+//! breaks this and must take the row first, as in (2).
 //!
 //! All of this assumes READ COMMITTED, the server's isolation level: a
 //! statement after the lock wait sees what the previous lock holder
@@ -216,6 +228,13 @@ impl OrgAccess {
 }
 
 /// Lock the organization row (`SELECT … FOR UPDATE`) and return it.
+///
+/// ORG-LOCK: this is the transaction's first row lock. The only rows that
+/// may be locked before it are members' `sgw_player` rows, taken
+/// `FOR KEY SHARE` in `player_id` order by a path that will wait on them
+/// (the Bank's vault withdraw and cash update; module doc, "Lock order"
+/// (2)); the creation advisory locks, which are not row locks, come before
+/// both.
 ///
 /// `Ok(None)` means there is no such organization (never created, or
 /// disbanded); the caller rejects. Taking the lock twice in one transaction
