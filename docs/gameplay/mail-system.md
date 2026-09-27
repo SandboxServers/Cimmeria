@@ -239,7 +239,7 @@ It is a standalone table, not `INHERITS (sgw_inventory_base)`, so no inventory q
 2. **RecipientFlags** — the vault and organization aliases are refused until the Bank and organizations campaigns land them
 3. **COD flow (SS-M3)** — `payCODForMailMessage` debits the recipient and mails the price to the sender (D-SS09)
 4. **New-mail notification and expiry (SS-M4)**
-6. **Rate limiting** — the `lastMailGetTime` throttle on header requests is not implemented
+5. **Rate limiting** — the `lastMailGetTime` throttle on header requests is not implemented
 
 ## Related Docs
 
