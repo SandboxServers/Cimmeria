@@ -31,6 +31,10 @@ mod shared;
 mod tree_info;
 
 pub use catalog::{AbilityTreeCatalog, TreeNode};
+pub use cimmeria_wire::ability_tree::respec::{
+    respec_error_code_args, RespecOutcome, RESPEC_COST_NAQUADAH, RESPEC_FEEDBACK_NOTHING_TRAINED,
+    RESPEC_FEEDBACK_NOT_AT_TRAINER, RESPEC_FEEDBACK_NOT_ENOUGH_NAQUADAH,
+};
 pub use gates::trainer::TrainerPin;
 pub use points_property::{training_points_property_args, GENERICPROPERTY_TRAINING_POINTS};
 pub use predicate::{evaluate_train, KnownAbilities, TrainContext, TrainPlan, TrainReject};

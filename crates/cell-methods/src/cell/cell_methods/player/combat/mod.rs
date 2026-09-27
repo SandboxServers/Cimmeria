@@ -1,6 +1,7 @@
 //! Combat-related player method dispatch — `useAbility`,
 //! `useAbilityOnGroundTarget`, `callForAid` (Defeat Window respawn),
-//! the auto-`respawn` path, and a couple of unimplemented stubs.
+//! the auto-`respawn` path, the `unstuck` stub, and the forward of
+//! `resetMyAbilities` to the trainer respec in `vendor`.
 //!
 //! The respawn fork (same-world in-place reanchor vs. cross-world
 //! gate-travel) lives in `cell::respawn` so this match stays a thin
@@ -148,8 +149,10 @@ pub async fn dispatch(
             true
         }
 
+        // The trainer respec (AT-08). Its index sits in this range, but the
+        // handler lives with the rest of the trainer flow in `vendor`.
         RESET_MY_ABILITIES => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: resetMyAbilities");
+            super::vendor::handle_reset_my_abilities(entity_id, tx, space_mgr).await;
             true
         }
 

@@ -39,8 +39,8 @@ pub(super) use fire::fire_cast;
 pub use kill_credit::credit_ground_deaths;
 #[cfg(test)]
 pub(crate) use warmup::resolve_warmups;
-pub use warmup::warmup_tick;
 pub(crate) use warmup::{attach_ground_point, interrupt_pending_cast, is_casting, InterruptReason};
+pub use warmup::{interrupt_unlearned_cast, warmup_tick};
 
 pub use fire_los::{fire_line_of_sight, FireLos};
 

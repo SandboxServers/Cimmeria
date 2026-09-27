@@ -33,15 +33,9 @@
 
 use tokio::sync::mpsc;
 
-use crate::ability_tree::{evaluate_train, TrainContext, TrainReject};
+use crate::ability_tree::{evaluate_train, TrainContext, TrainReject, RESPEC_COST_NAQUADAH};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
-
-/// Default respec cost in Naquadah. The Python TODO at
-/// `AbilityTrainer.py:42` shipped `1000` as a placeholder; we preserve it.
-/// Future content-design pass should compute this from total training
-/// points already spent.
-const DEFAULT_RESPEC_COST: i32 = 1000;
 
 /// If the target entity is a trainer NPC, build the per-player ability list
 /// and send `onTrainerOpen`. Returns `true` when the trainer flow handled the
@@ -215,7 +209,8 @@ pub async fn try_open_trainer(
         args.extend_from_slice(&ability_id.to_le_bytes());
         args.push(*trainable);
     }
-    args.extend_from_slice(&DEFAULT_RESPEC_COST.to_le_bytes()); // CostToRespec
+    // CostToRespec: the price `resetMyAbilities` charges (D-AT10, AT-08).
+    args.extend_from_slice(&RESPEC_COST_NAQUADAH.to_le_bytes());
 
     let send_result = tx
         .send(CellToBaseMsg::EntityMethodCall {

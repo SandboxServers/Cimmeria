@@ -37,6 +37,7 @@ use crate::cell::space_manager::SpaceManager;
 use super::super::messaging::send_entity_method;
 use super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 
+pub use interrupt::interrupt_unlearned_cast;
 pub(crate) use interrupt::{interrupt_pending_cast, InterruptReason};
 #[cfg(test)]
 pub(crate) use tick::resolve_warmups;

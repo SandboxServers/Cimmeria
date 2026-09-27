@@ -21,8 +21,14 @@
 /// The ability-tree payloads both the base and the cell send.
 pub mod ability_tree {
     pub mod points_property;
+    pub mod respec;
 
     pub use points_property::{training_points_property_args, GENERICPROPERTY_TRAINING_POINTS};
+    pub use respec::{
+        respec_error_code_args, RespecOutcome, RESPEC_COST_NAQUADAH,
+        RESPEC_FEEDBACK_NOTHING_TRAINED, RESPEC_FEEDBACK_NOT_AT_TRAINER,
+        RESPEC_FEEDBACK_NOT_ENOUGH_NAQUADAH,
+    };
 
     #[cfg(test)]
     mod tests;

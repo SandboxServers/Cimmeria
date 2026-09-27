@@ -496,7 +496,9 @@ pub async fn handle_grant_cash(
     }
 }
 
+mod respec;
 mod train_ability;
+pub use respec::{handle_reset_abilities, RespecRequest};
 pub use train_ability::{handle_train_ability, TrainRequest};
 // The trainer's one-statement DB write. A test hook: besides this crate's
 // tests, the AT-01 hydrate round-trip in `cimmeria-services`
@@ -512,6 +514,8 @@ mod level_cap_tests;
 mod level_up_fanout_tests;
 #[cfg(test)]
 mod progression_changed_tests;
+#[cfg(test)]
+mod respec_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

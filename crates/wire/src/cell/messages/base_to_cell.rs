@@ -256,6 +256,16 @@ pub enum BaseToCellMsg {
         training_points: i32,
     },
 
+    /// The base's answer to
+    /// [`crate::cell::messages::CellToBaseMsg::ResetAbilities`]. On
+    /// `Reset` the cell drops the refunded abilities, clears its tree
+    /// progress and sends the respec burst. On a refusal it sends the
+    /// rejection feedback. Either way the row is already final.
+    AbilitiesReset {
+        entity_id: u32,
+        outcome: crate::ability_tree::RespecOutcome,
+    },
+
     /// Inventory item was used by the player (in response to
     /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).
     /// The cell fires the `OnItemUse` content event with `type_id` (item

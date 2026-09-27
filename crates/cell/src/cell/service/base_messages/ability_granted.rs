@@ -125,7 +125,8 @@ pub(super) async fn handle_ability_granted(
 
 /// Send the training-point counter to the owning client. Built by the same
 /// builder as the level-up bundle's property (`build_grant_xp_bundle`).
-async fn send_training_points(
+/// The respec burst (`respec.rs`) sends it too.
+pub(super) async fn send_training_points(
     entity_id: u32,
     training_points: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
