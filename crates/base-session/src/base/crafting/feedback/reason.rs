@@ -470,7 +470,7 @@ impl CraftReject {
             | CraftReject::InventoryFull { .. }
             | CraftReject::NoCarriedBagForProduct { .. }
             | CraftReject::InductionFailed => None,
-            | CraftReject::BlueprintAlreadyKnown { .. }
+            CraftReject::BlueprintAlreadyKnown { .. }
             | CraftReject::ParadigmAtMax { .. }
             | CraftReject::ItemMissing { .. }
             | CraftReject::ItemNotCarried { .. } => None,
