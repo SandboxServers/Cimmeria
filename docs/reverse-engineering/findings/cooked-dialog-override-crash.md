@@ -16,24 +16,29 @@ Sources:
     FUN_00df27f0 @ 0x00df27f0 (`GameProxyPlayer::HandleOnClientMapLoad`) and BW_client_entity_manager_2 @ 0x00dd0b00
     (`EntityManager::PostLoadMap`) — both decompiled fresh and confirmed to have zero Dialog/CookedData references
     FUN_0044e5d0 @ 0x0044e5d0 (category-5 LibCategory CME-subscription ctor, confirms FUN_004435c0/FUN_00443a30 wiring)
+    FUN_0044f680 @ 0x0044f680 (full category-5 LibCategory ctor: vtable stamp + FUN_0044e5d0 + LibCategoryBase_Ctor, no element enumeration)
+    LAB_0044a680 (force-created as FUN_0044a680) @ 0x0044a680 (category-5 Event_Entity_ProxyPlayerBaseCreated handler: fires a second versionInfoRequest)
+    docs/reverse-engineering/decompiled/14_standalone_named.c:5079-5169 (all six category-5 MemberCallback instantiations; grep for external Event_Cache_ElementReady<long,Dialog> subscribers returns zero matches)
   - docs/reverse-engineering/decompiled/13_other_game.c:3028, 14_standalone_named.c:5139-5151 — `ServerSource<5,long,Dialog,...>` / `ZipStorage<5,long,Dialog,...>` mangled RTTI (key type is `long`, confirmed structurally by the live decompile above)
   - docs/reverse-engineering/decompiled/14_standalone_named.c:512789-512967 — `CME_UIScreen_UIScreenType_1` / `FUN_015e4d10`, the record and per-`<Screens>` parsers
   - docs/reverse-engineering/findings/cooked-data-pipeline.md, docs/reverse-engineering/findings/dialog-portrait-lookup.md, docs/reverse-engineering/findings/world-entry-pipeline.md (`GameProxyPlayer_HandleEvent_Level_PostLoad`/`FUN_00de8430`, `Event_World_Loaded` subscribers)
   - crates/base-session/src/base/cooked_data.rs:34-178, crates/wire/src/mercury/protocol/resources.rs:70-120, crates/resources/src/base/mission_overrides.rs:85-117, crates/resources/src/base/resources/mod.rs:195-317, crates/resources/src/base/resources/metadata_bump.rs:81-109
   - SigNoz colo telemetry, 2026-09-27 16:19 UTC deploy and the two subsequent login attempts (summarized by team-lead; not independently queried — signoz MCP was unreachable this session)
 Related findings: cooked-data-pipeline.md, dialog-portrait-lookup.md, dialog-controller-wire-flow.md, world-entry-pipeline.md
-Implementation status: **CLOSED as "not the cause," 2026-09-27.** The >65535 element-key-width
-hypothesis is REFUTED for every code path a `resourceFragment`/`onVersionInfo`/`onCookedDataError`/
-map-load exchange actually runs (see "Verdict" below), and this is now empirically confirmed too:
-the tester crashed again at 17:52 on build `38296335f` (the `#938` renumber to `60100`-`60104`,
-already merged) with the identical crash shape — same CREATE_BASE_PLAYER + onClientMapLoad + two
-keepalives + silence. Dialogs (any id) are ruled out as the cause. The last good world entry was
-13:52 on build `707950271`; the first bad build is `b22907eb5` (16:19). The active hypothesis has
-moved to a broader **world-entry payload regression** between those two builds — see
-`docs/reverse-engineering/findings/create-base-player-crash.md` (this session's follow-up finding)
-and the `world-entry-bisect` worker's server-side wire diff. This document's own conclusions (the
->65535 refutation, the persistence/tombstone answers in §4/§5) stand on their own merits and are
-NOT retracted — only the "leading suspect" framing is superseded.
+Implementation status: **RE-OPENED, 2026-09-27 (same day).** The >65535 element-key-width
+hypothesis stays REFUTED (see "Verdict" below) — the tester crashed again at 17:52 on build
+`38296335f` (the `#938` renumber to `60100`-`60104`), confirming id value is not it. This finding
+was briefly closed as "not the cause" on the theory that CREATE_BASE_PLAYER/`onClientMapLoad`
+carried a regressed payload instead, but `world-entry-bisect` (a parallel worker) then confirmed
+those bytes are **byte-identical** between the good build (`707950271`) and every bad build back
+to `b22907eb5` — there is no world-entry payload regression. SigNoz also confirms the crashing
+client's on-disk `CookedDataDialogs.pak` still holds `100100`/`100101` (never invalidated by any
+build, `#938` included) and that dialogs are the *only* thing that changed for this client since
+its last good session. **Dialogs are back as the carrier — the open variable is which *content*
+field, not which id.** New candidates per team-lead: nonzero `speaker_id` (754/843, vs. every
+working override's `speaker_id: 0`), a **two-screen** dialog (vs. one screen), `ScreenID`s in the
+`200000`-`200005` range (vs. `96108`-`96109` max previously), and button **type 4**. See "Round 2"
+below for what this session's headless-Ghidra work found and ruled out chasing these.
 ```
 
 ## Verdict (2026-09-27, after live headless-Ghidra decompile)
@@ -47,6 +52,82 @@ NOT retracted — only the "leading suspect" framing is superseded.
 - `GameProxyPlayer::HandleOnClientMapLoad` (`FUN_00df27f0`, the actual `onClientMapLoad` method-117 handler) and `EntityManager::PostLoadMap` (`BW_client_entity_manager_2` @ `0x00dd0b00`, the UE3 terrain-streaming completion callback that fires `Event_Level_PostLoad`) were both decompiled fresh: neither touches Dialog data, CookedData, or any `ServerSource`/`ZipStorage` method. `HandleOnClientMapLoad` only reads `areaName`/`mapPath`/`WorldID`/`Location`/`Direction` and kicks off the UE3 level-streaming request (`L"127.0.0.1/" + mapPath + L".umap"`). `Event_Level_PostLoad`'s only known subscriber body (`GameProxyPlayer_HandleEvent_Level_PostLoad`/`FUN_00de8430`, per `world-entry-pipeline.md`) only touches player-controller input mode and vehicle/mount transforms.
 
 So: the wire type, the cache key type, the ZIP entry-name formatting, the persist-to-disk path, and the two map-load-lifecycle handlers this session could actually trace are all clean. **Root cause for why `100100`/`100101` specifically crash the client remains open** — see "What is not confirmed" below, now sharpened with a new lead (`SpeakerID=754`) and a shorter list of remaining places to look.
+
+## Round 2 (2026-09-27, same day): dialogs confirmed as carrier by content, not id — ruling out three more mechanisms, one new lead
+
+After `#938` (renumber to `60100`-`60104`) shipped and the tester crashed again, `world-entry-bisect`
+(a parallel worker diffing server-side wire bytes) reported two facts that reframe this finding:
+(1) `CREATE_BASE_PLAYER`/`onClientMapLoad`/time-sync are **byte-identical** between the good build
+(`707950271`) and every bad build — there is no world-entry payload regression to chase; (2) SigNoz
+confirms the crashing client's on-disk cache still holds `100100`/`100101` (never invalidated by
+any build so far) and that dialogs are the only thing that changed for this client since its last
+good session. So dialogs are confirmed as the carrier again — the open question is which *content*
+field differs from every dialog that has worked fine for days (`3995`/`3996`, `speaker_id: 0`, one
+screen), not the id. Team-lead named four candidates: nonzero `speaker_id` (754/843), a two-screen
+dialog, `ScreenID`s in `200000`-`200005` (vs. `96108`-`96109` max previously), and button type 4.
+
+This session used headless Ghidra to chase "does anything walk the cached Dialog records after
+`onClientMapLoad`, resolve `SpeakerID` via a fixed table, or index by `ScreenID`." Three more
+mechanisms were checked and ruled out; one new, unverified lead was found:
+
+**Ruled out — the category-5 `LibCategory` constructor does not enumerate persisted elements.**
+`FUN_0044f680` @ `0x0044f680` (found as the caller of `FUN_0044e5d0`, the CME-subscription wiring
+from the Verdict above; confirmed by its own `LibCategory<LibCategoryKey<5,long,Dialog,...>>::vftable`
+stamp) does exactly three things: stamp the vtable, wire the CME subscriptions, call the shared
+`LibCategoryBase` base-constructor (`FUN_004786e0`) to set the category id. No enumeration of
+already-cached or newly-opened ZIP entries happens at construction time — team-lead's "does
+`ServerSource` load of a persisted category do a post-load pass over all elements" is answered: no,
+not here.
+
+**Ruled out — nothing external subscribes to "a Dialog element became ready."** Every category-5
+`MemberCallback` instantiation in the pre-extracted decompiled dumps (`14_standalone_named.c:5079`-
+`5169`) is `Detail::ServerSource<5,...>` subscribing to something *else* (`Event_Net_Connected`,
+`Event_Entity_ProxyPlayerBaseCreated`, `Event_Net_Disconnected`, `onVersionInfo`, `Event_Net_ProxyData`,
+`onCookedDataError`) — a search for any *other* class subscribing to
+`Event_Cache_ElementReady<long,Dialog>` or `Event_Cache_ElementError<long,Dialog>` as its event of
+interest (`grep -n "),struct_Event_Cache_ElementReady<long,class_Dialog>"` across every pre-extracted
+dump) returns **zero matches**. Compare category 6 (`CookedKismetEventSetData`), where
+`DialogController`'s `FUN_00d25310` *does* subscribe to that category's `ElementReady` (per the
+correction in `dialog-portrait-lookup.md`). Category 5 has no such consumer. This is consistent
+with dialogs being read lazily, only at `Event_NetIn_DialogDisplay` time (the wire path
+`dialog-controller-wire-flow.md` and `dialog-portrait-lookup.md` already trace) — there is no eager
+map-load-time reader of freshly-cached Dialog data via the CME event system.
+
+**Ruled out — no Castle_CellBlock content references these dialog ids.**
+`grep -rn "100100\|100101\|60104" db/resources/` finds them only in `debug_hub_chains.sql` (space
+12, the debug hub) and the matching `dialogs.sql`/`dialog_screens.sql`/`entity_templates.sql` rows —
+nothing in Castle_CellBlock's own seed data (missions, entity templates, dialog_set_maps) points at
+them. The debug-hub NPC (template 302, "Airman Lance") is not placed in Castle_CellBlock and nothing
+there has a reason to touch these records by content.
+
+**New, unverified lead: `Event_Entity_ProxyPlayerBaseCreated` fires a *second* `versionInfoRequest`
+per category, right around `CREATE_BASE_PLAYER` time.** Category 5's sixth CME subscription (found
+via `14_standalone_named.c:5097`, the `Event_Entity_ProxyPlayerBaseCreated` instantiation, missed in
+the first pass because the Verdict above only decompiled five of the six subscribe calls in
+`FUN_0044e5d0`) wires handler `LAB_0044a680`. Force-decompiled (`0x0044a680`): it builds and fires
+*another* `versionInfoRequest(CategoryId=5, Version=this+0x24)`, then re-subscribes itself to the
+same event. This is stock 2009 client behavior (not something Cimmeria added), and it fires whenever
+the client's base-player entity is (re)created — i.e., a second version check right around
+`CREATE_BASE_PLAYER`, in addition to the one `Event_Net_Connected` already sent at connect time.
+**This is a real, newly-documented mechanism, but not a confirmed cause**: `handle_version_info_request`
+should treat it as a no-op once the client's locally-persisted version already matches the server's
+(which the version write inside `onVersionInfo` sets synchronously, before this second request would
+normally arrive) — so on paper this second request changes nothing. The only way it matters is if the
+two requests race (the second one reaching the server before the first's version-bump write has
+"taken" client-side, or before the first push's fragments have all landed), in which case the server
+could re-push the *same* `InvalidKeys`/fragments a second time in quick succession, and two
+overlapping resource transfers for the same category could plausibly corrupt a ZIP entry if
+`next_data_id`/fragment interleaving isn't safe under that overlap. **This session could not verify
+whether such a race actually occurs** (would need a live network trace showing two
+`onVersionInfo`/push cycles per login, which `world-entry-bisect` is better placed to check in
+SigNoz than a static decompile can settle) — flagging it as a lead, not a finding. If SigNoz shows
+only one version transition and one push per session (as the evidence so far suggests — `44069 ->
+37653` mentioned once, not twice), this lead is probably a dead end and the mechanism is elsewhere
+(most likely in the client's speaker-name/portrait resolution or a screen-navigation index that this
+session did not reach — the `Event_Level_PostLoad` subscribers `GameAppearanceManager` (RTTI
+`0x00e9a480`) and `Minimap`/`GameProxyPlayer`'s `Event_World_Loaded` handlers (RTTI `0x00e2af30`/
+`0x00df7b80`) remain untraced; finding their handler bodies needs the vtable slot arithmetic this
+session didn't have time to work out — see Next Steps).
 
 ## Summary
 
