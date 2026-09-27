@@ -154,7 +154,7 @@ All are non-`<Exposed/>`, so they are server-internal with no wire surface. They
 ### 2.4 Ownership map (CAT-C-11 / #462)
 
 - Required: a server-side `pet -> owner` and `owner -> pets` map. Put it on `SpaceManager`, beside `ring_transporters` (`space_manager/mod.rs:286`), plus `pet.owner_id` on the pet's `CellEntity`.
-- Every 88/89/90 handler must resolve through `space_mgr.owned_pet(caller, claimed_pet_id)` and reject with a warn plus visible `onErrorCode` feedback (the button-press feedback rule) on mismatch.
+- Every 88/89/90 handler must resolve through `space_mgr.owned_pet(caller, claimed_pet_id)` and reject with visible `onErrorCode` feedback (the button-press feedback rule) on mismatch. As built (PT-04), `SpaceManager::owned_pet` logs the refusal once at DEBUG on `pets.command` (`event = ownership_rejected`, `reason`), not WARN: a client can name any id at will.
 - The spoofing guard needs a negative-log test (`docs/architecture/negative-logging-convention.md`).
 
 ### 2.5 Kill credit / XP (`transferXP`)

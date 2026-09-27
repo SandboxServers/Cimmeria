@@ -167,7 +167,7 @@ Servant Lord pet nodes, 2826 Summon Straegis first (the first pet, D-PT13), then
 | Guilds / organizations | Known missing on the server ([gap-analysis.md §23](../gap-analysis.md)). |
 | Black market | Known missing on `main` ([gap-analysis.md §25](../gap-analysis.md)). |
 | Crafting | Known missing: the crafting verbs are still stubs ([gap-analysis.md §19](../gap-analysis.md)). |
-| Pets (partly) | The pet trainer (template 360) sells the summon abilities, but a pet needs a tester, not a hub NPC: summon with `.pet summon 2826` or the ability, then walk, fight and change stance. Follow, stances, the pet bar and the summon warmup are the pets campaign's packets ([docs/analysis/pets/](../analysis/pets/README.md), [gap-analysis.md §28](../gap-analysis.md)). |
+| Pets (partly) | The pet trainer (template 360) sells the summon abilities, but a pet needs a tester, not a hub NPC: summon with `.pet summon 2826` or the ability (`.giveability 1643`, `1644` or `1645` for the Jaffa, Lo'taur or Prime), then walk, fight and change stance. Every pets-campaign packet has merged; the owner's UAT checklist is in [the pets session resume](../analysis/pets/handoffs/session-resume.md) ([docs/analysis/pets/](../analysis/pets/README.md), [gap-analysis.md §28](../gap-analysis.md)). |
 | Player-to-player trade | Needs two players. An NPC cannot be a trade partner ([gap-analysis.md §22](../gap-analysis.md)). |
 
 ## Where it lives
