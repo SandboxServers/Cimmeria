@@ -3,17 +3,25 @@
 > Type: how-to. Audience: any later session and the owner.
 > Updated: 2026-09-27. Companions: [decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
 
-## State: plan merged (#873); Wave 0 in progress
+## State: Wave 1 nearly done; Wave 2 writing
 
-The plan merged as #873. Branches are `social/*`; the id block is entity templates **390-399** and spawns **490-499**.
+Updated 2026-09-27. Branches are `social/*`; the id block is entity templates **390-399** and spawns **490-499**.
 
 | Packet | Status | PR |
 |---|---|---|
 | Plan | Integrated | #873 |
 | SS-E1 | Integrated | #875 |
-| SS-00 | Writing | |
-| SS-M1, SS-C1, SS-C2, SS-D1 | BlockedDependency (SS-00) | |
+| SS-00 | Integrated | #880 |
+| `chat.rs` split | Integrated | #885 |
+| SS-C2 | Integrated | #887 |
+| SS-D1 | Integrated | #888 |
+| SS-M1 | Integrated | #894 |
+| SS-C1 | Review (it also wires SS-M1's and SS-D1's Ignore seams) | #893 |
+| SS-M2, SS-D2, SS-U2 | Writing | |
+| SS-C3 | BlockedDependency (SS-C1) | |
 | Everything else | BlockedDependency | |
+
+Contract changes since the plan are recorded in [work-packets.md](../work-packets.md): `MailOp::SendRejected`, `CellToBaseMsg::Chat(ChatCellToBase)`, and `combat::player_may_attack` (from the pets campaign) replacing `player_may_harm`.
 
 ## Owner decisions
 

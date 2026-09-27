@@ -9,7 +9,7 @@ This campaign finishes three player-to-player systems whose client UI ships comp
 
 - **Mail (GateMail).** Reading, archiving and deleting work. Sending, attachments, taking, cash on delivery (COD) and return are stubs that tell the dispatcher "handled", so the client's Send button does nothing.
 - **Chat.** Say, emote and yell work. A tell is never delivered, nothing enforces the Ignore list, nothing limits flooding, there is no GM broadcast, and the channel ids disagree with `enumerations.xml`.
-- **Dueling, 1v1.** Nothing exists on the server. The client ships the challenge prompt, the countdown and every wire method.
+- **Dueling, 1v1.** Before this campaign, nothing existed on the server. The client ships the challenge prompt, the countdown and every wire method.
 
 The 2009 Python server never implemented any of the write paths: the mutating mail methods are `print` stubs, the duel methods are `pass`, and `SGWDuelMarker.py` is an empty class. Only tells have a working legacy reference (`deprecated/python/base/Chat.py`). Every design choice below that the client does not fix is therefore project policy, and the docs must say so.
 
@@ -29,6 +29,17 @@ Out of scope:
 - **Mail to the vault, Team or Command aliases** (`MAIL_ToVault` to `MAIL_ToCommandRank7`). Vault aliases belong to the Bank campaign; organization aliases need the organizations campaign's membership API. Both are rejected with a result code until then (D-SS07).
 - **Team, squad, command and officer chat.** The organizations campaign owns them (ORG-04, ORG-09).
 - **Any client patch.** Every feature here uses wire methods the shipped client already handles.
+
+## Progress
+
+Updated 2026-09-27. The per-packet status lines in [work-packets.md](work-packets.md) are authoritative.
+
+| Line | Merged | In flight |
+|---|---|---|
+| Shared | SS-00 online-player index, rate limiter, feedback helper and chat flood limit (#880); SS-E1 client evidence (#875) | |
+| Mail | SS-M1: text-only send to up to 10 recipients, bounded decode, per-recipient cap under lock, and the read-side fixes (#894) | SS-M2 attachments and escrow |
+| Chat | `chat.rs` split (#885); SS-C2: `/gmshout` and `.announce` (#887) | SS-C1 tells and Ignore (#893) |
+| Duels | SS-D1: challenge, response, `DuelRegistry` and expiry (#888). An accepted duel counts down and then aborts until SS-D2 | SS-D2 PvP flag and harm gate; SS-U2 test partner |
 
 ## What was found
 
