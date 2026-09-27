@@ -52,7 +52,8 @@ CR-02 game clock ─────┼──► CR-06 induction engine + transactio
                       │                                                CR-10 respec ────────────────┤     + /release
                       │                                                CR-11 debug hub (#846) ──────┤
                       │                                                CR-12 ASP earning ───────────┤
-                      └──────────────────────────────────────────────► CR-15 blueprint/guide items ─┘
+                      ├──────────────────────────────────────────────► CR-15 blueprint/guide items ─┤
+  Bank BV-01 (#872) ──┴──────────────────────────────────────────────► CR-16 grant fall-through ─────┘
 ```
 
 CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers, argument parsing and the message shape, with **no behaviour change**. CR-E1, CR-E2 and CR-02 touch no file CR-01 owns.
@@ -63,7 +64,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `crates/cell-methods/.../player/crafting/mod.rs`: CR-01, then CR-05 (gate), then CR-10 (respec arm). Verb packets add files only.
 - `crates/base-session/src/base/crafting/mod.rs` and the base dispatch arm: CR-01 adds the `Crafting` arm; later packets add files and `mod` lines only.
 - `base/world_entry/methods/progression/mod.rs` (`grant_xp`): CR-12 only.
-- `crates/wire/src/cell/messages/cell_to_base.rs` is **over the 700-line cap** (793 lines after CR-01). The first Wave 1 packet that adds a `CellToBaseMsg` variant (CR-05's `CraftingStations`) splits the crafting variants out into their own file first.
+- `crates/wire/src/cell/messages/cell_to_base.rs` is **over the 700-line cap** (793 lines after CR-01). An enum's variants cannot move to another file, and the only natural seam (the contact-list family) would rename about 40 call sites while two other campaigns add variants. So crafting adds tuple variants whose payloads live in `crates/wire/src/crafting/`, and the split is a separate PR once the parallel campaigns settle.
 - `crates/entity/src/cell_entity/entity_struct.rs` is **over the 700-line cap**. CR-05's per-player station state goes in a new file, not in that struct's body.
 - `db/resources/Entities/Seed/entity_templates.sql`, `Worlds/Seed/spawnlist.sql`: CR-11 only, inside 310-329 and 410-429. Message the guilds session (cimmeria-fa) and the pets session (cimmeria-b5) before merging.
 - `crates/wire/src/containers.rs`, `crates/entity/src/inventory.rs` (`BAG_SIZES`), `inventory/move_/mod.rs` and `inventory/grant/validation.rs`: owned by the Bank/Vault campaign (cimmeria-97, BV-01 lands first; it keeps container 15 movable) and the guilds vault packet (cimmeria-fa, containers 19 and 20). CR-05 may add a post-commit bag-15 notification in `move_/mod.rs`; message both sessions before that packet starts and rebase onto their changes.
@@ -258,6 +259,14 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - Loot: add Guides and Blueprint items to a loot table only where existing content already places crafting drops; otherwise the vendor (CR-11) is the only source for now.
 
 **Acceptance:** live-DB tests for each item kind, including the refused cases (nothing consumed); a replay test; a seed guard that every mapped blueprint and paradigm id exists.
+
+### CR-16
+
+**Status:** BlockedDependency (Bank BV-01, #872). **Scope title:** Grant into the first allowed player container. **Advisor:** items-systems-advisor. Tell cimmeria-97 when it starts.
+
+**Scope:** audit C-29. When an item's `container_sets` lists a storage container (17-20) first, the grant path falls through to the next listed player container (15, then 1) instead of refusing. The loot-into-bank refusal BV-01 adds stays for items that list only storage containers. Every caller benefits: loot, content `grant_item`, GM `gmGiveItem`, vendors, and CR-06's transaction if it reuses the grant path.
+
+**Acceptance:** a live-DB test that a `{17,15}` component granted by loot, by the content engine and by a GM lands in bag 15; a guard that fails when the fall-through is removed; the BV-01 refusal test still passes for a storage-only item.
 
 ## Wave 3
 

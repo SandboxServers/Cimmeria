@@ -39,6 +39,7 @@ Every row was checked against the code, the seed, the client Lua or the client b
 | C-26 | 48 "Field Crafting Tool" items (5369, 8405 and on, `tech_comp` 5-55) carry no crafting flag. | `items.sql` |
 | C-27 | Seeded characters have no disciplines, no paradigm levels, 0 ASP and no blueprints. | `db/sgw/Players/Seed/sgw_player.sql` |
 | C-28 | Free id blocks on `main` and in every open PR: templates 310-329, spawns 410-429. The neighbours are the debug hub (#846: 300-304, 400-404), Harset (200-299, 300-399), guilds (330-349, 430-449) and pets (350-369, 450-469). | `entity_templates.sql` max 248; `spawnlist.sql` max 349 |
+| C-29 | **752 crafting components cannot be granted.** Their `container_sets` are `{17,15}`, and loot and content `grant_item` place an item into the first listed container. 17 (the bank) had 0 slots, so every such grant failed. BV-01 (#872) keeps the refusal explicit (`bank grant_rejected reason=grant_into_storage_container`) rather than letting loot land in the bank. Crafted products, reverse-engineer recovery, vendor purchases and `.craftkit` hit the same path. | Found by the Bank campaign (cimmeria-97), 2026-09-26; `db/resources/Items/Seed/items.sql` |
 
 UAT-friendly recipes (from C-22 and C-23):
 
