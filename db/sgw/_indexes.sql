@@ -45,3 +45,14 @@ CREATE UNIQUE INDEX sgw_contact_list_member_list_lower_name_key ON sgw_contact_l
 --
 
 CREATE INDEX sgw_player_player_name_lower_idx ON sgw_player USING btree (lower((player_name)::text));
+
+--
+-- Index: sgw_organization_members_one_leader_idx
+-- One Leader per organization. "The leader is the member at rank 8" is the
+-- whole leadership model (there is no leader column), so the database
+-- refuses a second one. Also serves the member-delete trigger's
+-- "is there still a leader" lookup.
+--
+
+CREATE UNIQUE INDEX sgw_organization_members_one_leader_idx ON sgw_organization_members USING btree (org_id) WHERE rank = 8;
+

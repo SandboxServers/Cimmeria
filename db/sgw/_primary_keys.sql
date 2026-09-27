@@ -83,3 +83,55 @@ ALTER TABLE ONLY sgw_contact_list
 ALTER TABLE ONLY sgw_contact_list_member
     ADD CONSTRAINT sgw_contact_list_member_pkey PRIMARY KEY (list_id, player_name);
 
+--
+-- Name: sgw_organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organizations
+    ADD CONSTRAINT sgw_organizations_pkey PRIMARY KEY (org_id);
+
+--
+-- Name: sgw_organizations_org_type_name_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+-- Organization names are unique per type on the case-folded key (D-ORG10):
+-- a Team and a Command may share a name.
+--
+
+ALTER TABLE ONLY sgw_organizations
+    ADD CONSTRAINT sgw_organizations_org_type_name_key_key UNIQUE (org_type, name_key);
+
+--
+-- Name: sgw_organizations_org_id_org_type_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+-- Redundant as a key (org_id alone is unique); it exists as the target of
+-- sgw_organization_members_org_fkey, which pins each member row's org_type
+-- copy to its organization's.
+--
+
+ALTER TABLE ONLY sgw_organizations
+    ADD CONSTRAINT sgw_organizations_org_id_org_type_key UNIQUE (org_id, org_type);
+
+--
+-- Name: sgw_organization_ranks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organization_ranks
+    ADD CONSTRAINT sgw_organization_ranks_pkey PRIMARY KEY (org_id, rank);
+
+--
+-- Name: sgw_organization_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_pkey PRIMARY KEY (org_id, player_id);
+
+--
+-- Name: sgw_organization_members_player_id_org_type_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+-- One Team and one Command per player (D-ORG18). Also serves the login
+-- query "which organizations is this player in" (leading player_id).
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_player_id_org_type_key UNIQUE (player_id, org_type);
+
