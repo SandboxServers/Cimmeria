@@ -172,6 +172,13 @@ Each mutation applied by a script, the named tests run with `--no-fail-fast`, th
 - **Pets:** no pet behaviour changed. The pets campaign's travel scan and this one sit side by side; a new travel site needs both hooks.
 - Ledger: SS-D3 → Review; audit § 6 CAT-M-14, CAT-M-15 and the non-lethal rows are covered by the tests above.
 
+## Rebase onto `origin/main` @ `23e97ac58` (SS-U2 #910, SS-M2 #912)
+
+- Conflicts only in `duel/{mod.rs, registry.rs, tests/mod.rs}` (SS-U2's `gm` module and `GmAborted` beside this packet's `forfeit`, `paths` and `Withdrawn`); both sides kept.
+- SS-U2's `duel::gm::gm_end` calls `end_engaged(tx, mgr, duel_id, EndReason::GmAborted)`, which still aborts with 878 to both; its tests pass. SS-U2 added no `TeleportPlayer` / `GateTravel` site (`every_travel_site_ends_the_duel` passes).
+- `gap-analysis.md` and `project-status.md` restored to main's version (owner rule); the deltas are below.
+- After the rebase: `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell-methods -p cimmeria-cell-console -p cimmeria-cell-content -p cimmeria-cell-interactions -p cimmeria-cell -p cimmeria-wireclient`: 3298 passed, 1 skipped (SS-U2's `#[ignore]` sparbot keep-alive test; the wireclient DB tests self-skip without `DATABASE_URL` in that run). Clippy on those crates plus `cimmeria-services`, `--all-targets -D warnings`: clean. fmt: clean. `reload-db.sh`, then `cargo test -p cimmeria-wireclient --test it duel -- --test-threads=1` with `sgw_ss_d3`: 3 passed (this packet's forfeit extension and SS-U2's two sparbot tests), 1 ignored.
+
 ## Close-out edits for SS-99
 
 For `docs/gap-analysis.md` and `docs/project-status.md`, which packets no longer edit:
