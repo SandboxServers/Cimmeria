@@ -24,6 +24,7 @@ mod sequence_phases;
 mod summon;
 mod summon_live_db;
 mod summon_logs;
+mod summoned_pet_kill_credit;
 mod target_validity;
 mod warmup;
 mod warmup_interrupt;
