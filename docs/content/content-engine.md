@@ -366,7 +366,7 @@ Barks ride the one non-modal text route the client honours,
 `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)` (client method
 28 — [dispatch table](../protocol/client-method-dispatch-table.md)), through
 the **same serializer the chat broadcaster uses**
-([`cell/console/chat.rs`](../../crates/cell-console/src/cell/console/chat.rs)). Deliberately not
+([`cell/console/chat/`](../../crates/cell-console/src/cell/console/chat/mod.rs)). Deliberately not
 `system_message`, whose wire format is still unknown and whose earlier
 attempt at method 28 produced garbled `"[] says"` chat (§10).
 

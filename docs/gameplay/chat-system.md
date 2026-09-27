@@ -14,7 +14,7 @@ last_updated: 2026-09-27
 
 The chat system provides multi-channel text communication between players. It supports system channels (say, emote, yell, team, squad, command, officer, server, feedback, tell, splash) and user-created channels (chat, roleplay, alliance). Messages on cell-based channels are forwarded to the CellApp for spatial distribution; other messages are handled on the BaseApp.
 
-The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/base/src/base/dispatch/chat.rs) (inbound base methods), [`cell/console/chat.rs`](../../crates/cell-console/src/cell/console/chat.rs) (spatial fanout), and [`base/world_entry_chat.rs`](../../crates/base-session/src/base/world_entry_chat.rs) (channel registration at world entry).
+The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/base/src/base/dispatch/chat.rs) (inbound base methods), [`cell/console/chat/`](../../crates/cell-console/src/cell/console/chat/mod.rs) (spatial fanout), and [`base/world_entry_chat.rs`](../../crates/base-session/src/base/world_entry_chat.rs) (channel registration at world entry).
 
 ## Implementation Status
 
@@ -22,7 +22,7 @@ Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `c
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Spatial channels (say / emote / yell) | DONE | `cell/console/chat.rs` broadcasts `onPlayerCommunication` to every AoI witness of the speaker |
+| Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every AoI witness of the speaker |
 | Channel registration on login | DONE | 8 channels pushed at `onClientReady` — see [System Channels](#system-channels) |
 | DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |

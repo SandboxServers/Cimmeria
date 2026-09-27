@@ -291,9 +291,9 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [handle_reload_pins_reload_slot_id_to_current_active_slot](../../../crates/cell-methods/src/cell/cell_methods/player/world/tests/reload.rs#L47) | unit | Cell / Cell Methods / Player | 2026-05-04 | `handle_reload` from an empty magazine pins the slot id at the time of issue |  |
 | [serialize_on_player_communication_basic](../../../crates/wire/src/cell/chat.rs#L91) | unit | Cell / Chat | 2026-03-06 | Asserts equality on `speaker_len` |  |
 | [serialize_on_player_communication_empty_text](../../../crates/wire/src/cell/chat.rs#L122) | unit | Cell / Chat | 2026-03-06 | Asserts equality on `args.len()` |  |
-| [broadcast_to_nonexistent_entity_is_noop](../../../crates/cell-console/src/cell/console/chat.rs#L171) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
-| [broadcast_say_to_witnesses](../../../crates/cell-console/src/cell/console/chat.rs#L183) | unit | Cell / Chat | 2026-03-06 | Broadcast say to witnesses |  |
-| [non_cell_channel_ignored](../../../crates/cell-console/src/cell/console/chat.rs#L323) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
+| [broadcast_to_nonexistent_entity_is_noop](../../../crates/cell-console/src/cell/console/chat/tests/spatial.rs#L4) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
+| [broadcast_say_to_witnesses](../../../crates/cell-console/src/cell/console/chat/tests/spatial.rs#L16) | unit | Cell / Chat | 2026-03-06 | Broadcast say to witnesses |  |
+| [non_cell_channel_feeds_back_to_sender_only](../../../crates/cell-console/src/cell/console/chat/tests/feedback.rs#L10) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
 | [qr_positive_when_attacker_stronger](../../../crates/cell-combat/src/cell/combat/damage/qr.rs#L184) | unit | Cell / Combat / Damage | 2026-04-30 | Asserts on `qr > 0.0` |  |
 | [qr_negative_when_defender_stronger](../../../crates/cell-combat/src/cell/combat/damage/qr.rs#L193) | unit | Cell / Combat / Damage | 2026-04-30 | Asserts on `qr <= 0.0` |  |
 | [result_code_miss_below_miss_threshold](../../../crates/cell-combat/src/cell/combat/damage/qr.rs#L206) | unit | Cell / Combat / Damage | 2026-05-02 | Asserts equality on `qr_rand_to_result_code(0.03)` |  |

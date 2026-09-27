@@ -715,7 +715,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: MEDIUM-HIGH (code re-read 2026-09-25)
 - **Documentation**: [gameplay/chat-system.md](gameplay/chat-system.md), [reverse-engineering/findings/chat-wire-formats.md](reverse-engineering/findings/chat-wire-formats.md)
-- **Rust code**: [`crates/cell-console/src/cell/console/chat.rs`](../crates/cell-console/src/cell/console/chat.rs) (454), [`crates/base/src/base/dispatch/chat.rs`](../crates/base/src/base/dispatch/chat.rs) (219), [`crates/base-session/src/base/world_entry_chat.rs`](../crates/base-session/src/base/world_entry_chat.rs) (237): 910 lines including tests
+- **Rust code**: [`crates/cell-console/src/cell/console/chat/`](../crates/cell-console/src/cell/console/chat/mod.rs), [`crates/base/src/base/dispatch/chat.rs`](../crates/base/src/base/dispatch/chat.rs) (219), [`crates/base-session/src/base/world_entry_chat.rs`](../crates/base-session/src/base/world_entry_chat.rs) (237): 910 lines including tests
 - **Recent PRs**: #739 (stored DND message bounded to 128 characters, security finding CAT-L-02), #737 (players in a shared world now witness each other, so say/emote/yell can reach another player; not two-client validated), #769 (content-engine `npc_bark` speaks NPC lines over `onPlayerCommunication` on the say channel, a content feature that reuses the chat wire, not player chat)
 - **Open issues**: #471 (security audit CAT-L, chat / contact list, 9 findings)
 - **In-client record**: the 2026-09-18 colo playtest logged 20 say-channel sends from the real client, all `.`-prefixed GM console lines, which chat.rs:88-97 intercepts before broadcast ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 123). That proves client-to-server say routing. It does not prove witness rendering of ordinary chat.
@@ -723,7 +723,7 @@ last_updated: 2026-09-25
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Say/emote/yell (AoI) | NT | AoI | cell/console/chat.rs:99-110, 126-190 | Witness broadcast plus sender echo. Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
+| Say/emote/yell (AoI) | NT | AoI | cell/console/chat/mod.rs:96-106, chat/spatial.rs | Witness broadcast plus sender echo. Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
 | Direct tells | KM | -- | -- | `sendPlayerCommunication` parses the `target` WSTRING, logs it, and forwards every message to the cell as a spatial broadcast (base/dispatch/chat.rs:22-108) |
 | User channels | KM | -- | -- | requestCreateChannel not ported |
 | Pre-defined channels | IM | -- | base/world_entry_chat.rs:20-29 | **Corrected 2026-07-25.** All 8 canonical channels (say/emote/yell/team/squad/command/server=7/tell=9) are auto-joined on world entry and pushed as `onChatJoined` (world_entry_appearance/builders.rs:89). `chatJoin` is acknowledged as a no-op (dispatch/chat.rs:113-125). **No cross-player routing on the non-spatial channels yet** |
@@ -732,7 +732,7 @@ last_updated: 2026-09-25
 | Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Per-player token bucket on every player channel, burst 5 then 1 line/s (D-SS14), GameMaster and above exempt; lines over 255 UTF-16 units or with control, bidi or zero-width characters refused (D-SS12, through the D-ORG10 `org_text` rules). Both run on the base before the cell forward; the player gets one feedback line (at most one per 5 s) and SigNoz a `rate_limit.exceeded` / `chat.rejected` event. Type-12 guards; no in-client test on record |
 | Profanity filter | KM | -- | -- | No filtering |
 | Mute system | KM | -- | -- | No per-player muting |
-| GM broadcast | KM | Admin | -- | No system-wide message tool. GM feedback rides the `tell` channel to the caller only (cell/console/chat.rs:33-40) |
+| GM broadcast | KM | Admin | -- | No system-wide message tool. GM feedback rides the `tell` channel to the caller only (cell/console/chat/feedback.rs) |
 
 ### 22. Trading --- IM (ported 2026-06; was KM)
 
@@ -1214,7 +1214,7 @@ The GM command surface shipped in June via the client's **native `/` console**: 
 | Native GM console (SGWGmPlayer) | CW | -- | cell/console/gm/ | 6,070 lines across give / stats / missions / travel / spawn / query / world / feedback + tests. PRs #473 / #516 / #518 / #521 / #524. Owner-confirmed 2026-06-20 |
 | Access level system | CW | -- | cell/dispatch/gm_gate.rs | `enforce_gm_gate` refuses the whole gated method range; #609 added the minigame debug methods 20-23 to the allow-list. Owner-confirmed 2026-06-20 |
 | Python console | KM | -- | -- | C++ console not ported (intentional security) |
-| Console commands | IM | -- | crates/commands/ | Generic command framework (registry / parser / permissions). **Not** the active dot roster: the live path is cell/console/chat.rs → cell/console/ (legacy-command-parity README, "Architecture Guardrails") |
+| Console commands | IM | -- | crates/commands/ | Generic command framework (registry / parser / permissions). **Not** the active dot roster: the live path is cell/console/chat/ → cell/console/ (legacy-command-parity README, "Architecture Guardrails") |
 | Dev/authoring `.`-console | IM | -- | cell/console/ | 12,730 lines, 89 registered dot commands. 12 of 49 parity packets integrated, milestone UATs pending. In-client record: the 2026-09-18 playtest ran `.speed`, `.gotoxyz`, `.location` and `.searchmission` successfully (12 of 20 accepted; appendix-session-timeline.md lines 76, 83, 123, 148). Re-verified 2026-09-25 |
 | Player info lookup | IM | -- | admin-api/routes/players.rs, cell/console/query.rs | Plus `gmShowPlayer` / `gmUsers` / `testLOS`, and `.info` / `.players` (P02, P04; `.players` now CellApp-wide) |
 | Ban/mute system | KM | -- | -- | No `GM_BAN` / `GM_MUTE` index and no handler anywhere in `crates/`. The admin API has a `/players/{id}/kick` route only |
