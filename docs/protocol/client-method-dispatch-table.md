@@ -7,7 +7,8 @@ last_updated: 2026-09-25
 
 # SGWPlayer Client Method Dispatch Table (Server → Client)
 
-> **Last updated**: 2026-09-25 — added the SGWMob table (NA33)
+> **Last updated**: 2026-09-27 — added the SGWPet table (pets campaign PT-E1)
+> **Previously**: 2026-09-25 — added the SGWMob table (NA33)
 > **Verified**: 2026-07-25 — all 157 index/name pairs re-derived from
 > `entities/defs/` by replaying the BigWorld flattening rule, and diffed
 > against both this table and the constants in
@@ -399,6 +400,32 @@ Ghidra evidence: the client registers both handlers as a pair through
 `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` /
 `...Cleared` at `0x00d31cd0`; the Update handler at `0x00d31bd0` reads the
 `aAggressionLevel` INT8 argument and stores it at `GameMob + 0x16c`.
+
+## SGWPet Client Method Dispatch Table
+
+> **Added**: 2026-09-27 (pets campaign packet PT-E1). **Entity type**: SGWPet (`class_id = 0x05`).
+> **Total methods**: 32 (indices 0-31), all under `IDBASE_NPC_DEFAULT` (62), so every method
+> uses **direct** wire encoding: `msg_id = 0x80 + index`.
+> Full evidence trail: [`docs/reverse-engineering/findings/pet-client-contract.md`](../reverse-engineering/findings/pet-client-contract.md).
+
+SGWPet's inheritance chain is `SGWEntity → SGWSpawnableEntity → SGWBeing → SGWMob → SGWPet`.
+`SGWPet.def` has no `<Implements>` block, so its own 3 `<ClientMethods>` are appended directly
+after the SGWMob prefix documented above (indices 0-28):
+
+| Index | Method | Args |
+|-------|--------|------|
+| 0-28 | *(SGWMob prefix — see the SGWMob table above)* | — |
+| 29 | `onPetAbilityList` | `ARRAY<INT32> aAbilityList` |
+| 30 | `onPetStanceList` | `ARRAY<INT8> aStanceList` |
+| 31 | `onPetStanceUpdate` | `INT8 aStance` |
+
+Direct encoding: `0x9D` (29), `0x9E` (30), `0x9F` (31).
+
+Ghidra evidence: each handler's internal property-list lookup key matches its `.def`
+`<ArgName>` string exactly — `GamePet__OnPetAbilityListChanged` (`0x00d39eb0`) keys on
+`"aAbilityList"`, `GamePet__OnPetStanceListChanged` (`0x00d3a070`) keys on `"aStanceList"`,
+`GamePet__OnPetStanceUpdateChanged` (`0x00d3a260`) keys on `"aStance"` — confirming no
+inherited-method reordering happened between the SGWMob prefix and SGWPet's own block.
 
 ## Derivation
 
