@@ -252,6 +252,20 @@ pub mod method_idx {
     pub const ON_AGGRESSION_OVERRIDE_UPDATE: u16 = 27;
     pub const ON_AGGRESSION_OVERRIDE_CLEARED: u16 = 28;
 
+    // OrganizationMember interface (34–51) — SGWPlayer only. Re-exported
+    // from `cell::client_methods::organization`, the authoritative table,
+    // rather than copied: this module has drifted before (the fabricated
+    // "SGWVendorStore 80/81" rows), and an alias cannot.
+    pub use crate::cell::client_methods::organization::{
+        ON_MEMBER_JOINED_ORGANIZATION, ON_MEMBER_LEFT_ORGANIZATION,
+        ON_MEMBER_RANK_CHANGED_ORGANIZATION, ON_ORGANIZATION_CASH_UPDATE,
+        ON_ORGANIZATION_EXPERIENCE_UPDATE, ON_ORGANIZATION_INVITE, ON_ORGANIZATION_JOINED,
+        ON_ORGANIZATION_LEFT, ON_ORGANIZATION_MOTD_UPDATE, ON_ORGANIZATION_NAME_UPDATE,
+        ON_ORGANIZATION_NOTE_UPDATE, ON_ORGANIZATION_OFFICER_NOTE_UPDATE,
+        ON_ORGANIZATION_RANK_NAME_UPDATE, ON_ORGANIZATION_RANK_UPDATE, ON_ORGANIZATION_ROSTER_INFO,
+        ON_PVP_ORGANIZATION_LEAVE_REQUEST, ON_SQUAD_LOOT_TYPE, ON_STRIKE_TEAM_UPDATE,
+    };
+
     // GateTravel interface (65–68)
     pub const SETUP_STARGATE_INFO: u16 = 65;
 
@@ -307,6 +321,9 @@ pub mod method_idx {
     pub const ON_EXP_UPDATE: u16 = 131;
     pub const ON_MAX_EXP_UPDATE: u16 = 132;
     pub const ON_RING_TRANSPORTER_LIST: u16 = 133;
+    pub use crate::cell::client_methods::player::{
+        LAUNCH_ORGANIZATION_CREATION, ON_ORGANIZATION_CREATION_RESULT,
+    };
     pub const ON_UPDATE_DISCIPLINE: u16 = 136;
     pub const ON_UPDATE_KNOWN_CRAFTS: u16 = 139;
     pub const ON_ABILITY_TREE_INFO: u16 = 141;
@@ -459,6 +476,34 @@ pub fn encrypt_packet(plaintext: &[u8], key: &[u8; 32], version: EncryptionVersi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The org entries in `method_idx` (ORG-01), as literals from
+    /// `docs/protocol/client-method-dispatch-table.md`. 134 and 135 sit past
+    /// idbase 61, so they go out with the extended encoding.
+    #[test]
+    fn method_idx_org_entries_are_pinned() {
+        use method_idx::*;
+        assert_eq!(ON_ORGANIZATION_INVITE, 34);
+        assert_eq!(ON_ORGANIZATION_JOINED, 35);
+        assert_eq!(ON_ORGANIZATION_LEFT, 36);
+        assert_eq!(ON_MEMBER_JOINED_ORGANIZATION, 37);
+        assert_eq!(ON_ORGANIZATION_ROSTER_INFO, 38);
+        assert_eq!(ON_MEMBER_LEFT_ORGANIZATION, 39);
+        assert_eq!(ON_MEMBER_RANK_CHANGED_ORGANIZATION, 40);
+        assert_eq!(ON_STRIKE_TEAM_UPDATE, 41);
+        assert_eq!(ON_PVP_ORGANIZATION_LEAVE_REQUEST, 42);
+        assert_eq!(ON_ORGANIZATION_NAME_UPDATE, 43);
+        assert_eq!(ON_ORGANIZATION_EXPERIENCE_UPDATE, 44);
+        assert_eq!(ON_ORGANIZATION_MOTD_UPDATE, 45);
+        assert_eq!(ON_ORGANIZATION_NOTE_UPDATE, 46);
+        assert_eq!(ON_ORGANIZATION_OFFICER_NOTE_UPDATE, 47);
+        assert_eq!(ON_ORGANIZATION_CASH_UPDATE, 48);
+        assert_eq!(ON_ORGANIZATION_RANK_UPDATE, 49);
+        assert_eq!(ON_ORGANIZATION_RANK_NAME_UPDATE, 50);
+        assert_eq!(ON_SQUAD_LOOT_TYPE, 51);
+        assert_eq!(ON_ORGANIZATION_CREATION_RESULT, 134);
+        assert_eq!(LAUNCH_ORGANIZATION_CREATION, 135);
+    }
 
     /// Direct encoding for method indices < 61. Wire layout:
     /// `[(index | 0x80): u8] [word_len: u16 LE] [entity_id: u32 LE] [args]`

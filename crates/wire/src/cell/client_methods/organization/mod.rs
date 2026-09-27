@@ -1,4 +1,9 @@
-//! OrganizationMember interface ClientMethods (indices 34–51).
+//! OrganizationMember interface ClientMethods (indices 34–51): the index
+//! constants and, in [`builders`], one argument serializer per method.
+
+mod builders;
+
+pub use builders::*;
 
 /// Invitation to join an organization.
 pub const ON_ORGANIZATION_INVITE: u16 = 34;
@@ -36,3 +41,6 @@ pub const ON_ORGANIZATION_RANK_UPDATE: u16 = 49;
 pub const ON_ORGANIZATION_RANK_NAME_UPDATE: u16 = 50;
 /// Squad loot type changed.
 pub const ON_SQUAD_LOOT_TYPE: u16 = 51;
+
+#[cfg(test)]
+mod tests;

@@ -118,3 +118,71 @@ pub const ON_THREATENED_MOBS_UPDATE: u16 = 154;
 pub const ON_PLAY_MOVIE: u16 = 155;
 /// Cancel a playing movie.
 pub const ON_CANCEL_MOVIE: u16 = 156;
+
+// ── Argument serializers ─────────────────────────────────────────────────────
+//
+// Field order is `entities/defs/SGWPlayer.def`; each returns the `args` only.
+
+/// `onErrorCode` [121]: `UINT8 SystemID, INT32 InstanceID, UINT16
+/// ErrorCodeID` (`SGWPlayer.def:1240-1244`). `SystemID` is an
+/// `EErrorCodeSystem` value, `ErrorCodeID` an `EConditionHandlerFeedback`
+/// value (`enumerations.xml:1200-1210`).
+pub fn build_on_error_code(system_id: u8, instance_id: i32, error_code_id: u16) -> Vec<u8> {
+    let mut args = Vec::with_capacity(7);
+    args.push(system_id);
+    args.extend_from_slice(&instance_id.to_le_bytes());
+    args.extend_from_slice(&error_code_id.to_le_bytes());
+    args
+}
+
+/// `onOrganizationCreationResult` [134]: `UINT8 Result, UINT8 RetCode`
+/// (`SGWPlayer.def:1326-1329`).
+///
+/// Whether the client turns either byte into text is open (ORG-E1 Q4); no
+/// `RetCode` text exists in the client strings (audit A-14).
+pub fn build_on_organization_creation_result(result: u8, ret_code: u8) -> Vec<u8> {
+    vec![result, ret_code]
+}
+
+/// `launchOrganizationCreation` [135]: `UINT8 aOrgType`
+/// (`SGWPlayer.def:1331-1333`). Opens `CreateTeamWin` or `CreateCommandWin`
+/// (audit A-20); the type never comes back on the wire (CM 94 carries only
+/// the name), so the server must remember what it offered.
+pub fn build_launch_organization_creation(
+    org_type: cimmeria_entity::organization::OrgType,
+) -> Vec<u8> {
+    vec![org_type.as_u8()]
+}
+
+#[cfg(test)]
+mod tests {
+    use cimmeria_entity::organization::OrgType;
+
+    use super::*;
+
+    #[test]
+    fn org_creation_indices_are_134_and_135() {
+        assert_eq!(ON_ERROR_CODE, 121);
+        assert_eq!(ON_ORGANIZATION_CREATION_RESULT, 134);
+        assert_eq!(LAUNCH_ORGANIZATION_CREATION, 135);
+    }
+
+    #[test]
+    fn cm121_on_error_code() {
+        assert_eq!(
+            build_on_error_code(0, 0x4000_0001, 0x0102),
+            [0, 1, 0, 0, 0x40, 0x02, 0x01]
+        );
+    }
+
+    #[test]
+    fn cm134_on_organization_creation_result() {
+        assert_eq!(build_on_organization_creation_result(1, 5), [1, 5]);
+    }
+
+    #[test]
+    fn cm135_launch_organization_creation() {
+        assert_eq!(build_launch_organization_creation(OrgType::Team), [1]);
+        assert_eq!(build_launch_organization_creation(OrgType::Command), [2]);
+    }
+}
