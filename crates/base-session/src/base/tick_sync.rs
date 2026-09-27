@@ -13,6 +13,7 @@ use cimmeria_mercury::packet::SEQUENCE_MASK;
 
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_ongoing_tick_sync;
+use crate::mercury::game_clock;
 
 use super::helpers::destroy_client_entities;
 use super::ConnectedClientState;
@@ -83,12 +84,17 @@ pub async fn run_tick_loop(
     // matching this timer to `UE3_INACTIVITY_TIMEOUT_MS`.
     const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
 
-    let mut tick: u32 = 0;
+    // Counts sends for the periodic debug line only. The tick the packet
+    // carries comes from the shared game clock, not from this counter: every
+    // session reports the same server-wide time, so an expiry the cell builds
+    // from `game_clock::game_time_secs()` means the same instant to every
+    // client (see `game_clock` for the client's formula).
+    let mut sends: u32 = 0;
 
     tracing::debug!(%addr, "Tick-sync loop started");
 
     let disconnect_reason: &'static str = loop {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(game_clock::TICK_SYNC_INTERVAL).await;
 
         // The cancelled flag is set by `handle_log_off`, which has
         // already called `destroy_client_entities` itself — return
@@ -144,6 +150,7 @@ pub async fn run_tick_loop(
         // Unreliable on its own counter sidesteps both: fire-and-forget,
         // reliable stream stays contiguous (client's `inSeqAt` only tracks
         // reliable arrivals), no TX window pressure.
+        let tick = game_clock::game_ticks();
         let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks, enc_version);
         if let Err(e) = transport.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
@@ -172,11 +179,11 @@ pub async fn run_tick_loop(
             }
         }
 
-        if tick.is_multiple_of(100) {
+        if sends.is_multiple_of(100) {
             tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
         }
 
-        tick = tick.wrapping_add(1);
+        sends = sends.wrapping_add(1);
     };
 
     // Clean up entities for this disconnected client.

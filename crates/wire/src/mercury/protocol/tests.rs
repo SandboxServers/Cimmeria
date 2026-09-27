@@ -34,6 +34,7 @@ fn time_sync_size() {
     let out = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(
@@ -71,11 +72,13 @@ fn time_sync_deterministic() {
     let a = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let b = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(a, b);
@@ -94,6 +97,7 @@ fn reply_and_time_sync_differ() {
     let sync = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_ne!(reply, sync, "reply and time sync packets must differ");

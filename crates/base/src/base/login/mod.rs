@@ -14,7 +14,7 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUE
 use crate::auth::PendingLogin;
 use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
-use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync};
+use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync, game_clock};
 
 use super::helpers::{destroy_client_entities, to_hex};
 use super::tick_sync::run_tick_loop;
@@ -145,8 +145,8 @@ pub(crate) async fn handle_login(
     tracing::trace!(%addr, len = reply.len(), hex = %to_hex(&reply), "UDP_OUT connect_reply");
     transport.send_to(&reply, addr).await?;
 
-    // time-sync bundle at seq=2.
-    let sync = build_time_sync(&key, 2, enc_version);
+    // time-sync bundle at seq=2, carrying the server's current game time.
+    let sync = build_time_sync(&key, 2, game_clock::game_ticks(), enc_version);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
     transport.send_to(&sync, addr).await?;
 

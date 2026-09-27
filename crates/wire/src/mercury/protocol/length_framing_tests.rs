@@ -101,7 +101,7 @@ fn connect_reply_frames_its_payload_with_a_four_byte_length_prefix() {
 /// not reach for the generic `WORD_LENGTH` bundle encoder.
 #[test]
 fn time_sync_packs_constant_length_messages_with_no_length_prefix() {
-    let out = build_time_sync(&TEST_KEY, 2, EncryptionVersion::V1);
+    let out = build_time_sync(&TEST_KEY, 2, 0, EncryptionVersion::V1);
     let plaintext = MercuryEncryption::from_session_key(TEST_KEY)
         .decrypt(&out)
         .expect("time sync must decrypt under the session key");
@@ -117,4 +117,50 @@ fn time_sync_packs_constant_length_messages_with_no_length_prefix() {
         plaintext[3], BASEMSG_TICK_SYNC,
         "second message id must follow one payload byte, not a length prefix",
     );
+}
+
+/// The login bundle carries the server's current game time, not 0, and
+/// the same rate constants the ongoing tick sync uses. Byte-exact over the
+/// whole plaintext, with a tick count whose four bytes all differ so a
+/// swapped, truncated or zeroed field cannot pass.
+#[test]
+fn time_sync_carries_the_current_game_time_byte_exact() {
+    const TICKS: u32 = 0x0012_3456;
+    let out = build_time_sync(&TEST_KEY, 2, TICKS, EncryptionVersion::V1);
+    let plaintext = MercuryEncryption::from_session_key(TEST_KEY)
+        .decrypt(&out)
+        .expect("time sync must decrypt under the session key");
+
+    let expected: Vec<u8> = [
+        vec![REPLY_FLAGS],
+        // UPDATE_FREQUENCY_NOTIFICATION { hertz = 10 }
+        vec![BASEMSG_UPDATE_FREQUENCY_NOTIFICATION, 10],
+        // TICK_SYNC { gameTime = TICKS, tickRate = 100 ms }
+        vec![BASEMSG_TICK_SYNC, 0x56, 0x34, 0x12, 0x00, 100, 0, 0, 0],
+        // SET_GAME_TIME { gameTime = TICKS }
+        vec![BASEMSG_SET_GAME_TIME, 0x56, 0x34, 0x12, 0x00],
+        // seq_id footer
+        2u32.to_le_bytes().to_vec(),
+    ]
+    .concat();
+    assert_eq!(plaintext, expected);
+}
+
+/// The ongoing tick sync declares the same ms-per-tick as the login
+/// bundle, and carries the tick it is given.
+#[test]
+fn ongoing_tick_sync_carries_the_tick_and_the_login_tick_period_byte_exact() {
+    const TICKS: u32 = 0x0012_3457;
+    let out = build_ongoing_tick_sync(&TEST_KEY, 7, TICKS, &[], EncryptionVersion::V1);
+    let plaintext = MercuryEncryption::from_session_key(TEST_KEY)
+        .decrypt(&out)
+        .expect("tick sync must decrypt under the session key");
+
+    let expected: Vec<u8> = [
+        vec![REPLY_FLAGS_UNRELIABLE],
+        vec![BASEMSG_TICK_SYNC, 0x57, 0x34, 0x12, 0x00, 100, 0, 0, 0],
+        7u32.to_le_bytes().to_vec(),
+    ]
+    .concat();
+    assert_eq!(plaintext, expected);
 }

@@ -8,6 +8,8 @@
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
+use crate::mercury::game_clock::{TICK_PERIOD_MS, UPDATE_FREQUENCY_HZ};
+
 use super::{
     encrypt_packet, BASEMSG_LOGGED_OFF, BASEMSG_REPLY_MESSAGE, BASEMSG_RESET_ENTITIES,
     BASEMSG_SET_GAME_TIME, BASEMSG_TICK_SYNC, BASEMSG_UPDATE_FREQUENCY_NOTIFICATION, REPLY_FLAGS,
@@ -44,25 +46,36 @@ pub fn build_connect_reply(
 /// Build and encrypt the time-sync bundle packet.
 ///
 /// Packs three constant-length messages into one packet, matching the C++
-/// `ClientHandler::onConnected()` sequence.
-pub fn build_time_sync(key: &[u8; 32], seq_id: u32, version: EncryptionVersion) -> Vec<u8> {
+/// `ClientHandler::onConnected()` sequence (`client_handler.cpp:44-63`):
+/// `UPDATE_FREQUENCY_NOTIFICATION {hertz}`, `TICK_SYNC {ticks, ms per tick}`,
+/// `SET_GAME_TIME {ticks}`.
+///
+/// `ticks` is the server's current game time
+/// ([`game_clock::game_ticks`](crate::mercury::game_clock::game_ticks)),
+/// the same count the ongoing tick sync carries. It is not 0: every client
+/// shares one clock, so timer expiries the cell computes land in the domain
+/// each client was told. `SET_GAME_TIME` carries the same value; the client
+/// keeps only its low 16 bits (`0x00dd6820`), and the next `TICK_SYNC`
+/// restores the full count 100 ms later.
+pub fn build_time_sync(
+    key: &[u8; 32],
+    seq_id: u32,
+    ticks: u32,
+    version: EncryptionVersion,
+) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
-
-    const UPDATE_FREQ: u8 = 10;
-    const TICK_RATE: u32 = 100;
-    const TICKS: u32 = 0;
 
     let mut body = Vec::with_capacity(2 + 9 + 5);
 
     body.push(BASEMSG_UPDATE_FREQUENCY_NOTIFICATION);
-    body.push(UPDATE_FREQ);
+    body.push(UPDATE_FREQUENCY_HZ);
 
     body.push(BASEMSG_TICK_SYNC);
-    body.extend_from_slice(&TICKS.to_le_bytes());
-    body.extend_from_slice(&TICK_RATE.to_le_bytes());
+    body.extend_from_slice(&ticks.to_le_bytes());
+    body.extend_from_slice(&TICK_PERIOD_MS.to_le_bytes());
 
     body.push(BASEMSG_SET_GAME_TIME);
-    body.extend_from_slice(&TICKS.to_le_bytes());
+    body.extend_from_slice(&ticks.to_le_bytes());
 
     let plaintext = build_outgoing(REPLY_FLAGS, &body, Some(seq_id), &[], None);
     encrypt_packet(&plaintext, key, version)
@@ -103,6 +116,10 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32, version: EncryptionVersion) 
 ///
 /// See `spec.protocol.mercury-wire-format` §1.7 + the disassembly of
 /// `queueAckForPacket` for the receiver model.
+///
+/// `tick` is the server-wide game time
+/// ([`game_clock::game_ticks`](crate::mercury::game_clock::game_ticks)),
+/// the same clock [`build_time_sync`] seeds at login.
 pub fn build_ongoing_tick_sync(
     key: &[u8; 32],
     seq_id: u32,
@@ -112,12 +129,10 @@ pub fn build_ongoing_tick_sync(
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
-    const TICK_RATE: u32 = 100;
-
     let mut body = Vec::with_capacity(9);
     body.push(BASEMSG_TICK_SYNC);
     body.extend_from_slice(&tick.to_le_bytes());
-    body.extend_from_slice(&TICK_RATE.to_le_bytes());
+    body.extend_from_slice(&TICK_PERIOD_MS.to_le_bytes());
 
     let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);

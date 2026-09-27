@@ -5,6 +5,7 @@
 //! - [`build_time_sync`]               — three time-sync messages in one packet (Phase 3).
 //! - [`build_char_list`]               — game-state + character list (Phase 4, dynamic count).
 //! - [`build_ongoing_tick_sync`]       — single tick-sync for the 100 ms heartbeat.
+//! - [`game_clock`]                    — the one server game clock both of those carry, and timer expiries use.
 //! - [`build_create_player`]           — createBasePlayer + onClientMapLoad (player creation + map load).
 //! - [`build_enter_world`]             — viewport + cell + position (world entry, after client loads terrain).
 //! - [`build_char_create_failed`]      — `onCharacterCreateFailed` error response.
@@ -21,6 +22,7 @@ use cimmeria_mercury::packet::{FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE
 // ── Submodules ───────────────────────────────────────────────────────────────
 
 pub mod aoi;
+pub mod game_clock;
 pub mod protocol;
 pub mod types;
 pub mod world_data;
