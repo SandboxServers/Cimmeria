@@ -27,6 +27,7 @@ mod chat_ignore;
 mod chat_ignore_race;
 mod chat_speaker_flags;
 mod communicator_unsupported;
+mod chat_squad_refusals;
 mod crafting_teardown;
 mod duel_challenge;
 mod organization;

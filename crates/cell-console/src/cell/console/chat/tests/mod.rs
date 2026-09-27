@@ -1,9 +1,11 @@
 //! Tests for the cell chat distribution, split by path: spatial broadcast,
-//! the GM `.`-console interception, and the refusal feedback lines.
+//! the GM `.`-console interception, the refusal feedback lines, and squad
+//! chat.
 
 mod dot_command;
 mod feedback;
 mod spatial;
+mod squad;
 
 /// Decode `onPlayerCommunication` args back to `(flags, channel, text)`.
 /// Test-only mirror of `serialize_on_player_communication`'s layout.

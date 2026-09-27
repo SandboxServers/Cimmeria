@@ -1,7 +1,7 @@
 use super::super::*;
 use super::decode_on_player_communication;
 
-/// Unsupported channels (team/squad/command/officer/tell) are not
+/// Unsupported channels (team/command/officer/tell) are not
 /// distributed on the cell -- but unlike a silent drop, the sender must
 /// get a feedback line so a chat message never just vanishes (project
 /// rule: every button press gets visible feedback). No witness ever
