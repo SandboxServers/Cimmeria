@@ -123,9 +123,12 @@ pub struct SpawnRecord {
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
 ///
-/// The class_id is the entity type index from `entities/entities.xml`:
+/// The class_id is the client's `clientIndex`: the `entities/entities.xml`
+/// order with `<ServerOnly/>` entries skipped
+/// (`docs/protocol/client-verified-wire-formats.md`):
 ///   0 = SGWSpawnableEntity, 1 = SGWBeing, 2 = SGWPlayer, 3 = SGWGmPlayer,
-///   4 = SGWMob, 5 = SGWPet, 6 = SGWDuelMarker, 7 = SGWBlackMarket
+///   4 = SGWMob, 5 = SGWPet, 6 = SGWDuelMarker, 7 = Account
+///   (`SGWBlackMarket` is `<ServerOnly/>` and has no wire id)
 pub fn class_id_for_class(class: &str) -> u8 {
     match class {
         "spawnable" => 0x00, // SGWSpawnableEntity
