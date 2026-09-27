@@ -1,24 +1,41 @@
 # RE Finding: Cooked-Dialog Override Crash on Map Load (dialog ids 100100/100101)
 
 ```
-Confidence: MEDIUM (timeline reasoning, element-key type) / LOW (root-cause mechanism — see Open Questions)
-Last verified: 2026-09-27
+Confidence: HIGH (the >65535 / 16-bit element-key hypothesis is REFUTED for the traced pipeline — live decompile) / LOW (true root cause — still open)
+Last verified: 2026-09-27 (updated same day with headless-Ghidra live decompile results)
 Sources:
-  - docs/reverse-engineering/decompiled/13_other_game.c:3028 — ServerSource<5,long,Dialog,...> / ZipStorage<5,long,Dialog,...> mangled RTTI
-  - docs/reverse-engineering/decompiled/14_standalone_named.c:5139-5151 — same template instantiation, second occurrence
-  - docs/reverse-engineering/decompiled/14_standalone_named.c:512789-512967 — CME_UIScreen_UIScreenType_1, the top-level <COOKED_DIALOG> record parser (DialogID/UIScreenType/KismetEventSetID/DialogFlags)
-  - docs/reverse-engineering/decompiled/14_standalone_named.c:512881-512967 — CME_UIScreen__unknown_015e4d10 (= FUN_015e4d10), the per-<Screens> parser (ScreenID/Text/SpeakerID, Buttons sub-parse, button-count guard)
-  - docs/reverse-engineering/findings/cooked-data-pipeline.md — LibCategory/ServerSource struct layout, versionInfo/InvalidKeys handshake, ZipStorageBase archive path
-  - docs/reverse-engineering/findings/dialog-portrait-lookup.md — SpeakerID/ScreenID field offsets, confirms FUN_015e4d10 address
-  - crates/base-session/src/base/cooked_data.rs:34-149 — server-side versionInfoRequest handler and push_overridden_elements
-  - crates/wire/src/mercury/protocol/resources.rs:70-120 — build_version_info wire layout (InvalidKeys as ARRAY<u32>)
-  - crates/resources/src/base/mission_overrides.rs:85-117 — StepID 80623 / ObjectiveID 90623, an existing shipped sub-field > 65535 in a different cooked-data category
-  - crates/resources/src/base/resources/mod.rs:195-317 — ResourceCache::load_all/overridden_elements, the current-override-only scoping of InvalidKeys
-  - crates/resources/src/base/resources/metadata_bump.rs:81-109 — compute_dialog_metadata_bump, the content-hashed per-category version bump
+  - Live headless-Ghidra decompile, 2026-09-27 (analyzeHeadless against SGW.gpr, -readOnly -noanalysis):
+    FUN_004435c0 @ 0x004435c0 (category-5 `onVersionInfo` handler, confirmed by its `CategoryId != 5` guard)
+    FUN_00443a30 @ 0x00443a30 (category-5 `onCookedDataError` handler, confirmed by its `categoryID != 5` guard)
+    FUN_0043c2b0 @ 0x0043c2b0 (category-5 element-commit function, called from FUN_004435c0's pending-vector walk)
+    FUN_0043b550 @ 0x0043b550 (shared per-key invalidate/delete function, called by every category's onVersionInfo)
+    FUN_0043a9d0 @ 0x0043a9d0 (shared "_<key>" ZIP-entry-name builder + persist-to-disk function)
+    FUN_0047a690 @ 0x0047a690 (shared InvalidateAll flush function — NOT reached by this incident's per-key path)
+    Detail_ZipStorageBase_OpenArchive_1 @ 0x00479340, Detail_ZipStorageBase_WriteStreamToFile_1 @ 0x00479930,
+    FUN_00479e10 @ 0x00479e10 (WriteMetaDataVersion)
+    FUN_00df27f0 @ 0x00df27f0 (`GameProxyPlayer::HandleOnClientMapLoad`) and BW_client_entity_manager_2 @ 0x00dd0b00
+    (`EntityManager::PostLoadMap`) — both decompiled fresh and confirmed to have zero Dialog/CookedData references
+    FUN_0044e5d0 @ 0x0044e5d0 (category-5 LibCategory CME-subscription ctor, confirms FUN_004435c0/FUN_00443a30 wiring)
+  - docs/reverse-engineering/decompiled/13_other_game.c:3028, 14_standalone_named.c:5139-5151 — `ServerSource<5,long,Dialog,...>` / `ZipStorage<5,long,Dialog,...>` mangled RTTI (key type is `long`, confirmed structurally by the live decompile above)
+  - docs/reverse-engineering/decompiled/14_standalone_named.c:512789-512967 — `CME_UIScreen_UIScreenType_1` / `FUN_015e4d10`, the record and per-`<Screens>` parsers
+  - docs/reverse-engineering/findings/cooked-data-pipeline.md, docs/reverse-engineering/findings/dialog-portrait-lookup.md, docs/reverse-engineering/findings/world-entry-pipeline.md (`GameProxyPlayer_HandleEvent_Level_PostLoad`/`FUN_00de8430`, `Event_World_Loaded` subscribers)
+  - crates/base-session/src/base/cooked_data.rs:34-178, crates/wire/src/mercury/protocol/resources.rs:70-120, crates/resources/src/base/mission_overrides.rs:85-117, crates/resources/src/base/resources/mod.rs:195-317, crates/resources/src/base/resources/metadata_bump.rs:81-109
   - SigNoz colo telemetry, 2026-09-27 16:19 UTC deploy and the two subsequent login attempts (summarized by team-lead; not independently queried — signoz MCP was unreachable this session)
-Related findings: cooked-data-pipeline.md, dialog-portrait-lookup.md, dialog-controller-wire-flow.md
-Implementation status: Root cause NOT confirmed. Recommends renumbering (see Recommendation) pending live-decompile confirmation. A renumber alone does not remediate a client that already received the bad push (see finding 4) — an already-affected client needs a local cache clear or a one-time invalidate_all, neither implemented here.
+Related findings: cooked-data-pipeline.md, dialog-portrait-lookup.md, dialog-controller-wire-flow.md, world-entry-pipeline.md
+Implementation status: **The >65535 element-key-width hypothesis is REFUTED** for every code path a `resourceFragment`/`onVersionInfo`/`onCookedDataError`/map-load exchange actually runs (see "Verdict" below). #938 (renumber to `60100`-`60104`) is already merged; nothing in this finding argues against it, but nothing in it identifies a mechanism the renumber actually fixes either — root cause remains open. Recommend checking whether the crash recurred in colo telemetry after #938 shipped as the most direct empirical test.
 ```
+
+## Verdict (2026-09-27, after live headless-Ghidra decompile)
+
+**The >65535 / 16-bit element-key-width hypothesis is refuted.** A follow-up session got live decompile access via headless Ghidra (`analyzeHeadless.bat ... -readOnly -noanalysis -postScript`, no GUI, no MCP) and traced every function this finding's Open Questions named. The first decompile pass in that session hit `cooked-data-pipeline.md`'s two documented addresses (`0x00441630`/`0x00441aa0`), which turned out to be the **category-6** (`CookedDataKismetSetEvent.pak`) instantiations, not category 5 — each has a `CategoryId`/`categoryID` literal-compare guard baked into the decompile (`!= 0x6`), a fact `cooked-data-pipeline.md`'s own `_cat6` suffix on those symbol names already flagged, but which this earlier finding's write-up had glossed over by treating that doc's RTTI-only evidence as sufficient. Both categories' code is generated from the same C++ template, so the RTTI evidence in "What is confirmed" §1 below was never wrong about the *type*, but the mechanism claims needed the actual category-5 instantiation to be load-bearing. Locating it (`FUN_004435c0` and `FUN_00443a30`, confirmed via their own `!= 0x5` guards, found by walking the 21 callers of the shared per-key delete function `FUN_0043b550`) let this session trace the real category-5 path end to end. None of it narrows, masks, or otherwise mistreats the element-key value:
+
+- The category-5 `onVersionInfo` handler (`FUN_004435c0`) reads `InvalidKeys` as a `CME::Detail::PropertyNode::Property<long>` list (RTTI-cast confirmed in the decompile) and passes each entry's raw `long` value to the shared per-key delete function unmodified.
+- The shared per-key delete function (`FUN_0043b550`) and the shared persist-to-disk function (`FUN_0043a9d0`) both build the ZIP entry name identically: a `wostringstream`, write the literal `L'_'`, then `operator<<` the raw `long` key — the C++ standard integer-stream insertion operator, which formats up to 10 decimal digits with no width limit. `"_100100"` is exactly as valid a name to this code as `"_5861"`.
+- The category-5 element-commit function (`FUN_0043c2b0`, reached from `FUN_004435c0`'s pending-request-vector walk) delegates straight to the same shared `FUN_0043a9d0` — no category-specific narrowing layered on top.
+- The one place a 16-bit mask (`& 0xffff`) actually appears is inside `FUN_0047a690`, the **`InvalidateAll` flush** path — and it masks a **loop position counter** over a per-category sub-vector (bounding iteration at 65536 *positions*, not element-key *values*), not the key. This incident's push used `invalidate_all = false` (per-key `InvalidKeys`, per `crates/base-session/src/base/cooked_data.rs`'s three-way response logic), so `FUN_0047a690` never ran for this incident regardless.
+- `GameProxyPlayer::HandleOnClientMapLoad` (`FUN_00df27f0`, the actual `onClientMapLoad` method-117 handler) and `EntityManager::PostLoadMap` (`BW_client_entity_manager_2` @ `0x00dd0b00`, the UE3 terrain-streaming completion callback that fires `Event_Level_PostLoad`) were both decompiled fresh: neither touches Dialog data, CookedData, or any `ServerSource`/`ZipStorage` method. `HandleOnClientMapLoad` only reads `areaName`/`mapPath`/`WorldID`/`Location`/`Direction` and kicks off the UE3 level-streaming request (`L"127.0.0.1/" + mapPath + L".umap"`). `Event_Level_PostLoad`'s only known subscriber body (`GameProxyPlayer_HandleEvent_Level_PostLoad`/`FUN_00de8430`, per `world-entry-pipeline.md`) only touches player-controller input mode and vehicle/mount transforms.
+
+So: the wire type, the cache key type, the ZIP entry-name formatting, the persist-to-disk path, and the two map-load-lifecycle handlers this session could actually trace are all clean. **Root cause for why `100100`/`100101` specifically crash the client remains open** — see "What is not confirmed" below, now sharpened with a new lead (`SpeakerID=754`) and a shorter list of remaining places to look.
 
 ## Summary
 
@@ -31,21 +48,16 @@ never sent `mapLoaded`. The process died. On relog — with no push this time, s
 locally cached version now matched — the same map load died the same way, confirming the crash is
 triggered by data already sitting in the client's writable cooked-data cache, not by the push itself.
 
-**This finding could not reach the binary directly for new decompilation.** Ghidra was not running
-at the start of this session; it was launched mid-session against the existing `SGW.gpr` project
-(`C:\Users\Steve\source\projects\SGW\Stargate Worlds-QA\Working\binaries\SGW.gpr`) and the GhidraMCP
-plugin auto-started on port 8100, so `mcp__ghidra__connect_instance` succeeded. However, the
-195 analysis tools the bridge registers on connect (`decompile_function`, `get_xrefs_to`,
-`search_functions`, etc.) were not visible to this session's tool-discovery mechanism — the bridge's
-own `check_tools` call reported them "callable," but this agent's tool search never surfaced their
-schemas, so none of them could actually be invoked. This is exactly the caveat the bridge's own
-docstring names: "Clients that cache the initial tools/list and don't honor `tools/list_changed`
-must re-list tools after this call." Everything below therefore comes from the **pre-extracted**
-decompiled dumps under `docs/reverse-engineering/decompiled/` (produced by an earlier annotation
-pass and already checked into the repo) plus the existing findings docs — not from a fresh live
-decompile. The debugger-proxy tools (`debugger_attach`, `debugger_read_memory`, etc.) remained
-available throughout but require an attached live process, which this investigation intentionally
-avoided per the static-analysis-only instruction.
+**This session got live decompile access via headless Ghidra** — see "Verdict" above for the
+result. The original pass (below, still preserved for its correct parts and its explicit
+correction) could not reach the binary directly: Ghidra was not running at the start of that
+session, and although it was launched mid-session and `mcp__ghidra__connect_instance` succeeded,
+the 195 dynamically-registered MCP analysis tools were never reachable through that session's
+tool-discovery mechanism. The follow-up session that produced the Verdict above used
+`analyzeHeadless.bat` directly instead — no GUI, no MCP bridge, just a `GhidraScript` run
+non-interactively against the read-only project — which sidesteps that limitation entirely and is
+the recommended path for any future session that needs live decompile without a GUI/MCP already
+running.
 
 ## What is confirmed
 
@@ -87,6 +99,13 @@ general cooked-data cache pipeline" theory.** If the top-level `long` key were n
 anywhere in `ServerSource`/`ZipStorage`, every category would be affected, and the mechanism would
 need to be a per-use-site narrowing cast rather than a structural template limitation — which is
 possible, but not what the template parameterization itself shows.
+
+**Confirmed by live decompile, 2026-09-27 (see "Verdict" above).** The category-5-specific
+`onVersionInfo` handler (`FUN_004435c0` @ `0x004435c0`) casts each `InvalidKeys` entry to
+`CME::Detail::PropertyNode::Property<long>` (an explicit `__RTDynamicCast` against that exact RTTI
+descriptor in the decompiled body) and passes the raw `long` value through unmodified to the shared
+delete function. This is the same "per-use-site narrowing cast" this paragraph flagged as the only
+way the RTTI-only evidence could still hide a bug — checked, and it isn't there.
 
 ### 2. The per-field XML parser does not narrow width either, and a sibling field already ships above 65535
 
@@ -265,77 +284,107 @@ advertising the tombstone once telemetry shows no more clients report the old ve
 
 ## What is not confirmed (and could not be confirmed this session)
 
-1. **What code touches Dialog-category elements at `onClientMapLoad`, and whether it iterates the
-   whole category-5 cache or just the current map's NPC roster.** The debug-hub NPC that owns
-   dialogs `100100`/`100101` (template 302, "Airman Lance," per project memory) is not placed in
-   `Castle_CellBlock` — the crash reproduced on a map that has no reason to reference these two
-   dialog ids by content. That means, if the crash really is these two entries, whatever touches
-   them at map load must run unconditionally on every map load rather than being scoped to the
-   dialogs a given map's NPCs actually use. No decompiled function for this step was found in the
-   pre-extracted dumps (`grep` for `onClientMapLoad`/`ClientMapLoad` in
-   `docs/reverse-engineering/decompiled/*.c` only turns up CME event-registration boilerplate, not
-   the handler body), and this session could not reach a fresh Ghidra decompile to trace it (see
-   the tool-access limitation in Summary).
+1. ~~**What code touches Dialog-category elements at `onClientMapLoad`.**~~ **RESOLVED, 2026-09-27
+   (live decompile): nothing does, at least not in the traced call chain.**
+   `GameProxyPlayer::HandleOnClientMapLoad` (`0x00df27f0`, the method-117 handler itself) and
+   `EntityManager::PostLoadMap` (`0x00dd0b00`, the UE3 terrain-streaming completion callback fired
+   afterward) were both decompiled fresh and touch no Dialog/CookedData/`ServerSource` code —
+   see "Verdict" above. The debug-hub NPC that owns `100100`/`100101` (template 302, "Airman
+   Lance") is not placed in `Castle_CellBlock`, and the traced map-load path gives no reason it
+   would be referenced there either: nothing map-load-specific iterates the whole category-5
+   cache, at least not through `HandleOnClientMapLoad` → `PostLoadMap` → `Event_Level_PostLoad`.
+   That chain is now closed as a lead. **What still isn't traced**: `Event_Level_PostLoad`'s
+   *second* subscriber, `GameAppearanceManager` (RTTI accessor `0x00e9a480`, per
+   `world-entry-pipeline.md`) — only `GameProxyPlayer`'s handler body was confirmed clean.
+   `Event_World_Loaded` (fired once per full streaming settle, subscribers `GameProxyPlayer` again
+   and `Minimap`) was not decompiled this session either.
 
-2. **Whether the mechanism is a 16-bit-width narrowing at all**, as opposed to some other id-keyed
-   structure sized for the historical range (shipped `DialogID`s top out around 5,861 per the
-   2026-09-21 PAK census recorded in the dialog-UI reference memory; Cimmeria's own prior overrides
-   only reach `3996`). A fixed-size table sized for "a few thousand entries" would break on
-   `100100` for a completely different reason than a 16-bit truncation would, and the evidence in
-   this finding cannot distinguish the two: it only shows the key type is *declared* `long`
-   end-to-end, not that every consumer of that key actually allocates storage proportional to its
-   value safely.
+2. ~~**Whether the mechanism is a 16-bit-width narrowing.**~~ **REFUTED, 2026-09-27** — see
+   "Verdict." The one 16-bit mask that exists (`FUN_0047a690`) bounds a positional loop counter
+   over a per-category sub-vector, not the key value, and isn't reached by this incident's
+   per-key `InvalidKeys` path anyway. Neither the per-key delete path nor the persist-to-disk path
+   nor the category-5 element-commit function shows any narrowing, indexing, or size-derived
+   allocation keyed by the raw `DialogID` value. A "fixed-size table sized for the historical
+   range" sub-theory (as distinct from a hard 16-bit cliff) is also now weaker than before: the
+   persist/lookup path this session traced is string-keyed (ZIP entry names) and the pending-
+   request vector is walked linearly, not indexed by key — neither shape allocates storage
+   proportional to the key's numeric value. **This does not prove no such table exists anywhere
+   in the client — only that none of the paths this session could reach has one.**
 
-3. **Whether `ScreenID`s in the 200000 range (`200000`–`200002`, used by these same two overrides)
-   are also implicated.** They go through the identical `00a3d050` accessor as `SpeakerID`/
-   `DialogID`, so nothing here singles them out, but they are equally novel (no shipped or
-   previously-Cimmeria-authored `ScreenID` has used six digits) and were not tested independently
-   of the `DialogID` values.
+3. **Whether `ScreenID`s in the `200000` range (`200000`–`200002`, used by these same two
+   overrides) are implicated.** Unchanged from the first pass: they go through the identical
+   `00a3d050` accessor as `SpeakerID`/`DialogID` (confirmed again in the live decompile of
+   `CME_UIScreen_UIScreenType_1`/`FUN_015e4d10`, which this session did not need to re-run since
+   the pre-extracted dump already covers it), so nothing singles them out, but they are equally
+   novel and were not tested independently of the `DialogID` values.
+
+4. **New lead, 2026-09-27: `SpeakerID=754`.** `screen.speaker_id: 754` in
+   `crates/resources/src/base/dialog_overrides/mod.rs`'s `100100`/`100101` entries is, as far as
+   this session could check, the first time Cimmeria has authored a **novel** speaker id — every
+   prior Cimmeria dialog override uses `speaker_id: 0` (narrator/system line). `dialog-portrait-
+   lookup.md`'s Track 2 describes a *separate* "speakers" CookedData name table that Lua looks up
+   by `SpeakerID` at **display time** — this table's implementation was never decompiled (Track 2
+   itself is LOW/MEDIUM confidence, inferred from symptom observation, and the display-time Lua
+   isn't reachable from SGW.exe at all — it's a `.lua` script asset, not compiled into the
+   binary). If that table (or an eager, non-display-time consumer of it this session didn't find)
+   is array-indexed by `SpeakerID` rather than map-keyed, an out-of-range read for a never-before-
+   seen id like `754` is a plausible crash shape distinct from anything this session's DialogID-
+   width tracing could have caught. **Important caveat**: the timeline argument in finding §3 that
+   rules out crashing *during the fragment parse* applies here too — if the speakers table were
+   consulted eagerly at parse/persist time, the client would have died at login, not four seconds
+   into `Castle_CellBlock`. So this lead only holds together if something *else*, not yet located,
+   consults the speakers table (or does something else keyed by `SpeakerID`) later, and that
+   something is untraced. Flagged as a lead, not a finding.
 
 ## Recommendation
 
-Given (a) the timeline evidence that rules out the button markup, and (b) the complete absence of
-any prior Cimmeria or shipped-game precedent for a cooked-data **element key** above 65535 (as
-distinct from a sub-field, which `StepID=80623` already proves safe) — the leading, unconfirmed
-hypothesis is that something keyed specifically by the top-level `DialogID` (not by any inner
-field) breaks above some threshold at or below 65,536. This is consistent with, but does not prove,
-a 16-bit boundary.
+**The >65535 element-key-width theory is refuted for the traced pipeline (see "Verdict").**
+`60100`–`60104` (already merged, #938) sidesteps that specific, now-refuted mechanism, so nothing
+in this finding argues against it — but nothing in it identifies the actual mechanism the renumber
+fixes either. The most direct way to know whether `60100`-`60104` actually resolves the crash is
+**empirical**: check whether the crash recurred in colo telemetry for any client that logs in and
+loads a map after #938 shipped. If it recurred, the next investigation should start from the
+`SpeakerID=754` lead above (What is not confirmed, item 4) rather than from element-key width
+again — the RE evidence no longer supports id width as a live hypothesis.
 
-**Renumbering to `60100`–`60104` is a reasonable mitigation and should proceed** — it sidesteps the
-16-bit-boundary hypothesis specifically. It is not a *proven*-safe range: it is still an order of
-magnitude above every shipped or previously-authored `DialogID` (max ~5,861 shipped, `3996` prior
-Cimmeria max), so if the real mechanism is a small fixed-size table sized closer to the historical
-maximum rather than a hard 16-bit cliff, `60100`–`60104` would not fix it either. **The renumber also
-does not, by itself, remediate any client that already received the `100100`/`100101` push** — see
-finding 4 above: the stale entries persist in that client's local `Cache.en-US/CookedDataDialogs.pak`
-and the version-mismatch handshake only ever targets the *current* override table, never a
-removed id, so an already-affected tester needs either a manual local-cache clear or a one-time
-`invalidate_all` before this is fully closed for them. Treat the
-renumbering as a plausible fix pending confirmation, not a closed issue: smoke-test the debug-hub
-dialog chain (both a login with `InvalidKeys` push and a cold relog against an already-cached
-client) before calling this closed, and do not pick a new "just under 65536" id for any *other*
-cooked-data category without the same caveat, since every category shares the same `ServerSource`/
-`ZipStorage` template family.
+**The renumber still does not, by itself, remediate any client that already received the
+`100100`/`100101` push** — see finding §4 above: the stale entries persist in that client's local
+`Cache.en-US/CookedDataDialogs.pak`, and the version-mismatch handshake only ever targets the
+*current* override table, never a removed id. An already-affected tester needs either a manual
+local-cache clear or a one-time `invalidate_all`/tombstone (finding §5) before this is fully closed
+for them, independent of whatever the true root cause turns out to be.
 
 ## Next steps for a follow-up RE session
 
-1. Get a Ghidra session where the dynamically-registered analysis tools are actually reachable —
-   either restart the agent session after Ghidra is already connected (so the tool list is built
-   post-connect rather than pre-connect), or have a human click
-   `Tools > GhidraMCP > Start MCP Server` in an already-open CodeBrowser before the agent session
-   starts, then verify with `check_tools` *and* a live call (not just the "callable" status) before
-   relying on it.
-2. With live decompile access, find the `onClientMapLoad`/`Event_NetIn_onClientMapLoad` handler body
-   (not just its CME event-registration wrapper) and trace what, if anything, touches category-5
-   Dialog elements unconditionally.
-3. Decompile the caller of `Detail::ZipStorageBase::WriteStreamToFile`
-   (docs/reverse-engineering/decompiled/14_standalone_named.c:15429-15520 has the callee body, which
-   takes an already-built `wchar_t*` filename — the caller that formats `_<dialogId>` was not found
-   in the pre-extracted dumps) to confirm whether the ZIP entry name, or any in-memory index keyed
-   directly by `DialogID` value (as opposed to a `std::map`/tree lookup), is where a large id
-   actually causes trouble.
-4. If time allows, reproduce with a single test id in the `60000`–`65535` range as a smoke test on a
-   throwaway character before shipping the `60100`–`60104` renumber broadly.
+1. ~~Get a Ghidra session where the dynamically-registered analysis tools are actually
+   reachable~~ — **done, 2026-09-27: use headless Ghidra instead of the GUI+MCP bridge.**
+   `analyzeHeadless.bat "<project dir>" <project name> -process SGW.exe -noanalysis -readOnly
+   -scriptPath "<dir>" -postScript <Script>.java <args...>` runs a `GhidraScript` non-interactively
+   against the existing analyzed project with no GUI and no MCP round-trip, and this session
+   confirmed it can decompile (`DecompInterface`), enumerate xrefs (`getReferencesTo`), and search
+   defined strings, batched many-addresses-per-run to amortize the ~1-2 minute JVM/project-load
+   cost. **Only one run at a time** — the project lock is exclusive; a stale `SGW.lock`/`SGW.lock~`
+   with no `javaw`/`analyzeHeadless` process running is safe to delete. Keep `-readOnly` so nothing
+   in the project is modified. This is now the recommended path for any RE session that needs live
+   decompile without a GUI Ghidra already open.
+2. Find the actual `speakers` CookedData name-table implementation (What is not confirmed, item 4)
+   — search for "speakers" or "Speaker" as a defined string near category 5/10's code, or trace
+   what the client does with a `SpeakerID` after the record-level parse stores it (nothing in
+   `FUN_015e4d10` itself resolves a name — that happens somewhere downstream, not yet located).
+3. Trace `GameAppearanceManager`'s `Event_Level_PostLoad` handler body (RTTI accessor
+   `0x00e9a480`) and the two `Event_World_Loaded` subscribers (`GameProxyPlayer` RTTI
+   `0x00df7b80`, `Minimap` RTTI `0x00e2af30`) — the three map-load-lifecycle handler bodies this
+   session did not reach, to close out item 1 above completely.
+4. ~~Decompile the caller of `Detail::ZipStorageBase::WriteStreamToFile` to confirm whether the ZIP
+   entry name, or any in-memory index keyed directly by `DialogID` value, is where a large id
+   causes trouble.~~ **DONE, 2026-09-27**: the callers are `FUN_0043a9d0` (shared persist path) and
+   `FUN_0043b550` (shared per-key delete), both of which build the entry name as `L"_" +
+   operator<<(long key)` — a plain decimal-digit stream insertion, no indexing, no narrowing. See
+   "Verdict" above. This line of inquiry is closed; it isn't where a large id causes trouble.
+5. If the colo-telemetry check above shows the crash recurred even after `60100`-`60104`, follow
+   the `SpeakerID=754` lead (item 2 above) before returning to element-key width — the RE evidence
+   built this session doesn't support width as the mechanism, and re-treading it would repeat this
+   session's work for a hypothesis that's now refuted for every reachable code path.
 
 ## Cross-references
 
@@ -346,6 +395,9 @@ cooked-data category without the same caveat, since every category shares the sa
 - `docs/reverse-engineering/findings/dialog-controller-wire-flow.md` — the display-time path
   (`onDialogDisplay`, `IsImmediate`) that this finding's timeline reasoning depends on *not* being
   where the crash happens
+- `docs/reverse-engineering/findings/world-entry-pipeline.md` — `onClientMapLoad`
+  (`GameProxyPlayer::HandleOnClientMapLoad`), `Event_Level_PostLoad`, and `Event_World_Loaded`
+  addresses this session's live decompile traced and cross-checked
 - `crates/resources/src/base/dialog_overrides/mod.rs` — the Rust generator for the two dialogs in
   question
 - `crates/base-session/src/base/cooked_data.rs` — the server-side push path

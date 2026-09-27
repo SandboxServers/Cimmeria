@@ -85,7 +85,8 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 ## Cooked-dialog override crash (2026-09-27, unnumbered)
 
-- [Cooked-dialog override crash — dialog ids 100100/100101](cooked-dialog-override-crash-na-unnumbered.md) — client crash on map load, top-level element key >65535 is the leading unconfirmed suspect (button XML ruled out by timeline); **records a Ghidra tool-access gotcha**: connecting mid-session left the 195 dynamically-registered analysis tools unreachable via this harness's ToolSearch even though the bridge reported them callable — connect Ghidra *before* the agent session starts next time.
+- [Cooked-dialog override crash — dialog ids 100100/100101](cooked-dialog-override-crash-na-unnumbered.md) — client crash on map load; >65535 element-key hypothesis **REFUTED** by same-day live headless-Ghidra decompile of the actual category-5 instantiations; root cause open, new lead is novel `SpeakerID=754`.
+- [Headless-Ghidra decompile workaround](headless-ghidra-decompile-workaround.md) — **[USE THIS FIRST for any live RE need]** — `analyzeHeadless.bat` + a custom `GhidraScript` gives decompile/xref/string-search with no GUI and no MCP bridge, sidestepping the ToolSearch tools/list_changed gap entirely; recipe, gotchas, and the N:/X: triage pattern for template-instantiated functions.
 
 ## Phase −0.5 maintenance notes (2026-05-13)
 
