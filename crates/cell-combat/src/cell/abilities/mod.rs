@@ -56,8 +56,10 @@ pub use resolve::{
 pub use use_ability::{
     credit_ground_deaths, fire_line_of_sight, interrupt_unlearned_cast, warmup_tick, FireLos,
 };
+pub(crate) use use_ability::{
+    credited_player, interrupt_pending_cast, is_casting, InterruptReason,
+};
 pub use use_ability::{handle_use_ability, handle_use_ability_with_kill_credit};
-pub(crate) use use_ability::{interrupt_pending_cast, is_casting, InterruptReason};
 
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]

@@ -96,6 +96,7 @@ mod occluder_los;
 mod occluder_los_eye_heights;
 mod off_mesh_sentry;
 mod path_robustness;
+mod pet_kill_credit;
 mod selector;
 mod state_machine;
 mod stationary_facing;

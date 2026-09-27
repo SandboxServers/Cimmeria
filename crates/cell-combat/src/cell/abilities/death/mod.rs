@@ -311,7 +311,9 @@ pub(super) async fn apply_death_transition(
 /// - `attacker_is_player` — drives the `onTargetUpdate(0)` reticle drop.
 ///   A GM `.kill` passes `false` because the GM was never targeting
 ///   through the combat HUD.
-/// - `grant_xp` — pay kill XP to `attacker_id`. Combat and DoT kills pass
+/// - `grant_xp` — pay kill XP to the player `attacker_id` credits (itself,
+///   or a pet's owner; nobody for a plain NPC — see
+///   `side_effects::grant_kill_xp`). Combat and DoT kills pass
 ///   `true`; a GM `.kill` passes `false` so an admin command can't mint
 ///   levels. Ignored for player targets (PvP pays no XP).
 ///
@@ -497,6 +499,8 @@ pub async fn resolve_death_for_test(
 
 mod side_effects;
 
+#[cfg(test)]
+mod pet_credit_tests;
 #[cfg(test)]
 mod pet_tests;
 #[cfg(test)]

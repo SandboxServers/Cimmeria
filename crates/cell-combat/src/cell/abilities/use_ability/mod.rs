@@ -37,6 +37,7 @@ pub use kill_credit::handle_use_ability_with_kill_credit;
 
 pub(super) use fire::fire_cast;
 pub use kill_credit::credit_ground_deaths;
+pub(crate) use kill_credit::credited_player;
 #[cfg(test)]
 pub(crate) use warmup::resolve_warmups;
 pub(crate) use warmup::{attach_ground_point, interrupt_pending_cast, is_casting, InterruptReason};

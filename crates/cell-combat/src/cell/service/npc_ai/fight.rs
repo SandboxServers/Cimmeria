@@ -368,14 +368,30 @@ pub(super) async fn npc_ai_fight(
         in_cover,
         "NPC AI: attacking top threat target"
     );
-    let fired = crate::cell::abilities::handle_use_ability(
-        npc_id,
-        chosen_ability,
-        target_id as i32,
-        tx,
-        space_mgr,
-    )
-    .await;
+    // A pet's kills credit its owner's missions (pets PT-06), so a pet
+    // fires through the kill-credit wrapper. A plain mob keeps the bare
+    // call: it credits nobody, and the wrapper's health-below drain stays
+    // on the player-driven paths.
+    let fired = if space_mgr.credit_recipient(npc_id).is_some() {
+        crate::cell::abilities::handle_use_ability_with_kill_credit(
+            npc_id,
+            chosen_ability,
+            target_id as i32,
+            events,
+            tx,
+            space_mgr,
+        )
+        .await
+    } else {
+        crate::cell::abilities::handle_use_ability(
+            npc_id,
+            chosen_ability,
+            target_id as i32,
+            tx,
+            space_mgr,
+        )
+        .await
+    };
     if !fired {
         // handle_use_ability returns false when the
         // pre-consume guard rejected the call (entity missing/dead, no

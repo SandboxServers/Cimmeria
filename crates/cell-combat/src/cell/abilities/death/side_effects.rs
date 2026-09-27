@@ -68,11 +68,17 @@ pub(super) async fn send_death_sequence(
     );
 }
 
-/// Grant kill XP for a dead NPC to `attacker_id`.
+/// Grant kill XP for a dead NPC to whoever `attacker_id` credits.
 ///
-/// No-op for player targets — PvP pays no XP. The `GrantXP` hop is the
-/// only thing standing between a kill and the player's level bar, so a
-/// send failure is an `error!`, not a silent drop.
+/// No-op for player targets — PvP pays no XP. The recipient comes from
+/// [`SpaceManager::credit_recipient`] (pets PT-06, D-PT02): a player is
+/// paid itself, a pet pays its owner scaled by `PetState::transfer_xp`,
+/// and any other NPC attacker pays nobody. Before that seam a pet kill
+/// sent `GrantXP` to the pet's id (no base session, so the XP was lost)
+/// and a mob that killed a pet sent `GrantXP` to the mob's id.
+///
+/// The `GrantXP` hop is the only thing standing between a kill and the
+/// player's level bar, so a send failure is an `error!`, not a silent drop.
 pub(super) async fn grant_kill_xp(
     target_eid: u32,
     attacker_id: u32,
@@ -85,17 +91,33 @@ pub(super) async fn grant_kill_xp(
     if target.is_player {
         return;
     }
-    let xp = kill_xp(target.level);
+    let base_xp = kill_xp(target.level);
+    let Some(KillXpPayout { recipient, xp }) = kill_xp_payout(space_mgr, attacker_id, base_xp)
+    else {
+        // An NPC killed an NPC (a mob finishing a pet, a scripted fight):
+        // there is nobody to pay. Debug, not warn: this is the designed
+        // outcome, and it happens on every pet death.
+        tracing::debug!(
+            attacker = attacker_id,
+            target = target_eid,
+            base_xp,
+            "Kill XP not granted: the attacker credits no player"
+        );
+        return;
+    };
     tracing::info!(
         attacker = attacker_id,
+        credited = recipient,
+        via_pet = recipient != attacker_id,
         target = target_eid,
         mob_level = target.level,
+        base_xp,
         xp,
         "Granting kill XP"
     );
     if let Err(e) = tx
         .send(CellToBaseMsg::GrantXP {
-            entity_id: attacker_id,
+            entity_id: recipient,
             xp_amount: xp,
             // Mob-kill XP is not GM-sourced — no GM feedback line.
             gm_feedback_to: None,
@@ -103,11 +125,45 @@ pub(super) async fn grant_kill_xp(
         .await
     {
         tracing::error!(
-            attacker = attacker_id, target = target_eid, xp,
+            attacker = attacker_id, credited = recipient, target = target_eid, xp,
             error = %e,
             "GrantXP send to base failed -- player kill credit lost"
         );
     }
+}
+
+/// Who a kill's XP goes to, and how much.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct KillXpPayout {
+    pub(super) recipient: u32,
+    pub(super) xp: u64,
+}
+
+/// Resolve `attacker_id` to the credited player and scale `base_xp` by the
+/// pet's `transfer_xp` when the attacker is a pet (1.0 per D-PT02; a
+/// player attacker always gets the full amount).
+///
+/// `None` when nobody is credited, or when the scale leaves nothing to pay:
+/// a template authored with `transfer_xp = 0`, or a non-finite or negative
+/// value, which fails closed to zero rather than minting XP.
+pub(super) fn kill_xp_payout(
+    space_mgr: &SpaceManager,
+    attacker_id: u32,
+    base_xp: u64,
+) -> Option<KillXpPayout> {
+    let recipient = space_mgr.credit_recipient(attacker_id)?;
+    let scale = space_mgr
+        .get_entity(attacker_id)
+        .and_then(|e| e.pet.as_ref())
+        .map_or(1.0, |p| p.transfer_xp);
+    let xp = if scale == 1.0 {
+        base_xp
+    } else if scale.is_finite() && scale > 0.0 {
+        (base_xp as f64 * f64::from(scale)).round() as u64
+    } else {
+        0
+    };
+    (xp > 0).then_some(KillXpPayout { recipient, xp })
 }
 
 /// Send `onBeginAidWait` so a dead player sees the Defeat Window with the
