@@ -452,6 +452,21 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
+    // Crafting state: disciplines, paradigm levels, blueprints and
+    // the ASP total, owner-only. After the burst for the same reason as the
+    // contact lists: the entity is live and the crafting UI has loaded.
+    crate::base::crafting::sync::push_crafting_on_login(
+        entity_id,
+        pending.player_id,
+        db_pool,
+        crate::base::crafting::sync::CraftClient {
+            transport,
+            connected,
+            entity_to_addr,
+        },
+    )
+    .await;
+
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.
     // Runs after the list-push so the player is fully set up before watchers

@@ -13,3 +13,8 @@ description = "Metrics facade — thin macro layer over the OpenTelemetry SDK's 
 # dependency graph.
 opentelemetry = "0.32"
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# `testing`: a recording meter provider (`testing::install`, `testing::counter_total`)
+# so other crates' tests can assert counter emission. Never on in a build.
+testing = []

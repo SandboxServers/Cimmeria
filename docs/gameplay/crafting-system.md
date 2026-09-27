@@ -8,7 +8,7 @@ last_updated: 2026-07-25
 # Crafting System
 
 > **Last updated**: 2026-09-26
-> **Status**: Phase 1 only — state model, persistence, and GM grants work. All six player-facing crafting activities are stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Status**: State model, persistence, GM grants, the login sync (CR-03) and learning disciplines with applied science points (CR-04) work. Craft, research, reverse engineering, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -26,20 +26,38 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Persistence | DONE | Split across `sgw_player` (four scalar/array columns) and `sgw_player_discipline_expertise` (normalised per-discipline expertise rows, `CHECK (expertise BETWEEN 0 AND 100)`) |
 | Expertise cap | DONE | Enforced twice — `EXPERTISE_CAP = 100` in the handler and a DB `CHECK` constraint |
 | GM expertise grant | DONE | `handle_grant_expertise` mutates, persists, and pushes `onUpdateDiscipline` (client method 136, payload `[disciplineSeqId i32][expertise i32]`) |
-| GM applied-science grant | DONE | `handle_grant_applied_science` |
-| Client discipline sync | DONE | `onUpdateDiscipline` serializer wired; fired on GM grant |
+| GM applied-science grant | DONE | `handle_grant_applied_science` adds in one `UPDATE … RETURNING` and pushes the new **total** as `onEntityProperty(GENERICPROPERTY_AppliedSciencePoints = 2, total)`, so the discipline trainer's count updates without a relog (CR-03) |
+| Client state sync | DONE | `base/crafting/sync/`: owner-only pushes of 136, 138, 139 and the ASP property. Every ASP change pushes the total, never the change (audit C-57) |
+| World-entry state load | DONE | After the `onClientReady` burst, `push_crafting_on_login` loads the state and sends one bundle: 136 per known discipline, 138 per paradigm, 139, the ASP total. A relog restores disciplines, expertise, paradigm levels, blueprints and ASP (CR-03) |
+| Starting paradigm levels | DONE | D-CR03: Common (paradigm 1) at 5, Human, Goa'uld, Asgard and Ancient at 1. The load applies them to a character with no stored levels; the `sgw_player.racial_paradigm_levels` column default gives new characters the same array `{5,1,1,1,1}` |
 | Request path (methods 95-100) | DONE | The cell parses every argument, including the `ARRAY<ItemID>`s, and forwards a `CellToBaseMsg::Crafting(CraftRequest)`; the base logs it at target `crafting` (`event = "request"`). Crafting campaign CR-01 |
 | Crafting catalog | DONE | `cimmeria_cell_catalog::crafting::CraftingCatalog`: disciplines, blueprints with their alternative component sets, and item crafting attributes, loaded once per process |
-| Spend applied-science points | STUB | The base answers "Learning disciplines is not available yet." |
+| Spend applied-science points | DONE | `base/crafting/spend/` (CR-04), see [Learning a discipline](#learning-a-discipline) |
 | Crafting (blueprint) | STUB | The base answers "Crafting is not available yet." |
 | Research | STUB | The base answers "Research is not available yet." |
 | Reverse engineering | STUB | The base answers "Reverse engineering is not available yet." |
 | Alloying | STUB | The base answers "Alloying is not available yet." |
 | Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
-| World-entry state load | NOT IMPL | `load_crafting_state` exists and is live-DB tested, but nothing on the login path calls it yet |
 | Timer-based induction | NOT IMPL | The original 3.0s per-operation induction has no Rust equivalent |
 | Busy state lock | NOT IMPL | No `beginBusy`/`endBusy` equivalent |
-| `onUpdateCraftingOptions` | NOT IMPL | Never sent |
+| `onUpdateCraftingOptions` | NOT IMPL | Never sent; the station and tool gate owns it (CR-05). Until then every crafting tab stays disabled |
+
+## Learning a discipline
+
+The discipline trainer (Ctrl+J) sends `spendAppliedSciencePoints(disciplineId)` (cell method 95) for any click, whatever its tree colours say (audit C-36). The base decides it in one transaction that locks the player's `sgw_player` row `FOR UPDATE`, checking in this order:
+
+| Check | Refusal text | `onErrorCode` |
+|---|---|---|
+| The discipline is in the catalog | "There is no discipline N." | — |
+| It is not already known | "You already know <name>." | — |
+| At least one unspent ASP | "You have no applied science points." | 214 `NotEnoughAppliedSciencePoints` |
+| The discipline's racial paradigm is at its required level | "<name> requires <paradigm> paradigm level N; yours is M." | — |
+| Every required discipline is known | "<name> requires <prerequisite> at expertise 50." | — |
+| … at expertise 50 or more | "<name> requires <prerequisite> at expertise 50; yours is N." | — |
+
+A refusal is a `CHAN_FEEDBACK` text line and writes nothing. Each one is logged as a `crafting` `rejected` event whose `reason` (`unknown_discipline`, `already_known`, `no_asp`, `paradigm_too_low`, `prerequisite_missing`, `prerequisite_expertise`) and compared values say which check failed; a success is a `learned` event with the ASP before and after. The event catalog is the `crafting` row of [observability.md](../architecture/observability.md). A database failure is refused as "Learning disciplines is unavailable right now. Nothing was changed." On success the discipline is known at expertise 1 and one ASP is spent; no blueprint is granted (D-CR04, blueprints come from Blueprint items and research). The client then gets `onUpdateDiscipline(id, 1)` and the new ASP total. A repeated request finds the discipline known and changes nothing.
+
+The four root disciplines (21 Biomedical, 40 Electronic, 59 Power Systems, 78 Materials Engineering) need Common level 5, which every character now starts at. The test rows 1 and 2 ("Basketweaving") need Common 1 and are treated like any other discipline.
 
 ## Crafting Operations
 

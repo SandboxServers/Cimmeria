@@ -191,3 +191,23 @@ pub const CONDITION_FEEDBACK_EXPERTISE_VALUE_LESS_THAN_OR_EQUAL: u16 = 232;
 pub const CONDITION_FEEDBACK_EXPERTISE_VALUE_LESS_THAN: u16 = 233;
 /// `CONDITION_FEEDBACK_ExpertiseNoCraft`.
 pub const CONDITION_FEEDBACK_EXPERTISE_NO_CRAFT: u16 = 234;
+
+/// `resources.racial_paradigm` (`id`, `name`), for player-facing text. The
+/// seed has exactly these five rows; `racial_paradigm_names_match_the_seed`
+/// pins them against the database.
+pub const RACIAL_PARADIGM_NAMES: [(i32, &str); 5] = [
+    (1, "Common"),
+    (2, "Human"),
+    (3, "Goa'uld"),
+    (4, "Asgard"),
+    (5, "Ancient"),
+];
+
+/// The name of racial paradigm `id`, or `None` for an id the seed does not
+/// have.
+pub fn racial_paradigm_name(id: i32) -> Option<&'static str> {
+    RACIAL_PARADIGM_NAMES
+        .iter()
+        .find(|&&(pid, _)| pid == id)
+        .map(|&(_, name)| name)
+}

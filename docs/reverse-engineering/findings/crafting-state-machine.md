@@ -201,9 +201,11 @@ Static review at `beaf79471154a2e558fd7d112115950519a3f530` found a missing prog
 |---|---|---|
 | Method 138 delivery | The constant and wire-log decoder exist; no runtime sending call site was found | [player client methods](../../../crates/wire/src/cell/client_methods/player.rs), [generated decoder](../../../crates/wire-log/src/wire_log/decoders/generated.rs) |
 | Level mutation | The state stores levels, but production callers grant expertise or applied science points without changing the paradigm map; `.allcraft` reports incomplete implementation | [CraftingState](../../../crates/entity/src/crafting.rs), [grant handlers](../../../crates/base-session/src/base/crafting/handlers.rs), [console crafting](../../../crates/cell-console/src/cell/console/crafting.rs) |
-| Persistence and login | Load/save helpers decode and re-encode the map; no login caller of `load_crafting_state` was found | [crafting persistence](../../../crates/base-session/src/base/crafting/persistence.rs) |
+| Persistence and login | Load/save helpers decode and re-encode the map; no login caller of `load_crafting_state` was found | [crafting persistence](../../../crates/base-session/src/base/crafting/persistence/mod.rs) |
 
 `onPlayerDataLoaded` has no arguments in `SGWPlayer.def`; it does not itself carry paradigm levels. This audit therefore does **not** establish that relogging restores the crafting UI. The legacy [Crafter](../../../deprecated/python/cell/Crafter.py) mutation path calls `onRacialParadigmUpdated`, whose [SGWPlayer](../../../deprecated/python/cell/SGWPlayer.py) implementation emits the update; that is reference intent, not a Rust implementation.
+
+**Update (2026-09-26, crafting CR-03):** method 138 now has a runtime sender. After the `onClientReady` burst, [`push_crafting_on_login`](../../../crates/base-session/src/base/crafting/sync/mod.rs) loads the crafting state and sends 138 for all five paradigms, together with 136, 139 and the ASP property. A character with no stored levels loads the D-CR03 starting levels (Common 5, the rest 1). Level mutation is still absent until the Racial Paradigm Guide items (CR-15).
 
 The implementation gap is tracked in [#723](https://github.com/SandboxServers/Cimmeria/issues/723). No live level gain, client UI update, or packet capture was exercised. Those checks remain necessary once progression and initial synchronization are implemented.
 

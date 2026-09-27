@@ -9,8 +9,11 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::feedback::{reject, CraftReject};
+use super::spend::handle_spend;
+use super::sync::CraftClient;
+use super::telemetry::account_id_of;
 use crate::base::ConnectedClientState;
-use crate::cell::messages::{BaseToCellMsg, CraftRequest};
+use crate::cell::messages::{BaseToCellMsg, CraftRequest, CraftVerb};
 
 /// Everything a crafting verb may need from the base dispatcher, so later
 /// verbs add handlers without touching the dispatch arm.
@@ -22,10 +25,29 @@ pub struct CraftCtx<'a> {
     pub entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
 }
 
-/// Log the request at target `crafting` (`event = "request"`) and answer it.
+impl CraftCtx<'_> {
+    /// The player-client half, for the pushes and the refusal line.
+    pub fn client(&self) -> CraftClient<'_> {
+        CraftClient {
+            transport: self.transport,
+            connected: self.connected,
+            entity_to_addr: self.entity_to_addr,
+        }
+    }
+}
+
+/// Log the request at target `crafting` (`event = "request"`) and answer it,
+/// inside one `crafting.request` span per request.
 ///
-/// No verb is implemented yet, so every request is answered with a
-/// "not available yet" line: a press is never silent (D-CR14).
+/// `Spend` is decided by [`super::spend`]. Every other verb is answered with
+/// a "not available yet" line until it is implemented, so a press is never
+/// silent.
+#[tracing::instrument(
+    name = "crafting.request",
+    level = "info",
+    skip_all,
+    fields(verb = request.verb.method_name())
+)]
 pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
     let CraftRequest {
         entity_id,
@@ -33,26 +55,29 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
         verb,
         allowed,
     } = request;
+    let method = verb.method_name();
     tracing::info!(
         target: "crafting",
         event = "request",
-        entity_id,
+        verb = method,
+        account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr),
         player_id,
-        method = verb.method_name(),
+        entity_id,
+        method,
         allowed,
         args = ?verb,
         "crafting request"
     );
-    // TODO(CR-04, CR-07..CR-10): each verb's packet replaces this with its
-    // handler (`spend.rs`, `craft.rs`, `research.rs`, `reverse_engineer.rs`,
-    // `alloy.rs`, `respec.rs`).
+    if let CraftVerb::Spend { discipline_id } = verb {
+        handle_spend(entity_id, player_id, discipline_id, ctx).await;
+        return;
+    }
     reject(
+        method,
         entity_id,
         player_id,
         &CraftReject::not_available(&verb),
-        ctx.transport,
-        ctx.connected,
-        ctx.entity_to_addr,
+        ctx.client(),
     )
     .await;
 }
