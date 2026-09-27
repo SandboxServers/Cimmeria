@@ -199,9 +199,10 @@ files move by -496,090 bytes, mostly from the same drift (Agnos
   `HashMap`, or walking `InterpActor` in `off` mode each fails its guard.
 
 No size-pinned test needed updating. `cimmeria-navmesh-extractor`
-449/449. The crates whose tests read `data/spaces` (`cimmeria-entity`,
-`-cell-world`, `-cell-catalog`, `-cell-combat`, `-cell-content`, `-cell`)
-pass 2,194/2,194 against the new files.
+449/449. With it, `cimmeria-occluder` and the crates whose tests read
+`data/spaces` (`cimmeria-entity`, `-cell-world`, `-cell-catalog`,
+`-cell-combat`, `-cell-content`, `-cell`), 2,745/2,745 pass against the
+new files, rebased on main after NA41 (#829).
 
 ## Open
 
