@@ -92,7 +92,7 @@ pub enum DeferredAoiMsg {
         position: [f32; 3],
         direction: [f32; 3],
         level: u32,
-        npc_data: Option<NpcAoIData>,
+        npc_data: Option<Box<NpcAoIData>>,
         /// Cell-side live state of a player observee; joined with the
         /// observee's session identity at flush time, not at buffer time.
         player_data: Option<PlayerAoIData>,

@@ -241,7 +241,7 @@ pub(super) async fn entered_aoi(
                     position,
                     direction,
                     level,
-                    npc_data,
+                    npc_data: npc_data.map(Box::new),
                     player_data,
                 },
             );

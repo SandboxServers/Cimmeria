@@ -269,7 +269,7 @@ async fn dispatch_segment(
                     entity_id,
                     class_id,
                     level,
-                    npc_data.as_ref(),
+                    npc_data.as_deref(),
                     player_data.as_ref(),
                     connected,
                     entity_to_addr,
