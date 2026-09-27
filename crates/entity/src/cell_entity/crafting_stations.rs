@@ -1,4 +1,4 @@
-//! A player's crafting-station state on the cell (CR-05).
+//! A player's crafting-station state on the cell.
 //!
 //! The cell's 1 Hz station tick finds the nearest station per crafting verb
 //! and reports the set to the base only when it differs from the last one it

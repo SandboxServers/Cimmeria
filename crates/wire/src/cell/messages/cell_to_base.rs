@@ -519,11 +519,11 @@ pub enum CellToBaseMsg {
     /// rejections included, with visible feedback (D-CR14).
     Crafting(CraftRequest),
 
-    /// The crafting stations in range of a player changed (CR-05). The base
+    /// The crafting stations in range of a player changed. The base
     /// rebuilds `onUpdateCraftingOptions`.
     CraftingStations(CraftingStations),
 
-    /// `.allcraft` for a player (D-CR17); see [`GmAllCraft`].
+    /// `.allcraft` for a player; see [`GmAllCraft`].
     GmAllCraft(GmAllCraft),
 
     /// Execute a server-generated authoring SQL statement against the live DB

@@ -193,7 +193,7 @@ pub(super) async fn run_cell_loop(
                     // line-of-sight pages near each player and drops the
                     // rest; a world with no `.occ` has nothing to do.
                     space_mgr.refresh_occluder_residency();
-                    // Crafting stations in reach (CR-05) â€” also 1 Hz. One
+                    // Crafting stations in reach — also 1 Hz. One
                     // grid query per player; reports only changes, which
                     // drive the base's `onUpdateCraftingOptions`. The gate
                     // itself is recomputed per request, so the cadence

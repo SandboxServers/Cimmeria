@@ -5,7 +5,7 @@
 //! changed def fails a test instead of a client window.
 
 /// `ECraftTypeFlags` (`INT8`): the four crafting verbs as bits. The station
-/// gate (CR-05) grants a mask of these, carried as `CraftRequest::allowed`.
+/// gate grants a mask of these, carried as `CraftRequest::allowed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum CraftType {
@@ -153,7 +153,7 @@ impl ItemQuality {
 }
 
 // `EEntityFlags`: an entity carrying one of these is a crafting station for
-// that verb (CR-05). No seeded template sets any of them yet (C-25).
+// that verb. No seeded template sets any of them yet.
 
 /// `ENTITYFLAG_Craft_Craft`.
 pub const ENTITYFLAG_CRAFT_CRAFT: u32 = 2048;

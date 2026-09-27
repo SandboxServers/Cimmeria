@@ -14,8 +14,8 @@ pub struct CraftRequest {
     /// `sgw_player.player_id`.
     pub player_id: i32,
     pub verb: CraftVerb,
-    /// The `ECraftTypeFlags` mask the station gate granted. 0 until the gate
-    /// exists (CR-05).
+    /// The `ECraftTypeFlags` mask of the verbs whose crafting station was in
+    /// reach when the cell received the request.
     pub allowed: u8,
 }
 

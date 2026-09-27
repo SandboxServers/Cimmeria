@@ -3,10 +3,12 @@
 
 use super::*;
 use crate::base::crafting::tools::ToolSpec;
-use crate::test_support::{test_default_connected_client_state, TestTransport};
+use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 use cimmeria_mercury::encryption::EncryptionVersion;
 
 const ENTITY: u32 = 4280;
+const ACCOUNT_ID: u32 = 4281;
+const PLAYER_ID: i32 = 4282;
 
 fn tool(instance_id: i32, tech_comp: i32) -> HeldTool {
     HeldTool {
@@ -93,10 +95,10 @@ fn session() -> (
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
     let addr: SocketAddr = "127.0.0.1:55730".parse().unwrap();
-    let connected = Arc::new(Mutex::new(HashMap::from([(
-        addr,
-        test_default_connected_client_state(),
-    )])));
+    let mut state = test_default_connected_client_state();
+    state.account_id = ACCOUNT_ID;
+    state.active_player_id = Some(PLAYER_ID);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(ENTITY, addr)])));
     (typed, transport, addr, connected, entity_to_addr)
 }
@@ -115,6 +117,15 @@ fn packet(options: &CraftingOptions, seq: u32) -> Vec<u8> {
     )
 }
 
+fn report(stations: StationSet) -> CraftingStations {
+    CraftingStations {
+        entity_id: ENTITY,
+        player_id: PLAYER_ID,
+        stations,
+        cause: StationChangeCause::Moved,
+    }
+}
+
 /// The login send goes out even when every section is empty, and it arms
 /// the change-only sends after it.
 #[tokio::test]
@@ -122,8 +133,7 @@ async fn login_send_is_unconditional_and_arms_change_sends() {
     let (typed, transport, addr, connected, entity_to_addr) = session();
 
     handle_station_report(
-        ENTITY,
-        [Some(900), None, None, None],
+        report([Some(900), None, None, None]),
         &transport,
         &connected,
         &entity_to_addr,
@@ -141,7 +151,7 @@ async fn login_send_is_unconditional_and_arms_change_sends() {
     };
     assert_eq!(typed.filter_to(addr), vec![packet(&login, 0)]);
 
-    handle_station_report(ENTITY, [None; 4], &transport, &connected, &entity_to_addr).await;
+    handle_station_report(report([None; 4]), &transport, &connected, &entity_to_addr).await;
     assert_eq!(
         typed.filter_to(addr),
         vec![packet(&login, 0), packet(&CraftingOptions::default(), 1)]
@@ -168,4 +178,155 @@ async fn enable_craft_anywhere_sends_and_sets_the_flag() {
     };
     assert_eq!(typed.filter_to(addr), vec![packet(&expected, 0)]);
     assert!(craft_anywhere(ENTITY, &connected, &entity_to_addr));
+}
+
+/// Every send logs `options_changed` with the player's identity, the cause,
+/// and the machine and tool id per section (0 for none).
+#[tokio::test]
+async fn options_changed_carries_identity_cause_and_ids() {
+    let capture = LogCapture::install();
+    let (_typed, transport, addr, connected, entity_to_addr) = session();
+    connected
+        .lock()
+        .unwrap()
+        .get_mut(&addr)
+        .unwrap()
+        .crafting_options
+        .tools = vec![tool(20_002, 35)];
+
+    send_login_options(
+        ENTITY,
+        PLAYER_ID,
+        &None,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+    handle_station_report(
+        CraftingStations {
+            entity_id: ENTITY,
+            player_id: PLAYER_ID,
+            stations: [Some(900), None, None, Some(902)],
+            cause: StationChangeCause::StationDespawned,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let events: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|e| e.has_field("event", "options_changed"))
+        .collect();
+    assert_eq!(events.len(), 2, "{events:#?}");
+    for e in &events {
+        assert_eq!(e.target, "crafting");
+        assert!(e.has_field("account_id", &ACCOUNT_ID.to_string()), "{e:#?}");
+        assert!(e.has_field("player_id", &PLAYER_ID.to_string()), "{e:#?}");
+        assert!(e.has_field("entity_id", &ENTITY.to_string()), "{e:#?}");
+    }
+    assert!(events[0].has_field("cause", "login"), "{:#?}", events[0]);
+    assert!(
+        events[0].has_field("tools", "[20002, 20002, 20002, 0]"),
+        "{:#?}",
+        events[0]
+    );
+    assert!(
+        events[1].has_field("cause", "station_despawned"),
+        "{:#?}",
+        events[1]
+    );
+    assert!(
+        events[1].has_field("stations", "[900, 0, 0, 902]"),
+        "{:#?}",
+        events[1]
+    );
+}
+
+/// An update for an entity with no session is a WARN `lookup_failed`, not a
+/// silent drop.
+#[tokio::test]
+async fn an_update_without_a_session_warns() {
+    let capture = LogCapture::install();
+    let (typed, transport, _addr, connected, _) = session();
+    let no_mapping = Arc::new(Mutex::new(HashMap::new()));
+
+    handle_station_report(report([Some(900); 4]), &transport, &connected, &no_mapping).await;
+
+    assert!(typed.is_empty());
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "crafting options update for an entity with no session",
+        )
+        .expect("the miss is logged");
+    assert!(event.has_field("event", "lookup_failed"), "{event:#?}");
+    assert!(event.has_field("phase", "session"), "{event:#?}");
+    assert!(
+        event.has_field("entity_id", &ENTITY.to_string()),
+        "{event:#?}"
+    );
+}
+
+/// A transport that refuses every send.
+struct FailingTransport;
+
+impl Transport for FailingTransport {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _bytes: &'life1 [u8],
+        _addr: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async { Err(std::io::Error::other("link down")) })
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:1".parse().unwrap())
+    }
+}
+
+/// A 140 that fails to send is a WARN `send_failed` with the player's
+/// identity.
+#[tokio::test]
+async fn a_failed_options_send_warns_with_identity() {
+    let capture = LogCapture::install();
+    let (_typed, _transport, _addr, connected, entity_to_addr) = session();
+    let failing: Arc<dyn Transport> = Arc::new(FailingTransport);
+
+    send_login_options(
+        ENTITY,
+        PLAYER_ID,
+        &None,
+        &failing,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let event = capture
+        .find_event(
+            tracing::Level::WARN,
+            "onUpdateCraftingOptions did not reach the client",
+            "send_error",
+        )
+        .expect("the failed send is logged");
+    assert!(event.has_field("event", "send_failed"), "{event:#?}");
+    assert!(
+        event.has_field("account_id", &ACCOUNT_ID.to_string()),
+        "{event:#?}"
+    );
+    assert!(
+        event.has_field("entity_id", &ENTITY.to_string()),
+        "{event:#?}"
+    );
 }

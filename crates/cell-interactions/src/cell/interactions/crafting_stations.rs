@@ -1,4 +1,4 @@
-//! Crafting stations in reach of a player (CR-05, D-CR05).
+//! Crafting stations in reach of a player.
 //!
 //! A station is any entity whose `entity_flags` carry an
 //! `ENTITYFLAG_Craft_*` bit; each bit makes it a station for one verb. A
@@ -8,7 +8,7 @@
 //! Two callers share [`stations_in_range`]: the 1 Hz station tick, which
 //! reports changes to the base for `onUpdateCraftingOptions`, and the
 //! crafting forward, which computes `CraftRequest::allowed` fresh at request
-//! time. The client does no distance check of its own (CR-E1 Q2), so the
+//! time. The client does no distance check of its own, so the
 //! forward's mask is the authoritative one.
 
 use cimmeria_cell_catalog::crafting::CraftType;

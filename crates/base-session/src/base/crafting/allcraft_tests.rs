@@ -1,4 +1,4 @@
-//! Tests for `.allcraft` (D-CR17).
+//! Tests for `.allcraft`.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -9,7 +9,9 @@ use sqlx::PgPool;
 
 use super::*;
 use crate::base::ConnectedClientState;
-use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
+use crate::test_support::{
+    require_db_or_skip, test_default_connected_client_state, LogCapture, TestTransport,
+};
 
 #[test]
 fn apply_all_craft_sets_everything_and_keeps_asp() {
@@ -98,9 +100,12 @@ fn sessions(gm_access_level: u32) -> Sessions {
     let gm: SocketAddr = "127.0.0.1:55742".parse().unwrap();
     let mut gm_state = test_default_connected_client_state();
     gm_state.access_level = gm_access_level;
+    let mut target_state = test_default_connected_client_state();
+    target_state.account_id = ACCOUNT as u32;
+    target_state.active_player_id = Some(PLAYER);
     (
         Arc::new(Mutex::new(HashMap::from([
-            (target, test_default_connected_client_state()),
+            (target, target_state),
             (gm, gm_state),
         ]))),
         Arc::new(Mutex::new(HashMap::from([
@@ -141,6 +146,7 @@ fn craft_anywhere_on(sessions: &Sessions) -> bool {
 #[tokio::test]
 async fn allcraft_persists_the_full_crafting_state() {
     let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
     cleanup(&pool).await;
     insert_player(&pool).await;
     let sessions = sessions(2);
@@ -152,18 +158,44 @@ async fn allcraft_persists_the_full_crafting_state() {
 
     let catalog = shared_crafting_catalog(&pool).await.expect("catalog");
     assert_eq!(reloaded.discipline_ids.len(), catalog.disciplines.len());
-    assert_eq!(reloaded.discipline_ids.len(), 78, "audit C-20");
+    assert_eq!(reloaded.discipline_ids.len(), 78, "seeded disciplines");
     assert!(reloaded
         .discipline_ids
         .iter()
         .all(|&d| reloaded.get_expertise(d) == Some(ALL_CRAFT_EXPERTISE)));
-    assert_eq!(reloaded.blueprint_ids.len(), 498, "audit C-21");
+    assert_eq!(reloaded.blueprint_ids.len(), 498, "seeded blueprints");
     assert_eq!(
         reloaded.racial_paradigm_levels,
         (1..=5).map(|id| (id, ALL_CRAFT_PARADIGM_LEVEL)).collect()
     );
     assert_eq!(reloaded.applied_science_points, 4, "ASP untouched");
     assert!(craft_anywhere_on(&sessions));
+
+    let event = capture
+        .find_message(tracing::Level::INFO, "allcraft granted")
+        .expect("gm_allcraft is logged");
+    assert_eq!(event.target, "crafting");
+    for (field, value) in [
+        ("event", "gm_allcraft".to_string()),
+        ("outcome", "granted".to_string()),
+        ("account_id", ACCOUNT.to_string()),
+        ("player_id", PLAYER.to_string()),
+        ("entity_id", TARGET_ENTITY.to_string()),
+        ("disciplines_before", "0".to_string()),
+        ("disciplines_after", "78".to_string()),
+        ("blueprints_before", "0".to_string()),
+        ("blueprints_after", "498".to_string()),
+        (
+            "paradigm_levels_after",
+            "[(1, 7), (2, 7), (3, 7), (4, 7), (5, 7)]".to_string(),
+        ),
+    ] {
+        assert!(event.has_field(field, &value), "{field}: {event:#?}");
+    }
+    assert!(capture
+        .all()
+        .iter()
+        .any(|e| e.has_field("event", "options_changed") && e.has_field("cause", "gm_anywhere")));
 }
 
 /// A caller below GameMaster changes nothing in the database and turns
@@ -182,5 +214,34 @@ async fn allcraft_from_a_non_gm_writes_nothing() {
 
     assert!(reloaded.discipline_ids.is_empty());
     assert!(reloaded.blueprint_ids.is_empty());
+    assert!(!craft_anywhere_on(&sessions));
+}
+
+/// A save that matches no player row is a WARN `persist_failed` naming the
+/// phase, with the paired `rows_affected` / `expected`, and turns nothing on.
+#[tokio::test]
+async fn allcraft_for_a_missing_player_logs_the_shortfall() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    cleanup(&pool).await;
+    let sessions = sessions(2);
+
+    run(&pool, &sessions).await;
+
+    let event = capture
+        .find_message(tracing::Level::WARN, "allcraft save failed")
+        .expect("persist_failed is logged");
+    for (field, value) in [
+        ("event", "persist_failed"),
+        ("phase", "save_crafting_state"),
+        ("rows_affected", "0"),
+        ("expected", "1"),
+    ] {
+        assert!(event.has_field(field, value), "{field}: {event:#?}");
+    }
+    assert!(
+        event.has_field("player_id", &PLAYER.to_string()),
+        "{event:#?}"
+    );
     assert!(!craft_anywhere_on(&sessions));
 }

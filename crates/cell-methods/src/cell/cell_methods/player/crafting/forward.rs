@@ -8,7 +8,7 @@ use crate::cell::space_manager::SpaceManager;
 
 /// Forward `verb` for `entity_id` as a `CellToBaseMsg::Crafting`.
 ///
-/// `allowed` is the station gate (CR-05): the verbs whose station is in
+/// `allowed` is the station gate: the verbs whose station is in
 /// reach right now, computed here rather than read from the 1 Hz station
 /// tick, so a player who walked away a moment ago is not let through. The
 /// base adds the tools and "craft anywhere" to it.

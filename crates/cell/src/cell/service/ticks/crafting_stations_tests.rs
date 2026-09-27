@@ -56,11 +56,12 @@ async fn tick(mgr: &mut SpaceManager) -> Vec<CraftingStations> {
     out
 }
 
-fn report(stations: [Option<u32>; 4]) -> CraftingStations {
+fn report(stations: [Option<u32>; 4], cause: StationChangeCause) -> CraftingStations {
     CraftingStations {
         entity_id: PLAYER,
         player_id: PLAYER_ID,
         stations,
+        cause,
     }
 }
 
@@ -72,15 +73,25 @@ async fn reports_entering_and_leaving_range_only_on_change() {
     add_player(&mut mgr, "Castle", 0.0);
     add_station(&mut mgr, STATION, 20.0, ALL_VERBS);
 
-    assert_eq!(tick(&mut mgr).await, vec![report([None; 4])], "first tick");
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([None; 4], StationChangeCause::WorldChange)],
+        "first tick"
+    );
     assert!(tick(&mut mgr).await.is_empty(), "no change, no report");
 
     move_player(&mut mgr, 16.0);
-    assert_eq!(tick(&mut mgr).await, vec![report([Some(STATION); 4])]);
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([Some(STATION); 4], StationChangeCause::Moved)]
+    );
     assert!(tick(&mut mgr).await.is_empty());
 
     move_player(&mut mgr, 30.0);
-    assert_eq!(tick(&mut mgr).await, vec![report([None; 4])]);
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([None; 4], StationChangeCause::Moved)]
+    );
 }
 
 /// A station that despawns under the player is reported gone.
@@ -92,13 +103,19 @@ async fn reports_a_despawned_station() {
     add_station(&mut mgr, STATION + 1, 3.0, ENTITYFLAG_CRAFT_ALLOYING as u64);
     assert_eq!(
         tick(&mut mgr).await,
-        vec![report([Some(STATION), None, None, Some(STATION + 1)])]
+        vec![report(
+            [Some(STATION), None, None, Some(STATION + 1)],
+            StationChangeCause::WorldChange
+        )]
     );
 
     mgr.destroy_entity(STATION);
     assert_eq!(
         tick(&mut mgr).await,
-        vec![report([None, None, None, Some(STATION + 1)])]
+        vec![report(
+            [None, None, None, Some(STATION + 1)],
+            StationChangeCause::StationDespawned
+        )]
     );
 }
 
@@ -110,11 +127,17 @@ async fn a_world_change_reports_the_new_worlds_set() {
     let mut mgr = world();
     add_player(&mut mgr, "Castle", 0.0);
     add_station(&mut mgr, STATION, 1.0, ALL_VERBS);
-    assert_eq!(tick(&mut mgr).await, vec![report([Some(STATION); 4])]);
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([Some(STATION); 4], StationChangeCause::WorldChange)]
+    );
 
     mgr.destroy_entity(PLAYER);
     add_player(&mut mgr, "Harset", 0.0);
-    assert_eq!(tick(&mut mgr).await, vec![report([None; 4])]);
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([None; 4], StationChangeCause::WorldChange)]
+    );
 }
 
 /// A station at the same coordinates in another space is not in reach.
@@ -123,7 +146,10 @@ async fn a_station_in_another_space_is_not_in_reach() {
     let mut mgr = world();
     add_player(&mut mgr, "Harset", 0.0);
     add_station(&mut mgr, STATION, 0.5, ALL_VERBS);
-    assert_eq!(tick(&mut mgr).await, vec![report([None; 4])]);
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([None; 4], StationChangeCause::WorldChange)]
+    );
 }
 
 /// Reach is measured in 3-D, as `interact` measures it: a station on the
@@ -135,7 +161,10 @@ async fn a_station_on_the_floor_above_is_not_in_reach() {
     mgr.spawn_npc(STATION, "Castle", [0.0, 6.0, 0.0], [0.0; 3])
         .unwrap();
     mgr.get_entity_mut(STATION).unwrap().entity_flags = ALL_VERBS;
-    assert_eq!(tick(&mut mgr).await, vec![report([None; 4])]);
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([None; 4], StationChangeCause::WorldChange)]
+    );
 }
 
 /// A player still in world entry (no `player_id`) is skipped, and reports
@@ -148,5 +177,40 @@ async fn a_player_without_player_id_reports_once_loaded() {
     assert!(tick(&mut mgr).await.is_empty());
 
     mgr.get_entity_mut(PLAYER).unwrap().player_id = Some(PLAYER_ID);
-    assert_eq!(tick(&mut mgr).await, vec![report([None; 4])]);
+    assert_eq!(
+        tick(&mut mgr).await,
+        vec![report([None; 4], StationChangeCause::WorldChange)]
+    );
+}
+
+/// A report the base channel refuses is a WARN `forward_failed` carrying the
+/// player's identity, not a silent drop.
+#[tokio::test]
+async fn a_failed_report_send_warns_with_identity() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = world();
+    add_player(&mut mgr, "Castle", 0.0);
+    mgr.get_entity_mut(PLAYER).unwrap().account_id = Some(4409);
+    let (tx, rx) = mpsc::channel(1);
+    drop(rx);
+
+    crafting_station_tick(&tx, &mut mgr).await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "crafting station report could not be queued",
+        )
+        .expect("the failed send is logged");
+    assert_eq!(event.target, "crafting");
+    assert!(event.has_field("event", "forward_failed"), "{event:#?}");
+    assert!(event.has_field("account_id", "4409"), "{event:#?}");
+    assert!(
+        event.has_field("player_id", &PLAYER_ID.to_string()),
+        "{event:#?}"
+    );
+    assert!(
+        event.has_field("entity_id", &PLAYER.to_string()),
+        "{event:#?}"
+    );
 }

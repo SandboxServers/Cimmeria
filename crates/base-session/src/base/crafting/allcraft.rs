@@ -1,4 +1,4 @@
-//! `.allcraft` (D-CR17): a GM tool that makes a player able to try every
+//! `.allcraft`: a GM tool that makes a player able to try every
 //! crafting page at once, for UAT.
 //!
 //! It sets every racial paradigm to 7, learns every discipline at expertise
@@ -26,11 +26,12 @@ use super::persistence::{load_crafting_state, save_crafting_state};
 use super::request::CraftCtx;
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::helpers::send_bundle_to_witness_reliable;
+use crate::base::session_identity::identity_for_entity;
 
 /// The paradigm level `.allcraft` sets, as the legacy command did.
 pub const ALL_CRAFT_PARADIGM_LEVEL: i8 = 7;
-/// The expertise `.allcraft` sets on every discipline (D-CR17; the legacy
-/// command used 50).
+/// The expertise `.allcraft` sets on every discipline (the legacy command
+/// used 50).
 pub const ALL_CRAFT_EXPERTISE: i32 = 100;
 
 /// Minimum `access_level` for `.allcraft`: GameMaster.
@@ -117,6 +118,17 @@ fn caller_access_level(gm_entity_id: u32, ctx: &CraftCtx<'_>) -> u32 {
         .unwrap_or(0)
 }
 
+/// Paradigm levels in id order, for the `gm_allcraft` before/after fields.
+fn paradigm_levels(state: &CraftingState) -> Vec<(i32, i8)> {
+    let mut levels: Vec<(i32, i8)> = state
+        .racial_paradigm_levels
+        .iter()
+        .map(|(&id, &level)| (id, level))
+        .collect();
+    levels.sort_unstable();
+    levels
+}
+
 /// Handle `CellToBaseMsg::GmAllCraft`.
 #[tracing::instrument(
     name = "crafting.allcraft",
@@ -130,6 +142,7 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         player_id,
         gm_entity_id,
     } = msg;
+    let account_id = identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id).account_id;
     let feedback = |text: String| async move {
         send_gm_feedback_to_client(
             gm_entity_id,
@@ -140,14 +153,29 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         )
         .await;
     };
+    let lookup_failed = |phase: &'static str, error: &dyn std::fmt::Display| {
+        tracing::warn!(
+            target: "crafting",
+            event = "lookup_failed",
+            phase,
+            account_id,
+            player_id,
+            entity_id,
+            gm_entity_id,
+            error = %error,
+            "allcraft could not read what it grants"
+        );
+    };
 
     let access_level = caller_access_level(gm_entity_id, ctx);
     if access_level < GM_ACCESS_LEVEL {
         tracing::warn!(
             target: "crafting",
-            event = "allcraft_refused",
-            entity_id,
+            event = "gm_allcraft",
+            outcome = "refused",
+            account_id,
             player_id,
+            entity_id,
             gm_entity_id,
             access_level,
             "allcraft from a caller below GameMaster; refused"
@@ -156,57 +184,69 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         return;
     }
     let Some(pool) = ctx.db_pool.as_deref() else {
+        lookup_failed("db_pool", &"no database pool");
         feedback("allcraft: failed, no database.".into()).await;
         return;
     };
     let catalog = match shared_crafting_catalog(pool).await {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!(target: "crafting", event = "allcraft_failed", error = %e, "catalog load failed");
+            lookup_failed("catalog", &e);
             feedback("allcraft: failed, the crafting catalog could not be loaded.".into()).await;
             return;
         }
     };
-    let paradigm_ids: Vec<i32> = match sqlx::query_scalar(
-        "SELECT id FROM resources.racial_paradigm ORDER BY id",
-    )
-    .fetch_all(pool)
-    .await
-    {
-        Ok(ids) => ids,
-        Err(e) => {
-            tracing::error!(target: "crafting", event = "allcraft_failed", error = %e, "paradigm read failed");
-            feedback("allcraft: failed, the racial paradigms could not be read.".into()).await;
-            return;
-        }
-    };
+    let paradigm_ids: Vec<i32> =
+        match sqlx::query_scalar("SELECT id FROM resources.racial_paradigm ORDER BY id")
+            .fetch_all(pool)
+            .await
+        {
+            Ok(ids) => ids,
+            Err(e) => {
+                lookup_failed("paradigms", &e);
+                feedback("allcraft: failed, the racial paradigms could not be read.".into()).await;
+                return;
+            }
+        };
     let mut state = match load_crafting_state(pool, player_id).await {
         Ok(s) => s,
         Err(e) => {
-            tracing::error!(target: "crafting", event = "allcraft_failed", error = %e, "state load failed");
+            lookup_failed("load_state", &e);
             feedback("allcraft: failed, the crafting state could not be loaded.".into()).await;
             return;
         }
     };
+    let (disciplines_before, blueprints_before, paradigms_before) = (
+        state.discipline_ids.len(),
+        state.blueprint_ids.len(),
+        paradigm_levels(&state),
+    );
     let mut discipline_ids: Vec<i32> = catalog.disciplines.keys().copied().collect();
     let mut blueprint_ids: Vec<i32> = catalog.blueprints.keys().copied().collect();
     discipline_ids.sort_unstable();
     blueprint_ids.sort_unstable();
     apply_all_craft(&mut state, &discipline_ids, &blueprint_ids, &paradigm_ids);
     if let Err(e) = save_crafting_state(pool, player_id, &state).await {
-        tracing::error!(
+        // `save_crafting_state` reports an UPDATE that matched no player row
+        // as `RowNotFound`.
+        let rows_affected: Option<u64> = matches!(e, sqlx::Error::RowNotFound).then_some(0);
+        tracing::warn!(
             target: "crafting",
             event = "persist_failed",
-            entity_id,
+            phase = "save_crafting_state",
+            rows_affected,
+            expected = 1u64,
+            account_id,
             player_id,
+            entity_id,
             error = %e,
-            "allcraft save failed"
+            "allcraft save failed; nothing was granted"
         );
         feedback("allcraft: failed, the crafting state could not be saved.".into()).await;
         return;
     }
 
-    send_bundle_to_witness_reliable(
+    let outcome = send_bundle_to_witness_reliable(
         ctx.transport,
         ctx.connected,
         ctx.entity_to_addr,
@@ -214,22 +254,38 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         crafting_state_bundle(entity_id, &state),
     )
     .await;
+    if let Some(reason) = outcome.failure_reason() {
+        tracing::warn!(
+            target: "crafting",
+            event = "send_failed",
+            reason,
+            method = "136/138/139",
+            account_id,
+            player_id,
+            entity_id,
+            "allcraft's discipline, paradigm and blueprint update did not reach the client"
+        );
+    }
     enable_craft_anywhere(entity_id, ctx.transport, ctx.connected, ctx.entity_to_addr).await;
 
     tracing::info!(
         target: "crafting",
-        event = "allcraft",
-        entity_id,
+        event = "gm_allcraft",
+        outcome = "granted",
+        account_id,
         player_id,
+        entity_id,
         gm_entity_id,
-        disciplines = discipline_ids.len(),
-        blueprints = blueprint_ids.len(),
-        paradigms = paradigm_ids.len(),
+        disciplines_before,
+        disciplines_after = state.discipline_ids.len(),
+        blueprints_before,
+        blueprints_after = state.blueprint_ids.len(),
+        paradigm_levels_before = ?paradigms_before,
+        paradigm_levels_after = ?paradigm_levels(&state),
         "allcraft granted"
     );
     feedback(format!(
-        "allcraft [{entity_id}]: {} disciplines at {ALL_CRAFT_EXPERTISE}, {} blueprints, \
-         {} paradigms at {ALL_CRAFT_PARADIGM_LEVEL}; craft anywhere is on until logout.",
+        "allcraft [{entity_id}]: {} disciplines at {ALL_CRAFT_EXPERTISE}, {} blueprints,          {} paradigms at {ALL_CRAFT_PARADIGM_LEVEL}; craft anywhere is on until logout.",
         discipline_ids.len(),
         blueprint_ids.len(),
         paradigm_ids.len(),

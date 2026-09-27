@@ -1,4 +1,4 @@
-//! Tests for the Field Crafting Tool rule (D-CR21).
+//! Tests for the Field Crafting Tool rule.
 
 use super::*;
 use crate::test_support::require_db_or_skip;
@@ -108,7 +108,7 @@ fn best_tool_is_highest_tech_comp_then_lowest_instance() {
 async fn every_seeded_tool_classifies_and_matches_its_description() {
     let pool = require_db_or_skip!();
     let table = tool_table(&pool).await.expect("tool table");
-    assert_eq!(table.len(), 48, "audit C-26: 48 Field Crafting Tools");
+    assert_eq!(table.len(), 48, "48 seeded Field Crafting Tools");
 
     let rows: Vec<(i32, String, i32)> = sqlx::query_as(
         "SELECT item_id, description, tech_comp FROM resources.items \

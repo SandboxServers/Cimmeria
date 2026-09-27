@@ -6,7 +6,7 @@
 //! fails the count below.
 //!
 //! The request carries the alloying station bit, so it passes the station
-//! gate (CR-05) and reaches the verb's "not available yet" answer. The gate
+//! gate and reaches the verb's "not available yet" answer. The gate
 //! itself is pinned in [`super::crafting_gate`].
 
 use super::super::*;

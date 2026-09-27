@@ -153,8 +153,7 @@ pub async fn handle_cell_message(
         }
         CellToBaseMsg::CraftingStations(report) => {
             crate::base::crafting::options::handle_station_report(
-                report.entity_id,
-                report.stations,
+                report,
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,

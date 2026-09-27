@@ -1,4 +1,4 @@
-//! CR-05 `.allcraft` (D-CR17): a GM's line forwards one `GmAllCraft` for the
+//! `.allcraft`: a GM's line forwards one `GmAllCraft` for the
 //! targeted player; a non-GM's `.allcraft` is ordinary chat and forwards
 //! nothing, so "craft anywhere" cannot be switched on by a player.
 

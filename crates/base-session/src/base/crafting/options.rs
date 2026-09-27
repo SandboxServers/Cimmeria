@@ -1,5 +1,5 @@
 //! `onUpdateCraftingOptions` (140): what the client's crafting window shows
-//! as its machine or tool, and the per-session inputs behind it (CR-05).
+//! as its machine or tool, and the per-session inputs behind it.
 //!
 //! The base owns the message. Its three inputs are:
 //!
@@ -8,17 +8,17 @@
 //! - the Field Crafting Tools in the crafting bag, re-read after every
 //!   inventory commit (`send_full_inventory_update` is the shared post-commit
 //!   seam) and at login;
-//! - "craft anywhere", which `.allcraft` turns on for the session (D-CR17).
+//! - "craft anywhere", which `.allcraft` turns on for the session.
 //!
-//! The client keeps only the **last** id of each array (CR-E1 Q2), so each
-//! section carries at most one machine and one tool. It checks neither
-//! distance nor existence; the server's gate in `request.rs` is the only
-//! enforcement.
+//! The client keeps only the **last** id of each array, so each section
+//! carries at most one machine and one tool. It checks neither distance nor
+//! existence; the server's gate is the only enforcement.
 //!
 //! Sends: always at login ([`send_login_options`], after `onClientReady`),
 //! then only when the options change. Before the login send nothing goes
 //! out, so a station report that lands while the client is still loading
-//! the world never reaches an entity the client has not created.
+//! the world never reaches an entity the client has not created. Every
+//! send logs `event = "options_changed"` with its cause.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -27,11 +27,15 @@ use std::sync::{Arc, Mutex};
 use cimmeria_cell_catalog::crafting::CraftType;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::cell::client_methods::player::ON_UPDATE_CRAFTING_OPTIONS;
-use cimmeria_wire::crafting::{crafting_options_args, CraftingInfo, CraftingOptions, StationSet};
+use cimmeria_wire::crafting::{
+    crafting_options_args, CraftingInfo, CraftingOptions, CraftingStations, StationChangeCause,
+    StationSet,
+};
 use sqlx::PgPool;
 
 use super::tools::{best_tool, load_held_tools, tool_table, tools_in_crafting_bag, HeldTool};
 use crate::base::helpers::send_to_witness_reliable;
+use crate::base::session_identity::identity_for_entity;
 use crate::base::ConnectedClientState;
 use crate::mercury::build_player_entity_method_packet;
 
@@ -51,13 +55,47 @@ pub struct CraftingSessionOptions {
     pub last_sent: Option<CraftingOptions>,
 }
 
+/// Why the options were re-evaluated: the `cause` field of
+/// `options_changed`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OptionsCause {
+    Moved,
+    StationDespawned,
+    WorldChange,
+    Bag15Changed,
+    Login,
+    GmAnywhere,
+}
+
+impl OptionsCause {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OptionsCause::Moved => "moved",
+            OptionsCause::StationDespawned => "station_despawned",
+            OptionsCause::WorldChange => "world_change",
+            OptionsCause::Bag15Changed => "bag15_changed",
+            OptionsCause::Login => "login",
+            OptionsCause::GmAnywhere => "gm_anywhere",
+        }
+    }
+}
+
+impl From<StationChangeCause> for OptionsCause {
+    fn from(cause: StationChangeCause) -> Self {
+        match cause {
+            StationChangeCause::Moved => OptionsCause::Moved,
+            StationChangeCause::StationDespawned => OptionsCause::StationDespawned,
+            StationChangeCause::WorldChange => OptionsCause::WorldChange,
+        }
+    }
+}
+
 /// Build the 140 payload for `entity_id` from its session inputs.
 ///
 /// Per section: the station as the machine; for crafting, research and
-/// reverse engineering, the best tool as the tool (alloying takes no tool,
-/// D-CR21). Under "craft anywhere" every section names the player's own
-/// entity as its machine, as the legacy `.allcraft` did
-/// (`Crafting.py:85-95`).
+/// reverse engineering, the best tool as the tool (alloying takes no tool).
+/// Under "craft anywhere" every section names the player's own entity as
+/// its machine, as the legacy `.allcraft` did.
 pub fn build_options(entity_id: u32, inputs: &CraftingSessionOptions) -> CraftingOptions {
     let tool = best_tool(&inputs.tools).map(|t| t.instance_id);
     let section = |verb: CraftType, station: Option<u32>| {
@@ -83,37 +121,39 @@ pub fn build_options(entity_id: u32, inputs: &CraftingSessionOptions) -> Craftin
     }
 }
 
+/// Per section (crafting, research, reverseEngineering, alloying), the id a
+/// list names, 0 for none: the `stations` and `tools` fields of
+/// `options_changed`.
+fn per_section(options: &CraftingOptions, pick: impl Fn(&CraftingInfo) -> &[i32]) -> [i32; 4] {
+    [
+        &options.crafting,
+        &options.research,
+        &options.reverse_engineering,
+        &options.alloying,
+    ]
+    .map(|s| pick(s).last().copied().unwrap_or(0))
+}
+
 /// Apply `update` to `entity_id`'s session inputs and send 140 when due:
 /// always when `force`, otherwise only after the login send and only when
 /// the options changed. Returns whether a send went out.
 async fn update_and_send(
     entity_id: u32,
     force: bool,
+    cause: OptionsCause,
     update: impl FnOnce(&mut CraftingSessionOptions),
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> bool {
-    let Some(addr) = entity_to_addr
+    let session = entity_to_addr
         .lock()
         .ok()
-        .and_then(|m| m.get(&entity_id).copied())
-    else {
-        tracing::debug!(
-            target: "crafting",
-            event = "options_no_session",
-            entity_id,
-            "crafting options update for an entity with no session; dropped"
-        );
-        return false;
-    };
-    let options = {
-        let Ok(mut clients) = connected.lock() else {
-            return false;
-        };
-        let Some(client) = clients.get_mut(&addr) else {
-            return false;
-        };
+        .and_then(|m| m.get(&entity_id).copied());
+    let found = session.and_then(|addr| {
+        let mut clients = connected.lock().ok()?;
+        let client = clients.get_mut(&addr)?;
+        let identity = (client.account_id, client.active_player_id);
         let inputs = &mut client.crafting_options;
         update(inputs);
         let options = build_options(entity_id, inputs);
@@ -122,33 +162,63 @@ async fn update_and_send(
                 .last_sent
                 .as_ref()
                 .is_some_and(|sent| *sent != options);
-        if !due {
-            return false;
+        if due {
+            inputs.last_sent = Some(options.clone());
         }
-        inputs.last_sent = Some(options.clone());
-        options
+        Some((identity, due.then_some(options)))
+    });
+    let Some(((account_id, player_id), options)) = found else {
+        let identity = identity_for_entity(connected, entity_to_addr, entity_id);
+        tracing::warn!(
+            target: "crafting",
+            event = "lookup_failed",
+            phase = "session",
+            account_id = identity.account_id,
+            player_id = identity.player_id,
+            entity_id,
+            cause = cause.as_str(),
+            "crafting options update for an entity with no session; dropped"
+        );
+        return false;
     };
-    send_options(entity_id, &options, transport, connected, entity_to_addr).await;
+    let Some(options) = options else {
+        return false;
+    };
+    tracing::info!(
+        target: "crafting",
+        event = "options_changed",
+        account_id,
+        player_id,
+        entity_id,
+        cause = cause.as_str(),
+        stations = ?per_section(&options, |s| &s.entities),
+        tools = ?per_section(&options, |s| &s.items),
+        "crafting options changed"
+    );
+    send_options(
+        entity_id,
+        (account_id, player_id),
+        &options,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
     true
 }
 
-/// Send one `onUpdateCraftingOptions` to the player's own client.
+/// Send one `onUpdateCraftingOptions` to the player's own client; a failed
+/// send is a WARN.
 async fn send_options(
     entity_id: u32,
+    (account_id, player_id): (u32, Option<i32>),
     options: &CraftingOptions,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    tracing::debug!(
-        target: "crafting",
-        event = "options_sent",
-        entity_id,
-        options = ?options,
-        "onUpdateCraftingOptions"
-    );
     let args = crafting_options_args(options);
-    send_to_witness_reliable(
+    let outcome = send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
@@ -166,19 +236,32 @@ async fn send_options(
         },
     )
     .await;
+    if let Some(reason) = outcome.failure_reason() {
+        tracing::warn!(
+            target: "crafting",
+            event = "send_failed",
+            reason,
+            method = ON_UPDATE_CRAFTING_OPTIONS,
+            account_id,
+            player_id,
+            entity_id,
+            "onUpdateCraftingOptions did not reach the client"
+        );
+    }
 }
 
 /// The cell reported a new station set (`CellToBaseMsg::CraftingStations`).
 pub async fn handle_station_report(
-    entity_id: u32,
-    stations: StationSet,
+    report: CraftingStations,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    let stations = report.stations;
     update_and_send(
-        entity_id,
+        report.entity_id,
         false,
+        report.cause.into(),
         |inputs| inputs.stations = stations,
         transport,
         connected,
@@ -191,6 +274,7 @@ pub async fn handle_station_report(
 /// (instance id, type id, container id), after an inventory commit.
 pub async fn refresh_tools_from_rows(
     entity_id: u32,
+    player_id: i32,
     pool: &PgPool,
     rows: impl IntoIterator<Item = (i32, i32, i32)>,
     transport: &Arc<dyn Transport>,
@@ -202,7 +286,10 @@ pub async fn refresh_tools_from_rows(
         Err(e) => {
             tracing::warn!(
                 target: "crafting",
-                event = "tool_table_failed",
+                event = "lookup_failed",
+                phase = "tool_table",
+                account_id = identity_for_entity(connected, entity_to_addr, entity_id).account_id,
+                player_id,
                 entity_id,
                 error = %e,
                 "Field Crafting Tool table could not be loaded; tools unchanged"
@@ -214,6 +301,7 @@ pub async fn refresh_tools_from_rows(
     update_and_send(
         entity_id,
         false,
+        OptionsCause::Bag15Changed,
         |inputs| inputs.tools = tools,
         transport,
         connected,
@@ -233,6 +321,7 @@ pub async fn enable_craft_anywhere(
     update_and_send(
         entity_id,
         true,
+        OptionsCause::GmAnywhere,
         |inputs| inputs.craft_anywhere = true,
         transport,
         connected,
@@ -264,7 +353,6 @@ pub fn craft_anywhere(
 /// The login send, after `onClientReady`: read the crafting bag and send
 /// 140 unconditionally, even when every section is empty, so the window
 /// starts from the server's state. A world change runs this again.
-// TODO(CR-03): fold into the login crafting bundle once it lands.
 pub async fn send_login_options(
     entity_id: u32,
     player_id: i32,
@@ -279,9 +367,11 @@ pub async fn send_login_options(
             Err(e) => {
                 tracing::warn!(
                     target: "crafting",
-                    event = "login_tools_failed",
-                    entity_id,
+                    event = "lookup_failed",
+                    phase = "login_tools",
+                    account_id = identity_for_entity(connected, entity_to_addr, entity_id).account_id,
                     player_id,
+                    entity_id,
                     error = %e,
                     "crafting bag read failed at login; sending options without tools"
                 );
@@ -293,6 +383,7 @@ pub async fn send_login_options(
     update_and_send(
         entity_id,
         true,
+        OptionsCause::Login,
         |inputs| {
             if let Some(tools) = tools {
                 inputs.tools = tools;

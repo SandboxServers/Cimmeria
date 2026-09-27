@@ -1,5 +1,5 @@
 //! Live-DB guard for the crafting-options hook in
-//! `send_full_inventory_update` (CR-05): every inventory commit ends in that
+//! `send_full_inventory_update`: every inventory commit ends in that
 //! resync, so it is where a Field Crafting Tool entering or leaving the
 //! crafting bag reaches `onUpdateCraftingOptions` (140).
 //!

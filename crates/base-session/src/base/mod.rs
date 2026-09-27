@@ -301,7 +301,7 @@ pub struct ConnectedClientState {
     pub channel: Mutex<Channel>,
 
     /// Crafting stations, tools and "craft anywhere" behind this session's
-    /// `onUpdateCraftingOptions`, and the options last sent (CR-05).
+    /// `onUpdateCraftingOptions`, and the options last sent.
     pub crafting_options: crafting::options::CraftingSessionOptions,
 }
 

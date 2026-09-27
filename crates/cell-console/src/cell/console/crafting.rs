@@ -6,7 +6,7 @@
 //! Discipline expertise is clamped `[0, 100]` base-side, so "forget" zeroes
 //! the expertise (a full row delete would need a dedicated base path, noted
 //! in feedback). `.allcraft` sends `CellToBaseMsg::GmAllCraft` to
-//! `base::crafting::allcraft` (D-CR17).
+//! `base::crafting::allcraft`.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Crafting.py`.
 
@@ -124,7 +124,7 @@ async fn forget(
 }
 
 /// `.allcraft` — every paradigm at 7, every discipline at 100, every
-/// blueprint, and "craft anywhere" for the target's session (D-CR17). The
+/// blueprint, and "craft anywhere" for the target's session. The
 /// base holds the catalog and the persistence, so the cell only forwards;
 /// the base re-checks the caller's access level and sends the result lines.
 async fn all_craft(caller_id: u32, target: u32, player_id: i32, tx: &mpsc::Sender<CellToBaseMsg>) {

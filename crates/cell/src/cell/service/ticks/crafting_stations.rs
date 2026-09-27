@@ -1,4 +1,4 @@
-//! Crafting-station tick (CR-05): tells the base which stations are in
+//! Crafting-station tick: tells the base which stations are in
 //! reach of each player, so it can keep `onUpdateCraftingOptions` current.
 //!
 //! **Why a 1 Hz tick, not the movement handler.** The station set changes
@@ -20,10 +20,35 @@
 use tokio::sync::mpsc;
 
 use crate::cell::interactions::crafting_stations::stations_in_range;
-use crate::cell::messages::{CellToBaseMsg, CraftingStations};
+use crate::cell::messages::{CellToBaseMsg, CraftingStations, StationChangeCause};
 use crate::cell::space_manager::SpaceManager;
 
-/// Run one station sweep over every loaded player.
+/// Why a player's station set moved from `previous` to `current`: the
+/// first report since the entity was created is a world change (or login);
+/// a station that was in reach and no longer exists despawned; anything
+/// else is movement.
+fn change_cause(
+    space_mgr: &SpaceManager,
+    previous: Option<[Option<u32>; 4]>,
+    current: &[Option<u32>; 4],
+) -> StationChangeCause {
+    let Some(previous) = previous else {
+        return StationChangeCause::WorldChange;
+    };
+    let despawned = previous
+        .iter()
+        .flatten()
+        .any(|id| !current.contains(&Some(*id)) && space_mgr.get_entity(*id).is_none());
+    if despawned {
+        StationChangeCause::StationDespawned
+    } else {
+        StationChangeCause::Moved
+    }
+}
+
+/// Run one station sweep over every loaded player. Logs nothing per tick;
+/// the base logs `options_changed` when a report changes what the client
+/// is told.
 pub(in crate::cell::service) async fn crafting_station_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -36,6 +61,10 @@ pub(in crate::cell::service) async fn crafting_station_tick(
             continue;
         };
         let stations = stations_in_range(space_mgr, entity_id);
+        let previous = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.crafting_stations.last_reported);
+        let cause = change_cause(space_mgr, previous, &stations);
         let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
             continue;
         };
@@ -44,24 +73,21 @@ pub(in crate::cell::service) async fn crafting_station_tick(
                 entity_id,
                 player_id,
                 stations,
+                cause,
             });
         }
     }
 
     for report in reports {
-        tracing::debug!(
-            target: "crafting",
-            event = "stations_changed",
-            entity_id = report.entity_id,
-            player_id = report.player_id,
-            stations = ?report.stations,
-            "crafting stations in range changed"
-        );
-        let entity_id = report.entity_id;
+        let (entity_id, player_id) = (report.entity_id, report.player_id);
         if let Err(e) = tx.send(CellToBaseMsg::CraftingStations(report)).await {
+            let account_id = space_mgr.player_identity(entity_id).account_id;
             tracing::warn!(
                 target: "crafting",
-                event = "stations_send_failed",
+                event = "forward_failed",
+                kind = "crafting_stations",
+                account_id,
+                player_id,
                 entity_id,
                 error = %e,
                 "crafting station report could not be queued (base channel closed)"

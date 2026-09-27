@@ -58,7 +58,14 @@ pub enum CraftReject {
     },
     /// No station in reach, no covering tool in the crafting bag, and no
     /// "craft anywhere".
-    NoStationOrTool { verb: CraftType },
+    NoStationOrTool {
+        verb: CraftType,
+        /// The `ECraftTypeFlags` mask the cell's station check granted.
+        station_mask: u8,
+        /// The instance ids of the tools in the crafting bag that were
+        /// considered (empty when none was, e.g. for alloying).
+        tools: Vec<i32>,
+    },
 }
 
 /// The values a refused rule compared, logged as fields of the `rejected`
@@ -73,6 +80,7 @@ pub struct Compared {
     pub prerequisite_id: Option<i32>,
     pub prerequisite_expertise: Option<i32>,
     pub required_expertise: Option<i32>,
+    pub station_mask: Option<u8>,
 }
 
 impl CraftReject {
@@ -144,7 +152,7 @@ impl CraftReject {
             } => format!(
                 "{discipline} requires {prerequisite} at expertise {required}; yours is {expertise}."
             ),
-            CraftReject::NoStationOrTool { verb } => {
+            CraftReject::NoStationOrTool { verb, .. } => {
                 let verb = match verb {
                     CraftType::Craft => "crafting",
                     CraftType::Research => "research",
@@ -159,9 +167,13 @@ impl CraftReject {
     /// What the refused rule compared.
     pub fn compared(&self) -> Compared {
         match *self {
-            CraftReject::NotAvailableYet { .. }
-            | CraftReject::Unavailable { .. }
-            | CraftReject::NoStationOrTool { .. } => Compared::default(),
+            CraftReject::NotAvailableYet { .. } | CraftReject::Unavailable { .. } => {
+                Compared::default()
+            }
+            CraftReject::NoStationOrTool { station_mask, .. } => Compared {
+                station_mask: Some(station_mask),
+                ..Compared::default()
+            },
             CraftReject::UnknownDiscipline { discipline_id }
             | CraftReject::DisciplineAlreadyKnown { discipline_id, .. } => Compared {
                 discipline_id: Some(discipline_id),
@@ -206,6 +218,15 @@ impl CraftReject {
                 required_expertise: Some(required),
                 ..Compared::default()
             },
+        }
+    }
+
+    /// The crafting-bag tools a station gate refusal considered, as the
+    /// `tools` field of the `rejected` event; `None` for every other reason.
+    pub fn tools_considered(&self) -> Option<String> {
+        match self {
+            CraftReject::NoStationOrTool { tools, .. } => Some(format!("{tools:?}")),
+            _ => None,
         }
     }
 
@@ -275,7 +296,14 @@ mod tests {
 
     #[test]
     fn no_station_text_names_the_verb() {
-        let text = |verb| CraftReject::NoStationOrTool { verb }.text();
+        let text = |verb| {
+            CraftReject::NoStationOrTool {
+                verb,
+                station_mask: 0,
+                tools: vec![],
+            }
+            .text()
+        };
         assert_eq!(
             text(CraftType::Craft),
             "No crafting station or tool for crafting nearby."

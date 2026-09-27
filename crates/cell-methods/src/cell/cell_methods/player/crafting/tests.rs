@@ -269,10 +269,10 @@ async fn send_on_update_discipline_emits_correct_message() {
     }
 }
 
-/// CR-05: `allowed` is the station mask at request time. A craft+research
+/// `allowed` is the station mask at request time. A craft+research
 /// station 3 units away grants bits 1 and 2; once the player walks 20 units
-/// off, the same request carries 0. With the forward hard-wired to 0 (the
-/// CR-01 placeholder), the first assertion fails.
+/// off, the same request carries 0. With the forward hard-wired to 0 (the old
+/// placeholder), the first assertion fails.
 #[tokio::test]
 async fn forward_carries_the_station_mask_at_request_time() {
     use cimmeria_cell_catalog::crafting::{ENTITYFLAG_CRAFT_CRAFT, ENTITYFLAG_CRAFT_RESEARCH};

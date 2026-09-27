@@ -10,23 +10,25 @@
 //!   `cell::client_methods::player`.
 //! - [`request`]: [`CraftRequest`] / [`CraftVerb`], carried by
 //!   `CellToBaseMsg::Crafting`.
-//! - [`cell_events`]: [`CraftingStations`] and [`GmAllCraft`], the other two
-//!   crafting messages the cell sends the base.
+//! - [`stations`]: [`CraftingStations`], the station set the cell reports.
+//! - [`gm_allcraft`]: [`GmAllCraft`], the GM `.allcraft` grant.
 //!
 //! Campaign ledger: `docs/analysis/crafting/`. The `CraftingOptions` layout
 //! is recorded in `docs/protocol/client-method-dispatch-table.md` (row 140).
 
-pub mod cell_events;
 pub mod client_methods;
+pub mod gm_allcraft;
 pub mod request;
+pub mod stations;
 
-pub use cell_events::{CraftingStations, GmAllCraft, StationSet};
 pub use client_methods::{
     applied_science_points_property_args, crafting_options_args, crafting_respec_prompt_args,
     discipline_respec_args, known_crafts_args, racial_paradigm_level_args, update_discipline_args,
     CraftingInfo, CraftingOptions, GENERICPROPERTY_APPLIED_SCIENCE_POINTS,
 };
+pub use gm_allcraft::GmAllCraft;
 pub use request::{CraftRequest, CraftVerb};
+pub use stations::{CraftingStations, StationChangeCause, StationSet};
 
 #[cfg(test)]
 mod tests;

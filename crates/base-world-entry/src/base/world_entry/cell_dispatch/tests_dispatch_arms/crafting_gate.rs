@@ -1,8 +1,8 @@
 //! The crafting station gate and crafting options through the real
-//! dispatcher (CR-05).
+//! dispatcher.
 //!
 //! - A forged request with no station in reach, no tool and no "craft
-//!   anywhere" is refused with the D-CR14 line, not passed to the verb.
+//!   anywhere" is refused with a visible line, not passed to the verb.
 //! - "Craft anywhere" lets the same request through.
 //! - A station report sends `onUpdateCraftingOptions` byte for byte once
 //!   the login send has happened, and nothing before it.
@@ -15,7 +15,9 @@
 use super::super::*;
 use super::one_session;
 use crate::base::crafting::feedback::feedback_text_args;
-use crate::cell::messages::{CraftRequest, CraftVerb, CraftingStations, GmAllCraft};
+use crate::cell::messages::{
+    CraftRequest, CraftVerb, CraftingStations, GmAllCraft, StationChangeCause,
+};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{LogCapture, TestTransport};
 use cimmeria_mercury::encryption::EncryptionVersion;
@@ -24,6 +26,18 @@ use cimmeria_wire::crafting::{crafting_options_args, CraftingInfo, CraftingOptio
 
 const ENTITY: u32 = 4270;
 const PLAYER_ID: i32 = 4271;
+const ACCOUNT_ID: u32 = 4272;
+
+/// Give the test session the player's account and character.
+fn with_identity(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) {
+    let mut clients = connected.lock().unwrap();
+    let c = clients.get_mut(&addr).unwrap();
+    c.account_id = ACCOUNT_ID;
+    c.active_player_id = Some(PLAYER_ID);
+}
 
 fn craft(allowed: u8) -> CellToBaseMsg {
     CellToBaseMsg::Crafting(CraftRequest {
@@ -79,6 +93,7 @@ async fn forged_request_without_station_or_tool_is_refused_with_feedback() {
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
     let (addr, connected, entity_to_addr) = one_session(ENTITY, false);
+    with_identity(&connected, addr);
 
     dispatch(craft(0), &transport, &connected, &entity_to_addr).await;
 
@@ -88,11 +103,80 @@ async fn forged_request_without_station_or_tool_is_refused_with_feedback() {
         sent[0],
         feedback_packet("No crafting station or tool for crafting nearby.")
     );
+    let event = capture
+        .find_event(tracing::Level::INFO, "rejected", "no_station_or_tool")
+        .expect("the rejection is logged with its reason");
+    assert_eq!(event.target, "crafting");
     assert!(
-        capture
-            .find_event(tracing::Level::INFO, "rejected", "no_station_or_tool")
-            .is_some(),
-        "the rejection is logged with its reason"
+        event.has_field("account_id", &ACCOUNT_ID.to_string()),
+        "{event:#?}"
+    );
+    assert!(
+        event.has_field("player_id", &PLAYER_ID.to_string()),
+        "{event:#?}"
+    );
+    assert!(
+        event.has_field("entity_id", &ENTITY.to_string()),
+        "{event:#?}"
+    );
+    assert!(event.has_field("verb", "craft"), "{event:#?}");
+    assert!(event.has_field("station_mask", "0"), "{event:#?}");
+    assert!(
+        event.has_field("tools", "[]"),
+        "no pool, no tools read: {event:#?}"
+    );
+}
+
+/// A failed crafting-bag read in the gate is a WARN `lookup_failed` with the
+/// player's identity, and the request is still refused with the line.
+#[tokio::test]
+async fn a_failed_tool_lookup_warns_and_refuses() {
+    let capture = LogCapture::install();
+    let typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed.clone();
+    let (addr, connected, entity_to_addr) = one_session(ENTITY, false);
+    with_identity(&connected, addr);
+    // Nothing listens on port 1, so every query fails fast.
+    let unreachable = sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(200))
+        .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
+        .expect("lazy pool");
+    let db_pool = Some(Arc::new(unreachable));
+
+    handle_cell_message(
+        craft(0),
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &db_pool,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    assert_eq!(
+        typed.filter_to(addr),
+        vec![feedback_packet(
+            "No crafting station or tool for crafting nearby."
+        )]
+    );
+    let event = capture
+        .find_message(tracing::Level::WARN, "crafting gate lookup failed")
+        .expect("the failed lookup is logged");
+    assert!(event.has_field("event", "lookup_failed"), "{event:#?}");
+    assert!(
+        event.has_field("account_id", &ACCOUNT_ID.to_string()),
+        "{event:#?}"
+    );
+    assert!(
+        event.has_field("player_id", &PLAYER_ID.to_string()),
+        "{event:#?}"
+    );
+    assert!(
+        event.has_field("entity_id", &ENTITY.to_string()),
+        "{event:#?}"
     );
 }
 
@@ -173,6 +257,7 @@ async fn station_report_sends_options_only_after_login_and_on_change() {
             entity_id: ENTITY,
             player_id: PLAYER_ID,
             stations,
+            cause: StationChangeCause::Moved,
         })
     };
 
@@ -276,5 +361,6 @@ async fn allcraft_from_a_non_gm_is_refused() {
             "allcraft from a caller below GameMaster",
         )
         .expect("the refusal is logged");
-    assert!(event.has_field("event", "allcraft_refused"), "{event:#?}");
+    assert!(event.has_field("event", "gm_allcraft"), "{event:#?}");
+    assert!(event.has_field("outcome", "refused"), "{event:#?}");
 }

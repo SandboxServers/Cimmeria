@@ -89,7 +89,7 @@ fn tech_comp_and_science_bound_the_tool() {
     ));
 }
 
-/// Alloying needs a station (D-CR21): no tool covers it.
+/// Alloying needs a station: no tool covers it.
 #[test]
 fn no_tool_covers_alloying() {
     let d = discipline(21, 1, 1);

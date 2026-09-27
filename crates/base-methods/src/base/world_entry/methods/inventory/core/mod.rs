@@ -311,10 +311,11 @@ pub async fn send_full_inventory_update(
 
     // Every inventory commit ends in this resync, so it is where the
     // crafting options learn that a Field Crafting Tool entered or left the
-    // crafting bag (CR-05). No second query: the rows above carry the
+    // crafting bag. No second query: the rows above carry the
     // container.
     refresh_tools_from_rows(
         entity_id,
+        player_id,
         pool,
         all_items
             .iter()

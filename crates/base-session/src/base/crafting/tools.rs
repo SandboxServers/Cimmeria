@@ -1,4 +1,4 @@
-//! Field Crafting Tools (D-CR21): portable stand-ins for a crafting station.
+//! Field Crafting Tools: portable stand-ins for a crafting station.
 //!
 //! A tool counts only in the crafting bag (`INV_Crafting`, container 15),
 //! the only player bag its `container_sets` `{17,15}` allows. It enables
@@ -8,7 +8,7 @@
 //!
 //! Nothing in the seed or the cooked data says an item is a tool or which
 //! science it serves: `applied_science_id` is NULL on every tool and the
-//! cooked `AppliedScienceID` is 0 (CR-E2 Q3). The science is in the name
+//! cooked `AppliedScienceID` is 0. The science is in the name
 //! prefix only, so [`classify_tool`] reads it from there, and
 //! [`tool_table`] builds the table once from `resources.items`.
 
@@ -34,7 +34,7 @@ pub struct ToolSpec {
 }
 
 impl ToolSpec {
-    /// Whether this tool covers work in `discipline` (D-CR21).
+    /// Whether this tool covers work in `discipline`.
     pub fn covers(&self, discipline: &Discipline) -> bool {
         discipline.applied_science_id == self.applied_science_id
             && discipline.tech_competency <= self.tech_comp
