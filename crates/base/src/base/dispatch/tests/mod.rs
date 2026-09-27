@@ -18,8 +18,8 @@
 mod chat_dnd_limit;
 mod chat_flood_limit;
 mod chat_speaker_flags;
-mod duel_challenge;
 mod crafting_teardown;
+mod duel_challenge;
 mod organization;
 mod player_index_logoff;
 mod routing_logging;
