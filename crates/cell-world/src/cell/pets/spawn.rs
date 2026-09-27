@@ -108,10 +108,10 @@ impl SpaceManager {
         match &result {
             Ok(pet_id) => {
                 self.pets.note_owner_identity(owner, id);
-                tracing::debug!(
+                tracing::info!(
                     target: "pets.lifecycle",
-                    event = "summoned",
                     decision_outcome = "summoned",
+                    event = "summoned",
                     pet_id = *pet_id,
                     owner_id = owner,
                     account_id = id.account_id,
@@ -128,8 +128,8 @@ impl SpaceManager {
             Err(e) => {
                 tracing::warn!(
                     target: "pets.lifecycle",
-                    event = "summon_failed",
                     decision_outcome = "summon_failed",
+                    event = "summon_failed",
                     owner_id = owner,
                     account_id = id.account_id,
                     player_id = id.player_id,

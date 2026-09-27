@@ -35,7 +35,7 @@ async fn summon_is_a_debug_event_with_owner_identity_and_template() {
     let logs = LogCapture::install();
     let (_mgr, pet) = world_with_pet();
     let c = event(&logs, "pets.lifecycle", "summoned").expect("summoned event");
-    assert_eq!(c.level, Level::DEBUG);
+    assert_eq!(c.level, Level::INFO);
     assert_owner_identity(&c);
     assert!(c.has_field("pet_id", &pet.to_string()));
     assert!(c.has_field("owner_id", &OWNER.to_string()));
@@ -95,8 +95,9 @@ async fn swept_despawn_of_a_gone_owner_still_names_the_owner() {
     let logs = LogCapture::install();
     pet_owner_sweep(&tx, &mut mgr).await;
     let c = event(&logs, "pets.lifecycle", "despawned").expect("despawned event");
-    assert_eq!(c.level, Level::DEBUG);
+    assert_eq!(c.level, Level::INFO);
     assert!(c.has_field("reason", "owner_gone"));
+    assert!(c.has_field("path", "sweep"));
     assert_owner_identity(&c);
     assert!(c.has_field("pet_id", &pet.to_string()));
     assert!(c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()));
@@ -110,6 +111,7 @@ async fn disconnect_logs_despawn_and_owner_forgotten() {
     mgr.disconnect_entity(OWNER, &tx).await;
     let d = event(&logs, "pets.lifecycle", "despawned").expect("despawned event");
     assert!(d.has_field("reason", "owner_disconnected"));
+    assert!(d.has_field("path", "disconnect"));
     assert!(d.has_field("pet_id", &pet.to_string()));
     assert_owner_identity(&d);
     let f = event(&logs, "pets.lifecycle", "owner_forgotten").expect("owner_forgotten");
@@ -130,6 +132,7 @@ async fn orphan_registry_entry_is_scrubbed_with_a_warn() {
         .find_event(Level::WARN, "without an entity", "pet_entity_gone")
         .expect("registry_scrubbed WARN");
     assert!(c.has_field("event", "registry_scrubbed"));
+    assert!(c.has_field("path", "sweep"));
     assert!(c.has_field("pet_id", "999999"));
     assert_owner_identity(&c);
 }
@@ -142,9 +145,10 @@ async fn despawning_a_missing_pet_warns_with_reason() {
     let logs = LogCapture::install();
     let _ = despawn_pet(&mut mgr, 999_999, PetDespawnReason::Dismissed, &tx).await;
     let c = logs
-        .find_event(Level::WARN, "did not remove", "pet_not_found")
+        .find_event(Level::WARN, "did not remove", "dismissed")
         .expect("despawn_failed WARN");
     assert!(c.has_field("event", "despawn_failed"));
-    assert!(c.has_field("despawn_reason", "dismissed"));
+    assert!(c.has_field("outcome", "NotFound"));
+    assert!(c.has_field("path", "direct"));
     assert_owner_identity(&c);
 }
