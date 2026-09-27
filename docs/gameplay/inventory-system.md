@@ -2,12 +2,12 @@
 title: "Inventory System"
 type: reference
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-09-26
 ---
 
 # Inventory System
 
-> **Last updated**: 2026-09-25
+> **Last updated**: 2026-09-26
 > **Status**: Implemented, including the full vendor stack in code. The vendor stack has **never been tested in a client on working code** (see [Vendor caveat](#vendor-caveat)). Remaining gaps are stat recalculation on equip and the organization vault.
 
 ## Overview
@@ -32,7 +32,8 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Buyback | DONE | `vendor/buyback/` |
 | Item repair (vendor) | DONE | `vendor/repair.rs` plus the paid-repair variant |
 | Item recharge (vendor) | DONE | `vendor/recharge.rs` plus the paid-recharge variant |
-| Vendor bag allowlist | DONE | `VENDOR_FILTER_BAGS` confines vendor operations to the main bag, bandolier, the eleven equipment slots, and the quick bar — the bank, mail attachments, and loot bags are unreachable |
+| Player-movable allowlist | DONE | `moveItem` checks both the source and the target container against `player_movable` (see [Container capacity and movability](#container-capacity-and-movability)). Buyback (16) is refused both ways (#798) |
+| Vendor bag allowlist | DONE | `VENDOR_FILTER_BAGS` confines vendor operations to the main bag, bandolier, the eleven equipment slots, and the crafting bag (15) — the bank, mail attachments, and loot bags are unreachable |
 | Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
 | Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined; blocked on the organization system |
@@ -82,7 +83,7 @@ No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE
 |--------|---------|------|---------|
 | `removeItem` | YES | itemID, quantity | Delete item |
 | `listItems` | YES | (none) | Request full inventory |
-| `moveItem` | YES | itemId, targetBag, targetSlot, quantity | Move/swap item |
+| `moveItem` | YES | itemId, targetBag, targetSlot, quantity | Move/swap item. Source and target must both be player-movable; a refused move is resynced |
 | `useItem` | YES | itemID, targetID | Use item on target |
 | `repairItemRequest` | YES | itemId, repairRatio | Repair item (NOT IMPL) |
 | `requestActiveSlotChange` | YES | BagId, SlotId | Change equipped slot |
@@ -92,14 +93,42 @@ No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE
 
 ## Bag Types (EInventoryContainerId)
 
-| Enum | Purpose |
-|------|---------|
-| `INV_Main` | General inventory |
-| `INV_Mission` | Mission-specific items |
-| `INV_Crafting` | Crafting materials |
-| `INV_Bandolier` | Weapon loadout (equipped) |
-| `INV_Buyback` | Store buyback (session-only, not persisted) |
-| `INV_CommandBank` | Upper bound / org vault |
+| Id | Enum | Purpose |
+|----|------|---------|
+| 1 | `INV_Main` | General inventory |
+| 2 | `INV_Mission` | Mission-specific items |
+| 3 | `INV_Bandolier` | Weapon loadout (equipped) |
+| 4-14 | `INV_Head` ... `INV_Artifact2` | The eleven equipment slots |
+| 15 | `INV_Crafting` | Crafting materials and Field Crafting Tools |
+| 16 | `INV_Buyback` | Store buyback. Persisted in `sgw_inventory` with the unit sale price in `flags`; left only through `buybackItems`, which charges |
+| 17 | `INV_Bank` | Personal vault |
+| 18 | `INV_Auction` | Auction escrow |
+| 19 | `INV_TeamBank` | Team (organization) vault |
+| 20 | `INV_CommandBank` | Command (organization) vault |
+
+## Container capacity and movability
+
+**Capacity has one source**, `bag_max_slots` in [`crates/entity/src/inventory.rs`](../../crates/entity/src/inventory.rs), with the values of `BAG_SIZES` in `deprecated/python/common/Constants.py`. `BAG_SIZES` in the same file, which `onBagInfo` declares, is built from it at compile time, so the two cannot disagree. `cimmeria_wire::containers::bag_max_slots` and `base::resources::bag_max_slots` re-export it.
+
+| Id | Capacity | `player_movable` |
+|----|----------|------------------|
+| 1 | 40 | Yes |
+| 2 | 100 | Yes |
+| 3 | 4 | Yes |
+| 4-14 | 1 each | Yes |
+| 15 | 100 | Yes |
+| 16 | 12 | No |
+| 17 | 100 (ceiling); the player's own size is `sgw_player.bank_slots` | VaultSession |
+| 18 | 100 | No |
+| 19 | 100 | No |
+| 20 | 100 | No |
+| anything else | 0 | No |
+
+**The personal vault's size is per player.** `sgw_player.bank_slots` is a `smallint`, default 40, constrained to 40-100 in steps of 10. It loads with the player, and `onBagInfo` declares container 17 at that size both at world entry (`map_loaded.rs`) and on the post-respawn resync (`send_full_inventory_resync`). Every other container is declared at its capacity.
+
+**Player moves go through an allowlist.** `handle_move_inventory_item` checks the target container before the slot-range check and the source container after it locks the source row, using `player_movable` in [`move_/container_policy.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/move_/container_policy.rs). A capacity alone never makes a container movable. `VaultSession` means movable only while a vault session is open; until the vault session exists, it refuses like `No`. A refused move changes nothing, logs `move_rejected` at WARN under the `bank` target with a `reason` (`source_container_not_player_movable`, `target_container_not_player_movable`, `source_container_needs_vault_session` or `target_container_needs_vault_session`), and resyncs the player's items so the client snaps the dragged item back. Whether a given item may sit in a movable container is still decided by its `container_sets` (`item_allows_container`).
+
+**Grants never write into 17-20.** Loot and content grants target an item's first `container_sets` entry, which is 17 for the seeded crafting components (`{17,15}`). `handle_grant_item` refuses those containers and logs `grant_rejected` under `bank` with `reason=grant_into_storage_container`, which is what the grant did before the vaults had a capacity.
 
 ## Bandolier and ammo
 
@@ -134,7 +163,7 @@ The `Inventory.flushUpdates()` method sends updates to the client in this order:
 - **Item definitions**: 6,059 in `db/resources/Items/Seed/items.sql`
 - **Schema**: `Item.xsd`
 - **Persistence**: `sgw_inventory` table (character_id, type_id, bag_id, slot_id, quantity)
-- **Bag sizes**: `common.Constants.BAG_SIZES`
+- **Bag sizes**: `bag_max_slots` in `crates/entity/src/inventory.rs` (values from `common.Constants.BAG_SIZES`); the personal vault's size is `sgw_player.bank_slots`
 - **Item classes**: `cell.Item`, `cell.Bag`
 
 ## RE Priorities

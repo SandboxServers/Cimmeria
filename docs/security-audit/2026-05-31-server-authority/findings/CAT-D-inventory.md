@@ -392,6 +392,17 @@ No — the fall-through is in the code comment block at 555-561.
 
 ### CAT-D-07 — `MoveItem` allows the client to move items into the buyback container (16)
 
+**Status**: ✅ RESOLVED (Bank and Vault BV-01, closes #798) — `moveItem`
+now checks both the source and the target container against an explicit
+allowlist, `player_movable` in
+`crates/base-methods/src/base/world_entry/methods/inventory/move_/container_policy.rs`.
+Buyback (16) is refused in both directions, so a sold item can no longer
+be dragged back out for free either. Containers 17-20 now have a capacity
+(`bag_max_slots` returns 100), so the "not reachable because
+`bag_max_slots(17..=20)` returns 0" reasoning below no longer holds; the
+allowlist is what refuses them now. A refused move changes nothing, logs
+`move_rejected` under the `bank` target and resyncs the client.
+
 **Severity**: Medium
 **Class**: Container ACL — wire-controlled `target_container_id`
 **Wire surface**: `Event_NetOut_MoveItem` (cell method 38)
