@@ -1,6 +1,6 @@
 //! The organization base-method arm (0xCF-0xD2): routing and the answers
-//! the base gives itself. A squad rank change (no handler, ORG-E1 follow-up
-//! 1) gets `onErrorCode` then a feedback line (TESTING.md type 8,
+//! the base gives itself. A squad rank change (no handler; ORG-E1
+//! follow-up one) gets `onErrorCode` then a feedback line (TESTING.md type 8,
 //! byte-checked after decrypting what `TestTransport` captured); Team and
 //! Command calls reach the ORG-07 handlers, whose behaviour is tested
 //! against a live database in `base-session` (`organization::handlers`);
