@@ -150,7 +150,7 @@ Persistence is **batched**: dirty slots are flushed at reload completion, slot s
 
 ## Opening the vault
 
-The personal vault is container 17 (`INV_Bank`). Its rows load at login with the rest of the inventory, and the world-entry `onBagInfo` declares its size, so opening the window needs neither a base round trip nor a fresh `onBagInfo` (BV-E1, [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) Q1). The client has no open control of its own: it shows the window only when the server sends `onVaultOpen` (client method 106), and it sends nothing when the window closes.
+The personal vault is container 17 (`INV_Bank`). Its rows load at login with the rest of the inventory, and the world-entry `onBagInfo` declares its size (the player's `sgw_player.bank_slots`, see [Container capacity and movability](#container-capacity-and-movability)), so opening the window needs neither a base round trip nor a fresh `onBagInfo` (BV-E1, [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) Q1). The client has no open control of its own: it shows the window only when the server sends `onVaultOpen` (client method 106), and it sends nothing when the window closes.
 
 **At a Banker.** A Banker is an NPC whose template carries `INT_Banker` with `vault_scope = 'personal'` ([interaction-flags.md](../content/interaction-flags.md#bankers)). A right-click passes the usual interact gate (same space, within `MAX_INTERACT_DISTANCE` = 5), pins the Banker as the interaction target, and reaches the Banker arm of `handle_interact`. That arm, in [`crates/cell-interactions/src/cell/interactions/bank/`](../../crates/cell-interactions/src/cell/interactions/bank/mod.rs):
 
@@ -164,7 +164,7 @@ Every refusal sends the player a chat line and logs `vault_open_rejected` (WARN)
 
 **The session ends** when the player changes space or logs out (both destroy the cell entity that holds it), or when a later `interact` pins a different target. Re-clicking the same Banker keeps it. Each end logs `vault_session_closed` at DEBUG with `reason` `space_change`, `logout` or `re_pin`, and `open_ms`.
 
-**The move rule.** `vault_move_allowed(&player, &space_mgr)` is the single check a bank move must pass: an open session, opened in the player's current space, and, for a Banker session, the Banker still present, in the same space and within the interact distance. A GM session skips the proximity check. The client ignores `onVaultOpen`'s position (BV-E1 Q4), so walking away does not close the window; this check, run on every move, is the only enforcement. Wiring it into `moveItem` is BV-03.
+**The move rule.** `vault_move_allowed(&player, &space_mgr)` is the single check a bank move must pass: an open session, opened in the player's current space, and, for a Banker session, the Banker still present, in the same space and within the interact distance. A GM session skips the proximity check. The client ignores `onVaultOpen`'s position (BV-E1 Q4), so walking away does not close the window; this check, run on every move, is the only enforcement. Until BV-03 wires it into `moveItem`, the base's allowlist refuses every move into or out of 17 (`move_rejected reason=target_container_needs_vault_session` or `source_container_needs_vault_session`), so the window opens but its slots cannot be used yet.
 
 ## Flush Update Order
 

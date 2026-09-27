@@ -51,10 +51,12 @@ raise by typing, so players cannot flood the WARN stream. Any other non-GM `.`-t
 `cell::dispatch::gm_gate`. Every accepted command is logged at `info` for the
 CAT-N audit trail (#473).
 
-One exception to the fall-through: a non-GM's `.bank` is consumed and answered
-with a refusal line ("`.bank` needs GM access"), because the bank campaign
-documents `.bank` as the UAT route to the vault (bank-vault BV-02). Every other
-non-GM `.`-text is still ordinary chat.
+`.bank` is refused ahead of that generic refusal, by `console::bank::refuse_non_gm`
+(bank-vault BV-02): its line ("`.bank` needs GM access. Visit a Banker to open
+your vault.") points the player at a Banker, because the bank campaign documents
+`.bank` as the UAT route to the vault, and it logs `vault_open_rejected
+reason=not_gm` at WARN on the `bank` target, so a bank question is answerable
+from that one target.
 
 ### 2. Registry-driven dispatch
 
