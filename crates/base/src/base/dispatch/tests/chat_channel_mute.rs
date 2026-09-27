@@ -11,12 +11,15 @@ use std::time::{Duration, Instant};
 
 use super::super::chat::send_player_communication_at;
 use super::super::chat_gates::{
-    check_channel, echannel, SYSTEM_CHANNEL_TEXT, UNKNOWN_CHANNEL_TEXT, USER_CHANNEL_TEXT,
+    check_channel, SYSTEM_CHANNEL_TEXT, UNKNOWN_CHANNEL_TEXT, USER_CHANNEL_TEXT,
 };
-use super::super::tell::TELL_CHANNEL;
 use super::super::*;
 use crate::base::mutes::{mute_table, muted_text, MuteEntry};
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
+use cimmeria_wire::cell::chat::{
+    CHAN_CHAT, CHAN_COMMAND, CHAN_EMOTE, CHAN_FEEDBACK, CHAN_OFFICER, CHAN_SAY, CHAN_SERVER,
+    CHAN_SPLASH, CHAN_SQUAD, CHAN_TEAM, CHAN_TELL, CHAN_YELL,
+};
 use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use tracing::Level;
 
@@ -113,7 +116,7 @@ impl Harness {
     fn feedback(&self) -> Vec<String> {
         self.lines_to(SPEAKER_PORT)
             .into_iter()
-            .filter(|(c, _)| *c == cimmeria_wire::cell::chat::CHAN_FEEDBACK)
+            .filter(|(c, _)| *c == CHAN_FEEDBACK)
             .map(|(_, t)| t)
             .collect()
     }
@@ -173,7 +176,7 @@ fn assert_ids(event: &crate::test_support::Captured, player_id: i32) {
 /// reaches the cell, and the player reads why.
 #[tokio::test]
 async fn chat_rejects_system_channel_at_base() {
-    for channel in [echannel::SERVER, echannel::FEEDBACK, echannel::SPLASH] {
+    for channel in [CHAN_SERVER, CHAN_FEEDBACK, CHAN_SPLASH] {
         let capture = LogCapture::install();
         let mut h = Harness::new(0x7300_0310, 0);
         h.speak(channel, "", "hello", Instant::now()).await;
@@ -200,7 +203,7 @@ async fn chat_rejects_system_channel_at_base() {
 async fn chat_rejects_unknown_channel_at_base() {
     for (channel, reason, text) in [
         (7u8, "unknown_channel", UNKNOWN_CHANNEL_TEXT),
-        (echannel::CHAT, "user_channel", USER_CHANNEL_TEXT),
+        (CHAN_CHAT, "user_channel", USER_CHANNEL_TEXT),
         (255, "user_channel", USER_CHANNEL_TEXT),
     ] {
         let capture = LogCapture::install();
@@ -228,13 +231,13 @@ async fn chat_forwards_allowlisted_channels_to_the_cell() {
     let mut h = Harness::new(0x7300_0312, 0);
     let t0 = Instant::now();
     let channels = [
-        echannel::SAY,
-        echannel::EMOTE,
-        echannel::YELL,
-        echannel::TEAM,
-        echannel::SQUAD,
-        echannel::COMMAND,
-        echannel::OFFICER,
+        CHAN_SAY,
+        CHAN_EMOTE,
+        CHAN_YELL,
+        CHAN_TEAM,
+        CHAN_SQUAD,
+        CHAN_COMMAND,
+        CHAN_OFFICER,
     ];
     for (i, channel) in channels.iter().enumerate() {
         // One second apart, so the chat bucket never limits.
@@ -246,49 +249,14 @@ async fn chat_forwards_allowlisted_channels_to_the_cell() {
     assert!(h.feedback().is_empty());
 }
 
-/// The tell route and the allowlist agree on the tell byte, and the
-/// allowlist accepts exactly the channels a player may use.
+/// The allowlist accepts exactly the channels a player may use, by byte:
+/// the tell route shares `CHAN_TELL` with it, so tell 10 is here and the
+/// old tell 9 (now feedback) is not. The `EChannel` pin itself is
+/// `cimmeria_wire::cell::chat::tests::chan_constants_match_enumerations_xml`.
 #[test]
 fn allowlist_matches_the_tell_route() {
-    assert_eq!(TELL_CHANNEL, echannel::TELL);
     let allowed: Vec<u8> = (0..=255u8).filter(|c| check_channel(*c).is_ok()).collect();
     assert_eq!(allowed, vec![0, 1, 2, 3, 4, 5, 6, 10]);
-}
-
-/// The local `EChannel` copies, pinned against `enumerations.xml` itself,
-/// so a drift in either fails here (the contract's pinning rule).
-#[test]
-fn echannel_ids_match_enumerations_xml() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../entities/defs/enumerations.xml"
-    );
-    let xml = std::fs::read_to_string(path).expect("read enumerations.xml");
-    let start = xml.find("<EChannel>").expect("EChannel enum");
-    let block = &xml[start..start + xml[start..].find("</EChannel>").unwrap()];
-    let value_of = |name: &str| -> u8 {
-        let tag = format!("<Name>{name}</Name><Value>");
-        let at = block.find(&tag).unwrap_or_else(|| panic!("{name} missing")) + tag.len();
-        block[at..at + block[at..].find('<').unwrap()]
-            .parse()
-            .unwrap()
-    };
-    for (name, rust) in [
-        ("CHAN_say", echannel::SAY),
-        ("CHAN_emote", echannel::EMOTE),
-        ("CHAN_yell", echannel::YELL),
-        ("CHAN_team", echannel::TEAM),
-        ("CHAN_squad", echannel::SQUAD),
-        ("CHAN_command", echannel::COMMAND),
-        ("CHAN_officer", echannel::OFFICER),
-        ("CHAN_server", echannel::SERVER),
-        ("CHAN_feedback", echannel::FEEDBACK),
-        ("CHAN_tell", echannel::TELL),
-        ("CHAN_splash", echannel::SPLASH),
-        ("CHAN_chat", echannel::CHAT),
-    ] {
-        assert_eq!(value_of(name), rust, "{name}");
-    }
 }
 
 /// D-SS26 on the chat path, on the injected clock: a muted player's say
@@ -302,7 +270,7 @@ async fn muted_player_spatial_chat_refused_until_expiry() {
     let t0 = Instant::now();
     mute(PID, t0 + Duration::from_secs(300), t0);
 
-    h.speak(echannel::SAY, "", "let me talk", t0).await;
+    h.speak(CHAN_SAY, "", "let me talk", t0).await;
     assert!(
         h.forwarded().is_empty(),
         "a muted line must not reach the cell"
@@ -317,11 +285,11 @@ async fn muted_player_spatial_chat_refused_until_expiry() {
     assert_ids(&event, PID);
     assert_eq!(h.feedback(), vec![muted_text(Duration::from_secs(300))]);
 
-    h.speak(echannel::SAY, "", "free", t0 + Duration::from_secs(300))
+    h.speak(CHAN_SAY, "", "free", t0 + Duration::from_secs(300))
         .await;
     assert_eq!(
         h.forwarded(),
-        vec![(echannel::SAY, "free".to_string())],
+        vec![(CHAN_SAY, "free".to_string())],
         "forwarded again at the expiry"
     );
     mute_table().unmute(PID, t0);
@@ -338,7 +306,7 @@ async fn muted_player_tell_not_delivered() {
     let t0 = Instant::now();
     mute(PID, t0 + Duration::from_secs(120), t0);
 
-    h.speak(echannel::TELL, "Bob", "psst", t0).await;
+    h.speak(CHAN_TELL, "Bob", "psst", t0).await;
 
     assert!(
         h.transport.filter_to(addr(OTHER_PORT)).is_empty(),
@@ -367,13 +335,13 @@ async fn mute_holds_across_relog() {
     mute(PID, t0 + Duration::from_secs(600), t0);
     {
         let mut first = Harness::new(PID, 0);
-        first.speak(echannel::SAY, "", "one", t0).await;
+        first.speak(CHAN_SAY, "", "one", t0).await;
         assert!(first.forwarded().is_empty());
     }
     // A new session map, a new address: nothing carries over but the id.
     let mut relogged = Harness::new(PID, 0);
     relogged
-        .speak(echannel::SAY, "", "two", t0 + Duration::from_secs(60))
+        .speak(CHAN_SAY, "", "two", t0 + Duration::from_secs(60))
         .await;
     assert!(relogged.forwarded().is_empty(), "still muted after relog");
     assert_eq!(
@@ -392,8 +360,8 @@ async fn mute_gate_skips_gm_speakers() {
     let t0 = Instant::now();
     mute(PID, t0 + Duration::from_secs(600), t0);
 
-    h.speak(echannel::SAY, "", ".help", t0).await;
-    assert_eq!(h.forwarded(), vec![(echannel::SAY, ".help".to_string())]);
+    h.speak(CHAN_SAY, "", ".help", t0).await;
+    assert_eq!(h.forwarded(), vec![(CHAN_SAY, ".help".to_string())]);
     mute_table().unmute(PID, t0);
 }
 
@@ -415,11 +383,11 @@ async fn muted_recipient_away_reply_withheld() {
     let t0 = Instant::now();
     mute(bob_pid, t0 + Duration::from_secs(600), t0);
 
-    h.speak(echannel::TELL, "Bob", "hi", t0).await;
+    h.speak(CHAN_TELL, "Bob", "hi", t0).await;
 
     assert_eq!(
         h.lines_to(OTHER_PORT),
-        vec![(echannel::TELL, "hi".to_string())],
+        vec![(CHAN_TELL, "hi".to_string())],
         "Bob still gets the tell"
     );
     let to_speaker = h.lines_to(SPEAKER_PORT);

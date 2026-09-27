@@ -10,13 +10,18 @@ use std::time::Instant;
 
 use super::super::chat::send_player_communication_at;
 use super::super::tell::{
-    after_resolve_hook, ambiguous_text, not_online_text, TELL_BAD_NAME_TEXT, TELL_CHANNEL,
-    TELL_NO_TARGET_TEXT, TELL_SELF_TEXT,
+    after_resolve_hook, ambiguous_text, not_online_text, TELL_BAD_NAME_TEXT, TELL_NO_TARGET_TEXT,
+    TELL_SELF_TEXT,
 };
 use super::super::*;
 use crate::base::contact_list::ignore::{not_accepting_text, IgnoreCache};
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
+use cimmeria_wire::cell::chat::CHAN_TELL;
 use cimmeria_wire::cell::client_methods::communicator::{ON_PLAYER_COMMUNICATION, ON_TELL_SENT};
+
+/// `UIChannel.Tell` in the client, a compiled-in literal (ORG-E1 Q5). Kept a
+/// literal here so the fan-out test fails if `CHAN_TELL` drifts from it.
+const CLIENT_TELL_BYTE: u8 = 10;
 
 const ALICE: (u16, i32, u32) = (54800, 801, 8001);
 const BOB: (u16, i32, u32) = (54801, 802, 8002);
@@ -117,7 +122,10 @@ impl Harness {
     }
 
     async fn alice_tells(&self, target: &str, text: &str) {
-        let mut payload = vec![TELL_CHANNEL];
+        // The byte the client's `/tell` sends: `UIChannel.Tell` is a
+        // hardcoded 10 in the client (D-ORG14, ORG-E1 Q5), whatever the
+        // server's constant says.
+        let mut payload = vec![CLIENT_TELL_BYTE];
         crate::mercury::write_wstring(&mut payload, target);
         crate::mercury::write_wstring(&mut payload, text);
         send_player_communication_at(
@@ -172,7 +180,8 @@ async fn tell_reaches_exactly_one_recipient() {
     assert_eq!(bob[0].method, ON_PLAYER_COMMUNICATION);
     assert_eq!(
         player_comm(&bob[0].args),
-        ("Alice".to_string(), 0, TELL_CHANNEL, "psst".to_string())
+        ("Alice".to_string(), 0, CLIENT_TELL_BYTE, "psst".to_string()),
+        "the tell renders on the client's tell channel, byte 10"
     );
 
     let alice = h.to(ALICE);
@@ -296,12 +305,7 @@ async fn tell_to_away_player_replies_with_away_message() {
     assert_eq!(alice[1].method, ON_PLAYER_COMMUNICATION);
     assert_eq!(
         player_comm(&alice[1].args),
-        (
-            "Bob".to_string(),
-            0,
-            TELL_CHANNEL,
-            "gone fishing".to_string()
-        )
+        ("Bob".to_string(), 0, CHAN_TELL, "gone fishing".to_string())
     );
 }
 
@@ -321,7 +325,7 @@ async fn tell_to_dnd_player_replies_with_dnd_message() {
         (
             "Bob".to_string(),
             speaker_flags::DND,
-            TELL_CHANNEL,
+            CHAN_TELL,
             "in a raid".to_string()
         )
     );
