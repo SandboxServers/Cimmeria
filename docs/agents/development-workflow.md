@@ -91,7 +91,27 @@ Run `bash tools/build-lane/mk-worktree.sh <branch> <name>` from any checkout. It
 
 A worktree without `external/` does not build. `external/` is populated by `setup.ps1` and is not in git, and `crates/entity/build.rs` reads `../../external/recast`. If you create a worktree by hand, link `external/` with a junction (Windows) or a symlink. On a Linux host without `setup.ps1` (CI's case), reproduce the `hydrate external/recast` step from [`.github/workflows/test.yml`](../../.github/workflows/test.yml), which downloads the pinned Recast release into `external/recast`. First-time setup is otherwise in [`docs/building.md`](../building.md).
 
-When deleting a worktree on Windows, remove the junction first with plain `cmd /c rmdir <worktree>\external` (this removes only the link). Never use `rmdir /s`, `rm -rf`, or `Remove-Item -Recurse` on the junction or on a worktree that still contains it: a recursive delete can follow the link and empty the real `external/` directory.
+### Retire it when its PR merges
+
+A worktree holds a target dir (several GB, on the Dev Drive when one is set up), a test database and a junction. On 2026-09-26, target dirs left behind by merged work filled the 150 GB Dev Drive, and every lane build on it failed with "no space left on device". So the session that created a worktree retires it the day its PR merges:
+
+```bash
+bash tools/build-lane/rm-worktree.sh <name>              # one worktree
+bash tools/build-lane/rm-worktree.sh --dry-run --merged  # show what a sweep would do
+bash tools/build-lane/rm-worktree.sh --merged            # every merged, idle worktree
+```
+
+The script deletes the target dir, unlinks `external/`, removes the worktree, deletes the local branch, and drops the worktree's `sgw_<name>` test database. It refuses a worktree when:
+
+- a lane job is building in it (nothing overrides this);
+- it has uncommitted changes, or it is locked (an agent may still be using it);
+- its branch's PR is still open or was closed unmerged, or the branch has unpushed commits.
+
+`--force` overrides everything except a running build. `--merged` also skips anything committed to, checked out or built in the last 30 minutes, and deletes Dev Drive target dirs whose worktree is already gone.
+
+**Orchestrators own their workers' worktrees.** A session that dispatched workers retires each worker's worktree when that worker's PR merges, not at the end of the campaign. That covers `isolation: "worktree"` agents (`agent-*`), workflow worktrees (`wf_*`) and `mk-worktree.sh` packets.
+
+If you ever remove a worktree by hand on Windows, remove the junction first with plain `cmd /c rmdir <worktree>\external` (this removes only the link). Never use `rmdir /s`, `rm -rf`, or `Remove-Item -Recurse` on the junction or on a worktree that still contains it: a recursive delete can follow the link and empty the real `external/` directory.
 
 ### Build through the lane
 
@@ -129,6 +149,7 @@ Starting the bundled Postgres is documented in [`docs/architecture/integration-t
 
 ### Cleanup and measurement
 
+- `tools/build-lane/rm-worktree.sh --merged` retires every merged, idle worktree and deletes orphaned Dev Drive target dirs (see [Retire it when its PR merges](#retire-it-when-its-pr-merges)). Run it before `sweep.ps1`: whole target dirs of merged work free far more space than trimming stale artifacts.
 - `tools/build-hygiene/sweep.ps1` runs `cargo-sweep` (`cargo install --locked cargo-sweep`) over every target dir on the machine: the main checkout, `.claude/worktrees/*` and the Dev Drive. It keeps only artifacts from the pinned toolchain and drops those unused for `-Days` (default 14). Try `-DryRun` first. **Don't run it while anything builds:** it can delete files a running build is about to use.
 - `tools/build-metrics/measure-build.ps1` gives controlled numbers (cold build, edit loop, `cargo check`, peak memory, target size). Run it under `lane.sh --exclusive` from a worktree with an empty target dir, and re-measure before changing the slot count or `CARGO_BUILD_JOBS`.
 
@@ -139,3 +160,4 @@ Starting the bundled Postgres is documented in [`docs/architecture/integration-t
 - The pre-PR checklist passes on the CI toolchain.
 - The PR body says what was not tested.
 - For anything with a client UI element: the player gets visible feedback on the first press (see `rules-and-gotchas.md`). Otherwise it is not done, whatever the original server did.
+- After the merge: the worktree is retired with `rm-worktree.sh`, and so is every worker worktree the session dispatched for it.
