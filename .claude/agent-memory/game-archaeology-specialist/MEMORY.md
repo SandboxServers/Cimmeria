@@ -83,6 +83,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [RTTI table shifts + RVA/VA traps](rtti-table-shift-and-rva-va-traps.md) — one-row shifts in contiguous RTTI tables (blank trailing cell is the tell); Atrea config mixes RVAs with VAs in one column.
 
+## Cooked-dialog override crash (2026-09-27, unnumbered)
+
+- [Cooked-dialog override crash — dialog ids 100100/100101](cooked-dialog-override-crash-na-unnumbered.md) — client crash on map load, top-level element key >65535 is the leading unconfirmed suspect (button XML ruled out by timeline); **records a Ghidra tool-access gotcha**: connecting mid-session left the 195 dynamically-registered analysis tools unreachable via this harness's ToolSearch even though the bridge reported them callable — connect Ghidra *before* the agent session starts next time.
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.
