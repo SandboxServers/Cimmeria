@@ -122,7 +122,9 @@ When a player takes an item from the loot window:
 - **Item drops:** `player.inventory.pickedUpItem(item.design.id, item.quantity)`
 - **Cash drops:** `player.inventory.addCash(item.quantity)`
 
-After the transfer, the entry is removed from the entity's loot list. When the list becomes empty, the loot interaction ends. Items are not returned to the loot list if the player's inventory is full - this edge case is not currently handled.
+After the transfer, the entry is removed from the entity's loot list. When the list becomes empty, the loot interaction ends. The Python reference did not return an item whose transfer failed.
+
+In Cimmeria the cell removes the entry and sends `GrantItem` with the corpse and index it came from. If the base refuses the grant before anything commits (the bag is full, the item may only sit in a vault, a database error), it answers `LootGrantRefused` and the cell puts the item back at its index on the same corpse, restores the loot bit if the list had emptied, refreshes an open loot window and tells the looter why. A corpse that respawned in the meantime does not get it. See [inventory-system.md](inventory-system.md) for where a looted item lands.
 
 ---
 

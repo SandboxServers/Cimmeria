@@ -383,6 +383,35 @@ made, in `cell-interactions` `bank/tests.rs`
 (`vault_access_maps_every_verdict`); `vault_scope_mismatch` in the `wire` and
 `container_policy` unit tests.
 
+## Grant and loot hand-back seams
+
+Target `inventory`. A loot pickup takes the item off the corpse before the
+base writes it to the looter's inventory, so every way the grant can fail
+is a seam: the item goes back on the corpse, or its loss is logged.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `grant_refused` | INFO | `container_full`, `database_error`, `not_grantable_container` (the grant resolved to buyback, 16) | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `container_id` |
+| `grant_outcome_unknown` | WARN | `commit_outcome_unknown` | as `grant_refused` |
+| `lookup_failed` | WARN | (`phase = placement`) | `player_id`, `entity_id`, `type_id`, `requested_container_id`, `error` |
+| `loot_restored` | INFO | the refusal: `storage_only`, `container_full`, `no_database`, `database_error` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `container_id`, `reflagged` |
+| `loot_restore_failed` | WARN | `corpse_gone`, `corpse_changed`, `index_taken` (cell); `cell_channel_closed` (base) | as `loot_restored`, plus `refusal` |
+| `loot_restore_skipped` | WARN | `commit_outcome_unknown` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty` |
+| `loot_grant_send_failed` | WARN | `restored`, or the restore miss | `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `restored` |
+| `feedback_send_failed` | WARN | `send_error` | `account_id`, `player_id`, `entity_id` |
+
+Only a refusal raised before the commit is handed back. A `COMMIT` that
+failed with a server error rolled back and is handed back too; one that
+failed without an answer (I/O, a closed pool) may have landed, so the item
+stays off the corpse (`loot_restore_skipped`) rather than risk a second
+copy. The `LogCapture` guards are in `inventory/grant/fall_through_tests.rs`,
+`inventory/grant/loot_refusal_tests.rs`, `vendor/purchase/tests.rs` and the
+cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
+`loot_restore_skipped`, `lookup_failed` and `feedback_send_failed` have no
+`LogCapture` guard: each needs a connection or channel to fail at one
+exact step, which nothing can inject; the commit classification itself is
+unit-tested (`persist::tests`).
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

@@ -111,7 +111,7 @@ Blueprints and paradigm levels come from items the player uses (crafting campaig
 
 A refusal consumes nothing. An item that names a known and an unknown blueprint teaches the unknown one and is used. `target_id` plays no part: the effect always applies to the user. Events: `blueprint_learned` and `paradigm_raised` with the values before and after, in the `crafting` row of [observability.md](../architecture/observability.md).
 
-Sources today are GM grants (`gmGiveItem` puts the item in the main bag, where it can be used) and, later, the crafting-supplies vendor (CR-11). No loot table drops these items yet: loot and the content engine's `grant_item` put an item in the first container of its `container_sets`, which for all 198 items is the bank (17), until the grant path falls through to the crafting bag (CR-16). An item in the bank must be moved to the crafting bag before it can be used.
+Sources today are GM grants, the debug-hub loot crate (loot table 3 drops each guide and Blueprint: Steel Plating at a one-in-five chance) and, later, the crafting-supplies vendor (CR-11). Every grant path (loot, the content engine's `grant_item`, `gmGiveItem`, vendor purchases) lands these `{17,15}` items in the crafting bag, the first carried bag they list, instead of the bank (CR-16). A GM grant made before that change sits in the main bag, where it can still be used.
 
 ## Crafting Operations
 
