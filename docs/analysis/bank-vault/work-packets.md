@@ -90,6 +90,7 @@ pub enum VaultScope { Personal, Team, Command }
 | `org_vault_opened` / `org_vault_open_rejected` | debug / warn | BV-07 | `org_id`, `org_type`, `rank`, `perm`, `reason` on refusal |
 | `org_move_accepted` / `org_move_rejected` | debug / warn | BV-07 | the `move_*` fields plus the org fields |
 | `org_cash_transfer` / `org_cash_rejected` | info / warn | BV-08, BV-09 | `direction`, `amount`, `player_cash_before`/`after`, `org_cash_before`/`after`, `reason` on refusal |
+
 ## Dependency graph and waves
 
 ```text
