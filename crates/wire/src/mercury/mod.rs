@@ -163,6 +163,13 @@ pub const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// `docs/architecture/gm-cell-method-gating.md` and
 /// `docs/protocol/cell-method-dispatch-table.md` for the full derivation.
 pub const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
+/// SGWMob entity class ID (clientIndex 4): every ordinary NPC.
+pub const SGWMOB_CLASS_ID: u8 = 0x04;
+/// SGWPet entity class ID (clientIndex 5). CREATE_ENTITY with this byte makes
+/// the client build a `GamePet`; its client methods are numbered by
+/// [`crate::cell::client_methods::pet`]. Pets are NPCs in every other
+/// respect (idbase 62, no BigWorld property stream).
+pub const SGWPET_CLASS_ID: u8 = 0x05;
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;
 
