@@ -12,11 +12,18 @@
 //!   and despawns the pets immediately.
 //! - [`pet_owner_sweep`] runs every AoI tick and despawns any pet whose
 //!   owner is gone, dead (D-PT08) or in another space. It alone catches
-//!   every other path within 100 ms; PT-02 makes the common ones immediate.
+//!   every other path within 100 ms; PT-02 makes the common ones immediate
+//!   through [`super::owner_hooks`].
+//! - The same sweep expires pet corpses: a pet that died is stamped with
+//!   `despawn_at = now + PET_CORPSE_DESPAWN` and despawned once that passes
+//!   (D-PT08).
 //!
 //! Despawn goes through `despawn_npc`, never bare `destroy_entity`: the
 //! former sends `LeftAoI` to every witness and scrubs the witness sets.
 
+use std::time::{Duration, Instant};
+
+use cimmeria_common::EntityId;
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::state_field::BSF_DEAD;
 use tokio::sync::mpsc;
@@ -38,6 +45,10 @@ pub enum PetDespawnReason {
     OwnerLeftSpace,
     /// Dismissed by command or replaced by a new summon.
     Dismissed,
+    /// The pet died and its corpse timer ran out (D-PT08).
+    CorpseExpired,
+    /// A living timed pet reached its `despawn_at`.
+    Expired,
 }
 
 impl PetDespawnReason {
@@ -49,9 +60,30 @@ impl PetDespawnReason {
             Self::OwnerDead => "owner_dead",
             Self::OwnerLeftSpace => "owner_left_space",
             Self::Dismissed => "dismissed",
+            Self::CorpseExpired => "corpse_expired",
+            Self::Expired => "expired",
         }
     }
+
+    /// Whether the owner's own client view is being torn down on this path,
+    /// so the owner must NOT get a `LeftAoI` for the pet.
+    ///
+    /// A traveller's client gets `RESET_ENTITIES` from the gate-travel
+    /// back half, and a closing session gets nothing more at all. A
+    /// `LeftAoI` queued behind the `GateTravel` would reach the base after
+    /// the reset: the base holds it until the new world's `onClientReady`
+    /// and then flushes a leave for an entity the new world never had.
+    /// Every other witness still gets its `LeftAoI`.
+    pub fn owner_view_torn_down(self) -> bool {
+        matches!(
+            self,
+            Self::OwnerDisconnected | Self::OwnerGone | Self::OwnerLeftSpace
+        )
+    }
 }
+
+/// How long a dead pet's corpse stays before it despawns (D-PT08).
+pub const PET_CORPSE_DESPAWN: Duration = Duration::from_secs(10);
 
 /// The owner's identity for a log line about `pet_id`: the one captured
 /// when that pet was summoned (the owner may already be destroyed, or its
@@ -80,6 +112,10 @@ pub(super) fn owner_identity(
 /// the registry. Refuses (`RefusedPlayer`/`NotFound`) exactly as
 /// `despawn_npc` does; the registry is scrubbed either way, so a stale entry
 /// cannot outlive the call.
+///
+/// When [`PetDespawnReason::owner_view_torn_down`] holds, the owner is left
+/// out of the `LeftAoI` fan-out: the pet is scrubbed from the owner's
+/// witness set first, and that set is what `despawn_npc` reads.
 pub async fn despawn_pet(
     space_mgr: &mut SpaceManager,
     pet_id: u32,
@@ -90,7 +126,8 @@ pub async fn despawn_pet(
 }
 
 /// [`despawn_pet`] with the caller named: `path` is the `path` field of the
-/// `despawned` row (`direct`, `sweep` or `disconnect`).
+/// `despawned` row (`direct`, `sweep`, or an owner path label from
+/// `owner_hooks::OwnerPath`).
 pub(super) async fn despawn_pet_via(
     space_mgr: &mut SpaceManager,
     pet_id: u32,
@@ -103,6 +140,11 @@ pub(super) async fn despawn_pet_via(
     let owner_id = space_mgr.pets.owner_of(pet_id);
     let id = owner_identity(space_mgr, pet_id, owner_id);
     let template_id = space_mgr.get_entity(pet_id).and_then(|e| e.template_id);
+    if reason.owner_view_torn_down() {
+        if let Some(owner) = owner_id.and_then(|o| space_mgr.get_entity_mut(o)) {
+            owner.witnesses.remove(&EntityId(pet_id as i32));
+        }
+    }
     let outcome = space_mgr.despawn_npc(pet_id, tx).await;
     space_mgr.pets.forget_pet(pet_id);
     match outcome {
@@ -144,7 +186,8 @@ pub(super) async fn despawn_pet_via(
 
 /// Despawn every pet `owner` has out. Called from `disconnect_entity`
 /// before the owner's own AoI teardown, while `tx` is in hand. Returns how
-/// many pets were despawned.
+/// many pets were despawned. The disconnect case of
+/// [`super::owner_hooks::on_owner_left`].
 pub async fn forget_owner(
     owner: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -154,28 +197,16 @@ pub async fn forget_owner(
     if pets.is_empty() {
         return 0;
     }
-    // The disconnecting owner is still in the space: its live identity is
-    // the one to name. The first pet's capture covers an entity with none.
-    let live = space_mgr.player_identity(owner);
-    let id = if live.is_known() {
-        live
-    } else {
-        owner_identity(space_mgr, pets[0], None)
-    };
-    let mut despawned = 0;
-    for &pet_id in &pets {
-        let outcome = despawn_pet_via(
-            space_mgr,
-            pet_id,
-            PetDespawnReason::OwnerDisconnected,
-            "disconnect",
-            tx,
-        )
-        .await;
-        if matches!(outcome, DespawnOutcome::Despawned { .. }) {
-            despawned += 1;
-        }
-    }
+    // Resolved before the despawns, while the owner is still in the space.
+    let id = super::owner_hooks::leaving_owner_identity(space_mgr, owner, &pets);
+    let despawned = super::owner_hooks::on_owner_left(
+        owner,
+        PetDespawnReason::OwnerDisconnected,
+        super::owner_hooks::OwnerPath::Disconnect,
+        tx,
+        space_mgr,
+    )
+    .await;
     tracing::debug!(
         target: "pets.lifecycle",
         event = "owner_forgotten",
@@ -191,14 +222,22 @@ pub async fn forget_owner(
     despawned
 }
 
-/// What the sweep should do about one registered pet.
-fn sweep_verdict(space_mgr: &SpaceManager, pet_id: u32, owner: u32) -> Option<SweepAction> {
+/// What the sweep should do about one registered pet at `now`.
+fn sweep_verdict(
+    space_mgr: &SpaceManager,
+    pet_id: u32,
+    owner: u32,
+    now: Instant,
+) -> Option<SweepAction> {
     let Some(pet_space) = space_mgr.get_entity_space_id(pet_id) else {
         return Some(SweepAction::Scrub);
     };
-    if space_mgr.get_entity(pet_id).is_none_or(|e| e.pet.is_none()) {
+    let Some((pet_dead, despawn_at)) = space_mgr
+        .get_entity(pet_id)
+        .and_then(|e| Some((e.state_field & BSF_DEAD != 0, e.pet.as_ref()?.despawn_at)))
+    else {
         return Some(SweepAction::Scrub);
-    }
+    };
     let Some(owner_entity) = space_mgr.get_entity(owner) else {
         return Some(SweepAction::Despawn(PetDespawnReason::OwnerGone));
     };
@@ -221,21 +260,46 @@ fn sweep_verdict(space_mgr: &SpaceManager, pet_id: u32, owner: u32) -> Option<Sw
     if owner_entity.state_field & BSF_DEAD != 0 {
         return Some(SweepAction::Despawn(PetDespawnReason::OwnerDead));
     }
-    None
+    // The owner still holds the pet; the pet's own timer is next.
+    match despawn_at {
+        Some(at) if now >= at => Some(SweepAction::Despawn(if pet_dead {
+            PetDespawnReason::CorpseExpired
+        } else {
+            PetDespawnReason::Expired
+        })),
+        // A fresh corpse: start its timer. The death itself happens in
+        // `resolve_death`, which knows nothing about pets; stamping here
+        // keeps every pet rule in this module, at the cost of up to one AoI
+        // tick (100 ms) on a 10 s timer.
+        None if pet_dead => Some(SweepAction::StampCorpse),
+        _ => None,
+    }
 }
 
 enum SweepAction {
     /// The pet entity is already gone; only the registry entry is left.
     Scrub,
-    /// The pet is alive but its owner no longer holds it.
+    /// The pet has to go: its owner no longer holds it, or its timer ran out.
     Despawn(PetDespawnReason),
+    /// The pet just died: start the corpse timer.
+    StampCorpse,
 }
 
 /// The self-healing sweep: despawn every pet whose owner is gone, dead or in
-/// another space, and scrub registry entries whose pet entity is gone.
-/// Returns how many pets were despawned. Returns at once when no pet exists,
-/// so it is cheap enough for every 100 ms AoI tick.
+/// another space, expire pet corpses, and scrub registry entries whose pet
+/// entity is gone. Returns how many pets were despawned. Returns at once when
+/// no pet exists, so it is cheap enough for every 100 ms AoI tick.
 pub async fn pet_owner_sweep(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> usize {
+    pet_owner_sweep_at(Instant::now(), tx, space_mgr).await
+}
+
+/// [`pet_owner_sweep`] against an explicit clock, so tests can step past
+/// the corpse timer without sleeping.
+pub async fn pet_owner_sweep_at(
+    now: Instant,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
@@ -244,8 +308,29 @@ pub async fn pet_owner_sweep(
     }
     let mut despawned = 0;
     for (pet_id, owner) in space_mgr.pets.pairs() {
-        match sweep_verdict(space_mgr, pet_id, owner) {
+        match sweep_verdict(space_mgr, pet_id, owner, now) {
             None => {}
+            Some(SweepAction::StampCorpse) => {
+                let id = owner_identity(space_mgr, pet_id, Some(owner));
+                if let Some(pet) = space_mgr
+                    .get_entity_mut(pet_id)
+                    .and_then(|e| e.pet.as_deref_mut())
+                {
+                    pet.despawn_at = Some(now + PET_CORPSE_DESPAWN);
+                }
+                tracing::debug!(
+                    target: "pets.lifecycle",
+                    decision_outcome = "corpse_timer_started",
+                    event = "corpse_timer_started",
+                    entity_id = pet_id,
+                    pet_id,
+                    owner_id = owner,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
+                    corpse_secs = PET_CORPSE_DESPAWN.as_secs(),
+                    "pet died; its corpse despawns when the timer runs out"
+                );
+            }
             Some(SweepAction::Scrub) => {
                 let id = owner_identity(space_mgr, pet_id, Some(owner));
                 space_mgr.pets.forget_pet(pet_id);
@@ -266,6 +351,20 @@ pub async fn pet_owner_sweep(
                 );
             }
             Some(SweepAction::Despawn(reason)) => {
+                if reason == PetDespawnReason::CorpseExpired {
+                    let id = owner_identity(space_mgr, pet_id, Some(owner));
+                    tracing::debug!(
+                        target: "pets.lifecycle",
+                        event = "corpse_expired",
+                        entity_id = pet_id,
+                        pet_id,
+                        owner_id = owner,
+                        account_id = id.account_id,
+                        player_id = id.player_id,
+                        corpse_secs = PET_CORPSE_DESPAWN.as_secs(),
+                        "pet corpse timer ran out; despawning the corpse"
+                    );
+                }
                 if matches!(
                     despawn_pet_via(space_mgr, pet_id, reason, "sweep", tx).await,
                     DespawnOutcome::Despawned { .. }

@@ -447,6 +447,17 @@ async fn execute_transfer(
     // nothing" contract above still holds: by this point the transfer is
     // committed.
     super::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
+    // Same for pets: they stay behind (D-PT01), and go before the destroy
+    // so an instance torn down with the traveller cannot swallow them
+    // without a `LeftAoI`.
+    cimmeria_cell_world::cell::pets::on_owner_left(
+        entity_id,
+        cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+        cimmeria_cell_world::cell::pets::OwnerPath::SpaceTransfer,
+        tx,
+        space_mgr,
+    )
+    .await;
     space_mgr.destroy_entity(entity_id);
 
     tracing::info!(

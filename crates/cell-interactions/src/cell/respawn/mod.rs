@@ -153,6 +153,15 @@ pub async fn handle_respawn(
             cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(entity, player_id, tx)
                 .await;
         }
+        // Pets stay in this world (D-PT01: re-summon after the trip).
+        cimmeria_cell_world::cell::pets::on_owner_left(
+            entity_id,
+            cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+            cimmeria_cell_world::cell::pets::OwnerPath::Respawn,
+            tx,
+            space_mgr,
+        )
+        .await;
         space_mgr.destroy_entity(entity_id);
         tracing::info!(
             entity_id,
@@ -279,6 +288,16 @@ pub async fn handle_respawn(
             rotation: [0.0; 3],
         })
         .await;
+    // A pet still out (a GM `gmRespawn` of a living player; a death already
+    // despawned it, D-PT08) comes along to the respawn point, queued behind
+    // the owner's own snap like every other same-space move (pets PT-02).
+    cimmeria_cell_world::cell::pets::on_owner_teleported(
+        entity_id,
+        cimmeria_cell_world::cell::pets::OwnerPath::Respawn,
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // Re-register the world's trigger volumes after the reanchor, for the
     // same reason the inventory is re-pushed below: CREATE_BASE_PLAYER

@@ -205,6 +205,14 @@ async fn location(
                 );
                 return;
             }
+            // A pet out with the moved player comes along (pets PT-02).
+            cimmeria_cell_world::cell::pets::on_owner_teleported(
+                target,
+                cimmeria_cell_world::cell::pets::OwnerPath::ConsoleLocation,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
     }
 

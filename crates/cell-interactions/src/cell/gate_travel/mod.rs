@@ -525,6 +525,16 @@ async fn perform_gate_travel(
     // `onTradeResults(Cancelled)`. Both lifecycle arms call it for the same
     // reason; stargate travel is just as much a departure.
     super::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
+    // Pets stay behind (D-PT01: re-summon on arrival). After the confirmed
+    // enqueue, like the trade cancel, so a failed send changes nothing.
+    cimmeria_cell_world::cell::pets::on_owner_left(
+        entity_id,
+        cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+        cimmeria_cell_world::cell::pets::OwnerPath::GateTravel,
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // Remove entity from current space (CellService side)
     space_mgr.destroy_entity(entity_id);

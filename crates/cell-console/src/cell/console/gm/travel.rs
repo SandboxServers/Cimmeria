@@ -84,6 +84,14 @@ pub(super) async fn handle_goto_xyz(
     {
         return true; // base channel closed — don't claim a snap that never sent.
     }
+    // A pet out with the moved player comes along (pets PT-02).
+    cimmeria_cell_world::cell::pets::on_owner_teleported(
+        entity_id,
+        cimmeria_cell_world::cell::pets::OwnerPath::GmTravel,
+        tx,
+        space_mgr,
+    )
+    .await;
     send_gm_feedback(
         entity_id,
         &format!(
@@ -193,6 +201,15 @@ pub(super) async fn handle_goto_location(
         send_gm_feedback(entity_id, "gmGotoLocation: transfer enqueue failed", tx).await;
         return true;
     }
+    // Pets stay behind (D-PT01); gone before the GM's destroy.
+    cimmeria_cell_world::cell::pets::on_owner_left(
+        entity_id,
+        cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+        cimmeria_cell_world::cell::pets::OwnerPath::GmTravel,
+        tx,
+        space_mgr,
+    )
+    .await;
     space_mgr.destroy_entity(entity_id);
     send_gm_feedback(entity_id, &feedback, tx).await;
     true
@@ -360,6 +377,14 @@ pub(super) async fn handle_goto(
     {
         return true; // base channel closed — don't claim a snap that never sent.
     }
+    // A pet out with the moved player comes along (pets PT-02).
+    cimmeria_cell_world::cell::pets::on_owner_teleported(
+        entity_id,
+        cimmeria_cell_world::cell::pets::OwnerPath::GmTravel,
+        tx,
+        space_mgr,
+    )
+    .await;
     send_gm_feedback(
         entity_id,
         &format!("gmGoto: teleported to entity {target_eid}"),
@@ -455,6 +480,14 @@ pub(super) async fn handle_summon(
     {
         return true; // base channel closed — don't claim a snap that never sent.
     }
+    // A pet out with the moved player comes along (pets PT-02).
+    cimmeria_cell_world::cell::pets::on_owner_teleported(
+        target_eid,
+        cimmeria_cell_world::cell::pets::OwnerPath::GmTravel,
+        tx,
+        space_mgr,
+    )
+    .await;
     send_gm_feedback(
         entity_id,
         &format!("gmSummon: summoned entity {target_eid} to you"),

@@ -9,6 +9,8 @@
 //!   instance a caller names is the exact instance that reaches the wire,
 //!   even when several instances of the same world are loaded; and the D15
 //!   default picks the first/default loaded instance deterministically.
+//! - [`pets`] — the traveller's pet is despawned on an accepted transfer
+//!   and kept on a rejected one (pets PT-02).
 //!
 //! The mid-transfer disconnect stages are covered on the base side, in
 //! `cimmeria_base_world_entry::base::world_entry::gate_travel::tests::transfer`, because that is
@@ -22,6 +24,7 @@ use crate::cell::space_manager::SpaceManager;
 
 mod departure_cleanup;
 mod instance_targeting;
+mod pets;
 mod validation;
 
 /// Worlds used by this suite:

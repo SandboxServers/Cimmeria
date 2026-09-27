@@ -89,6 +89,14 @@ pub(super) async fn teleport(
             prev_pos,
         })
         .await;
+    // A pet out with the teleported player comes along (pets PT-02).
+    cimmeria_cell_world::cell::pets::on_owner_teleported(
+        entity_id,
+        cimmeria_cell_world::cell::pets::OwnerPath::ContentTeleport,
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// `Action::CrossWorldTeleport` — direct cross-world hop bypassing the
@@ -134,6 +142,15 @@ pub(super) async fn cross_world_teleport(
             .await;
         }
     }
+    // Pets stay behind (D-PT01); gone before the traveller's destroy.
+    cimmeria_cell_world::cell::pets::on_owner_left(
+        entity_id,
+        cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+        cimmeria_cell_world::cell::pets::OwnerPath::ContentTeleport,
+        tx,
+        space_mgr,
+    )
+    .await;
     space_mgr.destroy_entity(entity_id);
 
     if let Err(e) = tx

@@ -429,6 +429,16 @@ pub(super) async fn resolve_death(
         // the dead-state broadcast above instead of racing it.
         crate::cell::service::npc_ai::purge_dead_player_from_threat(target_eid, tx, space_mgr)
             .await;
+        // D-PT08: the owner's pets go with the owner's death, now rather than
+        // on the next pet sweep. The owner sees them leave (its client stays).
+        cimmeria_cell_world::cell::pets::on_owner_left(
+            target_eid,
+            cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerDead,
+            cimmeria_cell_world::cell::pets::OwnerPath::OwnerDeath,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     true
@@ -487,5 +497,7 @@ pub async fn resolve_death_for_test(
 
 mod side_effects;
 
+#[cfg(test)]
+mod pet_tests;
 #[cfg(test)]
 mod tests;

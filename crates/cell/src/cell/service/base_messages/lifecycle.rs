@@ -6,6 +6,8 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_cell_world::cell::pets;
+
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner;
@@ -266,6 +268,17 @@ pub(in crate::cell::service) async fn flush_and_destroy(
     space_mgr: &mut SpaceManager,
 ) {
     flush_bandolier_ammo_for_entity(entity_id, tx, space_mgr).await;
+    // Pets leave with their owner, visibly, before the owner goes: the
+    // destroy may take an instanced space (and the pet in it) down with it,
+    // and `destroy_entity` itself has no `tx` for the pet's `LeftAoI`.
+    pets::on_owner_left(
+        entity_id,
+        pets::PetDespawnReason::OwnerGone,
+        pets::OwnerPath::BaseDestroy,
+        tx,
+        space_mgr,
+    )
+    .await;
     space_mgr.destroy_entity(entity_id);
 }
 

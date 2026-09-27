@@ -1,14 +1,16 @@
-//! Pets PT-01 tests: registry, spawn, owner-only intro, class filters and
-//! teardown.
+//! Pets tests: registry, spawn, owner-only intro, class filters and
+//! teardown (PT-01); owner lifecycle hooks and the corpse timer (PT-02).
 
 use crate::cell::space_manager::SpaceManager;
 use crate::test_fixtures::{add_pet_owner, seed_pet_template, PET_FIXTURE_TEMPLATE_ID};
 
 mod class_filters;
 mod create_on_client;
+mod owner_hooks;
 mod registry;
 mod spawn;
 mod teardown;
+mod owner_hooks_telemetry;
 mod telemetry;
 
 /// Owner entity id used throughout.

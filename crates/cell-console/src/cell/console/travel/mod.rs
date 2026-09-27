@@ -180,6 +180,14 @@ async fn snap_in_current_space(
             );
             return false; // don't claim a snap that never sent.
         }
+        // A pet out with the moved player comes along (pets PT-02).
+        cimmeria_cell_world::cell::pets::on_owner_teleported(
+            entity,
+            cimmeria_cell_world::cell::pets::OwnerPath::ConsoleTravel,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     true
