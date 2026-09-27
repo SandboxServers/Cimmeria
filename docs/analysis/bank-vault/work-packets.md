@@ -62,17 +62,17 @@ pub enum VaultScope { Personal, Team, Command }
 
 **Banker template (BV-02).** `resources.entity_templates.vault_scope text NOT NULL DEFAULT 'personal' CHECK (vault_scope IN ('personal','team','command'))`. The value is read only when `interaction_type & INT_BANKER != 0`. It becomes `NpcInteractionType::Banker { scope: VaultScope }`.
 
-**Expansion price (BV-05).** `resources.bank_expansion_price (to_slots smallint PRIMARY KEY, price_naquadah integer NOT NULL CHECK (price_naquadah >= 0))`, seeded with 50 through 100 at 100 naquadah each (D-BV02).
+**Expansion price (BV-05).** `resources.bank_expansion_price (to_slots smallint PRIMARY KEY, price_naquadah integer NOT NULL CHECK (price_naquadah >= 0))`, with a CHECK holding `to_slots` to 50-100 in steps of 10, seeded with 50 through 100 at 100 naquadah each (D-BV02). A missing row makes that step unbuyable, never free.
 
 **Telemetry contract (D-BV19).** Every packet satisfies all of the following. A worker who needs a new event adds a row here through the coordinator, never locally.
 
 - **Target:** `bank`. Every event is structured: an `event="…"` discriminator plus fields, never free text alone.
-- **Correlators on every event:** `account_id`, `player_id`, `entity_id`. Org events also carry `org_id`, `org_type`, `rank` and the permission bit checked (`perm`). One exception: an infrastructure-failure event (a database error, not a player decision) carries `account_id` only if the account was read before the failure. `account_lookup_failed` (on `grant_rejected` and `use_rejected`), `move_lock_begin_failed`, `move_lock_failed` and `refusal_context_query_failed` therefore have `player_id` and `entity_id` but no `account_id`. `bank_feedback_send_failed reason=no_client_address` has `player_id`, `entity_id` and `item_id` only. `vault_open_rejected reason=player_entity_missing` has only `entity_id` and `banker_id`, because the player's own entity is what went missing.
+- **Correlators on every event:** `account_id`, `player_id`, `entity_id`. Org events also carry `org_id`, `org_type`, `rank` and the permission bit checked (`perm`). One exception: an infrastructure-failure event (a database error, not a player decision) carries `account_id` only if the account was read before the failure. `account_lookup_failed` (on `grant_rejected` and `use_rejected`), `move_lock_begin_failed`, `move_lock_failed` and `refusal_context_query_failed` therefore have `player_id` and `entity_id` but no `account_id`. `bank_feedback_send_failed reason=no_client_address` has `player_id`, `entity_id` and `item_id` only. `vault_open_rejected reason=player_entity_missing` has only `entity_id` and `banker_id`, because the player's own entity is what went missing. BV-05's cell-side rows for an entity with no character (`expand_rejected reason=player_missing`, `expand_quote_skipped reason=no_player_id`) have no `player_id` for the same reason.
 - **Refusals:** a stable `reason=` string from the packet's reject enum. Never a formatted message only.
 - **Before and after:** every event that changes state records the prior and new values of whatever it changed: container and slot, `stack_size`, `bank_slots`, player cash, org cash.
 - **Guards:** every event row below has a `LogCapture` test (TESTING.md type 12) that asserts its target, level and required fields. Refusal events have one test per `reason`, infrastructure reasons included: inject the failure with a pool that cannot connect, or with a lock held by another connection under a short `lock_timeout`. The only exemption is a reason that cannot be injected without dropping the connection mid-transaction (BV-01: `resync_read_failed` and `move_lock_release_failed`, which need the connection to fail after both locks were taken on it). The worknote names each exempt reason and why.
 - **Filter:** `bank` at `debug` has an `OTEL_FILTER` row plus its pinning assertion in `crates/server/src/logging/`. BV-02 added it, as the first packet to emit a debug `bank` event.
-- **Spans:** an info span on each dispatch entrypoint: the Banker interact, `.bank`, the bank branch of `moveItem`, the expand purchase and the org cash transfer. No spans inside per-tick work. As shipped: `bank.banker_interact` and `bank.console_open` (BV-02), `bank.move_item` (BV-03), `bank.console_dump` and `bank.gm_dump` (BV-04).
+- **Spans:** an info span on each dispatch entrypoint: the Banker interact, `.bank`, the bank branch of `moveItem`, the expand purchase and the org cash transfer. No spans inside per-tick work. As shipped: `bank.banker_interact` and `bank.console_open` (BV-02), `bank.move_item` (BV-03), `bank.console_dump` and `bank.gm_dump` (BV-04), and `bank.expand` (the dialog answer), `bank.console_expand` (`.bankexpand`), `bank.expand_purchase` and `bank.expansion_quote` (BV-05).
 
 | Event | Level | Packet | Fields beyond the correlators |
 |---|---|---|---|
@@ -83,12 +83,18 @@ pub enum VaultScope { Personal, Team, Command }
 | `vault_session_closed` | debug | BV-02 | `reason` (`space_change`, `logout`, `re_pin`), `scope`, `open_ms` (milliseconds since the session opened) |
 | `vault_open_rejected` | warn | BV-02 | `reason` (`out_of_range`, `org_vault_not_available`, `not_gm`, `banker_missing`; `player_entity_missing`, moved under `bank` by BV-03), `banker_id`, `distance` |
 | `vault_open_send_failed` | warn | BV-02 | `reason` (`base_channel_closed`), `banker_id`, `error` |
-| `bank_feedback_send_failed` | warn | BV-02, BV-03 | `reason` (`base_channel_closed` on the cell, with `error`; `no_client_address` on the base, when there is no session address for the feedback line, with `item_id`) |
+| `bank_feedback_send_failed` | warn | BV-02, BV-03, BV-05 | `reason` (`base_channel_closed` on the cell, with `error`; `no_client_address` on the base, when there is no session address for the feedback line, with `item_id`; BV-05's expansion sends add `no_session`, `not_in_world` and `send_error`, with `what` = `bag_info`, `cash` or `feedback_line`) |
 | `move_accepted` | debug | BV-03 | `item_id`, `type_id`, `quantity`, `kind` (`deposit`, `withdraw`, `within`, `split`, `merge`, `swap`), source and target container and slot, `source_stack_before`/`source_stack_after`, `target_stack_before`/`target_stack_after`, `bank_slots`, `banker_id`, `distance`, `gm_override` |
 | `use_rejected` | warn | BV-03 | `reason` (`container_not_accessible`; infrastructure: `account_lookup_failed`), `item_id`, `container`, `op` (`use` or `remove`), `vault_reason`, `banker_id` |
 | `gm_action` | info; warn for infrastructure | BV-04 | `action` (`bankdump`), `target_player_id` or `target_name`, `result`, `item_count` and `bank_slots` on success, `reason` on refusal: `target_not_found`, `caller_not_player`, `not_gm` (info); `db_unavailable`, `query_failed`, `base_channel_closed` (warn, with `error`). `give_to_container` is not emitted: BV-04 skipped a GM grant into 17, because the def fixes `gmGiveItem`'s arguments and grants into 17-20 are refused by design. There is no `target_ambiguous`, because `player_name` is `UNIQUE` |
-| `expand` | info | BV-05 | `bank_slots_before`, `bank_slots_after`, `price`, `cash_before`, `cash_after` |
-| `expand_rejected` | warn | BV-05 | `reason` (`no_session`, `out_of_range`, `insufficient_cash`, `at_ceiling`, `replay`), `bank_slots`, `cash` |
+| `expand` | info | BV-05 | `bank_slots_before`, `bank_slots_after`, `price`, `cash_before`, `cash_after`, `banker_id` or `gm_override=true`, `distance`, `trigger` (`dialog` or `gm_console`) |
+| `expand_rejected` | warn | BV-05 | `reason`: the vault verdict's label, as `move_rejected` passes it through (`no_vault_session`, `banker_out_of_range`, `banker_gone`, `banker_other_space`, `vault_session_other_space`, `player_missing`, `vault_scope_mismatch`; these replace the planned `no_session` and `out_of_range`), then `no_offer`, `replay`, `at_ceiling`, `insufficient_cash`, `price_missing`, `price_changed`, `row_changed`; infrastructure: `player_row_missing`, `db_unavailable`, `query_failed`; on the cell: `player_missing` (no character id), `base_channel_closed`, `not_gm`. Fields: `offered_slots`, `offered_price`, `bank_slots`, `cash`, `price`, `banker_id`, `gm_override`, `distance`, `trigger`, and `error` on `query_failed` |
+| `expand_quote` | debug; warn on failure | BV-05 | `offered` (`true`, or `false` with `reason`: `at_ceiling` at debug; `price_missing`, `player_row_missing`, `db_unavailable`, `query_failed`, `cell_channel_closed` at warn), `bank_slots`, `cash`, `price`, `error` |
+| `expand_offered` | debug | BV-05 | `banker_id`, `gm_override`, `bank_slots`, `price` |
+| `expand_offer_dropped` | debug | BV-05 | `speaker_id`, `bank_slots`, `reason` (`entity_missing`, `entity_is_another_player`, `no_vault_session`, `vault_scope_mismatch`, `speaker_changed`) |
+| `expand_offer_suppressed` | debug | BV-05 | `speaker_id`, `bank_slots`, `price`, `reason=dialog_quarantined` (once per open while dialog 60110 is quarantined, D-BV35) |
+| `expand_dismissed` | debug | BV-05 | `button_id`, `reason` (`closed`, `unexpected_button`) |
+| `expand_quote_skipped` / `expand_quote_send_failed` | debug / warn | BV-05 | `reason` (`no_player_id` / `base_channel_closed`) |
 | `org_vault_opened` / `org_vault_open_rejected` | debug / warn | BV-07 | `org_id`, `org_type`, `rank`, `perm`, `reason` on refusal |
 | `org_move_accepted` / `org_move_rejected` | debug / warn | BV-07 | the `move_*` fields plus the org fields |
 | `org_cash_transfer` / `org_cash_rejected` | info / warn | BV-08, BV-09 | `direction`, `amount`, `player_cash_before`/`after`, `org_cash_before`/`after`, `reason` on refusal |
@@ -229,7 +235,13 @@ Telemetry: emit `gm_action` as the catalog specifies, including refusals with a 
 
 ## BV-05 vault expansion
 
-**Status: Writing** (branch `bank/bv05-expansion`). Decisions D-BV02 and D-BV27: the purchase must keep `bank_slots` grow-only.
+**Status: Done** (PR #947, `6607fbdc2`). Server side and GM `.bankexpand` done; the player-facing Expand button waits on the #943 dialog quarantine (D-BV35). Decisions D-BV02 and D-BV27 (the purchase keeps `bank_slots` grow-only, now held by `persist_expansion`, D-BV32), plus D-BV31 to D-BV35. Worknote: [bv-05.md](worknotes/bv-05.md).
+
+As built, against the scope below:
+
+- The answer buys only on ButtonID 8 (`VAULT_EXPAND_BUTTON_ID`), the server-authority review's should-fix 2. The rest of "the server ignores `button_id`" stands: the button is not an authority check, and the purchase re-checks everything.
+- Dialog 60110 is defined but quarantined with the debug-hub dialogs (#943), so no player sees the offer yet. GM `.bankexpand` runs the same purchase with `trigger=gm_console`.
+- The seed table is as the contract above says, with the step CHECK on `to_slots`.
 
 Scope:
 
@@ -252,7 +264,7 @@ Telemetry: emit `expand` and `expand_rejected` as the catalog specifies. A zero-
 
 ## BV-06 personal-bank close-out and release 1
 
-**Status: BlockedDependency (BV-05).**
+**Status: Review** (branch `docs/bank-vault-bv06-closeout`, docs only). The guard audit's result is in [session-resume.md § Known gaps](handoffs/session-resume.md#known-gaps-carried-forward): every catalog event from BV-01 to BV-05 has a `LogCapture` guard on `main` except the reasons listed there.
 
 Scope:
 

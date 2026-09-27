@@ -2,13 +2,13 @@
 title: "Inventory System"
 type: reference
 audience: engineers
-last_updated: 2026-09-26
+last_updated: 2026-09-27
 ---
 
 # Inventory System
 
-> **Last updated**: 2026-09-26
-> **Status**: Implemented, including the full vendor stack in code. The vendor stack has **never been tested in a client on working code** (see [Vendor caveat](#vendor-caveat)). Remaining gaps are stat recalculation on equip and the organization vault.
+> **Last updated**: 2026-09-27
+> **Status**: Implemented, including the full vendor stack in code. The vendor stack has **never been tested in a client on working code** (see [Vendor caveat](#vendor-caveat)). Remaining gaps are stat recalculation on equip, the organization vaults, and a player-facing vault expansion (GM-only until the Expand dialog is served; see [Expanding the vault](#expanding-the-vault)).
 
 ## Overview
 
@@ -36,7 +36,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Vendor bag allowlist | DONE | `VENDOR_FILTER_BAGS` confines vendor operations to the main bag, bandolier, the eleven equipment slots, and the crafting bag (15) — the bank, mail attachments, and loot bags are unreachable |
 | Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
-| Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined; blocked on the organization system |
+| Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined. In progress: Bank and Vault packet BV-07, on top of the organizations campaign's schema (ORG-02) |
 | Personal vault window | DONE | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Deposits and withdrawals: [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
 | Vault expansion | PARTIAL (server done; GM `.bankexpand` only) | +10 slots per purchase, 40 to 100, priced by `resources.bank_expansion_price`. The Banker's Expand dialog is not served until the #943 crash is explained; see [Expanding the vault](#expanding-the-vault) |
 
@@ -151,7 +151,16 @@ Both columns are bandolier-slot-scoped — swapping weapons does not pool ammo a
 
 Persistence is **batched**: dirty slots are flushed at reload completion, slot swap, ammo change, logout, and world transition. Full message flow, sequence diagrams, and legacy reference points are in [weapon-ammo-reload.md](weapon-ammo-reload.md).
 
-## Opening the vault
+## The personal bank (vault)
+
+The personal bank is container 17 (`INV_Bank`), opened at a Banker NPC or anywhere with GM `.bank`. It restores the original game's storage, server-side only: the client already has the whole window (`Vault.lua`), so no client patch is needed. The Bank and Vault campaign built it in packets BV-01 to BV-05; the decisions (D-BV*) and the telemetry catalog are in the [campaign ledger](../analysis/bank-vault/README.md). In short:
+
+- **Size.** 40 slots to start, per player (`sgw_player.bank_slots`), growing to 100 in steps of 10 (see [Container capacity and movability](#container-capacity-and-movability) and [Expanding the vault](#expanding-the-vault)).
+- **Access.** A vault session, opened by a Banker click or `.bank`, plus a fresh proximity check on every move (see [Opening the vault](#opening-the-vault)).
+- **Storage only.** Nothing but moves reaches 17: trade, vendors, crafting and mail see only carried bags (see [The bank is storage only](#the-bank-is-storage-only)).
+- **Organization vaults** (Team 19, Command 20) are the campaign's Wave 4 and are not on `main` yet.
+
+### Opening the vault
 
 The personal vault is container 17 (`INV_Bank`). Its rows load at login with the rest of the inventory, and the world-entry `onBagInfo` declares its size (the player's `sgw_player.bank_slots`, see [Container capacity and movability](#container-capacity-and-movability)), so opening the window needs neither a base round trip nor a fresh `onBagInfo` (BV-E1, [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) Q1). The client has no open control of its own: it shows the window only when the server sends `onVaultOpen` (client method 106), and it sends nothing when the window closes.
 
@@ -169,7 +178,7 @@ Every refusal sends the player a chat line and logs `vault_open_rejected` (WARN)
 
 **The move rule.** `vault_move_allowed(&player, &space_mgr)` is the single check a bank move must pass: an open session, opened in the player's current space, and, for a Banker session, the Banker still present, in the same space and within the interact distance. A GM session skips the proximity check. The client ignores `onVaultOpen`'s position (BV-E1 Q4), so walking away does not close the window; this check, run on every move, is the only enforcement. It lives in [`cimmeria-cell-world`](../../crates/cell-world/src/cell/space_manager/vault_access.rs) (re-exported beside the Banker), with the interact range rule it uses.
 
-## Moving items in and out of the vault
+### Moving items in and out of the vault
 
 The vault session lives on the cell's player entity, and the inventory transaction runs on the base. So the cell takes a **verdict** for every inventory request it forwards (`moveItem`, `useItem`, `removeItem`, content `RemoveItem`, `gmRemoveItem`): `vault_access(entity_id, space_mgr)` runs `vault_move_allowed` at that moment and attaches the result, `VaultAccess` ([`crates/wire/src/cell/vault.rs`](../../crates/wire/src/cell/vault.rs)), to the `CellToBaseMsg`. It is `Open { scope, banker_id, distance }` or `Closed { reason, banker_id, distance }`. The base consults it only when the request touches container 17, and only a `Personal` scope opens 17. The verdict is as fresh as the request: a player who walks away is refused on the next drag, and one who walks back is allowed again. In-process moves that never reach the vault (right-click auto-equip between 1 and 3) carry `VaultAccess::NO_SESSION`.
 
@@ -180,7 +189,7 @@ The vault session lives on the cell's player entity, and the inventory transacti
 3. for a deposit, an item that is not a mission item (D-BV08): it sits in the mission bag (2), or its type lists 2 in `container_sets` (`EItemFlag` has no mission bit). A swap out of the vault puts the occupant into 17, so the occupant must pass this too. Bound items may be banked;
 4. `item_allows_container`, as for every move.
 
-Deposit, withdraw, a move within the vault, a split onto an empty slot, a swap and a merge all go through the one path. **A merge** happens when the whole or partial stack is dropped on a stack of the same type with room for it (`max_stack_size`) and the same `bound`, `durability` and `charges`: the legacy `Inventory.py:391-395` rule, which the Rust port had lost for every container. A whole merge deletes the source row and sends `onRemoveItem` for it. A bound stack never merges into an unbound one; the move swaps instead.
+Deposit, withdraw, a move within the vault, a split onto an empty slot, a swap and a merge all go through the one path. **A merge** happens when the whole or partial stack is dropped on a stack of the same type with room for it (`max_stack_size`) and the same `bound`, `durability` and `charges`: the legacy `Inventory.py:391-395` rule, which the Rust port had lost for every container. A whole merge deletes the source row and sends `onRemoveItem` for it. A bound stack never merges into an unbound one; the move swaps instead. **The merge applies to every container, not only the vault** (D-BV25): a drop in the backpack onto a same-type stack with room now merges, where the Rust port used to swap.
 
 A refused vault move logs `move_rejected` (WARN, `bank`) with a stable `reason` and `vault_end` (`source` or `target`), sends a chat line, then resends the dragged item so it snaps back:
 
@@ -202,7 +211,7 @@ Every committed vault move logs `move_accepted` (DEBUG, `bank`) with `kind` (`de
 
 **Slot reservation.** `reserve_free_inventory_slots` bounds 17 by `bank_slots` too, so no path that reserves vault slots can hand a 40-slot player slot 40. Grants into 17 are refused before they get there.
 
-## Expanding the vault
+### Expanding the vault
 
 The personal vault starts at 40 slots and grows to 100 in steps of 10, each step bought at a Banker (decision D-BV02). The price of each step is a row in `resources.bank_expansion_price` (`to_slots`, `price_naquadah`), seeded at 100 naquadah for every step from 50 to 100, so it can be tuned in the seed without code. A missing row makes that step unbuyable, never free.
 
@@ -234,6 +243,19 @@ A zero-row purchase is classified by a follow-up read, replay key first. Every r
 | `player_row_missing`, `db_unavailable`, `query_failed` | infrastructure |
 
 A purchase logs `expand` (INFO, `bank`) with `bank_slots_before`/`after`, `price`, `cash_before`/`after`, the Banker (`banker_id`, `distance`) or `gm_override=true`, and `trigger` (`dialog` or `gm_console`); `expand_rejected` carries `trigger` too, and a non-GM's `.bankexpand` is `expand_rejected reason=not_gm`. The cell side runs in the INFO span `bank.expand` (dialog) or `bank.console_expand` (`.bankexpand`), the purchase in `bank.expand_purchase`, the quote in `bank.expansion_quote`.
+
+### The bank is storage only
+
+Every other service that takes an item reads only carried bags, so a banked item has to be withdrawn first (D-BV04). Each service enforces its own list:
+
+| Service | Containers it reads | Where |
+|---|---|---|
+| Trade | the backpack (1) only; anything else aborts the trade with `TradeAbort::IneligibleContainer` | `TRADEABLE_CONTAINERS` in [`trade/execute/swap.rs`](../../crates/base-methods/src/base/world_entry/methods/trade/execute/swap.rs) |
+| Vendors (sell, repair, recharge) | the backpack, the bandolier, the eleven equipment slots and the crafting bag (1, 3-15); 17 is never listed | `VENDOR_FILTER_BAGS` in [`vendor/mod.rs`](../../crates/base-methods/src/base/world_entry/methods/vendor/mod.rs) |
+| Crafting | the backpack and the crafting bag (1, 15); a bank stack never counts toward a recipe | [crafting-system.md](crafting-system.md) |
+| Mail attachments | the backpack and the crafting bag (1, 15), D-BV30; 17-20 are refused with `item_in_vault` and 16 with `item_in_buyback` | `MAILABLE_CONTAINERS` in [`mail/send/escrow.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/send/escrow.rs), [mail-system.md](mail-system.md) |
+| Use, removal, content turn-ins | 1-15 always; 17 only with an open vault verdict for use and removal by instance; never for a by-type turn-in (D-BV26) | [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
+| Grants (loot, content, `gmGiveItem`, vendor purchases, mail takes) | never 16-20; they fall through to the first carried bag the item lists | [Container capacity and movability](#container-capacity-and-movability) |
 
 ## Flush Update Order
 
@@ -267,3 +289,6 @@ The `Inventory.flushUpdates()` method sends updates to the client in this order:
 - [stat-system.md](stat-system.md) - Stats modified by equipped items
 - [crafting-system.md](crafting-system.md) - Crafting uses inventory items
 - [trade-system.md](trade-system.md) - Trading moves items between inventories
+- [mail-system.md](mail-system.md) - Mail attachments come from the backpack and the crafting bag only
+- [Bank and Vault campaign ledger](../analysis/bank-vault/README.md) - Decisions, telemetry catalog and UAT checklist for the personal bank
+- [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) - Client evidence for the vault window, its size and the Expand dialog
