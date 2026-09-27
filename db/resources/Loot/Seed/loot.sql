@@ -31,11 +31,31 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (17, 3, NULL, 25, 1, 75);
 
+-- NEW CONTENT (debug hub): crafting knowledge items on the crate, each at a
+-- one-in-five chance so a few kills turn them up. The four rows above still
+-- drop every time, so the corpse always has loot. These are the five Racial
+-- Paradigm Guides (7805 Human, 7806 Common, 7807 Asgard, 7808 Goa'uld,
+-- 7809 Ancient) and the Blueprint: Steel Plating item (6483). All six are
+-- `{17,15}` items with a stack limit of 1, so the quantity is exactly 1 and
+-- a pickup lands in the crafting bag; using one raises the paradigm or
+-- teaches the blueprint.
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (18, 3, 7805, 1, 0.2, 1);
+
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (19, 3, 7806, 1, 0.2, 1);
+
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (20, 3, 7807, 1, 0.2, 1);
+
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (21, 3, 7808, 1, 0.2, 1);
+
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (22, 3, 7809, 1, 0.2, 1);
+
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (23, 3, 6483, 1, 0.2, 1);
+
 --
 -- TOC entry 3323 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: loot_loot_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_loot_id_seq', 17, true);
+SELECT pg_catalog.setval('loot_loot_id_seq', 23, true);
 

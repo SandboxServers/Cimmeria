@@ -49,7 +49,7 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | `.allcraft` | DONE | GM: every paradigm at 7, every discipline at 100, every blueprint, persisted, plus "craft anywhere" until logout (D-CR17). CR-05 |
 | `.craftkit` | DONE | GM: `.craftkit <blueprintId> [count]` grants the target the items of the blueprint's component set 1, `count` (1-10) times over, through the crafting transaction as a grant-only plan: each item goes to the first carried bag its `container_sets` allow (the crafting bag for the `{17,15}` components), the whole kit or nothing, with the client's inventory update and the cell's inventory events (D-CR17). CR-11 |
 | `.learnblueprint` | DONE | GM: `.learnblueprint <blueprintId>` teaches the target one blueprint (not already known, present in the catalog) under the player-row lock and pushes the full 139 list (D-CR17). CR-11 |
-| Crafting supplies vendor | DONE | The debug hub's supplies vendor (template 314) sells the UAT components, kickers, a -5 and -50 Field Crafting Tool per science, the Racial Paradigm Guides and Blueprint item 6483 at 1 naquadah each. A purchase lands in the main bag, where the crafting verbs and item use accept it; a tool must be moved to the crafting bag. CR-11 |
+| Crafting supplies vendor | DONE | The debug hub's supplies vendor (template 314) sells the UAT components, kickers, a -5 and -50 Field Crafting Tool per science, the Racial Paradigm Guides and Blueprint item 6483 at 1 naquadah each. A purchase lands in the crafting bag, the first carried bag these `{17,15}` items list, where the crafting verbs, item use and the tool check all accept it. CR-11 |
 | Blueprint items | DONE | Using one of the 193 mapped "Blueprint: …" items teaches its blueprint(s) and consumes it (D-CR04, D-CR26). CR-15, see [Blueprint items and Racial Paradigm Guides](#blueprint-items-and-racial-paradigm-guides) |
 | Racial Paradigm Guides | DONE | Using a guide (items 7805-7809) raises its paradigm by 1, to at most 10, and consumes it (D-CR03). CR-15 |
 
@@ -111,7 +111,7 @@ Blueprints and paradigm levels come from items the player uses (crafting campaig
 
 A refusal consumes nothing. An item that names a known and an unknown blueprint teaches the unknown one and is used. `target_id` plays no part: the effect always applies to the user. Events: `blueprint_learned` and `paradigm_raised` with the values before and after, in the `crafting` row of [observability.md](../architecture/observability.md).
 
-Sources today are GM grants (`gmGiveItem` puts the item in the main bag, where it can be used) and, later, the crafting-supplies vendor (CR-11). No loot table drops these items yet: loot and the content engine's `grant_item` put an item in the first container of its `container_sets`, which for all 198 items is the bank (17), until the grant path falls through to the crafting bag (CR-16). An item in the bank must be moved to the crafting bag before it can be used.
+Sources today are GM grants, the debug-hub loot crate (loot table 3 drops each guide and Blueprint: Steel Plating at a one-in-five chance) and the debug hub's crafting-supplies vendor (CR-11). Every grant path (loot, the content engine's `grant_item`, `gmGiveItem`, vendor purchases) lands these `{17,15}` items in the crafting bag, the first carried bag they list, instead of the bank (CR-16). A GM grant made before that change sits in the main bag, where it can still be used.
 
 ## Crafting Operations
 

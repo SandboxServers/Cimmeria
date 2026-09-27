@@ -28,7 +28,7 @@ pub use bank::{
 pub use dialog::send_dialog_display;
 pub use dispatch::{handle_initial_response, handle_interact};
 pub use dispatch::{interact_range, interact_target_in_range, InteractRangeFail};
-pub use loot::handle_loot_item;
+pub use loot::{handle_loot_grant_refused, handle_loot_item};
 pub use org_registrar::reject_registrar_out_of_range;
 pub use respec_feedback::send_respec_rejection;
 pub use trainer::try_open_trainer;

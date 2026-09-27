@@ -421,10 +421,11 @@ mod live_db {
     }
 
     /// Loot table 3 through the loader the cell rolls from: every item row
-    /// names a real item, there is a naquadah row, and every row drops for
-    /// certain. A row below probability 1 can roll nothing, and a corpse
-    /// with no loot never gets its loot bit, so the test reads as a broken
-    /// loot path.
+    /// names a real item, there is a naquadah row, and the corpse always has
+    /// loot. A corpse with no loot never gets its loot bit, so the test
+    /// reads as a broken loot path; the naquadah row and at least one item
+    /// row therefore drop for certain, while the crafting knowledge items
+    /// ride along at a lower chance.
     #[tokio::test]
     async fn debug_hub_loot_table_resolves_to_real_items() {
         let pool = require_db_or_skip!();
@@ -444,10 +445,22 @@ mod live_db {
                 .expect("items query must succeed")
                 .into_iter()
                 .collect();
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.design_id.is_none() && e.probability == 1.0),
+            "the naquadah row must always drop"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.design_id.is_some() && e.probability == 1.0),
+            "at least one item row must always drop"
+        );
         for e in entries {
-            assert_eq!(
-                e.probability, 1.0,
-                "every table-3 row must always drop: {e:?}"
+            assert!(
+                e.probability > 0.0 && e.probability <= 1.0,
+                "every table-3 row must be able to drop: {e:?}"
             );
             assert!(
                 e.min_quantity >= 1 && e.min_quantity <= e.max_quantity,
@@ -456,6 +469,54 @@ mod live_db {
             if let Some(design) = e.design_id {
                 assert!(items.contains(&design), "loot design {design} must exist");
             }
+        }
+    }
+
+    /// The crate also drops the five Racial Paradigm Guides and the Steel
+    /// Plating blueprint item, each once, at a chance below certain. Each is
+    /// a `{17,15}` item that stacks to 1, so the drop must be exactly one
+    /// (a larger stack would be written as one over-full row), and each has
+    /// a crafting effect, so using it does something.
+    #[tokio::test]
+    async fn debug_hub_loot_table_drops_crafting_knowledge_items() {
+        let pool = require_db_or_skip!();
+        let tables = load_loot_tables(&pool)
+            .await
+            .expect("load_loot_tables must succeed");
+        let entries = tables.get(&3).expect("loot table 3 must have rows");
+        for design in [7805, 7806, 7807, 7808, 7809, 6483] {
+            let rows: Vec<_> = entries
+                .iter()
+                .filter(|e| e.design_id == Some(design))
+                .collect();
+            assert_eq!(
+                rows.len(),
+                1,
+                "table 3 must drop item {design} once: {rows:?}"
+            );
+            let e = rows[0];
+            assert!(
+                e.probability > 0.0 && e.probability < 1.0,
+                "item {design} is a chance drop: {e:?}"
+            );
+            assert_eq!(
+                (e.min_quantity, e.max_quantity),
+                (1, 1),
+                "item {design} stacks to 1"
+            );
+            let (sets, stack, effects): (Vec<i32>, i32, i64) = sqlx::query_as(
+                "SELECT ri.container_sets, ri.max_stack_size, \
+                        (SELECT COUNT(*) FROM resources.crafting_item_effects e \
+                          WHERE e.item_id = ri.item_id) \
+                   FROM resources.items ri WHERE ri.item_id = $1",
+            )
+            .bind(design)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|e| panic!("item {design} must exist: {e}"));
+            assert_eq!(sets, vec![17, 15], "item {design} container_sets");
+            assert_eq!(stack, 1, "item {design} max_stack_size");
+            assert!(effects > 0, "item {design} must have a crafting effect");
         }
     }
 

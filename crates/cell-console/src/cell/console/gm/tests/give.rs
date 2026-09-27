@@ -20,6 +20,7 @@ async fn gm_give_item_emits_grant_with_clamped_qty() {
             container_id,
             count,
             notify_gm,
+            loot,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
@@ -30,6 +31,7 @@ async fn gm_give_item_emits_grant_with_clamped_qty() {
                 notify_gm,
                 "GM grant must set notify_gm for definitive feedback"
             );
+            assert_eq!(loot, None, "a GM grant has no corpse to go back to");
         }
         other => panic!("expected GrantItem, got {other:?}"),
     }

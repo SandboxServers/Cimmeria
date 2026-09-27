@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use super::tests::{
     cleanup, count_in_container, insert_account_and_player, insert_item, make_state, stack_sum,
-    ITEM_COST_DESIGN_ID, ITEM_COST_PREREQ_DESIGN_ID, ITEM_COST_STORE_INDEX,
+    INV_CRAFTING, ITEM_COST_DESIGN_ID, ITEM_COST_PREREQ_DESIGN_ID, ITEM_COST_STORE_INDEX,
     SEEDED_BUY_VENDOR_TEMPLATE_ID,
 };
 use super::*;
@@ -106,7 +106,7 @@ async fn a_purchase_waits_for_a_crafting_completion_instead_of_deadlocking() {
         .expect("purchase finished")
         .expect("purchase task");
 
-    let granted = count_in_container(&pool, PLAYER_ID, INV_MAIN, ITEM_COST_DESIGN_ID).await;
+    let granted = count_in_container(&pool, PLAYER_ID, INV_CRAFTING, ITEM_COST_DESIGN_ID).await;
     let prereq_left = stack_sum(&pool, PLAYER_ID, INV_MAIN, ITEM_COST_PREREQ_DESIGN_ID).await;
     cleanup(&pool, ENTITY_ID, ACCOUNT_ID, PLAYER_ID).await;
 
@@ -189,7 +189,7 @@ async fn a_purchase_waits_for_a_crafting_item_use_instead_of_deadlocking() {
         .expect("purchase finished")
         .expect("purchase task");
 
-    let granted = count_in_container(&pool, USE_PLAYER_ID, INV_MAIN, ITEM_COST_DESIGN_ID).await;
+    let granted = count_in_container(&pool, USE_PLAYER_ID, INV_CRAFTING, ITEM_COST_DESIGN_ID).await;
     cleanup(&pool, USE_ENTITY_ID, USE_ACCOUNT_ID, USE_PLAYER_ID).await;
 
     committed.expect("the item use was not aborted as a deadlock victim");

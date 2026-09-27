@@ -15,6 +15,8 @@
 //! - [`vendor_dispatch`]       — vendor store + two-party trade arms
 //! - [`progression_dispatch`]  — mission / grant / console / spawn / mail /
 //!   minigame arms
+//! - [`item_grant_dispatch`]   — the `GrantItem` body `progression_dispatch`
+//!   calls: loot pickups to the loot-aware grant, the rest to the plain one
 //! - [`gate_teleport_dispatch`] — gate-travel / reanchor / teleport arms
 //! - [`org_dispatch`]          — organization (`CellToBaseMsg::Org`) arms
 //! - [`chat_dispatch`]         — chat (`CellToBaseMsg::Chat`) arms: the GM
@@ -49,6 +51,7 @@ mod contact_list_dispatch;
 mod deferred_flush;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
+mod item_grant_dispatch;
 mod minigame;
 mod org_dispatch;
 mod player_ghost;

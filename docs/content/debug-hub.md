@@ -184,8 +184,13 @@ death.
 - Tests loot generation from a real table, the loot window, and taking items
   and naquadah. Loot table 3 drops, every time: 2-3 Health Slappack TC1
   (stackable), one Processor (Electronics), one Cell (Bio-Medical) and 25-75
-  naquadah. Every row is probability 1. A roll that drops nothing would leave
-  the corpse unclickable, which would look like a broken loot path.
+  naquadah. Those rows are probability 1, so the corpse always has loot: a
+  roll that drops nothing would leave the corpse unclickable, which would
+  look like a broken loot path. It also drops each of the five Racial
+  Paradigm Guides (7805-7809) and Blueprint: Steel Plating (6483) at 0.2, one
+  of each at most. The Processor, the Cell, the guides and the blueprint are
+  `{17,15}` items and land in the crafting bag; use a guide or the blueprint
+  from there.
 - The crate is faction 10, because that is the only faction a player can
   damage. It is not a threat to a new character:
   - The spawn row sets NEUTRAL aggression, so it never attacks on proximity.
@@ -293,9 +298,11 @@ Right-click opens a store that only sells, at 1 naquadah each (buy list 310):
 | Racial Paradigm Guides | 7805 Human, 7806 Common, 7807 Asgard, 7808 Goa'uld, 7809 Ancient |
 | Blueprint item | 6483 Blueprint: Steel Plating (teaches blueprint 25) |
 
-- A purchase lands in the main bag (1). The crafting verbs consume components
-  from the main and crafting bags, and a Blueprint item or a guide is used from
-  either bag, so these work straight away.
+- A purchase lands in the first carried bag the item lists: the crafting bag
+  (15) for the `{17,15}` supplies, tools included, and the main bag (1) for
+  anything else. The crafting verbs consume components from the main and
+  crafting bags, and a Blueprint item or a guide is used from either bag, so
+  these work straight away.
 - A Field Crafting Tool counts only in the crafting bag (15). Move it there to
   enable crafting without a station.
 - The vendor has no sell, repair or recharge list.
@@ -398,7 +405,7 @@ opens with you as its leader, and a line says the organization was founded.
 | Chains 7001-7005, 7010-7011 | `db/resources/Content/Seed/debug_hub_chains.sql` |
 | Dialogs 60100-60104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `QUARANTINED_DIALOG_OVERRIDES` (not served) |
 | The clerk's mail and cooldown | `mail/content.rs` in `crates/base-methods`; table `db/sgw/Players/Tables/sgw_player_content_cooldown.sql` |
-| Loot table 3 (loot rows 14-17) | `db/resources/Loot/Seed/` |
+| Loot table 3 (loot rows 14-23) | `db/resources/Loot/Seed/` |
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
 | Vendor and Banker derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
 | Crafting corner: templates 310-314, spawns 410-414, buy list 310 (rows 3101-3124) | `entity_templates.sql`, `spawnlist.sql`, `db/resources/Items/Seed/item_lists.sql` and `item_list_items.sql` |
@@ -418,8 +425,8 @@ hub, crafting)`.
 
 | Guard | What it pins |
 |---|---|
-| `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns (the mail clerk's 490 included) inside Region1, on the floor, at least 5 units from the respawner and 2.5 from every other spawn in the room; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, with every loot row at probability 1; dialog screens and buttons, and neither dialog is a monologue |
-| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself; each registrar asks the base about its own type |
+| `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns (the mail clerk's 490 included) inside Region1, on the floor, at least 5 units from the respawner and 2.5 from every other spawn in the room; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, the naquadah row and at least one item row at probability 1 and every row able to drop; the guides and the blueprint item drop once each, quantity 1, below certain, and each is a `{17,15}` item with a crafting effect; dialog screens and buttons, and neither dialog is a monologue |
+| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and, when dead, carries every certain table-3 row and nothing outside the table, and shows its loot; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself; each registrar asks the base about its own type |
 | `cell-catalog` `spawner/tests/live_db_debug_registrars.rs` | Templates 330 and 331 are a Team and a Command registrar and nothing else: exactly `INT_Organization` and their own registrar set, a shipped name, no trainer or vendor list, not faction 10; they are the only registrar templates; spawns 430 and 431 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_debug_banker.rs` | Template 370 is a personal Banker and nothing else: exactly `INT_Banker`, `vault_scope = 'personal'`, a shipped name, no trainer list or vendor lists, not faction 10; spawn 470 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_pet_trainer.rs` | Template 360's role columns and name; spawn 450 inside Region1, on the floor, clear of the respawner and the other hub NPCs; list 350 keyed to the Goa'uld only, with exactly the six pet nodes, each a Goa'uld tree node |
@@ -432,4 +439,4 @@ hub, crafting)`.
 | `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001, 7004 and 7010 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
 | `cell-catalog` `spawner/tests/live_db_crafting_hub.rs` | Stations carry all four craft bits and no interaction bit, with the client's station monikers; the vendor sells only list 310; the crafting spawns stand inside Region1, on the floor, clear of the respawner and of every other spawn in the room; list 310 is exactly the supplies, each a real item at 1 naquadah and no item cost, and covers the UAT recipes |
 | `cell-methods` `interaction/crafting_hub_station_tests.rs` | Spawned from their real rows, the stations are reported for every verb to a player at the supplies vendor, and none reaches the respawn spot |
-| `base-methods` `vendor/purchase/crafting_supplies_tests.rs` | Bought supplies land in the main bag: the guide and the Blueprint item are used from there, and the cores are consumed by a crafting transaction |
+| `base-methods` `vendor/purchase/crafting_supplies_tests.rs` | Bought supplies land in the crafting bag: the guide and the Blueprint item are used from there, and the cores are consumed by a crafting transaction |

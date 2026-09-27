@@ -236,7 +236,8 @@ pub enum CellToBaseMsg {
     /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
     /// `entity_id` after the write commits. Only the GM `gmGiveItem` path sets
     /// this; non-GM senders (loot pickup, content-chain `Action::GrantItem`)
-    /// leave it false.
+    /// leave it false. `loot` is set only by loot pickup: a refused grant is
+    /// answered with `BaseToCellMsg::LootGrantRefused` so the item goes back.
     GrantItem {
         entity_id: u32,
         player_id: i32,
@@ -244,6 +245,7 @@ pub enum CellToBaseMsg {
         container_id: i32,
         count: i32,
         notify_gm: bool,
+        loot: Option<super::LootGrantSource>,
     },
 
     /// Open a vendor store for a player using the vendor template lists.

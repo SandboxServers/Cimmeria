@@ -1,6 +1,6 @@
 //! Live-DB guard that what the debug hub's crafting supplies vendor
 //! (template 314, buy list 310) sells is usable once bought: a purchase
-//! lands in the main bag, where a Racial Paradigm Guide and a Blueprint
+//! lands in the crafting bag, where a Racial Paradigm Guide and a Blueprint
 //! item are used through the ordinary `useItem` path and the crafting
 //! transaction consumes components.
 //!
@@ -10,7 +10,7 @@
 use cimmeria_entity::crafting::CraftingState;
 use cimmeria_wire::cell::vault::VaultAccess;
 
-use super::tests::{cleanup, insert_account_and_player, make_state};
+use super::tests::{cleanup, insert_account_and_player, make_state, INV_CRAFTING};
 use super::*;
 use crate::base::crafting::persistence::load_crafting_state;
 use crate::base::crafting::telemetry::JobIds;
@@ -73,11 +73,12 @@ fn find(rows: &[(i32, i32, i32, i32)], type_id: i32) -> (i32, i32, i32, i32) {
 }
 
 /// Buy a Common guide, the Blueprint item for blueprint 25 and its 13 Steel
-/// Cores for 1 naquadah each; all three land in the main bag, the guide and
+/// Cores for 1 naquadah each; all three land in the crafting bag (the first
+/// carried bag their `{17,15}` lists), the guide and
 /// the Blueprint item are used from there, and the cores are consumed by a
 /// crafting transaction for blueprint 25's product.
 #[tokio::test]
-async fn crafting_supplies_land_in_the_main_bag_and_are_usable() {
+async fn crafting_supplies_land_in_the_crafting_bag_and_are_usable() {
     let pool = require_db_or_skip!();
     cleanup(&pool, ACCOUNT_ID, ACCOUNT_ID, PLAYER_ID).await;
     insert_account_and_player(&pool, ACCOUNT_ID, PLAYER_ID, 100).await;
@@ -142,8 +143,8 @@ async fn crafting_supplies_land_in_the_main_bag_and_are_usable() {
     assert_eq!(naquadah, 100 - 15, "15 items at 1 naquadah each");
     assert_eq!(bought.len(), 3, "{bought:?}");
     assert!(
-        bought.iter().all(|r| r.2 == INV_MAIN),
-        "a purchase lands in the main bag: {bought:?}"
+        bought.iter().all(|r| r.2 == INV_CRAFTING),
+        "a purchase lands in the crafting bag: {bought:?}"
     );
     assert_eq!(find(&bought, STEEL_CORE).3, 13);
 

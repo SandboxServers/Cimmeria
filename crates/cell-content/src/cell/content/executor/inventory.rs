@@ -119,6 +119,7 @@ pub(super) async fn grant(
             count,
             // Content-chain grant is not GM-sourced — no GM feedback line.
             notify_gm: false,
+            loot: None,
         })
         .await
     {

@@ -16,6 +16,8 @@ use super::store::handle_open_vendor_store;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
+mod placement;
+
 #[cfg(test)]
 mod concurrency_tests;
 #[cfg(test)]
@@ -231,49 +233,50 @@ pub async fn handle_purchase_vendor_items(
         balance
     };
 
-    let mut grant_slots = match super::serializers::reserve_free_inventory_slots(
-        &mut tx,
-        player_id,
-        INV_MAIN,
-        lines.len(),
-    )
-    .await
-    {
-        Ok(Some(slots)) => slots.into_iter(),
-        Ok(None) => {
-            let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                requested_items = lines.len(),
-                "PurchaseVendorItems: not enough main inventory slots"
-            );
-            return;
-        }
+    let design_ids: Vec<i32> = lines.iter().map(|line| line.design_id).collect();
+    let placement = match placement::place_lines(&mut tx, player_id, &design_ids).await {
+        Ok(p) => p,
         Err(e) => {
             let _ = tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,
-                "PurchaseVendorItems: slot query failed: {e}"
+                "PurchaseVendorItems: container_sets lookup failed: {e}"
             );
             return;
         }
     };
-
-    let mut granted: Vec<(i32, i32, i32)> = Vec::with_capacity(lines.len()); // (design_id, slot, quantity)
-    for line in &lines {
-        let Some(next_slot) = grant_slots.next() else {
-            let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                design_id = line.design_id,
-                "PurchaseVendorItems: slot reservation exhausted"
-            );
-            return;
+    let line_slots =
+        match placement::reserve_line_slots(&mut tx, player_id, &placement.containers).await {
+            Ok(Some(slots)) => slots,
+            Ok(None) => {
+                let _ = tx.rollback().await;
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    requested_items = lines.len(),
+                    containers = ?placement.containers,
+                    "PurchaseVendorItems: not enough free inventory slots"
+                );
+                return;
+            }
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(
+                    entity_id,
+                    player_id,
+                    "PurchaseVendorItems: slot query failed: {e}"
+                );
+                return;
+            }
         };
-        granted.push((line.design_id, next_slot, line.grant_quantity));
+
+    // (design_id, container, slot, quantity)
+    let mut granted: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(lines.len());
+    for ((line, &container_id), &next_slot) in
+        lines.iter().zip(&placement.containers).zip(&line_slots)
+    {
+        granted.push((line.design_id, container_id, next_slot, line.grant_quantity));
 
         let result = sqlx::query(
             "INSERT INTO sgw_inventory \
@@ -284,7 +287,7 @@ pub async fn handle_purchase_vendor_items(
         .bind(player_id)
         .bind(line.grant_quantity)
         .bind(next_slot)
-        .bind(INV_MAIN)
+        .bind(container_id)
         .bind(line.design_id)
         .execute(&mut *tx)
         .await;
@@ -319,10 +322,10 @@ pub async fn handle_purchase_vendor_items(
     // notifications) is atomic. If any outbox INSERT fails we abort the
     // whole purchase.
     let mut outbox_pending: Vec<(i64, CellOutboxPayload)> = Vec::with_capacity(granted.len());
-    for (design_id, slot_id, quantity) in &granted {
+    for (design_id, container_id, slot_id, quantity) in &granted {
         let payload = CellOutboxPayload::InventoryItemGranted {
             item_id: *design_id,
-            container_id: INV_MAIN,
+            container_id: *container_id,
             slot_id: *slot_id,
             quantity: *quantity,
         };
@@ -348,6 +351,27 @@ pub async fn handle_purchase_vendor_items(
             "PurchaseVendorItems: commit failed: {e}"
         );
         return;
+    }
+
+    for (design_id, container_id, slot_id, quantity) in &granted {
+        tracing::info!(
+            target: "inventory",
+            event = "grant_container_chosen",
+            account_id = placement.account_id,
+            player_id,
+            entity_id,
+            type_id = design_id,
+            quantity,
+            container_sets = %placement.container_sets_text(*design_id),
+            requested_container_id = INV_MAIN,
+            skipped_storage = placement.skipped_storage(*design_id, *container_id),
+            container_id,
+            slot_id,
+            qty_before = 0,
+            qty_after = quantity,
+            source = "vendor_purchase",
+            "grant_container_chosen"
+        );
     }
 
     if total_cash_cost > 0 {

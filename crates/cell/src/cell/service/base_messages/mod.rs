@@ -15,6 +15,8 @@
 //! - [`minigame`] — `MinigameResult`
 //! - [`gm_spawn`] — `GmSpawnNpcReady`
 //! - [`request_entity_update`] — `RequestEntityUpdate`
+//! - `LootGrantRefused` goes straight to `cell::interactions` (the item goes
+//!   back on its corpse)
 //! - [`org`] — `Org` (organization traffic: the squad invite and kick)
 //! - `Duel` goes straight to `cell::duel::challenge` (SS-D1)
 //! - [`ignore`] — `UpdateIgnoreList` (the Ignore set spatial chat reads, SS-C1)
@@ -484,6 +486,29 @@ pub(super) async fn handle_base_message(
                 record,
                 space_id,
                 requester_entity_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::LootGrantRefused {
+            entity_id,
+            player_id,
+            source,
+            design_id,
+            quantity,
+            container_id,
+            reason,
+        } => {
+            crate::cell::interactions::handle_loot_grant_refused(
+                entity_id,
+                player_id,
+                source,
+                design_id,
+                quantity,
+                container_id,
+                reason,
                 tx,
                 space_mgr,
             )

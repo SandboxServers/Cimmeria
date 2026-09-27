@@ -339,9 +339,15 @@ async fn debug_hub_crate_is_shot_then_looted_from_table_3() {
         .map(|l| l.design_id)
         .collect();
     let table: HashSet<Option<i32>> = mgr.loot_tables[&3].iter().map(|e| e.design_id).collect();
-    assert_eq!(
-        dropped, table,
-        "every table-3 row is probability 1, so the corpse carries all of them"
+    let certain: HashSet<Option<i32>> = mgr.loot_tables[&3]
+        .iter()
+        .filter(|e| e.probability >= 1.0)
+        .map(|e| e.design_id)
+        .collect();
+    assert!(
+        certain.is_subset(&dropped) && dropped.is_subset(&table),
+        "the corpse carries every probability-1 row and nothing outside table 3: \
+         dropped {dropped:?}, certain {certain:?}"
     );
 
     let msgs = click(&mut mgr, &engine, crate_eid).await;

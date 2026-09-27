@@ -164,8 +164,10 @@ pub(super) async fn handle_give_item(
     );
 
     // Reuse the canonical grant primitive — base persists to sgw_inventory and
-    // emits onUpdateItem. Container defaults to INV_Main; the base side
-    // re-homes weapons/ammo to the bandolier via the item_containers cache.
+    // emits onUpdateItem. The request is INV_Main; the base keeps it when the
+    // item allows the main bag and otherwise places the item by its
+    // `container_sets` (a `{17,15}` crafting component lands in the crafting
+    // bag).
     // `notify_gm: true` — the base sends the definitive feedback line after the
     // inventory write commits. No optimistic "requested" line here.
     forward_to_base(
@@ -177,6 +179,7 @@ pub(super) async fn handle_give_item(
             container_id: INV_MAIN,
             count,
             notify_gm: true,
+            loot: None,
         },
         "gmGiveItem",
     )

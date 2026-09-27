@@ -1,13 +1,14 @@
 //! Live-DB guard: a grant never writes into the vaults (17-20).
 //!
-//! Loot and content grants target an item's first `container_sets` entry,
-//! and the seeded crafting components list 17 first (`{17,15}`). Before
-//! BV-01 such a grant failed at slot reservation because 17 had no
-//! capacity. BV-01 gave 17 a capacity for `onBagInfo`, so without
-//! `grant_container_refused` the loot would land in the bank.
+//! The vault has a capacity for `onBagInfo`, so without
+//! `grant_container_refused` a grant into the vault would land there. An
+//! item that also lists a carried bag (the `{17,15}` crafting components)
+//! falls through to that bag instead (`fall_through_tests`); the refusal is
+//! for an item that lists only storage containers, which the seed does not
+//! have, so the guard uses a synthetic `{17}` type.
 //!
 //! Sentinels: account `0x7000_B140`, player `0x7000_B141`, entity
-//! `0x7000_B1E4`.
+//! `0x7000_B1E4`, the synthetic item type `0x7000_C4F0`.
 
 use tracing::Level;
 
@@ -17,6 +18,8 @@ use crate::test_support::{require_db_or_skip, LogCapture, TestTransport};
 const ACCOUNT_ID: i32 = 0x7000_B140;
 const PLAYER_ID: i32 = 0x7000_B141;
 const ENTITY_ID: u32 = 0x7000_B1E4;
+/// A storage-only item type (`container_sets = {17}`).
+const STORAGE_ONLY_TYPE_ID: i32 = 0x7000_C4F0;
 
 async fn cleanup(pool: &PgPool) {
     let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
@@ -29,6 +32,10 @@ async fn cleanup(pool: &PgPool) {
         .await;
     let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
         .bind(ACCOUNT_ID)
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
+        .bind(STORAGE_ONLY_TYPE_ID)
         .execute(pool)
         .await;
 }
@@ -61,15 +68,19 @@ async fn grant_into_vault_is_refused() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     insert_account_and_player(&pool).await;
-    // A seeded item whose preferred container (what loot and content grant
-    // into) is the vault.
-    let type_id: i32 = sqlx::query_scalar(
-        "SELECT item_id FROM resources.items WHERE container_sets[1] = 17 \
-         ORDER BY item_id LIMIT 1",
+    // An item that may only sit in the vault: no carried bag to fall
+    // through to.
+    let type_id = STORAGE_ONLY_TYPE_ID;
+    sqlx::query(
+        "INSERT INTO resources.items (\
+            item_id, description, name, quality_id, tech_comp, tier, \
+            max_stack_size, container_sets \
+         ) VALUES ($1, '', 'storage-only', 'ITEM_QUALITY_Normal', 0, 1, 1, '{17}')",
     )
-    .fetch_one(&pool)
+    .bind(type_id)
+    .execute(&pool)
     .await
-    .expect("the seed must hold an item whose first container_sets entry is 17");
+    .expect("insert the storage-only item type");
 
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let e2a: Arc<Mutex<HashMap<u32, SocketAddr>>> = Arc::new(Mutex::new(HashMap::new()));
