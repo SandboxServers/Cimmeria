@@ -12,12 +12,15 @@
 //!   `CellToBaseMsg::Crafting`.
 //! - [`stations`]: [`CraftingStations`], the station set the cell reports.
 //! - [`gm_allcraft`]: [`GmAllCraft`], the GM `.allcraft` grant.
+//! - [`gm_craft_grant`]: [`GmCraftGrant`], the GM `.craftkit` and
+//!   `.learnblueprint` grants.
 //!
 //! Campaign ledger: `docs/analysis/crafting/`. The `CraftingOptions` layout
 //! is recorded in `docs/protocol/client-method-dispatch-table.md` (row 140).
 
 pub mod client_methods;
 pub mod gm_allcraft;
+pub mod gm_craft_grant;
 pub mod request;
 pub mod stations;
 
@@ -27,6 +30,7 @@ pub use client_methods::{
     CraftingInfo, CraftingOptions, GENERICPROPERTY_APPLIED_SCIENCE_POINTS,
 };
 pub use gm_allcraft::GmAllCraft;
+pub use gm_craft_grant::{GmCraftGrant, GmCraftGrantKind};
 pub use request::{CraftRequest, CraftVerb};
 pub use stations::{CraftingStations, StationChangeCause, StationSet};
 

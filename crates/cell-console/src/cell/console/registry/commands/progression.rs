@@ -27,6 +27,20 @@ pub(super) const SPECS: &[Spec] = &[
         Target::Player,
         "Forget a discipline (disciplineId)",
     ),
+    spec(
+        "craftkit",
+        1,
+        2,
+        Target::Player,
+        "Grant the target a blueprint's component set 1 (blueprintId [count 1-10])",
+    ),
+    spec(
+        "learnblueprint",
+        1,
+        1,
+        Target::Player,
+        "Teach the target one blueprint (blueprintId)",
+    ),
     // ── Mission gaps ───────────────────────────────────────────────────────
     spec(
         "missionfail",

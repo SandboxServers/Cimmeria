@@ -6,7 +6,7 @@ use super::content_mail_cell_to_base::ContentSystemMail;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
-use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft};
+use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft, GmCraftGrant};
 
 /// Messages sent from CellApp to BaseApp.
 #[derive(Debug)]
@@ -550,6 +550,9 @@ pub enum CellToBaseMsg {
 
     /// `.allcraft` for a player; see [`GmAllCraft`].
     GmAllCraft(GmAllCraft),
+
+    /// `.craftkit` or `.learnblueprint` for a player; see [`GmCraftGrant`].
+    GmCraftGrant(GmCraftGrant),
 
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol

@@ -170,6 +170,9 @@ pub async fn handle_cell_message(
         CellToBaseMsg::GmAllCraft(grant) => {
             crate::base::crafting::allcraft::handle_gm_all_craft(grant, &craft_ctx(&ctx)).await
         }
+        CellToBaseMsg::GmCraftGrant(grant) => {
+            crate::base::crafting::gm_grant::handle_gm_craft_grant(grant, &craft_ctx(&ctx)).await
+        }
 
         CellToBaseMsg::ContactListCreate { .. }
         | CellToBaseMsg::ContactListDelete { .. }

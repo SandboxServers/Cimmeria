@@ -32,6 +32,7 @@
 //! - [`options`]: `onUpdateCraftingOptions` (140) and the per-session
 //!   stations, tools and "craft anywhere" behind it.
 //! - [`allcraft`]: the GM `.allcraft` grant.
+//! - [`gm_grant`]: the GM `.craftkit` and `.learnblueprint` grants.
 //! - [`inventory_locks`]: the advisory locks every crafting write takes
 //!   on a player's inventory before any row.
 //! - [`session`]: the induction engine. Each player runs one induction at
@@ -50,6 +51,7 @@ pub mod alloy;
 pub mod craft;
 pub mod feedback;
 pub mod gate;
+pub mod gm_grant;
 pub mod handlers;
 pub mod induction_verb;
 pub mod inventory_locks;
