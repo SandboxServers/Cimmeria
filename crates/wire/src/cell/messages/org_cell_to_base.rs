@@ -25,6 +25,28 @@ pub enum OrgCellToBase {
         name: String,
     },
 
+    /// A player right-clicked an organization registrar in range (ORG-05).
+    /// `org_type` comes from the registrar's seed data, never from the
+    /// client. The base checks D-ORG18 eligibility and answers with
+    /// `OrgBaseToCell::RegistrarEligible`, or refuses with feedback itself.
+    RegistrarOpen {
+        player_id: i32,
+        entity_id: u32,
+        npc_entity_id: u32,
+        org_type: OrgType,
+    },
+
+    /// GM `.org_create <team|command> <name>` (ORG-05): create directly,
+    /// with no registrar and no pending creation. The cell has checked the
+    /// caller's GM access level; the base re-reads it from its own session
+    /// map before acting (D-ORG13), and applies every other creation rule.
+    GmCreate {
+        player_id: i32,
+        entity_id: u32,
+        org_type: OrgType,
+        name: String,
+    },
+
     /// `organizationTransferCash` (CM 19) for a Team or Command id (the Bank
     /// campaign's route, work-packets.md § ORG-API). `dir` is the decoded
     /// direction and magnitude; a zero amount never gets this far. Until the
@@ -68,6 +90,16 @@ impl OrgCellToBase {
                 entity_id,
                 ..
             }
+            | OrgCellToBase::RegistrarOpen {
+                player_id,
+                entity_id,
+                ..
+            }
+            | OrgCellToBase::GmCreate {
+                player_id,
+                entity_id,
+                ..
+            }
             | OrgCellToBase::TransferCash {
                 player_id,
                 entity_id,
@@ -90,6 +122,8 @@ impl OrgCellToBase {
     pub fn kind(&self) -> &'static str {
         match self {
             OrgCellToBase::Create { .. } => "create",
+            OrgCellToBase::RegistrarOpen { .. } => "registrar_open",
+            OrgCellToBase::GmCreate { .. } => "gm_create",
             OrgCellToBase::TransferCash { .. } => "transfer_cash",
             OrgCellToBase::ForwardCellCall { .. } => "forward_cell_call",
             OrgCellToBase::GmDisband { .. } => "gm_disband",

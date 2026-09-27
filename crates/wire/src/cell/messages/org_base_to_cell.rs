@@ -7,7 +7,7 @@
 //! (`ConnectedClientState`), never from the client payload, and never a
 //! privilege bit.
 
-use cimmeria_entity::organization::OrgLeaveReason;
+use cimmeria_entity::organization::{OrgLeaveReason, OrgType};
 
 /// Organization messages sent from BaseApp to CellApp.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +44,28 @@ pub enum OrgBaseToCell {
         org_id: i32,
         reason: OrgLeaveReason,
     },
+
+    /// The answer to `OrgCellToBase::RegistrarOpen` when the player may
+    /// found an organization of `org_type` (ORG-05): the cell records the
+    /// pending creation and opens the naming dialog
+    /// (`launchOrganizationCreation` [135]). An ineligible player never
+    /// gets this; the base answers them itself.
+    RegistrarEligible {
+        player_id: i32,
+        entity_id: u32,
+        npc_entity_id: u32,
+        org_type: OrgType,
+    },
+
+    /// How an `OrgCellToBase::Create` ended (ORG-05), so the cell can close
+    /// the pending creation (`created`) or charge it one attempt. The base
+    /// has already answered the client and written the outcome row.
+    CreateResult {
+        player_id: i32,
+        entity_id: u32,
+        org_type: OrgType,
+        created: bool,
+    },
 }
 
 impl OrgBaseToCell {
@@ -64,6 +86,16 @@ impl OrgBaseToCell {
                 player_id,
                 entity_id,
                 ..
+            }
+            | OrgBaseToCell::RegistrarEligible {
+                player_id,
+                entity_id,
+                ..
+            }
+            | OrgBaseToCell::CreateResult {
+                player_id,
+                entity_id,
+                ..
             } => (player_id, entity_id),
         }
     }
@@ -74,6 +106,8 @@ impl OrgBaseToCell {
             OrgBaseToCell::SquadInvite { .. } => "squad_invite",
             OrgBaseToCell::SquadKick { .. } => "squad_kick",
             OrgBaseToCell::OrgMembershipEnded { .. } => "org_membership_ended",
+            OrgBaseToCell::RegistrarEligible { .. } => "registrar_eligible",
+            OrgBaseToCell::CreateResult { .. } => "create_result",
         }
     }
 }

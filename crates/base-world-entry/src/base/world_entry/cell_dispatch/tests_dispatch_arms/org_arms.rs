@@ -1,5 +1,6 @@
 //! `CellToBaseMsg::Org` routing (ORG-01, ORG-06): every nested variant reaches
-//! `org_dispatch`; the unserved ones are logged no-ops that send nothing.
+//! `org_dispatch`. The unserved ones are logged no-ops that send nothing;
+//! ORG-05's creation variants reach the creation handlers.
 
 use super::super::*;
 use super::empty_maps;
@@ -30,15 +31,6 @@ async fn route(msg: OrgCellToBase) -> Arc<TestTransport> {
 async fn every_org_variant_reaches_the_org_arm() {
     let capture = LogCapture::install();
     let msgs = [
-        (
-            OrgCellToBase::Create {
-                player_id: 11,
-                entity_id: 21,
-                org_type: OrgType::Command,
-                name: "SG-1".into(),
-            },
-            "org.create_unimplemented",
-        ),
         (
             OrgCellToBase::TransferCash {
                 player_id: 11,
@@ -71,6 +63,68 @@ async fn every_org_variant_reaches_the_org_arm() {
         // The actor comes from the cell's session state and is logged.
         assert!(ev.has_field("player_id", "11") && ev.has_field("entity_id", "21"));
     }
+}
+
+/// ORG-05: `RegistrarOpen`, `Create` and `GmCreate` reach the creation
+/// handlers. With no session behind entity 21, each is refused for the
+/// stale actor (WARN `org.actor_mismatch`) in one INFO outcome row of its
+/// own event, and nothing is sent to a client.
+#[tokio::test]
+async fn creation_variants_reach_the_creation_handlers() {
+    let capture = LogCapture::install();
+    let msgs = [
+        (
+            OrgCellToBase::RegistrarOpen {
+                player_id: 11,
+                entity_id: 21,
+                npc_entity_id: 31,
+                org_type: OrgType::Team,
+            },
+            "org.registrar_open",
+        ),
+        (
+            OrgCellToBase::Create {
+                player_id: 11,
+                entity_id: 21,
+                org_type: OrgType::Command,
+                name: "SG-1".into(),
+            },
+            "org.create",
+        ),
+        (
+            OrgCellToBase::GmCreate {
+                player_id: 11,
+                entity_id: 21,
+                org_type: OrgType::Team,
+                name: "SG-1".into(),
+            },
+            "org.gm_action",
+        ),
+    ];
+    for (msg, event) in msgs {
+        let transport = route(msg).await;
+        assert!(transport.is_empty(), "{event}: no client to answer");
+        let row = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("event", event) && c.fields.contains_key("outcome"))
+            .unwrap_or_else(|| panic!("{event} row not logged"));
+        assert_eq!(
+            (row.target.as_str(), row.level),
+            ("org", tracing::Level::INFO)
+        );
+        assert!(
+            row.has_field("reason", "actor_mismatch"),
+            "{event}: {row:?}"
+        );
+    }
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "org.create_unimplemented")),
+        "the ORG-01 no-op arm is gone"
+    );
 }
 
 /// A forward outside 8..=17 is refused before its bytes are decoded: CM 18

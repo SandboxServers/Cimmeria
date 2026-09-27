@@ -1,13 +1,18 @@
 //! Organization dispatch arm for `CellToBaseMsg::Org`.
 //!
 //! Every `OrgCellToBase` variant lands here. ORG-06 serves a forwarded
-//! `organizationLeave` (CM 9) and `GmDisband`; the other arms are logged
-//! no-ops until ORG-05 (`Create`), the Bank campaign (`TransferCash`) and
-//! ORG-07/08 (the rest of `ForwardCellCall`) replace them. Later packets add
-//! their handlers to this file rather than to `mod.rs`.
+//! `organizationLeave` (CM 9) and `GmDisband`; ORG-05's creation variants
+//! (`RegistrarOpen`, `Create`, `GmCreate`) call the handlers in
+//! `base::organization::creation::handler`. The other arms are logged
+//! no-ops until the Bank campaign (`TransferCash`) and ORG-07/08 (the rest
+//! of `ForwardCellCall`) replace them. Later packets add their handlers to
+//! this file rather than to `mod.rs`.
 
 use std::ops::RangeInclusive;
 
+use cimmeria_base_session::base::organization::creation::handler::{
+    handle_create, handle_gm_create, handle_registrar_open, CreationCtx,
+};
 use cimmeria_base_session::base::organization::handlers::{
     gm_disband, handle_leave, resolve_actor, GmCaller, OrgCtx,
 };
@@ -33,21 +38,42 @@ fn org_ctx<'a>(ctx: &DispatchCtx<'a>) -> OrgCtx<'a> {
 /// other index in a forward is a cell-side bug or a forged message.
 const FORWARDABLE: RangeInclusive<u16> = 8..=17;
 
+/// The creation handlers' view of the dispatch context.
+fn creation_ctx<'a>(ctx: &DispatchCtx<'a>) -> CreationCtx<'a> {
+    CreationCtx {
+        db_pool: ctx.db_pool,
+        cell_tx: ctx.cell_tx,
+        transport: ctx.transport,
+        connected: ctx.connected,
+        entity_to_addr: ctx.entity_to_addr,
+    }
+}
+
 /// Route one organization message from the cell.
 pub(super) async fn route(msg: OrgCellToBase, ctx: &DispatchCtx<'_>) {
     let (player_id, entity_id) = msg.actor();
     let kind = msg.kind();
     match msg {
-        OrgCellToBase::Create { org_type, .. } => {
-            tracing::debug!(
-                target: "org",
-                event = "org.create_unimplemented",
+        // ORG-05: creation.
+        OrgCellToBase::RegistrarOpen {
+            npc_entity_id,
+            org_type,
+            ..
+        } => {
+            handle_registrar_open(
+                &creation_ctx(ctx),
                 player_id,
                 entity_id,
-                kind,
-                org_type = org_type.name(),
-                "organization message from the cell has no handler yet"
-            );
+                npc_entity_id,
+                org_type,
+            )
+            .await
+        }
+        OrgCellToBase::Create { org_type, name, .. } => {
+            handle_create(&creation_ctx(ctx), player_id, entity_id, org_type, &name).await
+        }
+        OrgCellToBase::GmCreate { org_type, name, .. } => {
+            handle_gm_create(&creation_ctx(ctx), player_id, entity_id, org_type, &name).await
         }
         OrgCellToBase::TransferCash { org_id, dir, .. } => {
             tracing::debug!(
