@@ -33,7 +33,8 @@ Parallel packets build against these names. A worker who needs to change one rai
 
 **Messages.**
 
-- `MailOp` (`crates/wire/src/cell/messages/data.rs`) gains `Send(MailSend)`, `TakeCash { mail_id }`, `TakeItem { mail_id, container_id, slot_id }`, `PayCod { mail_id }` and `Return { mail_id }`. `MailSend` holds the decoded, length-checked `CM 44` arguments; the cell does no SQL and no name lookup.
+- `MailOp` (`crates/wire/src/cell/messages/data.rs`) gains `SendRejected(MailSendReject)` (SS-M1: a send the cell refuses still goes to the base, so the mail bucket charges it and every `sendMailResult` comes from one place), `Send(MailSend)`, `TakeCash { mail_id }`, `TakeItem { mail_id, container_id, slot_id }`, `PayCod { mail_id }` and `Return { mail_id }`. `MailSend` holds the decoded, length-checked `CM 44` arguments; the cell does no SQL and no name lookup.
+- Chat messages from the cell use `CellToBaseMsg::Chat(ChatCellToBase)` (SS-C2), a nested enum in its own file; SS-C3 and SS-C4 add variants there.
 - Duels follow the organizations pattern: `BaseToCellMsg::Duel(DuelBaseToCell)` and, if a packet needs one, `CellToBaseMsg::Duel(DuelCellToBase)`, each a nested enum in its own file, so later packets add variants without editing `base_to_cell.rs` or `cell_to_base.rs`. Every variant carries `player_id` and `entity_id` from server session state, never from a payload.
 
 **Wire** (`crates/wire`): `EMailFlags` and `EMailResultCodes` constants pinned by a test that **parses `entities/defs/enumerations.xml` and compares each Rust constant with the value it finds there**. A test that asserts a constant against a hard-coded copy of itself (such as `assert_eq!(CONST, 4092)`) does not count, because it would pass if the constant and the test changed together. This follows the organizations convention (`docs/analysis/organizations/work-packets.md:32`) and covers the 4092 and 8196 anomalies (audit A-12); `build_send_mail_result`; a `MessageAttachment` serializer (`alias.xml:103-111`); `build_on_duel_challenge` [143]; the PvP-flag serializer for whichever vehicle SS-D2's receiver trace shows the client consumes (`pvpFlag` or `onEntityProperty(4, v)`, SS-E1 D-Q4 left open); and, only after SS-E1 D-Q5, builders for 151-153. Each has a byte-exact test.
@@ -48,9 +49,9 @@ Parallel packets build against these names. A worker who needs to change one rai
 | `sgw_gate_mail.expires_at integer` (epoch seconds, like `sent_time`), NULL for archived mail | SS-M4 |
 | `sgw_gate_mail.quarantined boolean NOT NULL DEFAULT false`: an already-returned mail that expired while still holding an item or gift cash. It is excluded from the mailbox list and the cap, and its escrow row is kept (D-SS04 path 3) | SS-M4 |
 
-**Mail code layout.** SS-M1 turns `crates/base-methods/src/base/world_entry/methods/mail/mod.rs` (316 lines) into a directory: `mod.rs` (the `MailOp` router), `read.rs` (headers, body, archive, delete), `send.rs`, then `take.rs`, `cod.rs`, `return_.rs` and `expiry.rs` from later packets. The Bank campaign's vault aliases replace one function, `send::resolve_recipient_flags` (D-SS07).
+**Mail code layout.** SS-M1 turned `crates/base-methods/src/base/world_entry/methods/mail/mod.rs` (316 lines) into a directory: `mod.rs` (the `MailOp` router), `read.rs` (headers, body, archive, delete), `send/` (`mod.rs`, `recipients.rs`, `deliver.rs`), then `take.rs`, `cod.rs`, `return_.rs` and `expiry.rs` from later packets. The Bank campaign's vault aliases replace one function, `send::resolve_recipient_flags` in `mail/send/mod.rs` (D-SS07).
 
-**Duel registry** (SS-D1, `crates/cell-world/src/cell/duel/`): `DuelRegistry` keyed by `player_id` (entity ids are recycled). It holds pending challenges (challenger, target, expiry, D-SS21 cooldowns), engaged duels (the pair, the arena centre, the state) and a reverse index. `can_harm(attacker_player_id, target_player_id) -> bool` is true only for an engaged pair. The four hostility gates (audit A-42) call one predicate, `combat::player_may_harm(caster, target, &duels)`, added by SS-D2.
+**Duel registry** (SS-D1, `crates/cell-world/src/cell/duel/`): `DuelRegistry` keyed by `player_id` (entity ids are recycled). It holds pending challenges (challenger, target, expiry, D-SS21 cooldowns), engaged duels (the pair, the arena centre, the state) and a reverse index. `can_harm(attacker_player_id, target_player_id) -> bool` is true only for an engaged pair. The hostility gates (audit A-42) call one predicate, `combat::player_may_attack(attacker, target)`, which the pets campaign added in #896 and which SS-D2 widens for an engaged duel pair. This replaces the `player_may_harm` this ledger first named.
 
 ## Dependency graph and waves
 
@@ -71,7 +72,7 @@ SS-00 is the bottleneck and is kept small: the index, the limiter, the feedback 
 
 - `crates/base/src/base/dispatch/mod.rs`: ORG-01 (its `organization` arm), SS-C1 (0xC5 arm), SS-C3 (the 0xC6-0xCE feedback arms), SS-D1 (0xD9 arm). Each packet adds one arm that calls a function in its own file under `dispatch/`.
 - `crates/base/src/base/dispatch/chat.rs`: SS-00 (limiter and length cap) → SS-C1 (tell branch) → SS-C3 (allowlist, mute).
-- `crates/cell-console/src/cell/console/chat.rs` (625 lines, audit A-31): ORG-04, ORG-09, SS-C1 (spatial Ignore filter), SS-C3. The first of these to start splits it into `chat/` (`mod.rs`, `spatial.rs`, `feedback.rs`, `tests/`) in a no-behaviour-change commit; the coordinators of both campaigns agree who that is.
+- `crates/cell-console/src/cell/console/chat.rs` (625 lines, audit A-31): ORG-04, ORG-09, SS-C1 (spatial Ignore filter), SS-C3. SS-C1 made that split (`chat/` with `mod.rs`, `spatial.rs`, `feedback.rs` and `tests/`); it landed on its own as #885. Logs in `chat/` submodules pass `target: CHAT_LOG_TARGET` so the SigNoz scope stays `…::console::chat`.
 - `crates/base-session/src/base/mod.rs` (`ConnectedClientState`): SS-00 (rate state), SS-C1 (ignore cache), SS-C3 (none: mutes live in their own table). ORG-06 may also add fields.
 - `crates/base-session/src/base/helpers/mod.rs` (`destroy_client_entities`): ORG-06 owns it. SS-00 needs one call there to drop the index entry; if ORG-06 has not merged, SS-00 adds the one line and tells cimmeria-fa.
 - `crates/base-session/src/base/world_entry_chat.rs` and the `CHAN_*` constants: ORG-09 only (D-SS17). SS-C4 does not edit them unless the two coordinators agree.
@@ -138,7 +139,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-00: Shared infrastructure
 
-**Status:** Ready. **Advisor:** `social-systems-engineer`, `server-authority-enforcer`. **Depends:** none (see the text-rules note in the contract).
+**Status:** Integrated (#880). **Advisor:** `social-systems-engineer`, `server-authority-enforcer`. **Depends:** none (see the text-rules note in the contract).
 
 **Scope:**
 
@@ -156,7 +157,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-M1: Plain mail send and read-side fixes
 
-**Status:** BlockedDependency (SS-00). **Advisor:** `database-persistence`, `server-authority-enforcer`.
+**Status:** Integrated (#894). **Advisor:** `database-persistence`, `server-authority-enforcer`.
 
 **Scope:**
 
@@ -171,7 +172,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-C1: Tells and Ignore
 
-**Status:** BlockedDependency (SS-00; ORG-E1 Q5 or SS-E1 C-Q1 for the tell byte). **Advisor:** `server-authority-enforcer`. Salvage source: PR #585 (audit A-26).
+**Status:** Review (#893; the `chat.rs` split landed first as #885). The tell byte is 10 (ORG-E1 Q5). **Advisor:** `server-authority-enforcer`. Salvage source: PR #585 (audit A-26).
 
 **Scope:**
 
@@ -184,7 +185,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-C2: GM broadcast
 
-**Status:** BlockedDependency (SS-00). **Advisor:** `server-authority-enforcer`.
+**Status:** Integrated (#887). **Advisor:** `server-authority-enforcer`.
 
 **Scope:**
 
@@ -197,7 +198,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-D1: Duel challenge and response
 
-**Status:** BlockedDependency (SS-00). **Advisor:** `server-authority-enforcer`, `combat-systems-advisor`.
+**Status:** Integrated (#888). Until SS-D2, an accepted duel counts down and then aborts (`reason=engage_not_implemented`). **Advisor:** `server-authority-enforcer`, `combat-systems-advisor`.
 
 **Scope:**
 
@@ -212,7 +213,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-M2: Cash and item attachments, COD escrow
 
-**Status:** BlockedDependency (SS-M1; owner row D-SS02; SS-E1 M-Q2 for `ItemId`). **Advisor:** `database-persistence`, `server-authority-enforcer`, `items-systems-advisor`, `testing-validation-engineer`.
+**Status:** Writing (SS-M1, D-SS02 and SS-E1 M-Q2 are all settled). Attachments come from the backpack only, never containers 16-20 (an owner decision relayed by the Bank campaign). **Advisor:** `database-persistence`, `server-authority-enforcer`, `items-systems-advisor`, `testing-validation-engineer`.
 
 **Scope:**
 
@@ -226,7 +227,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-C3: Channel allowlist, moderation basics, feedback for the rest
 
-**Status:** BlockedDependency (SS-C1). **Advisor:** `server-authority-enforcer`.
+**Status:** BlockedDependency (SS-C1, #893). **Advisor:** `server-authority-enforcer`.
 
 **Scope:**
 
@@ -238,13 +239,13 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-D2: PvP flag and the harm gate
 
-**Status:** BlockedDependency (SS-D1). The PvP-flag vehicle stays open under SS-E1 D-Q4 and is resolved by this packet's receiver trace; D-Q5 is closed. **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
+**Status:** Writing. The PvP-flag vehicle stays open under SS-E1 D-Q4 and is resolved by this packet's receiver trace; D-Q5 is closed. **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
 
 **Scope:**
 
 - The countdown (D-SS18) through the mechanism SS-E1 D-Q1 names, then `Engaged`.
 - **The PvP flag, through whichever vehicle the SS-D2 trace shows the client consumes** (D-SS23 provisional; SS-E1 D-Q4 left open): the dedicated `pvpFlag` property or `GENERICPROPERTY_PvPFlag` via `onEntityProperty(4, …)`. Trace the receiver first, record the evidence in `duel-wire-formats.md`, then set it on both duelists, to each and to their witnesses. A witness entering AoI mid-duel receives the current value. Whichever is chosen, the flag is presentation only; the combat gate reads the duel registry.
-- `combat::player_may_harm` and the four gate sites (audit A-42). Bystanders, NPC-vs-duelist and duelist-vs-NPC behaviour are unchanged.
+- Widen `combat::player_may_attack` (added by the pets campaign in #896, `cell-world` `combat/aggression.rs`) for an engaged duel pair, and route the four gate sites (audit A-42) and the cone/AoE faction filters through it. The widening covers the two duelists only, never their pets; whether pets may join a duel is an open owner question, defaulting to no. Bystanders, NPC-vs-duelist and duelist-vs-NPC behaviour are unchanged.
 - Duels get their own combat source: both duelists are in combat with each other and leave it symmetrically at the end.
 - `onDuelEntitiesSet` [151] with both duelists at engage, and `onDuelEntitiesClear` [153] at every end path (D-SS25 superseded by SS-E1 D-Q5). Fix the `aoi.rs:203-211` comment (152 erases). A type-6 marker only if D-SS24's condition holds.
 - Correct `duel-restoration.md:50` if SS-E1 has not.
@@ -319,7 +320,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-U2: Duel test partner
 
-**Status:** BlockedDependency (SS-D1). **Advisor:** `testing-validation-engineer`.
+**Status:** Writing (dispatched with SS-D2; the bot's accept path is SS-D2's wireclient test). **Advisor:** `testing-validation-engineer`.
 
 **Scope:** a solo tester needs a second duelist.
 
