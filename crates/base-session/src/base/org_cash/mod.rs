@@ -37,7 +37,7 @@
 //! carry `account_id`, `player_id`, `entity_id` and `org_id`.
 
 pub mod persist;
-mod sends;
+pub mod sends;
 
 #[cfg(test)]
 mod tests;

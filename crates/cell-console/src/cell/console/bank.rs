@@ -22,8 +22,16 @@
 //! `.bankexpand` (BV-05) buys one +10 step of the GM's own vault through
 //! the Banker dialog's purchase path, with an open vault session required.
 //!
+//! `.orgvaultexpand [team|command] [from_slots]` (BV-09, D-BV28) quotes, or
+//! with the current size buys, one +10 step of the GM's Team vault, paid
+//! from the Team treasury. The Team's leader only, checked by the base
+//! under the organization lock. There is no client UI for it: the Expand
+//! dialog is quarantined (#943). No vault session is needed: the purchase
+//! moves no item and the leader check is the authorization.
+//!
 //! New in the Rust server; the legacy python console had no equivalent.
 
+use cimmeria_entity::cell_entity::VaultScope;
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
@@ -145,6 +153,118 @@ pub(super) async fn expand(
     space_mgr: &mut SpaceManager,
 ) {
     crate::cell::interactions::gm_expand_vault(caller_id, tx, space_mgr).await;
+}
+
+/// The usage line for a `.orgvaultexpand` it cannot parse.
+pub(crate) const ORG_EXPAND_USAGE: &str =
+    "orgvaultexpand: usage .orgvaultexpand [team|command] [from_slots]. Nothing was charged.";
+
+/// `.orgvaultexpand [team|command] [from_slots]`: parse the arguments and
+/// hand the quote or the purchase to the base, which answers the GM.
+///
+/// Refused here, with WARN `expand_rejected` (`scope`, `trigger=gm_console`)
+/// and a line: arguments it cannot parse (`bad_args`), an entity with no
+/// character (`player_missing`), and a dead base channel
+/// (`base_channel_closed`).
+#[tracing::instrument(name = "bank.console_org_expand", level = "info", skip_all, fields(entity_id = caller_id))]
+pub(super) async fn org_expand(
+    caller_id: u32,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(caller_id);
+    let refuse = |reason: &'static str, scope: Option<VaultScope>| {
+        tracing::warn!(
+            target: "bank",
+            event = "expand_rejected",
+            account_id = id.account_id,
+            player_id = id.player_id,
+            entity_id = caller_id,
+            scope = scope.map(VaultScope::as_str),
+            reason,
+            trigger = "gm_console",
+            "expand_rejected: .orgvaultexpand refused on the cell -- nothing bought"
+        );
+    };
+    let Some((scope, from_slots)) = parse_org_expand_args(args) else {
+        refuse("bad_args", None);
+        send_gm_feedback(caller_id, ORG_EXPAND_USAGE, tx).await;
+        return;
+    };
+    let Some(player_id) = id.player_id else {
+        refuse("player_missing", Some(scope));
+        send_gm_feedback(
+            caller_id,
+            "orgvaultexpand: you have no character id. Nothing was charged.",
+            tx,
+        )
+        .await;
+        return;
+    };
+    let msg = CellToBaseMsg::Bank(BankCellToBase::OrgVaultExpand {
+        entity_id: caller_id,
+        account_id: id.account_id,
+        player_id,
+        scope,
+        from_slots,
+    });
+    if tx.send(msg).await.is_err() {
+        // No feedback line: it would go down the same closed channel.
+        refuse("base_channel_closed", Some(scope));
+    }
+}
+
+/// `[team|command] [from_slots]`, in either order: the scope defaults to
+/// `Team`, the size to none (a quote). `None` for anything else.
+pub(crate) fn parse_org_expand_args(args: &[&str]) -> Option<(VaultScope, Option<i16>)> {
+    let (mut scope, mut from) = (None, None);
+    for arg in args {
+        if arg.eq_ignore_ascii_case("team") && scope.is_none() {
+            scope = Some(VaultScope::Team);
+        } else if arg.eq_ignore_ascii_case("command") && scope.is_none() {
+            scope = Some(VaultScope::Command);
+        } else if let (Ok(n), None) = (arg.parse::<i16>(), from) {
+            from = Some(n);
+        } else {
+            return None;
+        }
+    }
+    Some((scope.unwrap_or(VaultScope::Team), from))
+}
+
+/// Is `text` a `.orgvaultexpand` line? Matched on the command word only.
+pub(crate) fn is_orgvaultexpand_command(text: &str) -> bool {
+    text.strip_prefix('.')
+        .and_then(|body| body.split_whitespace().next())
+        .is_some_and(|name| name.eq_ignore_ascii_case("orgvaultexpand"))
+}
+
+/// A non-GM typed `.orgvaultexpand`: WARN `expand_rejected reason=not_gm
+/// scope=team` and a line. The chat line is consumed, never broadcast.
+pub(crate) async fn refuse_non_gm_org_expand(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(entity_id);
+    tracing::warn!(
+        target: "bank",
+        event = "expand_rejected",
+        account_id = id.account_id,
+        player_id = id.player_id,
+        entity_id,
+        scope = VaultScope::Team.as_str(),
+        reason = "not_gm",
+        trigger = "gm_console",
+        "expand_rejected: .orgvaultexpand from a player without GM access -- nothing bought"
+    );
+    send_gm_feedback(
+        entity_id,
+        ".orgvaultexpand needs GM access. Nothing was charged.",
+        tx,
+    )
+    .await;
 }
 
 /// Is `text` a `.bankexpand` line? Matched on the command word only.

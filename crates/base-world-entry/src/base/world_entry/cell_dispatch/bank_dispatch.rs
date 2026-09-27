@@ -7,7 +7,12 @@ use crate::base::bank_dump::{handle_gm_dump, DumpCaller};
 use crate::base::bank_expand::{handle_expand, handle_expansion_quote, ExpandCaller};
 use crate::cell::messages::BankCellToBase;
 
-use super::super::methods::{handle_org_vault_open, OrgVaultIo, OrgVaultOpenRequest};
+use cimmeria_base_session::base::organization::handlers::OrgCtx;
+
+use super::super::methods::{
+    handle_org_vault_expand, handle_org_vault_open, OrgVaultExpandRequest, OrgVaultIo,
+    OrgVaultOpenRequest,
+};
 
 use super::DispatchCtx;
 
@@ -106,6 +111,29 @@ pub(super) async fn route(msg: BankCellToBase, ctx: &DispatchCtx<'_>) {
                 entity_to_addr: ctx.entity_to_addr,
             };
             handle_org_vault_open(req, io).await
+        }
+        BankCellToBase::OrgVaultExpand {
+            entity_id,
+            account_id,
+            player_id,
+            scope,
+            from_slots,
+        } => {
+            let req = OrgVaultExpandRequest {
+                entity_id,
+                account_id,
+                player_id,
+                scope,
+                from_slots,
+            };
+            let octx = OrgCtx {
+                db_pool: ctx.db_pool,
+                transport: ctx.transport,
+                connected: ctx.connected,
+                entity_to_addr: ctx.entity_to_addr,
+                cell_tx: ctx.cell_tx,
+            };
+            handle_org_vault_expand(req, &octx).await
         }
     }
 }
