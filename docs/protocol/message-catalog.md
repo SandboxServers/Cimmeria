@@ -75,7 +75,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | Missions | 16 | Partial (~40%) |
 | Chat & Communication | 14 | Implemented |
 | Contact Lists | 6 | Implemented |
-| Organizations | 15 | Implemented server-side except cash transfer (Bank campaign) and the unsolicited PvP leave response; not yet client-verified |
+| Organizations | 15 | Implemented server-side except the unsolicited PvP leave response (cash transfer is bank-vault BV-08); not yet client-verified |
 | Mail | 9 | Not implemented |
 | Trading | 4 | Not implemented |
 | Black Market | 4 | Not implemented |
@@ -192,7 +192,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 
 ### Organizations
 
-> **Implemented server-side, not yet client-verified (2026-09-27, organizations close-out ORG-11).** ORG-01 decodes every organization call the client sends: cell methods 8-19 and SGWPlayer cell method 94 (`onOrganizationCreation`; earlier editions of this table named it `OrganizationMember.createOrganization`, which does not exist) through `decode_org_cell_method` / `decode_on_organization_creation` in `crates/wire/src/cell/cell_methods/organization/`, and base methods 0xCF-0xD2 through `decode_org_base_method` in `crates/wire/src/base/organization.rs`. ORG-03 to ORG-10 handle them: squads on the cell, Teams and Commands on the base ([organization-system.md](../gameplay/organization-system.md)). `Impl` is YES where the call does what the client asks. `organizationTransferCash` still answers "not available yet" until the Bank campaign's BV-08, and `pvpOrganizationLeaveResponse` is refused as unsolicited because no strike-team request is ever sent (CAT-M-17). The `.def Method` column keeps this table's older names; the dispatch tables have the real ones. The server-to-client organization methods have serializers; see [client-method-dispatch-table.md](client-method-dispatch-table.md). Campaign: [docs/analysis/organizations/](../analysis/organizations/README.md).
+> **Implemented server-side, not yet client-verified (2026-09-27, organizations close-out ORG-11).** ORG-01 decodes every organization call the client sends: cell methods 8-19 and SGWPlayer cell method 94 (`onOrganizationCreation`; earlier editions of this table named it `OrganizationMember.createOrganization`, which does not exist) through `decode_org_cell_method` / `decode_on_organization_creation` in `crates/wire/src/cell/cell_methods/organization/`, and base methods 0xCF-0xD2 through `decode_org_base_method` in `crates/wire/src/base/organization.rs`. ORG-03 to ORG-10 handle them: squads on the cell, Teams and Commands on the base ([organization-system.md](../gameplay/organization-system.md)). `Impl` is YES where the call does what the client asks. `organizationTransferCash` moves naquadah between the wallet and the treasury (the Bank campaign's BV-08), and `pvpOrganizationLeaveResponse` is refused as unsolicited because no strike-team request is ever sent (CAT-M-17). The `.def Method` column keeps this table's older names; the dispatch tables have the real ones. The server-to-client organization methods have serializers; see [client-method-dispatch-table.md](client-method-dispatch-table.md). Campaign: [docs/analysis/organizations/](../analysis/organizations/README.md).
 
 | Event Name | String Addr | Handler Addr | .def Method | Impl |
 |------------|-------------|--------------|-------------|------|

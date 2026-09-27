@@ -87,9 +87,12 @@
 //! change takes. Two rules follow (agreed with the organizations campaign
 //! for BV-07 and BV-08):
 //!
-//! - a cash change (BV-08) takes the `KEY SHARE` first and makes its plain
-//!   `UPDATE` of the actor's row after [`lock_org`], never a `SELECT … FOR
-//!   UPDATE`;
+//! - a cash change (BV-08, `base::org_cash::persist`) takes the `KEY SHARE`
+//!   first and makes its plain `UPDATE` of the actor's row after
+//!   [`lock_org`], never a `SELECT … FOR UPDATE` (a `FOR UPDATE` there
+//!   would wait on a concurrent transfer's `KEY SHARE` while holding the
+//!   organization); its balance comes from that `UPDATE`'s `RETURNING`,
+//!   since `KEY SHARE` does not stop other plain writers of `naquadah`;
 //! - a vault transaction that touches another member's `sgw_player` row
 //!   takes every player row it needs, `FOR KEY SHARE` in `player_id`
 //!   order, before [`lock_org`].
