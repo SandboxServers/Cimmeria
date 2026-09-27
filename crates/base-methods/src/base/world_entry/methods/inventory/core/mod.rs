@@ -19,6 +19,8 @@ use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
+#[cfg(test)]
+mod crafting_tools_tests;
 mod remove_by_type;
 mod remove_instance;
 #[cfg(test)]
