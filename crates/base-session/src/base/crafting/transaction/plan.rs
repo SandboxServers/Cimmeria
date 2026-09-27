@@ -42,6 +42,10 @@ pub struct CraftTransaction {
     /// `(discipline_id, delta)` for disciplines the player knows, clamped
     /// to `[0, 100]`. Unknown disciplines are skipped.
     pub expertise: Vec<(i32, i32)>,
+    /// `(blueprint_id, discipline_id)` to add to the player's known list.
+    /// A blueprint is taught only while its discipline is known, checked
+    /// under the player row lock; already known ones are skipped.
+    pub learn_blueprints: Vec<(i32, i32)>,
 }
 
 impl CraftTransaction {

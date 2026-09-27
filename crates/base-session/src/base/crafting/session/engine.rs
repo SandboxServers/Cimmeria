@@ -356,6 +356,12 @@ impl CraftingSessions {
                     result = report.result.unwrap_or(""),
                     chance = %opt(report.chance),
                     roll = %opt(report.roll),
+                    component_set_id = %opt(report.component_set_id),
+                    discipline_id = %opt(report.discipline_id),
+                    eligible_disciplines = %report.eligible_disciplines,
+                    bias = %opt(report.bias),
+                    rolls = %report.rolls,
+                    blueprints_learned = %report.blueprints_learned,
                     "crafting induction completed"
                 );
                 count_job(verb, JobEnd::Completed);

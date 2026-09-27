@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use cimmeria_entity::crafting::serialize_on_update_discipline;
 use cimmeria_entity::inventory::InvItem;
+use cimmeria_wire::crafting::known_crafts_args;
 use sqlx::PgPool;
 
 use super::CraftApplied;
@@ -49,7 +50,8 @@ struct InventoryRow {
 
 /// Tell the client what a committed transaction changed: `onRemoveItem`
 /// for the drained stacks, one `onUpdateItem` for the shrunk and granted
-/// stacks, `onUpdateDiscipline` per changed discipline.
+/// stacks, `onUpdateDiscipline` per changed discipline, and
+/// `onUpdateKnownCrafts` (the whole list) when blueprints were taught.
 ///
 /// If any item notification failed (a send, or the item read), the client
 /// gets one recovery pass after the rest: `onRemoveItem` for the drained
@@ -99,6 +101,16 @@ pub(super) async fn send_applied(
             method_idx::ON_UPDATE_DISCIPLINE,
             &args,
             "update_discipline",
+        )
+        .await;
+    }
+    if let Some(learned) = &applied.blueprints {
+        send_to_player(
+            env,
+            ids,
+            method_idx::ON_UPDATE_KNOWN_CRAFTS,
+            &known_crafts_args(&learned.blueprint_ids),
+            "known_crafts",
         )
         .await;
     }

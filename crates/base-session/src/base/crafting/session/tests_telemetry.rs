@@ -113,7 +113,7 @@ impl InductionJob for ProbeJob {
         let outcome = if self.fails {
             JobOutcome::Failed
         } else {
-            JobOutcome::Completed(JobReport::default())
+            JobOutcome::Completed(Box::default())
         };
         Box::pin(async move { outcome })
     }

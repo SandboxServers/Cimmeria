@@ -9,6 +9,8 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::feedback::{reject, CraftReject};
+use super::research::handle_research;
+use super::reverse_engineer::handle_reverse_engineer;
 use super::spend::handle_spend;
 use super::sync::CraftClient;
 use super::telemetry::account_id_of;
@@ -40,7 +42,9 @@ impl CraftCtx<'_> {
 /// station gate ([`super::gate`]) and answer it, inside one
 /// `crafting.request` span per request.
 ///
-/// `Spend` is decided by [`super::spend`]. Every other verb that passes the
+/// `Spend` is decided by [`super::spend`], `Research` by
+/// [`super::research`] and `ReverseEngineer` by
+/// [`super::reverse_engineer`]. Every other verb that passes the
 /// gate is answered with a "not available yet" line until it is
 /// implemented, so a press is never silent.
 #[tracing::instrument(
@@ -74,9 +78,20 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
         reject(method, entity_id, player_id, &why, ctx.client()).await;
         return;
     }
-    if let CraftVerb::Spend { discipline_id } = verb {
-        handle_spend(entity_id, player_id, discipline_id, ctx).await;
-        return;
+    match verb {
+        CraftVerb::Spend { discipline_id } => {
+            handle_spend(entity_id, player_id, discipline_id, ctx).await;
+            return;
+        }
+        CraftVerb::Research { item_id, kickers } => {
+            handle_research(entity_id, player_id, item_id, kickers, ctx).await;
+            return;
+        }
+        CraftVerb::ReverseEngineer { item_id } => {
+            handle_reverse_engineer(entity_id, player_id, item_id, ctx).await;
+            return;
+        }
+        _ => {}
     }
     reject(
         method,

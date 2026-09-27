@@ -112,6 +112,7 @@ async fn refuse(
         needed = c.needed,
         available = c.available,
         queue_limit = c.queue_limit,
+        applied_science_id = c.applied_science_id,
         tools = why.tools_considered(),
         blueprint_ids = why.blueprints_considered(),
         "crafting request rejected"

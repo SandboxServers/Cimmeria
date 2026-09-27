@@ -8,7 +8,7 @@ last_updated: 2026-07-25
 # Crafting System
 
 > **Last updated**: 2026-09-27
-> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15). Craft, research, reverse engineering, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) and research and reverse engineering (CR-08). Craft, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -35,12 +35,12 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Spend applied-science points | DONE | `base/crafting/spend/` (CR-04), see [Learning a discipline](#learning-a-discipline) |
 | Earn applied-science points | DONE | 1 at level 1 and 1 per level gained, written with the level by the XP grant (CR-12), see [Earning applied science points](#earning-applied-science-points) |
 | Crafting (blueprint) | STUB | The base answers "Crafting is not available yet." |
-| Research | STUB | The base answers "Research is not available yet." |
-| Reverse engineering | STUB | The base answers "Reverse engineering is not available yet." |
+| Research | DONE | Item and kickers checked at the request, rolled and consumed when the bar ends; +5 expertise and the blueprint on a success. CR-08 |
+| Reverse engineering | DONE | Exactly the named item is consumed when the bar ends; recovery rises with expertise (D-CR06). CR-08 |
 | Alloying | STUB | The base answers "Alloying is not available yet." |
 | Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
-| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. No verb submits to it yet. See [Induction engine](#induction-engine) |
-| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. No verb builds one yet |
+| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Research and reverse engineering submit to it (CR-08); craft and alloy do not yet. See [Induction engine](#induction-engine) |
+| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. Research and reverse engineering build one (CR-08); craft and alloy do not yet |
 | Busy state lock | REPLACED | The induction queue serializes a player's crafting; there is no separate busy flag |
 | Crafting stations | DONE | The cell tracks the nearest station per verb within `MAX_INTERACT_DISTANCE` (5 units, 3-D) and reports changes to the base once a second; the forward recomputes the mask per request. CR-05. No seeded template is a station yet (CR-11 adds the debug-hub four) |
 | Field Crafting Tools | DONE | A tool in the crafting bag (container 15) covers crafting, research and reverse engineering for its science up to its `tech_comp` (D-CR21). CR-05 |
@@ -130,35 +130,38 @@ Crafter.craft(blueprintId, itemIds, quantity)
 
 ### Research
 
-Destroys an item for a chance to gain expertise in a related discipline.
+Uses up an item, and any kickers, for a chance at expertise in one of the item's disciplines and at the blueprint that makes it. Code: `base/crafting/research/`.
 
-```
-Crafter.research(itemId, kickerIds)
-  |-> Validate: not busy, item researchable, kickers valid
-  |-> Consume item and kickers
-  |-> Calculate chance: 100 - currentExpertise + 5 * kickerCount
-  |-> Select random applicable discipline
-  |-> Start 3.0s timer
-  |-> researchCompleted():
-       |-> If successful: gain 5 expertise points
-```
+**At the request**, refused with a text line and nothing used:
+
+| Check | Line | `reason` |
+|---|---|---|
+| The item or a kicker is gone or not the player's | A component is no longer in your inventory. Nothing was used. | `component_missing` |
+| The item or a kicker is outside the main bag (1) and the crafting bag (15) | Components must be in your backpack or crafting bag. Nothing was used. | `component_not_in_crafting_bags` |
+| The item is not flagged `Craft_Research` | That item cannot be researched. Nothing was used. | `not_researchable` |
+| A kicker is not flagged `Kicker`, or has no applied science | That item is not a research kicker. Nothing was used. | `not_kicker` |
+| A kicker of the item's own applied science | Kickers cannot come from the same applied science as the item being researched. Nothing was used. | `kicker_same_science` |
+| A second kicker of one applied science | Only one kicker per applied science can be used. Nothing was used. | `kicker_duplicate_science` |
+
+The kicker rules are the client's (`ResearchPage.lua`: one kicker slot per science, never the item's own); the client sends the request even when its own checks fail, so the server repeats them.
+
+**When the bar ends** the job reads the player's crafting state and rolls:
+
+1. The eligible disciplines are the item's disciplines the player knows with `0 < expertise < item tech competency`. With none, nothing is rolled: the item and kickers are used and the line says the research taught nothing new.
+2. One discipline is picked uniformly, then the chance is `100 − expertise + 5 × kickers` percent against a roll in `[0, 100)`.
+3. One transaction consumes exactly the named item and kickers. On a success it adds 5 expertise to the picked discipline and teaches every blueprint that makes the item whose discipline the player knows (checked again under the player row lock), then sends `onUpdateDiscipline` (136) and the whole known list, `onUpdateKnownCrafts` (139).
+
+The player reads "Research succeeded: <discipline> expertise increased to <n>." (plus "You learned 1 new blueprint." when one was taught) or "Research complete, but no expertise was gained." The item and kickers are used whatever the roll, as in the original server.
 
 ### Reverse Engineer
 
-Destroys an item to recover some of its component materials.
+Uses up an item to recover some of the components of a recipe that makes it. Code: `base/crafting/reverse_engineer/`.
 
-```
-Crafter.reverseEngineer(itemId)
-  |-> Validate: not busy, item reverse-engineerable
-  |-> Find blueprints that produce this item
-  |-> Select random blueprint and component set
-  |-> Calculate bias: techCompetency / playerExpertise
-  |-> For each component: quantity = floor(random * bias * originalQuantity)
-  |-> Consume item
-  |-> Start 3.0s timer
-  |-> reverseEngineeringCompleted():
-       |-> Add recovered components to inventory
-```
+**At the request** the item must still be the player's, in bag 1 or 15, flagged `Craft_RevEng` ("That item cannot be reverse engineered. Nothing was used.", `not_reverse_engineerable`), and made by at least one blueprint with a recipe ("No known recipe makes that item, so it cannot be reverse engineered. Nothing was used.", `no_blueprint_for_item`). No discipline needs to be known. The reverse-engineering page sends one request per slotted item, up to ten at once; each is its own induction.
+
+**When the bar ends** the job picks one of those blueprints and one of its component sets uniformly, then rolls each component: `floor(roll × min(1, max(expertise, 1) / tc) × quantity)`, where `expertise` is the player's in the blueprint's discipline (0 when unknown) and `tc` is the item's tech competency (D-CR06). Recovery rises with expertise and is full at the tech competency. When every component comes to zero, the component with the highest roll recovers one unit. One transaction consumes exactly the named instance (never another stack of the same design) and grants the components, which land in the crafting bag. The player reads "Reverse engineering complete: recovered <n> components."
+
+The legacy `Crafter.py` could pick past the end of its lists, divided by zero expertise, and rewarded low expertise (audit C-50 to C-52); none of that is ported.
 
 ### Alloy
 
@@ -179,7 +182,7 @@ Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
 
 ## Induction engine
 
-Every crafting verb that takes time (craft, research, reverse engineer, alloy) will run through the same engine on the base. The verbs are not wired to it yet. Unlike the original server, which consumed the components when the request arrived (so a logout or crash during the bar lost them), the Rust engine validates at the request and consumes only when the bar completes.
+Every crafting verb that takes time (craft, research, reverse engineer, alloy) runs through the same engine on the base; research and reverse engineering use it today. Unlike the original server, which consumed the components when the request arrived (so a logout or crash during the bar lost them), the Rust engine validates at the request and consumes only when the bar completes.
 
 **Queue.** Each player has one running induction and a first-in-first-out queue, ten in all. The reverse-engineering page sends up to ten requests in one burst, so all ten are accepted. The eleventh is refused with "You can have at most 10 crafting jobs at once." and an inventory resync (one resync per burst). The queue is keyed by the player entity and lives only in memory.
 
@@ -191,11 +194,12 @@ Every crafting verb that takes time (craft, research, reverse engineer, alloy) w
 
 **The transaction.** A completing item verb runs one database transaction:
 
-1. Take the player-wide inventory lock and the per-bag locks (main bag, crafting bag, and every product's bag). The player row is read but never locked: the vendor stack locks inventory rows before the player row, and vendor purchase takes the same player-wide lock first, so neither can deadlock with a completion.
+1. Take the player-wide inventory lock and the per-bag locks (main bag, crafting bag, and every product's bag). The player row is read, and locked only by a research that teaches a blueprint, after every inventory row: the vendor stack locks inventory rows before the player row, and vendor purchase takes the same player-wide lock first, so neither can deadlock with a completion.
 2. Lock each item instance the request named and check that it still belongs to the player, is of the design the verb named it for, and sits in the main bag (1) or the crafting bag (15).
 3. Take any exact consumption from its named instance only (reverse engineering consumes the one item it names). Then consume each component by design across those two bags, the crafting bag first. The client names only one instance per component type, so a requirement that spans several stacks is met by design, not by the named instance. A bank stack never counts.
 4. Place each product in the first main or crafting bag its `container_sets` list. The 752 crafting components list `{17,15}` (bank first) and land in the crafting bag. A product merges into one unbound stack with room for the whole quantity, or takes free slots, one per full stack.
-5. Add expertise to disciplines the player knows, capped at 100.
+5. Teach the blueprints the plan names (research only): lock the player row, after every inventory row, and add each blueprint whose discipline the player knows.
+6. Add expertise to disciplines the player knows, capped at 100.
 
 After the commit the client gets `onRemoveItem` for emptied stacks, one `onUpdateItem` for changed ones and `onUpdateDiscipline` for each changed discipline (if an item update fails to go out, the removal is sent again with a full `onUpdateItem`); the cell gets the inventory events through the outbox. If anything fails, nothing is applied and the player gets one of these lines, followed by a full inventory resync:
 
