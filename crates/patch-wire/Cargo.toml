@@ -1,0 +1,17 @@
+[package]
+name = "cimmeria-patch-wire"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Zero-dependency codecs for the method arguments the server and the injected client-patch DLL exchange, starting with the Black Market (SGWBlackMarketManager) methods."
+
+# Deliberately std-only: no dependencies of any kind, not even the
+# cargo-hakari workspace-hack (.config/hakari.toml lists this crate under
+# `final-excludes` so `cargo hakari manage-deps` never adds it). The
+# client-patch DLL links this crate into SGW.exe, and the workspace-hack
+# would drag tokio, hyper and sqlx in with it. The server is meant to link
+# it too (its Black Market serializers switch over in a later change), so a
+# server/client disagreement about a wire layout fails a test here instead
+# of surfacing in UAT.
+[dependencies]

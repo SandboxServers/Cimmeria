@@ -21,6 +21,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Tooling quirks
 
 - [python-write-mangles-utf8-and-crlf.md](python-write-mangles-utf8-and-crlf.md) — `write_text` encodes cp1252: use bytes + restore CRLF; `sed -i` strips CR; the Bash tool turns `\\` into `\` (use scratch scripts).
+- [i686-test-exe-uac-installer-detection.md](i686-test-exe-uac-installer-detection.md) — a 32-bit test exe named `*patch*` fails with os error 740 under UAC; embed an asInvoker manifest via build.rs `rustc-link-arg`.
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt pulls a standalone comment into the previous line's trailing column; add a blank line.
 - [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` sorts `mod` lines, so "append at the end" never survives `cargo fmt`.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be last; clippy 1.98+ wants `as_chunks::<2>()` over `chunks_exact(2)`.

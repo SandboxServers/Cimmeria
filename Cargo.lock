@@ -1378,6 +1378,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-patch-wire"
+version = "0.1.0"
+
+[[package]]
 name = "cimmeria-resources"
 version = "0.1.0"
 dependencies = [
