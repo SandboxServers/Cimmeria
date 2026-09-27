@@ -61,8 +61,8 @@
 | Field | Type | Size | Notes |
 |-------|------|------|-------|
 | `MailId` | `INT32` | 4B | |
-| `ContainerId` | `INT32` | 4B | Destination bag |
-| `SlotId` | `INT32` | 4B | Destination slot |
+| `ContainerId` | `INT32` | 4B | **Unreliable; ignored by the server.** The shipped client sends uninitialised stack values (M-Q5 below). The server picks the destination. |
+| `SlotId` | `INT32` | 4B | **Unreliable; ignored by the server** (same reason) |
 
 **Total wire size**: 1B header + 12B = **13 bytes**
 
