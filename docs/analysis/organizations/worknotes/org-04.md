@@ -67,7 +67,7 @@ All from the worktree root through `tools/build-lane/lane.sh` (target `B:\target
 | `cargo test -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell-console -p cimmeria-base -p cimmeria-cell --lib --no-fail-fast` | 0 | base 104, cell 468, cell-console 322, cell-methods 331, cell-world 446 |
 | `cargo test -p cimmeria-server --bin cimmeria-server logging` | 0 | 53 passed |
 | `python tools/crate-graph/crate_graph.py` | 0 | README graphs regenerated (the new edge) |
-| `live-db-test.sh squad chat organization` | see below | |
+| `live-db-test.sh squad chat organization` (reloads `sgw_org_04`) | 0 | 196 run, 196 passed, the rest filtered out |
 
 No test in this packet needs a database; the live-DB run checks the touched crates' existing live-DB tests.
 
