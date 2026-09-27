@@ -29,10 +29,13 @@ pub mod cooked_data;
 pub mod crafting;
 pub mod deferred_aoi;
 pub mod deferred_aoi_lifecycle;
+pub mod feedback;
 pub mod gm_feedback;
 pub mod gm_spawn;
 pub mod helpers;
 pub mod outbox;
+pub mod player_index;
+pub mod rate_limit;
 pub mod session_identity;
 pub mod tick_sync;
 pub mod world_entry_chat;
@@ -250,6 +253,16 @@ pub struct ConnectedClientState {
     /// of falling back to "lowest player_id for the account" — which is
     /// wrong on multi-character accounts.
     pub active_player_id: Option<i32>,
+    /// Whether this session is listed in the name index
+    /// ([`player_index::OnlinePlayerIndex`]) that tells, mail notification
+    /// and duel challenges resolve names against. Set at world entry
+    /// (`play_character`) with `player_name`; cleared by `logOff` on both
+    /// variants. A session removed from the map is unlisted by definition,
+    /// so the teardown paths need no call of their own.
+    pub listed_online: bool,
+    /// Per-category token buckets (chat, mail send, duel challenge). Dies
+    /// with the session. See [`rate_limit`].
+    pub rate_limits: rate_limit::PlayerRateState,
     /// Cross-world ring transport carry-through. Set in
     /// `handle_gate_travel` when the cell `Effect::TeleportCrossWorld`
     /// passes a ring id; consumed in

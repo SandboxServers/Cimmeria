@@ -61,6 +61,8 @@ pub(super) fn make_connected_state(active_player_id: Option<i32>) -> ConnectedCl
         cancelled: Arc::new(AtomicBool::new(false)),
         cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
         cinematic_aoi_hold: None,
+        listed_online: false,
+        rate_limits: Default::default(),
         player_name: None,
         player_level: Some(1),
         player_archetype: None,
