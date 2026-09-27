@@ -15,7 +15,8 @@
 //! A recipient in AFK or DND still gets the tell; their away message goes
 //! back to the sender on the tell channel, spoken by the recipient.
 //!
-//! The rate limit (D-SS14) and the text rules (D-SS12) have already run in
+//! The rate limit (D-SS14), the channel allowlist and the GM mute (SS-C3,
+//! D-SS26) and the text rules (D-SS12) have already run in
 //! `chat::send_player_communication_at` before this is reached.
 
 use std::net::SocketAddr;
@@ -187,7 +188,9 @@ pub(super) async fn handle_tell(
         return;
     }
 
-    // TODO(SS-C3): refuse a muted sender here, before the name lookup.
+    // A muted sender never gets here: the mute gate (SS-C3,
+    // `chat_gates::refuse_if_muted`) runs in `send_player_communication_at`
+    // before the tell branch, so spatial lines and tells share one check.
 
     let recipient = match resolve(ctx, &sender, target) {
         Resolution::Found(r) => r,

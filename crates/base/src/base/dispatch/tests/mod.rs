@@ -17,12 +17,16 @@
 //! - [`tell`]: tells on the base, fan-out and refusals (SS-C1).
 //! - [`chat_ignore`]: `chatIgnore` refusals and list edits (SS-C1).
 //! - [`chat_ignore_race`]: the cap and duplicate checks under the list lock.
+//! - [`chat_channel_mute`]: the channel allowlist and the GM mute (SS-C3).
+//! - [`communicator_unsupported`]: the 0xC6-0xCE feedback arms (SS-C3).
 
+mod chat_channel_mute;
 mod chat_dnd_limit;
 mod chat_flood_limit;
 mod chat_ignore;
 mod chat_ignore_race;
 mod chat_speaker_flags;
+mod communicator_unsupported;
 mod crafting_teardown;
 mod duel_challenge;
 mod organization;

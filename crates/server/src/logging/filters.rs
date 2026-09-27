@@ -177,8 +177,12 @@ use crate::otel;
 /// most one per category per player per 5 s) and at DEBUG for the silent
 /// drops between; `chat` logs the D-SS12 text-rule refusals and (SS-C2)
 /// the GM broadcast: `chat.gm_broadcast` (INFO audit row),
-/// `chat.gm_broadcast_delivered` and `chat.gm_broadcast_rejected`. Both are
-/// `debug` so the suppressed drops reach SigNoz during flood triage.
+/// `chat.gm_broadcast_delivered` and `chat.gm_broadcast_rejected`, and
+/// (SS-C3) the channel allowlist, the GM mutes and the unsupported
+/// Communicator methods: `chat.channel_rejected`, `chat.gm_mute` /
+/// `chat.gm_unmute` (INFO audit rows), their `_refused` rows,
+/// `chat.method_unsupported`, and the DEBUG `chat.muted_refused`. Both are
+/// `debug` so the suppressed drops and the muted lines reach SigNoz.
 /// `online_index` (SS-00) is the online name index: DEBUG `insert` /
 /// `remove` rows with the teardown `path`, and a DEBUG `lookup` row with
 /// `reason = missing | ambiguous` for every lookup that does not resolve.

@@ -22,6 +22,7 @@ use cimmeria_entity::organization::org_text::{validate, TextField, TextReject};
 use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_UNITS};
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
+use super::chat_gates::{refuse_channel, refuse_if_muted, Speaker};
 use super::speaker_flags;
 use super::tell::{self, TellSender, TELL_CHANNEL};
 
@@ -30,11 +31,13 @@ const MAX_DND_MESSAGE_CHARS: usize = 128;
 /// `sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)`.
 ///
 /// Routes spatial channels (say/emote/yell) to the CellService with the
-/// computed `speaker_flags`, after two gates that run here, before the cell
+/// computed `speaker_flags`, after four gates that run here, before the cell
 /// ever sees the line:
 ///
 /// 1. the per-player chat bucket (D-SS14; GameMaster and above exempt);
-/// 2. the D-SS12 text rules: at most [`MAX_CHAT_TEXT_UNITS`] UTF-16 units and
+/// 2. the channel allowlist (SS-C3, CAT-L-03, `chat_gates.rs`);
+/// 3. the GM mute (SS-C3, D-SS26, `chat_gates.rs`), for tells as well;
+/// 4. the D-SS12 text rules: at most [`MAX_CHAT_TEXT_UNITS`] UTF-16 units and
 ///    none of the characters D-ORG10 forbids (controls, bidi, zero-width and
 ///    other format characters, line separators), through the one
 ///    implementation, `org_text::validate(TextField::ChatText, ..)`.
@@ -110,7 +113,7 @@ pub(super) async fn send_player_communication_at(
     //   - SPEAKER_DND if dndMessage is not None
     // SPEAKER_Petition (0x02) is in the enum but never set by the
     // Python reference, so it is intentionally not computed.
-    let (player_eid, speaker_flags_value, player_id, account_id, decision) = {
+    let (player_eid, speaker_flags_value, player_id, account_id, access_level, decision) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
@@ -142,6 +145,7 @@ pub(super) async fn send_player_communication_at(
                     flags,
                     c.active_player_id,
                     c.account_id,
+                    c.access_level,
                     decision,
                 )
             }
@@ -158,6 +162,20 @@ pub(super) async fn send_player_communication_at(
         if notify {
             send_feedback_line(&feedback, addr, RateCategory::Chat.feedback_text()).await;
         }
+        return;
+    }
+
+    let who = Speaker {
+        addr,
+        player_id,
+        account_id,
+        entity_id: player_eid,
+        access_level,
+    };
+    if refuse_channel(&feedback, who, channel).await {
+        return;
+    }
+    if refuse_if_muted(&feedback, who, channel, now).await {
         return;
     }
 
