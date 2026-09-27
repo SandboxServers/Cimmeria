@@ -3,8 +3,10 @@
 //! (`attach_live`, `attach_race`, SS-M2), the delete guard
 //! (`delete_guard`, SS-M2), the attachment ops (`take_live`, `cod_live`,
 //! `return_live`, `take_race`, `return_race`, SS-M3), system mail and
-//! the GM tools (`system_live`, `gm_live`, SS-U1), and the content engine's
-//! `send_system_mail` with its cooldown (`content_live`, SS-U3).
+//! the GM tools (`system_live`, `gm_live`, SS-U1), the content engine's
+//! `send_system_mail` with its cooldown (`content_live`, SS-U3), and
+//! expiry, quarantine and new-mail notification (`expiry_live`,
+//! `expiry_race`, `quarantine_live`, `notify_live`, SS-M4).
 //!
 //! The live-DB tests assert on SQL side effects and, where the invariant is
 //! what the client is told, on the decoded packets the handler sent.
@@ -20,8 +22,12 @@ mod attach_vault;
 mod cod_live;
 mod content_live;
 mod delete_guard;
+mod expiry_live;
+mod expiry_race;
 mod gm_live;
+mod notify_live;
 mod packets;
+mod quarantine_live;
 mod read;
 mod read_scoping;
 mod return_live;
@@ -444,4 +450,52 @@ pub(super) fn assert_refused(
     for key in ["account_id", "player_id", "entity_id"] {
         assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
     }
+}
+
+/// A mail's expiry state (SS-M4), as the expiry tests read it back.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub(super) struct ExpiryRow {
+    pub(super) character_id: i32,
+    pub(super) sender_id: Option<i32>,
+    pub(super) cash: i64,
+    pub(super) flags: i32,
+    pub(super) returned: bool,
+    pub(super) quarantined: bool,
+    pub(super) sent_time: i32,
+    pub(super) expires_at: Option<i32>,
+}
+
+/// `mail_id`'s expiry state, `None` once the row is gone.
+pub(super) async fn expiry_row(pool: &PgPool, mail_id: i32) -> Option<ExpiryRow> {
+    sqlx::query_as(
+        "SELECT character_id, sender_id, cash, flags, returned, quarantined, sent_time, \
+                expires_at \
+         FROM sgw_gate_mail WHERE mail_id = $1",
+    )
+    .bind(mail_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap()
+}
+
+/// Force a mail's expiry-relevant state, so a test can build any state the
+/// writers would reach only over 30 days.
+pub(super) async fn set_expiry_state(
+    pool: &PgPool,
+    mail_id: i32,
+    expires_at: Option<i32>,
+    returned: bool,
+    cod_paid: bool,
+) {
+    sqlx::query(
+        "UPDATE sgw_gate_mail SET expires_at = $2, returned = $3, cod_paid = $4 \
+         WHERE mail_id = $1",
+    )
+    .bind(mail_id)
+    .bind(expires_at)
+    .bind(returned)
+    .bind(cod_paid)
+    .execute(pool)
+    .await
+    .expect("set expiry state");
 }

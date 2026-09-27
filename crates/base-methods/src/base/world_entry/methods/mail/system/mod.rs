@@ -16,7 +16,12 @@
 //!   the cap, so money and items are never lost to it"). The open count is
 //!   logged, so an over-full box shows in SigNoz.
 //! - **Offline recipients are fine.** Only the database is touched; the
-//!   recipient sees the mail the next time the mailbox is opened.
+//!   recipient sees the mail the next time the mailbox is opened. A caller
+//!   that holds the session map tells an online recipient after its commit
+//!   with [`SystemMailSent::notify`] (D-SS11, SS-M4).
+//! - **It expires like any mail** (SS-M4): 30 days after it is written.
+//!   It has no sender to go back to, so if it still holds an item or cash
+//!   then, the expiry sweep quarantines it for a GM instead of deleting it.
 //!
 //! The item, when there is one, lands in `sgw_gate_mail_item` exactly like
 //! a player's attachment (D-SS08), so SS-M3's take path treats both alike:
@@ -47,6 +52,9 @@ use std::fmt;
 use cimmeria_entity::inventory::INV_AUCTION;
 use cimmeria_entity::organization::org_text::{self, TextField};
 use sqlx::{PgPool, Postgres, Transaction};
+
+use super::notify::{notify_delivered, Delivery};
+use crate::base::feedback::FeedbackCtx;
 
 pub(super) use write::{write_mail, MailHeader};
 
@@ -157,6 +165,20 @@ impl SystemMailSent {
             over_cap = self.recipient_open_mail > super::send::MAILBOX_CAP,
             "system gate-mail delivered",
         );
+    }
+
+    /// Tell the recipient, if online, that the mail arrived (D-SS11): a
+    /// feedback line and the header. Call it after the commit, beside
+    /// [`Self::log_sent`]; an offline recipient is skipped.
+    pub async fn notify(&self, pool: &PgPool, ctx: &FeedbackCtx<'_>) {
+        notify_delivered(
+            pool,
+            ctx,
+            self.recipient_player_id,
+            self.mail_id,
+            Delivery::System,
+        )
+        .await;
     }
 }
 

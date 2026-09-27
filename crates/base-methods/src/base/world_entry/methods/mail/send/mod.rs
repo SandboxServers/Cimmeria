@@ -23,11 +23,13 @@
 //!
 //! After an attached send commits, the sender's client gets `onCashChanged`
 //! and its inventory update, built from values read inside the transaction.
+//! Then every online recipient is told (D-SS11, [`super::notify`]).
 //!
 //! The sender's name and id come from server state: the cell's `player_id`,
 //! and the name stored on that `sgw_player` row, read under the lock.
 
 pub(super) mod attachment;
+mod bucket;
 mod deliver;
 pub(super) mod escrow;
 pub(super) mod recipients;
@@ -39,15 +41,16 @@ use std::time::Instant;
 
 use sqlx::PgPool;
 
+use super::notify::{notify_delivered, Delivery};
 use super::Caller;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
-use crate::base::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use crate::cell::mail::codes::{flags, MailResult};
 use crate::cell::mail::serialize_send_mail_result;
 use crate::cell::messages::{MailSend, MailSendReject};
 use crate::mercury::method_idx;
 
 use attachment::Attachment;
+use bucket::take_send_token;
 pub(super) use deliver::MAILBOX_CAP;
 use deliver::{deliver, DeliverError};
 use sender_sync::attached_sent;
@@ -357,87 +360,16 @@ pub(super) async fn send_mail(
     if let Some(text) = failure_text {
         feedback(caller, session, &text).await;
     }
+    let fb = FeedbackCtx {
+        transport: caller.transport,
+        connected: caller.connected,
+    };
+    for d in &delivery.delivered {
+        notify_delivered(pool, &fb, d.player_id, d.mail_id, Delivery::Sent).await;
+    }
 }
 
 const GATE_MAIL_UNAVAILABLE: &str = "Gate-mail is unavailable right now. The message was not sent.";
-
-/// Take one mail-send token (D-SS14). `None` means stop: either the send
-/// was limited, or the caller has no session any more.
-///
-/// A limited send still answers `sendMailResult` (`NoRecipients`, the typed
-/// names in `FailedRecipients`) on every press. The client disables its
-/// Send button when pressed and only a new compose re-enables it
-/// (`GateMail.lua` `onSendMessage` / `onCreateNewMessage`), so the result
-/// line ("Gate-mail message was not sent.") is the only thing that tells
-/// the player that press did nothing. The explanatory feedback line is
-/// throttled to once per 5 s like every other limited action. One result
-/// per received packet is no amplification.
-async fn take_send_token(
-    caller: &Caller<'_>,
-    typed: &[String],
-    now: Instant,
-) -> Option<SenderSession> {
-    let Some(addr) = caller.addr() else {
-        tracing::warn!(
-            target: "mail",
-            entity_id = caller.entity_id,
-            player_id = caller.player_id,
-            reason = "no_client_addr",
-            "sendMailMessage dropped: the entity has no client address",
-        );
-        return None;
-    };
-    let (session, decision) = {
-        let mut clients = match caller.connected.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        let Some(c) = clients.get_mut(&addr) else {
-            drop(clients);
-            tracing::warn!(
-                target: "mail",
-                entity_id = caller.entity_id,
-                player_id = caller.player_id,
-                %addr,
-                reason = "no_session",
-                "sendMailMessage dropped: no session at the client address",
-            );
-            return None;
-        };
-        let decision = c.rate_limits.check(RateCategory::MailSend, now);
-        if let RateDecision::Limited { notify } = decision {
-            // Logged under the lock so the event carries the bucket state
-            // the decision was made on.
-            let actor = RateActor {
-                addr,
-                player_id: Some(caller.player_id),
-                account_id: c.account_id,
-                entity_id: Some(caller.entity_id),
-            };
-            log_exceeded(RateCategory::MailSend, actor, notify, &c.rate_limits, now);
-        }
-        (
-            SenderSession {
-                addr,
-                account_id: c.account_id,
-            },
-            decision,
-        )
-    };
-    match decision {
-        RateDecision::Allowed => Some(session),
-        RateDecision::Limited { notify } => {
-            let args = serialize_send_mail_result(MailResult::NoRecipients, typed, 0);
-            caller
-                .send_to_caller(method_idx::SEND_MAIL_RESULT, &args)
-                .await;
-            if notify {
-                feedback(caller, session, RateCategory::MailSend.feedback_text()).await;
-            }
-            None
-        }
-    }
-}
 
 /// Log the refusal, answer `sendMailResult`, and send its feedback line.
 async fn refuse(caller: &Caller<'_>, session: SenderSession, refusal: Refusal<'_>) {

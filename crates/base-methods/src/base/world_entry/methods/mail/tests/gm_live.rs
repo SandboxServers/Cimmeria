@@ -230,11 +230,29 @@ async fn gm_mailbox_reports_counts_and_escrow() {
     assert_eq!(got.len(), 3, "{got:?}");
     assert_eq!(
         got[0],
-        format!("Mailbox of SsuOneBoxRcpt ({rcpt}): 4 open of 100, 1 archived, 4 from the system.")
+        format!(
+            "Mailbox of SsuOneBoxRcpt ({rcpt}): 4 open of 100, 1 archived, 4 from the system, \
+             0 quarantined."
+        )
     );
     assert_eq!(
         got[1],
         "In escrow: 2 item(s), 70 naquadah gift cash, 1 unpaid COD."
+    );
+    // SS-M4: the two GM mails expire 720 h after they were written; the
+    // fillers carry no expiry.
+    let next: i32 =
+        sqlx::query_scalar("SELECT MIN(expires_at) FROM sgw_gate_mail WHERE character_id = $1")
+            .bind(rcpt)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    // 720 h less the seconds the test took, floored.
+    assert!(
+        [719, 720]
+            .iter()
+            .any(|h| got[2] == format!("Next expiry: in {h} hour(s) (at {next}).")),
+        "{got:?}"
     );
 
     cleanup(&pool, acct).await;
@@ -268,6 +286,128 @@ async fn gm_mail_refuses_cod_without_a_price() {
         .expect("mail.gm_rejected reason=cod_price_invalid");
     assert!(row.has_field("cod", "0"));
     assert!(row.has_field("type_id", &type_id.to_string()));
+
+    cleanup(&pool, acct).await;
+}
+
+/// SS-M4 (SS-U1 integration edit 1): `.mail_expire <id>` makes the mail due
+/// now and expires it at once by the sweep's path. A gift mail from a
+/// player goes back to that player; the GM is told which path it took, and
+/// `mail.gm_action action=mail_expire` names the GM and the mailbox. Fails
+/// if the refusal comes back or the command stops expiring the mail.
+#[tokio::test]
+async fn gm_mail_expire_expires_the_mail_now() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (acct, gm, owner, sender) = (0x7300_2400, 0x7300_2401, 0x7300_2402, 0x7300_2403);
+    cleanup(&pool, acct).await;
+    insert_players(
+        &pool,
+        acct,
+        &[
+            (gm, "SsmFourGmExp"),
+            (owner, "SsmFourGmExpO"),
+            (sender, "SsmFourGmExpS"),
+        ],
+    )
+    .await;
+    let mail_id = AttachedMail::from(owner, sender, "SsmFourGmExpS")
+        .cash(30)
+        .insert(&pool)
+        .await;
+    let c = Client::new(0x7300_2410, gm, 55_250, "SsmFourGmExp");
+
+    c.gm(
+        MailGmCellToBase::Expire {
+            actor: actor(&c),
+            mail_id,
+        },
+        &pool,
+    )
+    .await;
+
+    let row = expiry_row(&pool, mail_id)
+        .await
+        .expect("returned, not gone");
+    assert_eq!((row.character_id, row.cash), (sender, 30), "{row:?}");
+    assert!(row.returned);
+    assert_eq!(
+        lines(c.take()),
+        vec![format!(
+            "Mail {mail_id} expired and was returned to its sender ({sender}) with its attachments."
+        )]
+    );
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|e| e.has_field("event", "mail.gm_action") && e.has_field("action", "mail_expire"))
+        .expect("mail.gm_action action=mail_expire");
+    assert!(ev.has_field("player_id", &gm.to_string()));
+    assert!(ev.has_field("subject_player_id", &owner.to_string()));
+    assert!(ev.has_field("path", "returned"));
+
+    cleanup(&pool, acct).await;
+}
+
+/// Type 12: `.mail_expire` refuses archived mail (it never expires), a
+/// quarantined mail (it already took its path) and an unknown id, each with
+/// `mail.gm_rejected reason=<why>` and the mail id, a line naming why, and
+/// no change to the row.
+#[tokio::test]
+async fn gm_mail_expire_refuses_archived_quarantined_and_unknown_mail() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (acct, gm, owner) = (0x7300_2420, 0x7300_2421, 0x7300_2422);
+    cleanup(&pool, acct).await;
+    insert_players(
+        &pool,
+        acct,
+        &[(gm, "SsmFourGmRef"), (owner, "SsmFourGmRefO")],
+    )
+    .await;
+    let archived = AttachedMail::from(owner, gm, "SsmFourGmRef")
+        .insert(&pool)
+        .await;
+    sqlx::query("UPDATE sgw_gate_mail SET flags = $2 WHERE mail_id = $1")
+        .bind(archived)
+        .bind(MAIL_ARCHIVE)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let quarantined = AttachedMail::from(owner, gm, "SsmFourGmRef")
+        .cash(4)
+        .insert(&pool)
+        .await;
+    sqlx::query("UPDATE sgw_gate_mail SET quarantined = true WHERE mail_id = $1")
+        .bind(quarantined)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let c = Client::new(0x7300_2430, gm, 55_251, "SsmFourGmRef");
+
+    for (mail_id, reason, says) in [
+        (archived, "archived", "archived mail never expires"),
+        (quarantined, "quarantined", "already quarantined"),
+        (0x7300_2439, "mail_not_found", "no mail has id"),
+    ] {
+        let before = expiry_row(&pool, mail_id).await;
+        c.gm(
+            MailGmCellToBase::Expire {
+                actor: actor(&c),
+                mail_id,
+            },
+            &pool,
+        )
+        .await;
+        let got = lines(c.take());
+        assert!(got.len() == 1 && got[0].contains(says), "{reason}: {got:?}");
+        assert_eq!(expiry_row(&pool, mail_id).await, before, "{reason}");
+        let ev = capture
+            .find_event(tracing::Level::WARN, "GM mail command refused", reason)
+            .unwrap_or_else(|| panic!("mail.gm_rejected reason={reason}"));
+        assert!(ev.has_field("command", "mail_expire"));
+        assert!(ev.has_field("mail_id", &mail_id.to_string()));
+    }
 
     cleanup(&pool, acct).await;
 }

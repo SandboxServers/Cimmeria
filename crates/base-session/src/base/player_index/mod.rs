@@ -119,6 +119,16 @@ impl<'a> OnlinePlayerIndex<'a> {
         result
     }
 
+    /// The listed session playing `player_id`, if any: how mail
+    /// notification (D-SS11) finds an online recipient it knows by id.
+    /// One character is in one session at a time (a second login evicts
+    /// the first), so the first listing found is the only one.
+    pub fn find_player(&self, player_id: i32) -> Option<OnlinePlayer> {
+        self.entries()
+            .map(|(_, player)| player)
+            .find(|player| player.player_id == player_id)
+    }
+
     fn unique(&self, matches: impl Fn(&str) -> bool) -> NameLookup {
         let mut hits = self.entries().filter(|(n, _)| matches(n));
         match (hits.next(), hits.next()) {

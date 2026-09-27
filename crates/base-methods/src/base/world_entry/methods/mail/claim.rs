@@ -21,7 +21,9 @@
 //! locking B's).
 //!
 //! Two ops on one mail therefore serialise on its row lock (CAT-G-04), and
-//! each re-reads the row after the other commits. Every write is also
+//! each re-reads the row after the other commits. The expiry sweep (SS-M4)
+//! takes the same locks in the same order, so a sweep racing a take is one
+//! more op on the row. Every write is also
 //! conditional on the state it was decided on, with `rows_affected`
 //! checked, so a missing lock degrades to a refusal, never a double payout.
 
@@ -45,6 +47,8 @@ pub(super) struct LockedMail {
     pub(super) cod_paid: bool,
     pub(super) subject: String,
     pub(super) sender_name: String,
+    /// When the expiry sweep may take it (SS-M4); `None` never expires.
+    pub(super) expires_at: Option<i32>,
 }
 
 impl LockedMail {
@@ -60,6 +64,10 @@ impl LockedMail {
 /// Take the caller's inventory advisory locks, then lock `mail_id` if the
 /// caller owns it. `None` for someone else's mail, a deleted one, or junk:
 /// the three are indistinguishable to the caller on purpose.
+///
+/// A quarantined mail (SS-M4, D-SS04 path 3) is `None` too: it is out of
+/// its owner's reach, so it can be neither taken, paid nor returned; only
+/// a GM recovers it.
 pub(super) async fn lock_mail(
     conn: &mut PgConnection,
     player_id: i32,
@@ -67,9 +75,9 @@ pub(super) async fn lock_mail(
 ) -> Result<Option<LockedMail>, sqlx::Error> {
     take_inventory_locks(&mut *conn, player_id, &[INV_MAIN]).await?;
     sqlx::query_as::<_, LockedMail>(
-        "SELECT cash, flags, sender_id, returned, cod_paid, subject, sender_name \
+        "SELECT cash, flags, sender_id, returned, cod_paid, subject, sender_name, expires_at \
          FROM sgw_gate_mail \
-         WHERE mail_id = $1 AND character_id = $2 FOR UPDATE",
+         WHERE mail_id = $1 AND character_id = $2 AND NOT quarantined FOR UPDATE",
     )
     .bind(mail_id)
     .bind(player_id)

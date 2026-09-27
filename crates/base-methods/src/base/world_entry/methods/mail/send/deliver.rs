@@ -6,6 +6,7 @@ use std::fmt;
 
 use sqlx::PgPool;
 
+use super::super::expiry::expires_at;
 use super::attachment::{Attachment, AttachmentRefusal};
 use super::escrow::{check_source, debit, escrow_item, lock_source_item, Debit, EscrowedItem};
 use super::recipients::{
@@ -17,7 +18,8 @@ use crate::cell::messages::MailSend;
 
 /// Open messages a mailbox may hold before player mail to it is refused
 /// (D-SS03: the client warns at 90 and shows "100% Full" at 100). Counts
-/// mail that is not archived. Project policy; server-generated mail (SS-M3,
+/// mail that is neither archived nor quarantined (SS-M4: a quarantined mail
+/// is out of the mailbox). Project policy; server-generated mail (SS-M3,
 /// SS-M4) is exempt.
 pub(in super::super) const MAILBOX_CAP: i64 = 100;
 
@@ -167,7 +169,7 @@ pub(super) async fn deliver(
 
     let open: HashMap<i32, i64> = sqlx::query_as::<_, (i32, i64)>(
         "SELECT character_id, COUNT(*) FROM sgw_gate_mail \
-         WHERE character_id = ANY($1) AND (flags & $2) = 0 \
+         WHERE character_id = ANY($1) AND (flags & $2) = 0 AND NOT quarantined \
          GROUP BY character_id",
     )
     .bind(&ids)
@@ -206,8 +208,8 @@ pub(super) async fn deliver(
             let inserted: Vec<(i32, i32)> = sqlx::query_as(
                 "INSERT INTO sgw_gate_mail \
                     (character_id, sender_id, sender_name, subject, message, cash, \
-                     sent_time, read_time, flags, item_id) \
-                 SELECT r, $2, $3, $4, $5, 0, $6, 0, 0, NULL FROM unnest($1::int[]) AS r \
+                     sent_time, read_time, flags, item_id, expires_at) \
+                 SELECT r, $2, $3, $4, $5, 0, $6, 0, 0, NULL, $7 FROM unnest($1::int[]) AS r \
                  RETURNING character_id, mail_id",
             )
             .bind(&deliver_to)
@@ -216,6 +218,7 @@ pub(super) async fn deliver(
             .bind(&send.subject)
             .bind(&send.body)
             .bind(sent_time)
+            .bind(expires_at(sent_time))
             .fetch_all(&mut *tx)
             .await?;
             delivery.delivered = inserted
@@ -242,8 +245,8 @@ pub(super) async fn deliver(
             let mail_id: i32 = sqlx::query_scalar(
                 "INSERT INTO sgw_gate_mail \
                     (character_id, sender_id, sender_name, subject, message, cash, \
-                     sent_time, read_time, flags, item_id) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, NULL) \
+                     sent_time, read_time, flags, item_id, expires_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, NULL, $9) \
                  RETURNING mail_id",
             )
             .bind(recipient_id)
@@ -254,6 +257,7 @@ pub(super) async fn deliver(
             .bind(i64::from(attachment.cash))
             .bind(sent_time)
             .bind(attachment.mail_flags())
+            .bind(expires_at(sent_time))
             .fetch_one(&mut *tx)
             .await?;
             let item = match source {

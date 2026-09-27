@@ -6,6 +6,7 @@
 
 use sqlx::PgConnection;
 
+use super::super::expiry::expires_at;
 use super::super::send::escrow::{escrow_item, SourceItem};
 use super::{
     SystemEscrow, SystemItem, SystemMailError, SERVER_HELD_CONTAINERS, SYSTEM_SOURCE_CHARACTER_ID,
@@ -32,7 +33,8 @@ pub(in super::super) struct MailHeader<'a> {
 pub(in super::super) struct Written {
     pub(in super::super) mail_id: i32,
     pub(in super::super) item: Option<SystemEscrow>,
-    /// The recipient's open (not archived) mail, this one included.
+    /// The recipient's open (not archived, not quarantined) mail, this one
+    /// included.
     pub(in super::super) recipient_open_mail: i64,
 }
 
@@ -86,8 +88,8 @@ pub(in super::super) async fn write_mail(
     let mail_id: i32 = sqlx::query_scalar(
         "INSERT INTO sgw_gate_mail \
             (character_id, sender_id, sender_name, subject, message, cash, \
-             sent_time, read_time, flags, item_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, NULL) \
+             sent_time, read_time, flags, item_id, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, NULL, $9) \
          RETURNING mail_id",
     )
     .bind(header.recipient_player_id)
@@ -98,6 +100,7 @@ pub(in super::super) async fn write_mail(
     .bind(header.cash)
     .bind(now)
     .bind(header.flags)
+    .bind(expires_at(now))
     .fetch_one(&mut *conn)
     .await?;
 
@@ -134,7 +137,8 @@ pub(in super::super) async fn write_mail(
     };
 
     let recipient_open_mail: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sgw_gate_mail WHERE character_id = $1 AND (flags & $2) = 0",
+        "SELECT COUNT(*) FROM sgw_gate_mail \
+         WHERE character_id = $1 AND (flags & $2) = 0 AND NOT quarantined",
     )
     .bind(header.recipient_player_id)
     .bind(MAIL_ARCHIVE)

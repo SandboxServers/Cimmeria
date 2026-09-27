@@ -71,6 +71,6 @@ pub(super) const SPECS: &[Spec] = &[
         0,
         1,
         Target::None,
-        "Expire a mail now so the expiry sweep takes it; not available until mail expiry lands (mailId)",
+        "Expire a mail now: return it, delete it or quarantine it, as the sweep would (mailId)",
     ),
 ];

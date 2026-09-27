@@ -1,4 +1,5 @@
-//! The base half of the GM mail tools (SS-U1): `.mail` and `.mailbox`.
+//! The base half of the GM mail tools (SS-U1): `.mail`, `.mailbox`
+//! ([`mailbox`]) and `.mail_expire` ([`expire`], turned on by SS-M4).
 //!
 //! The cell's `.`-console gate has already checked the GM's server-side
 //! access level and parsed the arguments; `MailGmCellToBase` carries the
@@ -16,7 +17,14 @@
 //!   `cash`), written by the same [`super::system::write_mail`], so SS-M3's
 //!   pay and take paths see an ordinary COD mail.
 //!
-//! Both skip the mailbox cap, like every server-written mail (D-SS03).
+//! Both skip the mailbox cap, like every server-written mail (D-SS03), and
+//! an online recipient is told after the commit (D-SS11).
+//!
+//! - `.mail_expire <mailId>` makes one mail due now and runs its expiry at
+//!   once through the sweep's own path ([`super::expiry`]), then tells the
+//!   GM which D-SS04 path it took. Archived and quarantined mail are
+//!   refused: archived mail never expires, and a quarantined one already
+//!   took its path.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -25,6 +33,13 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::{PgConnection, PgPool};
 
+mod expire;
+mod mailbox;
+
+use expire::gm_expire;
+use mailbox::gm_mailbox;
+
+use super::notify::{notify_delivered, Delivery};
 use super::send::recipients::{candidate_rows, resolve_names, Resolution};
 use super::system::{
     self, send_system_mail_tx, MailHeader, SystemItem, SystemMail, SystemMailError,
@@ -32,7 +47,7 @@ use super::system::{
 use super::Caller;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::base::ConnectedClientState;
-use crate::cell::mail::codes::flags::{MAIL_ARCHIVE, MAIL_COD};
+use crate::cell::mail::codes::flags::MAIL_COD;
 use crate::cell::messages::{MailGmActor, MailGmCellToBase};
 
 /// Route one GM mail command from the cell.
@@ -82,6 +97,9 @@ pub async fn handle_mail_gm(
         }
         MailGmCellToBase::Mailbox { actor, name } => {
             gm_mailbox(&caller, pool, actor, name.as_deref()).await;
+        }
+        MailGmCellToBase::Expire { actor, mail_id } => {
+            gm_expire(&caller, pool, actor, mail_id).await;
         }
     }
 }
@@ -194,6 +212,16 @@ pub(super) async fn gm_send(
                 escrow_item_id = sent.escrow_item_id,
                 "GM .mail sent",
             );
+            let fb = FeedbackCtx {
+                transport: caller.transport,
+                connected: caller.connected,
+            };
+            let delivery = if request.cod.is_some() {
+                Delivery::Sent
+            } else {
+                Delivery::System
+            };
+            notify_delivered(pool, &fb, sent.recipient_id, sent.mail_id, delivery).await;
             let mut parts = Vec::new();
             if request.cash > 0 {
                 parts.push(format!("{} naquadah", request.cash));
@@ -344,106 +372,6 @@ async fn resolve_one(conn: &mut PgConnection, name: &str) -> Result<(i32, String
         Some(Resolution::Failed(reason)) => Err(GmRefusal::Recipient(reason.reason(), name.into())),
         None => Err(GmRefusal::Recipient("unknown_recipient", name.into())),
     }
-}
-
-/// One mailbox, as `.mailbox` reports it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::FromRow)]
-pub(super) struct MailboxSummary {
-    pub(super) open: i64,
-    pub(super) archived: i64,
-    /// Mails holding an escrowed item.
-    pub(super) items: i64,
-    /// Gift cash waiting on mails that are not COD.
-    pub(super) gift_cash: i64,
-    /// Mails still flagged COD (unpaid).
-    pub(super) cod: i64,
-    /// Mails with no sender character (system mail).
-    pub(super) system: i64,
-}
-
-pub(super) const MAILBOX_SUMMARY_SQL: &str = "SELECT \
-       COUNT(*) FILTER (WHERE (m.flags & $2) = 0) AS open, \
-       COUNT(*) FILTER (WHERE (m.flags & $2) <> 0) AS archived, \
-       COUNT(i.mail_id) AS items, \
-       COALESCE(SUM(m.cash) FILTER (WHERE (m.flags & $3) = 0), 0)::bigint AS gift_cash, \
-       COUNT(*) FILTER (WHERE (m.flags & $3) <> 0) AS cod, \
-       COUNT(*) FILTER (WHERE m.sender_id IS NULL) AS system \
-     FROM sgw_gate_mail m LEFT JOIN sgw_gate_mail_item i ON i.mail_id = m.mail_id \
-     WHERE m.character_id = $1";
-
-/// `.mailbox [name]`.
-pub(super) async fn gm_mailbox(
-    caller: &Caller<'_>,
-    pool: &PgPool,
-    actor: MailGmActor,
-    name: Option<&str>,
-) {
-    let result: Result<(i32, String, MailboxSummary), GmRefusal> = async {
-        let mut conn = pool.acquire().await?;
-        let (player_id, stored) = match name {
-            Some(name) => resolve_one(&mut conn, name).await?,
-            None => {
-                let own: Option<String> =
-                    sqlx::query_scalar("SELECT player_name FROM sgw_player WHERE player_id = $1")
-                        .bind(actor.player_id)
-                        .fetch_optional(&mut *conn)
-                        .await?;
-                (actor.player_id, own.ok_or(GmRefusal::GmMissing)?)
-            }
-        };
-        let summary: MailboxSummary = sqlx::query_as(MAILBOX_SUMMARY_SQL)
-            .bind(player_id)
-            .bind(MAIL_ARCHIVE)
-            .bind(MAIL_COD)
-            .fetch_one(&mut *conn)
-            .await?;
-        Ok((player_id, stored, summary))
-    }
-    .await;
-    match result {
-        Ok((player_id, stored, s)) => {
-            tracing::info!(
-                target: "mail",
-                event = "mail.gm_action",
-                action = "mailbox",
-                entity_id = actor.entity_id,
-                account_id = actor.account_id,
-                player_id = actor.player_id,
-                subject_player_id = player_id,
-                open = s.open,
-                archived = s.archived,
-                items = s.items,
-                gift_cash = s.gift_cash,
-                cod = s.cod,
-                "GM .mailbox read",
-            );
-            for line in mailbox_lines(&stored, player_id, &s) {
-                feedback(caller, &line).await;
-            }
-        }
-        Err(refusal) => {
-            rejected(actor, "mailbox", refusal.reason());
-            feedback(caller, &refusal.text().replacen(".mail:", ".mailbox:", 1)).await;
-        }
-    }
-}
-
-/// The feedback lines for one mailbox.
-pub(super) fn mailbox_lines(name: &str, player_id: i32, s: &MailboxSummary) -> Vec<String> {
-    vec![
-        format!(
-            "Mailbox of {name} ({player_id}): {} open of {}, {} archived, {} from the system.",
-            s.open,
-            super::send::MAILBOX_CAP,
-            s.archived,
-            s.system
-        ),
-        format!(
-            "In escrow: {} item(s), {} naquadah gift cash, {} unpaid COD.",
-            s.items, s.gift_cash, s.cod
-        ),
-        "Next expiry: none. Mail does not expire until SS-M4 adds expiry.".to_string(),
-    ]
 }
 
 /// Log a refused GM mail command.

@@ -47,6 +47,10 @@ pub enum MailGmCellToBase {
         actor: MailGmActor,
         name: Option<String>,
     },
+    /// `.mail_expire <mailId>` (SS-M4): make one mail, in any mailbox, due
+    /// now, and run its expiry at once, so a tester sees the D-SS04 path
+    /// without waiting 30 days. `mail_id > 0` (the cell checked).
+    Expire { actor: MailGmActor, mail_id: i32 },
 }
 
 impl MailGmCellToBase {
@@ -55,15 +59,16 @@ impl MailGmCellToBase {
         match self {
             MailGmCellToBase::Send { .. } => "send",
             MailGmCellToBase::Mailbox { .. } => "mailbox",
+            MailGmCellToBase::Expire { .. } => "mail_expire",
         }
     }
 
     /// The GM who sent it.
     pub fn actor(&self) -> MailGmActor {
         match self {
-            MailGmCellToBase::Send { actor, .. } | MailGmCellToBase::Mailbox { actor, .. } => {
-                *actor
-            }
+            MailGmCellToBase::Send { actor, .. }
+            | MailGmCellToBase::Mailbox { actor, .. }
+            | MailGmCellToBase::Expire { actor, .. } => *actor,
         }
     }
 }

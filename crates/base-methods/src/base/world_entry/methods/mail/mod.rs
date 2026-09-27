@@ -12,9 +12,14 @@
 //!   return to sender (SS-M3), sharing the lock order in [`claim`];
 //! - [`system`]: the one writer for server-originated mail (Black Market
 //!   payouts, content actions, GM `.mail`), SS-U1;
-//! - [`gm`]: the GM `.mail` and `.mailbox` tools (SS-U1);
+//! - [`gm`]: the GM `.mail`, `.mailbox` and `.mail_expire` tools (SS-U1,
+//!   SS-M4);
 //! - [`content`]: the content engine's `send_system_mail` action, behind a
-//!   per-player cooldown (SS-U3).
+//!   per-player cooldown (SS-U3);
+//! - [`expiry`]: the 30-day TTL and the sweeps that take expired mail down
+//!   the three D-SS04 paths (SS-M4);
+//! - [`notify`]: telling an online recipient that mail arrived (D-SS11,
+//!   SS-M4), after every delivery commits.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -33,8 +38,10 @@ use crate::mercury::build_player_entity_method_packet;
 mod claim;
 mod cod;
 mod content;
+pub mod expiry;
 mod gm;
 mod headers;
+mod notify;
 mod read;
 mod return_;
 mod send;

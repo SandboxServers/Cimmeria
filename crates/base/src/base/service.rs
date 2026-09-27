@@ -17,6 +17,7 @@ use crate::auth::PendingLogin;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::minigame::SessionRegistry;
 
+use super::world_entry::methods::mail::expiry as mail_expiry;
 use super::{
     archetype_name, connect_loop::run_connect_loop, outbox, resources::ResourceCache,
     world_entry::handle_cell_message, BaseError, ConnectedClientState, OnlinePlayer,
@@ -223,6 +224,7 @@ impl BaseService {
         // cell→base handler gets a clone projected to the send-only
         // `Transport` super-trait.
         let transport_for_cell: Arc<dyn Transport> = bidi_transport.clone();
+        let transport_for_expiry: Arc<dyn Transport> = bidi_transport.clone();
         let connected_for_cell = Arc::clone(&connected);
         let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
         let cell_tx_for_cell = cell_tx.clone();
@@ -292,6 +294,13 @@ impl BaseService {
         // `organization::audit`.
         if let Some(pool) = self.db_pool.clone() {
             cimmeria_base_session::base::organization::audit::spawn_startup_sweep(pool);
+        }
+
+        // The gate-mail expiry sweep (SS-M4, D-SS04): every few minutes,
+        // expired mail goes back to its sender, is deleted, or is
+        // quarantined; online players it touches are told.
+        if let Some(pool) = self.db_pool.clone() {
+            mail_expiry::spawn_sweeper(pool, transport_for_expiry, Arc::clone(&connected));
         }
 
         self.is_running = true;

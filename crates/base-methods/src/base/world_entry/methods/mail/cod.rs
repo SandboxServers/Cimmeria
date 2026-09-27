@@ -9,7 +9,9 @@ use super::claim::{
     answer_failure, debit, lock_escrow, lock_mail, lock_players, unix_now, Balance, Op, OpError,
     Refusal, NOT_FOUND,
 };
+use super::expiry::expires_at;
 use super::headers::refresh_one;
+use super::notify::{notify_delivered, Delivery};
 use super::MailCtx;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::cell::mail::codes::flags::MAIL_COD;
@@ -136,8 +138,8 @@ pub(super) async fn pay_cod_tx(
     let payment_mail_id: i32 = sqlx::query_scalar(
         "INSERT INTO sgw_gate_mail \
             (character_id, sender_id, sender_name, subject, message, cash, \
-             sent_time, read_time, flags, item_id) \
-         VALUES ($1, NULL, $2, $3, $4, $5, $6, 0, 0, NULL) \
+             sent_time, read_time, flags, item_id, expires_at) \
+         VALUES ($1, NULL, $2, $3, $4, $5, $6, 0, 0, NULL, $7) \
          RETURNING mail_id",
     )
     .bind(sender_id)
@@ -146,6 +148,7 @@ pub(super) async fn pay_cod_tx(
     .bind(body)
     .bind(i64::from(price))
     .bind(now)
+    .bind(expires_at(now))
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -189,7 +192,8 @@ async fn clear_cod(
     Ok(())
 }
 
-/// `payCODForMailMessage(MailId)`.
+/// `payCODForMailMessage(MailId)`. After the commit, the COD's sender, if
+/// online, is told the payment mail arrived (D-SS11).
 pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
     match pay_cod_tx(ctx.pool, ctx.player_id, mail_id, unix_now()).await {
         Ok(CodOutcome::Paid(paid)) => {
@@ -213,6 +217,18 @@ pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
             )
             .await;
             refresh_one(ctx, mail_id).await;
+            let fb = FeedbackCtx {
+                transport: ctx.transport,
+                connected: ctx.connected,
+            };
+            notify_delivered(
+                ctx.pool,
+                &fb,
+                paid.sender_id,
+                paid.payment_mail_id,
+                Delivery::CodPayment,
+            )
+            .await;
         }
         Ok(CodOutcome::CancelledSenderGone { price, sender_name }) => {
             tracing::info!(

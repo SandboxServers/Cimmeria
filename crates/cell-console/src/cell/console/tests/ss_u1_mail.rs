@@ -200,28 +200,43 @@ async fn mail_refusal_logs_reason_and_sends_nothing_to_the_base() {
     );
 }
 
-/// Type 12: `.mail_expire` is refused until SS-M4 with a line naming the
-/// mail and `reason=expiry_not_available`; a bare one gets its usage line.
+/// SS-M4: `.mail_expire <id>` reaches the base as `MailGm::Expire` with
+/// the GM's ids from the cell's entity and nothing else on the cell side (no
+/// refusal line). Fails if the SS-U1 refusal arm comes back. Type 12 for
+/// the cell's own refusal: a bare or non-positive id gets the usage line and
+/// `mail.gm_rejected reason=no_mail_id`, and nothing reaches the base.
 #[tokio::test]
-async fn mail_expire_is_refused_until_expiry_exists() {
+async fn mail_expire_forwards_the_mail_id_to_the_base() {
     let (mut mgr, gm) = gm_world();
-    let capture = LogCapture::install();
+    let actor = MailGmActor {
+        entity_id: gm,
+        player_id: 70,
+        account_id: Some(7),
+    };
     let msgs = run(&mut mgr, gm, ".mail_expire 42").await;
-    capture
-        .find_event(
-            Level::WARN,
-            "GM mail command refused",
-            "expiry_not_available",
-        )
-        .expect("mail.gm_rejected reason=expiry_not_available");
-    let lines: Vec<String> = msgs.iter().filter_map(super::decode_feedback).collect();
-    assert_eq!(lines.len(), 1, "{lines:?}");
-    assert!(lines[0].contains("mail 42 was not changed"), "{lines:?}");
-    assert!(!msgs.iter().any(|m| matches!(m, CellToBaseMsg::MailGm(_))));
+    assert!(
+        !msgs.iter().any(|m| super::decode_feedback(m).is_some()),
+        "no cell-side line: the base answers {msgs:?}"
+    );
+    assert_eq!(
+        mail_gm(msgs),
+        vec![MailGmCellToBase::Expire { actor, mail_id: 42 }]
+    );
 
-    let msgs = run(&mut mgr, gm, ".mail_expire").await;
-    let lines: Vec<String> = msgs.iter().filter_map(super::decode_feedback).collect();
-    assert_eq!(lines, vec![MAIL_EXPIRE_USAGE.to_string()]);
+    let capture = LogCapture::install();
+    for bare in [".mail_expire", ".mail_expire 0", ".mail_expire -3"] {
+        let msgs = run(&mut mgr, gm, bare).await;
+        assert!(
+            !msgs.iter().any(|m| matches!(m, CellToBaseMsg::MailGm(_))),
+            "{bare}: {msgs:?}"
+        );
+        let lines: Vec<String> = msgs.iter().filter_map(super::decode_feedback).collect();
+        assert_eq!(lines, vec![MAIL_EXPIRE_USAGE.to_string()], "{bare}");
+    }
+    let row = capture
+        .find_event(Level::WARN, "GM mail command refused", "no_mail_id")
+        .expect("mail.gm_rejected reason=no_mail_id");
+    assert!(row.has_field("command", "mail_expire"));
 }
 
 /// A player (access level 0) typing any of the three gets the "GM command"

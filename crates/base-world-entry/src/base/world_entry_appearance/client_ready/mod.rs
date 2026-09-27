@@ -486,6 +486,18 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
+    // Gate-mail expiry for this player's own mailbox (SS-M4, D-SS04), so
+    // mail that expired while they were away has taken its path before
+    // they can open the mailbox.
+    if let Some(pool) = db_pool {
+        super::super::world_entry::methods::mail::expiry::spawn_login_sweep(
+            Arc::clone(pool),
+            Arc::clone(transport),
+            Arc::clone(connected),
+            pending.player_id,
+        );
+    }
+
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.
     // Runs after the list-push so the player is fully set up before watchers
