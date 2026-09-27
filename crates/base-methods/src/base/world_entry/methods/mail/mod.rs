@@ -4,8 +4,9 @@
 //! forwards `CellToBaseMsg::MailRequest`; everything that touches
 //! `sgw_gate_mail` runs here. One file per family of operations:
 //!
-//! - [`read`]: headers, body, archive and delete;
-//! - [`send`]: `sendMailMessage`, text only until SS-M2.
+//! - [`read`]: headers, body, archive and delete (refused while the mail
+//!   holds an attachment);
+//! - [`send`]: `sendMailMessage`, text or with cash, an item or COD attached.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

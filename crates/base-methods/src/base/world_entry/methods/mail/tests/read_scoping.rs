@@ -40,6 +40,7 @@ async fn request_headers_archive_filter_returns_requested_category() {
             [Received::HeaderInfo {
                 b_archive: echoed,
                 headers,
+                ..
             }] => {
                 assert_eq!(*echoed, b_archive);
                 let ids: Vec<i32> = headers.iter().map(|(id, _)| *id).collect();

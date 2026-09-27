@@ -1,4 +1,5 @@
-//! `sendMailMessage` (CM 44) on the base: text-only gate mail (SS-M1).
+//! `sendMailMessage` (CM 44) on the base: text mail (SS-M1) and mail with
+//! cash, an item or COD attached (SS-M2).
 //!
 //! The cell has already decoded the payload, bounded the recipient list and
 //! applied the D-SS12 text rules ([`MailSend`]), or forwarded why it could
@@ -10,23 +11,32 @@
 //! 2. the cell's decode refusal, if there was one;
 //! 3. alias bits in `RecipientFlags` ([`resolve_recipient_flags`], D-SS07);
 //! 4. attachments: two or more recipients with one is
-//!    `AttachmentsAndMultipleRecipients` (D-SS05); any attachment at all is
-//!    refused until SS-M2;
+//!    `AttachmentsAndMultipleRecipients` (D-SS05); then the checks that need
+//!    no database ([`attachment::validate`]: no negative cash, COD needs an
+//!    item and a price, a sane quantity);
 //! 5. an empty recipient list;
 //! 6. delivery in one transaction ([`deliver`]): D-SS13 name resolution,
 //!    de-duplication, the Ignore seam (D-SS15), the 100-message cap under a
-//!    row lock (D-SS03, D-SS06), one row per recipient.
+//!    row lock (D-SS03, D-SS06), then one row per recipient, or, with an
+//!    attachment, the item check, the cash-plus-postage debit (D-SS02) and
+//!    the move into escrow (D-SS08) ([`escrow`]).
+//!
+//! After an attached send commits, the sender's client gets `onCashChanged`
+//! and its inventory update, built from values read inside the transaction.
 //!
 //! The sender's name and id come from server state: the cell's `player_id`,
 //! and the name stored on that `sgw_player` row, read under the lock.
 
+pub(super) mod attachment;
 mod deliver;
+mod escrow;
 pub(super) mod recipients;
+mod sender_sync;
+mod texts;
 
 use std::net::SocketAddr;
 use std::time::Instant;
 
-use cimmeria_entity::organization::{TextField, TextReject};
 use sqlx::PgPool;
 
 use super::Caller;
@@ -37,8 +47,10 @@ use crate::cell::mail::serialize_send_mail_result;
 use crate::cell::messages::{MailSend, MailSendReject};
 use crate::mercury::method_idx;
 
+use attachment::Attachment;
 use deliver::{deliver, DeliverError};
-use recipients::FailReason;
+use sender_sync::attached_sent;
+use texts::{decode_refusal_text, failure_line};
 
 /// Why a send's `RecipientFlags` was refused (D-SS07).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,9 +97,9 @@ pub(super) fn resolve_recipient_flags(recipient_flags: i32) -> Result<(), FlagRe
 
 /// The sender's session, read under the lock that took the send token.
 #[derive(Debug, Clone, Copy)]
-struct SenderSession {
+pub(super) struct SenderSession {
     addr: SocketAddr,
-    account_id: u32,
+    pub(super) account_id: u32,
 }
 
 /// One refusal: the result code, what failed, and why.
@@ -154,8 +166,8 @@ pub(super) async fn send_mail(
             recipients = send.recipients.len(),
             "sendMailMessage carries an attachment",
         );
-        let refusal = if distinct_names(&send.recipients) > 1 {
-            Refusal {
+        if distinct_names(&send.recipients) > 1 {
+            let refusal = Refusal {
                 result: MailResult::AttachmentsAndMultipleRecipients,
                 failed_recipients: &send.recipients,
                 failed_flags: 0,
@@ -163,21 +175,23 @@ pub(super) async fn send_mail(
                 text: "Gate-mail with naquadah or an item can go to one recipient only. \
                        The message was not sent."
                     .to_string(),
-            }
-        } else {
-            // TODO(SS-M2): cash, COD and item attachments with escrow.
-            Refusal {
-                result: MailResult::ItemNotAvailable,
+            };
+            return refuse(caller, session, refusal).await;
+        }
+    }
+    let attachment = match attachment::validate(&send) {
+        Ok(a) => a,
+        Err(r) => {
+            let refusal = Refusal {
+                result: r.result,
                 failed_recipients: &send.recipients,
                 failed_flags: 0,
-                reason: "attachment_not_supported",
-                text: "Gate-mail attachments (naquadah, items and COD) are not available \
-                       yet. Send the message without them."
-                    .to_string(),
-            }
-        };
-        return refuse(caller, session, refusal).await;
-    }
+                reason: r.reason,
+                text: r.text.to_string(),
+            };
+            return refuse(caller, session, refusal).await;
+        }
+    };
 
     if send.recipients.is_empty() {
         let refusal = Refusal {
@@ -213,12 +227,46 @@ pub(super) async fn send_mail(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i32;
-    let delivery = match deliver(pool, caller.player_id, &send, sent_time).await {
+    let delivery = match deliver(
+        pool,
+        caller.player_id,
+        &send,
+        attachment.as_ref(),
+        sent_time,
+    )
+    .await
+    {
         Ok(d) => d,
+        Err(DeliverError::Refused { refusal, balance }) => {
+            tracing::debug!(
+                target: "mail",
+                event = "mail.attachment_refused",
+                entity_id = caller.entity_id,
+                player_id = caller.player_id,
+                account_id = session.account_id,
+                reason = refusal.reason,
+                item_id = send.item_id,
+                item_quantity = send.item_quantity,
+                cash = send.cash,
+                cod = send.cod,
+                naquadah = balance,
+                cost = attachment.as_ref().map(Attachment::sender_cost),
+                "gate-mail attachment refused; nothing was debited or moved",
+            );
+            let refusal = Refusal {
+                result: refusal.result,
+                failed_recipients: &send.recipients,
+                failed_flags: 0,
+                reason: refusal.reason,
+                text: refusal.text.to_string(),
+            };
+            return refuse(caller, session, refusal).await;
+        }
         Err(e) => {
             let reason = match &e {
                 DeliverError::SenderMissing => "sender_missing",
                 DeliverError::Db(_) => "db_error",
+                DeliverError::Refused { .. } => unreachable!("handled above"),
             };
             tracing::error!(
                 target: "mail",
@@ -283,6 +331,9 @@ pub(super) async fn send_mail(
         result = MailResult::Sent.token(),
         "gate mail sent",
     );
+    if let (Some(outcome), Some(attachment)) = (delivery.attached, attachment) {
+        attached_sent(caller, session, pool, &attachment, outcome).await;
+    }
     let args = serialize_send_mail_result(MailResult::Sent, &failed_names, 0);
     caller
         .send_to_caller(method_idx::SEND_MAIL_RESULT, &args)
@@ -412,76 +463,6 @@ fn distinct_names(names: &[String]) -> usize {
     folded.sort();
     folded.dedup();
     folded.len()
-}
-
-/// The feedback line for a refusal the cell's decode produced.
-fn decode_refusal_text(reject: &MailSendReject) -> &'static str {
-    match reject {
-        MailSendReject::TooManyRecipients { .. } => {
-            "A gate-mail message can have at most 10 recipients. It was not sent."
-        }
-        MailSendReject::Malformed { .. } => {
-            "Your gate-mail message could not be read. It was not sent."
-        }
-        MailSendReject::Text { field, reject } => match (field, reject) {
-            (TextField::MailSubject, TextReject::TooShort { .. }) => {
-                "Your gate-mail message needs a subject. It was not sent."
-            }
-            (TextField::MailSubject, TextReject::TooLong { .. }) => {
-                "Your gate-mail subject is too long (128 characters at most). \
-                 It was not sent."
-            }
-            (TextField::MailBody, TextReject::TooLong { .. }) => {
-                "Your gate-mail message is too long (1,000 characters at most). \
-                 It was not sent."
-            }
-            (TextField::MailRecipient, _) => {
-                "A recipient name is not a valid character name. The message was not sent."
-            }
-            _ => {
-                "Your gate-mail message contains a character that cannot be sent. \
-                 It was not sent."
-            }
-        },
-    }
-}
-
-/// One line naming every recipient that did not get the mail, and why. A
-/// recipient who ignores the sender gets the shared D-SS15 sentence ("X is
-/// not accepting your messages."), the same words a tell or a duel
-/// challenge gets, after the list of the others.
-fn failure_line(failed: &[recipients::FailedRecipient]) -> Option<String> {
-    if failed.is_empty() {
-        return None;
-    }
-    let (ignoring, others): (Vec<_>, Vec<_>) = failed
-        .iter()
-        .partition(|f| f.reason == FailReason::Ignoring);
-    let mut sentences: Vec<String> = Vec::new();
-    if !others.is_empty() {
-        let parts: Vec<String> = others
-            .iter()
-            .map(|f| format!("{} ({})", f.typed, f.reason.player_text()))
-            .collect();
-        sentences.push(format!("Gate-mail not delivered to: {}.", parts.join(", ")));
-    }
-    sentences.extend(
-        ignoring
-            .iter()
-            .map(|f| crate::base::contact_list::ignore::not_accepting_text(&f.typed)),
-    );
-    Some(sentences.join(" "))
-}
-
-impl FailReason {
-    fn player_text(self) -> &'static str {
-        match self {
-            FailReason::Unknown => "no such character",
-            FailReason::Ambiguous => "more than one character matches; check the capitals",
-            FailReason::MailboxFull => "gate-mail box is full",
-            FailReason::Ignoring => "not accepting your messages",
-        }
-    }
 }
 
 #[cfg(test)]
