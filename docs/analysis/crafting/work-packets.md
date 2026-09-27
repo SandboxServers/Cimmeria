@@ -46,7 +46,7 @@ base: validate against CraftingCatalog + DB state
 Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` (the five rules), `docs/architecture/negative-logging-convention.md` and the target catalog in `docs/architecture/observability.md`.
 
 - **Target.** Everything logs under `crafting` (already in `OTEL_FILTER` with its pin). A new target needs its own `OTEL_FILTER` row and pin in the same packet.
-- **Identity on every event.** Every player-activity event carries `account_id`, `player_id` and `entity_id` **on the event itself**, not only on a span (rule 5; OTLP log records do not inherit span fields).
+- **Identity on every event.** Every player-activity event carries `account_id`, `player_id` and `entity_id` **on the event itself**, not only on a span (rule 5; OTLP log records do not inherit span fields). CR-01's merged `request` and `rejected` events carry `entity_id` and `player_id` but no `account_id`; CR-03/CR-04 retrofits them, with an identity test.
 - **Spans.** One INFO span per dispatch entrypoint (`crafting.request` on the base, with `verb`); none inside per-tick work such as the induction queue tick (rules 1 and 3).
 - **Events.** A DEBUG or INFO event with `event = "…"` on every state transition (rule 2):
   - `request` (the verb and every parsed argument);
@@ -55,9 +55,17 @@ Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` 
   - `completed` (`job_id`, `blueprint_id` or `item_id`, the consumed inputs as `item_id:type_id:qty_before→qty_after`, the granted outputs as `type_id:qty:bag:slot`, `expertise_before` / `expertise_after`, `asp_before` / `asp_after`, the RNG roll and chance where a roll was made);
   - `queue_dropped` (`reason = logout | world_change`, `jobs_dropped`);
   - `options_changed` (the station entity ids and tool item ids per section);
-  - `learned`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values).
+  - `learned`, `respec_prompted`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values);
+  - `login_sync` (what the login sent), `asp_granted` and `gm_allcraft` (GM grants, before and after), `loot_restored` (a refused loot grant put back on the corpse).
+
+  This is the complete event list. A packet that needs another event adds it here, in the same PR, before using it.
 - **Negative seams.** Every expectation seam logs its failure at the level the convention sets, and has a `LogCapture` test (TESTING.md type 12): a transaction with `rows_affected == 0`, a catalog or inventory lookup miss, a failed client send (`let _ = send` is not allowed), a rollback (`persist_failed` WARN with `phase` and the SQL error class). A DB write that changes fewer rows than it should logs the paired `rows_affected` and `expected` fields, and names its sub-step `phase`, as the convention requires.
-- **Metrics.** Enumerated labels only (rule 4): `crafting_requests_total{verb, outcome}` with `outcome` in `accepted | rejected | completed | failed`, and `crafting_rejections_total{verb, reason}`. No ids in labels.
+- **Metrics.** Enumerated labels only (rule 4), each with one emission point so a request is never counted twice:
+  - `crafting_requests_total{verb, outcome}`, emitted once per request when it is answered: `outcome` in `accepted | rejected`;
+  - `crafting_jobs_total{verb, outcome}`, emitted once per induction job when it ends: `outcome` in `completed | failed | dropped`;
+  - `crafting_rejections_total{verb, reason}`.
+
+  No ids in labels.
 - **Catalog.** This section is the plan; the canonical list is the `crafting` row of `docs/architecture/observability.md`. The packet that first emits an event or a metric adds it to that row in the same PR.
 - **Acceptance.** Each packet's tests include at least one `LogCapture` assertion per new rejection reason and per new transition event, one that the events carry `account_id`, `player_id` and `entity_id`, and a counter-emission assertion for each new metric.
 
@@ -357,6 +365,7 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 | 14 | `event = 'queue_dropped'` | Jobs dropped at logout, with nothing consumed |
 | 15 | `event IN ('respec_prompted', 'respec')` | The respec, and the ASP refunded |
 | 16 | `event = 'gm_allcraft'` | What `.allcraft` granted, before and after |
-| any | `severity_text = 'WARN'` | Anything that failed an expectation: rollbacks, lookup misses, failed sends |
+| any (this player) | `severity_text = 'WARN'` | Anything that failed an expectation for this player: rollbacks, lookup misses, failed sends |
+| any (server-wide) | Drop `player_id` from the base: `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND severity_text = 'WARN'` | Warnings with no player: catalog load failures, requests dropped before the base (`no_player`, `malformed`) |
 
-Metrics: `crafting_requests_total` by `verb` and `outcome`, and `crafting_rejections_total` by `reason`.
+Metrics: `crafting_requests_total` and `crafting_jobs_total` by `verb` and `outcome`, and `crafting_rejections_total` by `reason`.
