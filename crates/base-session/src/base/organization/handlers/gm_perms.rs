@@ -1,43 +1,44 @@
 //! GM `.org_set_perms <orgId> <rank> <mask>` (ORG-10, D-ORG13).
 //!
-//! The GM edit goes through the same two functions a member's rank-editor
-//! press (CM 16, ORG-08) does, so the rules cannot drift apart:
+//! The GM edit is a member's rank-editor press (CM 16, ORG-08) made by a
+//! system actor: the same `rank_editor::rank_permissions_locked` and
+//! `announce_perm_edit`, under the same per-organization order guard, so
+//! the rules and the fanout cannot drift apart:
 //!
+//! - A rank the type does not use and the `Leader` row are refused.
 //! - `OrgPermission::apply_edit` (D-ORG22) works out the stored mask: only
 //!   the bits the type's editor shows (`editable_for`: 12 for a Team, 14 for
 //!   a Command) take the GM's value; every other bit keeps what is stored.
 //!   That is the D-ORG09 (6) clamp. A GM acts as a system actor holding
-//!   every bit, so the "grant only what you hold" half never refuses.
-//! - `persistence::set_rank_permissions` (ORG-02) writes it under ORG-LOCK
-//!   and refuses the `Leader` row and a rank the type does not use.
+//!   every bit and the `Leader` rank, so the authority checks and the
+//!   "grant only what you hold" half never refuse.
 //!
-//! The `Leader` row and an unused rank are refused before the write too, so
-//! the GM reads why. An edit the clamp turns into no change is refused as
+//! An edit the clamp turns into no change is refused as
 //! `permissions_unchanged`, telling the GM which bits were ignored.
 //!
 //! After the commit every online member gets the new rank table
-//! (`onOrganizationRankUpdate` [49], through `broadcast_to_org`).
+//! (`onOrganizationRankUpdate` [49]), and when the edit moved
+//! `OfficerNotes` the members of that rank get the officer-note sync [47]
+//! (`officer_notes`).
 //!
 //! Ends in one INFO `org.gm_action` row, `action = gm_org_set_perms`, with
 //! `rank` and the result; the change itself is the DEBUG
 //! `permissions_changed` transition with `from_mask`, `to_mask`,
 //! `wire_mask` and `ignored_bits`.
 
-use cimmeria_entity::organization::{OrgPermission, OrgRank};
-use cimmeria_wire::cell::client_methods::organization::{
-    build_on_organization_rank_update, ON_ORGANIZATION_RANK_UPDATE,
-};
+use cimmeria_entity::organization::OrgPermission;
 use sqlx::{Postgres, Transaction};
 
 use super::answer::{db_failed, refuse};
-use super::broadcast::broadcast_to_org;
 use super::disband::{GmCaller, GM_ACCESS_LEVEL};
+use super::edit_row::EditRow;
 use super::fanout::feedback;
 use super::gm::{gm_actor, gm_session};
+use super::order::org_order_guard;
+use super::rank_editor::{announce_perm_edit, rank_permissions_locked, PermEdit};
 use super::telemetry::{ActionRow, OrgReject, GM_ACTION_EVENT};
 use super::{OrgCtx, OrgPlayer};
-use crate::base::organization::api::{permissions_from_db, OrgAccess};
-use crate::base::organization::persistence::{load_ranks, set_rank_permissions, OrgStoreError};
+use crate::base::organization::api::OrgAccess;
 
 /// What one accepted edit changed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +88,9 @@ pub async fn gm_set_perms(
     };
     // The mask bits the clamp dropped, known once the type is read.
     let mut ignored = OrgPermission::NONE;
+    // Held until the last send (ORG-08): the [49] and any officer-note sync
+    // must not cross another edit's fanout.
+    let _order = org_order_guard(org_id).await;
     let decided = match pool.begin().await {
         Ok(mut tx) => {
             match edit_locked(&mut tx, &caller, org_id, rank, mask, &mut row, &mut ignored).await {
@@ -99,7 +103,7 @@ pub async fn gm_set_perms(
         }
         Err(e) => Err(db_failed(&row, &e)),
     };
-    let edit = match decided {
+    let perm_edit = match decided {
         Ok(edit) => edit,
         Err(OrgReject::PermissionsUnchanged) => {
             let text = format!(
@@ -110,6 +114,11 @@ pub async fn gm_set_perms(
             return fail(row, OrgReject::PermissionsUnchanged, text).await;
         }
         Err(why) => return fail(row, why, refused_text(why)).await,
+    };
+    let edit = PermsEdit {
+        from: perm_edit.from,
+        to: perm_edit.to,
+        ignored,
     };
     tracing::debug!(
         target: "org",
@@ -126,24 +135,9 @@ pub async fn gm_set_perms(
         ignored_bits = edit.ignored.bits(),
         "organization rank permissions changed"
     );
-    // The client's rank table is the whole list, so send all of it.
-    match load_ranks(pool, org_id).await {
-        Ok(ranks) => {
-            let masks: Vec<(OrgRank, OrgPermission)> =
-                ranks.iter().map(|r| (r.rank, r.permissions)).collect();
-            let args = build_on_organization_rank_update(org_id, &masks);
-            broadcast_to_org(ctx, org_id, ON_ORGANIZATION_RANK_UPDATE, &args, None).await;
-        }
-        Err(e) => tracing::warn!(
-            target: "org",
-            event = "org.broadcast_failed",
-            what = "rank_update",
-            org_id,
-            reason = e.reason(),
-            error = %e,
-            "organization rank table not re-sent: the ranks could not be read"
-        ),
-    }
+    // The whole rank table as read under the lock, then the officer-note
+    // sync if the edit moved `OfficerNotes`.
+    announce_perm_edit(ctx, &perm_edit).await;
     let mut text = format!(
         "org_set_perms: rank {rank} of organization {org_id} is now {:#09x}, was {:#09x}.",
         edit.to.bits(),
@@ -168,49 +162,36 @@ async fn edit_locked(
     mask: u32,
     row: &mut ActionRow,
     ignored: &mut OrgPermission,
-) -> Result<PermsEdit, OrgReject> {
+) -> Result<PermEdit, OrgReject> {
     let access = OrgAccess::system(tx, org_id, gm_actor(gm, "org_set_perms"))
         .await
         .map_err(|e| db_failed(row, &e))?
         .ok_or(OrgReject::NoSuchOrg)?;
     let org_type = access.org_type();
     row.org_type = Some(org_type.name());
-    let rank = OrgRank::try_from(rank)
-        .ok()
-        .filter(|r| r.is_valid_for(org_type))
-        .ok_or(OrgReject::RankNotInType)?;
-    if rank == OrgRank::LEADER {
-        return Err(OrgReject::LeaderRowPinned);
-    }
-    let old: i32 = sqlx::query_scalar(
-        "SELECT permissions FROM sgw_organization_ranks WHERE org_id = $1 AND rank = $2",
-    )
-    .bind(org_id)
-    .bind(i16::from(rank.as_u8()))
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| db_failed(row, &e))?
-    .ok_or(OrgReject::RankNotInType)?;
-    let old = permissions_from_db(old);
     let wire = OrgPermission::from_bits_truncate(mask);
     let editable = OrgPermission::editable_for(org_type);
     *ignored = OrgPermission::from_bits_truncate(wire.bits() & !editable.bits());
-    // A system actor holds every bit, so this is the clamp alone.
-    let to = OrgPermission::apply_edit(old, wire, org_type, access.permissions())
-        .map_err(|_| OrgReject::MissingPermission)?;
-    if to == old {
+    // The one permission-edit path (ORG-08). Its row only carries the masks
+    // for a database-failure WARN; the GM's outcome row is `row`.
+    let mut edit_row = EditRow {
+        event: GM_ACTION_EVENT,
+        action: "gm_org_set_perms",
+        account_id: gm.account_id,
+        player_id: Some(gm.player_id),
+        entity_id: Some(gm.entity_id),
+        org_id: Some(org_id),
+        org_type: Some(org_type.name()),
+        rank: Some(i32::from(rank)),
+        wire_mask: Some(wire.to_wire()),
+        ..EditRow::default()
+    };
+    let edit = rank_permissions_locked(tx, &access, i32::from(rank), wire.to_wire(), &mut edit_row)
+        .await?;
+    if !edit.changed() {
         return Err(OrgReject::PermissionsUnchanged);
     }
-    match set_rank_permissions(tx, &access, org_id, rank, to).await {
-        Ok(from) => Ok(PermsEdit {
-            from,
-            to,
-            ignored: *ignored,
-        }),
-        Err(OrgStoreError::LeaderPinned) => Err(OrgReject::LeaderRowPinned),
-        Err(OrgStoreError::RankNotInType(_)) => Err(OrgReject::RankNotInType),
-        Err(e) => Err(db_failed(row, &e)),
-    }
+    Ok(edit)
 }
 
 fn refused_text(why: OrgReject) -> String {

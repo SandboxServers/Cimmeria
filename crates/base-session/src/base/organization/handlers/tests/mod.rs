@@ -1,6 +1,7 @@
 //! Organization handler tests: login push, presence, leave and disband
 //! (ORG-06); invite, invite response, kick, rank change, the GM commands,
-//! `broadcast_to_org` and the ORG-LOCK race (ORG-07).
+//! `broadcast_to_org` and the ORG-LOCK race (ORG-07); the texts, the rank
+//! editor and officer-note visibility (ORG-08).
 //!
 //! Live-DB (TESTING.md type 3) against the real schema and trigger, with
 //! every client-bound message captured from a `TestTransport`, decrypted and
@@ -10,10 +11,12 @@
 //! `Org06P<n>`, [`Fixture::new`]); ORG-07 owns `0x7000_4F00..=0x7000_4FFF`
 //! and `0x7000_5200..=0x7000_53EF` (47 blocks in all, names `Org07P<n>`,
 //! [`Fixture::org07`]); ORG-09 owns `0x7000_5600..=0x7000_56FF` (16 blocks,
-//! names `Org09P<n>`, [`Fixture::org09`]); ORG-10 owns
-//! `0x7000_5A00..=0x7000_5BFF` (32 blocks, names `Org10P<n>`,
-//! [`Fixture::org10`]). Organizations are cleaned by exact name key
-//! ("Org06 ..." / "Org07 ..." / "Org09 ..." / "Org10 ..." names).
+//! names `Org09P<n>`, [`Fixture::org09`]); ORG-08 owns
+//! `0x7000_5800..=0x7000_59FF` (32 blocks, names `Org08P<n>`,
+//! [`Fixture::org08`]); ORG-10 owns `0x7000_5A00..=0x7000_5BFF` (32
+//! blocks, names `Org10P<n>`, [`Fixture::org10`]). Organizations are
+//! cleaned by exact name key ("Org06 ..." / "Org07 ..." / "Org08 ..." /
+//! "Org09 ..." / "Org10 ..." names).
 
 mod broadcast;
 mod chat;
@@ -25,10 +28,14 @@ mod invite_response;
 mod kick;
 mod leave;
 mod lock_race;
+mod officer_notes;
 mod org07_support;
+mod org08_support;
 mod presence;
 mod push;
 mod rank;
+mod rank_editor;
+mod texts;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -57,6 +64,8 @@ const BASE_ORG07: i32 = 0x7000_4F00;
 const BASE_ORG07_HIGH: i32 = 0x7000_5200;
 /// ORG-09's sentinel block (see the module docs).
 const BASE_ORG09: i32 = 0x7000_5600;
+/// ORG-08's sentinel blocks (see the module docs).
+const BASE_ORG08: i32 = 0x7000_5800;
 /// ORG-10's sentinel range (see the module docs).
 const BASE_ORG10: i32 = 0x7000_5A00;
 
@@ -113,6 +122,13 @@ impl Fixture {
     async fn org10(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
         assert!((0..32).contains(&block));
         Self::at(pool, BASE_ORG10, "Org10P", block, n, org_names).await
+    }
+
+    /// [`Fixture::new`] in ORG-08's range: block `block` (0..32) from
+    /// `0x7000_5800`, names `Org08P<i>`.
+    async fn org08(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
+        assert!((0..32).contains(&block));
+        Self::at(pool, BASE_ORG08, "Org08P", block, n, org_names).await
     }
 
     async fn at(

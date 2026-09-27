@@ -37,6 +37,16 @@
 //!   and `gmReloadOrganizations` (cell method 164, [`gm_reload`]).
 //! - [`gm_perms`]: `.org_set_perms` ([`gm_set_perms`]).
 //!
+//! ORG-08 adds the texts and the rank editor:
+//!
+//! - [`texts`]: `organizationMOTD` (CM 13), `organizationNote` (CM 14) and
+//!   `organizationOfficerNote` (CM 15) ([`handle_set_text`]).
+//! - [`rank_editor`]: `organizationSetRankPermissions` (CM 16) and
+//!   `organizationSetRankName` (CM 17); `rank_permissions_locked` is the
+//!   one permission-edit path, GM commands included.
+//! - [`officer_notes`]: who may read officer notes, and the sync when that
+//!   changes; [`order`]: the per-organization edit-and-fanout order.
+//!
 //! Every mutation follows ORG-LOCK (D-ORG04): one transaction, the
 //! organization row locked first, authorization read inside it. Fanout runs
 //! after the commit. Campaign ledger: `docs/analysis/organizations/`.
@@ -56,6 +66,7 @@ pub mod answer;
 pub mod broadcast;
 pub mod chat;
 pub mod disband;
+mod edit_row;
 pub mod fanout;
 pub mod gm;
 pub mod gm_inspect;
@@ -64,11 +75,15 @@ pub mod invite;
 pub mod invite_response;
 pub mod kick;
 pub mod leave;
+pub mod officer_notes;
+pub mod order;
 pub mod presence;
 pub mod push;
 pub mod rank;
+pub mod rank_editor;
 pub mod targets;
 pub mod telemetry;
+pub mod texts;
 
 pub use broadcast::broadcast_to_org;
 pub use chat::{org_channel, relay_org_chat, ChatSpeaker};
@@ -83,7 +98,9 @@ pub use leave::{handle_leave, LeaveOutcome};
 pub use presence::announce_offline;
 pub use push::{org_state_messages, push_org_state, restore_on_login, PushError, PushSummary};
 pub use rank::handle_rank_change;
+pub use rank_editor::{handle_set_rank_name, handle_set_rank_permissions, PermEdit};
 pub use telemetry::OrgReject;
+pub use texts::{handle_set_text, TextEdit};
 
 #[cfg(test)]
 mod tests;

@@ -27,6 +27,8 @@ use sqlx::{Postgres, Transaction};
 use super::answer::{db_failed, refusal_text, refuse};
 use super::disband::{GmCaller, GM_ACCESS_LEVEL};
 use super::invite_response::{add_joined, announce_join};
+use super::officer_notes::{sync_for_member_locked, NoteSync};
+use super::order::org_order_guard;
 use super::rank::announce_rank;
 use super::targets::{member_by_name, MemberTarget};
 use super::telemetry::{ActionRow, OrgReject};
@@ -219,6 +221,21 @@ pub async fn gm_rank(
     let Some(pool) = ctx.db_pool.as_deref() else {
         return fail(row, OrgReject::NoDb).await;
     };
+    // The organization first, so its order guard (ORG-08) is held before
+    // the transaction; the lock below re-reads the member.
+    let org_id = match org_id {
+        Some(id) => id,
+        None => match org_of_member(pool, target_name).await {
+            Ok(id) => id,
+            Err(Ok(why)) => return fail(row, why).await,
+            Err(Err(e)) => {
+                let why = db_failed(&row, &e);
+                return fail(row, why).await;
+            }
+        },
+    };
+    row.org_id = Some(org_id);
+    let _order = org_order_guard(org_id).await;
     let decided = match pool.begin().await {
         Ok(mut tx) => {
             match rank_locked(&mut tx, &caller, target_name, rank, org_id, &mut row).await {
@@ -231,7 +248,7 @@ pub async fn gm_rank(
         }
         Err(e) => Err(db_failed(&row, &e)),
     };
-    let (org_id, target, to, org_name) = match decided {
+    let (target, to, org_name, note_sync) = match decided {
         Ok(d) => d,
         Err(why) => return fail(row, why).await,
     };
@@ -248,7 +265,7 @@ pub async fn gm_rank(
         to_rank = to.as_u8(),
         "organization member rank changed"
     );
-    announce_rank(ctx, org_id, &target, to, &org_name).await;
+    announce_rank(ctx, org_id, &target, to, &org_name, note_sync.as_ref()).await;
     super::fanout::feedback(
         ctx,
         gm.entity_id,
@@ -269,32 +286,10 @@ async fn rank_locked(
     gm: &OrgPlayer,
     target_name: &str,
     rank: u8,
-    org_id: Option<i32>,
+    org_id: i32,
     row: &mut ActionRow,
-) -> Result<(i32, MemberTarget, OrgRank, String), OrgReject> {
+) -> Result<(MemberTarget, OrgRank, String, Option<NoteSync>), OrgReject> {
     let db = |row: &ActionRow, e: &dyn std::fmt::Display| db_failed(row, e);
-    let org_id = match org_id {
-        Some(id) => id,
-        None => {
-            // A display read to pick the organization; the lock below
-            // re-reads the member.
-            let ids: Vec<i32> = sqlx::query_scalar(
-                "SELECT DISTINCT m.org_id FROM sgw_organization_members m \
-                 JOIN sgw_player p ON p.player_id = m.player_id \
-                 WHERE lower(p.player_name) = lower($1)",
-            )
-            .bind(target_name)
-            .fetch_all(&mut **tx)
-            .await
-            .map_err(|e| db(row, &e))?;
-            match ids.as_slice() {
-                [] => return Err(OrgReject::TargetNotMember),
-                [one] => *one,
-                _ => return Err(OrgReject::OrgAmbiguous),
-            }
-        }
-    };
-    row.org_id = Some(org_id);
     let access = OrgAccess::system(tx, org_id, gm_actor(gm, "org_rank"))
         .await
         .map_err(|e| db(row, &e))?
@@ -323,9 +318,37 @@ async fn rank_locked(
             .await
             .map_err(|e| db(row, &e))?;
     match set_rank(tx, &access, org_id, target.player_id, to).await {
-        Ok(_) => Ok((org_id, target, to, org_name)),
+        Ok(_) => {
+            let sync = sync_for_member_locked(tx, org_id, target.player_id, target.rank, to)
+                .await
+                .map_err(|e| db(row, &e))?;
+            Ok((target, to, org_name, sync))
+        }
         Err(OrgStoreError::LeaderPinned) => Err(OrgReject::LeaderNotAssignable),
         Err(OrgStoreError::RankNotInType(_)) => Err(OrgReject::RankNotInType),
         Err(e) => Err(db(row, &e)),
+    }
+}
+
+/// The one Team or Command a member named `target_name` is in, for
+/// `.org_rank` without an org id. A display read to pick the organization;
+/// the locked transaction re-reads the member. `Err(Ok(_))` is a refusal.
+async fn org_of_member(
+    pool: &sqlx::PgPool,
+    target_name: &str,
+) -> Result<i32, Result<OrgReject, sqlx::Error>> {
+    let ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT DISTINCT m.org_id FROM sgw_organization_members m \
+         JOIN sgw_player p ON p.player_id = m.player_id \
+         WHERE lower(p.player_name) = lower($1)",
+    )
+    .bind(target_name)
+    .fetch_all(pool)
+    .await
+    .map_err(Err)?;
+    match ids.as_slice() {
+        [] => Err(Ok(OrgReject::TargetNotMember)),
+        [one] => Ok(*one),
+        _ => Err(Ok(OrgReject::OrgAmbiguous)),
     }
 }

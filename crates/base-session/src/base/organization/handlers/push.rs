@@ -23,6 +23,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 };
 
 use super::fanout::{online_members, send_to_player, OnlineMember};
+use super::officer_notes::rank_reads_officer_notes;
 use super::presence::announce;
 use super::telemetry::{count, OrgReject};
 use super::{OrgCtx, OrgPlayer};
@@ -87,6 +88,10 @@ pub fn org_state_messages(
         .iter()
         .filter_map(|r| r.name.as_deref().map(|n| (r.rank, n)))
         .collect();
+    // Officer notes only for a recipient whose rank holds `OfficerNotes`
+    // (CAT-M-10, ORG-08), judged from this push's own rank read and blank
+    // when the recipient's rank has no row (fail closed).
+    let reads_officer_notes = rank_reads_officer_notes(ranks, membership.rank);
     let roster_info: Vec<RosterInfo> = roster
         .iter()
         .map(|m| RosterInfo {
@@ -95,7 +100,11 @@ pub fn org_state_messages(
             archetype: byte(m.archetype),
             rank: m.rank,
             note: m.note.clone(),
-            officer_note: m.officer_note.clone(),
+            officer_note: if reads_officer_notes {
+                m.officer_note.clone()
+            } else {
+                String::new()
+            },
         })
         .collect();
 

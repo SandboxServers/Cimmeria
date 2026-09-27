@@ -7,7 +7,7 @@
 //! The wording is project policy (audit A-14): the client ships no strings
 //! for these refusals.
 
-use cimmeria_entity::organization::OrgType;
+use cimmeria_entity::organization::{OrgType, TextReject};
 
 use super::fanout::feedback;
 use super::telemetry::{ActionRow, OrgReject};
@@ -33,6 +33,24 @@ pub const ORG_GONE_TEXT: &str = "That organization no longer exists.";
 pub const ORG_TYPE_INVALID_TEXT: &str = "That is not an organization type.";
 pub const ORG_UNAVAILABLE_TEXT: &str =
     "Organizations are unavailable right now. Please try again later.";
+pub const OWN_RANK_TEXT: &str = "You cannot change your own rank's permissions or name.";
+pub const LEADER_PINNED_TEXT: &str = "The Leader rank always holds every permission.";
+pub const CHANGES_UNHELD_BITS_TEXT: &str =
+    "You can only grant or remove permissions your own rank holds.";
+pub const TEXT_NOT_ALLOWED_TEXT: &str = "That text contains characters that are not allowed.";
+pub const TEXT_EMPTY_TEXT: &str = "That name cannot be empty.";
+
+/// The line for a D-ORG10 / D-ORG23 text refusal. The cap is the field's
+/// own, in UTF-16 units (what the client counts).
+pub fn invalid_text(why: TextReject) -> String {
+    match why {
+        TextReject::TooLong { max, .. } => {
+            format!("That text is too long (at most {max} characters).")
+        }
+        TextReject::TooShort { .. } => TEXT_EMPTY_TEXT.into(),
+        _ => TEXT_NOT_ALLOWED_TEXT.into(),
+    }
+}
 
 /// "Team", "Command" or "squad", as a player reads it; "organization"
 /// when the type is not known.
@@ -75,8 +93,11 @@ pub fn refusal_text(why: OrgReject, self_text: &str, org_type: Option<OrgType>) 
         OrgReject::OrgGone | OrgReject::NoSuchOrg => ORG_GONE_TEXT.into(),
         OrgReject::OrgTypeInvalid => ORG_TYPE_INVALID_TEXT.into(),
         OrgReject::OrgAmbiguous => "They are in a Team and a Command; name the org id.".into(),
-        OrgReject::LeaderRowPinned => "The Leader rank always holds every permission.".into(),
+        OrgReject::LeaderRowPinned => LEADER_PINNED_TEXT.into(),
         OrgReject::PermissionsUnchanged => "That rank already has those permissions.".into(),
+        OrgReject::OwnRank => OWN_RANK_TEXT.into(),
+        OrgReject::ChangesUnheldBits => CHANGES_UNHELD_BITS_TEXT.into(),
+        OrgReject::InvalidText(r) => invalid_text(r),
         OrgReject::LeaderCannotLeave
         | OrgReject::VaultNotEmpty
         | OrgReject::NotGm
@@ -120,7 +141,8 @@ pub(super) fn db_failed(row: &ActionRow, e: &dyn std::fmt::Display) -> OrgReject
 }
 
 /// ORG-01's "not available yet" pair for a Team or Command call no packet
-/// serves yet (CM 10 and 13-17 until ORG-08, CM 19 until the Bank's BV-08):
+/// serves yet (CM 10, the Team / Command minimap ping, and CM 19 until the
+/// Bank's BV-08):
 /// `onErrorCode(ERRORCODE_SYSTEM_Ability, instance_id,
 /// CONDITION_FEEDBACK_InvalidEntity)`, then the feedback line the player
 /// actually reads. The caller has resolved `entity_id` to the actor's live

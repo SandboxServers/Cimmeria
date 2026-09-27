@@ -6,10 +6,11 @@
 //!   call `base::organization::creation::handler`.
 //! - `ForwardCellCall` carries a Team or Command cell method (8-17). The
 //!   actor is re-checked against the session first (`resolve_actor`), then
-//!   CM 8 goes to the invite response (ORG-07) and CM 9 to leave (ORG-06).
-//!   CM 10 and 13-17 get ORG-01's "not available yet" pair until ORG-08
-//!   serves them; CM 11 and 12 never reach the base (the cell refuses them
-//!   as unsolicited), so a forward of either is a forged message.
+//!   CM 8 goes to the invite response (ORG-07), CM 9 to leave (ORG-06),
+//!   CM 13-15 to the text edits and CM 16-17 to the rank editor (ORG-08).
+//!   CM 10 (the minimap ping) still gets ORG-01's "not available yet" pair;
+//!   CM 11 and 12 never reach the base (the cell refuses them as
+//!   unsolicited), so a forward of either is a forged message.
 //! - `TransferCash` (CM 19) is the Bank campaign's route: the reject stub
 //!   answers with the "not available yet" pair and logs
 //!   `org.transfer_cash_unimplemented` until BV-08 replaces this arm.
@@ -27,7 +28,8 @@ use cimmeria_base_session::base::organization::creation::handler::{
 use cimmeria_base_session::base::organization::handlers::answer::not_available;
 use cimmeria_base_session::base::organization::handlers::{
     gm_disband, gm_info, gm_join, gm_list, gm_rank, gm_reload, gm_set_perms,
-    handle_invite_response, handle_leave, resolve_actor, GmCaller, OrgCtx,
+    handle_invite_response, handle_leave, handle_set_rank_name, handle_set_rank_permissions,
+    handle_set_text, resolve_actor, GmCaller, OrgCtx, TextEdit,
 };
 use cimmeria_wire::cell::cell_methods::organization::{decode_org_cell_method, OrgCellCall};
 
@@ -216,6 +218,27 @@ async fn forward(
         }
         OrgCellCall::Leave { org_id } => {
             let _ = handle_leave(&octx, &player, org_id).await;
+        }
+        // ORG-08: the texts and the rank editor.
+        OrgCellCall::Motd { org_id, motd } => {
+            let _ = handle_set_text(&octx, &player, org_id, TextEdit::Motd, &motd).await;
+        }
+        OrgCellCall::Note { org_id, note } => {
+            let _ = handle_set_text(&octx, &player, org_id, TextEdit::Note, &note).await;
+        }
+        OrgCellCall::OfficerNote { org_id, name, note } => {
+            let edit = TextEdit::OfficerNote { target_name: &name };
+            let _ = handle_set_text(&octx, &player, org_id, edit, &note).await;
+        }
+        OrgCellCall::SetRankPermissions {
+            org_id,
+            rank,
+            permissions,
+        } => {
+            let _ = handle_set_rank_permissions(&octx, &player, org_id, rank, permissions).await;
+        }
+        OrgCellCall::SetRankName { org_id, rank, name } => {
+            let _ = handle_set_rank_name(&octx, &player, org_id, rank, &name).await;
         }
         OrgCellCall::StrikeTeamResponse { .. } | OrgCellCall::PvpLeaveResponse { .. } => {
             // The cell refuses both as unsolicited and never forwards them.

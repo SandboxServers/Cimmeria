@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Organization System
 
 > **Last updated**: 2026-09-27
-> **Status**: Squads work (ORG-03, ORG-04): invite, accept, leave, kick, loot mode, disconnect, gate travel, squad chat, the minimap ping and the GM `.squad_*` commands, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands (organizations campaign, [docs/analysis/organizations/](../analysis/organizations/README.md)) are persisted (ORG-02) and can be founded (ORG-05), restored at login, left and disbanded (ORG-06), invited into, kicked from and re-ranked (ORG-07, [below](#invite-kick-and-rank-change-org-07)), and have team, command and officer chat (ORG-09, [below](#team-command-and-officer-chat-org-09)). MOTD, notes, the rank editor and the vault are still to come.
+> **Status**: Squads work (ORG-03, ORG-04): invite, accept, leave, kick, loot mode, disconnect, gate travel, squad chat, the minimap ping and the GM `.squad_*` commands, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands (organizations campaign, [docs/analysis/organizations/](../analysis/organizations/README.md)) are persisted (ORG-02) and can be founded (ORG-05), restored at login, left and disbanded (ORG-06), invited into, kicked from and re-ranked (ORG-07, [below](#invite-kick-and-rank-change-org-07)), have team, command and officer chat (ORG-09, [below](#team-command-and-officer-chat-org-09)), and have a MOTD, member and officer notes and a rank editor (ORG-08, [below](#motd-notes-and-the-rank-editor-org-08)). The vault is still to come.
 
 ## Overview
 
@@ -24,7 +24,7 @@ What exists after the campaign's contract packet (ORG-01), the squad core (ORG-0
 - **Inbound decoders** in `cimmeria-wire`: cell methods 8–19 and SGWPlayer cell method 94 `onOrganizationCreation` ([`crates/wire/src/cell/cell_methods/organization/`](../../crates/wire/src/cell/cell_methods/organization/)), and base methods 0xCF–0xD2 ([`crates/wire/src/base/organization.rs`](../../crates/wire/src/base/organization.rs)). Each bounds a `WSTRING`'s declared length by the bytes left before allocating, and rejects truncation, trailing bytes and unpaired surrogates. CM 10 rejects a non-finite coordinate, and CM 19's signed amount decodes to a `CashDir` (positive deposits, negative withdraws, zero is rejected). CM 13, 14, 15, 17 and 94 used to drop their text; they now read it.
 - **Dispatch.** The cell router ([`crates/cell-methods/src/cell/cell_methods/organization/`](../../crates/cell-methods/src/cell/cell_methods/organization/)) decodes cell methods 8–19 and routes on the id each carries (D-ORG05, D-ORG06): CM 8 with a cell-issued request id, CM 9 with a squad-range org id, and CM 18 go to the squad handlers in `squad/`; CM 8 with a base request id, and CM 9, 10 and 13-17 with a Team or Command id, are forwarded to the base (`OrgCellToBase::ForwardCellCall`), and CM 19 with one as `OrgCellToBase::TransferCash`; CM 11 and 12 are refused as unsolicited; CM 94 goes to the creation handler in `creation/` ([Creation](#creation-org-05)); a squad-range id on a method squads do not have logs `UNIMPLEMENTED` at DEBUG on the `org` target (the text length, never the text) and is answered with `onErrorCode` and the feedback line "Organizations are not available yet." ([Cell routing](#cell-routing)). The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) forwards `organizationInviteByType` type 0 (after the Ignore check) and `organizationKick` with a squad id to the cell, refuses a type above 2, answers a rank change with a squad id with the "not available yet" pair, and hands every Team and Command call to the ORG-07 handlers.
 - **Outbound serializers** for client methods 34–51, `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) in [`crates/wire/src/cell/client_methods/organization/`](../../crates/wire/src/cell/client_methods/organization/) and `player.rs`, each byte-tested. The squad handlers send 34–40 and 51.
-- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`. `SquadInvite` and `SquadKick` reach the cell's squad handlers. On the base, a forwarded CM 9 and `GmDisband` reach the ORG-06 handlers, a forwarded CM 8, `GmJoin` and `GmRank` the ORG-07 handlers, and the creation messages (`RegistrarOpen`, `Create` and `GmCreate` to the base; `RegistrarEligible` and `CreateResult` back) the ORG-05 creation handlers; a forwarded CM 10 or 13-17 and `TransferCash` are answered "not available yet".
+- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`. `SquadInvite` and `SquadKick` reach the cell's squad handlers. On the base, a forwarded CM 9 and `GmDisband` reach the ORG-06 handlers, a forwarded CM 8, `GmJoin` and `GmRank` the ORG-07 handlers, a forwarded CM 13-17 the ORG-08 handlers, and the creation messages (`RegistrarOpen`, `Create` and `GmCreate` to the base; `RegistrarEligible` and `CreateResult` back) the ORG-05 creation handlers; a forwarded CM 10 and `TransferCash` are answered "not available yet".
 - **Squads** ([group-system.md § Squads](group-system.md#squads-org-03)): the service-wide `SquadRegistry` on `SpaceManager` and `CellEntity::squad_id`.
 
 The schema and the base-side persistence layer came with ORG-02; see [Persistence](#persistence).
@@ -37,11 +37,11 @@ The schema and the base-side persistence layer came with ORG-02; see [Persistenc
 | Minimap ping | PARTIAL | `BroadcastMinimapPing` (CM 10): squads validated (own squad, one a second) and logged, never relayed, since no client method shows another member's ping (ORG-E1 Q3, ORG-04); a Team or Command id is forwarded to the base and answered "not available yet" |
 | Strike team (PvP) | REFUSED | `strikeTeamResponse` (CM 11): refused as unsolicited, since no strike-team request is ever sent (CAT-M-16) |
 | PvP leave confirmation | REFUSED | `pvpOrganizationLeaveResponse` (CM 12): refused as unsolicited (CAT-M-17) |
-| MOTD | STUB | `organizationMOTD` (CM 13): a Team or Command id is forwarded to the base and answered "not available yet" until ORG-08 |
-| Member note | STUB | `organizationNote` (CM 14): as CM 13 |
-| Officer note | STUB | `organizationOfficerNote` (CM 15): as CM 13 |
-| Rank permissions | STUB | `organizationSetRankPermissions` (CM 16): as CM 13 |
-| Custom rank names | STUB | `organizationSetRankName` (CM 17): as CM 13 |
+| MOTD | DONE | `organizationMOTD` (CM 13): `MOTD` bit, D-ORG10 text, [45] to every online member (ORG-08, [below](#motd-notes-and-the-rank-editor-org-08)) |
+| Member note | DONE | `organizationNote` (CM 14): the actor's own note, `RosterNotes` bit, [46] to every online member (ORG-08) |
+| Officer note | DONE | `organizationOfficerNote` (CM 15): `OfficerNotes` bit, a target in the same organization and below the actor, [47] only to members holding `OfficerNotes` (ORG-08) |
+| Rank permissions | DONE | `organizationSetRankPermissions` (CM 16): `AlterPerms`, D-ORG09 (2), (3), (6) through `OrgPermission::apply_edit` (D-ORG22), the `Leader` row refused, [49] to every online member (ORG-08) |
+| Custom rank names | DONE | `organizationSetRankName` (CM 17): `RankNames`, D-ORG09 (2), (3), D-ORG10 / D-ORG23 names, [50] to every online member (ORG-08) |
 | Loot mode | DONE | `squadSetLootMode` (CM 18): the leader only, 0 or 1, then `onSquadLootType` to every member |
 | Cash management | STUB | `organizationTransferCash` (CM 19): a Team or Command id is forwarded as `TransferCash` and answered "not available yet" until the Bank campaign's BV-08 |
 | Creation | DONE | A registrar NPC opens the naming dialog (`launchOrganizationCreation`, 135) for an eligible player; `onOrganizationCreation` (SGWPlayer CM 94) founds the Team or Command against that offer and answers with `onOrganizationCreationResult` (134) and the founder's roster. GM `.org_create` skips the NPC. See [Creation](#creation-org-05) (ORG-05) |
@@ -226,7 +226,7 @@ The client reads rank permissions from the login push ([49]); no member-side cac
 
 ### Cell routing
 
-The cell router forwards every Team and Command cell method to the base: CM 8 with a base request id, and CM 9, 10 and 13-17 with a Team or Command id (`OrgCellToBase::ForwardCellCall`), and CM 19 as `OrgCellToBase::TransferCash`. CM 10 and 13-17 are answered there with "not available yet" until ORG-08; CM 19 stays the Bank campaign's reject stub until BV-08. CM 11 `strikeTeamResponse` and CM 12 `pvpOrganizationLeaveResponse` are refused on the cell as unsolicited, since no strike-team or PvP-leave request is ever sent (CAT-M-16, CAT-M-17). Squad-range ids on methods squads do not have keep the cell's "not available yet" answer.
+The cell router forwards every Team and Command cell method to the base: CM 8 with a base request id, and CM 9, 10 and 13-17 with a Team or Command id (`OrgCellToBase::ForwardCellCall`), and CM 19 as `OrgCellToBase::TransferCash`. CM 13-17 go to the ORG-08 handlers there; CM 10 (the minimap ping) is answered "not available yet"; CM 19 stays the Bank campaign's reject stub until BV-08. CM 11 `strikeTeamResponse` and CM 12 `pvpOrganizationLeaveResponse` are refused on the cell as unsolicited, since no strike-team or PvP-leave request is ever sent (CAT-M-16, CAT-M-17). Squad-range ids on methods squads do not have keep the cell's "not available yet" answer.
 
 ### `broadcast_to_org`
 
@@ -268,6 +268,7 @@ Everything logs on the `org` target; each action counts once on `org_actions_tot
 | A member or the speaker who missed a line | `event = 'org.send_failed' AND what IN ('chat', 'chat_echo')` (`reason`) |
 
 A muted speaker's line writes no `org.chat` row: look for `event = 'chat.muted_refused'` on the `chat` target. Every row counts on `org_actions_total{action = "chat"}`.
+
 ## GM suite (ORG-10)
 
 Every GM organization command is GameMaster-gated twice: the cell's `.` console runs only a GameMaster's line, and the base re-reads the access level from the session that plays the forwarded character on the forwarded entity (D-ORG13). No privilege bit travels in a cell-to-base message.
@@ -276,7 +277,7 @@ Every GM organization command is GameMaster-gated twice: the cell's `.` console 
 |---|---|
 | `.org_info [player]` | Lists every Team and Command the character (default: you) belongs to: type, name, org id, rank and that rank's permission mask in hex. The character may be offline; an exact name wins, otherwise a case-insensitive match must be unique. |
 | `.org_list` | Lists every Team and Command, oldest first, with its member count and leader; at most 50 lines. |
-| `.org_set_perms <orgId> <rank> <mask>` | Sets a rank's permission mask (decimal or `0x` hex). The mask goes through the same `OrgPermission::apply_edit` a member's rank editor uses (D-ORG22): only the bits the type's editor shows (12 for a Team, 14 for a Command) take your value, every other bit keeps what is stored, and the GM line names the bits it ignored (the D-ORG09 (6) clamp). The `Leader` row, a rank the type does not use and an edit that changes nothing are refused. The write is `persistence::set_rank_permissions` under ORG-LOCK; every online member then gets the rank table [49]. |
+| `.org_set_perms <orgId> <rank> <mask>` | Sets a rank's permission mask (decimal or `0x` hex). The mask goes through the same `OrgPermission::apply_edit` a member's rank editor uses (D-ORG22): only the bits the type's editor shows (12 for a Team, 14 for a Command) take your value, every other bit keeps what is stored, and the GM line names the bits it ignored (the D-ORG09 (6) clamp). The `Leader` row, a rank the type does not use and an edit that changes nothing are refused. The edit runs ORG-08's `rank_permissions_locked` (the one permission-edit path, also used by CM 16) under ORG-LOCK and the organization's order guard; every online member then gets the rank table [49], and when the edit moved `OfficerNotes` that rank's online members get the officer-note sync [47] ([below](#motd-notes-and-the-rank-editor-org-08)). |
 | `/ReloadOrganizations` (`gmReloadOrganizations`, `SGWGmPlayer` cell method 164) | Re-sends your own organization state, the same bundle as the world-entry push ([35], [43], [45], [48], [44], [49], [50], [38], then [37] per online member), for every Team and Command you belong to. Nobody else is told anything. Index 164 is in the `SGWGmPlayer` tail, which the dispatch gate refuses to non-GMs before any handler runs. |
 
 `.org_create`, `.org_disband`, `.org_join`, `.org_rank` and the three `.squad_*` commands are described with their packets above and in [group-system.md](group-system.md). No GM command sets organization text, so the D-ORG10 caps have nothing to bypass; `.org_create`'s name goes through the same `org_text::validate` as the registrar's.
@@ -289,6 +290,44 @@ Every GM organization command is GameMaster-gated twice: the cell's `.` console 
 | One command's refusals | `event = 'org.gm_action' AND action = 'gm_org_set_perms' AND outcome = 'rejected'`, grouped by `reason` |
 | A permission edit's before and after | `event = 'permissions_changed' AND org_id = <id>` (`rank`, `from_mask`, `to_mask`, `wire_mask`, `ignored_bits`; DEBUG) |
 | A reload | `event = 'org.gm_action' AND action = 'gm_reload_organizations'` (`count` = organizations re-sent), then `event = 'org.state_push' AND player_id = <id>` |
+
+## MOTD, notes and the rank editor (ORG-08)
+
+The handlers are `texts.rs` (CM 13-15) and `rank_editor.rs` (CM 16-17) in [`crates/base-session/src/base/organization/handlers/`](../../crates/base-session/src/base/organization/handlers/), reached from the cell as forwarded calls ([`org_dispatch.rs`](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/org_dispatch.rs)). Text is checked first (D-ORG10 and D-ORG23: rejected, never truncated). Then each edit runs under ORG-LOCK and under the organization's **order guard** (`order.rs`, an in-process lock per organization taken before the transaction and held until the last send), so two edits' post-commit sends go out in commit order. The rank change (0xD2) and `.org_rank` take the same guard. Every outcome ends in one feedback line, the success included.
+
+| Check (all under the lock) | MOTD (13) | Note (14) | Officer note (15) | Rank permissions (16) | Rank name (17) |
+|---|---|---|---|---|---|
+| The actor is a member | `not_member` | `not_member` | `not_member` | `not_member` | `not_member` |
+| The rank is one the type uses (D-ORG09 (5)) | | | | `rank_not_in_type` | `rank_not_in_type` |
+| Not the `Leader` row (D-ORG08) | | | | `leader_row_pinned` | |
+| The bit (D-ORG09 (1)) | `MOTD` | `RosterNotes` | `OfficerNotes` | `AlterPerms` | `RankNames` |
+| The target: by name among **this** organization's members, not the actor, strictly below the actor (D-ORG09 (2)) | | | `target_not_member`, `target_ambiguous`, `self_target`, `rank_too_low` | | |
+| Not the actor's own rank (D-ORG09 (3)) and strictly below it (D-ORG09 (2)) | | | | `own_rank`, `rank_too_low` | `own_rank`, `rank_too_low` |
+| Only bits the actor holds move (D-ORG09 (6), D-ORG22) | | | | `changes_unheld_bits` | |
+
+A missing bit is `missing_permission`; bad text is the text rule's own reason (`too_long`, `too_short`, `bidi_control`, `zero_width`, `format_char`, `control_char`, `line_separator`). `RosterNotes` is not in either editor's set, so in practice every rank except `Initiate` may write its own note (the D-ORG08 defaults). The Leader cannot rename rank 8: D-ORG09 (3) and (2) refuse it for everyone, including a GM.
+
+A permission edit stores `(old & !editable_for(type)) | (wire & editable_for(type))`, so a bit the client's editor does not show (`RosterNotes`, `ViewBankLogs`, ...) keeps its value, and only the bits that actually change must be held by the editor. `rank_permissions_locked` is the one permission-edit path; the GM `.org_set_perms` (ORG-10) calls it with a system access, which passes the authority checks but still meets the rank-in-type rule, the `Leader` pin and the clamp. An edit that changes nothing (the same text, the same mask) is `ok` with `after = unchanged`: no write and no fanout, but the line is sent.
+
+After the commit: [45] (MOTD) and [46] (the member's stored name and note) to every online member; [47] only to the members whose rank held `OfficerNotes` in the edit's transaction; [49] with the whole rank table and [50] with every custom rank name, as read under the lock, to every online member.
+
+**Officer-note visibility.** Officer notes reach only ranks holding `OfficerNotes` (CAT-M-10):
+
+- The login push ([38] in `push.rs`) blanks every officer note for a recipient whose rank lacks the bit in the push's own rank read, or has no rank row (fail closed).
+- A rank-permission edit that moves `OfficerNotes` sends that rank's online members one [47] per stored officer note, after the [49]: the text on a grant, an empty note on a revoke.
+- A rank change (0xD2 or `.org_rank`) between two ranks that differ in the bit does the same for the moved member, after the [40].
+
+### Telemetry (ORG-08)
+
+One INFO span per entrypoint (`org.set_text`, `org.set_rank_permissions`, `org.set_rank_name`) and one INFO outcome row with the same `event`, counted on `org_actions_total` with `action` = `set_text` \| `set_rank_permissions` \| `set_rank_name`.
+
+| Question | SigNoz Logs filter (`service.name = 'cimmeria-server' AND scope_name = 'org' AND ...`) |
+|---|---|
+| Who changed a text, and why it was refused | `event = 'org.set_text' AND org_id = <id>` (`field`, `from_units`, `to_units`, `target_player_id` for an officer note, `actor_rank`, `reason`) |
+| Rank-mask edits | `event = 'org.set_rank_permissions' AND org_id = <id>` (`rank`, `from_mask`, `to_mask`, `wire_mask`; `unheld_mask` on `changes_unheld_bits`) |
+| Rank renames | `event = 'org.set_rank_name' AND org_id = <id>` (`rank`, `from_units`, `to_units`) |
+| Officer notes shown or hidden after a rank or mask change | `event = 'org.officer_note_sync' AND org_id = <id>` (DEBUG: `show`, `notes`, `members`, `recipients`) |
+| A fanout that missed someone | `event = 'org.send_failed' AND what IN ('officer_note', 'officer_note_sync', 'broadcast')` |
 
 ## Entity Definition (OrganizationMember.def)
 

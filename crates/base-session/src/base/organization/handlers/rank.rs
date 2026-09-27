@@ -31,6 +31,8 @@ use sqlx::{Postgres, Transaction};
 use super::answer::{db_failed, refusal_text, refuse};
 use super::broadcast::broadcast_to_org;
 use super::fanout::feedback;
+use super::officer_notes::{sync_for_member_locked, NoteSync};
+use super::order::org_order_guard;
 use super::targets::{member_by_name, online_now, MemberTarget};
 use super::telemetry::{ActionRow, OrgReject};
 use super::{OrgCtx, OrgPlayer};
@@ -64,6 +66,9 @@ pub async fn handle_rank_change(
         to_rank: Some(rank),
         ..ActionRow::default()
     };
+    // Held until the last send: the rank move may change who reads officer
+    // notes, and its sync must not cross another edit's fanout (ORG-08).
+    let _order = org_order_guard(org_id).await;
     let decided = match ctx.db_pool.as_deref() {
         None => Err(OrgReject::NoDb),
         Some(pool) => match pool.begin().await {
@@ -79,7 +84,7 @@ pub async fn handle_rank_change(
             Err(e) => Err(db_failed(&row, &e)),
         },
     };
-    let (target, to, org_name) = match decided {
+    let (target, to, org_name, note_sync) = match decided {
         Ok(d) => d,
         Err(why) => {
             let text = refusal_text(why, RANK_SELF_TEXT, None);
@@ -98,7 +103,7 @@ pub async fn handle_rank_change(
         to_rank = to.as_u8(),
         "organization member rank changed"
     );
-    announce_rank(ctx, org_id, &target, to, &org_name).await;
+    announce_rank(ctx, org_id, &target, to, &org_name, note_sync.as_ref()).await;
     feedback(
         ctx,
         player.entity_id,
@@ -109,14 +114,16 @@ pub async fn handle_rank_change(
     Ok(target.rank)
 }
 
-/// After a committed rank change: [40] to every online member, and a line
-/// to the target if they are online now.
+/// After a committed rank change: [40] to every online member, the
+/// officer-note sync when the move changed whether the target may read
+/// them (ORG-08), and a line to the target if they are online now.
 pub(super) async fn announce_rank(
     ctx: &OrgCtx<'_>,
     org_id: i32,
     target: &MemberTarget,
     to: OrgRank,
     org_name: &str,
+    note_sync: Option<&NoteSync>,
 ) {
     let online = online_now(ctx, target.player_id);
     let member_id = online.map_or(0, |m| m.entity_id as i32);
@@ -129,6 +136,9 @@ pub(super) async fn announce_rank(
         None,
     )
     .await;
+    if let Some(sync) = note_sync {
+        sync.send(ctx).await;
+    }
     if let Some(m) = online {
         feedback(
             ctx,
@@ -140,8 +150,8 @@ pub(super) async fn announce_rank(
 }
 
 /// The locked part: every D-ORG09 check, then the write, inside `tx`.
-/// Returns the target (with the rank they held), the new rank and the
-/// organization's name.
+/// Returns the target (with the rank they held), the new rank, the
+/// organization's name and the officer-note sync the move needs.
 async fn rank_locked(
     tx: &mut Transaction<'_, Postgres>,
     player: &OrgPlayer,
@@ -149,7 +159,7 @@ async fn rank_locked(
     target_name: &str,
     rank: u8,
     row: &mut ActionRow,
-) -> Result<(MemberTarget, OrgRank, String), OrgReject> {
+) -> Result<(MemberTarget, OrgRank, String, Option<NoteSync>), OrgReject> {
     let db = |row: &ActionRow, e: &dyn std::fmt::Display| db_failed(row, e);
     let header = lock_org(tx, org_id)
         .await
@@ -192,7 +202,12 @@ async fn rank_locked(
         return Err(OrgReject::RankTooLow);
     }
     match set_rank(tx, &access, org_id, target.player_id, to).await {
-        Ok(_) => Ok((target, to, header.name)),
+        Ok(_) => {
+            let sync = sync_for_member_locked(tx, org_id, target.player_id, target.rank, to)
+                .await
+                .map_err(|e| db(row, &e))?;
+            Ok((target, to, header.name, sync))
+        }
         // Ruled out above, under the lock; kept typed in case a caller
         // bypasses the checks.
         Err(OrgStoreError::LeaderPinned) => Err(OrgReject::LeaderNotAssignable),

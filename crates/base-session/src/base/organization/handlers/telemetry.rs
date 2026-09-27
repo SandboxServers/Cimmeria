@@ -6,6 +6,8 @@
 //! once on `org_actions_total{action, outcome, reason}` (`reason = none` on
 //! `ok`). Identity fields are `Option`s from the session, never 0.
 
+use cimmeria_entity::organization::TextReject;
+
 /// Why a Team or Command action was refused: the closed `reason` set of the
 /// actions in this module. Stable strings; they are metric labels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +89,16 @@ pub enum OrgReject {
     /// `.org_set_perms` whose mask, after the D-ORG09 (6) clamp, changes
     /// nothing.
     PermissionsUnchanged,
+    // ORG-08: MOTD, notes and the rank editor.
+    /// A rank-permission or rank-name edit of the actor's own rank
+    /// (D-ORG09 (3)).
+    OwnRank,
+    /// A rank-permission edit that changes a bit the editor does not hold
+    /// (D-ORG09 (6), D-ORG22).
+    ChangesUnheldBits,
+    /// The text failed the D-ORG10 / D-ORG23 rules; `reason` is the text
+    /// rule's own (`too_long`, `bidi_control`, `zero_width`, ...).
+    InvalidText(TextReject),
 }
 
 impl OrgReject {
@@ -126,6 +138,9 @@ impl OrgReject {
             OrgReject::OrgAmbiguous => "org_ambiguous",
             OrgReject::LeaderRowPinned => "leader_row_pinned",
             OrgReject::PermissionsUnchanged => "permissions_unchanged",
+            OrgReject::OwnRank => "own_rank",
+            OrgReject::ChangesUnheldBits => "changes_unheld_bits",
+            OrgReject::InvalidText(r) => r.reason(),
         }
     }
 }
