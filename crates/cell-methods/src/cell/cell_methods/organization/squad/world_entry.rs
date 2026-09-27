@@ -50,6 +50,7 @@ pub async fn on_world_entry(
     let Some(squad) = squad else {
         return;
     };
+    space_mgr.squads.note_entity(player_id, entity_id);
     tracing::debug!(
         target: "squad",
         event = "squad.world_entry_replay",

@@ -453,3 +453,28 @@ fn owed_left_is_delivered_once() {
     );
     assert_eq!(reg.take_owed_left(5), None);
 }
+
+/// The last-entity map finds a member in gate transit by entity id, holds
+/// nothing for a player in no squad, and forgets a member when they leave
+/// or their squad disbands (so a recycled entity id never resolves to them).
+#[test]
+fn last_entity_is_recorded_for_members_only_and_cleared_on_departure() {
+    let now = Instant::now();
+    let (mut reg, sid) = squad_of(3, now);
+    reg.note_entity(9, 900);
+    assert_eq!(reg.member_by_entity(900), None, "not a member");
+    for p in 1..=3 {
+        reg.note_entity(p, 100 + p as u32);
+    }
+    assert_eq!(reg.member_by_entity(102), Some(2));
+
+    let d = reg.leave(3).unwrap();
+    assert_eq!(d.departed_entity, Some(103));
+    assert_eq!(reg.member_by_entity(103), None);
+
+    let d = reg.remove_player(2).unwrap();
+    assert!(d.disbanded);
+    assert_eq!(d.departed_entity, Some(102));
+    assert_eq!(reg.member_by_entity(101), None, "the one left behind too");
+    assert!(reg.squad(sid).is_none());
+}

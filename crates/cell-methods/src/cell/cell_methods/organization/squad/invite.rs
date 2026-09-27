@@ -195,13 +195,16 @@ pub async fn respond(
         return;
     }
 
-    let inviter = space_mgr
-        .player_entity_by_player_id(invite.inviter_player_id)
-        .and_then(|eid| actor(space_mgr, eid));
+    let inviter_entity = space_mgr.player_entity_by_player_id(invite.inviter_player_id);
+    let inviter = inviter_entity.and_then(|eid| actor(space_mgr, eid));
     match space_mgr.squads.accept(&invite, invitee, inviter) {
         Ok(joined) => {
             out.squad_id = Some(joined.squad_id);
             out.ok();
+            space_mgr.squads.note_entity(player_id, entity_id);
+            if let Some(eid) = inviter_entity {
+                space_mgr.squads.note_entity(invite.inviter_player_id, eid);
+            }
             let newcomers: &[i32] = if joined.created {
                 &[invite.inviter_player_id, player_id]
             } else {

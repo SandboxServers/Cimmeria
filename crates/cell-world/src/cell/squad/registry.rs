@@ -71,6 +71,10 @@ pub struct JoinOutcome {
 pub struct Departure {
     pub squad_id: i32,
     pub departed: SquadMember,
+    /// The departed member's last known entity id (see
+    /// [`SquadRegistry::note_entity`]), for the [39] the others get when
+    /// the member has no live entity (in gate transit).
+    pub departed_entity: Option<u32>,
     pub reason: OrgLeaveReason,
     /// The members left behind, in join order. When the squad disbanded
     /// this is the one member who was left alone.
@@ -150,6 +154,12 @@ pub struct SquadRegistry {
     /// transit): `player_id -> (squad_id, reason)`. Delivered on their next
     /// world entry.
     pub(super) owed_left: HashMap<i32, (i32, OrgLeaveReason)>,
+    /// Each member's last live entity id: `player_id -> entity_id`. Gate
+    /// travel removes the cell entity until the arrival re-creates it with
+    /// the same id, so a `DisconnectEntity` for a member in transit (an
+    /// aborted transfer, a crash or timeout mid-transfer) finds no entity
+    /// to read the `player_id` from. This map is how it still finds them.
+    pub(super) entity_of: HashMap<i32, u32>,
     /// Invites that expired since the last `drain_expired`.
     pub(super) expired: Vec<super::invites::ExpiredInvite>,
 }
@@ -170,6 +180,7 @@ impl SquadRegistry {
             next_request_id: Some(1),
             sent: HashMap::new(),
             owed_left: HashMap::new(),
+            entity_of: HashMap::new(),
             expired: Vec::new(),
         }
     }
@@ -190,6 +201,21 @@ impl SquadRegistry {
 
     pub fn squad_count(&self) -> usize {
         self.squads.len()
+    }
+
+    /// Record `entity_id` as member `player_id`'s live entity (on join and
+    /// on every world entry). Ignored for a player in no squad.
+    pub fn note_entity(&mut self, player_id: i32, entity_id: u32) {
+        if self.member_of.contains_key(&player_id) {
+            self.entity_of.insert(player_id, entity_id);
+        }
+    }
+
+    /// The member whose last live entity was `entity_id`, if any.
+    pub fn member_by_entity(&self, entity_id: u32) -> Option<i32> {
+        self.entity_of
+            .iter()
+            .find_map(|(&pid, &eid)| (eid == entity_id).then_some(pid))
     }
 
     /// Apply a consumed, accepted invite after re-validating it (D-ORG06).
@@ -313,6 +339,7 @@ impl SquadRegistry {
 
     fn remove_member(&mut self, player_id: i32, reason: OrgLeaveReason) -> Option<Departure> {
         let squad_id = self.member_of.remove(&player_id)?;
+        let departed_entity = self.entity_of.remove(&player_id);
         let squad = self
             .squads
             .get_mut(&squad_id)
@@ -325,6 +352,7 @@ impl SquadRegistry {
             self.squads.remove(&squad_id);
             for m in &remaining {
                 self.member_of.remove(&m.player_id);
+                self.entity_of.remove(&m.player_id);
             }
             // Invites into a squad that no longer exists can never be
             // accepted; drop them now rather than at their expiry.
@@ -332,6 +360,7 @@ impl SquadRegistry {
             return Some(Departure {
                 squad_id,
                 departed,
+                departed_entity,
                 reason,
                 remaining,
                 new_leader: None,
@@ -345,6 +374,7 @@ impl SquadRegistry {
         Some(Departure {
             squad_id,
             departed,
+            departed_entity,
             reason,
             remaining,
             new_leader,

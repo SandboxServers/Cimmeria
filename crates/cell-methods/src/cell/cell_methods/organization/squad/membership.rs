@@ -103,6 +103,11 @@ pub async fn handle_kick(
 /// and drop every invite they sent or hold. Runs before the entity is torn
 /// down, so the remaining members' [39] still names the departing entity.
 ///
+/// A member in gate transit has no cell entity (the cell removed it and the
+/// arrival has not re-created it), which is the state an aborted transfer
+/// (`abandon_unspaced_session`) or a crash mid-transfer disconnects from.
+/// They are found by their last entity id in the registry instead.
+///
 /// Not a player action, so no outcome row: the `member_left` transition
 /// (`reason = logout`) records it.
 pub async fn on_disconnect(
@@ -110,14 +115,53 @@ pub async fn on_disconnect(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let Some(player_id) = space_mgr
+    let live = space_mgr
         .get_entity(entity_id)
         .filter(|e| e.is_player)
-        .and_then(|e| e.player_id)
-    else {
+        .and_then(|e| e.player_id);
+    let Some(player_id) = live.or_else(|| in_transit_member(space_mgr, entity_id)) else {
         return;
     };
     if let Some(d) = space_mgr.squads.remove_player(player_id) {
         fanout::announce_departure(tx, space_mgr, &d).await;
     }
+}
+
+/// The squad member whose last entity was `entity_id`, when that entity is
+/// gone (gate transit). `None`, logged, otherwise.
+fn in_transit_member(space_mgr: &SpaceManager, entity_id: u32) -> Option<i32> {
+    let Some(player_id) = space_mgr.squads.member_by_entity(entity_id) else {
+        // Not a squad member, or already removed: a full-exit logOff sends
+        // DisconnectEntity and the socket close sends it again, so the
+        // second one lands here for every player. Nothing to do.
+        tracing::debug!(
+            target: "squad",
+            event = "squad.disconnect_no_member",
+            entity_id,
+            "disconnect for an entity that is gone and in no squad"
+        );
+        return None;
+    };
+    if let Some(live) = space_mgr.player_entity_by_player_id(player_id) {
+        // The member is live under another entity: the recorded id is
+        // stale, and this disconnect is not theirs.
+        tracing::warn!(
+            target: "squad",
+            event = "squad.disconnect_stale_entity",
+            entity_id,
+            player_id,
+            live_entity_id = live,
+            reason = "stale_entity_id",
+            "disconnect names a squad member's old entity id; member kept"
+        );
+        return None;
+    }
+    tracing::debug!(
+        target: "squad",
+        event = "squad.disconnect_in_transit",
+        entity_id,
+        player_id,
+        "disconnect of a squad member in gate transit"
+    );
+    Some(player_id)
 }

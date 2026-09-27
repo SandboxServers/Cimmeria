@@ -103,6 +103,95 @@ async fn disconnect_entity_removes_the_squad_member() {
     assert_eq!(mgr.squads.squad_count(), 0);
 }
 
+/// A member who disconnects in gate transit (an aborted transfer, or a
+/// crash mid-transfer) has no cell entity left: `DestroyEntity` removed it
+/// and the arrival never re-created it. `DisconnectEntity` must still remove
+/// them, found by their last entity id, and Alice's [39] must name that id.
+#[tokio::test]
+async fn disconnect_in_gate_transit_removes_the_squad_member() {
+    let mut mgr = make_space_manager();
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+    pair(&mut mgr, &tx, &mut rx, &engine).await;
+    handle_base_message(
+        BaseToCellMsg::DestroyEntity { entity_id: 12 },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+    assert!(mgr.get_entity(12).is_none(), "fixture: Bob is in transit");
+    calls(&mut rx);
+    handle_base_message(
+        BaseToCellMsg::DisconnectEntity { entity_id: 12 },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+    let mut left = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } = msg
+        {
+            left.push((entity_id, method_index, args));
+        }
+    }
+    let order: Vec<(u32, u16)> = left.iter().map(|(e, m, _)| (*e, *m)).collect();
+    assert_eq!(order, [(11, 39), (11, 36)]);
+    assert_eq!(
+        left[0].2[..4],
+        12i32.to_le_bytes(),
+        "[39] names Bob's last entity"
+    );
+    assert_eq!(mgr.squads.squad_of(2), None);
+    assert_eq!(mgr.squads.squad_count(), 0);
+}
+
+/// A `DisconnectEntity` naming a member's old entity id while that member
+/// is live under another id is not theirs: the member stays, and the
+/// mismatch is a WARN seam (`reason = stale_entity_id`).
+#[tokio::test]
+async fn disconnect_of_a_stale_entity_id_keeps_the_member_and_warns() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = make_space_manager();
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+    pair(&mut mgr, &tx, &mut rx, &engine).await;
+    handle_base_message(
+        BaseToCellMsg::DestroyEntity { entity_id: 12 },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+    // Bob is live again as entity 13, before any world-entry replay has
+    // re-recorded his entity.
+    player(&mut mgr, 13, 2, "Bob");
+    calls(&mut rx);
+    handle_base_message(
+        BaseToCellMsg::DisconnectEntity { entity_id: 12 },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+    assert_eq!(mgr.squads.squad_of(2), Some(SID), "Bob keeps his squad");
+    assert!(calls(&mut rx).is_empty());
+    let warn = capture
+        .find_event(tracing::Level::WARN, "old entity id", "stale_entity_id")
+        .expect("the stale-id disconnect must WARN");
+    assert!(warn.has_field("event", "squad.disconnect_stale_entity"));
+    assert!(warn.has_field("player_id", "2") && warn.has_field("live_entity_id", "13"));
+}
+
 /// `DestroyEntity` is also the gate-travel teardown: it must NOT touch the
 /// squad, or a member would lose it on every world change.
 #[tokio::test]

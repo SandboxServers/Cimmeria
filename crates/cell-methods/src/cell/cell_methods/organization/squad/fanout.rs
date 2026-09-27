@@ -280,8 +280,12 @@ pub(super) async fn announce_departure(
     let sid = d.squad_id;
     // Resolved before `tell_left` so a logging-out member's [39] still
     // names their entity: the DisconnectEntity arm runs this before the
-    // teardown.
-    let departed_id = member_id(space_mgr, d.departed.player_id);
+    // teardown. A member in gate transit has no live entity; their last
+    // one is the id the others' rosters still hold.
+    let departed_id = match space_mgr.player_entity_by_player_id(d.departed.player_id) {
+        Some(eid) => eid as i32,
+        None => d.departed_entity.map_or(0, |eid| eid as i32),
+    };
     telemetry::departure(
         space_mgr,
         d,
