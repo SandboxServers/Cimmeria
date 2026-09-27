@@ -150,13 +150,17 @@ The Rust source audit found no runtime sender or paradigm progression path. See 
 
 | Property | Type | Flags | Notes |
 |----------|------|-------|-------|
-| `craftingEntityFlags` | `INT32` | `CELL_PRIVATE` | Crafting entity state flags |
+| `craftingEntityFlags` | `PYTHON` | `CELL_PRIVATE` | Crafting entity state flags |
 | `craftingOptions` | `PYTHON` | `CELL_PRIVATE` | Available crafting options |
 | `craftTimer` | `INT32` | `CELL_PRIVATE` | Active craft timer |
 | `craftQueue` | `PYTHON` | `CELL_PRIVATE` | Queued craft operations |
 | `numRespecCrafting` | `INT32` | `CELL_PRIVATE` | Number of crafting respecs used |
 
 All crafting properties are `CELL_PRIVATE` — none synced to client via property updates.
+
+**Correction (2026-09-26, CR-E1, audit C-62):** `craftingEntityFlags` was previously typed
+`INT32` here; `entities/defs/SGWPlayer.def:325-329` declares it `PYTHON` (default `{}`), matching
+`craftingOptions`. Both are dict-shaped, not a flat integer bitfield.
 
 ---
 

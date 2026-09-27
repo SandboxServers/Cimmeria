@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 73 per-system reverse engineering findings with evidence.
+This directory contains 74 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -71,6 +71,7 @@ This directory contains 73 per-system reverse engineering findings with evidence
 | `struct-field-layouts.md` | V5 | FIXED_DICT struct field layouts — client-binary anatomy of key FIXED_DICT structures | HIGH |
 | `weapon-ammo-pipeline.md` | V5 | Weapon / ammo pipeline — clip sizes, ammo consumption, and bandolier-slot wiring recovered from the binary | HIGH |
 | `crafting-restoration.md` | Restore | Crafting (craft/research/reverse-engineer/alloy/spendASP) — 3-layer completeness assessment + phased Rust restoration plan (supersedes #53, tracked by #567) | HIGH |
+| `crafting-client-ui.md` | CR-E1 | Crafting client UI — respec flow, `CraftingOptions` unpacker chain, feedback visibility, client clock, alloy/research kicker validation; corrects the `0x00e465d0` blueprint-list mislabeling (audit C-61) and `craftingEntityFlags` type (C-62) | HIGH (5/6 questions); MEDIUM (client clock domain, Q4) |
 | `organization-restoration.md` | Restore | Organization / squad / guild — completeness + phased plan; 9-rank + 26-bit permission model, OrgAuthority service (supersedes #68, tracked by #568) | HIGH |
 | `duel-restoration.md` | Restore | Duel system — challenge/arena/PvP-flag lifecycle, SGWDuelMarker entity; never server-implemented originally (supersedes #70, tracked by #569) | HIGH |
 | `pet-restoration.md` | Restore | Pet / companion — SGWPet entity, command dispatch, ownership/AoI; includes pet-wire-formats.md corrections (new, tracked by #570) | HIGH |
