@@ -34,6 +34,7 @@ use crate::test_support::{
 const BASE: i32 = 0x7000_B600;
 const SLAPPACK: i32 = 2893;
 const OPEN: VaultAccess = VaultAccess::Open {
+    org_id: None,
     scope: VaultScope::Personal,
     banker_id: Some(0x7000_B6D0),
     distance: Some(1.0),

@@ -14,6 +14,7 @@ use cimmeria_wire::cell::client_methods::player::ON_VAULT_OPEN;
 use cimmeria_wire::cell::vault::build_vault_open_args;
 
 use super::expand::request_expansion_quote;
+use super::org_open::request_org_vault;
 use super::rejection::{reject_vault_open, VaultOpenReject};
 use super::{interact_range, InteractRangeFail};
 use crate::cell::messages::CellToBaseMsg;
@@ -40,7 +41,6 @@ pub async fn open_vault_at_banker(
             VaultOpenReject::BankerMissing,
             Some(banker_id),
             None,
-            "",
             tx,
             space_mgr,
         )
@@ -52,22 +52,9 @@ pub async fn open_vault_at_banker(
         .map(|p| p.position.distance_squared_to(&banker_pos).sqrt());
 
     if scope != VaultScope::Personal {
-        // The org vaults need the organizations campaign (BV-07, Wave 4).
-        let label = if scope == VaultScope::Team {
-            "Team"
-        } else {
-            "Command"
-        };
-        reject_vault_open(
-            entity_id,
-            VaultOpenReject::OrgVaultNotAvailable,
-            Some(banker_id),
-            distance,
-            label,
-            tx,
-            space_mgr,
-        )
-        .await;
+        // Membership lives on the base: ask it (BV-07). The window opens
+        // when the base's grant comes back (`org_open::grant_org_vault`).
+        request_org_vault(entity_id, banker_id, scope, distance, tx, space_mgr).await;
         return;
     }
     let pos = [banker_pos.x, banker_pos.y, banker_pos.z];
@@ -117,7 +104,6 @@ pub async fn reject_banker_out_of_range(
         VaultOpenReject::OutOfRange,
         Some(target),
         distance,
-        "",
         tx,
         space_mgr,
     )
@@ -171,6 +157,7 @@ async fn open_personal_vault(
     let id = player.identity();
     player.vault_session = Some(VaultSession {
         scope: VaultScope::Personal,
+        org_id: None,
         banker_id,
         space_id,
         opened_at: Instant::now(),

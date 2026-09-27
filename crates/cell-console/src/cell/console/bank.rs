@@ -189,7 +189,6 @@ pub(crate) async fn refuse_non_gm(
         crate::cell::interactions::VaultOpenReject::NotGm,
         None,
         None,
-        "",
         tx,
         space_mgr,
     )

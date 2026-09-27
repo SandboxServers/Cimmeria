@@ -136,6 +136,21 @@ ALTER TABLE ONLY sgw_organization_members
     ADD CONSTRAINT sgw_organization_members_org_fkey FOREIGN KEY (org_id, org_type) REFERENCES sgw_organizations(org_id, org_type) ON UPDATE RESTRICT ON DELETE CASCADE;
 
 --
+-- Name: sgw_organization_vault_items_org_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Composite, so a vault row's org_type copy (which the container CHECK
+-- reads) always equals its organization's type. ON DELETE RESTRICT, never
+-- CASCADE (D-BV18): deleting an organization never deletes its vault. See
+-- the table header in sgw_organization_vault_items.sql.
+--
+
+ALTER TABLE ONLY sgw_organization_vault_items
+    ADD CONSTRAINT sgw_organization_vault_items_org_fkey FOREIGN KEY (org_id, org_type) REFERENCES sgw_organizations(org_id, org_type) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+ALTER TABLE ONLY sgw_organization_vault_items
+    ADD CONSTRAINT sgw_organization_vault_items_type_id_fkey FOREIGN KEY (type_id) REFERENCES resources.items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
 -- Name: sgw_organization_members_rank_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 -- A member's rank must be one of the organization's rank rows, so rank 0,

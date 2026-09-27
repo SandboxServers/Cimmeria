@@ -12,7 +12,8 @@
 //! 106) from the cell, the way the trainer opens: container 17's contents
 //! were already sent at login and its size is declared by the world-entry
 //! `onBagInfo`, so no base round trip is needed (BV-E1 Q1). Team and Command
-//! Bankers are refused with a chat line until the org vaults land (Wave 4).
+//! Bankers need the base, which holds organization membership: see
+//! [`org_open`] (BV-07).
 //!
 //! GM `.bank` ([`open_vault_gm`]) opens the personal vault anywhere with a
 //! session that has no Banker.
@@ -39,6 +40,7 @@
 
 mod expand;
 mod open;
+mod org_open;
 mod rejection;
 
 use cimmeria_entity::cell_entity::VaultCloseReason;
@@ -51,6 +53,7 @@ pub use expand::{
     show_expand_offer,
 };
 pub use open::{open_vault_at_banker, open_vault_gm, reject_banker_out_of_range};
+pub use org_open::{grant_org_vault, OrgGrantReject};
 pub use rejection::{reject_vault_open, VaultOpenReject};
 
 // The move rule and its reject enum live in `cimmeria-cell-world` so every
@@ -72,6 +75,8 @@ pub fn pin_interaction_target(space_mgr: &mut SpaceManager, entity_id: u32, targ
 
 #[cfg(test)]
 mod expand_tests;
+#[cfg(test)]
+mod org_open_tests;
 #[cfg(test)]
 mod telemetry_tests;
 #[cfg(test)]

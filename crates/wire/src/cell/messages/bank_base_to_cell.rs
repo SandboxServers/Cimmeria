@@ -1,9 +1,12 @@
 //! `BankBaseToCell`: bank and vault traffic from the base to the cell,
 //! carried by `BaseToCellMsg::Bank`.
 //!
-//! One nested enum, like [`super::BankCellToBase`] in the other direction.
-//! Every variant carries the player's `player_id` and `entity_id` as the
-//! cell sent them, so the cell can tell a stale entity from a live one.
+//! One nested enum, so later bank packets add a variant here instead of in
+//! `base_to_cell.rs` (the organizations pattern). Every variant carries the
+//! player's ids from the base's own session and database reads, never from
+//! a client payload.
+
+use cimmeria_entity::cell_entity::VaultScope;
 
 /// Bank messages sent from BaseApp to CellApp.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +29,22 @@ pub enum BankBaseToCell {
         /// `from_slots + 10`, shown to the player in chat.
         price: i32,
     },
+
+    /// The answer to `BankCellToBase::OrgVaultOpen` when the player is a
+    /// member (bank-vault BV-07). The base has already sent the vault's
+    /// `onBagInfo` and contents; the cell records the Team or Command vault
+    /// session and sends `onTeamVaultOpen` (107) or `onCommandVaultOpen`
+    /// (108), after checking that the player still has that Banker pinned.
+    OrgVaultGranted {
+        entity_id: u32,
+        /// The member's character, so the cell can tell a stale entity id
+        /// (a gate travel since the request) from a live one.
+        player_id: i32,
+        scope: VaultScope,
+        org_id: i32,
+        /// The Banker the request named.
+        banker_id: u32,
+    },
 }
 
 impl BankBaseToCell {
@@ -33,6 +52,7 @@ impl BankBaseToCell {
     pub fn kind(&self) -> &'static str {
         match self {
             BankBaseToCell::OfferExpansion { .. } => "offer_expansion",
+            BankBaseToCell::OrgVaultGranted { .. } => "org_vault_granted",
         }
     }
 }

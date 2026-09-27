@@ -6,13 +6,12 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope, VaultSession};
-use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use cimmeria_wire::cell::client_methods::player::ON_VAULT_OPEN;
 use cimmeria_wire::cell::vault::build_vault_open_args;
 
 use super::*;
 use crate::cell::interactions::handle_interact;
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{BankCellToBase, CellToBaseMsg};
 
 pub(super) const PLAYER: u32 = 1;
 
@@ -109,24 +108,46 @@ async fn personal_banker_click_sends_one_vault_open_and_opens_a_session() {
     assert_eq!(allowed(&mgr), Ok(()));
 }
 
-/// Team and Command Bankers are refused until the org vaults land: no
-/// `onVaultOpen`, no session, and one visible chat line.
+/// Team and Command Bankers ask the base (BV-07): exactly one
+/// `BankCellToBase::OrgVaultOpen` carrying the player's ids, the scope, the
+/// Banker, the distance and the space, and no window and no session until
+/// the base grants it. Fails if the arm goes back to refusing, or opens the
+/// vault without the base.
 #[tokio::test]
-async fn org_banker_click_is_refused_with_feedback_and_no_session() {
+async fn org_banker_click_asks_the_base_and_opens_nothing_yet() {
     for scope in [VaultScope::Team, VaultScope::Command] {
         let mut mgr = two_space_manager();
         let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], scope);
+        let space_id = mgr.get_entity_space_id(PLAYER).unwrap();
         let (tx, mut rx) = mpsc::channel(16);
 
         handle_interact(PLAYER, banker, &tx, &mut mgr).await;
 
-        let methods: Vec<u16> = drain(&mut rx).into_iter().map(|(_, m, _)| m).collect();
+        let mut sent = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            sent.push(msg);
+        }
+        assert_eq!(sent.len(), 1, "{scope:?}: one message: {sent:?}");
+        match &sent[0] {
+            CellToBaseMsg::Bank(req) => assert_eq!(
+                *req,
+                BankCellToBase::OrgVaultOpen {
+                    entity_id: PLAYER,
+                    account_id: Some(6),
+                    player_id: Some(12),
+                    scope,
+                    banker_id: banker,
+                    distance: Some(2.0),
+                    space_id,
+                }
+            ),
+            other => panic!("{scope:?}: expected the org vault request, got {other:?}"),
+        }
         assert_eq!(
-            methods,
-            vec![ON_PLAYER_COMMUNICATION],
-            "{scope:?}: one feedback line and nothing else"
+            session(&mgr),
+            None,
+            "{scope:?} opens no session before the grant"
         );
-        assert_eq!(session(&mgr), None, "{scope:?} must not open a session");
     }
 }
 
@@ -185,6 +206,7 @@ async fn vault_move_allowed_enforces_session_space_and_proximity() {
     assert_eq!(allowed(&mgr), Err(VaultReject::NoSession));
 
     let open = |banker_id: Option<u32>, space_id: u32| VaultSession {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id,
         space_id,
@@ -257,6 +279,7 @@ async fn vault_access_maps_every_verdict() {
     let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Personal);
     let space = mgr.get_entity_space_id(PLAYER).unwrap();
     let open = |banker_id: Option<u32>, space_id: u32| VaultSession {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id,
         space_id,

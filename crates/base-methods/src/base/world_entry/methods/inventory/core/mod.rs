@@ -42,11 +42,16 @@ pub use remove_instance::handle_remove_inventory_item;
 pub use use_instance::handle_use_inventory_item;
 
 /// The column list and joins every inventory-row read shares, up to (not
-/// including) its `WHERE`. The two selects below differ only in the filter,
-/// so their row layout cannot drift apart.
+/// including) its `WHERE`. The selects below differ only in the filter (and,
+/// for the Team and Command vaults, the table), so their row layout cannot
+/// drift apart.
 macro_rules! inventory_item_select_head {
     () => {
-        r#"
+        inventory_item_select_head!("sgw_inventory")
+    };
+    ($table:literal) => {
+        concat!(
+            r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
        COALESCE((
@@ -56,11 +61,18 @@ SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        CASE WHEN ri.default_ammo_type IS NULL THEN 0
             ELSE array_position(enum_range(NULL::resources."EAmmoType"), ri.default_ammo_type) - 1
        END AS cur_ammo_type_id
-FROM sgw_inventory inv
+FROM "#,
+            $table,
+            r#" inv
 LEFT JOIN resources.items ri ON ri.item_id = inv.type_id
 "#
+        )
     };
 }
+
+// After the macro, so the vault reads can use it.
+mod org_vault_items;
+pub(crate) use org_vault_items::{send_org_vault_items_via, OrgVaultSend};
 
 /// `pub(crate)` so the duplicate copy in `player_load/core.rs` can be
 /// pinned against this one by the SQL drift-guard test

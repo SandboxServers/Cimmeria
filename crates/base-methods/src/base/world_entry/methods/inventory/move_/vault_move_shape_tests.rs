@@ -178,6 +178,7 @@ async fn a_gm_session_deposits_without_a_banker() {
     let client = in_world(entity_id, 40840);
     let capture = LogCapture::install();
     let gm = VaultAccess::Open {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id: None,
         distance: None,

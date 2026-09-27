@@ -9,6 +9,7 @@
 
 use crate::cell::vault::VaultAccess;
 use cimmeria_entity::cell_entity::ExpansionOffer;
+use cimmeria_entity::cell_entity::VaultScope;
 
 /// Whose vault a GM tool is about.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +78,30 @@ pub enum BankCellToBase {
         /// What asked for the purchase.
         trigger: ExpandTrigger,
     },
+
+    /// A player clicked a Team or Command Banker (bank-vault BV-07). The
+    /// cell does not know organization membership, so it asks the base: the
+    /// base finds the player's Team or Command, checks membership under the
+    /// organization lock, sends the vault's size and contents, and answers
+    /// with `BankBaseToCell::OrgVaultGranted`, or refuses with a feedback
+    /// line itself. The cell has passed the interact range gate and pinned
+    /// the Banker.
+    OrgVaultOpen {
+        /// The player's entity id.
+        entity_id: u32,
+        /// `account.account_id` from the cell entity, for the log.
+        account_id: Option<u32>,
+        /// `sgw_player.player_id` from the cell entity; `None` refuses.
+        player_id: Option<i32>,
+        /// `Team` or `Command`, from the Banker's template.
+        scope: VaultScope,
+        /// The pinned Banker.
+        banker_id: u32,
+        /// Player to Banker distance when the click passed the gate.
+        distance: Option<f32>,
+        /// The space the player and the Banker are in.
+        space_id: u32,
+    },
 }
 
 /// What asked for a vault expansion, the `trigger` log field.
@@ -106,6 +131,7 @@ impl BankCellToBase {
             BankCellToBase::GmDump { .. } => "gm_dump",
             BankCellToBase::ExpansionQuote { .. } => "expansion_quote",
             BankCellToBase::Expand { .. } => "expand",
+            BankCellToBase::OrgVaultOpen { .. } => "org_vault_open",
         }
     }
 }

@@ -103,6 +103,7 @@ pub fn vault_access(entity_id: u32, space_mgr: &SpaceManager) -> VaultAccess {
                 .vault_session
                 .as_ref()
                 .map_or(VaultScope::Personal, |s| s.scope),
+            org_id: player.vault_session.as_ref().and_then(|s| s.org_id),
             banker_id,
             distance: banker_id.and_then(|b| banker_distance(entity_id, b, space_mgr)),
         },

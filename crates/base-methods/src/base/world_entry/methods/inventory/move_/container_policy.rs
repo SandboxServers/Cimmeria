@@ -502,6 +502,7 @@ mod tests {
     }
 
     const OPEN: VaultAccess = VaultAccess::Open {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id: Some(7),
         distance: Some(2.0),
@@ -534,6 +535,7 @@ mod tests {
     fn an_org_session_does_not_open_the_personal_vault() {
         for scope in [VaultScope::Team, VaultScope::Command] {
             let org = VaultAccess::Open {
+                org_id: None,
                 scope,
                 banker_id: Some(7),
                 distance: Some(1.0),

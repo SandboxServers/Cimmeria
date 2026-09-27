@@ -16,6 +16,7 @@ async fn an_expansion_offer_reaches_the_vault_session() {
     p.player_id = Some(1000);
     // A GM `.bank` session: the dialog speaks through the player's entity.
     p.vault_session = Some(VaultSession {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id: None,
         space_id,

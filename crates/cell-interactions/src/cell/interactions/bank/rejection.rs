@@ -18,8 +18,6 @@ pub enum VaultOpenReject {
     /// The player clicked a Banker from outside the interact distance, or
     /// from another space.
     OutOfRange,
-    /// A Team or Command Banker: the org vaults are not built yet (Wave 4).
-    OrgVaultNotAvailable,
     /// A player without GM access typed `.bank`.
     NotGm,
     /// The Banker passed the range gate but was gone by the time the arm
@@ -32,19 +30,15 @@ impl VaultOpenReject {
     pub fn reason(self) -> &'static str {
         match self {
             VaultOpenReject::OutOfRange => "out_of_range",
-            VaultOpenReject::OrgVaultNotAvailable => "org_vault_not_available",
             VaultOpenReject::NotGm => "not_gm",
             VaultOpenReject::BankerMissing => "banker_missing",
         }
     }
 
     /// The line the player sees.
-    fn feedback(self, scope_label: &str) -> String {
+    fn feedback(self) -> String {
         match self {
             VaultOpenReject::OutOfRange => "You are too far away to use the vault.".to_string(),
-            VaultOpenReject::OrgVaultNotAvailable => {
-                format!("The {scope_label} vault is not available yet.")
-            }
             VaultOpenReject::NotGm => {
                 ".bank needs GM access. Visit a Banker to open your vault.".to_string()
             }
@@ -59,14 +53,13 @@ impl VaultOpenReject {
 ///
 /// `banker_id` and `distance` are `None` where there is no Banker (`.bank`)
 /// or no position to measure; `tracing` omits a `None` field rather than
-/// writing a sentinel. `scope_label` names the vault in the chat line
-/// ("Team", "Command"); it is only read for `OrgVaultNotAvailable`.
+/// writing a sentinel. Team and Command vault refusals have their own event,
+/// `org_vault_open_rejected` (bank-vault BV-07, `org_open.rs` and the base).
 pub async fn reject_vault_open(
     entity_id: u32,
     reject: VaultOpenReject,
     banker_id: Option<u32>,
     distance: Option<f32>,
-    scope_label: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
@@ -82,7 +75,7 @@ pub async fn reject_vault_open(
         distance,
         "vault_open_rejected: the vault did not open -- the player sees a chat line saying why"
     );
-    send_bank_feedback(entity_id, &reject.feedback(scope_label), tx, space_mgr).await;
+    send_bank_feedback(entity_id, &reject.feedback(), tx, space_mgr).await;
 }
 
 /// A single-recipient `SYSTEM` line on the feedback channel, the shape the

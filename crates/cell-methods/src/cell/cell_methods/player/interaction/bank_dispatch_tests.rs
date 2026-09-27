@@ -10,7 +10,7 @@ use cimmeria_entity::cell_entity::VaultScope;
 use cimmeria_entity::interaction_flags::{INT_BANKER, INT_VENDOR_GENERAL};
 
 use crate::cell::cell_methods::player::{dispatch, INTERACT};
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{BankCellToBase, CellToBaseMsg};
 use crate::cell::space_manager::SpaceManager;
 use crate::test_support::{make_space_manager, npc_spawn_record};
 
@@ -106,15 +106,39 @@ async fn banker_click_out_of_range_opens_nothing_and_sets_no_session() {
     assert!(mgr.get_entity(PLAYER).unwrap().vault_session.is_none());
 }
 
-/// A Team-scope Banker is refused with a visible line and no session.
+/// A Team-scope Banker, through the wire dispatcher, asks the base for the
+/// Team vault (bank-vault BV-07): one `BankCellToBase::OrgVaultOpen`, no
+/// client method yet, and no session until the base grants it.
 #[tokio::test]
-async fn team_banker_click_is_refused_with_feedback() {
+async fn team_banker_click_asks_the_base_for_the_team_vault() {
     let (mut mgr, banker) = stage([3.0, 0.0, 0.0], INT_BANKER, VaultScope::Team);
-
-    let sent = click(&mut mgr, banker).await;
-
-    let methods: Vec<u16> = sent.iter().map(|(_, m, _)| *m).collect();
-    assert_eq!(methods, vec![ON_PLAYER_COMMUNICATION], "{sent:?}");
+    let (tx, mut rx) = mpsc::channel(64);
+    assert!(
+        dispatch(
+            PLAYER,
+            INTERACT,
+            &(banker as i32).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &ChainEngine::new()
+        )
+        .await
+    );
+    let mut sent = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        sent.push(msg);
+    }
+    assert!(
+        matches!(
+            sent.as_slice(),
+            [CellToBaseMsg::Bank(BankCellToBase::OrgVaultOpen {
+                scope: VaultScope::Team,
+                banker_id,
+                ..
+            })] if *banker_id == banker
+        ),
+        "one org vault request and nothing else: {sent:?}"
+    );
     assert!(mgr.get_entity(PLAYER).unwrap().vault_session.is_none());
 }
 

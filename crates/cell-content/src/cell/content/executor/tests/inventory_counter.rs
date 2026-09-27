@@ -64,6 +64,7 @@ async fn remove_item_takes_the_vault_verdict_only_by_instance() {
         .unwrap();
     let space_id = mgr.get_entity_space_id(1).unwrap();
     mgr.get_entity_mut(1).unwrap().vault_session = Some(VaultSession {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id: None,
         space_id,

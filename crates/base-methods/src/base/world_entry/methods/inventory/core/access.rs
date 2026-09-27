@@ -132,6 +132,7 @@ mod tests {
         let closed = accessible_containers(&VaultAccess::NO_SESSION);
         assert_eq!(closed, (1..=15).collect::<Vec<_>>());
         let open = accessible_containers(&VaultAccess::Open {
+            org_id: None,
             scope: VaultScope::Personal,
             banker_id: None,
             distance: None,

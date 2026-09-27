@@ -461,9 +461,9 @@ pub enum BaseToCellMsg {
     /// `duel_base_to_cell.rs` instead of here (work-packets.md § Messages).
     Duel(DuelBaseToCell),
 
-    /// Bank and vault traffic (the vault-expansion offer, BV-05). One
-    /// nested enum, so bank packets add variants in `bank_base_to_cell.rs`
-    /// instead of here.
+    /// Bank and vault traffic (the vault-expansion offer, BV-05; the Team
+    /// and Command vault grant, BV-07). One nested enum, so bank packets add
+    /// variants in `bank_base_to_cell.rs` instead of here.
     Bank(BankBaseToCell),
 
     /// Replace a player entity's cell-side Ignore set: the character names

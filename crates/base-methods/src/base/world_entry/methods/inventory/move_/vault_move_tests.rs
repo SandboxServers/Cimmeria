@@ -35,6 +35,7 @@ pub(super) const BANKER: u32 = 0x7000_B5D0;
 
 /// Next to the Banker, 2.5 units away.
 pub(super) const AT_BANKER: VaultAccess = VaultAccess::Open {
+    org_id: None,
     scope: VaultScope::Personal,
     banker_id: Some(BANKER),
     distance: Some(2.5),

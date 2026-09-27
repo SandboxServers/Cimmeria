@@ -3,6 +3,7 @@ pub mod appearance;
 pub mod core;
 pub mod grant;
 pub mod move_;
+pub mod org_vault;
 
 pub use ammo::update_bandolier_ammo;
 pub use appearance::refresh_player_appearance;
@@ -12,3 +13,4 @@ pub use core::{
 };
 pub use grant::{handle_grant_item, handle_loot_grant};
 pub use move_::{handle_move_inventory_item, handle_move_inventory_item_with_vault};
+pub use org_vault::{handle_org_vault_open, OrgVaultIo, OrgVaultOpenRequest};

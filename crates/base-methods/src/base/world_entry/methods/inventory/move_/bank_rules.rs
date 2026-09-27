@@ -271,6 +271,7 @@ mod tests {
     #[test]
     fn an_open_verdict_refuses_nothing() {
         let open = VaultAccess::Open {
+            org_id: None,
             scope: VaultScope::Personal,
             banker_id: Some(7),
             distance: Some(1.0),

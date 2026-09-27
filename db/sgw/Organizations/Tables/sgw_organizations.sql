@@ -23,6 +23,11 @@
 -- owns every change to it; the CHECK is the last line against a bad debit.
 -- experience is always 0 today: nothing says how an organization earns it.
 --
+-- vault_slots is the Team vault's size (container 19): 40 at creation,
+-- grown in +10 steps to 100 by BV-09 and never shrunk (D-BV14). A Command's
+-- vault (container 20) is fixed at 100 and does not read the column. The
+-- vault's items are sgw_organization_vault_items (bank-vault BV-07).
+--
 -- The UNIQUE (org_type, name_key) and UNIQUE (org_id, org_type) constraints
 -- are in _primary_keys.sql. The second is the target of the members'
 -- composite foreign key, which stops a member row's org_type drifting from
@@ -37,6 +42,7 @@ CREATE TABLE sgw_organizations (
     motd character varying(255) NOT NULL DEFAULT '',
     cash bigint NOT NULL DEFAULT 0,
     experience bigint NOT NULL DEFAULT 0,
+    vault_slots smallint NOT NULL DEFAULT 40,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT sgw_organizations_org_id_range_check
         CHECK (org_id BETWEEN 1 AND 1073741823),
@@ -45,5 +51,7 @@ CREATE TABLE sgw_organizations (
     CONSTRAINT sgw_organizations_name_nonempty_check
         CHECK (char_length(name) > 0 AND char_length(name_key) > 0),
     CONSTRAINT sgw_organizations_cash_nonneg_check
-        CHECK (cash >= 0)
+        CHECK (cash >= 0),
+    CONSTRAINT sgw_organizations_vault_slots_check
+        CHECK (vault_slots BETWEEN 40 AND 100 AND vault_slots % 10 = 0)
 );

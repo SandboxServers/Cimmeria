@@ -616,6 +616,7 @@ async fn gm_remove_takes_the_gms_own_vault_verdict() {
     let mut mgr = mgr_with_player(1, "Castle");
     let space_id = mgr.get_entity_space_id(1).unwrap();
     mgr.get_entity_mut(1).unwrap().vault_session = Some(VaultSession {
+        org_id: None,
         scope: VaultScope::Personal,
         banker_id: None,
         space_id,

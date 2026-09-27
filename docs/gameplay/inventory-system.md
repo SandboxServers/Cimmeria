@@ -36,7 +36,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Vendor bag allowlist | DONE | `VENDOR_FILTER_BAGS` confines vendor operations to the main bag, bandolier, the eleven equipment slots, and the crafting bag (15) — the bank, mail attachments, and loot bags are unreachable |
 | Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
-| Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined. In progress: Bank and Vault packet BV-07, on top of the organizations campaign's schema (ORG-02) |
+| Organization vault | PARTIAL (storage and open path) | Team (19) and Command (20) vaults: storage, the open round trip and the session are built (BV-07a); see [Opening a Team or Command vault](#opening-a-team-or-command-vault). Moves in and out are BV-07b. `onClearOrgVaultInventory` (74) and `onOrgMoveItemResult` (a server-internal cell method) are not used: no client Lua consumes either (bank-vault audit A-13) |
 | Personal vault window | DONE | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Deposits and withdrawals: [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
 | Vault expansion | PARTIAL (server done; GM `.bankexpand` only) | +10 slots per purchase, 40 to 100, priced by `resources.bank_expansion_price`. The Banker's Expand dialog is not served until the #943 crash is explained; see [Expanding the vault](#expanding-the-vault) |
 
@@ -170,11 +170,13 @@ The personal vault is container 17 (`INV_Bank`). Its rows load at login with the
 2. sends `onVaultOpen(banker_id, banker_position)` (`INT32`, then `VECTOR3`) from the cell;
 3. logs `vault_session_opened` (DEBUG) under the `bank` target, inside the INFO span `bank.banker_interact`.
 
-Every refusal sends the player a chat line and logs `vault_open_rejected` (WARN) with a stable `reason`: `out_of_range` (a click on a Banker from beyond the interact distance or from another space; it opens no session), `org_vault_not_available` (a `team` or `command` Banker, until the organization vaults land), `not_gm` (`.bank` from a player), or `banker_missing` (the Banker vanished between the range gate and the arm).
+Every refusal sends the player a chat line and logs `vault_open_rejected` (WARN) with a stable `reason`: `out_of_range` (a click on a Banker from beyond the interact distance or from another space; it opens no session), `not_gm` (`.bank` from a player), or `banker_missing` (the Banker vanished between the range gate and the arm).
 
 **GM `.bank`.** Opens the same window wherever the GM stands, with a session whose `banker_id` is `None`, and `onVaultOpen` addressed to the GM's own entity and position. A player without GM access gets a refusal line ([commands.md](../commands.md)).
 
 **The session ends** when the player changes space or logs out (both destroy the cell entity that holds it), or when a later `interact` pins a different target. Re-clicking the same Banker keeps it. Each end logs `vault_session_closed` at DEBUG with `reason` `space_change`, `logout` or `re_pin`, and `open_ms`.
+
+**A Team or Command Banker** (`vault_scope = 'team'` or `'command'`) opens the organization's vault instead; see [Opening a Team or Command vault](#opening-a-team-or-command-vault).
 
 **The move rule.** `vault_move_allowed(&player, &space_mgr)` is the single check a bank move must pass: an open session, opened in the player's current space, and, for a Banker session, the Banker still present, in the same space and within the interact distance. A GM session skips the proximity check. The client ignores `onVaultOpen`'s position (BV-E1 Q4), so walking away does not close the window; this check, run on every move, is the only enforcement. It lives in [`cimmeria-cell-world`](../../crates/cell-world/src/cell/space_manager/vault_access.rs) (re-exported beside the Banker), with the interact range rule it uses.
 
@@ -199,7 +201,7 @@ A refused vault move logs `move_rejected` (WARN, `bank`) with a stable `reason` 
 | `banker_out_of_range`, `banker_other_space`, `vault_session_other_space` | walked away, or changed space | "You are too far from the Banker. Return to the Banker to use your vault." |
 | `banker_gone` | the pinned Banker despawned | "The Banker has left. Visit a Banker to use your vault." |
 | `player_missing` | no cell entity (a race with logout) | "Your vault is closed. ..." |
-| `vault_scope_mismatch` | an org-vault session (none can open yet) | "Your vault is closed. ..." |
+| `vault_scope_mismatch` | a Team or Command vault session is open instead | "Your vault is closed. ..." |
 | `target_slot_beyond_bank_slots` | a slot at or past `bank_slots` (`bank_slots` logged) | "That vault slot is locked. Your vault has N slots." |
 | `mission_item_not_bankable` | a mission item bound for 17 | "Mission items cannot be stored in the vault." |
 | `item_not_allowed_in_container` | `container_sets` refuses the item, or a swap occupant | "That item cannot be placed there." |
@@ -256,6 +258,35 @@ Every other service that takes an item reads only carried bags, so a banked item
 | Mail attachments | the backpack and the crafting bag (1, 15), D-BV30; 17-20 are refused with `item_in_vault` and 16 with `item_in_buyback` | `MAILABLE_CONTAINERS` in [`mail/send/escrow.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/send/escrow.rs), [mail-system.md](mail-system.md) |
 | Use, removal, content turn-ins | 1-15 always; 17 only with an open vault verdict for use and removal by instance; never for a by-type turn-in (D-BV26) | [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
 | Grants (loot, content, `gmGiveItem`, vendor purchases, mail takes) | never 16-20; they fall through to the first carried bag the item lists | [Container capacity and movability](#container-capacity-and-movability) |
+
+## Opening a Team or Command vault
+
+The Team vault is container 19 and the Command vault container 20 (`Container.TeamVault` / `Container.CommandVault`, bank-vault audit A-04). Their items are organization-owned, so they live in `sgw_organization_vault_items`, not `sgw_inventory` (whose `character_id` is `NOT NULL`, audit A-23). The table's header in [`db/sgw/Organizations/Tables/sgw_organization_vault_items.sql`](../../db/sgw/Organizations/Tables/sgw_organization_vault_items.sql) gives the shape: every instance column, `item_id` kept by a whole move (one sequence for both tables), a Team holding only 19 and a Command only 20, no bound items, and an `ON DELETE RESTRICT` key to the organization, so deleting an organization never deletes its vault (D-BV18). The Team vault is 40 slots until BV-09 expands it (`sgw_organizations.vault_slots`, 40 to 100 in steps of 10); the Command vault is always 100 (D-BV14).
+
+The cell holds the session and the base holds membership, so the open is a round trip:
+
+1. A click on a Team or Command Banker passes the interact gate and pins the Banker, like a personal one. The Banker arm sends the base `BankCellToBase::OrgVaultOpen` with the player's ids, the scope, the Banker, the distance and the space, and logs `org_vault_open_requested` (DEBUG). Nothing opens yet.
+2. The base ([`inventory/org_vault/open.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/org_vault/open.rs)) finds the player's Team or Command (at most one of each, D-ORG18), then, in one transaction and in this order, takes `FOR KEY SHARE` on the player's `sgw_player` row, the organization lock (`lock_org`) and the membership read under it (`member_access_locked`). While it holds the lock it sends `onBagInfo`, declaring every container with 17 at the player's `bank_slots`, 19 at the Team's `vault_slots` and 20 at 100, then the vault's rows in one `onUpdateItem`. It logs `org_vault_opened` (DEBUG, with `org_id`, `org_type`, `rank`, the permission mask, `can_deposit`, `can_withdraw`, `vault_slots` and `item_count`) and answers `BankBaseToCell::OrgVaultGranted`.
+3. The cell ([`bank/org_open.rs`](../../crates/cell-interactions/src/cell/interactions/bank/org_open.rs)) checks that the entity still plays that character, still has that Banker pinned, and is still within range of it. It records `VaultSession { scope, org_id: Some(org), banker_id, .. }`, logs `vault_session_opened` with `org_id`, and sends `onTeamVaultOpen` (107) or `onCommandVaultOpen` (108) with the Banker's id and position.
+
+Opening needs no bank bit: every member may look (D-BV12). `DepositBank` and `WithdrawBank` are checked per move.
+
+A refusal logs `org_vault_open_rejected` (WARN, `bank`) with a stable `reason` and, where there is a player to tell, a chat line:
+
+| `reason` | Where | When |
+|---|---|---|
+| `not_in_org` | base | the player is in no Team (or no Command) |
+| `not_a_member`, `no_such_org`, `wrong_org_type`, `player_missing` | base | the check under the organization lock failed (a leave or disband raced the open) |
+| `player_unknown` | base | the cell had no `player_id` for the entity |
+| `open_query_failed` | base | a database error (logged with it) |
+| `cell_channel_closed` | base | the grant could not reach the cell |
+| `banker_not_pinned` | cell | the player clicked something else while the base answered |
+| `out_of_range`, `banker_missing` | cell | the player walked away, or the Banker went, while the base answered |
+| `stale_entity`, `player_entity_missing` | cell | the entity is another character now, or gone; nobody is told |
+
+The session ends like a personal one, and also when the player leaves, is removed from, or disbands the organization: ORG-06's `OrgMembershipEnded` reaches the cell, which ends a session of that organization with `vault_session_closed reason=org_left`. Every move re-checks membership under the organization lock anyway.
+
+Until BV-07b lands, a move into or out of 19 or 20 is refused by the player-movable allowlist (the item snaps back).
 
 ## Flush Update Order
 
