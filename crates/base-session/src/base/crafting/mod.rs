@@ -20,14 +20,24 @@
 //!   counters (`crafting_requests_total`, `crafting_rejections_total`).
 //! - [`handlers`]: the GM grants (`gmGiveExpertise`,
 //!   `gmGiveAppliedSciencePoints`).
+//! - [`gate`]: the station gate every craft-family verb passes first: a
+//!   station in reach, a covering Field Crafting Tool, or "craft anywhere".
+//! - [`tools`]: the Field Crafting Tool rule.
+//! - [`options`]: `onUpdateCraftingOptions` (140) and the per-session
+//!   stations, tools and "craft anywhere" behind it.
+//! - [`allcraft`]: the GM `.allcraft` grant.
 
+pub mod allcraft;
 pub mod feedback;
+pub mod gate;
 pub mod handlers;
+pub mod options;
 pub mod persistence;
 pub mod request;
 pub mod spend;
 pub mod sync;
 pub mod telemetry;
+pub mod tools;
 
 #[cfg(test)]
 mod test_players;

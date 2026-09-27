@@ -22,7 +22,9 @@ mod lab;
 mod org_base_to_cell;
 mod org_cell_to_base;
 
-pub use crate::crafting::{CraftRequest, CraftVerb};
+pub use crate::crafting::{
+    CraftRequest, CraftVerb, CraftingStations, GmAllCraft, StationChangeCause, StationSet,
+};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
 pub use chat_cell_to_base::ChatCellToBase;

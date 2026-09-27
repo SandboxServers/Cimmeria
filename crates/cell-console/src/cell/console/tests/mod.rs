@@ -15,6 +15,8 @@ use crate::cell::space_manager::SpaceManager;
 #[cfg(test)]
 mod bookmark;
 #[cfg(test)]
+mod cr05_allcraft;
+#[cfg(test)]
 mod gm_audit_identity;
 #[cfg(test)]
 mod na13_aggro;

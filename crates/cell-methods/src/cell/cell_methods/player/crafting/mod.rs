@@ -138,7 +138,7 @@ impl ArgReader<'_> {
 /// Nothing calls this yet: the expertise-changing verbs run on the base and
 /// send 136 from there. The wire shape stays pinned by
 /// [`tests::send_on_update_discipline_emits_correct_message`].
-#[allow(dead_code)] // Kept for a cell-side expertise change (e.g. `.allcraft`, CR-05).
+#[allow(dead_code)] // Kept for a cell-side expertise change; `.allcraft` sends 136 from the base.
 pub async fn send_on_update_discipline(
     entity_id: u32,
     discipline_id: i32,

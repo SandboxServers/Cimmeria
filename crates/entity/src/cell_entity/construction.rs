@@ -127,6 +127,7 @@ impl CellEntity {
             tree_progress: TreeProgress::default(),
             respec_requested_at: None,
             pet: None,
+            crafting_stations: Default::default(),
         }
     }
 }

@@ -74,6 +74,8 @@ pub async fn reject(
         prerequisite_id = c.prerequisite_id,
         prerequisite_expertise = c.prerequisite_expertise,
         required_expertise = c.required_expertise,
+        station_mask = c.station_mask,
+        tools = why.tools_considered(),
         "crafting request rejected"
     );
     record_rejection(verb, reason);

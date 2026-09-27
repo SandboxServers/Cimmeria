@@ -28,7 +28,7 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | GM expertise grant | DONE | `handle_grant_expertise` mutates, persists, and pushes `onUpdateDiscipline` (client method 136, payload `[disciplineSeqId i32][expertise i32]`) |
 | GM applied-science grant | DONE | `handle_grant_applied_science` adds in one `UPDATE … RETURNING` and pushes the new **total** as `onEntityProperty(GENERICPROPERTY_AppliedSciencePoints = 2, total)`, so the discipline trainer's count updates without a relog (CR-03) |
 | Client state sync | DONE | `base/crafting/sync/`: owner-only pushes of 136, 138, 139 and the ASP property. Every ASP change pushes the total, never the change (audit C-57) |
-| World-entry state load | DONE | After the `onClientReady` burst, `push_crafting_on_login` loads the state and sends one bundle: 136 per known discipline, 138 per paradigm, 139, the ASP total. A relog restores disciplines, expertise, paradigm levels, blueprints and ASP (CR-03) |
+| World-entry state load | DONE | After the `onClientReady` burst, `push_crafting_on_login` loads the state and sends one bundle: 136 per known discipline, 138 per paradigm, 139, the ASP total, then `onUpdateCraftingOptions` (140). A relog restores disciplines, expertise, paradigm levels, blueprints and ASP (CR-03) |
 | Starting paradigm levels | DONE | D-CR03: Common (paradigm 1) at 5, Human, Goa'uld, Asgard and Ancient at 1. The load applies them to a character with no stored levels; the `sgw_player.racial_paradigm_levels` column default gives new characters the same array `{5,1,1,1,1}` |
 | Request path (methods 95-100) | DONE | The cell parses every argument, including the `ARRAY<ItemID>`s, and forwards a `CellToBaseMsg::Crafting(CraftRequest)`; the base logs it at target `crafting` (`event = "request"`). Crafting campaign CR-01 |
 | Crafting catalog | DONE | `cimmeria_cell_catalog::crafting::CraftingCatalog`: disciplines, blueprints with their alternative component sets, and item crafting attributes, loaded once per process |
@@ -40,7 +40,11 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
 | Timer-based induction | NOT IMPL | The original 3.0s per-operation induction has no Rust equivalent |
 | Busy state lock | NOT IMPL | No `beginBusy`/`endBusy` equivalent |
-| `onUpdateCraftingOptions` | NOT IMPL | Never sent; the station and tool gate owns it (CR-05). Until then every crafting tab stays disabled |
+| Crafting stations | DONE | The cell tracks the nearest station per verb within `MAX_INTERACT_DISTANCE` (5 units, 3-D) and reports changes to the base once a second; the forward recomputes the mask per request. CR-05. No seeded template is a station yet (CR-11 adds the debug-hub four) |
+| Field Crafting Tools | DONE | A tool in the crafting bag (container 15) covers crafting, research and reverse engineering for its science up to its `tech_comp` (D-CR21). CR-05 |
+| Station gate | DONE | Crafting, research, reverse engineering and alloying are refused with "No crafting station or tool for <verb> nearby." unless a station, a covering tool or "craft anywhere" allows them. CR-05 |
+| `onUpdateCraftingOptions` | DONE | Sent last in the login crafting bundle after `onClientReady` (every world entry), then on every change of stations, tools or "craft anywhere". CR-05 |
+| `.allcraft` | DONE | GM: every paradigm at 7, every discipline at 100, every blueprint, persisted, plus "craft anywhere" until logout (D-CR17). CR-05 |
 
 ## Learning a discipline
 
@@ -58,6 +62,18 @@ The discipline trainer (Ctrl+J) sends `spendAppliedSciencePoints(disciplineId)` 
 A refusal is a `CHAN_FEEDBACK` text line and writes nothing. Each one is logged as a `crafting` `rejected` event whose `reason` (`unknown_discipline`, `already_known`, `no_asp`, `paradigm_too_low`, `prerequisite_missing`, `prerequisite_expertise`) and compared values say which check failed; a success is a `learned` event with the ASP before and after. The event catalog is the `crafting` row of [observability.md](../architecture/observability.md). A database failure is refused as "Learning disciplines is unavailable right now. Nothing was changed." On success the discipline is known at expertise 1 and one ASP is spent; no blueprint is granted (D-CR04, blueprints come from Blueprint items and research). The client then gets `onUpdateDiscipline(id, 1)` and the new ASP total. A repeated request finds the discipline known and changes nothing.
 
 The four root disciplines (21 Biomedical, 40 Electronic, 59 Power Systems, 78 Materials Engineering) need Common level 5, which every character now starts at. The test rows 1 and 2 ("Basketweaving") need Common 1 and are treated like any other discipline.
+
+## Stations, tools and crafting options
+
+Each crafting verb except learning a discipline and respec needs a way to work (crafting campaign CR-05; decisions D-CR05, D-CR17, D-CR21):
+
+- **Station.** Any entity whose template `entity_flags` carries an `ENTITYFLAG_Craft_*` bit (2048 craft, 4096 research, 8192 reverse engineering, 16384 alloying) is a station for those verbs, within `MAX_INTERACT_DISTANCE` (5 units, measured in 3-D like `interact`). The cell computes the station mask again for every request (`CraftRequest::allowed`, `player/crafting/forward.rs`), and a 1 Hz tick (`crates/cell/src/cell/service/ticks/crafting_stations.rs`) reports the nearest station per verb to the base when the set changes, for the window's label.
+- **Field Crafting Tool.** One of the 48 tools (items 5369 and 8402-8466) in the crafting bag (`INV_Crafting`, container 15) covers crafting, research and reverse engineering for the disciplines of its applied science whose `tech_competency` is at most the tool's `tech_comp`. The science comes from the name prefix (BMAS Biomedical 1, MAS Materials 2, PSAS Power Systems 3, EAS Electronic 4), because the seed and the cooked data carry no science field for tools (CR-E2 Q3). For research and reverse engineering, any of the item's disciplines counts. Alloying needs a station. Tools are not consumed. Code: `base/crafting/tools.rs`.
+- **Craft anywhere.** `.allcraft` turns it on for the target's session until logout: every verb passes the gate, and the crafting options name the player's own entity as the machine in all four sections, as the legacy command did.
+
+The gate runs on the base in `handle_craft_request`, before any verb handler (`base/crafting/gate.rs`). A refused request gets the text line "No crafting station or tool for crafting nearby." (or research, reverse engineering, alloying) on the feedback channel.
+
+`onUpdateCraftingOptions` (140) carries, per section, the station as the machine and the best tool (highest `tech_comp`, then lowest instance id) as the tool; alloying never names a tool. The client keeps only the last id of each array and checks neither distance nor existence (CR-E1 Q2), so the gate on the server is the only enforcement. The base sends it in the login crafting bundle after every `onClientReady` (after 136, 138, 139 and the ASP total) and then only on change: a station report, a tool entering or leaving the crafting bag (re-read after every inventory commit, in `send_full_inventory_update`), or `.allcraft`. Code: `base/crafting/options.rs`.
 
 ## Crafting Operations
 

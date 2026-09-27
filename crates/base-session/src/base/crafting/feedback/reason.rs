@@ -2,7 +2,9 @@
 //! reads, the enumerated `reason`, the values the rule compared, and the
 //! optional condition code.
 
-use cimmeria_cell_catalog::crafting::CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS;
+use cimmeria_cell_catalog::crafting::{
+    CraftType, CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS,
+};
 
 use crate::cell::messages::CraftVerb;
 
@@ -54,6 +56,16 @@ pub enum CraftReject {
         expertise: i32,
         required: i32,
     },
+    /// No station in reach, no covering tool in the crafting bag, and no
+    /// "craft anywhere".
+    NoStationOrTool {
+        verb: CraftType,
+        /// The `ECraftTypeFlags` mask the cell's station check granted.
+        station_mask: u8,
+        /// The instance ids of the tools in the crafting bag that were
+        /// considered (empty when none was, e.g. for alloying).
+        tools: Vec<i32>,
+    },
 }
 
 /// The values a refused rule compared, logged as fields of the `rejected`
@@ -68,6 +80,7 @@ pub struct Compared {
     pub prerequisite_id: Option<i32>,
     pub prerequisite_expertise: Option<i32>,
     pub required_expertise: Option<i32>,
+    pub station_mask: Option<u8>,
 }
 
 impl CraftReject {
@@ -96,6 +109,7 @@ impl CraftReject {
             CraftReject::ParadigmTooLow { .. } => "paradigm_too_low",
             CraftReject::PrerequisiteMissing { .. } => "prerequisite_missing",
             CraftReject::PrerequisiteExpertise { .. } => "prerequisite_expertise",
+            CraftReject::NoStationOrTool { .. } => "no_station_or_tool",
         }
     }
 
@@ -138,6 +152,15 @@ impl CraftReject {
             } => format!(
                 "{discipline} requires {prerequisite} at expertise {required}; yours is {expertise}."
             ),
+            CraftReject::NoStationOrTool { verb, .. } => {
+                let verb = match verb {
+                    CraftType::Craft => "crafting",
+                    CraftType::Research => "research",
+                    CraftType::ReverseEngineering => "reverse engineering",
+                    CraftType::Alloying => "alloying",
+                };
+                format!("No crafting station or tool for {verb} nearby.")
+            }
         }
     }
 
@@ -147,6 +170,10 @@ impl CraftReject {
             CraftReject::NotAvailableYet { .. } | CraftReject::Unavailable { .. } => {
                 Compared::default()
             }
+            CraftReject::NoStationOrTool { station_mask, .. } => Compared {
+                station_mask: Some(station_mask),
+                ..Compared::default()
+            },
             CraftReject::UnknownDiscipline { discipline_id }
             | CraftReject::DisciplineAlreadyKnown { discipline_id, .. } => Compared {
                 discipline_id: Some(discipline_id),
@@ -194,6 +221,15 @@ impl CraftReject {
         }
     }
 
+    /// The crafting-bag tools a station gate refusal considered, as the
+    /// `tools` field of the `rejected` event; `None` for every other reason.
+    pub fn tools_considered(&self) -> Option<String> {
+        match self {
+            CraftReject::NoStationOrTool { tools, .. } => Some(format!("{tools:?}")),
+            _ => None,
+        }
+    }
+
     /// The `EConditionHandlerFeedback` value sent as a secondary
     /// `onErrorCode`. Only the not-enough-ASP code qualifies; every other
     /// reason is text only.
@@ -208,7 +244,8 @@ impl CraftReject {
             | CraftReject::DisciplineAlreadyKnown { .. }
             | CraftReject::ParadigmTooLow { .. }
             | CraftReject::PrerequisiteMissing { .. }
-            | CraftReject::PrerequisiteExpertise { .. } => None,
+            | CraftReject::PrerequisiteExpertise { .. }
+            | CraftReject::NoStationOrTool { .. } => None,
         }
     }
 }
@@ -254,6 +291,34 @@ mod tests {
         assert_eq!(
             text(CraftVerb::Respec),
             "Crafting respec is not available yet."
+        );
+    }
+
+    #[test]
+    fn no_station_text_names_the_verb() {
+        let text = |verb| {
+            CraftReject::NoStationOrTool {
+                verb,
+                station_mask: 0,
+                tools: vec![],
+            }
+            .text()
+        };
+        assert_eq!(
+            text(CraftType::Craft),
+            "No crafting station or tool for crafting nearby."
+        );
+        assert_eq!(
+            text(CraftType::Research),
+            "No crafting station or tool for research nearby."
+        );
+        assert_eq!(
+            text(CraftType::ReverseEngineering),
+            "No crafting station or tool for reverse engineering nearby."
+        );
+        assert_eq!(
+            text(CraftType::Alloying),
+            "No crafting station or tool for alloying nearby."
         );
     }
 

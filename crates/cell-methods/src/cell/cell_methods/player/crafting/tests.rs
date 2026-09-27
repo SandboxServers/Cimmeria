@@ -268,3 +268,37 @@ async fn send_on_update_discipline_emits_correct_message() {
         other => panic!("expected EntityMethodCall, got {other:?}"),
     }
 }
+
+/// `allowed` is the station mask at request time. A craft+research
+/// station 3 units away grants bits 1 and 2; once the player walks 20 units
+/// off, the same request carries 0. With the forward hard-wired to 0 (the old
+/// placeholder), the first assertion fails.
+#[tokio::test]
+async fn forward_carries_the_station_mask_at_request_time() {
+    use cimmeria_cell_catalog::crafting::{ENTITYFLAG_CRAFT_CRAFT, ENTITYFLAG_CRAFT_RESEARCH};
+
+    const STATION: u32 = 100_050;
+    let mut mgr = player_space();
+    let world = mgr.get_entity_world_name(ENTITY).unwrap();
+    let p = mgr.get_entity(ENTITY).unwrap().position;
+    mgr.spawn_npc(STATION, &world, [p.x + 3.0, p.y, p.z], [0.0; 3])
+        .unwrap();
+    let station = mgr.get_entity_mut(STATION).unwrap();
+    station.is_player = false;
+    station.entity_flags = (ENTITYFLAG_CRAFT_CRAFT | ENTITYFLAG_CRAFT_RESEARCH) as u64;
+
+    let (tx, mut rx) = mpsc::channel(8);
+    let (index, args) = encode(&CraftVerb::ReverseEngineer { item_id: 20_001 });
+    assert!(dispatch(ENTITY, index, &args, &tx, &mut mgr).await);
+    match rx.try_recv() {
+        Ok(CellToBaseMsg::Crafting(request)) => assert_eq!(request.allowed, 0x03),
+        other => panic!("expected one Crafting message, got {other:?}"),
+    }
+
+    mgr.update_entity_position(ENTITY, [p.x + 23.0, p.y, p.z], [0; 3], [0.0; 3]);
+    assert!(dispatch(ENTITY, index, &args, &tx, &mut mgr).await);
+    match rx.try_recv() {
+        Ok(CellToBaseMsg::Crafting(request)) => assert_eq!(request.allowed, 0),
+        other => panic!("expected one Crafting message, got {other:?}"),
+    }
+}

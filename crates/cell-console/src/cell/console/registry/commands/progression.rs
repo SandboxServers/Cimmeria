@@ -11,7 +11,7 @@ pub(super) const SPECS: &[Spec] = &[
         0,
         0,
         Target::Player,
-        "Grant all blueprints + max disciplines to the target",
+        "Every paradigm at 7, discipline at 100 and blueprint, plus craft anywhere, for the target",
     ),
     spec(
         "learndiscipline",

@@ -452,9 +452,11 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
-    // Crafting state: disciplines, paradigm levels, blueprints and
-    // the ASP total, owner-only. After the burst for the same reason as the
-    // contact lists: the entity is live and the crafting UI has loaded.
+    // Crafting state: disciplines, paradigm levels, blueprints, the ASP
+    // total and the crafting options (140: the window's machine and tool),
+    // owner-only, in one bundle. After the burst for the same reason as the
+    // contact lists: the entity is live and the crafting UI has loaded. Sent
+    // on every onClientReady, so a world change resends it too.
     crate::base::crafting::sync::push_crafting_on_login(
         entity_id,
         pending.player_id,

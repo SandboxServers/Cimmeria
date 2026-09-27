@@ -14,8 +14,8 @@ pub struct CraftRequest {
     /// `sgw_player.player_id`.
     pub player_id: i32,
     pub verb: CraftVerb,
-    /// The `ECraftTypeFlags` mask the station gate granted. 0 until the gate
-    /// exists (CR-05).
+    /// The `ECraftTypeFlags` mask of the verbs whose crafting station was in
+    /// reach when the cell received the request.
     pub allowed: u8,
 }
 
@@ -25,7 +25,7 @@ pub enum CraftVerb {
     /// `spendAppliedSciencePoints(INT32 aDisciplineSeqId)` (95).
     Spend { discipline_id: i32 },
     /// `craft(INT32 aCraftId, ARRAY<ItemID> aItems, INT32 aQuantity)` (96).
-    /// `items` are inventory instance ids, one per component type (C-31).
+    /// `items` are inventory instance ids, one per component type.
     Craft {
         blueprint_id: i32,
         items: Vec<i32>,

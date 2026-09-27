@@ -1,17 +1,19 @@
 //! Crafting / discipline console commands (category E): `.learndiscipline`,
 //! `.forgetdiscipline`, `.allcraft`.
 //!
-//! These route through the existing crafting grant plumbing
-//! (`CellToBaseMsg::GrantExpertise` → `base::crafting::handlers`). Discipline
-//! expertise is clamped `[0, 100]` base-side, so "forget" zeroes the expertise
-//! (a full row delete would need a dedicated base path, noted in feedback).
+//! The discipline commands route through the existing crafting grant
+//! plumbing (`CellToBaseMsg::GrantExpertise` → `base::crafting::handlers`).
+//! Discipline expertise is clamped `[0, 100]` base-side, so "forget" zeroes
+//! the expertise (a full row delete would need a dedicated base path, noted
+//! in feedback). `.allcraft` sends `CellToBaseMsg::GmAllCraft` to
+//! `base::crafting::allcraft`.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Crafting.py`.
 
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{CellToBaseMsg, GmAllCraft};
 use crate::cell::space_manager::SpaceManager;
 
 pub(super) async fn dispatch(
@@ -38,7 +40,7 @@ pub(super) async fn dispatch(
     match name {
         "learndiscipline" => learn(caller_id, target, player_id, args, tx).await,
         "forgetdiscipline" => forget(caller_id, target, player_id, args, tx).await,
-        "allcraft" => all_craft(caller_id, tx).await,
+        "allcraft" => all_craft(caller_id, target, player_id, tx).await,
         _ => {}
     }
 }
@@ -121,16 +123,24 @@ async fn forget(
     .await;
 }
 
-/// `.allcraft` — the legacy granted every blueprint + max racial paradigm + all
-/// disciplines. That needs the full blueprint/discipline/paradigm catalog, which
-/// is not cached cell-side and has no consolidated base grant path, so this is a
-/// pointer to the per-discipline grant rather than a silent partial unlock.
-async fn all_craft(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>) {
-    send_gm_feedback(
-        caller_id,
-        "allcraft: full blueprint unlock isn't wired cell-side. Use \
-         .learndiscipline <id> 100 per discipline (and the native gm crafting grants).",
-        tx,
-    )
-    .await;
+/// `.allcraft` — every paradigm at 7, every discipline at 100, every
+/// blueprint, and "craft anywhere" for the target's session. The
+/// base holds the catalog and the persistence, so the cell only forwards;
+/// the base re-checks the caller's access level and sends the result lines.
+async fn all_craft(caller_id: u32, target: u32, player_id: i32, tx: &mpsc::Sender<CellToBaseMsg>) {
+    let grant = GmAllCraft {
+        entity_id: target,
+        player_id,
+        gm_entity_id: caller_id,
+    };
+    if let Err(e) = tx.send(CellToBaseMsg::GmAllCraft(grant)).await {
+        tracing::warn!(
+            target: "crafting",
+            event = "allcraft_send_failed",
+            caller_id,
+            target,
+            error = %e,
+            "allcraft could not be queued (base channel closed)"
+        );
+    }
 }

@@ -219,6 +219,19 @@ pub async fn handle_gate_travel(
         }
     };
 
+    // The stations in reach belong to the origin world. Forget them and hold
+    // crafting-option sends until the destination's login send, before the
+    // cell creates the destination entity, so the login bundle can never
+    // name an origin-world station and every report after this is the
+    // destination's.
+    if let Some(c) = connected
+        .lock()
+        .map_err(|_| "connected lock poisoned")?
+        .get_mut(&addr)
+    {
+        c.crafting_options.begin_world_entry();
+    }
+
     // Tell CellService to create the entity in the new space and await the
     // resolved space_id via oneshot (needed for the world-entry wire packet).
     // `None` only comes from the fallback table, for a world that must fail

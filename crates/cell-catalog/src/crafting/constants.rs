@@ -5,7 +5,7 @@
 //! changed def fails a test instead of a client window.
 
 /// `ECraftTypeFlags` (`INT8`): the four crafting verbs as bits. The station
-/// gate (CR-05) grants a mask of these, carried as `CraftRequest::allowed`.
+/// gate grants a mask of these, carried as `CraftRequest::allowed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum CraftType {
@@ -68,7 +68,7 @@ impl TryFrom<u8> for CraftType {
 
 /// `EItemFlag` (`UINT32` bitfield), the `resources.items.flags` column.
 ///
-/// The seed's flags are only partly trustworthy (audit C-24):
+/// The seed's flags are only partly trustworthy:
 /// `ELEMENTARY_COMPONENT` is set on every item and `CRAFT_CRAFT` and
 /// `NOT_RESEARCHABLE` on none, so no rule may rest on those three.
 /// `CRAFT_RESEARCH`, `CRAFT_REV_ENG` and `KICKER` do mark the right items.
@@ -80,15 +80,15 @@ impl ItemFlags {
     pub const MINIGAME_CONSUMABLE: u32 = 2;
     pub const BIND_ON_ACQUIRE: u32 = 4;
     pub const BIND_ON_EQUIP: u32 = 8;
-    /// Set on no seeded item (C-24).
+    /// Set on no seeded item.
     pub const NOT_RESEARCHABLE: u32 = 16;
     /// A research kicker (items 5668-5671).
     pub const KICKER: u32 = 32;
-    /// Set on no seeded item (C-24).
+    /// Set on no seeded item.
     pub const CRAFT_CRAFT: u32 = 64;
-    /// Researchable gear (D-CR18).
+    /// Researchable gear.
     pub const CRAFT_RESEARCH: u32 = 128;
-    /// Reverse-engineerable gear (D-CR18).
+    /// Reverse-engineerable gear.
     pub const CRAFT_REV_ENG: u32 = 256;
     pub const CRAFT_ALLOYING: u32 = 512;
     pub const CAN_BE_SOLD: u32 = 1024;
@@ -96,7 +96,7 @@ impl ItemFlags {
     pub const UNIQUE: u32 = 4096;
     pub const MUST_EQUIP_TO_USE: u32 = 8192;
     pub const DESTROY_ON_CLEAR: u32 = 16384;
-    /// Set on every seeded item, so it distinguishes nothing (C-24).
+    /// Set on every seeded item, so it distinguishes nothing.
     pub const ELEMENTARY_COMPONENT: u32 = 32768;
 
     /// Whether every bit of `flag` is set.
@@ -153,7 +153,7 @@ impl ItemQuality {
 }
 
 // `EEntityFlags`: an entity carrying one of these is a crafting station for
-// that verb (CR-05). No seeded template sets any of them yet (C-25).
+// that verb. No seeded template sets any of them yet.
 
 /// `ENTITYFLAG_Craft_Craft`.
 pub const ENTITYFLAG_CRAFT_CRAFT: u32 = 2048;
@@ -165,7 +165,7 @@ pub const ENTITYFLAG_CRAFT_REV_ENG: u32 = 8192;
 pub const ENTITYFLAG_CRAFT_ALLOYING: u32 = 16384;
 
 /// `ETimerUpdateType::CraftInductionTimer`: the only `onTimerUpdate` type the
-/// client draws the crafting induction bar from (audit C-32).
+/// client draws the crafting induction bar from.
 pub const TIMER_CRAFT_INDUCTION: u8 = 16;
 
 // `EConditionHandlerFeedback` values for crafting. `HasCraft` (224) and

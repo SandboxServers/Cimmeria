@@ -22,6 +22,7 @@
 //! and [`make_socket`] from here.
 use super::*;
 
+mod crafting_options;
 mod space_fallback;
 mod transfer;
 use crate::base::PendingClientReadyInfo;
@@ -94,6 +95,7 @@ pub(super) fn make_state() -> ConnectedClientState {
         channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
             "127.0.0.1:9999".parse().unwrap(),
         )),
+        crafting_options: Default::default(),
     }
 }
 

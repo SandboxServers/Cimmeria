@@ -300,6 +300,10 @@ pub struct ConnectedClientState {
     /// and `check_timeouts` all need `&mut self` and run from different
     /// code paths (receive loop, per-send-site call sites, retransmit tick).
     pub channel: Mutex<Channel>,
+
+    /// Crafting stations, tools and "craft anywhere" behind this session's
+    /// `onUpdateCraftingOptions`, and the options last sent.
+    pub crafting_options: crafting::options::CraftingSessionOptions,
 }
 
 impl ConnectedClientState {

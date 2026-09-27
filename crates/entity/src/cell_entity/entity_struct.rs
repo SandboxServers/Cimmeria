@@ -746,4 +746,6 @@ pub struct CellEntity {
     pub respec_requested_at: Option<std::time::Instant>,
     /// Pet state (`SGWPet`, class 0x05); `None` for every non-pet. See `pet.rs`.
     pub pet: Option<Box<super::PetState>>,
+    /// The crafting stations last reported to the base.
+    pub crafting_stations: super::CraftingStationState,
 }
