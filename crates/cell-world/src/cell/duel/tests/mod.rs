@@ -1,4 +1,4 @@
-//! SS-D1 duel tests.
+//! Duel tests (SS-D1 and SS-D2).
 //!
 //! - [`registry`]: the pure state machine on an injected clock.
 //! - [`challenge`]: the cell-side challenge checks (audit CAT-M-12) and the
@@ -6,11 +6,17 @@
 //! - [`response`]: `sendDuelResponse` (CAT-M-13) and the accept.
 //! - [`tick`]: expiry, the countdown end and cooldown pruning.
 //! - [`outbound`]: the send-failure row names its recipient.
+//! - [`engage`]: the engage, the PvP-flag fan-out (type 8), the safety ends
+//!   and the AoI replay (SS-D2).
+//! - [`interactable`]: the D-SS25 guard, an interactable NPC stays
+//!   interactable across a duel.
 //!
-//! Every handler test drains through [`drain`], which fails on any
-//! `onDuelEntitiesSet` [151] or `Clear` [153] (D-SS25).
+//! Every handler test drains through [`drain`], which keeps entity-method
+//! calls to a player's own client and witness routings apart.
 
 mod challenge;
+mod engage;
+mod interactable;
 mod outbound;
 mod registry;
 mod response;
@@ -93,15 +99,17 @@ pub(super) async fn challenge(
     super::challenge::handle_at(challenge_msg(from, to), tx, mgr, now).await;
 }
 
-/// One client method the handlers queued.
+/// One client method the handlers queued: to `entity_id`'s own client
+/// (`witness: None`), or about `entity_id` to the player `witness`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Sent {
     pub entity_id: u32,
     pub method_index: u16,
     pub args: Vec<u8>,
+    pub witness: Option<u32>,
 }
 
-/// Drain the channel. Panics on any `onDuelEntitiesSet` / `Clear`.
+/// Drain the channel.
 pub(super) fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<Sent> {
     let mut out = Vec::new();
     while let Ok(msg) = rx.try_recv() {
@@ -110,21 +118,41 @@ pub(super) fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<Sent> {
                 entity_id,
                 method_index,
                 args,
+            } => out.push(Sent {
+                entity_id,
+                method_index,
+                args,
+                witness: None,
+            }),
+            CellToBaseMsg::WitnessEntityMethod {
+                witness_id,
+                entity_id,
+                method_index,
+                args,
+                entity_is_player,
             } => {
-                assert!(
-                    method_index != 151 && method_index != 153,
-                    "SS-D1 must never send onDuelEntitiesSet/Clear (D-SS25)"
-                );
+                assert!(entity_is_player, "duel sends are about players");
                 out.push(Sent {
                     entity_id,
                     method_index,
                     args,
+                    witness: Some(witness_id),
                 });
             }
             other => panic!("unexpected message {other:?}"),
         }
     }
     out
+}
+
+/// The sends to `entity_id`'s own client with `method_index`, in order.
+pub(super) fn own(sent: &[Sent], entity_id: u32, method_index: u16) -> Vec<Vec<u8>> {
+    sent.iter()
+        .filter(|s| {
+            s.witness.is_none() && s.entity_id == entity_id && s.method_index == method_index
+        })
+        .map(|s| s.args.clone())
+        .collect()
 }
 
 /// The text of an `onPlayerCommunication` [28] send, checking it is a
@@ -147,7 +175,7 @@ pub(super) fn feedback_text(sent: &Sent) -> String {
 /// Every feedback line sent to `entity_id`, in order.
 pub(super) fn lines_to(sent: &[Sent], entity_id: u32) -> Vec<String> {
     sent.iter()
-        .filter(|s| s.entity_id == entity_id && s.method_index == 28)
+        .filter(|s| s.witness.is_none() && s.entity_id == entity_id && s.method_index == 28)
         .map(feedback_text)
         .collect()
 }

@@ -1,30 +1,25 @@
-//! The duel tick: expire unanswered challenges and end countdowns.
+//! The duel tick: expire unanswered challenges, engage duels whose countdown
+//! has run out, and run the safety ends.
 //!
 //! Called every AoI tick from the cell loop. It returns at once when the
 //! registry is idle, and it opens no span of its own (instrumentation
-//! discipline rule 3): each expiry or countdown end is one DEBUG event.
+//! discipline rule 3): each expiry, engage or end is one DEBUG event.
 //!
-//! # The countdown end, until SS-D2
-//!
-//! SS-D2 turns a finished countdown into an engaged duel (the PvP flag, the
-//! harm gate, `onDuelEntitiesSet`). SS-D1 cannot: none of that exists yet,
-//! and an `Engaged` duel with no end path (SS-D3) would leave both players
-//! busy for the life of the cell process, unable to duel again. So until
-//! SS-D2 replaces [`on_countdown_end`], the countdown ends the duel with
-//! "Duel aborted" (878) and `reason = engage_not_implemented`.
+//! - The countdown end is [`engage::on_countdown_end`](super::engage).
+//! - The safety ends are [`end::sweep`](super::end): an engaged duel is
+//!   aborted after `ENGAGED_LIMIT`, or as soon as a duelist is no longer at
+//!   the engaged entity in the duel's space. SS-D3's end paths (health,
+//!   forfeit, range, disconnect, teleport) come first in practice; the sweep
+//!   is what guarantees no duel stays engaged forever if one is missed.
 
 use std::time::Instant;
 
 use tokio::sync::mpsc;
 
-use cimmeria_wire::cell::client_methods::duel::TEXT_DUEL_ABORTED;
-
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::find_player;
-use super::outbound::{send_line, Recipient};
-use super::registry::DuelId;
 use super::response::abort_both;
 
 /// Run the tick on the wall clock.
@@ -53,40 +48,7 @@ pub async fn run_at(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, no
         abort_both(tx, mgr, &pending, "expired").await;
     }
     for duel_id in mgr.duels.countdowns_due(now) {
-        on_countdown_end(tx, mgr, duel_id).await;
+        super::engage::on_countdown_end(tx, mgr, duel_id, now).await;
     }
-}
-
-/// SS-D2 replaces this body with the engage (see the module doc).
-async fn on_countdown_end(
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    mgr: &mut SpaceManager,
-    duel_id: DuelId,
-) {
-    let Some(duel) = mgr.duels.end_duel(duel_id) else {
-        return;
-    };
-    let challenger = find_player(mgr, duel.challenger);
-    tracing::debug!(
-        target: "duel",
-        event = "duel.aborted",
-        duel_id,
-        account_id = challenger.and_then(|p| p.account_id),
-        player_id = duel.challenger,
-        entity_id = challenger.map(|p| p.entity_id),
-        target_player_id = duel.target,
-        space_id = duel.space_id,
-        state = "start_pending",
-        reason = "engage_not_implemented",
-        "duel countdown ended: engaging is SS-D2, so the duel is aborted"
-    );
-    for (player_id, other) in [
-        (duel.challenger, duel.target),
-        (duel.target, duel.challenger),
-    ] {
-        if let Some(p) = find_player(mgr, player_id) {
-            let to = Recipient::at(&p, player_id, Some(other));
-            send_line(tx, to, TEXT_DUEL_ABORTED, Some(duel_id)).await;
-        }
-    }
+    super::end::sweep(tx, mgr, now).await;
 }
