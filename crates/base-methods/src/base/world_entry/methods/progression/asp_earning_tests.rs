@@ -191,6 +191,27 @@ async fn multi_level_grant_earns_one_asp_per_level() {
     assert!(events[0].has_field("asp_after", &asp.to_string()));
 }
 
+/// The ASP total saturates at `i32::MAX` (the column is `integer`): a
+/// level-up on a character one below the maximum still commits the level
+/// and pushes `i32::MAX`. Without the clamp Postgres raises "integer out of
+/// range", the whole write rolls back and the level is lost.
+#[tokio::test]
+async fn asp_saturates_at_i32_max() {
+    let pool = require_db_or_skip!();
+    let f = fixture(&pool, 60, 1, 1, 0, i32::MAX - 1).await;
+
+    // Several levels at once: MAX - 1 plus more than one point overflows.
+    f.grant(&pool, 1_000).await;
+    let (level, asp) = f.persisted(&pool).await;
+    let sent = f.transport_typed.filter_to(f.addr);
+    cleanup(&pool, f.account_id).await;
+
+    assert!(level > 2, "the level-up must commit, got level {level}");
+    assert_eq!(asp, i32::MAX, "ASP clamps at i32::MAX");
+    assert_eq!(sent.len(), 2, "XP bundle, then the ASP property");
+    assert_eq!(sent[1], f.asp_packet(2, i32::MAX));
+}
+
 /// XP that crosses no boundary earns nothing: no point, no event, no push.
 #[tokio::test]
 async fn xp_without_a_level_up_earns_no_asp() {

@@ -278,9 +278,9 @@ Applied science points (ASP) gate discipline learning. Disciplines are crafting 
 applied_science_points INTEGER DEFAULT 0
 ```
 
-### Earning: Not Implemented
+### Earning
 
-No code grants applied science points on level-up. The grant methods exist and are functional but are never called by the leveling path. Points must be manually set in the database.
+A new character starts with 1 ASP (`createCharacter` binds `STARTING_APPLIED_SCIENCE_POINTS`; the column default is still 0, and the seeded characters hold 1). Each level gained adds 1 more: `handle_grant_xp` writes the new XP, level, training points and ASP in one statement, counting the levels gained against the level stored in the row, then pushes the new ASP total to the client. An unspent character at level `L` holds `L` points, 50 at the cap. GM grants (`gmGiveAppliedSciencePoints`) come on top. Details: [crafting-system.md](crafting-system.md#earning-applied-science-points).
 
 ### Spending
 
@@ -374,7 +374,7 @@ Call `giveTrainingPoints(n)` inside the level-up block in `giveExperience()`. Th
 
 **3. Applied science points on level-up**
 
-Grant ASP at defined level thresholds (e.g., every 5 levels). The original design intent is unknown.
+Done: 1 ASP at level 1 and 1 per level gained (owner decision D-CR01; see [Earning](#earning)). The original design intent is unknown.
 
 **4. XP from mob kills**
 
