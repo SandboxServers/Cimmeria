@@ -82,7 +82,8 @@ join/login, before the roster dump); `receivedMinimapPing` (org-wide fanout of C
 (orgId+rank) and drops the trailing WSTRING.
 
 **Base methods (C→S)**: organizationInvite (orgId, WSTRING name), organizationInviteByType (UINT8 type,
-WSTRING name), organizationKick, organizationRankChange (…, UINT8 rank), organizationCreation (UINT8 type, WSTRING name).
+WSTRING name), organizationKick, organizationRankChange (…, UINT8 rank). Creation is the exposed **cell** method 94
+`onOrganizationCreation(WSTRING name)`; the type is implied by the dialog the server opened (corrected 2026-09-27).
 
 **Slash commands** confirmed in binary (RTTI strings `0x0184212c`–`0x0184244c`): Squad/Team/Command
 Invite/Accept/Decline, SquadKick, SquadPromote, SquadLeave, ChooseOrgName, ReloadOrganizations (dev).
@@ -90,7 +91,7 @@ Invite/Accept/Decline, SquadKick, SquadPromote, SquadLeave, ChooseOrgName, Reloa
 
 ## Flows (reconstructed)
 
-- **Creation**: `/chooseOrgName` → `organizationCreation(type,name)` base → `GroupAuthority.joinGroup` →
+- **Creation**: registrar NPC → `launchOrganizationCreation(type)` [135] → `chooseOrgName` → `onOrganizationCreation(name)` cell 94 → `GroupAuthority.joinGroup` →
   `onOrganizationJoined` cell → `onOrganizationCreationResult` [134]. The server sends
   `launchOrganizationCreation` [135] to OPEN the dialog (server-gated), before the client names the org.
 - **Invite**: `organizationInvite`/`…ByType` base → resolve name → `organizationInvite` cell on target →
@@ -111,9 +112,9 @@ handlers; chat channels CHAN_SQUAD/COMMAND/OFFICER defined but not org-routed; `
 
 ## Open questions
 
-1. EReasons enum values for `onOrganizationLeft` (left/kicked/disbanded). → x64dbg.
-2. `RosterInfo` element layout — does it carry an `isOnline` bool not in the .def? → x64dbg.
-3. `launchOrganizationCreation` trigger timing (first login? NPC interaction?). → x64dbg.
+1. ~~EReasons enum values~~ — **closed**: requested 0, kicked 1, disbanded 2, logout 3 (`enumerations.xml:104`).
+2. ~~`RosterInfo` `isOnline`~~ — **closed** (2026-09-27, static Ghidra): no online field. The client derives "Online" from a non-zero member id that resolves to a `GamePlayer` in its own entity table (`teamGetMemberInfo` `0x00ac8c70` → builder `0x00ae83d0`). See [analysis/organizations/audit.md](../../analysis/organizations/audit.md) A-11.
+3. `launchOrganizationCreation` trigger timing — **likely** a registrar NPC interaction (`EInteractionType.OrganizationCreation = 9`; the `.int` strings send players to a team registrar on Harset and a command registrar at the Omega Site). The client only opens `CreateTeamWin` / `CreateCommandWin` on receipt.
 4. Cash field width — .def says UINT64; confirm not UINT32 in practice. → x64dbg.
 
 ## Dynamic-analysis needs (x64dbg)

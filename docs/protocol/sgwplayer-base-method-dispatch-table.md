@@ -56,10 +56,12 @@ Source: `entities/defs/interfaces/OrganizationMember.def`
 
 | Index | Wire | Method | Args |
 |-------|------|--------|------|
-| 15 | 0xCF | organizationInvite | WSTRING playerName, INT32 orgId |
-| 16 | 0xD0 | organizationInviteByType | WSTRING playerName, INT32 orgType |
-| 17 | 0xD1 | organizationKick | WSTRING playerName, INT32 orgId |
-| 18 | 0xD2 | organizationRankChange | WSTRING playerName, INT32 orgId, INT32 rank |
+| 15 | 0xCF | organizationInvite | INT32 aOrganizationId, WSTRING aPlayerName |
+| 16 | 0xD0 | organizationInviteByType | UINT8 aOrganizationType, WSTRING aPlayerName |
+| 17 | 0xD1 | organizationKick | INT32 aOrganizationId, WSTRING aPlayerName |
+| 18 | 0xD2 | organizationRankChange | INT32 aOrganizationId, WSTRING aPlayerName, UINT8 aRank |
+
+Argument order and types are from `OrganizationMember.def:418-449` (corrected 2026-09-27; this table previously listed the name first and every numeric field as `INT32`).
 
 ### MinigamePlayer — 1 exposed (index 19)
 

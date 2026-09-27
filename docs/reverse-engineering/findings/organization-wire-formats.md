@@ -153,14 +153,15 @@ Organizations are persistent player groups — squads, guilds, and strike teams.
 | `aPlayerName` | `WSTRING` | 4B len + N×2B | Target player |
 | `aRank` | `UINT8` | 1B | New rank value |
 
-### Additional Base Method (SGWPlayer.def)
+### Creation (SGWPlayer.def, cell method 94)
 
-#### `organizationCreation` — Create New Organization
+#### `onOrganizationCreation` — Name a New Organization
 
 | Field | Type | Wire Encoding | Notes |
 |-------|------|---------------|-------|
-| `aOrgType` | `UINT8` | 1B | Organization type |
-| `aName` | `WSTRING` | 4B len + N×2B | Organization name |
+| `aOrganizationName` | `WSTRING` | 4B len + N×2B | Organization name |
+
+This is an exposed **cell** method (`SGWPlayer.def:877-880`), not a base method. The organization type is not on the wire: the client sends it from whichever creation dialog `launchOrganizationCreation` opened (`CreateTeamWin` or `CreateCommandWin`), so the server must remember the type it offered. An earlier version of this document described a base method `organizationCreation(UINT8 aOrgType, WSTRING aName)`; no such method exists in the `.def` (corrected 2026-09-27).
 
 ---
 

@@ -110,6 +110,8 @@ Eight channels are registered with the client at `onClientReady` (`DEFAULT_CHAT_
 | tell | 9 | yes | Used server-to-client for the welcome message and GM feedback. There is no dedicated feedback channel (8 is unregistered), so GM feedback rides `tell` |
 | splash | — | **no** | Not registered |
 
+> **Id conflict (2026-09-27).** `EChannel` in `entities/defs/enumerations.xml:113-128` numbers the channels server 8, feedback 9, tell 10, splash 11 and user channels from 12, with 7 unused; the legacy `deprecated/python/base/Chat.py:144-154` builds every channel from those values. The ids in this table are what the Rust server registers today (`DEFAULT_CHAT_CHANNELS`), not the enum. Whether the client hardcodes any `EChannel` id, or takes every id from `onChatJoined`, is still to be checked; the organizations campaign changes the registered ids only with that evidence ([decision D-ORG14](../analysis/organizations/README.md#decisions), [audit A-40](../analysis/organizations/audit.md)).
+
 ## Channel Flags
 
 | Flag | Constant | Purpose |
