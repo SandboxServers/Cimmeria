@@ -573,7 +573,8 @@ pet registry
 ([`pets/arrival.rs`](../../crates/cell-world/src/cell/pets/arrival.rs)) until the owner
 witnesses the pet. The drain runs after the AoI tick and sends the VFX to the pet's
 witnesses, so it can never reach a client ahead of the pet's CREATE_ENTITY. It is dropped
-after 2 s, and `forget_pet` scrubs it on every teardown path. A summon carries
+after 2 s, and `forget_pet` scrubs it on every teardown path. It is also dropped when the owner's entity id
+now belongs to a player who is not the pet's summoner (`PetRegistry::summoner_matches`, #870). A summon carries
 `Deactivate_AutoCycle` and `DoNotActivate_AutoCycle`, so it is not stashed as the
 last-fired ability, and a later `setAutoCycle(1)` press cannot re-fire it.
 
