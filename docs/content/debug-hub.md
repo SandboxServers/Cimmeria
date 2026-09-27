@@ -298,9 +298,11 @@ Right-click opens a store that only sells, at 1 naquadah each (buy list 310):
 | Racial Paradigm Guides | 7805 Human, 7806 Common, 7807 Asgard, 7808 Goa'uld, 7809 Ancient |
 | Blueprint item | 6483 Blueprint: Steel Plating (teaches blueprint 25) |
 
-- A purchase lands in the main bag (1). The crafting verbs consume components
-  from the main and crafting bags, and a Blueprint item or a guide is used from
-  either bag, so these work straight away.
+- A purchase lands in the first carried bag the item lists: the crafting bag
+  (15) for the `{17,15}` supplies, tools included, and the main bag (1) for
+  anything else. The crafting verbs consume components from the main and
+  crafting bags, and a Blueprint item or a guide is used from either bag, so
+  these work straight away.
 - A Field Crafting Tool counts only in the crafting bag (15). Move it there to
   enable crafting without a station.
 - The vendor has no sell, repair or recharge list.
@@ -437,4 +439,4 @@ hub, crafting)`.
 | `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001, 7004 and 7010 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
 | `cell-catalog` `spawner/tests/live_db_crafting_hub.rs` | Stations carry all four craft bits and no interaction bit, with the client's station monikers; the vendor sells only list 310; the crafting spawns stand inside Region1, on the floor, clear of the respawner and of every other spawn in the room; list 310 is exactly the supplies, each a real item at 1 naquadah and no item cost, and covers the UAT recipes |
 | `cell-methods` `interaction/crafting_hub_station_tests.rs` | Spawned from their real rows, the stations are reported for every verb to a player at the supplies vendor, and none reaches the respawn spot |
-| `base-methods` `vendor/purchase/crafting_supplies_tests.rs` | Bought supplies land in the main bag: the guide and the Blueprint item are used from there, and the cores are consumed by a crafting transaction |
+| `base-methods` `vendor/purchase/crafting_supplies_tests.rs` | Bought supplies land in the crafting bag: the guide and the Blueprint item are used from there, and the cores are consumed by a crafting transaction |
