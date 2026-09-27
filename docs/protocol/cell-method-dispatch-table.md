@@ -605,7 +605,7 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 164 | `gmReloadOrganizations()` | `/ReloadOrganizations` | — (org methods are stubs; no def hot-reload) | NEW |
+| 164 | `gmReloadOrganizations()` | `/ReloadOrganizations` | `cell/console/gm/organizations.rs` → `OrgCellToBase::GmReload` → `base::organization::handlers::gm_inspect::gm_reload` (re-runs the world-entry push, `push_org_state`, for each of the caller's Teams and Commands; ORG-10) | **DONE** |
 | 165 | `gmReloadInventory()` | `/ReloadInventory` | — (no inventory-def hot-reload) | NEW |
 | 166 | `gmUsers()` | `/Users`, `/Who` | **`gm/query.rs` → `all_player_entity_ids` + feedback (space-scoped; all-shard via base round-trip is future)** | **DONE** |
 | 167 | `gmSetHideGM(UINT8 on)` | `/SetHideGM` | — (`bHideGM` not implemented; `access_level` read-only at login) | NEW |

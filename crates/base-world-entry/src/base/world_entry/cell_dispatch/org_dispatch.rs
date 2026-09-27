@@ -13,7 +13,8 @@
 //! - `TransferCash` (CM 19) is the Bank campaign's route: the reject stub
 //!   answers with the "not available yet" pair and logs
 //!   `org.transfer_cash_unimplemented` until BV-08 replaces this arm.
-//! - The GM commands `GmDisband` (ORG-06), `GmJoin` and `GmRank` (ORG-07).
+//! - The GM commands `GmDisband` (ORG-06), `GmJoin` and `GmRank` (ORG-07),
+//!   and `GmInfo`, `GmList`, `GmSetPerms` and `GmReload` (ORG-10).
 //!
 //! Later packets add their handlers to this file rather than to `mod.rs`.
 
@@ -25,8 +26,8 @@ use cimmeria_base_session::base::organization::creation::handler::{
 };
 use cimmeria_base_session::base::organization::handlers::answer::not_available;
 use cimmeria_base_session::base::organization::handlers::{
-    gm_disband, gm_join, gm_rank, handle_invite_response, handle_leave, resolve_actor, GmCaller,
-    OrgCtx,
+    gm_disband, gm_info, gm_join, gm_list, gm_rank, gm_reload, gm_set_perms,
+    handle_invite_response, handle_leave, resolve_actor, GmCaller, OrgCtx,
 };
 use cimmeria_wire::cell::cell_methods::organization::{decode_org_cell_method, OrgCellCall};
 
@@ -131,6 +132,21 @@ pub(super) async fn route(msg: OrgCellToBase, ctx: &DispatchCtx<'_>) {
             ..
         } => {
             let _ = gm_rank(&org_ctx(ctx), gm, &target_name, rank, org_id).await;
+        }
+        // ORG-10: the rest of the GM suite.
+        OrgCellToBase::GmInfo { target_name, .. } => {
+            let _ = gm_info(&org_ctx(ctx), gm, target_name.as_deref()).await;
+        }
+        OrgCellToBase::GmList { .. } => {
+            let _ = gm_list(&org_ctx(ctx), gm).await;
+        }
+        OrgCellToBase::GmSetPerms {
+            org_id, rank, mask, ..
+        } => {
+            let _ = gm_set_perms(&org_ctx(ctx), gm, org_id, rank, mask).await;
+        }
+        OrgCellToBase::GmReload { .. } => {
+            let _ = gm_reload(&org_ctx(ctx), gm).await;
         }
     }
 }

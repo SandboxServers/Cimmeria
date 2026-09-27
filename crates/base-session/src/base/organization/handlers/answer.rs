@@ -75,6 +75,8 @@ pub fn refusal_text(why: OrgReject, self_text: &str, org_type: Option<OrgType>) 
         OrgReject::OrgGone | OrgReject::NoSuchOrg => ORG_GONE_TEXT.into(),
         OrgReject::OrgTypeInvalid => ORG_TYPE_INVALID_TEXT.into(),
         OrgReject::OrgAmbiguous => "They are in a Team and a Command; name the org id.".into(),
+        OrgReject::LeaderRowPinned => "The Leader rank always holds every permission.".into(),
+        OrgReject::PermissionsUnchanged => "That rank already has those permissions.".into(),
         OrgReject::LeaderCannotLeave
         | OrgReject::VaultNotEmpty
         | OrgReject::NotGm

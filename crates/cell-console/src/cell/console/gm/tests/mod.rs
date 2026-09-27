@@ -57,6 +57,11 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_SET_TARGET, 109 + 47, "gmSetTarget (def line 302)");
     assert_eq!(GM_DHD, 109 + 50, "gmDHD (def line 325)");
     assert_eq!(GM_USERS, 109 + 57, "gmUsers (def line 363)");
+    assert_eq!(
+        GM_RELOAD_ORGANIZATIONS,
+        109 + 55,
+        "gmReloadOrganizations (def line 355)"
+    );
     assert_eq!(TEST_LOS, 109 + 107, "testLOS (def line 619)");
     assert_eq!(
         GM_SHOW_TARGET_LOCATION,
@@ -130,6 +135,7 @@ fn implemented_indices_are_in_gm_tail() {
         GM_KILL_TARGET,
         DESPAWN_MOB,
         GM_USERS,
+        GM_RELOAD_ORGANIZATIONS,
         TEST_LOS,
         GM_SHOW_TARGET_LOCATION,
         GM_SHOW_ROTATION,
@@ -232,6 +238,7 @@ async fn unimplemented_gm_index_returns_false() {
 mod give;
 mod give_training_points;
 mod missions;
+mod organizations;
 mod physics;
 mod query;
 mod shout;

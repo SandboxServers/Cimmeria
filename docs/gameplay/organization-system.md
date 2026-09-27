@@ -100,7 +100,7 @@ Every character delete keeps the lock order in the database, whatever issued it.
 
 The code is in [`crates/base-session/src/base/organization/`](../../crates/base-session/src/base/organization/):
 
-- `api.rs` (the ORG-API the Bank campaign builds on): `lock_org(tx, org_id)` takes `SELECT ... FOR UPDATE` on the organization row and returns its `OrgHeader`; `member_access_locked(tx, org_id, player_id)` takes that lock and returns the member's `OrgAccess` (type, rank, permissions) read under it; `OrgAccess::system(tx, org_id, actor)` builds one for a GM or server action and logs it (`org.gm_action` or `system_action`); `org_vault_is_empty(tx, org_id)` is the vault stub. There is no pool-level membership check.
+- `api.rs` (the ORG-API the Bank campaign builds on): `lock_org(tx, org_id)` takes `SELECT ... FOR UPDATE` on the organization row and returns its `OrgHeader`; `member_access_locked(tx, org_id, player_id)` takes that lock and returns the member's `OrgAccess` (type, rank, permissions) read under it; `OrgAccess::system(tx, org_id, actor)` builds one for a GM or server action and logs it (`org.gm_access` or `system_action`; ORG-10 renamed the GM row so that `org.gm_action` is only ever a GM command's result row); `org_vault_is_empty(tx, org_id)` is the vault stub. There is no pool-level membership check.
 - `persistence/`: `create_org` (the organization, one rank row per `default_rank_permissions` entry, and the leader, all under a savepoint), `add_member`, `remove_member` (which reports what the trigger did: nothing, a promotion, a disband, or a memberless organization), `set_rank`, `set_text` (MOTD, note, officer note, rank name), `set_rank_permissions`, `disband` (refused while the vault is not empty), and the display reads `load_memberships`, `load_roster`, `load_ranks` and `name_available`.
 
 Every mutation takes a transaction and an `actor: &OrgAccess`, and locks the organization row first. It refuses an `OrgAccess` for another organization (`ActorMismatch`) or one read in another transaction (`StaleAccess`), so authorization is always read under the same lock as the write. The lock order is the organization row, then `sgw_player` rows, then item rows (D-ORG04); character deletes are the one exception, described in `api.rs` § "Lock order". Deciding who may invite, kick, promote or edit belongs to the handler, from that `OrgAccess`. The persistence layer enforces the data invariants:
@@ -245,7 +245,7 @@ Everything logs on the `org` target; each action counts once on `org_actions_tot
 | Who invited whom, and why it was refused | `event = 'org.invite' AND player_id = <id>` (`outcome`, `reason`, `target_player_id`, `request_id`, `actor_rank`) |
 | What happened to an invite | `request_id = <id> AND event IN ('invite_created', 'invite_consumed', 'invite_expired', 'org.invite_response')` |
 | Kicks and rank changes | `event IN ('org.kick', 'org.rank_change') AND org_id = <id>` (`actor_rank`, `target_rank`, `to_rank`), then `event IN ('member_left', 'rank_changed')` for the before and after |
-| GM joins and rank sets | `event IN ('org.gm_join', 'org.gm_rank', 'org.gm_action')` |
+| GM joins and rank sets | `event IN ('org.gm_join', 'org.gm_rank')`, or `event = 'org.gm_action' AND action IN ('gm_org_join', 'gm_org_rank')` |
 | Where a cell call went | `event = 'org.forward' AND method_index = <n>` (`route` = `squad` \| `base` \| `rejected`) |
 | A fanout that missed someone | `event IN ('org.send_failed', 'org.broadcast_failed')` (`what`, `reason`) |
 
@@ -268,6 +268,27 @@ Everything logs on the `org` target; each action counts once on `org_actions_tot
 | A member or the speaker who missed a line | `event = 'org.send_failed' AND what IN ('chat', 'chat_echo')` (`reason`) |
 
 A muted speaker's line writes no `org.chat` row: look for `event = 'chat.muted_refused'` on the `chat` target. Every row counts on `org_actions_total{action = "chat"}`.
+## GM suite (ORG-10)
+
+Every GM organization command is GameMaster-gated twice: the cell's `.` console runs only a GameMaster's line, and the base re-reads the access level from the session that plays the forwarded character on the forwarded entity (D-ORG13). No privilege bit travels in a cell-to-base message.
+
+| Command | What it does |
+|---|---|
+| `.org_info [player]` | Lists every Team and Command the character (default: you) belongs to: type, name, org id, rank and that rank's permission mask in hex. The character may be offline; an exact name wins, otherwise a case-insensitive match must be unique. |
+| `.org_list` | Lists every Team and Command, oldest first, with its member count and leader; at most 50 lines. |
+| `.org_set_perms <orgId> <rank> <mask>` | Sets a rank's permission mask (decimal or `0x` hex). The mask goes through the same `OrgPermission::apply_edit` a member's rank editor uses (D-ORG22): only the bits the type's editor shows (12 for a Team, 14 for a Command) take your value, every other bit keeps what is stored, and the GM line names the bits it ignored (the D-ORG09 (6) clamp). The `Leader` row, a rank the type does not use and an edit that changes nothing are refused. The write is `persistence::set_rank_permissions` under ORG-LOCK; every online member then gets the rank table [49]. |
+| `/ReloadOrganizations` (`gmReloadOrganizations`, `SGWGmPlayer` cell method 164) | Re-sends your own organization state, the same bundle as the world-entry push ([35], [43], [45], [48], [44], [49], [50], [38], then [37] per online member), for every Team and Command you belong to. Nobody else is told anything. Index 164 is in the `SGWGmPlayer` tail, which the dispatch gate refuses to non-GMs before any handler runs. |
+
+`.org_create`, `.org_disband`, `.org_join`, `.org_rank` and the three `.squad_*` commands are described with their packets above and in [group-system.md](group-system.md). No GM command sets organization text, so the D-ORG10 caps have nothing to bypass; `.org_create`'s name goes through the same `org_text::validate` as the registrar's.
+
+**Audit row.** Every GM organization command, refused or not, ends in exactly one INFO `org.gm_action` row on `org` with `action`, `outcome`, `reason` on a refusal, the GM's `account_id` / `player_id` / `entity_id`, the target's `target_account_id` / `target_player_id` where there is one, and `org_id`. For `.org_disband`, `.org_join` and `.org_rank` it is a twin of the command's own row (`org.disband`, `org.gm_join`, `org.gm_rank`), written from the same data and not counted again; for the ORG-10 commands and `.org_create` it is the outcome row. Before ORG-10, a refusal ahead of the organization lock (`not_gm`, a malformed id) left no `org.gm_action` row at all.
+
+| Question | SigNoz Logs filter (`service.name = 'cimmeria-server' AND scope_name = 'org' AND ...`) |
+|---|---|
+| Everything a GM did to organizations | `event = 'org.gm_action' AND player_id = <GM's player id>`, by time |
+| One command's refusals | `event = 'org.gm_action' AND action = 'gm_org_set_perms' AND outcome = 'rejected'`, grouped by `reason` |
+| A permission edit's before and after | `event = 'permissions_changed' AND org_id = <id>` (`rank`, `from_mask`, `to_mask`, `wire_mask`, `ignored_bits`; DEBUG) |
+| A reload | `event = 'org.gm_action' AND action = 'gm_reload_organizations'` (`count` = organizations re-sent), then `event = 'org.state_push' AND player_id = <id>` |
 
 ## Entity Definition (OrganizationMember.def)
 

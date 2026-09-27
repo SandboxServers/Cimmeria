@@ -103,6 +103,40 @@ pub enum OrgCellToBase {
         rank: u8,
         org_id: Option<i32>,
     },
+
+    /// `.org_info [player]` (ORG-10): list every Team and Command
+    /// `target_name` (the GM themself when `None`) belongs to, with the
+    /// rank and that rank's permission mask. The player may be offline.
+    /// The base re-reads the access level (D-ORG13).
+    GmInfo {
+        player_id: i32,
+        entity_id: u32,
+        target_name: Option<String>,
+    },
+
+    /// `.org_list` (ORG-10): list every Team and Command. The base re-reads
+    /// the access level (D-ORG13).
+    GmList { player_id: i32, entity_id: u32 },
+
+    /// `.org_set_perms <orgId> <rank> <mask>` (ORG-10): store `mask` as the
+    /// rank's permissions through the same D-ORG22 edit a member's CM 16
+    /// makes (`OrgPermission::apply_edit`, so bits the type's editor does
+    /// not show keep their stored value: the D-ORG09 (6) clamp). The
+    /// `Leader` row and a rank the type does not use are refused. The base
+    /// re-reads the access level (D-ORG13).
+    GmSetPerms {
+        player_id: i32,
+        entity_id: u32,
+        org_id: i32,
+        rank: u8,
+        mask: u32,
+    },
+
+    /// `gmReloadOrganizations` (`SGWGmPlayer` cell method 164, ORG-10):
+    /// re-send the caller's own organization state, the push ORG-06 sends
+    /// at world entry, for every Team and Command they belong to. The base
+    /// re-reads the access level (D-ORG13).
+    GmReload { player_id: i32, entity_id: u32 },
 }
 
 impl OrgCellToBase {
@@ -148,6 +182,24 @@ impl OrgCellToBase {
                 player_id,
                 entity_id,
                 ..
+            }
+            | OrgCellToBase::GmInfo {
+                player_id,
+                entity_id,
+                ..
+            }
+            | OrgCellToBase::GmList {
+                player_id,
+                entity_id,
+            }
+            | OrgCellToBase::GmSetPerms {
+                player_id,
+                entity_id,
+                ..
+            }
+            | OrgCellToBase::GmReload {
+                player_id,
+                entity_id,
             } => (player_id, entity_id),
         }
     }
@@ -163,6 +215,10 @@ impl OrgCellToBase {
             OrgCellToBase::GmDisband { .. } => "gm_disband",
             OrgCellToBase::GmJoin { .. } => "gm_join",
             OrgCellToBase::GmRank { .. } => "gm_rank",
+            OrgCellToBase::GmInfo { .. } => "gm_info",
+            OrgCellToBase::GmList { .. } => "gm_list",
+            OrgCellToBase::GmSetPerms { .. } => "gm_set_perms",
+            OrgCellToBase::GmReload { .. } => "gm_reload",
         }
     }
 }

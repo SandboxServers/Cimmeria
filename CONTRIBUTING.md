@@ -65,6 +65,8 @@ These touch wire formats or client expectations directly. The wrong byte = silen
 
 For RE work, start with [`docs/guides/re-toolchain-setup.md`](docs/guides/re-toolchain-setup.md) and [`docs/guides/reverse-engineering-with-claude.md`](docs/guides/reverse-engineering-with-claude.md). The `game-archaeology-specialist` agent (configured in `.claude/agents/`) is your friend.
 
+For playtest acceptance of a restored system, the UAT guides script each step with the SigNoz query that shows it; the first is [`docs/guides/organizations-uat.md`](docs/guides/organizations-uat.md) (Squads, Teams and Commands).
+
 For unattended AI-agent sessions that pick their own issues, the kickoff prompt and its worktree, build, and PR protocol live in [`docs/guides/autonomous-agent-kickoff.md`](docs/guides/autonomous-agent-kickoff.md).
 
 ## The development loop

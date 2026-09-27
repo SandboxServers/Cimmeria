@@ -8,7 +8,7 @@ use crate::base::organization::handlers::{gm_join, gm_rank, GmCaller, OrgReject}
 use crate::test_support::{require_db_or_skip, LogCapture};
 
 impl Fixture {
-    fn gm(&self, i: usize, access_level: u32) -> GmCaller {
+    pub(super) fn gm(&self, i: usize, access_level: u32) -> GmCaller {
         self.connected
             .lock()
             .unwrap()
@@ -47,7 +47,7 @@ async fn gm_join_adds_at_entry_rank_and_keeps_the_type_rule() {
     assert!(capture
         .all()
         .iter()
-        .any(|c| c.has_field("event", "org.gm_action") && c.has_field("command", "org_join")));
+        .any(|c| c.has_field("event", "org.gm_access") && c.has_field("command", "org_join")));
     assert_eq!(fx.calls_to(0).len(), 1, "the leader's [37]");
 
     let capture = LogCapture::install();

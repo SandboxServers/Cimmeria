@@ -21,7 +21,7 @@ async fn add(pool: &PgPool, org_id: i32, player_id: i32, rank: OrgRank) {
 }
 
 /// An access read in one transaction is refused in another
-/// (`StaleAccess`); a GM system access logs `org.gm_action` with the GM.
+/// (`StaleAccess`); a GM system access logs `org.gm_access` with the GM.
 #[tokio::test]
 async fn access_is_tied_to_its_transaction() {
     let pool = require_db_or_skip!();
@@ -70,7 +70,7 @@ async fn access_is_tied_to_its_transaction() {
     assert!(gm.is_system() && gm.rank() == OrgRank::LEADER);
     let logged = capture.all().into_iter().any(|c| {
         c.level == Level::INFO
-            && c.has_field("event", "org.gm_action")
+            && c.has_field("event", "org.gm_access")
             && c.has_field("command", ".org_disband")
             && c.has_field("account_id", &fx.account_id.to_string())
             && c.has_field("org_id", &org.to_string())

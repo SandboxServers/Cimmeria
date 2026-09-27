@@ -16,9 +16,10 @@
 //!   may be offline. Without an org id it acts on the one Team or Command
 //!   the member is in, and refuses when they are in both.
 //!
-//! `OrgAccess::system` writes the `org.gm_action` row with the GM's
-//! identity once the organization is locked; each command also ends in one
-//! `org.gm_join` / `org.gm_rank` outcome row.
+//! Each command ends in one `org.gm_join` / `org.gm_rank` outcome row and
+//! its `org.gm_action` twin with the GM, the target and the result
+//! (`ActionRow::gm_audit`, ORG-10); `OrgAccess::system` adds the
+//! `org.gm_access` lock audit once the organization is locked.
 
 use cimmeria_entity::organization::OrgRank;
 use sqlx::{Postgres, Transaction};
@@ -48,7 +49,7 @@ pub(super) fn gm_session(ctx: &OrgCtx<'_>, gm: GmCaller) -> Option<(OrgPlayer, u
     Some((player, level))
 }
 
-fn gm_actor(player: &OrgPlayer, command: &'static str) -> SystemActor<'static> {
+pub(super) fn gm_actor(player: &OrgPlayer, command: &'static str) -> SystemActor<'static> {
     SystemActor::Gm {
         account_id: player.account_id.and_then(|a| i32::try_from(a).ok()),
         player_id: Some(player.player_id),
@@ -76,6 +77,7 @@ pub async fn gm_join(
         player_id: Some(gm.player_id),
         entity_id: Some(gm.entity_id),
         org_id: Some(org_id),
+        gm_audit: true,
         ..ActionRow::default()
     };
     let fail = |row: ActionRow, why: OrgReject| async move {
@@ -197,6 +199,7 @@ pub async fn gm_rank(
         entity_id: Some(gm.entity_id),
         org_id,
         to_rank: Some(rank),
+        gm_audit: true,
         ..ActionRow::default()
     };
     let fail = |row: ActionRow, why: OrgReject| async move {

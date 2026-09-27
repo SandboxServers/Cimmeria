@@ -31,6 +31,11 @@
 //!
 //! ORG-09 adds [`chat`]: team (3), command (5) and officer (6) chat to the
 //! online members ([`relay_org_chat`]).
+//! ORG-10 adds the rest of the GM suite:
+//!
+//! - [`gm_inspect`]: `.org_info` and `.org_list` ([`gm_info`], [`gm_list`]),
+//!   and `gmReloadOrganizations` (cell method 164, [`gm_reload`]).
+//! - [`gm_perms`]: `.org_set_perms` ([`gm_set_perms`]).
 //!
 //! Every mutation follows ORG-LOCK (D-ORG04): one transaction, the
 //! organization row locked first, authorization read inside it. Fanout runs
@@ -53,6 +58,8 @@ pub mod chat;
 pub mod disband;
 pub mod fanout;
 pub mod gm;
+pub mod gm_inspect;
+pub mod gm_perms;
 pub mod invite;
 pub mod invite_response;
 pub mod kick;
@@ -67,6 +74,8 @@ pub use broadcast::broadcast_to_org;
 pub use chat::{org_channel, relay_org_chat, ChatSpeaker};
 pub use disband::{gm_disband, GmCaller, GM_ACCESS_LEVEL};
 pub use gm::{gm_join, gm_rank};
+pub use gm_inspect::{gm_info, gm_list, gm_reload};
+pub use gm_perms::{gm_set_perms, PermsEdit};
 pub use invite::{handle_invite, InviteInto};
 pub use invite_response::{handle_invite_response, InviteAnswer};
 pub use kick::handle_kick;
