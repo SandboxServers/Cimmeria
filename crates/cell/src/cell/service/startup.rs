@@ -313,6 +313,17 @@ impl CellService {
                     tracing::warn!("Failed to load archetype ability trees: {e}");
                 }
             }
+            // The crafting catalog, loaded once for the whole process: the
+            // base validates every crafting verb against this same snapshot
+            // (D-CR18). Loading it here surfaces a broken seed at boot.
+            if let Err(e) = cimmeria_cell_catalog::crafting::shared_crafting_catalog(pool).await {
+                tracing::warn!(
+                    target: "crafting",
+                    event = "catalog_load_failed",
+                    error = %e,
+                    "Failed to load the crafting catalog"
+                );
+            }
             match spawner::load_trainer_abilities(pool).await {
                 Ok(map) => {
                     space_mgr.trainer_abilities = map;
