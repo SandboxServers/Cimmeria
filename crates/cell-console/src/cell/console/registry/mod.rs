@@ -188,6 +188,45 @@ const MUTE_ARGS: &[ArgSpec] = &[
 ];
 const UNMUTE_ARGS: &[ArgSpec] = &[arg("name", "str", "Required. An online, muted character")];
 
+/// The GM mail tools (SS-U1) have no legacy docstring.
+const MAIL_ARGS: &[ArgSpec] = &[
+    arg(
+        "to",
+        "str",
+        "Optional. `to <name>`: the recipient, online or not; yourself when omitted",
+    ),
+    arg(
+        "cash",
+        "int",
+        "Optional. `cash <n>`: naquadah to attach, minted (0 to 2147483647)",
+    ),
+    arg(
+        "item",
+        "int",
+        "Optional. `item <typeId> [qty]`: an item to attach, minted; a number after the type id is the quantity",
+    ),
+    arg(
+        "cod",
+        "int",
+        "Optional. `cod <n>`: make it a COD mail from you at this price; needs an item and no cash",
+    ),
+    arg(
+        "subject",
+        "str",
+        "Optional. The rest of the line; \"GM test mail\" when omitted",
+    ),
+];
+const MAILBOX_ARGS: &[ArgSpec] = &[arg(
+    "name",
+    "str",
+    "Optional. The character whose mailbox to show; yours when omitted",
+)];
+const MAIL_EXPIRE_ARGS: &[ArgSpec] = &[arg(
+    "mailId",
+    "int",
+    "Required. The mail to expire (see .mailbox); refused until mail expiry lands",
+)];
+
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
         "mute" => MUTE_ARGS,
@@ -201,6 +240,9 @@ pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
         "giveability" => GIVEABILITY_ARGS,
         "duel_status" => DUEL_STATUS_ARGS,
         "duel_end" => DUEL_END_ARGS,
+        "mail" => MAIL_ARGS,
+        "mailbox" => MAILBOX_ARGS,
+        "mail_expire" => MAIL_EXPIRE_ARGS,
         _ => &[],
     }
 }

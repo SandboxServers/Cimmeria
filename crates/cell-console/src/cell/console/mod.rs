@@ -61,6 +61,7 @@
 //! - [`social`] — the GM broadcast (`announce`), the console twin of the
 //!   native `/gmshout`.
 //! - [`duel`] — duel GM tools (`duel_status`, `duel_end`).
+//! - [`mail`] — mail GM tools (`mail`, `mailbox`, `mail_expire`).
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -87,6 +88,7 @@ mod entity;
 mod give;
 mod give_ability;
 pub mod gm;
+mod mail;
 mod mission;
 mod net;
 mod parse;

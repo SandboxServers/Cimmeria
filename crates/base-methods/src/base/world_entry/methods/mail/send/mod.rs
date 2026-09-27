@@ -29,7 +29,7 @@
 
 pub(super) mod attachment;
 mod deliver;
-mod escrow;
+pub(super) mod escrow;
 pub(super) mod recipients;
 mod sender_sync;
 mod texts;
@@ -48,6 +48,7 @@ use crate::cell::messages::{MailSend, MailSendReject};
 use crate::mercury::method_idx;
 
 use attachment::Attachment;
+pub(super) use deliver::MAILBOX_CAP;
 use deliver::{deliver, DeliverError};
 use sender_sync::attached_sent;
 use texts::{decode_refusal_text, failure_line};

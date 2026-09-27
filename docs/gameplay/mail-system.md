@@ -18,7 +18,7 @@ The `SGWMailManager` interface in `entities/defs/interfaces/SGWMailManager.def` 
 
 The Rust implementation forwards every mail request from the cell to the base, because mail needs database access and the DB pool lives on the BaseApp. [`crates/cell-interactions/src/cell/mail.rs`](../../crates/cell-interactions/src/cell/mail.rs) packages the request as `CellToBaseMsg::MailRequest { op: MailOp }`; [`crates/base-methods/src/base/world_entry/methods/mail/`](../../crates/base-methods/src/base/world_entry/methods/mail/) runs the query and sends the result straight back to the client. `mod.rs` routes each `MailOp`, `read.rs` holds the read side and `send/` the send path.
 
-A server-generated mail helper also exists — `send_mail_to_player`, used by the Black Market expiry sweep to pay sellers and deliver won items — but it lives on the **unmerged** branch `feat/571-black-market-phase1` (PR #586). On `main` the player send path below is the only writer of `sgw_gate_mail`.
+Two paths write `sgw_gate_mail`: the player send path below, and the system-mail writer in `mail/system/` for mail the server sends (see [Server and GM mail](#server-and-gm-mail-ss-u1)). The Black Market branch's own helper, `send_mail_to_player` on the unmerged `feat/571-black-market-phase1` (PR #586), is to be replaced by the system-mail writer (Black Market S9, BM-02b).
 
 ### Sending a text mail (SS-M1)
 
@@ -50,6 +50,27 @@ The recipient's `onMailHeaderInfo` carries the cash on the header, `MAIL_COD` in
 
 `deleteMailMessage` refuses a mail that still holds an item, gift cash or an unpaid COD price. The row and its escrow row are left unchanged, no `onMailHeaderRemove` is sent, and a feedback line tells the player to take the attachment or return the mail first. Deleting such a mail would destroy the escrowed value, because the escrow row cascades with its mail. Mail with nothing attached deletes as before. The client's own UI never runs this check; it relies on the server.
 
+### Server and GM mail (SS-U1)
+
+Every mail the server sends goes through one writer, `send_system_mail_tx` (in the caller's transaction) or `send_system_mail` (in its own), in [`mail/system/`](../../crates/base-methods/src/base/world_entry/methods/mail/system/). Its callers are Black Market payouts (BM-02b), the Gate Mail Clerk's content action (SS-U3) and the GM `.mail` command. A system mail:
+
+- has no sender character: `sender_id` is NULL and `sender_name` is a label such as "Black Market". It therefore cannot be returned (D-SS10);
+- charges no postage and never carries COD;
+- ignores the 100-message cap, so a payout is never lost to a full mailbox (D-SS03). The log records the recipient's open count and `over_cap`;
+- reaches offline recipients, because it touches only the database.
+
+It carries cash (0 to 2,147,483,647), no item, or one item:
+
+- **Minted:** a new instance of an item type, 1 up to the type's stack size, created in escrow with `grant_item`'s defaults (durability 100, the template's charges and ammo types, not bound). `source_character_id` is 0, meaning no character sent it.
+- **Existing instance:** a row the server already holds for a player, moved whole into escrow with every instance column kept. Server-held means the auction container (18), which no player move reaches. The caller names the owner it expects. A row in any other container, a row owned by someone else, or a bound row mailed to anyone but its owner is refused, and nothing is written.
+
+The GM tools use the same writer (see [commands](../commands.md)):
+
+- `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>] [<subject>]` mints the cash and the item into a system mail from the GM's name, to the GM or to `<name>`, online or not.
+- With `cod <n>`, the mail comes from the GM's character instead (`sender_id` is the GM, `MAIL_COD`, the price in `cash`), so the payment comes back to the GM. It needs an item and no cash, and charges no postage.
+- `.mailbox [name]` reports open and archived counts, system mail, and what is in escrow: items, gift cash and unpaid COD.
+- `.mail_expire <mailId>` is refused with a feedback line until SS-M4 adds `expires_at`.
+
 ## Implementation Status
 
 | Feature | Status | Notes |
@@ -58,7 +79,8 @@ The recipient's `onMailHeaderInfo` carries the cash on the header, `MAIL_COD` in
 | Read mail body | DONE | `requestMailBody` → `MailOp::RequestBody` → `onMailRead` (CM 78); also stamps `read_time` on first read, owner-scoped. `ToText` is the recipient's stored name |
 | Delete mail | DONE | `deleteMailMessage` → `MailOp::Delete` → `onMailHeaderRemove` (CM 77). A mail that still holds an item, gift cash or an unpaid COD is refused with a feedback line and kept (SS-M2) |
 | Archive mail | DONE | `archiveMailMessage` → `MailOp::Archive` → `onMailHeaderRemove` (CM 77) |
-| Server-generated mail | BRANCH ONLY | `send_mail_to_player`, used by the Black Market settlement path. Exists on `feat/571-black-market-phase1` (PR #586), **not on `main`** |
+| Server-generated mail | DONE | `send_system_mail` / `send_system_mail_tx` (SS-U1): cash, a minted item or a server-held instance, no postage, no COD, not returnable. See [Server and GM mail](#server-and-gm-mail-ss-u1) |
+| GM mail tools | DONE | `.mail`, `.mailbox`; `.mail_expire` refused until SS-M4 |
 | Send mail (player compose) | DONE (text only) | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
 | Cash, item or COD attachment on send | DONE | One recipient; 25 naquadah postage; item into escrow (`sgw_gate_mail_item`); one transaction. See [Sending with an attachment](#sending-with-an-attachment-ss-m2) |
 | Return to sender | STUB | `returnMailMessage` logs `UNIMPLEMENTED` |

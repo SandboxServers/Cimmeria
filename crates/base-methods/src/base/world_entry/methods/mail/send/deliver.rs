@@ -19,7 +19,7 @@ use crate::cell::messages::MailSend;
 /// (D-SS03: the client warns at 90 and shows "100% Full" at 100). Counts
 /// mail that is not archived. Project policy; server-generated mail (SS-M3,
 /// SS-M4) is exempt.
-pub(super) const MAILBOX_CAP: i64 = 100;
+pub(in super::super) const MAILBOX_CAP: i64 = 100;
 
 /// One delivered copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

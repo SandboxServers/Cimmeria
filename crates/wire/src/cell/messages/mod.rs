@@ -15,6 +15,8 @@
 //!   `CellToBaseMsg::Chat`.
 //! - `duel_base_to_cell` — the nested duel enum carried by
 //!   `BaseToCellMsg::Duel`.
+//! - `mail_gm_cell_to_base` — the GM mail tools (SS-U1), carried by
+//!   `CellToBaseMsg::MailGm`.
 
 mod base_to_cell;
 mod cell_to_base;
@@ -22,6 +24,7 @@ mod chat_cell_to_base;
 mod data;
 mod duel_base_to_cell;
 mod lab;
+mod mail_gm_cell_to_base;
 mod org_base_to_cell;
 mod org_cell_to_base;
 
@@ -39,6 +42,7 @@ pub use lab::{
     LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,
     LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
 };
+pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};
 pub use org_base_to_cell::OrgBaseToCell;
 pub use org_cell_to_base::OrgCellToBase;
 

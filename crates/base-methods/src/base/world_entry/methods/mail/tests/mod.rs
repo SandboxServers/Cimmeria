@@ -1,7 +1,8 @@
 //! Mail handler tests: the read side (`read`, `read_scoping`), the send
 //! path (`send_live`, `send_limits`, `send_race`), attachments and escrow
 //! (`attach_live`, `attach_race`, SS-M2) and the delete guard
-//! (`delete_guard`, SS-M2).
+//! (`delete_guard`, SS-M2), system mail and the GM tools (`system_live`,
+//! `gm_live`, SS-U1).
 //!
 //! The live-DB tests assert on SQL side effects and, where the invariant is
 //! what the client is told, on the decoded packets the handler sent.
@@ -15,6 +16,7 @@ mod attach_race;
 mod attach_rollback;
 mod attach_vault;
 mod delete_guard;
+mod gm_live;
 mod packets;
 mod read;
 mod read_scoping;
@@ -22,6 +24,7 @@ mod send_ignore;
 mod send_limits;
 mod send_live;
 mod send_race;
+mod system_live;
 
 pub(super) async fn cleanup(pool: &PgPool, account_id: i32) {
     // sgw_gate_mail has no FK to account, so delete its rows by character_id

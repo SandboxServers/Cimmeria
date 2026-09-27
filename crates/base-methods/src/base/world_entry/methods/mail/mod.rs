@@ -6,7 +6,10 @@
 //!
 //! - [`read`]: headers, body, archive and delete (refused while the mail
 //!   holds an attachment);
-//! - [`send`]: `sendMailMessage`, text or with cash, an item or COD attached.
+//! - [`send`]: `sendMailMessage`, text or with cash, an item or COD attached;
+//! - [`system`]: the one writer for server-originated mail (Black Market
+//!   payouts, content actions, GM `.mail`), SS-U1;
+//! - [`gm`]: the GM `.mail` and `.mailbox` tools (SS-U1).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -22,8 +25,16 @@ use super::super::super::ConnectedClientState;
 use crate::cell::messages::MailOp;
 use crate::mercury::build_player_entity_method_packet;
 
+mod gm;
 mod read;
 mod send;
+pub mod system;
+
+pub use gm::handle_mail_gm;
+pub use system::{
+    send_system_mail, send_system_mail_tx, SystemEscrow, SystemItem, SystemMail, SystemMailError,
+    SystemMailSent, SERVER_HELD_CONTAINERS, SYSTEM_SOURCE_CHARACTER_ID,
+};
 
 #[cfg(test)]
 mod tests;

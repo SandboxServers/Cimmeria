@@ -202,5 +202,17 @@ pub async fn handle_cell_message(
         CellToBaseMsg::Org(org) => org_dispatch::route(org, &ctx).await,
 
         CellToBaseMsg::Chat(chat) => chat_dispatch::route(chat, &ctx).await,
+
+        // GM mail tools (SS-U1): the base-methods mail module owns them.
+        CellToBaseMsg::MailGm(msg) => {
+            super::methods::mail::handle_mail_gm(
+                msg,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.db_pool,
+            )
+            .await
+        }
     }
 }
