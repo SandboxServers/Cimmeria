@@ -9,7 +9,7 @@
 - Every cargo call goes through `bash tools/build-lane/lane.sh cargo <cmd> -p <crate>`. Live-DB tests run through `bash tools/build-lane/live-db-test.sh <filter>`. Never `--workspace`, never `--exclusive`.
 - The toolchain is pinned to 1.98.1. After any dependency change, run hakari and `python tools/crate-graph/crate_graph.py --check`.
 - Before deleting a worktree, remove its `external` junction without recursing (`cmd /c rmdir external`).
-- Workers push their branch; the coordinator opens the PR and squash-merges it once CI is green. If a PR's CI is older than the current `main`, the coordinator rebases and re-tests before merging.
+- Workers push their branch; the coordinator opens the PR, reviews it, and squash-merges it once CI is green. If a PR's CI is older than the current `main`, the coordinator rebases and re-tests before merging. Copilot review is suspended while its spend is exhausted: green CI plus the coordinator's review is the merge bar.
 - Initial state: documentation only, against `main` @ `004bccb4`.
 
 Status vocabulary: **Ready**, **BlockedDependency**, **BlockedDecision**, **Writing**, **Review**, **Integrated**, **UATPending**, **Done**.
@@ -40,7 +40,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 - `No`: 16 (buyback, which closes #798), 18, 19 and 20;
 - `VaultSession`: 17.
 
-BV-01 treats `VaultSession` as `No`. BV-03 wires it to the session.
+BV-01 treats `VaultSession` as `No`. BV-03 (#935) wires it to the session through the cell's verdict (D-BV24).
 
 **Vault session (BV-02).** On the cell player entity:
 
@@ -58,7 +58,7 @@ pub enum VaultScope { Personal, Team, Command }
 - It is set only by the Banker arm or by `.bank`.
 - It is cleared on a space change, on logout, and whenever a new `interact` pins a different target.
 - A pure predicate, `vault_move_allowed(&player, &space) -> Result<(), VaultReject>`, is the only place the session and proximity rule lives. It uses the same `interact_target_in_range` distance and same-space rule as other interactions.
-- The base checks the move, so the cell attaches the verdict to the forwarded move. The exact message shape is BV-03's choice, recorded in its worknote.
+- The base checks the move, so the cell attaches the verdict to the forwarded move. As built (D-BV24), the verdict is `cimmeria_wire::cell::vault::VaultAccess`, carried on the move, use and both removal messages; the design is in `worknotes/bv-03.md`.
 
 **Banker template (BV-02).** `resources.entity_templates.vault_scope text NOT NULL DEFAULT 'personal' CHECK (vault_scope IN ('personal','team','command'))`. The value is read only when `interaction_type & INT_BANKER != 0`. It becomes `NpcInteractionType::Banker { scope: VaultScope }`.
 
@@ -67,24 +67,26 @@ pub enum VaultScope { Personal, Team, Command }
 **Telemetry contract (D-BV19).** Every packet satisfies all of the following. A worker who needs a new event adds a row here through the coordinator, never locally.
 
 - **Target:** `bank`. Every event is structured: an `event="…"` discriminator plus fields, never free text alone.
-- **Correlators on every event:** `account_id`, `player_id`, `entity_id`. Org events also carry `org_id`, `org_type`, `rank` and the permission bit checked (`perm`). One exception: an infrastructure-failure event (a database error, not a player decision) carries `account_id` only if the account was read before the failure. `account_lookup_failed`, `move_lock_begin_failed`, `move_lock_failed` and `refusal_context_query_failed` therefore have `player_id` and `entity_id` but no `account_id`.
+- **Correlators on every event:** `account_id`, `player_id`, `entity_id`. Org events also carry `org_id`, `org_type`, `rank` and the permission bit checked (`perm`). One exception: an infrastructure-failure event (a database error, not a player decision) carries `account_id` only if the account was read before the failure. `account_lookup_failed` (on `grant_rejected` and `use_rejected`), `move_lock_begin_failed`, `move_lock_failed` and `refusal_context_query_failed` therefore have `player_id` and `entity_id` but no `account_id`. `bank_feedback_send_failed reason=no_client_address` has `player_id`, `entity_id` and `item_id` only. `vault_open_rejected reason=player_entity_missing` has only `entity_id` and `banker_id`, because the player's own entity is what went missing.
 - **Refusals:** a stable `reason=` string from the packet's reject enum. Never a formatted message only.
 - **Before and after:** every event that changes state records the prior and new values of whatever it changed: container and slot, `stack_size`, `bank_slots`, player cash, org cash.
 - **Guards:** every event row below has a `LogCapture` test (TESTING.md type 12) that asserts its target, level and required fields. Refusal events have one test per `reason`, infrastructure reasons included: inject the failure with a pool that cannot connect, or with a lock held by another connection under a short `lock_timeout`. The only exemption is a reason that cannot be injected without dropping the connection mid-transaction (BV-01: `resync_read_failed` and `move_lock_release_failed`, which need the connection to fail after both locks were taken on it). The worknote names each exempt reason and why.
-- **Filter:** `bank` at `debug` has an `OTEL_FILTER` row plus its pinning assertion in `crates/server/src/logging/`. The first packet that emits a debug `bank` event adds it.
-- **Spans:** an info span on each dispatch entrypoint: the Banker interact, `.bank`, the bank branch of `moveItem`, the expand purchase and the org cash transfer. No spans inside per-tick work.
+- **Filter:** `bank` at `debug` has an `OTEL_FILTER` row plus its pinning assertion in `crates/server/src/logging/`. BV-02 added it, as the first packet to emit a debug `bank` event.
+- **Spans:** an info span on each dispatch entrypoint: the Banker interact, `.bank`, the bank branch of `moveItem`, the expand purchase and the org cash transfer. No spans inside per-tick work. As shipped: `bank.banker_interact` and `bank.console_open` (BV-02), `bank.move_item` (BV-03), `bank.console_dump` and `bank.gm_dump` (BV-04).
 
 | Event | Level | Packet | Fields beyond the correlators |
 |---|---|---|---|
-| `move_rejected` | warn | BV-01, BV-03 | `reason` (BV-01: `source_container_not_player_movable`, `target_container_not_player_movable`, `source_container_needs_vault_session`, `target_container_needs_vault_session`; infrastructure: `move_lock_begin_failed`, `move_lock_failed`, `refusal_context_query_failed`, `move_lock_release_failed`), `item_id`, `type_id`, `quantity` (as requested; `<= 0` is the whole stack), `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id`. The item fields are read under the move lock and the item's row lock, and omitted when the player does not own the item |
+| `move_rejected` | warn | BV-01, BV-03 | `reason` (BV-01: `source_container_not_player_movable`, `target_container_not_player_movable`; BV-03, which retired BV-01's `source_container_needs_vault_session` and `target_container_needs_vault_session`: `no_vault_session`, `banker_out_of_range`, `banker_gone`, `banker_other_space`, `vault_session_other_space`, `player_missing`, `vault_scope_mismatch`, `target_slot_beyond_bank_slots`, `mission_item_not_bankable`, `item_not_allowed_in_container`, `split_onto_occupied_slot`; infrastructure: `move_lock_begin_failed`, `move_lock_failed`, `refusal_context_query_failed`, `move_lock_release_failed`), `item_id`, `type_id`, `quantity` (as requested; `<= 0` is the whole stack), `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id`. The item fields are read under the move lock and the item's row lock, and omitted when the player does not own the item. BV-03's vault refusals add `vault_end` (`source` or `target`), `banker_id`, `distance` and `gm_override`, and `bank_slots` on `target_slot_beyond_bank_slots` |
 | `grant_rejected` | warn | BV-01 | `reason` (`grant_into_storage_container`; infrastructure: `account_lookup_failed`), `type_id` (a grant names a type, not an instance), `quantity`, `target_container_id` |
 | `move_resync_skipped` | warn | BV-01 | `reason` (`refused_item_not_owned`: the refused move named an item the player does not own, so nothing was resent; `lock_timeout`: the move lock or the item's row lock could not be taken, so nothing was resent, because an unlocked read could overtake a concurrent write's own update; `resync_read_failed`), `item_id` |
 | `vault_session_opened` | debug | BV-02 | `scope`, `banker_id` or `gm_override=true`, `space_id`, `distance` |
 | `vault_session_closed` | debug | BV-02 | `reason` (`space_change`, `logout`, `re_pin`), `scope`, `open_ms` (milliseconds since the session opened) |
-| `vault_open_rejected` | warn | BV-02 | `reason` (`out_of_range`, `org_vault_not_available`, `not_gm`, `banker_missing`), `banker_id`, `distance` |
-| `move_accepted` | debug | BV-03 | `item_id`, `type_id`, `quantity`, source and target container and slot, `stack_before`/`stack_after` for the source and target, `bank_slots` |
-| `use_rejected` | warn | BV-03 | `reason` (`container_not_accessible`), `item_id`, `container` |
-| `gm_action` | info | BV-04 | `action` (`bankdump`, `give_to_container`), `target_player_id`, `result`, `reason` on refusal |
+| `vault_open_rejected` | warn | BV-02 | `reason` (`out_of_range`, `org_vault_not_available`, `not_gm`, `banker_missing`; `player_entity_missing`, moved under `bank` by BV-03), `banker_id`, `distance` |
+| `vault_open_send_failed` | warn | BV-02 | `reason` (`base_channel_closed`), `banker_id`, `error` |
+| `bank_feedback_send_failed` | warn | BV-02, BV-03 | `reason` (`base_channel_closed` on the cell, with `error`; `no_client_address` on the base, when there is no session address for the feedback line, with `item_id`) |
+| `move_accepted` | debug | BV-03 | `item_id`, `type_id`, `quantity`, `kind` (`deposit`, `withdraw`, `within`, `split`, `merge`, `swap`), source and target container and slot, `source_stack_before`/`source_stack_after`, `target_stack_before`/`target_stack_after`, `bank_slots`, `banker_id`, `distance`, `gm_override` |
+| `use_rejected` | warn | BV-03 | `reason` (`container_not_accessible`; infrastructure: `account_lookup_failed`), `item_id`, `container`, `op` (`use` or `remove`), `vault_reason`, `banker_id` |
+| `gm_action` | info; warn for infrastructure | BV-04 | `action` (`bankdump`), `target_player_id` or `target_name`, `result`, `item_count` and `bank_slots` on success, `reason` on refusal: `target_not_found`, `caller_not_player`, `not_gm` (info); `db_unavailable`, `query_failed`, `base_channel_closed` (warn, with `error`). `give_to_container` is not emitted: BV-04 skipped a GM grant into 17, because the def fixes `gmGiveItem`'s arguments and grants into 17-20 are refused by design. There is no `target_ambiguous`, because `player_name` is `UNIQUE` |
 | `expand` | info | BV-05 | `bank_slots_before`, `bank_slots_after`, `price`, `cash_before`, `cash_after` |
 | `expand_rejected` | warn | BV-05 | `reason` (`no_session`, `out_of_range`, `insufficient_cash`, `at_ceiling`, `replay`), `bank_slots`, `cash` |
 | `org_vault_opened` / `org_vault_open_rejected` | debug / warn | BV-07 | `org_id`, `org_type`, `rank`, `perm`, `reason` on refusal |
@@ -94,7 +96,7 @@ pub enum VaultScope { Personal, Team, Command }
 ## Dependency graph and waves
 
 ```text
-Wave 0 (now)                Wave 1          Wave 2                          Wave 3                    Wave 4 (after cimmeria-fa ORG-02 + ORG-07)
+Wave 0 (done)               Wave 1 (done)   Wave 2 (done)                   Wave 3                    Wave 4 (BV-07 on ORG-02 + ORG-06; BV-08 on ORG-07)
 BV-01 capacity+allowlist ─► BV-02 Banker ─┬► BV-03 bank moves ────────┬► BV-05 expansion ─► BV-06 close-out, release 1 ─► BV-07 org vault ─► BV-08 org cash ─┬► BV-10 close-out, release 2
 BV-E1 client evidence ─────────────────────┼► BV-04 debug Banker + GM ─┘                                                   └──────────► BV-09 team expansion ──┘
                                            └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘ (BV-E1 feeds BV-03 and BV-05)
@@ -106,7 +108,7 @@ BV-01 is the bottleneck. It stays small: tables, allowlist, #798, and the capaci
 
 The coordinator merges these one packet at a time, and tells the named campaign first.
 
-- `crates/base-methods/src/base/world_entry/methods/inventory/move_/mod.rs`: BV-01 (allowlist), then BV-03 (session wiring). Crafting's CR-05 may add a post-commit notify; cimmeria-af messages before starting it.
+- `crates/base-methods/src/base/world_entry/methods/inventory/move_/mod.rs`: BV-01 (allowlist), then BV-03 (session wiring). It is now split: #927 moved the post-commit side effects into `after_commit.rs`, and BV-03 added `finish.rs`, `apply.rs` and `bank_rules.rs`, leaving `mod.rs` at 464 lines. Crafting's CR-05 may add a post-commit notify in `after_commit.rs`; cimmeria-23 messages before starting it.
 - `crates/wire/src/containers.rs` and `crates/entity/src/inventory.rs`: BV-01 only. Crafting depends on container 15 staying movable in both directions.
 - `crates/entity/src/cell_entity/mod.rs` and `crates/cell-world/src/cell/space_manager/spawn.rs`: BV-02.
 - `crates/cell-interactions/src/cell/interactions/dispatch/interact.rs`: BV-02.
@@ -115,7 +117,7 @@ The coordinator merges these one packet at a time, and tells the named campaign 
 
 ## BV-01 capacity and the player-movable allowlist
 
-**Status: Review** (PR #872). Audit rows A-20, A-21, A-22, A-29 and A-31; decisions D-BV06, D-BV07 and D-BV17.
+**Status: Done** (PR #872, `09aadf59c`; closed #798). Audit rows A-20, A-21, A-22, A-29 and A-31; decisions D-BV06, D-BV07 and D-BV17.
 
 Scope:
 
@@ -140,7 +142,7 @@ Telemetry: emit `move_rejected`, `grant_rejected` and `move_resync_skipped` exac
 
 ## BV-E1 client evidence
 
-**Status: Review** (PR #867). Findings: `docs/reverse-engineering/findings/bank-vault-client.md`. Read-only. The writer is `game-archaeology-specialist`. Audit rows A-02, A-09 and A-12.
+**Status: Done** (PR #867). Findings: `docs/reverse-engineering/findings/bank-vault-client.md`. Read-only. The writer is `game-archaeology-specialist`. Audit rows A-02, A-09 and A-12.
 
 Answer, with Ghidra addresses and Lua lines, in `docs/reverse-engineering/findings/bank-vault-client.md`, and index it:
 
@@ -152,7 +154,7 @@ Answer, with Ghidra addresses and Lua lines, in `docs/reverse-engineering/findin
 
 ## BV-02 Banker open path
 
-**Status: Review** (PR #921). Audit rows A-01, A-02, A-24 to A-27; decisions D-BV03, D-BV05, D-BV09 and D-BV10.
+**Status: Done** (PR #921, `6f00cce9d`). Audit rows A-01, A-02, A-24 to A-27; decisions D-BV03, D-BV05, D-BV09 and D-BV10.
 
 Scope:
 
@@ -178,7 +180,7 @@ Telemetry: emit `vault_session_opened`, `vault_session_closed` and `vault_open_r
 
 ## BV-03 bank moves
 
-**Status: BlockedDependency (BV-02).** Audit rows A-20, A-22, A-28 and A-30; decisions D-BV04, D-BV05, D-BV07 and D-BV08.
+**Status: Done** (PR #935, `dfb0b0f8d`; the `move_/mod.rs` split landed first as BV-03a, PR #927, `490fe4200`). Audit rows A-20, A-22, A-28 and A-30; decisions D-BV04, D-BV05, D-BV07 and D-BV08.
 
 Scope:
 
@@ -189,7 +191,7 @@ Scope:
 - A rejection sends feedback, then re-syncs the affected slots with `onUpdateItem`, so the client's drag snaps back.
 - **The slot bound is the player's `bank_slots`, read inside the move transaction.** It is not `bag_max_slots(17)`, which is the ceiling of 100. Apply the same bound wherever `reserve_free_inventory_slots` can reach 17. Without it, a 40-slot player can use slots 40-99 without buying the expansion (BV-01 review, follow-up 2).
 - **Player-accessible containers for use and removal.** `useItem`, `removeItem` and content `RemoveItem` (`use_instance.rs`, `remove_instance.rs`, `remove_by_type.rs`) find an item by id without checking its container. So an item sitting in buyback (16) can be used today, and a banked item would be usable from anywhere. Add one shared check next to `player_movable`: 1-15, and 17 only with a vault session (BV-01 review, follow-up 1).
-- Split `move_/mod.rs` first. BV-01 (#872) takes it to 694 lines, against a 700-line hard cap: move the post-commit side effects into `move_/after_commit.rs`.
+- Split `move_/mod.rs` first. BV-01 (#872) takes it to 694 lines, against a 700-line hard cap: move the post-commit side effects into `move_/after_commit.rs`. Done as BV-03a (#927).
 
 Tests:
 
@@ -208,7 +210,7 @@ Telemetry: emit `move_accepted`, `move_rejected` (session, proximity, slot bound
 
 ## BV-04 debug-hub Banker and GM helpers
 
-**Status: BlockedDependency (BV-02).** Audit rows A-32, A-33 and A-34.
+**Status: Done** (PR #931, `1c6bed3cc`). Audit rows A-32, A-33 and A-34. The Banker is template 370, "Storage Officer", spawn 470 at the middle of the stasis room's B-C wall. The optional `gmGiveItem` target container was skipped (see the `gm_action` catalog row).
 
 Scope:
 
@@ -227,7 +229,7 @@ Telemetry: emit `gm_action` as the catalog specifies, including refusals with a 
 
 ## BV-05 vault expansion
 
-**Status: BlockedDependency (BV-03, BV-E1).** Decision D-BV02.
+**Status: Writing** (branch `bank/bv05-expansion`). Decisions D-BV02 and D-BV27: the purchase must keep `bank_slots` grow-only.
 
 Scope:
 
@@ -250,7 +252,7 @@ Telemetry: emit `expand` and `expand_rejected` as the catalog specifies. A zero-
 
 ## BV-06 personal-bank close-out and release 1
 
-**Status: BlockedDependency (BV-03, BV-04, BV-05).**
+**Status: BlockedDependency (BV-05).**
 
 Scope:
 
@@ -262,7 +264,7 @@ Telemetry: add `bank` and its catalog to `docs/architecture/observability.md`. E
 
 ## BV-07 org vault storage and open path
 
-**Status: BlockedDependency (cimmeria-fa ORG-02, ORG-07).** Decisions D-BV09, D-BV12, D-BV13, D-BV14 and D-BV18.
+**Status: Writing** (branch `bank/bv07-org-vault`). It builds on ORG-02 (#881, `cdbd5ce88`) and ORG-06 (#941) alone; ORG-07 is not required (confirmed by cimmeria-1f). Decisions D-BV09, D-BV12, D-BV13, D-BV14, D-BV18 and D-BV24.
 
 Scope:
 
@@ -271,14 +273,15 @@ Scope:
 - Team and Command Banker arms that send 107 and 108, gated on org membership.
 - Deposits and withdrawals under ORG-LOCK (`lock_org`, then `member_access_locked`, then items), with the `DepositBank` and `WithdrawBank` bits.
 - A bank log table.
-- Replace cimmeria-fa's stubs `org_vault_is_empty(tx, org_id)` and `org_vault_is_empty_sql(org_id)`.
+- Replace cimmeria-1f's stubs `org_vault_is_empty(tx, org_id)` and `org_vault_is_empty_sql(org_id)`.
+- Carry the org scope through `VaultAccess::Open { scope }` (D-BV24), and give 19 and 20 their own arms in `player_movable` and `container_policy`.
 - Fan out with `broadcast_to_org`.
 
 Telemetry: emit `org_vault_opened`, `org_vault_open_rejected`, `org_move_accepted` and `org_move_rejected` as the catalog specifies, with the correlators and org fields. Rows in the vault log table carry the same `account_id`, `player_id` and `org_id`. A `LogCapture` test per event and per reason.
 
 ## BV-08 org cash
 
-**Status: BlockedDependency (BV-07, ORG-07).** Decision D-BV15.
+**Status: BlockedDependency (BV-07; the CM 19 cell forward comes with org ORG-07).** Decision D-BV15.
 
 Scope:
 
@@ -293,7 +296,7 @@ Telemetry: emit `org_cash_transfer` and `org_cash_rejected` as the catalog speci
 
 ## BV-09 Team vault expansion
 
-**Status: BlockedDecision.** Who pays for a +10 step: the org treasury, or the member who clicked, and which permission bit is needed? Ask the owner before Wave 4. The expected price table matches D-BV02.
+**Status: BlockedDependency (BV-07).** Decision D-BV28 (owner, 2026-09-27): a +10 step costs 100 naquadah, the D-BV02 price, paid from the org treasury (`sgw_organizations.cash`). Only the leader may buy it; there is no new permission bit.
 
 Telemetry: emit `org_cash_transfer` for the payment and `expand`/`expand_rejected` with the org fields added. A `LogCapture` test per event.
 
