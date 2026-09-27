@@ -125,17 +125,28 @@ pub(super) async fn handle_chat_ignore(
         return;
     }
     let Some(caller) = caller else {
+        let (account_id, player_id, entity_id) = connected
+            .lock()
+            .unwrap()
+            .get(&addr)
+            .map(|c| (Some(c.account_id), c.active_player_id, c.player_entity_id))
+            .unwrap_or_default();
         tracing::debug!(
             target: "chat",
             event = "chat.ignore_refused",
             %addr,
+            account_id,
+            player_id,
+            entity_id,
             reason = "not_in_world",
             "chatIgnore from a session with no character in the world; dropped",
         );
         return;
     };
 
-    let refuse = |reason: &'static str, name: &str| {
+    // `target_player_id` is the other character when it is known (resolved
+    // on an add, looked up on a remove), per instrumentation rule 5.
+    let refuse = |reason: &'static str, name: &str, target_player_id: Option<i32>| {
         tracing::debug!(
             target: "chat",
             event = "chat.ignore_refused",
@@ -143,6 +154,7 @@ pub(super) async fn handle_chat_ignore(
             player_id = caller.player_id,
             account_id = caller.account_id,
             entity_id = caller.entity_id,
+            target_player_id,
             target_name = %shown(name),
             reason,
             "chatIgnore refused, feedback sent",
@@ -150,7 +162,7 @@ pub(super) async fn handle_chat_ignore(
     };
 
     let Some((typed, flag)) = decode(payload) else {
-        refuse("decode_failed", "");
+        refuse("decode_failed", "", None);
         send_feedback_line(&feedback, addr, IGNORE_BAD_REQUEST_TEXT).await;
         return;
     };
@@ -158,18 +170,18 @@ pub(super) async fn handle_chat_ignore(
         1 => true,
         0 => false,
         _ => {
-            refuse("bad_flag", &typed);
+            refuse("bad_flag", &typed, None);
             send_feedback_line(&feedback, addr, IGNORE_BAD_REQUEST_TEXT).await;
             return;
         }
     };
     if typed.is_empty() {
-        refuse("no_target", &typed);
+        refuse("no_target", &typed, None);
         send_feedback_line(&feedback, addr, IGNORE_NO_TARGET_TEXT).await;
         return;
     }
     let Some(pool) = db_pool.as_deref() else {
-        refuse("no_db_pool", &typed);
+        refuse("no_db_pool", &typed, None);
         send_feedback_line(&feedback, addr, IGNORE_UNAVAILABLE_TEXT).await;
         return;
     };
@@ -204,13 +216,13 @@ pub(super) async fn handle_chat_ignore(
         let (target_player_id, name) = match resolve_character(pool, &typed).await {
             Ok(CharacterLookup::Found { player_id, name }) => (player_id, name),
             Ok(CharacterLookup::NotFound) => {
-                refuse("unknown_character", &typed);
+                refuse("unknown_character", &typed, None);
                 let text = format!("No character named {} exists.", shown(&typed));
                 send_feedback_line(&feedback, addr, &text).await;
                 return;
             }
             Ok(CharacterLookup::Ambiguous) => {
-                refuse("ambiguous", &typed);
+                refuse("ambiguous", &typed, None);
                 let text = format!(
                     "More than one character is named {}. Type the exact name.",
                     shown(&typed)
@@ -235,33 +247,41 @@ pub(super) async fn handle_chat_ignore(
             }
         };
         if target_player_id == caller.player_id {
-            refuse("self", &typed);
+            refuse("self", &typed, Some(target_player_id));
             send_feedback_line(&feedback, addr, IGNORE_SELF_TEXT).await;
             return;
         }
         if current.iter().any(|n| fold_name(n) == fold_name(&name)) {
-            refuse("already_ignored", &name);
+            refuse("already_ignored", &name, Some(target_player_id));
             let text = format!("{name} is already on your Ignore list.");
             send_feedback_line(&feedback, addr, &text).await;
             return;
         }
         if current.len() >= MAX_IGNORE_LIST_MEMBERS {
-            refuse("list_full", &name);
+            refuse("list_full", &name, Some(target_player_id));
             send_feedback_line(&feedback, addr, &ignore_full_text()).await;
             return;
         }
         (name, Some(target_player_id))
     } else {
         match match_name(current.iter().map(String::as_str), &typed) {
-            NameMatch::Found(name) => (name, None),
+            NameMatch::Found(name) => {
+                // For the log only: the character the entry names, if it
+                // still exists. A lookup failure just leaves it unknown.
+                let target_player_id = match resolve_character(pool, &name).await {
+                    Ok(CharacterLookup::Found { player_id, .. }) => Some(player_id),
+                    _ => None,
+                };
+                (name, target_player_id)
+            }
             NameMatch::NotFound => {
-                refuse("not_ignored", &typed);
+                refuse("not_ignored", &typed, None);
                 let text = format!("{} is not on your Ignore list.", shown(&typed));
                 send_feedback_line(&feedback, addr, &text).await;
                 return;
             }
             NameMatch::Ambiguous => {
-                refuse("ambiguous", &typed);
+                refuse("ambiguous", &typed, None);
                 let text = format!(
                     "More than one name on your Ignore list matches {}. Type the exact name.",
                     shown(&typed)
@@ -303,7 +323,7 @@ pub(super) async fn handle_chat_ignore(
     };
     if changed.is_empty() {
         // The member op logged the DB outcome; the player still hears back.
-        refuse("write_failed", &name);
+        refuse("write_failed", &name, target_player_id);
         send_feedback_line(&feedback, addr, IGNORE_UNAVAILABLE_TEXT).await;
         return;
     }

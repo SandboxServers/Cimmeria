@@ -264,12 +264,20 @@ pub async fn resync_ignore_cache(
     entity_id: u32,
     path: &'static str,
 ) -> Option<HashSet<String>> {
+    // For the failure logs before the session is re-read below.
+    let session_account_id = ctx
+        .connected
+        .lock()
+        .unwrap()
+        .get(&addr)
+        .map(|c| c.account_id);
     let Some(pool) = ctx.db_pool else {
         tracing::warn!(
             target: "chat",
             event = "chat.ignore_sync_failed",
             %addr,
             player_id,
+            account_id = session_account_id,
             entity_id,
             path,
             reason = "no_db_pool",
@@ -291,6 +299,7 @@ pub async fn resync_ignore_cache(
                 event = "chat.ignore_sync_failed",
                 %addr,
                 player_id,
+                account_id = session_account_id,
                 entity_id,
                 path,
                 reason = "db_error",

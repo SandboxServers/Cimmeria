@@ -99,9 +99,8 @@ pub(crate) async fn send_feedback_to_entity(
 }
 
 /// Send one reliable client method on the player entity `entity_id` to the
-/// session at `addr`: the transport under every feedback line, and the send
-/// the tell path uses for `onPlayerCommunication` to the recipient and
-/// `onTellSent` to the sender. Failures are logged here.
+/// session at `addr`: the transport under every feedback line. Failures are
+/// logged here.
 pub async fn send_player_method(
     ctx: &FeedbackCtx<'_>,
     addr: SocketAddr,
@@ -109,26 +108,107 @@ pub async fn send_player_method(
     method_index: u16,
     payload: &[u8],
 ) -> FeedbackOutcome {
+    send_method(
+        ctx,
+        addr,
+        Addressee::Entity(entity_id),
+        method_index,
+        payload,
+    )
+    .await
+    .0
+}
+
+/// Send one reliable client method to whatever player entity the session at
+/// `addr` has **now**, provided it still plays `player_id`. The entity id is
+/// read under the same lock that allocates the sequence number, so a gate
+/// travel between a caller's lookup and this send cannot address a stale
+/// entity (the tell path, PR #893 review). Returns the entity it used.
+///
+/// `NotInWorld` when the session plays another character or has no player
+/// entity at that moment; `NoSession` when it is gone.
+pub async fn send_to_current_player(
+    ctx: &FeedbackCtx<'_>,
+    addr: SocketAddr,
+    player_id: i32,
+    method_index: u16,
+    payload: &[u8],
+) -> (FeedbackOutcome, Option<u32>) {
+    send_method(
+        ctx,
+        addr,
+        Addressee::CurrentOf(player_id),
+        method_index,
+        payload,
+    )
+    .await
+}
+
+/// Which player entity a send addresses.
+#[derive(Debug, Clone, Copy)]
+enum Addressee {
+    /// A caller-supplied entity id.
+    Entity(u32),
+    /// The session's current `player_entity_id`, if it still plays this
+    /// `player_id`.
+    CurrentOf(i32),
+}
+
+async fn send_method(
+    ctx: &FeedbackCtx<'_>,
+    addr: SocketAddr,
+    who: Addressee,
+    method_index: u16,
+    payload: &[u8],
+) -> (FeedbackOutcome, Option<u32>) {
     let session = {
         let Ok(clients) = ctx.connected.lock() else {
-            return FeedbackOutcome::NoSession;
+            return (FeedbackOutcome::NoSession, None);
         };
-        clients.get(&addr).map(|c| {
-            let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
-                & cimmeria_mercury::packet::SEQUENCE_MASK;
-            let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-            (c.key, c.enc_version, seq, acks)
-        })
+        match clients.get(&addr) {
+            None => None,
+            Some(c) => {
+                let entity_id = match who {
+                    Addressee::Entity(e) => e,
+                    Addressee::CurrentOf(player_id) => {
+                        let current = (c.active_player_id == Some(player_id))
+                            .then_some(c.player_entity_id)
+                            .flatten();
+                        let Some(e) = current else {
+                            tracing::debug!(
+                                %addr,
+                                player_id,
+                                account_id = c.account_id,
+                                session_player_id = c.active_player_id,
+                                method_index,
+                                reason = if c.active_player_id == Some(player_id) {
+                                    "not_in_world"
+                                } else {
+                                    "player_changed"
+                                },
+                                "player method dropped: the session no longer has that player in the world",
+                            );
+                            return (FeedbackOutcome::NotInWorld, None);
+                        };
+                        e
+                    }
+                };
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                    & cimmeria_mercury::packet::SEQUENCE_MASK;
+                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                Some((entity_id, c.key, c.enc_version, seq, acks))
+            }
+        }
     };
-    let Some((key, version, seq, acks)) = session else {
+    let Some((entity_id, key, version, seq, acks)) = session else {
         tracing::debug!(
             %addr,
-            entity_id,
+            ?who,
             method_index,
             reason = "no_session",
             "player method dropped: client disconnected first",
         );
-        return FeedbackOutcome::NoSession;
+        return (FeedbackOutcome::NoSession, None);
     };
 
     let packet = build_player_entity_method_packet(
@@ -149,7 +229,7 @@ pub async fn send_player_method(
             error = %e,
             "player method send failed",
         );
-        return FeedbackOutcome::SendError;
+        return (FeedbackOutcome::SendError, Some(entity_id));
     }
     shadow_register_reliable_send(
         ctx.connected,
@@ -157,7 +237,7 @@ pub async fn send_player_method(
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
     );
-    FeedbackOutcome::Sent
+    (FeedbackOutcome::Sent, Some(entity_id))
 }
 
 #[cfg(test)]

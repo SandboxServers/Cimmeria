@@ -258,6 +258,9 @@ async fn resync_if_ignore_list(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     let Some(pool) = db_pool else { return };
+    let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+    // For the failure logs (instrumentation rule 5).
+    let account_id = addr.and_then(|a| connected.lock().unwrap().get(&a).map(|c| c.account_id));
     match load_list_header(pool, player_id, list_id).await {
         Ok(Some((_, flags))) if flags == IGNORE_LIST_FLAGS => {}
         Ok(_) => return,
@@ -267,6 +270,7 @@ async fn resync_if_ignore_list(
                 event = "chat.ignore_sync_failed",
                 entity_id,
                 player_id,
+                account_id,
                 list_id,
                 reason = "db_error",
                 error = %e,
@@ -275,12 +279,13 @@ async fn resync_if_ignore_list(
             return;
         }
     }
-    let Some(addr) = entity_to_addr.lock().unwrap().get(&entity_id).copied() else {
+    let Some(addr) = addr else {
         tracing::debug!(
             target: "chat",
             event = "chat.ignore_sync_failed",
             entity_id,
             player_id,
+            account_id,
             list_id,
             reason = "entity_to_addr_miss",
             "Ignore list changed for an entity with no session; the next world entry reloads it",

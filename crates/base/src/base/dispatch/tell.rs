@@ -25,7 +25,7 @@ use cimmeria_wire::cell::client_methods::communicator::{ON_PLAYER_COMMUNICATION,
 
 use super::super::contact_list::ignore::{not_accepting_text, session_ignores};
 use super::super::feedback::{
-    send_feedback_line, send_player_method, FeedbackCtx, FeedbackOutcome,
+    send_feedback_line, send_to_current_player, FeedbackCtx, FeedbackOutcome,
 };
 use super::super::player_index::{NameLookup, OnlinePlayerIndex};
 use super::speaker_flags;
@@ -74,13 +74,14 @@ pub(super) struct TellSender<'a> {
     pub account_id: u32,
 }
 
-/// The resolved recipient, read under one lock.
+/// The resolved recipient, read under one lock. Deliberately no entity id:
+/// gate travel can replace it before the send, so the send reads it from the
+/// session at that moment (`send_to_current_player`).
 struct Recipient {
     addr: SocketAddr,
     name: String,
     player_id: i32,
     account_id: u32,
-    entity_id: Option<u32>,
     ignores_sender: bool,
     flags: u8,
     away_message: Option<String>,
@@ -116,7 +117,6 @@ fn resolve(ctx: &FeedbackCtx<'_>, sender: &TellSender<'_>, target: &str) -> Reso
         name: c.player_name.clone().unwrap_or_default(),
         player_id: found.player_id,
         account_id: c.account_id,
-        entity_id: c.player_entity_id,
         ignores_sender: session_ignores(&clients, found.addr, sender.name),
         flags,
         // DND wins over AFK: it is the stronger "leave me be".
@@ -184,38 +184,41 @@ pub(super) async fn handle_tell(
         }
     };
 
+    #[cfg(test)]
+    after_resolve_hook::run(ctx);
+
     if recipient.ignores_sender {
         refuse("recipient_ignores_sender", Some(recipient.player_id));
         send_feedback_line(ctx, sender.addr, &not_accepting_text(&recipient.name)).await;
         return;
     }
 
-    let Some(recipient_eid) = recipient.entity_id else {
-        refuse("recipient_not_in_world", Some(recipient.player_id));
-        send_feedback_line(ctx, sender.addr, &not_online_text(&recipient.name)).await;
-        return;
-    };
-
     let line = serialize_on_player_communication(sender.name, sender.flags, TELL_CHANNEL, text);
-    let delivered = send_player_method(
+    let (delivered, recipient_eid) = send_to_current_player(
         ctx,
         recipient.addr,
-        recipient_eid,
+        recipient.player_id,
         ON_PLAYER_COMMUNICATION,
         &line,
     )
     .await;
     if delivered != FeedbackOutcome::Sent {
-        // The recipient's session went away (or its socket failed) between
-        // the lookup and the send: tell the sender it did not arrive.
-        refuse("recipient_send_failed", Some(recipient.player_id));
+        // The recipient logged off, left the world (mid gate travel) or its
+        // socket failed between the lookup and the send: the tell did not
+        // arrive, so the sender hears so.
+        let reason = match delivered {
+            FeedbackOutcome::NoSession => "recipient_left",
+            FeedbackOutcome::NotInWorld => "recipient_not_in_world",
+            _ => "recipient_send_failed",
+        };
+        refuse(reason, Some(recipient.player_id));
         send_feedback_line(ctx, sender.addr, &not_online_text(&recipient.name)).await;
         return;
     }
 
-    if let Some(sender_eid) = sender.entity_id {
+    if let Some(sender_player_id) = sender.player_id {
         let confirm = serialize_on_tell_sent(&recipient.name, text);
-        send_player_method(ctx, sender.addr, sender_eid, ON_TELL_SENT, &confirm).await;
+        send_to_current_player(ctx, sender.addr, sender_player_id, ON_TELL_SENT, &confirm).await;
         if let Some(away) = &recipient.away_message {
             let reply = serialize_on_player_communication(
                 &recipient.name,
@@ -223,10 +226,10 @@ pub(super) async fn handle_tell(
                 TELL_CHANNEL,
                 away,
             );
-            send_player_method(
+            send_to_current_player(
                 ctx,
                 sender.addr,
-                sender_eid,
+                sender_player_id,
                 ON_PLAYER_COMMUNICATION,
                 &reply,
             )
@@ -249,4 +252,37 @@ pub(super) async fn handle_tell(
         away_reply = recipient.away_message.is_some(),
         "tell delivered",
     );
+}
+
+/// Test seam: a callback run between the recipient lookup and the send, so
+/// a test can move the recipient to a new entity (gate travel) or out of the
+/// world in exactly the window PR #893's review flagged.
+#[cfg(test)]
+pub(super) mod after_resolve_hook {
+    use std::cell::RefCell;
+
+    use super::FeedbackCtx;
+
+    type Hook = Box<dyn Fn(&FeedbackCtx<'_>)>;
+
+    thread_local! {
+        static HOOK: RefCell<Option<Hook>> = const { RefCell::new(None) };
+    }
+
+    /// Install `f` for the current thread (a `#[tokio::test]` runs on one).
+    pub(in crate::base::dispatch) fn set(f: impl Fn(&FeedbackCtx<'_>) + 'static) {
+        HOOK.with(|h| *h.borrow_mut() = Some(Box::new(f)));
+    }
+
+    pub(in crate::base::dispatch) fn clear() {
+        HOOK.with(|h| *h.borrow_mut() = None);
+    }
+
+    pub(super) fn run(ctx: &FeedbackCtx<'_>) {
+        HOOK.with(|h| {
+            if let Some(f) = h.borrow().as_ref() {
+                f(ctx);
+            }
+        });
+    }
 }

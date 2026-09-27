@@ -68,17 +68,20 @@ pub(super) async fn broadcast_to_witnesses(
                 .any(|n| n.to_lowercase() == folded_speaker)
         })
     });
-    if !ignored_by.is_empty() {
+    // One row per withheld witness, so SigNoz names both players (rule 5).
+    for &wid in &ignored_by {
         tracing::debug!(
             target: CHAT_LOG_TARGET,
             event = "chat.spatial_ignored",
             entity_id = sender_id,
             player_id = entity.player_id,
             account_id = entity.account_id,
+            target_entity_id = wid,
+            target_player_id = space_mgr.get_entity(wid).and_then(|w| w.player_id),
+            target_account_id = space_mgr.get_entity(wid).and_then(|w| w.account_id),
             channel,
-            skipped = ignored_by.len(),
             reason = "witness_ignores_speaker",
-            "spatial chat withheld from witnesses who ignore the speaker"
+            "spatial chat line withheld from a witness who ignores the speaker"
         );
     }
 

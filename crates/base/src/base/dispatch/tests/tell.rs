@@ -10,7 +10,8 @@ use std::time::Instant;
 
 use super::super::chat::send_player_communication_at;
 use super::super::tell::{
-    ambiguous_text, not_online_text, TELL_CHANNEL, TELL_NO_TARGET_TEXT, TELL_SELF_TEXT,
+    after_resolve_hook, ambiguous_text, not_online_text, TELL_CHANNEL, TELL_NO_TARGET_TEXT,
+    TELL_SELF_TEXT,
 };
 use super::super::*;
 use crate::base::contact_list::ignore::{not_accepting_text, IgnoreCache};
@@ -337,4 +338,61 @@ async fn tell_ignore_matches_case_insensitively() {
     h.alice_tells("Bob", "hello").await;
     assert!(h.to(BOB).is_empty());
     assert_eq!(h.alice_feedback(), not_accepting_text("Bob"));
+}
+
+/// PR #893 review: gate travel can give Bob a new entity between the name
+/// lookup and the send. The tell must go to the entity Bob has at send
+/// time. Fails when the send uses the entity id snapshotted at lookup.
+#[tokio::test]
+async fn tell_is_addressed_to_the_recipients_entity_at_send_time() {
+    let h = Harness::three();
+    let bob = addr(BOB.0);
+    after_resolve_hook::set(move |ctx| {
+        ctx.connected
+            .lock()
+            .unwrap()
+            .get_mut(&bob)
+            .unwrap()
+            .player_entity_id = Some(9_999);
+    });
+    h.alice_tells("Bob", "after the gate").await;
+    after_resolve_hook::clear();
+
+    let got = h.to(BOB);
+    assert_eq!(got.len(), 1);
+    assert_eq!(
+        got[0].entity_id, 9_999,
+        "the tell must address Bob's current entity, not the one seen at lookup"
+    );
+    assert_eq!(h.to(ALICE)[0].method, ON_TELL_SENT);
+}
+
+/// The same window, but Bob is mid-world-change (no player entity) when the
+/// send happens: nothing reaches Bob, Alice hears he is not online, and the
+/// refusal says why. Fails when the snapshotted entity id is used.
+#[tokio::test]
+async fn tell_to_recipient_who_left_the_world_before_the_send_is_refused() {
+    let capture = LogCapture::install();
+    let h = Harness::three();
+    let bob = addr(BOB.0);
+    after_resolve_hook::set(move |ctx| {
+        ctx.connected
+            .lock()
+            .unwrap()
+            .get_mut(&bob)
+            .unwrap()
+            .player_entity_id = None;
+    });
+    h.alice_tells("Bob", "you there?").await;
+    after_resolve_hook::clear();
+
+    assert!(h.to(BOB).is_empty(), "nothing is sent to a stale entity");
+    assert_eq!(h.alice_feedback(), not_online_text("Bob"));
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "chat.tell_refused"))
+        .expect("chat.tell_refused logged");
+    assert!(ev.has_field("reason", "recipient_not_in_world"));
+    assert!(ev.has_field("target_player_id", "802"));
 }

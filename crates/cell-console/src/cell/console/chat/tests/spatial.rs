@@ -221,7 +221,10 @@ async fn spatial_chat_skips_ignoring_witness() {
         .find(|c| c.has_field("event", "chat.spatial_ignored"))
         .expect("the withheld line must log chat.spatial_ignored");
     assert!(ev.has_field("reason", "witness_ignores_speaker"));
-    assert!(ev.has_field("skipped", "1"));
+    assert!(
+        ev.has_field("target_entity_id", "2"),
+        "the withheld witness is named (instrumentation rule 5)"
+    );
 }
 
 /// D-SS15 is one-directional: Alice ignoring Bob does not stop Bob hearing
