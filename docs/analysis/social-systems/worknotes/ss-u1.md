@@ -209,7 +209,7 @@ This packet did not edit `docs/gap-analysis.md`, `docs/project-status.md`, test 
 
 - `gap-analysis.md` §24 (Mail): server-generated mail DONE (`send_system_mail`, SS-U1); GM mail tools `.mail` / `.mailbox` DONE, `.mail_expire` pending SS-M4.
 - `project-status.md` Mail row: add "system mail API and GM mail tools (SS-U1)".
-- Test inventory: +26 tests (9 cell-console unit, 12 base-methods live-DB, plus 5 existing-file cases counted within those files); below the 5% threshold.
+- Test inventory: +21 tests (9 in `cimmeria-cell-console`, 12 live-DB in `cimmeria-base-methods`), below the 5% threshold.
 - Crate graph: no new dependency edge (`cimmeria-cell-console` already depended on `cimmeria-wire`, `cimmeria-base-world-entry` on `cimmeria-base-methods`).
 
 ## Integration edits for the coordinator
