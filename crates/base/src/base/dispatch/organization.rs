@@ -220,20 +220,44 @@ pub(super) async fn handle_org_base_method(
             reason = "cell_unreachable",
             "squad call could not reach the cell -- answering with feedback"
         );
-        // The squad action never reached the cell, so the cell logs no
-        // outcome row for it; this is that row.
-        tracing::info!(
-            target: "squad",
-            event = if kind == "squad_kick" { "squad.kick" } else { "squad.invite" },
-            outcome = "rejected",
-            reason = "cell_unreachable",
-            account_id,
-            player_id,
-            entity_id,
-            "squad action rejected"
-        );
+        unreachable_outcome(kind, account_id, player_id, entity_id);
         reply(ORG_NOT_AVAILABLE_TEXT).await;
     }
+}
+
+/// The squad action never reached the cell, so the cell logs no outcome
+/// row for it and counts nothing: this is that row and that count, in the
+/// shape of the cell's `Outcome::emit` (`squad/telemetry.rs`) and on the
+/// same `squad_actions_total{action, outcome, reason}` series as
+/// `cimmeria_cell_world::cell::squad::count_action`, which the base cannot
+/// call (it does not depend on the cell crates).
+fn unreachable_outcome(
+    kind: &str,
+    account_id: Option<u32>,
+    player_id: Option<i32>,
+    entity_id: Option<u32>,
+) {
+    let (event, action) = if kind == "squad_kick" {
+        ("squad.kick", "kick")
+    } else {
+        ("squad.invite", "invite")
+    };
+    tracing::info!(
+        target: "squad",
+        event,
+        outcome = "rejected",
+        reason = "cell_unreachable",
+        account_id,
+        player_id,
+        entity_id,
+        "squad action rejected"
+    );
+    cimmeria_observability::counter!(
+        "squad_actions_total",
+        "action" => action,
+        "outcome" => "rejected",
+        "reason" => "cell_unreachable",
+    );
 }
 
 /// `onErrorCode(0, instance_id, 0)` then `text` on the feedback channel.

@@ -882,6 +882,7 @@ dependencies = [
  "cimmeria-game",
  "cimmeria-mercury",
  "cimmeria-minigame",
+ "cimmeria-observability",
  "cimmeria-resources",
  "cimmeria-test-support",
  "cimmeria-wire",

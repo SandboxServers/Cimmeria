@@ -293,3 +293,33 @@ async fn squad_forward_failure_warns_and_logs_the_outcome() {
     assert!(row.has_field("outcome", "rejected") && row.has_field("reason", "cell_unreachable"));
     assert!(row.has_field("player_id", "77"));
 }
+
+/// The unreachable-cell refusal counts on `squad_actions_total` like every
+/// cell-side outcome row, under the cell's action labels (`invite`, `kick`),
+/// so the metric does not undercount squad refusals when the cell is down.
+#[tokio::test]
+async fn squad_forward_failure_counts_on_squad_actions_total() {
+    use cimmeria_observability::testing::{counter_total, install};
+    install();
+    let labels = |action| {
+        [
+            ("action", action),
+            ("outcome", "rejected"),
+            ("reason", "cell_unreachable"),
+        ]
+    };
+    let invite_before = counter_total("squad_actions_total", &labels("invite"));
+    let kick_before = counter_total("squad_actions_total", &labels("kick"));
+
+    let invite = [&[0u8][..], &WS_BO].concat();
+    call(0xD0, &invite).await;
+    // `organizationKick` with an org id in the squad range (D-ORG05).
+    let kick = [&0x4000_0000i32.to_le_bytes()[..], &WS_BO].concat();
+    call(0xD1, &kick).await;
+
+    // At least one, not exactly one: under `cargo test` the other tests in
+    // this module that forward with no cell share the process-wide table
+    // (nextest runs each test alone, where it is exactly one).
+    assert!(counter_total("squad_actions_total", &labels("invite")) > invite_before);
+    assert!(counter_total("squad_actions_total", &labels("kick")) > kick_before);
+}
