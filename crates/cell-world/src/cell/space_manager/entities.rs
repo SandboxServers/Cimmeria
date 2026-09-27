@@ -166,6 +166,12 @@ impl SpaceManager {
         // down mid-hold must not have a deferred `perform_gate_travel` run
         // against it on a later tick.
         self.cancel_crossing_hold(entity_id);
+        // A pet removed on any path (despawn, death sweep, GM) leaves the
+        // owner map. A destroyed *owner* is not handled here: this method
+        // has no `tx` for its pets' `LeftAoI`, so `pets::pet_owner_sweep`
+        // despawns them on the next AoI tick (and `disconnect_entity` does it
+        // at once through `pets::forget_owner`).
+        self.pets.forget_pet(entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -394,6 +400,10 @@ impl SpaceManager {
         // leave a deferred `perform_gate_travel` queued against a dead
         // session.
         self.cancel_crossing_hold(entity_id);
+        // Pets leave with their owner, visibly (`LeftAoI` to every witness),
+        // before the owner's own AoI teardown below. The self-healing sweep
+        // would get them a tick later; this makes the common path immediate.
+        crate::cell::pets::forget_owner(entity_id, tx, self).await;
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);

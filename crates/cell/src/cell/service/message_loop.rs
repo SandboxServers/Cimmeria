@@ -141,6 +141,12 @@ pub(super) async fn run_cell_loop(
                     tx, &mut space_mgr, &engine,
                 ).await;
 
+                // Pets whose owner is gone, dead or in another space are
+                // despawned (issue #570, PT-01). The self-healing layer
+                // under every owner-teardown path; returns at once when no
+                // pet exists.
+                cimmeria_cell_world::cell::pets::pet_owner_sweep(tx, &mut space_mgr).await;
+
                 // NPC movement runs every AoI tick (100ms) for smooth pathing
                 super::ticks::npc_movement_tick(&mut space_mgr);
                 // NA02 detectors over every NPC (running in place, ...).

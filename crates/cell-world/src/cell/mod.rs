@@ -12,6 +12,7 @@ pub mod content_events;
 pub mod cover;
 pub mod dispatch;
 pub mod effects;
+pub mod pets;
 pub mod playtest_friction;
 pub mod playtest_friction_watch;
 pub mod ring_transport;

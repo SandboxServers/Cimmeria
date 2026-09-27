@@ -95,6 +95,8 @@ fn class_id_mapping() {
     assert_eq!(class_id_for_class("spawnable"), 0x00);
     assert_eq!(class_id_for_class("being"), 0x01);
     assert_eq!(class_id_for_class("mob"), 0x04);
+    // Pet templates (`class = 'pet'`, pets PT-S) build a GamePet.
+    assert_eq!(class_id_for_class("pet"), 0x05);
     assert_eq!(class_id_for_class("unknown"), 0x04); // fallback
 }
 

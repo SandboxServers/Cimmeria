@@ -289,6 +289,10 @@ pub struct SpaceManager {
     /// Live ring transporter state machines keyed by `region_id`.
     /// Built from `ring_regions` at startup; one entry per ring pad.
     pub ring_transporters: super::ring_transport::RingTransporterManager,
+    /// Owner <-> pet maps (issue #570, PT-01): the ownership source of truth
+    /// for every client command that names a pet. Scrubbed by
+    /// `destroy_entity` / `destroy_space`; see `cell::pets`.
+    pub pets: super::pets::PetRegistry,
     /// NPCs with a pending `ai_retry_at` deadline. Updated whenever
     /// `npc_ai_fight` schedules a launch-failure retry and whenever
     /// `npc_ai_retry_sweep` consumes one. The retry sweep iterates
@@ -457,6 +461,7 @@ impl SpaceManager {
             ring_regions: HashMap::new(),
             ring_point_set_to_region: HashMap::new(),
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
+            pets: super::pets::PetRegistry::default(),
             pending_ai_retries: std::collections::HashSet::new(),
             pending_casts: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),

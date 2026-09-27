@@ -167,6 +167,16 @@ impl SpaceManager {
                             }
                         }
 
+                        // ── createOnClient: a pet's owner-only lists (PT-01) ──
+                        //
+                        // `onPetAbilityList` / `onPetStanceList` /
+                        // `onPetStanceUpdate`, to the owner only; empty for any
+                        // other witness or entity. The same helper runs on the
+                        // `requestEntityUpdate` re-emit, so both intro paths agree.
+                        events.extend(crate::cell::pets::pet_create_on_client_events(
+                            player_id, other,
+                        ));
+
                         // ── dynamicUpdate: standalone InteractionType update ──
                         //
                         // In the C++ server, createOnClient() sends InteractionType
