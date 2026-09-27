@@ -22,7 +22,7 @@ Only six SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `ch
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every player AoI witness of the speaker, except a witness who ignores the speaker |
+| Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every player AoI witness of the speaker, except a witness who ignores the speaker. The speaker always gets their own echo, even with nobody in range (the client does not echo say locally) |
 | Channel registration on login | DONE | 8 channels pushed at `onClientReady` — see [System Channels](#system-channels) |
 | DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |
@@ -177,9 +177,9 @@ SS-C1 (2026-09-27), decisions D-SS13, D-SS15 and D-SS17 in `docs/analysis/social
 | Two online players match after case folding | "More than one player is named X. Type the exact name." |
 | The recipient ignores the sender | "X is not accepting your messages." |
 
-**Ignore.** The contact list's `Ignore` list (flags 301) is the only source. If A has B on it, B's tells to A are refused as above and B's say, emote and yell are not sent to A. It works one way only: A's lines still reach B, and nobody is hidden from anyone's AoI. The list is copied to the base session (for tells) and the cell entity (for spatial chat) at every world entry and after every change, from `chatIgnore` or from the contact-list window.
+**Ignore.** The contact list's `Ignore` list (flags 301) is the only source. If A has B on it, B's tells to A are refused as above and B's say, emote and yell are not sent to A. It works one way only: A's lines still reach B, and nobody is hidden from anyone's AoI. Names compare case-insensitively (the D-SS13 fold), so an entry the contact-list window stored as "bob" still ignores "Bob"; if two characters differ only in case, one entry covers both. The list is copied to the base session (for tells) and the cell entity (for spatial chat) at every world entry and after every change, from `chatIgnore` or from the contact-list window.
 
-`chatIgnore(name, 1)` adds a real character by its exact stored name (the typed name is resolved the same way as a tell target, offline characters included). It refuses the player's own character, a name already on the list, and a list that already holds 100 names (a project cap from the CAT-L-04 audit finding, not a recovered limit). `chatIgnore(name, 0)` removes a name on the list. Both go through the contact-list member operations, so the contact-list window updates, and both answer with a feedback line ("You are now ignoring X." / "You are no longer ignoring X." or the reason for a refusal).
+`chatIgnore(name, 1)` adds a real character by its exact stored name (the typed name is resolved the same way as a tell target, offline characters included). It refuses the player's own character, a name already on the list, and a list that already holds 100 names (a project cap from the CAT-L-04 audit finding, not a recovered limit). `chatIgnore(name, 0)` removes a name on the list. Each call spends a token from the chat bucket first, like a chat line, with the same "too quickly" reply. Both go through the contact-list member operations, so the contact-list window updates, and both answer with a feedback line ("You are now ignoring X." / "You are no longer ignoring X." or the reason for a refusal).
 
 Returning to character select clears the AFK message and the Ignore cache with the rest of the per-character state.
 
