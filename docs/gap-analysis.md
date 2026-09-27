@@ -663,6 +663,7 @@ last_updated: 2026-09-25
 | DB persistence | CW | -- | sqlx | sgw_player.level + .exp |
 | Stat scaling on level-up | CW | -- | entity/stats/ | scale_for_level(), full heal on level-up |
 | Training points on level-up | NT | -- | game/player.rs | **Demoted 2026-09-27 (CW → NT).** The v2 economy replaced 2 TP/level: 1 TP at level 1 plus 1 per level, 50 by level 50 (AT-07, D-AT02). The cell tracks points and level through `ProgressionChanged` (AT-03). Not client-tested |
+| GM training-point grant | NT | -- | cell/console/gm/give_training_points.rs, base/world_entry/methods/progression/grant_training_points.rs | **Added 2026-09-26.** Native `gmGiveTrainingPoints` (cell method 137) grants to the caller: one guarded `UPDATE ... RETURNING` (refused past `i32::MAX`), then `TrainingPointsGranted` mirrors the points on the cell, sends the counter property and re-sends an open trainer. Unit and live-DB tested; not client-tested |
 | XP from missions | IM | Content / design | cell/content/executor/mod.rs:512 | **KM → IM 2026-09-25.** A delivery path now exists: `Action::GrantXP` has loader and executor arms (#618, chain-replay guard). No XP flows yet. There are zero `grant_xp` seed rows (Harset chains carry `-- GC3: grant_xp` placeholders), `reward_xp = 0` on all 1,041 missions, and completion does not read it (#310). Playtest recorded 0 mission XP. Re-verified 2026-09-25 |
 | ASP on level-up | KM | -- | -- | No ASP grant on level-up (ASP is granted only by GM `gmGiveAppliedSciencePoints`) |
 

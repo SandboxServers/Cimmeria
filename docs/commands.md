@@ -264,7 +264,7 @@ XP, money, items, abilities, and more.
 | `/gmgiveracialparadigmlevels` | Give racial paradigm levels | ❌ Not yet | `<id> <levels>` | `/gmgiveracialparadigmlevels` |
 | `/gmgiverespawner` | Give a player respawner | ❌ Not yet | `<mobId>` | `/gmgiverespawner` |
 | `/gmgivestargateaddress` | Give a stargate address | ❌ Not yet | `<address> <target> <hidden>` | `/gmgivestargateaddress` |
-| `/gmgivetrainingpoints` | Give training points | ❌ Not yet | `<count>` | `/gmgivetrainingpoints` |
+| `/gmgivetrainingpoints` | Give yourself ability-tree training points (the counter updates at once, and an open trainer refreshes) | ✅ Yes | `<count>` (positive int; refused if your total would pass 2147483647) | `/gmgivetrainingpoints 5` |
 | `/gmgivexp` | Give yourself experience | ✅ Yes | `<amount>` (positive int) | `/gmgivexp 5000` |
 | `/gmrechargeitem` | Recharge an item | ✅ Yes | `<itemId...>` | `/gmrechargeitem 8800` |
 | `/gmremoveitem` | Remove a quantity of an inventory item from yourself | ✅ Yes | `<itemId> <quantity>` (both positive) | `/gmremoveitem 8800 1` |
