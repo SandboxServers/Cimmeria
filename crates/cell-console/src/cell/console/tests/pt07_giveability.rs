@@ -1,5 +1,5 @@
 //! Pets campaign PT-07: the non-GM refusal at the chat gate, and
-//! `.giveability`'s cell half (`console/give.rs`).
+//! `.giveability`'s cell half (`console/give_ability.rs`).
 //!
 //! Filter prefix: `pt07_`.
 //!

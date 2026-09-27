@@ -1,4 +1,4 @@
-//! `.pet`: GM pet UAT tools (pets campaign PT-07, issue #570).
+//! `.pet`: GM pet UAT tools (pets campaign PT-07).
 //!
 //! - `.pet summon <templateId|abilityId>`: spawn a pet for the caller at
 //!   once, with no warmup. An id with a `pet_summons` row is a summon ability

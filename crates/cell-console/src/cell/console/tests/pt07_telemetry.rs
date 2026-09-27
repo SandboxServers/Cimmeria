@@ -213,7 +213,7 @@ fn closed_tx() -> mpsc::Sender<crate::cell::messages::CellToBaseMsg> {
 }
 
 /// Span fields are not copied onto OTLP log records, so the `.pet stance`
-/// send failure must carry the caller's identity itself (Copilot, #908).
+/// send failure must carry the caller's identity itself.
 #[tokio::test]
 async fn pt07_pet_stance_send_failure_logs_warn_with_caller_identity() {
     let mut mgr = pet_world();
@@ -275,8 +275,7 @@ async fn pt07_giveability_send_failure_logs_warn_with_caller_identity() {
     );
 }
 
-/// `.help pet` and `.help giveability` print the argument detail lines
-/// (Copilot, #908).
+/// `.help pet` and `.help giveability` print the argument detail lines.
 #[tokio::test]
 async fn pt07_help_shows_pet_and_giveability_argument_detail() {
     let mut mgr = pet_world();

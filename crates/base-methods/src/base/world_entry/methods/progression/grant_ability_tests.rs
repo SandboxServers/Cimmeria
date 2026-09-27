@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
-use super::grant_ability::persist_ability_grant;
+use super::grant_ability::{persist_ability_grant, GrantWrite};
 use super::respec::persist_respec;
 use super::tests::{cleanup, insert_test_account, insert_test_player, make_connected_state};
 use super::{handle_gm_grant_ability, AbilityGrant};
@@ -225,7 +225,10 @@ async fn giveability_twice_does_not_duplicate_the_ability() {
         2,
         "both grants are answered"
     );
-    assert!(!persist_ability_grant(&pool, ID, ABILITY).await.unwrap());
+    assert_eq!(
+        persist_ability_grant(&pool, ID, ABILITY).await.unwrap(),
+        GrantWrite::AlreadyKnown
+    );
     cleanup(&pool, ID).await;
 }
 
@@ -311,8 +314,8 @@ async fn giveability_survives_a_respec_and_refunds_nothing() {
 }
 
 /// Span fields are not copied onto OTLP log records, so a mirror failure
-/// names the GM actor on the event itself (Copilot, #908): closed channel
-/// (ERROR) and no channel (WARN).
+/// names the GM actor on the event itself: closed channel (ERROR) and no
+/// channel (WARN).
 #[tokio::test]
 async fn giveability_mirror_failure_names_the_gm_and_the_subject() {
     let pool = require_db_or_skip!();
@@ -343,4 +346,38 @@ async fn giveability_mirror_failure_names_the_gm_and_the_subject() {
         }
         cleanup(&pool, ID).await;
     }
+}
+
+/// The character's row is gone (deleted after the session check): the GM is
+/// told there is no saved record, not that it "already knows" the ability,
+/// and the refusal carries its own reason.
+#[tokio::test]
+async fn giveability_for_a_missing_player_row_says_so() {
+    let pool = require_db_or_skip!();
+    const ID: i32 = 0x7030_0A07;
+    cleanup(&pool, ID).await;
+    let s = Sessions::new(ID, GM_PLAYER);
+
+    let capture = LogCapture::install();
+    let to_cell = s.grant(&pool, ID, GM_PLAYER).await;
+
+    let e = outcome_event(
+        &capture,
+        tracing::Level::WARN,
+        "refused",
+        Some("player_row_missing"),
+    );
+    assert!(
+        e.has_field("persisted", "false")
+            && e.has_field("subject_player_id", &ID.to_string())
+            && e.has_field("player_id", &GM_PLAYER.to_string()),
+        "{e:#?}"
+    );
+    assert!(to_cell.is_empty(), "nothing to mirror");
+    assert_eq!(
+        persist_ability_grant(&pool, ID, ABILITY).await.unwrap(),
+        GrantWrite::PlayerRowMissing
+    );
+    assert_eq!(s.transport.send_count_to(s.gm_addr), 1, "the GM hears it");
+    cleanup(&pool, ID).await;
 }

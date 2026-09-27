@@ -37,18 +37,30 @@ pub struct AbilityGrant {
     pub gm_player_id: i32,
 }
 
+/// What [`persist_ability_grant`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GrantWrite {
+    /// The ability was appended.
+    Granted,
+    /// The character already knows it; nothing changed.
+    AlreadyKnown,
+    /// There is no `sgw_player` row for the character (deleted after the
+    /// session check); nothing changed.
+    PlayerRowMissing,
+}
+
 /// Append `ability_id` to `player_id`'s known abilities.
 ///
-/// `Ok(true)` when the row changed. `Ok(false)` means the guard held it back
-/// and nothing changed: no such player, or the ability is already known. The
-/// `NOT (abilities @> ...)` guard is what makes a replayed or double-typed
-/// grant a no-op under row locking; the cell's "already known" check is only
-/// for a friendlier message.
+/// The `NOT (abilities @> ...)` guard is what makes a replayed or
+/// double-typed grant a no-op under row locking; the cell's "already known"
+/// check is only for a friendlier message. When the `UPDATE` matches no row,
+/// one cheap existence check tells "already known" from "no such player", so
+/// the GM is never told a missing character "already knows" the ability.
 pub(super) async fn persist_ability_grant(
     pool: &PgPool,
     player_id: i32,
     ability_id: i32,
-) -> sqlx::Result<bool> {
+) -> sqlx::Result<GrantWrite> {
     let r = sqlx::query(
         "UPDATE sgw_player \
             SET abilities = abilities || $1::integer \
@@ -59,7 +71,19 @@ pub(super) async fn persist_ability_grant(
     .bind(player_id)
     .execute(pool)
     .await?;
-    Ok(r.rows_affected() == 1)
+    if r.rows_affected() == 1 {
+        return Ok(GrantWrite::Granted);
+    }
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM sgw_player WHERE player_id = $1)")
+            .bind(player_id)
+            .fetch_one(pool)
+            .await?;
+    Ok(if exists {
+        GrantWrite::AlreadyKnown
+    } else {
+        GrantWrite::PlayerRowMissing
+    })
 }
 
 /// The character `entity_id`'s session plays now, if any.
@@ -96,7 +120,8 @@ fn gm_account(
 ///
 /// Every outcome is one event with `decision_outcome`, `persisted` and the
 /// ids above: `granted` (INFO), `already_known` (DEBUG, a GM can repeat it
-/// at will), `no_database` and `session_mismatch` (WARN), `db_error`
+/// at will), `no_database`, `session_mismatch` and `player_row_missing`
+/// (WARN), `db_error`
 /// (ERROR). A cell send failure after the write is an ERROR too.
 #[tracing::instrument(
     name = "progression.gm_grant_ability",
@@ -190,8 +215,29 @@ pub async fn handle_gm_grant_ability(
     }
 
     match persist_ability_grant(pool, player_id, ability_id).await {
-        Ok(true) => {}
-        Ok(false) => {
+        Ok(GrantWrite::Granted) => {}
+        Ok(GrantWrite::PlayerRowMissing) => {
+            // The session check passed, so the character was deleted in
+            // between: a server-side race no client drives at will.
+            tracing::warn!(
+                decision_outcome = "refused",
+                reason = "player_row_missing",
+                persisted = false,
+                entity_id = gm_entity_id,
+                account_id,
+                player_id = gm_player_id,
+                subject_entity_id = entity_id,
+                subject_player_id = player_id,
+                ability_id,
+                "GmGrantAbility: no sgw_player row for the character; nothing granted"
+            );
+            tell_gm(format!(
+                ".giveability: character {player_id} has no saved record; ability {ability_id} not granted"
+            ))
+            .await;
+            return;
+        }
+        Ok(GrantWrite::AlreadyKnown) => {
             tracing::debug!(
                 decision_outcome = "refused",
                 reason = "already_known",
@@ -202,7 +248,7 @@ pub async fn handle_gm_grant_ability(
                 subject_entity_id = entity_id,
                 subject_player_id = player_id,
                 ability_id,
-                "GmGrantAbility: UPDATE matched 0 rows (already known, or no such player)"
+                "GmGrantAbility: the character already knows the ability; nothing changed"
             );
             tell_gm(format!(
                 ".giveability: entity {entity_id} already knows ability {ability_id}; nothing changed"

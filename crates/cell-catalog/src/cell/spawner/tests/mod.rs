@@ -23,6 +23,9 @@
 //! - [`live_db_pet_trainer`]: live-DB guards for the debug hub's pet trainer
 //!   (pets campaign PT-07): template 360, spawn 450 in the stasis room, and
 //!   trainer list 350 offering the Goa'uld pet summons.
+//! - [`live_db_spawnlist_sequence`]: live-DB guard that the `spawnlist` id
+//!   sequence starts past every reserved campaign spawn block, so a row
+//!   inserted without an id (`.savespawn`) never takes a reserved one.
 //! - [`npc_ability_animation`]: live-DB seed linter (NA43) that every NPC combat
 //!   ability resolves one Ability_End sequence, that 559 resolves the SMG
 //!   burst, and that an armed hostile fires its weapon's ranged attack.
@@ -34,4 +37,5 @@ mod live_db_debug_hub;
 mod live_db_loaders;
 mod live_db_pet_summons;
 mod live_db_pet_trainer;
+mod live_db_spawnlist_sequence;
 mod npc_ability_animation;
