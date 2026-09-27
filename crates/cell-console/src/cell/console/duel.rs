@@ -121,7 +121,7 @@ pub(crate) fn status_line(mgr: &SpaceManager, subject: &Subject, now: Instant) -
                 DuelState::StartPending { engage_at } => {
                     format!("in the countdown, starting in {}s", secs(engage_at))
                 }
-                DuelState::Engaged => "fighting".to_string(),
+                DuelState::Engaged { .. } => "fighting".to_string(),
             };
             format!(
                 "{who} is in duel #{} with {}, {stage}, in space {}.",

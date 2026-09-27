@@ -144,6 +144,13 @@ Each mutation was applied, the named filter was run, and the file was restored a
   - nextest on the same three crates: 777 passed, 1 skipped (the ignored 70 s test).
   - the live-DB `it` binary on `sgw_ss_u2` with `--test-threads=1`: 11 passed, 1 ignored.
 
+## Rebase onto SS-D2 (#911)
+
+- **Engaged duels.** `DuelState::Engaged` now carries `until`, so `DuelState::name` and `.duel_status` match `Engaged { .. }`. For an engaged duel, `gm_end` now calls `end::end_engaged(.., EndReason::GmAborted)` and does not send 878 itself. That call clears both PvP flags, sends 153, drops the combat pair, strips the partner's effects and sends one 878 each. A challenge or a countdown keeps the registry-only path with its own 878. `duel.gm_ended` is logged after the end, with `stage = engaged`.
+- **Guard:** `console::tests::ss_u2_duel::duel_end_on_an_engaged_duel_clears_through_end_engaged` engages a duel through `tick::run_at` and runs `.duel_end Bo`. It asserts, for each duelist, exactly one PvP-flag clear (method 7), one 153 and one 878. It also asserts the registry entry is gone, `can_harm` is false, `duel.ended reason=gm_aborted` and `duel.gm_ended stage=engaged`. With the engaged branch disabled, the test fails because no flag clear or 153 is sent.
+- **Sentinels, second move.** SS-D2's `duel_two_duelists_and_a_spectator.rs` took 900_601-900_613, so `sparbot_duel.rs` moved to 900_701-900_704 and now reserves 900_700-900_799. The comment lists every module's block.
+- **Conflicts:** all were adjacent additions: the `duel/mod.rs` and `duel/tests/mod.rs` module lists and docs, `tests/it/main.rs`, TESTING.md type 11 (squad and SS-U2 sentences both kept), and the wireclient.md layout tree. There was no gap-analysis conflict.
+
 ## Known gaps
 
 - **Cross-space moves strand the bot.** A cross-world `.summon` or a gate trip restarts the world-entry handshake, and `run` does not answer it. The documented workflow logs the bot's character into the tester's world and uses a same-space `.summon`. Handling the re-entry (`RESET_ENTITIES`, then `ENABLE_ENTITIES`, `mapLoaded` and `onClientReady` again) is a follow-up if testers need it.

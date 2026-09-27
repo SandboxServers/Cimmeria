@@ -254,3 +254,66 @@ async fn help_duel_end_shows_argument_detail() {
         "{lines:?}"
     );
 }
+
+/// An engaged duel (SS-D2): `.duel_end` goes through `end_engaged` with
+/// `reason = gm_aborted`, so each duelist gets its PvP flag cleared (7),
+/// `onDuelEntitiesClear` (153) and "Duel aborted" exactly once, and the
+/// registry entry is gone. Fails if `gm_end` removes an engaged duel itself
+/// (no 7, no 153) or sends its own 878 as well (two lines).
+#[tokio::test]
+async fn duel_end_on_an_engaged_duel_clears_through_end_engaged() {
+    use crate::cell::duel::limits::COUNTDOWN;
+    use crate::cell::duel::DuelState;
+    const PVP_FLAG: u16 = 7;
+    const DUEL_CLEAR: u16 = 153;
+
+    let capture = LogCapture::install();
+    let (mut mgr, gm) = fixture();
+    for eid in [ANA.0, BO.0] {
+        mgr.get_entity_mut(eid).unwrap().archetype_id = Some(1);
+    }
+    let _ = mgr.compute_aoi_changes();
+    let (tx, mut rx) = mpsc::channel(256);
+    let t0 = Instant::now();
+    let p = mgr.duels.open_challenge(ANA.1, BO.1, t0).unwrap();
+    mgr.duels.take_pending_for(BO.1, t0).unwrap();
+    let space_id = *mgr.entity_space.get(&ANA.0).unwrap();
+    mgr.duels
+        .start_duel(&p, space_id, Vector3::new(12.0, 0.0, 10.0), t0);
+    crate::cell::duel::tick::run_at(&tx, &mut mgr, t0 + COUNTDOWN).await;
+    while rx.try_recv().is_ok() {}
+    assert!(matches!(
+        mgr.duels.duel_of(ANA.1).unwrap().state,
+        DuelState::Engaged { .. }
+    ));
+
+    let msgs = run(&mut mgr, gm, ".duel_end Bo").await;
+
+    let own = |entity: u32, method: u16| {
+        msgs.iter()
+            .filter(|m| {
+                matches!(m, CellToBaseMsg::EntityMethodCall { entity_id, method_index, .. }
+                    if *entity_id == entity && *method_index == method)
+            })
+            .count()
+    };
+    for eid in [ANA.0, BO.0] {
+        assert_eq!(own(eid, PVP_FLAG), 1, "PvP flag cleared once for {eid}");
+        assert_eq!(own(eid, DUEL_CLEAR), 1, "153 once to {eid}");
+        assert_eq!(
+            lines_to(&msgs, eid),
+            vec![TEXT_DUEL_ABORTED.to_string()],
+            "878 once to {eid}"
+        );
+    }
+    assert!(mgr.duels.duel_of(ANA.1).is_none() && mgr.duels.duel_of(BO.1).is_none());
+    assert!(!mgr.duels.can_harm(ANA.1, BO.1));
+    let rows = capture.all();
+    assert!(rows
+        .iter()
+        .any(|c| c.has_field("event", "duel.ended") && c.has_field("reason", "gm_aborted")));
+    assert!(rows
+        .iter()
+        .any(|c| c.has_field("event", "duel.gm_ended") && c.has_field("stage", "engaged")));
+    assert!(lines_to(&msgs, gm)[0].contains("(engaged)"));
+}

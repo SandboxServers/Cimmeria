@@ -44,7 +44,7 @@ impl DuelState {
     pub fn name(self) -> &'static str {
         match self {
             DuelState::StartPending { .. } => "countdown",
-            DuelState::Engaged => "engaged",
+            DuelState::Engaged { .. } => "engaged",
         }
     }
 }
@@ -313,6 +313,10 @@ impl DuelRegistry {
     /// of, a duel or a challenge in either direction, without a cooldown.
     /// A GM ending it is not the pair declining. `None` when the player is
     /// in nothing. The busy check makes the three cases exclusive.
+    ///
+    /// Registry only: an engaged duel removed here keeps both PvP flags and
+    /// the combat pair. Callers end one through `gm::gm_end`, which routes
+    /// it to `end::end_engaged`.
     pub fn gm_abort(&mut self, player_id: i32) -> Option<GmAborted> {
         if let Some(&duel_id) = self.in_duel.get(&player_id) {
             return self.end_duel(duel_id).map(GmAborted::Duel);
