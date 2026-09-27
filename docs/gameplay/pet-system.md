@@ -33,6 +33,7 @@ How a spawned pet behaves:
 - **Introduction.** Every witness gets the pet's CREATE_ENTITY (class 0x05) and a cascade that carries `ENTITYFLAG_Pet` and `onEntityProperty(PetOwnerId, owner)`. Only the owner gets `onPetAbilityList` and `onPetStanceList`, plus `onPetStanceUpdate` when the stance is not the default. The owner's client binds the pet into `Unit.Pet1..4` from the flag, the owner property and the stance list. The replay runs on the AoI tick and on the client's `requestEntityUpdate`.
 - **Spawn values.** The pet takes the owner's faction (D-PT06) and the owner's level (D-PT02, unless the template sets `ENTITYFLAG_NoPetLeveling`). It starts Defensive. It has no loot, respawn, patrol, wander, cover or tag.
 - **Queries.** The AI and movement ticks include pets. Player AoE, cone, the respawn tick and the NA14 assist fan-out leave them out.
+- **Kill credit (PT-06).** Kill XP and mission kill credit resolve the attacker through `SpaceManager::credit_recipient`. A pet's kill pays its owner `kill_xp × transfer_xp` (1.0, D-PT02) as one `GrantXP` to the owner, and raises `EntityDeath` on the owner, so KillCount chains bump the owner's counters and read the owner's mission state. A mob or any other NPC attacker gets no `GrantXP`, including a mob that kills a pet. A pet's NPC AI attack, its warmed-up casts and its DoTs all credit the owner. A corpse a pet killed rolls its loot as usual. The server has no per-corpse loot owner (any player in interact range may open a corpse), so the owner loots it like any other kill.
 - **Teardown and owner lifecycle.** See [Owner lifecycle](#owner-lifecycle) below. Log target: `pets.lifecycle`.
 
 ### Owner lifecycle
@@ -80,7 +81,8 @@ Nothing spawns a pet yet except code and tests. Summon by ability is PT-03 and t
 | Owner respawn response | DONE (PT-02) | Cross-world respawn despawns the pet; a same-world respawn moves it beside the owner. `onOwnerRespawn` itself is unused |
 | Despawn timer | DONE (PT-02) | `PetState::despawn_at`: a dead pet's corpse despawns after 10 s |
 | Ability on spawn | DEFINED | `abilityToResolve`, `abilityInformation` |
-| XP transfer | DEFINED | `transferXP` float property |
+| XP transfer | DONE (PT-06) | Owner gets `kill_xp × transfer_xp` for the pet's kills; a zero, negative or non-finite value pays nothing |
+| Kill credit | DONE (PT-06) | A pet's kill raises the owner's `EntityDeath` (KillCount missions advance); NPC attackers are never credited |
 | Position tracking | DEFINED | `ownerLastPosition`, `petLastPosition`, `lastOwnerPositionCheck` |
 | Pet AI | NOT IMPL | No AI behavior scripts |
 | Pet persistence | STUB | `saveToDB` defined but no save logic |
