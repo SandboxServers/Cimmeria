@@ -15,6 +15,10 @@ CREATE TABLE sgw_gate_mail (
     flags integer DEFAULT 0 NOT NULL,
     item_id integer,
     sender_name character varying(128) DEFAULT ''::character varying NOT NULL,
+    -- Social-systems SS-M3 (D-SS10): set when the mail was returned to its
+    -- sender. A returned mail cannot be returned again, so a return never
+    -- loops; SS-M4's expiry quarantines instead of re-returning it.
+    returned boolean DEFAULT false NOT NULL,
     -- Social-systems SS-M1: a mail never carries negative cash; the send path
     -- refuses it first, and this is the backstop.
     CONSTRAINT sgw_gate_mail_cash_nonnegative_chk CHECK ((cash >= 0))
