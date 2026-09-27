@@ -2,8 +2,9 @@
 //! BV-07; TESTING.md types 2, 3 and 12).
 //!
 //! Sentinels (the BV-07 block): accounts and players
-//! `0x7000_B800 + 16 * block`, `block` in `0..8`; vault item ids
-//! `0x7000_B900 + 4 * block`; entities `0x7000_B9E0 + block`; item types
+//! `0x7000_B800 + 16 * block`, `block` in `0..18`; item ids (vault or
+//! carried) `0x7000_B900 + 4 * block + k`; entities
+//! `0x7000_B9E0 + 2 * block + i`; item types
 //! `0x7000_B980` (bankable, `{1,17}`, max stack 20), `0x7000_B981`
 //! (a mission item that also lists 17), `0x7000_B982` (carried only,
 //! `{1}`). Organizations are named `Bv07 <block> <kind>` and cleaned up by
@@ -23,6 +24,11 @@ use sqlx::PgPool;
 use crate::base::ConnectedClientState;
 use crate::test_support::{test_default_connected_client_state, TestTransport};
 
+mod delete_race;
+mod fanout;
+mod move_bits;
+mod move_shapes;
+mod moves;
 mod open;
 
 pub(crate) const BANKABLE: i32 = 0x7000_B980;
@@ -47,7 +53,7 @@ impl Fx {
     /// `n` characters on one account in `block`, after removing whatever a
     /// crashed run left there.
     pub(crate) async fn new(pool: &PgPool, block: i32, n: i32) -> Fx {
-        assert!((0..8).contains(&block) && (1..16).contains(&n));
+        assert!((0..18).contains(&block) && (1..16).contains(&n));
         let account_id = BASE + 16 * block;
         let fx = Fx {
             pool: pool.clone(),
@@ -170,6 +176,87 @@ impl Fx {
         .expect("insert vault row");
     }
 
+    /// Put a carried row for character `who`.
+    pub(crate) async fn carry(
+        &self,
+        who: usize,
+        item_id: i32,
+        container: i32,
+        slot: i32,
+        type_id: i32,
+        stack: i32,
+        bound: bool,
+    ) {
+        sqlx::query(
+            "INSERT INTO sgw_inventory (item_id, character_id, container_id, slot_id, type_id, \
+             stack_size, bound) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(item_id)
+        .bind(self.player(who))
+        .bind(container)
+        .bind(slot)
+        .bind(type_id)
+        .bind(stack)
+        .bind(bound)
+        .execute(&self.pool)
+        .await
+        .expect("insert carried row");
+    }
+
+    /// `(item_id, slot, stack)` of every row in `org_id`'s vault.
+    pub(crate) async fn vault(&self, org_id: i32) -> Vec<(i32, i32, i32)> {
+        sqlx::query_as(
+            "SELECT item_id, slot_id, stack_size FROM sgw_organization_vault_items \
+             WHERE org_id = $1 ORDER BY slot_id",
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
+    /// `(item_id, container, slot, stack)` of every row character `who` holds.
+    pub(crate) async fn bag(&self, who: usize) -> Vec<(i32, i32, i32, i32)> {
+        sqlx::query_as(
+            "SELECT item_id, container_id, slot_id, stack_size FROM sgw_inventory \
+             WHERE character_id = $1 ORDER BY container_id, slot_id",
+        )
+        .bind(self.player(who))
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
+    /// `(direction, kind, item_id, quantity, account_id, player_id)` of every
+    /// log row of `org_id`, oldest first.
+    pub(crate) async fn log(&self, org_id: i32) -> Vec<(String, String, i32, i32, i32, i32)> {
+        sqlx::query_as(
+            "SELECT direction, kind, item_id, quantity, account_id, player_id \
+             FROM sgw_organization_vault_log WHERE org_id = $1 ORDER BY log_id",
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
+    /// Item ids that appear in more than one of `sgw_inventory`, the vault
+    /// and mail escrow: always empty (the tables share one id sequence, and
+    /// a move deletes what it copies). Over the whole tables, since a
+    /// split's new id comes from the sequence, not the sentinel range.
+    pub(crate) async fn duplicated_ids(&self) -> Vec<i32> {
+        sqlx::query_scalar(
+            "SELECT item_id FROM (\
+                 SELECT item_id FROM sgw_inventory \
+                 UNION ALL SELECT item_id FROM sgw_organization_vault_items \
+                 UNION ALL SELECT item_id FROM sgw_gate_mail_item\
+             ) t GROUP BY item_id HAVING count(*) > 1",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
     /// Remove everything the block owns, vault rows before organizations.
     pub(crate) async fn teardown(&self) {
         let keys = self.name_keys();
@@ -196,8 +283,9 @@ impl Fx {
             .execute(&self.pool)
             .await
             .unwrap();
-        sqlx::query("DELETE FROM sgw_inventory WHERE character_id = ANY($1)")
+        sqlx::query("DELETE FROM sgw_inventory WHERE character_id = ANY($1) OR item_id BETWEEN $2 AND $2 + 3")
             .bind(&self.players)
+            .bind(self.item(0))
             .execute(&self.pool)
             .await
             .unwrap();

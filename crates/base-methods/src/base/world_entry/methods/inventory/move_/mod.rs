@@ -8,6 +8,8 @@
 //! - [`after_commit`]: resync, cell notification, bandolier, appearance.
 //! - [`container_policy`]: the player-movable allowlist and the refusal path.
 //! - [`bank_rules`]: the personal vault's rules (BV-03).
+//! - [`org`]: moves into, out of and within the Team and Command vaults
+//!   (BV-07), routed away before any lock.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -32,8 +34,9 @@ mod apply;
 mod bank_rules;
 mod container_policy;
 mod finish;
+mod org;
 
-#[derive(sqlx::FromRow)]
+#[derive(Debug, Clone, Copy, sqlx::FromRow)]
 struct InventoryInstanceRow {
     type_id: i32,
     stack_size: i32,
@@ -224,6 +227,20 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
         ..
     } = req;
 
+    // A Team or Command vault at either end takes its own path (BV-07),
+    // decided before any lock: the org path locks the organization first.
+    match org::route(&req, ctx).await {
+        org::Route::Personal => {}
+        org::Route::Org {
+            vault: org_vault,
+            item_org,
+        } => {
+            org::move_org_item(req, org_vault, item_org, vault, ctx).await;
+            return;
+        }
+        org::Route::Dropped => return,
+    }
+
     // D-BV07 allowlist, target end. Checked before the slot range: 17-20
     // have a capacity now, so the range check alone would accept them.
     if let Some(refusal) = container_refusal(MoveEnd::Target, target_container_id, vault) {
@@ -343,6 +360,11 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
                 item_id,
                 "MoveInventoryItem: source item not found"
             );
+            // With a Team or Command vault open, an unknown item is most
+            // likely a vault row another member moved (BV-07).
+            if vault.open_org_vault().is_some() {
+                org::refuse_stale_vault_item(req, vault, ctx).await;
+            }
             return;
         }
         Err(e) => {

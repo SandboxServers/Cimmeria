@@ -94,6 +94,14 @@
 //!   takes every player row it needs, `FOR KEY SHARE` in `player_id`
 //!   order, before [`lock_org`].
 //!
+//! A vault *move* takes the mover's per-player advisory locks, `(player, 0)`
+//! and the carried container's, before both (`move_::org::rows::move_locks`).
+//! That is the order vendor purchases and trades use, advisory lock before
+//! the `sgw_player` row; the reverse, `KEY SHARE` held while waiting on
+//! `(player, 0)`, deadlocks against them. Nothing that holds an organization
+//! lock waits on a per-player advisory lock, and the personal move path,
+//! which holds those, never takes an organization lock.
+//!
 //! All of this assumes READ COMMITTED, the server's isolation level: a
 //! statement after the lock wait sees what the previous lock holder
 //! committed. Under REPEATABLE READ, locking a row changed since the

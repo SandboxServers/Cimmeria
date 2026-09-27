@@ -36,7 +36,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Vendor bag allowlist | DONE | `VENDOR_FILTER_BAGS` confines vendor operations to the main bag, bandolier, the eleven equipment slots, and the crafting bag (15) — the bank, mail attachments, and loot bags are unreachable |
 | Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
-| Organization vault | PARTIAL (storage and open path) | Team (19) and Command (20) vaults: storage, the open round trip and the session are built (BV-07a); see [Opening a Team or Command vault](#opening-a-team-or-command-vault). Moves in and out are BV-07b. `onClearOrgVaultInventory` (74) and `onOrgMoveItemResult` (a server-internal cell method) are not used: no client Lua consumes either (bank-vault audit A-13) |
+| Organization vault | DONE (no client test) | Team (19) and Command (20) vaults: storage, the open round trip and the session (BV-07a), and moves in, out and within (BV-07b); see [Opening a Team or Command vault](#opening-a-team-or-command-vault) and [Moving items in and out of a Team or Command vault](#moving-items-in-and-out-of-a-team-or-command-vault). Every committed move is fanned out to the organization's other online members. `onClearOrgVaultInventory` (74) and `onOrgMoveItemResult` (a server-internal cell method) are not used: no client Lua consumes either (bank-vault audit A-13) |
 | Personal vault window | DONE | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Deposits and withdrawals: [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
 | Vault expansion | PARTIAL (server done; GM `.bankexpand` only) | +10 slots per purchase, 40 to 100, priced by `resources.bank_expansion_price`. The Banker's Expand dialog is not served until the #943 crash is explained; see [Expanding the vault](#expanding-the-vault) |
 
@@ -286,7 +286,35 @@ A refusal logs `org_vault_open_rejected` (WARN, `bank`) with a stable `reason` a
 
 The session ends like a personal one, and also when the player leaves, is removed from, or disbands the organization: ORG-06's `OrgMembershipEnded` reaches the cell, which ends a session of that organization with `vault_session_closed reason=org_left`. Every move re-checks membership under the organization lock anyway.
 
-Until BV-07b lands, a move into or out of 19 or 20 is refused by the player-movable allowlist (the item snaps back).
+## Moving items in and out of a Team or Command vault
+
+Items move with the plain `moveItem` (audit A-05). Before any lock, `moveItem` routes a move to [`move_/org/`](../../crates/base-methods/src/base/world_entry/methods/inventory/move_/org/mod.rs) when its target is 19 or 20, or when its item is in `sgw_organization_vault_items` (one primary-key read). There, in order:
+
+1. The cell's verdict must be an open, in-range session of the vault's own scope, naming the organization (`VaultAccess::org_vault_refusal`). The item must be in that organization's vault, or the player's own.
+2. The carried end must be player-movable (1-15, the personal vault's allowlist); the personal vault (17), buyback (16) and the other org vault are refused.
+3. In one transaction, in the lock order of `organization::api`: `FOR KEY SHARE` on the player's `sgw_player` row, the organization lock and the membership read under it, the per-player move lock, the source row `FOR UPDATE` (whichever table holds it), the carried container's lock.
+4. The bank bit: `DepositBank` into the vault or within it, `WithdrawBank` out of it, both for a swap across (D-BV12). Default ranks may deposit; withdrawing is opt-in.
+5. The quantity, and a vault slot below the vault's size (40 for a new Team, 100 for a Command).
+6. An item entering the vault passes the personal vault's rules (no mission items, `container_sets` must allow 17) and one more: **no bound items**, because another member could withdraw them. A withdrawn item must be allowed in its target container.
+7. The occupant `FOR UPDATE`, and the shape: whole, split (a new id), merge (same type, `bound`, `durability` and `charges`, room under `max_stack_size`), or swap.
+
+An item crosses tables as `INSERT ... SELECT` plus `DELETE` in that transaction, so a whole move keeps its `item_id` and nothing is copied twice. The same transaction writes one `sgw_organization_vault_log` row (`direction`, `kind`, the item, the quantity, both ends and their stacks before and after, and the actor's `account_id`, `player_id`, `org_id` and `rank`); there is no withdraw cap (D-BV15). After the commit the base logs `org_move_accepted` (DEBUG, `bank`), sends the actor the vault rows that changed, and for a move with a carried end runs the usual resync, cell notification, bandolier and appearance steps. It then fans the change out to every **other** online member through ORG-07's `broadcast_to_org`: `onUpdateItem` of the vault rows now there, and `onRemoveItem` of the rows that left (logged `org_vault_fanout`, DEBUG, with the recipient counts). The mover is left out, since a removal of a withdrawn item would take it out of their bag. Every member's client keeps the vault's rows, window open or not.
+
+A refused move logs `org_move_rejected` (WARN, `bank`) with a stable `reason`, sends a line, and snaps the item back from wherever the server has it, under the same locks: its row from the player's inventory or from the vault, or, when it is in neither, `onRemoveItem`, so a vault item another member moved leaves the window. The client has no reply method to use instead: `onOrgMoveItemResult` is a server-internal cell method with no Lua subscriber (audit A-13).
+
+| `reason` | When |
+|---|---|
+| `no_vault_session`, `banker_out_of_range`, `banker_gone`, ... | the verdict is closed (the personal vault's labels) |
+| `vault_scope_mismatch` | the open session is another vault's |
+| `not_a_member`, `no_such_org`, `wrong_org_type`, `player_missing` | the check under the organization lock failed |
+| `missing_permission` (with `perm` = `DepositBank` or `WithdrawBank`) | the rank lacks the bit |
+| `item_not_in_vault` | the item is not in this organization's vault or the player's bags (stale window) |
+| `target_container_not_player_movable`, `source_container_not_player_movable` | the carried end is 16, 17, 18 or unknown |
+| `invalid_target_slot` | a carried slot outside its bag, or a negative vault slot |
+| `target_slot_beyond_vault_slots` (with `vault_slots`) | a vault slot at or past the vault's size |
+| `quantity_exceeds_stack` | more than the stack holds |
+| `bound_item_not_org_storable` | a bound item bound for the vault |
+| `mission_item_not_bankable`, `item_not_allowed_in_container`, `split_onto_occupied_slot` | the personal vault's rules |
 
 ## Flush Update Order
 

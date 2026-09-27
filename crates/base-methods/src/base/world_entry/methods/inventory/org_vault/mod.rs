@@ -11,14 +11,15 @@
 //!   with.
 //! - [`open`]: the open path (`BankCellToBase::OrgVaultOpen`).
 //!
-//! Fan-out to other online members is not built: `broadcast_to_org` arrives
-//! with ORG-07. Until then only the actor's client is updated, and another
-//! member with the window open sees the change when they next open it (a
-//! stale item they drag is refused and removed from their view).
+//! A committed move is fanned out to the other online members through
+//! ORG-07's `broadcast_to_org` (`move_::org::record`), so their cached vault
+//! rows stay current. A stale item a member still drags (a missed send) is
+//! refused and removed from their view.
 
 pub(crate) mod access;
 mod open;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use open::org_label;
 pub use open::{handle_org_vault_open, org_vault_bag_info, OrgVaultIo, OrgVaultOpenRequest};

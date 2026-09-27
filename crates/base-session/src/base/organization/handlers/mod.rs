@@ -85,7 +85,7 @@ pub mod targets;
 pub mod telemetry;
 pub mod texts;
 
-pub use broadcast::broadcast_to_org;
+pub use broadcast::{broadcast_to_org, broadcast_to_org_except};
 pub use chat::{org_channel, relay_org_chat, ChatSpeaker};
 pub use disband::{gm_disband, GmCaller, GM_ACCESS_LEVEL};
 pub use gm::{gm_join, gm_rank};

@@ -376,6 +376,15 @@ Target `bank`, WARN. `org_vault_open_rejected` carries `reason`, `org_id`
 | cell | `banker_not_pinned`, `out_of_range`, `banker_missing` | the grant arrived after the player moved on |
 | cell | `stale_entity`, `player_entity_missing` | the entity is another character, or gone; no line |
 
+A refused Team or Command vault move is `org_move_rejected` (WARN,
+`bank`), with the reasons listed in `docs/gameplay/inventory-system.md`
+§ "Moving items in and out of a Team or Command vault", a line, and a
+snap-back under the move's locks; `move_lock_begin_failed` and
+`move_lock_failed` mean the snap-back was skipped. A committed move whose
+vault rows could not be read back is `org_move_resync_failed
+reason=vault_read_failed`. Guards: `base-methods`
+`inventory/org_vault/tests/moves.rs`, one per reason.
+
 A closed base channel on the cell's request is `vault_open_send_failed
 reason=base_channel_closed` with the `scope`. The `LogCapture` guards are
 `cell-interactions` `bank/org_open_tests.rs` and `bank/telemetry_tests.rs`,
