@@ -400,8 +400,10 @@ pub async fn exec(
         "squad_invite" | "squad_join" | "squad_info" => {
             squad::dispatch(name, caller_id, args, tx, space_mgr).await
         }
-        // Teams and Commands (ORG-06)
+        // Teams and Commands (ORG-06, ORG-07)
         "org_disband" => org::disband(caller_id, args, tx, space_mgr).await,
+        "org_join" => org::join(caller_id, args, tx, space_mgr).await,
+        "org_rank" => org::rank(caller_id, args, tx, space_mgr).await,
         // Organizations (ORG-05)
         "org_create" => org_create::org_create(caller_id, args, tx, space_mgr).await,
         // G. server / maintenance

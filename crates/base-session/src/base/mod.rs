@@ -278,6 +278,10 @@ pub struct ConnectedClientState {
     /// Per-category token buckets (chat, mail send, duel challenge). Dies
     /// with the session. See [`rate_limit`].
     pub rate_limits: rate_limit::PlayerRateState,
+    /// Team and Command invites this character holds, and the invites it
+    /// recently sent (D-ORG06, ORG-07). Dies with the session; `logOff`
+    /// clears the held ones. See [`organization::invites`].
+    pub org_invites: organization::invites::OrgInviteState,
     /// Cross-world ring transport carry-through. Set in
     /// `handle_gate_travel` when the cell `Effect::TeleportCrossWorld`
     /// passes a ring id; consumed in

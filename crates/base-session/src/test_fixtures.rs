@@ -55,6 +55,7 @@ pub fn test_default_connected_client_state() -> ConnectedClientState {
         cinematic_aoi_hold: None,
         listed_online: false,
         rate_limits: Default::default(),
+        org_invites: Default::default(),
         player_name: None,
         player_level: None,
         player_archetype: None,

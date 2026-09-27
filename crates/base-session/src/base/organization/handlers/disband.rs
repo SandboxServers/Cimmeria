@@ -74,7 +74,7 @@ pub struct GmCaller {
     fields(entity_id = gm.entity_id, org_id)
 )]
 pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<usize, OrgReject> {
-    let (account_id, access_level) = session_of(ctx, gm.entity_id);
+    let (account_id, access_level) = session_of(ctx, gm);
     let mut row = Row {
         event: "org.disband",
         action: "disband",
@@ -206,17 +206,21 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
 }
 
 /// The GM session's `(account_id, access_level)`; a missing session is
-/// level 0, never privileged.
-fn session_of(ctx: &OrgCtx<'_>, entity_id: u32) -> (Option<u32>, u32) {
+/// level 0, never privileged. The session must still play the forwarded
+/// character on the forwarded entity (ORG-07 review): an entity id alone
+/// may have been recycled to another session since the cell sent it.
+fn session_of(ctx: &OrgCtx<'_>, gm: GmCaller) -> (Option<u32>, u32) {
     let addr = ctx
         .entity_to_addr
         .lock()
         .ok()
-        .and_then(|m| m.get(&entity_id).copied());
+        .and_then(|m| m.get(&gm.entity_id).copied());
     let Ok(clients) = ctx.connected.lock() else {
         return (None, 0);
     };
     addr.and_then(|a| clients.get(&a))
-        .filter(|c| c.player_entity_id == Some(entity_id))
+        .filter(|c| {
+            c.player_entity_id == Some(gm.entity_id) && c.active_player_id == Some(gm.player_id)
+        })
         .map_or((None, 0), |c| (Some(c.account_id), c.access_level))
 }

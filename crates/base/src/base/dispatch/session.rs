@@ -64,6 +64,22 @@ pub(super) async fn handle_log_off(
                     _ => None,
                 };
                 c.listed_online = false;
+                // The character leaves the world: the Team and Command
+                // invites it holds go too (D-ORG06). The session survives a
+                // return to character select, so this is not the teardown's
+                // job alone.
+                let dropped = c.org_invites.clear_for_logoff();
+                if dropped > 0 {
+                    tracing::debug!(
+                        target: "org",
+                        event = "invite_cleared",
+                        reason = path,
+                        account_id = c.account_id,
+                        player_id = c.active_player_id,
+                        dropped,
+                        "held organization invites dropped on logOff"
+                    );
+                }
                 (c.player_entity_id, c.enc_version, ended)
             }
             None => (None, Default::default(), None),

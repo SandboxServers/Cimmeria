@@ -163,6 +163,8 @@ crates/wireclient/
     │   │                                      #   live-DB duel accept (SS-U2)
     │   ├── two_client_squad.rs                # Live-DB: /squadinvite, accept,
     │   │                                      #   both join, leave (ORG-03)
+    │   ├── two_client_command_invite.rs       # Live-DB: a Command invite by
+    │   │                                      #   type, accepted via the base (ORG-07)
     │   └── support/mod.rs                     # Shared server bring-up + world-entry driver
     └── fixtures/
         └── castle_cellblock_head.jsonl         # 1 header + 5 events

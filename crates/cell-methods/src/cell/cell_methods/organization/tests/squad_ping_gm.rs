@@ -150,17 +150,30 @@ async fn ping_rate_limit_is_one_per_second() {
     );
 }
 
-/// A Team or Command id keeps ORG-01's answer until ORG-07/09.
+/// A Team or Command id is not a squad ping: the router forwards it to the
+/// base (ORG-07), which answers it, and the squad handler never runs.
 #[tokio::test]
 async fn ping_with_a_base_org_id_is_not_a_squad_ping() {
     let capture = LogCapture::install();
     let mut mgr = world(&["Alice"]);
     let (tx, mut rx) = channel();
     assert!(dispatch(11, BROADCAST_MINIMAP_PING, &ping_args(5), &tx, &mut mgr).await);
-    assert_eq!(
-        to(&drain(&mut rx), 11),
-        rejection(5, "Organizations are not available yet.")
-    );
+    match rx.try_recv() {
+        Ok(CellToBaseMsg::Org(crate::cell::messages::OrgCellToBase::ForwardCellCall {
+            player_id,
+            entity_id,
+            method_index,
+            args,
+        })) => {
+            assert_eq!(
+                (player_id, entity_id, method_index),
+                (1, 11, BROADCAST_MINIMAP_PING)
+            );
+            assert_eq!(args, ping_args(5));
+        }
+        other => panic!("expected the ping forwarded to the base, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "nothing else is sent");
     assert!(capture
         .all()
         .iter()

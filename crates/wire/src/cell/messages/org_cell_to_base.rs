@@ -62,7 +62,8 @@ pub enum OrgCellToBase {
     /// request id routes to the base (D-ORG05, D-ORG06): the raw method
     /// index and argument bytes, which the base decodes with
     /// `cell::cell_methods::organization::decode_org_cell_method`. Used by
-    /// ORG-06 (leave), ORG-07 (invite response) and ORG-08 (texts, ranks).
+    /// ORG-06 (leave), ORG-07 (invite response; CM 10 and 13-17 reach the
+    /// base too and are answered there) and ORG-08 (texts, ranks).
     ForwardCellCall {
         player_id: i32,
         entity_id: u32,
@@ -78,6 +79,29 @@ pub enum OrgCellToBase {
         player_id: i32,
         entity_id: u32,
         org_id: i32,
+    },
+
+    /// `.org_join <orgId> [player]` (ORG-07): add `target_name` (the GM
+    /// themself when `None`) to the organization, skipping the member
+    /// permission checks but not the type and one-per-type rules. The base
+    /// re-reads the access level (D-ORG13).
+    GmJoin {
+        player_id: i32,
+        entity_id: u32,
+        org_id: i32,
+        target_name: Option<String>,
+    },
+
+    /// `.org_rank <player> <rank> [orgId]` (ORG-07): set a member's rank,
+    /// skipping D-ORG09 (1)-(2) but not the rank rules (a rank the type
+    /// uses, never `Leader`). `org_id` may be omitted when the member is in
+    /// only one Team or Command. The base re-reads the access level.
+    GmRank {
+        player_id: i32,
+        entity_id: u32,
+        target_name: String,
+        rank: u8,
+        org_id: Option<i32>,
     },
 }
 
@@ -114,6 +138,16 @@ impl OrgCellToBase {
                 player_id,
                 entity_id,
                 ..
+            }
+            | OrgCellToBase::GmJoin {
+                player_id,
+                entity_id,
+                ..
+            }
+            | OrgCellToBase::GmRank {
+                player_id,
+                entity_id,
+                ..
             } => (player_id, entity_id),
         }
     }
@@ -127,6 +161,8 @@ impl OrgCellToBase {
             OrgCellToBase::TransferCash { .. } => "transfer_cash",
             OrgCellToBase::ForwardCellCall { .. } => "forward_cell_call",
             OrgCellToBase::GmDisband { .. } => "gm_disband",
+            OrgCellToBase::GmJoin { .. } => "gm_join",
+            OrgCellToBase::GmRank { .. } => "gm_rank",
         }
     }
 }

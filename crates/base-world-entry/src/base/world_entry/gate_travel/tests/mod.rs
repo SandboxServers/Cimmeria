@@ -86,6 +86,7 @@ pub(super) fn make_state() -> ConnectedClientState {
         cinematic_aoi_hold: None,
         listed_online: false,
         rate_limits: Default::default(),
+        org_invites: Default::default(),
         player_name: Some("Tester".to_string()),
         player_level: Some(5),
         player_archetype: Some(1),

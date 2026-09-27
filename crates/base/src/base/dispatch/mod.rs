@@ -20,6 +20,7 @@ mod diagnostics;
 mod duel;
 mod ignore;
 mod organization;
+mod organization_squad;
 mod session;
 mod tell;
 
@@ -231,6 +232,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 connected,
                 entity_to_addr,
                 cell_tx,
+                db_pool,
             )
             .await;
         }

@@ -27,6 +27,10 @@ async fn route(msg: OrgCellToBase) -> Arc<TestTransport> {
     typed_transport
 }
 
+/// `TransferCash` (the Bank's stub) and a forwarded call reach the org arm
+/// and log the actor the cell named. With no session behind entity 21 the
+/// stub answers nobody, and the forward is dropped as a stale actor before
+/// it is served (WARN `org.actor_mismatch`).
 #[tokio::test]
 async fn every_org_variant_reaches_the_org_arm() {
     let capture = LogCapture::install();
@@ -39,6 +43,7 @@ async fn every_org_variant_reaches_the_org_arm() {
                 dir: CashDir::Withdraw(100),
             },
             "org.transfer_cash_unimplemented",
+            tracing::Level::DEBUG,
         ),
         (
             OrgCellToBase::ForwardCellCall {
@@ -47,21 +52,70 @@ async fn every_org_variant_reaches_the_org_arm() {
                 method_index: 13,
                 args: vec![5, 0, 0, 0, 0, 0, 0, 0],
             },
-            "org.forward_unimplemented",
+            "org.actor_mismatch",
+            tracing::Level::WARN,
         ),
     ];
-    for (msg, event) in msgs {
+    for (msg, event, level) in msgs {
         let transport = route(msg).await;
-        assert!(transport.is_empty(), "{event}: a no-op sends nothing");
+        assert!(transport.is_empty(), "{event}: nobody to answer");
         let ev = capture
             .all()
             .into_iter()
             .find(|c| c.has_field("event", event))
             .unwrap_or_else(|| panic!("{event} not logged"));
         assert_eq!(ev.target, "org");
-        assert_eq!(ev.level, tracing::Level::DEBUG);
+        assert_eq!(ev.level, level);
         // The actor comes from the cell's session state and is logged.
         assert!(ev.has_field("player_id", "11") && ev.has_field("entity_id", "21"));
+    }
+}
+
+/// A call no packet serves yet (CM 13, until ORG-08) and the Bank's CM 19
+/// stub answer a live session with ORG-01's pair, so the press is never
+/// silent.
+#[tokio::test]
+async fn unserved_calls_from_a_live_session_are_answered() {
+    let msgs = [
+        OrgCellToBase::ForwardCellCall {
+            player_id: 11,
+            entity_id: 21,
+            method_index: 13,
+            args: vec![5, 0, 0, 0, 0, 0, 0, 0],
+        },
+        OrgCellToBase::TransferCash {
+            player_id: 11,
+            entity_id: 21,
+            org_id: 5,
+            dir: CashDir::Deposit(100),
+        },
+    ];
+    for msg in msgs {
+        let kind = msg.kind();
+        let typed_transport = Arc::new(TestTransport::new());
+        let transport: Arc<dyn Transport> = typed_transport.clone();
+        let (connected, entity_to_addr) = empty_maps();
+        let addr: std::net::SocketAddr = "127.0.0.1:54321".parse().unwrap();
+        let mut s = crate::test_support::test_default_connected_client_state();
+        s.active_player_id = Some(11);
+        s.player_entity_id = Some(21);
+        s.listed_online = true;
+        connected.lock().unwrap().insert(addr, s);
+        entity_to_addr.lock().unwrap().insert(21, addr);
+        handle_cell_message(
+            CellToBaseMsg::Org(msg),
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+            &None,
+            &None,
+            "127.0.0.1",
+            7777,
+        )
+        .await;
+        // onErrorCode, then the feedback line.
+        assert_eq!(typed_transport.filter_to(addr).len(), 2, "{kind}");
     }
 }
 
@@ -222,4 +276,72 @@ async fn gm_disband_without_a_gm_session_is_refused() {
         .expect("org.disband row");
     assert!(row.has_field("outcome", "rejected"), "{row:?}");
     assert!(row.has_field("reason", "not_gm"), "{row:?}");
+}
+
+/// ORG-07: `GmJoin` and `GmRank` reach their handlers. With no session
+/// behind entity 21 there is no GM to re-read, so each is refused `not_gm`
+/// in one INFO outcome row and nothing is sent.
+#[tokio::test]
+async fn gm_join_and_rank_without_a_gm_session_are_refused() {
+    let capture = LogCapture::install();
+    let msgs = [
+        (
+            OrgCellToBase::GmJoin {
+                player_id: 11,
+                entity_id: 21,
+                org_id: 5,
+                target_name: None,
+            },
+            "org.gm_join",
+        ),
+        (
+            OrgCellToBase::GmRank {
+                player_id: 11,
+                entity_id: 21,
+                target_name: "Bo".into(),
+                rank: 3,
+                org_id: Some(5),
+            },
+            "org.gm_rank",
+        ),
+    ];
+    for (msg, event) in msgs {
+        let transport = route(msg).await;
+        assert!(transport.is_empty(), "{event}");
+        let row = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("event", event))
+            .unwrap_or_else(|| panic!("{event} not logged"));
+        assert_eq!(row.level, tracing::Level::INFO);
+        assert!(row.has_field("reason", "not_gm"), "{:?}", row.fields);
+    }
+}
+
+/// A forwarded invite response (CM 8, ORG-07) whose actor is no longer a
+/// session in the world is dropped with WARN `org.actor_mismatch` before
+/// any invite is looked up.
+#[tokio::test]
+async fn forwarded_invite_response_from_a_stale_actor_is_dropped() {
+    let capture = LogCapture::install();
+    let request_id = cimmeria_entity::organization::BASE_INVITE_REQUEST_FLAG | 7;
+    let transport = route(OrgCellToBase::ForwardCellCall {
+        player_id: 11,
+        entity_id: 21,
+        method_index: 8,
+        args: [&request_id.to_le_bytes()[..], &[1]].concat(),
+    })
+    .await;
+    assert!(transport.is_empty());
+    assert!(capture
+        .find_event(
+            tracing::Level::WARN,
+            "no longer matches a session",
+            "actor_mismatch"
+        )
+        .is_some());
+    assert!(!capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "org.invite_response")));
 }

@@ -14,6 +14,21 @@
 //!   and the sends.
 //! - [`telemetry`]: the outcome row and `org_actions_total`.
 //!
+//! ORG-07 adds invite, the invite response, kick and rank change, the GM
+//! `.org_join` and `.org_rank`, and the ORG-API fanout:
+//!
+//! - [`invite`]: `organizationInvite` (0xCF) and `organizationInviteByType`
+//!   (0xD0) for Teams and Commands ([`handle_invite`]).
+//! - [`invite_response`]: `organizationInviteResponse` (CM 8) for a base
+//!   request id ([`handle_invite_response`]).
+//! - [`kick`]: `organizationKick` (0xD1) ([`handle_kick`]).
+//! - [`rank`]: `organizationRankChange` (0xD2) ([`handle_rank_change`]).
+//! - [`gm`]: `.org_join` and `.org_rank` ([`gm_join`], [`gm_rank`]).
+//! - [`broadcast`]: [`broadcast_to_org`], one client method to the online
+//!   members, optionally filtered by a permission.
+//! - [`targets`]: resolving the second player by name; [`answer`]: the
+//!   refusal lines.
+//!
 //! Every mutation follows ORG-LOCK (D-ORG04): one transaction, the
 //! organization row locked first, authorization read inside it. Fanout runs
 //! after the commit. Campaign ledger: `docs/analysis/organizations/`.
@@ -29,17 +44,31 @@ use tokio::sync::mpsc;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
+pub mod answer;
+pub mod broadcast;
 pub mod disband;
 pub mod fanout;
+pub mod gm;
+pub mod invite;
+pub mod invite_response;
+pub mod kick;
 pub mod leave;
 pub mod presence;
 pub mod push;
+pub mod rank;
+pub mod targets;
 pub mod telemetry;
 
+pub use broadcast::broadcast_to_org;
 pub use disband::{gm_disband, GmCaller, GM_ACCESS_LEVEL};
+pub use gm::{gm_join, gm_rank};
+pub use invite::{handle_invite, InviteInto};
+pub use invite_response::{handle_invite_response, InviteAnswer};
+pub use kick::handle_kick;
 pub use leave::{handle_leave, LeaveOutcome};
 pub use presence::announce_offline;
 pub use push::{org_state_messages, push_org_state, restore_on_login, PushError, PushSummary};
+pub use rank::handle_rank_change;
 pub use telemetry::OrgReject;
 
 #[cfg(test)]
