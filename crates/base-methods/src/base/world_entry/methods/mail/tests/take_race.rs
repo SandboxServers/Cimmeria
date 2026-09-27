@@ -24,7 +24,7 @@ const ITEMS: i32 = 0x7300_1C80;
 /// reads the same untouched mail before any can write. An op that refuses
 /// without writing (a take on an unpaid COD) finishes instead of parking,
 /// which is why finished ops count.
-async fn open_gate(pool: &PgPool) -> (Transaction<'static, Postgres>, i32) {
+pub(super) async fn open_gate(pool: &PgPool) -> (Transaction<'static, Postgres>, i32) {
     let mut gate = pool.begin().await.unwrap();
     let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
         .fetch_one(&mut *gate)
@@ -37,7 +37,7 @@ async fn open_gate(pool: &PgPool) -> (Transaction<'static, Postgres>, i32) {
     (gate, pid)
 }
 
-async fn release_when_parked(
+pub(super) async fn release_when_parked(
     pool: &PgPool,
     gate: Transaction<'static, Postgres>,
     gate_pid: i32,
@@ -73,7 +73,7 @@ async fn release_when_parked(
 
 /// The shared test pool is too small for four ops, the gate and the poll
 /// at once; the ops get a pool of their own on the same database.
-async fn wide_pool() -> PgPool {
+pub(super) async fn wide_pool() -> PgPool {
     sqlx::postgres::PgPoolOptions::new()
         .max_connections(8)
         .connect(&std::env::var("DATABASE_URL").expect("live-DB test"))
@@ -82,7 +82,7 @@ async fn wide_pool() -> PgPool {
 }
 
 /// Run `op`, then count it finished.
-async fn counted(op: impl Future<Output = ()>, done: &AtomicI64) {
+pub(super) async fn counted(op: impl Future<Output = ()>, done: &AtomicI64) {
     op.await;
     done.fetch_add(1, Ordering::SeqCst);
 }

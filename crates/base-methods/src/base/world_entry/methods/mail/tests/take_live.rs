@@ -437,3 +437,65 @@ async fn take_item_full_bags_keeps_escrow() {
 
     cleanup(&pool, BASE + 0x60).await;
 }
+
+/// Type 12: a take that fails in the database answers with feedback on the
+/// first press, logs ERROR `mail.op_failed` with `op`, `mail_id` and
+/// `reason = db_error` (plus the rule-5 identity), and rolls back whole. The
+/// failure is real, not injected: the escrowed instance id already exists in
+/// `sgw_inventory` under a third character, so the restore hits the
+/// inventory key. Fails when `answer_failure` stops logging the event.
+#[tokio::test]
+async fn take_item_db_failure_logs_op_failed_and_keeps_escrow() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (owner, sender) = two_players(&pool, BASE + 0x70, "Fail").await;
+    let type_id = any_type_id(&pool).await;
+    let item_id = ITEMS + 0x70;
+    // The clashing row belongs to the sender, in a slot the owner's take
+    // would not use.
+    insert_item(&pool, TestItem::main(item_id, sender, 5, 1), type_id).await;
+    let mail_id = AttachedMail::from(owner, sender, "SsmThreeSFail")
+        .item(item_id, type_id, 1)
+        .insert(&pool)
+        .await;
+
+    let c = Client::new(BASE as u32 + 0xF0, owner, 55_108, "SsmThreeOFail");
+    c.op(
+        MailOp::TakeItem {
+            mail_id,
+            container_id: -1,
+            slot_id: -1,
+        },
+        Some(&pool),
+        Instant::now(),
+    )
+    .await;
+    assert_eq!(
+        c.take(),
+        vec![Received::Feedback(
+            "The gate-mail request could not be completed. Nothing was changed.".to_string()
+        )]
+    );
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|e| {
+            e.level == tracing::Level::ERROR
+                && e.has_field("event", "mail.op_failed")
+                && e.has_field("op", "take_item")
+                && e.has_field("reason", "db_error")
+                && e.has_field("mail_id", &mail_id.to_string())
+        })
+        .expect("mail.op_failed op=take_item reason=db_error");
+    for key in ["account_id", "player_id", "entity_id", "error"] {
+        assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
+    }
+    assert!(has_escrow(&pool, mail_id).await, "rolled back: escrow kept");
+    assert_eq!(
+        inventory_rows(&pool, item_id).await,
+        vec![(sender, INV_MAIN, 5, 1)],
+        "nothing written for the owner"
+    );
+
+    cleanup(&pool, BASE + 0x70).await;
+}
