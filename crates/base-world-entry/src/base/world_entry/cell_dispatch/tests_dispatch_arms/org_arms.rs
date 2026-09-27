@@ -5,7 +5,7 @@ use super::super::*;
 use super::empty_maps;
 use crate::cell::messages::OrgCellToBase;
 use crate::test_support::{LogCapture, TestTransport};
-use cimmeria_entity::organization::OrgType;
+use cimmeria_entity::organization::{CashDir, OrgType};
 
 async fn route(msg: OrgCellToBase) -> Arc<TestTransport> {
     let typed_transport = Arc::new(TestTransport::new());
@@ -44,7 +44,7 @@ async fn every_org_variant_reaches_the_org_arm() {
                 player_id: 11,
                 entity_id: 21,
                 org_id: 5,
-                amount: -100,
+                dir: CashDir::Withdraw(100),
             },
             "org.transfer_cash_unimplemented",
         ),
@@ -71,4 +71,51 @@ async fn every_org_variant_reaches_the_org_arm() {
         // The actor comes from the cell's session state and is logged.
         assert!(ev.has_field("player_id", "11") && ev.has_field("entity_id", "21"));
     }
+}
+
+/// A forward outside 8..=17 is refused before its bytes are decoded: CM 18
+/// never leaves the cell and CM 19 has its own variant. A forward inside the
+/// range whose bytes do not decode is refused with the decoder's reason.
+#[tokio::test]
+async fn forward_outside_8_to_17_or_malformed_is_rejected() {
+    let capture = LogCapture::install();
+    for method_index in [7u16, 18, 19, 94] {
+        let transport = route(OrgCellToBase::ForwardCellCall {
+            player_id: 11,
+            entity_id: 21,
+            method_index,
+            // Well-formed CM 18 / CM 19 bytes: only the range stops them.
+            args: vec![1, 0, 0, 0, 1, 0, 0, 0],
+        })
+        .await;
+        assert!(transport.is_empty());
+        assert!(
+            capture
+                .all()
+                .iter()
+                .any(|c| c.has_field("event", "org.forward_rejected")
+                    && c.has_field("reason", "method_out_of_range")
+                    && c.has_field("method_index", &method_index.to_string())),
+            "{method_index} not rejected on range"
+        );
+    }
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "org.forward_unimplemented")),
+        "an out-of-range forward reached the decoder"
+    );
+
+    // CM 13 with a forged WSTRING length.
+    route(OrgCellToBase::ForwardCellCall {
+        player_id: 11,
+        entity_id: 21,
+        method_index: 13,
+        args: vec![5, 0, 0, 0, 0xFF, 0xFF, 0, 0],
+    })
+    .await;
+    assert!(capture
+        .find_event(tracing::Level::WARN, "did not decode", "truncated")
+        .is_some());
 }

@@ -32,22 +32,14 @@ use cimmeria_base_session::base::gm_feedback::send_gm_feedback_to_client;
 use cimmeria_base_session::base::helpers::send_to_witness_reliable;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::base::organization::{decode_org_base_method, OrgBaseCall};
-use cimmeria_wire::cell::client_methods::player::{build_on_error_code, ON_ERROR_CODE};
+use cimmeria_wire::cell::client_methods::organization::ORG_NOT_AVAILABLE_TEXT;
+use cimmeria_wire::cell::client_methods::player::{
+    build_on_error_code, CONDITION_FEEDBACK_INVALID_ENTITY, ERRORCODE_SYSTEM_ABILITY, ON_ERROR_CODE,
+};
 
 use crate::mercury::build_player_entity_method_packet;
 
 use super::super::ConnectedClientState;
-
-/// `EErrorCodeSystem::ERRORCODE_SYSTEM_Ability`, the only system the enum
-/// defines (`enumerations.xml:1200-1205`).
-const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
-
-/// `EConditionHandlerFeedback::CONDITION_FEEDBACK_InvalidEntity`
-/// (`enumerations.xml:1210`): the generic refusal.
-const CONDITION_FEEDBACK_INVALID_ENTITY: u16 = 0;
-
-/// The chat line a player sees until the organization handlers land.
-pub(super) const NOT_AVAILABLE_TEXT: &str = "Organizations are not available yet.";
 
 /// `InstanceID` for the error code: the org id the call names, or the type
 /// byte for invite-by-type.
@@ -137,7 +129,7 @@ pub(super) async fn handle_org_base_method(
     .await;
     send_gm_feedback_to_client(
         entity_id,
-        NOT_AVAILABLE_TEXT,
+        ORG_NOT_AVAILABLE_TEXT,
         transport,
         connected,
         entity_to_addr,
