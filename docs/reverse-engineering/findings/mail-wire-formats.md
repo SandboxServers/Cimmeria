@@ -61,8 +61,8 @@
 | Field | Type | Size | Notes |
 |-------|------|------|-------|
 | `MailId` | `INT32` | 4B | |
-| `ContainerId` | `INT32` | 4B | **Unreliable; ignored by the server.** The shipped client sends uninitialised stack values (M-Q5 below). The server picks the destination. |
-| `SlotId` | `INT32` | 4B | **Unreliable; ignored by the server** (same reason) |
+| `ContainerId` | `INT32` | 4B | **Unreliable.** The shipped client sends uninitialised stack values (M-Q5 below). The current handler is a stub that only decodes and logs it. Planned (SS-M3): ignore it and let the server pick the destination. |
+| `SlotId` | `INT32` | 4B | **Unreliable** (same reason). Current stub only logs it; planned (SS-M3): ignored |
 
 **Total wire size**: 1B header + 12B = **13 bytes**
 
