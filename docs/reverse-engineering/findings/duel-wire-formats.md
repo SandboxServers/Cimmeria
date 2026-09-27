@@ -186,10 +186,14 @@ side-channel the existing restoration doc assumes:**
 </pvpFlag>
 ```
 
-`CELL_PUBLIC` means this is an ordinary, auto-synced entity property using the **standard
-entity-property-change wire path** (the same mechanism that syncs every other `CELL_PUBLIC`
-field, per `spec.protocol.entity-property-sync`) — not the small `EGenericProperty` array/
-`onEntityProperty(propId, value)` side-channel that `GENERICPROPERTY_PvPFlag = 4` belongs to.
+`CELL_PUBLIC` marks this as an ordinary entity property declared through the **standard
+entity-property-change mechanism** (the same declaration style as every other `CELL_PUBLIC`
+field, per `spec.protocol.entity-property-sync`) — a different mechanism in kind from the small
+`EGenericProperty` array/`onEntityProperty(propId, value)` side-channel that
+`GENERICPROPERTY_PvPFlag = 4` belongs to. **This is a declaration-level contrast only — it is
+not evidence that witnesses actually receive `pvpFlag` updates.** As the next paragraph notes,
+SGW's `CELL_PUBLIC` maps only to `DATA_GHOSTED`, and client delivery on this field is unproven
+until the receiver and update path are traced.
 `SGWPlayer.def` also declares two internal (non-`Exposed`) cell methods immediately
 next to it:
 
