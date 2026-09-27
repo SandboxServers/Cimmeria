@@ -100,6 +100,8 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 18 | `onTopSpeedUpdate` | `FLOAT TopSpeed` |
 | 19 | `onStateFieldUpdate` | `INT32 bStateField` |
 
+`onTimerUpdate.BigWorldTimeComplete` is an absolute time on the client's game clock, `TICK_SYNC.gameTime / hertz` seconds ([system-protocol-wire-formats.md](../reverse-engineering/findings/system-protocol-wire-formats.md#the-client-game-clock)). Senders use `game_clock::game_time_secs() + duration` (`crates/wire/src/mercury/game_clock/`). The client shows `complete - clock`, clamped to 0, so `0.0` clears a timer, and the effect handler (type 5) creates no icon for an expiry already in the past.
+
 ### SGWCombatant (interface) — 6 methods, indices 20–25
 
 | Index | Method | Args |
