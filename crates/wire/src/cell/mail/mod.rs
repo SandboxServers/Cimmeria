@@ -26,10 +26,17 @@ pub use send_result::{serialize_send_mail_result, SEND_MAIL_RESULT_FLAGS_BEFORE_
 ///   - count: u32 LE
 ///   - per header: id(i32), fromText(WSTRING), fromId(i32), subjectText(WSTRING),
 ///     subjectId(i32), cash(i32), sentTime(f32), readTime(f32), flags(i32)
-/// - MessageAttachments: ARRAY of MessageAttachment FIXED_DICT (always empty)
-///   - count: u32 LE (= 0)
-pub fn serialize_on_mail_header_info(b_archive: u8, headers: &[MailHeader]) -> Vec<u8> {
-    let mut args = Vec::with_capacity(2 + 4 + headers.len() * 64 + 4);
+/// - MessageAttachments: ARRAY of [`MailAttachment`] FIXED_DICT
+///   (`alias.xml:103-111`), one per header that holds an escrowed item
+///   - count: u32 LE
+///   - per attachment: id(i32, the mail id the client joins on), itemId(i32),
+///     stackSize(i32), durability(i32), charges(i32)
+pub fn serialize_on_mail_header_info(
+    b_archive: u8,
+    headers: &[MailHeader],
+    attachments: &[MailAttachment],
+) -> Vec<u8> {
+    let mut args = Vec::with_capacity(2 + 4 + headers.len() * 64 + 4 + attachments.len() * 20);
 
     // ResetCategory: always 0
     args.push(0u8);
@@ -59,8 +66,11 @@ pub fn serialize_on_mail_header_info(b_archive: u8, headers: &[MailHeader]) -> V
         args.extend_from_slice(&h.flags.to_le_bytes());
     }
 
-    // MessageAttachments: empty array
-    args.extend_from_slice(&0u32.to_le_bytes());
+    // MessageAttachments
+    args.extend_from_slice(&(attachments.len() as u32).to_le_bytes());
+    for a in attachments {
+        a.serialize(&mut args);
+    }
 
     args
 }
@@ -107,6 +117,44 @@ pub struct MailHeader {
     pub sent_time: f32,
     pub read_time: f32,
     pub flags: i32,
+}
+
+/// `MessageAttachment` (`alias.xml:103-111`): the item a mail holds in
+/// escrow, joined to its header by `id` (SS-E1 M-Q4).
+///
+/// `item_id` is the item's **type** (design) id, the value `InvItem.dbid`
+/// carries, not the escrowed instance id. The recipient's client builds the
+/// attachment's name, icon, tech comp and quality from this one number
+/// (`GateMail.lua` `mailGetItemAttachmentInfo` → `.Name`, `.Icon`,
+/// `.TechComp`, `.Quality`), and it has no inventory record for an instance
+/// it does not own, so only a type id can resolve. The instance id stays on
+/// the server (`sgw_gate_mail_item.item_id`); the take paths key on the
+/// mail id and never read this field back.
+///
+/// `durability` is `INT32` per `alias.xml`, although the client's UI decode
+/// reads it into a float (SS-E1 M-Q4); both are 4 bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MailAttachment {
+    pub id: i32,
+    pub item_id: i32,
+    pub stack_size: i32,
+    pub durability: i32,
+    pub charges: i32,
+}
+
+impl MailAttachment {
+    /// Append the 20-byte FIXED_DICT, fields in `alias.xml` order.
+    pub fn serialize(&self, out: &mut Vec<u8>) {
+        for v in [
+            self.id,
+            self.item_id,
+            self.stack_size,
+            self.durability,
+            self.charges,
+        ] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+    }
 }
 
 #[cfg(test)]

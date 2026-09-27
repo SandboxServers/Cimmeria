@@ -203,7 +203,7 @@ pub async fn handle_send_mail(
 
 pub use cimmeria_wire::cell::mail::{
     serialize_on_mail_header_info, serialize_on_mail_header_remove, serialize_on_mail_read,
-    MailHeader,
+    MailAttachment, MailHeader,
 };
 
 #[cfg(test)]

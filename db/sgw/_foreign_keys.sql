@@ -23,6 +23,18 @@ ALTER TABLE ONLY sgw_gate_mail
     ADD CONSTRAINT sgw_gate_mail_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE SET NULL;
 
 --
+-- Social-systems SS-M2: the escrowed item goes with its mail. CASCADE so a
+-- character deletion (which cascades the mail) is not blocked; the player's
+-- own deleteMailMessage refuses attached mail in the application.
+--
+
+ALTER TABLE ONLY sgw_gate_mail_item
+    ADD CONSTRAINT sgw_gate_mail_item_mail_id_fkey FOREIGN KEY (mail_id) REFERENCES sgw_gate_mail(mail_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+ALTER TABLE ONLY sgw_gate_mail_item
+    ADD CONSTRAINT sgw_gate_mail_item_type_id_fkey FOREIGN KEY (type_id) REFERENCES resources.items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
 -- TOC entry 2685 (class 2606 OID 63891)
 -- Name: sgw_inventory_character_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --

@@ -72,11 +72,21 @@ pub(super) enum Received {
     },
     /// An `onPlayerCommunication` feedback line.
     Feedback(String),
-    /// `onMailHeaderInfo`: `bArchive` and each header's `(id, flags)`.
+    /// `onMailHeaderInfo`: `bArchive`, each header's `(id, flags)`, each
+    /// header's `cash` in the same order, and every `MessageAttachment` as
+    /// `[id, itemId, stackSize, durability, charges]`.
     HeaderInfo {
         b_archive: u8,
         headers: Vec<(i32, i32)>,
+        cash: Vec<i32>,
+        attachments: Vec<[i32; 5]>,
     },
+    /// `onCashChanged(total)`.
+    CashChanged(i32),
+    /// `onRemoveItem(ItemIdList)`.
+    RemoveItem(Vec<i32>),
+    /// `onUpdateItem`: each listed item's `(id, stackSize)`.
+    UpdateItem(Vec<(i32, i32)>),
     /// `onMailRead`: the mail id and `ToText`.
     MailRead {
         mail_id: i32,
@@ -125,6 +135,7 @@ fn decode(packet: &[u8], entity_id: u32) -> Received {
             let _reset = r.u8();
             let b_archive = r.u8();
             let n = r.u32();
+            let mut cash = Vec::new();
             let headers = (0..n)
                 .map(|_| {
                     let id = r.i32();
@@ -132,13 +143,53 @@ fn decode(packet: &[u8], entity_id: u32) -> Received {
                     let _from_id = r.i32();
                     let _subject = r.wstring();
                     let _subject_id = r.i32();
-                    let _cash = r.i32();
+                    cash.push(r.i32());
                     let _sent = r.i32();
                     let _read = r.i32();
                     (id, r.i32())
                 })
                 .collect();
-            Received::HeaderInfo { b_archive, headers }
+            let n = r.u32();
+            let attachments = (0..n)
+                .map(|_| [r.i32(), r.i32(), r.i32(), r.i32(), r.i32()])
+                .collect();
+            assert_eq!(r.off, r.buf.len(), "onMailHeaderInfo has no trailing bytes");
+            Received::HeaderInfo {
+                b_archive,
+                headers,
+                cash,
+                attachments,
+            }
+        }
+        method_idx::ON_CASH_CHANGED => Received::CashChanged(r.i32()),
+        method_idx::ON_REMOVE_ITEM => {
+            let n = r.u32();
+            Received::RemoveItem((0..n).map(|_| r.i32()).collect())
+        }
+        method_idx::ON_UPDATE_ITEM => {
+            // InvItem (`cimmeria_entity::inventory::InvItem::serialize`):
+            // id, dbid, stackSize, slotId, containerId, bound(u8),
+            // durability, ammoTypes(ARRAY<INT32>), curAmmoType, charges.
+            let n = r.u32();
+            let items = (0..n)
+                .map(|_| {
+                    let id = r.i32();
+                    let _dbid = r.i32();
+                    let stack = r.i32();
+                    let _slot = r.i32();
+                    let _container = r.i32();
+                    let _bound = r.u8();
+                    let _durability = r.i32();
+                    for _ in 0..r.u32() {
+                        r.i32();
+                    }
+                    let _cur_ammo = r.i32();
+                    let _charges = r.i32();
+                    (id, stack)
+                })
+                .collect();
+            assert_eq!(r.off, r.buf.len(), "onUpdateItem has no trailing bytes");
+            Received::UpdateItem(items)
         }
         method_idx::ON_MAIL_READ => {
             let mail_id = r.i32();

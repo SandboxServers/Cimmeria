@@ -1,6 +1,6 @@
 //! Send refusals that happen before any SQL: the mail-send bucket (D-SS14),
-//! the cell's decode refusals, aliases (D-SS07) and attachments (D-SS05,
-//! SS-M2). No database: each test passes `pool = None`, so a send that got
+//! the cell's decode refusals, aliases (D-SS07) and the attachment checks
+//! that need no database (D-SS05, D-SS09). No database: each test passes `pool = None`, so a send that got
 //! past its gate would end on `no_db_pool` instead, and the pinned `reason`
 //! tells the two apart.
 
@@ -48,10 +48,11 @@ fn refused_with(capture: &crate::test_support::LogCaptureGuard, reason: &str) ->
 }
 
 /// A send that passes the bucket and is then refused with
-/// `ItemNotAvailable`, so it cannot be mistaken for a limited send.
+/// `ItemNotAvailable` (COD with no item, D-SS09), so it cannot be mistaken
+/// for a limited send (code 1).
 fn attachment_send() -> MailSend {
     let mut send = plain_send(&["Bob"]);
-    send.cash = 5;
+    send.cod = true;
     send
 }
 
@@ -236,17 +237,20 @@ async fn send_rejects_attachment_with_two_recipients() {
         "attachment_with_multiple_recipients"
     ));
 
-    // The same name twice, in two cases, is one recipient: not code 3.
+    // The same name twice, in two cases, is one recipient: not code 3. The
+    // send goes on to delivery and stops there for want of a pool.
     let mut send = plain_send(&["Bob", "bob"]);
     send.cash = 50;
     c.op(MailOp::Send(send), None, t0 + Duration::from_secs(30))
         .await;
     let (code, _, _, _) = refusal(&c.take());
-    assert_eq!(code, MailResult::ItemNotAvailable.code());
+    assert_ne!(code, MailResult::AttachmentsAndMultipleRecipients.code());
+    assert!(refused_with(&capture, "no_db_pool"));
 }
 
-/// CAT-G-01: negative cash is refused (as every attachment is until SS-M2)
-/// and never reaches delivery.
+/// CAT-G-01: negative cash is refused before any SQL, with a feedback
+/// line, and never reaches delivery (where a negative gift would credit
+/// the sender).
 #[tokio::test]
 async fn send_rejects_negative_cash() {
     let capture = LogCapture::install();
@@ -255,35 +259,46 @@ async fn send_rejects_negative_cash() {
     send.cash = -500;
     c.op(MailOp::Send(send), None, Instant::now()).await;
     let (code, failed, _, lines) = refusal(&c.take());
-    assert_eq!(code, MailResult::ItemNotAvailable.code());
+    assert_eq!(code, MailResult::NoRecipients.code());
     assert_eq!(failed, vec!["Bob".to_string()]);
-    assert_eq!(lines.len(), 1);
-    assert!(refused_with(&capture, "attachment_not_supported"));
+    assert_eq!(
+        lines,
+        vec!["The attached naquadah cannot be negative. The message was not sent.".to_string()]
+    );
+    assert!(refused_with(&capture, "negative_cash"));
     assert!(!refused_with(&capture, "no_db_pool"));
     let ev = capture
-        .find_event(
-            Level::WARN,
-            "sendMailMessage refused",
-            "attachment_not_supported",
-        )
+        .find_event(Level::WARN, "sendMailMessage refused", "negative_cash")
         .unwrap();
     for key in ["account_id", "player_id", "entity_id", "result"] {
         assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
     }
 }
 
-/// Every single-recipient attachment is refused with feedback until SS-M2.
+/// SS-M2: a well-formed single-recipient attachment (gift cash, an item,
+/// COD with both) is no longer refused before SQL; it goes on to delivery,
+/// which here stops at `no_db_pool`. A malformed one (COD without an item,
+/// an item without a quantity) is refused before that, with its own reason
+/// and a feedback line.
 #[tokio::test]
-async fn send_refuses_every_attachment_until_ss_m2() {
+async fn send_passes_well_formed_attachments_to_delivery() {
+    let capture = LogCapture::install();
     let c = client(54_706);
     let t0 = Instant::now();
-    let attachments: [fn(&mut MailSend); 4] = [
+    let good: [fn(&mut MailSend); 3] = [
         |s| s.cash = 1,
-        |s| s.cod = true,
-        |s| s.item_id = 10_042,
-        |s| s.item_quantity = 1,
+        |s| {
+            s.item_id = 10_042;
+            s.item_quantity = 1;
+        },
+        |s| {
+            s.cod = true;
+            s.cash = 10;
+            s.item_id = 10_042;
+            s.item_quantity = 1;
+        },
     ];
-    for (i, attach) in attachments.iter().enumerate() {
+    for (i, attach) in good.iter().enumerate() {
         let mut send = plain_send(&["Bob"]);
         attach(&mut send);
         c.op(
@@ -293,15 +308,39 @@ async fn send_refuses_every_attachment_until_ss_m2() {
         )
         .await;
         let (code, _, _, lines) = refusal(&c.take());
-        assert_eq!(code, MailResult::ItemNotAvailable.code(), "attachment {i}");
+        assert_eq!(code, MailResult::NoRecipients.code(), "attachment {i}");
         assert_eq!(
             lines,
-            vec![
-                "Gate-mail attachments (naquadah, items and COD) are not available yet. \
-                 Send the message without them."
-                    .to_string()
-            ]
+            vec!["Gate-mail is unavailable right now. The message was not sent.".to_string()],
+            "attachment {i} reached delivery"
         );
+    }
+
+    let bad: [(fn(&mut MailSend), u8, &str); 2] = [
+        (
+            |s| s.cod = true,
+            MailResult::ItemNotAvailable.code(),
+            "cod_without_item",
+        ),
+        (
+            |s| s.item_quantity = 1,
+            MailResult::NoRecipients.code(),
+            "item_quantity_without_item",
+        ),
+    ];
+    for (i, (attach, want, reason)) in bad.into_iter().enumerate() {
+        let mut send = plain_send(&["Bob"]);
+        attach(&mut send);
+        c.op(
+            MailOp::Send(send),
+            None,
+            t0 + Duration::from_secs(40 + 10 * i as u64),
+        )
+        .await;
+        let (code, _, _, lines) = refusal(&c.take());
+        assert_eq!(code, want, "{reason}");
+        assert_eq!(lines.len(), 1, "{reason}");
+        assert!(refused_with(&capture, reason), "{reason}");
     }
 }
 

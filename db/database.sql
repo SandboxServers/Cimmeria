@@ -382,6 +382,7 @@
 \ir sgw/Inventory/Tables/sgw_inventory_base.sql
 \ir sgw/Inventory/Tables/sgw_inventory.sql
 \ir sgw/Mail/Tables/sgw_gate_mail.sql
+\ir sgw/Mail/Tables/sgw_gate_mail_item.sql
 \ir sgw/Missions/Tables/sgw_mission.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Players/Tables/sgw_player_discipline_expertise.sql

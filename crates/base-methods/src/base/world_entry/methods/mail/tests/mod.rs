@@ -1,5 +1,7 @@
-//! Mail handler tests: the read side (`read`, `read_scoping`) and the send
-//! path (`send_live`, `send_limits`, `send_race`).
+//! Mail handler tests: the read side (`read`, `read_scoping`), the send
+//! path (`send_live`, `send_limits`, `send_race`), attachments and escrow
+//! (`attach_live`, `attach_race`, SS-M2) and the delete guard
+//! (`delete_guard`, SS-M2).
 //!
 //! The live-DB tests assert on SQL side effects and, where the invariant is
 //! what the client is told, on the decoded packets the handler sent.
@@ -8,6 +10,11 @@ use super::*;
 pub(super) use crate::test_support::require_db_or_skip;
 pub(super) use crate::test_support::TestTransport;
 
+mod attach_live;
+mod attach_race;
+mod attach_rollback;
+mod attach_vault;
+mod delete_guard;
 mod packets;
 mod read;
 mod read_scoping;
@@ -151,6 +158,131 @@ pub(super) async fn fill_mailbox(pool: &PgPool, character_id: i32, count: i32, f
     .execute(pool)
     .await
     .expect("fill mailbox");
+}
+
+/// Give `player_id` a balance.
+pub(super) async fn set_naquadah(pool: &PgPool, player_id: i32, naquadah: i32) {
+    sqlx::query("UPDATE sgw_player SET naquadah = $2 WHERE player_id = $1")
+        .bind(player_id)
+        .bind(naquadah)
+        .execute(pool)
+        .await
+        .expect("set naquadah");
+}
+
+pub(super) async fn naquadah(pool: &PgPool, player_id: i32) -> i32 {
+    sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
+        .bind(player_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// Any item type the resources schema holds; the mail path does not care
+/// which.
+pub(super) async fn any_type_id(pool: &PgPool) -> i32 {
+    sqlx::query_scalar("SELECT item_id FROM resources.items ORDER BY item_id LIMIT 1")
+        .fetch_one(pool)
+        .await
+        .expect("resources.items has a row")
+}
+
+/// One inventory item for a test: its fixed instance id and where it sits.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct TestItem {
+    pub(super) item_id: i32,
+    pub(super) owner: i32,
+    pub(super) container_id: i32,
+    pub(super) slot_id: i32,
+    pub(super) stack_size: i32,
+    pub(super) bound: bool,
+}
+
+impl TestItem {
+    /// A main-bag stack of `stack_size` in `slot_id`.
+    pub(super) fn main(item_id: i32, owner: i32, slot_id: i32, stack_size: i32) -> Self {
+        Self {
+            item_id,
+            owner,
+            container_id: cimmeria_entity::inventory::INV_MAIN,
+            slot_id,
+            stack_size,
+            bound: false,
+        }
+    }
+}
+
+/// Durability and charges every test item carries, so a test can see them
+/// copied into escrow.
+pub(super) const TEST_DURABILITY: i32 = 77;
+pub(super) const TEST_CHARGES: i32 = 3;
+
+pub(super) async fn insert_item(pool: &PgPool, item: TestItem, type_id: i32) {
+    sqlx::query(
+        "INSERT INTO sgw_inventory \
+            (item_id, character_id, type_id, stack_size, container_id, slot_id, \
+             bound, durability, charges) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(item.item_id)
+    .bind(item.owner)
+    .bind(type_id)
+    .bind(item.stack_size)
+    .bind(item.container_id)
+    .bind(item.slot_id)
+    .bind(item.bound)
+    .bind(TEST_DURABILITY)
+    .bind(TEST_CHARGES)
+    .execute(pool)
+    .await
+    .expect("insert item");
+}
+
+/// `(owner, stack_size)` of an inventory row, `None` once it left
+/// `sgw_inventory`.
+pub(super) async fn inventory_row(pool: &PgPool, item_id: i32) -> Option<(i32, i32)> {
+    sqlx::query_as("SELECT character_id, stack_size FROM sgw_inventory WHERE item_id = $1")
+        .bind(item_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap()
+}
+
+/// One escrow row, as the tests read it back.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub(super) struct EscrowRow {
+    pub(super) mail_id: i32,
+    pub(super) item_id: i32,
+    pub(super) type_id: i32,
+    pub(super) stack_size: i32,
+    pub(super) durability: i32,
+    pub(super) charges: i32,
+    pub(super) bound: bool,
+    pub(super) source_character_id: i32,
+}
+
+/// Every escrow row whose mail belongs to `character_id`, by mail id.
+pub(super) async fn escrow_for(pool: &PgPool, character_id: i32) -> Vec<EscrowRow> {
+    sqlx::query_as(
+        "SELECT i.mail_id, i.item_id, i.type_id, i.stack_size, i.durability, i.charges, \
+                i.bound, i.source_character_id \
+         FROM sgw_gate_mail_item i JOIN sgw_gate_mail m ON m.mail_id = i.mail_id \
+         WHERE m.character_id = $1 ORDER BY i.mail_id",
+    )
+    .bind(character_id)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+/// Escrow rows sent by `sender` (by `source_character_id`), whatever mail
+/// they sit on.
+pub(super) async fn escrow_from(pool: &PgPool, sender: i32) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM sgw_gate_mail_item WHERE source_character_id = $1")
+        .bind(sender)
+        .fetch_one(pool)
+        .await
+        .unwrap()
 }
 
 /// Mail rows `character_id` holds.

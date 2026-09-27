@@ -63,6 +63,117 @@ fn recipient_flags_seam_refuses_every_alias() {
     }
 }
 
+fn attached(cash: i32, cod: bool, item_id: i32, item_quantity: i32) -> MailSend {
+    MailSend {
+        recipient_flags: 0,
+        recipients: typed(&["Bob"]),
+        subject: "S".into(),
+        body: String::new(),
+        cash,
+        cod,
+        item_id,
+        item_quantity,
+    }
+}
+
+/// CAT-G-01 / D-SS09: the attachment checks that need no database. Each
+/// row is a refusal the shipped client would never send.
+#[test]
+fn attachment_validation_refuses_malformed_attachments() {
+    let cases = [
+        (
+            attached(-1, false, 0, 0),
+            MailResult::NoRecipients,
+            "negative_cash",
+        ),
+        (
+            attached(-1, true, 10_500, 1),
+            MailResult::NoRecipients,
+            "negative_cash",
+        ),
+        (
+            attached(0, false, 0, 3),
+            MailResult::NoRecipients,
+            "item_quantity_without_item",
+        ),
+        (
+            attached(0, false, 10_500, 0),
+            MailResult::ItemNotAvailable,
+            "invalid_item_quantity",
+        ),
+        (
+            attached(0, false, 10_500, -2),
+            MailResult::ItemNotAvailable,
+            "invalid_item_quantity",
+        ),
+        (
+            attached(50, true, 0, 0),
+            MailResult::ItemNotAvailable,
+            "cod_without_item",
+        ),
+        (
+            attached(0, true, 10_500, 1),
+            MailResult::NoRecipients,
+            "cod_without_price",
+        ),
+    ];
+    for (send, result, reason) in cases {
+        let refusal = attachment::validate(&send).unwrap_err();
+        assert_eq!(
+            (refusal.result, refusal.reason),
+            (result, reason),
+            "{send:?}"
+        );
+        assert!(refusal.text.ends_with("not sent."), "{}", refusal.text);
+    }
+}
+
+/// D-SS02 / D-SS09: what the sender pays now. Postage on every attachment,
+/// the gift cash on top, a COD price never (the recipient pays it).
+#[test]
+fn attachment_cost_is_postage_plus_gift_cash() {
+    use attachment::{Attachment, ItemRequest, POSTAGE};
+    assert_eq!(attachment::validate(&attached(0, false, 0, 0)), Ok(None));
+
+    let gift = attachment::validate(&attached(300, false, 0, 0))
+        .unwrap()
+        .unwrap();
+    assert_eq!(gift.sender_cost(), 325);
+    assert_eq!(gift.mail_flags(), 0);
+
+    let item = attachment::validate(&attached(0, false, 10_500, 2))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        item,
+        Attachment {
+            cash: 0,
+            cod: false,
+            item: Some(ItemRequest {
+                item_id: 10_500,
+                quantity: 2
+            }),
+        }
+    );
+    assert_eq!(item.sender_cost(), POSTAGE);
+
+    let cod = attachment::validate(&attached(900, true, 10_500, 1))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        cod.sender_cost(),
+        POSTAGE,
+        "a COD price is not debited from the sender"
+    );
+    assert_eq!(cod.mail_flags(), flags::MAIL_COD);
+
+    // i32::MAX gift plus postage does not wrap.
+    let max = attachment::validate(&attached(i32::MAX, false, 0, 0))
+        .unwrap()
+        .unwrap();
+    assert_eq!(max.sender_cost(), i64::from(i32::MAX) + 25);
+}
+
 #[test]
 fn distinct_names_folds_case() {
     assert_eq!(distinct_names(&typed(&["Bob", "bob", "BOB"])), 1);

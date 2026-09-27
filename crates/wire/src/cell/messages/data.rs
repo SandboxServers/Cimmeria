@@ -50,7 +50,7 @@ pub struct MailSend {
 
 impl MailSend {
     /// True when any attachment field is set: cash (of either sign), COD
-    /// or an item. SS-M1 refuses all of them; SS-M2 implements them.
+    /// or an item. The base validates and escrows them (SS-M2).
     pub fn has_attachment(&self) -> bool {
         self.cash != 0 || self.cod || self.item_id != 0 || self.item_quantity != 0
     }
