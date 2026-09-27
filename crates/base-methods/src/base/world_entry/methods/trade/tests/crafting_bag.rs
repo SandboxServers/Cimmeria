@@ -9,8 +9,8 @@
 //! - A trade and a crafting completion on the same player serialize on
 //!   the shared inventory locks instead of deadlocking.
 //!
-//! Sentinels: accounts, players and entities `0x7000_C500..=0x7000_C57F`
-//! (16 ids per fixture, fixtures 0-7).
+//! Sentinels: accounts, players and entities `0x7000_C500..=0x7000_C58F`
+//! (16 ids per fixture, fixtures 0-8).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -377,6 +377,56 @@ async fn equipment_buyback_and_vault_items_stay_refused() {
         );
         teardown(&pool, f).await;
     }
+}
+
+/// A refusal line for a partner whose entity has no address is not lost
+/// silently: `trade.feedback_send_failed` names the entity and the
+/// refusal. The offerer, still mapped, gets their line.
+///
+/// Revert-verifier: dropping the WARN in `send_refusal_line` leaves the
+/// miss unlogged and the `find_event` below fails.
+#[tokio::test]
+async fn refusal_line_to_an_unmapped_partner_is_logged() {
+    let pool = require_db_or_skip!();
+    let f = ids(8);
+    setup(&pool, f, 0).await;
+    let backpack = backpack_type(&pool).await;
+    let bad = insert_item(&pool, f.player_a, backpack, INV_HEAD, 0, false).await;
+
+    let (sent, transport, connected, e2a) = in_world(f);
+    e2a.lock().unwrap().remove(&f.entity_b);
+    let capture = LogCapture::install();
+    run_trade(
+        &pool,
+        f,
+        vec![bad],
+        0,
+        vec![],
+        0,
+        &transport,
+        &connected,
+        &e2a,
+    )
+    .await;
+
+    let miss = capture
+        .find_event(
+            Level::WARN,
+            "trade refusal line not sent",
+            "entity_to_addr_miss",
+        )
+        .expect("trade.feedback_send_failed for the unmapped partner");
+    assert!(miss.has_field("event", "trade.feedback_send_failed"));
+    assert!(miss.has_field("entity_id", &f.entity_b.to_string()));
+    assert!(miss.has_field("player_id", &f.player_b.to_string()));
+    assert!(miss.has_field("refusal", "ineligible_container"));
+    assert!(sent_text(
+        &sent,
+        ADDR_A,
+        super::super::execute::LOCAL_UNTRADEABLE_ITEM
+    ));
+
+    teardown(&pool, f).await;
 }
 
 /// A crafting completion on A is mid-transaction: it holds A's inventory

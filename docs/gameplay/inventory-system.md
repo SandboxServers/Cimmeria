@@ -288,7 +288,7 @@ The `Inventory.flushUpdates()` method sends updates to the client in this order:
 
 - [stat-system.md](stat-system.md) - Stats modified by equipped items
 - [crafting-system.md](crafting-system.md) - Crafting uses inventory items
-- [trade-system.md](trade-system.md) - Trading moves items between inventories
+- [trade-system.md](trade-system.md) - Trading moves items between inventories, from the backpack and the crafting bag; each item lands in the recipient's bag its `container_sets` allows
 - [mail-system.md](mail-system.md) - Mail attachments come from the backpack and the crafting bag only
 - [Bank and Vault campaign ledger](../analysis/bank-vault/README.md) - Decisions, telemetry catalog and UAT checklist for the personal bank
 - [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) - Client evidence for the vault window, its size and the Expand dialog
