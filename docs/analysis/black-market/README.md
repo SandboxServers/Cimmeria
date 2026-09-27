@@ -120,6 +120,21 @@ Owner rule (2026-09-26): a restored system must be debuggable from telemetry alo
 | BM-07 | The UAT checklist names the SigNoz query for each step, backed by a saved "Black Market" view, so a failed step can be diagnosed from telemetry. |
 | BM-08 | Watch and unwatch transitions and each watch notification sent are logged with the same fields as BM-02. |
 
+### 5.2 Review follow-ups deferred from BM-01
+
+BM-01 (#965) ported the branch without changing its behaviour. The review of #965 raised these points; each belongs to the packet named here.
+
+| Finding | Packet | Note |
+|---|---|---|
+| `auction_length` is stored and echoed as the raw client byte, but `auction_length_seconds` maps every value above 3 to the 96 h tier | BM-02 | Fix with S5 (1-based durations) and S6 (time-left bucket) |
+| A bid or cancel in the window between `expires_at` and the next sweep pass changes or voids a closed auction | BM-02 | Reject with `AUCTION_GONE` when `expires_at <= now` |
+| Search sizes its reply by row count, not serialized size, so a large result can exceed the packet limit | BM-02 | Paging guards with S7 |
+| Cell methods 62-64 are forwarded without proof that the player is at an auctioneer (CWE-862) | BM-02 | Server-authority check: an auctioneer interaction target in range, set by `open_black_market` |
+| `ON DELETE RESTRICT` on `sgw_auction.seller_id` / `current_bidder` blocks deleting a character forever once it has listed or won, because settled rows are never removed | BM-02 | Decide the FK and settled-row retention with the escrow move |
+| One failing auction aborts the whole sweep pass (no `ORDER BY`, `?` on the first error); `return_item` uses `fetch_one` and fails on a missing `item_def_id` | BM-02b | Log and skip or quarantine the row when settlement moves onto `send_system_mail_tx` |
+| Settlement mail is inserted directly into `sgw_gate_mail`: no `expires_at` and no `sgw_gate_mail_item` escrow row | BM-02b | S9 |
+| The boot seed's reserved system seller (account 1, player 1) is inserted without checking what those ids hold | BM-07 | Content and seed packet |
+
 ## 6. Decisions
 
 All eight were answered in session on 2026-09-26, each as recommended.

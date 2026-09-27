@@ -159,18 +159,24 @@ The shipped `resources."EBlackMarketError"` type only defines `InvalidSortType` 
 
 ```
 Seller: BMCreateAuction(itemInstanceId, buyoutPrice, auctionLength, startingPrice)
-  |-> Cell: validate item exists, remove from inventory
-  |-> Base: forward to SGWBlackMarket.createAuction()
-  |-> SGWBlackMarket: persist auction, notify watchers via onBMAuctionUpdate
+  |-> Cell: decode, forward to the base (no checks cell-side)
+  |-> Base (create.rs), one transaction: validate prices, escrow the item
+  |   (DELETE ... RETURNING from the seller's inventory), insert the listing
+  |-> Seller: onBMAuctionUpdate
 
 Buyer: BMSearch(searchOptions)
-  |-> Cell -> Base -> SGWBlackMarket.searchBlackMarket()
+  |-> Cell -> Base (search.rs): query active listings
   |-> Results: onBMAuctions(items[], totalResults, clientKey)
 
 Buyer: BMPlaceBid(sequenceId, bidAmount)
-  |-> Cell -> Base -> SGWBlackMarket.placeBid()
-  |-> Validate: bid > current, sufficient cash
-  |-> Update auction, notify: onBMAuctionUpdate
+  |-> Cell -> Base (bid.rs), one transaction: lock the listing,
+  |   validate bid > current and sufficient cash, refund the prior
+  |   bidder, hold the new bid
+  |-> Bidder: onBMAuctionUpdate
+
+Seller: BMCancelAuction(sequenceId)
+  |-> Cell -> Base (cancel.rs): return the escrowed item, refund the bidder
+  |-> Seller: onBMAuctionRemove(sequenceId)
 
 Auction expires (expiry sweep, every 30s):
   |-> Sold (a bidder exists):  seller is mailed the winning cash,
