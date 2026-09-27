@@ -117,6 +117,10 @@ pub(super) async fn run_cell_loop(
                 // mid-crossing.
                 super::super::gate_travel::crossing_tick(tx, &mut space_mgr).await;
 
+                // Duels (SS-D1): expire unanswered challenges and end
+                // countdowns. Returns at once when nobody is duelling.
+                super::super::duel::tick::run(tx, &mut space_mgr).await;
+
                 // Drive the server-side auto-cycle loop: re-fire any
                 // armed player's stashed ability against the LIVE
                 // current_target_id whenever its cooldown has cleared.
