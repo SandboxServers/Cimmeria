@@ -157,3 +157,31 @@ async fn ring_abort_after_the_teleport_still_brings_the_pet() {
     );
     assert!(!drain_entity_moved_for(&mut rx, pet).is_empty());
 }
+
+/// The cross-world `GateTravel` never left the cell: the passenger is not
+/// destroyed with no transfer in flight (the destination's load-wait
+/// timeout releases it), and its pet stays with it.
+#[tokio::test]
+async fn a_failed_cross_world_ring_keeps_the_owner_and_the_pet() {
+    let (mut mgr, pet) = watched_pet_world();
+    let (tx, rx) = mpsc::channel(256);
+    drop(rx);
+    let engine = ChainEngine::new();
+
+    dispatch_effects(
+        vec![Effect::TeleportCrossWorld {
+            entity_id: OWNER,
+            position: [5.0, 0.0, 5.0],
+            world_name: "Castle".to_string(),
+            destination_region_id: 2,
+        }],
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert!(mgr.get_entity(OWNER).is_some(), "the passenger stays");
+    assert!(mgr.get_entity(pet).is_some(), "so does its pet");
+    assert_eq!(mgr.pets.pets_of(OWNER), vec![pet]);
+}

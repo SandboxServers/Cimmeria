@@ -83,3 +83,46 @@ async fn same_world_respawn_brings_the_pet_along() {
     witnesses.sort_unstable();
     assert_eq!(witnesses, vec![OWNER, OTHER]);
 }
+
+/// The owner's `ReanchorPlayer` never left the cell (the base channel is
+/// gone): its client still shows the owner where it stood, so the pet
+/// stays there too. The rest of the respawn still runs.
+#[tokio::test]
+async fn a_failed_same_world_reanchor_leaves_the_pet() {
+    let (mut mgr, pet) = watched_pet_world();
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 91,
+        world_name: "Agnos".to_string(),
+        name: "Agnos hub".to_string(),
+        pos: [200.0, 3.0, 150.0],
+    });
+    let start = mgr.get_entity(pet).unwrap().position;
+    let (tx, rx) = mpsc::channel(256);
+    drop(rx);
+
+    handle_respawn(OWNER, 91, &tx, &mut mgr).await;
+
+    assert_eq!(mgr.get_entity(pet).unwrap().position, start);
+    assert_eq!(mgr.pets.pets_of(OWNER), vec![pet]);
+}
+
+/// The cross-world `GateTravel` never left the cell: the owner is not torn
+/// out of its space with no transfer in flight, and neither is its pet.
+#[tokio::test]
+async fn a_failed_cross_world_respawn_keeps_the_owner_and_the_pet() {
+    let (mut mgr, pet) = watched_pet_world();
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 90,
+        world_name: "Castle".to_string(),
+        name: "Castle hub".to_string(),
+        pos: [5.0, 0.0, 5.0],
+    });
+    let (tx, rx) = mpsc::channel(256);
+    drop(rx);
+
+    handle_respawn(OWNER, 90, &tx, &mut mgr).await;
+
+    assert!(mgr.get_entity(OWNER).is_some(), "the owner stays");
+    assert!(mgr.get_entity(pet).is_some(), "so does its pet");
+    assert_eq!(mgr.pets.pets_of(OWNER), vec![pet]);
+}

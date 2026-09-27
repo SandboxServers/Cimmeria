@@ -92,3 +92,29 @@ async fn content_cross_world_teleport_despawns_the_pet() {
     assert_eq!(drain_left_aoi_for(&mut rx, pet), vec![OTHER]);
     assert_pet_fully_gone(&mgr, OWNER, pet);
 }
+
+/// The cross-world `GateTravel` never left the cell: the owner is not torn
+/// out of its space with no transfer in flight, and neither is its pet.
+#[tokio::test]
+async fn a_failed_content_cross_world_teleport_keeps_the_owner_and_the_pet() {
+    let (mut mgr, pet) = watched_pet_world();
+    let (tx, rx) = mpsc::channel(256);
+    drop(rx);
+
+    execute_actions(
+        one_action(Action::CrossWorldTeleport {
+            world_name: "Castle".to_string(),
+            position: [5.0, 0.0, 5.0],
+        }),
+        OWNER,
+        0,
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+    )
+    .await;
+
+    assert!(mgr.get_entity(OWNER).is_some(), "the owner stays");
+    assert!(mgr.get_entity(pet).is_some(), "so does its pet");
+    assert_eq!(mgr.pets.pets_of(OWNER), vec![pet]);
+}

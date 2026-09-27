@@ -154,9 +154,13 @@ async fn dispatch_effect_inner(
             // — that's the deferred `mark_player_loaded` hook the issue's
             // Phase A design calls for.
             //
-            // Order matters: flush bandolier ammo → destroy on this cell →
-            // send GateTravel. The base side waits on the same client
-            // socket so cell→base ordering is preserved naturally.
+            // Order: flush bandolier ammo → send GateTravel → destroy on this
+            // cell, the order gate travel and `gmGotoLocation` use. A closed
+            // base channel must not leave the player (or its pet) removed
+            // cell-side with no transfer in flight: the player stays hidden
+            // and movement-locked, and the destination's
+            // `REMOTE_LOAD_WAIT_TIMEOUT` abort releases it (it is still in
+            // `expected_players`).
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 if let Some(player_id) = entity.player_id {
                     cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(
@@ -164,6 +168,32 @@ async fn dispatch_effect_inner(
                     )
                     .await;
                 }
+            }
+            if let Err(e) = tx
+                .send(CellToBaseMsg::GateTravel {
+                    entity_id,
+                    target_world_name: world_name.clone(),
+                    position,
+                    rotation: [0.0, 0.0, 0.0],
+                    destination_ring_id: Some(destination_region_id),
+                    // Ring transport resolves by world name.
+                    destination_space_id: None,
+                })
+                .await
+            {
+                // The destination ring is already in RemoteLoadWait. A
+                // failed send means base never tears down the client view,
+                // so `AdvanceRingDestination` never comes back and the
+                // destination ring sits until `REMOTE_LOAD_WAIT_TIMEOUT`
+                // aborts it, releases this player and makes the ring
+                // selectable again (H02). No retry: the channel is gone.
+                tracing::error!(
+                    entity_id, %world_name, destination_region_id,
+                    reason = "cell_to_base_closed",
+                    error = %e,
+                    "TeleportCrossWorld: cell→base GateTravel send failed; player and pets left in place"
+                );
+                return;
             }
             // NOTE: this `destroy_entity` is a LEGITIMATE ring handoff, not a
             // player leaving. It queues `note_player_gone`, which the tick
@@ -184,32 +214,6 @@ async fn dispatch_effect_inner(
             )
             .await;
             space_mgr.destroy_entity(entity_id);
-
-            if let Err(e) = tx
-                .send(CellToBaseMsg::GateTravel {
-                    entity_id,
-                    target_world_name: world_name.clone(),
-                    position,
-                    rotation: [0.0, 0.0, 0.0],
-                    destination_ring_id: Some(destination_region_id),
-                    // Ring transport resolves by world name.
-                    destination_space_id: None,
-                })
-                .await
-            {
-                // The destination ring is already in RemoteLoadWait at this
-                // point. A failed send means base never tears down the
-                // client view, so `AdvanceRingDestination` never comes back
-                // and the destination ring sits until
-                // `REMOTE_LOAD_WAIT_TIMEOUT` aborts it and makes it
-                // selectable again (H02). The player still has to relog to
-                // recover their own session. No retry: the channel is gone.
-                tracing::error!(
-                    entity_id, %world_name, destination_region_id,
-                    error = %e,
-                    "TeleportCrossWorld: cell→base GateTravel send failed"
-                );
-            }
         }
         Effect::FireTeleportIn {
             entity_id,
