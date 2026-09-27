@@ -83,7 +83,7 @@ Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../C
 | `lint-figure-style.sh` / `lint-figure-style.ps1` | Figure style + format lint — Mermaid init directives, theme backdrops, caption numbering (blocking in CI) |
 | `test-live-db.sh` / `test-live-db.ps1` | The live-DB test tier: runs the lib tests of every crate in its list in one `--profile=ci-live-db` nextest invocation (blocking in CI; `--llvm-cov` for the coverage job). Needs `DATABASE_URL`. |
 
-`crate-graph/crate_graph.py` (Python 3.11+) generates the crate dependency graph in `README.md` and `crates/README.md` from `cargo metadata`; `--check` runs in CI and fails when a `Cargo.toml` change left the diagram stale. See [crate-graph/README.md](crate-graph/README.md).
+`docs-gen/regen.py` (Python 3.11+) owns every generated number and block in the Markdown: test counts, the RE findings count, the gap-analysis totals, and the crate graph. The `regen-docs` workflow runs it on `main` after every merge and commits what changed; PRs don't. See [docs-gen/README.md](docs-gen/README.md). `crate-graph/crate_graph.py` renders the crate dependency graph in `README.md` and `crates/README.md` from `cargo metadata` and still runs on its own; see [crate-graph/README.md](crate-graph/README.md).
 
 `spec-lint/` is a small Rust crate (`cargo run -p spec-lint`) used for spec-document linting.
 
