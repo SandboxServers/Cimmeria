@@ -388,15 +388,22 @@ pub(crate) fn get_active_entity_id(
 /// so SigNoz can pivot on `disconnect_reason` to answer "what kind
 /// of disconnect am I looking at?" without inferring from message
 /// text.
+///
+/// A session whose character was still in the world (`listed_online`)
+/// also tells its contact-list watchers and organizations it went offline
+/// (`session_presence::spawn_offline`, on its own task; audit A-35, ORG-06),
+/// with `reason` as the `disconnect_reason`.
 pub fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
     addr: SocketAddr,
     cell_tx: &Option<tokio::sync::mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    transport: &Arc<dyn Transport>,
+    db_pool: &Option<Arc<sqlx::PgPool>>,
     reason: &'static str,
 ) {
-    let (account_eid, player_eid, account_id, account_name, player_name, session_secs) = {
+    let (account_eid, player_eid, account_id, account_name, player_name, session_secs, ended) = {
         let mut clients = match connected.lock() {
             Ok(c) => c,
             Err(_) => return,
@@ -415,6 +422,19 @@ pub fn destroy_client_entities(
         let account_name = c.account_name.clone();
         let player_name = c.player_name.clone();
         let session_secs = c.connected_at.elapsed().as_secs();
+        // Snapshot before `remove`: a character still in the world is
+        // announced offline once (a `logOff` already unlisted and announced).
+        let ended = match (c.listed_online, c.active_player_id, player_eid) {
+            (true, Some(player_id), Some(entity_id)) => {
+                Some(crate::base::session_presence::EndedSession {
+                    account_id,
+                    player_id,
+                    entity_id,
+                    player_name: player_name.clone(),
+                })
+            }
+            _ => None,
+        };
         crate::base::player_index::log_unlisted(addr, c, reason);
         clients.remove(&addr);
         (
@@ -424,6 +444,7 @@ pub fn destroy_client_entities(
             account_name,
             player_name,
             session_secs,
+            ended,
         )
     };
 
@@ -471,6 +492,17 @@ pub fn destroy_client_entities(
         player_entity_id = ?player_eid,
         "Client entities cleaned up"
     );
+
+    if let Some(ended) = ended {
+        crate::base::session_presence::spawn_offline(
+            ended,
+            reason,
+            db_pool,
+            transport,
+            connected,
+            entity_to_addr,
+        );
+    }
 
     // Discord auth-channel: every teardown path funnels through here, so this
     // is the one place that reports *why* a player dropped. The stable

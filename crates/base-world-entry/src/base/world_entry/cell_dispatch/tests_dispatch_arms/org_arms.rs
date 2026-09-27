@@ -1,5 +1,5 @@
-//! `CellToBaseMsg::Org` routing (ORG-01): every nested variant reaches
-//! `org_dispatch` and is a logged no-op that sends nothing.
+//! `CellToBaseMsg::Org` routing (ORG-01, ORG-06): every nested variant reaches
+//! `org_dispatch`; the unserved ones are logged no-ops that send nothing.
 
 use super::super::*;
 use super::empty_maps;
@@ -118,4 +118,54 @@ async fn forward_outside_8_to_17_or_malformed_is_rejected() {
     assert!(capture
         .find_event(tracing::Level::WARN, "did not decode", "truncated")
         .is_some());
+}
+
+/// A forwarded CM 9 (ORG-06) whose actor is no longer a session in the
+/// world (here, no session at all) is dropped with WARN
+/// `org.actor_mismatch` before any database work: the cell's named actor
+/// is re-checked against the base's own session map.
+#[tokio::test]
+async fn forwarded_leave_from_a_stale_actor_is_dropped() {
+    let capture = LogCapture::install();
+    let transport = route(OrgCellToBase::ForwardCellCall {
+        player_id: 11,
+        entity_id: 21,
+        method_index: 9,
+        args: 5i32.to_le_bytes().to_vec(),
+    })
+    .await;
+    assert!(transport.is_empty());
+    let ev = capture
+        .find_event(tracing::Level::WARN, "no longer matches", "actor_mismatch")
+        .expect("org.actor_mismatch WARN");
+    assert!(ev.has_field("event", "org.actor_mismatch"), "{ev:?}");
+    assert!(ev.has_field("org_id", "5"), "{ev:?}");
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "org.leave")),
+        "a stale actor must not reach the leave handler"
+    );
+}
+
+/// `GmDisband` reaches the ORG-06 handler, which re-reads the access level
+/// from the base's own session: with no session the caller is level 0 and
+/// the disband is refused (`not_gm`) with one `org.disband` row.
+#[tokio::test]
+async fn gm_disband_without_a_gm_session_is_refused() {
+    let capture = LogCapture::install();
+    route(OrgCellToBase::GmDisband {
+        player_id: 11,
+        entity_id: 21,
+        org_id: 5,
+    })
+    .await;
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "org.disband"))
+        .expect("org.disband row");
+    assert!(row.has_field("outcome", "rejected"), "{row:?}");
+    assert!(row.has_field("reason", "not_gm"), "{row:?}");
 }

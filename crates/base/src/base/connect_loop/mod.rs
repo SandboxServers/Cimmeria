@@ -196,6 +196,7 @@ async fn handle_datagram(
                 entity_manager,
                 cell_tx,
                 entity_to_addr,
+                db_pool,
                 enc_version,
             )
             .await

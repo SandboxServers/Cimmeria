@@ -18,13 +18,13 @@ The `OrganizationMember` interface in `entities/defs/interfaces/OrganizationMemb
 
 ## Implementation Status
 
-What exists after the campaign's contract packet (ORG-01) and the squad core (ORG-03):
+What exists after the campaign's contract packet (ORG-01), the squad core (ORG-03) and the Team and Command lifecycle (ORG-06):
 
 - **Models** in `cimmeria_entity::organization` ([`crates/entity/src/organization/`](../../crates/entity/src/organization/)): `OrgType`, `OrgRank` with the ranks each type uses, the 26 `OrgPermission` bits with the 12 (Team) and 14 (Command) bits the client's rank editors expose, `OrgLeaveReason`, `SquadLootType`, the id-space constants, the default rank permissions and `org_text`, the one implementation of the text rules (lengths, forbidden characters, the name normaliser and its uniqueness key). Every enum value is pinned against `entities/defs/enumerations.xml`.
 - **Inbound decoders** in `cimmeria-wire`: cell methods 8–19 and SGWPlayer cell method 94 `onOrganizationCreation` ([`crates/wire/src/cell/cell_methods/organization/`](../../crates/wire/src/cell/cell_methods/organization/)), and base methods 0xCF–0xD2 ([`crates/wire/src/base/organization.rs`](../../crates/wire/src/base/organization.rs)). Each bounds a `WSTRING`'s declared length by the bytes left before allocating, and rejects truncation, trailing bytes and unpaired surrogates. CM 10 rejects a non-finite coordinate, and CM 19's signed amount decodes to a `CashDir` (positive deposits, negative withdraws, zero is rejected). CM 13, 14, 15, 17 and 94 used to drop their text; they now read it.
-- **Dispatch.** The cell router ([`crates/cell-methods/src/cell/cell_methods/organization/`](../../crates/cell-methods/src/cell/cell_methods/organization/)) decodes cell methods 8–19 and routes on the id each carries (D-ORG05, D-ORG06): CM 8 with a cell-issued request id, CM 9 with a squad-range org id, and CM 18 go to the squad handlers in `squad/`; everything else, and CM 94 in `player/social.rs`, logs `UNIMPLEMENTED` at DEBUG on the `org` target (the text length, never the text) and is answered with `onErrorCode` and the feedback line "Organizations are not available yet." (`forward.rs`, which ORG-07 turns into a forward to the base). The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) forwards `organizationInviteByType` type 0 and `organizationKick` with a squad id to the cell, refuses a type above 2, and answers every other well-formed call with the same pair, so the press is not silent.
+- **Dispatch.** The cell router ([`crates/cell-methods/src/cell/cell_methods/organization/`](../../crates/cell-methods/src/cell/cell_methods/organization/)) decodes cell methods 8–19 and routes on the id each carries (D-ORG05, D-ORG06): CM 8 with a cell-issued request id, CM 9 with a squad-range org id, and CM 18 go to the squad handlers in `squad/`; CM 9 with a Team or Command id is forwarded to the base (`OrgCellToBase::ForwardCellCall`, ORG-06); everything else, and CM 94 in `player/social.rs`, logs `UNIMPLEMENTED` at DEBUG on the `org` target (the text length, never the text) and is answered with `onErrorCode` and the feedback line "Organizations are not available yet." (`forward.rs`, which ORG-07 turns into a forward to the base). The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) forwards `organizationInviteByType` type 0 and `organizationKick` with a squad id to the cell, refuses a type above 2, and answers every other well-formed call with the same pair, so the press is not silent.
 - **Outbound serializers** for client methods 34–51, `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) in [`crates/wire/src/cell/client_methods/organization/`](../../crates/wire/src/cell/client_methods/organization/) and `player.rs`, each byte-tested. The squad handlers send 34–40 and 51.
-- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`. `SquadInvite` and `SquadKick` reach the cell's squad handlers; `OrgCellToBase` is still a logged no-op on the base.
+- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`. `SquadInvite` and `SquadKick` reach the cell's squad handlers. On the base, a forwarded CM 9 and `GmDisband` reach the ORG-06 handlers; the other `OrgCellToBase` arms are still logged no-ops.
 - **Squads** ([group-system.md § Squads](group-system.md#squads-org-03)): the service-wide `SquadRegistry` on `SpaceManager` and `CellEntity::squad_id`.
 
 The schema and the base-side persistence layer came with ORG-02; see [Persistence](#persistence).
@@ -33,7 +33,7 @@ The schema and the base-side persistence layer came with ORG-02; see [Persistenc
 |---------|--------|-------|
 | Organization types | DEFINED | Command, Squad, Team in entity defs; typed models in `cimmeria_entity::organization` |
 | Invite response | PARTIAL | `organizationInviteResponse` (CM 8): squads DONE; a base-issued request id (Team, Command) is answered "not available yet" |
-| Leave | PARTIAL | `organizationLeave` (CM 9): squads DONE; a Team or Command id is answered "not available yet" |
+| Leave | DONE | `organizationLeave` (CM 9): squads (ORG-03); Teams and Commands on the base, with D-ORG12's leader rule and D-ORG20's vault check before a last-member disband (ORG-06, [below](#login-restore-presence-leave-and-disband-org-06)) |
 | Minimap ping | PARTIAL | `BroadcastMinimapPing` (CM 10): squads validated (own squad, one a second) and logged, never relayed, since no client method shows another member's ping (ORG-E1 Q3, ORG-04); a Team or Command id is answered "not available yet" |
 | Strike team (PvP) | STUB | `strikeTeamResponse` (CM 11) decodes, logs, drops |
 | PvP leave confirmation | STUB | `pvpOrganizationLeaveResponse` (CM 12) decodes, logs, drops |
@@ -46,9 +46,10 @@ The schema and the base-side persistence layer came with ORG-02; see [Persistenc
 | Cash management | STUB | `organizationTransferCash` (CM 19) decodes, logs, drops |
 | Creation | STUB | `onOrganizationCreation` (SGWPlayer CM 94) decodes the name, logs, drops. `launchOrganizationCreation` (135) and `onOrganizationCreationResult` (134) have serializers, never sent |
 | Invite issue / kick / rank change | PARTIAL | 0xD0 type 0 (squad invite) and 0xD1 with a squad id (squad kick) are DONE; a type above 2 is refused; 0xCF, 0xD2 and the Team and Command forms answer with `onErrorCode` and a feedback line |
-| Roster info | PARTIAL | `onOrganizationRosterInfo` (38) is sent for squads only |
+| Roster info | DONE | `onOrganizationRosterInfo` (38): squads (ORG-03); Teams and Commands at every world entry, followed by `onMemberJoinedOrganization` (37) for each online member, and presence updates on login and logout (ORG-06) |
+| Disband | PARTIAL | The last member leaving, and `.org_disband <orgId>` for GMs (ORG-06); both refused while the vault is not empty |
 | Experience tracking | NOT IMPL | `onOrganizationExperienceUpdate` (CM 44) never sent |
-| Persistence | IMPLEMENTED | Tables, constraints, the leader trigger and the locked write API (ORG-02, [Persistence](#persistence)); no handler calls them yet |
+| Persistence | IMPLEMENTED | Tables, constraints, the leader trigger and the locked write API (ORG-02, [Persistence](#persistence)); the ORG-06 handlers use them |
 | Organization vault | NOT IMPL | Only `onClearOrgVaultInventory` reference |
 
 ## Persistence
@@ -104,6 +105,65 @@ Everything logs on the `org` target (catalog row in [observability.md](../archit
 To find a character delete that changed an organization's leader in SigNoz Logs: `service.name = 'cimmeria-server' AND scope_name = 'org' AND event = 'leader_changed' AND reason = 'character_deleted'`, then narrow on `from_player_id` or `org_id`. `org` reaches SigNoz at DEBUG (`OTEL_FILTER`), so the persistence events are there too.
 
 The default rank masks, the text caps and the name rule are project policy, not recovered data (D-ORG08, D-ORG10, D-ORG21). The live-DB tests are in `persistence/tests/`.
+
+## Login restore, presence, leave and disband (ORG-06)
+
+The handlers are in [`crates/base-session/src/base/organization/handlers/`](../../crates/base-session/src/base/organization/handlers/).
+
+### Login restore
+
+At every world entry (`onClientReady`, after the contact lists), the base sends one reliable bundle per Team and Command the character belongs to, Team first. The order comes from the client's handlers (ORG-E1 Q1, [organization-restoration.md](../reverse-engineering/findings/organization-restoration.md)):
+
+1. `onOrganizationJoined` [35] with `aNewMember = 0`.
+2. The name [43], MOTD [45], cash [48] and experience [44].
+3. The rank permissions [49], and the custom rank names [50] (only renamed ranks; the others keep the client's default label).
+4. The roster [38]. The client stores every roster row with member id 0, which it shows as "Offline".
+5. `onMemberJoinedOrganization` [37] with `aNewMember = 0` and the live entity id for each online member, the character included. This is the only message that sets a roster id.
+
+The same push (`push_org_state`) is what ORG-05 sends after a creation. Because it runs at every world entry, gate travel refreshes the entity id the other members' rosters hold.
+
+### Presence
+
+"Online" means a session whose character is in the world (`listed_online`). When a character enters the world, the other online members of each of its organizations get [37] with its entity id. When its session ends they get [37] with id 0: the client's handler overwrites the id of an existing name in place, so the row turns Offline and stays. `onMemberLeftOrganization` [39] would delete the row, so logout never uses it.
+
+Every teardown path announces offline exactly once:
+
+- `helpers::destroy_client_entities` (client disconnect, inactivity timeout, send error, duplicate login) announces a session that was still listed online, on its own task (`session_presence`), with the teardown's `disconnect_reason`.
+- `logOff` announces and clears `listed_online`, so the disconnect that reaps a full exit does not announce again.
+
+The same hook tells contact-list watchers (CM 89 `LoggedInStatus`, offline). Before ORG-06 only `logOff` did, so a crash or timeout left a character "online" in every friend list (audit A-35).
+
+### Leave
+
+`organizationLeave` (CM 9) with a Team or Command id is forwarded to the base with the character the cell's entity plays. The base checks that the entity is still that character's session in the world, then, under ORG-LOCK:
+
+| Case | Result |
+|---|---|
+| Not a member of that organization | Refused (`not_member`, CAT-M-04) with a feedback line |
+| The leader, while other members remain | Refused (`leader_cannot_leave`, D-ORG12); the organization's state is re-sent and a line explains why |
+| The last member | The organization is disbanded, unless the vault holds anything (`vault_not_empty`, D-ORG20, with the state re-sent) |
+| Anyone else | The member row goes; the leaver gets `onOrganizationLeft` [36] with `Requested`, and the online members `onMemberLeftOrganization` [39] |
+
+### Disband
+
+`.org_disband <orgId>` is a GM console command. The cell forwards it (`OrgCellToBase::GmDisband`); the base re-reads the caller's access level from its own session (GameMaster or above), locks the organization, and refuses while the vault holds anything. It also disbands a memberless organization (D-ORG20's recovery case) once its vault is empty. Every online member gets `onOrganizationLeft` [36] with `Disbanded`, and the GM gets a line with the member count.
+
+Beside every `onOrganizationLeft` [36] to an online player (a leave, a disband), the base sends the cell `OrgBaseToCell::OrgMembershipEnded { player_id, entity_id, org_id, reason }` after the commit. The cell logs `org.membership_ended`; the Bank campaign's BV-07 extends that arm to close an open Team or Command vault session, and ORG-07 sends it on a kick too.
+
+The vault predicate is still the stub that returns true. The Bank campaign replaces `api::org_vault_is_empty`; until then, the tests drive the refusal through a test-only override of the stub.
+
+### Telemetry (ORG-06)
+
+Everything logs on the `org` target, and each action counts once on `org_actions_total{action, outcome, reason}` (`action` = `login_restore`, `leave`, `disband`):
+
+| Question | SigNoz Logs filter (`service.name = 'cimmeria-server' AND scope_name = 'org' AND ...`) |
+|---|---|
+| A character's world-entry restore | `event = 'org.login_restore' AND player_id = <id>` (`org_count`), then `event = 'org.state_push'` per organization (`roster_size`, `online_members`) |
+| Presence | `event IN ('member_online', 'member_offline') AND player_id = <id>` (`recipients`, `disconnect_reason`) |
+| A leave, and why it was refused | `event = 'org.leave' AND player_id = <id>` (`outcome`, `reason`) |
+| A GM disband | `event = 'org.disband' AND org_id = <id>`, and `event = 'org.gm_action'` for the GM's identity |
+| A message a member did not get | `event = 'org.send_failed'` (`reason`, `target_player_id`) |
+| A forwarded call from a stale session | `event = 'org.actor_mismatch'` |
 
 ## Entity Definition (OrganizationMember.def)
 

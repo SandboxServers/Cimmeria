@@ -47,6 +47,16 @@ pub enum OrgCellToBase {
         method_index: u16,
         args: Vec<u8>,
     },
+
+    /// `.org_disband <orgId>` (ORG-06). The cell's `.`-console only runs a
+    /// GM's line, but no privilege bit travels: the base re-reads the
+    /// session's access level itself (D-ORG13) and still honours the vault
+    /// check (D-ORG20).
+    GmDisband {
+        player_id: i32,
+        entity_id: u32,
+        org_id: i32,
+    },
 }
 
 impl OrgCellToBase {
@@ -67,6 +77,11 @@ impl OrgCellToBase {
                 player_id,
                 entity_id,
                 ..
+            }
+            | OrgCellToBase::GmDisband {
+                player_id,
+                entity_id,
+                ..
             } => (player_id, entity_id),
         }
     }
@@ -77,6 +92,7 @@ impl OrgCellToBase {
             OrgCellToBase::Create { .. } => "create",
             OrgCellToBase::TransferCash { .. } => "transfer_cash",
             OrgCellToBase::ForwardCellCall { .. } => "forward_cell_call",
+            OrgCellToBase::GmDisband { .. } => "gm_disband",
         }
     }
 }

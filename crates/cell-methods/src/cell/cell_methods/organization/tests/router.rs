@@ -31,8 +31,9 @@ async fn motd_is_decoded_and_answered() {
 
 /// Every method 8-19 answers. CM 8 and 18 carry no org id (instance 0);
 /// here the caller is not an initialised player, so the squad handlers
-/// answer CM 8, 9 (id 5 is a Team/Command id, so ORG-01's answer) and 18
-/// with a refusal pair too.
+/// answer CM 8 and 18 with a refusal pair too, and CM 9 (id 5, a
+/// Team/Command id) cannot be forwarded without a character and gets
+/// ORG-01's answer.
 #[tokio::test]
 async fn every_org_method_is_answered() {
     let mut mgr = make_space_manager_with_player(1);
@@ -83,16 +84,29 @@ async fn indices_outside_8_to_19_are_not_handled() {
     assert!(!dispatch(1, 20, &[], &tx, &mut mgr).await);
 }
 
-/// CM 9 routes on the org id: the last Team/Command id gets ORG-01's
-/// answer, the first squad id reaches the squad handler (which refuses a
-/// squad the caller is not in with its own line).
+/// CM 9 routes on the org id: the last Team/Command id is forwarded to the
+/// base (ORG-06) with the caller's own character and the raw arguments, the
+/// first squad id reaches the squad handler (which refuses a squad the
+/// caller is not in with its own line).
 #[tokio::test]
 async fn leave_routes_on_the_squad_id_boundary() {
     let mut mgr = world(&["Alice"]);
     let (tx, mut rx) = channel();
     let below = SQUAD_ORG_ID_MIN - 1;
     dispatch(11, LEAVE, &below.to_le_bytes(), &tx, &mut mgr).await;
-    assert_eq!(to(&drain(&mut rx), 11), rejection(below, NOT_AVAILABLE));
+    match rx.try_recv() {
+        Ok(CellToBaseMsg::Org(crate::cell::messages::OrgCellToBase::ForwardCellCall {
+            player_id,
+            entity_id,
+            method_index,
+            args,
+        })) => {
+            assert_eq!((player_id, entity_id, method_index), (1, 11, LEAVE));
+            assert_eq!(args, below.to_le_bytes().to_vec());
+        }
+        other => panic!("expected the leave forwarded to the base, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "nothing else is sent");
     dispatch(11, LEAVE, &SQUAD_ORG_ID_MIN.to_le_bytes(), &tx, &mut mgr).await;
     assert_eq!(
         to(&drain(&mut rx), 11),

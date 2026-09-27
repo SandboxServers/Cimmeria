@@ -21,3 +21,8 @@ disconnect reaps it, so it needs the explicit `listed_online = false`.
 org membership) should first try a view over `connected`. Only add a maintained index when O(n)
 over sessions is measurably too slow, and then grep every `clients.remove(` before claiming coverage.
 Related: [[cross-world-transfer-flow]], [[ring-transport-fsm]].
+
+**Session-end announcements (ORG-06, 2026-09-27):** "went offline" fanout (contact list + org [37] id 0)
+fires from `destroy_client_entities` (now takes `transport` + `db_pool`) via
+`session_presence::spawn_offline`, and from `logOff`; both gate on `listed_online` and `logOff` clears
+it, so a full exit is announced exactly once. The gate-travel abandon path still announces nothing.

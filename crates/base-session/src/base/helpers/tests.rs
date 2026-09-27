@@ -441,6 +441,9 @@ fn destroy_client_entities_stamps_disconnect_reason_on_cleanup_log() {
         addr,
         &None,
         &entity_to_addr,
+        &(std::sync::Arc::new(crate::test_support::TestTransport::new())
+            as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
+        &None,
         "client_disconnect",
     );
 
@@ -485,6 +488,9 @@ fn destroy_client_entities_accepts_all_documented_reasons() {
             addr,
             &None,
             &entity_to_addr,
+            &(std::sync::Arc::new(crate::test_support::TestTransport::new())
+                as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
+            &None,
             reason,
         );
 
@@ -520,6 +526,9 @@ fn destroy_client_entities_logs_reason_on_already_cleaned_short_circuit() {
         addr,
         &None,
         &entity_to_addr,
+        &(std::sync::Arc::new(crate::test_support::TestTransport::new())
+            as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
+        &None,
         "inactivity_timeout",
     );
 

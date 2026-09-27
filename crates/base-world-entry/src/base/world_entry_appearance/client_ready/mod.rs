@@ -454,6 +454,26 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
+    // Teams and Commands (ORG-06): each organization's header, ranks and
+    // roster, then its online members marked Online; and the other online
+    // members told this character is online. Every world entry, so gate
+    // travel refreshes the entity id their rosters hold.
+    cimmeria_base_session::base::organization::handlers::restore_on_login(
+        &cimmeria_base_session::base::organization::handlers::OrgCtx {
+            db_pool,
+            transport,
+            connected,
+            entity_to_addr,
+            cell_tx,
+        },
+        &cimmeria_base_session::base::organization::handlers::OrgPlayer {
+            account_id: Some(account_id),
+            player_id: pending.player_id,
+            entity_id,
+        },
+    )
+    .await;
+
     // Crafting state: disciplines, paradigm levels, blueprints, the ASP
     // total and the crafting options (140: the window's machine and tool),
     // owner-only, in one bundle. After the burst for the same reason as the

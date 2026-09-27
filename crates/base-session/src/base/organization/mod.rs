@@ -15,10 +15,14 @@
 //! - [`audit`]: exports the member-delete trigger's `sgw_organization_events`
 //!   rows to the `org` log target.
 //!
-//! Modelled on `base::contact_list`. The handlers and the org fanout arrive
-//! with the later packets (ORG-05 to ORG-08).
+//! - [`handlers`]: login restore, presence, leave and disband (ORG-06), and
+//!   the fanout the later packets build on.
+//!
+//! Modelled on `base::contact_list`. Invite, kick, rank and text handlers
+//! arrive with ORG-07 and ORG-08.
 
 pub mod api;
 pub mod audit;
 pub mod character_delete;
+pub mod handlers;
 pub mod persistence;

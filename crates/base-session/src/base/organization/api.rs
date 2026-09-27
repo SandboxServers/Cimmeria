@@ -339,7 +339,21 @@ pub async fn org_vault_is_empty(
     _tx: &mut Transaction<'_, Postgres>,
     _org_id: i32,
 ) -> Result<bool, sqlx::Error> {
+    #[cfg(test)]
+    if let Ok(empty) = VAULT_EMPTY_OVERRIDE.try_with(|v| *v) {
+        return Ok(empty);
+    }
     Ok(true)
+}
+
+#[cfg(test)]
+tokio::task_local! {
+    /// Test seam for the stub: a test scopes `false` to drive the
+    /// `vault_not_empty` refusal (ORG-06) before the Bank's real vault
+    /// exists. Task-local, so parallel tests never see each other's value.
+    /// The Bank campaign replaces the stub, and its tests use real vault
+    /// rows instead.
+    pub(crate) static VAULT_EMPTY_OVERRIDE: bool;
 }
 
 // ── Row decoding ─────────────────────────────────────────────────────────────
