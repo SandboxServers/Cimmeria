@@ -2,13 +2,13 @@
 title: "Chat System"
 type: reference
 audience: engineers
-last_updated: 2026-09-19
+last_updated: 2026-09-26
 ---
 
 # Chat System
 
-> **Last updated**: 2026-09-19
-> **Status**: Spatial chat (say / emote / yell) works. Channel management, moderation, tells, and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server.
+> **Last updated**: 2026-09-26
+> **Status**: Spatial chat (say / emote / yell) works. Channel management, moderation, tells, and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server. Sending on any non-spatial channel (team, squad, command, server, tell) no longer disappears silently: the sender gets a feedback line on the registered `tell`/feedback channel explaining why, matching the legacy `onError` reply the Python cell sent for the same unsupported channels (`python/cell/SGWPlayer.py::processPlayerCommunication`).
 
 ## Overview
 
@@ -29,8 +29,8 @@ Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `c
 | GM console passthrough | DONE | A `.`-prefixed say from a GM is routed to the console handler; from a non-GM it falls through as ordinary chat |
 | Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. Channels are auto-joined at login; there is no join/leave state to change |
 | AFK status | ACK-ONLY | `chatSetAFKMessage` is deliberately log-only — AFK is not a speaker flag, and the auto-reply-tell path it feeds is unported |
-| Non-spatial channels (team / squad / command / server) | NOT IMPL | Registered with the client so the UI shows them, but the cell's channel match has no arm — messages hit the `_ =>` debug-log fallthrough and go nowhere |
-| Player-to-player tell | NOT IMPL | `tell` (channel 9) is registered and used for one-way server→client messages (welcome text, GM feedback), but no player-originated tell is routed |
+| Non-spatial channels (team / squad / command / server) | NOT IMPL | Registered with the client so the UI shows them, but the cell has no group/organization backing (team/squad/command) or is server-broadcast-only (server) to distribute the message; the sender gets a feedback line (`onPlayerCommunication` on the feedback channel) instead of a silent drop — see [System Channels](#system-channels) |
+| Player-to-player tell | NOT IMPL | `tell` (channel 9) is registered and used for one-way server→client messages (welcome text, GM feedback), but no player-originated tell is routed; the sender gets the same "not supported yet" feedback line rather than silence |
 | User channels | NOT IMPL | No create / delete / password / member list |
 | Channel operator system | NOT IMPL | `chatOp` undispatched |
 | Channel moderation | NOT IMPL | `chatMute`, `chatKick`, `chatBan` undispatched |
@@ -102,12 +102,12 @@ Eight channels are registered with the client at `onClientReady` (`DEFAULT_CHAT_
 | say | 0 | yes | Spatial fanout to AoI witnesses |
 | emote | 1 | yes | Spatial fanout to AoI witnesses |
 | yell | 2 | yes | Spatial fanout to AoI witnesses (same radius as say today — no wider range implemented) |
-| team | 3 | yes | Accepted from the client, then dropped — no group backing |
-| squad | 4 | yes | Accepted from the client, then dropped — no group backing |
-| command | 5 | yes | Accepted from the client, then dropped — no organization backing |
-| officer | 6 | **no** | Not registered; would trigger the unknown-channel popup |
-| server | 7 | yes | Server-to-client broadcasts only |
-| tell | 9 | yes | Used server-to-client for the welcome message and GM feedback. There is no dedicated feedback channel (8 is unregistered), so GM feedback rides `tell` |
+| team | 3 | yes | No group backing yet — sender gets a "not supported yet" feedback line instead of a silent drop |
+| squad | 4 | yes | No group backing yet — sender gets a "not supported yet" feedback line instead of a silent drop |
+| command | 5 | yes | No organization backing yet — sender gets a "not supported yet" feedback line instead of a silent drop |
+| officer | 6 | **no** | Not registered; would trigger the unknown-channel popup. A player message that somehow arrives with this id still gets routed through the same feedback path (which always replies on the registered feedback channel, never channel 6 itself) |
+| server | 7 | yes | Server-to-client broadcasts only (`CHANNEL_FLAG_DisallowPlayerMessages` in the legacy `ChatChannelManager`). A player who tries to speak here gets a feedback line explaining the channel is system-only — legacy only logged this server-side and left the client in silence |
+| tell | 9 | yes | Used server-to-client for the welcome message and GM feedback. There is no dedicated feedback channel (8 is unregistered), so GM feedback — and now the "channel not supported" reply for team/squad/command/officer/server/tell — rides `tell` |
 | splash | — | **no** | Not registered |
 
 > **Id conflict (2026-09-27).** `EChannel` in `entities/defs/enumerations.xml:113-128` numbers the channels server 8, feedback 9, tell 10, splash 11 and user channels from 12, with 7 unused; the legacy `deprecated/python/base/Chat.py:144-154` builds every channel from those values. The ids in this table are what the Rust server registers today (`DEFAULT_CHAT_CHANNELS`), not the enum. Whether the client hardcodes any `EChannel` id, or takes every id from `onChatJoined`, is still to be checked; the organizations campaign changes the registered ids only with that evidence ([decision D-ORG14](../analysis/organizations/README.md#decisions), [audit A-40](../analysis/organizations/audit.md)).
