@@ -75,7 +75,7 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 - A summon that cannot spawn gets an `onErrorCode` and a chat line: "Your pet could not be summoned." (or "You have not trained that summon."). No cooldown is charged when this happens at the press.
 - The Jaffa, Prime and Lo'taur rows follow in PT-11. The `.pet` console is PT-07.
 
-The table records what the entity definitions provide and what the server does with them.
+The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). The table records what the entity definitions provide and what the server does with them.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -85,8 +85,9 @@ The table records what the entity definitions provide and what the server does w
 | Stance list | DONE (PT-01) | `onPetStanceList` to the owner only, filtered by `ENTITYFLAG_NoPassive` / `NoDefensive` / `NoAggressive` |
 | Summon by ability | DONE (PT-03) | `pet_summons` row → warmup → spawn beside the owner; one pet per owner (D-PT04); source and target VFX |
 | Spawn and teardown | DONE (PT-01, PT-02) | `spawn_pet_from_template`. Despawn on every owner departure, move beside the owner on a same-space teleport; see [Owner lifecycle](#owner-lifecycle) |
-| Ability toggling | STUB | `toggleAbility` with on/off flag |
-| Stance changing | STUB | `changePetStance` with `onPetStanceUpdate` |
+| Ability toggling | DONE (PT-04) | CM 89 `petAbilityToggle` updates `toggled_off` and re-sends `onPetAbilityList` to the owner. CM 88 refuses an OFF ability |
+| Stance changing | DONE (PT-04) | CM 90 `petChangeStance`: a listed stance id or a 1-based slot (A-07), then `onPetStanceUpdate` to the owner only |
+| Owner ability orders | DONE (PT-04) | CM 88 `petInvokeAbility` behind the ownership guard; the pet casts and engages the target |
 | Pet leveling | STUB | `setPetLevel` defined |
 | Owner death response | DONE (PT-02) | The pet despawns when its owner dies (D-PT08), from `resolve_death`; the `onOwnerDeath` cell method itself is unused |
 | Owner leash response | STUB | `onOwnerLeash` cell method. The AI's own teleport back (PT-05) does not go through it |
@@ -98,6 +99,20 @@ The table records what the entity definitions provide and what the server does w
 | Position tracking | DEFINED | `ownerLastPosition`, `petLastPosition`, `lastOwnerPositionCheck` |
 | Pet AI | DONE (PT-05) | Follow, teleport, stances, defend-owner, owner-anchored leash, owner combat state. See [Pet AI](#pet-ai-pt-05) |
 | Pet persistence | STUB | `saveToDB` defined but no save logic |
+
+## Owner commands (PT-04)
+
+The owner commands the pet through three SGWPlayer cell methods. The handlers are in `crates/cell-methods/src/cell/cell_methods/player/pet/`, and their log target is `pets.command`.
+
+Every command checks ownership first (CAT-C-11 / #462). The pet id in the packet goes through `SpaceManager::owned_pet(caller, claimed)`. If the id names another player's pet, an NPC, a player or nothing, or the caller holds the owner's entity id but did not summon the pet (the id was reused), the command is refused. `owned_pet` logs the refusal once at DEBUG (`event = ownership_rejected`, `reason` = `not_owner`, `not_a_pet`, `pet_gone` or `owner_identity_mismatch`): a client can name any id at will, so it is not a WARN. The caller gets `onErrorCode` (`IsNotPetOwner` 236, or `DoesNotHavePet` 190 for `pet_gone`). A dead owner is refused with `NotLiving` 14, and a pet that is not in its owner's space (the teardown sweep has not run yet) with 190. Every other refusal also gets an answer: an `onErrorCode` to the **owner**, or a re-send of the pet bar or stance.
+
+| Method | What it does |
+|---|---|
+| CM 88 `petInvokeAbility(petId, abilityId, targetId)` | The ability must be on the pet's bar and not toggled off. The pet must be alive, not warming up another ability, and off cooldown. An explicit target must be a live hostile-faction SGWMob in the pet's space (`pets::is_order_target`: never a player, a pet, or an SGWBeing, which never enters combat), within the ability's range (`max_range`, or 30 u by default), and in line of sight (the fight tick's `attack_line_of_sight`; `fire_los` skips NPC shooters). The pet casts through `handle_use_ability_with_kill_credit`, then puts the target on top of its threat list and goes Fighting (`npc_ai.transition reason = pet_command`). For a cast with a warmup that engagement waits until the cast fires (`pets::engage_deferred_order`, from the warmup tick); an interrupted warmup engages nothing. `targetId <= 0` casts untargeted and engages nothing. Refusal codes: 167 (not on the bar, or toggled off), 14 (the pet or the target is dead), 99 (cooldown or busy), 37 (a non-hostile target, including any pet), 42 (out of range), 39 (no line of sight), 0 (the target is gone or in another space). A pet ability with a warmup is re-checked when it fires: the warmup tick applies the same `is_order_target` rule and line of sight to a pet caster. |
+| CM 89 `petAbilityToggle(petId, abilityId, toggle)` | `toggle` 1 turns the ability on (removes it from `toggled_off`) and 0 turns it off. Either way the owner is sent `onPetAbilityList` again. Any other value changes nothing and still re-sends the bar. An ability that is not on the bar is refused with 167. |
+| CM 90 `petChangeStance(petId, stance)` | A stance id from the pet's stance list is taken as sent. Any other value is read as a 1-based slot into the list the owner was sent. The small pet bar sends slot numbers (A-07, a bug in the 2009 client). A value that is neither is refused, and the current stance is sent again. On success the stance is set and `onPetStanceUpdate` goes to the owner only. |
+
+The owner may not aim the pet at anything the owner could not attack. `handle_use_ability` applies the #444 target rule to player casters only, so the pet handler applies it for the owner. Every pet-bar click in the shipped UI arrives as CM 88; nothing in the client Lua calls CM 89 (A-06). The stance rules for autonomous engagement belong to PT-05, and an explicit CM 88 order is obeyed whatever the stance.
 
 ## Entity Definition (SGWPet.def)
 

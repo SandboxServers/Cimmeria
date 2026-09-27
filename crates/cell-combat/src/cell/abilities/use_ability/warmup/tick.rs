@@ -164,6 +164,12 @@ async fn fire_time_refusal(
     if caster.is_player && (target.is_player || target.faction != combat::HOSTILE_FACTION) {
         return Some(InterruptReason::TargetLost);
     }
+    // A pet casts on its owner's order (`petInvokeAbility`, pets PT-04),
+    // which applied the owner's target rule at launch; re-check the same
+    // rule here. An AI-driven mob is not (its fight tick picks targets).
+    if caster.pet.is_some() && !cimmeria_cell_world::cell::pets::is_order_target(target) {
+        return Some(InterruptReason::TargetLost);
+    }
 
     // Same range rule as the launch check in `handle_use_ability`.
     let max_range = ability_def.map_or(30.0, |d| {
@@ -201,6 +207,12 @@ async fn fire_time_refusal(
     )
     .await
     {
+        return Some(InterruptReason::NoLineOfSight);
+    }
+    // `fire_los` skips NPC shooters, trusting the fight tick's sight check.
+    // A pet's owner-ordered cast never went through the fight tick, so its
+    // delayed fire gets the fight tick's own test (pets PT-04).
+    if caster.pet.is_some() && !space_mgr.attack_line_of_sight(entity_id, target_eid, false) {
         return Some(InterruptReason::NoLineOfSight);
     }
     None
@@ -286,4 +298,7 @@ async fn fire_due_cast(
         )
         .await;
     }
+    // A pet's owner order engages its target once the cast has fired
+    // (pets PT-04); an interrupted warmup never gets here.
+    cimmeria_cell_world::cell::pets::engage_deferred_order(space_mgr, entity_id, pc.target_id);
 }

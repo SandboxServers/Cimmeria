@@ -14,52 +14,11 @@ pub async fn dispatch(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     match method_index {
-        PET_INVOKE_ABILITY => {
-            if args.len() >= 12 {
-                let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                let ability_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                let target_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
-                tracing::info!(
-                    entity_id,
-                    pet_entity_id,
-                    ability_id,
-                    target_id,
-                    "UNIMPLEMENTED: petInvokeAbility"
-                );
-            }
-            true
-        }
-
-        PET_ABILITY_TOGGLE => {
-            if args.len() >= 9 {
-                let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                let ability_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                let toggle = args[8] as i8;
-                tracing::info!(
-                    entity_id,
-                    pet_entity_id,
-                    ability_id,
-                    toggle,
-                    "UNIMPLEMENTED: petAbilityToggle"
-                );
-            }
-            true
-        }
-
-        PET_CHANGE_STANCE => {
-            if args.len() >= 5 {
-                let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                let stance = args[4] as i8;
-                tracing::info!(
-                    entity_id,
-                    pet_entity_id,
-                    stance,
-                    "UNIMPLEMENTED: petChangeStance"
-                );
-            }
-            true
-        }
-
+        // PET_INVOKE_ABILITY / PET_ABILITY_TOGGLE / PET_CHANGE_STANCE (88..=90)
+        // used to be stubbed here. They are routed by the outer dispatcher
+        // to `cell_methods::player::pet::dispatch` (pets PT-04). This module
+        // no longer handles them; `social_submodule_does_not_handle_pet_methods`
+        // in `dispatch.rs` is the guard.
         ORG_CREATION => {
             // `onOrganizationCreation(WSTRING aOrganizationName)`. The name
             // used to be dropped (audit A-02); the pending-creation check,

@@ -368,6 +368,8 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | - | cancelPvPTimer | no | | 1101 |
 | 108 | cancelMovie | YES | WSTRING movieName | 1104 |
 
+**Pet commands (88-90).** The `entityId` in all three is a **client-supplied pet id**. The server resolves it through `SpaceManager::owned_pet(caller, entityId)` before anything else and refuses another player's pet, an NPC or a stale id, with `onErrorCode` to the caller (pets PT-04, CAT-C-11 / #462). Every pet-bar click in the shipped client sends 88; nothing in the client Lua calls 89. The small pet bar sends a 1-based slot number as the `stance` of 90, not a stance id, and the server maps the slot through the stance list it sent. Handlers and refusal codes: [pet-system.md](../gameplay/pet-system.md#owner-commands-pt-04).
+
 ---
 
 ## Summary

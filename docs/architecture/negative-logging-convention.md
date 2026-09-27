@@ -293,6 +293,25 @@ for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
 
+## Pet command seams (PT-04)
+
+The owner's pet commands (cell methods 88-90, `cell_methods/player/pet/`) carry a client-supplied pet id. The ownership guard (CAT-C-11 / #462) resolves it through `SpaceManager::owned_pet`, which logs every mismatch once on target `pets.command` at `debug!` (`event = "ownership_rejected"`, `reason`, the caller as `caller_id` plus its `account_id` / `player_id`). DEBUG, because a client can name any id at will. The handler adds no second row, but the refusal is never silent: the caller also gets `onErrorCode`.
+
+| `reason` | Meaning | `onErrorCode` |
+|---|---|---|
+| `not_owner` | The id is another player's pet. `owner_id` names the real owner | 236 `IsNotPetOwner` |
+| `not_a_pet` | The id is an NPC, a player, or nothing | 236 |
+| `pet_gone` | The registry still lists the pet, but its entity is gone (the teardown sweep has not run) | 190 `DoesNotHavePet` |
+| `owner_identity_mismatch` | The caller holds the owner's entity id but is not the player who summoned the pet: the id was reused before the sweep (#870) | 236 |
+
+Refusals after the guard use the same target. Two stay at WARN because an operator should see them: `ability_not_in_list` for an ability the server has a definition for (a stale bar or a seed bug), and `cast_refused` (a cast every pre-check passed but `handle_use_ability` still refused). Everything else logs at DEBUG. That covers ordinary play (a cooldown, a friendly or out-of-range target, a wall in the way, a slot 4 or 5 from the small pet bar) and values only a forged packet sends (an ability id with no definition, a target in another space, a bad toggle value). The split follows `useAbility`'s not-known path, which logs undefined ids at DEBUG so a client cannot flood the WARN index. Each refusal also sends the owner an `onErrorCode`, or re-sends the pet bar or stance. The full list is in [observability.md](observability.md) (`pets.command`).
+
+`malformed_args` is a WARN and is not throttled. A flood of short packets writes one row per packet; a Pattern D throttle keyed by `(player_id, reason)` is the follow-up if that shows up in practice.
+
+Every `pets.command` row the handlers write carries `owner_id` (the caller's entity id) and the owner's `account_id` / `player_id` from `SpaceManager::player_identity`. `player/pet/tests/telemetry.rs` pins each `reason`, its level and those identity fields in one table-driven `LogCapture` test, and the guard's `ownership_rejected` rows in a second one.
+
+The guards are in `cell_methods/player/pet/tests/guard.rs`. They cover another player's pet, an NPC id, a nonexistent id, a negative id, a stale registry entry and a reused owner entity id, for each command, and they fail when the `owned_pet` call is removed, weakened to "is a pet", or narrowed to the registry map without the per-pet summoner check (worknote `docs/analysis/pets/worknotes/pt-04.md`).
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
