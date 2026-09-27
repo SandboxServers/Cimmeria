@@ -395,8 +395,8 @@ mod tests {
             // `npc_ai.*` target by prefix -- see the behavioural test below.
             "npc_ai=debug",
             // Pets (#570): `pets.lifecycle` (INFO summon/despawn, DEBUG
-            // registry scrub), `pets.command`, `pets.ai` and `pets.credit`
-            // by prefix -- see `pets_target_tests`.
+            // registry scrub), `pets.command`, `pets.ai`, `pets.credit` and
+            // `pets.buff` by prefix -- see `pets_target_tests`.
             "pets=debug",
             // `content` WARN rows (`set_aggression_tag_miss`) and INFO
             // rows would pass at the default `info`; named so the target

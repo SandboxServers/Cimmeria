@@ -95,7 +95,17 @@ pub async fn handle_use_ability(
     // before anything reads it, so the #444 gate below never sees a summon
     // and stays exactly as strict for every other ability. See `summon`.
     let summon = super::summon::player_summon(space_mgr, entity_id, ability_id);
-    let target_id = if summon.is_some() { 0 } else { target_id };
+    // ── Owner ability on the owner's pet (pets PT-08) ──
+    //
+    // Same shape: the pet is resolved from the registry (summoner-checked),
+    // never from the client's target, so the target is discarded here and
+    // the #444 gate never sees the cast. See `owner_pet`.
+    let owner_pet = super::owner_pet::player_owner_pet_ability(space_mgr, entity_id, ability_id);
+    let target_id = if summon.is_some() || owner_pet {
+        0
+    } else {
+        target_id
+    };
 
     // ── Auto-cycle manual-override gate ──
     //
@@ -325,6 +335,11 @@ pub async fn handle_use_ability(
         if super::summon::refuse_summon_launch(entity_id, ability_id, summon, tx, space_mgr).await {
             return false;
         }
+    }
+    if owner_pet
+        && super::owner_pet::refuse_owner_pet_launch(entity_id, ability_id, tx, space_mgr).await
+    {
+        return false;
     }
 
     // Fire-time line of sight, players only (NA31, D-NA14): refused with

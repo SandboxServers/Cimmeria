@@ -60,6 +60,7 @@ pub(crate) use use_ability::{
     credited_player, interrupt_pending_cast, is_casting, InterruptReason,
 };
 pub use use_ability::{handle_use_ability, handle_use_ability_with_kill_credit};
+pub use use_ability::{is_owner_pet_ability, owner_pet_tick, owner_pet_tick_at};
 
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]

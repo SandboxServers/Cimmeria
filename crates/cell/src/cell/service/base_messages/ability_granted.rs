@@ -61,6 +61,14 @@ pub(super) async fn handle_ability_granted(
         progress.training_points = training_points;
         progress.tree_points_spent = tree_points_spent;
     }
+    // A passive ability's effect holds from the moment it is learned
+    // (pets PT-08: Heed Our Calling raises `speedPet`).
+    let _passives = crate::cell::effects::passives::apply_passives(
+        space_mgr,
+        entity_id,
+        &[ability_id],
+        crate::cell::effects::passives::PassiveChange::Learned,
+    );
     tracing::info!(
         target: "abilities",
         event = "granted",

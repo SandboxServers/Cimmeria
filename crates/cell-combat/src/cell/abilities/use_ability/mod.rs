@@ -16,6 +16,9 @@
 //!   launch side, the 100 ms tick, and the interrupt (AT-10).
 //! - `summon` — the pet-summon diversions (pets PT-03): the launch refusals,
 //!   and the fire that spawns the pet instead of resolving a target.
+//! - `owner_pet` — owner abilities that act on the owner's pet (pets PT-08):
+//!   the same launch/fire diversions, and the tick that expires pet buffs
+//!   and carries out To The Death.
 //! - `sequence` — the Ability_Begin / Ability_End / Ability_Interrupt
 //!   `onSequence`: shared packing, owner + witnesses routing, and the NPC
 //!   attack-animation WARNs (NA43).
@@ -25,6 +28,7 @@ mod fire;
 mod fire_los;
 mod handle;
 mod kill_credit;
+mod owner_pet;
 mod sequence;
 mod summon;
 mod warmup;
@@ -37,6 +41,7 @@ mod tests;
 // stable for callers (and `super::*` resolution for `tests`).
 pub use handle::handle_use_ability;
 pub use kill_credit::handle_use_ability_with_kill_credit;
+pub use owner_pet::{is_owner_pet_ability, owner_pet_tick, owner_pet_tick_at};
 
 pub(super) use fire::fire_cast;
 pub use kill_credit::credit_ground_deaths;
