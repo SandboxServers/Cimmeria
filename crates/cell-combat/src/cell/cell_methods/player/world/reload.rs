@@ -212,14 +212,13 @@ pub async fn handle_reload(
         "Weapon reload started"
     );
 
-    let timer_args = cimmeria_entity::abilities::serialize_timer_update(
+    // Same timer type as an ability cooldown, so the same builder: the
+    // expiry is absolute on the client's game clock (see `game_clock`).
+    let timer_args = cimmeria_entity::abilities::build_cooldown_timer_args(
         ABILITY_RELOAD_WEAPON,
-        cimmeria_entity::abilities::TIMER_ABILITY_COOLDOWN,
         entity_id as i32,
-        0,
         total_time,
-        // Absolute, on the client's game clock (see `game_clock`).
-        crate::mercury::game_clock::game_time_secs() + total_time,
+        crate::mercury::game_clock::game_time_secs(),
     );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {

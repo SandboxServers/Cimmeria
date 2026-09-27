@@ -11,8 +11,7 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
-    serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE, AF_DO_NOT_ACTIVATE_AUTO_CYCLE,
-    TIMER_ABILITY_COOLDOWN,
+    build_cooldown_timer_args, AF_DEACTIVATE_AUTO_CYCLE, AF_DO_NOT_ACTIVATE_AUTO_CYCLE,
 };
 
 use super::super::super::combat;
@@ -559,13 +558,11 @@ pub async fn handle_use_ability(
     // at login: the client's cooldown manager (`FUN_00c6d1c0`) shows
     // `complete - clock`, clamped to 0, so a 0.0 here showed no cooldown.
     // Python: `now + abilityCooldown + abilityWarmup` (AbilityManager.py:605).
-    let timer_args = serialize_timer_update(
+    let timer_args = build_cooldown_timer_args(
         ability_id,
-        TIMER_ABILITY_COOLDOWN,
         entity_id as i32,
-        0,
         charged_secs,
-        game_clock::game_time_secs() + charged_secs,
+        game_clock::game_time_secs(),
     );
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;

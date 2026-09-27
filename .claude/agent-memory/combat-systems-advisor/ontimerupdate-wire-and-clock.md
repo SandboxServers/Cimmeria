@@ -18,10 +18,10 @@ INT32 ID, INT8 Type, INT32 SourceID, INT32 SecondaryId, FLOAT TotalTime, FLOAT B
 Byte offsets: ID 0..4, Type 4, SourceID 5..9, **SecondaryId 9..13**, TotalTime 13..17,
 BigWorldTimeComplete 17..21.
 
-`crates/entity/src/abilities/wire.rs::serialize_timer_update` emits all 21 bytes but
-**hardcodes `secondaryId = 0`** — it has no `secondary_id` parameter. `EffectSet_HandleOnTimerUpdate`
-(type 5) keys off `SecondaryId` to find the active effect instance, so effect-duration timers
-that need per-instance correlation cannot be expressed through this helper today.
+`serialize_timer_update` takes a `secondary_id` since #744. `EffectSet_HandleOnTimerUpdate`
+(type 5) keys the active-effect entry on `SecondaryId`; python sends `instance.effect.id` there.
+Type-2 starts go through `build_cooldown_timer_args(id, source, secs, now)` (#718), which
+writes `SecondaryId = 0` and `BigWorldTimeComplete = now + secs`.
 
 Timer type constants (`crates/entity/src/abilities/defs.rs:66-69`):
 `TIMER_ABILITY_WARMUP = 1`, `TIMER_ABILITY_COOLDOWN = 2`, `TIMER_DURATION_EFFECT = 5`,
@@ -63,8 +63,9 @@ The client's clock is `TICK_SYNC.gameTime / hertz` seconds (`FUN_00c6e220` ->
 `FUN_00dd6c60`; handlers `0x00dd62a0` hertz, `0x00dd6d00` tickSync, `0x00dd6820`
 setGameTime, which keeps only the low 16 bits). `tickRate` in TICK_SYNC is **ms per
 tick**. So UPDATE_FREQ=10 + tickRate=100 + a 10 Hz loop advancing 1 per send always
-agreed; an older version of this note called it "10x slow", which was wrong (and PR
-#718 built a 100-ticks-per-second clock on that misreading).
+agreed; an older version of this note called it "10x slow", which was wrong (PR
+#718's first draft built a 100-ticks-per-second clock on that misreading; its rework and
+CR-02 #864 both use 10 ticks/s, and #718 now only adds the type-2 builder).
 
 The real defect was a per-session epoch: each session counted from 0 at its login.
 Now `crates/wire/src/mercury/game_clock/` holds one server-wide epoch; login and every
@@ -76,10 +77,10 @@ heartbeat send `game_ticks()`, and every timer start sends
 
 | Site | Type | `BigWorldTimeComplete` sent |
 |---|---|---|
-| `cell-combat/.../use_ability/handle.rs` | 2 | `game_time_secs() + cooldown + warmup` |
+| `cell-combat/.../use_ability/handle.rs` (`build_cooldown_timer_args`) | 2 | `game_time_secs() + cooldown + warmup` |
 | `cell-combat/.../use_ability/warmup/mod.rs` | 1 | `game_time_secs() + warmup` |
 | `cell-combat/.../use_ability/warmup/interrupt.rs` | 1, 2 | `0.0` (clear) |
-| `cell-combat/.../player/world/reload.rs` | 2 | `game_time_secs() + warmup + cooldown` |
+| `cell-combat/.../player/world/reload.rs` (`build_cooldown_timer_args`) | 2 | `game_time_secs() + warmup + cooldown` |
 | `cell-combat/.../effects/pulsing/register.rs` | 5 | `game_time_secs() + duration` |
 | `cell-combat/.../effects/pulsing/tick.rs`, `channel_cancel.rs` | 5 | `0.0` (clear) |
 | `cell-console/.../console/net.rs` `.net_timer` | caller | `game_time_secs() + total` |

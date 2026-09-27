@@ -1,6 +1,6 @@
 ---
 name: Build environment quirks
-description: Worktrees need external/ junction-linked before cargo works; the old rust-lld linker override is obsolete; cargo's output is block-buffered through the Bash tool, so a hung test looks like a hung build.
+description: Worktrees need external/ junction-linked before cargo works; sccache can replay another worktree's utoipa-swagger-ui OUT_DIR path; the old rust-lld linker override is obsolete; cargo's output is block-buffered through the Bash tool, so a hung test looks like a hung build.
 metadata:
   type: project
 ---
@@ -75,3 +75,14 @@ Corollary for tests: always wrap a handler call that awaits a cross-service
 reply in `tokio::time::timeout`, so an ordering regression fails fast instead
 of wedging the suite. See [[cross-world-transfer-flow]] for the case that
 taught this.
+
+## sccache replays another worktree's `utoipa-swagger-ui` path
+
+`utoipa-swagger-ui`'s `RustEmbed` bakes its build script's absolute `OUT_DIR` into the
+compile. sccache keys it without that path, so a worktree can get a cache hit from
+another worktree's build and then fail with `#[derive(RustEmbed)] folder
+'B:	argets/<other-worktree>/.../swagger-ui-*/dist/' does not exist` once that
+worktree's target is retired (seen 2026-09-27, PR #718 clippy, path from `org-07`).
+Fix: `export RUSTC_WRAPPER=` (the lane leaves a set-but-empty wrapper alone), then
+`lane.sh cargo clean -p utoipa-swagger-ui` and rebuild. Put the export in a scratch
+script, since worktree Bash refuses `env VAR=x cmd`.

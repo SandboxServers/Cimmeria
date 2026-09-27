@@ -519,7 +519,9 @@ into the launch pass, and `zero_warmup_wire_is_unchanged` pins the zero-warmup b
 **Decision:** Every `onTimerUpdate` that starts a timer sends
 `BigWorldTimeComplete = game_clock::game_time_secs() + duration`: the ability cooldown
 (`TotalTime = cooldown + warmup`), the warmup timer, the reload timer, the duration-effect
-timer and `.net_timer`. A timer that clears sends `0.0`. The clock lives in
+timer and `.net_timer`. The two cooldown (type 2) senders, the ability and the reload, share
+`cimmeria_entity::abilities::build_cooldown_timer_args`, so they cannot drift apart
+(#718). A timer that clears sends `0.0`. The clock lives in
 [`crates/wire/src/mercury/game_clock/`](../../crates/wire/src/mercury/game_clock/mod.rs): one
 epoch pinned at server start, 10 ticks per second, and the same tick count in the login
 bundle (`TICK_SYNC`, `SET_GAME_TIME`) and in every heartbeat.

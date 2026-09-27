@@ -1,6 +1,8 @@
 //! Wire-format helpers for the ability system's client-facing messages
 //! (`onEffectResults`, `onTimerUpdate`).
 
+use crate::abilities::TIMER_ABILITY_COOLDOWN;
+
 /// A single stat change result sent to the client in `onEffectResults`.
 ///
 /// Wire per entry: `stat_id:i8, delta:i32, damage_code:i8, stat_result_code:i8` (7 bytes).
@@ -40,6 +42,33 @@ pub fn serialize_timer_update(
     buf.extend_from_slice(&total_time.to_le_bytes());
     buf.extend_from_slice(&expire_time.to_le_bytes());
     buf
+}
+
+/// Build the `onTimerUpdate` args for a cooldown start (type 2), for the
+/// ability cooldown and the weapon-reload cooldown alike.
+///
+/// `BigWorldTimeComplete` is **absolute** on the game clock the client was
+/// given at login: `now_secs + cooldown_secs`. The client's cooldown
+/// manager shows `complete - clock`, clamped to 0, so a `0.0` or a relative
+/// `cooldown_secs` shows no bar. One builder keeps every type-2 sender on
+/// that rule (#271).
+///
+/// `now_secs` is injected so the wire shape is testable without a clock;
+/// production passes `mercury::game_clock::game_time_secs()`.
+pub fn build_cooldown_timer_args(
+    ability_id: i32,
+    source_id: i32,
+    cooldown_secs: f32,
+    now_secs: f32,
+) -> Vec<u8> {
+    serialize_timer_update(
+        ability_id,
+        TIMER_ABILITY_COOLDOWN,
+        source_id,
+        0,
+        cooldown_secs,
+        now_secs + cooldown_secs,
+    )
 }
 
 /// Serialize `onEffectResults` arguments.
@@ -88,6 +117,38 @@ mod tests {
         assert_eq!(secondary_id, 42, "SecondaryId sits at offset 9");
         let total_time = f32::from_le_bytes([data[13], data[14], data[15], data[16]]);
         assert!((total_time - 5.0).abs() < f32::EPSILON);
+    }
+
+    /// `build_cooldown_timer_args` emits `BigWorldTimeComplete = now +
+    /// cooldown` at bytes 17..21 and keeps `TotalTime` the duration.
+    /// Reverting the expiry to `0.0` or to the relative `cooldown` trips it.
+    #[test]
+    fn build_cooldown_timer_args_emits_absolute_expire_time() {
+        let data = build_cooldown_timer_args(597, 100, 5.0, 12345.0);
+        assert_eq!(data.len(), 21);
+        assert_eq!(i32::from_le_bytes(data[0..4].try_into().unwrap()), 597);
+        assert_eq!(data[4], TIMER_ABILITY_COOLDOWN as u8);
+        assert_eq!(i32::from_le_bytes(data[5..9].try_into().unwrap()), 100);
+        assert_eq!(i32::from_le_bytes(data[9..13].try_into().unwrap()), 0);
+        let total = f32::from_le_bytes(data[13..17].try_into().unwrap());
+        assert_eq!(total, 5.0, "TotalTime must stay the duration");
+        let expire = f32::from_le_bytes(data[17..21].try_into().unwrap());
+        assert_eq!(
+            expire, 12350.0,
+            "BigWorldTimeComplete must be absolute (now + cooldown), not 0.0 or a relative offset"
+        );
+    }
+
+    /// A cooldown that is not a whole number of seconds carries into the
+    /// absolute field as a plain float sum.
+    #[test]
+    fn build_cooldown_timer_args_handles_fractional_cooldown() {
+        let data = build_cooldown_timer_args(7, 1, 0.5, 1000.0);
+        let expire = f32::from_le_bytes(data[17..21].try_into().unwrap());
+        assert!(
+            (expire - 1000.5).abs() < f32::EPSILON,
+            "fractional cooldown must be carried into BigWorldTimeComplete: {expire}"
+        );
     }
 
     #[test]
