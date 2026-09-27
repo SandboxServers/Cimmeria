@@ -117,8 +117,26 @@ recently_used() {  # $1 = worktree path, $2 = name
   return 1
 }
 
+# A lane job could take a slot between the building check and the delete. So the
+# worktree is marked first ($LANE_ROOT/lane/retiring.<name>) and the slots checked after,
+# while lane.sh takes its slot first and checks for the mark after: one of the two always
+# sees the other, and lane.sh refuses to build into a marked worktree. A dry run changes
+# nothing, so it takes no mark.
+mark() {  # $1 = name; fails when another rm-worktree.sh is already retiring it
+  [ $DRY -eq 1 ] && return 0
+  mkdir -p "$LANE_ROOT/lane" && mkdir "$LANE_ROOT/lane/retiring.$1" 2>/dev/null
+}
+unmark() { [ $DRY -eq 1 ] || rmdir "$LANE_ROOT/lane/retiring.$1" 2>/dev/null; }
+
 retired=0; skipped=0
 retire() {  # $1 = worktree name, $2 = "sweep" when called by --merged
+  if ! mark "$1"; then
+    echo "skip $1: another rm-worktree.sh is retiring it"; skipped=$((skipped+1)); return
+  fi
+  retire_marked "$@"
+  unmark "$1"
+}
+retire_marked() {
   local name="$1" wt="$WTROOT/$1" br state
   if ! git worktree list --porcelain | grep -qx "worktree $wt"; then
     echo "skip $name: not a registered worktree under .claude/worktrees"; skipped=$((skipped+1)); return
@@ -157,7 +175,10 @@ retire() {  # $1 = worktree name, $2 = "sweep" when called by --merged
     echo "  external/ is still there; stopping before git removes the worktree" >&2; skipped=$((skipped+1)); return
   fi
   [ -n "$locked" ] && run git worktree unlock "$wt"
-  if [ $FORCE -eq 1 ]; then run git worktree remove --force "$wt"; else run git worktree remove "$wt"; fi
+  local rm_args=(remove); [ $FORCE -eq 1 ] && rm_args+=(--force)
+  if ! run git worktree "${rm_args[@]}" "$wt"; then
+    echo "  git worktree remove failed; keeping the branch and the test database" >&2; skipped=$((skipped+1)); return
+  fi
   case "$state" in
     MERGED|ON_MAIN) [ -n "$br" ] && run git branch -D -q "$br" ;;
   esac
@@ -166,7 +187,10 @@ retire() {  # $1 = worktree name, $2 = "sweep" when called by --merged
 }
 
 cd "$MAIN" || exit 1
-git fetch -q origin
+# Without gh, merge state comes from origin/main; a stale one could call unmerged work merged.
+if ! git fetch -q origin; then
+  echo "git fetch origin failed; not deciding what has merged from a stale origin/main" >&2; exit 1
+fi
 
 if [ $MERGED -eq 1 ]; then
   while IFS= read -r wt; do
@@ -179,13 +203,15 @@ if [ $MERGED -eq 1 ]; then
       [ -d "$d" ] || continue
       n="$(basename "$d")"
       case "$owned" in *" $n "*) continue ;; esac
-      if building "$n"; then echo "skip orphan target $n: building"; continue; fi
+      if ! mark "$n"; then echo "skip orphan target $n: another rm-worktree.sh is on it"; continue; fi
+      if building "$n"; then echo "skip orphan target $n: building"; unmark "$n"; continue; fi
       echo "orphan target $n (no worktree)"; run rm -rf "$TROOT/$n"
+      unmark "$n"
     done
   fi
 else
   for n in "${NAMES[@]}"; do retire "$n"; done
 fi
 
-git worktree prune
+[ $DRY -eq 1 ] || git worktree prune
 if [ $DRY -eq 1 ]; then echo "dry run: would retire $retired, skip $skipped"; else echo "retired $retired, skipped $skipped"; fi

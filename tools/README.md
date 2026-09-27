@@ -65,6 +65,7 @@ How the Rust workspace is built on developer and agent machines. Why each piece 
 | `build-lane/lane.sh` | The build lane: a machine-wide semaphore every agent `cargo` call goes through (`bash tools/build-lane/lane.sh [--exclusive] cargo …`). Sets the job count, sccache, and a target dir per worktree, and logs every job. |
 | `build-lane/lane_stats.py` | Reports on the lane's job log (`--recent`, `--html`, `--csv`). |
 | `build-lane/mk-worktree.sh` | Creates a buildable worktree under `.claude/worktrees/`: junctions `external/` in and seeds the target dir on a Dev Drive. |
+| `build-lane/rm-worktree.sh` | Retires a worktree once its PR merges (`<name>`, or `--merged` for every merged, idle one): deletes its target dir and `sgw_<worktree>` database, unlinks `external/` without following the junction, and removes the worktree and branch. Refuses while a lane job builds there. |
 | `build-lane/reload-db.sh` / `build-lane/live-db-test.sh` | Reload the worktree's own test database (`sgw_<worktree>`); run the live-DB tier against it in a lane slot. |
 | `dev-drive/New-CimmeriaDevDrive.ps1` | Creates a Windows Dev Drive for build output (run elevated). |
 | `dev-drive/Copy-WarmTarget.ps1` | Seeds a new worktree's target dir from a warm one by ReFS block cloning. |
