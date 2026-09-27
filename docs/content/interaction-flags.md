@@ -70,6 +70,7 @@ On the server, `INT_Banker` on a template's `interaction_type` makes the spawned
 
 - A **personal** Banker opens the player's own vault (container 17): a right-click within the interact distance sends `onVaultOpen` and opens a vault session pinned to that Banker. The open path is in [the inventory system doc](../gameplay/inventory-system.md#opening-the-vault).
 - A **team** or **command** Banker is refused with a chat line ("The Team vault is not available yet.") until the organization vaults land.
+- A click on any Banker from beyond the interact distance is refused with a chat line too, unlike other NPCs, whose too-far clicks stay silent.
 - **Precedence.** `INT_Banker` wins over the vendor bits (bits 13-21) on a template that carries both. Anything that answers a click before the static interaction still answers first: a `trainer_ability_list_id`, an `interact_tag` / `interact_template` chain, a per-player dialog bind, and `INT_Dhd`. A Banker should carry none of those, and should not be killable (faction 10), because a death overwrites the interaction with loot and the respawn tick does not restore it.
 - Like the vendor derivation, it runs at spawn only: OR-ing `INT_Banker` in later with `set_interaction_type` changes the cursor but does not open a vault.
 

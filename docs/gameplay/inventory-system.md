@@ -156,13 +156,13 @@ The personal vault is container 17 (`INV_Bank`). Its rows load at login with the
 
 1. records a vault session on the player's cell entity: `VaultSession { scope: Personal, banker_id: Some(banker), space_id, opened_at }`;
 2. sends `onVaultOpen(banker_id, banker_position)` (`INT32`, then `VECTOR3`) from the cell;
-3. logs `vault_open` under the `bank` target.
+3. logs `vault_session_opened` (DEBUG) under the `bank` target, inside the INFO span `bank.banker_interact`.
 
-A click from out of range sends nothing and opens no session. A `team` or `command` Banker is refused with a chat line and logs `vault_open_rejected reason=org_vault_not_available` until the organization vaults land.
+Every refusal sends the player a chat line and logs `vault_open_rejected` (WARN) with a stable `reason`: `out_of_range` (a click on a Banker from beyond the interact distance or from another space; it opens no session), `org_vault_not_available` (a `team` or `command` Banker, until the organization vaults land), `not_gm` (`.bank` from a player), `banker_missing` (the Banker vanished between the range gate and the arm) or `player_missing`.
 
 **GM `.bank`.** Opens the same window wherever the GM stands, with a session whose `banker_id` is `None`, and `onVaultOpen` addressed to the GM's own entity and position. A player without GM access gets a refusal line ([commands.md](../commands.md)).
 
-**The session ends** when the player changes space or logs out (both destroy the cell entity that holds it), or when a later `interact` pins a different target. Re-clicking the same Banker keeps it. Each end logs `vault_session_cleared` at DEBUG with its `reason`.
+**The session ends** when the player changes space or logs out (both destroy the cell entity that holds it), or when a later `interact` pins a different target. Re-clicking the same Banker keeps it. Each end logs `vault_session_closed` at DEBUG with `reason` `space_change`, `logout` or `re_pin`, and `open_ms`.
 
 **The move rule.** `vault_move_allowed(&player, &space_mgr)` is the single check a bank move must pass: an open session, opened in the player's current space, and, for a Banker session, the Banker still present, in the same space and within the interact distance. A GM session skips the proximity check. The client ignores `onVaultOpen`'s position (BV-E1 Q4), so walking away does not close the window; this check, run on every move, is the only enforcement. Wiring it into `moveItem` is BV-03.
 
