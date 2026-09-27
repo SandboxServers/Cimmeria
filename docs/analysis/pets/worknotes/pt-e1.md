@@ -17,8 +17,8 @@
 - **Decisions in force:** none of D-PT01/02/03 gate this packet (client-side static RE only).
 - **Depends on:** nothing (Wave 0, parallel with PT-01/PT-S).
 - **Source revision/base:** `origin/main` @ `95366c59` (branch created from this commit; `origin/main`
-  has since advanced to `09a880ba` in the shared repo, but this packet made no code changes and
-  needed no rebase — matches the base the campaign's own `audit.md` was written against).
+  has since advanced to `09a880ba` in the shared repo; the packet's first pass made no code changes and
+  needed no rebase. It was later rebased onto main by the coordinator; see the Log — matches the base the campaign's own `audit.md` was written against).
 - **Owned paths (this session):**
   - `docs/reverse-engineering/findings/pet-client-contract.md` (new)
   - `docs/reverse-engineering/findings/pet-restoration.md` (correction only)
@@ -181,3 +181,4 @@ shown, is directly re-checkable in Ghidra by anyone who doubts it.
   `client-method-dispatch-table.md`; updated both `docs/reverse-engineering/` README index files
   (summary counts corrected to 78 docs after the Copilot review; the directory holds 78 findings). Wrote this worknote. `cargo fmt`/`clippy`/build/test were not run — no Rust
   changed. Committed and pushed.
+- **2026-09-27 (coordinator)** — Rebased onto `main` after the ledger PR #879 merged. The README counts are now 81, because main had added findings meanwhile. Per the Copilot re-review, the "No runtime code; one tooling fix" section now records the `wire_decoder_codegen.py` change, and the Ghidra log entry now scopes the handler trace to handler identity only.
