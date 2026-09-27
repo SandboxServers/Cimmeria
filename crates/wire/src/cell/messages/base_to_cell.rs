@@ -2,6 +2,7 @@
 
 use super::data::SavedMission;
 use super::lab::{LabQuery, LabQueryResult};
+use super::org_base_to_cell::OrgBaseToCell;
 
 /// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
 /// lines the command produced (decoded from the single-recipient
@@ -422,4 +423,9 @@ pub enum BaseToCellMsg {
         space_id: u32,
         requester_entity_id: u32,
     },
+
+    /// Organization traffic (Squads, Teams, Commands). One nested enum, so
+    /// organization packets add variants in `org_base_to_cell.rs` instead
+    /// of here (work-packets.md § Messages).
+    Org(OrgBaseToCell),
 }

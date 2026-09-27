@@ -223,6 +223,54 @@ impl GameSession {
         v
     }
 
+    /// Any exposed SGWPlayer **cell** method, `method_index` in the flat
+    /// table of `docs/protocol/cell-method-dispatch-table.md`, called on
+    /// `entity_id` with `args` already serialized in `.def` order.
+    ///
+    /// Encoding (`base/connect_loop/cell_arms.rs`, the server's decoder):
+    /// below 61 the msg id is `0x80 | method_index` (direct); from 61 it is
+    /// `0xBD` and the first payload byte after the entity id is
+    /// `method_index - 61` (extended sub-slot). The payload always starts
+    /// with the 4-byte entity id.
+    ///
+    /// # Panics
+    ///
+    /// If `method_index - 61` does not fit the sub-slot byte (past 316), or
+    /// the payload overflows the `u16` word length. Test-client inputs are
+    /// fixed at the call site, so a panic is a bug in the test.
+    pub fn cell_method(method_index: u16, entity_id: u32, args: &[u8]) -> Vec<u8> {
+        const IDBASE: u16 = 61;
+        let mut payload = Vec::with_capacity(5 + args.len());
+        payload.extend_from_slice(&entity_id.to_le_bytes());
+        let msg_id = if method_index < IDBASE {
+            0x80 | method_index as u8
+        } else {
+            let sub = u8::try_from(method_index - IDBASE)
+                .expect("cell method index past the extended sub-slot range");
+            payload.push(sub);
+            0xBD
+        };
+        payload.extend_from_slice(args);
+        word_len_msg(msg_id, &payload)
+    }
+
+    /// Any SGWPlayer **base** method by its wire id (`0xC0 + index`, see
+    /// `docs/protocol/sgwplayer-base-method-dispatch-table.md`), with `args`
+    /// already serialized in `.def` order. No entity id prefix: base methods
+    /// address the session's own player.
+    ///
+    /// # Panics
+    ///
+    /// If `msg_id` is below `0xC0` (that range is system and cell messages),
+    /// or `args` overflows the `u16` word length.
+    pub fn base_method(msg_id: u8, args: &[u8]) -> Vec<u8> {
+        assert!(
+            msg_id >= 0xC0,
+            "base method ids start at 0xC0, got {msg_id:#04x}"
+        );
+        word_len_msg(msg_id, args)
+    }
+
     /// `DISCONNECT` (0x0C, CONSTANT_LENGTH = 1). Triggers the server's
     /// `destroy_client_entities` cleanup path -- the client-initiated
     /// "quit game" signal, as opposed to the socket simply going quiet.
@@ -235,9 +283,62 @@ impl GameSession {
 /// framing every account/cell/entity-method client message beyond the
 /// CONSTANT_LENGTH system range uses.
 fn word_len_msg(msg_id: u8, payload: &[u8]) -> Vec<u8> {
+    let len = u16::try_from(payload.len()).expect("payload overflows the u16 word length");
     let mut v = Vec::with_capacity(3 + payload.len());
     v.push(msg_id);
-    v.extend_from_slice(&(payload.len() as u16).to_le_bytes());
+    v.extend_from_slice(&len.to_le_bytes());
     v.extend_from_slice(payload);
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GameSession;
+
+    /// `organizationMOTD` (CM 13) on entity 0x1234: direct encoding,
+    /// `0x80 | 13`, word length 4 + args.
+    #[test]
+    fn cell_method_direct_encoding() {
+        let got = GameSession::cell_method(13, 0x1234, &[7, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(got, [0x8D, 12, 0, 0x34, 0x12, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    /// `onOrganizationCreation` (CM 94): extended, `0xBD`, then the entity
+    /// id and the sub-slot byte `94 - 61 = 33`.
+    #[test]
+    fn cell_method_extended_encoding() {
+        let got = GameSession::cell_method(94, 0x1234, &[0, 0, 0, 0]);
+        assert_eq!(got, [0xBD, 9, 0, 0x34, 0x12, 0, 0, 33, 0, 0, 0, 0]);
+        // 60 is the last direct index, 61 the first extended one.
+        assert_eq!(GameSession::cell_method(60, 1, &[])[0], 0xBC);
+        assert_eq!(
+            GameSession::cell_method(61, 1, &[])[..8],
+            [0xBD, 5, 0, 1, 0, 0, 0, 0]
+        );
+        // mapLoaded (25) matches the dedicated builder.
+        assert_eq!(
+            GameSession::cell_method(25, 9, &[]),
+            GameSession::map_loaded(9)
+        );
+    }
+
+    /// `organizationKick` (0xD1): `INT32 orgId, WSTRING name`, no entity id.
+    #[test]
+    fn base_method_encoding() {
+        let args = [9, 0, 0, 0, 1, 0, 0, 0, 0x42, 0];
+        assert_eq!(
+            GameSession::base_method(0xD1, &args),
+            [0xD1, 10, 0, 9, 0, 0, 0, 1, 0, 0, 0, 0x42, 0]
+        );
+        assert_eq!(
+            GameSession::base_method(0xD8, &[]),
+            GameSession::on_client_ready()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "base method ids start at 0xC0")]
+    fn base_method_rejects_a_cell_range_id() {
+        GameSession::base_method(0x99, &[]);
+    }
 }

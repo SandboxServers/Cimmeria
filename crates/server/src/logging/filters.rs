@@ -165,6 +165,11 @@ use crate::otel;
 /// retransmitted duplicate, a WARN for one beyond the receive window. It
 /// only speaks when the client's packets arrive lost or reordered, so it is
 /// quiet on a healthy link and exactly the evidence a lossy one needs.
+///
+/// `org` and `squad` (organizations campaign, ORG-01) are the Team/Command
+/// and Squad targets. Both are `debug`: the per-call "no handler yet" rows
+/// and the later routing decisions are DEBUG, and the coordinator reads
+/// SigNoz for these two targets after the two-client UAT.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -226,6 +231,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 movement.validation=debug,\
                 player.journal=debug,\
                 trade.atomic_swap=debug,\
+                org=debug,squad=debug,\
                 console.feedback=debug,\
                 client.native=debug,\
                 launcher=debug,\

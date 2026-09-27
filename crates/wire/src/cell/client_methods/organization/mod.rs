@@ -1,4 +1,15 @@
-//! OrganizationMember interface ClientMethods (indices 34–51).
+//! OrganizationMember interface ClientMethods (indices 34–51): the index
+//! constants and, in [`builders`], one argument serializer per method.
+
+mod builders;
+
+pub use builders::*;
+
+/// The feedback line an organization request gets while the campaign has
+/// not implemented it. Sent by both the cell arms (8-19, 94) and the base
+/// arm (0xCF-0xD2) beside an `onErrorCode`, because the client shows no
+/// text for an organization error code (ORG-E1 Q4).
+pub const ORG_NOT_AVAILABLE_TEXT: &str = "Organizations are not available yet.";
 
 /// Invitation to join an organization.
 pub const ON_ORGANIZATION_INVITE: u16 = 34;
@@ -36,3 +47,6 @@ pub const ON_ORGANIZATION_RANK_UPDATE: u16 = 49;
 pub const ON_ORGANIZATION_RANK_NAME_UPDATE: u16 = 50;
 /// Squad loot type changed.
 pub const ON_SQUAD_LOOT_TYPE: u16 = 51;
+
+#[cfg(test)]
+mod tests;

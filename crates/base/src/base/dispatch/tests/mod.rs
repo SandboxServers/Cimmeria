@@ -6,7 +6,10 @@
 //!   WARN, and the explicit DEBUG handlers (`perfStats`, `elementDataRequest`).
 //! - [`chat_speaker_flags`]: `speaker_flags` GM/DND assembly, `CHAT_SET_DND`
 //!   set/clear/malformed handling, per-character DND reset, and `CHAT_SET_AFK`.
+//! - [`organization`]: the 0xCF-0xD2 arm answers each call with
+//!   `onErrorCode` and a feedback line, and drops a malformed payload.
 
 mod chat_dnd_limit;
 mod chat_speaker_flags;
+mod organization;
 mod routing_logging;
