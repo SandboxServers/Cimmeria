@@ -82,7 +82,9 @@ pub fn is_hostile_to_players(npc: &CellEntity) -> bool {
 ///   Never a pet (whatever its faction), never a vendor, quest giver or
 ///   neutral NPC, whatever its aggression override.
 /// - **A player target:** only the attacker's opponent in an engaged duel,
-///   in the same space ([`DuelRegistry::can_harm`], social systems SS-D2).
+///   in the same space, at the two entities the engage recorded
+///   ([`DuelRegistry::can_harm`], social systems SS-D2; the entity check is
+///   SS-D3's, so the gate and the non-lethal clamp cover the same hits).
 ///   Every other player, a bystander included, is untouchable. The duel
 ///   registry is the only authority: the PvP flag the client sees is never
 ///   read back (D-SS23), so a stuck flag cannot make anyone attackable.
@@ -101,7 +103,14 @@ pub fn player_may_attack(
     if target.is_player {
         return match (attacker.player_id, target.player_id) {
             (Some(a), Some(t)) => {
-                attacker.is_player && attacker.space_id == target.space_id && duels.can_harm(a, t)
+                attacker.is_player
+                    && attacker.space_id == target.space_id
+                    && duels.can_harm_entities(
+                        a,
+                        attacker.entity_id.0 as u32,
+                        t,
+                        target.entity_id.0 as u32,
+                    )
             }
             _ => false,
         };

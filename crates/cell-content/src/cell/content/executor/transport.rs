@@ -81,6 +81,9 @@ pub(super) async fn teleport(
         .get_entity(entity_id)
         .map(|e| e.space_id.0 as u32)
         .unwrap_or(space_id as u32);
+    // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+    // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
     if let Err(e) = tx
         .send(CellToBaseMsg::TeleportPlayer {
             entity_id,
@@ -155,6 +158,9 @@ pub(super) async fn cross_world_teleport(
             .await;
         }
     }
+    // SS-D3: a gate travel ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+    // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
     // Enqueue the transfer first and tear down only once it is sent, the
     // order gate travel and `gmGotoLocation` use: a closed base channel must
     // not leave the player (or its pet) removed cell-side with no transfer

@@ -104,6 +104,18 @@ pub async fn effect_pulse_tick(
         // Fire each due pulse. We re-look up the entity every iteration
         // because between awaits another tick could mutate.
         for (inst, effect_def) in &due {
+            // An earlier pulse this tick may have removed this instance: a
+            // duel the pulse ended strips the partner's effects (SS-D3), and
+            // a channel cancel can `retain()` between awaits. A removed
+            // instance must not fire from the stale snapshot.
+            let still_active = space_mgr.get_entity(entity_id).is_some_and(|e| {
+                e.active_effects
+                    .iter()
+                    .any(|a| a.effect_id == inst.effect_id && a.invoker_id == inst.invoker_id)
+            });
+            if !still_active {
+                continue;
+            }
             fire_pulse(entity_id, inst, effect_def, tx, space_mgr).await;
             // Death first, threshold second: `dot_kill_credit` stamps
             // `BSF_DEAD` on a mob the pulse finished, which is exactly what
@@ -444,6 +456,22 @@ async fn fire_pulse(
         }
     }
 
+    // D-SS20: a pulse from the duel partner never kills a duelist. It runs
+    // after both branches (script and NVP, and the invoker-gone fallback,
+    // which cannot match: the partner leaving ends the duel) and before the
+    // flush, so the client is told 1, never 0. `effect_pulse_fired` below
+    // still logs the pulse; the duel ends after the flush.
+    let duel_clamp = cimmeria_cell_world::cell::duel::clamp_partner_lethal(
+        space_mgr,
+        inst.invoker_id,
+        target_id,
+        cimmeria_cell_world::cell::duel::ClampSource {
+            path: "effect_pulse",
+            ability_id: Some(inst.ability_id),
+            effect_id: Some(inst.effect_id),
+        },
+    );
+
     // Flush any stat changes the pulse produced so the client renders
     // the bar update. Pulses don't generate effect-results packets in
     // v1 — that's a wire-format addition tracked alongside per-pulse
@@ -477,4 +505,10 @@ async fn fire_pulse(
         remaining_before_decrement = inst.remaining_pulses,
         "Effect pulse fired"
     );
+
+    // The end strips this effect and every other one the partner applied,
+    // so the tick's loop skips any of them still due (`still_active`).
+    if let Some(hit) = duel_clamp {
+        cimmeria_cell_world::cell::duel::finish_clamped(tx, space_mgr, hit).await;
+    }
 }

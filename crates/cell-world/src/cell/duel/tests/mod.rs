@@ -11,11 +11,17 @@
 //! - [`interactable`]: the D-SS25 guard, an interactable NPC stays
 //!   interactable across a duel.
 //! - [`gm`]: the GM abort and status read (SS-U2).
+//! - [`end_paths`]: forfeit (CAT-M-14), disconnect, travel, range, death
+//!   and the withdrawn challenge or countdown (CAT-M-15, SS-D3).
+//! - [`end_table`]: every end path clears both flags, and every travel site
+//!   calls the duel hook (SS-D3).
 //!
 //! Every handler test drains through [`drain`], which keeps entity-method
 //! calls to a player's own client and witness routings apart.
 
 mod challenge;
+mod end_paths;
+mod end_table;
 mod engage;
 mod gm;
 mod interactable;

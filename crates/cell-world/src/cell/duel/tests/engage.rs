@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_common::Vector3;
 use cimmeria_wire::cell::client_methods::duel::{
-    build_on_duel_entities_set, build_pvp_flag, TEXT_DUEL_ABORTED, TEXT_DUEL_ENGAGED,
+    build_on_duel_entities_set, build_pvp_flag, TEXT_DUEL_ABORTED, TEXT_DUEL_ENGAGED, TEXT_DUEL_WON,
 };
 use cimmeria_wire::state_field::BSF_IN_COMBAT;
 
@@ -27,13 +27,13 @@ const B: (u32, i32) = (B_EID, B_PID);
 const D_EID: u32 = 40;
 const D_PID: i32 = 4000;
 
-const PVP_FLAG: u16 = 7;
-const STATE_FIELD: u16 = 19;
+pub(super) const PVP_FLAG: u16 = 7;
+pub(super) const STATE_FIELD: u16 = 19;
 const DUEL_SET: u16 = 151;
-const DUEL_CLEAR: u16 = 153;
+pub(super) const DUEL_CLEAR: u16 = 153;
 
 /// `make_mgr`'s three players, introducible, with their witness sets built.
-fn aoi_mgr() -> SpaceManager {
+pub(super) fn aoi_mgr() -> SpaceManager {
     let mut mgr = make_mgr();
     for eid in [A_EID, B_EID, C_EID] {
         mgr.get_entity_mut(eid).unwrap().archetype_id = Some(1);
@@ -44,7 +44,7 @@ fn aoi_mgr() -> SpaceManager {
 
 /// Challenge, accept, and run the tick past the countdown. Returns the
 /// instant of the engage; the channel is drained up to the accept.
-async fn engage(
+pub(super) async fn engage(
     mgr: &mut SpaceManager,
     tx: &mpsc::Sender<CellToBaseMsg>,
     rx: &mut mpsc::Receiver<CellToBaseMsg>,
@@ -59,7 +59,11 @@ async fn engage(
 
 /// The witness routings of `method_index` about `entity_id`, as
 /// `(witness, args)`.
-fn to_witnesses(sent: &[Sent], entity_id: u32, method_index: u16) -> Vec<(u32, Vec<u8>)> {
+pub(super) fn to_witnesses(
+    sent: &[Sent],
+    entity_id: u32,
+    method_index: u16,
+) -> Vec<(u32, Vec<u8>)> {
     let mut out: Vec<(u32, Vec<u8>)> = sent
         .iter()
         .filter(|s| s.entity_id == entity_id && s.method_index == method_index)
@@ -229,8 +233,9 @@ async fn engaged_limit_ends_the_duel_and_clears_both_flags() {
             && c.has_field("target_account_id", "600")));
 }
 
-/// A duelist who leaves the world ends the duel on the next tick; the one
-/// left behind is fully cleared and told.
+/// A duelist who leaves the world by a path with no hook (here a bare
+/// `destroy_entity`) ends the duel on the next tick as a disconnect loss:
+/// the one left behind is fully cleared and told they won (SS-D3).
 #[tokio::test]
 async fn duelist_leaving_the_world_ends_the_duel() {
     let capture = LogCapture::install();
@@ -245,14 +250,18 @@ async fn duelist_leaving_the_world_ends_the_duel() {
     assert_eq!(own(&sent, A_EID, PVP_FLAG), vec![build_pvp_flag(false)]);
     assert_eq!(own(&sent, A_EID, DUEL_CLEAR).len(), 1);
     assert!(mgr.get_entity(A_EID).unwrap().threatened_mobs.is_empty());
-    assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
+    assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_WON.to_string()]);
     assert!(!mgr.duels.is_busy(A_PID));
     let ev = capture
         .all()
         .into_iter()
         .find(|c| c.has_field("event", "duel.ended"))
         .expect("duel.ended row");
-    assert!(ev.has_field("reason", "duelist_gone"), "{ev:?}");
+    assert!(ev.has_field("reason", "connection"), "{ev:?}");
+    assert!(
+        ev.has_field("loser_player_id", &B_PID.to_string()),
+        "{ev:?}"
+    );
     assert!(ev.has_field("target_cleared", "false"), "{ev:?}");
 }
 

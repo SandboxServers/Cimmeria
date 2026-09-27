@@ -413,6 +413,13 @@ impl SpaceManager {
         // leave a deferred `perform_gate_travel` queued against a dead
         // session.
         self.cancel_crossing_hold(entity_id);
+        // SS-D3: an engaged duel ends with this player as the loser
+        // (`EDUEL_DEFEAT_Connection`), and a challenge or countdown is
+        // withdrawn, while the entity still exists: the partner's flag,
+        // `onDuelEntitiesClear` and combat pair are cleared and they hear
+        // "You won the duel" now, not on the sweep's next tick. The open
+        // trade is cancelled by the caller (`handle_disconnect_entity`).
+        crate::cell::duel::on_disconnect(tx, self, entity_id).await;
         // Pets leave with their owner, visibly (`LeftAoI` to every witness),
         // before the owner's own AoI teardown below. The self-healing sweep
         // would get them a tick later; this makes the common path immediate.

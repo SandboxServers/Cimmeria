@@ -30,7 +30,7 @@ const FULL: i32 = 10_000;
 
 /// A and B dueling (engaged) in Agnos, C a bystander; every player at full
 /// health.
-fn dueling_world() -> SpaceManager {
+pub(super) fn dueling_world() -> SpaceManager {
     let mut mgr = make_pet_world();
     for (eid, pos) in [
         (A, [0.0, 0.0, 0.0]),
@@ -60,7 +60,7 @@ fn dueling_world() -> SpaceManager {
     mgr
 }
 
-fn pid(mgr: &SpaceManager, eid: u32) -> i32 {
+pub(super) fn pid(mgr: &SpaceManager, eid: u32) -> i32 {
     mgr.get_entity(eid).unwrap().player_id.unwrap()
 }
 
@@ -68,7 +68,7 @@ fn health(mgr: &SpaceManager, eid: u32) -> i32 {
     mgr.get_entity(eid).unwrap().stats.get(HEALTH).unwrap().cur
 }
 
-fn dot(effect_id: i32) -> EffectDef {
+pub(super) fn dot(effect_id: i32) -> EffectDef {
     let mut params = HashMap::new();
     params.insert("HealthDamage".to_string(), "10".to_string());
     EffectDef {
@@ -82,7 +82,7 @@ fn dot(effect_id: i32) -> EffectDef {
 }
 
 /// Make every pulse on `eid` due now.
-fn make_due(mgr: &mut SpaceManager, eid: u32) {
+pub(super) fn make_due(mgr: &mut SpaceManager, eid: u32) {
     let past = Instant::now() - Duration::from_secs(2);
     for inst in &mut mgr.get_entity_mut(eid).unwrap().active_effects {
         inst.next_pulse_at = past;

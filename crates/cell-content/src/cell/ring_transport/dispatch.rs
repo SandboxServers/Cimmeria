@@ -169,6 +169,9 @@ async fn dispatch_effect_inner(
                     .await;
                 }
             }
+            // SS-D3: a gate travel ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+            // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+            cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
             if let Err(e) = tx
                 .send(CellToBaseMsg::GateTravel {
                     entity_id,
@@ -368,6 +371,9 @@ async fn same_world_teleport(
     // sample (which would log a spurious speed warning).
     space_mgr.note_authorized_teleport(entity_id);
 
+    // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+    // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
     // Client-side: hand off to the base. The base sends `forcedPosition` (0x31)
     // to authoritatively snap the player's own avatar, then `onPlayerTeleport`
     // (method 116) for streaming-load coordination. The bare 116-only path the

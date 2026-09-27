@@ -1,5 +1,5 @@
 //! Duels: the challenge, the answer and the countdown (SS-D1); the engage,
-//! the PvP flag and the harm gate (SS-D2).
+//! the PvP flag and the harm gate (SS-D2); the end paths (SS-D3).
 //!
 //! The base receives `sendDuelChallenge` (0xD9), runs the rate limit, the
 //! online lookup and the Ignore check, and forwards the challenge as
@@ -31,20 +31,27 @@
 //! ground AoE, cone) goes through that one function. The PvP flag
 //! (`onEntityProperty(4, v)`) is presentation only; nothing reads it back.
 //!
-//! # What SS-D2 does not do
+//! # The end
 //!
-//! The real end paths (health with the 1 HP clamp, forfeit, range,
-//! disconnect, teleport) are SS-D3. They end a duel through
-//! [`end::end_engaged`], the same clear the safety ends use.
+//! Every end of an engaged duel goes through [`end::end_engaged`]: the
+//! clear (flags, 153, partner effects, the combat pair), then 879 to the
+//! winner and a line to the loser, or 878 to both for an abort. The paths:
+//! forfeit (CM 103, [`forfeit`]); the non-lethal clamp on partner damage and
+//! death from anyone else, disconnect, and every teleport or gate travel
+//! ([`paths`]); range, a dead or departed duelist and the safety limit on
+//! the tick ([`end::sweep`]); and the GM `.duel_end`. A challenge or a
+//! countdown is withdrawn on the same leave paths.
 
 pub mod challenge;
 mod combat;
 mod effects;
 pub mod end;
 mod engage;
+pub mod forfeit;
 pub mod gm;
 pub mod limits;
 mod outbound;
+pub mod paths;
 pub mod registry;
 pub mod response;
 pub mod tick;
@@ -52,11 +59,15 @@ pub mod tick;
 #[cfg(test)]
 mod tests;
 
-pub use end::{end_engaged, EndReason};
+pub use end::{end_engaged, DefeatReason, EndReason};
 pub use outbound::send_player_line;
+pub use paths::{
+    clamp_partner_lethal, finish_clamped, on_death, on_disconnect, on_travel, ClampSource,
+    ClampedHit,
+};
 pub use registry::{
     ChallengeRefusal, Duel, DuelId, DuelRegistry, DuelState, GmAborted, PendingChallenge,
-    ResponseRefusal,
+    ResponseRefusal, Withdrawn,
 };
 
 use cimmeria_common::Vector3;

@@ -88,7 +88,8 @@ pub async fn dispatch(
         }
 
         DUEL_FORFEIT => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: duelForfeit");
+            // No arguments: the caller's own engaged duel, or 880 (SS-D3).
+            crate::cell::duel::forfeit::handle(entity_id, tx, space_mgr).await;
             true
         }
 
@@ -184,6 +185,46 @@ mod tests {
         assert!(
             mgr.duels.duel_of(100).is_some(),
             "the accept started the duel"
+        );
+    }
+
+    /// CM 103 reaches the duel's forfeit handler through the player router.
+    /// With no engaged duel the caller hears 880; the old stub logged
+    /// `UNIMPLEMENTED: duelForfeit` and sent nothing (a silent press).
+    #[tokio::test]
+    async fn duel_forfeit_routes_to_the_duel_handler() {
+        let mut mgr = make_space_manager_with_player(1);
+        mgr.connect_entity(1);
+        mgr.get_entity_mut(1).unwrap().player_id = Some(100);
+        let (tx, mut rx) = mpsc::channel(8);
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        assert!(
+            crate::cell::cell_methods::player::dispatch(
+                1,
+                DUEL_FORFEIT,
+                &[],
+                &tx,
+                &mut mgr,
+                &engine
+            )
+            .await
+        );
+        let Ok(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        }) = rx.try_recv()
+        else {
+            panic!("the forfeit was not answered");
+        };
+        assert_eq!((entity_id, method_index), (1, 28));
+        let text: Vec<u8> = cimmeria_wire::cell::client_methods::duel::TEXT_FORFEIT_NOT_ENGAGED
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert!(
+            args.windows(text.len()).any(|w| w == text.as_slice()),
+            "the line is 880"
         );
     }
 

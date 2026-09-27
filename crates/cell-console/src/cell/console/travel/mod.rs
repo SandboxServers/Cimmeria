@@ -159,6 +159,9 @@ async fn snap_in_current_space(
     space_mgr.note_authorized_teleport(entity);
 
     if is_player {
+        // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+        // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+        cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity).await;
         if let Err(err) = tx
             .send(CellToBaseMsg::TeleportPlayer {
                 entity_id: entity,

@@ -18,7 +18,7 @@
 //! # Feedback texts
 //!
 //! The strings are the client's own duel monikers from `texts.sql`
-//! (872-878), sent as literal `onPlayerCommunication` feedback lines. SS-E1
+//! (872-880), sent as literal `onPlayerCommunication` feedback lines. SS-E1
 //! found no client path that renders a duel moniker by id (`onErrorCode`
 //! is ruled out), so the text travels, not the id
 //! (`docs/reverse-engineering/findings/duel-wire-formats.md`, D-Q6). The
@@ -77,6 +77,39 @@ pub const TEXT_AUTO_ATTACK_STOPPED: &str =
     "Auto-attack stopped: that player is not your duel opponent.";
 /// The countdown ran out and the duel is engaged: both sides.
 pub const TEXT_DUEL_ENGAGED: &str = "The duel has begun.";
+/// Moniker 879: the winner of a decided duel (D-SS22).
+pub const TEXT_DUEL_WON: &str = "You won the duel";
+/// Moniker 880: `duelForfeit` from a player who is not in an engaged duel
+/// (CAT-M-14).
+pub const TEXT_FORFEIT_NOT_ENGAGED: &str = "You cannot forfeit a duel until you are engaged in one";
+/// The loser of a duel decided on health: the partner's hit that would have
+/// killed them left them at 1 HP (D-SS20), or a third party killed them.
+/// No moniker exists for a loss; the loser lines are Cimmeria's own (D-SS22).
+pub const TEXT_DUEL_LOST: &str = "You lost the duel.";
+/// The loser of a forfeit.
+pub const TEXT_DUEL_FORFEITED: &str = "You forfeited the duel.";
+/// The loser of a duel decided on range (D-SS19).
+pub const TEXT_DUEL_LOST_RANGE: &str = "You lost the duel: you stayed outside the duel area.";
+/// The loser of a duel decided by a teleport or a space change.
+pub const TEXT_DUEL_LOST_TELEPORT: &str = "You lost the duel: you left the area.";
+/// A duelist has just left the arena (D-SS19): the warning before the
+/// range defeat.
+pub const TEXT_DUEL_OUT_OF_RANGE: &str =
+    "You are outside the duel area. Return within 5 seconds or you lose the duel.";
+
+/// `EDuelDefeatReason` (`enumerations.xml`): why the loser lost. Nothing on
+/// the wire carries it; the cell logs it as `defeat_reason` so a SigNoz row
+/// uses the client's own numbering. `LeftSquad` (2) and `InDuel` (6) have no
+/// path while squad duels are refused.
+pub const EDUEL_DEFEAT_HEALTH: u8 = 1;
+/// `EDUEL_DEFEAT_Connection`.
+pub const EDUEL_DEFEAT_CONNECTION: u8 = 3;
+/// `EDUEL_DEFEAT_Range`.
+pub const EDUEL_DEFEAT_RANGE: u8 = 4;
+/// `EDUEL_DEFEAT_Teleport`.
+pub const EDUEL_DEFEAT_TELEPORT: u8 = 5;
+/// `EDUEL_DEFEAT_Forfeit`.
+pub const EDUEL_DEFEAT_FORFEIT: u8 = 7;
 
 /// `onEntityProperty(GENERICPROPERTY_PvPFlag, flag)`: two `INT32`s, the
 /// property id then the value (0 or 1).
@@ -201,6 +234,15 @@ mod tests {
             GENERICPROPERTY_PVP_FLAG as u64
         );
         assert_eq!(enum_value("DuelTimer"), TIMER_DUEL as u64);
+        for (token, value) in [
+            ("EDUEL_DEFEAT_Health", EDUEL_DEFEAT_HEALTH),
+            ("EDUEL_DEFEAT_Connection", EDUEL_DEFEAT_CONNECTION),
+            ("EDUEL_DEFEAT_Range", EDUEL_DEFEAT_RANGE),
+            ("EDUEL_DEFEAT_Teleport", EDUEL_DEFEAT_TELEPORT),
+            ("EDUEL_DEFEAT_Forfeit", EDUEL_DEFEAT_FORFEIT),
+        ] {
+            assert_eq!(enum_value(token), u64::from(value), "{token}");
+        }
         let player = flattened_client_methods("SGWPlayer");
         assert_eq!(index_of(&player, "onDuelChallenge"), ON_DUEL_CHALLENGE);
         assert_eq!(index_of(&player, "onDuelEntitiesSet"), ON_DUEL_ENTITIES_SET);
@@ -225,6 +267,8 @@ mod tests {
             (873, TEXT_ALREADY_IN_DUEL),
             (877, TEXT_NOT_CLOSE_ENOUGH),
             (878, TEXT_DUEL_ABORTED),
+            (879, TEXT_DUEL_WON),
+            (880, TEXT_FORFEIT_NOT_ENGAGED),
         ] {
             let row = format!("VALUES ({id}, 0, 1033, '{text}', '')");
             assert!(seed.contains(&row), "texts.sql has no row {row}");
