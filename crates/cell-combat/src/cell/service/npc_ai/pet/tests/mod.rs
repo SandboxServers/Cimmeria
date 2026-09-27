@@ -13,6 +13,7 @@ use crate::test_support::{Captured, LogCaptureGuard};
 
 mod ability;
 mod follow;
+mod hostility;
 mod leash;
 mod owner_combat;
 mod owner_identity;

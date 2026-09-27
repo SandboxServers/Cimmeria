@@ -249,13 +249,10 @@ pub async fn handle_use_ability(
                 // ally) will need the inverse gate (require friendly/self
                 // target) once an offensive/supportive ability flag exists
                 // — `AbilityDef` has no such field today, and
-                // `target_type_id` only encodes self/target/ground. Same
-                // seam where a per-pair hostility check replaces the flat
-                // `HOSTILE_FACTION` sentinel when PvP lands (see the cone
-                // module doc).
-                if entity.is_player
-                    && (target.is_player || target.faction != combat::HOSTILE_FACTION)
-                {
+                // `target_type_id` only encodes self/target/ground. The rule
+                // itself is `combat::player_may_attack`, the per-pair seam
+                // PvP (duels) widens; pets obey the same function.
+                if entity.is_player && !combat::player_may_attack(entity, target) {
                     tracing::warn!(
                         entity_id,
                         ability_id,

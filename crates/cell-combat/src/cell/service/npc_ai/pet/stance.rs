@@ -6,11 +6,11 @@
 //! does any NPC, and refuses the threat for a Passive pet.
 
 use cimmeria_entity::cell_entity::{AiState, CellEntity, PetStance};
-use cimmeria_entity::navigation::LineOfSight;
 
 use crate::cell::combat;
 use crate::cell::space_manager::SpaceManager;
 
+use super::super::aggro_gates::same_room;
 use super::super::leash::policy::horizontal_distance;
 
 /// Radius of the Aggressive stance's scan around the pet, horizontal, in
@@ -69,7 +69,12 @@ fn fightable(mob: &CellEntity) -> bool {
 /// nothing qualifies.
 ///
 /// Candidates are the mobs (class `SGWMob`) in the pet's space: never a
-/// player, another pet, or a being.
+/// player, another pet, or a being. Every rule also requires that the owner
+/// could attack the mob itself ([`combat::player_may_attack`], the #444
+/// rule): a pet never fights a vendor, a quest giver or a neutral NPC, even
+/// one a content chain set fighting its owner. The Aggressive scan uses the
+/// NPC acquisition gate (`aggro_gates::same_room`: floor band, radius, line
+/// of sight failing closed where a navmesh exists).
 pub(super) fn pick_engagement(
     space_mgr: &SpaceManager,
     pet_id: u32,
@@ -93,7 +98,7 @@ pub(super) fn pick_engagement(
         .npc_ids_in_space_of(pet_id)
         .into_iter()
         .filter_map(|id| space_mgr.get_entity(id))
-        .filter(|m| fightable(m))
+        .filter(|m| fightable(m) && combat::player_may_attack(owner, m))
         .collect();
     // Nearest first; the id breaks ties so the pick is deterministic.
     mobs.sort_by(|a, b| {
@@ -135,9 +140,7 @@ pub(super) fn pick_engagement(
     mobs.iter()
         .find(|m| {
             combat::is_hostile_to_players(m)
-                && (m.position.y - pet.position.y).abs() <= combat::AGGRO_VERTICAL_BAND
-                && horizontal_distance(&m.position, &pet.position) <= PET_AGGRESSIVE_RADIUS
-                && space_mgr.npc_line_of_sight(pet_id, id(m)).los != LineOfSight::Blocked
+                && same_room(space_mgr, pet, m, PET_AGGRESSIVE_RADIUS).is_ok()
         })
         .map(|m| (id(m), EngageWhy::AggressiveScan))
 }

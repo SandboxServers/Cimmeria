@@ -223,10 +223,13 @@ pub fn generate_threat(
             );
             return None;
         }
-        // A Passive pet never engages, even when hit (pets PT-05, D-PT09): no
+        // A pet takes threat only from what its owner could attack, and a
+        // Passive pet from nothing, even when hit (pets PT-05, D-PT09): no
         // threat and no preemption, so it keeps following its owner.
-        Some(target) if npc_ai::pet::refuses_threat(target) => {
-            npc_ai::pet::log_passive_refusal(space_mgr, target, attacker_id, cause.label());
+        Some(target) if npc_ai::pet::threat_refusal(space_mgr, target, attacker_id).is_some() => {
+            let reason = npc_ai::pet::threat_refusal(space_mgr, target, attacker_id)
+                .unwrap_or("passive_stance");
+            npc_ai::pet::log_threat_refusal(space_mgr, target, attacker_id, reason, cause.label());
             return None;
         }
         Some(target) if target.ai_state() == AiState::Leashing => {

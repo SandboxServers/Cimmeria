@@ -94,12 +94,20 @@ pub(super) async fn sync_owner_combat(
     space_mgr: &mut SpaceManager,
 ) {
     let mobs = space_mgr.npc_ids_in_space_of(pet_id);
+    let Some(owner) = space_mgr.get_entity(owner_id) else {
+        return;
+    };
+    // Only a fight the owner could have picked itself puts it in combat: a
+    // mob that is not attackable (#444, `player_may_attack`) and still lists
+    // the pet does not.
     let engaged: Vec<u32> = mobs
         .iter()
         .copied()
         .filter(|&m| {
             space_mgr.get_entity(m).is_some_and(|e| {
-                e.threat_list.contains_key(&pet_id) && !combat::is_dead_state(e.state_field)
+                e.threat_list.contains_key(&pet_id)
+                    && !combat::is_dead_state(e.state_field)
+                    && combat::player_may_attack(owner, e)
             })
         })
         .collect();

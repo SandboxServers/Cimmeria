@@ -161,7 +161,7 @@ async fn fire_time_refusal(
     }
     // The launch's #444 target-validity rule, again: a player may only hit a
     // hostile NPC. Content can turn an NPC friendly during the warmup.
-    if caster.is_player && (target.is_player || target.faction != combat::HOSTILE_FACTION) {
+    if caster.is_player && !combat::player_may_attack(caster, target) {
         return Some(InterruptReason::TargetLost);
     }
 

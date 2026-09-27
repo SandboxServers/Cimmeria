@@ -46,6 +46,7 @@ use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::{AiState, CellEntity, PetStance, PlayerIdentity};
 use tokio::sync::mpsc;
 
+use crate::cell::combat;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -93,22 +94,38 @@ pub(in crate::cell) fn live_owner(
     Ok(owner)
 }
 
-/// Whether `target` refuses all threat: a Passive pet never engages, even
-/// when hit (D-PT09). `combat::generate_threat` asks before it adds threat or
-/// preempts the target into Fighting.
-pub(in crate::cell) fn refuses_threat(target: &CellEntity) -> bool {
-    target
-        .pet
-        .as_deref()
-        .is_some_and(|p| p.stance == PetStance::Passive)
-}
-
-/// The row for a threat a Passive pet refused. DEBUG: a mob shooting a
-/// Passive pet writes one per hit, and the owner chooses the stance.
-pub(in crate::cell) fn log_passive_refusal(
+/// Whether the pet `target` refuses threat from `attacker`: something its
+/// owner could not attack ([`combat::player_may_attack`]: a player, another
+/// pet, a non-hostile NPC), or anything at all while Passive (D-PT09). A
+/// friendly player's hit or a content chain aiming threat at a pet never
+/// turns the pet on them. `None` to accept, else the `reason`.
+/// `combat::generate_threat` asks before it adds threat or preempts the pet
+/// into Fighting.
+pub(in crate::cell) fn threat_refusal(
     space_mgr: &SpaceManager,
     target: &CellEntity,
     attacker_id: u32,
+) -> Option<&'static str> {
+    let pet = target.pet.as_deref()?;
+    if pet.stance == PetStance::Passive {
+        return Some("passive_stance");
+    }
+    let owner = live_owner(space_mgr, target.entity_id.0 as u32, pet.owner_id).ok();
+    let attacker = space_mgr.get_entity(attacker_id);
+    match (owner, attacker) {
+        (Some(o), Some(a)) if combat::player_may_attack(o, a) => None,
+        _ => Some("attacker_not_hostile"),
+    }
+}
+
+/// The row for a threat a pet refused ([`threat_refusal`]). DEBUG: a mob
+/// shooting a Passive pet writes one per hit, the owner chooses the stance,
+/// and a refused attacker is not client-triggerable at will.
+pub(in crate::cell) fn log_threat_refusal(
+    space_mgr: &SpaceManager,
+    target: &CellEntity,
+    attacker_id: u32,
+    reason: &'static str,
     cause: &str,
 ) {
     let Some(pet) = target.pet.as_deref() else {
@@ -117,16 +134,24 @@ pub(in crate::cell) fn log_passive_refusal(
     let id = owner_identity(space_mgr, target.entity_id.0 as u32, pet.owner_id);
     tracing::debug!(
         target: "pets.ai",
-        event = "passive_ignored",
-        decision_outcome = "pet_passive_ignored",
-        reason = "passive_stance",
+        event = if reason == "passive_stance" {
+            "passive_ignored"
+        } else {
+            "threat_refused"
+        },
+        decision_outcome = if reason == "passive_stance" {
+            "pet_passive_ignored"
+        } else {
+            "pet_threat_refused"
+        },
+        reason,
         pet_id = target.entity_id.0,
         owner_id = pet.owner_id,
         account_id = id.account_id,
         player_id = id.player_id,
         target_id = attacker_id,
         cause,
-        "pet: Passive stance, threat refused -- the pet keeps following"
+        "pet: threat refused -- the pet keeps following"
     );
 }
 
@@ -298,9 +323,16 @@ pub(super) async fn pre_pass(
 /// `reason` on the `target_dropped` row.
 fn not_worth_fighting(
     mob: &CellEntity,
-    owner_pos: Option<Vector3>,
+    owner: Option<&CellEntity>,
     now: std::time::Instant,
 ) -> Option<&'static str> {
+    // Something its owner could not attack: a player, a pet, or an NPC that
+    // is not hostile (content turned it friendly mid-fight, or it reached the
+    // threat list some other way). The #444 rule, via the shared predicate.
+    if owner.is_none_or(|o| !combat::player_may_attack(o, mob)) {
+        return Some("target_not_hostile");
+    }
+    let owner_pos = owner.map(|o| o.position);
     if matches!(
         mob.ai_state(),
         AiState::Leashing | AiState::Despawning | AiState::Dead
@@ -325,7 +357,7 @@ fn not_worth_fighting(
 /// handler ends the fight through the pet branch of the leash.
 fn drop_targets_not_worth_fighting(space_mgr: &mut SpaceManager, pet_id: u32, owner_id: u32) {
     let now = std::time::Instant::now();
-    let owner_pos = space_mgr.get_entity(owner_id).map(|o| o.position);
+    let owner = space_mgr.get_entity(owner_id);
     let Some(pet) = space_mgr.get_entity(pet_id) else {
         return;
     };
@@ -335,7 +367,7 @@ fn drop_targets_not_worth_fighting(space_mgr: &mut SpaceManager, pet_id: u32, ow
         .filter_map(|&t| {
             space_mgr
                 .get_entity(t)
-                .and_then(|m| not_worth_fighting(m, owner_pos, now))
+                .and_then(|m| not_worth_fighting(m, owner, now))
                 .map(|why| (t, why))
         })
         .collect();
