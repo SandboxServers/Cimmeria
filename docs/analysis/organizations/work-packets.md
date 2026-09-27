@@ -151,7 +151,7 @@ Status: **BlockedDependency** (ORG-01). Writer: `rust-gameserver-dev`. Reviewer:
 - The three tables, the sequence and their constraints, wired into `db/database.sql` and the `_primary_keys`, `_foreign_keys`, `_indexes` and `_sequence_ownership` aggregates. No seed rows. No `db/scripts/` migration.
 - `crates/base-session/src/base/organization/persistence/`: `create_org` (the org row, one rank row per `OrgRank::for_type`, and the leader, in one transaction), `load_memberships(player_id)`, `load_roster(org_id)`, `add_member`, `remove_member`, `set_rank`, `set_text` (MOTD, note, officer note, rank name), `set_rank_permissions`, `disband`, and the name-uniqueness check.
 - The ORG-API read and lock functions (`member_access`, `lock_org`).
-- The D-ORG12 leader-deletion trigger.
+- The D-ORG12 leader-deletion trigger, and the `org_vault_is_empty_sql(org_id)` SQL stub it calls (D-ORG20: a last-member delete with a non-empty vault leaves a memberless org). A memberless org is skipped by login restore and fanout, and listed by `.org_list`.
 - Live-DB tests: creation writes every rank row; a second Team for the same player fails on `UNIQUE (player_id, org_type)`; a duplicate `name_key` fails; the member `org_type` cannot drift from its org; an `org_id` at or above `0x4000_0000` is refused; disband cascades; `cash` cannot go negative; deleting the leader's character promotes the next member, or disbands a one-member org, and no leaderless org remains (`leader_delete_leaves_no_leaderless_org`); `rows_affected == 0` paths return a typed miss, not `Ok`.
 
 Message cimmeria-97 when this merges.
