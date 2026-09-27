@@ -350,3 +350,31 @@ async fn gm_unmute_lifts_and_refuses_when_not_muted() {
         ".unmute: Loudmouth is not muted."
     );
 }
+
+/// The GM's answer goes to the GM's session only while it still plays the
+/// GM's character: an entity id recycled to another character after the GM
+/// left gets nothing (SS-C3 review). The mute itself still applies.
+#[tokio::test]
+async fn gm_answer_not_sent_to_a_recycled_entity() {
+    let h = Harness::new();
+    h.connected
+        .lock()
+        .unwrap()
+        .get_mut(&GM_ADDR.parse().unwrap())
+        .unwrap()
+        .active_player_id = Some(0x7300_0399);
+    let table = MuteTable::new();
+
+    let outcome = apply_gm_mute(&h.ctx(), &table, GM, "Loudmouth", 5, "", Instant::now()).await;
+
+    assert!(matches!(outcome, MuteOutcome::Muted { .. }));
+    assert!(
+        h.lines_to(GM_ADDR).is_empty(),
+        "the line must not reach another character"
+    );
+    assert_eq!(
+        h.lines_to(SUBJECT_ADDR).len(),
+        1,
+        "the subject is still told"
+    );
+}

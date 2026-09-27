@@ -210,7 +210,7 @@ pub(super) async fn send_player_communication_at(
             player_id,
             account_id,
         };
-        tell::handle_tell(&feedback, sender, &target, &text).await;
+        tell::handle_tell(&feedback, sender, &target, &text, now).await;
         return;
     }
 

@@ -13,13 +13,16 @@
 //!   accepting your messages.", and nothing reaches the recipient.
 //!
 //! A recipient in AFK or DND still gets the tell; their away message goes
-//! back to the sender on the tell channel, spoken by the recipient.
+//! back to the sender on the tell channel, spoken by the recipient, unless
+//! the recipient is muted (SS-C3): the away text is theirs, so a mute
+//! silences it too.
 //!
 //! The rate limit (D-SS14), the channel allowlist and the GM mute (SS-C3,
 //! D-SS26) and the text rules (D-SS12) have already run in
 //! `chat::send_player_communication_at` before this is reached.
 
 use std::net::SocketAddr;
+use std::time::Instant;
 
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, serialize_on_tell_sent};
 use cimmeria_wire::cell::client_methods::communicator::{ON_PLAYER_COMMUNICATION, ON_TELL_SENT};
@@ -28,6 +31,7 @@ use super::super::contact_list::ignore::{not_accepting_text, session_ignores};
 use super::super::feedback::{
     send_feedback_line, send_to_current_player, FeedbackCtx, FeedbackOutcome,
 };
+use super::super::mutes::mute_table;
 use super::super::player_index::{NameLookup, OnlinePlayerIndex};
 use super::speaker_flags;
 use cimmeria_entity::organization::org_text::{validate, TextField};
@@ -129,7 +133,8 @@ fn resolve(ctx: &FeedbackCtx<'_>, sender: &TellSender<'_>, target: &str) -> Reso
 }
 
 /// Deliver one tell, or refuse it with a feedback line. `text` has passed
-/// the chat text rules.
+/// the chat text rules. `now` is the mute clock (the recipient's away reply
+/// is withheld while they are muted).
 #[tracing::instrument(
     name = "chat.tell",
     level = "info",
@@ -145,6 +150,7 @@ pub(super) async fn handle_tell(
     sender: TellSender<'_>,
     target: &str,
     text: &str,
+    now: Instant,
 ) {
     let refuse = |reason: &'static str, target_player_id: Option<i32>| {
         tracing::debug!(
@@ -243,10 +249,14 @@ pub(super) async fn handle_tell(
         return;
     }
 
+    // A muted player's away text is their words too: while the mute lasts
+    // it is not sent back (SS-C3 review), though the tell itself arrives.
+    let recipient_muted = mute_table().active(recipient.player_id, now).is_some();
+    let away_message = recipient.away_message.as_ref().filter(|_| !recipient_muted);
     if let Some(sender_player_id) = sender.player_id {
         let confirm = serialize_on_tell_sent(&recipient.name, text);
         send_to_current_player(ctx, sender.addr, sender_player_id, ON_TELL_SENT, &confirm).await;
-        if let Some(away) = &recipient.away_message {
+        if let Some(away) = away_message {
             let reply = serialize_on_player_communication(
                 &recipient.name,
                 recipient.flags,
@@ -276,7 +286,8 @@ pub(super) async fn handle_tell(
         target_account_id = recipient.account_id,
         target_entity_id = recipient_eid,
         text_units = text.encode_utf16().count(),
-        away_reply = recipient.away_message.is_some(),
+        away_reply = away_message.is_some(),
+        away_reply_withheld_muted = recipient_muted && recipient.away_message.is_some(),
         "tell delivered",
     );
 }

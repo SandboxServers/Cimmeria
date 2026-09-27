@@ -21,10 +21,14 @@ use std::time::{Duration, Instant};
 use cimmeria_entity::organization::org_text::{validate, TextField};
 
 use super::{minutes_left, MuteEntry, MuteTable, MAX_MUTE_MINUTES};
-use crate::base::feedback::{send_feedback_line, FeedbackCtx};
+use crate::base::feedback::{
+    send_feedback_line, send_to_current_player, serialize_on_player_communication, FeedbackCtx,
+    CHAN_FEEDBACK, FEEDBACK_SPEAKER,
+};
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::player_index::{NameLookup, OnlinePlayerIndex};
 use crate::base::rate_limit::limits::CHAT_EXEMPT_ACCESS_LEVEL;
+use crate::mercury::method_idx;
 
 /// Longest prefix of a typed name echoed back to the GM.
 const SHOWN_NAME_CHARS: usize = 64;
@@ -115,7 +119,40 @@ fn resolve(ctx: &GmMuteCtx<'_>, name: &str) -> Result<Subject, (&'static str, St
     })
 }
 
+/// Answer the GM. With a `player_id` the line goes to whatever entity the
+/// GM's session plays now, and only if it is still that character, so a
+/// GM who logged off before the base got here cannot have the line land on
+/// a recycled entity id. Without one, the entity id is all there is.
 async fn tell_gm(ctx: &GmMuteCtx<'_>, actor: GmActor, text: &str) {
+    if let Some(player_id) = actor.player_id {
+        let addr = ctx
+            .entity_to_addr
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&actor.entity_id)
+            .copied();
+        let Some(addr) = addr else {
+            tracing::debug!(
+                target: "chat",
+                entity_id = actor.entity_id,
+                player_id,
+                account_id = actor.account_id,
+                reason = "gm_gone",
+                "GM mute answer dropped: the GM's session is gone",
+            );
+            return;
+        };
+        let line = serialize_on_player_communication(FEEDBACK_SPEAKER, 0, CHAN_FEEDBACK, text);
+        send_to_current_player(
+            &ctx.feedback,
+            addr,
+            player_id,
+            method_idx::ON_PLAYER_COMMUNICATION,
+            &line,
+        )
+        .await;
+        return;
+    }
     send_gm_feedback_to_client(
         actor.entity_id,
         text,

@@ -396,3 +396,43 @@ async fn mute_gate_skips_gm_speakers() {
     assert_eq!(h.forwarded(), vec![(echannel::SAY, ".help".to_string())]);
     mute_table().unmute(PID, t0);
 }
+
+/// A muted recipient still receives a tell, but their AFK / DND text is not
+/// sent back to the teller while the mute lasts: it is their words too
+/// (SS-C3 review). The teller gets `onTellSent` and nothing else.
+#[tokio::test]
+async fn muted_recipient_away_reply_withheld() {
+    const PID: i32 = 0x7300_0317;
+    let bob_pid = PID + 0x40;
+    let capture = LogCapture::install();
+    let h = Harness::new(PID, 0);
+    h.connected
+        .lock()
+        .unwrap()
+        .get_mut(&addr(OTHER_PORT))
+        .unwrap()
+        .dnd_message = Some("buy gold at example dot com".to_string());
+    let t0 = Instant::now();
+    mute(bob_pid, t0 + Duration::from_secs(600), t0);
+
+    h.speak(echannel::TELL, "Bob", "hi", t0).await;
+
+    assert_eq!(
+        h.lines_to(OTHER_PORT),
+        vec![(echannel::TELL, "hi".to_string())],
+        "Bob still gets the tell"
+    );
+    let to_speaker = h.lines_to(SPEAKER_PORT);
+    assert_eq!(
+        to_speaker.len(),
+        1,
+        "only onTellSent, no away reply: {to_speaker:?}"
+    );
+    assert_eq!(to_speaker[0].0, 255, "the one packet is onTellSent");
+    let event = capture
+        .find_message(Level::INFO, "tell delivered")
+        .expect("chat.tell_delivered");
+    assert!(event.has_field("away_reply", "false"));
+    assert!(event.has_field("away_reply_withheld_muted", "true"));
+    mute_table().unmute(bob_pid, t0);
+}
