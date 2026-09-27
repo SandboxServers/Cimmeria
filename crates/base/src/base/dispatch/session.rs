@@ -34,14 +34,26 @@ pub(super) async fn handle_log_off(
     // version (the logoff / reset-entities packets below must be built with the
     // version this session speaks) and the player_name (needed for the
     // contact-list offline fanout).
+    //
+    // Both variants unlist the character from the online name index here:
+    // a full exit keeps the session (and `player_name`) until the client's
+    // disconnect reaps it, but the character has already left the world and
+    // must not be reachable by tells or duel challenges in that window.
     let (entity_id, enc_version, player_name) = {
-        let clients = connected.lock().unwrap();
-        let c = clients.get(&addr);
-        (
-            c.and_then(|c| c.player_entity_id),
-            c.map(|c| c.enc_version).unwrap_or_default(),
-            c.and_then(|c| c.player_name.clone()),
-        )
+        let mut clients = connected.lock().unwrap();
+        match clients.get_mut(&addr) {
+            Some(c) => {
+                let path = if disconnect != 0 {
+                    "logoff_full_exit"
+                } else {
+                    "logoff_character_select"
+                };
+                cimmeria_base_session::base::player_index::log_unlisted(addr, c, path);
+                c.listed_online = false;
+                (c.player_entity_id, c.enc_version, c.player_name.clone())
+            }
+            None => (None, Default::default(), None),
+        }
     };
 
     if let Some(entity_id) = entity_id {

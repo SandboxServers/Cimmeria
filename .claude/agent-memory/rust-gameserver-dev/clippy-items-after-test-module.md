@@ -33,3 +33,11 @@ let s: String = char::decode_utf16(pairs.iter().copied().map(u16::from_le_bytes)
 
 `slice::as_chunks` is stable since 1.88, so it is safe on the older default
 toolchain too.
+
+## `mod tests;` declarations hide log targets from `target_scan_tests` (2026-09-27, SS-00)
+
+The same "tests last" rule has a second enforcer: `crates/server/src/logging/target_scan_tests.rs`
+strips everything from a file's test module onward before scanning for `target: "..."` literals.
+A `#[cfg(test)] mod tests;` **declaration** near the top of a `mod.rs` (the tidy-looking place)
+makes every `tracing::warn!(target: ...)` below it invisible, so `scan_finds_known_targets` fails
+with "scan missed <target>" although the code is plainly there. Put `mod tests;` last too.

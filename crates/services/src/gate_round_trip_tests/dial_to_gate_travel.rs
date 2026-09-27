@@ -74,6 +74,8 @@ fn make_state() -> ConnectedClientState {
         cancelled: Arc::new(AtomicBool::new(false)),
         cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
         cinematic_aoi_hold: None,
+        listed_online: false,
+        rate_limits: Default::default(),
         player_name: Some("Tester".to_string()),
         player_level: Some(5),
         player_archetype: Some(1),

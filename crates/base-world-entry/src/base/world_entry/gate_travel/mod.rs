@@ -67,6 +67,7 @@ async fn abandon_unspaced_session(
             // Stop the tick-sync loop before the session goes, same as every
             // other teardown path.
             c.cancelled.store(true, Ordering::Relaxed);
+            cimmeria_base_session::base::player_index::log_unlisted(addr, c, "gate_travel_abandon");
         }
         clients.remove(&addr);
     }

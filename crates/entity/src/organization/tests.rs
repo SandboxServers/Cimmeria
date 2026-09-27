@@ -368,6 +368,7 @@ fn every_field_rejects_controls_bidi_and_zero_width() {
         TextField::Note,
         TextField::OfficerNote,
         TextField::RankName,
+        TextField::ChatText,
     ];
     for field in fields {
         for (text, want) in [
@@ -395,7 +396,7 @@ fn newline_only_in_motd_and_notes() {
     for field in [TextField::Motd, TextField::Note, TextField::OfficerNote] {
         assert_eq!(validate(field, "line 1\nline 2").unwrap(), "line 1\nline 2");
     }
-    for field in [TextField::Name, TextField::RankName] {
+    for field in [TextField::Name, TextField::RankName, TextField::ChatText] {
         assert_eq!(
             validate(field, "a\nb"),
             Err(TextReject::Control('\n')),
@@ -418,6 +419,7 @@ fn non_name_fields_keep_their_text_and_enforce_caps() {
         (TextField::Note, 128),
         (TextField::OfficerNote, 128),
         (TextField::RankName, 32),
+        (TextField::ChatText, 255),
     ] {
         assert!(validate(field, &"x".repeat(max)).is_ok(), "{field:?}");
         assert_eq!(

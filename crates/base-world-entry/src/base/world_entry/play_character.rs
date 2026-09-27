@@ -175,6 +175,8 @@ pub async fn handle_play_character(
             // this account" lookup that would target the wrong character on
             // multi-character accounts.
             c.active_player_id = Some(player_id);
+            // Not listed in the online name index yet: the client has not
+            // created this player entity. `handle_on_client_ready` lists it.
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
             c.pending_client_ready = None;
@@ -254,6 +256,8 @@ mod tests {
             cancelled: Arc::new(AtomicBool::new(false)),
             cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
             cinematic_aoi_hold: None,
+            listed_online: false,
+            rate_limits: Default::default(),
             player_name: None,
             player_level: None,
             player_archetype: None,

@@ -80,6 +80,8 @@ pub(super) fn make_state() -> ConnectedClientState {
         cancelled: Arc::new(AtomicBool::new(false)),
         cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
         cinematic_aoi_hold: None,
+        listed_online: false,
+        rate_limits: Default::default(),
         player_name: Some("Tester".to_string()),
         player_level: Some(5),
         player_archetype: Some(1),
@@ -363,5 +365,55 @@ async fn gate_travel_with_torn_down_connected_state_returns_err() {
     assert!(
         result.is_err(),
         "torn-down connection state must surface as Err"
+    );
+}
+
+/// SS-00: the last-resort abandon removes the session outright, so the
+/// character no longer resolves in the online name index and nobody else's
+/// listing is touched. Regression shape: an abandon that only cancels the
+/// session (and leaves it in `connected`) keeps a ghost name tells and duel
+/// challenges would resolve to.
+#[tokio::test]
+async fn abandoned_unspaced_session_leaves_no_player_index_listing() {
+    use cimmeria_base_session::base::player_index::{lookup_online, NameLookup, OnlinePlayer};
+
+    let addr: SocketAddr = "127.0.0.1:55690".parse().unwrap();
+    let other: SocketAddr = "127.0.0.1:55691".parse().unwrap();
+    let mut leaving = make_state();
+    leaving.player_name = Some("Lomiada".to_string());
+    leaving.active_player_id = Some(7);
+    leaving.player_entity_id = Some(42);
+    leaving.listed_online = true;
+    let mut staying = make_state();
+    staying.player_name = Some("Teal".to_string());
+    staying.active_player_id = Some(8);
+    staying.player_entity_id = Some(43);
+    staying.listed_online = true;
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (addr, leaving),
+        (other, staying),
+    ])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(42u32, addr), (43u32, other)])));
+    assert_eq!(
+        lookup_online(&connected, "Lomiada"),
+        NameLookup::Found(OnlinePlayer { addr, player_id: 7 })
+    );
+
+    let capture = crate::test_support::LogCapture::install();
+    abandon_unspaced_session(addr, 42, &connected, &entity_to_addr, &None).await;
+
+    assert_eq!(lookup_online(&connected, "Lomiada"), NameLookup::NotFound);
+    assert!(
+        capture.all().iter().any(|c| c.target == "online_index"
+            && c.has_field("event", "online_index.remove")
+            && c.has_field("path", "gate_travel_abandon")),
+        "the abandon logs online_index.remove path=gate_travel_abandon"
+    );
+    assert_eq!(
+        lookup_online(&connected, "Teal"),
+        NameLookup::Found(OnlinePlayer {
+            addr: other,
+            player_id: 8
+        })
     );
 }

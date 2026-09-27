@@ -201,6 +201,8 @@ pub(crate) async fn handle_login(
                 cancelled,
                 cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
                 cinematic_aoi_hold: None,
+                listed_online: false,
+                rate_limits: Default::default(),
                 player_name: None,
                 player_level: None,
                 player_archetype: None,

@@ -8,12 +8,19 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
+use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::read_wstring;
 
+use super::super::feedback::{send_feedback_line, FeedbackCtx};
+use cimmeria_entity::organization::org_text::{validate, TextField, TextReject};
+
+use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_UNITS};
+use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 use super::speaker_flags;
 
@@ -22,13 +29,48 @@ const MAX_DND_MESSAGE_CHARS: usize = 128;
 /// `sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)`.
 ///
 /// Routes spatial channels (say/emote/yell) to the CellService with the
-/// computed `speaker_flags`.
+/// computed `speaker_flags`, after two gates that run here, before the cell
+/// ever sees the line:
+///
+/// 1. the per-player chat bucket (D-SS14; GameMaster and above exempt);
+/// 2. the D-SS12 text rules: at most [`MAX_CHAT_TEXT_UNITS`] UTF-16 units and
+///    none of the characters D-ORG10 forbids (controls, bidi, zero-width and
+///    other format characters, line separators), through the one
+///    implementation, `org_text::validate(TextField::ChatText, ..)`.
+///
+/// The bucket runs first, so a refused line also costs a token: a client
+/// spamming bad lines is limited like any other flood, and cannot turn each
+/// bad packet into a feedback packet.
 pub(super) async fn handle_send_player_communication(
     payload: &[u8],
     player_name: &Option<String>,
     addr: SocketAddr,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+) {
+    send_player_communication_at(
+        payload,
+        player_name,
+        addr,
+        transport,
+        connected,
+        cell_tx,
+        Instant::now(),
+    )
+    .await;
+}
+
+/// [`handle_send_player_communication`] on an explicit clock, so the flood
+/// guards can step time exactly.
+pub(super) async fn send_player_communication_at(
+    payload: &[u8],
+    player_name: &Option<String>,
+    addr: SocketAddr,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    now: Instant,
 ) {
     // sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)
     if payload.is_empty() {
@@ -60,27 +102,16 @@ pub(super) async fn handle_send_player_communication(
 
     let speaker = player_name.as_deref().unwrap_or("Unknown");
 
-    tracing::info!(
-        %addr,
-        speaker,
-        channel,
-        target = if target.is_empty() { "<none>" } else { &target },
-        text_len = text.len(),
-        "sendPlayerCommunication"
-    );
-
-    // Route to CellService for spatial channels (say/emote/yell).
-    //
-    // Read player_eid + access_level + dnd_message under a single
-    // lock acquisition. Computing `speaker_flags` matches
+    // Read player_eid + speaker flags and take the chat token under a
+    // single lock acquisition. Computing `speaker_flags` matches
     // `python/base/Chat.py::getSpeakerFlags`:
     //   - SPEAKER_GM  if accessLevel > 0  (Moderator or higher)
     //   - SPEAKER_DND if dndMessage is not None
     // SPEAKER_Petition (0x02) is in the enum but never set by the
     // Python reference, so it is intentionally not computed.
-    let (player_eid, speaker_flags_value) = {
-        let clients = connected.lock().unwrap();
-        match clients.get(&addr) {
+    let (player_eid, speaker_flags_value, player_id, account_id, decision) = {
+        let mut clients = connected.lock().unwrap();
+        match clients.get_mut(&addr) {
             Some(c) => {
                 let mut flags: u8 = 0;
                 if c.access_level > 0 {
@@ -89,11 +120,80 @@ pub(super) async fn handle_send_player_communication(
                 if c.dnd_message.is_some() {
                     flags |= speaker_flags::DND;
                 }
-                (c.player_entity_id, flags)
+                let decision = if c.access_level >= CHAT_EXEMPT_ACCESS_LEVEL {
+                    RateDecision::Allowed
+                } else {
+                    c.rate_limits.check(RateCategory::Chat, now)
+                };
+                if let RateDecision::Limited { notify } = decision {
+                    // Logged here, under the lock, so the event carries the
+                    // bucket state the decision was made on.
+                    let actor = RateActor {
+                        addr,
+                        player_id: c.active_player_id,
+                        account_id: c.account_id,
+                        entity_id: c.player_entity_id,
+                    };
+                    log_exceeded(RateCategory::Chat, actor, notify, &c.rate_limits, now);
+                }
+                (
+                    c.player_entity_id,
+                    flags,
+                    c.active_player_id,
+                    c.account_id,
+                    decision,
+                )
             }
-            None => (None, 0),
+            None => return,
         }
     };
+
+    let feedback = FeedbackCtx {
+        transport,
+        connected,
+    };
+
+    if let RateDecision::Limited { notify } = decision {
+        if notify {
+            send_feedback_line(&feedback, addr, RateCategory::Chat.feedback_text()).await;
+        }
+        return;
+    }
+
+    // D-SS12: reject, never truncate. Lengths count UTF-16 units, the unit
+    // the client's WSTRING and its input box use.
+    if let Err(reject) = validate(TextField::ChatText, &text) {
+        tracing::warn!(
+            target: "chat",
+            event = "chat.rejected",
+            %addr,
+            player_id,
+            account_id,
+            entity_id = player_eid,
+            channel,
+            text_units = text.encode_utf16().count(),
+            max_units = MAX_CHAT_TEXT_UNITS,
+            reason = reject.reason(),
+            detail = %reject,
+            "sendPlayerCommunication rejected: text breaks the chat text rules, not forwarded",
+        );
+        send_feedback_line(&feedback, addr, chat_reject_text(&reject)).await;
+        return;
+    }
+
+    // Logged only once both gates pass: every field here is client-supplied,
+    // so a flooding client must not get one INFO row per packet.
+    tracing::info!(
+        %addr,
+        player_id,
+        account_id,
+        entity_id = player_eid,
+        speaker,
+        channel,
+        target = if target.is_empty() { "<none>" } else { &target },
+        text_len = text.len(),
+        "sendPlayerCommunication"
+    );
 
     if let Some(player_eid) = player_eid {
         if let Some(ref tx) = cell_tx {
@@ -107,6 +207,21 @@ pub(super) async fn handle_send_player_communication(
                 })
                 .await;
         }
+    }
+}
+
+/// Feedback for a chat line over [`MAX_CHAT_TEXT_UNITS`].
+pub(super) const CHAT_TOO_LONG_TEXT: &str = "Your message is too long.";
+
+/// Feedback for a chat line with a character the text rules forbid.
+pub(super) const CHAT_BAD_CHARACTER_TEXT: &str =
+    "Your message contains a character that cannot be sent.";
+
+/// The one line the player reads for a refused chat line.
+fn chat_reject_text(reject: &TextReject) -> &'static str {
+    match reject {
+        TextReject::TooLong { .. } => CHAT_TOO_LONG_TEXT,
+        _ => CHAT_BAD_CHARACTER_TEXT,
     }
 }
 
