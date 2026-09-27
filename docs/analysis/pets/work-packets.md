@@ -282,7 +282,7 @@ Each is an effect script or a target redirect ("the owner's pet") and gets its o
 
 ### PT-13
 
-**Status:** Done (this PR, docs only; the campaign outcome is in the [README](README.md#campaign-outcome)). #570 stays open until the owner's UAT. **Scope title:** close-out. Final docs pass:
+**Status:** Done (#930, docs only; the campaign outcome is in the [README](README.md#campaign-outcome)). #570 stays open until the owner's UAT. **Scope title:** close-out. Final docs pass:
 
 - `pet-system.md` status;
 - gap-analysis §28;

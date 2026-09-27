@@ -41,7 +41,7 @@ The campaign is complete as of 2026-09-27 and waits on the owner's in-game UAT (
 | PT-07 | #908 | GM `.pet` and `.giveability`, and the debug-hub pet trainer (template 360) |
 | PT-11 | #918 | Jaffa 351, Prime 352 and Lo'taur 353, each at its owner's level; no-op abilities refused with feedback |
 | PT-08 | #920 | Owner abilities on the pet: Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration, the Repair Turret heals |
-| PT-13 | this PR | Close-out docs: status docs, this ledger and the UAT checklist |
+| PT-13 | #930 | Close-out docs: status docs, this ledger and the UAT checklist |
 
 Known gaps:
 

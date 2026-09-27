@@ -19,7 +19,7 @@
 | PT-07 | Integrated | #908 | `.pet`, `.giveability` (persisted), hub trainer 360 / spawn 450 / list 350 |
 | PT-11 | Integrated | #918 | Jaffa 351, Prime 352, Lo'taur 353; no-op pet abilities refused with feedback |
 | PT-08 | Integrated | #920 | Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration, pet heals (D-PT17 proposed) |
-| PT-13 | Done | this PR | Close-out docs |
+| PT-13 | Done | #930 | Close-out docs |
 | PT-10, PT-12 | Not planned / Blocked | — | D-PT01 ephemeral; no turret model |
 | PT-UAT | Waiting on the owner | — | The checklist below |
 
