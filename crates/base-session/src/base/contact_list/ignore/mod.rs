@@ -146,6 +146,32 @@ pub async fn ensure_ignore_list(pool: &PgPool, player_id: i32) -> Result<i32, sq
     Ok(ignore)
 }
 
+/// The recipients among `recipient_ids` whose Ignore list holds `sender`
+/// (case-insensitively), in one query: the batched form of
+/// [`player_ignores`], on any executor so a caller can run it inside its own
+/// transaction (mail send checks it under the recipients' row locks).
+pub async fn recipients_ignoring<'e, E>(
+    executor: E,
+    recipient_ids: &[i32],
+    sender: &str,
+) -> Result<HashSet<i32>, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    if recipient_ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let rows: Vec<i32> = sqlx::query_scalar(
+        "SELECT DISTINCT cl.player_id FROM sgw_contact_list_member m          JOIN sgw_contact_list cl USING (list_id)          WHERE cl.player_id = ANY($1) AND cl.flags = $2            AND lower(m.player_name) = lower($3)",
+    )
+    .bind(recipient_ids)
+    .bind(IGNORE_LIST_FLAGS)
+    .bind(sender)
+    .fetch_all(executor)
+    .await?;
+    Ok(rows.into_iter().collect())
+}
+
 /// Every name on `player_id`'s Ignore list(s).
 pub async fn load_ignore_names(
     pool: &PgPool,

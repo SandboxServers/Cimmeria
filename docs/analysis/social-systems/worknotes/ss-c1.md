@@ -202,6 +202,24 @@ The tell-channel registration finding was answered by the coordinator (D-ORG14: 
 
 Guards: `update_ignore_list_for_missing_entity_logs_reason` and `update_ignore_list_for_another_players_entity_is_dropped` assert `account_id = 700`, and `update_ignore_list_replaces_the_cell_entity_set` now captures `chat.ignore_set_applied` and asserts its `account_id` and `player_id`. Proof: with `account_id` removed from the `entity_missing` row, `update_ignore_list_for_missing_entity_logs_reason` FAILED; restored.
 
+## Rebase onto SS-M1 and SS-D1, and their Ignore seams
+
+Rebased onto `origin/main` after SS-M1 (#894) and SS-D1 (#888) merged.
+
+- **Conflicts:** `crates/wire/src/cell/messages/base_to_cell.rs` and `crates/cell/src/cell/service/base_messages/mod.rs` (the `Duel` variant and arm beside `UpdateIgnoreList`), `crates/base/src/base/dispatch/mod.rs` and `dispatch/tests/mod.rs` (`mod duel` / `mod duel_challenge` beside `ignore` / `tell` / `chat_ignore`), `docs/architecture/observability.md` (my `chat` row, then SS-M1's `mail` and SS-D1's `duel` rows, twice), and `docs/gap-analysis.md` (the TOTALS line and summary paragraph). All were resolved by keeping both sides. TOTALS and the percentage table were recomputed from the matrix rows: 472 / CW 169 / NT 68 / IM 99 / KM 132 / NU 4 (the rows sum to it; percentages 35.8 / 14.4 / 21.0 / 28.0 / 0.8; code exists 336, 71.2%).
+- **Duel seam:** `dispatch/duel.rs::ignores` is now `target.ignore.ignores_player(challenger_player_id)`. Guard: `challenge_rejects_a_target_who_ignores_the_challenger`. It checks that `TEXT_TARGET_IGNORING` is sent, `reason = target_ignoring` is logged and nothing is forwarded. It FAILED with the `false` stub restored.
+- **Mail seam:** `send::recipients::ignoring_sender(conn, sender_name, recipient_ids)` now calls the new batched `contact_list::ignore::recipients_ignoring`. That is the one-query form of `player_ignores`, on any executor, so it runs in the send transaction. `deliver` calls it after the `FOR UPDATE` lock, where the sender's stored name is read. `failure_line` now writes the shared `not_accepting_text` sentence for each ignoring recipient, after the list of the others; the result code and `FailedRecipients` are unchanged.
+  - Live-DB guard: `mail::tests::send_ignore::send_skips_recipient_who_ignores_the_sender`. The recipient's list holds the sender in a different case: that recipient is in `FailedRecipients` under `MAILRESULT_Sent` and reads the not-accepting line, and the second recipient still gets the mail. It FAILED with the empty-set stub restored.
+  - Unit: `failure_line_uses_the_shared_not_accepting_sentence`.
+- **Two D-SS13 resolvers, both kept:** SS-M1's `recipients::resolve_names` + `candidate_rows` (one batched query for up to 10 typed names, in the send transaction) and SS-C1's `contact_list::ignore::resolve_character` (one name, used by `chatIgnore`). The batched one suits mail better; unifying them is not worth the churn.
+- **Docs:** the `mail-system.md` send steps and feedback line, and the `duel-system.md` `sendDuelChallenge` row.
+
+| Command | Result |
+|---|---|
+| `lane.sh cargo nextest run --no-fail-fast -p cimmeria-wire -p cimmeria-entity -p cimmeria-cell -p cimmeria-cell-console -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-base-methods --lib` | 2039 passed |
+| `live-db-test.sh ignore` / `tell` / `mail` | 48 / 20 / 59 passed, 0 failed |
+| clippy `-D warnings` on the 10 crates plus base-methods; `cargo fmt --all -- --check` | clean |
+
 ## Known gaps
 
 1. **Mute (SS-C3).** `tell.rs` has a `TODO(SS-C3)` where a muted sender is refused.

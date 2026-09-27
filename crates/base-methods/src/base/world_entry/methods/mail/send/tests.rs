@@ -90,3 +90,25 @@ fn failure_line_names_each_recipient_and_reason() {
         "Gate-mail not delivered to: Ghost (no such character), Full (gate-mail box is full)."
     );
 }
+
+/// A recipient who ignores the sender gets the shared D-SS15 sentence, after
+/// the list of the others.
+#[test]
+fn failure_line_uses_the_shared_not_accepting_sentence() {
+    let failed = [
+        FailedRecipient {
+            typed: "Ghost".into(),
+            player_id: None,
+            reason: FailReason::Unknown,
+        },
+        FailedRecipient {
+            typed: "Grumpy".into(),
+            player_id: Some(9),
+            reason: FailReason::Ignoring,
+        },
+    ];
+    assert_eq!(
+        failure_line(&failed).unwrap(),
+        "Gate-mail not delivered to: Ghost (no such character). Grumpy is not accepting your messages."
+    );
+}

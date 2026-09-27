@@ -298,10 +298,10 @@ fn is_client_ready(c: &ConnectedClientState) -> bool {
 
 /// D-SS15 seam: does the target's session ignore `challenger_player_id`?
 ///
-/// **Integration edit for SS-C1.** SS-C1 is building the Ignore cache on
-/// `ConnectedClientState` in parallel; when it merges, this body becomes
-/// that cache's membership check. Until then nothing is ignored, and the
-/// refusal path above (`reason = target_ignoring`) is wired but unreachable.
-fn ignores(_target: &ConnectedClientState, _challenger_player_id: i32) -> bool {
-    false
+/// The target's cached Ignore list (SS-C1) holds the challenger's
+/// character. The cache resolves every entry to `player_id`s at each world
+/// entry and Ignore change, matching names case-insensitively (D-SS13), so
+/// the check works from the id the session gives us.
+fn ignores(target: &ConnectedClientState, challenger_player_id: i32) -> bool {
+    target.ignore.ignores_player(challenger_player_id)
 }

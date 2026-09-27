@@ -22,7 +22,7 @@ The challenge and the answer are implemented (social-systems campaign SS-D1, [wo
 
 | Method | Index | Handler |
 |--------|-------|---------|
-| `sendDuelChallenge` | base 0xD9 | `crates/base/src/base/dispatch/duel.rs`: duel rate limit (D-SS21), squad duels refused, target resolved online (D-SS13), Ignore seam (D-SS15), then `DuelBaseToCell::Challenge` to the cell |
+| `sendDuelChallenge` | base 0xD9 | `crates/base/src/base/dispatch/duel.rs`: duel rate limit (D-SS21), squad duels refused, target resolved online (D-SS13), a target whose Ignore list holds the challenger refused with the ignoring line and `reason = target_ignoring` (D-SS15, the SS-C1 cache: `IgnoreCache::ignores_player`), then `DuelBaseToCell::Challenge` to the cell |
 | `sendDuelResponse` | 102 | `cell::duel::response`: acts only on the challenge addressed to the caller, consumed once, expired after 30 s |
 | `duelForfeit` | 103 | `social.rs` — still logs `UNIMPLEMENTED` (SS-D3) |
 

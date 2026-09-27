@@ -167,7 +167,7 @@ The original design stored contact lists in the `contactLists` CELL_PRIVATE PYTH
 ## Remaining Work
 
 1. **GateTravel `dataValue` id-space** -- the server sends the destination `world_id` from `resources.worlds`, which the client passes to `getWorldInfo(value).Name`. The exact id-space has not been confirmed by send-and-observe in playtest.
-2. **Ignore-list enforcement** -- done for chat (SS-C1, 2026-09-27): the `Ignore` system list (flags 301) is cached on the base session and the cell entity, a tell from an ignored player is refused ("X is not accepting your messages."), and their say, emote and yell are withheld. It is one-directional and hides nobody from anyone's AoI (D-SS15). `chatIgnore` (0xC5) edits the same list, so `/ignore` and the contact-list window stay in step. Mail and duel challenges use the same list when their packets land (SS-M1, SS-D1). See [chat-system.md](chat-system.md#tells-and-ignore).
+2. **Ignore-list enforcement** -- done (SS-C1, 2026-09-27): the `Ignore` system list (flags 301) is cached on the base session and the cell entity, a tell from an ignored player is refused ("X is not accepting your messages."), and their say, emote and yell are withheld. It is one-directional and hides nobody from anyone's AoI (D-SS15). `chatIgnore` (0xC5) edits the same list, so `/ignore` and the contact-list window stay in step. Mail sends and duel challenges to a player who ignores the sender are refused from the same list, with the same sentence (SS-M1, SS-D1). See [chat-system.md](chat-system.md#tells-and-ignore).
 
 ## Related Docs
 
