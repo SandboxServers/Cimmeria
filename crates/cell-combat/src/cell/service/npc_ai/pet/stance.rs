@@ -135,13 +135,18 @@ pub(super) fn pick_engagement(
 
     // Aggressive: the owner's target once the owner is in combat, then any
     // hostile NPC close to the pet.
+    //
+    // The owner's target needs nothing beyond `fight_refusal` (applied to
+    // every candidate above) and the owner radius: it is a fight the owner
+    // chose, so a hostile-faction mob content set to Neutral is as valid as
+    // it is for the owner's own attack. Only the scan, which picks a fight
+    // nobody chose, also asks `is_hostile_to_players`: an Aggressive pet
+    // attacks what would attack its owner on sight, not every attackable
+    // NPC in range.
     let owner_in_combat = owner.state_field & combat::BSF_IN_COMBAT != 0;
     let owner_target = owner.current_target_id.and_then(|t| u32::try_from(t).ok());
     if let Some(t) = owner_target.filter(|_| owner_in_combat) {
-        if let Some(m) = mobs
-            .iter()
-            .find(|m| id(m) == t && combat::is_hostile_to_players(m) && near_owner(m))
-        {
+        if let Some(m) = mobs.iter().find(|m| id(m) == t && near_owner(m)) {
             return Some((id(m), EngageWhy::OwnerTarget));
         }
     }

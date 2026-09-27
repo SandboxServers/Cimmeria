@@ -200,3 +200,27 @@ async fn a_pet_refuses_threat_from_a_being() {
     assert_eq!(state(&mgr, pet), AiState::Follow);
     assert!(mgr.get_entity(pet).unwrap().threat_list.is_empty());
 }
+
+/// The owner's own target needs no proximity-aggro hostility: a
+/// hostile-faction mob a content chain set to Neutral is still a mob the
+/// owner may attack, so an Aggressive pet joins the owner's fight with it.
+#[tokio::test]
+async fn aggressive_pet_takes_an_owner_target_content_set_neutral() {
+    let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
+    add_mob(&mut mgr, MOB, [10.0, 0.0, 35.0], HOSTILE);
+    mgr.get_entity_mut(MOB).unwrap().aggro.override_level = Some(MobAggression::Neutral);
+    assert!(!crate::cell::combat::is_hostile_to_players(
+        mgr.get_entity(MOB).unwrap()
+    ));
+    set_stance(&mut mgr, pet, PetStance::Aggressive);
+    let owner = mgr.get_entity_mut(OWNER).unwrap();
+    owner.state_field |= BSF_IN_COMBAT;
+    owner.current_target_id = Some(MOB as i32);
+
+    let logs = LogCapture::install();
+    tick(&mut mgr).await;
+
+    assert_eq!(state(&mgr, pet), AiState::Fighting);
+    let row = pets_ai_row(&logs, "pet_engaged").expect("pet_engaged row");
+    assert!(row.has_field("why", "owner_target"), "{row:?}");
+}

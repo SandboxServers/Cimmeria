@@ -12,6 +12,7 @@ use crate::test_support::{add_pet_owner, seed_pet_template, PET_FIXTURE_TEMPLATE
 use crate::test_support::{Captured, LogCaptureGuard};
 
 mod ability;
+mod disengage;
 mod engage;
 mod follow;
 mod hostility;
