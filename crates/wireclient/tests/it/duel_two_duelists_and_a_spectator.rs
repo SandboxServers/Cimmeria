@@ -13,6 +13,10 @@
 //! - C, the spectator: `onEntityProperty(GENERICPROPERTY_PvPFlag = 4, 1)` on
 //!   A's and on B's entity, and never a 151 of its own.
 //!
+//! Then B forfeits (cell method 103, SS-D3): both duelists get
+//! `onDuelEntitiesClear` [153], the spectator sees both flags go back to 0,
+//! and A hears "You won the duel" (879).
+//!
 //! Like the other modules here it needs a live database and does not run in
 //! CI (audit A-60), so it backs, and never replaces, the in-process guards in
 //! `crates/cell-world/src/cell/duel/tests/engage.rs`. Run it with
@@ -156,6 +160,38 @@ async fn duel_engages_for_two_duelists_and_flags_both_for_a_spectator() {
         "the spectator is not a duelist",
     )
     .await;
+
+    // B forfeits; A wins. One stateful wait per client: `wait_for` drops
+    // the rest of a bundle once its predicate matches, and 153 and the
+    // result line can share one.
+    b.send_bundle(&GameSession::cell_method(103, b_id, &[]), true)
+        .await
+        .expect("send duelForfeit");
+    let won: Vec<u8> = "You won the duel"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    for (s, id) in [(a, a_id), (b, b_id)] {
+        let (mut clear, mut line) = (false, id != a_id);
+        wait_for(s, Duration::from_secs(5), |m| {
+            clear |= m.method_index == Some(153);
+            line |= m.method_index == Some(28)
+                && m.payload.windows(won.len()).any(|w| w == won.as_slice());
+            clear && line
+        })
+        .await
+        .unwrap_or_else(|| panic!("{id}: 153 seen {clear}, the winner's 879 line seen {line}"));
+    }
+    let flag_off: [u8; 8] = [4, 0, 0, 0, 0, 0, 0, 0];
+    let mut cleared = HashSet::new();
+    wait_for(c, Duration::from_secs(5), |m| {
+        if m.method_index == Some(7) && direct_args(&m.payload) == flag_off {
+            cleared.extend(m.entity_id);
+        }
+        cleared.contains(&a_id) && cleared.contains(&b_id)
+    })
+    .await
+    .unwrap_or_else(|| panic!("the spectator saw flags cleared only for {cleared:?}"));
 
     for s in &sessions {
         let _ = s.send_bundle(&GameSession::disconnect(0), true).await;
