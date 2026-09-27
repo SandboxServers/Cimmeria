@@ -17,6 +17,8 @@ const KICKER_SAME: i32 = 5668;
 const KICKER: i32 = 5669;
 /// Steel Core: neither researchable nor a kicker.
 const PLAIN: i32 = 5254;
+/// Applied science 4, but not flagged a kicker.
+const SCIENCE_NOT_KICKER: i32 = 2925;
 
 /// Request a research of `item` with `kickers` and assert the refusal:
 /// exactly one line, `why`'s text; the inventory unchanged; nothing
@@ -96,10 +98,10 @@ async fn a_kicker_that_is_not_a_kicker_is_refused() {
     let capture = LogCapture::install();
     let f = VerbFixture::new(&pool, 11).await;
     let item = f.stack(ITEM, 15, 0).await;
-    let kicker = f.stack(PLAIN, 15, 1).await;
+    let kicker = f.stack(SCIENCE_NOT_KICKER, 15, 1).await;
     let why = CraftReject::NotKicker {
         item_id: kicker,
-        type_id: PLAIN,
+        type_id: SCIENCE_NOT_KICKER,
     };
     let fields = [("item_id", kicker.to_string())];
     assert_refused(&f, &capture, item, vec![kicker], why, &fields).await;

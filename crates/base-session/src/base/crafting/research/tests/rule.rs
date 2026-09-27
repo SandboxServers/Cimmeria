@@ -24,6 +24,8 @@ const KICKER_2: i32 = 5671;
 const PLAIN: i32 = 5254;
 /// A kicker-flagged item with no applied science.
 const KICKER_NO_SCIENCE: i32 = 9001;
+/// An item of applied science 4 that is not flagged a kicker.
+const SCIENCE_NOT_KICKER: i32 = 2925;
 
 fn attrs(flags: u32, science: Option<i32>, tc: i32, disciplines: &[i32]) -> CraftItemAttrs {
     CraftItemAttrs {
@@ -77,6 +79,7 @@ fn catalog() -> CraftingCatalog {
             (KICKER_2, attrs(ItemFlags::KICKER, Some(2), 33, &[78])),
             (PLAIN, attrs(ItemFlags::CAN_BE_SOLD, None, 3, &[])),
             (KICKER_NO_SCIENCE, attrs(ItemFlags::KICKER, None, 3, &[])),
+            (SCIENCE_NOT_KICKER, attrs(research, Some(4), 1, &[])),
         ],
     )
 }
@@ -130,7 +133,7 @@ fn an_item_not_flagged_researchable_is_refused() {
 #[test]
 fn a_kicker_must_be_flagged_and_carry_a_science() {
     let c = catalog();
-    for type_id in [PLAIN, KICKER_NO_SCIENCE] {
+    for type_id in [PLAIN, KICKER_NO_SCIENCE, SCIENCE_NOT_KICKER] {
         assert_eq!(
             check_request(&c, &held(1, ITEM), &[held(2, type_id)]),
             Err(CraftReject::NotKicker {
