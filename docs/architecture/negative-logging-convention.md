@@ -312,6 +312,26 @@ Every `pets.command` row the handlers write carries `owner_id` (the caller's ent
 
 The guards are in `cell_methods/player/pet/tests/guard.rs`. They cover another player's pet, an NPC id, a nonexistent id, a negative id, a stale registry entry and a reused owner entity id, for each command, and they fail when the `owned_pet` call is removed, weakened to "is a pet", or narrowed to the registry map without the per-pet summoner check (worknote `docs/analysis/pets/worknotes/pt-04.md`).
 
+## Bank move and grant refusals (BV-01)
+
+Target `bank`, all WARN. Each refusal carries the player-activity pair
+(`account_id`, `player_id`) plus `entity_id`, so "player X tried to move Y
+at time T and it failed" is answerable from SigNoz alone.
+
+| Event (message prefix) | `reason` | Fields |
+|---|---|---|
+| `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable`, `source_container_needs_vault_session`, `target_container_needs_vault_session` | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
+| `move_resync_skipped` | `refused_item_not_owned` (the refused move named an item the player does not own: a forged packet), `resync_read_failed` | `account_id` (not on `resync_read_failed`), `player_id`, `entity_id`, `item_id` |
+| `move_rejected` (infrastructure) | `move_lock_begin_failed`, `move_lock_failed`, `refusal_context_query_failed`, `move_lock_release_failed` | `player_id`, plus `item_id` / `entity_id` where known |
+| `grant_rejected` | `grant_into_storage_container` | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `target_container_id` |
+| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id` |
+
+The item fields of `move_rejected` are read at refusal time under the
+per-player move lock, so they are the item's committed position, and they
+are omitted (not zero) when the player does not own the item. The
+`LogCapture` guards are in `inventory/move_/allowlist_tests.rs` and
+`inventory/grant/vault_guard_tests.rs`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
