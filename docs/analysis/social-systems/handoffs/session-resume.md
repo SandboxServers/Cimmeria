@@ -1,11 +1,11 @@
 # Social Systems: Session Resume
 
 > Type: how-to. Audience: any later session and the owner.
-> Updated: 2026-09-27 (close-out, SS-99). Companions: [decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md), [gap analysis §21, §24, §27](../../../gap-analysis.md).
+> Updated: 2026-09-27 (after the release: #938, #943, #946). Companions: [decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md), [gap analysis §21, §24, §27](../../../gap-analysis.md).
 
-## State: complete, awaiting the owner's UAT
+## State: complete and released, awaiting the owner's UAT
 
-Every implementation packet is merged. SS-99, the close-out, is on `social/99-close-out` for the coordinator to open as a PR and put `/release` on (D-SS01). Branches were `social/*`; the id block is entity templates **390-399** and spawns **490-499** (only template 390 and spawn 490, the Gate Mail Clerk, are used).
+Every packet is merged, SS-99 included, and everything is live on the colo. The latest release, at `3684fa7eb`, also carries the three fixes after the close-out: #938, #943 and #946 (below). Branches were `social/*`; the id block is entity templates **390-399** and spawns **490-499** (only template 390 and spawn 490, the Gate Mail Clerk, are used).
 
 | Packet | Status | PR |
 |---|---|---|
@@ -28,7 +28,10 @@ Every implementation packet is merged. SS-99, the close-out, is on `social/99-cl
 | SS-M4 notification and expiry | Integrated | #933 |
 | SS-U3 Gate Mail Clerk | Integrated | #934 |
 | SS-C4 channel ids | Integrated | #937 |
-| SS-99 close-out | Review | (coordinator opens it) |
+| SS-99 close-out | Integrated | #940 |
+| Dialog ids below 65536 (pets hotfix) | Integrated | #938 |
+| Stop pushing debug-hub dialog overrides (pets hotfix) | Integrated | #943 |
+| Refuse mailing an item no take could place | Integrated | #946 |
 
 Where the work stands, by line:
 
@@ -39,6 +42,11 @@ Where the work stands, by line:
 
 Nothing in the campaign has been run in the real client.
 
+After the close-out:
+
+- **#946.** The send, and paying a COD, refuse an item that no take could place: a type whose `container_sets` names neither bag 1 nor bag 15, such as the 801 mission-only `{2}` types. The rule is `take::carried_bag`. A refused send answers `sendMailResult` `ItemNotAvailable` (`reason=item_no_carried_bag`) with a feedback line and moves nothing. A refused COD payment charges nothing (`reason=no_carried_bag`) and leaves the mail an unpaid COD that the payer can return. Before #946 a paid COD for such an item lost the price and never delivered. System mail still has the gap ([#959](https://github.com/SandboxServers/Cimmeria/issues/959)). Worknote: [ss-fix1.md](../worknotes/ss-fix1.md).
+- **#943.** The Gate Mail Clerk is quarantined: its dialog 60104 (with the debug hub's 60100 and 60101) is no longer pushed to clients, after a colo client crash on map load was traced to the custom dialog content, not its id. A right-click opens nothing. The seed rows stay, and restoring the dialog is one line once the root cause is found ([#939](https://github.com/SandboxServers/Cimmeria/issues/939)). Until then every clerk step uses `.mail`.
+
 ## Owner UAT
 
 The checklist is [SS-UAT in work-packets.md](../work-packets.md#ss-uat-owner-uat-colo-after-the-release). It is kept in one place so it cannot drift; this is what you need before you start:
@@ -46,9 +54,12 @@ The checklist is [SS-UAT in work-packets.md](../work-packets.md#ss-uat-owner-uat
 - two accounts, A and B, each with a character in the Castle_CellBlock stasis room (world 12);
 - GM rights on A for the solo fallbacks in steps 2 to 4 and for steps 6 and 10;
 - a third account, C, only for the spectator in step 11;
-- for a solo duel, `sparbot` needs its own account and, on the colo, the colo's `--auth-url` (question Q-g below).
+- for a solo duel, `sparbot` needs its own account and, on the colo, the colo's `--auth-url` (question Q-g below). Until the owner provides one, duels on the colo need two real players;
+- **before logging in**, any client that ever received the bad dialog push (100100/100101; so far one tester) deletes `Cache.en-US\CookedDataDialogs.pak`. The server cannot clear it.
 
-**The Gate Mail Clerk's dialog id is 60104.** SS-U3 seeded it as 100104, but client dialog ids must be 65535 or less: ids from 100100 up crashed the colo client on map load. The pets hotfix PR #938 renumbers every Cimmeria-authored dialog below 65536, and the clerk's becomes 60104. Until #938 merges, `main` still carries 100104 in `db/resources/`, in `docs/content/debug-hub.md` and in the clerk's tests; the UAT assumes #938 has shipped.
+The tester-facing copy of the checklist is the "Mail, chat and duels" section of the [unified UAT guide](../../../guides/unified-uat.md#mail-chat-and-duels), which keeps SS-UAT's step ids. Change both together.
+
+**The Gate Mail Clerk's dialog id is 60104** (#938): client dialog ids must be 65535 or less, and SS-U3's 100104 crashed the colo client on map load. The dialog is quarantined since #943 (see above).
 
 ## Owner questions
 
@@ -73,14 +84,16 @@ The squad-duel text (874 once squads exist, SS-D1) and a result text other than 
 
 ## Follow-up issues
 
-Filed during the campaign, all open:
+Filed during the campaign or after it, all open:
 
 - [#906](https://github.com/SandboxServers/Cimmeria/issues/906): instant-cast player abilities can hit a target in another space (no same-space check at fire).
 - [#913](https://github.com/SandboxServers/Cimmeria/issues/913): the trade row-lock order can deadlock against gate mail.
 - [#914](https://github.com/SandboxServers/Cimmeria/issues/914): `BIND_ON_ACQUIRE` is never applied at grant (Q-h).
 - [#928](https://github.com/SandboxServers/Cimmeria/issues/928): vendor buyback takes row locks before the inventory advisory lock.
+- [#939](https://github.com/SandboxServers/Cimmeria/issues/939): find the dialog override field that crashes the client, then restore the Gate Mail Clerk's dialog.
+- [#959](https://github.com/SandboxServers/Cimmeria/issues/959): system mail (`.mail`, `send_system_mail`) can still escrow an item no take could place.
 
-Issues #72 (mail) and #569 (duels) are covered by the campaign. The coordinator closes them with a pointer to this ledger.
+Issues #72 (mail) and #569 (duels) are closed, with a pointer to this ledger.
 
 ## Things a resuming session must not miss
 
@@ -89,12 +102,14 @@ Issues #72 (mail) and #569 (duels) are covered by the campaign. The coordinator 
 - **The Bank campaign** owns the vault mail aliases and result codes (D-SS07), through the one seam `send::resolve_recipient_flags`.
 - **The organizations campaign** owns team, command and officer chat and organization mail aliases. It knows that no channel is registered at login and that `DEFAULT_CHAT_CHANNELS` is gone.
 - **Mail rows from before SS-M4** have `expires_at` NULL and never expire. The colo database is rebuilt from the seed on every deploy, and the seed has no mail, so none exist there.
-- **Worktrees.** Retire each `ss-*` worktree, its `sgw_ss-*` database and its branch now that its PR has merged (remove the `external` junction non-recursively first).
+- **Worktrees.** Every `ss-*` worktree is retired. Retire any new one with `tools/build-lane/rm-worktree.sh <name>`, naming it (never `--merged`, which sweeps other campaigns' worktrees too).
 
 ## Other campaigns
 
-- **Organizations** (cimmeria-fa, `docs/analysis/organizations/`): team, command and officer chat; organization mail aliases.
-- **Bank / Vault** (cimmeria-97): vault mail aliases (D-SS07) and the mail-as-storage question (Q-c).
-- **Crafting** (cimmeria-af): the crafting bag (15) is a mail source and a take destination (SS-M4).
-- **Pets** (cimmeria-b5): pets in duels (Q-f); the dialog renumbering hotfix #938.
+Session names change on each restart; the ones below were current on 2026-09-27 after the restart (coordinator: cimmeria-3d).
+
+- **Organizations** (cimmeria-1f, `docs/analysis/organizations/`): team, command and officer chat; organization mail aliases.
+- **Bank / Vault** (cimmeria-79): vault mail aliases (D-SS07) and the mail-as-storage question (Q-c).
+- **Crafting** (cimmeria-23): the crafting bag (15) is a mail source and a take destination (SS-M4, owner decision D-CR28).
+- **Pets** (cimmeria-e4): pets in duels (Q-f); the dialog hotfixes #938 and #943; the unified UAT guide (#956).
 - **Black Market** (cimmeria-e3): BM-02b moves its payouts onto the system-mail writer.
