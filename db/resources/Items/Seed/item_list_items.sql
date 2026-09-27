@@ -78,9 +78,9 @@ INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquada
 -- Name: item_list_items_item_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
--- Past every seeded row and past the crafting supplies rows 3101-3124,
--- so a row inserted without an id never takes a seeded or reserved one.
--- Raise the floor when a new block is reserved above it; guarded by
--- live_db_seed_sequences.rs.
-SELECT setval('item_list_items_item_id_seq', GREATEST((SELECT MAX(item_id) FROM item_list_items), 3124));
+-- Past every seeded row and the end of the crafting campaign's list-row block
+-- (3101-3299; the supplies list uses 3101-3124), and never lowered, so a row
+-- inserted without an id never takes a seeded or reserved one. Raise the floor
+-- when a block is reserved above it; live_db_seed_sequences.rs guards it.
+SELECT pg_catalog.setval('item_list_items_item_id_seq', GREATEST((SELECT MAX(item_id) FROM item_list_items), (SELECT last_value FROM item_list_items_item_id_seq), 3299), true);
 

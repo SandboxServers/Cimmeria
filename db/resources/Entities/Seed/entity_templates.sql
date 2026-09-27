@@ -1093,11 +1093,11 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- Name: entity_templates_template_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
--- Past every seeded row and past the reserved campaign template blocks (Harset 200-299, debug hub 300-304,
--- crafting 310-329, organizations 330-349, pets 350-369, bank 370-389,
--- social 390-399),
--- so a row inserted without an id never takes a seeded or reserved one.
--- Raise the floor when a new block is reserved above it; guarded by
--- live_db_seed_sequences.rs.
-SELECT setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), 399));
+-- Past every seeded row and every reserved campaign template block (Harset
+-- 200-299, debug hub 300-304, crafting 310-329, organizations 330-349, pets
+-- 350-369, bank 370-389, social 390-399), and never lowered, so a row
+-- inserted without a template_id never takes a seeded or reserved id. Raise
+-- the floor when a block is reserved above 399; live_db_seed_sequences.rs
+-- guards it.
+SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 399), true);
 

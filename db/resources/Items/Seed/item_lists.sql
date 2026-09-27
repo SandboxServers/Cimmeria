@@ -18,9 +18,9 @@ INSERT INTO item_lists (item_list_id, name) VALUES (310, 'Debug hub crafting sup
 -- Name: item_lists_item_list_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
--- Past every seeded row and past the crafting supplies list 310,
--- so a row inserted without an id never takes a seeded or reserved one.
--- Raise the floor when a new block is reserved above it; guarded by
--- live_db_seed_sequences.rs.
-SELECT setval('item_lists_item_list_id_seq', GREATEST((SELECT MAX(item_list_id) FROM item_lists), 310));
+-- Past every seeded row and the end of the crafting campaign's list block
+-- (310-329), and never lowered, so a list created without an id never takes a
+-- seeded or reserved one. Raise the floor when a block is reserved above it;
+-- live_db_seed_sequences.rs guards it.
+SELECT pg_catalog.setval('item_lists_item_list_id_seq', GREATEST((SELECT MAX(item_list_id) FROM item_lists), (SELECT last_value FROM item_lists_item_list_id_seq), 329), true);
 

@@ -12,8 +12,8 @@ mod live_db {
 
     /// `(sequence, table, id column, floor)`, all in `resources`. The floor
     /// is the top of the highest reserved block (templates: social 390-399;
-    /// spawns: social 490-499) or, for the item lists, the highest seeded
-    /// id. Raise it with the footer when a block is reserved above it.
+    /// spawns: social 490-499; item lists and list rows: the crafting
+    /// blocks 310-329 and 3101-3299). Raise it with the footer when a block is reserved above it.
     const SEQUENCES: [(&str, &str, &str, i64); 4] = [
         (
             "entity_templates_template_id_seq",
@@ -26,13 +26,13 @@ mod live_db {
             "item_lists_item_list_id_seq",
             "item_lists",
             "item_list_id",
-            310,
+            329,
         ),
         (
             "item_list_items_item_id_seq",
             "item_list_items",
             "item_id",
-            3124,
+            3299,
         ),
     ];
 
