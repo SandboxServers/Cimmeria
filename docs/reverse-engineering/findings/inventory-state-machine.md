@@ -261,7 +261,7 @@ The content pattern at `docs/content/equip-from-inventory-pattern.md` notes that
 
 1. **`onRefreshItem` semantics**: `FUN_00e1db80` (`Inventory_HandleOnRefreshItem`) is not fully decompiled. Does it re-request the full item state from the server, or does it only trigger a UI redraw? The function name implies a lightweight "data is stale, please re-query" pattern.
 
-2. **`onClearOrgVaultInventory` trigger**: `FUN_00e1dcc0` presumably clears container 19 or 20 (team/command bank). The trigger conditions (org disbandment? logout?) are not established from binary alone.
+2. **`onClearOrgVaultInventory` trigger**: **partially closed 2026-09-28** (see [`team-vault-drag-drop.md`](team-vault-drag-drop.md)). `FUN_00e1dcc0` decompiles fully: it reads an incoming `OrganizationId` off the wire and maps it to container 19 or 20 by comparing it against the client's own cached `localPlayer+0x70`/`+0x74` org-id fields (the player's Team's and Command's own org ids), then removes every item whose stored container id matches. The trigger *conditions* (org disbandment? logout? something else?) are still not established — only the container-resolution mechanism is.
 
 3. **7 unidentified Inventory_Init subscriptions**: `FUN_00e20da0` registers 14 subscriptions total; only 7 handler functions are confirmed above. The remaining 7 may cover: `onStoreOpen`, `onStoreUpdate`, `onStoreClose`, `onCashChanged`, and 3 others. The CallbackImpl RTTI cluster at `0x00e219b0–0x00e21a10` covers `onContainerInfo` through `onCashChanged` (6 entries per session-3 address-map) — the remaining subscriptions are likely outside this range.
 
