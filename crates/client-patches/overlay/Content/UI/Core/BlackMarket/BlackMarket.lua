@@ -103,6 +103,25 @@ function BlackMarketMod.errorText( errorId )
     return BlackMarketMod.ERROR_TEXT[id] or ('The Black Market refused the request (error '..tostring(errorId)..').')
 end
 
+-- CimmeriaBMNative refuses anything but a whole number in INT32 range, so
+-- form text is coerced here. nil when the text is not a usable number.
+BlackMarketMod.INT32_MAX = 2147483647
+function BlackMarketMod.toInt( value )
+    local n = tonumber(value)
+    if not n or n ~= n then
+        return nil
+    end
+    n = math.floor(n)
+    if n < -BlackMarketMod.INT32_MAX - 1 or n > BlackMarketMod.INT32_MAX then
+        return nil
+    end
+    return n
+end
+
+-- Strings go out as at most 255 UTF-8 bytes. The host's strings are wide,
+-- so this counts characters: 85 fits even at three bytes each.
+BlackMarketMod.MAX_NAME_CHARS = 85
+
 function BlackMarketMod.now()
     local ok, t = pcall(worldGetDeltaSeconds)
     if ok and type(t) == 'number' then
@@ -628,8 +647,8 @@ function BlackMarketMod.onCreateClicked( this, window )
     end
 
     local itemDefId = getItemDef(itemId)
-    local bid = tonumber(BlackMarket_NewAuctionBidText:getText()) or 0
-    local buyout = tonumber(BlackMarket_NewAuctionBuyoutText:getText()) or 0
+    local bid = BlackMarketMod.toInt(BlackMarket_NewAuctionBidText:getText()) or 0
+    local buyout = BlackMarketMod.toInt(BlackMarket_NewAuctionBuyoutText:getText()) or 0
 
     -- Save the desired prices for this item so we can recall it if they put up more of the same
     BlackMarketMod.savedItemPrices[itemDefId] = {}
@@ -698,7 +717,7 @@ function BlackMarketMod.placeBid( amount, sentText )
 end
 
 function BlackMarketMod.onBidClicked( this, window )
-    BlackMarketMod.placeBid( tonumber(BlackMarket_NewBidText:getText()), 'Bid sent...' )
+    BlackMarketMod.placeBid( BlackMarketMod.toInt(BlackMarket_NewBidText:getText()), 'Bid sent...' )
 end
 
 function BlackMarketMod.onBuyoutClicked( this, window )
@@ -738,9 +757,9 @@ function BlackMarketMod.onSearchClicked( this, window )
     searchFilter.forward = true
     searchFilter.sellerName = ''
     searchFilter.bidderName = ''
-    searchFilter.itemName = BlackMarket_SearchItemText:getText() or ''
-    searchFilter.minTC = tonumber(BlackMarket_MinTC:getText()) or 0
-    searchFilter.maxTC = tonumber(BlackMarket_MaxTC:getText()) or 0
+    searchFilter.itemName = string.sub(BlackMarket_SearchItemText:getText() or '', 1, BlackMarketMod.MAX_NAME_CHARS)
+    searchFilter.minTC = math.max(BlackMarketMod.toInt(BlackMarket_MinTC:getText()) or 0, 0)
+    searchFilter.maxTC = math.max(BlackMarketMod.toInt(BlackMarket_MaxTC:getText()) or 0, 0)
     searchFilter.quality = 0
 
     if BlackMarket_SearchQualityCombo:getSelectedItem() then
@@ -1353,8 +1372,10 @@ function BlackMarketMod.updateNewAuctionReady()
         result = false
     end
 
-    local bid = tonumber(BlackMarket_NewAuctionBidText:getText()) or 0
-    local buyout = tonumber(BlackMarket_NewAuctionBuyoutText:getText()) or 0
+    local bid = BlackMarketMod.toInt(BlackMarket_NewAuctionBidText:getText()) or 0
+    local buyoutText = BlackMarket_NewAuctionBuyoutText:getText() or ''
+    local buyout = BlackMarketMod.toInt(buyoutText) or 0
+    local buyoutBad = (buyoutText ~= '' and not BlackMarketMod.toInt(buyoutText)) or buyout < 0
 
     if itemId > 0 and bid <= 0 then
         BlackMarket_NewAuctionBidText:setProperty( 'NormalColour', 'FFFF0000' )
@@ -1363,7 +1384,7 @@ function BlackMarketMod.updateNewAuctionReady()
         BlackMarket_NewAuctionBidText:setProperty( 'NormalColour', 'FFFFFFFF' )
     end
 
-    if buyout > 0 and buyout < bid then
+    if buyoutBad or (buyout > 0 and buyout < bid) then
         -- Invalid buyout, too low
         BlackMarket_NewAuctionBuyoutText:setProperty( 'NormalColour', 'FFFF0000' )
         result = false
