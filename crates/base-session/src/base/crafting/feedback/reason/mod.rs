@@ -148,6 +148,20 @@ pub enum CraftReject {
         type_id: i32,
         applied_science_id: i32,
     },
+    /// None of the researched item's disciplines is one the player knows
+    /// with `0 < expertise < tech_comp`, so research could teach nothing.
+    /// Refused at the request and again inside the completion transaction.
+    NoEligibleDiscipline {
+        item_id: i32,
+        type_id: i32,
+        applied_science_id: Option<i32>,
+        tech_comp: i32,
+        /// The item's disciplines, in id order.
+        item_disciplines: Vec<i32>,
+        /// The player's known disciplines as `(discipline_id, expertise)`,
+        /// in id order; a known discipline with no expertise row is 0.
+        known: Vec<(i32, i32)>,
+    },
     /// The item to reverse engineer is not flagged reverse-engineerable.
     NotReverseEngineerable { item_id: i32, type_id: i32 },
     /// No blueprint with a recipe makes the item.
@@ -255,6 +269,7 @@ impl CraftReject {
             CraftReject::NotKicker { .. } => "not_kicker",
             CraftReject::KickerSameScience { .. } => "kicker_same_science",
             CraftReject::KickerDuplicateScience { .. } => "kicker_duplicate_science",
+            CraftReject::NoEligibleDiscipline { .. } => "no_eligible_discipline",
             CraftReject::NotReverseEngineerable { .. } => "not_reverse_engineerable",
             CraftReject::NoBlueprintForItem { .. } => "no_blueprint_for_item",
             CraftReject::UnknownBlueprint { .. } => "unknown_blueprint",
@@ -297,6 +312,40 @@ impl CraftReject {
                     counts[0], counts[1], counts[2], counts[3]
                 ))
             }
+            _ => None,
+        }
+    }
+
+    /// The researched item's disciplines a no-eligible-discipline refusal
+    /// compared, as the `item_disciplines` field of the `rejected` event
+    /// (`21,22`); `None` for every other reason.
+    pub fn item_disciplines(&self) -> Option<String> {
+        match self {
+            CraftReject::NoEligibleDiscipline {
+                item_disciplines, ..
+            } => Some(
+                item_disciplines
+                    .iter()
+                    .map(i32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
+            _ => None,
+        }
+    }
+
+    /// The player's known disciplines a no-eligible-discipline refusal
+    /// compared, as the `known_disciplines` field of the `rejected` event
+    /// (`discipline_id:expertise,…`); `None` for every other reason.
+    pub fn known_disciplines(&self) -> Option<String> {
+        match self {
+            CraftReject::NoEligibleDiscipline { known, .. } => Some(
+                known
+                    .iter()
+                    .map(|(d, e)| format!("{d}:{e}"))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
             _ => None,
         }
     }
@@ -351,6 +400,7 @@ impl CraftReject {
             | CraftReject::NotKicker { .. }
             | CraftReject::KickerSameScience { .. }
             | CraftReject::KickerDuplicateScience { .. }
+            | CraftReject::NoEligibleDiscipline { .. }
             | CraftReject::NotReverseEngineerable { .. }
             | CraftReject::NoBlueprintForItem { .. } => None,
             CraftReject::UnknownBlueprint { .. }

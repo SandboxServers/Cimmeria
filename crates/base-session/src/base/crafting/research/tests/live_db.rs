@@ -177,36 +177,6 @@ async fn a_success_teaches_no_blueprint_whose_discipline_is_unknown() {
     f.cleanup().await;
 }
 
-/// A known discipline at expertise 0 is not eligible, so nothing is rolled
-/// and nothing is gained, even with rolls that would succeed.
-#[tokio::test]
-async fn a_discipline_at_zero_expertise_is_never_rolled() {
-    let pool = require_db_or_skip!();
-    let capture = LogCapture::install();
-    let f = VerbFixture::new(&pool, 3).await;
-    f.know(21, 0).await;
-    let item = f.stack(ITEM, INV_CRAFTING, 0).await;
-
-    research(&f, item, &[], vec![0.0, 0.0]).await;
-
-    assert!(!f.holds(item).await, "the item is used either way");
-    assert_eq!(f.expertise(21).await, Some(0));
-    assert!(f.blueprints().await.is_empty());
-    let lines = f.lines();
-    assert_eq!(lines.len(), 1);
-    assert!(lines[0].contains("learned nothing new"), "{lines:?}");
-    let completed = event(&capture, &f, "completed");
-    for (k, v) in [
-        ("result", "failure"),
-        ("eligible_disciplines", ""),
-        ("chance", ""),
-        ("roll", ""),
-    ] {
-        assert!(completed.has_field(k, v), "{k}={v}: {completed:#?}");
-    }
-    f.cleanup().await;
-}
-
 /// A blueprint the player already knows is not taught again, and 139 is
 /// not re-sent.
 #[tokio::test]

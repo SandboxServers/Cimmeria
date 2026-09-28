@@ -1,5 +1,6 @@
 //! The pure half of research: which items and kickers a request may use,
-//! and the roll at completion.
+//! which of the item's disciplines the player can research it in, and the
+//! roll at completion.
 
 use cimmeria_cell_catalog::crafting::{CraftItemAttrs, CraftingCatalog};
 use cimmeria_entity::crafting::CraftingState;
@@ -7,6 +8,7 @@ use cimmeria_entity::crafting::CraftingState;
 use crate::base::crafting::feedback::CraftReject;
 use crate::base::crafting::item_lookup::HeldInstance;
 use crate::base::crafting::rng::CraftRng;
+use crate::base::crafting::transaction::ResearchedItem;
 
 /// Expertise a successful research adds to the rolled discipline.
 pub const RESEARCH_EXPERTISE_GAIN: i32 = 5;
@@ -62,6 +64,74 @@ pub fn check_request(
     Ok(())
 }
 
+/// `item` with what the eligibility rule needs from its catalog row.
+pub fn researched_item(item: &HeldInstance, attrs: &CraftItemAttrs) -> ResearchedItem {
+    ResearchedItem {
+        item_id: item.item_id,
+        type_id: item.type_id,
+        applied_science_id: attrs.applied_science_id,
+        tech_comp: attrs.tech_comp,
+        discipline_ids: attrs.discipline_ids.clone(),
+    }
+}
+
+/// The disciplines of `discipline_ids` the player can research an item of
+/// tech competency `tech_comp` in: known, with `0 < expertise <
+/// tech_comp`, in id order. An expertise row for a discipline not in the
+/// known list does not count.
+pub fn eligible_disciplines(
+    discipline_ids: &[i32],
+    tech_comp: i32,
+    state: &CraftingState,
+) -> Vec<i32> {
+    let mut eligible: Vec<i32> = discipline_ids
+        .iter()
+        .copied()
+        .filter(|&d| {
+            state.knows_discipline(d)
+                && state
+                    .get_expertise(d)
+                    .is_some_and(|e| 0 < e && e < tech_comp)
+        })
+        .collect();
+    eligible.sort_unstable();
+    eligible.dedup();
+    eligible
+}
+
+/// Refuse a research the player could learn nothing from: none of the
+/// item's disciplines is eligible ([`eligible_disciplines`]). Checked at
+/// the request, and again inside the completion transaction, so a refused
+/// research never uses the item or its kickers. `Ok` carries the eligible
+/// disciplines.
+pub fn check_eligible(
+    item: &ResearchedItem,
+    state: &CraftingState,
+) -> Result<Vec<i32>, CraftReject> {
+    let eligible = eligible_disciplines(&item.discipline_ids, item.tech_comp, state);
+    if !eligible.is_empty() {
+        return Ok(eligible);
+    }
+    let mut item_disciplines = item.discipline_ids.clone();
+    item_disciplines.sort_unstable();
+    item_disciplines.dedup();
+    let mut known: Vec<(i32, i32)> = state
+        .discipline_ids
+        .iter()
+        .map(|&d| (d, state.get_expertise(d).unwrap_or(0)))
+        .collect();
+    known.sort_unstable();
+    known.dedup();
+    Err(CraftReject::NoEligibleDiscipline {
+        item_id: item.item_id,
+        type_id: item.type_id,
+        applied_science_id: item.applied_science_id,
+        tech_comp: item.tech_comp,
+        item_disciplines,
+        known,
+    })
+}
+
 /// The outcome of one research roll.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResearchRoll {
@@ -80,26 +150,16 @@ pub struct ResearchRoll {
 /// Roll a research of an item with `attrs` and `kickers` kickers, against
 /// the player's `state`. The discipline is picked uniformly from the
 /// eligible ones (one sample), then the chance is rolled (a second). With
-/// no eligible discipline nothing is rolled and the research fails.
+/// no eligible discipline nothing is rolled and the research fails; the
+/// request and the transaction both refuse that case first
+/// ([`check_eligible`]), so a completion never applies it.
 pub fn roll(
     attrs: &CraftItemAttrs,
     state: &CraftingState,
     kickers: usize,
     rng: &mut dyn CraftRng,
 ) -> ResearchRoll {
-    let mut eligible: Vec<i32> = attrs
-        .discipline_ids
-        .iter()
-        .copied()
-        .filter(|&d| {
-            state.knows_discipline(d)
-                && state
-                    .get_expertise(d)
-                    .is_some_and(|e| 0 < e && e < attrs.tech_comp)
-        })
-        .collect();
-    eligible.sort_unstable();
-    eligible.dedup();
+    let eligible = eligible_disciplines(&attrs.discipline_ids, attrs.tech_comp, state);
     if eligible.is_empty() {
         return ResearchRoll {
             eligible,

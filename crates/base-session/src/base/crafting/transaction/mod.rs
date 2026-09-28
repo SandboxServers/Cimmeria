@@ -48,7 +48,7 @@ mod tests;
 pub use applied::{BlueprintsLearned, ConsumedStack, CraftApplied, ExpertiseChange, GrantedStack};
 pub use client_sync::resync_inventory;
 pub use failure::CraftTxError;
-pub use plan::{CraftTransaction, NamedItem, RequiredKnowledge};
+pub use plan::{CraftTransaction, NamedItem, RequiredKnowledge, ResearchedItem};
 
 use failure::{at, expect_rows, log_persist_failed};
 
@@ -117,6 +117,11 @@ async fn apply_in_tx(
     // FOR UPDATE once instead of upgrading a share lock.
     if let Some(required) = plan.required_knowledge {
         knowledge::check_knowledge(tx, player_id, required).await?;
+    }
+    // Before the expertise rows are locked and written: the rule reads
+    // the expertise the research would raise.
+    if let Some(item) = &plan.research {
+        knowledge::check_research(tx, player_id, item).await?;
     }
     for &(discipline_id, delta) in &plan.expertise {
         let before: Option<i32> = sqlx::query_scalar(

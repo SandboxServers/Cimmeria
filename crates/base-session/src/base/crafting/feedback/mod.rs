@@ -121,6 +121,9 @@ async fn refuse(
         tier = c.tier,
         required_tier = c.required_tier,
         elementary_counts = why.elementary_counts(),
+        tech_comp = c.tech_comp,
+        item_disciplines = why.item_disciplines(),
+        known_disciplines = why.known_disciplines(),
         "crafting request rejected"
     );
     record_rejection(verb, reason);

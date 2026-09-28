@@ -68,6 +68,7 @@ async fn full_bag_rolls_back_and_tells_the_player() {
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await;
 
@@ -119,6 +120,7 @@ async fn a_component_moved_to_the_bank_before_completion_rolls_back() {
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await;
 
@@ -159,6 +161,7 @@ async fn bank_stacks_do_not_count_toward_consumption() {
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await;
 
@@ -200,6 +203,7 @@ async fn a_component_of_another_player_is_missing() {
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await;
 
@@ -236,6 +240,7 @@ async fn a_product_with_no_carried_bag_is_refused() {
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await;
 
@@ -347,6 +352,7 @@ async fn a_non_positive_consume_quantity_refuses_the_grant() {
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await;
 
@@ -376,6 +382,7 @@ async fn an_unknown_product_is_refused() {
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await;
 

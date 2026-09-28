@@ -197,6 +197,91 @@ fn only_known_disciplines_strictly_between_zero_and_the_tech_competency_are_elig
     assert_eq!(r.eligible, vec![21, 22]);
 }
 
+/// The request and the completion transaction refuse a research with no
+/// eligible discipline, by the same rule the roll uses, and report the
+/// values compared: the item's science, tech competency and disciplines,
+/// and every discipline the player knows with its expertise.
+#[test]
+fn a_research_with_no_eligible_discipline_is_refused_with_the_values_compared() {
+    let c = catalog();
+    let item = researched_item(&held(7, ITEM), &c.items[&ITEM]);
+    assert_eq!(
+        (
+            item.applied_science_id,
+            item.tech_comp,
+            &item.discipline_ids[..]
+        ),
+        (Some(1), 20, &[21, 22][..])
+    );
+    let refused = |known: &[(i32, i32)]| CraftReject::NoEligibleDiscipline {
+        item_id: 7,
+        type_id: ITEM,
+        applied_science_id: Some(1),
+        tech_comp: 20,
+        item_disciplines: vec![21, 22],
+        known: known.to_vec(),
+    };
+
+    // Nothing known; 21 at 0; 22 at the tech competency; only a discipline
+    // the item does not list.
+    assert_eq!(check_eligible(&item, &knowing(&[])), Err(refused(&[])));
+    let state = knowing(&[(78, 40), (21, 0), (22, 20)]);
+    assert_eq!(
+        check_eligible(&item, &state),
+        Err(refused(&[(21, 0), (22, 20), (78, 40)])),
+        "known disciplines are reported in id order"
+    );
+    // A known discipline with no expertise row is ineligible and reads 0.
+    let mut no_row = CraftingState::new();
+    no_row.discipline_ids.push(21);
+    assert_eq!(check_eligible(&item, &no_row), Err(refused(&[(21, 0)])));
+
+    // One eligible discipline is enough, and the rule agrees with the roll.
+    let state = knowing(&[(21, 0), (22, 19)]);
+    assert_eq!(check_eligible(&item, &state), Ok(vec![22]));
+    let r = roll(
+        &c.items[&ITEM],
+        &state,
+        0,
+        &mut ScriptedRng::new(vec![0.0, 0.0]),
+    );
+    assert_eq!(r.eligible, vec![22]);
+}
+
+#[test]
+fn the_no_eligible_discipline_refusal_reads_and_logs_its_rule() {
+    let why = CraftReject::NoEligibleDiscipline {
+        item_id: 7,
+        type_id: ITEM,
+        applied_science_id: Some(1),
+        tech_comp: 20,
+        item_disciplines: vec![21, 22],
+        known: vec![(21, 0), (78, 40)],
+    };
+    assert_eq!(why.reason(), "no_eligible_discipline");
+    assert_eq!(
+        why.text(),
+        "None of your disciplines can learn from that item: research needs one of its \
+         disciplines at an expertise above 0 and below 20. Nothing was used."
+    );
+    assert_eq!(why.error_code(), None);
+    let c = why.compared();
+    assert_eq!(
+        (c.item_id, c.type_id, c.applied_science_id, c.tech_comp),
+        (Some(7), Some(ITEM), Some(1), Some(20))
+    );
+    assert_eq!(why.item_disciplines().as_deref(), Some("21,22"));
+    assert_eq!(why.known_disciplines().as_deref(), Some("21:0,78:40"));
+    let other = CraftReject::NotKicker {
+        item_id: 1,
+        type_id: 2,
+    };
+    assert_eq!(
+        (other.item_disciplines(), other.known_disciplines()),
+        (None, None)
+    );
+}
+
 #[test]
 fn the_discipline_is_picked_uniformly_and_the_chance_counts_kickers() {
     let item = catalog().items[&ITEM].clone();
@@ -234,14 +319,6 @@ fn a_success_teaches_the_blueprints_of_known_disciplines_only() {
 #[test]
 fn the_result_line_says_what_happened() {
     let c = catalog();
-    let none = ResearchRoll {
-        eligible: vec![],
-        discipline_id: None,
-        chance: None,
-        roll: None,
-        success: false,
-    };
-    assert!(result_line(&c, &none, &CraftApplied::default()).contains("learned nothing new"));
     let failed = ResearchRoll {
         eligible: vec![21],
         discipline_id: Some(21),

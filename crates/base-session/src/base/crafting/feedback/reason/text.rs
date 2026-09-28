@@ -108,6 +108,10 @@ impl CraftReject {
             CraftReject::KickerDuplicateScience { .. } => {
                 "Only one kicker per applied science can be used. Nothing was used.".to_string()
             }
+            CraftReject::NoEligibleDiscipline { tech_comp, .. } => format!(
+                "None of your disciplines can learn from that item: research needs one of its \
+                 disciplines at an expertise above 0 and below {tech_comp}. Nothing was used."
+            ),
             CraftReject::NotReverseEngineerable { .. } => {
                 "That item cannot be reverse engineered. Nothing was used.".to_string()
             }

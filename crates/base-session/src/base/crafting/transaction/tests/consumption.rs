@@ -25,6 +25,7 @@ async fn partial_stack_shrinks_and_a_bank_first_product_lands_in_the_crafting_ba
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await
         .expect("craft commits");
@@ -86,6 +87,7 @@ async fn consumption_by_design_drains_across_both_bags_and_the_product_merges() 
             expertise: vec![],
             learn_blueprints: vec![],
             required_knowledge: None,
+            research: None,
         })
         .await
         .expect("craft commits");
