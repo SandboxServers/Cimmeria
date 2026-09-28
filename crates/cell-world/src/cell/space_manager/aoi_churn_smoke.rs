@@ -17,6 +17,7 @@
 
 use super::SpaceManager;
 use crate::cell::messages::CellToBaseMsg;
+use cimmeria_entity::cell_entity::{AOI_LEAVE_MARGIN, PLAYER_AOI_RADIUS};
 use std::collections::HashMap;
 
 const TEST_SPACES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -42,12 +43,13 @@ fn make_manager() -> SpaceManager {
 /// geometry, and disconnect must clear the player without taking
 /// any NPC mapping with it.
 ///
-/// Why these specific bounds: with NPCs spaced 20 units apart and
-/// `aoi_radius = 100`, only ~10 NPCs fit in range at a time and
-/// each enters once when the player crosses `NPC_X - 100` and
-/// leaves once at `NPC_X + 100`. The bound check inside the loop
-/// catches a leak at the failing tick rather than after the walk
-/// completes.
+/// Why these specific bounds: a player sees `PLAYER_AOI_RADIUS`
+/// (150 m) ahead and keeps an NPC until it is `AOI_LEAVE_MARGIN`
+/// further (175 m) behind, so with NPCs spaced 20 units apart at
+/// most ~17 are in view at a time. Each enters once when the player
+/// crosses `NPC_X - 150` and leaves once at `NPC_X + 175`. The bound
+/// check inside the loop catches a leak at the failing tick rather
+/// than after the walk completes.
 #[tokio::test]
 async fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
     const NPC_COUNT: u32 = 50;
@@ -57,13 +59,16 @@ async fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
     const NPC_ID_BASE: u32 = 100;
     const PLAYER_START_X: f32 = -200.0;
     const PLAYER_END_X: f32 = 1200.0;
-    // aoi_radius is the CellEntity default of 100.0 — see
-    // crates/entity/src/cell_entity/mod.rs:329.
+    // `connect_entity` gives the player `PLAYER_AOI_RADIUS`; it keeps an
+    // entity until `AOI_LEAVE_MARGIN` past that.
+    let view_window = PLAYER_AOI_RADIUS + (PLAYER_AOI_RADIUS + AOI_LEAVE_MARGIN);
+    let max_in_view = (view_window / NPC_SPACING).floor() as usize + 1;
 
     let mut mgr = make_manager();
 
     // Seed NPCs along the line. spawn_npc creates them as non-player
-    // entities with class_id=0x04 (SGWMob) and the default aoi_radius.
+    // entities with class_id=0x04 (SGWMob) and the default (NPC
+    // perception) aoi_radius, which plays no part in the player's view.
     for i in 0..NPC_COUNT {
         let pos = [i as f32 * NPC_SPACING, 0.0, 0.0];
         mgr.spawn_npc(NPC_ID_BASE + i, "Agnos", pos, [0.0; 3])
@@ -121,12 +126,12 @@ async fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
             .witnesses
             .len();
         peak_witnesses = peak_witnesses.max(witness_count);
-        // Bounded witness-set guard: with NPCs every 20 units and a
-        // 100-unit radius, at most ~10 NPCs are in range at any time.
-        // Allow a small margin (11) for the inclusive boundary.
+        // Bounded witness-set guard: with NPCs every 20 units, a player
+        // holds at most `max_in_view` of them (the +1 covers the inclusive
+        // boundary).
         assert!(
-            witness_count <= 11,
-            "tick {tick}: witness set blew past the spatial bound (got {witness_count}, expected <= 11) — likely a leaked entry"
+            witness_count <= max_in_view,
+            "tick {tick}: witness set blew past the spatial bound (got {witness_count}, expected <= {max_in_view}) — likely a leaked entry"
         );
     }
 

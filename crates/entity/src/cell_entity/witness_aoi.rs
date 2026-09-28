@@ -10,6 +10,28 @@ use std::collections::HashSet;
 
 use super::CellEntity;
 
+/// How far a player sees, in metres: another entity enters a player's AoI
+/// within this distance. `connect_entity` gives every player this radius.
+///
+/// It matches the legacy C++ server's `grid_vision_distance = 3` chunks of
+/// 50 m, and sits just inside the client's own cull for small objects
+/// (`AutoCullDistanceMinimum = 16000` UE3 units, 160 m, in
+/// `Engine/Config/GameplayEngine.ini`), so a wider radius would mostly send
+/// characters the client does not draw.
+///
+/// NPC perception is a separate, shorter radius: an NPC keeps the
+/// `CellEntity::new` default of 100 m, which its target-loss and leash
+/// logic read.
+pub const PLAYER_AOI_RADIUS: f32 = 150.0;
+
+/// How much further than its AoI radius an entity must move before it leaves
+/// a witness's view. Without it, two players standing about
+/// [`PLAYER_AOI_RADIUS`] apart dropped out of each other's view and were
+/// re-introduced (a full `CREATE_ENTITY` plus the property cascade) every
+/// time one of them shifted a step. The legacy grid damped the same boundary
+/// with a one-chunk hysteresis.
+pub const AOI_LEAVE_MARGIN: f32 = 25.0;
+
 impl CellEntity {
     /// Update the entity's world-space position.
     pub fn set_position(&mut self, position: Vector3) {
@@ -54,6 +76,13 @@ impl CellEntity {
     /// for every server-spawned entity.
     pub fn is_introducible(&self) -> bool {
         self.account_id.is_none() || (self.is_player && self.archetype_id.is_some())
+    }
+
+    /// Distance past which an entity already in this entity's AoI leaves it:
+    /// the AoI radius plus [`AOI_LEAVE_MARGIN`]. Entering still needs
+    /// [`Self::aoi_radius`].
+    pub fn aoi_leave_radius(&self) -> f32 {
+        self.aoi_radius + AOI_LEAVE_MARGIN
     }
 
     /// Returns `true` if the given position is within this entity's AoI radius.

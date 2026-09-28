@@ -67,14 +67,27 @@ impl SpaceManager {
             return;
         };
         {
-            let (player_pos, aoi_radius, player_interactions) = match space.entities.get(&player_id)
-            {
-                Some(e) => (e.position, e.aoi_radius, e.available_interactions.clone()),
-                None => return,
-            };
+            let (player_pos, enter_radius, leave_radius, player_interactions, previous_aoi) =
+                match space.entities.get(&player_id) {
+                    Some(e) => (
+                        e.position,
+                        e.aoi_radius,
+                        e.aoi_leave_radius(),
+                        e.available_interactions.clone(),
+                        e.witnesses
+                            .iter()
+                            .map(|eid| eid.0 as u32)
+                            .collect::<HashSet<u32>>(),
+                    ),
+                    None => return,
+                };
 
-            // Query the grid for nearby entities
-            let candidates = space.space.get_entities_in_range(&player_pos, aoi_radius);
+            // Query the grid out to the leave radius: an entity already in
+            // view stays until it is past that, one not yet in view enters
+            // only inside the (shorter) enter radius. The gap between the two
+            // stops an entity at the edge from leaving and being re-created
+            // every tick.
+            let candidates = space.space.get_entities_in_range(&player_pos, leave_radius);
 
             // Filter to actual AoI: all entities in range (players + NPCs)
             let mut current_aoi: HashSet<u32> = HashSet::new();
@@ -95,17 +108,16 @@ impl SpaceManager {
                         continue;
                     }
                     let dist_sq = player_pos.distance_squared_to(&other.position);
-                    if dist_sq <= aoi_radius * aoi_radius {
+                    let radius = if previous_aoi.contains(&cid) {
+                        leave_radius
+                    } else {
+                        enter_radius
+                    };
+                    if dist_sq <= radius * radius {
                         current_aoi.insert(cid);
                     }
                 }
             }
-
-            // Get previous witness set
-            let previous_aoi: HashSet<u32> = match space.entities.get(&player_id) {
-                Some(e) => e.witnesses.iter().map(|eid| eid.0 as u32).collect(),
-                None => return,
-            };
 
             // Entered AoI: in current but not in previous
             for &eid in &current_aoi {

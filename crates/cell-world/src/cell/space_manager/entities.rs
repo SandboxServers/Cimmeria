@@ -355,6 +355,7 @@ impl SpaceManager {
                 let id = match space.entities.get_mut(&entity_id) {
                     Some(entity) => {
                         entity.is_player = true;
+                        entity.aoi_radius = cimmeria_entity::cell_entity::PLAYER_AOI_RADIUS;
                         entity.class_id = 0x02; // SGWPlayer
                         entity.identity()
                     }
