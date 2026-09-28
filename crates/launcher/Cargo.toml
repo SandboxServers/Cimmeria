@@ -3,7 +3,7 @@ name = "sgw-launcher"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Stargate Worlds launcher — installs the game from a seed + patch manifest, launches SGW.exe or the Atera debug bat, and uploads debug logs to Azure Blob."
+description = "Stargate Worlds launcher — installs the game from a seed + patch manifest (zip, or the archived RAR + installer cabinets), launches SGW.exe or the Atera debug bat, and uploads debug logs to Azure Blob."
 
 [dependencies]
 # Shared client launch primitives (suspended launch, DLL injection,
@@ -39,6 +39,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 # Gzip compression for telemetry chunk uploads.
 flate2 = "1"
+
+# RAR seeds: the archived 2009 client is a RAR holding the original
+# installer's cabinet set (see src/unpack/). The crate is MIT/Apache and
+# builds RARLAB's UnRAR C++ source, whose licence allows extraction.
+unrar = "0.5"
 
 walkdir = "2"
 gethostname = "1.1"
@@ -79,6 +84,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Memory",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_LibraryLoader",
+    # FDICreate/FDICopy: expand the installer cabinet set (src/unpack/fdi.rs).
+    "Win32_Storage_Cabinets",
 ] }
 
 [build-dependencies]
@@ -92,3 +99,5 @@ tempfile = "3"
 # Range-header resume, status-code branches, and call-count expectations
 # (e.g. "second pass over an idempotent install hits the server zero times").
 wiremock = "0.6"
+# CRC-32 for the hand-built RAR fixture in src/unpack/test_fixtures.rs.
+crc32fast = "1"

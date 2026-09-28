@@ -290,7 +290,9 @@ impl LauncherApp {
     }
 
     fn show_launch_panel(&mut self, ui: &mut egui::Ui) {
-        let dir = self.config.install_path.clone();
+        // Every launch runs from the directory holding SGW.exe
+        // (`Working\Binaries` in a full install).
+        let dir = crate::install_layout::binaries_dir(&self.config.install_path);
         let opts = self.launch_opts.clone();
         ui.horizontal(|ui| {
             if ui

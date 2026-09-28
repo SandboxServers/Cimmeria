@@ -5,10 +5,12 @@ mod client_paths;
 mod config;
 mod identity;
 mod install;
+mod install_layout;
 mod logs;
 mod manifest;
 mod state;
 mod telemetry;
+mod unpack;
 mod worker;
 
 // The suspended-launch, DLL-injection, and .rdata-patch modules moved
