@@ -9,6 +9,13 @@
 //! - [`live_db_castle_seed`]: live-DB guards for Castle (World 8) *seed content*
 //!   that loads fine and is nonetheless wrong — actors outside the box that is
 //!   meant to contain them, missing display names, missing respawn timers.
+//! - [`live_db_castle_loot`]: live-DB guard for the Castle hostile loot tables 4-6:
+//!   every hostile template rolls one, no row is guaranteed, only items that work
+//!   today drop, and each table's empty-corpse rate stays in its band.
+//! - [`live_db_castle_population`]: live-DB guards for the Castle population pass
+//!   (templates 174-186, spawns 189-212 and 247-282): hostile aggro clear of the
+//!   respawners, ring pad and mission actors, friendlies out of aggro range and
+//!   named, the level 2-4 guard templates and the untouched level-1 ones.
 //! - [`live_db_debug_hub`]: live-DB guards for the Castle_CellBlock
 //!   stasis-room debug hub seed (templates 300-304, spawns 400-404): role
 //!   columns, placement (the Gate Mail Clerk's spawn 490 included), the
@@ -60,6 +67,8 @@
 
 mod live_db_ability_animation_links;
 mod live_db_ability_ranges;
+mod live_db_castle_loot;
+mod live_db_castle_population;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;

@@ -29,7 +29,7 @@ Guard, every Cellblock guard) seeds `assist_radius = 26`. Barracks guards
 (18.6/20.5 u) are occluder-Blocked, so 26 u does not link them. Production
 assist LoS comes from the occluder when a world ships one, not the navmesh.
 The live-DB guard `barracks_guards_assist_radius_covers_the_room` replaced
-`no_seeded_template_sets_an_assist_radius_yet` and pins "only template 24 tunes".
+`no_seeded_template_sets_an_assist_radius_yet` and pins the tuned set: since the 2026-09-28 Castle population it is {24, 181-186} (181-186 at 12 u), and `live_db_aggression::seed_overrides_only_the_chain_armed_spawns` pins the aggro radii 15/20 on 181-186 -- both pins must be updated by any packet that tunes a radius.
 
 **How to apply:** when a test asserts "NPC X has no threat" next to a shot neighbour,
 pin X NEUTRAL (`aggro.override_level`) or move it >10 u / change faction. The damage

@@ -125,7 +125,9 @@ async fn assist_radius_check_rejects_non_positive_values() {
 /// 25.0 u apart). Every seeded spawn's radius is read through the spawn
 /// loader, so this fails if the seed reverts, if another template starts
 /// tuning without this test learning about it, or if a barracks guard moves
-/// out of its neighbours' reach.
+/// out of its neighbours' reach. The Castle population's guard templates
+/// 181-186 tune it too, to 12 u (docs/analysis/castle-population/README.md,
+/// D-CP04); their group spacing is guarded in cimmeria-cell-catalog.
 #[tokio::test]
 async fn barracks_guards_assist_radius_covers_the_room() {
     let pool = require_db_or_skip!();
@@ -137,8 +139,8 @@ async fn barracks_guards_assist_radius_covers_the_room() {
         .collect();
     assert_eq!(
         tuned,
-        [24].into_iter().collect(),
-        "only the NID Guard template tunes assist_radius"
+        [24, 181, 182, 183, 184, 185, 186].into_iter().collect(),
+        "only the NID Guard template 24 and the Castle population guards 181-186          tune assist_radius"
     );
 
     let guards: Vec<_> = ["Barracks_Guard1", "Barracks_Guard2", "Barracks_Guard3"]

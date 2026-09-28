@@ -1,7 +1,7 @@
 # Castle Rebuild Handoff
 
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
-> Updated: 2026-09-17 (implementation session record added). Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Cellblock campaign](../castle-cellblock-rebuild/README.md) (the inbound sibling), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
+> Updated: 2026-09-17 (implementation session record added). Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Cellblock campaign](../castle-cellblock-rebuild/README.md) (the inbound sibling), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md). Follow-on: [Castle population](../castle-population/README.md) (ambient NPCs and guard levels, 2026-09-28).
 
 ## Purpose And Evidence Boundary
 

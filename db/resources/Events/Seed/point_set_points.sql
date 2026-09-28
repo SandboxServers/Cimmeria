@@ -334,6 +334,28 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2411, 786.0, 55.2, 511.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2412, 811.0, 63.5, 511.0, 0, 0, 0);
 
+-- NEW CONTENT (Castle population): waypoints of patrol sets 2086-2093 (see
+-- point_sets.sql). y is the castle.nav floor height at each point; the first point
+-- of every set is its patrolling spawn's own position.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2086, 2413, 279.0, 70.18, 952.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2086, 2414, 279.0, 70.34, 976.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2087, 2415, 282.0, 70.18, 952.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2087, 2416, 282.0, 70.29, 976.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2088, 2417, 262.0, 70.18, 929.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2088, 2418, 300.0, 70.29, 929.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2089, 2419, 262.0, 70.18, 932.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2089, 2420, 300.0, 70.28, 932.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2090, 2421, 256.0, 70.25, 996.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2090, 2422, 298.0, 70.18, 996.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2091, 2423, 352.0, 48.38, 714.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2091, 2424, 420.0, 48.38, 714.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2092, 2425, 352.0, 48.38, 717.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2092, 2426, 420.0, 48.38, 717.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2093, 2427, 600.0, 20.02, 690.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2093, 2428, 642.0, 19.16, 695.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2093, 2429, 640.0, 18.51, 715.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2093, 2430, 605.0, 18.66, 720.0, 0, 0, 0);
+
 -- Interior named regions (packet H15, placement cluster PL-C). Corner order
 -- and the single elevated corner follow 2078/2079/2085: (xmax,zmin),
 -- (xmax,zmax), (xmin,zmax), then (xmin,zmin) carrying the ceiling Y.

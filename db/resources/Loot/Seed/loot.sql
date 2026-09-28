@@ -51,11 +51,71 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (23, 3, 6483, 1, 0.2, 1);
 
+-- NEW CONTENT (Castle population, docs/analysis/castle-population/README.md,
+-- D-CP09): Castle hostiles drop something sometimes, never guaranteed. Each row
+-- rolls independently (cell-combat abilities/loot_drop.rs); if every row misses,
+-- the corpse gets no loot cursor, which is the intended "nothing dropped" outcome.
+--
+-- Only items that do something today:
+--   design_id NULL = naquadah (currency).
+--   Consumables with a working use path. Since #1021 an item whose
+--   items_event_sets event-5 ability heals or buffs (effect scripts HealHealth,
+--   HealFocus, StatBuff) works natively, with no chain:
+--     2893 Health Slappack TC1 (+500 HP), 6106 Focus Heal Consumable, and the
+--     six Mark III stimpacks 6677-6682 (Coordination, Engagement, Fortitude,
+--     Intellect, Morale, Perception; a timed attribute buff).
+--   Unwired bag consumables (the Stealth, Energy and Disguise boosts, the
+--   antidotes) answer "This item has no effect yet.", so they never drop, and
+--   stimpacks stop at Mark III: Mark V and up are too strong for a level 3-4 zone.
+--   5224 Integrated Circuit (Electronics), 5188 Protein Complex (Bio-Medical),
+--   5257 Wave Guide (Power Systems): tier-1 crafting components, the most-used
+--        base components of their applied sciences (85, 53 and 42 blueprints in
+--        blueprints_components). A guard carries electronics and a field medkit's
+--        worth of bio-medical stock; a drone salvages to electronics and power.
+-- There is no grenade item in the client item table, so no grenades.
+--
+-- Chance a corpse drops nothing (product of the misses):
+--   table 4 guard    0.50 * 0.85 * 0.92^2 * 0.90 * 0.99^6 = 30.5%
+--   table 5 veteran  0.40 * 0.75 * 0.88^2 * 0.85 * 0.98^6 = 17.5%
+--   table 6 PRU      0.70 * 0.80                          = 56%
+-- Any stimpack at all: 5.9% of guard corpses (1 - 0.99^6), 11.4% of veteran
+-- corpses (1 - 0.98^6).
+-- Table 5 is on templates 169 (Romney), 170 (Muelbach) and 171 (the Bravo
+-- officers), whose deaths also drive missions 703 and 708. Those grants are
+-- `add_item` actions in the entity_dead_tag chains (1272/1273, 1346-1349), not
+-- loot rows, and no chain reads the corpse's interaction flags, so a loot roll
+-- neither duplicates nor blocks Romney's 2135, the Control Crystal (2790) or item 2136.
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (24, 4, NULL, 5, 0.5, 20);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (25, 4, 2893, 1, 0.15, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (26, 4, 5224, 1, 0.08, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (27, 4, 5188, 1, 0.08, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (28, 5, NULL, 10, 0.6, 35);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (29, 5, 2893, 1, 0.25, 2);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (30, 5, 5224, 1, 0.12, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (31, 5, 5188, 1, 0.12, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (32, 6, 5224, 1, 0.3, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (33, 6, 5257, 1, 0.2, 1);
+-- Added after #1021 made event-5 consumables work natively (owner, 2026-09-28).
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (34, 4, 6106, 1, 0.1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (35, 4, 6677, 1, 0.01, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (36, 4, 6678, 1, 0.01, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (37, 4, 6679, 1, 0.01, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (38, 4, 6680, 1, 0.01, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (39, 4, 6681, 1, 0.01, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (40, 4, 6682, 1, 0.01, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (41, 5, 6106, 1, 0.15, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (42, 5, 6677, 1, 0.02, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (43, 5, 6678, 1, 0.02, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (44, 5, 6679, 1, 0.02, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (45, 5, 6680, 1, 0.02, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (46, 5, 6681, 1, 0.02, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (47, 5, 6682, 1, 0.02, 1);
+
 --
 -- TOC entry 3323 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: loot_loot_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_loot_id_seq', 23, true);
+SELECT pg_catalog.setval('loot_loot_id_seq', 47, true);
 

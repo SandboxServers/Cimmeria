@@ -161,3 +161,88 @@ fn every_castle_spawn_is_on_the_mesh() {
     assert!(checked > 30, "parsed only {checked} world-8 spawns");
     assert!(off.is_empty(), "off castle.nav: {off:#?}");
 }
+
+/// Every World 8 patrol loop (`point_sets` type `Patrol`) is walkable:
+/// each waypoint stands on the mesh and each leg, including the one that
+/// closes the loop, routes all the way. A leg that ends at a component
+/// boundary is still a "path" to Detour (`Partial`), and the patrol then
+/// slides the NPC toward the waypoint across whatever lies between, which
+/// in Castle's layered interior means through a floor. Revert proof: move
+/// waypoint 2424 (the east end of `Castle.Patrol.ThroneApproach_A`) into the
+/// Symbiote Chamber at (386, 55.38, 940), valid mesh in an isolated
+/// component, and both of set 2091's legs report `partial`.
+#[test]
+fn every_castle_patrol_leg_is_routable() {
+    let Some(mesh) = castle_nav() else { return };
+    let seed = |file: &str| {
+        std::fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../db/resources/Events/Seed")
+                .join(file),
+        )
+        .expect("point set seed")
+    };
+    let values = |line: &str| -> Vec<String> {
+        let vals = line.split("VALUES (").nth(1).expect("VALUES list");
+        vals.trim_end_matches(';')
+            .trim_end_matches(')')
+            .split(", ")
+            .map(|s| s.trim().to_string())
+            .collect()
+    };
+    let sets: Vec<i32> = seed("point_sets.sql")
+        .lines()
+        .filter(|l| l.starts_with("INSERT INTO point_sets"))
+        .map(values)
+        .filter(|f| f[2] == "'Patrol'" && f[3] == "8")
+        .map(|f| f[0].parse().expect("set_id"))
+        .collect();
+    assert!(
+        sets.len() >= 8,
+        "found only {} Castle patrol sets",
+        sets.len()
+    );
+
+    let points = seed("point_set_points.sql");
+    let mut failures = Vec::new();
+    for set in &sets {
+        // (point_id, position); the loader orders waypoints by point_id.
+        let mut wps: Vec<(i32, Vector3)> = points
+            .lines()
+            .filter(|l| l.starts_with("INSERT INTO point_set_points"))
+            .map(values)
+            .filter(|f| f[0] == set.to_string())
+            .map(|f| {
+                let n = |i: usize| f[i].parse::<f32>().expect("numeric column");
+                (f[1].parse().expect("point_id"), v(n(2), n(3), n(4)))
+            })
+            .collect();
+        wps.sort_by_key(|(id, _)| *id);
+        assert!(
+            wps.len() >= 2,
+            "patrol set {set} has {} waypoints",
+            wps.len()
+        );
+        for (id, p) in &wps {
+            if !mesh.is_point_valid(p) || mesh.start_poly_snap(p).is_none() {
+                failures.push(format!("set {set} waypoint {id} at {p:?} is off the mesh"));
+            }
+        }
+        for i in 0..wps.len() {
+            let (a_id, a) = wps[i];
+            let (b_id, b) = wps[(i + 1) % wps.len()];
+            let outcome = mesh.find_path(&a, &b);
+            let status = outcome.status.label();
+            let arrived = outcome
+                .into_waypoints()
+                .and_then(|w| w.last().map(|e| e.distance_to(&b)))
+                .is_some_and(|d| d < 2.0);
+            if status != "ok" || !arrived {
+                failures.push(format!(
+                    "set {set} leg {a_id} -> {b_id} ({a:?} -> {b:?}): {status}, arrived={arrived}"
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "unroutable patrol legs: {failures:#?}");
+}

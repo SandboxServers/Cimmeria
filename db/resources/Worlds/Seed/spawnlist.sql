@@ -535,6 +535,156 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (246, 271.7, 55.2, 855.0, 0, 8, 173, 'Castle_CommsTerminal', NULL);
 
 --
+-- NEW CONTENT (Castle population): ambient World 8 friendlies (spawns 189-212) and
+-- hostiles (247-282), templates 174-186, patrol point sets 2086-2093. Ledger with the
+-- placement table, the nav probe results and the UAT steps:
+-- docs/analysis/castle-population/README.md.
+--
+-- Story frame, from the shipped dialogs: the Castle is an NID prison and the Op-CORE
+-- prisoners are breaking out from the inside. Gerschon holds the Armory ("lots of
+-- people heading for the gate and the NID guys are not happy", 2573); Copplemann's
+-- fire team was wiped out by NID reinforcements (2574); Marsh and Moh'katan's Praxis
+-- Jaffa are pinned at the Stargate, unable to dial (2584). Cut content 4982-4985 adds
+-- stasis-sick marines and Ogilvie running the Level-5 infirmary supply.
+--
+-- Placement rules every row below was checked against (and the live-DB guards in
+-- crates/cell-catalog/src/cell/spawner/tests/live_db_castle_population.rs pin):
+--   * on castle.nav (crates/entity/tests/castle_navmesh.rs checks every world-8 row);
+--     y is the navmesh floor height at (x, z), not a guess;
+--   * no hostile's aggro radius (plus 3 u for where a player stands) reaches a
+--     respawner, the Armory ring pad, or a mission actor the player must talk to or
+--     use (Gerschon, Copplemann, both Zuritskas, the comms terminal, the Access
+--     Panel, Marsh, Moh'katan, the DHD); patrols are checked along the whole loop;
+--   * friendlies stand outside every hostile's aggro radius, by 5 u or more. NPCs do
+--     not fight each other yet, so a friendly in range would stand idle beside a
+--     live guard. The `Castle_Standoff_*` rows face a hostile area from behind cover
+--     and are meant to move into range once NPC-vs-NPC combat exists; the caged
+--     `Castle_Pop_Prisoner*` rows are the one exemption (they are behind cell doors).
+--   * hostiles take respawn_secs = 120, the zone-wide Castle value (CA05).
+-- Friendlies carry no respawn timer: faction 1 cannot be damaged, so they never die.
+-- Nothing here is chain-spawned or tagged by a content chain (D-CA06: Castle actors
+-- are static spawnlist rows).
+
+-- Armory / ring-pad arrival (component 250). Four armed marines at the weapon
+-- lockers around Gerschon (112), two of them on the 3 u wander template 175, and one
+-- stasis-sick marine. All stay 8 u or more off the ring pad (466.4, 991.5, r 3.5).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (189, 446.0, 70.34, 1000.5, 0, 8, 174, 'Castle_Pop_Armory_Soldier1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (190, 458.5, 70.18, 995.5, 0, 8, 174, 'Castle_Pop_Armory_Soldier2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (191, 437.0, 70.18, 1003.0, 1.570796, 8, 175, 'Castle_Pop_Armory_Soldier3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (192, 451.0, 70.18, 988.0, 4.712389, 8, 175, 'Castle_Pop_Armory_Soldier4', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (193, 432.5, 70.18, 986.0, 0, 8, 176, 'Castle_Pop_Armory_Wounded1', NULL);
+
+-- 701 hallway: Copplemann's dead fire team (2574, "They didn't make it"), prop
+-- corpses along the corridor walls around her (87 at 352.7, 952.3), clear of the
+-- corridor centreline her escort walks to the Infirmary.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (194, 367.5, 70.38, 947.5, 4.712389, 8, 180, 'Castle_Pop_Hall_MarineCorpse1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (195, 367.5, 70.38, 958.0, 3.141593, 8, 180, 'Castle_Pop_Hall_MarineCorpse2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (196, 349.5, 70.38, 962.0, 1.570796, 8, 180, 'Castle_Pop_Hall_MarineCorpse3', NULL);
+
+-- Level-5 infirmary / Op-Core Triage (inside point set 2051 `Castle.Infirmary`, next
+-- to respawner 3 'Op-Core Triage Respawn'). Dialog 4985 has Copplemann's marines
+-- bringing the sick here and Ogilvie "in charge of" the supply; objective text 19893
+-- ("Speak to Ogilvie to learn where the Ambernol is stored") puts him in this
+-- infirmary. Tag `Castle_Ogilvie` is stable for CA15, which may bind a dialog to him;
+-- today he is ambient only.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (197, 362.0, 70.18, 886.0, 4.712389, 8, 179, 'Castle_Ogilvie', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (198, 352.0, 70.18, 885.0, 1.570796, 8, 177, 'Castle_Pop_Infirmary_Medic1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (199, 349.0, 70.48, 883.5, 1.570796, 8, 176, 'Castle_Pop_Infirmary_Sick1', NULL);
+
+-- Interrogation Block (accessible wing, component 250 -- never 501, the sealed mirror
+-- wing): four unarmed prisoners inside cells on both sides of the corridor, as set
+-- dressing. They are the documented exemption from the friendly clearance rule.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (200, 234.0, 66.98, 1048.0, 3.141593, 8, 176, 'Castle_Pop_Prisoner1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (201, 284.0, 66.98, 1048.0, 3.141593, 8, 176, 'Castle_Pop_Prisoner2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (202, 290.0, 66.98, 1050.0, 3.141593, 8, 176, 'Castle_Pop_Prisoner3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (203, 236.0, 66.98, 1024.0, 0, 8, 176, 'Castle_Pop_Prisoner4', NULL);
+
+-- Front Courtyard standoff: Sgt. Stanton and four marines behind the east barricade
+-- line (cover at x 510-512), facing the outdoor field, ~57 u or more from the nearest
+-- field hostile. The NE corner (508, 36, 672) failed its nav check and is avoided.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (204, 500.0, 28.18, 652.0, 1.570796, 8, 178, 'Castle_Standoff_SgtStanton', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (205, 507.5, 28.18, 640.0, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (206, 507.5, 28.18, 644.5, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (207, 507.5, 28.18, 661.5, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (208, 507.0, 28.18, 666.0, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier4', NULL);
+
+-- Checkpoint Alpha (component 116): three Praxis Jaffa (template 160, shared with
+-- Harset, so per-row only) facing the north-east ramp the Bravo road climbs, plus one
+-- more Jaffa at the back of the room as the wounded one. Nothing can show "wounded"
+-- (no pose or per-spawn health column), so that row is narrative only.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (209, 807.0, 55.06, 527.0, 0.75, 8, 160, 'Castle_Standoff_Alpha_Jaffa1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (210, 812.0, 55.02, 523.5, 0.75, 8, 160, 'Castle_Standoff_Alpha_Jaffa2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (211, 803.0, 56.36, 533.0, 0.75, 8, 160, 'Castle_Standoff_Alpha_Jaffa3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (212, 795.0, 56.26, 520.0, 1.570796, 8, 160, 'Castle_Pop_Alpha_WoundedJaffa', NULL);
+
+-- 701 hallway hostiles. A three-guard post (L4 lead, L3, L2) holds the junction room
+-- at the top of Copplemann's corridor, 40 u or more from her; two patrol pairs walk parallel
+-- lines 3 u apart (the north corridor to the Interrogation Block and the west hall
+-- toward the Comms level), dwelling 4 s at each end; a Prisoner Retrieval Unit (145)
+-- patrols the Interrogation Block antechamber.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (247, 351.0, 70.38, 1000.5, 1.570796, 8, 183, 'Castle_Pop_HallPost_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (248, 356.0, 70.38, 1006.0, 1.570796, 8, 182, 'Castle_Pop_HallPost_2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (249, 350.0, 70.38, 993.0, 1.570796, 8, 181, 'Castle_Pop_HallPost_3', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (250, 279.0, 70.18, 952.0, 0, 8, 182, 'Castle_Pop_HallPatrolN_1', NULL, 120, 2086, 4);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (251, 282.0, 70.18, 952.0, 0, 8, 181, 'Castle_Pop_HallPatrolN_2', NULL, 120, 2087, 4);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (252, 262.0, 70.18, 929.0, 1.570796, 8, 182, 'Castle_Pop_HallPatrolW_1', NULL, 120, 2088, 4);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (253, 262.0, 70.18, 932.0, 1.570796, 8, 181, 'Castle_Pop_HallPatrolW_2', NULL, 120, 2089, 4);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id) VALUES (254, 256.0, 70.25, 996.0, 1.570796, 8, 145, 'Castle_Pop_HallPRU_1', NULL, 120, 2090);
+
+-- Interrogation Block: Romney's escort, 5-6 u from him (240) and 19 u or more from
+-- Zuritska's cell door (238), so talking to Zuritska does not pull them.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (255, 248.0, 67.18, 1032.5, 1.570796, 8, 182, 'Castle_Pop_IntBlock_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (256, 249.0, 67.18, 1039.5, 1.570796, 8, 181, 'Castle_Pop_IntBlock_2', NULL, 120);
+
+-- Symbiote Chamber side room (isolated navmesh component 468): two guards and a PRU,
+-- is_stationary because nothing can path in or out of the pocket.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (257, 386.0, 55.38, 940.0, 3.141593, 8, 182, 'Castle_Pop_Symbiote_1', NULL, true, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (258, 391.0, 55.38, 925.0, 0, 8, 181, 'Castle_Pop_Symbiote_2', NULL, true, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (259, 383.0, 55.38, 932.0, 1.570796, 8, 145, 'Castle_Pop_Symbiote_3', NULL, true, 120);
+
+-- Comms approach: two guards in the antechamber the 704 escort walks through, 27 u or
+-- more from Zuritska's comms spot (239) and the terminal (246).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (260, 266.0, 55.38, 885.0, 0, 8, 182, 'Castle_Pop_CommsDoor_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (261, 277.0, 55.38, 887.0, 0, 8, 181, 'Castle_Pop_CommsDoor_2', NULL, 120);
+
+-- Transition corridors between the Comms level and the Throne Room (zero spawns
+-- before this pass): a post in the cross-shaped room at y 48, a three-guard post at
+-- the (365, 48.5, 783) cover cluster, a pair in the east side room at y 43, and a
+-- patrol pair walking the big room above the Throne Room entrance.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (262, 370.0, 48.32, 826.0, 0, 8, 182, 'Castle_Pop_TransA_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (263, 378.0, 48.22, 828.0, 0, 8, 181, 'Castle_Pop_TransA_2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (264, 360.0, 48.38, 768.0, 0, 8, 183, 'Castle_Pop_TransB_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (265, 366.0, 48.38, 772.0, 0, 8, 182, 'Castle_Pop_TransB_2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (266, 357.0, 48.38, 758.0, 0, 8, 181, 'Castle_Pop_TransB_3', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (267, 410.0, 43.38, 770.0, 4.712389, 8, 182, 'Castle_Pop_TransC_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (268, 420.0, 43.97, 770.0, 4.712389, 8, 182, 'Castle_Pop_TransC_2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (269, 352.0, 48.38, 714.0, 1.570796, 8, 181, 'Castle_Pop_TransPatrol_1', NULL, 120, 2091, 4);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (270, 352.0, 48.38, 717.0, 1.570796, 8, 181, 'Castle_Pop_TransPatrol_2', NULL, 120, 2092, 4);
+
+-- Throne Room: four guards on the main floor (y 38.4) between the pillar pairs,
+-- 22 u or more from the Throne respawner (345, 41.2, 650) and 36 u from the Access
+-- Panel (92).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (271, 366.0, 38.38, 643.0, 4.712389, 8, 183, 'Castle_Pop_Throne_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (272, 366.0, 38.37, 663.0, 4.712389, 8, 183, 'Castle_Pop_Throne_2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (273, 376.0, 38.33, 643.0, 4.712389, 8, 182, 'Castle_Pop_Throne_3', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (274, 376.0, 38.37, 663.0, 4.712389, 8, 182, 'Castle_Pop_Throne_4', NULL, 120);
+
+-- Outdoor field, west: three exterior guards (L4 lead, L3, L2) around the rock at the
+-- (621, 19.5, 702) cover cluster and a PRU patrolling a loop round it.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (275, 611.0, 18.38, 703.0, 3.926991, 8, 186, 'Castle_Pop_FieldW_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (276, 619.0, 18.28, 695.0, 3.926991, 8, 185, 'Castle_Pop_FieldW_2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (277, 628.0, 18.41, 690.0, 3.926991, 8, 184, 'Castle_Pop_FieldW_3', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id) VALUES (278, 600.0, 20.02, 690.0, 1.570796, 8, 145, 'Castle_Pop_FieldW_4', NULL, 120, 2093);
+
+-- Muelbach's bunker (component 116): two exterior guards on the approach at the
+-- (992, 47.4, 432) cover cluster, and two interior guards in the room past her at the
+-- (1054, 48, 430) cluster. Both pairs are 17 u or more from Muelbach (241).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (279, 985.0, 47.67, 427.0, 4.712389, 8, 185, 'Castle_Pop_BunkerApproach_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (280, 994.0, 47.58, 425.0, 4.712389, 8, 184, 'Castle_Pop_BunkerApproach_2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (281, 1052.0, 48.18, 432.0, 4.712389, 8, 183, 'Castle_Pop_BunkerTunnel_1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (282, 1058.0, 48.18, 426.0, 4.712389, 8, 182, 'Castle_Pop_BunkerTunnel_2', NULL, 120);
+
+--
 -- Command Center population (packet H12, placement cluster PL-C).
 --
 -- RECONSTRUCTION, no in-client walk. Every coordinate below is a map-data
