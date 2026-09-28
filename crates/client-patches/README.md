@@ -8,10 +8,11 @@ not depend on the telemetry opt-in. The decision record is
 [docs/architecture/client-patches.md](../../docs/architecture/client-patches.md).
 
 **Status:** the Black Market **receive** path (build check, receive hooks,
-decode, main-thread delivery to Lua). Sending the cell methods 61–66 comes
-next. Nothing loads this DLL yet: the launcher's always-inject step is a
-later packet, and nothing here has run inside a live client. The live
-checks still owed are listed at the end.
+decode, main-thread delivery to Lua) and **send** path (native Lua
+functions for the cell methods 61–66). Nothing loads this DLL yet: the
+launcher's always-inject step is a later packet, and nothing here has run
+inside a live client. Both paths are verified statically and by host and
+i686 unit tests only. The live checks still owed are listed at the end.
 
 ## Build, lint and test against the i686 target
 
@@ -65,6 +66,15 @@ harness is `cimmeria_client_patches-<hash>.exe`.
    `lua51.dll`, as described in the contract below. An empty queue costs one
    atomic load per frame. Until the UI's `lua_State` exists, calls stay
    queued.
+4. **Send**, on the main thread (`send/`). Every 30 frames the same `Tick`
+   detour makes sure the UI Lua has the global table `CimmeriaBMNative`
+   (see the send contract below). Its native functions validate their
+   arguments, encode the cell method with `cimmeria-patch-wire`, check that
+   the client is connected, and call `ServerConnection::startEntityMessage`
+   with the extended method id, then write the sub-index byte and the
+   payload through the bundle's `reserve`. The engine calls run under a
+   structured-exception guard (`microseh`), so a fault or C++ exception in
+   the engine becomes an `engine_error` return.
 
 Safety rules:
 
@@ -92,8 +102,12 @@ are in `src/addresses.rs` and
 | `0x00c6f8f0` | `Client_NetIn_EntityMethodDispatch` | hooked (receive) |
 | `0x01590f30` | `EntityDescription_GetExposedClientMethodByIndex` (drop callee) | hooked (receive), chainable |
 | `0x00416ec0` | `FEngineLoop::Tick` | hooked (deliver), chainable |
-| `0x00dd6a60` | `ServerConnection::startEntityMessage` | fingerprinted only; the send side will call it |
-| `0x01ef244c` | `GameEntityManager*`; local player id at `+0x14` | compared with `Entity + 0x0c` |
+| `0x00dd6a60` | `ServerConnection::startEntityMessage` | called (send) |
+| `0x00dd8010` | `ServerConnection::startAvatarMessage` | fingerprinted only: pins the `(conn, idx, 0)` call |
+| `0x00dd6130` | `ServerConnection::isOnline` | fingerprinted only: pins the online flag at `conn + 0x30c` |
+| `0x00dd05a0` | `GameEntityManager` getter | fingerprinted only: pins `0x01ef244c` |
+| `0x00c701a0` | the engine's write-one-byte helper | fingerprinted only: pins `reserve` at bundle vtable `+0x10` |
+| `0x01ef244c` | `GameEntityManager*`; `ServerConnection*` at `+0x08`, local player id at `+0x14` | receive: compared with `Entity + 0x0c`; send: the connection, and "no player yet" |
 | `0x01ee2a58` | `g_SGWUIManager_ptr`; UI `lua_State` = `*(*(*(p) + 0x10))`, tag byte `+4 == 8` | delivery |
 
 ## The Lua contract (for the UI overlay)
@@ -140,6 +154,74 @@ How the calls are made:
 - **Calls arrive between frames,** in the order the server sent them, at up
   to 16 a frame.
 
+## The send contract (for the UI overlay)
+
+The DLL creates one global table, `CimmeriaBMNative`, and never touches the
+overlay's `CimmeriaBM`. Its functions are plain fields, called with no
+`self`:
+
+| Lua call | Cell method |
+|---|---|
+| `CimmeriaBMNative.search(opts)` | `BMSearch` (61) |
+| `CimmeriaBMNative.create(itemInstanceId, startingPrice, buyoutPrice, auctionLength)` | `BMCreateAuction` (62) |
+| `CimmeriaBMNative.bid(sequenceId, bidAmount)` | `BMPlaceBid` (63) |
+| `CimmeriaBMNative.cancel(sequenceId)` | `BMCancelAuction` (64) |
+| `CimmeriaBMNative.watch(itemDefId, enable)` | `BMStartWatchingItem` (65) if `enable` is truthy, else `BMStopWatchingItem` (66) |
+| `CimmeriaBMNative.techCompetency(itemDefId)` | none; returns `nil` in this build (see below) |
+| `CimmeriaBMNative.version` | the DLL's version string, not a function |
+
+**Return values.** A send function returns `true` once the message is on
+the engine's outgoing bundle; the server's answer arrives later through
+`CimmeriaBM`. Otherwise it returns `nil, reason`, with `reason` one of:
+
+| `reason` | Meaning |
+|---|---|
+| `"bad_args"` | An argument is missing, has the wrong type, is out of range, or a string is over 255 bytes |
+| `"offline"` | Not connected to the server, or no player entity yet |
+| `"not_main_thread"` | Called from a thread other than the game's main thread |
+| `"engine_error"` | The engine failed: a null bundle, or a fault or C++ exception caught by the guard |
+
+It never raises a Lua error on bad input, and nothing is sent when it
+returns `nil`.
+
+**Arguments.**
+
+- **Numbers** are Lua numbers holding an integer in the field's range:
+  -2^31 to 2^31-1 for `INT32` fields, 0 to 255 for `UINT8`. A numeric
+  string such as `"5"` is not converted, and `2.5` is refused.
+- **Strings** are Lua strings, sent as UTF-8, at most 255 bytes.
+- **`search(opts)`**: `opts` is a table, or `nil` for all defaults. Keys:
+  `sortId` (0–255), `clientKey` (`0` search, `1` my auctions, `2` my bids;
+  anything else is `bad_args`), `sequenceId`, `bForward` (a number 0–255 or
+  a boolean), `sellerName`, `bidderName`, `itemName`, `minTC`, `maxTC`,
+  `quality`, `filterFlags`. A missing number is `0` and a missing string
+  `""`, except `quality`, which defaults to `2000`, the client's own
+  default. Unknown keys are ignored, and fields are read raw, so `opts`
+  cannot rely on `__index`.
+- **`create`**: `buyoutPrice` may be `nil` for no buyout. `auctionLength`
+  is a `UIAuctionTime` value, `1` to `5` (the create form offers `3`, `4`
+  and `5`). The DLL sends the `.def` order (item, buyout, length,
+  starting), whatever order the Lua call takes them in.
+- **`watch`**: `enable` follows Lua truthiness; a missing `enable` stops
+  watching. The server answers watch calls with `WatchUnavailable` for now
+  (D4).
+
+**When the table appears.** The DLL checks for the table every 30 frames,
+about twice a second, once the UI `lua_State` is up, and rebuilds it if a
+UI reload cleared it. The check leaves an existing, current table alone, so
+a reference the overlay keeps stays valid. The overlay should look
+`CimmeriaBMNative` up when a button is pressed, not once when its file
+loads: at load time the table may not exist yet. If it is still missing, the
+DLL is not loaded, or its build check failed; the log says which.
+
+**`techCompetency`** always returns `nil`. The plan's decision D7 asked for
+a native getter, but the item-definition lookup behind the client's
+`getItemDefInfo` goes through the cooked-data cache, can start a load for a
+definition the client has not seen, and returns a reference-counted
+pointer. None of that has been verified on a running client, so this build
+does not call it. The overlay shows the column blank when the value is
+`nil`.
+
 ## Log
 
 Each line goes to `OutputDebugStringW` (visible in Sysinternals DebugView)
@@ -150,7 +232,14 @@ at each launch, when the directory is writable. The log records:
 - each hook installed;
 - the first, tenth, hundredth and further powers-of-ten occurrence of each
   outcome: claimed, delivered, dropped (queue full, no overlay, no handler),
-  handler errors, and decode failures, each with its reason.
+  handler errors, and decode failures, each with its reason;
+- each registration of `CimmeriaBMNative`, with the `lua_State` and whether
+  it replaced a stale value, and any registration failure;
+- each send, with the method, its cell index, the sub-index and the payload
+  size, and each refusal, with the native, the reason and the detail (for
+  example `offline (no ServerConnection)` or which argument was bad). Each
+  of the first 100 sends and the first 100 refusals is logged, then powers
+  of ten.
 
 It stops after 2,000 lines.
 
@@ -170,8 +259,8 @@ relies on.
 
 ## Live checks owed
 
-These map to V2 and V3 in the evidence doc, and belong to the live-spike
-packet:
+These map to V1–V4 in the evidence doc, and belong to the live-spike
+packet (BM-00):
 
 - The mangled `lua51.dll` exports resolve inside the running client. They
   were read from its export table, not exercised.
@@ -181,3 +270,13 @@ packet:
   refuses a call with bytes left over (`TrailingBytes` in the log), so if
   every call fails that way, the stream spans more than one message and the
   trailing-byte rule must go.
+- `CimmeriaBMNative` appears in the UI Lua within a second of the UI
+  coming up, and again after a UI reload.
+- `CimmeriaBMNative.cancel(1)` reaches the server's cell dispatch as
+  `0xBD`, sub-index 3 and a 4-byte payload, for the player's entity; the
+  server logs the decode. The message's length field is filled in when the
+  bundle closes, which was not traced statically.
+- `search`, `create`, `bid` and `watch` each reach the server and decode
+  with no trailing bytes.
+- Called at character select or while disconnected, a native returns
+  `nil, "offline"` and nothing is sent.

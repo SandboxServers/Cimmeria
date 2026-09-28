@@ -147,6 +147,19 @@ From `FUN_00ae1ad0`, in field order: `auctionId`, `itemId`, `name` (itemDef `+0x
 
 `getItemDefInfo(itemDefId)` (`0x00aa6370` → `FUN_00ae7180`) returns `{ID, Name, Description, Icon, Tier}`. That covers name and icon but **not** tech competency (`+0x78`), so a Lua-side replacement needs a small native getter for it or has to go without it.
 
+**The item-definition lookup** (added 2026-09-27 for BM-04; read from the disassembly without Ghidra, MEDIUM). `FUN_00ae7180` gets the definition through the cooked-data cache, not a plain map read:
+
+```text
+FUN_004786f0()                      ; no arguments: lazily built singleton at [0x01ea56d8]
+FUN_00ae6c10(this = singleton, SmartPtr* out, key)
+  FUN_00ae0200(...)                 ; per-type cache, looked up by a descriptor at 0x017f94c8
+  FUN_00ae6670 -> FUN_00ae5470(cache + 8, out, key)
+    FUN_00d283e0(cache + 0x28, ...) ; cache fetch
+    miss: FUN_00ae4110(...)         ; not traced; plausibly a load request
+```
+
+The result is a pointer whose reference count is the dword at `+0x04`. The callers decrement it and, at zero or below, call `vtable[0](1)`, the scalar deleting destructor. The field reads in `FUN_00ae7180` (`+0x10` name, `+0x2c`, `+0x48` icon, `+0x70`) are made while that reference is held. A native getter would have to call this chain on the main thread, read `+0x78`, and release the reference the same way. The exact argument shape of `FUN_00ae6c10` (the key is passed by address and is also released as if it were a reference-counted object) and the side effects of the miss path are not settled, so BM-04 ships `techCompetency` as always `nil`. V6 covers it.
+
 ## 5. The shipped UI is unfinished
 
 `BlackMarket.lua` (759 lines) and `BlackMarket.layout` were shelved mid-build. Fixing only the network binding would still leave a UI that cannot bid and throws errors.
@@ -179,6 +192,7 @@ UI Lua and layouts are loose files under `SGWGame/Content/UI/`. The server canno
 | V3 | Hook pair (§2) sees `onBMOpen` with the stream attached. Decode the INT32 and open the window | Replaces the hand-built dispatch node |
 | V4 | `startEntityMessage(conn, 0x3D, 0)` + sub-index + payload reaches a local server's cell dispatch for 61–66 | Proves the sender |
 | V5 | `getItemDefInfo` for an item the player has never held | Confirms rows can show names and icons for arbitrary items |
+| V6 | Break on `FUN_00ae6c10` from a `getItemDefInfo` call: record the key argument, the returned pointer, its refcount before and after, and `[def + 0x78]`, for a cached item and an uncached one | Decides whether BM-04's `techCompetency` can call the chain (D7) |
 
 ## Ghidra annotations
 

@@ -3,7 +3,7 @@
 > **Diátaxis type**: explanation (ADR)
 > **Audience**: engineers extending `cimmeria-client-patches`, or deciding where a new client-side fix belongs
 > **Last updated**: 2026-09-27
-> **Status**: Accepted (decision D2 of the [Black Market plan](../analysis/black-market/README.md), 2026-09-26). The Black Market receive path is built. Sending, the launcher's always-inject step and the UI overlay are later packets.
+> **Status**: Accepted (decision D2 of the [Black Market plan](../analysis/black-market/README.md), 2026-09-26). The Black Market receive and send paths are built, and verified only statically and by unit tests. The launcher's always-inject step and the UI overlay are later packets.
 
 ## Context
 
@@ -53,6 +53,14 @@ on every launch, whether or not telemetry is on.
   typed values. Lua and engine calls happen on the main thread, in the
   `FEngineLoop::Tick` detour. Every Lua call, including building the
   arguments, runs inside `lua_cpcall`, and the handler under `lua_pcall`.
+- **Send below the event system.** The client-to-server path does not
+  revive the client's shelved CME NetOut emitters. The DLL registers its
+  own native Lua functions in a table it owns, `CimmeriaBMNative`, and each
+  one calls `ServerConnection::startEntityMessage`, the call every working
+  NetOut ends in, and writes the payload itself. It runs only on the main
+  thread, only while the connection is online, and under a
+  structured-exception guard. A send native reports failure as a return
+  value, `nil` plus a reason, and never raises a Lua error.
 
 ## How it fits together
 
@@ -61,12 +69,21 @@ server ──onBM* 90–95──▶ dispatcher detour (records entity, stream)
                           └─ drop-callee detour: name is onBM*? local player?
                                └─ decode with cimmeria-patch-wire ─▶ bounded queue
 FEngineLoop::Tick detour (main thread) ◀── queue
-   └─ lua51.dll C API: CimmeriaBM.onAuctions(items, totalResults, clientKey) …
-        └─ UI overlay (Lua): store, views, rows
+   ├─ lua51.dll C API: CimmeriaBM.onAuctions(items, totalResults, clientKey) …
+   │    └─ UI overlay (Lua): store, views, rows
+   └─ every 30 frames: make sure CimmeriaBMNative is registered
+
+UI overlay button ─▶ CimmeriaBMNative.bid(sequenceId, bidAmount)   (main thread)
+   └─ validate, encode with cimmeria-patch-wire, check the connection
+        └─ startEntityMessage(conn, 0x3D, 0); reserve(1) = sub-index; reserve(n) = payload
+             └─ server ◀──cell 61–66── (0xBD, sub-index, payload)
 ```
 
-The crate README states the Lua contract the overlay builds against:
-[crates/client-patches/README.md](../../crates/client-patches/README.md#the-lua-contract-for-the-ui-overlay).
+The crate README states both Lua contracts the overlay builds against: the
+[receive contract](../../crates/client-patches/README.md#the-lua-contract-for-the-ui-overlay)
+(`CimmeriaBM.on*`, called by the DLL) and the
+[send contract](../../crates/client-patches/README.md#the-send-contract-for-the-ui-overlay)
+(`CimmeriaBMNative.*`, called by the overlay).
 The addresses and their evidence are in
 [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md).
 
@@ -89,6 +106,23 @@ The addresses and their evidence are in
 - **Name matching is the safety net against index drift.** If the server
   ever sends a Black Market payload under the wrong index, the method name
   will not match, and the call is dropped as before rather than misdecoded.
+- **The fingerprint gate covers the send side too.** Besides
+  `startEntityMessage` itself, it checks four small engine functions whose
+  bytes contain the data offsets the send side reads: the
+  `GameEntityManager` address, the online flag at `ServerConnection +
+  0x30c`, the bundle's `reserve` vtable slot, and the engine's own
+  `(conn, idx, 0)` call. A build that moved any of them installs nothing,
+  receive included.
+- **Tech competency stays blank for now (D7).** The plan decided on a
+  native getter for the item definition's tech competency. A static read of
+  the client's `getItemDefInfo` binding shows the lookup goes through the
+  cooked-data cache (`FUN_00ae7180` → `FUN_004786f0` singleton →
+  `FUN_00ae6c10` → `FUN_00ae5470` → `FUN_00d283e0`), on a miss calls what appears to be a load
+  (`FUN_00ae4110`) for a definition the client has not cached, and returns
+  a pointer reference-counted at `+0x04` and released through its vtable.
+  Calling that chain unverified risks a crash in exactly the way the
+  earlier Black Market attempts crashed, so `techCompetency` returns `nil`
+  until a live check confirms the chain; the evidence doc lists it.
 - **The DLL is not a telemetry channel.** It logs to `OutputDebugString` and
   to a file next to `SGW.exe`, and sends nothing to the server.
 - **A 32-bit executable with "patch" in its name trips Windows' installer

@@ -51,6 +51,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Injected client DLLs
 
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
+- [client-patch-send-natives-traps.md](client-patch-send-natives-traps.md) — startEntityMessage sends even offline; microseh masks the ABI; no cpcall around C-function args; iced-x86 for SGW.exe.
 
 ## UE3 packages and navmesh
 
