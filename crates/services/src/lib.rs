@@ -28,6 +28,7 @@ pub mod database;
 pub mod orchestrator;
 mod orchestrator_postgres;
 mod orchestrator_shards;
+pub mod plugins;
 
 // Split out to `cimmeria-auth` (wave W1a of
 // docs/architecture/services-crate-split.md). Re-exported at the old paths so

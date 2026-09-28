@@ -217,6 +217,7 @@ component_management:
         - "crates/cell-console/**"
         - "crates/cell-interactions/**"
         - "crates/cell-methods/**"
+        - "crates/cell-pets/**"
         - "crates/cell/**"
       statuses:
         - type: project

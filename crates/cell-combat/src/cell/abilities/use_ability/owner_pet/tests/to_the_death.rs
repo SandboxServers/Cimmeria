@@ -1,6 +1,7 @@
 //! 2839 To The Death: the pet gets +400 Accuracy for 60 s, then dies through
 //! the ordinary pet-death path, paying nobody.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use cimmeria_cell_world::cell::pets::{pet_owner_sweep_at, PET_CORPSE_DESPAWN};
@@ -98,7 +99,13 @@ async fn to_the_death_is_refused_while_it_runs() {
     let (mut mgr, pet) = world();
     let (tx, mut rx) = mpsc::channel(512);
     let _ = doom(&mut mgr, &tx, &mut rx).await;
-    let doomed_at = mgr.get_entity(pet).unwrap().pet.as_ref().unwrap().doomed_at;
+    let doomed_at = mgr
+        .get_entity(pet)
+        .unwrap()
+        .extensions
+        .get::<PetState>()
+        .unwrap()
+        .doomed_at;
     ready_again(&mut mgr);
 
     assert!(!handle_use_ability(OWNER, TO_THE_DEATH, 0, &tx, &mut mgr).await);
@@ -111,7 +118,12 @@ async fn to_the_death_is_refused_while_it_runs() {
     ));
     assert!(!on_cooldown(&mgr, TO_THE_DEATH), "no cooldown charged");
     assert_eq!(
-        mgr.get_entity(pet).unwrap().pet.as_ref().unwrap().doomed_at,
+        mgr.get_entity(pet)
+            .unwrap()
+            .extensions
+            .get::<PetState>()
+            .unwrap()
+            .doomed_at,
         doomed_at,
         "the timer is not restarted"
     );
@@ -134,8 +146,8 @@ async fn a_pet_that_died_first_is_not_killed_twice() {
     assert!(
         mgr.get_entity(pet)
             .unwrap()
-            .pet
-            .as_ref()
+            .extensions
+            .get::<PetState>()
             .unwrap()
             .doomed_at
             .is_none(),
@@ -167,8 +179,8 @@ async fn a_pet_that_dies_during_the_warmup_interrupts_the_cast() {
     assert!(mgr
         .get_entity(pet)
         .unwrap()
-        .pet
-        .as_ref()
+        .extensions
+        .get::<PetState>()
         .unwrap()
         .doomed_at
         .is_none());

@@ -2,6 +2,7 @@
 //! answers the owner with `onErrorCode` and leaves the pet idle.
 
 use cimmeria_entity::cell_entity::AiState;
+use cimmeria_entity::cell_entity::PetState;
 
 use super::*;
 use crate::cell::cell_methods::player::pet::{
@@ -156,8 +157,8 @@ async fn a_toggled_off_ability_is_refused() {
     let World { mut mgr, pet, .. } = world();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_deref_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .toggled_off
         .push(PET_ABILITY);

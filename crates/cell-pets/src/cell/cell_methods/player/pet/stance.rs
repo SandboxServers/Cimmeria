@@ -104,7 +104,7 @@ pub(super) async fn handle(
     let template_id = pet_template_id(space_mgr, pet);
     let Some(state) = space_mgr
         .get_entity_mut(pet)
-        .and_then(|e| e.pet.as_deref_mut())
+        .and_then(|e| e.extensions.get_mut::<PetState>())
     else {
         return;
     };

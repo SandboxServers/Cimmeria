@@ -9,6 +9,7 @@
 //! once-per-corpse payout, and the Defeat Window is only meaningful once
 //! the client has flipped the dying player into the dead state.
 
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use tokio::sync::mpsc;
 
@@ -125,7 +126,7 @@ pub(super) async fn grant_kill_xp(
 
     let Some(pet) = space_mgr
         .get_entity(attacker_id)
-        .and_then(|e| e.pet.as_ref())
+        .and_then(|e| e.extensions.get::<PetState>())
     else {
         if let Err(e) = sent {
             tracing::error!(
@@ -255,7 +256,7 @@ pub(super) fn kill_xp_payout(
 ) -> Result<KillXpPayout, NoKillXp> {
     let pet_scale = space_mgr
         .get_entity(attacker_id)
-        .and_then(|e| e.pet.as_ref())
+        .and_then(|e| e.extensions.get::<PetState>())
         .map(|p| p.transfer_xp);
     let Some(recipient) = space_mgr.credit_recipient(attacker_id) else {
         return Err(if space_mgr.pets.is_pet(attacker_id) {
@@ -310,10 +311,12 @@ fn log_no_kill_xp(
     }
     let reason = no_xp.reason();
     let victim = space_mgr.get_entity(target_eid);
-    let victim_pet_owner = victim.and_then(|v| v.pet.as_ref()).map(|p| p.owner_id);
+    let victim_pet_owner = victim
+        .and_then(|v| v.extensions.get::<PetState>())
+        .map(|p| p.owner_id);
     let attacker_pet_owner = space_mgr
         .get_entity(attacker_id)
-        .and_then(|e| e.pet.as_ref())
+        .and_then(|e| e.extensions.get::<PetState>())
         .map(|p| p.owner_id);
     // The owner whose support question this row answers: the pet killer's
     // owner, else the dead pet's owner.

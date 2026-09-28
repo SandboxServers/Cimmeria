@@ -78,6 +78,10 @@ cimmeria-cell-methods = { workspace = true }
 # and the ticks) and the cell-method router, split out of this crate (C6), the
 # top of the cell track. Re-exported at `cell::{CellService, dispatch}`.
 cimmeria-cell = { workspace = true }
+# The pets feature as a cell plugin (#962 pilot). The facade is the composition
+# root: `plugins::cell_plugins` lists it in the plugin table, and nothing below
+# the facade depends on it.
+cimmeria-cell-pets = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }

@@ -13,6 +13,7 @@
 //! [`PetState::deferred_order`]: cimmeria_entity::cell_entity::PetState::deferred_order
 
 use super::super::space_manager::SpaceManager;
+use cimmeria_entity::cell_entity::PetState;
 
 /// A deferred order popped by the warmup tick when the pet's cast fired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +35,10 @@ pub fn take_deferred_order(
     pet: u32,
     fired_target: i32,
 ) -> Option<TakenOrder> {
-    let state = space_mgr.get_entity_mut(pet)?.pet.as_deref_mut()?;
+    let state = space_mgr
+        .get_entity_mut(pet)?
+        .extensions
+        .get_mut::<PetState>()?;
     let target_id = state.deferred_order.take()?;
     Some(TakenOrder {
         owner_id: state.owner_id,

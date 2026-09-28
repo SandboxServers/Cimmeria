@@ -1,5 +1,6 @@
 //! Shared data structs used by both `BaseToCellMsg` and `CellToBaseMsg`.
 
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::organization::{TextField, TextReject};
 
 /// Mail operation types forwarded from CellService to BaseApp for DB execution.
@@ -186,7 +187,7 @@ impl NpcAoIData {
                 health: triple(HEALTH),
                 focus: triple(FOCUS),
             })),
-            pet_owner_id: entity.pet.as_ref().map(|p| p.owner_id),
+            pet_owner_id: entity.extensions.get::<PetState>().map(|p| p.owner_id),
         }
     }
 }

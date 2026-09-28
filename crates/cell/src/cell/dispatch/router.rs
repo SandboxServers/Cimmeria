@@ -9,6 +9,7 @@ use super::super::cell_methods;
 use super::super::console;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
+use cimmeria_cell_world::cell::plugin::CellMethodCall;
 
 /// Dispatch a client->server cell method call to the appropriate handler.
 ///
@@ -50,6 +51,24 @@ pub async fn dispatch_cell_method(
     // methods pass through untouched. The gate emits its own `warn!` +
     // `onErrorCode` on rejection, so a `false` return is terminal.
     if !super::gm_gate::enforce_gm_gate(entity_id, method_index, tx, space_mgr).await {
+        return;
+    }
+
+    // Feature plugins (#962, `docs/architecture/plugin-architecture.md`):
+    // an index a plugin registered never reaches the static routers below.
+    // After the GM gate, so no plugin handler opens a path around it. The
+    // registry is cloned (one `Arc`) so it does not borrow `space_mgr`.
+    let plugins = space_mgr.plugins().clone();
+    if let Some(handler) = plugins.cell_method(method_index) {
+        handler(CellMethodCall {
+            entity_id,
+            method_index,
+            args,
+            tx,
+            space_mgr,
+            engine,
+        })
+        .await;
         return;
     }
 

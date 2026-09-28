@@ -15,6 +15,7 @@
 //! mob stayed idle until the pet's first hit landed, and the owner was not
 //! mirrored into combat until then.
 
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{AiState, CellEntity};
 use cimmeria_entity::stats::HEALTH;
 
@@ -111,7 +112,7 @@ pub fn engage_pet_target(
 ) -> Result<(), &'static str> {
     let owner_id = space_mgr
         .get_entity(pet_id)
-        .and_then(|e| e.pet.as_deref())
+        .and_then(|e| e.extensions.get::<PetState>())
         .map(|p| p.owner_id)
         .ok_or("not_a_pet")?;
     let owner = super::live_owner(space_mgr, pet_id, owner_id)?;

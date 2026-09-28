@@ -5,12 +5,13 @@
 use super::*;
 use crate::cell::service::npc_ai::{choose_npc_ability, choose_npc_ability_within_reach};
 use crate::test_support::PET_FIXTURE_ABILITIES;
+use cimmeria_entity::cell_entity::PetState;
 
 fn toggle_off(mgr: &mut SpaceManager, pet: u32, ids: &[i32]) {
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_deref_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .toggled_off = ids.to_vec();
 }
@@ -109,6 +110,9 @@ fn a_mob_still_picks_an_ability_that_does_nothing() {
     let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
     let [first, _] = PET_FIXTURE_ABILITIES;
     def_with_event_set(&mut mgr, first, None);
-    mgr.get_entity_mut(pet).unwrap().pet = None;
+    mgr.get_entity_mut(pet)
+        .unwrap()
+        .extensions
+        .remove::<PetState>();
     assert_eq!(choose_npc_ability(pet, &mgr), Some(first));
 }

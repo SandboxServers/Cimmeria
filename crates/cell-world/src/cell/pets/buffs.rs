@@ -24,6 +24,7 @@
 //! [`PetState::buffs`]: cimmeria_entity::cell_entity::PetState::buffs
 //! [`PetState::doomed_at`]: cimmeria_entity::cell_entity::PetState::doomed_at
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::Instant;
 
 use cimmeria_entity::cell_entity::{PetBuff, PlayerIdentity};
@@ -82,7 +83,7 @@ impl SpaceManager {
     /// Whether `pet` carries the buff of `effect_id`.
     pub fn has_pet_buff(&self, pet: u32, effect_id: i32) -> bool {
         self.get_entity(pet)
-            .and_then(|e| e.pet.as_deref())
+            .and_then(|e| e.extensions.get::<PetState>())
             .is_some_and(|p| p.buffs.iter().any(|b| b.effect_id == effect_id))
     }
 
@@ -99,7 +100,7 @@ impl SpaceManager {
         mods: &[(i32, i32)],
         expires_at: Option<Instant>,
     ) -> Option<Vec<(i32, i32)>> {
-        self.get_entity(pet)?.pet.as_ref()?;
+        self.get_entity(pet)?.extensions.get::<PetState>()?;
         let _ = self.remove_pet_buff(pet, effect_id, BuffRemoval::Refreshed);
         let entity = self.get_entity_mut(pet)?;
         let mut applied = Vec::with_capacity(mods.len());
@@ -115,7 +116,7 @@ impl SpaceManager {
             .map(|&(stat, _)| (stat, entity.stats.get(stat).map_or(0, |s| s.cur)))
             .collect();
         let template_id = entity.template_id;
-        let state = entity.pet.as_deref_mut()?;
+        let state = entity.extensions.get_mut::<PetState>()?;
         state.buffs.push(PetBuff {
             effect_id,
             ability_id,
@@ -156,7 +157,7 @@ impl SpaceManager {
         why: BuffRemoval,
     ) -> Option<PetBuff> {
         let entity = self.get_entity_mut(pet)?;
-        let state = entity.pet.as_deref_mut()?;
+        let state = entity.extensions.get_mut::<PetState>()?;
         let idx = state.buffs.iter().position(|b| b.effect_id == effect_id)?;
         let buff = state.buffs.remove(idx);
         let owner_id = state.owner_id;
@@ -196,7 +197,10 @@ impl SpaceManager {
     pub fn expired_pet_buffs(&self, now: Instant) -> Vec<(u32, i32)> {
         let mut out = Vec::new();
         for (pet, _) in self.pets.pairs() {
-            let Some(state) = self.get_entity(pet).and_then(|e| e.pet.as_deref()) else {
+            let Some(state) = self
+                .get_entity(pet)
+                .and_then(|e| e.extensions.get::<PetState>())
+            else {
                 continue;
             };
             out.extend(
@@ -219,7 +223,7 @@ impl SpaceManager {
             .into_iter()
             .filter(|&(pet, _)| {
                 self.get_entity(pet)
-                    .and_then(|e| e.pet.as_deref())
+                    .and_then(|e| e.extensions.get::<PetState>())
                     .and_then(|p| p.doomed_at)
                     .is_some_and(|at| now >= at)
             })
@@ -234,7 +238,7 @@ impl SpaceManager {
     pub fn any_pet_buff_or_doom(&self) -> bool {
         self.pets.pairs().into_iter().any(|(pet, _)| {
             self.get_entity(pet)
-                .and_then(|e| e.pet.as_deref())
+                .and_then(|e| e.extensions.get::<PetState>())
                 .is_some_and(|p| !p.buffs.is_empty() || p.doomed_at.is_some())
         })
     }

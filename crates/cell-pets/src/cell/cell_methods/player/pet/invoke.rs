@@ -26,6 +26,7 @@
 
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::abilities::ability_is_unimplemented;
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
@@ -132,7 +133,7 @@ pub(super) async fn handle(
     let deferred = warming && target_id > 0;
     if let Some(state) = space_mgr
         .get_entity_mut(pet)
-        .and_then(|e| e.pet.as_deref_mut())
+        .and_then(|e| e.extensions.get_mut::<PetState>())
     {
         // A new order replaces an older one still waiting on its warmup.
         state.deferred_order = deferred.then_some(target_id as u32);
@@ -184,7 +185,7 @@ pub(crate) fn check_invoke(
         FEEDBACK_INVALID_ENTITY,
         ability_id,
     ))?;
-    let state = entity.pet.as_deref().ok_or(Refusal::warn(
+    let state = entity.extensions.get::<PetState>().ok_or(Refusal::warn(
         "pet_gone",
         FEEDBACK_INVALID_ENTITY,
         ability_id,

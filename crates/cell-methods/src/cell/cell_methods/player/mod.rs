@@ -3,7 +3,6 @@ pub use cimmeria_wire::cell::cell_methods::player::constants;
 pub mod crafting;
 mod dispatch;
 pub mod interaction;
-pub mod pet;
 pub mod social;
 pub mod trade;
 pub mod vendor;

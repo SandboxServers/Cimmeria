@@ -56,6 +56,7 @@ members = [
     "crates/cell-interactions",
     "crates/cell-console",
     "crates/cell-methods",
+    "crates/cell-pets",
     "crates/cell",
     "crates/patch-wire",
     "crates/client-patches",
@@ -95,6 +96,7 @@ default-members = [
     "crates/cell-interactions",
     "crates/cell-console",
     "crates/cell-methods",
+    "crates/cell-pets",
     "crates/cell",
     "crates/patch-wire",
     "crates/client-hookgate",
@@ -262,6 +264,7 @@ cimmeria-cell-content = { path = "crates/cell-content" }
 cimmeria-cell-interactions = { path = "crates/cell-interactions" }
 cimmeria-cell-console = { path = "crates/cell-console" }
 cimmeria-cell-methods = { path = "crates/cell-methods" }
+cimmeria-cell-pets = { path = "crates/cell-pets" }
 cimmeria-cell = { path = "crates/cell" }
 cimmeria-patch-wire = { path = "crates/patch-wire" }
 cimmeria-client-hookgate = { path = "crates/client-hookgate" }

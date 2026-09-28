@@ -4,6 +4,7 @@
 use super::*;
 use crate::cell::pets::{stance_mask_from_flags, PetSpawnError};
 use crate::mercury::SGWPET_CLASS_ID;
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{PetStance, ALL_STANCES_MASK};
 use cimmeria_wire::cell::client_methods::pet::{
     ENTITYFLAG_NO_DEFENSIVE, ENTITYFLAG_NO_PASSIVE, ENTITYFLAG_NO_PET_LEVELING, ENTITYFLAG_PET,
@@ -39,7 +40,7 @@ fn spawned_pet_is_an_owned_sgwpet_with_the_owners_faction_and_level() {
     let owner_pos = mgr.get_entity(OWNER).unwrap().position;
     assert!(e.position.distance_squared_to(&owner_pos) <= 2.5 * 2.5);
 
-    let state = e.pet.as_deref().expect("pet state attached");
+    let state = e.extensions.get::<PetState>().expect("pet state attached");
     assert_eq!(state.owner_id, OWNER);
     assert_eq!(state.stance, PetStance::Defensive);
     assert_eq!(
@@ -88,7 +89,13 @@ fn stance_flags_narrow_the_stance_mask_and_the_start_stance() {
     mgr.spawn_templates.insert(353, record);
     add_pet_owner(&mut mgr, OWNER, "Agnos", [0.0; 3], 5);
     let pet = mgr.spawn_pet_from_template(OWNER, 353, 0).unwrap();
-    let state = mgr.get_entity(pet).unwrap().pet.as_deref().unwrap().clone();
+    let state = mgr
+        .get_entity(pet)
+        .unwrap()
+        .extensions
+        .get::<PetState>()
+        .unwrap()
+        .clone();
     assert_eq!(state.stance, PetStance::Aggressive);
     assert_eq!(state.allowed_stances(), vec![PetStance::Aggressive]);
 }

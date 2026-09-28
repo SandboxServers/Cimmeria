@@ -210,12 +210,12 @@ impl SpaceManager {
         let stance_mask = stance_mask_from_flags(record.flags as u64);
         if let Some(e) = self.get_entity_mut(pet_id) {
             debug_assert_eq!(e.class_id, SGWPET_CLASS_ID);
-            e.pet = Some(Box::new(PetState::new(
+            e.extensions.insert(PetState::new(
                 owner,
                 record.ability_ids.clone(),
                 stance_mask,
                 summon_ability_id,
-            )));
+            ));
         }
         let summoner = self.player_identity(owner);
         self.pets.register(owner, pet_id, summoner);

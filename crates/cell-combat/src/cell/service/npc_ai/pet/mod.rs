@@ -54,6 +54,7 @@ pub use engage::{
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::abilities::ability_is_unimplemented;
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{AiState, CellEntity, PetStance, PlayerIdentity};
 use tokio::sync::mpsc;
 
@@ -65,7 +66,7 @@ use crate::cell::space_manager::SpaceManager;
 pub(in crate::cell) fn is_pet(space_mgr: &SpaceManager, entity_id: u32) -> bool {
     space_mgr
         .get_entity(entity_id)
-        .is_some_and(|e| e.pet.is_some())
+        .is_some_and(|e| e.extensions.contains::<PetState>())
 }
 
 /// The owner's identity for a `pets.ai` row about `pet_id`: the one captured
@@ -139,7 +140,7 @@ pub(in crate::cell) fn threat_refusal(
     target: &CellEntity,
     attacker_id: u32,
 ) -> Option<&'static str> {
-    let pet = target.pet.as_deref()?;
+    let pet = target.extensions.get::<PetState>()?;
     if pet.stance == PetStance::Passive {
         return Some("passive_stance");
     }
@@ -165,7 +166,7 @@ pub(in crate::cell) fn log_threat_refusal(
     reason: &'static str,
     cause: &str,
 ) {
-    let Some(pet) = target.pet.as_deref() else {
+    let Some(pet) = target.extensions.get::<PetState>() else {
         return;
     };
     let id = owner_identity(space_mgr, target.entity_id.0 as u32, pet.owner_id);
@@ -206,7 +207,7 @@ pub(in crate::cell) fn log_fight_entered(
 ) {
     let Some(owner_id) = space_mgr
         .get_entity(pet_id)
-        .and_then(|e| e.pet.as_deref())
+        .and_then(|e| e.extensions.get::<PetState>())
         .map(|p| p.owner_id)
     else {
         return;
@@ -237,7 +238,7 @@ pub(in crate::cell) fn log_fight_entered(
 /// instead of standing at its enemy "attacking" with nothing. An ability with
 /// no definition is left to the caller, as for a mob.
 pub(super) fn ability_allowed(space_mgr: &SpaceManager, npc: &CellEntity, ability_id: i32) -> bool {
-    let Some(pet) = npc.pet.as_deref() else {
+    let Some(pet) = npc.extensions.get::<PetState>() else {
         return true;
     };
     !pet.toggled_off.contains(&ability_id)
@@ -252,7 +253,7 @@ pub(super) fn ability_allowed(space_mgr: &SpaceManager, npc: &CellEntity, abilit
 /// space, or whose owner id now belongs to someone other than its summoner:
 /// no leash then, and the owner sweep despawns the pet within one AoI tick.
 pub(super) fn leash_anchor(space_mgr: &SpaceManager, npc: &CellEntity) -> Option<Vector3> {
-    let Some(pet) = npc.pet.as_deref() else {
+    let Some(pet) = npc.extensions.get::<PetState>() else {
         return npc.spawn_position;
     };
     live_owner(space_mgr, npc.entity_id.0 as u32, pet.owner_id)
@@ -272,8 +273,8 @@ pub(super) async fn pre_pass(
     space_mgr: &mut SpaceManager,
 ) -> Option<AiState> {
     let Some((owner_id, stance, current)) = space_mgr.get_entity(npc_id).and_then(|e| {
-        e.pet
-            .as_deref()
+        e.extensions
+            .get::<PetState>()
             .map(|p| (p.owner_id, p.stance, e.ai_state()))
     }) else {
         return Some(ai_state);

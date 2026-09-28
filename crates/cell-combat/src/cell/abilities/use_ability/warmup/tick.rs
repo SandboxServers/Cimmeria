@@ -3,6 +3,7 @@
 //! Runs every 100 ms AoI tick from the cell message loop. It walks
 //! `SpaceManager::pending_casts`, so an idle cell pays one empty-set check.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::Instant;
 
 use cimmeria_entity::abilities::{AbilityDef, AF_CHANNEL_ALLOWS_MOVEMENT};
@@ -164,7 +165,7 @@ async fn fire_time_refusal(
     // A pet casts on its owner's order (`petInvokeAbility`, pets PT-04),
     // which applied the pet rule at launch; re-check it here. An AI-driven
     // mob is not (its fight tick picks targets).
-    if caster.pet.is_some()
+    if caster.extensions.contains::<PetState>()
         && super::pet_order::pet_fire_refusal(space_mgr, caster, target).is_some()
     {
         return Some(InterruptReason::TargetLost);
@@ -211,7 +212,9 @@ async fn fire_time_refusal(
     // `fire_los` skips NPC shooters, trusting the fight tick's sight check.
     // A pet's owner-ordered cast never went through the fight tick, so its
     // delayed fire gets the fight tick's own test (pets PT-04).
-    if caster.pet.is_some() && !space_mgr.attack_line_of_sight(entity_id, target_eid, false) {
+    if caster.extensions.contains::<PetState>()
+        && !space_mgr.attack_line_of_sight(entity_id, target_eid, false)
+    {
         return Some(InterruptReason::NoLineOfSight);
     }
     None

@@ -32,6 +32,7 @@
 //! called (`path`). DEBUG `event = owner_left`, `owner_teleported`; the
 //! misses `teleport_skipped` and `grounding_missed` carry a `reason`.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::Instant;
 
 use cimmeria_common::Vector3;
@@ -399,7 +400,7 @@ pub async fn on_owner_teleported(
         );
         if let Some(pet) = space_mgr
             .get_entity_mut(pet_id)
-            .and_then(|e| e.pet.as_deref_mut())
+            .and_then(|e| e.extensions.get_mut::<PetState>())
         {
             pet.last_teleport_at = Some(now);
         }

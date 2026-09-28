@@ -4,6 +4,7 @@
 use super::*;
 use crate::cell::combat::{generate_threat, AggroCause, BSF_IN_COMBAT};
 use crate::test_support::LogCapture;
+use cimmeria_entity::cell_entity::PetState;
 
 fn threat_on(mgr: &SpaceManager, pet: u32, mob: u32) -> bool {
     mgr.get_entity(pet).unwrap().threat_list.contains_key(&mob)
@@ -92,7 +93,12 @@ async fn defensive_pet_defends_its_owner() {
     add_mob(&mut mgr, MOB, [25.0, 0.0, 10.0], HOSTILE);
     mob_fights(&mut mgr, MOB, OWNER);
     assert_eq!(
-        mgr.get_entity(pet).unwrap().pet.as_deref().unwrap().stance,
+        mgr.get_entity(pet)
+            .unwrap()
+            .extensions
+            .get::<PetState>()
+            .unwrap()
+            .stance,
         PetStance::Defensive
     );
 

@@ -6,6 +6,7 @@
 //! NPC, so it stays frozen there even when the player walks back up to it.
 //! After NA12 this should read zero.
 
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{AiState, CellEntity};
 
 /// Further than this from spawn counts as "parked away from home".
@@ -19,7 +20,7 @@ pub(in crate::cell) const IDLE_PARKED_MIN_DIST: f32 = 2.0;
 /// or wander, so without this an Idle pet would never be re-armed to follow
 /// its owner.
 pub fn idle_is_ticked(npc: &CellEntity) -> bool {
-    npc.pet.is_some()
+    npc.extensions.contains::<PetState>()
         || crate::cell::combat::is_hostile_to_players(npc)
         || !npc.patrol_path.is_empty()
         || npc.wander_radius > 0.0

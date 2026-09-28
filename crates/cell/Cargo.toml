@@ -73,6 +73,10 @@ cimmeria-cell-content = { workspace = true, features = ["test-support"] }
 # `console::exec`, for the `.speed` tests in `ticks::npc_movement`, which drive
 # the NPC movement tick after the console command.
 cimmeria-cell-console = { workspace = true, features = ["test-support"] }
+# `PetsPlugin`, installed by the tests that drive a pet hook point through
+# the service (the base-destroy path, the router). A dev-dependency only: the
+# cell service never names a feature plugin (#962); the facade installs them.
+cimmeria-cell-pets = { workspace = true }
 # The paged occluder the NPC AI line-of-sight tests load.
 cimmeria-occluder = { workspace = true }
 # Chain parameters in the relog-hydration tests.

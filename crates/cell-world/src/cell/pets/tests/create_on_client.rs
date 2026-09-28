@@ -4,6 +4,7 @@ use super::*;
 use crate::cell::messages::CellToBaseMsg;
 use crate::mercury::SGWPET_CLASS_ID;
 use cimmeria_entity::cell_entity::PetStance;
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_wire::cell::client_methods::pet::{
     ENTITYFLAG_PET, ON_PET_ABILITY_LIST, ON_PET_STANCE_LIST, ON_PET_STANCE_UPDATE,
 };
@@ -130,8 +131,8 @@ fn non_default_stance_is_replayed_after_the_lists() {
     let (mut mgr, pet) = world_with_pet();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .stance = PetStance::Aggressive;
     let events = mgr.compute_aoi_changes();

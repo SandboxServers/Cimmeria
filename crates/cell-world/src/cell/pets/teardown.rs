@@ -21,6 +21,7 @@
 //! Despawn goes through `despawn_npc`, never bare `destroy_entity`: the
 //! former sends `LeftAoI` to every witness and scrubs the witness sets.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use cimmeria_common::EntityId;
@@ -259,10 +260,12 @@ fn sweep_verdict(
     let Some(pet_space) = space_mgr.get_entity_space_id(pet_id) else {
         return Some(SweepAction::Scrub);
     };
-    let Some((pet_dead, despawn_at)) = space_mgr
-        .get_entity(pet_id)
-        .and_then(|e| Some((e.state_field & BSF_DEAD != 0, e.pet.as_ref()?.despawn_at)))
-    else {
+    let Some((pet_dead, despawn_at)) = space_mgr.get_entity(pet_id).and_then(|e| {
+        Some((
+            e.state_field & BSF_DEAD != 0,
+            e.extensions.get::<PetState>()?.despawn_at,
+        ))
+    }) else {
         return Some(SweepAction::Scrub);
     };
     let Some(owner_entity) = space_mgr.get_entity(owner) else {
@@ -341,7 +344,7 @@ pub async fn pet_owner_sweep_at(
                 let id = owner_identity(space_mgr, pet_id, Some(owner));
                 if let Some(pet) = space_mgr
                     .get_entity_mut(pet_id)
-                    .and_then(|e| e.pet.as_deref_mut())
+                    .and_then(|e| e.extensions.get_mut::<PetState>())
                 {
                     pet.despawn_at = Some(now + PET_CORPSE_DESPAWN);
                 }

@@ -4,12 +4,13 @@
 use super::*;
 use crate::cell::cell_methods::player::pet::FEEDBACK_NO_SUCH_PET_ABILITY;
 use crate::cell::client_methods::pet::{build_pet_ability_list, ON_PET_ABILITY_LIST};
+use cimmeria_entity::cell_entity::PetState;
 
 fn toggled_off(mgr: &SpaceManager, pet: u32) -> Vec<i32> {
     mgr.get_entity(pet)
         .unwrap()
-        .pet
-        .as_deref()
+        .extensions
+        .get::<PetState>()
         .unwrap()
         .toggled_off
         .clone()

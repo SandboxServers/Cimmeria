@@ -96,6 +96,18 @@ impl Orchestrator {
         let mut base = BaseService::new(&config);
         tracing::trace!("Constructing CellService");
         let mut cell = CellService::new(&config);
+        // The plugin table (#962). A table that does not build is a coding
+        // error the `plugins` tests catch; if one ships anyway, the cell
+        // keeps the empty table and `start_all` refuses to start.
+        match crate::plugins::cell_plugins() {
+            Ok(plugins) => cell.set_plugins(plugins),
+            Err(e) => tracing::error!(
+                target: "cell.plugin",
+                reason = "plugin_table_invalid",
+                error = %e,
+                "the cell plugin table does not build -- the server will refuse to start"
+            ),
+        }
 
         // Wire Base↔Cell inter-service channels
         let (base_to_cell_tx, base_to_cell_rx) = mpsc::channel::<BaseToCellMsg>(256);
@@ -219,7 +231,14 @@ impl Orchestrator {
         })?;
         tracing::trace!("Base service started successfully");
 
-        // 4. Start cell service
+        // 4. Start cell service. Every plugin-owned cell method must have a
+        // handler first (#962): a gap is a method the client can call and
+        // nothing answers.
+        state.cell.plugins().check_complete().map_err(|e| {
+            tracing::error!(target: "cell.plugin", reason = "plugin_table_incomplete", error = %e,
+                "Cell service refused to start: the plugin table is incomplete");
+            OrchestratorError::CellStartFailed(e.to_string())
+        })?;
         tracing::trace!(addr = %state.cell.listener_addr, "Starting cell service");
         state.cell.start().await.map_err(|e| {
             tracing::error!(error = %e, "Cell service failed to start");

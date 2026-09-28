@@ -22,7 +22,7 @@ crates = ["cimmeria-services"]
 [[group]]
 id = "cell"
 title = "Cell (world simulation) track"
-crates = ["cimmeria-cell", "cimmeria-cell-console", "cimmeria-cell-methods", "cimmeria-cell-interactions",
+crates = ["cimmeria-cell", "cimmeria-cell-console", "cimmeria-cell-methods", "cimmeria-cell-pets", "cimmeria-cell-interactions",
           "cimmeria-cell-content", "cimmeria-cell-combat", "cimmeria-cell-world", "cimmeria-cell-cover",
           "cimmeria-cell-catalog"]
 prefixes = ["cimmeria-cell-"]

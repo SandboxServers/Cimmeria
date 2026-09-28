@@ -13,6 +13,7 @@ use sqlx::PgPool;
 use tokio::sync::{mpsc, Notify};
 use tokio::task::JoinHandle;
 
+use cimmeria_cell_world::cell::plugin::CellPlugins;
 use cimmeria_common::ServerConfig;
 
 use super::messages::{BaseToCellMsg, CellToBaseMsg};
@@ -62,6 +63,11 @@ pub struct CellService {
     /// Signal that asks `run_cell_loop` to break out of its select loop.
     /// Cloned into the task on start; notified by `stop()`.
     pub(crate) shutdown_signal: Option<Arc<Notify>>,
+
+    /// The feature plugins (#962), installed on the `SpaceManager` when the
+    /// loop starts. Set by the orchestrator from its plugin table; empty
+    /// until then.
+    pub(crate) plugins: CellPlugins,
 }
 
 impl CellService {
@@ -80,7 +86,20 @@ impl CellService {
             db_pool: None,
             cell_loop_handle: None,
             shutdown_signal: None,
+            plugins: CellPlugins::empty(),
         }
+    }
+
+    /// Set the feature plugins the cell loop installs on its `SpaceManager`.
+    /// Called by the orchestrator before `start()`, with the table it has
+    /// already checked (`CellPlugins::check_complete`).
+    pub fn set_plugins(&mut self, plugins: CellPlugins) {
+        self.plugins = plugins;
+    }
+
+    /// The feature plugins `start()` will install.
+    pub fn plugins(&self) -> &CellPlugins {
+        &self.plugins
     }
 
     /// Set the database pool for content engine loading.

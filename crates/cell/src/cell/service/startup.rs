@@ -21,6 +21,29 @@ impl CellService {
 
         // Load space definitions from XML
         let mut space_mgr = SpaceManager::new(1); // cell_id = 1
+
+        // Feature plugins (#962). The orchestrator refuses to start with an
+        // incomplete table; a bare `CellService` (a test harness) starts
+        // anyway, and this WARN names what the client can call and nothing
+        // will answer.
+        if let Err(e) = self.plugins.check_complete() {
+            tracing::warn!(
+                target: "cell.plugin",
+                reason = "plugin_table_incomplete",
+                plugins = ?self.plugins.plugin_names(),
+                error = %e,
+                "cell service starting with an incomplete plugin table -- those cell methods \
+                 fall through to 'Unhandled cell method call' and the player's press does nothing"
+            );
+        } else {
+            tracing::info!(
+                target: "cell.plugin",
+                plugins = ?self.plugins.plugin_names(),
+                cell_methods = ?self.plugins.cell_method_indices().collect::<Vec<_>>(),
+                "cell plugins installed"
+            );
+        }
+        space_mgr.install_plugins(self.plugins.clone());
         match space_mgr.load_from_xml(&self.entities_dir) {
             Ok(()) => {
                 tracing::info!(

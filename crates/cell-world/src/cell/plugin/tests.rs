@@ -1,0 +1,244 @@
+//! `CellPlugins`: the startup checks and the hook firing order.
+//!
+//! Hooks here report by sending an `EntityMethodCall` whose `method_index`
+//! is a marker, so the test reads the firing order off the channel.
+
+use tokio::sync::mpsc;
+
+use super::*;
+use crate::cell::messages::CellToBaseMsg;
+use cimmeria_wire::cell::cell_methods::player::constants::{
+    PET_ABILITY_TOGGLE, PET_CHANGE_STANCE, PET_INVOKE_ABILITY, WHO,
+};
+
+fn mark<'a>(marker: u16, entity_id: u32, tx: &'a mpsc::Sender<CellToBaseMsg>) -> BoxFuture<'a, ()> {
+    Box::pin(async move {
+        tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: marker,
+            args: Vec::new(),
+        })
+        .await
+        .unwrap();
+    })
+}
+
+fn noop_method(_call: CellMethodCall<'_>) -> BoxFuture<'_, ()> {
+    Box::pin(async {})
+}
+fn tick_a<'a>(tx: &'a mpsc::Sender<CellToBaseMsg>, _: &'a mut SpaceManager) -> BoxFuture<'a, ()> {
+    mark(1, 0, tx)
+}
+fn tick_b<'a>(tx: &'a mpsc::Sender<CellToBaseMsg>, _: &'a mut SpaceManager) -> BoxFuture<'a, ()> {
+    mark(2, 0, tx)
+}
+fn tick_c<'a>(tx: &'a mpsc::Sender<CellToBaseMsg>, _: &'a mut SpaceManager) -> BoxFuture<'a, ()> {
+    mark(3, 0, tx)
+}
+fn destroy_hook<'a>(
+    entity_id: u32,
+    tx: &'a mpsc::Sender<CellToBaseMsg>,
+    _: &'a mut SpaceManager,
+) -> BoxFuture<'a, ()> {
+    mark(4, entity_id, tx)
+}
+
+/// A plugin that registers the given method indices and nothing else.
+struct Methods(&'static str, &'static [u16]);
+impl CellPlugin for Methods {
+    fn name(&self) -> &'static str {
+        self.0
+    }
+    fn build(&self, plugin: &mut CellPluginBuilder<'_>) {
+        for &i in self.1 {
+            plugin.cell_method(i, noop_method);
+        }
+    }
+}
+
+const ALL_OWNED: &[u16] = &[PET_INVOKE_ABILITY, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE];
+
+#[test]
+fn the_plugin_owned_list_is_the_pet_commands() {
+    assert_eq!(PLUGIN_OWNED_CELL_METHODS, &[88, 89, 90]);
+}
+
+#[test]
+fn a_complete_registration_builds_and_resolves_each_index() {
+    let plugins = CellPlugins::build(&[&Methods("pets", ALL_OWNED)]).unwrap();
+    plugins.check_complete().unwrap();
+    assert_eq!(plugins.plugin_names(), &["pets"]);
+    assert_eq!(
+        plugins.cell_method_indices().collect::<Vec<_>>(),
+        vec![88, 89, 90]
+    );
+    assert!(plugins.cell_method(88).is_some());
+    assert!(
+        plugins.cell_method(WHO).is_none(),
+        "73 stays on the static router"
+    );
+}
+
+/// #962 test rule: a feature that never registers must fail the startup
+/// assertion, not silently no-op. An empty table leaves 88-90 unhandled.
+#[test]
+fn a_missing_plugin_fails_check_complete_with_every_unhandled_index() {
+    let err = CellPlugins::build(&[])
+        .unwrap()
+        .check_complete()
+        .unwrap_err();
+    assert_eq!(
+        err,
+        PluginError::MissingCellMethods {
+            missing: vec![
+                (88, "petInvokeAbility"),
+                (89, "petAbilityToggle"),
+                (90, "petChangeStance"),
+            ]
+        }
+    );
+    // A partial registration names only the gap.
+    let err = CellPlugins::build(&[&Methods("pets", &[88, 90])])
+        .unwrap()
+        .check_complete()
+        .unwrap_err();
+    assert_eq!(
+        err,
+        PluginError::MissingCellMethods {
+            missing: vec![(89, "petAbilityToggle")]
+        }
+    );
+}
+
+#[test]
+fn two_plugins_claiming_one_index_fail_the_build() {
+    let err = CellPlugins::build(&[&Methods("pets", ALL_OWNED), &Methods("other", &[89])])
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        PluginError::DuplicateCellMethod {
+            index: 89,
+            name: "petAbilityToggle",
+            first: "pets",
+            second: "other",
+        }
+    );
+}
+
+#[test]
+fn an_index_that_is_not_a_client_cell_method_fails_the_build() {
+    let err = CellPlugins::build(&[&Methods("bad", &[0xFFFF])])
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        PluginError::UnknownCellMethod {
+            index: 0xFFFF,
+            plugin: "bad"
+        }
+    );
+}
+
+/// An index the static router still owns must not be claimed by a plugin:
+/// the router would never reach one of the two handlers.
+#[test]
+fn an_index_the_static_router_owns_fails_the_build() {
+    let err = CellPlugins::build(&[&Methods("bad", &[WHO])])
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        PluginError::NotPluginOwned {
+            index: WHO,
+            name: "who",
+            plugin: "bad"
+        }
+    );
+}
+
+struct Ticks(&'static str, &'static [(TickStage, TickHook)]);
+impl CellPlugin for Ticks {
+    fn name(&self) -> &'static str {
+        self.0
+    }
+    fn build(&self, plugin: &mut CellPluginBuilder<'_>) {
+        for &(stage, hook) in self.1 {
+            plugin.tick(stage, hook);
+        }
+    }
+}
+
+fn drain_markers(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u16, u32)> {
+    let mut out = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            ..
+        } = msg
+        {
+            out.push((method_index, entity_id));
+        }
+    }
+    out
+}
+
+/// Hooks fire only at their stage, in plugin-table order (§3.2): the order
+/// reaches the wire, so it must not depend on anything but the table.
+#[tokio::test]
+async fn tick_hooks_fire_per_stage_in_table_order() {
+    let plugins = CellPlugins::build(&[
+        &Ticks(
+            "first",
+            &[
+                (TickStage::AfterRingTransport, tick_a),
+                (TickStage::AfterStatBuffs, tick_c),
+            ],
+        ),
+        &Ticks("second", &[(TickStage::AfterRingTransport, tick_b)]),
+    ])
+    .unwrap();
+    let mut mgr = SpaceManager::new(1);
+    let (tx, mut rx) = mpsc::channel(8);
+
+    plugins
+        .run_tick(TickStage::AfterRingTransport, &tx, &mut mgr)
+        .await;
+    assert_eq!(drain_markers(&mut rx), vec![(1, 0), (2, 0)]);
+    plugins
+        .run_tick(TickStage::AfterStatBuffs, &tx, &mut mgr)
+        .await;
+    assert_eq!(drain_markers(&mut rx), vec![(3, 0)]);
+}
+
+struct Destroy;
+impl CellPlugin for Destroy {
+    fn name(&self) -> &'static str {
+        "destroy"
+    }
+    fn build(&self, plugin: &mut CellPluginBuilder<'_>) {
+        plugin.entity_hook(EntityHookPoint::BeforeBaseDestroy, destroy_hook);
+    }
+}
+
+#[tokio::test]
+async fn entity_hooks_get_the_entity_id() {
+    let plugins = CellPlugins::build(&[&Destroy]).unwrap();
+    let mut mgr = SpaceManager::new(1);
+    let (tx, mut rx) = mpsc::channel(8);
+    plugins
+        .run_entity_hook(EntityHookPoint::BeforeBaseDestroy, 42, &tx, &mut mgr)
+        .await;
+    assert_eq!(drain_markers(&mut rx), vec![(4, 42)]);
+}
+
+/// A fresh `SpaceManager` holds the empty registry until the cell service
+/// installs the table, and installing replaces it.
+#[test]
+fn space_manager_starts_empty_and_takes_the_installed_table() {
+    let mut mgr = SpaceManager::new(1);
+    assert!(mgr.plugins().plugin_names().is_empty());
+    mgr.install_plugins(CellPlugins::build(&[&Methods("pets", ALL_OWNED)]).unwrap());
+    assert_eq!(mgr.plugins().plugin_names(), &["pets"]);
+}

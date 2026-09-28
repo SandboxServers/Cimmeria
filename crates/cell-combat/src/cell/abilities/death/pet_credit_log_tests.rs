@@ -5,6 +5,7 @@
 //! row that answers "why did / didn't this kill pay XP?" from SigNoz: the
 //! success event on a pet kill, and one `reason` per seam that pays nothing.
 
+use cimmeria_entity::cell_entity::PetState;
 use tracing::Level;
 
 use super::pet_credit_tests::{kill, spawn_mob, world, MOB_XP, OWNER, OWNER_PLAYER_ID};
@@ -110,8 +111,8 @@ async fn a_bad_transfer_xp_logs_transfer_xp_invalid_at_warn() {
         let (mut mgr, pet, mob) = world();
         mgr.get_entity_mut(pet)
             .unwrap()
-            .pet
-            .as_mut()
+            .extensions
+            .get_mut::<PetState>()
             .unwrap()
             .transfer_xp = bad;
         let capture = LogCapture::install();
@@ -189,8 +190,8 @@ async fn a_zero_xp_pet_kill_logs_zero_xp() {
     let (mut mgr, pet, mob) = world();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .transfer_xp = 0.001;
     let capture = LogCapture::install();
@@ -216,8 +217,8 @@ async fn an_overflowing_transfer_xp_logs_xp_overflow_at_warn() {
     let (mut mgr, pet, mob) = world();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .transfer_xp = f32::MAX;
     let capture = LogCapture::install();
@@ -249,8 +250,8 @@ async fn a_payout_past_i32_max_logs_xp_overflow() {
     let (mut mgr, pet, mob) = world();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .transfer_xp = 6.0e7;
     let capture = LogCapture::install();
