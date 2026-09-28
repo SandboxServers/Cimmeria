@@ -35,11 +35,12 @@ ledger docs/analysis/castle-population/README.md).
   283-299, point sets 2094-2099, points 2431-2499.
 
 **Loot (D-CP09, 2026-09-28):** Castle hostiles roll tables 4 (guard), 5 (veteran/named)
-and 6 (PRU); rows roll independently and an all-miss leaves no loot cursor. Only
-drop items that work on click: 2893 Health Slappack TC1 is the one consumable with
-a use path (content chain 4001 on item_use); items_event_sets event-5 use abilities
-are never executed. Mission grants on 169/170/171 are add_item in death chains, not
-loot, so loot on them is safe.
+and 6 (PRU); rows roll independently and an all-miss leaves no loot cursor. Drop only
+items that work on click. Since #1021 an event-5 consumable works natively when its
+ability is not the 597 filler and every effect script is HealHealth/HealFocus/StatBuff
+(`consumable_use::classify`); chain 4001 is retired. Unwired boosts (Stealth 6206) are
+ALSO blueprint inputs, so a 'blueprint component' rule alone lets them through. Mission
+grants on 169/170/171 are add_item in death chains, not loot, so loot on them is safe.
 
 **How to apply:** start any new Castle placement from the ledger's per-zone table and
 the live-DB clearance guards in `live_db_castle_population.rs`; they encode the

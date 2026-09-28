@@ -630,7 +630,7 @@ Source: [zone operator guide, runbook B](../analysis/zone-restoration-operator-g
 
 ## Castle population
 
-Ambient Castle NPCs added on top of the missions: Op-CORE marines in the Armory, the infirmary and the courtyard, prisoners in the Interrogation Block, Praxis Jaffa at Checkpoint Alpha, and 36 more NID guards and drones at levels 1-4, some on patrol. Every Castle hostile now drops loot sometimes (naquadah, a Health Slappack, tier-1 crafting components).
+Ambient Castle NPCs added on top of the missions: Op-CORE marines in the Armory, the infirmary and the courtyard, prisoners in the Interrogation Block, Praxis Jaffa at Checkpoint Alpha, and 36 more NID guards and drones at levels 1-4, some on patrol. Every Castle hostile now drops loot sometimes (naquadah, a Health Slappack, a Focus Heal, now and then a Mark III stimpack, tier-1 crafting components).
 
 **Status:** Ready. Seed only; every position was checked against the Castle navmesh, but none has been walked in the client yet, so a guard inside a wall or a table is worth reporting.
 
@@ -654,8 +654,8 @@ Ambient Castle NPCs added on top of the missions: Op-CORE marines in the Armory,
 | CP14 | Cross the west of the outdoor field | Three "Exterior NID Guard" by the rock (levels 4, 3, 2) and a drone circling it. | |
 | CP15 | Go to Muelbach's bunker | Two guards on the approach; two in the room past Muelbach. | |
 | CP16 | Reach Checkpoint Alpha; die and respawn there | Three Praxis Jaffa facing the ramp, one more at the back. Nothing shoots you on respawn. | K20 |
-| CP17 | Kill about ten ordinary Castle guards and loot each corpse | Roughly a third leave no loot cursor; the rest hold naquadah, sometimes a Health Slappack TC1, occasionally an Integrated Circuit or a Protein Complex. Nothing is in every corpse. A looted slappack heals 500 HP on the first click while you are hurt. | |
-| CP18 | Kill a few drones, a level-4 guard and Romney, Muelbach or a Bravo officer | Drones drop only an Integrated Circuit or a Wave Guide, about half drop nothing. Veterans drop more often and more naquadah. Romney and the Bravo officers still grant their mission item exactly once. | Mission 703 / 708 on the right step |
+| CP17 | Kill about ten ordinary Castle guards and loot each corpse | Roughly three in ten leave no loot cursor; the rest hold naquadah, sometimes a Health Slappack TC1 or a Focus Heal Consumable, occasionally an Integrated Circuit or a Protein Complex, rarely a Mark III stimpack. Nothing is in every corpse. Every looted consumable works on the first click (a heal while hurt, a stimpack's timed buff). | |
+| CP18 | Kill a few drones, a level-4 guard and Romney, Muelbach or a Bravo officer | Drones drop only an Integrated Circuit or a Wave Guide, about half drop nothing. Veterans drop more often, more naquadah, and a stimpack about 1 in 9. Romney and the Bravo officers still grant their mission item exactly once. | Mission 703 / 708 on the right step |
 
 **SigNoz:** a guard engaging logs target `npc_ai.aggro`, `event = acquired`, with its spawn `tag` (`Castle_Pop_*`), `cause` (proximity, damage or assist) and `npc_to_target`; anchor each report on a `.bug` bookmark.
 
