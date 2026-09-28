@@ -34,6 +34,21 @@ const BIND_TYPE_ID: i32 = 0x7300_2F00;
 /// literal here so this test file needs no dependency on that crate).
 const BIND_ON_ACQUIRE: i32 = 4;
 
+/// `handle_grant_item` enqueues a `cell_event_outbox` row for `entity_id`
+/// (via `persist_grant`); with `cell_tx: &None` it can never be dispatched
+/// in-process, so it is left permanently undelivered unless this test
+/// deletes it. `mail::tests::cleanup` only touches `sgw_gate_mail` and
+/// `account` — it never had a reason to know about the outbox before this
+/// test called a grant path directly. Left undelivered, the row poisons
+/// the outbox's own live-DB tests, which share this slot's database and
+/// scan/drain undelivered rows table-wide (issue #914 CI failure).
+async fn cleanup_outbox(pool: &PgPool, entity_id: u32) {
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
+        .bind(entity_id as i32)
+        .execute(pool)
+        .await;
+}
+
 async fn insert_bind_on_acquire_type(pool: &PgPool) {
     let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
         .bind(BIND_TYPE_ID)
@@ -61,6 +76,7 @@ async fn live_db_a_freshly_granted_bind_on_acquire_item_is_rejected_by_mail_send
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt, entity) = (BASE, BASE + 1, BASE + 2, (BASE + 0x50) as u32);
+    cleanup_outbox(&pool, entity).await;
     setup(
         &pool,
         acct,
@@ -139,6 +155,7 @@ async fn live_db_a_freshly_granted_bind_on_acquire_item_is_rejected_by_mail_send
     .await;
 
     cleanup(&pool, acct).await;
+    cleanup_outbox(&pool, entity).await;
     let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
         .bind(BIND_TYPE_ID)
         .execute(&pool)

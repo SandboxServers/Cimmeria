@@ -34,6 +34,21 @@ const BIND_TYPE_ID: i32 = 0x7000_0FA0;
 /// literal here so this test file needs no dependency on that crate).
 const BIND_ON_ACQUIRE: i32 = 4;
 
+/// `handle_grant_item` enqueues a `cell_event_outbox` row for `entity_a`
+/// (via `persist_grant`); with `cell_tx: &None` it can never be dispatched
+/// in-process, so it is left permanently undelivered unless this test
+/// deletes it. `trade::tests::cleanup` never touches the outbox — it never
+/// had a reason to before this test called a grant path directly. Left
+/// undelivered, the row poisons the outbox's own live-DB tests, which
+/// share this slot's database and scan/drain undelivered rows table-wide
+/// (issue #914 CI failure).
+async fn cleanup_outbox(pool: &sqlx::PgPool, entity_id: u32) {
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
+        .bind(entity_id as i32)
+        .execute(pool)
+        .await;
+}
+
 async fn insert_bind_on_acquire_type(pool: &sqlx::PgPool) {
     let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
         .bind(BIND_TYPE_ID)
@@ -67,6 +82,7 @@ async fn live_db_a_freshly_granted_bind_on_acquire_item_is_refused_by_trade() {
         &[f.player_a, f.player_b],
     )
     .await;
+    cleanup_outbox(&pool, f.entity_a).await;
     insert_bind_on_acquire_type(&pool).await;
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 0, "a").await;
@@ -137,6 +153,7 @@ async fn live_db_a_freshly_granted_bind_on_acquire_item_is_refused_by_trade() {
         &[f.player_a, f.player_b],
     )
     .await;
+    cleanup_outbox(&pool, f.entity_a).await;
     let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
         .bind(BIND_TYPE_ID)
         .execute(&pool)
