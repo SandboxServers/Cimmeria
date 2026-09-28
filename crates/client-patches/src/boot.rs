@@ -7,11 +7,12 @@
 //! 1. opens the log next to `SGW.exe`;
 //! 2. resolves the `lua51.dll` exports, waiting for the DLL if it is not
 //!    loaded yet (it is a static import of `SGW.exe`, so it normally is);
-//! 3. runs the [fingerprint gate](crate::fingerprint) over every site,
+//! 3. takes the install lock it shares with the telemetry DLL, then runs
+//!    the [fingerprint gate](crate::fingerprint) over every site,
 //!    accepting an earlier hook only from a loaded telemetry DLL;
 //! 4. hooks `FEngineLoop::Tick` (deliver), then the dispatcher and the drop
 //!    callee (receive), stopping at the first failure;
-//! 5. exits. The hooks and statics live for the rest of the process; the
+//! 5. releases the lock and exits. The hooks and statics live for the rest of the process; the
 //!    DLL is never unloaded, so `DLL_PROCESS_DETACH` does nothing.
 //!
 //! Every failure is logged and leaves the game as it was: no hook is
@@ -25,15 +26,14 @@ use std::time::Duration;
 
 use windows_sys::core::BOOL;
 use windows_sys::Win32::Foundation::{CloseHandle, HMODULE, TRUE};
-use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows_sys::Win32::System::Threading::CreateThread;
 
+use cimmeria_client_hookgate::os::{HookLock, LockOutcome};
+
 use crate::deliver::lua_api::{LuaApi, ResolveError};
 use crate::deliver::tick::{engine_tick_detour, LUA_API, TICK_ORIGINAL};
-use crate::fingerprint::{
-    self, hex, Prologue, DISPATCHER, DROP_CALLEE, ENGINE_TICK, HOOK_OWNER_MODULES,
-};
+use crate::fingerprint::{self, hex, Prologue, DISPATCHER, DROP_CALLEE, ENGINE_TICK};
 use crate::memory::ProcessMemory;
 use crate::receive::detours::{dispatch_detour, lookup_detour, DISPATCH_ORIGINAL, LOOKUP_ORIGINAL};
 use crate::{hooks, log};
@@ -41,6 +41,10 @@ use crate::{hooks, log};
 /// How long to wait for `lua51.dll` to load before giving up.
 const LUA_WAIT: Duration = Duration::from_secs(30);
 const LUA_POLL: Duration = Duration::from_millis(250);
+
+/// How long to wait for the telemetry DLL to finish hooking before going
+/// on without the install lock.
+const HOOK_LOCK_WAIT: Duration = Duration::from_secs(10);
 
 static BOOTSTRAP_STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -104,6 +108,24 @@ fn bootstrap() {
         }
     };
     log::line("lua51.dll exports resolved");
+
+    // Held from the check to the last hook, so the telemetry DLL cannot
+    // hook a shared site in between: whichever DLL hooks second sees the
+    // first one's jump, and its image is loaded by the time the owners
+    // are listed below.
+    let lock = HookLock::acquire(HOOK_LOCK_WAIT);
+    log::line(match lock.outcome() {
+        LockOutcome::Acquired => "install lock taken",
+        LockOutcome::AcquiredAfterWait => "install lock taken after waiting for another DLL",
+        LockOutcome::Abandoned => "install lock taken (abandoned by a thread that exited)",
+        LockOutcome::Unavailable => "install lock unavailable",
+    });
+    if !lock.outcome().permits_hooking() {
+        // The other DLL is still hooking (or the mutex failed): hooking now
+        // could let its MH_EnableHook overwrite ours on a shared site.
+        log::line("another DLL still holds the install lock; nothing installed, the Black Market stays off");
+        return;
+    }
 
     let hook_owners = hook_owner_ranges();
     let mut usable = true;
@@ -183,35 +205,31 @@ fn bootstrap() {
         }
     }
     log::line(
-        "Black Market installed: received calls go to the Lua table CimmeriaBM, and          CimmeriaBMNative is registered for sending once the UI Lua is up",
+        "Black Market installed: received calls go to the Lua table CimmeriaBM, and \
+         CimmeriaBMNative is registered for sending once the UI Lua is up",
     );
+    drop(lock);
 }
 
-/// The image ranges of the loaded [`HOOK_OWNER_MODULES`]: where an earlier
+/// The image ranges of the other loaded [`fingerprint::HOOK_OWNER_MODULES`]: where an earlier
 /// hook on a chainable site may jump to. Empty when none is loaded, and
 /// then no earlier hook is accepted.
 fn hook_owner_ranges() -> Vec<Range<usize>> {
-    HOOK_OWNER_MODULES
-        .iter()
-        .filter_map(|name| {
-            let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-            // SAFETY: a NUL-terminated wide string; no reference is taken.
-            let base = unsafe { GetModuleHandleW(wide.as_ptr()) };
-            if base.is_null() {
-                return None;
-            }
-            let range = fingerprint::image_range(&ProcessMemory, base as usize);
-            match &range {
+    cimmeria_client_hookgate::os::loaded_hook_owners()
+        .into_iter()
+        .filter_map(|owner| {
+            let name = owner.name;
+            match &owner.image {
                 Some(r) => log::line(format_args!(
                     "{name} loaded at 0x{:08x}..0x{:08x}; its hooks may be chained",
                     r.start, r.end
                 )),
                 None => log::line(format_args!(
                     "{name} loaded at 0x{:08x} but its PE header is unreadable",
-                    base as usize
+                    owner.base
                 )),
             }
-            range
+            owner.image
         })
         .collect()
 }

@@ -1,6 +1,8 @@
 //! Asset/package loading + level streaming hooks:
 //! `FArchiveAsync::Serialize`, `UWorld::UpdateLevelStreamingInner`,
-//! `UObject::StaticLoadObject`, and the cooked-data PAK loader.
+//! `UObject::StaticLoadObject`. The cooked-data PAK load hook was
+//! removed: its address (`0x00420074`) is inside a function, not an
+//! entry. Re-adding it is #989.
 //! Together these turn "client froze during a load" into a SigNoz
 //! trace with the offending package name attached.
 
@@ -48,10 +50,6 @@ pub(super) const ADDR_UPDATE_LEVEL_STREAMING_INNER: usize = 0x0054e9c0;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) const ADDR_STATIC_LOAD_OBJECT: usize = 0x004a8e10;
 
-/// Cooked-data PAK load — fires once per PAK load (21 categories).
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-pub(super) const ADDR_COOKED_DATA_LOAD: usize = 0x00420074;
-
 /// Trampoline pointer for `FArchiveAsync::Serialize`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static ARCHIVE_SERIALIZE_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
@@ -63,9 +61,6 @@ static UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE: OnceLock<usize> = OnceLock::new(
 /// Trampoline pointer for `UObject::StaticLoadObject`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static STATIC_LOAD_OBJECT_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
-
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-static COOKED_DATA_LOAD_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 
 /// Sampling counter for `FArchiveAsync::Serialize`. Bulk byte-read
 /// path during package loads; can fire thousands of times per
@@ -121,21 +116,10 @@ pub(super) unsafe fn install_static_load_object(producer: &Producer) {
     );
 }
 
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-pub(super) unsafe fn install_cooked_data_load(producer: &Producer) {
-    super::install_one(
-        producer,
-        "cooked_data_load",
-        ADDR_COOKED_DATA_LOAD,
-        cooked_data_load_detour as *mut c_void,
-        &COOKED_DATA_LOAD_TRAMPOLINE,
-    );
-}
-
 /// Detour for `FArchiveAsync::Serialize(void* V, INT Length)` —
 /// vtable slot 1.
 ///
-/// Signature: `extern "thiscall" fn(*mut FArchiveAsync, *mut c_void,
+/// Signature: `extern "thiscall-unwind" fn(*mut FArchiveAsync, *mut c_void,
 /// c_int)`. ECX = this, stack = V + Length.
 ///
 /// **Hot path discipline:** can fire thousands of times during a
@@ -143,7 +127,7 @@ pub(super) unsafe fn install_cooked_data_load(producer: &Producer) {
 /// so we surface the load storm without flooding.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn archive_async_serialize_detour(
+unsafe extern "thiscall-unwind" fn archive_async_serialize_detour(
     this: *mut c_void,
     v: *mut c_void,
     length: i32,
@@ -163,7 +147,7 @@ unsafe extern "thiscall" fn archive_async_serialize_detour(
     });
 
     if let Some(t) = ARCHIVE_SERIALIZE_TRAMPOLINE.get() {
-        let original: unsafe extern "thiscall" fn(*mut c_void, *mut c_void, i32) =
+        let original: unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, i32) =
             unsafe { std::mem::transmute(*t) };
         original(this, v, length);
     }
@@ -172,7 +156,7 @@ unsafe extern "thiscall" fn archive_async_serialize_detour(
 /// Detour for `UWorld::UpdateLevelStreamingInner(ULevelStreaming*,
 /// FVector*)`.
 ///
-/// Signature: `extern "thiscall" fn(*mut UWorld, *mut ULevelStreaming,
+/// Signature: `extern "thiscall-unwind" fn(*mut UWorld, *mut ULevelStreaming,
 /// *mut FVector)`. ECX = this, stack = (StreamingLevel, FVector*).
 ///
 /// **Hot path discipline:** fires per active streaming level per
@@ -180,7 +164,7 @@ unsafe extern "thiscall" fn archive_async_serialize_detour(
 /// `UPDATE_LEVEL_STREAMING_SAMPLER`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn update_level_streaming_inner_detour(
+unsafe extern "thiscall-unwind" fn update_level_streaming_inner_detour(
     this: *mut c_void,
     streaming_level: *mut c_void,
     delta_position: *mut c_void,
@@ -197,7 +181,7 @@ unsafe extern "thiscall" fn update_level_streaming_inner_detour(
     });
 
     if let Some(t) = UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE.get() {
-        let original: unsafe extern "thiscall" fn(*mut c_void, *mut c_void, *mut c_void) =
+        let original: unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, *mut c_void) =
             unsafe { std::mem::transmute(*t) };
         original(this, streaming_level, delta_position);
     }
@@ -227,7 +211,7 @@ unsafe extern "thiscall" fn update_level_streaming_inner_detour(
 /// reads if the string isn't null-terminated.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "C" fn static_load_object_detour(
+unsafe extern "C-unwind" fn static_load_object_detour(
     object_class: *mut c_void,
     in_outer: *mut c_void,
     in_name: *const u16,
@@ -253,7 +237,7 @@ unsafe extern "C" fn static_load_object_detour(
     });
 
     if let Some(t) = STATIC_LOAD_OBJECT_TRAMPOLINE.get() {
-        let original: unsafe extern "C" fn(
+        let original: unsafe extern "C-unwind" fn(
             *mut c_void,
             *mut c_void,
             *const u16,
@@ -276,34 +260,6 @@ unsafe extern "C" fn static_load_object_detour(
         // it as "object not found" and likely log + recover. Better
         // than crashing.
         std::ptr::null_mut()
-    }
-}
-
-/// Detour for the cooked-data PAK loader.
-///
-/// Signature: `extern "cdecl" fn(u32 category, void** out_a, void** out_b)`.
-///
-/// Fires once per PAK load (21 categories). Emit 1/1 — rare event.
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-#[allow(improper_ctypes_definitions)]
-unsafe extern "C" fn cooked_data_load_detour(
-    category: u32,
-    out_a: *mut *mut c_void,
-    out_b: *mut *mut c_void,
-) {
-    let _ = std::panic::catch_unwind(|| {
-        if let Some(p) = crate::boot::producer() {
-            p.try_emit(
-                crate::events::ClientNativeEvent::builder("client.engine.pak_load", "info")
-                    .field("category", serde_json::json!(category)),
-            );
-        }
-    });
-
-    if let Some(t) = COOKED_DATA_LOAD_TRAMPOLINE.get() {
-        let original: unsafe extern "C" fn(u32, *mut *mut c_void, *mut *mut c_void) =
-            unsafe { std::mem::transmute(*t) };
-        original(category, out_a, out_b);
     }
 }
 

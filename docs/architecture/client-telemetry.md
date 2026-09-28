@@ -2,8 +2,8 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-07-25
-> **Status**: Phases 2-5 substantially landed. **23 hooks total** across 4 techniques: 2 CME subscribers (`onClientMapLoad`, `onClientReady`), 11 inline JMP hooks (Mercury dispatch + 4 engine + 6 Phase-3/5 additions: state-flag dispatcher, anim notify A+B, cooked-data load, console command, Bink tick), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger + AActor::Tick + USequence::UpdateOp). All addresses + signatures sourced from the upfront Ghidra manifest. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
+> **Last updated**: 2026-09-27
+> **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (the launcher never injected the DLL; see the fingerprint section). **22 hooks total** across 4 techniques: 2 CME subscribers (`onClientMapLoad`, `onClientReady`), 10 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger + AActor::Tick + USequence::UpdateOp). Every address was re-checked against the QA `SGW.exe` on 2026-09-27 and is fingerprinted. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
@@ -147,6 +147,55 @@ SigNoz queries against this stream filter on `service_name="cimmeria-client"`. T
 
 **Caveat:** This is not the OpenTelemetry-spec `service.name` Resource attribute — that one is set once at server boot via `OTEL_SERVICE_NAME` and can't be overridden per-request. The tracing macro grammar in our version also doesn't accept dotted-string field keys (`"service.name"`), so we use the snake_case alias. Proper Resource-level override would require either a second `Resource` for the cimmeria-client events or a `tracing-attributes` shim that rewrites the field name on emit. Deferred — the data is the same; only the SigNoz query key differs.
 
+## The fingerprint gate, the local log and the hook ABI
+
+The DLL had never run inside the client until 2026-09-27: the launcher's
+telemetry launch path was dead code. An audit of every anchor against the
+QA `SGW.exe` then found that five of them would have corrupted or crashed
+the game:
+
+- The seven IAT addresses were the slots' on-disk contents (hint/name
+  RVAs) read as addresses. They pointed into UTF-16 strings in `.rdata`.
+- `Mercury::Nub::handleMessage` pointed at its own log string, and the
+  cooked-data PAK load at the middle of a function. Both hooks are
+  removed until #989 re-resolves them.
+- The CEGUI logger slot was the destructor (the vtable starts one slot
+  after the RTTI locator pointer), whose `ret 4` does not match the
+  detour's two arguments.
+- `execConsoleCommand` and `onStateFieldUpdate` both pop two stack
+  arguments (`ret 8`) where the detours declared one.
+
+Three rules now keep that from recurring:
+
+- **Fingerprint gate** (`src/fingerprint.rs`). Before any hook goes in,
+  the bootstrap compares the first bytes of every function it hooks or
+  calls, and the value in every vtable slot it swaps, with the QA build.
+  On any mismatch it installs no hooks at all, and reports why. A
+  different build, or a process that is not `SGW.exe`, loses the hook
+  telemetry and nothing else. `FEngineLoop::Tick` and the drop callee may
+  already carry the client-patches DLL's MinHook jump, which is chained
+  onto; the rule and the install lock both DLLs take are in
+  `cimmeria-client-hookgate` and [client-patches.md](client-patches.md).
+  Each IAT slot is also checked on its own before it is swapped: it must
+  hold exactly the address its import resolves to.
+- **Local log.** The DLL writes `cimmeria-client-telemetry.log` next to
+  `SGW.exe` (and to `OutputDebugString`): the version, the session file,
+  every site's fingerprint result, each hook's install outcome and the
+  lab bridge's listener. Nothing about it depends on the upload working.
+  The fingerprint result also goes to SigNoz as `client.hooks.fingerprint`
+  (`usable`, plus one `site.<name>` field per site).
+- **Hook ABI.** Every detour of an original that can throw (engine, Lua,
+  CME), and the function-pointer type it calls the original through, uses
+  the matching `-unwind` ABI: `thiscall-unwind`, `C-unwind`. UE3 raises
+  errors as C++ exceptions, and so does the client's `lua51.dll` (it
+  imports `_CxxThrowException`), so a Lua error inside a `lua_call` made
+  under an outer `lua_pcall` unwinds through the `lua_call` detour. With a
+  plain ABI that unwind aborts the process at the detour (#915). The
+  Win32 IAT detours use `stdcall-unwind` too, for one rule instead of a
+  list of exceptions. Rust code inside a detour stays inside
+  `catch_unwind`, so a Rust panic cannot unwind into the game. The CME
+  callbacks stay plain `thiscall`: they call nothing in the game.
+
 ## What we DON'T hook
 
 To preserve "observe without changing behavior":
@@ -173,7 +222,7 @@ To preserve "observe without changing behavior":
 
 ## CI
 
-- `.github/workflows/client-telemetry-build.yml` — Windows-native CI for `i686-pc-windows-msvc`. fmt + clippy `-D warnings` + build (asserts `.dll` artifact lands) + nextest.
+- `.github/workflows/client-telemetry-build.yml` — Windows-native CI for `i686-pc-windows-msvc`. fmt + clippy `-D warnings` + build (asserts `.dll` artifact lands) + nextest. Clippy and nextest each run twice, once with `--features lab-bridge`, because the bridge only compiles under that feature (#916).
 - Main `.github/workflows/test.yml` excludes the Windows-only cdylib from the Linux workspace check.
 - `crates/launcher/`'s existing CI continues to cover the injector module via its own pipeline.
 

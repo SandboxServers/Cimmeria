@@ -14,11 +14,11 @@
 //!   `cme_hooks.rs`. Currently: `Event_NetIn_onClientReady`,
 //!   `Event_NetIn_onClientMapLoad`. Phase 3a will add ~270 events
 //!   via RTTI auto-discovery.
-//! - **Inline JMP** (MinHook) — `inline_hooks/`. 12 hooks:
-//!   Mercury dispatch, FEngineLoop::Tick, FArchiveAsync::Serialize,
+//! - **Inline JMP** (MinHook) — `inline_hooks/`. 10 hooks:
+//!   FEngineLoop::Tick, FArchiveAsync::Serialize,
 //!   UWorld::UpdateLevelStreamingInner, UObject::StaticLoadObject,
 //!   GameBeing::onStateFieldUpdate, USGWAnimNotify::Notify A+B,
-//!   cooked-data load, APlayerController::execConsoleCommand,
+//!   APlayerController::execConsoleCommand,
 //!   FFullScreenMovieBink::Tick, and the entity-method silent-drop
 //!   oracle (`client.dispatch.method_dropped`).
 //! - **IAT swap** — `iat_hooks.rs`. 7 hooks: lua_pcall/call/newstate
@@ -32,6 +32,13 @@
 //! `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` on-disk), so all
 //! addresses below are stable across launches and identical on
 //! every machine running the same SGW.exe build.
+//!
+//! # The fingerprint gate
+//!
+//! `boot` calls [`install_all`] only after [`crate::fingerprint`] has
+//! matched every hooked function and vtable slot against the QA build,
+//! under the install lock shared with the client-patches DLL. On any
+//! mismatch nothing here runs.
 //!
 //! # Failure shape
 //!
@@ -86,11 +93,7 @@ pub(crate) fn emit_info(
     target: &str,
     fields: impl IntoIterator<Item = (&'static str, serde_json::Value)>,
 ) {
-    let mut b = ClientNativeEvent::builder(target, "info");
-    for (k, v) in fields {
-        b = b.field(k, v);
-    }
-    producer.try_emit(b);
+    emit(producer, "info", target, fields);
 }
 
 /// Convenience: emit a one-shot warn event for install failures.
@@ -100,9 +103,23 @@ pub(crate) fn emit_warn(
     target: &str,
     fields: impl IntoIterator<Item = (&'static str, serde_json::Value)>,
 ) {
-    let mut b = ClientNativeEvent::builder(target, "warn");
+    emit(producer, "warn", target, fields);
+}
+
+/// Queue the event, and write the same thing to the local log: install
+/// events are rare, and the log is what is left when the upload fails.
+fn emit(
+    producer: &Producer,
+    level: &str,
+    target: &str,
+    fields: impl IntoIterator<Item = (&'static str, serde_json::Value)>,
+) {
+    let mut b = ClientNativeEvent::builder(target, level);
+    let mut text = format!("{level} {target}");
     for (k, v) in fields {
+        text.push_str(&format!(" {k}={v}"));
         b = b.field(k, v);
     }
+    crate::log::line(text);
     producer.try_emit(b);
 }

@@ -390,4 +390,62 @@ mod tests {
             .collect();
         assert_eq!(String::from_utf16_lossy(&units), "hi");
     }
+
+    /// A dynamic hook on a function that opens like most of SGW.exe's
+    /// (`push -1; push <handler>`, whose second instruction straddles
+    /// byte 5) installs, fires, forwards the result, and removes cleanly.
+    /// A fixed five-byte prologue copy would split `push <handler>` and
+    /// crash on the first call.
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn hooks_an_seh_shaped_prologue_and_removes_it() {
+        use windows_sys::Win32::System::Memory::{
+            VirtualAlloc, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE,
+        };
+        // push -1; push 0x01234567; add esp, 8; mov eax, 42; ret
+        const CODE: [u8; 16] = [
+            0x6A, 0xFF, 0x68, 0x67, 0x45, 0x23, 0x01, 0x83, 0xC4, 0x08, 0xB8, 0x2A, 0x00, 0x00,
+            0x00, 0xC3,
+        ];
+        // SAFETY: a fresh RWX page owned by this test.
+        let page = unsafe {
+            VirtualAlloc(
+                core::ptr::null(),
+                4096,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_EXECUTE_READWRITE,
+            )
+        } as usize;
+        assert_ne!(page, 0);
+        // SAFETY: the page is writable and CODE fits.
+        unsafe { core::ptr::copy_nonoverlapping(CODE.as_ptr(), page as *mut u8, CODE.len()) };
+        // SAFETY: CODE is a complete cdecl function returning 42.
+        let f: extern "C" fn() -> u32 = unsafe { core::mem::transmute(page) };
+        assert_eq!(f(), 42);
+
+        let r = dispatch_install(
+            json!(10),
+            &json!({ "addr": format!("{page:#x}"), "conv": "cdecl" }),
+        );
+        let hook_id = r.result.as_ref().expect("installed")["id"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(f(), 42, "the original runs through the trampoline");
+        assert_eq!(f(), 42);
+        let hits = registry()
+            .lock()
+            .unwrap()
+            .list_json()
+            .iter()
+            .find(|h| h["id"] == json!(hook_id))
+            .map(|h| h["hits"].clone());
+        assert_eq!(hits, Some(json!(2)));
+
+        let removed = dispatch_remove(json!(11), &json!({ "id": hook_id }));
+        assert_eq!(removed.result.expect("removed")["removed"], json!(true));
+        // SAFETY: reading back the page this test owns.
+        let restored = unsafe { core::slice::from_raw_parts(page as *const u8, CODE.len()) };
+        assert_eq!(restored, CODE);
+        assert_eq!(f(), 42);
+    }
 }

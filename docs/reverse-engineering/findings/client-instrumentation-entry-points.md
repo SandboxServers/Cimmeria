@@ -17,7 +17,7 @@ All addresses are SGW.exe runtime addresses (image base `0x00400000`, ASLR disab
 
 | Target | Address | Signature | Hook role |
 |---|---|---|---|
-| `GameBeing::onStateFieldUpdate` (CME dispatcher) | **`0x00e01c90`** | `__thiscall void(GameBeing* this, void* event_data)` | **Primary hook target.** XOR-delta dispatcher that fires the per-flag handlers below for any bit-change in `bStateField`. Hooking here once captures every state-flag transition. |
+| `GameBeing::onStateFieldUpdate` (CME dispatcher) | **`0x00e01c90`** | `__thiscall void(GameBeing* this, void* event_data, <unresolved u32>)`: all three exits are `ret 8`, so it takes two stack arguments (corrected 2026-09-27; the one-argument signature this row used to give would unbalance the stack) | **Primary hook target.** XOR-delta dispatcher that fires the per-flag handlers below for any bit-change in `bStateField`. Hooking here once captures every state-flag transition. |
 | `FUN_00e7b4c0` (combat-ready / weapon anim) | `0x00e7b4c0` | `__thiscall fn(this, int)` | Sub-handler for `BSF_InCombat` (bit 3) and `BSF_Holster` (bit 8). Called from the dispatcher; no separate hook needed. |
 | `GameEntity::unknown_00e6e330` | `0x00e6e330` | `__thiscall fn(this, void**)` | Sub-handler. Called from dispatcher. |
 | `FUN_00dfff70` | `0x00dfff70` | `__fastcall fn(void*)` | Sub-handler. |
@@ -45,7 +45,7 @@ Two functions because UE3's animation system has both `Notify` (generic) and `No
 
 | Target | Address | Signature | Hook role |
 |---|---|---|---|
-| Cooked-data category load entry | **`0x00420074`** | `__cdecl fn(u32, void**, void**)` | 6.6 KB body. Fires once per PAK load (21 categories). Hook for `client.engine.pak_load` with PAK name (recoverable from the second param). |
+| Cooked-data category load entry | ~~`0x00420074`~~ | unresolved | **Wrong (2026-09-27):** `0x00420074` is `0xA54` bytes inside a function (`lea ecx,[esp+0x88]; call ...`), not an entry. The nearest entry, an SEH-guarded prologue, is `0x0041f620` (about 9.4 KB before its first `ret`); its signature is unresolved. The telemetry hook was removed; #989 tracks re-adding it. |
 
 ---
 
@@ -107,7 +107,7 @@ These are the highest-risk hooks in the entire plan because they sit in the scri
 
 | Target | Address | Signature | Notes |
 |---|---|---|---|
-| `APlayerController::execConsoleCommand` | **`0x00539850`** | `__thiscall fn(this, int)` | The UnrealScript exec wrapper, registered in the FuncMap at `0x01db2460` paired with the string `"intAPlayerControllerexecConsoleCommand"` @ `0x01821250`. Ghidra auto-labeled it `AActor_execConsoleCommand` (heuristic miss — the FuncMap binding is authoritative). Hook here for `client.input.console_command`. |
+| `APlayerController::execConsoleCommand` | **`0x00539850`** | `__thiscall fn(this, FFrame& stack, void* result)` (`ret 8`, the standard UE3 exec thunk; corrected 2026-09-27 from `(this, int)`) | The UnrealScript exec wrapper, registered in the FuncMap at `0x01db2460` paired with the string `"intAPlayerControllerexecConsoleCommand"` @ `0x01821250`. Ghidra auto-labeled it `AActor_execConsoleCommand` (heuristic miss — the FuncMap binding is authoritative). Hook here for `client.input.console_command`. |
 
 ---
 
@@ -119,16 +119,18 @@ These are the highest-risk hooks in the entire plan because they sit in the scri
 |---|---|---|---|
 | `CEGUI::Logger` (base) RTTI | `0x01de9c40` | — | Base abstract class. |
 | `CEGUI::DefaultLogger` RTTI | `0x01e7daf4` | — | Concrete implementation; this is the class we subclass-swap. |
-| `CEGUI::DefaultLogger` vtable | `0x01ac1ba8` | — | COL ptr at `0x01bf6628`. |
+| `CEGUI::DefaultLogger` vtable | `0x01ac1bac` | — | `0x01ac1ba8` holds the RTTI Complete Object Locator pointer in front of the vtable, so slot 0 (the scalar deleting destructor, `0x012130d0`) is at `0x01ac1bac` and slot 1 (`logEvent`) at **`0x01ac1bb0`**. The telemetry DLL swapped `0x01ac1ba8 + 4`, the destructor, until 2026-09-27. |
 | **`DefaultLogger::logEvent` (vtable slot 1)** | **`0x012129E0`** | `__thiscall void(this, String const& message, LoggingLevel level)` | 920-byte body. **Primary hook target.** Captures every CEGUI log line (UI events, button clicks, layout loads, script errors). Sample 1/1 — UI events are rare. Emit `client.ui.cegui_log` with `message` + `level` fields. |
 
 ### Lua IAT entries (lua51.dll)
 
 | API | IAT slot | Mangled name |
 |---|---|---|
-| `lua_pcall` | **`0x01988A0C`** | `?lua_pcall@@YAHPAUlua_State@@HHH@Z` |
-| `lua_call` | **`0x01988904`** | `?lua_call@@YAXPAUlua_State@@HH@Z` |
-| `lua_newstate` | **`0x01988656`** | `?lua_newstate@@YAPAUlua_State@@P6APAXPAX0II@Z0@Z` |
+| `lua_pcall` | **`0x017F0228`** | `?lua_pcall@@YAHPAUlua_State@@HHH@Z` |
+| `lua_call` | **`0x017F0244`** | `?lua_call@@YAXPAUlua_State@@HH@Z` |
+| `lua_newstate` | **`0x017F0288`** | `?lua_newstate@@YAPAUlua_State@@P6APAXPAX0II@Z0@Z` |
+
+**Corrected 2026-09-27** from the import directory of the QA `SGW.exe`. The values this table used to give (`0x01988A0C`, `0x01988904`, `0x01988656`) are what these slots hold *on disk*: the RVAs of the hint/name entries, read as VAs. At those addresses are UTF-16 strings in `.rdata`. `lua51.dll` raises Lua errors as C++ exceptions (it imports `_CxxThrowException` and `__CxxFrameHandler3`), so a detour on `lua_call` must use the `C-unwind` ABI.
 
 **IAT swap technique**: write a detour fn with matching signature, atomically swap the slot value, save the original. Every call from SGW.exe to `lua_pcall` / `lua_call` routes through the detour. Emit `client.lua.pcall` and `client.lua.call` with the function name (read from the Lua stack). Sample 1/1 — scripted UI calls aren't that frequent.
 
@@ -186,12 +188,12 @@ This is more work than a simple IAT walk and warrants its own PR.
 
 | API | IAT slot | DLL | Use |
 |---|---|---|---|
-| `CreateThread` | **`0x0196B65A`** | KERNEL32 | Thread timeline baseline — every thread the engine spawns becomes a SigNoz event with stack trace. |
-| `LoadLibraryW` | **`0x0196B5BC`** | KERNEL32 | Module timeline + trigger for IAT re-scan (some DLLs load late). |
-| `LoadLibraryA` | **`0x0196B5AC`** | KERNEL32 | Same as above; capture both for completeness. |
-| `GetForegroundWindow` | **`0x0196AF20`** | USER32 | Focus correlation — was the user alt-tabbed during the stall? |
+| `CreateThread` | **`0x017EF290`** | KERNEL32 | Thread timeline baseline — every thread the engine spawns becomes a SigNoz event with stack trace. |
+| `LoadLibraryW` | **`0x017EF26C`** | KERNEL32 | Module timeline + trigger for IAT re-scan (some DLLs load late). |
+| `LoadLibraryA` | **`0x017EF268`** | KERNEL32 | Same as above; capture both for completeness. |
+| `GetForegroundWindow` | **`0x017EFDF8`** | USER32 | Focus correlation — was the user alt-tabbed during the stall? |
 
-**Note**: original anchor doc cited `0x01d6b65c` for `CreateThread`, etc. — those addresses are stale or from a different binary. The IAT slots above were extracted from Ghidra's current external-locations table for SGW.exe on 2026-06-04 and are authoritative.
+**Corrected 2026-09-27.** The slots above come from the import directory of the QA `SGW.exe`. The values this table gave before (`0x0196B65A`, ...) were the slots' on-disk contents: hint/name RVAs, which point into `.rdata` strings when read as VAs. The original anchor doc's `0x01d6b65c` was a hint/name VA (`0x01d6b65a` is `CreateThread`'s), so neither was an IAT slot.
 
 ---
 

@@ -240,11 +240,9 @@ mod tests {
     /// pins routing + response shape end to end off-process.
     #[test]
     fn native_methods_route_and_echo_id() {
-        for m in ["module_info"] {
-            let r = dispatch(&req(m, 3, Value::Null));
-            assert_eq!(r.id, Value::from(3));
-            assert!(r.result.is_some() || r.error.is_some());
-        }
+        let r = dispatch(&req("module_info", 3, Value::Null));
+        assert_eq!(r.id, Value::from(3));
+        assert!(r.result.is_some() || r.error.is_some());
         let r = dispatch(&req(
             "mem_read",
             4,

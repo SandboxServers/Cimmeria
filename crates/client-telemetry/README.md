@@ -22,16 +22,30 @@ rustup target add i686-pc-windows-msvc   # one-time
 
 cargo clippy -p cimmeria-client-telemetry --target i686-pc-windows-msvc \
   --all-targets -- -D warnings
+cargo clippy -p cimmeria-client-telemetry --features lab-bridge \
+  --target i686-pc-windows-msvc --all-targets -- -D warnings
 cargo nextest run -p cimmeria-client-telemetry --target i686-pc-windows-msvc
+cargo nextest run -p cimmeria-client-telemetry --features lab-bridge \
+  --target i686-pc-windows-msvc
 cargo fmt -p cimmeria-client-telemetry --check
 ```
+
+The lab bridge (`src/bridge/`) only compiles with `--features lab-bridge`,
+so the feature runs are not optional when you touch it. Agents run these
+through `tools/build-lane/lane.sh`.
 
 A plain `cargo clippy -p cimmeria-client-telemetry` on the host **will not**
 exercise the gated code and will give you a false green.
 
 ## Layout
 
-- `boot.rs` — `DllMain` + bootstrap-thread plumbing (re-entrancy-safe init).
+- `boot.rs` — `DllMain` + bootstrap-thread plumbing (re-entrancy-safe init),
+  the fingerprint gate run, and the install lock shared with the
+  client-patches DLL.
+- `fingerprint.rs` — the expected bytes at every hooked or called function
+  and every swapped vtable slot in the QA `SGW.exe`. Any mismatch means no
+  hooks.
+- `log.rs` — `cimmeria-client-telemetry.log` next to `SGW.exe`.
 - `cme.rs` — CME `EventSignal` subscription + the `FakeVtable` static-subscriber shim.
 - `hooks/` — the hook techniques (CME subscribers, inline JMP, IAT replace, vtable swap).
 - `queue.rs` / `uploader.rs` — the bounded event queue + batched uploader (host-testable).

@@ -40,7 +40,9 @@
 // SGW.exe.
 pub mod cme;
 pub mod events;
+pub mod fingerprint;
 pub mod hooks;
+pub mod log;
 pub mod queue;
 pub mod session;
 pub mod uploader;

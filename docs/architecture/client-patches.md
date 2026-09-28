@@ -99,6 +99,22 @@ The addresses and their evidence are in
   changed. The launcher should still inject the DLLs one after the other.
   Neither DLL may unhook while the other is loaded, because MinHook's unhook
   restores its own saved bytes over a hook chained on top.
+- **One DLL hooks at a time, in either load order.** Both DLLs link
+  `cimmeria-client-hookgate`, which holds the chaining rule, the list of
+  hook-owner modules (each DLL accepts the other's jumps, under the
+  launcher's and cargo's file names) and a per-process named mutex
+  (`Local\cimmeria-client-hooks-<pid>`). Each DLL holds the mutex from the
+  moment it lists the loaded hook owners until its last hook is live. So
+  whichever DLL goes second sees the first one's jump and chains onto it,
+  and the first one's image is already loaded when the second lists the
+  owners. Before this, the patches DLL could list the owners, then see a
+  telemetry hook appear before its own install and refuse it as an
+  unknown hook, leaving the Black Market off. The lock waits up to 10
+  seconds; after that the DLL logs `install lock unavailable` and installs
+  nothing (the Black Market stays off for that session), because hooking
+  while the other DLL is mid-install could lose one of the two detours.
+  The telemetry DLL and the lab bridge's dynamic hooks follow the same
+  rule (`LockOutcome::permits_hooking`).
 - **The receive path is generic.** "A shelved client method, matched by name,
   decoded in Rust and forwarded to Lua" works for any method the telemetry
   DLL's drop oracle reports. A new feature adds its names, a codec in

@@ -48,7 +48,7 @@ struct MemWriteParams {
 /// Decode a hex string (even length, hex digits only) to bytes.
 pub fn decode_hex(s: &str) -> Result<Vec<u8>, String> {
     let s = s.trim();
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(format!("hex length {} is odd", s.len()));
     }
     let mut out = Vec::with_capacity(s.len() / 2);

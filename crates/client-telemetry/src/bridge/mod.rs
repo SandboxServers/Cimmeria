@@ -151,13 +151,10 @@ pub fn start(cfg: LabConfig) -> io::Result<BridgeHandle> {
 }
 
 /// The bridge half of the double gate: returns `None` (never binds a
-/// socket) unless the session carries a `lab` block.
-pub fn maybe_start(session: &crate::session::DllSession) -> Option<BridgeHandle> {
-    let cfg = session.lab.clone()?;
-    match start(cfg) {
-        Ok(h) => Some(h),
-        Err(_) => None,
-    }
+/// socket) unless the session carries a `lab` block, and otherwise the
+/// result of [`start`], so a bind failure can be reported.
+pub fn maybe_start(session: &crate::session::DllSession) -> Option<io::Result<BridgeHandle>> {
+    session.lab.clone().map(start)
 }
 
 /// Process-global bridge handle, set once by `boot` after a
@@ -342,7 +339,7 @@ mod tests {
     #[test]
     fn maybe_start_some_with_lab_block() {
         let h = maybe_start(&a_session(Some(lab_cfg(&"e".repeat(64)))));
-        assert!(h.is_some());
+        assert!(matches!(h, Some(Ok(_))));
     }
 
     #[test]

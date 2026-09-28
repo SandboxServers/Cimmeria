@@ -10,10 +10,12 @@ on:
     branches: [main]
     paths:
       - 'crates/client-telemetry/**'
+      - 'crates/client-hookgate/**'
       - '.github/workflows/client-telemetry-*.yml'
   pull_request:
     paths:
       - 'crates/client-telemetry/**'
+      - 'crates/client-hookgate/**'
       - '.github/workflows/client-telemetry-*.yml'
 
 concurrency:
@@ -62,6 +64,10 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo clippy
         run: cargo clippy -p cimmeria-client-telemetry --target i686-pc-windows-msvc --all-targets -- -D warnings
+      # The lab bridge (`src/bridge/`) only compiles with this feature, so
+      # the default run above never lints it (#916).
+      - name: cargo clippy --features lab-bridge
+        run: cargo clippy -p cimmeria-client-telemetry --features lab-bridge --target i686-pc-windows-msvc --all-targets -- -D warnings
 
   build:
     name: cargo build (i686-pc-windows-msvc)
@@ -109,3 +115,5 @@ jobs:
         uses: taiki-e/install-action@nextest
       - name: cargo nextest run
         run: cargo nextest run --profile=ci -p cimmeria-client-telemetry --target i686-pc-windows-msvc
+      - name: cargo nextest run --features lab-bridge
+        run: cargo nextest run --profile=ci -p cimmeria-client-telemetry --features lab-bridge --target i686-pc-windows-msvc

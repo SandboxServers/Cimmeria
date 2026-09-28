@@ -8,8 +8,11 @@
 //!
 //! # Hook surface (this module)
 //!
-//! - **CEGUI::DefaultLogger::logEvent** (vtable @ `0x01ac1ba8`,
-//!   slot 1) — every UI log line (Phase 4).
+//! - **CEGUI::DefaultLogger::logEvent** (vtable slot 1 @ `0x01ac1bb0`)
+//!   — every UI log line (Phase 4). `0x01ac1ba8` is the RTTI locator
+//!   pointer in front of the vtable, not slot 0; the old anchor
+//!   (`0x01ac1ba8 + 4`) swapped the destructor, which pops one stack
+//!   argument where this detour pops two.
 //! - **AActor::Tick** (vtable @ `0x0183c40c`, slot 88) — every
 //!   per-frame actor tick across ~110 subclasses (Phase 3 Tier 4).
 //! - **USequence::UpdateOp** (vtable @ `0x01854a84`, slot 84) —
@@ -55,25 +58,28 @@ use std::ffi::c_void;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+use crate::fingerprint::{self, SlotSite};
+
 // ─── Vtable slot addresses ─────────────────────────────────────
 //
 // SLOT addresses = `vtable_base + slot_index * 4`. These are the
 // addresses we patch.
 
-/// CEGUI::DefaultLogger vtable @ `0x01ac1ba8`, slot 1 (logEvent).
-/// Slot ptr = `0x01ac1ba8 + 1*4` = `0x01ac1bac`.
+/// CEGUI::DefaultLogger vtable slot 1 (logEvent): the vtable starts at
+/// `0x01ac1bac`, after its RTTI locator pointer at `0x01ac1ba8`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const VTSLOT_CEGUI_LOG_EVENT: usize = 0x01ac1ba8 + 4;
+const VTSLOT_CEGUI_LOG_EVENT: SlotSite = fingerprint::CEGUI_LOG_EVENT_SLOT;
 
 /// AActor vtable @ `0x0183c40c`, slot 88 (Tick).
 /// Slot ptr = `0x0183c40c + 88*4` = `0x0183c56c`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const VTSLOT_AACTOR_TICK: usize = 0x0183c40c + 88 * 4;
+const VTSLOT_AACTOR_TICK: SlotSite = fingerprint::AACTOR_TICK_SLOT;
 
 /// USequence vtable @ `0x01854a84`, slot 84 (UpdateOp).
 /// Slot ptr = `0x01854a84 + 84*4` = `0x01854bd4`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const VTSLOT_USEQUENCE_UPDATE_OP: usize = 0x01854a84 + 84 * 4;
+const VTSLOT_USEQUENCE_UPDATE_OP: SlotSite = fingerprint::USEQUENCE_UPDATE_OP_SLOT;
 
 // ─── Saved originals ───────────────────────────────────────────
 
@@ -145,16 +151,23 @@ unsafe fn install_inner(producer: Producer) {
 unsafe fn install_one(
     producer: &Producer,
     hook_name: &'static str,
-    slot_addr: usize,
+    slot: SlotSite,
     detour: usize,
     orig_slot: &AtomicUsize,
 ) {
+    let slot_addr = slot.address;
+    // Publish the original before the swap: a call through the slot can
+    // land in the detour the moment it is written, and a detour with no
+    // original would skip the engine's function. The fingerprint gate
+    // has already checked the slot holds `slot.expected`.
+    orig_slot.store(slot.expected as usize, Ordering::Release);
     // Vtable swap is the same protect → swap → restore mechanic as
     // the IAT swap; delegate to the shared primitive. The
     // `vtable.protect_failed` event is preserved on failure.
     let original = match super::primitives::swap_vtable_slot(slot_addr, detour) {
         Ok(orig) => orig,
         Err(_) => {
+            orig_slot.store(0, Ordering::Release);
             super::emit_warn(
                 producer,
                 "client.hooks.vtable.protect_failed",
@@ -203,7 +216,7 @@ unsafe fn install_one(
 /// is the load-bearing telemetry.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn cegui_log_event_detour(
+unsafe extern "thiscall-unwind" fn cegui_log_event_detour(
     this: *mut c_void,
     message: *mut c_void,
     level: i32,
@@ -221,7 +234,7 @@ unsafe extern "thiscall" fn cegui_log_event_detour(
     if orig_addr == 0 {
         return;
     }
-    let original: unsafe extern "thiscall" fn(*mut c_void, *mut c_void, i32) =
+    let original: unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, i32) =
         unsafe { std::mem::transmute(orig_addr) };
     original(this, message, level);
 }
@@ -233,7 +246,7 @@ unsafe extern "thiscall" fn cegui_log_event_detour(
 /// frame. Sample 1/1000 (~few/sec at typical actor counts).
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn aactor_tick_detour(
+unsafe extern "thiscall-unwind" fn aactor_tick_detour(
     this: *mut c_void,
     delta_seconds: f32,
     tick_type: i32,
@@ -257,7 +270,7 @@ unsafe extern "thiscall" fn aactor_tick_detour(
         // trigger a "actor disabled itself" path.
         return 1;
     }
-    let original: unsafe extern "thiscall" fn(*mut c_void, f32, i32) -> i32 =
+    let original: unsafe extern "thiscall-unwind" fn(*mut c_void, f32, i32) -> i32 =
         unsafe { std::mem::transmute(orig_addr) };
     original(this, delta_seconds, tick_type)
 }
@@ -268,7 +281,10 @@ unsafe extern "thiscall" fn aactor_tick_detour(
 /// Sample 1/10.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn usequence_update_op_detour(this: *mut c_void, delta_time: f32) -> i32 {
+unsafe extern "thiscall-unwind" fn usequence_update_op_detour(
+    this: *mut c_void,
+    delta_time: f32,
+) -> i32 {
     let _ = std::panic::catch_unwind(|| {
         if USEQUENCE_UPDATE_OP_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
@@ -287,7 +303,7 @@ unsafe extern "thiscall" fn usequence_update_op_detour(this: *mut c_void, delta_
     if orig_addr == 0 {
         return 1;
     }
-    let original: unsafe extern "thiscall" fn(*mut c_void, f32) -> i32 =
+    let original: unsafe extern "thiscall-unwind" fn(*mut c_void, f32) -> i32 =
         unsafe { std::mem::transmute(orig_addr) };
     original(this, delta_time)
 }
@@ -302,9 +318,9 @@ mod tests {
     fn vtable_slot_addresses_match_manifest() {
         #[cfg(all(target_os = "windows", target_arch = "x86"))]
         {
-            assert_eq!(VTSLOT_CEGUI_LOG_EVENT, 0x01ac1bac);
-            assert_eq!(VTSLOT_AACTOR_TICK, 0x0183c56c);
-            assert_eq!(VTSLOT_USEQUENCE_UPDATE_OP, 0x01854bd4);
+            assert_eq!(VTSLOT_CEGUI_LOG_EVENT.address, 0x01ac1bb0);
+            assert_eq!(VTSLOT_AACTOR_TICK.address, 0x0183c56c);
+            assert_eq!(VTSLOT_USEQUENCE_UPDATE_OP.address, 0x01854bd4);
         }
     }
 
@@ -321,5 +337,37 @@ mod tests {
             .filter(|_| USEQUENCE_UPDATE_OP_SAMPLER.should_emit())
             .count();
         assert_eq!(seq_emits, 1, "sequence sampler should emit 1/10");
+    }
+
+    /// #915: an exception thrown by an original the vtable detours call
+    /// unwinds through them (see `iat_hooks` for why a panic stands in).
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn an_exception_from_actor_tick_unwinds_through_the_detour() {
+        unsafe extern "thiscall-unwind" fn throwing_tick(
+            _this: *mut c_void,
+            _dt: f32,
+            _t: i32,
+        ) -> i32 {
+            panic!("engine error");
+        }
+        ORIG_AACTOR_TICK.store(throwing_tick as *const () as usize, Ordering::Release);
+        let caught = std::panic::catch_unwind(|| unsafe {
+            aactor_tick_detour(core::ptr::null_mut(), 0.016, 0)
+        });
+        assert!(caught.is_err());
+    }
+
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn an_exception_from_update_op_unwinds_through_the_detour() {
+        unsafe extern "thiscall-unwind" fn throwing_update(_this: *mut c_void, _dt: f32) -> i32 {
+            panic!("kismet error");
+        }
+        ORIG_USEQUENCE_UPDATE_OP.store(throwing_update as *const () as usize, Ordering::Release);
+        let caught = std::panic::catch_unwind(|| unsafe {
+            usequence_update_op_detour(core::ptr::null_mut(), 0.016)
+        });
+        assert!(caught.is_err());
     }
 }

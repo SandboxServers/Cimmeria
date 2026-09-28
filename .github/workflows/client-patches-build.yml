@@ -12,11 +12,13 @@ on:
     paths:
       - 'crates/client-patches/**'
       - 'crates/patch-wire/**'
+      - 'crates/client-hookgate/**'
       - '.github/workflows/client-patches-*.yml'
   pull_request:
     paths:
       - 'crates/client-patches/**'
       - 'crates/patch-wire/**'
+      - 'crates/client-hookgate/**'
       - '.github/workflows/client-patches-*.yml'
 
 concurrency:
@@ -64,7 +66,7 @@ jobs:
           shared-key: client-patches-windows-i686
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo clippy
-        run: cargo clippy -p cimmeria-client-patches --target i686-pc-windows-msvc --all-targets -- -D warnings
+        run: cargo clippy -p cimmeria-client-patches -p cimmeria-client-hookgate --target i686-pc-windows-msvc --all-targets -- -D warnings
 
   build:
     name: cargo build (i686-pc-windows-msvc)
@@ -113,4 +115,4 @@ jobs:
       # patch-wire too: it is the DLL's decoder, so its tests also run on the
       # DLL's target.
       - name: cargo nextest run
-        run: cargo nextest run --profile=ci -p cimmeria-client-patches -p cimmeria-patch-wire --target i686-pc-windows-msvc
+        run: cargo nextest run --profile=ci -p cimmeria-client-patches -p cimmeria-patch-wire -p cimmeria-client-hookgate --target i686-pc-windows-msvc

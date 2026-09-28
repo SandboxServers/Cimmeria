@@ -1,0 +1,22 @@
+[package]
+name = "cimmeria-client-hookgate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Rules the two injected SGW.exe DLLs (client-telemetry and client-patches) share so they can hook the same functions: the prologue fingerprint check, which earlier hooks may be chained onto, and the per-process lock that serialises hook installation."
+
+# Linked into both DLLs inside SGW.exe, so it stays std-only apart from
+# windows-sys on the i686 target. Like cimmeria-patch-wire, it is listed
+# under `final-excludes` in .config/hakari.toml so the workspace-hack
+# never pulls tokio, hyper and sqlx into the client.
+[dependencies]
+
+[target.'cfg(all(windows, target_arch = "x86"))'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+] }

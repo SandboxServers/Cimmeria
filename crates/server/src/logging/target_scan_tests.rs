@@ -76,6 +76,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "the player's launcher; its rows reach the server only as `launcher.*` replays",
     ),
     ("client-launch", "library for the launcher process"),
+    (
+        "client-hookgate",
+        "library linked into the two SGW.exe DLLs; no `tracing`, logs through their local log files",
+    ),
     ("lab", "the research-lab supervisor process"),
     ("supervisor", "the process supervisor"),
     ("navmesh-extractor", "offline build tool"),
