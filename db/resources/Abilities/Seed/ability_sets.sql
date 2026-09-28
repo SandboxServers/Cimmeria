@@ -40,14 +40,6 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (4, 'Jaffa staff a
 
 INSERT INTO ability_sets (ability_set_id, description) VALUES (5, 'Goa''uld ribbon device ability set');
 
--- NEW CONTENT (debug hub): set 6 holds only 710 'Staff Melee AA'. Used by the
--- debug-hub loot crate (template 304), a faction-10 target that must never
--- hurt the new characters who shoot it. Set 4 is NOT that: its primary is
--- 584 'Staff Auto Attack', a 30 m ranged attack whose effect 646 deals
--- HealthDamage 25. An empty set is not that either: it falls back to 592
--- Pistol Shot.
-INSERT INTO ability_sets (ability_set_id, description) VALUES (6, 'Debug hub loot crate: zero-damage melee only');
-
 -- Pets campaign (docs/analysis/pets/): pet ability sets use ids 350-369,
 -- matching the pet templates, so they cannot collide with the low ids other
 -- content takes. Set 350 is the Straegis pet (template 350): 221 Energy Shock

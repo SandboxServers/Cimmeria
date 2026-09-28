@@ -635,6 +635,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (253, 262.0, 70.18, 932.0, 1.570796, 8, 181, 'Castle_Pop_HallPatrolW_2', NULL, 120, 2089, 4);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id) VALUES (254, 256.0, 70.25, 996.0, 1.570796, 8, 145, 'Castle_Pop_HallPRU_1', NULL, 120, 2090);
 
+-- Castle pre-Romney chest (Decision (@Cadacious, 2026-09-28), RECONSTRUCTION):
+-- in the nook at the west end of the HallPost room, 3-4 u from HallPost_1/_3,
+-- which guard it, and 19 u off the Armory-to-Romney route. Template 410;
+-- chains 1274-1276 open it once per character while 703 is active.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (283, 350.0, 70.38, 997.0, 1.570796, 8, 410, 'Castle_PreRomneyChest', NULL);
+
 -- Interrogation Block: Romney's escort, 5-6 u from him (240) and 19 u or more from
 -- Zuritska's cell door (238), so talking to Zuritska does not pull them.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (255, 248.0, 67.18, 1032.5, 1.570796, 8, 182, 'Castle_Pop_IntBlock_1', NULL, 120);
@@ -1045,7 +1051,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (403, -333.35, 73.472, -234.21, 0.0464, 12, 303, 'DebugHub_LivewireTerminal', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, aggression_override) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL, true, 30, 3);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL);
 
 -- Pets campaign, PT-07: spawn 450, the debug hub's pet trainer (template 360,
 -- docs/content/debug-hub.md). Pets own spawns 450-469. It takes the next slot

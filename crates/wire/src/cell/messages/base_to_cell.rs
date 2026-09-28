@@ -192,6 +192,12 @@ pub enum BaseToCellMsg {
         /// line of sight uses the body set's eye height (NA31). `None` when
         /// the row could not be read; the player then gets the 1.5 m default.
         body_set: Option<String>,
+        /// `sgw_player.looted_containers`: the once-per-character loot
+        /// containers this character has opened. Stamped onto
+        /// `CellEntity::looted_containers`, which the content `open_loot`
+        /// action checks before it rolls, so a relog or respawn never
+        /// re-rolls a chest. Empty when the row could not be read.
+        looted_containers: Vec<String>,
     },
 
     /// Update one bandolier slot after a runtime item grant.

@@ -204,31 +204,31 @@ chain 7005, which prints "Livewire round trip complete" in chat as Terminal.
 
 ### Loot crate (template 304)
 
-Loot is rolled only when a mob dies, so the crate is a mob you kill. Shoot it,
-then right-click the corpse and use Loot All. It respawns 30 seconds after
-death.
+Right-click the crate: a loot window opens, without killing anything. Use
+Loot All; the crate stays standing, and the next click rolls again. Chain 7020
+(`debug_hub_chains.sql`) calls the content action `open_loot` on loot table 3,
+repeatable and with no condition (Decision (@Cadacious, 2026-09-28)). Until
+then the crate was a faction-10 mob the player had to shoot first.
 
 - Tests loot generation from a real table, the loot window, and taking items
   and naquadah. Loot table 3 drops, every time: 2-3 Health Slappack TC1
   (stackable), one Processor (Electronics), one Cell (Bio-Medical) and 25-75
-  naquadah. Those rows are probability 1, so the corpse always has loot: a
-  roll that drops nothing would leave the corpse unclickable, which would
-  look like a broken loot path. It also drops each of the five Racial
+  naquadah. Those rows are probability 1, so every open has loot: a roll
+  that drops nothing would open no window, which would look like a broken
+  loot path. It also drops each of the five Racial
   Paradigm Guides (7805-7809) and Blueprint: Steel Plating (6483) at 0.2, one
   of each at most. The Processor, the Cell, the guides and the blueprint are
   `{17,15}` items and land in the crafting bag; use a guide or the blueprint
   from there.
-- The crate is faction 10, because that is the only faction a player can
-  damage. It is not a threat to a new character:
-  - The spawn row sets NEUTRAL aggression, so it never attacks on proximity.
-  - It is stationary.
-  - Ability set 6 holds only 710 'Staff Melee AA', whose effect deals no
-    damage.
-  - It still turns to face you, and swings at melee range, once hit.
-- Level 1 means 250 HP, about 10 to 25 pistol shots. A GM `.kill` goes through
-  the same death path, loot included.
-- Shooting it puts you in combat. Kill it or walk out of its range to leave
-  combat.
+- Template 304 is a `spawnable` prop with no faction, no ability set and no
+  death-time loot table, and its `interaction_type` is `INT_NormalLoot` so the
+  client shows the loot cursor. It cannot be attacked and never puts you in
+  combat. (Ability set 6, which let the old mob crate swing a zero-damage
+  melee, is gone.)
+- Each player gets their own roll; another player's click never takes yours.
+- #1026 D-AM06 will add the special ammo, a pistol and an SMG to table 3.
+- Not client-confirmed yet: a loot window on a live entity has not been seen
+  in the client (unified UAT guide K22).
 
 ### Pet trainer (template 360)
 
@@ -534,8 +534,8 @@ hub, crafting)`.
 
 | Guard | What it pins |
 |---|---|
-| `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns (the mail clerk's 490 included) inside Region1, on the floor, at least 5 units from the respawner and 2.5 from every other spawn in the room; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, the naquadah row and at least one item row at probability 1 and every row able to drop; the guides and the blueprint item drop once each, quantity 1, below certain, and each is a `{17,15}` item with a crafting effect; dialog screens and buttons, and neither dialog is a monologue |
-| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and, when dead, carries every certain table-3 row and nothing outside the table, and shows its loot; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself; each registrar asks the base about its own type; each org Banker asks the base for its own vault type |
+| `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns (the mail clerk's 490 included) inside Region1, on the floor, at least 5 units from the respawner and 2.5 from every other spawn in the room; the crate is chain 7020's `open_loot` on table 3 with no condition; trainer list 1; vendor lists and loot table 3 name real items, the naquadah row and at least one item row at probability 1 and every row able to drop; the guides and the blueprint item drop once each, quantity 1, below certain, and each is a `{17,15}` item with a crafting effect; dialog screens and buttons, and neither dialog is a monologue |
+| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate is never an attack: a click opens the loot window with every certain table-3 row and nothing outside the table, Loot All grants every entry and leaves the crate standing, and the next click re-rolls; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself; each registrar asks the base about its own type; each org Banker asks the base for its own vault type |
 | `cell-catalog` `spawner/tests/live_db_debug_registrars.rs` | Templates 330 and 331 are a Team and a Command registrar and nothing else: exactly `INT_Organization` and their own registrar set, a shipped name, no trainer or vendor list, not faction 10; they are the only registrar templates; spawns 430 and 431 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_debug_org_bankers.rs` | Templates 371 and 372 are a Team and a Command Banker and nothing else: exactly `INT_Banker`, `vault_scope` `team` and `command`, a shipped name, no trainer list or vendor lists, not faction 10; spawns 471 and 472 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `services` `bank_org_round_trip_tests.rs` | Spawned from their real rows and clicked through the cell's dispatcher, the base's cell dispatch against the live database, and the cell's grant: a member gets exactly 107 (Team) or 108 (Command) and a session naming the organization; a character in no organization gets `org_vault_open_rejected reason=not_in_org` and its line; a Team-only character is refused by the Command Banker |

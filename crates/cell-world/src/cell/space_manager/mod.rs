@@ -38,6 +38,7 @@ pub use interact_range::{interact_range, InteractRangeFail, MAX_INTERACT_DISTANC
 mod lab_snapshots;
 mod lifecycle;
 mod live_tags;
+mod loot_lists;
 mod movement_telemetry;
 mod navmesh_containment;
 pub mod npc_identity;

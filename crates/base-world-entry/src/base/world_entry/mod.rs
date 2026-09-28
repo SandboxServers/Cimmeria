@@ -23,6 +23,7 @@ pub use cimmeria_base_methods::base::world_entry::methods;
 pub(crate) mod cell_dispatch;
 mod enable_entities;
 mod gate_travel;
+pub(crate) mod looted_containers;
 mod map_loaded;
 mod play_character;
 mod reanchor_player;

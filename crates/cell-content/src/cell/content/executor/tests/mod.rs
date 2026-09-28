@@ -17,6 +17,7 @@
 //! - [`mail`]             — `Action::SendSystemMail` (SS-U3): the firings
 //!   that send nothing, with their `reason=` rows.
 //! - [`once_gate`]        — `content_triggers.once`: fire once per entity.
+//! - [`open_loot`]        — `Action::OpenLoot`: per-looter rolls on a live chest.
 //! - [`pets`]             — pets PT-02 at the content transport call sites.
 //! - [`stargate`]         — `Action::GrantStargateAddress`: the three legs
 //!   of a grant and client method 66's byte layout. The refused-then-
@@ -44,6 +45,7 @@ mod mission;
 mod negative_logging;
 mod npc_state;
 mod once_gate;
+mod open_loot;
 mod pets;
 mod stargate;
 mod stats;

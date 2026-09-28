@@ -21,9 +21,7 @@ fn is_alive(e: &CellEntity) -> bool {
     if e.state_field & BSF_DEAD != 0 {
         return false;
     }
-    e.stats
-        .get(HEALTH)
-        .is_none_or(|h| h.max <= 0 || h.cur > 0)
+    e.stats.get(HEALTH).is_none_or(|h| h.max <= 0 || h.cur > 0)
 }
 
 impl SpaceManager {
@@ -55,8 +53,7 @@ mod tests {
     #[test]
     fn a_corpse_and_a_zero_health_npc_drop_out_of_the_live_set() {
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3])
-            .unwrap();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
         for (id, tag) in [(2, "Alive"), (3, "Corpse"), (4, "ZeroHp")] {
             mgr.create_entity(id, "Agnos", [1.0, 0.0, 1.0], [0.0; 3])
                 .unwrap();

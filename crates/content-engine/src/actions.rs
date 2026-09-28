@@ -474,6 +474,29 @@ pub enum Action {
     /// conversation partner. Fired from an `interact_tag` chain on the
     /// auctioneer so the feature is reachable the normal player way.
     OpenBlackMarket,
+    /// Open a loot window on a **live** container (a chest or crate the
+    /// player right-clicked), without killing it. Decision (@Cadacious,
+    /// 2026-09-28).
+    ///
+    /// The container is the chain's interact target. The action rolls
+    /// `loot_table_id` for the interacting player alone and stores the roll
+    /// on the container under that player's id, so two players never share
+    /// or take each other's roll; then it sends the same `onLootDisplay`
+    /// the corpse window uses, and `lootItem` / Loot All take from it.
+    ///
+    /// * `loot_table_id: None` never rolls: it reopens this player's pending
+    ///   roll, or tells them the container is empty. A fallback chain for
+    ///   presses outside the loot gate uses it so no press is silent.
+    /// * `once_per_character`: the roll happens once per character, ever.
+    ///   The flag is `container_key` (default: the container's spawn tag),
+    ///   kept in `sgw_player.looted_containers`, set when the window opens
+    ///   with loot, and survives relog and respawn.
+    /// * Without it, every open re-rolls and replaces any pending roll.
+    OpenLoot {
+        loot_table_id: Option<i32>,
+        once_per_character: bool,
+        container_key: Option<String>,
+    },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].

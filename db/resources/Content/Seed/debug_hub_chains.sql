@@ -2,12 +2,13 @@
 -- debug hub (templates 300-304, spawnlist 400-404). docs/content/debug-hub.md
 -- describes what each NPC tests.
 --
--- Two of the five NPCs are chain-driven; the vendor, the trainer and the loot
--- crate go through the built-in interaction paths and need no chain.
+-- Three of the five NPCs are chain-driven; the vendor and the trainer go
+-- through the built-in interaction paths and need no chain.
 --
 --   Dialog NPC  (tag DebugHub_DialogNpc)        chains 7001-7003
 --   Livewire    (tag DebugHub_LivewireTerminal) chains 7004-7005
 --   Mail clerk  (tag DebugHub_MailClerk)        chains 7010-7011 (SS-U3)
+--   Loot crate  (tag DebugHub_LootCrate)        chain  7020
 --
 -- Chain ID range: 7001-7099 is reserved for the debug hub. The highest id in
 -- any other chain file is 6528.
@@ -145,3 +146,22 @@ VALUES (7011, 'dialog_choice', '60104', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (7011, 'send_system_mail', NULL, NULL, '{"sender": "Gate Mail Clerk", "subject": "Gate Mail test delivery", "body": "A test mail from the stasis-room debug hub. Take the naquadah and the Health Slappacks from this mail. The Gate Mail Clerk can send you another one in 10 minutes.", "cash": 50, "item_id": 2893, "qty": 5, "cooldown_secs": 600}', 0, 0);
+
+-- ============================================================
+-- Loot crate: click -> loot window (no kill). Decision (@Cadacious, 2026-09-28)
+-- ============================================================
+--
+-- The crate (template 304) is a live, unkillable container. Chain 7020's
+-- `open_loot` rolls loot table 3 for the clicking player and opens the loot
+-- window; Loot All puts the items in the bags and the crate stays standing.
+-- Repeatable, and re-rolled on every open: it is a test rig. TODO(#1026):
+-- D-AM06 puts the special ammo, a pistol and an SMG into table 3.
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (7020, 'Debug Hub - click the loot crate: open a loot window on table 3', 'space', 12, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (7020, 'interact_tag', 'DebugHub_LootCrate', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (7020, 'open_loot', 3, NULL, '{}', 0, 0);

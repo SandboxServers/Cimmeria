@@ -467,6 +467,66 @@ VALUES
   (1273, 'complete_mission', 703, NULL, '{}', 0, 2);
 
 -- ============================================================
+-- Castle pre-Romney chest (tag Castle_PreRomneyChest, spawn 283, template 410)
+--
+-- Decision (@Cadacious, 2026-09-28), RECONSTRUCTION. The 2026-09-28 playtest
+-- died six times in the hall before the Interrogation Block with nothing to
+-- recover with. The chest opens a loot window (`open_loot`) while 703
+-- "Payback" is active, once per character (key Castle_PreRomneyChest, kept in
+-- sgw_player.looted_containers, so a relog or death cannot farm it):
+--   non-Jaffa → table 8 (3127 SGHC 6 SMG, TC5), Jaffa → table 9 (3472 Serpent
+--   Staff, TC8); both add 2-3 Health Slappacks, two Focus Heals (6106) and
+--   25-75 naquadah. TODO(#1026): Hollow Point ammo joins tables 8/9.
+-- The hall guards (HallPost_1-3, CastleNidGuardXInside) protect it; no new
+-- guards. Every other press reopens pending loot or says why it is empty.
+-- The loot cursor is the template default (INT_NormalLoot), so these chains
+-- are allowlisted in crates/content-engine/tests/it/interact_tag_linter.rs.
+-- ============================================================
+
+-- Chain 1274: 703 active, non-Jaffa → open table 8.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1274, '703 - Castle chest (non-Jaffa): open loot table 8 once per character', 'mission', 703, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1274, 'interact_tag', 'Castle_PreRomneyChest', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1274, 'mission_status', 703, NULL, 'eq',  'active', 0),
+  (1274, 'archetype',      NULL, NULL, 'neq', '8',      1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1274, 'open_loot', 8, NULL, '{"once_per_character": true, "container_key": "Castle_PreRomneyChest"}', 0, 0);
+
+-- Chain 1275: 703 active, Jaffa → open table 9.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1275, '703 - Castle chest (Jaffa): open loot table 9 once per character', 'mission', 703, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1275, 'interact_tag', 'Castle_PreRomneyChest', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1275, 'mission_status', 703, NULL, 'eq', 'active', 0),
+  (1275, 'archetype',      NULL, NULL, 'eq', '8',      1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1275, 'open_loot', 9, NULL, '{"once_per_character": true, "container_key": "Castle_PreRomneyChest"}', 0, 0);
+
+-- Chain 1276: 703 not active → reopen pending loot, or say it is empty.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1276, '703 - Castle chest pressed without 703 active: reopen pending loot or say empty', 'mission', 703, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1276, 'interact_tag', 'Castle_PreRomneyChest', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1276, 'mission_status', 703, NULL, 'neq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1276, 'open_loot', NULL, NULL, '{"container_key": "Castle_PreRomneyChest"}', 0, 0);
+
+-- ============================================================
 -- MISSION 704 — Hack Communications (CA07)
 -- ============================================================
 --

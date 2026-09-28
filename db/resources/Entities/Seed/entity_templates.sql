@@ -996,19 +996,14 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   the same name and mesh as template 19.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (303, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_WallTerminal', NULL, 4, 256, NULL, 1, 0, 1, 7550, NULL, NULL, NULL, 'Debug Hub - Livewire Terminal', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
--- NEW CONTENT (debug hub): loot crate. Loot is only rolled when a mob dies
---   (loot_drop.rs), so the crate is a killable faction-10 mob: shoot it, then
---   right-click the corpse for loot table 3 (every entry at probability 1, so
---   the corpse always carries loot) and use Loot All. The spawn row respawns
---   it after 30 s.
--- Faction 10 is what lets the player damage it. It is not a threat: the spawn
---   row sets NEUTRAL aggression (no proximity aggro) and is_stationary, and
---   ability set 6 holds only 710 'Staff Melee AA', whose effect deals no
---   damage. It still turns to face the player and swings at melee range when
---   hit. An empty set would fall back to 592 Pistol Shot, which does damage.
---   Level 1 = 250 HP; a GM `.kill` goes through the same death path.
+-- NEW CONTENT (debug hub): loot crate. A live, unkillable container: right-click
+--   it and chain 7020's `open_loot` rolls loot table 3 for that player and opens
+--   the loot window; Loot All puts the items in the bags and the crate stays
+--   standing. Repeatable, and re-rolled on every open (Decision (@Cadacious,
+--   2026-09-28)); it used to be a faction-10 mob the player had to shoot first.
+--   interaction_type = INT_NormalLoot so the client shows the loot cursor.
 -- moniker 7054 `DN_Ob_Ms_Human_Castle_Crate` ('Crate').
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (304, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, 1, 0, 10, 7054, NULL, NULL, NULL, 'Debug Hub - Loot Crate', 'mob', NULL, NULL, NULL, NULL, 6, NULL, 3, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (304, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 4611686018427387904, NULL, 1, 0, NULL, 7054, NULL, NULL, NULL, 'Debug Hub - Loot Crate', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
 --
 -- NEW CONTENT (debug hub, crafting): templates 310-314, four crafting
@@ -1033,6 +1028,12 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --
 -- moniker 27180 `DN_Cft_Ob_CraftingStation_BM_001` ('BioMedical Crafting Station').
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (310, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27180, NULL, NULL, NULL, 'Debug Hub - BioMedical Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Castle pre-Romney chest (Decision (@Cadacious, 2026-09-28), RECONSTRUCTION):
+--   a clone of 13 'Wooden crate' with the loot cursor. Chains 1274-1276 open
+--   it with `open_loot`; spawn 283 places it in the guarded hall before the
+--   Interrogation Block.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (410, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 4611686018427387904, NULL, NULL, NULL, NULL, 7054, NULL, NULL, NULL, 'Castle supply chest', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
 -- moniker 27182 `DN_Cft_Ob_CraftingStation_Elec_001` ('Electronics Crafting Station').
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (311, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27182, NULL, NULL, NULL, 'Debug Hub - Electronics Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);

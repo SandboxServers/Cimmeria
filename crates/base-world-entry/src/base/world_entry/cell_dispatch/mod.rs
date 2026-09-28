@@ -149,6 +149,7 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::ResetAbilities { .. }
         | CellToBaseMsg::GrantItem { .. }
         | CellToBaseMsg::GrantCash { .. }
+        | CellToBaseMsg::ContainerLooted { .. }
         | CellToBaseMsg::GrantTrainingPoints { .. }
         | CellToBaseMsg::GmGrantAbility { .. }
         | CellToBaseMsg::GrantExpertise { .. }

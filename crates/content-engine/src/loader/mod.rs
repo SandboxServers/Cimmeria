@@ -14,6 +14,8 @@
 //!   `despawn_entity`), delegated to from `convert_action`'s fallthrough
 //! - [`action_bark`] — the `npc_bark` verb, delegated to from
 //!   `convert_action`'s `"npc_bark"` arm
+//! - [`action_loot`] — the `open_loot` verb, delegated to from
+//!   `convert_action`'s `"open_loot"` arm
 //! - [`action_mail`] — the `send_system_mail` verb (SS-U3), delegated to
 //!   from `convert_action`'s `"send_system_mail"` arm
 //!
@@ -31,6 +33,7 @@ use crate::triggers::Trigger;
 
 mod action;
 mod action_bark;
+mod action_loot;
 mod action_mail;
 mod action_spawn;
 mod condition;

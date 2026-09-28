@@ -173,6 +173,21 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             )
             .await
         }
+        CellToBaseMsg::ContainerLooted {
+            entity_id,
+            player_id,
+            container_key,
+        } => {
+            crate::base::world_entry::looted_containers::handle_container_looted(
+                entity_id,
+                player_id,
+                container_key,
+                ctx.db_pool,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
         CellToBaseMsg::GrantTrainingPoints {
             entity_id,
             player_id,

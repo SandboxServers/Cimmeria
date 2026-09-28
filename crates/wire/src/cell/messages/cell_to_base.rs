@@ -156,6 +156,21 @@ pub enum CellToBaseMsg {
         stargate_id: i32,
     },
 
+    /// Persist one once-per-character loot container onto
+    /// `sgw_player.looted_containers` (the content `open_loot` action).
+    ///
+    /// Same shape as [`Self::GrantStargateAddress`]: the cell has already
+    /// added the key to `CellEntity::looted_containers` and opened the loot
+    /// window, so this is the persistence leg only. A lost write costs the
+    /// flag on the next login (the chest could be opened once more), never
+    /// this session. The base resolves `account_id` from the session as the
+    /// ownership predicate, and the append is idempotent.
+    ContainerLooted {
+        entity_id: u32,
+        player_id: i32,
+        container_key: String,
+    },
+
     /// Persist a mission state change to the database.
     ///
     /// Uses `INSERT ... ON CONFLICT DO UPDATE` on `sgw_mission`. The

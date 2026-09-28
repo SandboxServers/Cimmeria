@@ -9,7 +9,7 @@
 //! | trainer   | 301      | `onTrainerOpen`, and respec then passes the pin |
 //! | dialog    | 302      | chain 7001 → `onDialogDisplay` 60100            |
 //! | Livewire  | 303      | chain 7004 → `StartMinigame(Livewire)`           |
-//! | loot crate| 304      | alive: combat reroute; dead: `onLootDisplay` with table 3 |
+//! | loot crate| 304      | chain 7020 `open_loot` → `onLootDisplay` with table 3; Loot All grants; re-rolls |
 //! | pet trainer | 360    | `onTrainerOpen` with list 350 (pets campaign PT-07) |
 //! | Banker    | 370      | `onVaultOpen` and a personal vault session (bank-vault BV-04) |
 //! | mail clerk | 390     | chain 7010 → `onDialogDisplay` 60104 (SS-U3)    |
@@ -333,37 +333,35 @@ async fn live_db_debug_hub_npcs_answer_a_click_with_their_own_interaction() {
     }
 }
 
-/// The crate is a combat target while alive (the click becomes an attack),
-/// and after it dies its corpse carries every loot table 3 row, which a
-/// click displays. Dying goes through the same resolver a GM `.kill` and a
-/// killing shot use, so the loot comes from the real roll.
+/// The crate is a live, unkillable container (Decision (@Cadacious,
+/// 2026-09-28)): a click is never an attack; chain 7020's `open_loot` rolls
+/// table 3 for this player and opens the loot window; `lootItem` for every
+/// entry (the client's Loot All) grants each one and closes the window; the
+/// crate stays standing; and the next click re-rolls.
 #[tokio::test]
-async fn live_db_debug_hub_crate_is_shot_then_looted_from_table_3() {
+async fn live_db_debug_hub_crate_opens_a_loot_window_without_a_kill() {
     let pool = require_db_or_skip!();
     let (mut mgr, hub) = staged_hub(load_hub!(pool));
-    let engine = ChainEngine::new();
+    let engine = crate::cell::content::build_engine(Some(&pool)).await;
     let crate_eid = eid_of(&hub, "DebugHub_LootCrate");
 
     let msgs = click(&mut mgr, &engine, crate_eid).await;
     assert!(
-        methods(&msgs).contains(&ON_TARGET_UPDATE),
-        "a live crate is a combat target: the click must reroute to an attack; got {msgs:?}"
+        !methods(&msgs).contains(&ON_TARGET_UPDATE),
+        "the crate is not a combat target: {msgs:?}"
     );
-    assert!(!methods(&msgs).contains(&ON_LOOT_DISPLAY));
-
-    let (tx, _rx) = mpsc::channel(256);
-    assert!(
-        crate::cell::abilities::kill_npc_out_of_band(crate_eid, PLAYER, true, false, &tx, &mut mgr)
-            .await,
-        "the crate must die through the shared death resolver"
+    assert_eq!(
+        methods(&msgs),
+        vec![ON_LOOT_DISPLAY],
+        "the click opens the loot window; got {msgs:?}"
     );
-    let dropped: HashSet<Option<i32>> = mgr
-        .get_entity(crate_eid)
-        .unwrap()
-        .loot
-        .iter()
-        .map(|l| l.design_id)
-        .collect();
+    assert_eq!(
+        mgr.get_entity(PLAYER).unwrap().looting_entity,
+        Some(crate_eid)
+    );
+    let roll = |mgr: &SpaceManager| mgr.loot_view(crate_eid, Some(PLAYER_ID));
+    let first = roll(&mgr);
+    let dropped: HashSet<Option<i32>> = first.iter().map(|l| l.design_id).collect();
     let table: HashSet<Option<i32>> = mgr.loot_tables[&3].iter().map(|e| e.design_id).collect();
     let certain: HashSet<Option<i32>> = mgr.loot_tables[&3]
         .iter()
@@ -372,19 +370,44 @@ async fn live_db_debug_hub_crate_is_shot_then_looted_from_table_3() {
         .collect();
     assert!(
         certain.is_subset(&dropped) && dropped.is_subset(&table),
-        "the corpse carries every probability-1 row and nothing outside table 3: \
+        "the roll carries every probability-1 row and nothing outside table 3: \
          dropped {dropped:?}, certain {certain:?}"
+    );
+
+    // Loot All: one lootItem per entry, highest first like Loot.lua.
+    let (tx, mut rx) = mpsc::channel(256);
+    for item in first.iter().rev() {
+        crate::cell::interactions::handle_loot_item(PLAYER, item.index, &tx, &mut mgr).await;
+    }
+    let grants = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::GrantItem { .. } | CellToBaseMsg::GrantCash { .. }
+            )
+        })
+        .count();
+    assert_eq!(grants, first.len(), "Loot All grants every entry");
+    assert!(roll(&mgr).is_empty(), "the roll is spent");
+    let crate_entity = mgr.get_entity(crate_eid).expect("the crate stays standing");
+    assert!(
+        !crate::cell::combat::is_dead_state(crate_entity.state_field),
+        "the crate never dies"
     );
 
     let msgs = click(&mut mgr, &engine, crate_eid).await;
     assert_eq!(
         methods(&msgs),
         vec![ON_LOOT_DISPLAY],
-        "a dead crate with loot opens the loot window; got {msgs:?}"
+        "a second click re-rolls"
     );
-    assert_eq!(
-        mgr.get_entity(PLAYER).unwrap().looting_entity,
-        Some(crate_eid)
+    let second = roll(&mgr);
+    assert!(!second.is_empty());
+    assert!(
+        second
+            .iter()
+            .all(|n| first.iter().all(|o| o.index != n.index)),
+        "a fresh roll, not the old list: {first:?} then {second:?}"
     );
 }
 

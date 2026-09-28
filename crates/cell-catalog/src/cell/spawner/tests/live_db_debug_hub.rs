@@ -1,5 +1,5 @@
 //! Live-DB guards for the Castle_CellBlock stasis-room debug hub: templates
-//! 300-304, `spawnlist` 400-404, ability set 6, loot table 3 and dialogs
+//! 300-304, `spawnlist` 400-404, loot table 3 and dialogs
 //! 60100-60103 (`docs/content/debug-hub.md`).
 //!
 //! Every guard here is about seed content that loads without error and is
@@ -92,8 +92,9 @@ mod live_db {
     /// others. The vendor needs its four lists and a vendor bit (the bit is
     /// what `spawn_npc_from_record_into` derives the store from); the trainer
     /// needs list 1 and no vendor lists, so the two roles never share a
-    /// click; the crate needs faction 10 (the only faction a player can
-    /// damage), loot table 3 and ability set 6.
+    /// click; the crate is an unkillable container (no faction, no ability
+    /// set, no death-time loot table) with the loot cursor, opened by chain
+    /// 7020's `open_loot` (Decision (@Cadacious, 2026-09-28)).
     #[tokio::test]
     async fn debug_hub_templates_carry_their_role_fields() {
         let pool = require_db_or_skip!();
@@ -203,15 +204,15 @@ mod live_db {
             (
                 CRATE,
                 "Debug Hub - Loot Crate".into(),
-                "mob".into(),
-                Some(10),
-                0,
+                "spawnable".into(),
+                None,
+                4_611_686_018_427_387_904, // INT_NormalLoot
                 Some(7054),
                 None,
                 none4,
                 None,
-                Some(3),
-                Some(6),
+                None,
+                None,
             ),
         ];
         assert_eq!(got, want, "debug-hub template role columns");
@@ -220,9 +221,9 @@ mod live_db {
     /// Every hub NPC is a world 12 spawn inside the stasis room's polygon, at
     /// the respawner's floor height, clear of the respawner and of every
     /// other spawn in the room (the pet trainer and any later corner
-    /// included, not only the hub's own). Only the crate respawns, holds
-    /// position and has an aggression override (NEUTRAL, so it never aggroes
-    /// on proximity).
+    /// included, not only the hub's own). None of them respawns, holds
+    /// position by flag or carries an aggression override: the crate used to
+    /// (a killable mob), and is an unkillable container now.
     #[tokio::test]
     async fn debug_hub_spawns_sit_inside_the_stasis_room() {
         let pool = require_db_or_skip!();
@@ -292,62 +293,43 @@ mod live_db {
         }
 
         for s in &spawns {
-            let is_crate = s.template_id == CRATE;
+            assert_eq!(s.respawn_secs, None, "{:?}: nothing respawns", s.tag);
+            assert!(!s.is_stationary, "{:?}: no hold flag", s.tag);
             assert_eq!(
-                s.respawn_secs,
-                is_crate.then_some(30),
-                "{:?}: only the crate respawns (30 s)",
-                s.tag
-            );
-            assert_eq!(
-                s.is_stationary, is_crate,
-                "{:?}: only the crate holds",
-                s.tag
-            );
-            assert_eq!(
-                s.aggression_override,
-                is_crate.then_some(cimmeria_entity::cell_entity::MobAggression::Neutral),
-                "{:?}: only the crate carries an aggression override",
+                s.aggression_override, None,
+                "{:?}: no aggression override",
                 s.tag
             );
         }
     }
 
-    /// The crate fights back when shot, so what it fights with matters: the
-    /// set must be exactly `[710]`, whose effect deals no damage. Set 4's
-    /// primary is the 30 m, 25-damage 584, and an empty set falls back to
-    /// 592 Pistol Shot; either would hurt a brand-new character.
+    /// The crate is opened by exactly one chain: `interact_tag
+    /// DebugHub_LootCrate` → `open_loot` on table 3, repeatable (no once
+    /// flag), with no condition, so every click works for every character.
     #[tokio::test]
-    async fn debug_hub_crate_can_only_swing_the_zero_damage_melee() {
+    async fn debug_hub_crate_opens_table_3_through_chain_7020() {
         let pool = require_db_or_skip!();
-        let records = load_spawns_from_db(&pool)
-            .await
-            .expect("load_spawns_from_db must succeed");
-        let crate_spawn = hub_spawns(&records)
-            .into_iter()
-            .find(|s| s.template_id == CRATE)
-            .expect("the crate is one of the hub spawns");
-        assert_eq!(crate_spawn.ability_ids, vec![710]);
-
-        let effects: Vec<i32> = sqlx::query_scalar(
-            "SELECT unnest(effect_ids) FROM resources.abilities WHERE ability_id = 710",
+        let rows: Vec<(i32, String, Option<i32>, String)> = sqlx::query_as(
+            "SELECT a.chain_id, a.action_type, a.target_id, a.params::text \
+             FROM resources.content_triggers t \
+             JOIN resources.content_actions a ON a.chain_id = t.chain_id \
+             WHERE t.event_type = 'interact_tag' AND t.event_key = 'DebugHub_LootCrate'",
         )
         .fetch_all(&pool)
         .await
-        .expect("ability 710 effects query must succeed");
-        assert!(!effects.is_empty(), "ability 710 must carry its effect");
-        let damage_rows: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM resources.effect_nvps \
-             WHERE effect_id = ANY($1) AND name ILIKE '%Damage%' AND value <> '0'",
+        .expect("crate chain query must succeed");
+        assert_eq!(
+            rows,
+            vec![(7020, "open_loot".to_string(), Some(3), "{}".to_string())],
+            "the crate is chain 7020's open_loot on table 3, repeatable"
+        );
+        let conditions: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM resources.content_conditions WHERE chain_id = 7020",
         )
-        .bind(&effects)
         .fetch_one(&pool)
         .await
-        .expect("effect_nvps query must succeed");
-        assert_eq!(
-            damage_rows, 0,
-            "ability 710's effects {effects:?} must carry no damage value"
-        );
+        .expect("condition count");
+        assert_eq!(conditions, 0, "no condition: every click works");
     }
 
     /// The trainer resolves list 1 through the same loader the cell uses at

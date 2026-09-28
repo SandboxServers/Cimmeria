@@ -630,6 +630,19 @@ pub struct CellEntity {
     /// Set when the player interacts with a lootable corpse, cleared on loot window close.
     /// Reference: `python/cell/SGWPlayer.py:setLooting()`
     pub looting_entity: Option<u32>,
+    /// Loot rolled by the content `open_loot` action on a *live* container
+    /// (a chest, a crate), one list per looter keyed by `player_id`, so two
+    /// players never share or take each other's roll. Emptied entries are
+    /// removed. Corpse loot stays in [`Self::loot`].
+    pub container_loot: HashMap<i32, Vec<LootItem>>,
+    /// Set by the first `open_loot` on this entity: its loot lives in
+    /// [`Self::container_loot`], not [`Self::loot`], and it is not a corpse.
+    pub is_loot_container: bool,
+    /// The `open_loot` containers this character has already opened
+    /// (`sgw_player.looted_containers`), for the once-per-character gate.
+    /// Stamped from `InitPlayerState`; the cell appends and asks the base to
+    /// persist. Empty for NPCs.
+    pub looted_containers: HashSet<String>,
 
     /// Entity ID of the NPC the player most recently interacted with
     /// (player entities only).

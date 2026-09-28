@@ -30,6 +30,7 @@
 
 mod black_market_auctioneer;
 mod castle_702_704_executor;
+mod castle_loot_containers;
 mod cellblock_dialog_closes;
 mod debug_hub;
 mod debug_hub_mail_clerk;

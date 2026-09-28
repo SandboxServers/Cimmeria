@@ -2098,11 +2098,16 @@ VALUES (1097, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
         '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
 
 -- Chain 1098: search crate (Tau'ri / non-Jaffa) → display dialog 3942,
--- grant 5-piece Covert Stealth set + Combat Knife to backpack, advance
--- to step 2355, clear crate highlight. Items go to container 1
--- (backpack) per Aftermath.py — the original `inventory.addItem(1, ...)`
--- path. Player learns to equip themselves rather than auto-equipping;
--- earlier items in the cellblock arc were auto-handled.
+-- open a loot window on loot table 10 (the 5-piece Covert Stealth set + the
+-- Combat Knife), advance to step 2355, clear crate highlight.
+--
+-- Decision (@Cadacious, 2026-09-28): the crate opens a real loot window
+-- (`open_loot`, once per character, key `Cellblock_WoodenCrate`) instead of
+-- granting straight to the backpack. The player takes the items with Loot
+-- All; anything left stays in the crate for that character. The step still
+-- advances on open, as before, so the mission cannot stall on an unlooted
+-- window. Items land in the bag each item's own container_sets names (the
+-- loot pickup path), not the backpack Aftermath.py used.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1098, '687 - Search crate (non-Jaffa): grant stealth set', 'mission', 687, true, 0);
 
@@ -2117,19 +2122,15 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1098, 'display_dialog', 3942, NULL,   '{}',                         0, 0),
-  (1098, 'add_item',       3347, NULL,   '{"qty": 1, "container": 1}', 0, 1),  -- Covert Stealth Helmet
-  (1098, 'add_item',       3359, NULL,   '{"qty": 1, "container": 1}', 0, 2),  -- Covert Stealth Vest
-  (1098, 'add_item',       3372, NULL,   '{"qty": 1, "container": 1}', 0, 3),  -- Covert Stealth Pants
-  (1098, 'add_item',       3387, NULL,   '{"qty": 1, "container": 1}', 0, 4),  -- Covert Stealth Gloves
-  (1098, 'add_item',       3401, NULL,   '{"qty": 1, "container": 1}', 0, 5),  -- Covert Stealth Boots
-  (1098, 'add_item',       3325, NULL,   '{"qty": 1, "container": 1}', 0, 6),  -- Combat Knife
-  (1098, 'advance_step',   687,  '2355', '{}',                         0, 7),
+  (1098, 'open_loot',      10,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1098, 'advance_step',   687,  '2355', '{}',                         0, 2),
   (1098, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
-   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 8);
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3);
 
--- Chain 1099: search crate (Jaffa) → display dialog 3943, grant
--- Armored Prison Jacket + Serpent Staff to backpack, advance step,
--- clear crate highlight. Same container-1 reasoning as 1098.
+-- Chain 1099: search crate (Jaffa) → display dialog 3943, open a loot
+-- window on loot table 11 (Armored Prison Jacket + Serpent Staff), advance
+-- step, clear crate highlight. Same loot-window decision as 1098.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1099, '687 - Search crate (Jaffa): grant prison jacket + serpent staff', 'mission', 687, true, 0);
 
@@ -2144,11 +2145,27 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1099, 'display_dialog', 3943, NULL,   '{}',                         0, 0),
-  (1099, 'add_item',       3482, NULL,   '{"qty": 1, "container": 1}', 0, 1),  -- Armored Prison Jacket
-  (1099, 'add_item',       2797, NULL,   '{"qty": 1, "container": 1}', 0, 2),  -- Serpent Staff
-  (1099, 'advance_step',   687,  '2355', '{}',                         0, 3),
+  (1099, 'open_loot',      11,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1099, 'advance_step',   687,  '2355', '{}',                         0, 2),
   (1099, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
-   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 4);
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3);
+
+-- Chain 1191: every other press on the crate (step 2354 not active: before
+-- 687, or after the first search) → reopen this character's pending loot, or
+-- say the crate is empty. Reopen-only (`target_id` NULL never rolls), so no
+-- press is silent and none re-rolls. Decision (@Cadacious, 2026-09-28).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1191, '687 - Crate pressed outside step 2354: reopen pending loot or say empty', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1191, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1191, 'step_status', 687, '2354', 'neq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1191, 'open_loot', NULL, NULL, '{"container_key": "Cellblock_WoodenCrate"}', 0, 0);
 
 -- ── Mission 687 step 2355 — Eliminate barracks guards (3 guards) ──
 --

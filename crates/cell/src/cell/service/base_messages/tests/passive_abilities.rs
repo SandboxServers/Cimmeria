@@ -84,6 +84,7 @@ async fn world_entry_applies_a_known_passive() {
             level: 25,
             character_name: None,
             body_set: None,
+            looted_containers: Vec::new(),
         },
     )
     .await;
