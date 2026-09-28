@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 8,193 |
+| Tests (`#[test]` / `#[tokio::test]`) | 8,196 |
 | Files with tests | 1,351 |
-| Gated in CI (every crate but CI's exclude list) | 7,613 |
+| Gated in CI (every crate but CI's exclude list) | 7,616 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,427 |
 | Inventory threshold (5% of the tests) | 410 |
 
@@ -90,9 +90,9 @@ with no file in this directory yet.
 | `crates/cell-content` | `cimmeria-cell-content` | 773 | 112 | 462 | yes | none |
 | `crates/base-session` | `cimmeria-base-session` | 646 | 119 | 327 | yes | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 534 | 112 | 386 | yes | none |
-| `crates/cell-combat` | `cimmeria-cell-combat` | 532 | 84 | 38 | yes | none |
+| `crates/cell-combat` | `cimmeria-cell-combat` | 534 | 84 | 38 | yes | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 515 | 86 | 31 | yes | none |
-| `crates/cell` | `cimmeria-cell` | 484 | 101 | 17 | yes | none |
+| `crates/cell` | `cimmeria-cell` | 485 | 101 | 17 | yes | none |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 431 | 67 | 0 | yes | none |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 382 | 56 | 6 | yes | none |
