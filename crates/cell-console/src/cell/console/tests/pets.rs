@@ -50,6 +50,10 @@ async fn console_location_brings_the_pet_along() {
     let (mut mgr, pet) = gm_pet_world();
     // `.location` acts on the selection: another GM places the owner.
     mgr.get_entity_mut(OTHER).unwrap().current_target_id = Some(OWNER as i32);
+    mgr.get_entity_mut(OTHER)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(OWNER as i32));
     run(&mut mgr, OTHER, ".location 300 0 -40").await;
     assert_pet_near(&mgr, pet, [300.0, 0.0, -40.0]);
 }

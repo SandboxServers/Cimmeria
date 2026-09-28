@@ -99,6 +99,13 @@ pub(super) async fn console(
     text: &str,
 ) -> Vec<CellToBaseMsg> {
     mgr.get_entity_mut(CALLER).unwrap().current_target_id = target.map(|t| t as i32);
+    // #844: GM target resolution requires the selection to be in view.
+    if let Some(t) = target {
+        mgr.get_entity_mut(CALLER)
+            .unwrap()
+            .witnesses
+            .insert(cimmeria_common::EntityId(t as i32));
+    }
     let (tx, mut rx) = mpsc::channel(64);
     handle_console_command(CALLER, text, &tx, mgr, &ChainEngine::new()).await;
     std::iter::from_fn(|| rx.try_recv().ok()).collect()

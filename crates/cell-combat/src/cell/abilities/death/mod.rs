@@ -134,7 +134,8 @@ pub(super) async fn apply_death_transition(
     )
     .await;
 
-    // 1. Attacker side: clear targeting reticle.
+    // 1. Attacker side: clear targeting reticle. The server's stored copy
+    //    is dropped at 2b', after the auto-cycle sweep that matches on it.
     if attacker_is_player {
         send_entity_method(
             attacker_id,
@@ -212,6 +213,16 @@ pub(super) async fn apply_death_transition(
             space_mgr,
         )
         .await;
+    }
+
+    // 2b'. The killer's stored target goes with the reticle dropped in 1
+    //      (#844), or the client and server disagree about what is
+    //      selected. After 2b on purpose: the auto-cycle sweep finds the
+    //      killer's loop through this very field. Only when the killer
+    //      still had this target stored (one who switched keeps theirs),
+    //      and nobody else's selection changes: a looter keeps the corpse.
+    if attacker_is_player {
+        space_mgr.clear_target_of(attacker_id, target_eid, "target_killed");
     }
 
     // 2c. Dying player's OWN auto-cycle clears. The sweep above only

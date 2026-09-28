@@ -287,6 +287,35 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             );
         }
 
+        // Phase 3a': a respawn is a new life under the same id, so nobody
+        // keeps the corpse selected (#844). The client still has it
+        // selected, so drop its reticle too (`onTargetUpdate(0)`, the same
+        // send the death burst uses for the killer).
+        for holder in space_mgr.clear_targets_on(entity_id, "target_respawned") {
+            let Some(holder_is_player) = space_mgr.get_entity(holder).map(|h| h.is_player) else {
+                continue;
+            };
+            if !holder_is_player {
+                continue;
+            }
+            if let Err(e) = tx
+                .send(CellToBaseMsg::EntityMethodCall {
+                    entity_id: holder,
+                    method_index: crate::mercury::method_idx::ON_TARGET_UPDATE,
+                    args: 0i32.to_le_bytes().to_vec(),
+                })
+                .await
+            {
+                tracing::warn!(
+                    holder,
+                    respawning_entity = entity_id,
+                    reason = "target_clear_send_failed",
+                    "NPC respawn: onTargetUpdate(0) could not be enqueued ({e}); the \
+                     server dropped the target but the client still shows it"
+                );
+            }
+        }
+
         // Phase 3b: snap position via the SpaceManager helper so the
         // AoI grid + entity bookkeeping stay in sync. The helper
         // overwrites `entity.direction` from its `[i8; 3]` param,

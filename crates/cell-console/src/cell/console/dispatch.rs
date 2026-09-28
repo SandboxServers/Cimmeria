@@ -207,7 +207,12 @@ pub(crate) async fn refuse_non_gm_command(
 ///   rather than failing — these commands don't depend on it.
 /// - For typed commands, a target is **required**: returns `Err(msg)` (with a
 ///   GM-facing reason) when there is no current target, it doesn't resolve, it's
-///   in another space, or it's the wrong type.
+///   in another space, it's not in the caller's view, or it's the wrong type.
+///
+/// "In view" (#844) means the caller itself or an entity in its witness set:
+/// a stored target that outlived its AoI must not steer a command. The legacy
+/// same-space check alone let a 19-minute-old target 216 m away do exactly
+/// that.
 fn resolve_target(
     caller_id: u32,
     spec: &Spec,
@@ -223,8 +228,10 @@ fn resolve_target(
     if spec.target == Target::None {
         // Optional: pass the current target through only if it resolves in the
         // caller's space; otherwise None.
-        let resolved =
-            current.filter(|&id| space_mgr.get_entity(id).map(|e| e.space_id.0) == caller_space);
+        let resolved = current.filter(|&id| {
+            space_mgr.get_entity(id).map(|e| e.space_id.0) == caller_space
+                && space_mgr.target_in_view(caller_id, id)
+        });
         return Ok(resolved);
     }
 
@@ -236,6 +243,15 @@ fn resolve_target(
     };
     if Some(target.space_id.0) != caller_space {
         return Err(format!("targeted entity {target_id} is in another space"));
+    }
+    if !space_mgr.target_in_view(caller_id, target_id) {
+        tracing::debug!(
+            caller_id,
+            target_id,
+            reason = "target_not_in_view",
+            "console: stored target is outside the caller's AoI -- refusing the command"
+        );
+        return Err(format!("targeted entity {target_id} is not in view"));
     }
     if !spec.target.matches(target) {
         return Err(format!("expected {} as a target", spec.target.label()));
