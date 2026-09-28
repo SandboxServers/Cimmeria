@@ -26,10 +26,18 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 Applied to the stock client, the rebuilt files are byte-identical to a
 known-good QA client's.
 
-Not here, on purpose: the historical CellBlock worlds and the 2008 Agnos
-content (optional extras nothing else needs; players install them by
-hand), `LoginInternal.lua` and ASLR (the launcher writes those itself on
-every install and launch).
+Not here, on purpose:
+
+- **The 2008 Agnos content** (`Maps\Agnos`, `Maps\Agnos_Library` and the
+  packages that came with them). Agnos is a seeded world that missions send
+  players to, so a client without these maps can't load it. They are whole
+  CME files, which a delta against the stock client can't carry, so they
+  can't ship as a patch set. The open question is sourcing them from an
+  archived build on archive.org rather than hosting them.
+- **The historical CellBlock worlds**: GM-only destinations, installed by
+  hand.
+- **`LoginInternal.lua` and ASLR**: the launcher writes those itself on every
+  install and launch.
 
 ## Rebuilding a patch
 

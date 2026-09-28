@@ -28,11 +28,20 @@ install (full hash comparison, 5,983 stock files) and building `cimmeria-patchse
   turns the 394 KB raw delta for a `upk_patch`-built map into 912 bytes.
   Shipped: 001 dialog portraits, 002 castle ring transport, 003 the three merged PAKs
   (+ CookedBehaviorEvents stub; identical to `data/cache/`), 004 log config.
-- **Owner decision: the "super build" extras stay out of the launcher**: the 2008
-  content the public builds dropped (Maps\Agnos, Agnos_Library, derek.upk,
-  StrAegis.upk, Wep_AG.upk; nothing in server data or other packages references them;
-  the Straegis pet uses stock MOB_StraegisFighter) and the historical CellBlock worlds
-  (GM-only destinations). Both are safe to lack unless a player loads those maps.
+- **The "super build" extras stay out of the launcher for now**: the 2008 content the
+  public builds dropped (Maps\Agnos, Agnos_Library, derek.upk, StrAegis.upk,
+  Wep_AG.upk) and the historical CellBlock worlds.
+  - **Agnos is reachable in normal play**: Agnos and Agnos_Library are seeded worlds
+    (`crates/cell-catalog/src/cell/spawner/worlds.rs`,
+    `only_the_documented_worlds_are_seeded_advisory`; see
+    [[reference_map_arrival_points]]) and mission dialog sends players there
+    (dialog_screens 1137, "Travel to ... Agnos"). A client without those maps fails to
+    load that world. They are kept out because they are whole CME files that a delta
+    against the stock client can't carry. Open question: sourcing them from an archived
+    build on archive.org, not hosting them. (The Straegis pet uses stock
+    MOB_StraegisFighter, not StrAegis.upk.)
+  - The historical CellBlock worlds are GM-only destinations; safe to lack unless a
+    GM sends a player there.
 - Undecided as of 2026-09-27: `eula.lua` 19 s login delay, `prp_gen.fev/.fsb` sound
   bank (unknown provenance; holds the ring-transport FMOD event).
 
