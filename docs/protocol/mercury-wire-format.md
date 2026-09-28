@@ -500,6 +500,16 @@ void BaseChannel::processAck(Packet::SequenceId seq)
 
 **ACK processing is done even on duplicate/out-of-order packets**: The `handlePacket()` method processes ACKs from all incoming packets regardless of whether the packet's own sequence ID is within the receive window. This prevents lost ACKs from causing unnecessary retransmissions.
 
+### SGW Client and Rust Server
+
+The SGW client acks every reliable packet it receives, including one it is holding behind a gap. `UnAckedHandler::queueAckForPacket` (`ghidra://SGW.exe@0x0158cba0`) inserts the sequence into its ack set (`FUN_0157ac40(this + 0x9c, seq)`) before it compares the sequence with `inSeqAt`. The Lomiada capture (`debug/lomiada-broke-in-hallway02/`) shows this on the wire. Server packet #1148 never arrived. About 100 ms later the client acked #1149, then #1150 to #1155 in one footer, and every packet up to #1358. Its log reads `Buffering packet #1149 above #1148` through `#1358 above #1148`.
+
+So an ACK names one packet and says nothing about the packets before it. The Rust server's `Channel::process_ack` (`crates/mercury/src/channel/ack.rs`) retires only the packet an ACK names. A lost packet stays outstanding until the retransmit scan resends it.
+
+Until 2026-09-27 the server drained its send window cumulatively up to each ACK. The client's ACK of the packet after a lost one retired the lost one, so it was never resent. The client then held every later reliable message behind the gap for the rest of the session. It received no entity creates, leaves or method calls, while unreliable movement kept flowing. A player in that state keeps seeing the entities they already have move around, and never sees anyone new arrive.
+
+When the client has acked a packet sent after one it has not acked, the server records a transmit hole (`mercury.tx_hole`). It logs `tx_hole_open` at DEBUG for each hole, `tx_hole_stall` at WARN when one stays open for 2 s, and `tx_hole_closed` at INFO when a reported one closes. See [observability.md](../architecture/observability.md).
+
 ### BigWorld: Individual ACKs + Cumulative ACKs
 
 BigWorld supports both individual and cumulative ACKs:

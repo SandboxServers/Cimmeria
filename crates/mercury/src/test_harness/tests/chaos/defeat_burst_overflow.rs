@@ -62,19 +62,19 @@ async fn defeat_burst_does_not_lose_packets_under_tx_window_pressure() {
         "B must receive the whole burst exactly once"
     );
 
-    // Cumulative ack carrier from B drains A's TX window. A's pump
+    // The ack carrier from B drains A's TX window. A's pump
     // applies the ack before it delivers the carrier.
     session.b.send_bundle(b"ack carrier", false).await.unwrap();
     let carrier = session.a.recv_n_bundles(1, Duration::from_secs(5)).await;
     assert_eq!(carrier.len(), 1, "ack carrier must reach A");
 
     // Safety invariants persist after the ack-drain phase, and the
-    // full cumulative ack leaves nothing tracked.
+    // full set of acks leaves nothing tracked.
     let channel = session.a.channel.lock().unwrap();
     all_safety_invariants(&channel);
     assert_eq!(
         channel.tx_window.len() + channel.unsent_packets.len(),
         0,
-        "full cumulative ack must drain the TX window and the deferred queue"
+        "a full set of acks must drain the TX window and the deferred queue"
     );
 }

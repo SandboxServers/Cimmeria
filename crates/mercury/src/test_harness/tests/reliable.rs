@@ -53,9 +53,9 @@ async fn reliable_packet_retransmits_after_drop() {
 }
 
 /// Acks for a burst of three reliable sends drain the entire tx_window
-/// in a single cumulative-ack pass once B carries the ack back.
+/// in one footer once B carries the acks back.
 #[tokio::test]
-async fn cumulative_ack_drains_all_predecessors() {
+async fn one_ack_footer_drains_the_whole_burst() {
     let session = LoopbackSession::connected(None).await.unwrap();
 
     session.a.send_bundle(b"one", true).await.unwrap();
@@ -71,7 +71,7 @@ async fn cumulative_ack_drains_all_predecessors() {
     let _ = session.a.recv_n_bundles(1, Duration::from_secs(1)).await;
 
     let quiet = session.quiesce(Duration::from_millis(500)).await;
-    assert!(quiet, "cumulative ack must drain all predecessors");
+    assert!(quiet, "the ack footer must drain every acked packet");
     assert_eq!(session.a.tx_window_len(), 0);
 }
 

@@ -46,6 +46,8 @@ pub struct TickActions {
     pub keepalives: Vec<Bytes>,
     /// The receive-stall watchdog's report, on a tick where it warned.
     pub rx_stall: Option<crate::channel::RxStall>,
+    /// The transmit-hole watchdog's report, on a tick where it warned.
+    pub tx_hole: Option<crate::channel::TxHoleStall>,
 }
 
 /// Outcome of one `send_with_policy` policy-evaluation pass. Split out
@@ -619,6 +621,7 @@ impl LoopbackPeer {
         let retransmits = {
             let mut channel = self.channel.lock().expect("channel poisoned");
             actions.rx_stall = channel.check_rx_stall();
+            actions.tx_hole = channel.check_tx_hole();
             channel.check_timeouts()
         };
         for bytes in &retransmits {
@@ -758,18 +761,14 @@ fn spawn_recv_pump(
             // TX-window slots so a retransmit-soaked channel recovers
             // before the next tick.
             //
-            // Mercury uses cumulative-ack semantics (a single ack seq
-            // implicitly acks all predecessors), so we pass the highest
-            // value from the ack footer to `process_acks` and let it
-            // drain every TX-window entry with `seq <= highest`. The
-            // `max()` is the right operation precisely because an ack
-            // list with `[5, 3, 7]` semantically means "everything up
-            // through 7 is acked", not "exactly these three seqs".
+            // Each ack retires exactly the packet it names, as on the
+            // server's client channels. The receive gate below acks
+            // packets it buffers behind a gap, like the SGW client's
+            // `queueAckForPacket`, so an ack list `[5, 7]` means "5 and 7
+            // arrived", never "everything up through 7".
             if pkt.has_acks() {
-                if let Some(highest) = pkt.acks.iter().copied().max() {
-                    let mut ch = channel.lock().expect("channel poisoned");
-                    let _ = ch.process_acks(highest);
-                }
+                let mut ch = channel.lock().expect("channel poisoned");
+                ch.process_ack_footer(&pkt.acks);
             }
 
             // In-order delivery, the way the SGW client's

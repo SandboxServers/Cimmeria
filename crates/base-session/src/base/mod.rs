@@ -315,7 +315,7 @@ pub struct ConnectedClientState {
     /// overflow — it's used only by tests and unmigrated paths and so
     /// never hits the saturating bursts that motivated the queue.)
     ///
-    /// Wrapped in `Mutex` because `process_acks`, `register_sent_packet`,
+    /// Wrapped in `Mutex` because `process_ack_footer`, `register_sent_packet`,
     /// and `check_timeouts` all need `&mut self` and run from different
     /// code paths (receive loop, per-send-site call sites, retransmit tick).
     pub channel: Mutex<Channel>,

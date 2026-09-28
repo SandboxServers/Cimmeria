@@ -58,7 +58,8 @@ pub const FLAG_HAS_REQUESTS: u8 = 0x01;
 /// Packet contains piggybacked sub-packets (not supported by Cimmeria).
 pub const FLAG_PIGGYBACK: u8 = 0x02;
 
-/// Packet footer contains cumulative ACKs.
+/// Packet footer contains ACKs: a count byte and one sequence per packet
+/// acked. Each names one packet; none is cumulative (see `channel::ack`).
 pub const FLAG_HAS_ACKS: u8 = 0x04;
 
 /// Packet was sent on a persistent channel.

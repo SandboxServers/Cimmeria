@@ -115,6 +115,6 @@ async fn concurrent_sends_from_two_tasks_do_not_corrupt_state() {
     let _ = session.a.recv_n_bundles(1, Duration::from_secs(1)).await;
     assert!(
         session.quiesce(Duration::from_secs(1)).await,
-        "session must reach quiescence after the carrier delivers the cumulative ack",
+        "session must reach quiescence after the carrier delivers the acks",
     );
 }

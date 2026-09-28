@@ -57,8 +57,8 @@ fn on_ack_removes_packet() {
     ch.send_packet(test_packet()).unwrap();
     assert_eq!(ch.tx_window.len(), 1);
 
-    // Cumulative ACK for seq=0 should drain the window.
-    ch.process_acks(0).unwrap();
+    // The ACK for seq=0 retires it.
+    assert!(ch.process_ack(0));
     assert!(ch.tx_window.is_empty());
 }
 
@@ -140,7 +140,7 @@ fn receive_packet_updates_only_last_received() {
 }
 
 #[test]
-fn process_acks_updates_only_last_received() {
+fn process_ack_updates_only_last_received() {
     let mut ch = Channel::new(test_addr());
     // Need a packet in flight for the ACK to drain.
     ch.send_packet(test_packet()).unwrap();
@@ -149,16 +149,16 @@ fn process_acks_updates_only_last_received() {
     ch.last_sent = baseline;
     ch.last_received = baseline;
 
-    ch.process_acks(0).unwrap();
+    ch.process_ack(0);
 
     // ACK is peer-originated data — counts as receive, not send.
     assert!(
         ch.last_received > baseline,
-        "process_acks must reset last_received"
+        "process_ack must reset last_received"
     );
     assert_eq!(
         ch.last_sent, baseline,
-        "process_acks must NOT touch last_sent"
+        "process_ack must NOT touch last_sent"
     );
 }
 
@@ -370,7 +370,7 @@ fn registered_packet_is_acked_and_samples_rto_normally() {
     // Backdate so the ack measures ~80ms RTT.
     ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(80);
 
-    ch.process_acks(7).unwrap();
+    assert!(ch.process_ack(7));
     assert!(
         ch.tx_window.is_empty(),
         "ack must drain the registered entry"
@@ -401,12 +401,12 @@ fn registered_packet_is_acked_and_samples_rto_normally() {
 /// arrives at `register_sent_packet` before seq=1 — e.g. entity B's
 /// CREATE_ENTITY, seq=1, loses the race to encrypt+send to a concurrent,
 /// unrelated reliable send for the same witness that grabbed seq=2 and
-/// registered first). A cumulative ack for seq=1 only (seq=2 not yet
+/// registered first). An ack for seq=1 only (seq=2 not yet
 /// acked) must still drain seq=1.
 ///
 /// Before the fix, `register_sent_packet` did a blind `push_back`, so
-/// `tx_window` became `[2, 1]` — non-monotonic. `process_acks`'s
-/// cumulative drain only inspects the front and stops at the first
+/// `tx_window` became `[2, 1]` — non-monotonic. The ACK path was then a
+/// cumulative front-only drain that stopped at the first
 /// "not yet covered" entry: `covered(front=2)` against `ack_seq=1` is
 /// false, so the loop breaks immediately and seq=1 is never popped even
 /// though it was legitimately acked. Reverted, this test fails with
@@ -436,7 +436,7 @@ fn register_sent_packet_tolerates_out_of_order_registration() {
     );
 
     // Ack covers seq=1 only — seq=2 is still in flight.
-    ch.process_acks(1).unwrap();
+    assert!(ch.process_ack(1));
     let remaining: Vec<u32> = ch.tx_window.iter().map(|e| e.packet.sequence).collect();
     assert_eq!(
         remaining,
@@ -449,7 +449,7 @@ fn register_sent_packet_tolerates_out_of_order_registration() {
 /// Same hazard, one level up: three sequences register out of order
 /// (2, 3, then 1 — modeling a third concurrent send's seq=3 winning the
 /// race against both the create (1) and the cascade (2) it should have
-/// followed). A full cumulative ack must still drain everything.
+/// followed). One footer acking all three must still drain everything.
 #[test]
 fn register_sent_packet_sorts_three_out_of_order_registrations() {
     let mut ch = Channel::new(test_addr());
@@ -469,10 +469,10 @@ fn register_sent_packet_sorts_three_out_of_order_registrations() {
         "tx_window must be sorted by sequence after out-of-order registration"
     );
 
-    ch.process_acks(3).unwrap();
+    assert_eq!(ch.process_ack_footer(&[3, 1, 2]), 3);
     assert!(
         ch.tx_window.is_empty(),
-        "cumulative ack covering all three must drain them regardless of \
+        "a footer acking all three must drain them regardless of \
          registration order, got {:?}",
         ch.tx_window
             .iter()
@@ -482,7 +482,7 @@ fn register_sent_packet_sorts_three_out_of_order_registrations() {
 }
 
 /// The `unsent_packets` overflow queue is drained front-only by
-/// `process_acks` too (see its doc comment), so it needs the same
+/// promotion front-first too, so it needs the same
 /// sorted-insert guarantee once the TX window is full.
 #[test]
 fn register_sent_packet_sorts_unsent_queue_overflow() {
@@ -532,19 +532,19 @@ fn fast_rto_config() -> RtoConfig {
 /// into the per-channel RTO smoother. After one sample, srtt should
 /// reflect the observed round-trip time.
 #[test]
-fn process_acks_samples_rto_on_clean_round() {
+fn process_ack_samples_rto_on_clean_round() {
     let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
     ch.send_packet(test_packet()).unwrap();
     // Backdate the entry's last_sent so the ack measures ~80ms RTT.
     ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(80);
 
     assert_eq!(ch.rto().srtt(), None, "no samples yet");
-    ch.process_acks(0).unwrap();
+    assert!(ch.process_ack(0));
     assert!(ch.tx_window.is_empty(), "ack must drain the entry");
 
     let srtt = ch.rto().srtt().expect("srtt set after first ack");
     // Allow a few ms slack for instant-now() drift between the backdate
-    // and the process_acks call.
+    // and the process_ack call.
     assert!(
         srtt >= std::time::Duration::from_millis(75)
             && srtt <= std::time::Duration::from_millis(100),
@@ -557,7 +557,7 @@ fn process_acks_samples_rto_on_clean_round() {
 /// ack corresponds to. Pin so a regression that drops the
 /// `retransmit_count == 0` guard surfaces here.
 #[test]
-fn process_acks_skips_rto_sample_on_retransmitted_packet_karn() {
+fn process_ack_skips_rto_sample_on_retransmitted_packet_karn() {
     let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
     ch.send_packet(test_packet()).unwrap();
     // Simulate that the packet was retransmitted at some point — we don't
@@ -565,7 +565,7 @@ fn process_acks_skips_rto_sample_on_retransmitted_packet_karn() {
     ch.tx_window[0].retransmit_count = 1;
     ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(80);
 
-    ch.process_acks(0).unwrap();
+    assert!(ch.process_ack(0));
     assert!(ch.tx_window.is_empty(), "ack must still drain the entry");
     assert_eq!(
         ch.rto().srtt(),

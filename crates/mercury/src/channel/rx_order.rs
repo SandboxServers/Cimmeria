@@ -149,7 +149,7 @@ impl Channel {
     /// server's client sessions and the loopback/wireclient harness.
     ///
     /// ACK footers on the packet are not processed here; the caller hands
-    /// them to [`Self::process_acks`] for every packet, whatever the gate
+    /// them to [`Self::process_ack_footer`] for every packet, whatever the gate
     /// decides, as the client does.
     pub fn receive_parsed(&mut self, pkt: ParsedPacket) -> Result<RxDelivery> {
         self.last_received = self.clock().now();

@@ -20,19 +20,24 @@ use crate::packet::{Packet, ParsedPacket};
 use crate::unpacker::FragmentAssembler;
 
 use super::rto::{Rto, RtoConfig};
-use super::state::{ChannelState, RxEntry, TxEntry};
+use super::state::{ChannelState, RxEntry, TxEntry, TxHole};
 
 /// True if `a` is sequence-before-or-equal `b` in Mercury's 28-bit modular
 /// sequence space (`SEQUENCE_MASK = 0x0FFF_FFFF`).
 ///
-/// Shared by [`Channel::process_acks`]'s cumulative-ACK drain and
-/// [`Channel::register_sent_packet`]'s sorted insert — both need the same
-/// "is this seq at or before that one, allowing for wraparound" comparator.
-/// A plain `a <= b` on the raw `u32`s breaks the moment either operand
-/// wraps past `NULL_SEQUENCE`; masking the difference to the 28-bit half
-/// range (`0x0800_0000`) interprets wraparound correctly. See the
-/// worked example in `process_acks`'s original `covered` closure (NA39).
-fn seq_mod_leq(a: u32, b: u32) -> bool {
+/// Shared by [`Channel::register_sent_packet`]'s sorted insert and the
+/// transmit-hole tracking in [`super::ack`] — both need the same "is this
+/// seq at or before that one, allowing for wraparound" comparator. A plain
+/// `a <= b` on the raw `u32`s breaks the moment either operand wraps past
+/// `NULL_SEQUENCE`; masking the difference to the 28-bit half range
+/// (`0x0800_0000`) interprets wraparound correctly:
+///
+/// ```text
+/// a = 0x0FFF_FFFE, b = 0x0000_0001 (b is after the wrap)
+///   32-bit: diff = 0x0FFF_FFFD, > 0x8000_0000 is false -> "a after b" (wrong)
+///   28-bit: diff = 0x0FFF_FFFD, > 0x0800_0000 is true  -> "a before b" (right)
+/// ```
+pub(super) fn seq_mod_leq(a: u32, b: u32) -> bool {
     let a = a & crate::packet::SEQUENCE_MASK;
     let b = b & crate::packet::SEQUENCE_MASK;
     let diff = a.wrapping_sub(b) & crate::packet::SEQUENCE_MASK;
@@ -68,7 +73,7 @@ pub struct Channel {
 
     /// Deferred-send queue: packets that hit the [`consts::TX_WINDOW_SIZE`]
     /// cap when first registered, holding bookkeeping for retransmit until
-    /// a TX-window slot frees up via [`Self::process_acks`].
+    /// a TX-window slot frees up via [`Self::process_ack`].
     ///
     /// Entries are inserted in caller-allocated sequence order (the same
     /// order the bytes went on the wire) and promoted FIFO into the
@@ -111,6 +116,25 @@ pub struct Channel {
     /// [`consts::RX_STALL_WARN_MS`] over this channel's life.
     pub rx_stalls: u64,
 
+    /// Highest sequence the peer has acked, in 28-bit modular order.
+    /// Only ACKs that retire an outstanding entry move it. Read by the
+    /// transmit-hole tracking in [`super::ack`].
+    pub(super) highest_acked: Option<u32>,
+
+    /// The transmit hole currently open: the oldest outstanding reliable
+    /// packet, when the peer has already acked a later one. See
+    /// [`super::ack`].
+    pub(super) tx_hole: Option<TxHole>,
+
+    /// Distinct transmit holes opened over this channel's life. Each one
+    /// is a reliable packet the peer received a successor of first: lost
+    /// in flight, or reordered.
+    pub tx_holes: u64,
+
+    /// Distinct transmit holes that stayed open past
+    /// [`consts::TX_HOLE_WARN_MS`] over this channel's life.
+    pub tx_hole_stalls: u64,
+
     /// Socket address of the remote peer.
     pub remote_addr: SocketAddr,
 
@@ -125,7 +149,7 @@ pub struct Channel {
 
     /// Wall-clock of the last inbound packet (receive-side activity).
     /// Updated by every code path that observes peer-originated bytes:
-    /// `receive_packet`, `process_acks` (an ACK frame is peer data),
+    /// `receive_packet`, `process_ack` (an ACK frame is peer data),
     /// and `touch_received` for callers that count peer traffic at
     /// the socket layer. Used by [`Self::is_timed_out`] to detect a
     /// silent peer — disconnect when the peer hasn't said anything
@@ -159,7 +183,7 @@ pub struct Channel {
     /// Adaptive retransmission timeout state. Tracks
     /// smoothed RTT + RTT variance for this peer; consulted by
     /// `check_timeouts` to decide when an unacked packet should be
-    /// retransmitted, and updated by `process_acks` (clean samples,
+    /// retransmitted, and updated by `process_ack` (clean samples,
     /// Karn's algorithm) and `check_timeouts` (exponential backoff
     /// on retransmit).
     rto: Rto,
@@ -218,6 +242,10 @@ impl Channel {
             rx_gap_since: None,
             rx_stall_warned_at: None,
             rx_stalls: 0,
+            highest_acked: None,
+            tx_hole: None,
+            tx_holes: 0,
+            tx_hole_stalls: 0,
             remote_addr,
             last_sent: now,
             last_received: now,
@@ -231,6 +259,12 @@ impl Channel {
     /// logging only; the algorithm itself is internal to `Channel`.
     pub fn rto(&self) -> &Rto {
         &self.rto
+    }
+
+    /// Mutable RTO state, for the ACK path in [`super::ack`] (clean RTT
+    /// samples).
+    pub(super) fn rto_mut(&mut self) -> &mut Rto {
+        &mut self.rto
     }
 
     /// Feed a parsed Mercury packet through this channel's fragment
@@ -262,8 +296,9 @@ impl Channel {
     /// every send site has migrated to [`send_packet`].
     ///
     /// Caller MUST ensure `packet.sequence` matches the sequence number
-    /// that went out on the wire (otherwise the cumulative-ACK drain in
-    /// [`process_acks`] won't find the right entry).
+    /// that went out on the wire: [`process_ack`] retires the entry whose
+    /// sequence the peer's ACK names, so a mismatched one is never retired
+    /// and is retransmitted until the channel times out.
     ///
     /// `raw_bytes` is the exact encrypted datagram that was sent. The
     /// retransmit driver re-sends these bytes verbatim — no re-encryption.
@@ -272,9 +307,9 @@ impl Channel {
     ///
     /// **Overflow handling:** when the TX window is at [`consts::TX_WINDOW_SIZE`]
     /// the entry is appended to [`Self::unsent_packets`] instead, where it
-    /// stays bookkept until a TX-window slot frees. [`process_acks`] drains
-    /// any queued entry whose seq is covered by the cumulative ACK and
-    /// promotes the remaining oldest-first into freed slots; only after
+    /// stays bookkept until a TX-window slot frees. [`process_ack`] retires
+    /// a queued entry the peer acks directly and promotes the remaining
+    /// oldest-first into freed slots; only after
     /// promotion is an entry eligible for retransmit by [`check_timeouts`]
     /// (the retransmit scan only walks `tx_window`, not the queue). This
     /// replaces the prior "return Err on overflow" behavior that the
@@ -287,12 +322,13 @@ impl Channel {
     /// channel is on its way to the inactivity-timeout reap.
     ///
     /// [`send_packet`]: Self::send_packet
-    /// [`process_acks`]: Self::process_acks
+    /// [`process_ack`]: Self::process_ack
     pub fn register_sent_packet(&mut self, packet: Packet, raw_bytes: Bytes) -> Result<()> {
         // Caller-provided sequence must respect the 28-bit Mercury sequence
         // space (`mercury-wire-format` spec §2.4 R4). An out-of-range seq
-        // here would corrupt the cumulative-ACK drain (which assumes
-        // sequences stay within the same modular space the wire uses).
+        // here would corrupt the sorted windows and the transmit-hole
+        // tracking (both assume sequences stay within the same modular
+        // space the wire uses).
         if packet.sequence >= crate::packet::NULL_SEQUENCE {
             return Err(cimmeria_common::CimmeriaError::Channel(format!(
                 "register_sent_packet: caller-assigned seq=0x{:08X} is outside the 28-bit valid range (max 0x{:08X})",
@@ -318,14 +354,13 @@ impl Channel {
             // a `tokio::spawn`ed fan-out, cell's witness dispatch) to
             // reserve a LATER sequence for the same witness and still
             // win the race to `register_sent_packet`. `push_back` would
-            // then leave `tx_window` non-monotonic, which silently
-            // breaks `process_acks`'s front-only cumulative drain (it
-            // stops at the first "not yet covered" front entry — an
-            // out-of-order higher seq parked at the front blocks the
-            // drain of an already-acked lower seq behind it forever,
-            // starving the TX window over time). Sorting on insert keeps
-            // the "oldest sequence at front" invariant `process_acks`
-            // depends on regardless of registration order.
+            // then leave `tx_window` non-monotonic. ACK processing no
+            // longer depends on the order (it retires the exact sequence
+            // an ACK names), but the retransmit scan resends oldest-first
+            // within its per-tick budget, promotion is FIFO, and the
+            // transmit-hole tracking reads the front as "oldest
+            // outstanding", so the window is kept sorted regardless of
+            // registration order.
             insert_tx_entry_sorted(&mut self.tx_window, entry);
             self.last_sent = now;
             return Ok(());
@@ -348,7 +383,7 @@ impl Channel {
             )));
         }
         // Same sorted-insert rationale as the tx_window branch above —
-        // `process_acks` drains this queue front-only too.
+        // promotion takes this queue front-first.
         insert_tx_entry_sorted(&mut self.unsent_packets, entry);
         // Update `last_sent` even on the queued path — the bytes went out
         // on the wire, so for keepalive-timing purposes the channel was
@@ -425,104 +460,6 @@ impl Channel {
             raw_bytes: Bytes::new(),
         });
         self.last_sent = now;
-
-        Ok(())
-    }
-
-    /// Process acknowledgement information received from the peer.
-    ///
-    /// Removes acknowledged packets from the TX window and feeds RTT
-    /// samples to the per-channel RTO state machine for any **clean**
-    /// rounds (Karn's algorithm — retransmitted packets are excluded
-    /// because the ack is ambiguous about which copy reached the peer).
-    ///
-    /// Also drains any [`Self::unsent_packets`] entries covered by the
-    /// cumulative ACK (their bytes went on the wire when they were
-    /// queued, so the peer can ack them while they're still queued), and
-    /// promotes oldest-first from the queue into freed TX-window slots so
-    /// the retransmit scan can pick them up if needed. Promoted entries
-    /// keep their original `last_sent` so an entry that sat in the queue
-    /// past its RTO will be retransmitted on the next [`Self::check_timeouts`]
-    /// pass.
-    pub fn process_acks(&mut self, ack_seq: u32) -> Result<()> {
-        // ACK frames are peer-originated → counts as receive-side activity,
-        // not send-side. (We aren't putting bytes on the wire; we're
-        // observing the peer's response to a prior emit.)
-        let now = self.clock.now();
-        self.last_received = now;
-
-        let ack_seq_masked = ack_seq & crate::packet::SEQUENCE_MASK;
-
-        // 28-bit modular `seq <= ack_seq` comparator. Used to drain both
-        // tx_window and unsent_packets — both are ordered by allocation
-        // sequence so a front-of-deque check suffices.
-        //
-        // Mercury sequence space is 28 bits (`SEQUENCE_MASK = 0x0FFF_FFFF`),
-        // not 32. The modular `<=` comparison must use the 28-bit
-        // half-range (`1 << 27` = `0x0800_0000`), not the 32-bit one.
-        // Mask both operands and the difference to the 28-bit space so
-        // wraparound past `0x0FFF_FFFF` is interpreted correctly:
-        //   front.seq=0x0FFF_FFFE, ack=0x0000_0001 (post-wrap):
-        //     32-bit cmp:  diff = 0x0FFF_FFFD; diff > 0x8000_0000 = false
-        //                  → STOP (wrong — front IS <= ack post-wrap)
-        //     28-bit cmp:  diff = 0x0FFF_FFFD & MASK = 0x0FFF_FFFD;
-        //                  0x0FFF_FFFD > 0x0800_0000 = true → DRAIN (correct)
-        let covered = |seq: u32| -> bool { seq_mod_leq(seq, ack_seq_masked) };
-
-        // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
-        // The tx_window is ordered by sequence (oldest at front), so we can
-        // drain from the front until we hit a sequence beyond the ACK.
-        // That ordering is actively maintained by `register_sent_packet`'s
-        // sorted insert (NA39) — it is NOT simply "callers happen to
-        // register in allocation order". A cross-task race between
-        // sequence reservation (an atomic fetch-add under a different
-        // lock) and this Channel's registration can and does register
-        // out of allocation order in production; without the sorted
-        // insert, a higher out-of-order sequence parked at the front
-        // would block this front-only drain from ever reaching an
-        // already-acked lower sequence sitting behind it.
-        while let Some(front) = self.tx_window.front() {
-            if covered(front.packet.sequence) {
-                // Drain the entry and — if it was never retransmitted —
-                // feed the round-trip time into the RTO smoother. This
-                // is Karn's algorithm: only un-retransmitted samples are
-                // unambiguous (we know exactly which send the ack matches).
-                let entry = self
-                    .tx_window
-                    .pop_front()
-                    .expect("front was Some inside the while loop");
-                if entry.retransmit_count == 0 {
-                    let rtt = now.duration_since(entry.last_sent);
-                    self.rto.on_sample(rtt);
-                }
-            } else {
-                break;
-            }
-        }
-
-        // Same drain logic against unsent_packets: queued entries can be
-        // acked too. No RTT sample here — queued entries are by
-        // definition past the trivial "just sent" case and the timing
-        // wouldn't be informative.
-        while let Some(front) = self.unsent_packets.front() {
-            if covered(front.packet.sequence) {
-                self.unsent_packets.pop_front();
-            } else {
-                break;
-            }
-        }
-
-        // Promote oldest queued entries into the freed TX-window slots so
-        // the retransmit scan can fire on them. Preserve `last_sent` —
-        // if the entry sat in the queue past RTO, the next
-        // `check_timeouts` pass will retransmit it (correct: bytes went
-        // on the wire when queued, no ack means lost in flight).
-        while self.tx_window.len() < consts::TX_WINDOW_SIZE {
-            match self.unsent_packets.pop_front() {
-                Some(entry) => self.tx_window.push_back(entry),
-                None => break,
-            }
-        }
 
         Ok(())
     }
@@ -666,7 +603,7 @@ impl Channel {
 
     /// Mark the receive clock as just-now. Use after observing peer-
     /// originated traffic that doesn't flow through `receive_packet` /
-    /// `process_acks` (e.g., raw datagram counted at the socket layer).
+    /// `process_ack` (e.g., raw datagram counted at the socket layer).
     pub fn touch_received(&mut self) {
         self.last_received = self.clock.now();
     }

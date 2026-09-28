@@ -89,24 +89,35 @@ pub mod consts {
     /// wedged channel logs a steady trickle rather than a flood.
     pub const RX_STALL_REWARN_MS: u64 = 10_000;
 
+    /// How long a transmit hole may stay open before the watchdog
+    /// (`Channel::check_tx_hole`) warns: the peer has acked a later
+    /// reliable packet but not an earlier one, so it is holding every
+    /// reliable message behind the missing one. One resend after a single
+    /// loss closes it well inside this, as it does for [`RX_STALL_WARN_MS`].
+    pub const TX_HOLE_WARN_MS: u64 = 2_000;
+
+    /// Minimum spacing between repeat warnings for one open transmit hole.
+    pub const TX_HOLE_REWARN_MS: u64 = 10_000;
+
     /// Transmit window size — limits unacknowledged in-flight reliable
     /// packets per channel.
     ///
-    /// Pinned at **32** because the SGW client's `ChannelInternal` slot
-    /// store is sized from a runtime config value at `[ChannelInternal+0x2C]`
-    /// that defaults to 32 in the unmodified binary. Sending more than 32
-    /// in-flight reliable packets would let two seqs differing by 32 collide
-    /// on the same slot in the client's `[+0x40]` hash table (mask at
-    /// `[+0x44]` = `capacity - 1`), causing `queueAckForPacket` at
-    /// `ghidra://SGW.exe@0x0158cba0` to overwrite the older unacked entry —
-    /// the server would then phantom-ack the older seq when the newer one
-    /// was actually acked.
+    /// Still **32**, but not for the reason first given. The value was
+    /// chosen on the belief that the unmodified client's receive slot
+    /// store holds 32 entries. It holds 512: `Channel`'s constructor
+    /// (`ghidra://SGW.exe@0x01576bf0`) writes `0x200` to `Channel+0x2c`,
+    /// and `ChannelInternal`'s constructor (`ghidra://SGW.exe@0x0158c7b0`)
+    /// reads it at `0x0158C801` (`MOV EAX,[EDI+0x2C]`, not a constant) for
+    /// both the out-of-window bound (`+0x30`) and the slot-store capacity
+    /// (mask `0x1FF` at `+0x44`). The client's own log agrees: in
+    /// `debug/lomiada-broke-in-hallway02/` it buffered 210 packets above
+    /// one gap without a slot collision. A client patched down to 32 is
+    /// not the stock client. Raising this value is #353.
     ///
-    /// This constant can be raised once the SGW.exe binary is patched to
-    /// widen the slot store (a 3-byte patch at VA `0x0158C801` rewriting
-    /// the capacity push). Until that ships, server-side overflow is
-    /// handled by the deferred-send queue (see [`MAX_UNSENT_PACKETS`])
-    /// rather than by raising this value.
+    /// The cap does not limit what goes on the wire: a send past it goes
+    /// out at once and is tracked in the deferred-send queue (see
+    /// [`MAX_UNSENT_PACKETS`]) until an ACK frees a slot. It only decides
+    /// which outstanding packets the retransmit scan looks at.
     pub const TX_WINDOW_SIZE: usize = 32;
 
     /// Per-channel cap on the deferred-send queue used when the TX window
