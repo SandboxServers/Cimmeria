@@ -88,6 +88,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - [Cooked-dialog override crash — dialog ids 100100/100101](cooked-dialog-override-crash-na-unnumbered.md) — client crash on map load; >65535 element-key hypothesis **REFUTED** by same-day live headless-Ghidra decompile of the actual category-5 instantiations; root cause open, new lead is novel `SpeakerID=754`.
 - [Headless-Ghidra decompile workaround](headless-ghidra-decompile-workaround.md) — **[USE THIS FIRST for any live RE need]** — `analyzeHeadless.bat` + a custom `GhidraScript` gives decompile/xref/string-search with no GUI and no MCP bridge, sidestepping the ToolSearch tools/list_changed gap entirely; recipe, gotchas, and the N:/X: triage pattern for template-instantiated functions.
 
+## Ammo system (AM-01, ammo campaign, 2026-09-28)
+
+- [Ammo system AM-01 findings](ammo-system-am01.md) — **[PROMOTE → docs/reverse-engineering/findings/ammo-system.md DONE]** — no reserve exists in the client schema (`knownAmmoTypes` is a discovery flag, not a count); `getAmmoTypes`/`getCurrentAmmoType`/`requestAmmoChange` all hit the same live `SGWPlayer+0x8c → *+0x24` container cache as the bandolier active-slot map (not cooked data); toggle abilities 715/719 are independent of `requestAmmoChange`; `docs/**/*.md` CRLF claim does NOT hold for `docs/reverse-engineering/findings/` (verified LF in git HEAD) — check the sibling file before assuming.
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.
