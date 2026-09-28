@@ -2,12 +2,12 @@
 title: "Build system: toolchain, profiles, concurrency and disk"
 type: explanation
 audience: engineers and agent operators
-last_updated: 2026-09-26
+last_updated: 2026-09-28
 ---
 
 # Build system: toolchain, profiles, concurrency and disk
 
-> **Status:** Accepted and implemented (2026-09-26, `build/toolchain-overhaul`). Measured results are in [Results](#results).
+> **Status:** Accepted and implemented (2026-09-26, `build/toolchain-overhaul`). The sccache and disk fixes of §3–§5 followed on 2026-09-28 (#1023). Measured results are in [Results](#results) and [sccache and disk results](#sccache-and-disk-results-2026-09-28).
 > **Scope:** how Cimmeria's Rust workspace is compiled on developer and agent machines and in CI, and why. The companion [services-crate-split.md](services-crate-split.md) covers the crate layout.
 
 ## Context
@@ -53,9 +53,13 @@ Bumping the version is a deliberate PR: change the file, run the pre-PR checklis
 
 - **Slots:** `LANE_SLOTS`, else the number in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (4 on the 64 GB development machine, where the job log showed at least 27 GB free with four builds running), else 2. `--exclusive` takes every slot.
 - **Jobs:** `CARGO_BUILD_JOBS` defaults to the core count divided by the slot count (at least 4), so a full lane doesn't oversubscribe the CPU.
-- **Job log:** every job appends one JSON line to `%LOCALAPPDATA%\cimmeria-build\metrics\jobs.jsonl`. The line records the start time, the wait for a slot, the run time, the exit code, the worktree and commit, the settings (jobs, incremental, Dev Drive or local target, sccache), how many other builds were running, the lowest free RAM during the job, and the sccache hits and misses. `LANE_METRICS=0` turns it off. See §10 for the report.
-- **Compiler cache:** sccache is the `RUSTC_WRAPPER` when installed, with one shared cache.
-- **Incremental builds everywhere; sccache for third-party crates only:** workspace crates build incrementally (the dev profile's default) in the main checkout and in every worktree, and sccache passes them through uncached. Worktrees first built with `CARGO_INCREMENTAL=0`, so that sccache could hand a worker the workspace crates it didn't touch. It never did. sccache keys a crate by its absolute path, so one worktree's crates can't hit in another: over the first 100 lane jobs the hit rate was 0%. Meanwhile the edit loop lost its incremental reuse. Re-enabling incremental cut an edit-then-`cargo check` of `cimmeria-cell-content` and `cimmeria-services` from 16.6–17.7 s to 5.5 s. sccache refuses to run when `CARGO_INCREMENTAL` is set to anything but `0`, so the lane drops sccache when a caller sets it.
+- **Job log:** every job appends one JSON line to `%LOCALAPPDATA%\cimmeria-build\metrics\jobs.jsonl`. The line records the start time, the wait for a slot, the run time, the exit code, the worktree and commit, the settings (jobs, incremental, Dev Drive or local target, sccache), how many other builds were running, the lowest free RAM during the job, the sccache hits and misses, the free disk at the start (`disk_free_gb`) and the incremental sessions pruned after it (`pruned_mb`). `LANE_METRICS=0` turns it off. See §10 for the report.
+- **Compiler cache:** sccache caches third-party crates in one shared cache, for every worktree. `RUSTC_WRAPPER` is not sccache itself but [`sccache-wrap.rs`](../../tools/build-lane/sccache-wrap.rs), which the lane compiles with plain `rustc` on first use into `%LOCALAPPDATA%\cimmeria-build\bin\sccache-wrap\<source hash>\sccache.exe`. The wrapper removes `CARGO_TARGET_DIR`, `CARGO_BUILD_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` from sccache's environment, then runs it. It exists because sccache hashes every `CARGO_*` variable into a Rust cache key (all but `CARGO_MAKEFLAGS`, `CARGO_REGISTRIES_*`, `CARGO_BUILD_JOBS` and `CARGO_ENCODED_RUSTFLAGS`). With each worktree's own `CARGO_TARGET_DIR` in the key, the same `tokio` got a different key in every worktree: 124 hits against 66,934 misses on 2026-09-27. Cargo has already read the variable when it runs the wrapper, and rustc gets every path it needs as an argument (`--out-dir`, `-L`, `--extern`), which sccache leaves out of the key. See the [results](#sccache-and-disk-results-2026-09-28).
+  - **What still misses across worktrees, on purpose.** A crate that reads `OUT_DIR` at compile time (`include!(concat!(env!("OUT_DIR"), ...))`) lists it in its dep-info, and sccache hashes its value, which names the worktree's target dir. So its build is never replayed into another worktree, where a baked-in path such as utoipa-swagger-ui's would point at the wrong target dir ([sccache#2870](https://github.com/mozilla/sccache/issues/2870)). `serde`, `serde_core` and `thiserror` are such crates, and every crate built on them misses as well, because their metadata differs per worktree. That is about 22% of the third-party crates.
+  - **`SCCACHE_BASEDIRS`** is set to the Dev Drive target root and the main checkout. sccache 0.18 reads it once, when its server starts, and applies it only to C/C++ compiles (none of ours go through sccache today), so it does nothing for Rust. The wrapper is the Rust fix.
+- **Incremental builds everywhere; sccache for third-party crates only:** workspace crates build incrementally (the dev profile's default) in the main checkout and in every worktree, and sccache passes them through uncached. Worktrees first built with `CARGO_INCREMENTAL=0`, so that sccache could hand a worker the workspace crates it didn't touch. It never did. sccache hashes a crate's `CARGO_MANIFEST_DIR`, the worktree's own path for workspace crates, so one worktree's crates can't hit in another: over the first 100 lane jobs the hit rate was 0%. Meanwhile the edit loop lost its incremental reuse. Re-enabling incremental cut an edit-then-`cargo check` of `cimmeria-cell-content` and `cimmeria-services` from 16.6–17.7 s to 5.5 s. sccache refuses to run when `CARGO_INCREMENTAL` is set to anything but `0`, so the lane drops sccache when a caller sets it.
+- **Stale incremental sessions are pruned after each job.** rustc keeps the session it started from next to the one it just wrote, in every unit dir under `<target>/<profile>/incremental/`, and deletes it only when that unit next compiles. It only ever loads the newest finished session, so the older one is dead weight: 3.0 of 6.7 GB of one worktree's incremental dir. After the command, the lane deletes each unit's older sessions and any `-working` session more than an hour old (a compile that died), unless another lane job is building in the same worktree. This never makes cargo or rustc rebuild anything. `LANE_PRUNE=0` turns it off.
+- **Low-disk guard.** Before running the command, the lane checks the free space on the target dir's drive. Below `LANE_MIN_FREE_GB` (default 10), it prunes the worktree's stale sessions, and if that isn't enough it exits with code 28 and a message that names `rm-worktree.sh --merged` and `sweep.ps1`. Without the guard, cargo runs until the disk is full and fails part-way with "os error 112", as every agent's build did twice on 2026-09-28. `LANE_MIN_FREE_GB=0` turns it off.
 - **Per-worktree target dirs:** each worktree keeps its own target dir. Cargo locks a target (or `build-dir`) for the whole build, so a shared one would serialise every worktree. Fine-grained locking is nightly-only and was reported deadlocking in September 2026 ([cargo#17508](https://github.com/rust-lang/cargo/issues/17508)).
 
 `reload-db.sh` and `live-db-test.sh` live alongside it and give each worktree its own test database. `mk-worktree.sh` creates a buildable worktree, and `rm-worktree.sh` retires one once its PR merges: target dir, `external/` junction, worktree, branch and test database. Per-worktree target dirs make that cleanup part of the design. Left behind, they filled the 150 GB Dev Drive on 2026-09-26.
@@ -67,21 +71,22 @@ Bumping the version is a deliberate PR: change the file, run the pre-PR checklis
 - **Defender:** Defender scans a trusted Dev Drive asynchronously (performance mode). To confirm it, open Windows Security → **Virus & threat protection → Manage settings → Dev Drive protection**, which lists each volume. The Dev Drive should say "Asynchronous scanning is on". Don't rely on `(Get-MpPreference).PerformanceModeStatus`: it is not a per-volume reading, and on this machine it read `1` ("Disabled") while that page reported the drive as scanned asynchronously.
 - **Block cloning:** ReFS copies files within the volume by cloning blocks. `Copy-WarmTarget.ps1`, called by `mk-worktree.sh`, seeds a new worktree's target dir from a warm one in seconds, at almost no disk cost.
 - **What seeding reuses:** only third-party crates. Cargo keys workspace crates by their source path, so those rebuild once per worktree.
+- **What seeding drops:** build-script output that names the source target dir. Cargo rewrites a unit's own `OUT_DIR` in its `output` file when the target dir moves, but not other paths: a `cargo:` line naming another unit's out dir (aws-lc-rs passes on aws-lc-sys's), or generated Rust that bakes in a path (utoipa-swagger-ui). Those would point at the source worktree, and at nothing once it is retired; two workspace clippy runs failed that way on 2026-09-27 (#962). `Copy-WarmTarget.ps1` deletes such a unit's build dir and fingerprint, and cargo reruns its build script.
 
 Source code stays where it is.
 
 ### 5. Cleanup is scheduled, not ad hoc
 
-`tools/build-hygiene/sweep.ps1` runs `cargo-sweep` over every target dir on the machine (the main checkout, `.claude/worktrees/*` and the Dev Drive). It does four things:
+`tools/build-hygiene/sweep.ps1` trims every target dir on the machine (the main checkout, `.claude/worktrees/*` and the Dev Drive). It:
 
-- keeps only artifacts built by the pinned toolchain;
-- drops artifacts unused for `-Days` (default 14);
-- prunes stale incremental caches, which cargo-sweep does not touch;
+- keeps only artifacts built by the pinned toolchain, and drops artifacts unused for `-Days` (default 14), through `cargo-sweep`;
+- prunes incremental caches, which cargo-sweep does not touch: the stale sessions of §3 in every unit dir, and whole unit dirs not compiled for `-IncrementalHours` (default 24). Neither makes cargo rebuild anything: a unit without a cache compiles from scratch the next time it changes;
+- deletes feature variants that no build has read for `-VariantHours` (default 24). A variant is one build unit, `.fingerprint\<package>-<hash>` with its files in `deps\` and `build\`: the crate built with another feature set, profile or dependency graph. Every rebase that changes the workspace-hack or `Cargo.lock` leaves a full set behind; one worktree held four test executables of `cimmeria-cell-world`, one per dependency graph it had been built against that day. Cargo reads a unit's fingerprint files in every build that includes it, so their last-access time says when a build last used it. The most recently used variant of each package is always kept, and the step is skipped when the volume doesn't record last-access times. A deleted variant that is needed again is rebuilt, from sccache for third-party crates;
 - optionally removes Dev Drive target dirs whose worktree is gone (`-RemoveOrphans`), and the old in-worktree target dirs once builds have moved to the Dev Drive (`-RemoveLegacyTargets`).
 
-Don't run it while something is building.
+`-DryRun` reports what it would free per target dir, and `-Only <worktree>` limits it to named worktrees. It skips a target dir a lane job is building in, but can't see builds outside the lane, so don't run it while anything else builds.
 
-On 2026-09-26 this freed 84.7 GB of stale artifacts and 70.6 GB of incremental caches from the main checkout alone.
+On 2026-09-26 this freed 84.7 GB of stale artifacts and 70.6 GB of incremental caches from the main checkout alone. The per-worktree figures for the 2026-09-28 additions are in the [results](#sccache-and-disk-results-2026-09-28).
 
 ### 6. Feature unification with cargo-hakari
 
@@ -146,7 +151,7 @@ GitHub keeps 10 GB of Actions cache per repository and evicts the oldest entries
 
 - One toolchain, one set of artifacts, and CI clippy equals local clippy.
 - Target dirs stop growing without bound, as long as the sweep runs.
-- Agent worktrees share compiled crates through sccache and need a Dev Drive only for the extra Defender and cloning gains.
+- Agent worktrees share compiled third-party crates through sccache (78% hits in a fresh worktree, §3) and need a Dev Drive only for the extra Defender and cloning gains.
 - Bumping Rust is now a visible, reviewable change instead of something CI does silently.
 - Once §6 lands, a `workspace-hack` dependency appears in every crate's manifest. `cargo hakari manage-deps` maintains it; don't edit it by hand.
 
@@ -187,3 +192,44 @@ The final run's target dir was on the Dev Drive. That is part of what is being m
 - **Lane slots.** A cold build now peaks at about 3 GB. The job log never saw less than 27 GB free with four builds running, so four slots of `cores / 4` jobs each stay the default. The CPU, not memory, is now the limit on more.
 
 The raw samples, `summary.json` files and cargo `--timings` reports stay in the measuring session's scratchpad. To re-measure, run the harness from a fresh worktree, using the same flags as the table.
+
+## sccache and disk results (2026-09-28)
+
+Measured for #1023 on the same machine, while other agents were building, so run times are noisy. The hit counts are exact: the runs used a private sccache server (`SCCACHE_SERVER_PORT`) with an empty cache of its own, so no other build touched them. Every run is a line in the lane's job log.
+
+### sccache hits
+
+Before the fix, the lane log recorded 2,536 hits against 72,958 misses (3.4%) on 2026-09-26, and 124 against 66,934 (0.2%) on 2026-09-27.
+
+The controlled runs used four fresh worktrees with empty target dirs on the Dev Drive, run one after another. Each ran `cargo check -p cimmeria-common`, which sends the workspace-hack's third-party crates through sccache: 308 compiles.
+
+| Run | Lane | Hits | Misses | Hit rate | Run time |
+|---|---|---|---|---|---|
+| 1st worktree, empty cache | before (main's `lane.sh`) | 0 | 308 | 0% | 77.3 s |
+| 2nd worktree | before | 0 | 308 | 0% | 63.5 s |
+| 3rd worktree | after | 0 | 308 | 0% | 56.9 s |
+| 4th worktree | after | 241 | 67 | **78%** | 37.7 s |
+
+The 3rd run misses everything because the key no longer contains the target dir, so the entries runs 1 and 2 wrote don't match. The 4th run shows what a new worktree gets once any other worktree has built the same crates.
+
+A freshly seeded worktree gets the same rate. Its target dir was seeded with `Copy-WarmTarget.ps1` from a check-only target dir, so `cargo build -p cimmeria-common` had to compile the 171 rlibs the seed lacked. Another worktree had already run the same build. The seeded worktree scored 132 hits and 39 misses (77%) and ran in 21.4 s, against 31.4 s in the worktree that filled the cache.
+
+The misses are `serde`, `serde_core` and `thiserror`, which hash `OUT_DIR` (§3), and 36 others, mostly crates built on them, such as `tokio`, `hyper`, `sqlx-core`, `chrono` and `url`.
+
+### Disk
+
+`sweep.ps1 -DryRun` over the Dev Drive target dirs that no lane job was building in at the time, with the default windows:
+
+| Target dir | Before | After | Freed: incremental | Freed: variants |
+|---|---|---|---|---|
+| main checkout | 23.9 GB | 20.1 GB | 3.8 GB | 0 |
+| worktree A (campaign, active all day) | 12.5 GB | 9.5 GB | 3.0 GB | 0 |
+| worktree B (agent) | 9.0 GB | 7.4 GB | 1.6 GB | 0 |
+| worktree C (agent) | 8.9 GB | 7.9 GB | 1.0 GB | 0 |
+| **Total** | **54.3 GB** | **44.9 GB** | **9.4 GB (−17%)** | 0 |
+
+- **Incremental.** Nearly all of the saving is the stale sessions of §3, about 45% of each incremental dir. The lane now removes those after every job, so a worktree no longer builds them up between sweeps.
+- **Variants.** None of these dirs held a variant that no build had read for 24 hours. With `-VariantHours 6`, worktree A would have gone from 12.5 to 5.4 GB and the main checkout from 23.9 to 14.4 GB. The window stays at 24 hours so that a variant an agent still uses isn't rebuilt from scratch.
+- **A real run on this PR's worktree.** After building `cimmeria-cell-world` and its tests twice with `LANE_PRUNE=0`, `sweep.ps1 -Only <worktree>` took the target dir from 2.2 to 1.8 GB, and its incremental dir from 1.02 to 0.65 GB. The next edit-then-`cargo check` still built incrementally (2.1 s). With pruning on, the lane removed 109 MB and 62 MB after two edit-then-check jobs.
+
+#962's other workstream A item, measuring `debug = 0` or `strip = "debuginfo"` for test builds, is not part of this change.
