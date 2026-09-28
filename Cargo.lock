@@ -1609,6 +1609,7 @@ dependencies = [
 name = "cimmeria-wire-log"
 version = "0.1.0"
 dependencies = [
+ "cimmeria-entity",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
  "serde",
