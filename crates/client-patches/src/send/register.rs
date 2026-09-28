@@ -110,3 +110,133 @@ fn is_current<L: LuaStack>(lua: &mut L) -> bool {
         is_function
     })
 }
+
+#[cfg(test)]
+mod tests {
+    //! Registration against the Lua stack simulator: idempotent, repairs a
+    //! lost or stale table, leaves the overlay alone, restores the stack.
+
+    use super::*;
+    use crate::deliver::fake_lua::{FakeLua, V};
+
+    fn s(text: &str) -> V {
+        V::Str(text.into())
+    }
+
+    fn registered_table(lua: &FakeLua) -> V {
+        lua.global(NATIVE_TABLE).expect("the global is set")
+    }
+
+    #[test]
+    fn registration_builds_the_table_once() {
+        let mut lua = FakeLua::new();
+        lua.stack.push(V::Str("game".into()));
+        assert_eq!(
+            ensure(&mut lua),
+            Registration::Registered { replaced: false }
+        );
+        assert_eq!(lua.stack, [V::Str("game".into())], "stack restored");
+
+        let table = registered_table(&lua);
+        for native in Native::ALL {
+            assert_eq!(
+                lua.field(&table, native.lua_name()),
+                Some(V::Func(format!("native:{}", native.lua_name())))
+            );
+        }
+        assert_eq!(lua.field(&table, VERSION_KEY), Some(s(VERSION)));
+        assert_eq!(
+            lua.render(&table).matches("fn native:").count(),
+            6,
+            "exactly the six functions"
+        );
+
+        // Idempotent: the same table stays, so a reference the overlay holds
+        // keeps working.
+        assert_eq!(ensure(&mut lua), Registration::AlreadyPresent);
+        assert_eq!(registered_table(&lua), table);
+        assert_eq!(lua.stack, [V::Str("game".into())]);
+    }
+
+    #[test]
+    fn registration_never_touches_the_overlay_table() {
+        let mut lua = FakeLua::with_overlay(&["onOpen"]);
+        let overlay = lua.global("CimmeriaBM");
+        ensure(&mut lua);
+        assert_eq!(lua.global("CimmeriaBM"), overlay);
+        assert_eq!(lua.field(overlay.as_ref().unwrap(), "search"), None);
+    }
+
+    /// A UI reload that loses the global, a stale version, a missing function
+    /// or a foreign value each get a fresh table.
+    #[test]
+    fn registration_repairs_a_missing_or_stale_table() {
+        let mut lua = FakeLua::new();
+        ensure(&mut lua);
+
+        lua.set_global(NATIVE_TABLE, V::Nil);
+        assert_eq!(
+            ensure(&mut lua),
+            Registration::Registered { replaced: false }
+        );
+
+        let table = registered_table(&lua);
+        lua.set_field_of(&table, VERSION_KEY, s("0.0.0-old"));
+        assert_eq!(
+            ensure(&mut lua),
+            Registration::Registered { replaced: true }
+        );
+        assert_ne!(registered_table(&lua), table);
+
+        let table = registered_table(&lua);
+        lua.set_field_of(&table, "bid", V::Nil);
+        assert_eq!(
+            ensure(&mut lua),
+            Registration::Registered { replaced: true }
+        );
+        assert_eq!(
+            lua.field(&registered_table(&lua), "bid"),
+            Some(V::Func("native:bid".into()))
+        );
+
+        lua.set_global(NATIVE_TABLE, s("not a table"));
+        assert_eq!(
+            ensure(&mut lua),
+            Registration::Registered { replaced: true }
+        );
+        assert_eq!(ensure(&mut lua), Registration::AlreadyPresent);
+    }
+
+    /// Out of Lua memory part-way, the registration reports it, the stack is
+    /// restored, and the next attempt succeeds.
+    #[test]
+    fn registration_survives_running_out_of_memory() {
+        let mut lua = FakeLua::new();
+        lua.stack.push(V::Num(7));
+        lua.alloc_budget = Some(5);
+        assert!(matches!(
+            ensure(&mut lua),
+            Registration::SetupError { status: 4, .. }
+        ));
+        assert_eq!(lua.stack, [V::Num(7)]);
+        assert_eq!(
+            lua.global(NATIVE_TABLE),
+            None,
+            "nothing half-built is visible"
+        );
+
+        lua.alloc_budget = None;
+        assert_eq!(
+            ensure(&mut lua),
+            Registration::Registered { replaced: false }
+        );
+    }
+
+    #[test]
+    fn registration_reports_a_full_stack() {
+        let mut lua = FakeLua::new();
+        lua.room = 1;
+        assert_eq!(ensure(&mut lua), Registration::NoStackSpace);
+        assert!(lua.stack.is_empty());
+    }
+}
