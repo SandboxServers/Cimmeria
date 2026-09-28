@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 7,963 |
-| Files with tests | 1,318 |
-| Gated in CI (every crate but CI's exclude list) | 7,484 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,416 |
-| Inventory threshold (5% of the tests) | 398 |
+| Tests (`#[test]` / `#[tokio::test]`) | 7,981 |
+| Files with tests | 1,321 |
+| Gated in CI (every crate but CI's exclude list) | 7,502 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,418 |
+| Inventory threshold (5% of the tests) | 399 |
 
 <!-- /gen:tests-totals -->
 
@@ -91,10 +91,10 @@ with no file in this directory yet.
 | `crates/base-session` | `cimmeria-base-session` | 646 | 119 | 327 | yes | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 534 | 112 | 386 | yes | none |
 | `crates/cell-combat` | `cimmeria-cell-combat` | 532 | 84 | 38 | yes | none |
-| `crates/cell-world` | `cimmeria-cell-world` | 507 | 84 | 29 | yes | none |
+| `crates/cell-world` | `cimmeria-cell-world` | 509 | 85 | 31 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 484 | 101 | 17 | yes | none |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
-| `crates/cell-console` | `cimmeria-cell-console` | 405 | 64 | 0 | yes | none |
+| `crates/cell-console` | `cimmeria-cell-console` | 420 | 66 | 0 | yes | none |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 376 | 55 | 6 | yes | none |
 | `crates/entity` | `cimmeria-entity` | 365 | 43 | 0 | yes | [entity.md](entity.md) |
 | `crates/mercury` | `cimmeria-mercury` | 287 | 48 | 0 | yes | [mercury.md](mercury.md) |
@@ -106,7 +106,7 @@ with no file in this directory yet.
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 156 | 42 | 29 | yes | none |
 | `crates/base` | `cimmeria-base` | 153 | 27 | 10 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 134 | 30 | 0 | no | none |
-| `crates/resources` | `cimmeria-resources` | 127 | 19 | 0 | yes | none |
+| `crates/resources` | `cimmeria-resources` | 128 | 19 | 0 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 91 | 14 | 0 | no | none |
 | `crates/discord` | `cimmeria-discord` | 76 | 15 | 0 | yes | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 76 | 8 | 0 | yes | [upk-objects.md](upk-objects.md) |
