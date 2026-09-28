@@ -7,7 +7,7 @@ use cimmeria_entity::abilities::AbilityDef;
 /// Empty chain engine for tests that don't exercise content chains.
 /// The kill-credit hook is a no-op when the resolved-action list is
 /// empty, so these tests don't need real chain content loaded.
-fn empty_engine() -> ChainEngine {
+pub(super) fn empty_engine() -> ChainEngine {
     ChainEngine::new()
 }
 
@@ -15,7 +15,7 @@ fn empty_engine() -> ChainEngine {
 /// both in the same Castle space. Ability 7 is a 30-unit ranged
 /// ability with no ammo requirement — focuses the tests on loop
 /// semantics, not ammo.
-fn make_auto_cycle_mgr() -> SpaceManager {
+pub(super) fn make_auto_cycle_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();

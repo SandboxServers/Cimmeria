@@ -40,7 +40,9 @@ fn fire_refusal(
     };
     // The warmup interrupts a caster that moves, so this only trips on a
     // point staged for an earlier cast; re-checked all the same.
-    if caster.position.distance_to(&point) > deploy_max_range(ability) {
+    if caster.position.distance_to(&point)
+        > deploy_max_range(ability, caster, &space_mgr.weapon_ranges)
+    {
         return Some("out_of_range");
     }
     if !space_mgr.spawn_templates.contains_key(&spec.template_id) {

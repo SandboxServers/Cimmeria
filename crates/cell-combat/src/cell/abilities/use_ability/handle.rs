@@ -11,7 +11,7 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
-    ability_max_range, serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE,
+    caster_range_bounds, serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE,
     AF_DO_NOT_ACTIVATE_AUTO_CYCLE, TIMER_ABILITY_COOLDOWN,
 };
 
@@ -141,7 +141,7 @@ pub async fn handle_use_ability(
     // ── Validation (immutable checks first to avoid borrow conflicts) ──
 
     // Pre-checks with immutable borrows
-    let mut out_of_range = false;
+    let mut out_of_range = None;
     // A player pressed a server-known ability they do not know: answered
     // with `onErrorCode` below, once the entity borrow ends.
     let mut not_known = false;
@@ -280,19 +280,14 @@ pub async fn handle_use_ability(
                     return false;
                 }
                 // Range check, in metres: the loader converted the
-                // ability's UE3-unit `max_range` (#919).
-                let max_range = ability_max_range(ability_def.as_ref());
-                let dist = entity.position.distance_to(&target.position);
-                if dist > max_range {
-                    tracing::debug!(
-                        entity_id,
-                        ability_id,
-                        distance = dist,
-                        max_range,
-                        "useAbility: target out of range"
-                    );
-                    out_of_range = true;
-                }
+                // ability's UE3-unit ranges (#919). A player is also held
+                // to the ability's `min_range` (#1016), and a `UseWeaponRange`
+                // ability to its weapon's reach (#1017). See `cast_range`.
+                out_of_range = super::cast_range::check_cast_range(
+                    caster_range_bounds(ability_def.as_ref(), entity, &space_mgr.weapon_ranges),
+                    entity.position.distance_to(&target.position),
+                    entity.is_player,
+                );
             }
         }
     }
@@ -312,19 +307,17 @@ pub async fn handle_use_ability(
         return false;
     }
 
-    if out_of_range {
-        // Send onErrorCode to player: ERRORCODE_SYSTEM_Ability=0, CONDITION_FEEDBACK_OutsideWeaponRange=42
-        let mut err_args = Vec::with_capacity(7);
-        err_args.push(0u8); // SystemID
-        err_args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
-        err_args.extend_from_slice(&42u16.to_le_bytes()); // ErrorCodeID
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: 121, // ON_ERROR_CODE
-                args: err_args,
-            })
-            .await;
+    if let Some(failure) = out_of_range {
+        super::cast_range::refuse_out_of_range(
+            entity_id,
+            ability_id,
+            target_id as u32,
+            failure,
+            "launch",
+            tx,
+            space_mgr,
+        )
+        .await;
         return false;
     }
 

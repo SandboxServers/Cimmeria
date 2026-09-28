@@ -42,6 +42,7 @@ mod regions;
 mod respawners;
 mod stargates;
 mod templates;
+mod weapon_ranges;
 mod worlds;
 
 #[cfg(test)]
@@ -81,6 +82,7 @@ pub use regions::client_would_hint_region;
 pub use respawners::{load_respawners, offered_in_world, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;
+pub use weapon_ranges::load_weapon_ranges;
 // The `entity_templates` SELECT + row mapper, shared between the cell's
 // startup template cache and the base-side GM spawn handler so a schema
 // change can only be missed in one place (PR #662 review, finding 3).

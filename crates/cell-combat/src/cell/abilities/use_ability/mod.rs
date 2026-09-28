@@ -4,6 +4,9 @@
 //! - `handle` — the main `handle_use_ability` validate → consume → fire →
 //!   resolve flow (incl. the archetype-default weapon redirect and the
 //!   auto-cycle arm/clear classification).
+//! - `cast_range` — the range gate shared by the launch and the warmup
+//!   fire: the maximum for every caster, the `min_range` for players
+//!   (#1016), and the `onErrorCode` 42 refusal.
 //! - `fire_los` — the players-only fire-time line-of-sight gate (NA31).
 //! - `auto_reload` — the post-fire auto-reload trigger (`maybe_trigger_auto_reload`).
 //! - `kill_credit` — `handle_use_ability_with_kill_credit`, the content-engine
@@ -26,6 +29,7 @@
 //!   attack-animation WARNs (NA43).
 
 mod auto_reload;
+mod cast_range;
 mod fire;
 mod fire_los;
 mod handle;

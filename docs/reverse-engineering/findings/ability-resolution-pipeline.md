@@ -135,7 +135,11 @@ in metres and ability ranges in metres after the conversion.
 **Cimmeria.** `load_ability_defs` (`crates/cell-catalog/src/cell/spawner/abilities.rs`) divides both
 columns by `ABILITY_RANGE_UNITS_PER_METRE` (100) once, and `AbilityDef::min_range` / `max_range` are
 metres (`crates/entity/src/abilities/range.rs`). Before #919 the raw value was compared with metre
-distances, so 1652 reached 3000 m.
+distances, so 1652 reached 3000 m. Since #1017 `ability_range_bounds` in the same file mirrors the
+getters' `flags & 4` branch: a `UseWeaponRange` ability takes the equipped weapon's `{min, max}` pair
+(ranged or melee by `IsRanged`), loaded in metres by `spawner::load_weapon_ranges`, and falls back to its
+own range when no weapon with that reach is equipped. What `FUN_00d29da0` returns with no weapon
+equipped is not yet verified against the binary.
 
 ### Cimmeria implementation audit (2026-09-19)
 

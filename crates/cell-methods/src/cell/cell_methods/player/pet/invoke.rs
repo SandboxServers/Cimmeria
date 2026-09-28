@@ -292,8 +292,14 @@ pub(crate) fn check_invoke(
     }
     // The same resolution `handle_use_ability` makes, so this pre-check
     // never passes a cast the launch then refuses. Metres (#919).
-    let max_range =
-        cimmeria_entity::abilities::ability_max_range(space_mgr.ability_defs.get(&ability_id));
+    // The pet carries no weapon item, so a `UseWeaponRange` ability falls
+    // back to its own range (#1017).
+    let max_range = cimmeria_entity::abilities::caster_range_bounds(
+        space_mgr.ability_defs.get(&ability_id),
+        entity,
+        &space_mgr.weapon_ranges,
+    )
+    .max;
     if entity.position.distance_to(&target.position) > max_range {
         return Err(Refusal::debug(
             "out_of_range",

@@ -5,7 +5,10 @@ use tokio::sync::mpsc;
 
 use cimmeria_cell_catalog::cell::spawner::DeployableSpec;
 use cimmeria_common::Vector3;
-use cimmeria_entity::abilities::{ability_max_range, AbilityDef};
+use std::collections::HashMap;
+
+use cimmeria_entity::abilities::{caster_range_bounds, AbilityDef, WeaponRanges};
+use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::navigation::LineOfSight;
 
 use super::super::super::combat;
@@ -21,9 +24,14 @@ pub(super) const GROUND_SIGHT_HEIGHT: f32 = 0.5;
 
 /// The range a deployable may be placed at, metres: the ability's
 /// `max_range` (1012: 500 UE3 units, 5 m), or the server default for 0.
-/// The same number the launch range check uses.
-pub(super) fn deploy_max_range(ability: Option<&AbilityDef>) -> f32 {
-    ability_max_range(ability)
+/// The same number the launch range check uses, the weapon's reach for a
+/// `UseWeaponRange` ability included (#1017).
+pub(super) fn deploy_max_range(
+    ability: Option<&AbilityDef>,
+    caster: &CellEntity,
+    weapons: &HashMap<i32, WeaponRanges>,
+) -> f32 {
+    caster_range_bounds(ability, caster, weapons).max
 }
 
 /// Validate `ground` for `caster` casting `ability`, and return the point to
@@ -52,7 +60,9 @@ pub(in crate::cell::abilities) fn validate_ground_point(
         return Err(DeployRefusal::NotInSpace);
     };
     let point = Vector3::new(ground[0], ground[1], ground[2]);
-    if caster.position.distance_to(&point) > deploy_max_range(ability) {
+    if caster.position.distance_to(&point)
+        > deploy_max_range(ability, caster, &space_mgr.weapon_ranges)
+    {
         return Err(DeployRefusal::OutOfRange);
     }
     if let Some(occ) = space_mgr.occluder_of(caster_id) {
