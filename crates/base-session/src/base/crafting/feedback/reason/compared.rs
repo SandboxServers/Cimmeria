@@ -49,7 +49,10 @@ impl CraftReject {
         match *self {
             CraftReject::NotAvailableYet { .. }
             | CraftReject::Unavailable { .. }
-            | CraftReject::InductionFailed => Compared::default(),
+            | CraftReject::InductionFailed
+            | CraftReject::NothingToRespec
+            | CraftReject::NoPendingRespec
+            | CraftReject::RespecExpired { .. } => Compared::default(),
             CraftReject::QueueFull { limit } => Compared {
                 queue_limit: Some(limit),
                 ..Compared::default()

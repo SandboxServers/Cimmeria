@@ -27,6 +27,7 @@ use cimmeria_entity::crafting::CraftingState;
 use sqlx::PgPool;
 
 use super::feedback::{reject, CraftReject};
+use super::inventory_locks::take_inventory_locks;
 use super::persistence::load_crafting_state_locked;
 use super::request::CraftCtx;
 use super::sync::{push_asp, push_discipline};
@@ -159,6 +160,13 @@ pub async fn spend_in_db(
     discipline_id: i32,
 ) -> Result<Result<Learned, CraftReject>, SpendFailure> {
     let mut tx = pool.begin().await.map_err(SpendFailure::sql("begin"))?;
+    // The player-wide inventory key before the player row, the order every
+    // crafting write uses: an induction completion takes this key and
+    // changes expertise without locking the player row, so the spend's
+    // prerequisite check waits for it and reads the committed expertise.
+    take_inventory_locks(&mut tx, player_id, &[])
+        .await
+        .map_err(SpendFailure::sql("advisory_lock"))?;
     let Some(state) = load_crafting_state_locked(&mut tx, player_id)
         .await
         .map_err(SpendFailure::sql("lock_player"))?
@@ -176,7 +184,8 @@ pub async fn spend_in_db(
     let asp_after: i32 = sqlx::query_scalar(
         "UPDATE sgw_player \
          SET discipline_ids = array_append(discipline_ids, $2), \
-             applied_science_points = applied_science_points - 1 \
+             applied_science_points = applied_science_points - 1, \
+             applied_science_points_spent = applied_science_points_spent + 1 \
          WHERE player_id = $1 \
          RETURNING applied_science_points",
     )

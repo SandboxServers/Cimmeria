@@ -196,7 +196,8 @@ Crafting is mostly driven by the UI; little of it is typed.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/respeccraft` | Respec crafting skills | 🚧 Partly | none | `/respeccraft` |
+| `.respeccraft` | Unlearn every crafting discipline and get back the applied science points you spent on them, free. Blueprints and paradigm levels stay. Answer Yes to the prompt within 60 seconds | ✅ Yes | none | `.respeccraft` |
+| `/respeccraft` | The client's own slash command; what it sends is not known. Use `.respeccraft` | ❓ Unknown | none | `/respeccraft` |
 
 ### Minigames
 

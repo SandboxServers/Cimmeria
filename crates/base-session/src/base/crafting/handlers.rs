@@ -19,6 +19,7 @@ use sqlx::PgPool;
 
 use cimmeria_entity::crafting::CraftingState;
 
+use crate::base::crafting::inventory_locks::take_inventory_locks;
 use crate::base::crafting::persistence::{load_crafting_state_locked, save_crafting_state_in};
 use crate::base::crafting::sync::{push_asp, push_discipline, CraftClient};
 use crate::base::crafting::telemetry::{account_id_of, sql_error_class};
@@ -120,13 +121,19 @@ pub async fn handle_grant_expertise(
 /// The expertise grant's transaction: lock the row, add `amount` (clamped to
 /// `[0, 100]`), register the discipline if it is new, save, commit. Returns
 /// the persisted expertise.
-async fn grant_expertise_in_db(
+pub(super) async fn grant_expertise_in_db(
     pool: &PgPool,
     player_id: i32,
     discipline_id: i32,
     amount: i32,
 ) -> Result<i32, sqlx::Error> {
     let mut tx = pool.begin().await?;
+    // The save below rewrites every expertise row from this read. An
+    // induction completion changes expertise under the player-wide
+    // inventory key without locking the player row, so take that key
+    // first: otherwise a completion's +N committed between the read and the
+    // save is written back to its old value.
+    take_inventory_locks(&mut tx, player_id, &[]).await?;
     let mut state: CraftingState = load_crafting_state_locked(&mut tx, player_id)
         .await?
         .ok_or(sqlx::Error::RowNotFound)?;

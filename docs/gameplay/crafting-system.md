@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Crafting System
 
 > **Last updated**: 2026-09-27
-> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) research and reverse engineering (CR-08), alloying (CR-09) and crafting from a blueprint (CR-07). Respec is still a stub (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) research and reverse engineering (CR-08), alloying (CR-09) and crafting from a blueprint (CR-07), and so does respec (two steps: `.respeccraft`, then the prompt's Yes; CR-10). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -38,7 +38,7 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Research | DONE | Item and kickers checked at the request, rolled and consumed when the bar ends; +5 expertise and the blueprint on a success. CR-08 |
 | Reverse engineering | DONE | Exactly the named item is consumed when the bar ends; recovery rises with expertise (D-CR06). CR-08 |
 | Alloying | DONE | `base/crafting/alloy/` (CR-09), see [Alloying](#alloying) |
-| Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
+| Crafting respec | DONE | `base/crafting/respec/` (CR-10), see [Respec](#respec) |
 | Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) submit to it. See [Induction engine](#induction-engine) |
 | Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) build one |
 | Busy state lock | REPLACED | The induction queue serializes a player's crafting; there is no separate busy flag |
@@ -79,6 +79,24 @@ The discipline trainer (Ctrl+J) sends `spendAppliedSciencePoints(disciplineId)` 
 A refusal is a `CHAN_FEEDBACK` text line and writes nothing. Each one is logged as a `crafting` `rejected` event whose `reason` (`unknown_discipline`, `already_known`, `no_asp`, `paradigm_too_low`, `prerequisite_missing`, `prerequisite_expertise`) and compared values say which check failed; a success is a `learned` event with the ASP before and after. The event catalog is the `crafting` row of [observability.md](../architecture/observability.md). A database failure is refused as "Learning disciplines is unavailable right now. Nothing was changed." On success the discipline is known at expertise 1 and one ASP is spent; no blueprint is granted (D-CR04, blueprints come from Blueprint items and research). The client then gets `onUpdateDiscipline(id, 1)` and the new ASP total. A repeated request finds the discipline known and changes nothing.
 
 The four root disciplines (21 Biomedical, 40 Electronic, 59 Power Systems, 78 Materials Engineering) need Common level 5, which every character now starts at. The test rows 1 and 2 ("Basketweaving") need Common 1 and are treated like any other discipline.
+
+## Respec
+
+A crafting respec is free and resets the player to no disciplines (decisions D-CR02, D-CR16, D-CR23). It takes two steps, because the client sends `respecCrafting` (cell method 100, no arguments) only from the Yes button of the `onCraftingRespecPrompt` dialog (client method 112), and no client UI opens that dialog (`Crafting.lua:181-191`; [crafting-client-ui.md](../reverse-engineering/findings/crafting-client-ui.md) Q1):
+
+1. The player types `.respeccraft` in chat. It is the one `.`-console line any player may use; the cell consumes it and forwards `CellToBaseMsg::RespecCraftOpen`. If the player knows any discipline, the base sends `onCraftingRespecPrompt(0)` and opens a respec on the session for 60 seconds. The client shows "This will unlearn all your crafting knowledge" with the cost, 0 naquadah.
+2. Yes sends `respecCrafting`. With a respec open for that character and inside the window, one transaction locks the `sgw_player` row `FOR UPDATE`, clears `discipline_ids`, deletes the expertise rows, and refunds the ASP the player spent learning disciplines since the last respec (`sgw_player.applied_science_points_spent`, raised by each spend and reset by the respec). A discipline a GM granted (`.learndiscipline`, `.allcraft`) cost nothing and refunds nothing. Blueprints and racial paradigm levels are kept: they come from items the player used, not from disciplines (D-CR02). The client then gets `onDisciplineRespec` (137, which zeroes every discipline's expertise on screen), `onUpdateKnownCrafts` (139, the unchanged list) and the new ASP total.
+
+Before the transaction the player's induction queue is dropped (`queue_dropped`, `reason = respec`), so a queued craft, research or alloy never completes for a discipline the respec clears. The transaction takes the player-wide inventory lock before the player row, the order every crafting write uses, so it waits for a completion already running. The open respec is taken by the first `respecCrafting`, so a second or replayed one changes nothing. Every refusal is a `CHAN_FEEDBACK` line and writes nothing:
+
+| Case | Refusal text | `reason` |
+|---|---|---|
+| `.respeccraft` or the Yes with nothing to clear | "You have no crafting disciplines to unlearn. Nothing was changed." | `nothing_to_respec` |
+| `respecCrafting` with no respec open (a replay, a second Yes, a forged packet) | "No crafting respec is waiting to be confirmed. Type .respeccraft to start one." | `no_pending_respec` |
+| Yes after the 60-second window | "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." | `respec_expired` |
+| No database, or the transaction failed | "Crafting respec is unavailable right now. Nothing was changed." | `unavailable` |
+
+Events: `respec_prompted` (the prompt) and `respec` (each cleared discipline as `discipline_id:expertise_before→0`, `asp_before` / `asp_after`, the kept blueprint count and paradigm levels), in the `crafting` row of [observability.md](../architecture/observability.md). Code: `crates/base-session/src/base/crafting/respec/`, `crates/cell-console/src/cell/console/player_commands.rs`.
 
 ## Stations, tools and crafting options
 
@@ -303,7 +321,7 @@ Every refusal is followed by a full inventory resync, because the alloy page emp
 ## RE Priorities
 
 1. **Client crafting UI** - Decompile `onUpdateDiscipline`, `onUpdateCraftingOptions`, `onUpdateKnownCrafts` wire format
-2. **Crafting respec** - `RespecCraft` / `onCraftingRespecPrompt` / `onDisciplineRespec` protocol
+2. **Crafting respec** - what the client's `Event_SlashCmd_RespecCraft` (`/respeccraft`) sends, if anything. The server flow above does not depend on it
 3. **Tech competency** - How `techCompetency` affects crafting beyond research chance
 4. **Quality system** - Item quality tiers and their effect on alloying
 5. **Crafting busy state** - Why `beginBusy`/`endBusy` are commented out

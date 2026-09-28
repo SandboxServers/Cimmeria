@@ -84,6 +84,11 @@ pub async fn handle_chat_message(
     // players; a non-GM's `.`-text falls through to normal chat. Auth is on the
     // server-side `access_level`, never a client-asserted byte.
     if channel == CHAN_SAY && text.starts_with('.') {
+        // The few player commands (`.respeccraft`) act on the speaker only
+        // and are open to everyone, so they are checked before the GM gate.
+        if console::handle_player_command(entity_id, text, tx, space_mgr).await {
+            return;
+        }
         let access_level = space_mgr
             .get_entity(entity_id)
             .map_or(0, |e| e.access_level);

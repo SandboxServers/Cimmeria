@@ -72,6 +72,9 @@ pub enum DropReason {
     /// A job was submitted for an entity with no session playing the
     /// character.
     NotConnected,
+    /// The player confirmed a crafting respec: the disciplines a queued job
+    /// would use are about to be cleared.
+    Respec,
 }
 
 impl DropReason {
@@ -82,6 +85,7 @@ impl DropReason {
             DropReason::SessionChanged => "session_changed",
             DropReason::StaleSession => "stale_session",
             DropReason::NotConnected => "not_connected",
+            DropReason::Respec => "respec",
         }
     }
 }

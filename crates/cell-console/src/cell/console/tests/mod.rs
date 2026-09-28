@@ -58,6 +58,7 @@ mod p46;
 mod p47;
 #[cfg(test)]
 mod pets;
+mod player_respeccraft;
 #[cfg(test)]
 mod pt07_giveability;
 #[cfg(test)]

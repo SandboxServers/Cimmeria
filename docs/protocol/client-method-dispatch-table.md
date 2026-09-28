@@ -271,7 +271,7 @@ Every method in this block has an argument serializer, `build_on_<method>`, in [
 | 109 | `onStoreOpen` | `INT32 EntityId, INT32 VendorType, ARRAY<StoreItem> Items, ...` |
 | 110 | `onStoreUpdate` | `ARRAY<ItemCostUpdate> ItemCostUpdates` |
 | 111 | `onStoreClose` | *(none)* |
-| 112 | `onCraftingRespecPrompt` | `INT32 CostToRespec` |
+| 112 | `onCraftingRespecPrompt` | `INT32 CostToRespec` — sent with 0 when a player's `.respeccraft` opens a crafting respec (`base/crafting/respec/`) |
 | 113 | `onTrainerOpen` | `INT32 TrainerID, ARRAY<TrainerAbility> Abilities, INT32 CostToRespec` |
 | 114 | `onLootDisplay` | `INT32 EntityID, LootItemQuantityList ItemList, INT8 Initial` |
 | 115 | `onPlayerDataLoaded` | *(none)* |
@@ -296,7 +296,7 @@ Every method in this block has an argument serializer, `build_on_<method>`, in [
 | 134 | `onOrganizationCreationResult` | `UINT8 Result, UINT8 RetCode` |
 | 135 | `launchOrganizationCreation` | `UINT8 aOrgType` |
 | 136 | `onUpdateDiscipline` | `INT32 aDisciplineSeqId, INT32 aExpertise` |
-| 137 | `onDisciplineRespec` | *(none)* |
+| 137 | `onDisciplineRespec` | *(none)* — sent after a confirmed crafting respec, then 139 and the ASP total |
 | 138 | `onUpdateRacialParadigmLevel` | `INT32 aRacialParadigmId, INT8 aLevel` |
 | 139 | `onUpdateKnownCrafts` | `ARRAY<INT32> aCraftList` |
 | 140 | `onUpdateCraftingOptions` | `CraftingOptions aOptions` |

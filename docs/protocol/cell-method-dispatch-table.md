@@ -340,7 +340,7 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | 97 | research | YES | ItemID itemId, ARRAY\<ItemID\> kickers | 928 |
 | 98 | reverseEngineer | YES | ItemID itemId | 934 |
 | 99 | alloying | YES | INT32 craftId, ItemID currentTierItemId, ARRAY\<ItemID\> lowerTierItems | 939 |
-| 100 | respecCrafting | YES | (none) | 946 |
+| 100 | respecCrafting | YES | (none) | 946 — confirms a crafting respec opened by `.respeccraft`; with none open it is refused with a line (`base/crafting/respec/`) |
 | - | gmGotoCallback | no | | 950 |
 | 101 | onClientChallengeResponse | YES | INT32 challenge, WSTRING version, INT32 type, WSTRING object, INT32 id1, INT32 id2, WSTRING value | 955 |
 | - | showPlayer | no | | 966 |

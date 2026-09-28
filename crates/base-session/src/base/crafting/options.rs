@@ -34,6 +34,7 @@ use cimmeria_wire::crafting::{
 };
 use sqlx::PgPool;
 
+use super::respec::PendingRespec;
 use super::tools::{best_tool, load_held_tools, tool_table, tools_in_crafting_bag, HeldTool};
 use crate::base::helpers::send_to_witness_reliable;
 use crate::base::session_identity::identity_for_entity;
@@ -61,6 +62,10 @@ pub struct CraftingSessionOptions {
     /// The options the client last received: recorded only after a send
     /// went out, so a failed send is retried by the next report.
     pub last_sent: Option<CraftingOptions>,
+    /// A crafting respec the player opened with `.respeccraft` and has not
+    /// confirmed yet. Not an input to 140: it lives here because this is
+    /// the session's crafting state, and it dies with the connection.
+    pub pending_respec: Option<PendingRespec>,
 }
 
 impl CraftingSessionOptions {

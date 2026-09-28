@@ -8,7 +8,7 @@ use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
 use crate::cell::vault::VaultAccess;
-use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft, GmCraftGrant};
+use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft, GmCraftGrant, RespecCraftOpen};
 
 /// Messages sent from CellApp to BaseApp.
 #[derive(Debug)]
@@ -568,6 +568,9 @@ pub enum CellToBaseMsg {
 
     /// `.craftkit` or `.learnblueprint` for a player; see [`GmCraftGrant`].
     GmCraftGrant(GmCraftGrant),
+
+    /// A player's `.respeccraft`; see [`RespecCraftOpen`].
+    RespecCraftOpen(RespecCraftOpen),
 
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol

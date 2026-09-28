@@ -147,6 +147,17 @@ impl CraftReject {
             } => format!(
                 "You do not have enough components: {available} of {needed} needed. Nothing was used."
             ),
+            CraftReject::NothingToRespec => {
+                "You have no crafting disciplines to unlearn. Nothing was changed.".to_string()
+            }
+            CraftReject::NoPendingRespec => {
+                "No crafting respec is waiting to be confirmed. Type .respeccraft to start one."
+                    .to_string()
+            }
+            CraftReject::RespecExpired { window_secs } => format!(
+                "The crafting respec was not confirmed within {window_secs} seconds. \
+                 Type .respeccraft to start again."
+            ),
         }
     }
 }
