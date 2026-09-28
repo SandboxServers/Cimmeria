@@ -18,7 +18,9 @@
 >   (`crates/base-session/src/base/black_market/`) landed on 2026-09-27
 >   (packet BM-01, the port of PR #586), so its four rows below now read
 >   PARTIAL: served by the server, but the client drops the replies until
->   the client patch ships (#587).
+>   the client patch ships (#587). Packet BM-02 made the server's argument
+>   layouts follow the `.def` order in the dispatch tables (the shared codec
+>   `cimmeria-patch-wire`); see `docs/gameplay/black-market.md`.
 > - **Overstated.** The nine `Chat*` rows (`ChatList`, `ChatIgnore`,
 >   `ChatFriend`, `ChatMute`, `ChatKick`, `ChatOp`, `ChatBan`, `ChatPassword`)
 >   and `SendGMShout` are marked implemented but have no handler.

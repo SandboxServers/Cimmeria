@@ -10,8 +10,8 @@ description = "Zero-dependency codecs for the method arguments the server and th
 # cargo-hakari workspace-hack (.config/hakari.toml lists this crate under
 # `final-excludes` so `cargo hakari manage-deps` never adds it). The
 # client-patch DLL links this crate into SGW.exe, and the workspace-hack
-# would drag tokio, hyper and sqlx in with it. The server is meant to link
-# it too (its Black Market serializers switch over in a later change), so a
+# would drag tokio, hyper and sqlx in with it. The server links it too
+# (through cimmeria-wire, since BM-02), so a
 # server/client disagreement about a wire layout fails a test here instead
 # of surfacing in UAT.
 [dependencies]
