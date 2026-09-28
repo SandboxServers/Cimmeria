@@ -7,7 +7,6 @@ description = "Game logic replacing the Python scripting layer for the Cimmeria 
 
 [dependencies]
 cimmeria-common = { workspace = true }
-cimmeria-commands = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
 rand = { workspace = true }

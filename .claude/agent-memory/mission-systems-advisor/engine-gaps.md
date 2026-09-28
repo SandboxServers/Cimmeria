@@ -118,6 +118,8 @@ Cellblock chain, so precedent — but it is an assumption, not verified.
 
 ## `crates/game/src/missions/objectives.rs` is DEAD CODE
 
+> Update 2026-09-28: the whole `crates/game/src/missions/` module was deleted in #803.
+
 The `MissionObjective` enum (KillCount / CollectItem / VisitRegion / TalkToNpc /
 UseObject) is referenced **nowhere outside its own module** — grep for
 `MissionObjective::` across `crates/` returns hits only in that file. There is
