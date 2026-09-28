@@ -33,6 +33,17 @@
 //! error, which is almost all rays grazing within 0.1 m of a wall edge
 //! (NA27: 1.24% of truly clear Cellblock pairs). None of the extra rays can
 //! see round a real corner more than a body width or one tick of movement.
+//!
+//! **Same space first (#906).** Before any ray, a player's target must be in
+//! the player's own space (an instance is its own space). `get_entity`
+//! searches every space, so a target id from another instance at nearby
+//! coordinates passes the launch's `distance_to` range check; a ray through
+//! the shooter's occluder says nothing about it. Such a cast is refused with
+//! `onErrorCode(0, ability_id, 0)` (`CONDITION_FEEDBACK_InvalidEntity`, the
+//! code the pet bar sends for the same refusal) and one `abilities` DEBUG row
+//! `event=cast_refused reason=target_other_space`. It applies to self and
+//! ground abilities too: a client only ever names a target it can see, and
+//! nothing it can see is in another space.
 
 use tokio::sync::mpsc;
 
@@ -46,6 +57,10 @@ use crate::cell::space_manager::{occluder_probe, SpaceManager};
 
 /// `CONDITION_FEEDBACK_LOS`: "You do not have Line of Sight to your target".
 pub(crate) const CONDITION_FEEDBACK_LOS: u16 = 39;
+
+/// `CONDITION_FEEDBACK_InvalidEntity`: the generic refusal, sent for a
+/// target in another space (the pet bar's `target_other_space` uses it too).
+pub(crate) const CONDITION_FEEDBACK_INVALID_ENTITY: u16 = 0;
 
 /// One server movement tick, seconds: how far the client's picture of a
 /// moving entity can differ from the server's.
@@ -73,6 +88,11 @@ pub enum FireLos {
     Clear(ClearRay),
     /// The eye-to-eye ray left the occluder's grid.
     Unknown,
+    /// A player's target is not in the player's space (#906): refused.
+    OtherSpace {
+        shooter_space: Option<u32>,
+        target_space: Option<u32>,
+    },
     /// Every ray was blocked.
     Refused(Refusal),
 }
@@ -106,13 +126,20 @@ pub fn fire_line_of_sight(
     if shooter_id == target_id {
         return FireLos::NotChecked("self_target");
     }
+    let (shooter_space, target_space) = (
+        space_mgr.get_entity_space_id(shooter_id),
+        space_mgr.get_entity_space_id(target_id),
+    );
+    if shooter_space.is_none() || shooter_space != target_space {
+        return FireLos::OtherSpace {
+            shooter_space,
+            target_space,
+        };
+    }
     match ability.map(|d| d.target_type_id) {
         Some(TARGET_SELF) => return FireLos::NotChecked("self_ability"),
         Some(TARGET_GROUND) => return FireLos::NotChecked("ground_ability"),
         _ => {}
-    }
-    if space_mgr.get_entity_space_id(shooter_id) != space_mgr.get_entity_space_id(target_id) {
-        return FireLos::NotChecked("other_space");
     }
     let Some(occ) = space_mgr.occluder_of(shooter_id) else {
         return FireLos::NotChecked("no_occluder");
@@ -180,9 +207,19 @@ pub(crate) fn los_error_args(ability_id: i32) -> Vec<u8> {
     args
 }
 
+/// The seven `onErrorCode` bytes for a target in another space.
+pub(crate) fn other_space_error_args(ability_id: i32) -> Vec<u8> {
+    let mut args = Vec::with_capacity(7);
+    args.push(0u8); // ERRORCODE_SYSTEM_Ability
+    args.extend_from_slice(&ability_id.to_le_bytes());
+    args.extend_from_slice(&CONDITION_FEEDBACK_INVALID_ENTITY.to_le_bytes());
+    args
+}
+
 /// Run the fire-time check and, on a refusal, log it, count it and send the
-/// player the no-line-of-sight feedback. Returns `true` when the use must
-/// stop here.
+/// player the feedback: `onErrorCode` 0 for a target in another space
+/// (#906), 39 for no line of sight. Returns `true` when the use must stop
+/// here.
 pub(crate) async fn refuse_without_line_of_sight(
     shooter_id: u32,
     ability_id: i32,
@@ -191,8 +228,24 @@ pub(crate) async fn refuse_without_line_of_sight(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) -> bool {
-    let FireLos::Refused(r) = fire_line_of_sight(space_mgr, shooter_id, target_id, ability) else {
-        return false;
+    let r = match fire_line_of_sight(space_mgr, shooter_id, target_id, ability) {
+        FireLos::Refused(r) => r,
+        FireLos::OtherSpace {
+            shooter_space,
+            target_space,
+        } => {
+            refuse_other_space(
+                shooter_id,
+                ability_id,
+                target_id,
+                (shooter_space, target_space),
+                tx,
+                space_mgr,
+            )
+            .await;
+            return true;
+        }
+        _ => return false,
     };
     let world = crate::cell::service::npc_ai::world_label(space_mgr, shooter_id);
     let (from_xyz, to_xyz) = match (
@@ -247,4 +300,51 @@ pub(crate) async fn refuse_without_line_of_sight(
         );
     }
     true
+}
+
+/// Log and answer a cast at a target in another space (#906). DEBUG: only a
+/// forged or stale packet names one, and a WARN would let it flood the log.
+async fn refuse_other_space(
+    shooter_id: u32,
+    ability_id: i32,
+    target_id: u32,
+    (shooter_space, target_space): (Option<u32>, Option<u32>),
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(shooter_id);
+    tracing::debug!(
+        target: "abilities",
+        event = "cast_refused",
+        reason = "target_other_space",
+        entity_id = shooter_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        ability_id,
+        target_id,
+        caster_space_id = shooter_space,
+        target_space_id = target_space,
+        error_code = CONDITION_FEEDBACK_INVALID_ENTITY,
+        "useAbility refused: the target is not in the caster's space (onErrorCode 0)"
+    );
+    if tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id: shooter_id,
+            method_index: crate::mercury::method_idx::ON_ERROR_CODE,
+            args: other_space_error_args(ability_id),
+        })
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            target: "abilities",
+            event = "cast_refused_send_failed",
+            reason = "target_other_space",
+            entity_id = shooter_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            ability_id,
+            "useAbility: the other-space onErrorCode could not be queued (base channel closed)"
+        );
+    }
 }

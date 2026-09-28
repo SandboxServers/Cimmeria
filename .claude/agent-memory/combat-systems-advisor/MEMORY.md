@@ -10,3 +10,4 @@
 - [navmesh-los-reliability.md](navmesh-los-reliability.md) — navmesh LoS vs collision geometry: 45% false Blocked; PRU desk (S11); rejected heuristics; no fire-time LoS until an occluder exists
 - [qr-direction-and-cover.md](qr-direction-and-cover.md) — python QR beta branches were inverted (NA32 swapped them); cover QR units from alias.xml; test new QR terms on damage
 - [colo-combat-forensics.md](colo-combat-forensics.md) — Proving combat playtest reports from SigNoz: onStatUpdate decoder shows Min not Current, zombie detector, beam race, corpse re-create
+- [same-space-target-gate.md](same-space-target-gate.md) — #906 cross-space cast gate in fire_los; Instanced="true" test fixtures split caster/target into separate spaces

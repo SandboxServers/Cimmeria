@@ -456,6 +456,16 @@ point or a volume, not an entity's eyes. The gameplay rules are in
 **Reversibility:** High. The gate is one `if` in `handle.rs` and one pre-gate in the
 auto-cycle tick. Removing it fails `a_shot_through_the_hallway_walls_is_refused_with_error_39`.
 
+**Same space first (#906).** The same fire-time check refuses a player's cast whose target is
+not in the caster's space, before any ray and whatever the ability's target type or the
+world's occluder. `get_entity` searches every space, so a target id from another instance at
+nearby coordinates used to pass the `distance_to` range check and take damage and threat. The
+refusal is `onErrorCode(0, ability_id, 0)` (`CONDITION_FEEDBACK_InvalidEntity`, as the pet
+bar's `target_other_space`) and an `abilities` DEBUG row `event=cast_refused
+reason=target_other_space` with the caster's `account_id` and `player_id`. The auto-cycle tick
+treats a target in another space as gone and stops the loop. Removing the check fails
+`a_target_in_another_space_is_refused_at_launch`.
+
 ### 21. Warmup is a pending cast per caster, fired by the 100 ms tick (AT-10)
 
 **Decision:** `handle_use_ability` is the launch half of a cast. It validates, charges the

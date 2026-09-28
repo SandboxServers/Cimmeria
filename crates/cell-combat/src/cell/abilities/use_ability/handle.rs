@@ -61,9 +61,9 @@ pub(super) async fn send_state_field(
 /// they fire later from the warmup tick, or never if it is interrupted.
 /// Returns `false` when any pre-consume guard rejected the call (entity
 /// missing/dead, already warming up, no ability, on cooldown, reload in
-/// flight, no ammo, out-of-range, or no fire-time line of sight for an
-/// explicit target). Ground-target AoE callers gate secondary-target damage
-/// on this return value.
+/// flight, no ammo, out-of-range, a target in another space (#906), or no
+/// fire-time line of sight for an explicit target). Ground-target AoE
+/// callers gate secondary-target damage on this return value.
 #[tracing::instrument(
     name = "combat.use_ability",
     level = "info",
@@ -342,9 +342,9 @@ pub async fn handle_use_ability(
         return false;
     }
 
-    // Fire-time line of sight, players only (NA31, D-NA14): refused with
-    // onErrorCode 39 when the world's occluder puts a wall between the eyes.
-    // See `fire_los` for where it applies and the tolerance rays.
+    // Fire-time target checks, players only: a target in another space is
+    // refused with onErrorCode 0 (#906), a wall between the eyes with 39
+    // (NA31, D-NA14). See `fire_los` for where they apply.
     if target_id > 0
         && super::fire_los::refuse_without_line_of_sight(
             entity_id,
