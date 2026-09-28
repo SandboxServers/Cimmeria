@@ -47,7 +47,7 @@ The cooked client data in the repo (`data/cache/CookedData*.pak`, zips of one SO
 
 ### Tests and revert proofs
 
-Every guard below was run against a mutation of the code it guards (driver: a scratch script that applies one mutation, runs the named tests, restores the file). Each mutation failed its guard; the full run is recorded in the PR.
+Every guard below was run against a mutation of the code or seed it guards (a scratch driver applied one mutation, ran the named tests, and restored the file; the seed mutations ran through `tools/build-lane/live-db-test.sh`, which reloads the worktree database). Each of the 24 mutations failed its guard.
 
 | Guard | Test | Mutation that fails it |
 |---|---|---|
@@ -56,7 +56,7 @@ Every guard below was run against a mutation of the code it guards (driver: a sc
 | Damage is the owner's | `pulse::a_pulse_damages_as_the_owner`, `pulse::a_pulse_kill_is_the_owners_kill` | pass the object as the attacker |
 | The lifetime effect never lands on a target | `pulse::a_pulse_registers_no_lifetime_effect_on_its_target` | hand the pipeline the whole ability |
 | Owner death | `pulse::the_owners_death_removes_the_object_before_it_pulses` | drop the `OwnerDead` verdict |
-| Owner logout | `pulse::the_owners_logout_removes_the_object` | drop the `OwnerGone` verdict |
+| Owner logout, and an owner id reused by another player | `deployables::tests::verdict_ends_the_object_on_owner_death_logout_and_zone_change`, `deployables::tests::verdict_refuses_a_player_who_reused_the_owner_id` (`pulse::the_owners_logout_removes_the_object` is the end-to-end cover; alone it does not catch this mutation, because a departed owner also fails the space check) | drop the `OwnerGone` verdict |
 | 30 pulses, then gone | `pulse::thirty_pulses_then_the_object_is_removed` | skip the despawn after the last pulse |
 | Range | `launch::an_out_of_range_point_is_refused_with_feedback_and_charges_nothing` | drop the range check |
 | Line of sight | `launch::a_point_behind_a_wall_is_refused_for_line_of_sight` | ignore a blocked ray |
@@ -70,7 +70,7 @@ Every guard below was run against a mutation of the code it guards (driver: a sc
 | A departing owner gets no `LeftAoI` | `deployables::tests::a_departing_owner_is_spared_the_leave_other_witnesses_are_not` | drop the spare |
 | A being, in the owner's faction | `deployables::tests::spawn_places_a_stationary_being_owned_by_the_caster` | spawn as `mob`; keep the template faction |
 | SigNoz export | `logging::deployables_target_tests` | drop the `deployables=debug` row |
-| Seed | `live_db_deployables` (four guards) | revert the 1012 row, NVP 380 or the 5066 script |
+| Seed | `live_db_deployables` (four guards) | drop NVP 380; drop the 5066 script; seed template 400 as a `mob`; point the 1012 row's lifetime at 5066 |
 
 ## Remaining phases
 
