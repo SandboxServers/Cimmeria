@@ -4,7 +4,7 @@
 //! (`cimmeria-patch-wire`, re-exported as `cimmeria_wire::black_market`) and
 //! forwards them to the base as `CellToBaseMsg::BlackMarket`; nothing about
 //! an auction is decided cell-side except who may ask. The base handlers are
-//! `cimmeria_base_session::base::black_market`.
+//! `cimmeria_base_methods::base::world_entry::methods::black_market`.
 //!
 //! **Authority (BM-02, CWE-862).** `BMCreateAuction`, `BMPlaceBid` and
 //! `BMCancelAuction` move items and cash, so each is forwarded only while

@@ -866,6 +866,7 @@ name = "cimmeria-base"
 version = "0.1.0"
 dependencies = [
  "cimmeria-auth",
+ "cimmeria-base-methods",
  "cimmeria-base-session",
  "cimmeria-base-world-entry",
  "cimmeria-common",

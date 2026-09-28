@@ -23,7 +23,8 @@ pub(crate) use auction_columns;
 
 /// A row of `sgw_auction`, mirroring the table columns 1:1.
 ///
-/// Status values: `0 = active, 1 = sold, 2 = cancelled, 3 = expired`. Time
+/// Status values: `0 = active, 1 = sold, 2 = cancelled, 3 = expired,
+/// 4 = quarantined`. Time
 /// columns are unix epoch seconds. `current_bidder` is the player_id of the
 /// current high bidder (whose bid cash is held in escrow), or `None` if no bid
 /// has landed yet. `item_id` is the listed `sgw_inventory` row, which sits in
@@ -66,6 +67,10 @@ pub mod auction_status {
     pub const SOLD: i16 = 1;
     pub const CANCELLED: i16 = 2;
     pub const EXPIRED: i16 = 3;
+    /// The sweep could not settle it (the escrowed row is missing, or the
+    /// settlement mail was refused). Left for an operator: the item stays in
+    /// container 18 and any standing bid stays held.
+    pub const QUARANTINED: i16 = 4;
 }
 
 /// Most active listings one seller may have (decision D5; no listing fee).

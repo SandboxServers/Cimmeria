@@ -3,8 +3,9 @@
 //! Skip cleanly when `DATABASE_URL` is unset (via `require_db_or_skip!`).
 //! Against the bundled local Postgres they exercise: createAuction (row insert
 //! plus the escrow move into container 18), placeBid (current_bid update,
-//! prior-bidder refund, bid-history row), cancelAuction (the escrowed row back
-//! into the bags, plus bidder refund).
+//! the prior bidder's refund mailed, bid-history row), cancelAuction (the
+//! escrowed row mailed back to the seller, the bid mailed back to the
+//! bidder).
 //!
 //! Shared fixtures (`cleanup`, `insert_account_and_player`, `insert_item`,
 //! `naquadah_of`, `inventory_count`, `make_state`, `TEST_BASE`, `ITEM_DEF_ID`)
@@ -12,15 +13,15 @@
 
 use std::sync::Arc;
 
-use cimmeria_entity::inventory::{INV_AUCTION, INV_MAIN};
+use cimmeria_entity::inventory::INV_AUCTION;
 
 use super::{
-    cleanup, insert_account_and_player, insert_item, inventory_count, item_state, make_state,
-    naquadah_of, ITEM_DEF_ID, TEST_BASE,
+    bm_mails, cleanup, insert_account_and_player, insert_item, inventory_count, item_state,
+    mail_escrow_of, make_state, naquadah_of, ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::helpers::now_unix_secs;
-use crate::base::black_market::types::auction_status;
-use crate::base::black_market::{bid, cancel, create};
+use crate::base::world_entry::methods::black_market::helpers::now_unix_secs;
+use crate::base::world_entry::methods::black_market::types::auction_status;
+use crate::base::world_entry::methods::black_market::{bid, cancel, create};
 use crate::test_support::require_db_or_skip;
 
 // ── createAuction ─────────────────────────────────────────────────────────
@@ -87,8 +88,10 @@ async fn create_auction_inserts_row_and_escrows_item() {
 
 // ── placeBid ──────────────────────────────────────────────────────────────
 
-/// placeBid updates current_bid/current_bidder, refunds the prior bidder, holds
-/// the new bidder's cash, and inserts a bid-history row.
+/// placeBid updates current_bid/current_bidder, mails the prior bidder their
+/// held bid, holds the new bidder's cash, and inserts a bid-history row.
+/// Bug shape: a direct credit (the pre-BM-02b refund) leaves no mail and
+/// changes the balance; a missing refund leaves neither.
 #[tokio::test]
 async fn place_bid_updates_refunds_prior_and_records_bid() {
     let pool = require_db_or_skip!();
@@ -134,7 +137,7 @@ async fn place_bid_updates_refunds_prior_and_records_bid() {
         "bidder1's cash must be held"
     );
 
-    // Bidder2 outbids at 500. Prior bidder (bidder1) must be refunded their 200.
+    // Bidder2 outbids at 500. Prior bidder (bidder1) is mailed their 200.
     bid::handle_place_bid(
         entity_id, bidder2, seq, 500, &db_pool, &transport, &conn, &e2a,
     )
@@ -156,8 +159,14 @@ async fn place_bid_updates_refunds_prior_and_records_bid() {
 
     assert_eq!(
         naquadah_of(&pool, bidder1).await,
-        10_000,
-        "prior bidder refunded in full"
+        10_000 - 200,
+        "the refund waits on the mail"
+    );
+    let refund = bm_mails(&pool, bidder1).await;
+    assert_eq!(
+        refund.iter().map(|m| (m.1, m.2)).collect::<Vec<_>>(),
+        vec![(200, None)],
+        "one outbid mail with the held 200"
     );
     assert_eq!(
         naquadah_of(&pool, bidder2).await,
@@ -183,8 +192,9 @@ async fn place_bid_updates_refunds_prior_and_records_bid() {
 
 // ── cancelAuction ───────────────────────────────────────────────────────────
 
-/// cancelAuction moves the escrowed row back into the seller's bags (the
-/// same instance) and refunds the current bidder.
+/// cancelAuction mails the escrowed row back to the seller (the same
+/// instance, whole) and the held bid back to the current bidder, and marks
+/// the auction CANCELLED. Decision D-BM10: cancel returns by mail.
 #[tokio::test]
 async fn cancel_auction_returns_item_and_refunds_bidder() {
     let pool = require_db_or_skip!();
@@ -225,20 +235,28 @@ async fn cancel_auction_returns_item_and_refunds_bidder() {
         .await
         .unwrap();
     assert_eq!(status, auction_status::CANCELLED);
+    let back = bm_mails(&pool, seller).await;
     assert_eq!(
-        inventory_count(&pool, seller).await,
-        1,
-        "escrowed item returned to seller"
+        back.iter().map(|m| (m.1, m.2)).collect::<Vec<_>>(),
+        vec![(0, Some(item))],
+        "one mail with the item back to the seller"
     );
+    assert_eq!(item_state(&pool, item).await, None, "out of container 18");
     assert_eq!(
-        item_state(&pool, item).await.map(|s| (s.0, s.1)),
-        Some((seller, INV_MAIN)),
-        "the same row is back in the main bag, out of container 18"
+        mail_escrow_of(&pool, item).await,
+        Some((back[0].0, 77, 3, seller)),
+        "the same row, whole, on the mail"
+    );
+    let refund = bm_mails(&pool, bidder).await;
+    assert_eq!(
+        refund.iter().map(|m| (m.1, m.2)).collect::<Vec<_>>(),
+        vec![(300, None)],
+        "the bid is mailed back"
     );
     assert_eq!(
         naquadah_of(&pool, bidder).await,
-        10_000,
-        "bidder refunded on cancel"
+        10_000 - 300,
+        "the refund waits on the mail"
     );
 
     cleanup(&pool, &[acc_seller, acc_bidder], &[seller, bidder]).await;
@@ -304,7 +322,11 @@ async fn place_bid_self_raise_credits_held_bid() {
     assert_eq!(
         naquadah_of(&pool, bidder1).await,
         0,
-        "net deduction = new bid minus refunded prior"
+        "net deduction = new bid minus the held prior"
+    );
+    assert!(
+        bm_mails(&pool, bidder1).await.is_empty(),
+        "a self-raise mails nothing"
     );
 
     cleanup(&pool, &[acc_seller, acc_b1], &[seller, bidder1]).await;

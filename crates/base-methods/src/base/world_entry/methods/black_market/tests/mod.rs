@@ -19,8 +19,8 @@ use cimmeria_entity::inventory::{INV_AUCTION, INV_MAIN};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::base::black_market::types::BMSearchOptions;
-use crate::base::black_market::{bid, cancel, create, search as bm_search};
+use crate::base::world_entry::methods::black_market::types::BMSearchOptions;
+use crate::base::world_entry::methods::black_market::{bid, cancel, create, search as bm_search};
 use crate::base::ConnectedClientState;
 use crate::test_support::{test_default_connected_client_state, TestTransport};
 
@@ -30,14 +30,16 @@ mod delete_trigger;
 mod helpers;
 mod refusals;
 mod search;
+mod settlement_mail;
 mod state_helpers;
 mod sweep;
 
 /// Sentinel base for Black Market live-DB tests: the Black Market owns the
 /// `0x7000_Axxx` block. Accounts and players use `TEST_BASE + 0..=800`
 /// (decimal offsets, so up to `0x7000_A320`), search uses
-/// `TEST_BASE + 0x500..=0x5FF`, and the BM-02 tests (rules, refusals, the
-/// delete trigger) `TEST_BASE + 0x600..=0x8FF`; the in-memory entity ids are
+/// `TEST_BASE + 0x500..=0x5FF`, the BM-02 tests (rules, refusals, the
+/// delete trigger) `TEST_BASE + 0x600..=0x8FF`, and the BM-02b settlement
+/// mail tests `TEST_BASE + 0x900..=0x9FF`; the in-memory entity ids are
 /// `0x7000_A9xx` / `0x7000_AAxx`. The neighbouring blocks are bank
 /// (`0x7000_Bxxx`) and crafting (`0x7000_Cxxx`).
 pub(super) const TEST_BASE: i32 = 0x7000_A000;
@@ -161,6 +163,38 @@ pub(super) async fn inventory_count(pool: &PgPool, player_id: i32) -> i64 {
 pub(super) async fn item_state(pool: &PgPool, item_id: i32) -> Option<(i32, i32, i32, i32)> {
     sqlx::query_as(
         "SELECT character_id, container_id, durability, charges FROM sgw_inventory \
+         WHERE item_id = $1",
+    )
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap()
+}
+
+/// One Black Market mail: `(mail_id, cash, escrowed item id)`.
+pub(super) type BmMail = (i32, i64, Option<i32>);
+
+/// The Black Market mails `player_id` has, oldest first: system mail
+/// (`sender_id` NULL) from "Black Market", with its escrow row if any.
+pub(super) async fn bm_mails(pool: &PgPool, player_id: i32) -> Vec<BmMail> {
+    sqlx::query_as(
+        "SELECT m.mail_id, m.cash, mi.item_id FROM sgw_gate_mail m \
+         LEFT JOIN sgw_gate_mail_item mi ON mi.mail_id = m.mail_id \
+         WHERE m.character_id = $1 AND m.sender_id IS NULL \
+           AND m.sender_name = 'Black Market' \
+         ORDER BY m.mail_id",
+    )
+    .bind(player_id)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+/// `(mail_id, durability, charges, source_character_id)` of a mail escrow
+/// row, `None` if no mail holds that item.
+pub(super) async fn mail_escrow_of(pool: &PgPool, item_id: i32) -> Option<(i32, i32, i32, i32)> {
+    sqlx::query_as(
+        "SELECT mail_id, durability, charges, source_character_id FROM sgw_gate_mail_item \
          WHERE item_id = $1",
     )
     .bind(item_id)

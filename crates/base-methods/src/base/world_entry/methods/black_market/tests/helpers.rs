@@ -1,13 +1,13 @@
 //! Live-DB integration tests for the reusable persistence helpers:
-//! [`crate::base::black_market::helpers::adjust_player_cash`], the escrow
-//! moves in [`crate::base::black_market::escrow`], and the mail payout
-//! writer [`crate::base::black_market::payout_mail::send_mail_to_player`].
+//! `adjust_player_cash` and the escrow move and read in
+//! `black_market::escrow`.
 //!
 //! Skip cleanly when `DATABASE_URL` is unset (via `require_db_or_skip!`).
 //! These pin the error/edge branches the create/bid/cancel handlers depend on:
 //! overdraw rejection, missing-player disambiguation, a listing of someone
-//! else's row, the move into container 18 and back, the snapshot mint for a
-//! listing with no row, and a full bag. Shared fixtures live in the parent
+//! else's row, the move into container 18, and the item a settlement
+//! mails (the row itself, a seed's minted type, or nothing when the row is
+//! gone). Shared fixtures live in the parent
 //! `tests` module.
 
 use cimmeria_entity::inventory::{INV_AUCTION, INV_BANK, INV_MAIN};
@@ -16,11 +16,11 @@ use super::{
     cleanup, insert_account_and_player, insert_item, insert_item_in, inventory_count, item_state,
     ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::escrow::{deliver_from_escrow, list_into_escrow, DeliveryRefused};
-use crate::base::black_market::helpers::{adjust_player_cash, CashError};
-use crate::base::black_market::payout_mail::send_mail_to_player;
-use crate::base::black_market::types::{auction_status, AuctionRow};
-use crate::base::black_market::wire::BMError;
+use crate::base::world_entry::methods::black_market::escrow::{escrowed_item, list_into_escrow};
+use crate::base::world_entry::methods::black_market::helpers::{adjust_player_cash, CashError};
+use crate::base::world_entry::methods::black_market::types::{auction_status, AuctionRow};
+use crate::base::world_entry::methods::black_market::wire::BMError;
+use crate::base::world_entry::methods::mail::SystemItem;
 use crate::test_support::require_db_or_skip;
 
 /// A debit larger than the balance is rejected with `InsufficientFunds`, and
@@ -141,10 +141,10 @@ async fn list_into_escrow_refuses_a_row_the_seller_does_not_own() {
 }
 
 /// The escrow move keeps the row: same instance id, same owner, now in
-/// container 18, every column intact. Delivery puts that same row back in
-/// a bag. Bug shape: the branch's DELETE-and-snapshot would lose the id.
+/// container 18, every column intact, and a settlement mails that row.
+/// Bug shape: the branch's DELETE-and-snapshot would lose the id.
 #[tokio::test]
-async fn escrow_moves_the_row_into_container_18_and_back() {
+async fn escrow_moves_the_row_into_container_18() {
     let pool = require_db_or_skip!();
     let (account_id, seller) = (TEST_BASE + 770, TEST_BASE + 780);
     cleanup(&pool, &[account_id], &[seller]).await;
@@ -167,15 +167,16 @@ async fn escrow_moves_the_row_into_container_18_and_back() {
         "gone from the bags"
     );
 
-    let placed = deliver_from_escrow(&mut conn, &auction_over(seller, item), seller, false)
+    // A settlement mails that same row, not a copy of it.
+    let mailed = escrowed_item(&mut conn, &auction_over(seller, item))
         .await
-        .unwrap()
-        .expect("room in the bag");
-    assert_eq!(placed.item_id, item, "the same instance comes back");
-    assert!(!placed.minted && !placed.overflow);
+        .unwrap();
     assert_eq!(
-        item_state(&pool, item).await,
-        Some((seller, INV_MAIN, 77, 3))
+        mailed,
+        Some(SystemItem::ExistingInstance {
+            item_id: item,
+            owner_player_id: seller,
+        })
     );
     drop(conn);
 
@@ -208,92 +209,13 @@ async fn list_into_escrow_refuses_vault_and_bound_rows() {
     cleanup(&pool, &[account_id], &[seller]).await;
 }
 
-/// A listing with no escrow row (the boot seed) is delivered as a new
-/// instance from the snapshot; a full carried bag returns `None` unless
-/// overflow is allowed.
+/// A player's listing whose container-18 row is gone has nothing to mail
+/// (`None`, logged `bm.escrow_missing`), never a minted copy: otherwise
+/// anything that ever removed an escrowed row would let the sale or cancel
+/// hand out a second one (authority review, BM-02). A boot-seed listing,
+/// which never had a row, mails a new instance of its type.
 #[tokio::test]
-async fn delivery_mints_without_a_row_and_respects_full_bags() {
-    let pool = require_db_or_skip!();
-    let (account_id, player) = (TEST_BASE + 810, TEST_BASE + 820);
-    cleanup(&pool, &[account_id], &[player]).await;
-    insert_account_and_player(&pool, account_id, player, 0).await;
-
-    let mut conn = pool.acquire().await.unwrap();
-    let placed = deliver_from_escrow(&mut conn, &auction_over(player, 0), player, false)
-        .await
-        .unwrap()
-        .expect("room");
-    assert!(placed.minted);
-    assert_eq!(
-        item_state(&pool, placed.item_id).await,
-        Some((player, INV_MAIN, 55, 2))
-    );
-
-    // Fill both carried bags.
-    sqlx::query(
-        "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id,                                     bound, durability, charges)          SELECT $1, $2, 1, s, b, false, 1, 0          FROM (VALUES (1, 40), (15, 100)) AS bags(b, n), generate_series(0, 99) AS s          WHERE s < n            AND NOT EXISTS (SELECT 1 FROM sgw_inventory                            WHERE character_id = $1 AND container_id = b AND slot_id = s)",
-    )
-    .bind(player)
-    .bind(ITEM_DEF_ID)
-    .execute(&mut *conn)
-    .await
-    .unwrap();
-    let none = deliver_from_escrow(&mut conn, &auction_over(player, 0), player, false)
-        .await
-        .unwrap();
-    assert_eq!(
-        none,
-        Err(DeliveryRefused::BagFull),
-        "full bags refuse a delivery"
-    );
-    let over = deliver_from_escrow(&mut conn, &auction_over(player, 0), player, true)
-        .await
-        .unwrap()
-        .expect("overflow places");
-    assert!(over.overflow);
-    assert!(over.slot_id >= 40, "past the main bag's last slot");
-    drop(conn);
-
-    cleanup(&pool, &[account_id], &[player]).await;
-}
-
-/// `send_mail_to_player` persists the cash and sender of a settlement mail.
-#[tokio::test]
-async fn send_mail_persists_cash_and_sender() {
-    let pool = require_db_or_skip!();
-    let (account_id, player) = (TEST_BASE + 830, TEST_BASE + 840);
-    cleanup(&pool, &[account_id], &[player]).await;
-    insert_account_and_player(&pool, account_id, player, 0).await;
-
-    let mail_id = send_mail_to_player(
-        &pool,
-        player,
-        555,
-        None,
-        0,
-        "Subject",
-        "Body",
-        "Black Market",
-    )
-    .await
-    .expect("mail insert returns a mail_id");
-    let (cash, sender): (i64, Option<String>) =
-        sqlx::query_as("SELECT cash, sender_name FROM sgw_gate_mail WHERE mail_id = $1")
-            .bind(mail_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(cash, 555);
-    assert_eq!(sender.as_deref(), Some("Black Market"));
-
-    cleanup(&pool, &[account_id], &[player]).await;
-}
-
-/// A player's listing whose container-18 row is gone is refused, never
-/// minted: otherwise anything that ever removed an escrowed row would let
-/// the sale or cancel hand out a second copy (authority review, BM-02).
-#[tokio::test]
-async fn delivery_refuses_a_player_listing_with_no_escrow_row() {
+async fn escrowed_item_refuses_a_player_listing_with_no_escrow_row() {
     let pool = require_db_or_skip!();
     let (account_id, seller) = (TEST_BASE + 850, TEST_BASE + 860);
     cleanup(&pool, &[account_id], &[seller]).await;
@@ -310,12 +232,21 @@ async fn delivery_refuses_a_player_listing_with_no_escrow_row() {
         .await
         .unwrap();
 
-    let res = deliver_from_escrow(&mut conn, &auction_over(seller, item), seller, true)
+    let res = escrowed_item(&mut conn, &auction_over(seller, item))
         .await
         .unwrap();
-    assert_eq!(res, Err(DeliveryRefused::EscrowMissing));
+    assert_eq!(res, None, "no row, nothing to mail");
+    let seed = escrowed_item(&mut conn, &auction_over(seller, 0))
+        .await
+        .unwrap();
+    assert_eq!(
+        seed,
+        Some(SystemItem::Minted {
+            type_id: ITEM_DEF_ID,
+            qty: 1,
+        })
+    );
     drop(conn);
-    assert_eq!(inventory_count(&pool, seller).await, 0, "no copy was made");
 
     cleanup(&pool, &[account_id], &[seller]).await;
 }

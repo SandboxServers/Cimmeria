@@ -1,41 +1,34 @@
 //! Live-DB integration tests for the expiry sweep (`settle_expired_once`).
 //!
 //! Skip cleanly when `DATABASE_URL` is unset (via `require_db_or_skip!`).
-//! Covers: a sold auction (the escrowed row moves to the buyer's bags, the
-//! seller is mailed the cash, status SOLD), an unsold auction (the row goes
-//! back to the seller's bags, status EXPIRED), multiple expired auctions
+//! Covers: a sold auction (the escrowed row is mailed to the buyer, the
+//! winning bid to the seller, status SOLD), an unsold auction (the row is
+//! mailed back to the seller, status EXPIRED), multiple expired auctions
 //! settled in one pass, and the phantom-bidder edge where a row has
 //! `current_bidder` set but `current_bid = 0`, which must settle as UNSOLD.
+//! Every move is system mail (BM-02b): the item leaves `sgw_inventory` for
+//! `sgw_gate_mail_item`, whole, and the cash sits on the mail until taken.
 //!
 //! Shared fixtures live in the parent `tests` module.
 
 use std::sync::Arc;
 
-use cimmeria_entity::inventory::{INV_AUCTION, INV_MAIN};
-use sqlx::PgPool;
+use cimmeria_entity::inventory::INV_AUCTION;
 
 use super::{
-    cleanup, expire_now, insert_account_and_player, insert_item, insert_item_in, item_state,
-    make_state, status_of, ITEM_DEF_ID, TEST_BASE,
+    bm_mails, cleanup, expire_now, insert_account_and_player, insert_item, insert_item_in,
+    item_state, mail_escrow_of, make_state, naquadah_of, status_of, ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::types::auction_status;
-use crate::base::black_market::{bid, create, sweep};
+use crate::base::world_entry::methods::black_market::types::auction_status;
+use crate::base::world_entry::methods::black_market::{bid, create, sweep};
 use crate::test_support::require_db_or_skip;
 
-/// Mail rows a recipient has with `cash`.
-async fn cash_mail_count(pool: &PgPool, player_id: i32, cash: i64) -> i64 {
-    sqlx::query_scalar("SELECT COUNT(*) FROM sgw_gate_mail WHERE character_id = $1 AND cash = $2")
-        .bind(player_id)
-        .bind(cash)
-        .fetch_one(pool)
-        .await
-        .unwrap()
-}
-
-/// Sweep settles a sold auction: the listed row itself moves from the
-/// seller's container 18 into the buyer's bags, the seller is mailed the
-/// cash, status → SOLD. Bug-shape guard: BEFORE the sweep runs the auction
-/// is still ACTIVE and the row still in escrow, so a no-op sweep fails.
+/// Sweep settles a sold auction: the listed row itself moves out of the
+/// seller's container 18 into a mail to the buyer (every column kept), the
+/// seller is mailed the cash, status → SOLD. Bug-shape guard: BEFORE the
+/// sweep runs the auction is still ACTIVE and the row still in escrow, so a
+/// no-op sweep fails; a settlement that bypassed the mail writer leaves no
+/// `sgw_gate_mail_item` row.
 #[tokio::test]
 async fn sweep_settles_sold_auction() {
     let pool = require_db_or_skip!();
@@ -73,24 +66,41 @@ async fn sweep_settles_sold_auction() {
         Some(INV_AUCTION)
     );
 
-    let settled = sweep::settle_expired_once(&pool).await.unwrap();
-    assert!(
-        settled.iter().any(|s| s.sequence_id == seq && s.sold),
-        "sweep must report this auction as sold"
-    );
+    let report = sweep::settle_expired_once(&pool).await.unwrap();
+    let settled = report
+        .settled
+        .iter()
+        .find(|s| s.sequence_id == seq)
+        .expect("sweep must report this auction");
+    assert!(settled.sold);
     assert_eq!(status_of(&pool, seq).await, auction_status::SOLD);
-    assert_eq!(cash_mail_count(&pool, seller, 750).await, 1, "seller paid");
+
+    let seller_mail = bm_mails(&pool, seller).await;
+    assert_eq!(seller_mail.len(), 1, "one mail to the seller");
+    assert_eq!((seller_mail[0].1, seller_mail[0].2), (750, None), "the bid");
+    let buyer_mail = bm_mails(&pool, bidder).await;
+    assert_eq!(buyer_mail.len(), 1, "one mail to the buyer");
+    assert_eq!((buyer_mail[0].1, buyer_mail[0].2), (0, Some(item)));
+    assert_eq!(item_state(&pool, item).await, None, "out of sgw_inventory");
     assert_eq!(
-        item_state(&pool, item).await,
-        Some((bidder, INV_MAIN, 77, 3)),
-        "the same instance is now the buyer's, in a bag"
+        mail_escrow_of(&pool, item).await,
+        Some((buyer_mail[0].0, 77, 3, seller)),
+        "the same instance, whole, escrowed on the buyer's mail"
     );
+    assert_eq!(
+        naquadah_of(&pool, seller).await,
+        0,
+        "cash waits on the mail"
+    );
+    assert_eq!(naquadah_of(&pool, bidder).await, 10_000 - 750);
+    let mail_ids: Vec<i32> = settled.payouts.iter().map(|p| p.mail.mail_id).collect();
+    assert_eq!(mail_ids, vec![buyer_mail[0].0, seller_mail[0].0]);
 
     cleanup(&pool, &[acc_seller, acc_bidder], &[seller, bidder]).await;
 }
 
-/// Sweep settles an unsold auction: the escrowed row goes back into the
-/// seller's bags and status → EXPIRED.
+/// Sweep settles an unsold auction: the escrowed row is mailed back to the
+/// seller and status → EXPIRED.
 #[tokio::test]
 async fn sweep_settles_unsold_auction_returns_item() {
     let pool = require_db_or_skip!();
@@ -119,16 +129,23 @@ async fn sweep_settles_unsold_auction_returns_item() {
         Some(INV_AUCTION)
     );
 
-    let settled = sweep::settle_expired_once(&pool).await.unwrap();
+    let report = sweep::settle_expired_once(&pool).await.unwrap();
     assert!(
-        settled.iter().any(|s| s.sequence_id == seq && !s.sold),
+        report
+            .settled
+            .iter()
+            .any(|s| s.sequence_id == seq && !s.sold),
         "sweep must report this auction as unsold"
     );
     assert_eq!(status_of(&pool, seq).await, auction_status::EXPIRED);
+    let mail = bm_mails(&pool, seller).await;
+    assert_eq!(mail.len(), 1);
+    assert_eq!((mail[0].1, mail[0].2), (0, Some(item)), "item, no cash");
+    assert_eq!(item_state(&pool, item).await, None);
     assert_eq!(
-        item_state(&pool, item).await,
-        Some((seller, INV_MAIN, 77, 3)),
-        "the same row is back in the seller's bags"
+        mail_escrow_of(&pool, item).await,
+        Some((mail[0].0, 77, 3, seller)),
+        "the same row, whole, on the seller's mail"
     );
 
     cleanup(&pool, &[account_id], &[seller]).await;
@@ -179,12 +196,15 @@ async fn sweep_settles_multiple_expired_in_one_pass() {
     expire_now(&pool, seq_sold).await;
     expire_now(&pool, seq_unsold).await;
 
-    let settled = sweep::settle_expired_once(&pool).await.unwrap();
-    assert_eq!(settled.len(), 2, "exactly two auctions settled in one pass");
-    assert!(settled.iter().any(|s| s.sequence_id == seq_sold && s.sold));
-    assert!(settled
+    let report = sweep::settle_expired_once(&pool).await.unwrap();
+    let ours: Vec<_> = report
+        .settled
         .iter()
-        .any(|s| s.sequence_id == seq_unsold && !s.sold));
+        .filter(|s| s.seller_id == seller)
+        .collect();
+    assert_eq!(ours.len(), 2, "exactly two auctions settled in one pass");
+    assert!(ours.iter().any(|s| s.sequence_id == seq_sold && s.sold));
+    assert!(ours.iter().any(|s| s.sequence_id == seq_unsold && !s.sold));
     assert_eq!(status_of(&pool, seq_sold).await, auction_status::SOLD);
     assert_eq!(status_of(&pool, seq_unsold).await, auction_status::EXPIRED);
 
@@ -194,7 +214,7 @@ async fn sweep_settles_multiple_expired_in_one_pass() {
 /// A row with `current_bidder` set but `current_bid = 0` must settle as UNSOLD.
 /// Bug shape: dropping the `current_bid > 0` condition would treat this
 /// phantom bidder as a winner and hand them the item for nothing. We assert
-/// the seller gets the item back, the bidder gets nothing, and the status is
+/// the seller is mailed the item, the bidder gets nothing, and the status is
 /// EXPIRED. The row is INSERTed directly so the inconsistent state can be
 /// staged precisely.
 #[tokio::test]
@@ -231,19 +251,22 @@ async fn sweep_phantom_bidder_zero_bid_settles_unsold() {
     .await
     .expect("insert phantom-bidder auction");
 
-    let settled = sweep::settle_expired_once(&pool).await.unwrap();
-    let this = settled
+    let report = sweep::settle_expired_once(&pool).await.unwrap();
+    let this = report
+        .settled
         .iter()
         .find(|s| s.sequence_id == seq)
         .expect("phantom-bidder auction must be settled");
     assert!(!this.sold, "zero current_bid must NOT count as sold");
     assert_eq!(this.buyer_id, None);
     assert_eq!(status_of(&pool, seq).await, auction_status::EXPIRED);
+    let mail = bm_mails(&pool, seller).await;
     assert_eq!(
-        item_state(&pool, item).await.map(|s| (s.0, s.1)),
-        Some((seller, INV_MAIN)),
-        "the item is returned to the seller, not the phantom bidder"
+        mail.iter().map(|m| m.2).collect::<Vec<_>>(),
+        vec![Some(item)],
+        "the item is mailed to the seller"
     );
+    assert!(bm_mails(&pool, bidder).await.is_empty(), "not the phantom");
 
     cleanup(&pool, &[acc_seller, acc_bidder], &[seller, bidder]).await;
     let _ = sqlx::query("DELETE FROM sgw_auction WHERE sequence_id = $1")

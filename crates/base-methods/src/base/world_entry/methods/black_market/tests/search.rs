@@ -18,10 +18,10 @@ use super::{
     cleanup, insert_account_and_player, insert_item, last_auction_of, Harness, ITEM_DEF_ID,
     TEST_BASE,
 };
-use crate::base::black_market::helpers::now_unix_secs;
-use crate::base::black_market::search::{self, SEARCH_PAGE_ROWS};
-use crate::base::black_market::types::{auction_status, BMSearchOptions};
-use crate::base::black_market::wire::BMError;
+use crate::base::world_entry::methods::black_market::helpers::now_unix_secs;
+use crate::base::world_entry::methods::black_market::search::{self, SEARCH_PAGE_ROWS};
+use crate::base::world_entry::methods::black_market::types::{auction_status, BMSearchOptions};
+use crate::base::world_entry::methods::black_market::wire::BMError;
 use crate::test_support::{require_db_or_skip, LogCapture};
 
 const SEARCH_BASE: i32 = TEST_BASE + 0x500;

@@ -13,10 +13,10 @@ use tracing::Level;
 
 use super::{
     cleanup, expire_now, insert_account_and_player, insert_item, insert_item_in, last_auction_of,
-    Harness, Session, ITEM_DEF_ID, TEST_BASE,
+    status_of, Harness, Session, ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::types::BMSearchOptions;
-use crate::base::black_market::wire::BMError;
+use crate::base::world_entry::methods::black_market::types::{auction_status, BMSearchOptions};
+use crate::base::world_entry::methods::black_market::wire::BMError;
 use crate::test_support::{require_db_or_skip, LogCapture, LogCaptureGuard};
 
 const BASE: i32 = TEST_BASE + 0x700;
@@ -115,7 +115,7 @@ async fn every_bid_and_cancel_refusal_logs_its_reason_and_answers() {
 }
 
 #[tokio::test]
-async fn cap_bag_full_and_client_key_refusals_log_their_reason() {
+async fn cap_and_client_key_refusals_log_their_reason() {
     let pool = require_db_or_skip!();
     let seller: Session = (0x7000_AA91, BASE + 0x20, BASE + 0x21);
     cleanup(&pool, &[seller.1], &[seller.2]).await;
@@ -126,7 +126,8 @@ async fn cap_bag_full_and_client_key_refusals_log_their_reason() {
     let seq = last_auction_of(&pool, seller.2).await;
 
     let capture = LogCapture::install();
-    // Full bags: the cancel cannot return the item.
+    // Full bags no longer refuse a cancel (D-BM10): the item goes back by
+    // mail. The cancelled listing no longer counts toward the cap below.
     sqlx::query(
         "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id, \
                                     bound, durability, charges) \
@@ -140,13 +141,13 @@ async fn cap_bag_full_and_client_key_refusals_log_their_reason() {
     .await
     .unwrap();
     h.cancel(seller, seq).await;
-    assert_refused(&capture, BMError::BagFull, seller);
+    assert_eq!(status_of(&pool, seq).await, auction_status::CANCELLED);
 
     // The cap: 20 open listings.
     sqlx::query(
         "INSERT INTO sgw_auction (seller_id, item_id, item_def_id, starting_price, \
                                   auction_length, created_at, expires_at, status) \
-         SELECT $1, 0, $2, 10, 5, 0, 2000000000, 0 FROM generate_series(1, 19)",
+         SELECT $1, 0, $2, 10, 5, 0, 2000000000, 0 FROM generate_series(1, 20)",
     )
     .bind(seller.2)
     .bind(ITEM_DEF_ID)

@@ -9,9 +9,9 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::black_market::{BMError, Decode};
 
-use crate::base::black_market::send::BmNet;
-use crate::base::black_market::types::{auction_status, BMSearchOptions};
-use crate::base::black_market::{bid, cancel, create, search};
+use crate::base::world_entry::methods::black_market::send::BmNet;
+use crate::base::world_entry::methods::black_market::types::{auction_status, BMSearchOptions};
+use crate::base::world_entry::methods::black_market::{bid, cancel, create, search};
 use crate::base::ConnectedClientState;
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 

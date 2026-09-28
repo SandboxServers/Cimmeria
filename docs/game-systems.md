@@ -117,7 +117,7 @@ Features include: rank system with customizable names and permissions, MOTD, mem
 
 Player-to-player auction system for buying and selling items. Supports creating auctions, bidding, searching, and canceling.
 
-**Server:** Phase 1 implemented on `main` (ported from PR #586 by packet BM-01, 2026-09-27; base side in `crates/base-session/src/base/black_market/`), **not player-visible**: the client drops every `onBM*` method until the client patch ships (#587).
+**Server:** Phase 1 implemented on `main` (ported from PR #586 by packet BM-01, 2026-09-27; base side in `crates/base-methods/src/base/world_entry/methods/black_market/`), **not player-visible**: the client drops every `onBM*` method until the client patch ships (#587).
 
 Search, create, bid, buyout and cancel work server-side and follow the client's wire contract (packet BM-02, through the codec crate the client patch shares). A listed item moves into the seller's server-held container 18; outbid players are refunded; a buyout settles at once; and a 30-second expiry sweep moves the item to the buyer (or back to the seller when unsold) and mails the seller the cash. Create, bid and cancel are honoured only at an open auctioneer. Persisted in `sgw_auction` + `sgw_auction_bid`. **Remaining** (see the [restoration plan](analysis/black-market/README.md)): the client patch, settlement on the social-systems mail API (BM-02b), the auctioneer content (BM-07) and the watch list (deferred, D4). See [black-market.md](gameplay/black-market.md).
 
