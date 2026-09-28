@@ -249,9 +249,12 @@ widened without re-deciding this ADR:
   exist outside `cell::content`. A `use` from a cell method or a Mercury
   handler is a compile error, not a lint.
 - Both entry points are `pub(super)` — nameable only from `cell::content`
-  and its descendants (in practice `cell::content::executor`).
+  and its descendants (in practice `cell::content::executor` and, since
+  decision 28, `cell::content::consumable_use`, both private).
 - Neither takes a client-supplied id. `ability_id` / `effect_id` come from a
-  `content_actions` seed row loaded at startup; no wire field reaches them.
+  `content_actions` seed row loaded at startup, or (decision 28) from the
+  `items_event_sets` row of an item the base has just consumed from the
+  player's own inventory; no wire field reaches them.
 
 Do not re-export these from `cell::content`, and do not add a cell method
 that forwards to them. That would turn this into an "apply arbitrary effect
@@ -737,7 +740,41 @@ When the attacker and the target are an engaged duel's engaged entities and HEAL
 
 **Consequences:** 1652 reaches 30 m, 1653 8 m, grenades 25 m, deployables 5 m; turret 1205's 300-unit minimum is 3 m. Weapon ranges (`resources.items.*_range`) are already metres and are not converted. The server still ignores `UseWeaponRange` (flag 4) and never checks `min_range` for a player's cast (python refuses inside it with `OutsideWeaponRange`); both are pre-existing gaps, not part of #919. Tests: `spawner::abilities::range_unit_tests`, `use_ability/tests/range_units.rs`, and the live-DB `spawner/tests/live_db_ability_ranges.rs` and `use_ability/tests/range_units_live_db.rs`.
 
-### 28. A deployable is a player ground cast with a `deployables` row: the object is an owned `SGWBeing` that pulses as its owner (deployables Phase 0)
+### 28. Native consumables: the base consumes before the cell applies, and timed stat buffs live in their own ledger
+
+**Decision:** Two parts.
+
+**(a) Items apply their own `items_event_sets` ability.** Using an item whose event-5 (`EVENT_ITEM_USE_ABILITY`) binding names an ability whose effects all run `HealHealth`, `HealFocus` or `StatBuff` applies that ability to the user, with no content chain, in [`cell::content::consumable_use`](../../crates/cell-content/src/cell/content/consumable_use.rs). Two bindings are excluded: ability 597 "Heal Focus", which the seed binds to 158 unrelated mission items as filler, and any item an `item_use` chain triggers on (the chain owns the item; the Ambernol vial keeps chain 1034). The use is a round trip:
+
+1. `fire_item_use` offers the use to `try_native_use` before any chain runs. A use that would do nothing is refused with the owner-pet feedback pair (`onErrorCode` plus a `CHAN_FEEDBACK` line, decision 25): the user is dead (code 14 `NotLiving`), or every pool the item heals is full (code 32 `StatValueGreaterThanOrEqual`). A `StatBuff` is never refused for headroom.
+2. Otherwise the cell sends `CellToBaseMsg::ConsumeItemForUse`. The base consumes one unit through `removeItem`'s locked transaction, held to the item's design id ([`consume_for_use.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/core/consume_for_use.rs)), and only after the commit answers `BaseToCellMsg::ItemUseConsumed`, straight on the channel (at most once, never through the outbox).
+3. `apply_consumed_item` re-derives the ability from the consumed row's design id and applies it through decision 16's `effect_apply::apply_ability_effects`, target and source the user.
+
+**(b) `StatBuff` and the stat-buff ledger.** The stimpacks' effects (3949-3990) run [`StatBuff`](../../crates/cell-world/src/cell/effects/stat_buff/mod.rs), which reads one NVP per attribute (`Coordination`, `Engagement`, `Fortitude`, `Intellect`, `Morale`, `Perception`) and writes an `ActiveStatBuff` to [`CellEntity::stat_buffs`](../../crates/entity/src/cell_entity/stat_buff.rs) that expires after the effect's `pulse_duration`. The ledger is **keyed by the stat**: a second buff on the same attribute takes the first off (restoring exactly what it moved) and applies itself, whatever its tier; buffs on different attributes never interact. A two-stat stim's two effects each land on their own stat. Bounds widen instead of clamping: a primary attribute sits at `cur == max`, so the buff raises `max` as far as the new value needs and records it, and removal takes back exactly that. The async half is combat's ([`effects/stat_buffs/`](../../crates/cell-combat/src/cell/effects/stat_buffs/mod.rs)): the 100 ms `stat_buff_tick` takes expired buffs off and sends the client the duration timers the synchronous ledger queued (`onTimerUpdate` type 5 with an absolute expiry, decision 22, and `0.0, 0.0` to clear, including the icon of a replaced buff), and `resolve_death` takes off every buff whose effect carries `EF_ClearOnDeath` (4).
+
+**Why:**
+
+- **`pulse_count = 1` never registers.** `register_active_effect` computes `remaining = total_pulses - 1`, which is 0 for every stimpack row, and returns without registering, so the effect never gets an `active_effects` instance and never an `on_remove`. The same holds for the pet buffs of decision 25, which is why they have `PetState::buffs`. Raising `pulse_count` to 2 would make the pulse tick call `on_apply` a second time at expiry, reapplying the buff instead of removing it. The doc comments on `AbsorbShield` and `Stun` in `scripts.rs` still say a `pulse_count = 1` registration "ages out at expiry"; `register_active_effect` does not do that, and this decision does not rely on it.
+- **Why a ledger apart from the pet one.** `PetBuff` is keyed by effect, carries toggles, lives on `PetState` and logs pet identities; a player's buff needs none of that and a different key. Unifying them would have changed pet behaviour for no gain, so this is a parallel, smaller type. It reuses the same idea (record the moved delta, take back exactly that) and the same log shape.
+- **Why keyed by stat.** A Mark III Coordination stim (effect 3950, +5) and the Coordination half of a Mark V stim (effect 3956, +7) are different effects on the same stat. Keyed by effect they would stack to +12, which a tiered consumable line very likely did not intend. None of these rows had a script in 2009, so the data does not say; this is a server-side design decision.
+- **Why the base consumes first.** A chain's `change_stat` then `remove_item` applies first and pays later: two clicks on the last slappack both pass the chain's gate before either removal commits, so the player got two heals for one unit, and an `ItemUsed` the outbox redelivered after a crash could heal again. With the row lock deciding, a unit that was not taken produces no effect. The answer is sent at most once for the same reason: an outbox replay could apply the effect twice for one unit, while a lost answer costs one unit's effect and logs an ERROR.
+- **Why a native path at all.** 46 items carry a real heal or buff binding (22 heals, 24 stimpacks); a chain per item would duplicate the binding the seed already holds, and a chain condition that fails is silent, which breaks the rule that every press gets feedback.
+
+**Security.** Decision 16's three properties hold for the second caller: `consumable_use` is a private module whose public face (`fire_item_use`, `apply_consumed_item`) takes an item design id, never an ability or effect id; the ability id comes from `items_event_sets` keyed by the design id the base read from the player's own inventory row (the client names only an inventory instance, and the base consumes that row under lock before the cell applies anything); the target is always the user.
+
+**Consequences:**
+
+- A stat buff is not persisted. Logout, gate travel, cross-world respawn and any other space change rebuild the `CellEntity`, whose stats come from the archetype again at `InitPlayerState` (which also clears any ledger it finds), so a buff is lost early but never leaks. The rows carry `EF_Offline_Time_Counts` (2): the 2009 design counted the hour down while offline, which would need persistence. A same-world death and respawn keep the entity and so keep the buff: no stimpack row carries `EF_ClearOnDeath`.
+- Nothing derived needs recomputing. QR reads Coordination, Engagement and Perception live (`combat/damage/qr.rs`), the damage pipeline reads Fortitude and Intelligence live (`combat/damage/pipeline.rs`); Morale has no reader today. There is no cached derived-stat table.
+- The heal scripts read a flat `HealAmount` before the older `HealPercentage` (`effects/heal.rs`), so one script per pool serves both the consumables and ability 597's 35%.
+- Not wired: the Stealth, Energy and Disguise boosts (their stats have no server reader), the antidotes, and every 597-bound item. A use of one of those bag consumables (`container_sets` `{1,17}`, no chain) is refused with "This item has no effect yet." and nothing consumed; mission items and the 597 filler stay silent. See [consumable-via-onitemuse-pattern.md](../content/consumable-via-onitemuse-pattern.md#what-is-deliberately-not-wired).
+- The same-world respawn's reanchor recreates the client's pawn; whether the client keeps a stim's duration icon through it is not verified. The server-side buff is unaffected.
+
+**Reversibility:** High. The stacking key is one `position` predicate in `CellEntity::apply_stat_buff`; persisting buffs would add a table and a replay at `InitPlayerState`. Moving a consumable back to a chain is authoring an `item_use` chain for it: the native path stands aside by rule.
+
+**Code and tests:** [`consumable_use.rs`](../../crates/cell-content/src/cell/content/consumable_use.rs) with `consumable_use_tests.rs` (the gates, the refusal bytes, the restored-chain double-apply guard, the apply half) and `consumable_use_live_db_tests.rs` (the native set and every magnitude against the seed); [`consume_for_use.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/core/consume_for_use.rs) with its live-DB tests (one unit per request, one answer per unit, the design-id guard); `crates/services/src/consumable_round_trip_tests.rs` (the Health Slappack, a double-click on the last unit, a restored chain 4001, two stimpacks and the 597 gate end to end on real rows); `stat_buff_tests.rs` in `cimmeria-entity`, `effects/stat_buff/tests.rs` and `effects/heal.rs` in `cimmeria-cell-world`, and `effects/stat_buffs/tests.rs` in `cimmeria-cell-combat` (the byte-exact duration timers, expiry, replacement and the death strip).
+
+### 29. A deployable is a player ground cast with a `deployables` row: the object is an owned `SGWBeing` that pulses as its owner (deployables Phase 0)
 
 **Decision:** A player ability with a `resources.deployables` row (`SpaceManager::deployable_specs`) places a stationary object instead of hitting a target. It rides the cast of decision 21 with these diversions, in [`abilities/deployable/`](../../crates/cell-combat/src/cell/abilities/deployable/mod.rs):
 

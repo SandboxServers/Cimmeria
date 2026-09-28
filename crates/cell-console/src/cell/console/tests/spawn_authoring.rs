@@ -127,6 +127,7 @@ async fn spawn_authoring_movehere_refuses_a_player() {
     }
     if let Some(e) = mgr.get_entity_mut(gm) {
         e.current_target_id = Some(other as i32);
+        e.witnesses.insert(cimmeria_common::EntityId(other as i32));
     }
 
     run(&mut mgr, gm, ".movehere").await;

@@ -184,6 +184,9 @@ impl SpaceManager {
         // verdict, not this method's (no `tx` here either).
         self.deployables.forget(entity_id);
         self.deployables.clear_staged(entity_id);
+        // #844: nobody keeps an entity that no longer exists selected. Every
+        // teardown path runs through here, and the id may be reused.
+        self.clear_targets_on(entity_id, "target_destroyed");
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 

@@ -83,6 +83,83 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (355, 3230, 'Hea
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (356, 3350, 'HealPercentage', '10.00');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (357, 4968, 'SpeedPet', '100');
 
+-- Native consumables (items_event_sets event 5, cell::content::consumable_use;
+-- ids 400-462). The 2009 rows shipped no NVPs, so each value is the number
+-- in the effect's own effect_desc, and each effect's script_name is set in
+-- effects.sql:
+--   HealAmount (HealHealth / HealFocus): the flat heal, "Heals 500 health."
+--     -> 500. Health: 712 (Health Slappack TC1), 3125, 3249-3257.
+--     Focus: 3062, 3239-3241, 3243-3248.
+--   <Stat> (StatBuff): the stimpack magnitude, "+7 Coordination" -> 7, for
+--     the effect's 3600 s pulse_duration. Mark III 3949-3954, Mark V
+--     3955-3966, Mark VII 3967-3978, Mark X 3979-3990. "Intellect" moves the
+--     INTELLIGENCE stat.
+-- The Stealth (3221) and Energy (3227) boosts and the Disguise boosts stay
+-- unwired: nothing on the server reads those stats (see
+-- docs/content/consumable-via-onitemuse-pattern.md).
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (400, 712, 'HealAmount', '500');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (401, 3125, 'HealAmount', '162');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (402, 3249, 'HealAmount', '172');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (403, 3250, 'HealAmount', '182');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (404, 3251, 'HealAmount', '221');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (405, 3252, 'HealAmount', '232');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (406, 3253, 'HealAmount', '244');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (407, 3254, 'HealAmount', '278');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (408, 3255, 'HealAmount', '290');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (409, 3256, 'HealAmount', '339');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (410, 3257, 'HealAmount', '353');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (411, 3062, 'HealAmount', '384');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (412, 3239, 'HealAmount', '454');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (413, 3240, 'HealAmount', '524');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (414, 3241, 'HealAmount', '683');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (415, 3243, 'HealAmount', '764');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (416, 3244, 'HealAmount', '844');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (417, 3245, 'HealAmount', '1005');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (418, 3246, 'HealAmount', '1005');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (419, 3247, 'HealAmount', '1322');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (420, 3248, 'HealAmount', '1420');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (421, 3949, 'Morale', '5');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (422, 3950, 'Coordination', '5');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (423, 3951, 'Engagement', '5');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (424, 3952, 'Fortitude', '5');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (425, 3953, 'Intellect', '5');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (426, 3954, 'Perception', '5');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (427, 3955, 'Engagement', '3');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (428, 3956, 'Coordination', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (429, 3957, 'Engagement', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (430, 3958, 'Perception', '3');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (431, 3959, 'Fortitude', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (432, 3960, 'Coordination', '3');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (433, 3961, 'Intellect', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (434, 3962, 'Morale', '3');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (435, 3963, 'Morale', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (436, 3964, 'Fortitude', '3');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (437, 3965, 'Perception', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (438, 3966, 'Intellect', '3');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (439, 3967, 'Coordination', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (440, 3968, 'Engagement', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (441, 3969, 'Perception', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (442, 3970, 'Engagement', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (443, 3971, 'Fortitude', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (444, 3972, 'Coordination', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (445, 3973, 'Intellect', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (446, 3974, 'Morale', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (447, 3975, 'Fortitude', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (448, 3976, 'Morale', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (449, 3977, 'Perception', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (450, 3978, 'Intellect', '7');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (451, 3979, 'Coordination', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (452, 3980, 'Engagement', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (453, 3981, 'Engagement', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (454, 3982, 'Perception', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (455, 3983, 'Fortitude', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (456, 3984, 'Coordination', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (457, 3985, 'Intellect', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (458, 3986, 'Morale', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (459, 3987, 'Morale', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (460, 3988, 'Fortitude', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (461, 3989, 'Perception', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (462, 3990, 'Intellect', '10');
 -- Deployables Phase 0 (ids 380-389): 5066 "Damage", the pulse of 1012
 -- Deployable: Microwave Emitter. Its description is "Medium Radius AE /
 -- Secondary -100F": 100 Focus and no Health, written the way the "-100F
@@ -97,5 +174,5 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (380, 5066, 'Foc
 -- Name: effect_nvps_2_nvp_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('effect_nvps_2_nvp_id_seq', 201, true);
+SELECT pg_catalog.setval('effect_nvps_2_nvp_id_seq', 462, true);
 

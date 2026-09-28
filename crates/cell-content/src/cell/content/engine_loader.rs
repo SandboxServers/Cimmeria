@@ -364,51 +364,55 @@ mod tests {
         );
     }
 
-    /// Live-DB guard: using a Health Slappack TC1 must resolve to the
-    /// heal-then-consume action pair. We assert the *behavior* of using
-    /// the item rather than pinning a specific chain id so a future
-    /// chain-id renumber (or a move from `consumables_chains.sql` to
-    /// some other seed file) doesn't fail this guard while the seeded
-    /// behavior is still correct.
-    ///
-    /// The pinned shape is the action pair itself: `change_stat HEALTH
-    /// amount=500` followed by `remove_item 2893 ×1`. If anyone changes
-    /// the heal amount, swaps the order, drops the remove_item, or
-    /// switches to `set_to_max`, the assertions fail with the exact
-    /// diff.
+    /// Live-DB guard: the Health Slappack (2893) has no `item_use` chain.
+    /// It is a native consumable (`consumable_use`: `items_event_sets`
+    /// event 5 -> ability 648 -> `HealHealth`, `HealAmount` 500), and a chain
+    /// for the same item would own it and switch the native path off (no
+    /// refusal feedback at full health, and the chain's apply-then-consume
+    /// order). Its old chain 4001 is retired; this fails if it comes back.
     #[tokio::test]
-    async fn live_db_item_use_2893_resolves_to_health_slappack_heal_and_consume() {
+    async fn live_db_the_health_slappack_has_no_item_use_chain() {
+        let pool = crate::test_support::require_db_or_skip!();
+        let engine = build_engine(Some(&pool)).await;
+        assert!(engine.chain_count() > 0, "the seeded chains must load");
+        assert!(
+            !engine.has_item_use_chain(2893),
+            "an item_use chain for 2893 would take the slappack off the native \
+             consumable path; retire it or document the switch"
+        );
+    }
+
+    /// Live-DB guard: using the Ambernol vial (item 19) on its mission step
+    /// resolves to chain 1034's actions in order, cast first and then the
+    /// consume: `launch_ability 1374`, `remove_item 19 x1`. The vial is the
+    /// contrast to the native consumables: a chain owns it (the mission
+    /// gate, the completion), so its event-5 binding to 1374 is not applied
+    /// natively. Asserted by behaviour, not by chain id.
+    ///
+    /// Also the C08a zero-delay guard: every seeded action row has
+    /// `delay_ms = 0`, so `resolved.action_delays` must be index-aligned
+    /// with `resolved.actions` and all zero for this real chain.
+    #[tokio::test]
+    async fn live_db_item_use_19_resolves_to_the_ambernol_cast_then_consume() {
         use cimmeria_content_engine::actions::Action;
         use cimmeria_content_engine::context::ExecutionContext;
         use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
-        use cimmeria_entity::stats::HEALTH;
 
-        const HEALTH_SLAPPACK_ITEM_ID: i32 = 2893;
-        const HEALTH_SLAPPACK_HEAL: i32 = 500;
+        const AMBERNOL_ITEM_ID: i32 = 19;
+        const CURE_STASIS_SICKNESS: i32 = 1374;
 
         let pool = crate::test_support::require_db_or_skip!();
         let engine = build_engine(Some(&pool)).await;
+        assert!(engine.has_item_use_chain(AMBERNOL_ITEM_ID));
 
-        // Fire `OnItemUse(2893)` — relationship-based lookup. The
-        // trigger filters on `item_id` so only chains keyed on item
-        // 2893 will match, regardless of which chain id they live at.
-        //
-        // The slappack chain (4001) gates on `Condition::StatBelowMax`
-        // so the player can't burn a stack at full HP. That condition
-        // reads `stat_<id>_cur` / `stat_<id>_max` from the chain
-        // context — populated by `populate_stats_context` at the live
-        // dispatch site. This synthetic test fires `resolve_event`
-        // directly without the populator, so we have to seed the
-        // headroom-positive params by hand. Without these, the
-        // condition fail-closes (cur < max unknown → false) and
-        // 0 actions resolve.
+        // The chain gates on mission 639 step 2343 being active; the live
+        // dispatch site fills this from the player's missions.
         let mut ctx = ExecutionContext::new();
+        ctx.set_param("item_id".to_string(), serde_json::json!(AMBERNOL_ITEM_ID));
         ctx.set_param(
-            "item_id".to_string(),
-            serde_json::json!(HEALTH_SLAPPACK_ITEM_ID),
+            "mission_639_step_2343_status".to_string(),
+            serde_json::json!("active"),
         );
-        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(100));
-        ctx.set_param("stat_7_max".to_string(), serde_json::json!(1000));
         let event = TriggerEvent {
             trigger_type: TriggerType::ItemUse,
             source_entity: None,
@@ -418,57 +422,26 @@ mod tests {
 
         let resolved = engine.resolve_event(&event, &ctx);
         let actions: Vec<&Action> = resolved.actions.iter().map(|(_, a)| a).collect();
-
-        assert_eq!(
-            actions.len(),
-            2,
-            "useItem(2893) must resolve to exactly two actions \
-             (change_stat then remove_item); got {} — chain wiring drift",
-            actions.len()
+        assert!(
+            actions.len() >= 2,
+            "useItem(19) on step 2343 must resolve chain 1034; got {actions:?}"
         );
-
         match actions[0] {
-            Action::ChangeStat {
-                stat_id,
-                amount,
-                set_to_max,
-                ..
-            } => {
-                assert_eq!(*stat_id, HEALTH, "first action must heal HEALTH");
-                assert_eq!(
-                    *amount,
-                    Some(HEALTH_SLAPPACK_HEAL),
-                    "Health Slappack TC1 description says +500 HP — \
-                     a balance change must update both the seed and this guard"
-                );
-                assert!(
-                    set_to_max.is_none() || set_to_max == &Some(false),
-                    "use the additive `amount` path, not set_to_max — \
-                     set_to_max would full-heal regardless of HP"
-                );
+            Action::LaunchAbility { ability_id, .. } => {
+                assert_eq!(*ability_id, CURE_STASIS_SICKNESS)
             }
-            other => panic!("expected ChangeStat as first action, got {other:?}"),
+            other => panic!("expected LaunchAbility first, got {other:?}"),
         }
-
         match actions[1] {
             Action::RemoveItem { item_id, count } => {
-                assert_eq!(*item_id, HEALTH_SLAPPACK_ITEM_ID);
-                assert_eq!(*count, 1, "consume one slappack per use");
+                assert_eq!(*item_id, AMBERNOL_ITEM_ID);
+                assert_eq!(*count, 1, "consume one vial per use");
             }
-            other => panic!("expected RemoveItem as second action, got {other:?}"),
+            other => panic!("expected RemoveItem second, got {other:?}"),
         }
-
-        // C08a zero-delay-case regression guard: every seeded action row
-        // today has `delay_ms = 0` (C08b, which authors the first nonzero
-        // row, hasn't landed). `resolved.action_delays` must be
-        // index-aligned with `resolved.actions` and all-zero for this
-        // real seeded chain — proving C08a's threading of
-        // `content_actions.delay_ms` through the loader and resolver
-        // didn't perturb the existing zero-delay behavior this same test
-        // already pins above.
         assert_eq!(
             resolved.action_delays,
-            vec![0, 0],
+            vec![0; actions.len()],
             "a real seeded chain with no delay_ms rows must resolve with \
              action_delays all zero, index-aligned with actions"
         );

@@ -134,6 +134,9 @@ async fn na13_console_aggression_broadcasts_update_then_cleared() {
             wire.push((witness_id, entity_id, method_index, args));
         }
     }
+    // The GM sees the NPC too (its selection must be in view, #844); this
+    // test is about the fan-out to a distinct witness.
+    wire.retain(|w| w.0 == WITNESS);
     assert_eq!(
         wire,
         vec![(
@@ -159,6 +162,9 @@ async fn na13_console_aggression_broadcasts_update_then_cleared() {
             wire.push((witness_id, entity_id, method_index, args));
         }
     }
+    // The GM sees the NPC too (its selection must be in view, #844); this
+    // test is about the fan-out to a distinct witness.
+    wire.retain(|w| w.0 == WITNESS);
     assert_eq!(
         wire,
         vec![(WITNESS, npc, ON_AGGRESSION_OVERRIDE_CLEARED, Vec::new())],

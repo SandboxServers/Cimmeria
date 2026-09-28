@@ -18,6 +18,7 @@ fn make_chain(id: i64, trigger: Trigger, actions: Vec<Action>, priority: i32) ->
         actions,
         action_delays: Vec::new(),
         priority,
+        once: false,
     }
 }
 
@@ -34,6 +35,47 @@ fn register_chain_increases_count() {
     engine.register_chain(chain);
     assert_eq!(engine.chain_count(), 1);
     assert_eq!(engine.chains_for_trigger(&TriggerType::EntityCreated), 1);
+}
+
+/// #802: the engine remembers which registered chains are fire-once, by id,
+/// so the cell executor can gate them. A chain registered without the flag
+/// is never once; an unknown id is never once.
+#[test]
+fn is_once_reflects_the_registered_chains_flag() {
+    let mut engine = ChainEngine::new();
+    let mut once = make_chain(
+        1008,
+        Trigger::OnEntityCreated { entity_type: None },
+        vec![],
+        0,
+    );
+    once.once = true;
+    engine.register_chain(once);
+    engine.register_chain(make_chain(
+        1009,
+        Trigger::OnEntityCreated { entity_type: None },
+        vec![],
+        0,
+    ));
+
+    assert!(engine.is_once(1008));
+    assert!(!engine.is_once(1009));
+    assert!(!engine.is_once(4242));
+}
+
+/// A once chain round-trips through JSON, and a JSON chain written before
+/// the field existed loads as not-once (`#[serde(default)]`).
+#[test]
+fn once_round_trips_and_defaults_to_false() {
+    let mut chain = make_chain(1, Trigger::OnEntityCreated { entity_type: None }, vec![], 0);
+    chain.once = true;
+    let json = serde_json::to_string(&chain).unwrap();
+    assert!(serde_json::from_str::<Chain>(&json).unwrap().once);
+
+    let legacy = r#"{"id":1,"name":"x","enabled":true,
+        "trigger":{"OnEntityCreated":{"entity_type":null}},
+        "conditions":[],"actions":[],"priority":0}"#;
+    assert!(!serde_json::from_str::<Chain>(legacy).unwrap().once);
 }
 
 #[test]
@@ -164,6 +206,7 @@ fn chain_serialization_roundtrip() {
         ],
         action_delays: Vec::new(),
         priority: 5,
+        once: false,
     };
 
     let json = serde_json::to_string_pretty(&chain).unwrap();
@@ -238,6 +281,7 @@ fn resolve_event_threads_per_action_delay_ms() {
         // must default to 0, not panic or misalign.
         action_delays: vec![0, 10_100],
         priority: 0,
+        once: false,
     };
     engine.register_chain(chain);
 
@@ -302,6 +346,7 @@ fn gated_region_chain(id: i64, conditions: Vec<crate::conditions::Condition>) ->
         actions: vec![Action::GrantXP { amount: 1 }],
         action_delays: Vec::new(),
         priority: 0,
+        once: false,
     }
 }
 
@@ -465,4 +510,37 @@ fn has_objective_completer_matches_exact_pair_on_enabled_chains_only() {
         !engine.has_objective_completer(622, 90622),
         "CompleteMission is not a per-objective completer"
     );
+}
+
+#[test]
+fn has_item_use_chain_matches_the_exact_item_on_enabled_chains_only() {
+    let mut engine = ChainEngine::new();
+    assert!(!engine.has_item_use_chain(19));
+    engine.register_chain(make_chain(
+        1034,
+        Trigger::OnItemUse { item_id: 19 },
+        vec![],
+        0,
+    ));
+    let mut disabled = make_chain(1035, Trigger::OnItemUse { item_id: 2893 }, vec![], 0);
+    disabled.enabled = false;
+    engine.register_chain(disabled);
+    engine.register_chain(make_chain(
+        1036,
+        Trigger::OnItemEquipped {
+            item_id: Some(6677),
+        },
+        vec![],
+        0,
+    ));
+    assert!(engine.has_item_use_chain(19));
+    assert!(
+        !engine.has_item_use_chain(2893),
+        "a disabled chain owns nothing"
+    );
+    assert!(
+        !engine.has_item_use_chain(6677),
+        "an equip chain is not a use chain"
+    );
+    assert!(!engine.has_item_use_chain(20));
 }

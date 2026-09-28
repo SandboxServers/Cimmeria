@@ -15,6 +15,7 @@ mod movement_validation;
 mod npc_spawn;
 mod player_name_lookup;
 mod spaces;
+mod target_lifetime;
 mod witnesses;
 
 const TEST_SPACES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>

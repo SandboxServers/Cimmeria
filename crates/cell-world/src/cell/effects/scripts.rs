@@ -1,7 +1,8 @@
 //! Effect script implementations.
 //!
 //! v1 — single-shot stat scripts:
-//! - [`HealHealth`] / [`HealFocus`] — heal by `HealPercentage` × max
+//! - [`HealHealth`] / [`HealFocus`] — flat `HealAmount` or `HealPercentage`
+//!   × max (in `heal.rs`, re-exported here)
 //! - [`MeleeDamage`] — `HealthDamage` raw damage
 //!
 //! v2 — buff/debuff scripts:
@@ -25,119 +26,15 @@
 //!    want existing content to dispatch through it.
 
 use super::{EffectContext, EffectScript};
+
+// The pool heals moved to `heal.rs` (this file is over the cap); re-exported
+// so `scripts::HealHealth` keeps resolving for the registry and pet scripts.
+pub use super::heal::{HealFocus, HealHealth};
 use cimmeria_entity::abilities::{DT_ENERGY, DT_HAZMAT, DT_PHYSICAL, DT_PSIONIC, DT_UNTYPED};
 use cimmeria_entity::stats::{
     ABSORB_ENERGY, ABSORB_HAZMAT, ABSORB_PHYSICAL, ABSORB_PSIONIC, ABSORB_UNTYPED, FOCUS, HEALTH,
 };
 use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
-
-// ── HealHealth ───────────────────────────────────────────────────────────
-
-/// Heals the target's HEALTH stat by `HealPercentage`% of its max.
-///
-/// Reads `HealPercentage` NVP (e.g., `"35.00"` = 35% of max). Negative
-/// or missing percentage = no-op. Caps at `cur + delta <= max` because
-/// the underlying stat clamps.
-///
-/// Reference: deprecated/python (fan-server) `HealHealth.py`.
-pub struct HealHealth;
-
-impl EffectScript for HealHealth {
-    fn on_apply(&self, ctx: &mut EffectContext) {
-        let percent = ctx.effect.param_f32("HealPercentage");
-        if percent <= 0.0 {
-            tracing::debug!(
-                target: "abilities",
-                event = "heal_skipped_zero_percent",
-                effect_id = ctx.effect.effect_id,
-                source_id = ctx.source_id,
-                target_id = ctx.target_id,
-                "HealHealth: HealPercentage <= 0, no-op"
-            );
-            return;
-        }
-        let target = match ctx.space_mgr.get_entity_mut(ctx.target_id) {
-            Some(t) => t,
-            None => {
-                tracing::debug!(
-                    target_id = ctx.target_id,
-                    "HealHealth: target entity missing — no-op"
-                );
-                return;
-            }
-        };
-        let (cur, max) = match target.stats.get(HEALTH) {
-            Some(s) => (s.cur, s.max),
-            None => return,
-        };
-        let delta = ((max as f32) * (percent / 100.0)).round() as i32;
-        let new_cur = (cur + delta).min(max);
-        if let Some(stat) = target.stats.get_mut(HEALTH) {
-            stat.update(stat.min, new_cur, stat.max);
-        }
-        tracing::info!(
-            target: "abilities",
-            event = "heal_health",
-            source_id = ctx.source_id,
-            target_id = ctx.target_id,
-            effect_id = ctx.effect.effect_id,
-            percent,
-            healed = delta.min(max - cur),
-            new_cur,
-            "HealHealth applied"
-        );
-    }
-}
-
-// ── HealFocus ────────────────────────────────────────────────────────────
-
-/// Heals the target's FOCUS stat by `HealPercentage`% of its max.
-///
-/// Same pattern as [`HealHealth`] but targets `FOCUS` (stat id 8). The
-/// canonical use case is Heal Focus (ability 597), which the existing
-/// starter loadout grants to every archetype.
-pub struct HealFocus;
-
-impl EffectScript for HealFocus {
-    fn on_apply(&self, ctx: &mut EffectContext) {
-        let percent = ctx.effect.param_f32("HealPercentage");
-        if percent <= 0.0 {
-            tracing::debug!(
-                target: "abilities",
-                event = "heal_skipped_zero_percent",
-                effect_id = ctx.effect.effect_id,
-                source_id = ctx.source_id,
-                target_id = ctx.target_id,
-                "HealFocus: HealPercentage <= 0, no-op"
-            );
-            return;
-        }
-        let target = match ctx.space_mgr.get_entity_mut(ctx.target_id) {
-            Some(t) => t,
-            None => return,
-        };
-        let (cur, max) = match target.stats.get(FOCUS) {
-            Some(s) => (s.cur, s.max),
-            None => return,
-        };
-        let delta = ((max as f32) * (percent / 100.0)).round() as i32;
-        let new_cur = (cur + delta).min(max);
-        if let Some(stat) = target.stats.get_mut(FOCUS) {
-            stat.update(stat.min, new_cur, stat.max);
-        }
-        tracing::info!(
-            target: "abilities",
-            event = "heal_focus",
-            source_id = ctx.source_id,
-            target_id = ctx.target_id,
-            effect_id = ctx.effect.effect_id,
-            percent,
-            healed = delta.min(max - cur),
-            new_cur,
-            "HealFocus applied"
-        );
-    }
-}
 
 // ── MeleeDamage ──────────────────────────────────────────────────────────
 
@@ -696,121 +593,9 @@ impl EffectScript for RangedEnergyDamage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cell::space_manager::SpaceManager;
+    use crate::cell::effects::test_fixtures::{effect_with_nvp, make_mgr_with_target};
     use cimmeria_entity::abilities::EffectDef;
     use std::collections::HashMap;
-
-    fn make_mgr_with_target() -> SpaceManager {
-        let mut mgr = SpaceManager::new(1);
-        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
-        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
-        mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(cxml).unwrap();
-        mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
-        if let Some(e) = mgr.get_entity_mut(1) {
-            e.is_player = true;
-            e.player_id = Some(100);
-            // Seed health 50/100 (half damaged) so heal can show a delta;
-            // focus 200/1000 so HealFocus has room.
-            if let Some(s) = e.stats.get_mut(HEALTH) {
-                s.update(0, 50, 100);
-            }
-            if let Some(s) = e.stats.get_mut(FOCUS) {
-                s.update(0, 200, 1000);
-            }
-        }
-        mgr
-    }
-
-    fn effect_with_nvp(name: &str, value: &str) -> EffectDef {
-        let mut params = HashMap::new();
-        params.insert(name.to_string(), value.to_string());
-        EffectDef {
-            effect_id: 999,
-            ability_id: 597,
-            delay: 0,
-            effect_sequence: 0,
-            event_set_id: None,
-            script_name: None,
-            params,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn heal_health_35_percent_of_max_caps_at_max() {
-        let mut mgr = make_mgr_with_target();
-        let effect = effect_with_nvp("HealPercentage", "35.00");
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        HealHealth.on_apply(&mut ctx);
-        // 50 + (100 * 0.35 = 35) = 85
-        let hp = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(HEALTH)
-            .unwrap()
-            .cur;
-        assert_eq!(hp, 85);
-    }
-
-    #[test]
-    fn heal_health_caps_at_max() {
-        let mut mgr = make_mgr_with_target();
-        // Player already near full
-        if let Some(e) = mgr.get_entity_mut(1) {
-            if let Some(s) = e.stats.get_mut(HEALTH) {
-                s.update(0, 90, 100);
-            }
-        }
-        let effect = effect_with_nvp("HealPercentage", "50.00");
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        HealHealth.on_apply(&mut ctx);
-        // 90 + 50 = 140 but capped at max=100
-        let hp = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(HEALTH)
-            .unwrap()
-            .cur;
-        assert_eq!(hp, 100);
-    }
-
-    #[test]
-    fn heal_focus_35_percent_of_max() {
-        let mut mgr = make_mgr_with_target();
-        let effect = effect_with_nvp("HealPercentage", "35.00");
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        HealFocus.on_apply(&mut ctx);
-        // 200 + (1000 * 0.35 = 350) = 550
-        let focus = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(FOCUS)
-            .unwrap()
-            .cur;
-        assert_eq!(focus, 550);
-    }
 
     #[test]
     fn melee_damage_applies_health_damage() {
@@ -1148,28 +933,6 @@ mod tests {
             .unwrap()
             .cur;
         assert_eq!(hp, 42, "50 - 8 chip = 42");
-    }
-
-    #[test]
-    fn zero_percent_heal_is_noop() {
-        let mut mgr = make_mgr_with_target();
-        let effect = effect_with_nvp("HealPercentage", "0.00");
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        HealFocus.on_apply(&mut ctx);
-        let focus = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(FOCUS)
-            .unwrap()
-            .cur;
-        assert_eq!(focus, 200, "zero percent must not change stat");
     }
 
     // ── RangedPhysicalDamage ──────────────────────────────────────────

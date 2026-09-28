@@ -42,7 +42,7 @@ Effect 5066 carries `EF_DontUseQR` (16) and `EF_SequenceOnPulse` (128). The serv
 
 ## How it works
 
-The design is decision 28 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md).
+The design is decision 29 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md).
 
 1. **The press.** The client sends `useAbilityOnGroundTarget(1012, x, y, z)`. The server checks the point before charging anything: finite coordinates, within 5 m of the caster, in line of sight of the caster's eye where the world has a collision occluder, and on the navmesh where the world enforces navmesh containment. A point over the mesh is moved down onto the floor. The point is then held for the cast, and the cast launches with no target.
 2. **The warmup.** The ordinary 2 s warmup, with the cooldown and warmup timers sent on the press. Moving, dying or changing space during the warmup cancels it and drops the held point.

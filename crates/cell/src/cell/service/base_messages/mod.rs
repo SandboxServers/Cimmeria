@@ -11,6 +11,8 @@
 //! - [`respec`] — `AbilitiesReset` (trainer respec mirror + burst, AT-08)
 //! - [`inventory_events`] — `InventoryItemMoveApplied` / `InventoryItemRemoved` /
 //!   `InventoryItemGranted` / `ItemUsed`
+//! - `ItemUseConsumed` goes straight to `cell::content::apply_consumed_item`
+//!   (the native consumable round trip)
 //! - [`bandolier`] — `UpdateBandolierItem` + `SyncBandolierItems` (weapon display)
 //! - [`minigame`] — `MinigameResult`
 //! - [`gm_spawn`] — `GmSpawnNpcReady`
@@ -479,6 +481,12 @@ pub(super) async fn handle_base_message(
                 engine,
             )
             .await;
+        }
+
+        // The base consumed a native consumable's unit: apply its ability
+        // (`cell::content::consumable_use`).
+        BaseToCellMsg::ItemUseConsumed(consumed) => {
+            crate::cell::content::apply_consumed_item(consumed, tx, space_mgr).await;
         }
 
         BaseToCellMsg::RequestEntityUpdate {

@@ -381,6 +381,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
         // The follow-up. `fire_dialog_choice` stamps no `target_entity_id`
         // into the context, so `display_dialog` here can only resolve a
@@ -396,6 +397,7 @@ mod tests {
             conditions: vec![],
             actions: vec![Action::DisplayDialog { dialog_id: shown }],
             priority: 0,
+            once: false,
         });
         engine
     }
@@ -706,6 +708,7 @@ mod tests {
             }],
             action_delays: vec![],
             priority: 0,
+            once: false,
         });
 
         let (tx, mut rx) = mpsc::channel(16);

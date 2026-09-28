@@ -3,6 +3,7 @@
 use super::bank_base_to_cell::BankBaseToCell;
 use super::data::SavedMission;
 use super::duel_base_to_cell::DuelBaseToCell;
+use super::item_use::ItemUseConsumed;
 use super::lab::{LabQuery, LabQueryResult};
 use super::org_base_to_cell::OrgBaseToCell;
 
@@ -479,6 +480,11 @@ pub enum BaseToCellMsg {
     /// and Command vault grant, BV-07). One nested enum, so bank packets add
     /// variants in `bank_base_to_cell.rs` instead of here.
     Bank(BankBaseToCell),
+
+    /// The base consumed the unit a `CellToBaseMsg::ConsumeItemForUse`
+    /// asked for; the cell now applies the item's ability. Sent at most
+    /// once per consumed unit (see `item_use.rs`).
+    ItemUseConsumed(ItemUseConsumed),
 
     /// Replace a player entity's cell-side Ignore set: the character names
     /// on the player's contact-list Ignore list (flags 301), which the base

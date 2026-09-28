@@ -77,6 +77,8 @@ mod ss_c3_mute;
 mod ss_u1_mail;
 #[cfg(test)]
 mod ss_u2_duel;
+#[cfg(test)]
+mod target_in_view;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.
@@ -100,6 +102,7 @@ fn setup() -> (SpaceManager, u32, u32) {
         e.access_level = 2;
         e.is_player = true;
         e.current_target_id = Some(npc as i32);
+        e.witnesses.insert(cimmeria_common::EntityId(npc as i32));
     }
     if let Some(e) = mgr.get_entity_mut(npc) {
         e.is_player = false;

@@ -131,6 +131,7 @@ fn cover_chain(id: i64, conditions: Vec<Condition>, counter_name: &str) -> Chain
         }],
         action_delays: Vec::new(),
         priority: 0,
+        once: false,
     }
 }
 

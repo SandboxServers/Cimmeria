@@ -2,7 +2,7 @@
 
 > **Last updated**: 2026-09-28
 > **Status**: Phase 0 implemented (1012 Deployable: Microwave Emitter); owner in-client UAT pending. Phases 1-2 not started.
-> **System doc**: [docs/gameplay/deployables.md](../../gameplay/deployables.md). **ADR**: decision 28 of [abilities-and-effects-system.md](../../architecture/abilities-and-effects-system.md).
+> **System doc**: [docs/gameplay/deployables.md](../../gameplay/deployables.md). **ADR**: decision 29 of [abilities-and-effects-system.md](../../architecture/abilities-and-effects-system.md).
 
 This ledger tracks restoring the Scientist tree's "Deployable:" abilities: stationary objects a player places that pulse an effect for a fixed lifetime.
 

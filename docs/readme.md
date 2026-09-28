@@ -39,8 +39,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | <!-- gen:docs-md-count -->608<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->8,228<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,362<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->7,648<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->1,436<!-- /gen:tests-live-db --> |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->8,265<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,367<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->7,681<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,438<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -169,6 +169,7 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [effect-system.md](gameplay/effect-system.md) | Buffs, debuffs, DoTs, HoTs, effect stacking and priority | Complete |
 | [stat-system.md](gameplay/stat-system.md) | Base stats, derived stats, level scaling, equipment modifiers | Complete |
 | [inventory-system.md](gameplay/inventory-system.md) | Item slots, stacking, equipment, bag management | Complete |
+| [consumables.md](gameplay/consumables.md) | Heal items and stimpacks: what a use does, refusals, buff stacking | Complete |
 | [crafting-system.md](gameplay/crafting-system.md) | Blueprints, material requirements, crafting stations, 499 recipes | Complete |
 | [mission-system.md](gameplay/mission-system.md) | Quest objectives, step advancement, rewards, mission scripts | Complete |
 | [gate-travel.md](gameplay/gate-travel.md) | Stargate dialing, 29 defined gates, zone transitions | Complete |

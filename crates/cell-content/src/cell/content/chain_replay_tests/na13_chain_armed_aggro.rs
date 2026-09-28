@@ -188,3 +188,97 @@ async fn live_db_na13_pru_waits_for_the_vial_interaction() {
 
     assert_engaged_by_chain(&mgr, pru);
 }
+
+/// Resolve chain 1008's Region8 entry and execute it for `player`, through
+/// the engine the chain is registered on: the fire-once gate asks that
+/// engine, so passing a fresh `ChainEngine::new()` here (as the NA13 tests
+/// above do) would bypass it.
+async fn enter_region8(engine: &ChainEngine, player: u32, mgr: &mut SpaceManager) {
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "region_key".to_string(),
+        serde_json::json!("Castle_CellBlock.Region8"),
+    );
+    let event = TriggerEvent {
+        trigger_type: TriggerType::RegionEnter,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+    let resolved = engine.resolve_event(&event, &ctx);
+    assert!(
+        resolved.actions.iter().any(|(id, _)| *id == 1008),
+        "chain 1008 resolves on the Region8 entry"
+    );
+    let (tx, _rx) = mpsc::channel(256);
+    execute_actions(resolved, player, 42, &tx, mgr, engine).await;
+}
+
+/// #802: chain 1008 carries `once = true` (the Python's `once = True`
+/// subscription on the per-player level script), and now it means it. The
+/// first Region8 entry engages the guard; the same player re-entering does
+/// not re-apply the threat; a second player still fires it once.
+///
+/// Revert proof: without the executor's once gate, the second entry re-adds
+/// 1000 threat for the first player and the "still empty" assertion fails.
+#[tokio::test]
+async fn live_db_chain_1008_fires_once_per_player() {
+    let pool = require_db_or_skip!();
+    let (mut mgr, guard) = fixture(&pool, GUARD_TAG).await;
+
+    let chain = load_single_chain_for_test(&pool, 1008)
+        .await
+        .expect("query chain 1008")
+        .expect("chain 1008 seeded");
+    assert!(chain.once, "chain 1008's trigger row is seeded once = true");
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    enter_region8(&engine, PLAYER, &mut mgr).await;
+    assert_engaged_by_chain(&mgr, guard);
+
+    mgr.get_entity_mut(guard).unwrap().threat_list.clear();
+    enter_region8(&engine, PLAYER, &mut mgr).await;
+    assert!(
+        mgr.get_entity(guard).unwrap().threat_list.is_empty(),
+        "the same player re-entering Region8 must not re-fire chain 1008: {:?}",
+        mgr.get_entity(guard).unwrap().threat_list
+    );
+
+    const SECOND: u32 = 7302;
+    let p = mgr.get_entity(PLAYER).unwrap().position;
+    mgr.create_entity(SECOND, "Castle_CellBlock", [p.x, p.y, p.z + 1.0], [0.0; 3])
+        .unwrap();
+    enter_region8(&engine, SECOND, &mut mgr).await;
+    assert!(
+        mgr.get_entity(guard)
+            .unwrap()
+            .threat_list
+            .get(&SECOND)
+            .copied()
+            .unwrap_or(0.0)
+            >= 1000.0,
+        "the flag is per entity: a second player still fires chain 1008"
+    );
+}
+
+/// #802 acceptance: after a full load, exactly chains 1008 and 1044 are
+/// fire-once — the only two seeded trigger rows with `once = true`.
+#[tokio::test]
+async fn live_db_only_chains_1008_and_1044_load_as_once() {
+    let pool = require_db_or_skip!();
+    let engine = super::super::engine_loader::build_engine(Some(&pool)).await;
+    let ids: Vec<i32> =
+        sqlx::query_scalar("SELECT DISTINCT chain_id FROM resources.content_triggers")
+            .fetch_all(&pool)
+            .await
+            .expect("list trigger chain ids");
+    assert!(!ids.is_empty());
+    let once: Vec<i32> = ids
+        .into_iter()
+        .filter(|&id| engine.is_once(i64::from(id)))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    assert_eq!(once, vec![1008, 1044]);
+}

@@ -443,6 +443,13 @@ pub struct CellEntity {
     /// [`ActiveEffectInstance`] for the per-instance state.
     pub active_effects: Vec<ActiveEffectInstance>,
 
+    /// Timed stat buffs (the consumable stimpacks), at most one per stat,
+    /// with the client timer clears they still owe. `pulse_count = 1`
+    /// effects never register in `active_effects`, so these carry their
+    /// own duration; the cell's stat-buff tick expires them. Empty for
+    /// almost every entity. See [`super::StatBuffLedger`].
+    pub stat_buffs: super::StatBuffLedger,
+
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities. See [`AiState`] for the full 12-state
     /// machine. Defaults to `Idle`; only a subset is currently driven by
@@ -734,6 +741,17 @@ pub struct CellEntity {
     /// transient. The chain that reaches the threshold also explicitly
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
+
+    /// Fire-once content chains (`content_triggers.once`, #802) that have
+    /// already fired for this entity. Checked and filled by the cell
+    /// executor's once gate (`cimmeria_cell_content::cell::content::executor::
+    /// once_gate`) before any action runs.
+    ///
+    /// Not persisted, like `counters`: it dies with the entity, so a
+    /// once-chain re-arms on relog or on the next space visit — the lifetime
+    /// of the 2009 per-player level script whose `once = True` subscriptions
+    /// this models.
+    pub fired_once_chains: HashSet<i64>,
 
     /// Character names this player ignores: the base's contact-list Ignore
     /// list (flags 301), pushed by `BaseToCellMsg::UpdateIgnoreList` after

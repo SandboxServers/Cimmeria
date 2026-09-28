@@ -92,6 +92,8 @@ The check is the first thing `handle_dial_gate` does after the `-1` cancel senti
 
 The refusal reaches the player as `onErrorCode` (121): `SystemID = 0` (`ERRORCODE_SYSTEM_Ability`, the only token the enum defines), `InstanceID = 0`, `ErrorCodeID = 180` (`CONDITION_FEEDBACK_EntityDoesNotHaveStargateAddress`). `InstanceID` is deliberately zero rather than the stargate id — under system 0 the client reads that field as an ability id.
 
+Since #727 every dial refusal also sends a chat line on `CHAN_feedback`: `Failed to dial: not a known stargate address` for an address the player does not hold *and* for one that does not exist (the two are byte-identical, so the answer is not an existence oracle), plus lines for dialling your own world, dialling before the cell entity exists, and a destination with no standable arrival. The texts and the reason `onDHDReply` is not used yet are in [stargate-dhd-state-machine.md](../reverse-engineering/findings/stargate-dhd-state-machine.md#dial-refusal-feedback-727-2026-09-28).
+
 **Transit is not gated.** The check is on the dial and only the dial, matching 2009, which gates `onDialGate` and never `GateTravel.stargatePassed`. A player may walk through a wormhole somebody else opened.
 
 **`gmDHD` is not exempted in the primitive.** An `access_level` branch would put a second authorization surface on a check whose whole value is having exactly one. Instead the GM arm — already authorized against the session's access level — tops the caller's *in-memory* address book up with a `reason = "gm_address_grant"` audit warn before dialling. Nothing is persisted; this mirrors 2009's `giveaddress` console command.

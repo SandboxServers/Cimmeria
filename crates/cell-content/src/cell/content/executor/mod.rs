@@ -20,6 +20,7 @@
 //!   client method 66, and the base persistence request)
 //! - [`mail`]      — `SendSystemMail`, forwarded to the base's mail writer
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
+//! - [`once_gate`] — `content_triggers.once`: fire once per entity, then disarm
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
 //! SystemMessage, SendMessage, SetActiveSlot, TriggerChain, fallback) stay
@@ -45,6 +46,7 @@ mod dialog;
 mod inventory;
 mod mail;
 mod mission;
+mod once_gate;
 mod spawn;
 mod stargate;
 mod stats;
@@ -110,6 +112,9 @@ pub async fn execute_actions(
         action_delays,
         params,
     } = resolved;
+    // Fire-once chains (#802): drop a spent one, record a first fire.
+    let (actions, action_delays) =
+        once_gate::gate_for_entity(actions, action_delays, entity_id, space_mgr, engine);
     if !actions.is_empty() {
         // One ordered line per resolved action list: item grants, step
         // advances, dialogs and their delays as the executor will run them.

@@ -53,6 +53,7 @@ mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
 mod step_region_replay;
+mod target_lifetime;
 mod vault_access;
 pub use vault_access::{vault_access, vault_move_allowed, VaultReject};
 mod vault_session_end;

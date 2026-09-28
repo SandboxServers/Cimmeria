@@ -134,7 +134,8 @@ pub(super) async fn apply_death_transition(
     )
     .await;
 
-    // 1. Attacker side: clear targeting reticle.
+    // 1. Attacker side: clear targeting reticle. The server's stored copy
+    //    is dropped at 2b', after the auto-cycle sweep that matches on it.
     if attacker_is_player {
         send_entity_method(
             attacker_id,
@@ -212,6 +213,16 @@ pub(super) async fn apply_death_transition(
             space_mgr,
         )
         .await;
+    }
+
+    // 2b'. The killer's stored target goes with the reticle dropped in 1
+    //      (#844), or the client and server disagree about what is
+    //      selected. After 2b on purpose: the auto-cycle sweep finds the
+    //      killer's loop through this very field. Only when the killer
+    //      still had this target stored (one who switched keeps theirs),
+    //      and nobody else's selection changes: a looter keeps the corpse.
+    if attacker_is_player {
+        space_mgr.clear_target_of(attacker_id, target_eid, "target_killed");
     }
 
     // 2c. Dying player's OWN auto-cycle clears. The sweep above only
@@ -419,6 +430,13 @@ pub(super) async fn resolve_death(
     }
 
     side_effects::send_death_sequence(target_eid, tx, space_mgr).await;
+
+    // Timed stat buffs whose effect carries `EF_ClearOnDeath` end with the
+    // death (python `AbilityManager.onDead`). The stimpacks do not carry it
+    // (their rows say `EF_Offline_Time_Counts`), so they outlast a same-world
+    // respawn, which keeps this entity; every other way out of the world
+    // rebuilds the entity and its stats from scratch.
+    crate::cell::effects::clear_stat_buffs_on_death(target_eid, tx, space_mgr).await;
 
     if grant_xp {
         side_effects::grant_kill_xp(target_eid, attacker_id, tx, space_mgr).await;

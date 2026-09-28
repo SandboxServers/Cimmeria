@@ -80,6 +80,7 @@ fn duel_engine(pct: i32) -> ChainEngine {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
     engine.register_chain(Chain {
         action_delays: Vec::new(),
@@ -96,6 +97,7 @@ fn duel_engine(pct: i32) -> ChainEngine {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
     engine
 }
