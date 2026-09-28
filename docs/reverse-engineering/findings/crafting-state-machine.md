@@ -207,13 +207,15 @@ Static review at `beaf79471154a2e558fd7d112115950519a3f530` found a missing prog
 
 **Update (2026-09-26, crafting CR-03):** method 138 now has a runtime sender. After the `onClientReady` burst, [`push_crafting_on_login`](../../../crates/base-session/src/base/crafting/sync/mod.rs) loads the crafting state and sends 138 for all five paradigms, together with 136, 139 and the ASP property. A character with no stored levels loads the D-CR03 starting levels (Common 5, the rest 1). Level mutation is still absent until the Racial Paradigm Guide items (CR-15).
 
+**Update (2026-09-27, crafting close-out CR-13):** level mutation shipped with CR-15 (#902). Using a Racial Paradigm Guide (items 7805-7809) raises its paradigm by one, to at most 10, in the same transaction that consumes the guide, and sends 138 for that paradigm; `.allcraft` sets every paradigm to 7 and re-sends the bundle. What remains unverified is the in-game display, which the owner's CR-14 UAT covers.
+
 The implementation gap is tracked in [#723](https://github.com/SandboxServers/Cimmeria/issues/723). No live level gain, client UI update, or packet capture was exercised. Those checks remain necessary once progression and initial synchronization are implemented.
 
 ---
 
 ## Contradictions with crafting-wire-formats.md
 
-1. **Resolved omission:** `onUpdateRacialParadigmLevel` is now documented in `crafting-wire-formats.md` with the definition-verified two-argument schema. Runtime delivery remains unimplemented as recorded above.
+1. **Resolved omission:** `onUpdateRacialParadigmLevel` is now documented in `crafting-wire-formats.md` with the definition-verified two-argument schema. Runtime delivery is implemented (CR-03 at login, CR-15 on a guide's use), as recorded above.
 2. **`TimerUpdate` subscription** is not mentioned. VCrafting uses it for induction countdown. Not a new network message — it's the shared system timer event.
 3. **`Cache_ElementReady<SGW::Blueprint>`** subscription is not mentioned. VCrafting waits for blueprint data cache before populating recipe lists.
 4. Wire fields for craft actions (craft recipe ID, item arrays, etc.) are confirmed accurate from `.def` — no contradictions in the base wire format table.

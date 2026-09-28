@@ -1,5 +1,21 @@
 # CAT-F — Crafting / R&D / Training
 
+> [!NOTE]
+> **Status (2026-09-27, crafting campaign close-out CR-13).** This audit was written against `main` on 2026-05-31, before the services crate split (#825); its code paths and line numbers are that tree's and are kept as written. Where each finding stands now:
+>
+> | Finding | Status | Where it was closed |
+> |---|---|---|
+> | CAT-F-01 train from anywhere | Fixed | Trainer authority (ability-tree AT-04, #827): `trainAbility` needs a pinned, live, in-range trainer that offers the ability |
+> | CAT-F-02 ASP spend | Fixed | Crafting CR-04 (#884): one `FOR UPDATE` transaction, every check server-side, replay-safe |
+> | CAT-F-03 craft | Fixed | CR-06 and CR-07 (#897, #905): named items owner- and bag-checked under row locks, consumed and granted in one transaction when the bar ends |
+> | CAT-F-04 research, reverse engineering | Fixed | CR-08 (#903): outcomes rolled on the server only (an injectable RNG sampling `[0, 1)`), exactly the named instances consumed |
+> | CAT-F-05 alloying | Fixed | CR-09 (#904): tier and quality from the server's catalog, the client's count rules by stack quantity |
+> | CAT-F-06 stubs answer "handled" | Fixed | Every crafting request is now answered, and every refusal is a visible line; a malformed one is dropped with a WARN (decision D-CR25) |
+> | CAT-F-07 no busy or induction state | Fixed | CR-06 (#897): one running induction per player, ten in all, dropped without consuming on logout or world change |
+> | CAT-F-08 base train debit trusts the cell's level | **Open** | The base `UPDATE` in `train_ability.rs` still guards only `training_points >= cost` and not-already-known (#465) |
+>
+> Code paths now: the crafting cell methods are `crates/cell-methods/src/cell/cell_methods/player/crafting/`; the verbs and their transactions are `crates/base-session/src/base/crafting/`; crafting persistence is `crates/base-session/src/base/crafting/persistence/mod.rs`; `trainAbility` is `crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs` with the trainer gate in `crates/cell-interactions/src/cell/interactions/trainer_authority.rs`; the base train debit is `crates/base-methods/src/base/world_entry/methods/progression/train_ability.rs`; the interaction handlers are `crates/cell-interactions/src/cell/interactions/`; the space manager is `crates/cell-world/src/cell/space_manager/`; the wire-log decoders are `crates/wire-log/src/wire_log/decoders/generated.rs`. One authority gap the campaign left open: the station or tool gate runs when a crafting job is requested, not when it completes ([crafting session resume](../../../analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward)).
+
 **Overall trust posture: MIXED — TrainAbility is well-implemented; everything
 else is a stub waiting to ship as an exploit chain.** The TrainAbility flow
 (cell method 77) is the one path in this category that actually mutates state,
