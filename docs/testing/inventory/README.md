@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 8,142 |
-| Files with tests | 1,344 |
-| Gated in CI (every crate but CI's exclude list) | 7,562 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,418 |
-| Inventory threshold (5% of the tests) | 407 |
+| Tests (`#[test]` / `#[tokio::test]`) | 8,169 |
+| Files with tests | 1,347 |
+| Gated in CI (every crate but CI's exclude list) | 7,589 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,427 |
+| Inventory threshold (5% of the tests) | 408 |
 
 <!-- /gen:tests-totals -->
 
@@ -118,15 +118,15 @@ with no file in this directory yet.
 | `crates/admin-api` | `cimmeria-admin-api` | 52 | 4 | 0 | yes | none |
 | `crates/auth` | `cimmeria-auth` | 52 | 10 | 8 | yes | none |
 | `crates/patch-wire` | `cimmeria-patch-wire` | 47 | 6 | 0 | yes | none |
+| `crates/test-support` | `cimmeria-test-support` | 45 | 5 | 8 | yes | none |
 | `crates/minigame` | `cimmeria-minigame` | 37 | 5 | 0 | yes | none |
 | `crates/common` | `cimmeria-common` | 36 | 4 | 0 | yes | [common.md](common.md) |
 | `crates/client-launch` | `cimmeria-client-launch` | 34 | 4 | 0 | yes | none |
-| `crates/services` | `cimmeria-services` | 31 | 10 | 13 | yes | [services.md](services.md) |
+| `crates/services` | `cimmeria-services` | 32 | 11 | 14 | yes | [services.md](services.md) |
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/wire-log` | `cimmeria-wire-log` | 24 | 6 | 0 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
-| `crates/test-support` | `cimmeria-test-support` | 19 | 3 | 0 | yes | none |
 | `crates/patchset` | `cimmeria-patchset` | 15 | 3 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
