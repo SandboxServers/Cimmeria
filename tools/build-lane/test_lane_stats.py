@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -147,6 +148,106 @@ class LaneJobLogTests(unittest.TestCase):
         self.assertFalse(first["sccache"], "RUSTC_WRAPPER set by the caller keeps sccache out")
         self.assertGreaterEqual(first["run_s"], 0)
         self.assertFalse(list((Path(root) / "lane").iterdir()), "every slot is released")
+        self.assertIn("disk_free_gb", first)
+        self.assertEqual(first["pruned_mb"], 0)
+
+
+@unittest.skipUnless(find_bash() and shutil.which("git"), "needs bash and git")
+class LaneDiskTests(unittest.TestCase):
+    """The low-disk guard and the incremental-session pruning (#1023)."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        # A Dev Drive root with a dir for this checkout makes lane.sh build into it.
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=HERE, capture_output=True,
+                             text=True, check=True).stdout.strip()
+        self.target = self.root / "targets" / Path(top).name
+        self.target.mkdir(parents=True)
+        self.env = dict(os.environ, LANE_ROOT=str(self.root / "lane-root"), LANE_SLOTS="2", RUSTC_WRAPPER="",
+                        CIMMERIA_TARGET_ROOT=str(self.root / "targets"))
+        for var in ("LANE_METRICS_DIR", "LANE_MIN_FREE_GB", "LANE_PRUNE", "CIMMERIA_FORCE_DEV_DRIVE"):
+            self.env.pop(var, None)
+
+    def lane(self, *cmd, **env):
+        return subprocess.run([find_bash(), (HERE / "lane.sh").as_posix(), *cmd], cwd=HERE,
+                              env=dict(self.env, **env), capture_output=True, text=True)
+
+    def jobs(self):
+        return lane_stats.load(self.root / "lane-root" / "metrics" / "jobs.jsonl")[0]
+
+    def test_refuses_to_start_below_the_free_space_floor(self):
+        marker = self.root / "ran"
+        r = self.lane("touch", marker.as_posix(), LANE_MIN_FREE_GB="100000000")
+        self.assertEqual(r.returncode, 28, r.stderr)
+        self.assertFalse(marker.exists(), "the command must not run")
+        self.assertIn("refusing to start", r.stderr)
+        self.assertIn("rm-worktree.sh --merged", r.stderr)
+        self.assertIn("sweep.ps1", r.stderr)
+        self.assertFalse([p for p in (self.root / "lane-root" / "lane").iterdir() if p.name.startswith("slot.")],
+                         "the slot is released")
+        # 0 turns the guard off.
+        self.assertEqual(self.lane("touch", marker.as_posix(), LANE_MIN_FREE_GB="0").returncode, 0)
+        self.assertTrue(marker.exists())
+
+    def test_prunes_stale_incremental_sessions_after_a_job(self):
+        unit = self.target / "debug" / "incremental" / "cimmeria_wire-0abc123def456"
+        old, newest = unit / "s-hmpqok75qv-15y8c65-oldsvh", unit / "s-hmptxz1mr4-1oq5s11-newsvh"
+        live_working, dead_working = unit / "s-hmpuaaaaaa-2222222-working", unit / "s-hmp0000000-3333333-working"
+        for d in (old, newest, live_working, dead_working):
+            d.mkdir(parents=True)
+            (d / "dep-graph.bin").write_bytes(b"\0" * (2 << 20))
+            (unit / (d.name.rsplit("-", 1)[0] + ".lock")).touch()
+        hour_ago = time.time() - 2 * 3600
+        os.utime(dead_working, (hour_ago, hour_ago))
+
+        r = self.lane("true")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        left = sorted(p.name for p in unit.iterdir())
+        self.assertEqual(left, sorted([newest.name, live_working.name, "s-hmptxz1mr4-1oq5s11.lock",
+                                       "s-hmpuaaaaaa-2222222.lock"]),
+                         "keeps the newest finished session and a recent -working one, with their locks")
+        self.assertIn("pruned", r.stderr)
+        self.assertGreaterEqual(self.jobs()[-1]["pruned_mb"], 3)
+
+        # LANE_PRUNE=0 leaves a stale session alone.
+        old.mkdir()
+        self.assertEqual(self.lane("true", LANE_PRUNE="0").returncode, 0)
+        self.assertTrue(old.exists())
+
+
+@unittest.skipUnless(shutil.which("rustc"), "needs rustc")
+class SccacheWrapperTests(unittest.TestCase):
+    """sccache-wrap.rs hides the target-dir variables from sccache (#1023): with the
+    per-worktree CARGO_TARGET_DIR in sccache's key, no worktree ever hit another's cache."""
+
+    def test_wrapper_hides_target_dir_variables_and_passes_the_rest(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        exe = tmp / ("sccache.exe" if os.name == "nt" else "sccache")
+        # Compiled outside the repo, so rustup uses its default toolchain, not the pin.
+        subprocess.run(["rustc", "--edition", "2021", "-o", str(exe), str(HERE / "sccache-wrap.rs")],
+                       cwd=tmp, check=True, capture_output=True)
+        # Python stands in for sccache: it prints the variables it sees and exits with 7.
+        probe = ("import os, sys, json; print(json.dumps({k: v for k, v in os.environ.items() "
+                 "if k.startswith(('CARGO_', 'KEEP_'))})); print(sys.argv[1:]); sys.exit(7)")
+        env = dict(os.environ, CIMMERIA_SCCACHE_REAL=sys.executable, CARGO_TARGET_DIR="B:/targets/wt-a",
+                   CARGO_BUILD_TARGET_DIR="x", CARGO_BUILD_BUILD_DIR="y", CARGO_PKG_NAME="tokio", KEEP_ME="1")
+        r = subprocess.run([str(exe), "-c", probe, "rustc", "--crate-name", "tokio"], env=env,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 7, "the wrapper passes sccache's exit code through")
+        seen = json.loads(r.stdout.splitlines()[0])
+        self.assertNotIn("CARGO_TARGET_DIR", seen)
+        self.assertNotIn("CARGO_BUILD_TARGET_DIR", seen)
+        self.assertNotIn("CARGO_BUILD_BUILD_DIR", seen)
+        self.assertEqual(seen.get("CARGO_PKG_NAME"), "tokio", "other CARGO_ variables still reach sccache")
+        self.assertEqual(seen.get("KEEP_ME"), "1")
+        self.assertIn("'--crate-name', 'tokio'", r.stdout, "arguments pass through unchanged")
+
+        env.pop("CIMMERIA_SCCACHE_REAL")
+        r = subprocess.run([str(exe), "rustc", "-vV"], env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("CIMMERIA_SCCACHE_REAL", r.stderr)
 
 
 if __name__ == "__main__":

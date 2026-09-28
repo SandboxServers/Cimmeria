@@ -11,26 +11,35 @@
 #  * Slots: LANE_SLOTS (default: the number in $LANE_ROOT/lane/SLOTS, else 2). `--exclusive`
 #    takes every slot, for full-workspace builds and measurements.
 #  * CARGO_BUILD_JOBS defaults to cores / slots (floor 4) so a full lane fits the CPU.
-#  * sccache as RUSTC_WRAPPER when it is installed, with one shared cache
-#    ($CIMMERIA_SCCACHE_DIR, default $LANE_ROOT/sccache-cache). It caches third-party
-#    crates. Workspace crates build incrementally (the dev profile's default), and sccache
-#    passes those through uncached. Worktrees used to force CARGO_INCREMENTAL=0 so sccache
-#    could cache workspace crates as well, but sccache keys a crate by its absolute path,
-#    so one worktree's crates never hit in another: the job log showed 0% hits while the
-#    edit loop lost its incremental reuse. sccache refuses to run at all when
-#    CARGO_INCREMENTAL is set to anything but 0, so a caller that sets it gets no sccache.
+#  * sccache when it is installed, with one shared cache ($CIMMERIA_SCCACHE_DIR, default
+#    $LANE_ROOT/sccache-cache). It caches third-party crates. Workspace crates build
+#    incrementally (the dev profile's default), and sccache passes those through uncached.
+#    sccache refuses to run at all when CARGO_INCREMENTAL is set to anything but 0, so a
+#    caller that sets it gets no sccache.
+#    RUSTC_WRAPPER is not sccache itself but sccache-wrap.rs, built here on first use.
+#    It hides CARGO_TARGET_DIR (and the other target-dir variables) from sccache, which
+#    hashes every CARGO_* variable: with the per-worktree target dir in the key, every
+#    worktree had its own cache and the lane scored ~0% hits (issue #1023).
+#  * Disk guard: a job refuses to start when the target dir's drive has less than
+#    LANE_MIN_FREE_GB free (default 10, 0 turns it off), after pruning this worktree's
+#    stale incremental sessions, instead of letting cargo die with "os error 112".
+#  * Incremental pruning: after each job, the worktree's stale incremental sessions are
+#    deleted (rustc keeps the previous session of every unit next to the one it just
+#    wrote, about 45% of the incremental dir). LANE_PRUNE=0 turns it off.
 #  * Target dir: each worktree builds into its own target/ (cargo locks a target dir for
 #    the whole build, so sharing one would serialise every worktree). When
 #    CIMMERIA_TARGET_ROOT is set (a Dev Drive, see tools/dev-drive/), the target dir is
 #    $CIMMERIA_TARGET_ROOT/<worktree name> instead.
 #  * Job log: every job appends one JSON line to $LANE_ROOT/metrics/jobs.jsonl (wait and
 #    run time, exit code, worktree, commit, settings, lowest free RAM, sccache hits and
-#    misses). tools/build-lane/lane_stats.py reports on it. LANE_METRICS=0 turns it off.
+#    misses, free disk at the start, MB pruned). tools/build-lane/lane_stats.py reports on
+#    it. LANE_METRICS=0 turns it off.
 #
 # Lock layout: $LANE_ROOT/lane/slot.N directories (mkdir is atomic). A dead holder pid
 # breaks its own slot.
 
 set -u
+LANE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LANE_ROOT="${LANE_ROOT:-${LOCALAPPDATA:-$HOME/.local/share}/cimmeria-build}"
 LANE_ROOT="$(cygpath -u "$LANE_ROOT" 2>/dev/null || echo "$LANE_ROOT")"
 LOCKDIR="$LANE_ROOT/lane"; mkdir -p "$LOCKDIR"
@@ -78,12 +87,54 @@ use_sccache=0
 if [ -n "${CARGO_INCREMENTAL:-}" ] && [ "$CARGO_INCREMENTAL" != 0 ]; then
   SCCACHE_BIN=""                             # sccache aborts under CARGO_INCREMENTAL=1
 fi
+win_path() { cygpath -m "$1" 2>/dev/null || echo "$1"; }  # C:/x form for native programs
+
+# Build sccache-wrap.rs (see the header) once per source version, with plain rustc. Prints
+# the wrapper's path, or nothing if it can't be built (the lane then falls back to sccache
+# itself, which works but misses across worktrees).
+sccache_wrapper() {
+  local src="$LANE_DIR/sccache-wrap.rs" ext="" hash dir exe tmp flags=()
+  [ -f "$src" ] || return 0
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ext=".exe"; flags=(-C linker=rust-lld -C linker-flavor=lld-link);; esac
+  hash="$(sha1sum "$src" 2>/dev/null | cut -c1-12)"; [ -n "$hash" ] || return 0
+  dir="$LANE_ROOT/bin/sccache-wrap/$hash"; exe="$dir/sccache$ext"
+  if [ ! -x "$exe" ]; then
+    tmp="$dir/build.$$"; mkdir -p "$tmp"
+    if (cd "$LANE_DIR" && rustc --edition 2021 -O -C debuginfo=0 "${flags[@]}" -o "$tmp/sccache$ext" "$src") >"$tmp/log" 2>&1; then
+      mv -f "$tmp/sccache$ext" "$exe" 2>/dev/null   # a lane that raced us may have won; fine
+    else
+      echo "[lane] warning: could not build $src (see $tmp/log); using sccache directly" >&2
+      return 0
+    fi
+    rm -rf "$tmp"
+  fi
+  [ -x "$exe" ] && win_path "$exe"
+}
+
 if [ -n "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER+set}" ]; then
   use_sccache=1
-  export RUSTC_WRAPPER="$SCCACHE_BIN"
   export SCCACHE_DIR="${CIMMERIA_SCCACHE_DIR:-$LANE_ROOT/sccache-cache}"
   export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-40G}"
   export SCCACHE_IDLE_TIMEOUT=0
+  # Path prefixes sccache strips before hashing. sccache 0.18 reads them once, when the
+  # server starts, and applies them to C/C++ compiles only; the Rust fix is the wrapper.
+  # Only existing absolute dirs: a bad entry stops the sccache server from starting.
+  if [ -z "${SCCACHE_BASEDIRS:-}" ]; then
+    sep=":"; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) sep=";";; esac
+    main_dir="$(cd "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo .)/.." 2>/dev/null && pwd)"
+    for d in "${CIMMERIA_TARGET_ROOT:-}" "$main_dir"; do
+      [ -n "$d" ] && [ -d "$d" ] || continue
+      SCCACHE_BASEDIRS="${SCCACHE_BASEDIRS:+$SCCACHE_BASEDIRS$sep}$(win_path "$d")"
+    done
+    [ -n "${SCCACHE_BASEDIRS:-}" ] && export SCCACHE_BASEDIRS
+  fi
+  wrapper="$(sccache_wrapper)"
+  if [ -n "$wrapper" ]; then
+    export CIMMERIA_SCCACHE_REAL; CIMMERIA_SCCACHE_REAL="$(win_path "$SCCACHE_BIN")"
+    export RUSTC_WRAPPER="$wrapper"
+  else
+    export RUSTC_WRAPPER="$SCCACHE_BIN"
+  fi
 fi
 # Split the cores across the slots so a full lane doesn't oversubscribe the CPU
 # (e.g. 32 cores / 4 slots = 8 jobs per build), with a floor of 4.
@@ -142,8 +193,79 @@ if [ -d "$LOCKDIR/retiring.$NAME" ]; then
   echo "[lane] $NAME is being retired by rm-worktree.sh; not building" >&2; exit 75
 fi
 
+# --- disk: incremental pruning and the low-disk guard --------------------------------
+TARGET_DIR="$(cygpath -u "${CARGO_TARGET_DIR:-$TOP/target}" 2>/dev/null || echo "${CARGO_TARGET_DIR:-$TOP/target}")"
+pruned_kb=0
+free_start=""
+
+free_gb() {  # free GB on the drive that holds $1 (or its nearest existing parent)
+  local d="$1"
+  while [ ! -d "$d" ] && [ "$d" != "$(dirname "$d")" ]; do d="$(dirname "$d")"; done
+  df -Pk "$d" 2>/dev/null | awk 'NR == 2 { print int($4 / 1048576) }'
+}
+
+other_job_here() {  # true if a slot this job doesn't hold is building this worktree
+  local d s mine
+  for d in "$LOCKDIR"/slot.*; do
+    [ -f "$d/what" ] || continue
+    mine=0; for s in "${held[@]:-}"; do [ "$s" = "$d" ] && mine=1; done
+    [ $mine -eq 0 ] && grep -q " $NAME :: " "$d/what" 2>/dev/null && return 0
+  done
+  return 1
+}
+
+# rustc keeps the session it started from next to the one it just wrote, in every
+# incremental unit dir (<target>/<profile>/incremental/<crate>-<hash>/s-*), and deletes it
+# only when that unit next compiles. It loads only the newest finished session, so the
+# older ones are dead weight: about 45% of a worktree's incremental dir. A `-working`
+# session is a compile in progress, or one that died; only an hour-old one is removed.
+# Never touches a worktree another lane job is building.
+prune_incremental() {
+  [ "${LANE_PRUNE:-1}" != 0 ] && [ -d "$TARGET_DIR" ] || return 0
+  other_job_here && return 0
+  local stale=() line unit prev="" kb
+  # Session names start with a fixed-width base-36 timestamp, so a reverse sort lists each
+  # unit's sessions newest first.
+  while IFS= read -r line; do
+    unit="${line%/*}"
+    [ "$unit" = "$prev" ] && stale+=("$line" "${line%-*}.lock")
+    prev="$unit"
+  done < <(cd "$TARGET_DIR" && find . -mindepth 4 -maxdepth 5 -type d -path '*/incremental/*/s-*' ! -name '*-working' 2>/dev/null | sort -r)
+  while IFS= read -r line; do
+    stale+=("$line" "${line%-*}.lock")
+  done < <(cd "$TARGET_DIR" && find . -mindepth 4 -maxdepth 5 -type d -path '*/incremental/*/s-*-working' -mmin +60 2>/dev/null)
+  [ ${#stale[@]} -eq 0 ] && return 0
+  kb="$(cd "$TARGET_DIR" && printf '%s\0' "${stale[@]}" | xargs -0 du -sk 2>/dev/null | awk '{ s += $1 } END { print s + 0 }')"
+  (cd "$TARGET_DIR" && printf '%s\0' "${stale[@]}" | xargs -0 rm -rf 2>/dev/null)
+  pruned_kb=$(( pruned_kb + ${kb:-0} ))
+}
+
+# Cargo that runs out of disk dies part-way with "os error 112" and can leave a target dir
+# that needs a clean. On 2026-09-28 the Dev Drive filled twice and failed every agent's
+# build, so a job refuses to start instead. It first prunes this worktree's stale
+# incremental sessions, which is always safe.
+disk_guard() {
+  local min="${LANE_MIN_FREE_GB:-10}" free
+  free="$(free_gb "$TARGET_DIR")"; free_start="$free"
+  [ "$min" = 0 ] || [ -z "$free" ] || [ "$free" -ge "$min" ] && return 0
+  prune_incremental
+  free="$(free_gb "$TARGET_DIR")"; free_start="$free"
+  [ -z "$free" ] || [ "$free" -ge "$min" ] && return 0
+  cat >&2 <<EOF
+[lane] refusing to start: ${free} GB free on the drive that holds $(win_path "$TARGET_DIR"),
+[lane] below LANE_MIN_FREE_GB=${min}. Cargo would fail part-way with "os error 112".
+[lane] This job did not run. Free space, then run it again:
+[lane]   bash tools/build-lane/rm-worktree.sh --merged    # retire merged worktrees (target dir, test DB)
+[lane]   pwsh tools/build-hygiene/sweep.ps1 -DryRun        # then without -DryRun, while nothing builds:
+[lane]                                                     # stale incremental caches and old feature variants
+[lane] LANE_MIN_FREE_GB=0 turns this check off.
+EOF
+  exit 28
+}
+disk_guard
+
 t_start="$(now_us)"
-echo "[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*" >&2
+echo "[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; free=${free_start:-?}GB; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*" >&2
 
 # --- job log ------------------------------------------------------------------------
 METRICS="${LANE_METRICS:-1}"
@@ -202,7 +324,8 @@ record_job() {  # $1 = exit code, $2 = wait ms, $3 = run ms
   line+=",\"jobs\":$CARGO_BUILD_JOBS,\"incremental\":$(json_str "${CARGO_INCREMENTAL:-default}")"
   line+=",\"dev_drive\":$(json_bool $use_dev_drive),\"target\":$(json_str "${CARGO_TARGET_DIR:-$TOP/target}")"
   line+=",\"sccache\":$(json_bool $use_sccache),\"sccache_hits\":$(json_num "$dh"),\"sccache_misses\":$(json_num "$dm")"
-  line+=",\"min_free_mb\":$(json_num "${min_kb:+$((min_kb / 1024))}"),\"mem_total_mb\":$(json_num "${total_kb:+$((total_kb / 1024))}")}"
+  line+=",\"min_free_mb\":$(json_num "${min_kb:+$((min_kb / 1024))}"),\"mem_total_mb\":$(json_num "${total_kb:+$((total_kb / 1024))}")"
+  line+=",\"disk_free_gb\":$(json_num "$free_start"),\"pruned_mb\":$((pruned_kb / 1024))}"
   # mkdir is the lock; a holder that died leaves it behind, so give up waiting after ~5 s.
   while ! mkdir "$METRICS_DIR/.lock" 2>/dev/null; do i=$((i + 1)); [ $i -ge 50 ] && break; sleep 0.1; done
   printf '%s\n' "$line" >> "$METRICS_DIR/jobs.jsonl"
@@ -213,6 +336,8 @@ record_job() {  # $1 = exit code, $2 = wait ms, $3 = run ms
 rc=$?
 t_end="$(now_us)"
 run_ms=$(( (t_end - t_start) / 1000 )); wait_ms=$(( (t_start - t_request) / 1000 ))
-echo "[lane] released (exit $rc, ran $(secs $run_ms)s)" >&2
+prune_incremental
+pruned_note=""; [ "$pruned_kb" -gt 0 ] && pruned_note="; pruned $((pruned_kb / 1024)) MB of stale incremental sessions"
+echo "[lane] released (exit $rc, ran $(secs $run_ms)s$pruned_note)" >&2
 [ "$METRICS" != 0 ] && record_job "$rc" "$wait_ms" "$run_ms"
 exit $rc

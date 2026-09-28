@@ -62,20 +62,34 @@ When you're done with such a worktree, retire it with `bash tools/build-lane/rm-
 
 ---
 
-### Lane builds fail with "no space left on device" on the Dev Drive
+### Lane refuses to start: `[lane] refusing to start: N GB free`, or builds fail with "os error 112"
 
-**Symptom.** Builds whose target dir is on the Dev Drive (`B:\targets\<worktree>`) fail partway with an out-of-space error, often in several sessions at once.
+**Symptom.** A lane job exits with code 28 before cargo runs:
 
-**Root cause.** Every worktree keeps its own target dir of several GB, and worktrees whose PRs have merged were not retired. On 2026-09-26 they filled the 150 GB drive.
+```text
+[lane] refusing to start: 6 GB free on the drive that holds B:/targets/<worktree>,
+[lane] below LANE_MIN_FREE_GB=10. Cargo would fail part-way with "os error 112".
+```
 
-**Fix.** See what a sweep would retire, then run it:
+Or, from a build that doesn't go through the lane, or from one that filled the disk while it ran, cargo fails part-way with `There is not enough space on the disk. (os error 112)` (`no space left on device` on Linux), often in several sessions at once.
+
+**Root cause.** The drive that holds the target dirs, usually the Dev Drive (`B:\targets\<worktree>`), is nearly full. Every worktree keeps its own target dir of several GB, and worktrees whose PRs had merged were not retired: on 2026-09-26 they filled the 150 GB drive, and on 2026-09-28 it filled twice more and failed every agent's build. Since then the lane checks free space before each job. Below `LANE_MIN_FREE_GB` (default 10) it first prunes the worktree's stale incremental sessions, and if that isn't enough it refuses rather than let cargo die part-way.
+
+**Fix.** Free space, then run the job again. First retire merged worktrees, which frees the most:
 
 ```bash
 bash tools/build-lane/rm-worktree.sh --dry-run --merged
 bash tools/build-lane/rm-worktree.sh --merged
 ```
 
-It skips worktrees with open PRs, uncommitted changes, recent activity or a running build. It also deletes Dev Drive target dirs whose worktree no longer exists. Then check free space with `(Get-Volume -DriveLetter B).SizeRemaining / 1GB` in PowerShell.
+It skips worktrees with open PRs, uncommitted changes, recent activity or a running build. It also deletes Dev Drive target dirs whose worktree no longer exists. If that isn't enough, trim the target dirs that remain: stale incremental caches and feature variants no build has used for a day.
+
+```powershell
+pwsh tools/build-hygiene/sweep.ps1 -DryRun   # what it would free, per target dir
+pwsh tools/build-hygiene/sweep.ps1           # skips dirs a lane job is building in
+```
+
+Check free space with `(Get-Volume -DriveLetter B).SizeRemaining / 1GB` in PowerShell. `LANE_MIN_FREE_GB=0` turns the lane's check off, but a build that runs out of disk may leave a target dir that needs `cargo clean -p <crate>`.
 
 ---
 
