@@ -294,25 +294,83 @@ jobs:
           flags: live-db
           fail_ci_if_error: false
 
-  # Coverage report. Same matrix as the test + test-live-db jobs combined,
-  # instrumented under cargo-llvm-cov. Two passes share counter data via
-  # `--no-report`: the workspace pass picks up unit + non-DB integration
-  # coverage, the second pass runs the live-DB crates' lib tests
-  # (tools/test-live-db.sh --llvm-cov) against a live Postgres so the
-  # require_db_or_skip! guards actually count.
-  # `cargo llvm-cov report` then merges them into one HTML/cobertura/summary.
-  #
-  # Both passes drive nextest under llvm-cov so a single test execution
-  # produces both coverage counter data and the (unused here — the
-  # `test`/`test-live-db` jobs own JUnit upload) per-test JUnit. Keeping
-  # JUnit upload off this job avoids double-counting in Codecov Test
+  # Coverage, in two jobs that run at the same time: the workspace pass
+  # without a DB, and the live-DB crates' lib tests (tools/test-live-db.sh
+  # --llvm-cov) against a live Postgres. Most of each job is compiling
+  # instrumented code, so splitting further would repeat that compile for
+  # little gain. Each job renders and uploads its own report; Codecov merges
+  # the two uploads for the commit. JUnit upload stays with the
+  # build-and-test/test-live-db jobs to avoid double-counting in Test
   # Analytics.
   #
   # Non-blocking: continue-on-error so a coverage-tool flake doesn't gate
-  # merges. The artifact + summary log are advisory — the PR-gating signal
-  # is still test/test-live-db turning green.
-  coverage:
-    name: cargo llvm-cov (workspace + live DB)
+  # merges. The artifacts and summaries are advisory.
+  coverage-workspace:
+    name: cargo llvm-cov (workspace, no DB)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: llvm-tools-preview
+      - name: install clang + mold
+        run: sudo apt-get update && sudo apt-get install -y clang mold
+      - name: hydrate external/recast
+        run: |
+          mkdir -p external
+          curl -sL --retry 3             -o /tmp/recast.zip             "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          unzip -q /tmp/recast.zip -d /tmp/recast_extract
+          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
+          test -f external/recast/Detour/Source/DetourAssert.cpp
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: coverage-workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: install cargo-llvm-cov + nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,nextest
+      - name: clean stale counter data
+        run: cargo llvm-cov clean --workspace
+      - name: workspace pass (no DB)
+        run: |
+          cargo llvm-cov --no-report nextest             --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
+      - name: render reports
+        run: |
+          mkdir -p target/coverage
+          cargo llvm-cov report --html --output-dir target/coverage/html
+          cargo llvm-cov report --cobertura --output-path target/coverage/cobertura.xml
+          cargo llvm-cov report --summary-only | tee target/coverage/summary.txt
+      - name: print summary to job log
+        run: |
+          echo "## Coverage summary (workspace, no DB)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat target/coverage/summary.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report-workspace
+          path: target/coverage/
+          retention-days: 14
+      - name: upload to Codecov
+        # Codecov merges this upload with the other coverage job's upload for
+        # the same commit (codecov.yml waits for both via after_n_builds).
+        # CODECOV_TOKEN is required even for public repos. Fork PRs don't see
+        # the secret and skip the upload (the action exits 0 without a token).
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/coverage/cobertura.xml
+          flags: coverage-workspace
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
+
+  coverage-live-db:
+    name: cargo llvm-cov (live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -343,9 +401,7 @@ jobs:
       - name: hydrate external/recast
         run: |
           mkdir -p external
-          curl -sL --retry 3 \
-            -o /tmp/recast.zip \
-            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          curl -sL --retry 3             -o /tmp/recast.zip             "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
           unzip -q /tmp/recast.zip -d /tmp/recast_extract
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
@@ -356,23 +412,14 @@ jobs:
           psql -h localhost -U w-testing -d sgw -v ON_ERROR_STOP=1 -f db/database.sql
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: coverage
+          shared-key: coverage-live-db
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-      - name: install nextest
-        uses: taiki-e/install-action@nextest
+      - name: install cargo-llvm-cov + nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,nextest
       - name: clean stale counter data
         run: cargo llvm-cov clean --workspace
-      - name: workspace pass (no DB)
-        # DATABASE_URL is set on the job, but we deliberately unset it here so
-        # the live-DB tests skip in this pass — they're owned by the second
-        # pass below, which serialises via the ci-live-db nextest profile.
-        env:
-          DATABASE_URL: ""
-        run: |
-          cargo llvm-cov --no-report nextest \
-            --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
       - name: live-DB pass
         run: bash tools/test-live-db.sh --llvm-cov
       - name: render reports
@@ -383,30 +430,25 @@ jobs:
           cargo llvm-cov report --summary-only | tee target/coverage/summary.txt
       - name: print summary to job log
         run: |
-          echo "## Coverage summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Coverage summary (live DB)" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat target/coverage/summary.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
       - name: upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-report
+          name: coverage-report-live-db
           path: target/coverage/
           retention-days: 14
       - name: upload to Codecov
-        # Codecov ingests cobertura.xml, posts a sticky PR comment with delta
-        # vs main, and renders the per-file coverage overlay in GitHub's
-        # Files-Changed tab. Settings (advisory vs blocking, drop tolerance,
-        # path ignores) live in codecov.yml at the repo root.
-        #
-        # CODECOV_TOKEN is required even for public repos — Codecov disabled
-        # tokenless uploads. Fork PRs won't see the secret and will skip the
-        # upload (the action exits 0 when no token is present); coverage
-        # deltas for fork PRs come via Codecov's GitHub App on the merge
-        # commit instead.
+        # Codecov merges this upload with the other coverage job's upload for
+        # the same commit (codecov.yml waits for both via after_n_builds).
+        # CODECOV_TOKEN is required even for public repos. Fork PRs don't see
+        # the secret and skip the upload (the action exits 0 without a token).
         uses: codecov/codecov-action@v7
         with:
           files: target/coverage/cobertura.xml
+          flags: coverage-live-db
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
