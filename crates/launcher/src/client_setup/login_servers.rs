@@ -58,28 +58,37 @@ pub fn parse(text: &str) -> Result<Vec<LoginServer>, String> {
         let (name, url) = line
             .split_once('=')
             .ok_or(format!("line {}: expected `Name = URL`", n + 1))?;
-        let (name, url) = (name.trim(), url.trim());
-        if !valid_field(name) || !valid_field(url) {
-            return Err(format!(
-                "line {}: names and URLs must be plain ASCII without quotes or backslashes",
-                n + 1
-            ));
-        }
-        if !(url.starts_with("http://") || url.starts_with("https://")) {
-            return Err(format!(
-                "line {}: the URL must start with http:// or https://",
-                n + 1
-            ));
-        }
-        out.push(LoginServer {
-            name: name.into(),
-            url: url.into(),
-        });
+        let server = LoginServer {
+            name: name.trim().into(),
+            url: url.trim().into(),
+        };
+        check(&server).map_err(|e| format!("line {}: {e}", n + 1))?;
+        out.push(server);
     }
-    if out.is_empty() {
+    validate(&out)?;
+    Ok(out)
+}
+
+fn check(s: &LoginServer) -> Result<(), String> {
+    if !valid_field(&s.name) || !valid_field(&s.url) {
+        return Err("names and URLs must be plain ASCII without quotes or backslashes".into());
+    }
+    if !(s.url.starts_with("http://") || s.url.starts_with("https://")) {
+        return Err("the URL must start with http:// or https://".into());
+    }
+    Ok(())
+}
+
+/// The rules [`parse`] applies, for a list that came from somewhere else
+/// (a hand-edited `launcher-config.json`).
+pub fn validate(servers: &[LoginServer]) -> Result<(), String> {
+    if servers.is_empty() {
         return Err("list at least one login server".into());
     }
-    Ok(out)
+    for s in servers {
+        check(s).map_err(|e| format!("login server {:?}: {e}", s.name))?;
+    }
+    Ok(())
 }
 
 /// The settings text for `servers`, the inverse of [`parse`].
@@ -91,7 +100,8 @@ pub fn to_text(servers: &[LoginServer]) -> String {
         .join("\n")
 }
 
-/// The file's content, CRLF like the rest of the client's UI Lua.
+/// The file's content, CRLF like the rest of the client's UI Lua. Expects a
+/// list that passed [`validate`]; [`write`] checks before calling it.
 pub fn render(servers: &[LoginServer]) -> String {
     let mut out = String::from(
         "-- LoginInternal.lua, written by the Cimmeria launcher. Edit the login\r\n\
@@ -102,10 +112,7 @@ pub fn render(servers: &[LoginServer]) -> String {
          function LoginMod.loadServerSystems()\r\n\
          \x20   LoginMod.servers = {}\r\n",
     );
-    for s in servers
-        .iter()
-        .filter(|s| valid_field(&s.name) && valid_field(&s.url))
-    {
+    for s in servers {
         out.push_str(&format!(
             "    LoginMod.servers[\"{}\"] = \"{}\"\r\n",
             s.name, s.url
@@ -116,7 +123,17 @@ pub fn render(servers: &[LoginServer]) -> String {
 }
 
 /// Write the file when its content differs. Returns true when it wrote.
+///
+/// An invalid list (empty, or an entry `parse` would refuse) is an error, not
+/// a file without servers: a login screen with no server can't be used, and
+/// the error tells the player which setting to fix.
 pub fn write(install_dir: &Path, servers: &[LoginServer]) -> std::io::Result<bool> {
+    validate(servers).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("fix the Login servers setting: {e}"),
+        )
+    })?;
     let path = path(install_dir);
     let content = render(servers);
     if std::fs::read(&path).is_ok_and(|current| current == content.as_bytes()) {
@@ -175,6 +192,23 @@ mod tests {
             "# only a comment",
         ] {
             assert!(parse(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    // Bug shape: a hand-edited config with an empty list or a quoted name
+    // used to render a LoginInternal.lua with no servers and report success.
+    #[test]
+    fn write_refuses_an_invalid_configured_list_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad_name = vec![LoginServer {
+            name: "Evil\"".into(),
+            url: "http://x:8081".into(),
+        }];
+        for servers in [vec![], bad_name] {
+            let err = write(dir.path(), &servers).unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+            assert!(err.to_string().contains("Login servers"), "{err}");
+            assert!(!path(dir.path()).exists());
         }
     }
 

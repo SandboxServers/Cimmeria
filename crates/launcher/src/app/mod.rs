@@ -197,23 +197,41 @@ impl LauncherApp {
         }
     }
 
-    /// Write `LoginInternal.lua` and switch ASLR off before a launch. A
-    /// failure is reported but doesn't block the launch: the client still
-    /// starts, it just may not list the configured servers.
-    fn prepare_client_for_launch(&mut self) {
+    /// Write `LoginInternal.lua` and switch ASLR off before a launch.
+    /// Returns false when setup failed; callers then don't launch, since a
+    /// client with ASLR still on breaks the patches DLL and the RE
+    /// addresses, and one without the server list can't log in.
+    fn prepare_client_for_launch(&mut self) -> bool {
         let result =
             crate::client_setup::prepare(&self.config.install_path, &self.config.login_servers);
-        match result {
-            Ok(report) => {
-                if report.login_servers_written {
-                    self.push_status("Wrote the login server list (LoginInternal.lua).".into());
-                }
-                if report.aslr == crate::client_setup::AslrOutcome::Disabled {
-                    self.push_status("Switched ASLR off in SGW.exe.".into());
-                }
-            }
-            Err(e) => self.push_status(format!("Client setup failed: {e}")),
+        let (ok, lines) = setup_status_lines(&result);
+        for line in lines {
+            self.push_status(line);
         }
+        ok
+    }
+}
+
+/// Status lines for a client-setup result, and whether launching may go
+/// ahead. Extracted so the launch gate is testable without an egui frame.
+fn setup_status_lines(
+    result: &std::io::Result<crate::client_setup::SetupReport>,
+) -> (bool, Vec<String>) {
+    match result {
+        Ok(report) => {
+            let mut lines = Vec::new();
+            if report.login_servers_written {
+                lines.push("Wrote the login server list (LoginInternal.lua).".into());
+            }
+            if report.aslr == crate::client_setup::AslrOutcome::Disabled {
+                lines.push("Switched ASLR off in SGW.exe.".into());
+            }
+            (true, lines)
+        }
+        Err(e) => (
+            false,
+            vec![format!("Not launching: client setup failed: {e}")],
+        ),
     }
 }
 
@@ -326,7 +344,32 @@ fn human_bytes(n: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{human_bytes, should_show_adopt_button, status_line_for, MAX_STATUS_LINES};
+    use super::{
+        human_bytes, setup_status_lines, should_show_adopt_button, status_line_for,
+        MAX_STATUS_LINES,
+    };
+    use crate::client_setup::{AslrOutcome, SetupReport};
+
+    // Bug shape: a failed client setup (SGW.exe locked, ASLR still on) used
+    // to be reported and then launched anyway.
+    #[test]
+    fn a_failed_client_setup_blocks_the_launch() {
+        let err: std::io::Result<SetupReport> = Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "SGW.exe is locked",
+        ));
+        let (ok, lines) = setup_status_lines(&err);
+        assert!(!ok);
+        assert!(lines[0].starts_with("Not launching") && lines[0].contains("locked"));
+
+        let done: std::io::Result<SetupReport> = Ok(SetupReport {
+            login_servers_written: true,
+            aslr: AslrOutcome::Disabled,
+        });
+        let (ok, lines) = setup_status_lines(&done);
+        assert!(ok);
+        assert_eq!(lines.len(), 2);
+    }
     use crate::client_paths::WipeReport;
     use crate::worker::Event;
 

@@ -214,6 +214,23 @@ fn a_target_other_ops_read_is_written_last() {
     );
 }
 
+// Bug shape: the bsdiff header's target size went straight into
+// `Vec::with_capacity`, so a corrupt delta claiming 1 TiB aborted the
+// process instead of returning an error.
+#[test]
+fn a_delta_claiming_a_huge_target_does_not_abort() {
+    let source = noisy(3, 4_096);
+    let mut target = source.clone();
+    target.extend_from_slice(b"tail");
+    let mut delta = Vec::new();
+    qbsdiff::Bsdiff::new(&source, &target)
+        .compare(std::io::Cursor::new(&mut delta))
+        .unwrap();
+    // BSDIFF40 header: magic, control length, diff length, target size.
+    delta[24..32].copy_from_slice(&(1u64 << 40).to_le_bytes());
+    let _ = crate::apply::bspatch(&source, &delta);
+}
+
 #[test]
 fn a_missing_source_names_the_file() {
     let f = fixture();

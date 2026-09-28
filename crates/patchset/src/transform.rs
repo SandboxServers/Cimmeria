@@ -9,6 +9,13 @@ use crate::{io_err, PatchsetError, Result};
 
 /// Read `path` and apply `transform`. Also returns the SHA-256 of the raw
 /// file, which the recipe pins.
+///
+/// For [`Transform::None`] the hash covers exactly the returned bytes. For
+/// [`Transform::UpkNormalize`] the package is reopened by path
+/// (`PatchSession` reads only from a file), so a file swapped between the
+/// two reads would be normalized unhashed. The recipe's `result_sha256` is
+/// the integrity gate in that case: the rebuilt file must match it or
+/// nothing is written.
 pub fn load(path: &Path, transform: Transform) -> Result<(Vec<u8>, String)> {
     let raw = std::fs::read(path).map_err(io_err(path))?;
     let raw_sha = crate::sha256_hex(&raw);

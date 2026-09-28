@@ -10,6 +10,10 @@ use crate::{PatchsetError, Result};
 
 fn hex_decode<const N: usize>(s: &str, what: &str) -> Result<[u8; N]> {
     let s = s.trim();
+    // Byte slicing below needs one byte per character.
+    if !s.is_ascii() {
+        return Err(PatchsetError::Invalid(format!("{what}: not hex")));
+    }
     if s.len() != N * 2 {
         return Err(PatchsetError::Invalid(format!(
             "{what}: expected {} hex characters, got {}",
@@ -66,6 +70,17 @@ mod tests {
         let pubkey = public_key(KEY).unwrap();
         verify(&pubkey, body, &sig).unwrap();
         assert!(verify(&pubkey, br#"{"schema":2}"#, &sig).is_err());
+    }
+
+    // Bug shape: a key file with a multibyte character but the right byte
+    // length made `&s[i*2..i*2+2]` split the character and panic.
+    #[test]
+    fn non_ascii_key_text_is_an_error_not_a_panic() {
+        let mut key = "é".to_string();
+        key.push_str(&"a".repeat(62));
+        assert_eq!(key.len(), 64);
+        assert!(sign(&key, b"x").is_err());
+        assert!(public_key(&key).is_err());
     }
 
     // The launcher's debug builds verify against the key made from 32 bytes

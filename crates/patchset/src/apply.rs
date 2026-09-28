@@ -64,7 +64,9 @@ pub fn apply(
                     path: s.path.clone(),
                 });
             }
-            let raw_sha = sha256_hex(&std::fs::read(&path).map_err(io_err(&path))?);
+            // One read: the hash covers the exact bytes used (for
+            // `UpkNormalize` see `transform::load`).
+            let (bytes, raw_sha) = transform::load(&path, s.transform)?;
             if raw_sha != s.sha256 {
                 return Err(PatchsetError::SourceMismatch {
                     path: s.path.clone(),
@@ -72,7 +74,6 @@ pub fn apply(
                     actual: raw_sha,
                 });
             }
-            let (bytes, _) = transform::load(&path, s.transform)?;
             source_image.extend_from_slice(&bytes);
         }
         let delta_index = archive.index_for_name(&op.delta).ok_or_else(|| {
@@ -143,9 +144,15 @@ fn read_entry(archive: &mut zip::ZipArchive<std::fs::File>, index: usize) -> Res
     Ok(bytes)
 }
 
+/// Largest up-front allocation a delta header may ask for. The header's
+/// target size is only a hint read from the download; a corrupt one must
+/// not abort the launcher. The output still grows past this as needed.
+const MAX_PREALLOC: u64 = 64 * 1024 * 1024;
+
 pub(crate) fn bspatch(source: &[u8], delta: &[u8]) -> std::result::Result<Vec<u8>, String> {
     let patcher = qbsdiff::Bspatch::new(delta).map_err(|e| e.to_string())?;
-    let mut out = Vec::with_capacity(patcher.hint_target_size() as usize);
+    let hint = patcher.hint_target_size().min(MAX_PREALLOC);
+    let mut out = Vec::with_capacity(usize::try_from(hint).unwrap_or(0));
     patcher
         .apply(source, std::io::Cursor::new(&mut out))
         .map_err(|e| e.to_string())?;

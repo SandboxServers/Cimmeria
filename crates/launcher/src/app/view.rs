@@ -281,8 +281,8 @@ impl LauncherApp {
             if ui
                 .add_enabled(opts.sgw_present, egui::Button::new("Launch SGW.exe"))
                 .clicked()
+                && self.prepare_client_for_launch()
             {
-                self.prepare_client_for_launch();
                 // Telemetry follows the game only when the player opted
                 // in and the identity loaded; the client patches are
                 // independent of both.
@@ -304,8 +304,8 @@ impl LauncherApp {
                     egui::Button::new("Launch Atera Debug"),
                 )
                 .clicked()
+                && self.prepare_client_for_launch()
             {
-                self.prepare_client_for_launch();
                 self.worker.dispatch(Command::LaunchAteraDebug(dir.clone()));
             }
             // Telemetry-enabled launch needs identity + opt-in + atera
@@ -318,8 +318,8 @@ impl LauncherApp {
                 .add_enabled(telemetry_ready, egui::Button::new("Launch + Telemetry"))
                 .clicked()
             {
-                self.prepare_client_for_launch();
-                if let Some(id) = &self.identity {
+                let ready = self.prepare_client_for_launch();
+                if let (true, Some(id)) = (ready, &self.identity) {
                     self.worker
                         .dispatch(Command::LaunchAteraDebugWithTelemetry {
                             install_dir: dir.clone(),
