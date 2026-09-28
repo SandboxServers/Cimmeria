@@ -36,6 +36,6 @@ opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto",
 # spans and span-events; without this appender, every `tracing::info!` that
 # fires outside a span (including the entire mercury.packet stream) is
 # silently dropped by the OTLP exporter and never reaches SigNoz.
-opentelemetry-appender-tracing = "0.32"
+opentelemetry-appender-tracing = "0.33"
 tracing-opentelemetry = "0.33"
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
