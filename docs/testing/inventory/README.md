@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 7,981 |
-| Files with tests | 1,321 |
-| Gated in CI (every crate but CI's exclude list) | 7,502 |
+| Tests (`#[test]` / `#[tokio::test]`) | 8,026 |
+| Files with tests | 1,328 |
+| Gated in CI (every crate but CI's exclude list) | 7,522 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,418 |
-| Inventory threshold (5% of the tests) | 399 |
+| Inventory threshold (5% of the tests) | 401 |
 
 <!-- /gen:tests-totals -->
 
@@ -103,11 +103,11 @@ with no file in this directory yet.
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 183 | 31 | 0 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 179 | 25 | 0 | no | [launcher.md](launcher.md) |
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 159 | 36 | 85 | yes | none |
+| `crates/client-telemetry` | `cimmeria-client-telemetry` | 158 | 35 | 0 | no | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 156 | 42 | 29 | yes | none |
 | `crates/base` | `cimmeria-base` | 153 | 27 | 10 | yes | none |
-| `crates/client-telemetry` | `cimmeria-client-telemetry` | 134 | 30 | 0 | no | none |
 | `crates/resources` | `cimmeria-resources` | 128 | 19 | 0 | yes | none |
-| `crates/client-patches` | `cimmeria-client-patches` | 91 | 14 | 0 | no | none |
+| `crates/client-patches` | `cimmeria-client-patches` | 92 | 14 | 0 | no | none |
 | `crates/discord` | `cimmeria-discord` | 76 | 15 | 0 | yes | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 76 | 8 | 0 | yes | [upk-objects.md](upk-objects.md) |
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
@@ -125,6 +125,7 @@ with no file in this directory yet.
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/client-launch` | `cimmeria-client-launch` | 26 | 3 | 0 | yes | none |
 | `crates/wire-log` | `cimmeria-wire-log` | 24 | 6 | 0 | yes | none |
+| `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
 | `crates/test-support` | `cimmeria-test-support` | 19 | 3 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
