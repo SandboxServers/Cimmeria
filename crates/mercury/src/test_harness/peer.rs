@@ -679,6 +679,18 @@ impl LoopbackPeer {
         self.inbox.lock().expect("inbox poisoned").len()
     }
 
+    /// Owe the peer an ACK for `seq`, piggybacked on the next send like
+    /// the ones the recv pump queues. For a reliable packet that arrived
+    /// before this peer existed: the wireclient reads the server's two
+    /// login handshake packets (seqs 1 and 2) off the raw socket, then acks
+    /// them here, as the SGW client does (#842).
+    pub fn queue_ack(&self, seq: u32) {
+        self.pending_acks
+            .lock()
+            .expect("pending_acks poisoned")
+            .push(seq & crate::packet::SEQUENCE_MASK);
+    }
+
     /// Snapshot of pending acks count — exposed so tests can assert
     /// quiescence ("no acks owed to peer").
     pub fn pending_acks_len(&self) -> usize {

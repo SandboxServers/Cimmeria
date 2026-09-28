@@ -145,18 +145,28 @@ pub(crate) async fn handle_login(
     );
 
     // connect_reply at seq=1.
-    let reply = build_connect_reply(request_id, ticket.as_bytes(), &key, 1, enc_version);
+    let reply = build_connect_reply(
+        request_id,
+        ticket.as_bytes(),
+        &key,
+        CONNECT_REPLY_SEQ,
+        enc_version,
+    );
     tracing::trace!(%addr, len = reply.len(), hex = %to_hex(&reply), "UDP_OUT connect_reply");
     transport.send_to(&reply, addr).await?;
 
     // time-sync bundle at seq=2, carrying the server's current game time.
-    let sync = build_time_sync(&key, 2, game_clock::game_ticks(), enc_version);
+    let sync = build_time_sync(&key, TIME_SYNC_SEQ, game_clock::game_ticks(), enc_version);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
     transport.send_to(&sync, addr).await?;
 
+    // Both went out with `FLAG_RELIABLE`, so the new channel tracks them
+    // like any other reliable send: a lost one is resent on RTO (#842).
+    let channel = new_client_channel_with_handshake(addr, &reply, &sync);
+
     // Register for Phase 4 encrypted traffic.
     let (pending_acks_arc, last_recv_arc, next_seq_unreliable_arc, cancelled_arc) = {
-        let next_seq = Arc::new(AtomicU32::new(3));
+        let next_seq = Arc::new(AtomicU32::new(FIRST_CHANNEL_SEQ));
         let next_seq_unreliable = Arc::new(AtomicU32::new(0));
         let pending_acks = Arc::new(Mutex::new(Vec::new()));
         let last_recv = Arc::new(Mutex::new(Instant::now()));
@@ -219,7 +229,7 @@ pub(crate) async fn handle_login(
                 player_training_points: None,
                 active_player_id: None,
                 pending_destination_ring_id: None,
-                channel: Mutex::new(new_client_channel(addr)),
+                channel: Mutex::new(channel),
                 crafting_options: Default::default(),
             },
         );
@@ -260,6 +270,118 @@ pub(crate) async fn handle_login(
     ));
 
     Ok(())
+}
+
+/// Reliable sequence of the `baseAppLogin` reply, the first packet of the
+/// server's reliable stream.
+pub(crate) const CONNECT_REPLY_SEQ: u32 = 1;
+
+/// Reliable sequence of the time-sync bundle that follows the reply.
+pub(crate) const TIME_SYNC_SEQ: u32 = 2;
+
+/// First reliable sequence the session's own counter hands out.
+pub(crate) const FIRST_CHANNEL_SEQ: u32 = 3;
+
+/// [`new_client_channel`] with the two handshake packets already in its
+/// TX window, so the retransmit scan covers them (#842).
+///
+/// `reply` and `time_sync` must be the exact datagrams that went on the
+/// wire at [`CONNECT_REPLY_SEQ`] and [`TIME_SYNC_SEQ`]: a retransmit
+/// re-sends the stored bytes verbatim, and the client's ACK retires the
+/// entry by sequence.
+///
+/// Why they belong in the window: the legacy C++ server sent both through
+/// the new channel's reliable bundle (`connect_handler.cpp`, then
+/// `ClientHandler::onConnected`, each ending in `flushBundle`), so both
+/// sat on the channel's resend timers like any other reliable packet.
+/// Sent raw before the channel existed, a lost reply left the client
+/// unable to finish login (it keeps re-sending `baseAppLogin`, which lands
+/// on the encrypted path as `login_retry_on_channel`), and a lost
+/// time-sync left a permanent gap at the head of the client's reliable
+/// stream. Neither had any recovery.
+///
+/// What the client does with them, from the five decoded logins under
+/// `debug/` (see `docs/protocol/login-handshake.md`): three ack both at
+/// once (`acks [2, 1]`, an ack-only packet), two never ack them. For the
+/// second kind the first RTO resend (about 1.5 s after login) reaches a
+/// client whose channel is up; the client acks every reliable packet with
+/// a valid sequence before its `inSeqAt` check
+/// (`UnAckedHandler::queueAckForPacket`, `ghidra://SGW.exe@0x0158cba0`),
+/// so the resend is acked and dropped as a duplicate.
+///
+/// Both are registered with a [`HANDSHAKE_RETRANSMIT_CAP`]: if a client
+/// ignores even the resends, the channel drops them after that many
+/// instead of resending them for the whole session.
+pub(crate) fn new_client_channel_with_handshake(
+    addr: SocketAddr,
+    reply: &[u8],
+    time_sync: &[u8],
+) -> cimmeria_mercury::channel::Channel {
+    let mut channel = new_client_channel(addr);
+    register_handshake(&mut channel, addr, reply, time_sync);
+    channel
+}
+
+/// Most times the reply and the time-sync are resent before the channel
+/// gives up on them (#842).
+///
+/// Everything else on the channel resends until acked, but these two go
+/// to clients that, in two of five captured logins, never ack them. The
+/// client should ack a resend; if it does not, an uncapped entry would be
+/// resent on every RTO for the whole session. The six resends follow the
+/// channel's RTO backoff: on a quiet channel 1.5 s, doubling to the 4 s
+/// ceiling, so the last one goes out about 20 s after login. On a busy
+/// channel, clean ACKs of other packets keep the RTO lower and the six
+/// come sooner. Either way six consecutive losses of one packet is far
+/// past what a playable session survives.
+pub(crate) const HANDSHAKE_RETRANSMIT_CAP: u32 = 6;
+
+/// Register the two handshake datagrams in `channel`'s TX window, each
+/// capped at [`HANDSHAKE_RETRANSMIT_CAP`] resends. Split out of
+/// [`new_client_channel_with_handshake`] so tests can hand in a channel
+/// with a controllable clock.
+pub(crate) fn register_handshake(
+    channel: &mut cimmeria_mercury::channel::Channel,
+    addr: SocketAddr,
+    reply: &[u8],
+    time_sync: &[u8],
+) {
+    use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+
+    for (seq, bytes, packet_kind) in [
+        (CONNECT_REPLY_SEQ, reply, "connect_reply"),
+        (TIME_SYNC_SEQ, time_sync, "time_sync"),
+    ] {
+        let packet = Packet::new(
+            PacketFlags::from_byte(crate::mercury::REPLY_FLAGS),
+            seq,
+            Bytes::new(),
+        );
+        if let Err(e) = channel.register_sent_packet_capped(
+            packet,
+            Bytes::copy_from_slice(bytes),
+            HANDSHAKE_RETRANSMIT_CAP,
+        ) {
+            // Unreachable with an empty window and an in-range seq. If it
+            // ever fires, this packet has lost its retransmit cover.
+            tracing::warn!(
+                %addr,
+                seq,
+                packet_kind,
+                reason = "handshake_register_rejected",
+                error = %e,
+                "login handshake packet is not tracked for retransmit"
+            );
+        }
+    }
+    tracing::debug!(
+        %addr,
+        connect_reply_seq = CONNECT_REPLY_SEQ,
+        time_sync_seq = TIME_SYNC_SEQ,
+        retransmit_cap = HANDSHAKE_RETRANSMIT_CAP,
+        tx_window_len = channel.tx_window.len(),
+        "login handshake packets registered for retransmit"
+    );
 }
 
 /// The Mercury channel for a newly logged-in client session.

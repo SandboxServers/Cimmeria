@@ -285,7 +285,7 @@ source address end the session with one garbage datagram. The seam is
 
 | `reason` | Meaning | Fields |
 |---|---|---|
-| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len` |
+| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. `reply_outstanding = true` means the server has not seen the client ACK the reply (seq 1): it was probably lost, and a resend is pending. `false` means the client acked it and is retrying anyway. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len`, `reply_outstanding` |
 | `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `raw_len`, `error` |
 
 These rows carry `reason`, never `disconnect_reason`. That field is kept
@@ -296,6 +296,27 @@ count dropped datagrams.
 ## Cross-space cast refusal (#906)
 
 `useAbility` resolves its target id with `SpaceManager::get_entity`, which searches every space. A player's cast at a target that is not in the caster's space is refused in `use_ability/fire_los.rs` (at launch, which is also the fire for a zero-warmup cast) with one row on target `abilities` at `debug!`: `event = "cast_refused"`, `reason = "target_other_space"`, `entity_id`, `account_id`, `player_id`, `ability_id`, `target_id`, `caster_space_id`, `target_space_id`, `error_code`. DEBUG, because only a forged or stale packet names such a target, and a WARN would let it flood the log. The refusal is not silent: the caster gets `onErrorCode(0, ability_id, 0)`. If that cannot be queued, a WARN `cast_refused_send_failed` with the same identity fields says so. The guard is `a_target_in_another_space_is_refused_at_launch` in `use_ability/tests/target_validity.rs`.
+
+## Abandoned reliable resends (#842)
+
+Every reliable packet the base sends resends until it is acked, except
+the two login handshake packets: the reply (seq 1) and the time-sync
+(seq 2) are capped at `HANDSHAKE_RETRANSMIT_CAP` (6) resends, because
+some clients never ack them. When a capped packet expires again at its
+cap, the channel drops it from the TX window and
+`collect_pending_retransmits` (`base-session` `base/helpers`) logs one
+`warn!` for it, never repeated:
+
+| `event` | `reason` | Fields |
+|---|---|---|
+| `reliable_resend_abandoned` | `retransmit_cap_reached` | `addr`, `account_id`, `seq`, `retransmit_count` |
+
+A row with `seq = 1` means the client never acked the login reply
+through seven sends. If the login also stalled, look for
+`login_retry_on_channel` rows from the same `addr`. A row with `seq = 2`
+on a session that played normally is a client that ignores the
+time-sync ACK, not a fault. `login/tests/handshake_retransmit.rs` pins the
+cap, the fields and the one-row-per-packet rule.
 
 ## Pet command seams (PT-04)
 

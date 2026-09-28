@@ -268,8 +268,13 @@ pub fn shadow_register_reliable_send(
 /// Returns an empty vec on any lock-acquisition failure or missing
 /// session — the next tick will try again.
 ///
+/// A capped entry that reached its cap unacked (the login reply and
+/// time-sync, #842) is dropped by the scan instead of resent; each one
+/// gets a single WARN here, `event = "reliable_resend_abandoned"`, with
+/// the session's `account_id` and the `seq`.
+///
 /// [`Channel`]: cimmeria_mercury::channel::Channel
-pub(crate) fn collect_pending_retransmits(
+pub fn collect_pending_retransmits(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> Vec<cimmeria_mercury::packet::Bytes> {
@@ -299,7 +304,22 @@ pub(crate) fn collect_pending_retransmits(
             cimmeria_observability::counter!("mercury_tx_hole_stalls_total");
         }
     }
-    channel.check_timeouts()
+    let retransmits = channel.check_timeouts();
+    for dropped in channel.take_abandoned() {
+        // One row per packet, once: the channel has stopped resending it.
+        // For the login handshake this is a client that ignored both the
+        // original and every resend of seq 1 or 2 (#842).
+        tracing::warn!(
+            %addr,
+            account_id = state.account_id,
+            seq = dropped.seq,
+            retransmit_count = dropped.retransmit_count,
+            event = "reliable_resend_abandoned",
+            reason = "retransmit_cap_reached",
+            "reliable packet reached its retransmit cap unacked; the channel stopped resending it"
+        );
+    }
+    retransmits
 }
 
 /// Drain pending ACKs and allocate the next sequence number, masked to

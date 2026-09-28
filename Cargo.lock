@@ -884,6 +884,7 @@ dependencies = [
 name = "cimmeria-base"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "cimmeria-auth",
  "cimmeria-base-methods",
  "cimmeria-base-session",

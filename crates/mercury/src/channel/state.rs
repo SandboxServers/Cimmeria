@@ -45,6 +45,22 @@ pub struct TxEntry {
     /// `check_timeouts` silently skips bytes-empty entries during the
     /// retransmit scan.
     pub raw_bytes: bytes::Bytes,
+    /// Most retransmits this entry gets before the channel gives up on
+    /// it and drops it from the window unacked. `None` (every ordinary
+    /// reliable packet) resends until acked. Set through
+    /// [`Channel::register_sent_packet_capped`](super::Channel::register_sent_packet_capped).
+    pub retransmit_cap: Option<u32>,
+}
+
+/// A reliable packet the channel stopped resending because it reached
+/// its [`TxEntry::retransmit_cap`] without an ACK. Collected by
+/// [`Channel::take_abandoned`](super::Channel::take_abandoned).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AbandonedPacket {
+    /// Sequence of the dropped entry.
+    pub seq: u32,
+    /// Retransmits it had when dropped (equal to its cap).
+    pub retransmit_count: u32,
 }
 
 /// Bookkeeping for a received reliable packet buffered in the receive
