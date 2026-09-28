@@ -249,7 +249,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `research.rs`: item researchable (`Craft_Research`), kickers flagged `Kicker`, at most one per applied science and none from the item's own (D-CR11). At completion: consume the item and kickers, roll per D-CR15, +5 expertise on success, and a text line either way. A success also teaches the blueprint that makes the researched item, when that blueprint's discipline is known (D-CR04), and sends 139.
 - `reverse_engineer.rs`: item reverse-engineerable (`Craft_RevEng`) and produced by at least one blueprint. At completion: consume exactly the named instance (CR-06's transaction checks a named instance's owner and bag but consumes by design, so this packet adds an instance-exact consume step to `transaction/consume.rs`), pick a blueprint and a component set uniformly (no C-50), recover per D-CR06, grant. Up to 10 queued (C-34).
 
-**Telemetry:** both verbs use the contract's `queued` → `induction_started` → `completed` chain and `rejected` for refusals. Research's `completed` adds `eligible_disciplines`, `discipline_id`, `chance`, `roll`, `result`, `expertise_before` / `expertise_after` and any `blueprint_learned` it triggers (also emitted as its own event). Reverse engineering's `completed` adds the chosen `blueprint_id` and `component_set_id`, `bias`, and each component's roll with its recovered quantity. Refusal reasons: `not_researchable`, `not_kicker`, `kicker_same_science`, `kicker_duplicate_science`, `not_reverse_engineerable`, `no_blueprint_for_item`.
+**Telemetry:** both verbs use the contract's `queued` → `induction_started` → `completed` chain and `rejected` for refusals. Research's `completed` adds `eligible_disciplines`, `discipline_id`, `chance`, `roll`, `result`, `expertise_before` / `expertise_after` and any `blueprint_learned` it triggers (also emitted as its own event). Reverse engineering's `completed` adds the chosen `blueprint_id` and `component_set_id`, `bias`, and each component's roll with its recovered quantity. Refusal reasons: `not_researchable`, `not_kicker`, `kicker_same_science`, `kicker_duplicate_science`, `not_reverse_engineerable`, `no_blueprint_for_item`, and `no_eligible_discipline` (research, added by CR-18: no discipline of the item known with `0 < expertise < tech competency`; nothing is used).
 
 **Acceptance:** seeded-RNG tests for success and failure, and for the blueprint taught on success; a burst of 10 reverse-engineer requests completes 10 times; guards for the kicker rules and the zero-expertise case.
 
@@ -336,11 +336,11 @@ Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes 
 
 ### CR-18
 
-**Status:** Writing (in progress, branch `craft/cr18-research-refusal`). **Scope title:** Refuse a research with no eligible discipline (D-CR29). **Advisor:** server-authority-enforcer.
+**Status:** Review (branch `craft/cr18-research-refusal`, worknote `worknotes/cr-18.md`). **Scope title:** Refuse a research with no eligible discipline (D-CR29). **Advisor:** server-authority-enforcer.
 
 **Scope:** research checks for an eligible discipline (one of the item's disciplines known with `0 < expertise < item tech competency`) at the request, and again at completion before the transaction consumes anything; with none, the request is refused with a visible line and the item and kickers stay. Today the item and kickers are consumed and the line says nothing was learned (CR-08, the legacy behaviour).
 
-**Telemetry:** `rejected` with a new enumerated `reason` (proposed `no_eligible_discipline`), with the item's disciplines and the expertise compared, counted on `crafting_rejections_total`; no `completed` row and nothing consumed. Add the reason to the `crafting` row of `observability.md`.
+**Telemetry:** `rejected` with the new enumerated `reason` `no_eligible_discipline`, with `item_id`, `type_id`, `applied_science_id`, `tech_comp`, `item_disciplines` and `known_disciplines` (`discipline_id:expertise,…`), counted on `crafting_rejections_total`; no `completed` row and nothing consumed. Add the reason to the `crafting` row of `observability.md`.
 
 **Acceptance:** a live-DB test that a research with no eligible discipline consumes nothing and sends the line, at the request and at completion (expertise raised during the bar); a guard that fails when the check is removed; the existing success and failure tests still pass.
 

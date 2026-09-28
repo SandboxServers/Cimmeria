@@ -3,7 +3,7 @@
 > Type: how-to. Audience: any later session, the coordinator and the owner.
 > Updated: 2026-09-27 (CR-13 close-out). Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md), [worknotes](../worknotes/), [unified UAT guide, Crafting](../../../guides/unified-uat.md#crafting), [crafting system reference](../../../gameplay/crafting-system.md).
 
-## State: every planned packet merged; CR-13 close-out in review; follow-ups CR-18 and CR-19 in progress; CR-14 owner UAT after the release
+## State: every planned packet merged; CR-13 close-out in review; follow-up CR-18 in review, CR-19 in progress; CR-14 owner UAT after the release
 
 | Packet | Status | PR | Notes |
 |---|---|---|---|
@@ -26,7 +26,7 @@
 | CR-17 | Integrated | #953 | Trade from the crafting bag (D-CR28); vendor buyback and sell lock order |
 | CR-10 | Integrated | #979 | Two-step respec (`.respeccraft`, then the prompt's Yes); refund bound to the ASP spent |
 | CR-13 | Review | #983 | This close-out |
-| CR-18 | Writing | branch `craft/cr18-research-refusal` | Research with no eligible discipline refused before anything is consumed (D-CR29) |
+| CR-18 | Review | branch `craft/cr18-research-refusal` | Research with no eligible discipline refused before anything is consumed (D-CR29): at the request, before the roll at completion, and inside the completion transaction; `reason=no_eligible_discipline`. Worknote `worknotes/cr-18.md` |
 | CR-19 | Writing | branch `craft/cr19-station-click` | Right-clicking a station opens its crafting window (D-CR30); whether a client patch is needed is still open |
 | CR-14 | BlockedDependency | | The owner's UAT, [below](#cr-14-owner-uat-checklist), after the release deploys |
 
@@ -36,7 +36,7 @@ All six planning questions were answered on 2026-09-26 and are recorded in the [
 
 The two questions the close-out raised were answered on 2026-09-27:
 
-- **D-CR29:** a research with no eligible discipline is refused before anything is consumed, reversing the legacy behaviour CR-08 kept. Follow-up CR-18.
+- **D-CR29:** a research with no eligible discipline is refused before anything is consumed, reversing the legacy behaviour CR-08 kept. Implemented by CR-18 (in review).
 - **D-CR30:** right-clicking a crafting station opens its relevant crafting window. The stations need interaction bits and a server answer to the click; whether a client patch is needed is still to be determined. Follow-up CR-19.
 
 `/release` goes on whichever of CR-13 (#983), CR-18 and CR-19 merges last.
@@ -97,8 +97,8 @@ Run on the colo after the release deploys, as GM (access level 2 or higher), in 
 | 16 | Kill the **Crate** and loot it. Then fill the crafting bag (100 slots) with `.craftkit` kits: `.craftkit 25 <count>` adds 13 items per count, `.craftkit 42 <count>` one per count, and a kit that does not fit is refused whole, so finish with small ones. Kill the Crate again (it respawns 30 s after death) and loot its Cell | First loot: the Cell (5192) lands in the crafting bag; sometimes a guide or Blueprint: Steel Plating drops too. With the bag full: "Your crafting bag is full. The item was left on the corpse." and the Cell is still on the corpse |
 | 17 | Two players, A and B. A offers a crafting component from the crafting bag in a trade; both lock and confirm. Repeat with B's crafting bag full | The component leaves A's crafting bag and lands in B's crafting bag. With B's bag full the trade closes for both: B reads "Trade cancelled: your crafting bag does not have room for the items you would receive.", A reads "Trade cancelled: your trade partner's crafting bag does not have room for your items." Nothing moves |
 | 18 | Type `.respeccraft` and answer Yes. Then type `.respeccraft` again. Then learn a discipline, type `.respeccraft`, wait more than 60 seconds and answer Yes | The prompt shows a cost of 0. After Yes every discipline reads expertise 0 in Ctrl+J, and the ASP you spent learning disciplines (two points in step 4) comes back; blueprints (25, 1, 42) and the Goa'uld paradigm stay. The second `.respeccraft` says "You have no crafting disciplines to unlearn. Nothing was changed." The late Yes says "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." |
-| 19 | `.allcraft` with yourself selected | GM line "allcraft [...]: N disciplines at 100, M blueprints, 5 paradigms at 7; craft anywhere is on until logout." Every page enables anywhere, and every discipline shows 100 |
-| 20 | **After CR-18 (D-CR29).** With every discipline at 100 from step 19, buy another Crafted Pistol of the Whale (5481) and research it at a station | Refused at once with a line; the pistol stays and nothing is used, because no discipline of the pistol is below its tech competency (20). Before CR-18 it is used up and the line reads "Research complete. You learned nothing new: ..." |
+| 19 | `.allcraft` with yourself selected | GM line "allcraft [...]: N disciplines at 100, M blueprints, 5 paradigms at 7; craft anywhere is on until logout." Every page enables anywhere, and every discipline shows 100. From here on, research of any item with a tech competency of 100 or less is refused (step 20), so run every other research step (12) before this one |
+| 20 | With every discipline at 100 from step 19, buy another Crafted Pistol of the Whale (5481) and research it at a station | Refused at once with a line; the pistol stays and nothing is used, because no discipline of the pistol is below its tech competency (20). The line: "None of your disciplines can learn from that item: research needs one of its disciplines at an expertise above 0 and below 20. Nothing was used." No induction bar runs |
 | 21 | **Provisional, CR-19 (D-CR30).** Right-click a Crafting Station | Its crafting window opens. Until CR-19 lands a click does nothing; the exact window and whether a client patch is needed are still to be settled |
 
 Mailing a crafting component from the crafting bag is the social campaign's step 3b ([unified guide, Mail, chat and duels](../../../guides/unified-uat.md#mail-chat-and-duels)).
@@ -126,7 +126,7 @@ Logs view. Every row starts from `service.name = 'cimmeria-server' AND scope_nam
 | 17 | Replace the base with `scope_name = 'trade.atomic_swap' AND event IN ('trade.item_moved', 'trade.refused')` | `container_before = 15`, `container_after = 15`; then `reason = crafting_bag_full` |
 | 18 | `event IN ('respec_prompted', 'respec', 'rejected')` | The prompt, the cleared disciplines with `asp_before` / `asp_after` and `asp_refund`, or `nothing_to_respec` / `respec_expired` |
 | 19, GM grants | `event IN ('gm_allcraft', 'gm_craftkit', 'gm_learnblueprint', 'blueprint_learned')` | What each GM command granted, before and after, or why it was refused |
-| 20 | `verb = 'research' AND event = 'rejected'` | After CR-18: the new refusal `reason`, with nothing consumed and no `completed` row |
+| 20 | `event = 'rejected' AND reason = 'no_eligible_discipline'` | `verb = research`, `item_id`, `tech_comp = 20`, `item_disciplines`, `known_disciplines` (every discipline at 100); nothing consumed and no `completed` row |
 | 21 | `event = 'station_opened'` (name provisional, CR-19) | The station's entity id and the window opened |
 | any (this player) | `severity_text = 'WARN'` | Anything that failed an expectation: rollbacks (`persist_failed`), lookup misses, failed sends |
 | any (server-wide) | `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND severity_text = 'WARN'` | Warnings with no player: catalog load problems, requests dropped before the base (`no_player`, `malformed`) |
@@ -136,6 +136,8 @@ Metrics: `crafting_requests_total{verb, outcome}`, `crafting_jobs_total{verb, ou
 ## Known gaps carried forward
 
 - **The station or tool gate is checked at the request, not at completion.** Walking away from a station during a queued job still finishes it, and a tool traded away still covers crafts already queued (CR-07, CR-09, CR-17). A gate bypass, not a duplication; the fix is a gate re-check when the job completes.
+- **A research whose rolled discipline goes stale still applies** (CR-18). When the rolled discipline is dropped or maxed during the bar but another of the item's disciplines stays eligible, the completion transaction does not refuse: the roll made from the unlocked read applies. D-CR29 covers only "no eligible discipline"; refusing or re-rolling here needs its own decision.
+- **A refusal at completion carries no `job_id`** on its `rejected` event (`reject_at_completion`, every verb): it correlates to its job only through `player_id` and time.
 - **Vendor purchase ignores `max_stack_size`** (CR-11): buying several Steel Cores at once makes one stack. Crafting consumes it correctly by quantity. The generic grant path has the same gap on fresh slots (CR-16). No issue filed yet.
 - **Vendor purchase refusals are silent** to the player (not enough slots or naquadah: WARN only). Pre-existing, outside crafting.
 - **Using a Blueprint item or a guide prints no success line.** The item disappears and the J window or the tree changes; the refusals do print a line.
