@@ -59,7 +59,11 @@ impl Channel {
     pub(super) fn abandon_capped(&mut self, seqs: &[u32]) {
         for &seq in seqs {
             if let Some(entry) = take_entry(&mut self.tx_window, seq) {
-                tracing::debug!(
+                // INFO, like the retransmit rows on this target (the
+                // OTLP filter exports `mercury.retransmit` at INFO). It
+                // fires at most once per capped packet; the caller adds
+                // the WARN with the session's identity.
+                tracing::info!(
                     target: "mercury.retransmit",
                     event = "retransmit_cap_reached",
                     peer = %self.remote_addr,
