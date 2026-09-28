@@ -92,7 +92,7 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 |---|---|---|---|
 | BM-00 | Live spike: checks V1–V5 from the evidence doc, run through the lab bridge (main-thread native calls, SEH-guarded) or non-freezing x64dbg reads | — | Updates the evidence doc; go/no-go for BM-03/04 |
 | BM-01 | Port `feat/571` onto the split crates. Tests green, no behavior change | — | PR |
-| BM-02 | Server contract fixes S1–S8, plus the shared codec crate | BM-01 | PR with byte-exact wire tests and live-DB search/paging guards. **Done** (PR #BM02PR): see [5.3](#53-bm-02-outcome) |
+| BM-02 | Server contract fixes S1–S8, plus the shared codec crate | BM-01 | PR with byte-exact wire tests and live-DB search/paging guards. **Done** (PR #971): see [5.3](#53-bm-02-outcome) |
 | BM-02b | S9: move sweep and buyout payouts onto the social-systems mail API | BM-01, SS-M1 + SS-M2 merged | PR with live-DB guards for sold, unsold and cancelled settlement |
 | BM-03 | Patch DLL skeleton: fingerprint gate, receive hooks, decode, main-thread delivery | BM-00, BM-02 codec | PR; off-target unit tests for the decoders |
 | BM-04 | Patch DLL send natives and `CimmeriaBM` registration | BM-03 | PR |
