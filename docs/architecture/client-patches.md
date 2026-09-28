@@ -110,8 +110,11 @@ The addresses and their evidence are in
   owners. Before this, the patches DLL could list the owners, then see a
   telemetry hook appear before its own install and refuse it as an
   unknown hook, leaving the Black Market off. The lock waits up to 10
-  seconds; after that the DLL logs `install lock unavailable` and hooks
-  anyway.
+  seconds; after that the DLL logs `install lock unavailable` and installs
+  nothing (the Black Market stays off for that session), because hooking
+  while the other DLL is mid-install could lose one of the two detours.
+  The telemetry DLL and the lab bridge's dynamic hooks follow the same
+  rule (`LockOutcome::permits_hooking`).
 - **The receive path is generic.** "A shelved client method, matched by name,
   decoded in Rust and forwarded to Lua" works for any method the telemetry
   DLL's drop oracle reports. A new feature adds its names, a codec in

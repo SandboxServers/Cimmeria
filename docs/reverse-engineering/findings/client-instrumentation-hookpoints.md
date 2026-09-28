@@ -82,7 +82,7 @@ The minimum hook set that turns "client froze somewhere during world entry" into
 
 **Anchor corrections from the issue body's original draft:**
 
-- `"Decrypted packet received"` — **does not exist** in the binary. The actual post-decrypt entry is `Mercury::Nub::handleMessage` at `0x01b18be0` (string anchor `Mercury::Nub::handleMessage: received the wrong kind of message!`).
+- `"Decrypted packet received"` — **does not exist** in the binary. `0x01b18be0`, once recorded here as the post-decrypt entry, is the log string `Mercury::Nub::handleMessage: received the wrong kind of message!`, not code. The function that logs it starts at `0x0157bd30` (`ret 0x10`); whether it is the post-decrypt entry is unconfirmed, and re-resolving the hook is #989.
 - `0x019c2828` — the string at this address is `onClientReady` (bare), not `Event_NetIn_onClientReady`. The full event name comes from the RTTI descriptor; the bare string is the in-binary anchor.
 
 ## Tier 2 — Network protocol visibility (Phase 2)
@@ -148,20 +148,22 @@ Anchors from existing RE docs; per-anchor Ghidra revalidation deferred to implem
 
 ## Tier 6 — Subsystem correlators (Phase 5)
 
+IAT addresses are slot VAs read from the QA `SGW.exe` import directory (2026-09-28). Earlier revisions listed each slot's on-disk contents, the RVA of its hint/name entry, as if it were the slot; those pointed into `.rdata` strings. See `crates/client-telemetry/src/hooks/iat_hooks/mod.rs`.
+
 | Hook | Anchor | Why |
 |---|---|---|
 | FMOD `EventInstance::start` / `stop` | `fmodex.dll` (`0x01d88228`), `fmod_event.dll` (`0x01d884c8`), `fmod_event_net.dll` (`0x01d8858c`) | "Client thinks combat started" vs server state — desync correlator |
 | `BinkRender` / `InitBinkRender` | `0x0181ba54`, `0x0181bc2c` | Cinematic boundary markers — distinguishes stall from expected video |
 | `PropertyNode<T>` get/set | RTTI `0x01daadB0` (Property<long/int/bool/float/Vector3/wstring>, BasicPropertyList, BasicPropertyTree) | CME's parallel observable system to EventSignal |
-| `CreateThread` IAT | `0x01d6b65c` | Thread timeline baseline |
-| `LoadLibraryW` IAT | `0x01d6b5be` | Module timeline + trigger for IAT re-scan |
-| `GetForegroundWindow` IAT | `0x01d6af22`, `0x01b2de1c` | Focus correlation (alt-tab during stall?) |
+| `CreateThread` IAT | slot `0x017EF290` (KERNEL32) | Thread timeline baseline |
+| `LoadLibraryW` / `LoadLibraryA` IAT | slots `0x017EF26C` / `0x017EF268` (KERNEL32) | Module timeline + trigger for IAT re-scan |
+| `GetForegroundWindow` IAT | slot `0x017EFDF8` (USER32) | Focus correlation (alt-tab during stall?) |
 
 ## Tier 7 — Crash + on-disk artifact shipping (Phase 6)
 
 | Surface | Source / IAT | Technique |
 |---|---|---|
-| Unhandled exceptions | `SetUnhandledExceptionFilter` IAT @ `0x01d6bab4` | Replace, write minidump via `MiniDumpWriteDump` IAT @ `0x01d87b78`, ship as correlated event, call original |
+| Unhandled exceptions | `SetUnhandledExceptionFilter` IAT slot `0x017EF108` | Replace, write minidump via `MiniDumpWriteDump` IAT slot `0x017F0058` (dbghelp), ship as correlated event, call original |
 | `Binaries/CrashDumps/*.dmp` | On-disk poll | Tail-and-ship (one-shot per file) |
 | `Binaries/SGWDebugLog.log` | On-disk tail | Same pattern as launcher telemetry uses for `sgwdebuglog*` rotations today |
 | `Binaries/sessions/*.{log,pcap,keys.txt}` | On-disk | Launcher already ships these — DLL must not duplicate |

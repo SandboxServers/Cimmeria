@@ -23,7 +23,8 @@
 //!   `MH_EnableHook` would overwrite the first one's jump and silently drop
 //!   its detour. Each DLL holds a per-process named mutex for the whole of
 //!   its check-and-hook phase, so whichever goes second sees the first one's
-//!   jump and chains onto it.
+//!   jump and chains onto it. A DLL that cannot take the lock in time
+//!   installs nothing (`LockOutcome::permits_hooking`).
 //!
 //! Neither DLL ever unhooks: removing a MinHook hook restores the bytes it
 //! saved, which would cut out a hook chained on top of it.

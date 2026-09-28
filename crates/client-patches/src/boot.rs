@@ -118,8 +118,14 @@ fn bootstrap() {
         LockOutcome::Acquired => "install lock taken",
         LockOutcome::AcquiredAfterWait => "install lock taken after waiting for another DLL",
         LockOutcome::Abandoned => "install lock taken (abandoned by a thread that exited)",
-        LockOutcome::Unavailable => "install lock unavailable; hooking without it",
+        LockOutcome::Unavailable => "install lock unavailable",
     });
+    if !lock.outcome().permits_hooking() {
+        // The other DLL is still hooking (or the mutex failed): hooking now
+        // could let its MH_EnableHook overwrite ours on a shared site.
+        log::line("another DLL still holds the install lock; nothing installed, the Black Market stays off");
+        return;
+    }
 
     let hook_owners = hook_owner_ranges();
     let mut usable = true;
@@ -199,7 +205,8 @@ fn bootstrap() {
         }
     }
     log::line(
-        "Black Market installed: received calls go to the Lua table CimmeriaBM, and          CimmeriaBMNative is registered for sending once the UI Lua is up",
+        "Black Market installed: received calls go to the Lua table CimmeriaBM, and \
+         CimmeriaBMNative is registered for sending once the UI Lua is up",
     );
     drop(lock);
 }

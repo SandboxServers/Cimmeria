@@ -369,8 +369,15 @@ fn gate_and_install(producer: crate::queue::Producer) -> bool {
         LockOutcome::Acquired => "install lock taken",
         LockOutcome::AcquiredAfterWait => "install lock taken after waiting for another DLL",
         LockOutcome::Abandoned => "install lock taken (abandoned by a thread that exited)",
-        LockOutcome::Unavailable => "install lock unavailable; hooking without it",
+        LockOutcome::Unavailable => "install lock unavailable",
     });
+    if !lock.outcome().permits_hooking() {
+        // The client-patches DLL is still hooking (or the mutex failed):
+        // hooking a shared site now could let its MH_EnableHook overwrite
+        // ours and silently drop the detour.
+        crate::log::line("another DLL still holds the install lock; no hooks installed");
+        return false;
+    }
 
     let owners: Vec<_> = loaded_hook_owners()
         .into_iter()

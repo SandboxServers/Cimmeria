@@ -106,9 +106,20 @@ pub enum LockOutcome {
     /// dead installer cannot be mid-hook.
     Abandoned,
     /// Not obtained within the timeout, or the mutex could not be created.
-    /// The caller goes on without it, which only reopens the lost-hook
-    /// race the lock exists to close.
+    /// The caller must not hook: the two DLLs keep separate MinHook
+    /// states, so hooking a shared site while the other DLL is mid-install
+    /// lets its `MH_EnableHook` overwrite this one's jump and silently drop
+    /// the detour. See [`LockOutcome::permits_hooking`].
     Unavailable,
+}
+
+impl LockOutcome {
+    /// Whether the caller may check and hook under this outcome. Every
+    /// outcome but [`LockOutcome::Unavailable`] means this thread holds
+    /// the lock.
+    pub fn permits_hooking(self) -> bool {
+        self != Self::Unavailable
+    }
 }
 
 /// The per-process install lock (see the crate docs). Released on drop.
@@ -253,7 +264,22 @@ mod tests {
             .join()
             .unwrap();
         assert_eq!(outcome, LockOutcome::Unavailable);
+        assert!(
+            !outcome.permits_hooking(),
+            "a DLL that could not take the lock must not hook"
+        );
         drop(first);
+    }
+
+    #[test]
+    fn every_held_outcome_permits_hooking() {
+        for held in [
+            LockOutcome::Acquired,
+            LockOutcome::AcquiredAfterWait,
+            LockOutcome::Abandoned,
+        ] {
+            assert!(held.permits_hooking(), "{held:?}");
+        }
     }
 
     /// A holder whose thread died without releasing does not block the

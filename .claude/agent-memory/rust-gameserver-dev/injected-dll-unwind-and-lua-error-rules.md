@@ -20,12 +20,20 @@ to any Rust detour injected into `SGW.exe`.
 - **Do not wrap a call that can throw a C++ exception in `catch_unwind`.**
   Catching a foreign exception there either aborts or returns `Err`, and
   which one is unspecified. Wrap only pure-Rust work.
-- **Client Lua errors outside `lua_pcall` do not unwind.** In Lua 5.1 with
-  no error handler active (`L->errorJmp == NULL`, the case at the top of
-  `Tick`), `luaD_throw` calls the panic function and then `exit()`. So Lua
-  API imports can be plain `extern "C"`. Only allocation failures and
-  `__gc` errors can raise there anyway. Look up globals with `lua_rawget`,
-  so no metamethod runs unprotected.
+- **A client Lua error takes one of two paths.**
+  - *No handler active* (`L->errorJmp == NULL`, the case at the top of
+    `Tick`): `luaD_throw` calls the panic function and then `exit()`.
+    Nothing unwinds, so a Lua API import called only there can be plain
+    `extern "C"`. Only allocation failures and `__gc` errors can raise
+    there anyway. Look up globals with `lua_rawget`, so no metamethod runs
+    unprotected.
+  - *Under `lua_pcall`*: `lua51.dll` raises the error as a C++ exception
+    (it imports `_CxxThrowException`) and it unwinds to the nearest
+    `lua_pcall`. A `lua_call` made inside a pcall'd chunk is on that path,
+    so anything that can sit between the throw and the pcall, such as the
+    telemetry DLL's `lua_call` IAT detour, must use `extern "C-unwind"`;
+    a plain `extern "C"` frame there aborts the process. When in doubt,
+    use `-unwind`: it costs nothing.
 - **Two DLLs can MinHook the same target.** MinHook's trampoline builder
   relocates an existing `E9 rel32` at the target, so the second hook chains
   onto the first. It overwrites exactly 5 bytes, so the prologue after

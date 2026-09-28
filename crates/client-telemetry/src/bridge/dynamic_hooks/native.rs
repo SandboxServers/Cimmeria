@@ -51,6 +51,29 @@
 /// probe, not a general hooking framework.
 pub const NUM_SLOTS: usize = 8;
 
+/// MinHook status values `unpatch` tells apart (`minhook-sys` `MH_STATUS`).
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+const MH_OK: i32 = 0;
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+const MH_ERROR_NOT_CREATED: i32 = 4;
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+const MH_ERROR_DISABLED: i32 = 6;
+
+/// After `MH_DisableHook`: whether the hook is off, either just disabled
+/// or already disabled. Anything else means the jump may still be live, so
+/// the slot must keep its trampoline and target.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+fn hook_is_disabled(status: i32) -> bool {
+    status == MH_OK || status == MH_ERROR_DISABLED
+}
+
+/// After `MH_RemoveHook`: whether MinHook no longer holds the hook, so the
+/// slot may be freed. Until then a new `patch` must not reuse the slot.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+fn hook_is_removed(status: i32) -> bool {
+    status == MH_OK || status == MH_ERROR_NOT_CREATED
+}
+
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub use imp::{patch, unpatch};
 
@@ -99,7 +122,13 @@ mod imp {
             .find(|&i| SLOT_IDS[i].load(Ordering::Acquire) == 0)
             .ok_or_else(|| format!("hook pool full ({NUM_SLOTS} slots)"))?;
 
-        let _lock = HookLock::acquire(LOCK_WAIT);
+        let lock = HookLock::acquire(LOCK_WAIT);
+        if !lock.outcome().permits_hooking() {
+            return Err(
+                "install lock unavailable (the client-patches DLL is hooking); nothing hooked"
+                    .to_string(),
+            );
+        }
         // SAFETY: no preconditions; a second call reports
         // ALREADY_INITIALIZED.
         match unsafe { MH_Initialize() } {
@@ -146,14 +175,37 @@ mod imp {
             .ok_or_else(|| format!("hook id {id} not installed natively"))?;
         let target = SLOT_TARGETS[slot].load(Ordering::Acquire) as *mut c_void;
 
-        let _lock = HookLock::acquire(LOCK_WAIT);
+        let lock = HookLock::acquire(LOCK_WAIT);
+        if !lock.outcome().permits_hooking() {
+            return Err(format!(
+                "install lock unavailable (the client-patches DLL is hooking); hook {id} left in place"
+            ));
+        }
         // Stop capturing first; MinHook then suspends the other threads,
         // moves any that sit in the patched bytes, and restores them.
         SLOT_IDS[slot].store(0, Ordering::Release);
         // SAFETY: a hook this module created and enabled.
-        unsafe {
-            MH_DisableHook(target);
-            MH_RemoveHook(target);
+        let status = unsafe { MH_DisableHook(target) };
+        if !super::hook_is_disabled(status) {
+            // The jump may still be live: keep the slot whole (id, target,
+            // trampoline) so the detour still reaches the original.
+            SLOT_IDS[slot].store(id, Ordering::Release);
+            return Err(format!(
+                "MH_DisableHook at {:#x} failed with status {status}; hook {id} left in place",
+                target as usize
+            ));
+        }
+        // SAFETY: as above; disabled now.
+        let status = unsafe { MH_RemoveHook(target) };
+        if !super::hook_is_removed(status) {
+            // Disabled, so the detour no longer runs, but MinHook still
+            // holds the hook: keep the slot allocated so `patch` cannot
+            // reuse it. Retrying the remove finishes it.
+            SLOT_IDS[slot].store(id, Ordering::Release);
+            return Err(format!(
+                "MH_RemoveHook at {:#x} failed with status {status}; hook {id} disabled but not removed",
+                target as usize
+            ));
         }
         SLOT_TARGETS[slot].store(0, Ordering::Release);
         SLOT_TRAMPOLINES[slot].store(0, Ordering::Release);
@@ -233,4 +285,43 @@ mod imp {
     static DETOURS: [Detour; NUM_SLOTS] = [
         detour_0, detour_1, detour_2, detour_3, detour_4, detour_5, detour_6, detour_7,
     ];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Bug shape: a failed MH_DisableHook freed the slot while the jump was
+    // still live, so the detour ran with no trampoline or a reused slot
+    // routed the old target elsewhere.
+    #[test]
+    fn only_a_real_disable_lets_unpatch_go_on() {
+        assert!(hook_is_disabled(MH_OK));
+        assert!(hook_is_disabled(MH_ERROR_DISABLED), "already off is off");
+        for failure in [-1, 1, 2, MH_ERROR_NOT_CREATED, 7, 8, 9, 10, 11] {
+            assert!(!hook_is_disabled(failure), "status {failure}");
+        }
+    }
+
+    // A disabled hook MinHook still holds must keep its slot, or `patch`
+    // reuses a slot whose hook still exists.
+    #[test]
+    fn only_a_real_remove_frees_the_slot() {
+        assert!(hook_is_removed(MH_OK));
+        assert!(
+            hook_is_removed(MH_ERROR_NOT_CREATED),
+            "already gone is gone"
+        );
+        for failure in [-1, 1, 2, 5, MH_ERROR_DISABLED, 7, 8, 9, 10, 11] {
+            assert!(!hook_is_removed(failure), "status {failure}");
+        }
+    }
+
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn status_values_match_minhook() {
+        assert_eq!(MH_OK, minhook_sys::MH_OK);
+        assert_eq!(MH_ERROR_NOT_CREATED, minhook_sys::MH_ERROR_NOT_CREATED);
+        assert_eq!(MH_ERROR_DISABLED, minhook_sys::MH_ERROR_DISABLED);
+    }
 }
