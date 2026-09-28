@@ -113,13 +113,19 @@ mod live_db {
     }
 
     /// The numbers the Microwave Emitter is built from, as the cell loads
-    /// them: 30 pulses of 1 s (5065, "30 pulses x1 Second duration"), an
-    /// 8 m radius (5066 "Medium", no `Radius` NVP), 100 Focus damage and the
-    /// Focus-first `RangedPhysicalDamage` script (5066 "Secondary -100F").
+    /// them: a 5 m range (1012 `MaxRange` 500 UE3 units), 30 pulses of 1 s
+    /// (5065, "30 pulses x1 Second duration"), a 10 m radius (5066
+    /// "Medium", no `Radius` NVP), 100 Focus damage and the Focus-first
+    /// `RangedPhysicalDamage` script (5066 "Secondary -100F").
     #[tokio::test]
     async fn microwave_emitter_effects_carry_the_cooked_numbers_live_db() {
         let pool = require_db_or_skip!();
         let effects = load_effect_defs(&pool).await.expect("effects load");
+        let abilities = load_ability_defs(&pool).await.expect("abilities load");
+
+        let emitter = abilities.get(&MICROWAVE_EMITTER).expect("1012 loads");
+        assert_eq!(emitter.max_range, 5.0, "1012: 500 UE3 units = 5 m");
+        assert_eq!(emitter.target_type_id, 3, "1012 is ground-targeted");
 
         let pulser = effects.get(&PULSER).expect("5065 loads");
         assert_eq!(pulser.pulse_count, 30, "5065: 30 pulses");
@@ -131,6 +137,11 @@ mod live_db {
 
         let damage = effects.get(&DAMAGE).expect("5066 loads");
         assert_eq!(damage.tcm_param1, "Medium", "5066: Medium radius tier");
+        assert_eq!(
+            cimmeria_entity::abilities::ae_radius_metres(&damage.tcm_param1),
+            Some(10.0),
+            "the client's Medium AE radius"
+        );
         assert_eq!(damage.param_f32("Radius"), 0.0, "5066 has no Radius NVP");
         assert_eq!(damage.param_i32("FocusDamage"), 100, "5066: -100F");
         assert_eq!(damage.param_i32("HealthDamage"), 0, "5066: no -H term");

@@ -145,7 +145,7 @@ In-game mail with:
 
 Stationary objects a player places with a Scientist "Deployable:" ability; each pulses an effect around itself for a fixed lifetime.
 
-**Data:** The cooked effects describe the shape (1012's 5065 "Pulser, 30 pulses x1 Second, Despawn Target on Finish" and 5066 "Medium Radius AE, -100F"); no row names the object. The "Kit:" items are crafting components. **Server:** Phase 0 (2026-09-28): 1012 Microwave Emitter works server-side through `resources.deployables`, an owned `SGWBeing` whose pulses damage hostile NPCs as its owner, removed on expiry, re-cast, or the owner's death, logout or zone change. Not client-tested. See [deployables.md](gameplay/deployables.md).
+**Data:** The cooked effects describe the shape (1012's 5065 "Pulser, 30 pulses x1 Second, Despawn Target on Finish" and 5066 "Medium Radius AE, -100F"); no row names the object. The "Kit:" items are crafting components. **Server:** Phase 0 (2026-09-28): 1012 Microwave Emitter works server-side through `resources.deployables`, an owned `SGWBeing` whose pulses damage hostile NPCs within 10 m as its owner, removed on expiry, re-cast, or the owner's death, logout or zone change. Not client-tested. See [deployables.md](gameplay/deployables.md).
 
 ## Pets
 

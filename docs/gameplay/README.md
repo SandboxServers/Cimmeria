@@ -279,7 +279,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Deployables
 
-**Status**: IM — Phase 0 is implemented server-side, not yet client-tested: 1012 "Deployable: Microwave Emitter" places an owned object at a validated ground point that drains Focus, then Health, from hostile NPCs within 8 m every second for 30 s, as its owner. The mechanism is generic (`resources.deployables`); 1236, 1224 and 1253 are later phases.
+**Status**: IM — Phase 0 is implemented server-side, not yet client-tested: 1012 "Deployable: Microwave Emitter" places an owned object at a validated ground point that drains Focus, then Health, from hostile NPCs within 10 m every second for 30 s, as its owner. The mechanism is generic (`resources.deployables`); 1236, 1224 and 1253 are later phases.
 
 **Entity**: an `SGWBeing` spawned from templates 400-409 (no dedicated entity class)
 **Events**: `useAbilityOnGroundTarget` (NetOut); the ordinary AoI create and leave (NetIn)

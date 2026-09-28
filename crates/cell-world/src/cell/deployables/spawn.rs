@@ -15,13 +15,14 @@
 //!
 //! The lifetime and pulse cadence come from the spec's lifetime effect
 //! (`pulse_count` x `pulse_duration`), the hit radius from the pulse
-//! effect's `Radius` NVP, else its `tcm_param1` range tier. Nothing is sent
+//! effect's `Radius` NVP, else the client's AE radius for its `tcm_param1`
+//! tier. Nothing is sent
 //! from here: the next AoI tick introduces the object like any NPC.
 
 use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
-use cimmeria_entity::abilities::EffectDef;
+use cimmeria_entity::abilities::{ae_radius_metres, EffectDef};
 
 use super::super::space_manager::SpaceManager;
 use super::super::spawner::DeployableSpec;
@@ -80,14 +81,16 @@ pub fn pulse_schedule(lifetime: &EffectDef) -> Option<(u32, Duration)> {
 }
 
 /// The hit radius, metres, of a pulse effect: its `Radius` NVP when that is
-/// positive, else its range tier (`tcm_param1`, "Medium" = 8 m), the same
-/// tiers the cone collector uses.
+/// positive, else the client's AE radius for its `tcm_param1` tier
+/// ("Medium" = 1000 UE3 units = 10 m, `ae_radius_metres`). A tier the
+/// client does not know falls back to the cone tiers (which warn).
 pub fn pulse_radius(pulse: &EffectDef) -> f32 {
     let r = pulse.param_f32("Radius");
     if r > 0.0 {
         r
     } else {
-        EffectDef::tcm_range_meters(&pulse.tcm_param1)
+        ae_radius_metres(&pulse.tcm_param1)
+            .unwrap_or_else(|| EffectDef::tcm_range_meters(&pulse.tcm_param1))
     }
 }
 

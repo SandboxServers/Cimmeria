@@ -733,7 +733,7 @@ Source: [legacy command parity README, Validation and UAT gates](../analysis/leg
 
 ## Deployables
 
-A Scientist places a Microwave Emitter on the ground; for 30 s it drains Focus, then Health, from hostile NPCs within 8 m every second, as if the Scientist had hit them.
+A Scientist places a Microwave Emitter on the ground; for 30 s it drains Focus, then Health, from hostile NPCs within 10 m every second, as if the Scientist had hit them.
 
 **Status:** Ready. Phase 0 is merged; nothing has been seen in a client yet. The object's look has never been rendered.
 
@@ -741,11 +741,11 @@ A Scientist places a Microwave Emitter on the ground; for 30 s it drains Focus, 
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
-| DP-U1 | Target the ground about 10 m away and cast 1012 | The cooldown and a 2 s warmup show at once. After 2 s an object appears at the point. | |
+| DP-U1 | Target the ground about 4 m away and cast 1012 (its range is 5 m) | The cooldown and a 2 s warmup show at once. After 2 s an object appears at the point. | |
 | DP-U2 | Look at the object | A small deployable model standing on the ground, not floating or sunk, named "Deployable: Microwave Emitter". | Describe it: the body (`BS_DeployableLow` + `Dp_Standard100`) has never been rendered |
-| DP-U3 | Let hostile mobs stand within 8 m of it | Every second their Focus drops, then their Health; they turn on you even from 10 m away. A kill gives you XP and quest credit. | |
+| DP-U3 | Let hostile mobs stand within 10 m of it | Every second their Focus drops, then their Health; they turn on you even from 15 m away. A kill gives you XP and quest credit. | |
 | DP-U4 | Watch for 30 s | The object disappears 30 s after it appeared. | |
-| DP-U5 | Cast at a spot beyond range, behind a wall, and during the cooldown | Each press shows a chat line ("That spot is out of range.", "You cannot see that spot.", "That deployable is not ready yet.") and charges nothing. | The range is 500 units, so "beyond range" needs a long view; the wall check needs a world with an occluder (Castle Cellblock) |
+| DP-U5 | Cast at a spot beyond range, behind a wall, and during the cooldown | Each press shows a chat line ("That spot is out of range.", "You cannot see that spot.", "That deployable is not ready yet.") and charges nothing. | Beyond range is more than 5 m away; the wall check needs a world with an occluder (Castle Cellblock) |
 | DP-U6 | Place one, then die; place one, then log out; place one, then change zone | The object disappears each time. | |
 | DP-U7 | A second player stands inside the radius | They take no damage, and they see the object appear and disappear. | Two players |
 | DP-U8 | Try to attack the object (click it, cast at it) | It cannot be attacked. | |

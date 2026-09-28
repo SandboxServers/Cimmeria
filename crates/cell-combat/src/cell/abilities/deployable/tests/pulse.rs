@@ -10,12 +10,12 @@ use super::super::tick::pulse_targets;
 use super::super::{deployable_tick, deployable_tick_at};
 use super::*;
 
-/// The emitter is at `SPOT` (15, 0, 10); its radius is 8 m.
-const IN_RANGE: [f32; 3] = [20.0, 0.0, 10.0];
-/// Exactly on the 8 m edge.
-const ON_EDGE: [f32; 3] = [23.0, 0.0, 10.0];
+/// The emitter is at `SPOT` (9, 0, 10); its radius is 10 m.
+const IN_RANGE: [f32; 3] = [14.0, 0.0, 10.0];
+/// Exactly on the 10 m edge.
+const ON_EDGE: [f32; 3] = [19.0, 0.0, 10.0];
 /// Just past it.
-const PAST_EDGE: [f32; 3] = [23.01, 0.0, 10.0];
+const PAST_EDGE: [f32; 3] = [19.01, 0.0, 10.0];
 
 /// The time the `n`th pulse of `deployable` is due.
 fn pulse_due(mgr: &SpaceManager, deployable: u32, n: u32) -> Instant {
@@ -23,7 +23,7 @@ fn pulse_due(mgr: &SpaceManager, deployable: u32, n: u32) -> Instant {
     s.spawned_at + s.pulse_interval * n
 }
 
-/// **Targeting.** A pulse hits the hostile NPCs within 8 m (the edge
+/// **Targeting.** A pulse hits the hostile NPCs within 10 m (the edge
 /// included), nearest first, and nothing else: not an NPC just past the
 /// edge, a friendly NPC, a dead one, another player, the owner, or the
 /// object itself.
@@ -36,10 +36,10 @@ async fn a_pulse_targets_live_hostile_npcs_in_its_radius_only() {
     hostile(&mut mgr, 50, IN_RANGE);
     hostile(&mut mgr, 51, ON_EDGE);
     hostile(&mut mgr, 52, PAST_EDGE);
-    npc(&mut mgr, 53, [16.0, 0.0, 10.0], 1); // friendly, beside the object
-    hostile(&mut mgr, 54, [17.0, 0.0, 10.0]);
+    npc(&mut mgr, 53, [10.0, 0.0, 10.0], 1); // friendly, beside the object
+    hostile(&mut mgr, 54, [11.0, 0.0, 10.0]);
     mgr.get_entity_mut(54).unwrap().state_field |= BSF_DEAD;
-    add_pet_owner(&mut mgr, 2, "Castle", [15.0, 0.0, 11.0], 10); // a bystander player
+    add_pet_owner(&mut mgr, 2, "Castle", [9.0, 0.0, 11.0], 10); // a bystander player
     mgr.get_entity_mut(2).unwrap().faction = HOSTILE_FACTION;
 
     assert_eq!(pulse_targets(&mgr, d), vec![50, 51]);
@@ -47,7 +47,7 @@ async fn a_pulse_targets_live_hostile_npcs_in_its_radius_only() {
 
 /// **Attribution.** A pulse's damage is the owner's: the target's Focus
 /// drops, its threat list names the owner, and the owner is in combat with
-/// it, though the owner stands 10 m from the object.
+/// it, though the owner stands 9 m from it.
 #[tokio::test]
 async fn a_pulse_damages_as_the_owner() {
     let mut mgr = deploy_mgr();

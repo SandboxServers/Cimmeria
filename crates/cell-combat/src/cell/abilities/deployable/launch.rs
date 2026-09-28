@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_cell_catalog::cell::spawner::DeployableSpec;
 use cimmeria_common::Vector3;
-use cimmeria_entity::abilities::AbilityDef;
+use cimmeria_entity::abilities::{ability_max_range, AbilityDef};
 use cimmeria_entity::navigation::LineOfSight;
 
 use super::super::super::combat;
@@ -14,25 +14,16 @@ use super::super::super::space_manager::{occluder_probe, SpaceManager};
 use super::super::use_ability::handle_use_ability;
 use super::feedback::{send_refusal, DeployRefusal};
 
-/// The server's fallback range when an ability's `max_range` is 0: the rule
-/// the launch range check in `handle.rs` applies.
-const DEFAULT_MAX_RANGE: f32 = 30.0;
-
 /// How far above the ground point the line-of-sight ray ends, metres. A
 /// ray to the exact surface grazes it; half a metre is where a thrown
 /// object would be seen landing.
 pub(super) const GROUND_SIGHT_HEIGHT: f32 = 0.5;
 
-/// The range a deployable may be placed at: the ability's `max_range`, or
-/// the server default for 0. The same number the launch range check uses.
+/// The range a deployable may be placed at, metres: the ability's
+/// `max_range` (1012: 500 UE3 units, 5 m), or the server default for 0.
+/// The same number the launch range check uses.
 pub(super) fn deploy_max_range(ability: Option<&AbilityDef>) -> f32 {
-    ability.map_or(DEFAULT_MAX_RANGE, |d| {
-        if d.max_range > 0 {
-            d.max_range as f32
-        } else {
-            DEFAULT_MAX_RANGE
-        }
-    })
+    ability_max_range(ability)
 }
 
 /// Validate `ground` for `caster` casting `ability`, and return the point to

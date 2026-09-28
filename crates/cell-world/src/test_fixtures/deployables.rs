@@ -17,8 +17,9 @@ pub const DEPLOYABLE_TEMPLATE: i32 = 400;
 pub const DEPLOYABLE_LIFETIME_EFFECT: i32 = 5065;
 /// 5066 "Damage": Medium radius, -100F, `RangedPhysicalDamage`.
 pub const DEPLOYABLE_PULSE_EFFECT: i32 = 5066;
-/// 1012's seeded `max_range`.
-pub const DEPLOYABLE_MAX_RANGE: i32 = 500;
+/// 1012's seeded `max_range`, in metres as the loader leaves it (500 UE3
+/// units).
+pub const DEPLOYABLE_MAX_RANGE: f32 = 5.0;
 /// 1012's seeded warmup, seconds.
 pub const DEPLOYABLE_WARMUP: f32 = 2.0;
 /// 1012's seeded flags: SpeedDeploy | Deactivate_AutoCycle |
@@ -34,7 +35,8 @@ pub const DEPLOYABLE_SPEC: DeployableSpec = DeployableSpec {
     max_active: 1,
 };
 
-/// 1012's ability row (`abilities.sql`): cooldown 30, warmup 2, range 500,
+/// 1012's ability row (`abilities.sql`): cooldown 30, warmup 2, range 500
+/// UE3 units (5 m),
 /// target type Ground, no event set, effects 5066 and 5065.
 pub fn deployable_ability_def() -> AbilityDef {
     AbilityDef {
@@ -44,7 +46,7 @@ pub fn deployable_ability_def() -> AbilityDef {
         warmup: DEPLOYABLE_WARMUP,
         flags: DEPLOYABLE_FLAGS,
         is_ranged: false,
-        min_range: 0,
+        min_range: 0.0,
         max_range: DEPLOYABLE_MAX_RANGE,
         target_type_id: 3,
         effect_ids: vec![DEPLOYABLE_PULSE_EFFECT, DEPLOYABLE_LIFETIME_EFFECT],

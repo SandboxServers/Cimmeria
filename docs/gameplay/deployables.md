@@ -28,12 +28,12 @@ Every number comes from the cooked data (`data/cache/CookedDataAbilities.pak` `_
 | Property | Value | Source |
 |---|---|---|
 | Target | Ground point (`TargetTypeId=3`), `TCM_AERadius` | ability 1012 |
-| Range | `max_range` 500 | ability 1012 |
+| Range | 5 m (`max_range` 500 UE3 units, 100 per metre, #919) | ability 1012 |
 | Warmup | 2 s, shortened by `speedDeploy` (flag `SpeedDeploy`, 4096) | ability 1012 |
 | Cooldown | 30 s (charged at launch, covering the warmup) | ability 1012 |
 | Lifetime | 30 pulses, 1 s apart: 30 s | effect 5065 "Pulser": "30 pulses x1 Second duration / Despawn Target on Finish" |
 | Pulse effect | effect 5066 "Damage": "Medium Radius AE / Secondary -100F" | effect 5066 |
-| Radius | 8 m (the "Medium" range tier; 5066 has no `Radius` NVP) | effect 5066 `tcm_param1` |
+| Radius | 10 m: the client's "Medium" AE radius, 1000 UE3 units (`AbilityInfo_AERadiusFromTier`, `0x00d29e90`); 5066 has no `Radius` NVP | effect 5066 `tcm_param1` |
 | Damage per pulse | 100 Focus (`FocusDamage` NVP 380), no Health term | "-100F", written like the "-100F -10H" rows 641 and 656 |
 | Damage model | `RangedPhysicalDamage`: Focus goes first, and once it is gone the overflow bleeds into Health (about 33 Health a pulse) | seed choice, see [open questions](../analysis/deployables/README.md#open-owner-questions) |
 | Look | `WP-Human.BS_DeployableLow` (skeletal mesh `DP-Base100`) wearing `WP-Human.Dp_Standard100` | template 400 |
@@ -42,12 +42,12 @@ Effect 5066 carries `EF_DontUseQR` (16) and `EF_SequenceOnPulse` (128). The serv
 
 ## How it works
 
-The design is decision 27 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md).
+The design is decision 28 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md).
 
-1. **The press.** The client sends `useAbilityOnGroundTarget(1012, x, y, z)`. The server checks the point before charging anything: finite coordinates, within 500 of the caster, in line of sight of the caster's eye where the world has a collision occluder, and on the navmesh where the world enforces navmesh containment. A point over the mesh is moved down onto the floor. The point is then held for the cast, and the cast launches with no target.
+1. **The press.** The client sends `useAbilityOnGroundTarget(1012, x, y, z)`. The server checks the point before charging anything: finite coordinates, within 5 m of the caster, in line of sight of the caster's eye where the world has a collision occluder, and on the navmesh where the world enforces navmesh containment. A point over the mesh is moved down onto the floor. The point is then held for the cast, and the cast launches with no target.
 2. **The warmup.** The ordinary 2 s warmup, with the cooldown and warmup timers sent on the press. Moving, dying or changing space during the warmup cancels it and drops the held point.
 3. **The fire.** The object is placed at the point, facing the caster's heading, and the caster's older object from the same ability is removed (one out at a time).
-4. **The pulses.** Every second, the object applies 5066 to every entity within 8 m that its owner may hit with an area ability, as if the owner had hit it. That is every hostile NPC, plus the owner's engaged duel partner. It never hits another player, a pet or a friendly NPC.
+4. **The pulses.** Every second, the object applies 5066 to every entity within 10 m that its owner may hit with an area ability, as if the owner had hit it. That is every hostile NPC, plus the owner's engaged duel partner. It never hits another player, a pet or a friendly NPC.
 5. **The end.** After the 30th pulse the object is removed in the same tick, and every player who could see it gets a `LeftAoI`.
 
 The object also goes, within one 100 ms tick and before it can pulse again, when its owner:

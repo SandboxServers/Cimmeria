@@ -61,14 +61,14 @@ async fn a_ground_cast_places_the_emitter_at_the_point_after_its_warmup() {
     );
 }
 
-/// A point beyond 1012's 500 range is refused before anything is charged:
+/// A point beyond 1012's 5 m range is refused before anything is charged:
 /// `onErrorCode` 42, a chat line, no cooldown, no warmup, nothing staged.
 #[tokio::test]
 async fn an_out_of_range_point_is_refused_with_feedback_and_charges_nothing() {
     let mut mgr = deploy_mgr();
     let (tx, mut rx) = mpsc::channel(256);
 
-    let far = [OWNER_POS[0] + 501.0, 0.0, OWNER_POS[2]];
+    let far = [OWNER_POS[0] + 5.01, 0.0, OWNER_POS[2]];
     handle_use_ability_on_ground(OWNER, DEPLOYABLE_ABILITY, far, &tx, &mut mgr).await;
     let sent = drain(&mut rx);
     assert_eq!(error_codes(&sent, OWNER, DEPLOYABLE_ABILITY), vec![42]);
@@ -78,8 +78,8 @@ async fn an_out_of_range_point_is_refused_with_feedback_and_charges_nothing() {
     assert!(owner.pending_cast.is_none());
     assert_eq!(mgr.deployables.staged_for(OWNER, DEPLOYABLE_ABILITY), None);
 
-    // 500 exactly is in range.
-    let edge = [OWNER_POS[0] + 500.0, 0.0, OWNER_POS[2]];
+    // 5 m exactly is in range.
+    let edge = [OWNER_POS[0] + 5.0, 0.0, OWNER_POS[2]];
     assert!(
         validate_ground_point(&mgr, OWNER, mgr.ability_defs.get(&DEPLOYABLE_ABILITY), edge).is_ok()
     );
@@ -102,22 +102,22 @@ async fn a_non_finite_point_is_refused() {
 }
 
 /// A wall between the caster's eye and the point refuses it (`onErrorCode`
-/// 39); the same point with a clear line is accepted. The synthetic wall is
-/// 4 m high on x 19.85-20.15, z 0-20.
+/// 39); a point with a clear line is accepted. The synthetic wall is 4 m
+/// high on x 7.85-8.15, z 0-20, 3 m from the owner at (5, 0, 10).
 #[tokio::test]
 async fn a_point_behind_a_wall_is_refused_for_line_of_sight() {
     let mut mgr = deploy_mgr();
     let space = mgr.get_entity_space_id(OWNER).unwrap();
     mgr.spaces.get_mut(&space).unwrap().occluder =
-        Some(synthetic(&[([19.85, 0.0, 0.0], [20.15, 4.0, 20.0])]));
+        Some(synthetic(&[([7.85, 0.0, 0.0], [8.15, 4.0, 20.0])]));
     let def = mgr.ability_defs.get(&DEPLOYABLE_ABILITY).cloned();
 
-    let behind = [25.0, 0.0, 10.0];
+    let behind = [9.5, 0.0, 10.0];
     assert_eq!(
         validate_ground_point(&mgr, OWNER, def.as_ref(), behind),
         Err(DeployRefusal::NoLineOfSight)
     );
-    let clear = [15.0, 0.0, 10.0];
+    let clear = [5.0, 0.0, 14.0];
     assert!(validate_ground_point(&mgr, OWNER, def.as_ref(), clear).is_ok());
 
     let (tx, mut rx) = mpsc::channel(256);
@@ -157,10 +157,11 @@ async fn an_off_mesh_point_is_refused_and_an_on_mesh_point_is_grounded() {
         placed.y
     );
 
-    // 200 m above it (the arrival tests' OFF_MESH): no mesh there.
-    let under = [floor[0], floor[1] + 200.0, floor[2]];
+    // 4.9 m above it, inside the 5 m range but past the 4 m band the mesh
+    // accepts above a floor: off the mesh.
+    let above = [floor[0], floor[1] + 4.9, floor[2]];
     assert_eq!(
-        validate_ground_point(&mgr, OWNER, def.as_ref(), under),
+        validate_ground_point(&mgr, OWNER, def.as_ref(), above),
         Err(DeployRefusal::OffNavmesh)
     );
 }
@@ -170,7 +171,7 @@ async fn an_off_mesh_point_is_refused_and_an_on_mesh_point_is_grounded() {
 #[tokio::test]
 async fn a_plain_use_ability_on_a_deployable_is_refused() {
     let mut mgr = deploy_mgr();
-    hostile(&mut mgr, 50, [8.0, 0.0, 10.0]);
+    hostile(&mut mgr, 50, [7.0, 0.0, 10.0]);
     let (tx, mut rx) = mpsc::channel(256);
 
     assert!(!handle_use_ability(OWNER, DEPLOYABLE_ABILITY, 50, &tx, &mut mgr).await);
@@ -247,7 +248,7 @@ async fn a_recast_replaces_the_owners_object() {
     drain(&mut rx);
 
     ready_again(&mut mgr);
-    let second = deploy_at(&mut mgr, [12.0, 0.0, 12.0], &tx).await;
+    let second = deploy_at(&mut mgr, [8.0, 0.0, 12.0], &tx).await;
     assert_ne!(first, second);
     assert_eq!(
         mgr.deployables.of_owner(OWNER, DEPLOYABLE_ABILITY),

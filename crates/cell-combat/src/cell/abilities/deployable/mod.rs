@@ -1,5 +1,5 @@
 //! Deployables (Phase 0): the cast and the pulse. Design and evidence:
-//! `docs/gameplay/deployables.md`; decision 27 of
+//! `docs/gameplay/deployables.md`; decision 28 of
 //! `docs/architecture/abilities-and-effects-system.md`.
 //!
 //! A player ability with a `resources.deployables` row

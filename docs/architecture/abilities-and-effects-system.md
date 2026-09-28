@@ -747,7 +747,7 @@ When the attacker and the target are an engaged duel's engaged entities and HEAL
 - **Fire.** `fire::fire_cast` diverts to `fire_deploy` ahead of ammo and damage. It takes the staged point, re-checks the caster and the range, spawns the object (`SpaceManager::spawn_deployable`), plays `Ability_End` with TargetID = caster, and removes the owner's oldest object from that ability past `max_active`.
 - **Pulse.** `deployable_tick` runs every AoI tick, after the pet sweep. The world-side verdict ([`cell-world/src/cell/deployables/teardown.rs`](../../crates/cell-world/src/cell/deployables/teardown.rs)) removes an object whose owner is gone, has another identity, is in another space or is dead, and one whose last pulse ran. Otherwise, each due pulse calls `apply_damage_to_target` with the **owner** as the attacker on every target of `combat::area_candidates(owner)` in the object's space and radius that `combat::may_hit_in_area` admits.
 
-The object is an `SGWBeing` (class 0x01) with its owner's faction. Its lifetime is the lifetime effect's `pulse_count` x `pulse_duration`, and its radius is the pulse effect's `Radius` NVP, else its `tcm_param1` tier.
+The object is an `SGWBeing` (class 0x01) with its owner's faction. Its lifetime is the lifetime effect's `pulse_count` x `pulse_duration`, and its radius is the pulse effect's `Radius` NVP, else the client's AE radius for its `tcm_param1` tier (`abilities::ae_radius_metres`: Medium = 1000 UE3 units = 10 m, `0x00d29e90`), not the server's cone tiers. The range check uses decision 27's metres (1012: 5 m).
 
 **Why:**
 

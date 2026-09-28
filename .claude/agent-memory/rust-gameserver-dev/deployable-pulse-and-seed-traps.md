@@ -14,6 +14,7 @@ Learned building 1012 Deployable: Microwave Emitter (`crates/cell-combat/src/cel
 - **`entity_templates` id blocks 200-399 are all reserved** (Harset, debug hub, BM, crafting, orgs, pets, bank, social). Deployables took 400-409; that meant raising the sequence floor in the `entity_templates.sql` footer **and** `live_db_seed_sequences.rs` together.
 - **Class `being` (0x01) is the "untargetable owned object" shape**: out of `all_npc_entity_ids`/`area_candidates`, refused by `generate_threat`, not AI-ticked while Idle. A pet class would bind into the owner's pet bar.
 - **Fall-through verdicts hide a removed check.** Deleting the `OwnerGone` arm still despawned the object on logout (the next arm, `OwnerLeftSpace`, matched because the owner has no space). Guard such chains with tests that assert the *reason* and the id-reuse case (same space, other player), not just "gone".
+- **AE radius tiers come from the client** (`AbilityInfo_AERadiusFromTier` `0x00d29e90`, Medium = 1000 UE3 = 10 m, `abilities::ae_radius_metres`); `EffectDef::tcm_range_meters` (Medium = 8) is the server's cone guess. Ability ranges are UE3 units too (#919: `AbilityDef::max_range` is f32 metres since 2026-09-28).
 - `handle.rs` sat at 698 lines; any addition there needs a split first (the not-known feedback went to `use_ability/not_known.rs`).
 
 Related: [[entity-template-seed-authoring]], [[destroy-entity-vs-despawn-npc]], [[npc-class-filter-and-dead-target-traps]], [[revert-proof-mutation-must-be-confirmed]].

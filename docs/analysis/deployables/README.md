@@ -2,7 +2,7 @@
 
 > **Last updated**: 2026-09-28
 > **Status**: Phase 0 implemented (1012 Deployable: Microwave Emitter); owner in-client UAT pending. Phases 1-2 not started.
-> **System doc**: [docs/gameplay/deployables.md](../../gameplay/deployables.md). **ADR**: decision 27 of [abilities-and-effects-system.md](../../architecture/abilities-and-effects-system.md).
+> **System doc**: [docs/gameplay/deployables.md](../../gameplay/deployables.md). **ADR**: decision 28 of [abilities-and-effects-system.md](../../architecture/abilities-and-effects-system.md).
 
 This ledger tracks restoring the Scientist tree's "Deployable:" abilities: stationary objects a player places that pulse an effect for a fixed lifetime.
 
@@ -17,7 +17,8 @@ The cooked client data in the repo (`data/cache/CookedData*.pak`, zips of one SO
 | 1236 Aggression Inducer has the same shape | Effect 3176 "Pulser", same wording and 30 x 1 s; 3175 "Threat Generator" rides on it. |
 | `DeploymentBar` (ability flag 2) is a bar category, not a spawn marker | 105 abilities carry it, grenades and mines included (`abilities.sql`). |
 | The deployable body exists in the client | `CookedPC/Packages/Character/WP-Human.upk` exports BodySet `BS_DeployableLow`, SkeletalMesh `DP-Base100`, BodyComponent `Dp_Standard100` and the `DP_IdleAnim` anim set (read with `tools/upk_parser.py`). Not rendered yet. |
-| Units of `max_range` | 1012's 500 is read as world units, as every other ability's is. Many seeded ranges look like centimetres (see [pet-system.md](../../gameplay/pet-system.md#roster-pt-s-pt-11)); that is a server-wide question, not answered here. |
+| Units of `max_range` | UE3 units, 100 per metre (#919, decision 27 of the ADR): 1012's 500 is 5 m. |
+| The AE radius of a tier | The client's own table (`AbilityInfo_AERadiusFromTier`, `0x00d29e90`, address map): Melee 250, Short 500, Medium 1000, Long 1500, Extreme 2000 UE3 units. 5066's "Medium" is 10 m. The server's cone table (`tcm_range_meters`, Medium = 8 m) is a server-side guess and is not used for AE radii here. |
 
 ## Phase 0 decisions
 
@@ -33,6 +34,7 @@ The cooked client data in the repo (`data/cache/CookedData*.pak`, zips of one SO
 | D-DP08 | The ground point is validated before anything is charged: finite, within `max_range`, line of sight where an occluder exists, on the navmesh where the world enforces containment (snapped to the floor where a mesh covers it). | Server authority over a client-supplied point. An `Unknown` line-of-sight answer and an advisory or meshless world allow, like every other gate. |
 | D-DP09 | A press during the cooldown or another warmup gets an answer (99 and a chat line). | The project's first-press rule. The ordinary launch refuses both silently. |
 | D-DP10 | Templates 400-409 are the deployable block; the template sequence floor is raised to 409. | 350-399 are taken by pets, bank and social. |
+| D-DP11 | The hit radius of a tier is the client's AE radius (`ae_radius_metres`: Medium = 10 m), not the server's cone tier (8 m). | The client converts AE radii with its own table (`0x00d29e90`); the cone tiers are a server-side guess. Ground AoE (`dispatch`) still uses a flat 5 m default when no `Radius` NVP exists: a separate follow-up. |
 
 ## Phase 0 status
 
@@ -52,7 +54,7 @@ Every guard below was run against a mutation of the code or seed it guards (a sc
 | Guard | Test | Mutation that fails it |
 |---|---|---|
 | Hostile-only targeting | `pulse::a_pulse_targets_live_hostile_npcs_in_its_radius_only` | drop the `may_hit_in_area` filter |
-| Radius edge (8 m inclusive) | same | `<=` to `<` |
+| Radius edge (10 m inclusive) | same | `<=` to `<` |
 | Damage is the owner's | `pulse::a_pulse_damages_as_the_owner`, `pulse::a_pulse_kill_is_the_owners_kill` | pass the object as the attacker |
 | The lifetime effect never lands on a target | `pulse::a_pulse_registers_no_lifetime_effect_on_its_target` | hand the pipeline the whole ability |
 | Owner death | `pulse::the_owners_death_removes_the_object_before_it_pulses` | drop the `OwnerDead` verdict |
@@ -92,7 +94,7 @@ Known Phase 0 limits: `EF_DontUseQR` (5066) and `EF_SequenceOnPulse` are not hon
 | Q-DP2 | 5066's damage model: Focus-first with a Health bleed (`RangedPhysicalDamage`, adopted), parallel Focus and Health (`RangedEnergyDamage`), or Focus only (no script)? | `RangedPhysicalDamage` |
 | Q-DP3 | One active per owner per ability, or several? | One (D-DP03) |
 | Q-DP4 | Should the object outlive its owner's death (as a placed trap would)? | No (D-DP04) |
-| Q-DP5 | Is 500 world units the right range, or is `max_range` in centimetres (5 m)? A server-wide question. | 500 world units |
+| Q-DP5 | Resolved by #919 (merged during this packet): `max_range` is UE3 units, so 1012 reaches 5 m. | 5 m |
 | Q-DP6 | Should hostile mobs be able to attack the object (turret-like) in Phase 1? That makes #1009 a dependency. | Not attackable |
 | Q-DP7 | The "Kit:" items are crafting components. Confirm they stay out of scope. | Out of scope |
 
@@ -102,9 +104,9 @@ Known Phase 0 limits: `EF_DontUseQR` (5066) and `EF_SequenceOnPulse` are not hon
 
 | # | Do | Expect |
 |---|---|---|
-| DP-U1 | Target the ground about 10 m away and cast 1012 | The cooldown and a 2 s warmup show at once. After 2 s an object appears at the point. |
+| DP-U1 | Target the ground about 4 m away and cast 1012 | The cooldown and a 2 s warmup show at once. After 2 s an object appears at the point. |
 | DP-U2 | Look at the object | A small deployable model (`DP-Base100` with `Dp_Standard100`) standing on the ground, not floating or sunk, named "Deployable: Microwave Emitter". Say what it looks like (Q-DP1). |
-| DP-U3 | Let hostile mobs stand within 8 m of it | Every second their Focus drops, then their Health; they turn on you, even from 10 m away. A kill gives you XP and quest credit. |
+| DP-U3 | Let hostile mobs stand within 10 m of it | Every second their Focus drops, then their Health; they turn on you, even from 15 m away. A kill gives you XP and quest credit. |
 | DP-U4 | Watch for 30 s | The object disappears 30 s after it appeared. |
 | DP-U5 | Cast at a spot beyond range, behind a wall, and during the cooldown | Each press shows a chat line ("That spot is out of range.", "You cannot see that spot.", "That deployable is not ready yet.") and charges nothing. |
 | DP-U6 | Place one, then die; place one, then log out; place one, then change zone | The object disappears each time. |

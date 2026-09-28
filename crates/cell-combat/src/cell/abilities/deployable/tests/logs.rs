@@ -38,7 +38,7 @@ async fn refusals_log_their_reason_at_debug() {
     let (tx, _rx) = mpsc::channel(512);
     let logs = LogCapture::install();
 
-    let far = [OWNER_POS[0] + 600.0, 0.0, OWNER_POS[2]];
+    let far = [OWNER_POS[0] + 6.0, 0.0, OWNER_POS[2]];
     handle_use_ability_on_ground(OWNER, DEPLOYABLE_ABILITY, far, &tx, &mut mgr).await;
     handle_use_ability_on_ground(
         OWNER,
@@ -77,7 +77,7 @@ async fn spawn_pulse_and_despawn_carry_the_owner_and_the_totals() {
     let (tx, _rx) = mpsc::channel(4096);
     let logs = LogCapture::install();
     let d = deploy_at(&mut mgr, SPOT, &tx).await;
-    hostile(&mut mgr, 50, [20.0, 0.0, 10.0]);
+    hostile(&mut mgr, 50, [14.0, 0.0, 10.0]);
     let spawned_at = mgr.deployables.get(d).unwrap().spawned_at;
     for n in 1..=30 {
         crate::cell::abilities::deployable_tick_at(

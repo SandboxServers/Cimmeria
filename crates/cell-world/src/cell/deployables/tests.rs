@@ -48,7 +48,7 @@ fn place(mgr: &mut SpaceManager, now: Instant) -> u32 {
 /// The spawn builds a stationary `SGWBeing` at the point, in the owner's
 /// faction, with everything a placed NPC carries stripped, and registers it
 /// with the schedule the cooked effects give: 30 pulses of 1 s (5065) in
-/// an 8 m radius (5066 "Medium").
+/// a 10 m radius (5066 "Medium", the client's AE radius tier).
 #[test]
 fn spawn_places_a_stationary_being_owned_by_the_caster() {
     let mut mgr = world();
@@ -88,7 +88,7 @@ fn spawn_places_a_stationary_being_owned_by_the_caster() {
     assert_eq!(s.ability_id, DEPLOYABLE_ABILITY);
     assert_eq!(s.pulses_total, 30);
     assert_eq!(s.pulse_interval, Duration::from_secs(1));
-    assert_eq!(s.radius, 8.0);
+    assert_eq!(s.radius, 10.0);
     assert_eq!(s.next_pulse_at, now + Duration::from_secs(1));
     assert_eq!(s.totals, PulseTotals::default());
 }
@@ -366,7 +366,11 @@ fn radius_and_schedule_come_from_the_effects() {
         tcm_param1: "Medium".to_string(),
         ..Default::default()
     };
-    assert_eq!(pulse_radius(&e), 8.0);
+    assert_eq!(
+        pulse_radius(&e),
+        10.0,
+        "the client's AE tier, not the cone tier"
+    );
     e.params.insert("Radius".to_string(), "12.5".to_string());
     assert_eq!(pulse_radius(&e), 12.5);
 

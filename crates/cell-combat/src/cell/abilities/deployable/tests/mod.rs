@@ -2,8 +2,9 @@
 //! places the object, and the pulse tick.
 //!
 //! The fixture is the seed: 1012 Deployable: Microwave Emitter (cooldown
-//! 30, warmup 2, range 500, no event set) with 5065 (30 x 1 s) and 5066
-//! (Medium = 8 m, FocusDamage 100, `RangedPhysicalDamage`), template 400 and
+//! 30, warmup 2, range 500 UE3 units = 5 m, no event set) with 5065
+//! (30 x 1 s) and 5066 (Medium = 10 m, FocusDamage 100,
+//! `RangedPhysicalDamage`), template 400 and
 //! its `deployables` row. The owner stands at (5, 0, 10) in a shared Castle
 //! space.
 
@@ -29,8 +30,8 @@ mod pulse;
 
 const OWNER: u32 = 1;
 const OWNER_POS: [f32; 3] = [5.0, 0.0, 10.0];
-/// A point 10 m from the owner.
-const SPOT: [f32; 3] = [15.0, 0.0, 10.0];
+/// A point 4 m from the owner, inside 1012's 5 m range.
+const SPOT: [f32; 3] = [9.0, 0.0, 10.0];
 /// Plenty of health, so a pulse never kills unless a test wants it to.
 const FULL: i32 = 100_000;
 
