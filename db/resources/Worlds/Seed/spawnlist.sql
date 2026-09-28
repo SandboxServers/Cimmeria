@@ -555,13 +555,15 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 --     respawner, the Armory ring pad, or a mission actor the player must talk to or
 --     use (Gerschon, Copplemann, both Zuritskas, the comms terminal, the Access
 --     Panel, Marsh, Moh'katan, the DHD); patrols are checked along the whole loop;
---   * friendlies stand outside every hostile's aggro radius, by 5 u or more. NPCs do
---     not fight each other yet, so a friendly in range would stand idle beside a
---     live guard. The `Castle_Standoff_*` rows face a hostile area from behind cover
---     and are meant to move into range once NPC-vs-NPC combat exists; the caged
---     `Castle_Pop_Prisoner*` rows are the one exemption (they are behind cell doors).
+--   * faction-1 friendlies stand outside every hostile's aggro radius, by 5 u or
+--     more: faction 1 never fights, so one in range would stand idle beside a live
+--     guard. The caged `Castle_Pop_Prisoner*` rows are exempt (behind cell doors).
+--     The `Castle_Standoff_*` rows are the other exemption: since NPC-vs-NPC combat
+--     (#1009) they are faction 3 on the standoff templates 187-189 and stand inside
+--     a hostile's reach on purpose, so they fight it (D-CP11).
 --   * hostiles take respawn_secs = 120, the zone-wide Castle value (CA05).
--- Friendlies carry no respawn timer: faction 1 cannot be damaged, so they never die.
+-- Faction-1 friendlies carry no respawn timer: they cannot be damaged, so they never
+-- die. The standoff rows can die now and take the same 120 s as the hostiles.
 -- Nothing here is chain-spawned or tagged by a content chain (D-CA06: Castle actors
 -- are static spawnlist rows).
 
@@ -599,22 +601,28 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (202, 290.0, 66.98, 1050.0, 3.141593, 8, 176, 'Castle_Pop_Prisoner3', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (203, 236.0, 66.98, 1024.0, 0, 8, 176, 'Castle_Pop_Prisoner4', NULL);
 
--- Front Courtyard standoff: Sgt. Stanton and four marines behind the east barricade
--- line (cover at x 510-512), facing the outdoor field, ~57 u or more from the nearest
--- field hostile. The NE corner (508, 36, 672) failed its nav check and is avoided.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (204, 500.0, 28.18, 652.0, 1.570796, 8, 178, 'Castle_Standoff_SgtStanton', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (205, 507.5, 28.18, 640.0, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (206, 507.5, 28.18, 644.5, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier2', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (207, 507.5, 28.18, 661.5, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier3', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (208, 507.0, 28.18, 666.0, 1.570796, 8, 174, 'Castle_Standoff_Courtyard_Soldier4', NULL);
+-- Front Courtyard standoff (#1009, D-CP11): Sgt. Stanton and four marines pushed out
+-- from the east barricade onto the slope below it, 18-28 u from Castle_PRU4
+-- (554.3, 24.4, 607.1) and in its line of sight, so their 30 u aggro radius engages
+-- it and it fights back. No other field hostile is within 30 u and 4 u of height.
+-- Positions and headings (facing PRU4) from castle.nav and castle.occ; the guard is
+-- crates/cell/src/cell/service/tests/npc_ai/castle_standoff.rs.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (204, 532.0, 25.97, 624.0, 2.219484, 8, 188, 'Castle_Standoff_SgtStanton', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (205, 535.0, 24.54, 612.0, 1.820599, 8, 187, 'Castle_Standoff_Courtyard_Soldier1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (206, 538.0, 23.34, 615.0, 2.022892, 8, 187, 'Castle_Standoff_Courtyard_Soldier2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (207, 535.0, 24.61, 621.0, 2.195220, 8, 187, 'Castle_Standoff_Courtyard_Soldier3', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (208, 538.0, 26.26, 627.0, 2.455076, 8, 187, 'Castle_Standoff_Courtyard_Soldier4', NULL, 120);
 
--- Checkpoint Alpha (component 116): three Praxis Jaffa (template 160, shared with
--- Harset, so per-row only) facing the north-east ramp the Bravo road climbs, plus one
--- more Jaffa at the back of the room as the wounded one. Nothing can show "wounded"
--- (no pose or per-spawn health column), so that row is narrative only.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (209, 807.0, 55.06, 527.0, 0.75, 8, 160, 'Castle_Standoff_Alpha_Jaffa1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (210, 812.0, 55.02, 523.5, 0.75, 8, 160, 'Castle_Standoff_Alpha_Jaffa2', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (211, 803.0, 56.36, 533.0, 0.75, 8, 160, 'Castle_Standoff_Alpha_Jaffa3', NULL);
+-- Checkpoint Alpha (component 116): the three standoff Praxis Jaffa (#1009, D-CP11,
+-- template 189) hold the foot of the north-east ramp the Bravo road climbs, 11-15 u
+-- from Castle_NidGuard7 (906.9, 26.6, 535.1), which they fight. The room itself is
+-- 25-30 u above every field hostile, out of any aggro band, so the Jaffa had to come
+-- down the ramp to engage. One more Jaffa (template 160, faction 1) stays at the back
+-- of the room as the wounded one. Nothing can show "wounded" (no pose or per-spawn
+-- health column), so that row is narrative only.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (209, 894.0, 29.09, 527.0, 1.010109, 8, 189, 'Castle_Standoff_Alpha_Jaffa1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (210, 894.0, 30.23, 536.0, 1.640451, 8, 189, 'Castle_Standoff_Alpha_Jaffa2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (211, 897.0, 29.44, 530.0, 1.095101, 8, 189, 'Castle_Standoff_Alpha_Jaffa3', NULL, 120);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (212, 795.0, 56.26, 520.0, 1.570796, 8, 160, 'Castle_Pop_Alpha_WoundedJaffa', NULL);
 
 -- Castle hall loot (Decision (@Cadacious, 2026-09-28)): the three HallPost

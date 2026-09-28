@@ -20,6 +20,9 @@
 //!   (templates 174-186, spawns 189-212 and 247-282): hostile aggro clear of the
 //!   respawners, ring pad and mission actors, friendlies out of aggro range and
 //!   named, the level 2-4 guard templates and the untouched level-1 ones.
+//! - [`live_db_castle_standoff`]: live-DB guards for the Castle standoff rows
+//!   and templates 187-189 (NPC-vs-NPC, #1009): faction 3, a hostile in reach,
+//!   and the templates they were cloned from left alone.
 //! - [`live_db_debug_hub`]: live-DB guards for the Castle_CellBlock
 //!   stasis-room debug hub seed (templates 300-304, spawns 400-404): role
 //!   columns, placement (the Gate Mail Clerk's spawn 490 included), the
@@ -75,6 +78,7 @@ mod live_db_ammo_catalog;
 mod live_db_castle_loot;
 mod live_db_castle_population;
 mod live_db_castle_seed;
+mod live_db_castle_standoff;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;
 mod live_db_debug_auctioneer;

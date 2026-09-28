@@ -70,6 +70,10 @@
 //!   NPC-only kill through the tick.
 //! - [`npc_vs_npc_budget`] — #1009 CPU budget: the NPC scan is a bounded grid
 //!   query (CI guard) and the `#[ignore]`d 10 v 10 tick benchmark.
+//! - [`castle_standoff`] — #1009 on the real `castle.nav` / `castle.occ`: every
+//!   `Castle_Standoff_*` seed row engages a NID guard.
+//! - [`live_db_npc_vs_npc`] — #1009 live-DB smoke: a seeded standoff marine and
+//!   NID guard fight to a death with the seeded abilities; nobody is paid.
 //!
 //! Uses a non-instanced `Castle` fixture rather than the parent
 //! `make_test_space_mgr` (Castle_CellBlock, instanced) so the NPC and
@@ -93,10 +97,12 @@ mod assist_barracks;
 mod assist_castle;
 mod attack_sequence;
 mod being_follower;
+mod castle_standoff;
 mod dead_player_drop;
 mod follow_resume;
 mod leash_reset;
 mod leash_walk;
+mod live_db_npc_vs_npc;
 mod melee_reach;
 mod no_route;
 mod npc_vs_npc;
