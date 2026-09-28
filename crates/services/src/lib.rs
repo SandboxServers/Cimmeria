@@ -19,8 +19,8 @@
 //! the server, the admin API, the lab endpoint and the wire client import;
 //! those crates depend only on this one. Its own tests are the
 //! orchestrator's and the pool's, and the round trips that drive both the
-//! cell and the base (`gate_round_trip_tests`, `mission_round_trip_tests`),
-//! which no crate below this one can reach.
+//! cell and the base (`gate_round_trip_tests`, `mission_round_trip_tests`,
+//! `consumable_round_trip_tests`), which no crate below this one can reach.
 
 pub mod base;
 pub mod cell;
@@ -63,6 +63,13 @@ pub use cimmeria_minigame::minigame;
 /// (`cimmeria-base-world-entry`) and the cell's grant. Test-only.
 #[cfg(test)]
 mod bank_org_round_trip_tests;
+
+/// The native consumables end to end: the base's `useItem`, the cell's
+/// classify and refuse (`cimmeria-cell-content`), the base's consume
+/// (`cimmeria-base-methods`) and the cell's apply, on real seed rows.
+/// Test-only.
+#[cfg(test)]
+mod consumable_round_trip_tests;
 
 /// The gate-travel round trips that drive the cell's gate handlers
 /// (`cimmeria-cell-interactions`) and then the base's world entry

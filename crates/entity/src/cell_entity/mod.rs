@@ -61,6 +61,9 @@ mod leash_state;
 mod offered_dialogs;
 mod pending_cast;
 mod pet;
+mod stat_buff;
+#[cfg(test)]
+mod stat_buff_tests;
 mod state_flags;
 mod system_options;
 mod tree_progress;
@@ -77,6 +80,10 @@ pub use leash_state::{ChaseRoute, LeashState};
 pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use pending_cast::PendingCast;
 pub use pet::{PetBuff, PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
+pub use stat_buff::{
+    shift_stat_widening, unshift_stat, ActiveStatBuff, StatBuffApplied, StatBuffLedger,
+    StatBuffSpec, StatShift,
+};
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;
 pub use vault_session::{ExpansionOffer, VaultCloseReason, VaultScope, VaultSession};

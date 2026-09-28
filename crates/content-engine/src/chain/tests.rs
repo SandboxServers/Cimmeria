@@ -466,3 +466,36 @@ fn has_objective_completer_matches_exact_pair_on_enabled_chains_only() {
         "CompleteMission is not a per-objective completer"
     );
 }
+
+#[test]
+fn has_item_use_chain_matches_the_exact_item_on_enabled_chains_only() {
+    let mut engine = ChainEngine::new();
+    assert!(!engine.has_item_use_chain(19));
+    engine.register_chain(make_chain(
+        1034,
+        Trigger::OnItemUse { item_id: 19 },
+        vec![],
+        0,
+    ));
+    let mut disabled = make_chain(1035, Trigger::OnItemUse { item_id: 2893 }, vec![], 0);
+    disabled.enabled = false;
+    engine.register_chain(disabled);
+    engine.register_chain(make_chain(
+        1036,
+        Trigger::OnItemEquipped {
+            item_id: Some(6677),
+        },
+        vec![],
+        0,
+    ));
+    assert!(engine.has_item_use_chain(19));
+    assert!(
+        !engine.has_item_use_chain(2893),
+        "a disabled chain owns nothing"
+    );
+    assert!(
+        !engine.has_item_use_chain(6677),
+        "an equip chain is not a use chain"
+    );
+    assert!(!engine.has_item_use_chain(20));
+}

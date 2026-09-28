@@ -134,7 +134,9 @@ directly and need no database.
 
 ## Inventory consumption (`item_use` / `remove_item` pairing)
 
-`UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, slappacks, mission objects) must include an explicit `remove_item` action. Reusable tools (radios, worn equipment, disguises) must omit it.
+`UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, mission objects) must include an explicit `remove_item` action. Reusable tools (radios, worn equipment, disguises) must omit it.
+
+Do not write a chain for a pure heal or buff item (slappacks, Health / Focus Heal Consumables, stimpacks). Those are native consumables: their `items_event_sets` event-5 ability is applied by the cell after the base consumes one unit, with a refusal line when the use would do nothing. An `item_use` chain for such an item takes it off that path (the chain wins), so flag one in review unless the item really needs mission logic.
 
 Full pattern guide, worked examples, and the baseline audit table: [`docs/content/consumable-via-onitemuse-pattern.md`](../../docs/content/consumable-via-onitemuse-pattern.md).
 
@@ -146,7 +148,7 @@ Consumable shape:
 (chain_id, 'remove_item', <design_id>, NULL, '{"qty": 1}', 0, 0),
 ```
 
-`Action::RemoveItem` routes through `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack (ordered by `container_id, slot_id` to prefer the main bag over the bandolier) and applies the full wire-update sequence.
+`Action::RemoveItem` consumes the stack the player clicked (`CellToBaseMsg::RemoveInventoryItem`, from the instance id in the chain context). A chain fired another way falls back to `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack (ordered by `container_id, slot_id` to prefer the main bag over the bandolier). Both apply the full wire-update sequence.
 
 ## Auto-generated `space_*_chains.sql` (chain IDs 5xxx)
 

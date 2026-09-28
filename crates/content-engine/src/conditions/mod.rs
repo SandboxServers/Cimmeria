@@ -85,9 +85,10 @@ pub enum Condition {
     },
 
     /// True iff the source entity's stat is below its current max
-    /// (i.e., the stat has headroom to grow). Used to gate consumable
-    /// chains so e.g. Health Slappacks fizzle silently rather than
-    /// burning a stack when the player is already at full HP.
+    /// (i.e., the stat has headroom to grow). Used to gate a
+    /// chain-authored consumable so it does not burn a stack when the
+    /// player is already at full HP. (The native consumables, slappacks
+    /// included, check headroom themselves and tell the player why.)
     ///
     /// Reads `stat_<id>_cur` and `stat_<id>_max` from the context;
     /// callers must populate these via `populate_stats_context` before

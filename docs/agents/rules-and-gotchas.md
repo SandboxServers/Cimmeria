@@ -1,6 +1,6 @@
 # Project Rules and Gotchas
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Audience**: Contributors and their agents, before proposing an approach
 > **Type**: Reference
 
@@ -24,7 +24,7 @@ Each entry says what to do and why. Build commands, the pre-PR checklist, the te
 - **Entity type IDs on the wire are the client's clientIndex, not the `entities.xml` row number.** The client skips every entity whose `.def` is `<ServerOnly/>` when numbering. `SGWPlayer = 0x02`, `SGWGmPlayer = 0x03`, `SGWMob = 0x04`, `Account = 0x07`. `SGWBlackMarket` sits before `Account` in the file but is server-only, so `Account` is **not** `0x08`. Details and addresses: [`docs/protocol/client-verified-wire-formats.md`](../protocol/client-verified-wire-formats.md) "Entity Class IDs".
 - **`onPlayerTeleport` (client method 116) is a streaming-load hint, not a move.** An authoritative reposition is `BASEMSG_FORCED_POSITION` plus an AoI refresh. A teleport built on 116 snaps back. Ask `movement-teleport-advisor`.
 - **Entity property ids are easy to transpose.** `GENERICPROPERTY_AmmoTypeId` is 3; `GENERICPROPERTY_AccessLevel` is 7. The enum is `EEntityPropertyType` in `entities/defs/enumerations.xml`, not the `.def` files. Check it before sending an `onEntityProperty`; sending ammo type on 7 updates the client's access-level indicator instead.
-- **Do not add `remove_item` next to a `UseInventoryItem`-driven chain.** The base service already consumes the item through `UseInventoryItem → ItemUsed`; the extra action double-consumes from any stack larger than one.
+- **`useItem` consumes nothing by itself, and a heal or buff item needs no chain.** An `item_use` chain for a consumable must end with `remove_item` for the item it fires on, or the stack never shrinks (the pairing lint checks it). An item whose `items_event_sets` event-5 ability only heals or buffs is a native consumable: the base consumes one unit and then the cell applies the ability, with a refusal line when the use would do nothing. Writing an `item_use` chain for such an item takes it off that path. See [`consumable-via-onitemuse-pattern.md`](../content/consumable-via-onitemuse-pattern.md). (This entry used to say the base consumed on use; it has not since the chain-decides design.)
 - **The server is authoritative, and that is an opportunity.** The client renders whatever create, destroy, position, and entity-method stream it is sent. Rules about who sees whom, validation, presence, NPC behavior, and content can all change server-side with messages the client already speaks.
 
 ## Scoping a feature: "free" or "needs a client patch"

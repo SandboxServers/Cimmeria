@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **Updated 2026-09-28:** event_id 5 is no longer dead. `cell::content::consumable_use` applies it for the 46 native consumables (ability not 597, all effects HealHealth/HealFocus/StatBuff, no item_use chain). See [[native_consumables_and_stat_buffs]].
+
 Confirmed 2026-09-18 during a read-only audit of the SGW handoff pack v1.2's weapon/ammo data against our own seed + runtime (`docs/analysis/sgw-handoff-pack-v1.2/pack/`).
 
 **`resources.items_event_sets (item_event_id, item_id, ability_id, event_id)` has (at least) three distinct `event_id` consumers, with very different liveness:**

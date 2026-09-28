@@ -8,6 +8,14 @@
 // NOT `pub` — `effect_apply` bypasses the combat pipeline's caster/target
 // gates, and module privacy is what keeps it unreachable from any
 // client-dispatched path. See the module doc before widening this.
+// `consumable_use` is its second caller and private for the same reason:
+// its public face is `apply_consumed_item` (re-exported below) and
+// `fire_item_use`, both keyed by an item design id, never an ability id.
+mod consumable_use;
+#[cfg(test)]
+mod consumable_use_live_db_tests;
+#[cfg(test)]
+mod consumable_use_tests;
 mod effect_apply;
 mod engine_events;
 mod engine_loader;
@@ -25,6 +33,8 @@ pub use engine_loader::build_engine;
 // docs/architecture/services-crate-split.md): combat, the effect pulses and
 // the NPC AI take `&dyn ContentEvents`, and callers pass `&EngineEvents(&engine)`.
 pub use engine_events::EngineEvents;
+// The native consumable round trip's second half (`BaseToCellMsg::ItemUseConsumed`).
+pub use consumable_use::apply_consumed_item;
 pub use event_dispatch::{
     fire_chain_by_id, fire_cover_duration, fire_cover_entered, fire_cover_left, fire_dialog_choice,
     fire_dialog_open, fire_enter_region, fire_entity_death, fire_entity_health_below,

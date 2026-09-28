@@ -162,6 +162,26 @@ impl ChainEngine {
             .map_or(0, |v| v.len())
     }
 
+    /// Does any enabled chain trigger on `OnItemUse` for exactly this item
+    /// design id?
+    ///
+    /// A hand-authored `item_use` chain owns its item: the cell's native
+    /// consumable path (`items_event_sets` event 5) stands aside for it, so
+    /// the same use never both runs a chain and applies the item's ability
+    /// (a double heal and a double consume). Conditions are not evaluated
+    /// here; a chain that exists but whose gate fails still owns the item
+    /// (the Ambernol vial outside its mission step does nothing, as authored).
+    pub fn has_item_use_chain(&self, item_id: i32) -> bool {
+        self.chains_by_trigger
+            .get(&TriggerType::ItemUse)
+            .into_iter()
+            .flatten()
+            .any(|c| {
+                c.enabled
+                    && matches!(c.trigger, Trigger::OnItemUse { item_id: id } if id == item_id)
+            })
+    }
+
     /// Does any enabled chain carry a `CompleteObjective` for exactly this
     /// mission/objective pair?
     ///

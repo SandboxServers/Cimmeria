@@ -256,6 +256,17 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             )
             .await
         }
+        CellToBaseMsg::ConsumeItemForUse(req) => {
+            super::super::methods::handle_consume_item_for_use(
+                req,
+                ctx.db_pool,
+                ctx.cell_tx,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
         other => unreachable!("inventory_dispatch::route got non-inventory variant: {other:?}"),
     }
 }

@@ -80,6 +80,7 @@ impl CellEntity {
             last_aoe_deaths: Vec::new(),
             pending_cast: None,
             active_effects: Vec::new(),
+            stat_buffs: super::StatBuffLedger::default(),
             holster_animation_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),

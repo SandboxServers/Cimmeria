@@ -122,6 +122,13 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // from `db/resources/Archetypes/Seed/archetypes.sql` in
         // `mercury::world_data::stats::archetype_stats`).
         {
+            // The archetype values below replace the primary attributes a
+            // timed stat buff (a stimpack) would have raised, so a buff
+            // still in the ledger would restore its delta below the base
+            // when it expired. `InitPlayerState` reaches a fresh entity on
+            // every world entry, so the ledger is empty here; clearing it
+            // keeps that true should the message ever reach a live one.
+            entity.stat_buffs = Default::default();
             let arch = crate::mercury::archetype_stats(archetype_id);
             entity
                 .stats

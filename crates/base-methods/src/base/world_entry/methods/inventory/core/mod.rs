@@ -1,5 +1,5 @@
 //! Core inventory mutation handlers — remove-by-instance, remove-by-type,
-//! use-item — plus the shared full-inventory-update broadcaster and
+//! use-item, the native consumable's consume-for-use — plus the shared full-inventory-update broadcaster and
 //! `onRemoveItem` UI sync.
 //!
 //! The three large handlers each own a non-trivial transactional flow and
@@ -22,6 +22,9 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 mod access;
 #[cfg(test)]
 mod access_tests;
+mod consume_for_use;
+#[cfg(test)]
+mod consume_for_use_tests;
 #[cfg(test)]
 mod crafting_tools_tests;
 #[cfg(test)]
@@ -37,6 +40,7 @@ mod use_instance;
 #[cfg(test)]
 mod use_instance_tests;
 
+pub use consume_for_use::handle_consume_item_for_use;
 pub use remove_by_type::handle_remove_inventory_item_by_type;
 pub use remove_instance::handle_remove_inventory_item;
 pub use use_instance::handle_use_inventory_item;
