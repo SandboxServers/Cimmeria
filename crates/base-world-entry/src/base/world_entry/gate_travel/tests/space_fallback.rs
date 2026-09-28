@@ -103,7 +103,8 @@ async fn historical_cellblock_transfer_fails_closed_when_the_cell_create_fails()
         matches!(
             run.after_create.as_slice(),
             [BaseToCellMsg::DisconnectEntity {
-                entity_id: ENTITY_ID
+                entity_id: ENTITY_ID,
+                ..
             }]
         ),
         "the cell must only hear the session teardown"

@@ -91,14 +91,7 @@ async fn disconnect_entity_removes_the_squad_member() {
     let (tx, mut rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     pair(&mut mgr, &tx, &mut rx, &engine).await;
-    handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 12 },
-        &tx,
-        &mut mgr,
-        &engine,
-        &[],
-    )
-    .await;
+    handle_base_message(disconnect_entity_msg(12), &tx, &mut mgr, &engine, &[]).await;
     assert_eq!(calls(&mut rx), [(11, 39), (11, 36)]);
     assert_eq!(mgr.squads.squad_count(), 0);
 }
@@ -123,14 +116,7 @@ async fn disconnect_in_gate_transit_removes_the_squad_member() {
     .await;
     assert!(mgr.get_entity(12).is_none(), "fixture: Bob is in transit");
     calls(&mut rx);
-    handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 12 },
-        &tx,
-        &mut mgr,
-        &engine,
-        &[],
-    )
-    .await;
+    handle_base_message(disconnect_entity_msg(12), &tx, &mut mgr, &engine, &[]).await;
     let mut left = Vec::new();
     while let Ok(msg) = rx.try_recv() {
         if let CellToBaseMsg::EntityMethodCall {
@@ -175,14 +161,7 @@ async fn disconnect_of_a_stale_entity_id_keeps_the_member_and_warns() {
     // re-recorded his entity.
     player(&mut mgr, 13, 2, "Bob");
     calls(&mut rx);
-    handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 12 },
-        &tx,
-        &mut mgr,
-        &engine,
-        &[],
-    )
-    .await;
+    handle_base_message(disconnect_entity_msg(12), &tx, &mut mgr, &engine, &[]).await;
     assert_eq!(mgr.squads.squad_of(2), Some(SID), "Bob keeps his squad");
     assert!(calls(&mut rx).is_empty());
     let warn = capture
@@ -334,13 +313,6 @@ async fn creation_arms_reach_the_creation_handlers() {
 
     handle_base_message(eligible(OrgType::Command), &tx, &mut mgr, &engine, &[]).await;
     calls(&mut rx);
-    handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 11 },
-        &tx,
-        &mut mgr,
-        &engine,
-        &[],
-    )
-    .await;
+    handle_base_message(disconnect_entity_msg(11), &tx, &mut mgr, &engine, &[]).await;
     assert!(mgr.org_creations.is_empty(), "logging out drops the offer");
 }

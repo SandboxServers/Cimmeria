@@ -80,7 +80,18 @@ async fn abandon_unspaced_session(
         }
     }
     if let Some(tx) = cell_tx {
-        if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
+        // This path has no `EntityManager` handle (see the function doc: it
+        // deliberately leaks the account/player entity ids rather than
+        // freeing them), so there is no free-list return to gate on the
+        // cell's teardown ack -- drop the receiver rather than await it.
+        let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+        if let Err(e) = tx
+            .send(BaseToCellMsg::DisconnectEntity {
+                entity_id,
+                reply_tx,
+            })
+            .await
+        {
             tracing::error!(
                 entity_id, %addr,
                 "GateTravel: DisconnectEntity send failed while abandoning an \
