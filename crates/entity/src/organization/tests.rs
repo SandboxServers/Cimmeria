@@ -372,6 +372,7 @@ fn every_field_rejects_controls_bidi_and_zero_width() {
         TextField::MailSubject,
         TextField::MailBody,
         TextField::MailRecipient,
+        TextField::ChannelName,
     ];
     for field in fields {
         for (text, want) in [
@@ -410,6 +411,7 @@ fn newline_only_in_motd_notes_and_mail_body() {
         TextField::ChatText,
         TextField::MailSubject,
         TextField::MailRecipient,
+        TextField::ChannelName,
     ] {
         assert_eq!(
             validate(field, "a\nb"),
@@ -417,6 +419,60 @@ fn newline_only_in_motd_notes_and_mail_body() {
             "{field:?}"
         );
     }
+}
+
+#[test]
+fn channel_name_is_normalised_and_keyed_like_a_name() {
+    assert_eq!(
+        validate(TextField::ChannelName, "  channel-chat  ").unwrap(),
+        "channel-chat"
+    );
+    assert_eq!(
+        validate(TextField::ChannelName, "  My   Room  ").unwrap(),
+        "My Room"
+    );
+    // D-SS13-style fold: two spellings share a key, matching the join
+    // path's case-insensitive lookup (`registry.rs::join`).
+    let a = validate(TextField::ChannelName, "CHANNEL-CHAT").unwrap();
+    assert_eq!(
+        name_key(&a),
+        name_key(&validate(TextField::ChannelName, "channel-chat").unwrap())
+    );
+}
+
+#[test]
+fn channel_name_length_is_checked_after_normalisation() {
+    assert_eq!(
+        validate(TextField::ChannelName, ""),
+        Err(TextReject::TooShort { units: 0, min: 1 })
+    );
+    let thirty_two = "a".repeat(32);
+    assert_eq!(
+        validate(TextField::ChannelName, &thirty_two).unwrap(),
+        thirty_two
+    );
+    assert_eq!(
+        validate(TextField::ChannelName, &"a".repeat(33)),
+        Err(TextReject::TooLong { units: 33, max: 32 })
+    );
+}
+
+#[test]
+fn channel_name_rejects_outside_the_charset() {
+    assert_eq!(
+        validate(TextField::ChannelName, "chat#general"),
+        Err(TextReject::NameCharset('#'))
+    );
+    assert_eq!(
+        validate(TextField::ChannelName, "caf\u{E9}"),
+        Err(TextReject::NameCharset('\u{E9}'))
+    );
+    // The client's own default names (ASCII letters, digits and `-`) are
+    // always accepted.
+    assert_eq!(
+        validate(TextField::ChannelName, "channel-alliance").unwrap(),
+        "channel-alliance"
+    );
 }
 
 #[test]

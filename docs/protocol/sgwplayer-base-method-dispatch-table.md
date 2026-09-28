@@ -130,8 +130,8 @@ Source: `entities/defs/SGWPlayer.def` lines 448-562
 
 | Index | Wire | Method | Notes |
 |-------|------|--------|-------|
-| 0 | 0xC0 | chatJoin | Channel join (stub — auto-joined) |
-| 1 | 0xC1 | chatLeave | Channel leave |
+| 0 | 0xC0 | chatJoin | Creates or joins a named user channel; replies `onChatJoined` (issue #1039) |
+| 1 | 0xC1 | chatLeave | Leaves a user channel by display id; replies `onChatLeft` |
 | 2 | 0xC2 | sendPlayerCommunication | Chat message (spatial broadcast via CellService) |
 | 22 | 0xD6 | logOff | Disconnect=0 → char select, Disconnect=1 → full exit |
 | 23 | 0xD7 | cancelLogOff | Cancel pending logoff timer |

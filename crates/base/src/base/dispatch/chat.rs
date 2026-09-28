@@ -15,6 +15,9 @@ use std::time::Instant;
 
 use cimmeria_base_session::base::organization::handlers::chat::{self as org_chat, ChatSpeaker};
 use cimmeria_base_session::base::organization::handlers::OrgCtx;
+use cimmeria_base_session::base::user_channels::{
+    user_channel_registry, JoinOutcome, LeaveOutcome,
+};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -22,9 +25,17 @@ use tokio::sync::mpsc;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::read_wstring;
 
-use super::super::feedback::{send_feedback_line, FeedbackCtx};
-use cimmeria_entity::organization::org_text::{validate, TextField, TextReject};
-use cimmeria_wire::cell::chat::{CHAN_SQUAD, CHAN_TELL};
+use super::super::feedback::{
+    send_feedback_line, send_player_method, FeedbackCtx, FeedbackOutcome,
+};
+use cimmeria_entity::organization::org_text::{name_key, validate, TextField, TextReject};
+use cimmeria_wire::cell::chat::{
+    serialize_on_chat_joined, serialize_on_chat_left, serialize_on_player_communication, CHAN_CHAT,
+    CHAN_SQUAD, CHAN_TELL,
+};
+use cimmeria_wire::cell::client_methods::communicator::{
+    ON_CHAT_JOINED, ON_CHAT_LEFT, ON_PLAYER_COMMUNICATION,
+};
 
 use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_UNITS};
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
@@ -268,6 +279,26 @@ pub(super) async fn send_player_communication_at(
         return;
     }
 
+    // A user channel (12 and up): the base holds this membership too, and
+    // it never reaches the cell (see the `user_channels` module doc for
+    // why -- no spatial component to distribute).
+    if channel >= CHAN_CHAT {
+        post_to_user_channel(
+            &feedback,
+            routes.entity_to_addr,
+            addr,
+            player_eid,
+            player_id,
+            account_id,
+            speaker,
+            speaker_flags_value,
+            channel,
+            &text,
+        )
+        .await;
+        return;
+    }
+
     // Logged only once both gates pass: every field here is client-supplied,
     // so a flooding client must not get one INFO row per packet.
     tracing::info!(
@@ -347,9 +378,54 @@ fn chat_reject_text(reject: &TextReject) -> &'static str {
     }
 }
 
-/// `chatJoin(WSTRING channelName, WSTRING password)` — acknowledged (channels
-/// are auto-joined).
-pub(super) fn handle_chat_join(payload: &[u8], addr: SocketAddr) {
+/// The line for a `chatJoin` whose channel name breaks the chat text rules.
+const CHANNEL_NAME_INVALID_TEXT: &str =
+    "That is not a valid channel name. Channel names may only use letters, digits, spaces, \
+     ' - and . characters.";
+/// The line for a `chatJoin` that would put the caller's entity over
+/// [`cimmeria_entity::organization::limits::MAX_CHANNELS_PER_PLAYER`].
+const CHANNEL_PLAYER_LIMIT_TEXT: &str =
+    "You are in too many chat channels already. Leave one before joining another.";
+/// The line for a `chatJoin` that would put the server over
+/// [`cimmeria_entity::organization::limits::MAX_USER_CHANNELS`].
+const CHANNEL_SERVER_LIMIT_TEXT: &str =
+    "No more chat channels can be created right now. Try again later.";
+/// The line for a `chatLeave` or a channel post naming a channel the
+/// caller's entity is not a member of (or that does not exist -- the two
+/// are not distinguished, so a client cannot probe which names exist).
+const CHANNEL_NOT_MEMBER_TEXT: &str = "You are not in that chat channel.";
+
+/// `chatJoin(WSTRING channelName, WSTRING password)`.
+///
+/// Creates the named user channel if none exists yet, or joins the
+/// existing one (matched case-insensitively, D-SS13 style, on
+/// [`name_key`]). This is a deliberate improvement over the legacy
+/// `ChatChannelManager.joinChannel` (`Chat.py:234-247`), which only ever
+/// joined a *pre-existing* channel and otherwise failed with a server-side
+/// warning and no feedback at all: the one code path that created a
+/// channel, `requestCreateChannel`, is never called from any base method
+/// the client can reach, so the legacy server's own players could never
+/// actually create one. Auto-creating here is what makes the client's
+/// three login auto-joins (`channel-chat`, `channel-roleplay`,
+/// `channel-alliance`) — and a manual `/chatjoin <new name>` — work.
+///
+/// On success, sends `onChatJoined`, which is itself the client's "You have
+/// joined channel" feedback (`ChatWindow.lua::onChannelJoined`); see the
+/// `user_channels` module doc for why no separate feedback line follows a
+/// success, for an auto-join or a manual one alike. Every refusal (a bad
+/// name, already a member, or either channel-count limit) gets exactly one
+/// feedback line and logs `chat.channel_join_rejected` (WARN).
+///
+/// The password argument is decoded, so a malformed payload is still
+/// refused before any state changes, and otherwise unused: no channel
+/// created here ever has one, matching `chatPassword` (0xCC) staying "not
+/// available yet".
+pub(super) async fn handle_chat_join(
+    payload: &[u8],
+    addr: SocketAddr,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) {
     // chatJoin(WSTRING channelName, WSTRING password)
     let (channel_name, offset) = match read_wstring(payload, 0) {
         Ok(v) => v,
@@ -359,14 +435,297 @@ pub(super) fn handle_chat_join(payload: &[u8], addr: SocketAddr) {
         Ok(v) => v,
         Err(_) => return,
     };
-    tracing::debug!(%addr, channel_name, "chatJoin -- acknowledged (channels auto-joined)");
+    // Every routing test needs is this handler reached with the raw name;
+    // everything past this line may bail out early for a session with no
+    // character yet (`who_at` returning `None`).
+    tracing::debug!(%addr, channel_name, "chatJoin: join requested");
+
+    let feedback = FeedbackCtx {
+        transport,
+        connected,
+    };
+    let Some(who) = who_at(connected, addr) else {
+        return;
+    };
+
+    let normalized = match validate(TextField::ChannelName, &channel_name) {
+        Ok(n) => n,
+        Err(reject) => {
+            tracing::warn!(
+                target: "chat",
+                event = "chat.channel_join_rejected",
+                %addr,
+                player_id = who.player_id,
+                account_id = who.account_id,
+                entity_id = who.entity_id,
+                reason = reject.reason(),
+                detail = %reject,
+                "chatJoin refused: the channel name breaks the chat text rules, no channel joined",
+            );
+            send_feedback_line(&feedback, addr, CHANNEL_NAME_INVALID_TEXT).await;
+            return;
+        }
+    };
+    let key = name_key(&normalized);
+
+    match user_channel_registry().join(&normalized, &key, who.entity_id) {
+        JoinOutcome::Joined {
+            wire_id,
+            display_name,
+            created,
+        } => {
+            let display_id = wire_id - CHAN_CHAT;
+            let args = serialize_on_chat_joined(&display_name, display_id);
+            send_player_method(&feedback, addr, who.entity_id, ON_CHAT_JOINED, &args).await;
+            tracing::info!(
+                target: "chat",
+                event = "chat.channel_joined",
+                %addr,
+                player_id = who.player_id,
+                account_id = who.account_id,
+                entity_id = who.entity_id,
+                wire_id,
+                display_id,
+                channel_name = %display_name,
+                created,
+                "chatJoin: joined a user channel",
+            );
+        }
+        JoinOutcome::AlreadyMember { display_name } => {
+            tracing::warn!(
+                target: "chat",
+                event = "chat.channel_join_rejected",
+                %addr,
+                player_id = who.player_id,
+                account_id = who.account_id,
+                entity_id = who.entity_id,
+                reason = "already_member",
+                channel_name = %display_name,
+                "chatJoin refused: already a member of that channel",
+            );
+            send_feedback_line(
+                &feedback,
+                addr,
+                &format!("You are already in channel {display_name}."),
+            )
+            .await;
+        }
+        JoinOutcome::PlayerLimitReached => {
+            tracing::warn!(
+                target: "chat",
+                event = "chat.channel_join_rejected",
+                %addr,
+                player_id = who.player_id,
+                account_id = who.account_id,
+                entity_id = who.entity_id,
+                reason = "player_limit",
+                "chatJoin refused: the caller already holds the maximum number of channels",
+            );
+            send_feedback_line(&feedback, addr, CHANNEL_PLAYER_LIMIT_TEXT).await;
+        }
+        JoinOutcome::ServerLimitReached => {
+            tracing::warn!(
+                target: "chat",
+                event = "chat.channel_join_rejected",
+                %addr,
+                player_id = who.player_id,
+                account_id = who.account_id,
+                entity_id = who.entity_id,
+                reason = "server_limit",
+                "chatJoin refused: the server already holds the maximum number of channels",
+            );
+            send_feedback_line(&feedback, addr, CHANNEL_SERVER_LIMIT_TEXT).await;
+        }
+    }
 }
 
-/// `chatLeave(UINT8 channelId)` — acknowledged.
-pub(super) fn handle_chat_leave(payload: &[u8], addr: SocketAddr) {
+/// `chatLeave(UINT8 channelId)`.
+///
+/// `channelId` is the **display id** the client tracks (the second
+/// argument `onChatJoined` sent when it joined): the wire channel id is
+/// `channelId + CHAN_CHAT`, mirroring the legacy
+/// `SGWPlayer.py::chatLeave` (`channelId + Constants.MIN_USER_CHANNEL`).
+///
+/// On success, sends `onChatLeft`, itself the client's "You have left
+/// channel" feedback and the trigger that removes the channel's tab
+/// subscriptions (`ChatWindow.lua::onChannelLeft`); see the
+/// `user_channels` module doc for why no separate feedback line follows. A
+/// display id the caller's entity is not currently a member of (including
+/// one that names no channel at all) gets one feedback line and logs
+/// `chat.channel_leave_rejected` (WARN).
+pub(super) async fn handle_chat_leave(
+    payload: &[u8],
+    addr: SocketAddr,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) {
     // chatLeave(UINT8 channelId)
-    let channel_id = if !payload.is_empty() { payload[0] } else { 0 };
-    tracing::debug!(%addr, channel_id, "chatLeave -- acknowledged");
+    let display_id = if !payload.is_empty() { payload[0] } else { 0 };
+    tracing::debug!(%addr, channel_id = display_id, "chatLeave: leave requested");
+
+    let feedback = FeedbackCtx {
+        transport,
+        connected,
+    };
+    let Some(who) = who_at(connected, addr) else {
+        return;
+    };
+    let wire_id = CHAN_CHAT.wrapping_add(display_id);
+
+    match user_channel_registry().leave(wire_id, who.entity_id) {
+        LeaveOutcome::Left {
+            display_name,
+            deleted,
+        } => {
+            let args = serialize_on_chat_left(&display_name);
+            send_player_method(&feedback, addr, who.entity_id, ON_CHAT_LEFT, &args).await;
+            tracing::info!(
+                target: "chat",
+                event = "chat.channel_left",
+                %addr,
+                player_id = who.player_id,
+                account_id = who.account_id,
+                entity_id = who.entity_id,
+                wire_id,
+                display_id,
+                channel_name = %display_name,
+                deleted,
+                "chatLeave: left a user channel",
+            );
+        }
+        LeaveOutcome::NotFound | LeaveOutcome::NotMember => {
+            tracing::warn!(
+                target: "chat",
+                event = "chat.channel_leave_rejected",
+                %addr,
+                player_id = who.player_id,
+                account_id = who.account_id,
+                entity_id = who.entity_id,
+                wire_id,
+                display_id,
+                reason = "not_member",
+                "chatLeave refused: not a member of that channel, nothing left",
+            );
+            send_feedback_line(&feedback, addr, CHANNEL_NOT_MEMBER_TEXT).await;
+        }
+    }
+}
+
+/// A `sendPlayerCommunication` line on a user channel id (12 and up):
+/// reaches every member of that channel, the speaker included -- unlike
+/// say/emote/yell there is no local client echo to avoid doubling (that
+/// rule is about *spatial* channels specifically; see
+/// `chat-speaker-echo.md`), and the legacy `ChatChannel.sendMessage`
+/// (`Chat.py:125-138`) always sent to every member without excluding the
+/// sender. Server authority: a channel id the caller's entity never joined
+/// is refused here, with feedback, before anything is forwarded --
+/// identical in spirit to the system/unknown-channel refusals in
+/// `chat_gates.rs`, just one layer down because it needs the membership
+/// table.
+#[allow(clippy::too_many_arguments)]
+async fn post_to_user_channel(
+    feedback: &FeedbackCtx<'_>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    addr: SocketAddr,
+    player_eid: Option<u32>,
+    player_id: Option<i32>,
+    account_id: u32,
+    speaker: &str,
+    speaker_flags: u8,
+    channel: u8,
+    text: &str,
+) {
+    let text_units = text.encode_utf16().count();
+    let Some(entity_id) = player_eid else {
+        return;
+    };
+    let Some(members) = user_channel_registry().members_if_joined(channel, entity_id) else {
+        tracing::warn!(
+            target: "chat",
+            event = "chat.channel_post_rejected",
+            %addr,
+            player_id,
+            account_id,
+            entity_id,
+            channel,
+            reason = "not_member",
+            "sendPlayerCommunication refused: not a member of that channel, not forwarded",
+        );
+        send_feedback_line(feedback, addr, CHANNEL_NOT_MEMBER_TEXT).await;
+        return;
+    };
+
+    let args = serialize_on_player_communication(speaker, speaker_flags, channel, text);
+    let mut recipients = 0usize;
+    for member_entity in &members {
+        let member_addr = entity_to_addr.lock().unwrap().get(member_entity).copied();
+        let Some(member_addr) = member_addr else {
+            tracing::debug!(
+                target: "chat",
+                event = "chat.channel_send_skipped",
+                channel,
+                member_entity_id = member_entity,
+                reason = "entity_to_addr_miss",
+                "user channel post: member has no known address, skipped",
+            );
+            continue;
+        };
+        match send_player_method(
+            feedback,
+            member_addr,
+            *member_entity,
+            ON_PLAYER_COMMUNICATION,
+            &args,
+        )
+        .await
+        {
+            FeedbackOutcome::Sent => recipients += 1,
+            outcome => tracing::warn!(
+                target: "chat",
+                event = "chat.channel_send_failed",
+                channel,
+                member_entity_id = member_entity,
+                outcome = ?outcome,
+                "user channel post: send failed for a member",
+            ),
+        }
+    }
+    tracing::info!(
+        target: "chat",
+        event = "chat.channel_post",
+        %addr,
+        player_id,
+        account_id,
+        entity_id,
+        channel,
+        recipients,
+        text_units,
+        "sendPlayerCommunication delivered on a user channel",
+    );
+}
+
+/// The caller's identity for `chatJoin`/`chatLeave`: only meaningful once a
+/// character is in the world, so `None` (session mid-world-entry or at
+/// character select) is simply dropped by both handlers, the same as
+/// `sendPlayerCommunication`'s own `None => return` on a session lookup
+/// miss.
+struct ChatSessionWho {
+    entity_id: u32,
+    player_id: Option<i32>,
+    account_id: u32,
+}
+
+fn who_at(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Option<ChatSessionWho> {
+    let clients = connected.lock().unwrap();
+    let c = clients.get(&addr)?;
+    Some(ChatSessionWho {
+        entity_id: c.player_entity_id?,
+        player_id: c.active_player_id,
+        account_id: c.account_id,
+    })
 }
 
 /// `chatSetAFKMessage(WSTRING message)`.

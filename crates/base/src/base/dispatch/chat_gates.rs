@@ -1,12 +1,17 @@
 //! Two gates on `sendPlayerCommunication` that run on the base, before the
-//! cell or a tell recipient sees the line (SS-C3):
+//! cell, a tell recipient, or a user channel's members see the line
+//! (SS-C3):
 //!
 //! - the **channel allowlist** (CAT-L-03): a player may speak on say, emote,
-//!   yell, tell, and the organization channels (team, squad, command,
-//!   officer). Squad is forwarded to the cell (ORG-04); team, command and
-//!   officer are handled on the base (ORG-09, `chat.rs`). The system channels (server, feedback, splash),
-//!   user channels (12 and up, none of which this server registers) and
-//!   every id `EChannel` does not name are refused with feedback;
+//!   yell, tell, the organization channels (team, squad, command, officer)
+//!   and any user channel (12 and up). Squad is forwarded to the cell
+//!   (ORG-04); team, command and officer are handled on the base (ORG-09,
+//!   `chat.rs`); a user channel is also handled on the base
+//!   (`chat.rs::post_to_user_channel`), which is the layer that checks the
+//!   caller is actually a member -- this allowlist only knows the id
+//!   *shape*, not membership. The system channels (server, feedback,
+//!   splash) and every id `EChannel` does not name are refused here with
+//!   feedback;
 //! - the **mute gate** (D-SS26): a player a GM muted gets a feedback line
 //!   instead of their spatial line or tell, until the mute expires.
 //!
@@ -29,8 +34,6 @@ use super::super::rate_limit::limits::CHAT_EXEMPT_ACCESS_LEVEL;
 /// Feedback for a line on a system channel.
 pub(super) const SYSTEM_CHANNEL_TEXT: &str =
     "That channel is for system messages only. Players cannot post there.";
-/// Feedback for a line on a user channel (none exist on this server).
-pub(super) const USER_CHANNEL_TEXT: &str = "Custom chat channels are not available yet.";
 /// Feedback for a line on an id `EChannel` does not name.
 pub(super) const UNKNOWN_CHANNEL_TEXT: &str = "That chat channel does not exist.";
 
@@ -41,9 +44,11 @@ pub(super) struct ChannelRefusal {
     pub text: &'static str,
 }
 
-/// The allowlist itself. `Ok` for a channel a player may speak on. The ids
-/// are the workspace `CHAN_*` constants, which SS-C4 aligned with
-/// `EChannel` (D-ORG14).
+/// The allowlist itself. `Ok` for a channel a player may speak on -- for a
+/// user channel (12 and up) this is a shape check only, never a membership
+/// check, that being `chat.rs::post_to_user_channel`'s job once it has the
+/// registry. The ids are the workspace `CHAN_*` constants, which SS-C4
+/// aligned with `EChannel` (D-ORG14).
 pub(super) fn check_channel(channel: u8) -> Result<(), ChannelRefusal> {
     match channel {
         CHAN_SAY | CHAN_EMOTE | CHAN_YELL | CHAN_TELL | CHAN_TEAM | CHAN_SQUAD | CHAN_COMMAND
@@ -52,10 +57,7 @@ pub(super) fn check_channel(channel: u8) -> Result<(), ChannelRefusal> {
             reason: "system_channel",
             text: SYSTEM_CHANNEL_TEXT,
         }),
-        c if c >= CHAN_CHAT => Err(ChannelRefusal {
-            reason: "user_channel",
-            text: USER_CHANNEL_TEXT,
-        }),
+        c if c >= CHAN_CHAT => Ok(()),
         _ => Err(ChannelRefusal {
             reason: "unknown_channel",
             text: UNKNOWN_CHANNEL_TEXT,

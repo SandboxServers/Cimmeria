@@ -534,6 +534,14 @@ pub fn destroy_client_entities(
             reason,
         );
 
+        // Every user chat channel this character was in loses it here too:
+        // this is the disconnect/timeout/duplicate-login teardown, the
+        // counterpart of `handle_log_off`'s own call for the two paths a
+        // client-initiated logOff covers. Neither call site fires for gate
+        // travel (`base-world-entry/gate_travel`), which reuses the same
+        // entity id, so membership survives a world change untouched.
+        crate::base::user_channels::user_channel_registry().leave_all(player_eid);
+
         // Notify CellService to disconnect and destroy the cell entity, and
         // hold `player_eid` out of `EntityManager`'s free list until the
         // cell confirms the teardown finished -- see the function doc and

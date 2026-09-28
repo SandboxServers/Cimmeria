@@ -132,6 +132,53 @@ pub fn serialize_on_tell_sent(target: &str, text: &str) -> Vec<u8> {
     args
 }
 
+/// Serialize `onChatJoined(WSTRING ChannelName, UINT8 ChannelID)` args
+/// (`Communicator.def`, client method 31): confirms the client joined a
+/// **user** channel, never a built-in one (SS-C4, D-ORG14 -- the client
+/// hardcodes 0-11 and needs no join for them).
+///
+/// `channel_id` here is the **display id**, `wire_id - CHAN_CHAT`
+/// (`Constants.MIN_USER_CHANNEL` in the legacy `SGWPlayer.py::onChannelJoined`):
+/// the client's `ChatMod.onChannelJoined` re-derives the wire channel as
+/// `UIChannel.Chat + displayId` and treats every call as a user channel, so
+/// sending the raw wire id here would double-offset it and both misfile
+/// the channel and print the wrong id in the "You have joined channel"
+/// line (`ChatWindow.lua:370-386`).
+///
+/// The client shows this call's own text as the "you joined" feedback
+/// (`ChatWindow.lua`); the caller must not also send a separate feedback
+/// line for a successful join, or the player sees the line twice.
+///
+/// Wire format: WSTRING (channel name) then one UINT8 (display id).
+pub fn serialize_on_chat_joined(channel_name: &str, display_id: u8) -> Vec<u8> {
+    let name_utf16: Vec<u16> = channel_name.encode_utf16().collect();
+    let mut args = Vec::with_capacity(4 + name_utf16.len() * 2 + 1);
+    args.extend_from_slice(&(name_utf16.len() as u32).to_le_bytes());
+    for &ch in &name_utf16 {
+        args.extend_from_slice(&ch.to_le_bytes());
+    }
+    args.push(display_id);
+    args
+}
+
+/// Serialize `onChatLeft(WSTRING ChannelName)` args (`Communicator.def`,
+/// client method 32): confirms the client left a **user** channel. Like
+/// [`serialize_on_chat_joined`], the client shows its own "you left
+/// channel" feedback from this call and removes the channel's tab
+/// subscriptions (`ChatWindow.lua::onChannelLeft`); the caller must not
+/// also send a feedback line for a successful leave.
+///
+/// Wire format: one WSTRING (channel name).
+pub fn serialize_on_chat_left(channel_name: &str) -> Vec<u8> {
+    let name_utf16: Vec<u16> = channel_name.encode_utf16().collect();
+    let mut args = Vec::with_capacity(4 + name_utf16.len() * 2);
+    args.extend_from_slice(&(name_utf16.len() as u32).to_le_bytes());
+    for &ch in &name_utf16 {
+        args.extend_from_slice(&ch.to_le_bytes());
+    }
+    args
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +265,41 @@ mod tests {
             0x08, // CHAN_server
             0x03, 0x00, 0x00, 0x00, // text char count
             b'H', 0x00, b'i', 0x00, b'!', 0x00, // "Hi!" UTF-16LE
+        ];
+        assert_eq!(args, expected);
+    }
+
+    /// `onChatJoined("chat", 3)`: WSTRING "chat" (4 units) then one UINT8
+    /// display id. A drift here either misfiles the channel client-side
+    /// (wrong id) or corrupts the next message in the bundle (wrong length).
+    #[test]
+    fn serialize_on_chat_joined_is_exact() {
+        let args = serialize_on_chat_joined("chat", 3);
+        let expected: Vec<u8> = vec![
+            0x04, 0x00, 0x00, 0x00, // "chat" char count
+            b'c', 0x00, b'h', 0x00, b'a', 0x00, b't', 0x00, // "chat" UTF-16LE
+            0x03, // display id
+        ];
+        assert_eq!(args, expected);
+    }
+
+    #[test]
+    fn serialize_on_chat_joined_empty_name() {
+        assert_eq!(
+            serialize_on_chat_joined("", 0),
+            vec![0x00, 0x00, 0x00, 0x00, 0x00],
+            "empty name still carries the length prefix and the id byte"
+        );
+    }
+
+    /// `onChatLeft("chat")`: one WSTRING, no trailing byte -- unlike
+    /// `onChatJoined`, there is no id to confuse this with.
+    #[test]
+    fn serialize_on_chat_left_is_exact() {
+        let args = serialize_on_chat_left("chat");
+        let expected: Vec<u8> = vec![
+            0x04, 0x00, 0x00, 0x00, // "chat" char count
+            b'c', 0x00, b'h', 0x00, b'a', 0x00, b't', 0x00, // "chat" UTF-16LE
         ];
         assert_eq!(args, expected);
     }

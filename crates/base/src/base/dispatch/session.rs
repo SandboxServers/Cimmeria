@@ -134,6 +134,16 @@ pub(super) async fn handle_log_off(
             cimmeria_base_session::base::crafting::session::DropReason::Logout,
             "log_off",
         );
+
+        // Every user chat channel this character was in loses it here, on
+        // both logOff paths (full exit and return to character select):
+        // the base `SGWPlayer` entity is what channel membership is keyed
+        // on, and it is destroyed either way. There is no client left in a
+        // channel to send `onChatLeft` to, matching the legacy
+        // `SGWPlayer::destroyed()` cleanup (`Chat.py`'s
+        // `ChannelManager.leaveChannel(self, channelId, True)` for every
+        // held membership).
+        cimmeria_base_session::base::user_channels::user_channel_registry().leave_all(entity_id);
     }
 
     // Fan out offline status to contact-list watchers and organization
