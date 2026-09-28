@@ -213,7 +213,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 **Examples**:
 
 - L1: `crates/mercury/src/test_harness/tests/chaos/lomiada_single_packet_gap.rs` (the canonical recovery shape), `gap_acked_past_by_prompt_client.rs` (the same gap with a receiver that acks past it before the RTO, as the real client does), `sustained_5pct_loss_60s.rs` (seeded Monte Carlo), `asymmetric_ack_loss.rs` (lomiada-shape silent peer).
-- L2: `crates/mercury/tests/it/chaos_lossy_transport_integration.rs` (round-trip through `LossyTransport`, transatlantic-profile loss); `crates/base/src/base/login/tests/handshake_retransmit.rs` (the real base receive loop on a loopback socket with the login reply, then the time-sync, dropped once: the lost packet comes back byte for byte on RTO and the client's `acks [2, 1]` retires both, #842).
+- L2: `crates/mercury/tests/it/chaos_lossy_transport_integration.rs` (round-trip through `LossyTransport`, transatlantic-profile loss); `crates/base/src/base/login/tests/handshake_retransmit.rs` (the real base receive loop on a loopback socket with the login reply, then the time-sync, dropped once: the lost packet comes back byte for byte on RTO and the client's `acks [2, 1]` retires both; a client that never acks gets exactly `HANDSHAKE_RETRANSMIT_CAP` resends, then one `reliable_resend_abandoned` WARN per packet, #842).
 - L3: `crates/mercury/src/test_harness/tests/chaos/replay_lomiada.rs` (real pcap fixture).
 
 ### 11. Wire-level replay tests (`cimmeria-wireclient`) — **Phase 1 + a slice of 1.5/2/4; full replay not yet built**

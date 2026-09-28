@@ -333,3 +333,109 @@ async fn lost_connect_reply_is_resent_until_the_client_has_it() {
 async fn lost_time_sync_is_resent_until_the_client_has_it() {
     lost_handshake_packet_is_resent(TIME_SYNC_SEQ).await;
 }
+
+/// Hand-advanced clock for driving the channel's RTO without sleeping.
+struct ManualClock {
+    base: std::time::Instant,
+    offset: Mutex<Duration>,
+}
+
+impl cimmeria_mercury::clock::Clock for ManualClock {
+    fn now(&self) -> std::time::Instant {
+        self.base + *self.offset.lock().unwrap()
+    }
+}
+
+/// A client that never acks the handshake gets exactly
+/// `HANDSHAKE_RETRANSMIT_CAP` resends of each packet, then none, with one
+/// `reliable_resend_abandoned` WARN per packet carrying `account_id` and
+/// `seq`. An ordinary reliable packet on the same channel keeps being
+/// resent. Without the cap the handshake is resent on every RTO forever
+/// and the count check fails.
+#[test]
+fn client_that_never_acks_stops_getting_handshake_resends_after_the_cap() {
+    use crate::base::helpers::collect_pending_retransmits;
+    use crate::base::login::{register_handshake, HANDSHAKE_RETRANSMIT_CAP};
+    use cimmeria_mercury::packet::{Bytes, Packet};
+
+    const ROUNDS: usize = 20;
+    // Longer than the RTO ceiling (4 s): every round expires every entry.
+    const PAST_MAX_RTO: Duration = Duration::from_secs(5);
+
+    let addr: SocketAddr = "127.0.0.1:58423".parse().unwrap();
+    let clock = Arc::new(ManualClock {
+        base: std::time::Instant::now(),
+        offset: Mutex::new(Duration::ZERO),
+    });
+    let reply = vec![0xA1u8; 48];
+    let sync = vec![0xA2u8; 48];
+    let ordinary = vec![0xA3u8; 48];
+
+    let mut channel = cimmeria_mercury::channel::Channel::with_clock(addr, clock.clone());
+    register_handshake(&mut channel, addr, &reply, &sync);
+    channel
+        .register_sent_packet(
+            Packet::new(Default::default(), 3, Bytes::new()),
+            Bytes::from(ordinary.clone()),
+        )
+        .unwrap();
+    let mut state = crate::test_support::test_default_connected_client_state();
+    state.account_id = ACCOUNT_ID;
+    state.channel = Mutex::new(channel);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+
+    let guard = crate::test_support::LogCapture::install();
+    let (mut reply_resends, mut sync_resends, mut ordinary_resends) = (0, 0, 0);
+    for _ in 0..ROUNDS {
+        *clock.offset.lock().unwrap() += PAST_MAX_RTO;
+        for raw in collect_pending_retransmits(&connected, addr) {
+            if raw[..] == reply[..] {
+                reply_resends += 1;
+            } else if raw[..] == sync[..] {
+                sync_resends += 1;
+            } else if raw[..] == ordinary[..] {
+                ordinary_resends += 1;
+            }
+        }
+    }
+
+    assert_eq!(
+        (reply_resends, sync_resends),
+        (
+            HANDSHAKE_RETRANSMIT_CAP as usize,
+            HANDSHAKE_RETRANSMIT_CAP as usize
+        ),
+        "each handshake packet is resent exactly the cap, then never again"
+    );
+    assert_eq!(
+        ordinary_resends, ROUNDS,
+        "an ordinary reliable packet keeps its resend-until-acked contract"
+    );
+    let outstanding = outstanding_seqs(&connected, addr);
+    assert_eq!(
+        outstanding,
+        vec![3],
+        "only the handshake entries are dropped"
+    );
+
+    let rows: Vec<_> = guard
+        .all()
+        .into_iter()
+        .filter(|e| {
+            e.level == tracing::Level::WARN
+                && e.fields.get("reason").map(String::as_str) == Some("retransmit_cap_reached")
+        })
+        .collect();
+    assert_eq!(rows.len(), 2, "one WARN per abandoned packet: {rows:#?}");
+    for (row, seq) in rows.iter().zip([CONNECT_REPLY_SEQ, TIME_SYNC_SEQ]) {
+        assert!(
+            row.has_field("event", "reliable_resend_abandoned"),
+            "{row:#?}"
+        );
+        assert!(
+            row.has_field("account_id", &ACCOUNT_ID.to_string()),
+            "{row:#?}"
+        );
+        assert!(row.has_field("seq", &seq.to_string()), "{row:#?}");
+    }
+}

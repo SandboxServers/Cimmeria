@@ -349,6 +349,8 @@ What the client does with them, from the five logins decoded from the captures u
 
 For the second kind the server resends both once, about 1.5 s after login (the initial RTO). By then the client's channel exists, and the client acks every reliable packet that carries a valid sequence before it checks `inSeqAt` (`UnAckedHandler::queueAckForPacket`, `ghidra://SGW.exe@0x0158cba0`), so the resend is acked and dropped as a duplicate. A pair of `mercury.retransmit` rows for seqs 1 and 2 right after login is therefore normal and does not mean loss. That the real client acks the resend is inferred from that function, not yet observed on the wire.
 
+In case a client ignores the resends too, both packets are capped at `HANDSHAKE_RETRANSMIT_CAP` (6) resends. Every other reliable packet resends until acked. The resends follow the channel's RTO backoff (on a quiet channel 1.5 s, doubling to the 4 s ceiling, so the last one goes out about 20 s after login). After the cap the channel drops the entry and logs one `reliable_resend_abandoned` WARN (`reason = retransmit_cap_reached`, `account_id`, `seq`); see [negative-logging-convention.md](../architecture/negative-logging-convention.md#abandoned-reliable-resends-842).
+
 The `login_retry_on_channel` row carries `reply_outstanding`: `true` means the server has not seen the client's ACK of the reply, so the reply was probably lost and a resend is pending; `false` means the client acked the reply and is retrying anyway, the stuck-client case where a resend would change nothing.
 
 ### Step 3: Enable Entities

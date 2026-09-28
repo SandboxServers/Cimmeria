@@ -308,14 +308,46 @@ pub(crate) const FIRST_CHANNEL_SEQ: u32 = 3;
 /// a valid sequence before its `inSeqAt` check
 /// (`UnAckedHandler::queueAckForPacket`, `ghidra://SGW.exe@0x0158cba0`),
 /// so the resend is acked and dropped as a duplicate.
+///
+/// Both are registered with a [`HANDSHAKE_RETRANSMIT_CAP`]: if a client
+/// ignores even the resends, the channel drops them after that many
+/// instead of resending them for the whole session.
 pub(crate) fn new_client_channel_with_handshake(
     addr: SocketAddr,
     reply: &[u8],
     time_sync: &[u8],
 ) -> cimmeria_mercury::channel::Channel {
+    let mut channel = new_client_channel(addr);
+    register_handshake(&mut channel, addr, reply, time_sync);
+    channel
+}
+
+/// Most times the reply and the time-sync are resent before the channel
+/// gives up on them (#842).
+///
+/// Everything else on the channel resends until acked, but these two go
+/// to clients that, in two of five captured logins, never ack them. The
+/// client should ack a resend; if it does not, an uncapped entry would be
+/// resent on every RTO for the whole session. The six resends follow the
+/// channel's RTO backoff: on a quiet channel 1.5 s, doubling to the 4 s
+/// ceiling, so the last one goes out about 20 s after login. On a busy
+/// channel, clean ACKs of other packets keep the RTO lower and the six
+/// come sooner. Either way six consecutive losses of one packet is far
+/// past what a playable session survives.
+pub(crate) const HANDSHAKE_RETRANSMIT_CAP: u32 = 6;
+
+/// Register the two handshake datagrams in `channel`'s TX window, each
+/// capped at [`HANDSHAKE_RETRANSMIT_CAP`] resends. Split out of
+/// [`new_client_channel_with_handshake`] so tests can hand in a channel
+/// with a controllable clock.
+pub(crate) fn register_handshake(
+    channel: &mut cimmeria_mercury::channel::Channel,
+    addr: SocketAddr,
+    reply: &[u8],
+    time_sync: &[u8],
+) {
     use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
 
-    let mut channel = new_client_channel(addr);
     for (seq, bytes, packet_kind) in [
         (CONNECT_REPLY_SEQ, reply, "connect_reply"),
         (TIME_SYNC_SEQ, time_sync, "time_sync"),
@@ -325,7 +357,11 @@ pub(crate) fn new_client_channel_with_handshake(
             seq,
             Bytes::new(),
         );
-        if let Err(e) = channel.register_sent_packet(packet, Bytes::copy_from_slice(bytes)) {
+        if let Err(e) = channel.register_sent_packet_capped(
+            packet,
+            Bytes::copy_from_slice(bytes),
+            HANDSHAKE_RETRANSMIT_CAP,
+        ) {
             // Unreachable with an empty window and an in-range seq. If it
             // ever fires, this packet has lost its retransmit cover.
             tracing::warn!(
@@ -342,10 +378,10 @@ pub(crate) fn new_client_channel_with_handshake(
         %addr,
         connect_reply_seq = CONNECT_REPLY_SEQ,
         time_sync_seq = TIME_SYNC_SEQ,
+        retransmit_cap = HANDSHAKE_RETRANSMIT_CAP,
         tx_window_len = channel.tx_window.len(),
         "login handshake packets registered for retransmit"
     );
-    channel
 }
 
 /// The Mercury channel for a newly logged-in client session.

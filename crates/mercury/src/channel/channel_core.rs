@@ -20,7 +20,7 @@ use crate::packet::{Packet, ParsedPacket};
 use crate::unpacker::FragmentAssembler;
 
 use super::rto::{Rto, RtoConfig};
-use super::state::{ChannelState, RxEntry, TxEntry, TxHole};
+use super::state::{AbandonedPacket, ChannelState, RxEntry, TxEntry, TxHole};
 
 /// True if `a` is sequence-before-or-equal `b` in Mercury's 28-bit modular
 /// sequence space (`SEQUENCE_MASK = 0x0FFF_FFFF`).
@@ -135,6 +135,10 @@ pub struct Channel {
     /// [`consts::TX_HOLE_WARN_MS`] over this channel's life.
     pub tx_hole_stalls: u64,
 
+    /// Capped entries dropped unacked since the last
+    /// [`Self::take_abandoned`]. See [`super::retransmit_cap`].
+    pub(super) abandoned: Vec<AbandonedPacket>,
+
     /// Socket address of the remote peer.
     pub remote_addr: SocketAddr,
 
@@ -246,6 +250,7 @@ impl Channel {
             tx_hole: None,
             tx_holes: 0,
             tx_hole_stalls: 0,
+            abandoned: Vec::new(),
             remote_addr,
             last_sent: now,
             last_received: now,
@@ -343,6 +348,7 @@ impl Channel {
             last_sent: now,
             retransmit_count: 0,
             raw_bytes,
+            retransmit_cap: None,
         };
 
         if self.tx_window.len() < consts::TX_WINDOW_SIZE {
@@ -458,6 +464,7 @@ impl Channel {
             // encrypted yet (the seq was just stamped). Such entries
             // are silently skipped during the retransmit scan.
             raw_bytes: Bytes::new(),
+            retransmit_cap: None,
         });
         self.last_sent = now;
 
@@ -508,12 +515,22 @@ impl Channel {
         // "we had bytes to put on the wire". A channel full of bytes-empty
         // entries (`send_packet` legacy path) would otherwise never back off.
         let mut any_expired = false;
+        // Capped entries that expired again at their cap: dropped below
+        // instead of resent (`super::retransmit_cap`).
+        let mut at_cap: Vec<u32> = Vec::new();
 
         for entry in self.tx_window.iter_mut() {
             if budget == 0 {
                 break;
             }
             if now.duration_since(entry.last_sent) < timeout {
+                continue;
+            }
+            if entry
+                .retransmit_cap
+                .is_some_and(|cap| entry.retransmit_count >= cap)
+            {
+                at_cap.push(entry.packet.sequence);
                 continue;
             }
             // Expired — count against budget and refresh.
@@ -542,6 +559,9 @@ impl Channel {
         if any_expired {
             self.last_sent = now;
             self.rto.on_retransmit();
+        }
+        if !at_cap.is_empty() {
+            self.abandon_capped(&at_cap);
         }
         retransmits
     }

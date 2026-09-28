@@ -257,6 +257,20 @@ real base receive loop on a loopback socket, drop one of the two once,
 and check the client gets the byte-identical resend and that its
 `acks [2, 1]` retires both.
 
+Unlike every other reliable packet, the two are registered with
+`Channel::register_sent_packet_capped` (`channel/retransmit_cap.rs`),
+because two of five captured clients never ack them. A capped entry
+gets at most `cap` resends (`HANDSHAKE_RETRANSMIT_CAP` = 6 here). When
+it expires again after that, `check_timeouts` drops it from the window
+instead of resending it and records an `AbandonedPacket`. It does not
+count as an ACK (no RTT sample, `highest_acked` unchanged), but it frees
+the slot and moves the transmit hole off the dropped packet. The caller
+drains the records with `Channel::take_abandoned`; the base logs one
+`reliable_resend_abandoned` WARN per packet. Guards:
+`channel/tests/retransmit_cap.rs` (channel semantics) and
+`client_that_never_acks_stops_getting_handshake_resends_after_the_cap`
+(the base path).
+
 ### ACKs: one ACK retires one packet
 
 `Channel::process_ack` (`crates/mercury/src/channel/ack.rs`) retires
