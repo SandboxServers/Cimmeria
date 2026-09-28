@@ -289,3 +289,37 @@ fn banker_bit_wins_over_vendor_bits_and_scope_needs_the_banker_bit() {
         Some(NpcInteractionType::Vendor),
     );
 }
+
+/// BM-07: `INT_AUCTION` derives `Auctioneer`, the one marker the Black
+/// Market's open and trade checks accept. It ranks below the Banker and
+/// above the vendor bits. Fails if the auction branch of
+/// `static_interaction_for_flags` is removed (the hub auctioneer then
+/// derives nothing, and every open at it is refused).
+#[test]
+fn spawn_npc_from_record_derives_auctioneer_from_the_auction_bit() {
+    use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope};
+    use cimmeria_entity::interaction_flags::{INT_AUCTION, INT_BANKER, INT_VENDOR_GENERAL};
+
+    for (flags, expected) in [
+        (INT_AUCTION, NpcInteractionType::Auctioneer),
+        (
+            INT_AUCTION | INT_VENDOR_GENERAL,
+            NpcInteractionType::Auctioneer,
+        ),
+        (
+            INT_AUCTION | INT_BANKER,
+            NpcInteractionType::Banker {
+                scope: VaultScope::Personal,
+            },
+        ),
+    ] {
+        let mut mgr = make_manager();
+        mgr.spawn_npc_from_record(600, &record_with_flags(flags))
+            .unwrap();
+        assert_eq!(
+            mgr.get_entity(600).unwrap().interaction_type,
+            Some(expected),
+            "flags {flags}",
+        );
+    }
+}

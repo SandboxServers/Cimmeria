@@ -46,7 +46,7 @@ pub use crate::crafting::{
 pub use bank_base_to_cell::BankBaseToCell;
 pub use bank_cell_to_base::{BankCellToBase, BankSubject, ExpandTrigger};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
-pub use black_market_cell_to_base::BlackMarketCellToBase;
+pub use black_market_cell_to_base::{BlackMarketCellToBase, BmGmActor};
 pub use cell_to_base::CellToBaseMsg;
 pub use chat_cell_to_base::{ChatCellToBase, MAX_MUTE_MINUTES};
 pub use content_mail_cell_to_base::{ContentMailCooldown, ContentSystemMail};

@@ -84,6 +84,7 @@
 
 mod aggro;
 mod bank;
+mod black_market;
 mod bookmark;
 // The chat interceptor that routes a GM's `.`-lines here, and the native
 // `gm*` cell methods (SGWGmPlayer, index 109+). Both call into the console,

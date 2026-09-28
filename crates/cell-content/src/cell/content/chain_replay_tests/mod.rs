@@ -28,6 +28,7 @@
 //! chains the same way, as does [`debug_hub_mail_clerk`] (the hub's Gate
 //! Mail Clerk, SS-U3, the `send_system_mail` verb).
 
+mod black_market_auctioneer;
 mod castle_702_704_executor;
 mod cellblock_dialog_closes;
 mod debug_hub;

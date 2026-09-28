@@ -14,11 +14,15 @@
 //!   talking to another NPC ends the right to trade;
 //! - the auctioneer to exist, share the player's space and be within
 //!   `MAX_INTERACT_DISTANCE`: the same [`interact_range`] rule the `interact`
-//!   that opened the window passed.
+//!   that opened the window passed;
+//! - the NPC to be an auctioneer: `NpcInteractionType::Auctioneer`, which
+//!   only a template's seeded `INT_AUCTION` bit gives, at spawn (BM-07).
 //!
 //! The pin is server-set only: the chain that runs `open_black_market` is
 //! bound to the auctioneer's interact tag, so nothing the client sends can
-//! name an auctioneer.
+//! name an auctioneer. The open itself runs [`auctioneer_check`] first, so a
+//! chain bound to any other NPC opens nothing: authoring cannot turn a
+//! quest giver into a Black Market terminal.
 //!
 //! # Lifetime
 //!
@@ -30,6 +34,8 @@
 //! but whose client never called 61-66 is running without the client patch.
 
 use std::collections::HashMap;
+
+use cimmeria_entity::cell_entity::NpcInteractionType;
 
 use super::space_manager::{interact_range, InteractRangeFail, SpaceManager};
 
@@ -118,6 +124,9 @@ pub enum BlackMarketReject {
         /// The distance, in world units.
         dist: f32,
     },
+    /// The NPC is not an auctioneer: its template carries no `INT_AUCTION`
+    /// bit (BM-07).
+    NotAnAuctioneer,
 }
 
 impl BlackMarketReject {
@@ -130,6 +139,7 @@ impl BlackMarketReject {
             Self::AuctioneerGone => "auctioneer_gone",
             Self::AuctioneerOtherSpace => "auctioneer_other_space",
             Self::OutOfRange { .. } => "auctioneer_out_of_range",
+            Self::NotAnAuctioneer => "not_an_auctioneer",
         }
     }
 }
@@ -152,13 +162,33 @@ pub fn black_market_access(
     if player.last_interaction_target != Some(auctioneer) {
         return Err(BlackMarketReject::NotInteracting);
     }
-    interact_range(entity_id, auctioneer, space_mgr).map_err(|fail| match fail {
+    auctioneer_check(entity_id, auctioneer, space_mgr)?;
+    Ok(auctioneer)
+}
+
+/// Is `auctioneer_id` an auctioneer `entity_id` may trade at right now: it
+/// exists, shares the player's space, is within interact distance, and is
+/// `NpcInteractionType::Auctioneer`. The `open_black_market` action runs
+/// this before it sends `onBMOpen`; [`black_market_access`] runs it again
+/// on every create, bid and cancel. Pure: no logging, no sends.
+pub fn auctioneer_check(
+    entity_id: u32,
+    auctioneer_id: u32,
+    space_mgr: &SpaceManager,
+) -> Result<(), BlackMarketReject> {
+    interact_range(entity_id, auctioneer_id, space_mgr).map_err(|fail| match fail {
         InteractRangeFail::PlayerMissing => BlackMarketReject::PlayerMissing,
         InteractRangeFail::TargetMissing => BlackMarketReject::AuctioneerGone,
         InteractRangeFail::OtherSpace => BlackMarketReject::AuctioneerOtherSpace,
         InteractRangeFail::TooFar { dist } => BlackMarketReject::OutOfRange { dist },
     })?;
-    Ok(auctioneer)
+    let is_auctioneer = space_mgr
+        .get_entity(auctioneer_id)
+        .is_some_and(|npc| npc.interaction_type == Some(NpcInteractionType::Auctioneer));
+    if !is_auctioneer {
+        return Err(BlackMarketReject::NotAnAuctioneer);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -188,6 +218,7 @@ mod tests {
         mgr.get_entity_mut(PLAYER).unwrap().player_id = Some(PLAYER_ID);
         let npc = mgr.allocate_npc_id();
         mgr.spawn_npc(npc, world, pos, [0.0; 3]).unwrap();
+        mgr.get_entity_mut(npc).unwrap().interaction_type = Some(NpcInteractionType::Auctioneer);
         (mgr, npc)
     }
 
@@ -251,6 +282,30 @@ mod tests {
             black_market_access(PLAYER, &mgr),
             Err(BlackMarketReject::AuctioneerGone)
         );
+    }
+
+    /// BM-07: an open session at an NPC that is not an auctioneer grants
+    /// nothing. Fails if `auctioneer_check` drops the interaction-type test.
+    #[test]
+    fn an_npc_that_is_not_an_auctioneer_is_refused() {
+        for other in [
+            None,
+            Some(NpcInteractionType::Vendor),
+            Some(NpcInteractionType::Dialog { dialog_id: 1 }),
+        ] {
+            let (mut mgr, npc) = setup("Agnos", [3.0, 0.0, 0.0]);
+            mgr.get_entity_mut(npc).unwrap().interaction_type = other.clone();
+            open_at(&mut mgr, npc);
+            assert_eq!(
+                black_market_access(PLAYER, &mgr),
+                Err(BlackMarketReject::NotAnAuctioneer),
+                "{other:?}"
+            );
+            assert_eq!(
+                auctioneer_check(PLAYER, npc, &mgr),
+                Err(BlackMarketReject::NotAnAuctioneer)
+            );
+        }
     }
 
     #[test]

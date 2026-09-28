@@ -34,7 +34,9 @@ The Rust implementation is split across two layers. Client RPCs land on the cell
 | Cancel auction | DONE | `BMCancelAuction` (CM 64) → `cancel.rs`; the escrowed row is mailed back to the seller, the standing bid to its bidder |
 | Expiry settlement | DONE | Background sweep in `sweep.rs` over `settle.rs`: the item is mailed to the buyer (or back to the seller), the cash to the seller; an auction that cannot settle is quarantined |
 | Settlement mail | DONE | Every payout, return and refund is system mail from "Black Market" through the mail module's `send_system_mail_tx` (`payout_mail.rs`, BM-02b) |
-| Auctioneer check | DONE | The cell forwards CM 62–64 only for a player the server sent to an auctioneer, still interacting with it and in range |
+| Auctioneer check | DONE | The cell forwards CM 62–64 only for a player the server sent to an auctioneer, still interacting with it and in range. An auctioneer is an NPC whose template carries `INT_Auction` (BM-07); `open_black_market` refuses any other |
+| Auctioneer NPC | DONE | Machra (template 305, spawn 405) in the Castle_CellBlock stasis room; chain 5030 opens the Black Market (BM-07) |
+| GM test tools | DONE | `.bm_seed`, `.bm_list`, `.bm_expire` (BM-07); see [Content and test tools](#content-and-test-tools) |
 | Watch items | REFUSED | `BMStartWatchingItem` / `BMStopWatchingItem` (CM 65/66) answer `onBMError(WatchUnavailable)` (D4) |
 | Auction results display | DONE | `onBMAuctions` built by `wire::serialize_on_bm_auctions` |
 | Auction updates | DONE | `onBMAuctionUpdate`, `onBMAuctionRemove` in `wire/` and `send.rs` |
@@ -237,6 +239,16 @@ A boot-seed listing has no instance and no seller to pay: a sold one mails the b
 
 **Quarantine.** The sweep settles due auctions in `expires_at` order, one transaction each. A settlement that fails for good (the escrowed row is missing, or the writer refuses a mail, for example a bound row won by someone else) is rolled back and the auction set to status 4, `QUARANTINED`, with `bm.quarantined` and its `reason`; the item stays in container 18 and any standing bid stays held until an operator resolves it. A database error leaves the auction active for the next pass (`bm.settle_retry`). Either way the rest of the pass goes on.
 
+## Content and test tools
+
+**The auctioneer.** Machra (template 305, spawn 405, tag `BlackMarket_Auctioneer`) stands in the Castle_CellBlock stasis room, the debug hub every new character starts in ([debug-hub.md](../content/debug-hub.md#black-market-auctioneer-template-305)). Chain 5030 (`interact_tag` on his tag, in `castle_cellblock_chains.sql`, scope space 12) runs `open_black_market`. His template carries `INT_Auction` (4): the client's cursor, and at spawn the `NpcInteractionType::Auctioneer` that the open and the trade methods require. Chain 5031 is reserved for an in-world auctioneer; none is seeded, because the client carries no NPC placements and the reconstructed spawn list has no auctioneer anywhere.
+
+**Visible feedback.** Every click gets a chat line: "The auctioneer opens the Black Market. (No window? The Black Market needs the Cimmeria client patch.)" A stock client drops `onBMOpen`, so the line is the only thing its player sees. A refused open says "Nobody here runs the Black Market." (not an auctioneer) or "You are too far from the auctioneer.", and an auctioneer with no chain says "The auctioneer is not trading right now."
+
+**The system seller.** Boot-seed and `.bm_seed` listings belong to a reserved system seller, account 1 and player 1, both named `Black Market`. The account is disabled. Before listing anything, the seed reads both rows back and refuses, logging `bm.seed_refused` with a `reason`, if either id holds another account or character: a system listing's sale mints its item and pays player 1. A seed listing is one with `item_id = 0`; a listing by a real player 1 settles through escrow like anyone's.
+
+**GM tools.** `.bm_seed [count]` lists test auctions from the system seller (the SI 3 9mm Pistol at tech competency 1, 5, 10, 15 and 20, Health Slappacks and two SMGs, across every duration tier), `.bm_list` shows the newest auctions with their ids, and `.bm_expire <auctionId>` makes an auction due now and settles it at once through the sweep, then says how it settled ([commands.md](../commands.md#command-families)). The UAT checklist is [black-market/uat.md](../analysis/black-market/uat.md).
+
 ## Escrow (container 18)
 
 A listed item stays its own `sgw_inventory` row, with its instance id and every column, moved into the seller's container 18 (`INV_AUCTION`). Container 18 is server-held: the login inventory send and every resync skip it, a refused move's snap-back resend of a remembered id finds nothing, and the move, use, trade, mail and vendor paths refuse it through their container allowlists. This is the shape the social-systems system-mail writer takes (`SystemItem::ExistingInstance` accepts only a container-18 row owned by `owner_player_id`).
@@ -254,7 +266,7 @@ Two tables under [`db/sgw/BlackMarket/`](../../db/sgw/BlackMarket/):
 
 ## Telemetry
 
-Every transition is a DEBUG event (`bm.listed`, `bm.bid`, `bm.outbid_refund`, `bm.cancelled`, `bm.sold`, `bm.expired`) with `auction_id`, the seller and bidder ids, the bid and the escrowed cash before and after, `item_def_id`, and the actor's `account_id` and `player_id`. Every refusal is `bm.refused` with `reason` and `error_id` (table above), and every request counts on `bm_outcome_total{op, outcome}`. The cell logs `bm.decode_failed` (payload length and reason), `bm.open` (the recorded auctioneer), and, once at logout, `bm.open_without_client_call` for a player who was sent `onBMOpen` but whose client never called 61–66: the sign the client patch is missing. Each `onBM*` send logs `bm.send` with the method and payload size.
+Every transition is a DEBUG event (`bm.listed`, `bm.bid`, `bm.outbid_refund`, `bm.cancelled`, `bm.sold`, `bm.expired`) with `auction_id`, the seller and bidder ids, the bid and the escrowed cash before and after, `item_def_id`, and the actor's `account_id` and `player_id`. Every refusal is `bm.refused` with `reason` and `error_id` (table above), and every request counts on `bm_outcome_total{op, outcome}`. The cell logs `bm.decode_failed` (payload length and reason), `bm.open` (the recorded auctioneer), and, once at logout, `bm.open_without_client_call` for a player who was sent `onBMOpen` but whose client never called 61–66: the sign the client patch is missing. Each `onBM*` send logs `bm.send` with the method and payload size. BM-07 adds `bm.open_refused` (a click at an NPC that is not an auctioneer, or out of range), `bm.open_unwired` (an auctioneer with no chain), `bm.seed_refused` (ERROR: the reserved system seller ids hold something else), and `bm.gm_action` / `bm.gm_rejected` for the GM tools. The saved SigNoz view is **Black Market** ([black-market.view.json](../operations/signoz/black-market.view.json)).
 
 Settlement (BM-02b): every mail an auction writes logs INFO `bm.payout` after the commit, with `auction_id`, `reason` (`sold`, `buyout`, `expired`, `cancelled`, `outbid`), `role` (`seller`, `buyer`, `bidder`), `recipient_player_id`, `mail_id`, `cash`, `item_source`, `item_id`, `type_id`, `stack_size`, and the actor's `account_id` and `player_id` (for the sweep, the seller's); the mail module logs `mail.system_sent` beside it, and each counts on `bm_outcome_total{op="payout", outcome=<reason>}`. A quarantined auction logs ERROR `bm.quarantined` (`reason`, `held_cash`, the ids) and a retried one WARN `bm.settle_retry`; a refund to a bidder whose character is gone logs WARN `bm.refund_skipped`. A refused mail also logs the writer's `mail.system_refused`.
 
@@ -266,7 +278,7 @@ Settlement (BM-02b): every mail an auction writes logs INFO `bm.payout` after th
 
 ## Remaining Work
 
-0. **The client patch.** The [restoration plan](../analysis/black-market/README.md) sequences it: BM-03 to BM-06 build the client patch and its launcher delivery, BM-07 adds the auctioneer content and the UAT checklist.
+0. **The client patch.** The [restoration plan](../analysis/black-market/README.md) sequences it: BM-03 to BM-06 build the client patch and its launcher delivery. BM-07 added the auctioneer, the GM tools and the [UAT checklist](../analysis/black-market/uat.md).
 1. **Quarantined auctions** have no GM tool yet: an operator resolves one in the database (mail the container-18 row and any held bid, then set a final status).
 2. **Durations** — the tier-to-hours table is design, not recovered.
 3. **Watch notifications** — deferred by D4; `BMStartWatchingItem` / `BMStopWatchingItem` answer `WatchUnavailable` until the core loop passes UAT (BM-08).

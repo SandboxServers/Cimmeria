@@ -10,8 +10,9 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    aggro, bank, bookmark, crafting, duel, entity, give, give_ability, mail, mission, net, org,
-    org_create, patrol, pet, placement, query, seed, server, social, spawn, squad, stats, travel,
+    aggro, bank, black_market, bookmark, crafting, duel, entity, give, give_ability, mail, mission,
+    net, org, org_create, patrol, pet, placement, query, seed, server, social, spawn, squad, stats,
+    travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -324,6 +325,10 @@ pub async fn exec(
         "bankdump" => bank::dump(caller_id, args, tx, space_mgr).await,
         "bankexpand" => bank::expand(caller_id, tx, space_mgr).await,
         "orgvaultexpand" => bank::org_expand(caller_id, args, tx, space_mgr).await,
+        // Black Market GM tools (BM-07)
+        "bm_seed" => black_market::seed(caller_id, args, tx, space_mgr).await,
+        "bm_expire" => black_market::expire(caller_id, args, tx, space_mgr).await,
+        "bm_list" => black_market::list(caller_id, tx, space_mgr).await,
         // E. crafting
         "allcraft" | "learndiscipline" | "forgetdiscipline" | "craftkit" | "learnblueprint" => {
             crafting::dispatch(name, caller_id, args, target_id, tx, space_mgr).await

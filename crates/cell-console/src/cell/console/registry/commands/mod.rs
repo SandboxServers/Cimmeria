@@ -21,6 +21,7 @@
 use super::{spec, Spec, Target};
 
 mod bank;
+mod black_market;
 mod entity_authoring;
 mod maintenance;
 mod meta;
@@ -53,6 +54,7 @@ const GROUPS: &[&[Spec]] = &[
     social::SPECS,
     pet::SPECS,
     bank::SPECS,
+    black_market::SPECS,
     squad::SPECS,
     org::SPECS,
     org_create::SPECS,

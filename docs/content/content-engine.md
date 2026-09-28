@@ -262,13 +262,17 @@ to open the client's Black Market window. It takes no params: the executor
 arm ([`executor/black_market.rs`](../../crates/cell-content/src/cell/content/executor/black_market.rs))
 resolves the auctioneer from the interact trigger's `target_entity_id`, then
 the player's `last_interaction_target` (the same sources `DisplayDialog`
-uses), and aborts with a `warn!` when neither resolves. Pair it with a
-`set_interaction_type` (`INT_Auction`, mask 4) on the auctioneer's tag so the
-client shows the interact prompt. No seeded chain uses it yet; the auctioneer
-NPC and its chains are packet BM-07 of the
-[Black Market plan](../analysis/black-market/README.md). A stock client drops
-method 90 until the client patch ships — see
-[../architecture/black-market.md](../architecture/black-market.md).
+uses), and aborts with a `warn!` when neither resolves. It then refuses, with a
+chat line and `bm.open_refused`, unless that NPC is an auctioneer in the
+player's space and within 5 units (BM-07). An auctioneer is an NPC whose
+**template** carries `INT_Auction` (mask 4): the bit is read at spawn, so a
+`set_interaction_type` on another NPC's tag changes its cursor but never makes
+it one. Seed the bit on the auctioneer's template; that also gives the client
+its interact cursor. Every open also sends the player a chat line, because a
+stock client drops method 90 until the client patch ships — see
+[../architecture/black-market.md](../architecture/black-market.md). The one
+seeded use is chain 5030, the stasis-room auctioneer
+([debug-hub.md](debug-hub.md#black-market-auctioneer-template-305)).
 
 `launch_ability` and `apply_effect` do **not** route through the combat
 pipeline. They call a separate server-authoritative entry point,
