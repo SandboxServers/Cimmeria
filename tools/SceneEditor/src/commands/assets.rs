@@ -448,6 +448,9 @@ fn decode_to_rgba(
             }
             Ok(rgba)
         }
+        PixelFormat::A32B32G32R32F | PixelFormat::G16 | PixelFormat::UYVY => Err(format!(
+            "Unsupported pixel format for thumbnails: {format:?}"
+        )),
         PixelFormat::Unknown(id) => Err(format!("Unsupported pixel format: Unknown({})", id)),
     }
 }

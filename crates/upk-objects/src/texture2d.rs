@@ -21,35 +21,54 @@ pub struct Texture2D {
     pub num_mips: u32,
 }
 
-/// Pixel format enum matching UE3's EPixelFormat for SGW v486.
+/// Pixel format enum matching the SGW client's `EPixelFormat`.
 ///
-/// Derived from Ghidra analysis of the SGW client's texture loading code.
+/// The byte values index the client's `GPixelFormats` table at `0x01dd6a08`
+/// in SGW.exe (stride `0x24`; UTF-16 names from `0x018f7960`). The D3D init
+/// code that fills each entry's `PlatformFormat` field (`0x01dd6a20 + n *
+/// 0x24`, next to the `supportFloatingPointRenderTargets` probe in
+/// `docs/reverse-engineering/decompiled/14_standalone_named.c`) pins the order:
+///
+/// | Byte | Format | PlatformFormat |
+/// |---|---|---|
+/// | 0 | Unknown | 0 |
+/// | 1 | A32B32G32R32F | `0x74` (D3DFMT_A32B32G32R32F) |
+/// | 2 | A8R8G8B8 | `0x15` (D3DFMT_A8R8G8B8) |
+/// | 3 | G8 | `0x32` (D3DFMT_L8) |
+/// | 4 | G16 | 0 |
+/// | 5 | DXT1 | `'DXT1'` FourCC |
+/// | 6 | DXT3 | `'DXT3'` FourCC |
+/// | 7 | DXT5 | `'DXT5'` FourCC |
+/// | 8 | UYVY | `'UYVY'` FourCC |
+///
+/// Stock cooked data agrees: `BS_HF_Torso00_D` (512x256, 10 mips) carries
+/// byte 5, and its mips are 8 bytes per 4x4 block, i.e. DXT1 (#839).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PixelFormat {
+    A32B32G32R32F,
     A8R8G8B8,
     G8,
+    G16,
     DXT1,
     DXT3,
     DXT5,
-    /// A byte property value we haven't mapped yet.
+    UYVY,
+    /// `PF_Unknown` (0), or a byte past the end of the client's table.
     Unknown(u8),
 }
 
 impl PixelFormat {
-    fn from_byte(b: u8) -> Self {
-        // UE3 v486 EPixelFormat enum ordering (from engine headers):
-        //   0 = PF_A8R8G8B8
-        //   1 = PF_G8
-        //   2 = PF_G16
-        //   3 = PF_DXT1
-        //   4 = PF_DXT3
-        //   5 = PF_DXT5
+    /// Map a Texture2D `Format` byte to its `EPixelFormat` variant.
+    pub fn from_byte(b: u8) -> Self {
         match b {
-            0 => PixelFormat::A8R8G8B8,
-            1 => PixelFormat::G8,
-            3 => PixelFormat::DXT1,
-            4 => PixelFormat::DXT3,
-            5 => PixelFormat::DXT5,
+            1 => PixelFormat::A32B32G32R32F,
+            2 => PixelFormat::A8R8G8B8,
+            3 => PixelFormat::G8,
+            4 => PixelFormat::G16,
+            5 => PixelFormat::DXT1,
+            6 => PixelFormat::DXT3,
+            7 => PixelFormat::DXT5,
+            8 => PixelFormat::UYVY,
             _ => PixelFormat::Unknown(b),
         }
     }
@@ -59,7 +78,9 @@ impl PixelFormat {
         match self {
             PixelFormat::DXT1 => 8,                      // 8 bytes per 4x4 block
             PixelFormat::DXT3 | PixelFormat::DXT5 => 16, // 16 bytes per 4x4 block
+            PixelFormat::A32B32G32R32F => 16,            // 4 x f32 per pixel
             PixelFormat::A8R8G8B8 => 4,                  // 4 bytes per pixel
+            PixelFormat::G16 | PixelFormat::UYVY => 2,   // 2 bytes per pixel
             PixelFormat::G8 => 1,                        // 1 byte per pixel
             PixelFormat::Unknown(_) => 4,                // assume 4 bpp
         }
@@ -71,6 +92,18 @@ impl PixelFormat {
             self,
             PixelFormat::DXT1 | PixelFormat::DXT3 | PixelFormat::DXT5
         )
+    }
+
+    /// Uncompressed size in bytes of one `width` x `height` mip.
+    ///
+    /// Block-compressed formats round each dimension up to whole 4x4 blocks.
+    pub fn mip_bytes(&self, width: u32, height: u32) -> usize {
+        let (w, h) = (width as usize, height as usize);
+        if self.is_block_compressed() {
+            w.div_ceil(4).max(1) * h.div_ceil(4).max(1) * self.block_size()
+        } else {
+            w * h * self.block_size()
+        }
     }
 }
 
@@ -99,6 +132,9 @@ pub fn deserialize_texture2d(data: &[u8], names: &[cimmeria_upk::NameEntry]) -> 
     // Extract key properties
     let size_x = find_int(&props, "SizeX").unwrap_or(0) as u32;
     let size_y = find_int(&props, "SizeY").unwrap_or(0) as u32;
+    // A tagged property equal to its class default is not serialized, and
+    // Texture2D's default Format is 0 (`PF_Unknown`). A missing tag therefore
+    // decodes as Unknown(0), never as a concrete format.
     let format_byte = find_byte_value(&props, "Format").unwrap_or(0);
     let format = PixelFormat::from_byte(format_byte);
 
@@ -182,4 +218,41 @@ fn find_byte_value(props: &[cimmeria_upk::TaggedProperty], name: &str) -> Option
             None
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PixelFormat;
+
+    /// #839: pins the `GPixelFormats` order at SGW.exe `0x01dd6a08`. The old
+    /// map (0 = A8R8G8B8, 3 = DXT1, 5 = DXT5) was off by two and fails here.
+    #[test]
+    fn from_byte_follows_client_gpixelformats_table() {
+        let expected = [
+            (0, PixelFormat::Unknown(0)),
+            (1, PixelFormat::A32B32G32R32F),
+            (2, PixelFormat::A8R8G8B8),
+            (3, PixelFormat::G8),
+            (4, PixelFormat::G16),
+            (5, PixelFormat::DXT1),
+            (6, PixelFormat::DXT3),
+            (7, PixelFormat::DXT5),
+            (8, PixelFormat::UYVY),
+            (9, PixelFormat::Unknown(9)),
+        ];
+        for (byte, format) in expected {
+            assert_eq!(PixelFormat::from_byte(byte), format, "Format byte {byte}");
+        }
+    }
+
+    /// Stock `BS_HF_Torso00_D` is 512x256 with Format byte 5, and its mip 0
+    /// holds 65,536 bytes, which only DXT1's 8-byte 4x4 blocks produce.
+    #[test]
+    fn dxt1_512x256_mip0_is_65536_bytes() {
+        assert_eq!(PixelFormat::from_byte(5).mip_bytes(512, 256), 65_536);
+        assert_eq!(PixelFormat::from_byte(7).mip_bytes(512, 256), 131_072);
+        // A 1x1 tail mip still occupies one whole block.
+        assert_eq!(PixelFormat::DXT1.mip_bytes(1, 1), 8);
+        assert_eq!(PixelFormat::A8R8G8B8.mip_bytes(4, 2), 32);
+    }
 }
