@@ -161,6 +161,23 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- prefab position).
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2085, 'Castle.CheckpointAlpha', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
 
+-- NEW CONTENT (Castle population, docs/analysis/castle-population/README.md): patrol
+-- loops for the World 8 ambient hostiles (spawnlist 250-254, 269, 270, 278). Type
+-- 'Patrol' / shape 'Path', the header the `.path_add` console command writes, so
+-- `spawner/regions.rs` (which loads `type = 'AreaSet'` only) never turns them into
+-- client regions. Waypoints are ordered by point_id and walked as a loop; a
+-- two-point set is a back-and-forth line. The guard pairs use parallel sets 3 u
+-- apart so the two guards walk side by side instead of stacking on one line.
+-- crates/entity/tests/castle_navmesh.rs checks every leg is routable on castle.nav.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2086, 'Castle.Patrol.HallNorth_A', 'Patrol', 8, NULL, NULL, 'Path', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2087, 'Castle.Patrol.HallNorth_B', 'Patrol', 8, NULL, NULL, 'Path', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2088, 'Castle.Patrol.HallWest_A', 'Patrol', 8, NULL, NULL, 'Path', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2089, 'Castle.Patrol.HallWest_B', 'Patrol', 8, NULL, NULL, 'Path', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2090, 'Castle.Patrol.InterrogationAntechamberPRU', 'Patrol', 8, NULL, NULL, 'Path', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2091, 'Castle.Patrol.ThroneApproach_A', 'Patrol', 8, NULL, NULL, 'Path', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2092, 'Castle.Patrol.ThroneApproach_B', 'Patrol', 8, NULL, NULL, 'Path', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2093, 'Castle.Patrol.FieldWestPRU', 'Patrol', 8, NULL, NULL, 'Path', 1);
+
 -- PLACEMENT PASS B (packet H15, world 57 named regions).
 -- Ledger: docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md
 --

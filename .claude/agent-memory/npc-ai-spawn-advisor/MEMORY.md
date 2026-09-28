@@ -11,7 +11,7 @@
 - [harset-zone-evidence.md](harset-zone-evidence.md) — worlds.flags does NOT drive instancing (spaces.xml does); harset.nav = 1939 components, 9/12 spawns off-mesh; respawn_secs/patrol/wander/ability_set are NULL table-wide; fight-state has no straight-line fallback
 - [faction-10-gates-everything.md](faction-10-gates-everything.md) — faction==10 is the ONLY switch for player-can-damage AND right-click-attacks; no runtime set_faction exists, so talk-then-kill needs two templates
 - [level-is-hp-and-xp.md](level-is-hp-and-xp.md) — template level only drives HP (200+50*lvl), XP (10*lvl) and onLevelUpdate; level 50 is the seed's unknown-level sentinel, not a boss tier
-- [template-seed-column-traps.md](template-seed-column-traps.md) — only ability_sets 1/2/3 exist (FK); NULL static_mesh on a prop = invisible; class being/spawnable never AI-ticks; NPCs have infinite ammo
+- [template-seed-column-traps.md](template-seed-column-traps.md) — ability_set_id is FK-checked (1-6, 350-353); NULL static_mesh on a prop = invisible; class being/spawnable never AI-ticks; NPCs have infinite ammo
 - [leash-and-fight-exit-traps.md](leash-and-fight-exit-traps.md) — fight->Idle/leash keep nav_path + player threat; Idle agg-0 never ticked; find_path 0.5 start box vs on_navmesh; partial paths silent
 - [leash-reset-na12.md](leash-reset-na12.md) — NA12 leash: NPC->spawn metric, 5 u band, walk home + evade, 5 s re-aggro window; Instant-based clocks hide loops in tests
 - [faction-derived-aggro-na13.md](faction-derived-aggro-na13.md) — NA13: faction 10 aggroes on sight (players react as faction 3); chain-armed spawns need aggression_override=3; wire is onAggressionOverrideUpdate
@@ -19,3 +19,4 @@
 - [cover-behaviour-na22.md](cover-behaviour-na22.md) — startup spawns precede cover/world ids (sweep in cover_loaded); guards authored at markers; LoS from a slot reads blocked
 - [cover-peek-los-na23.md](cover-peek-los-na23.md) — NA23: NPC at a slot looks from a peek point past its prop; over-prop peeks not walk-checked; mess tables stay blind
 - [na36-extractor-mesh-actor-gap.md](na36-extractor-mesh-actor-gap.md) — NA36 widened the extractor to KActor/FracturedStaticMeshActor (always) + InterpActor (opt-in, off by default — doors); did NOT explain Harset's raised-platform telemetry gap or spawn 308
+- [castle-world8-layout-and-authoring.md](castle-world8-layout-and-authoring.md) — Castle floors/components/route (throne floor y 38.4, Alpha via NE ramp), Patrol point sets, empty Ogilvie moniker 8895, free id gaps

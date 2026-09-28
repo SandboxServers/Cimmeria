@@ -1,22 +1,21 @@
 ---
 name: template-seed-column-traps
-description: entity_templates seed traps — ability_sets only has ids 1/2/3 (FK), static_mesh NULL on a prop = invisible, body_set NOT NULL, class 'being'/'spawnable' skips the AI tick, NPCs have infinite ammo.
+description: entity_templates seed traps — ability_set_id is FK-checked (sets 1-6 and 350-353 exist as of 2026-09-28), static_mesh NULL on a prop = invisible, body_set NOT NULL, class 'being'/'spawnable' skips the AI tick, NPCs have infinite ammo.
 metadata:
   type: project
 ---
 
 # `entity_templates` authoring traps (measured 2026-09-17)
 
-## Only ability sets 1, 2, 3 exist
+## ability_set_id is FK-checked (updated 2026-09-28)
 
-`db/resources/Abilities/Seed/ability_sets.sql` has exactly three rows:
-1 = NID guard (pistol) → ability 579; 2 = Prisoner retrieval unit → 221;
-3 = NID guard (SMG) → 559. Each set holds **one** ability.
+Measured 2026-09-17 there were only sets 1-3; by 2026-09-28
+`db/resources/Abilities/Seed/ability_sets.sql` also has 4 (Jaffa staff, 584),
+5 (Goa'uld ribbon device), 6 (debug-hub crate, zero-damage melee) and pet sets
+350-353. Still: 1 = NID pistol (579), 2 = PRU (221), 3 = NID SMG (559).
 
-`entity_templates_ability_set_id_fkey` → `ability_sets(ability_set_id)`.
-Referencing a set 4/5/6 without seeding `ability_sets` **and**
-`ability_set_abilities` first fails the FK. A "staff" set is new content,
-not an existing id.
+`entity_templates_ability_set_id_fkey` -> `ability_sets(ability_set_id)`.
+A new set needs `ability_sets` **and** `ability_set_abilities` rows first.
 
 Empty ability bucket → `NPC_DEFAULT_ABILITY = 592` (Pistol Shot) at
 `space_manager/spawn.rs:175-182`.

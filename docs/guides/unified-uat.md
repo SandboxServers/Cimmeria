@@ -38,6 +38,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Dialog UI](#dialog-ui) | [DU-UAT in work-packets.md](../analysis/dialog-ui-redesign/work-packets.md#du-uat) |
 | [Castle Cellblock tutorial](#castle-cellblock-tutorial) | [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md) |
 | [Castle (world 8)](#castle-world-8) | [zone operator guide, runbook B](../analysis/zone-restoration-operator-guide.md#b-castle-world-8-ring-platform-build-current-main-all-of-ca00-ca10-merged) |
+| [Castle population](#castle-population) | [castle-population ledger, UAT checklist](../analysis/castle-population/README.md#uat-checklist) |
 | [Harset](#harset) | [zone operator guide, runbook C](../analysis/zone-restoration-operator-guide.md#c-harset-worlds-57-68-69-70) |
 | [Historical cellblocks](#historical-cellblocks) | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#what-the-uat-must-settle) |
 | [Ring transport](#ring-transport) | [ring-transport README, Phase 1](../analysis/ring-transport-cellblock-castle/README.md#phase-1-status) |
@@ -82,6 +83,7 @@ Read these before you start. None of them needs a new report.
 | K17 | **All three Bankers are named "Storage Officer"**, and after a Team vault expansion, a Team vault window already open on another member keeps its old size until that member reopens it. | Tell the Bankers apart by their clothes ([Bank and vault](#bank-and-vault)). Reopen the window. | [bank session resume, Known gaps](../analysis/bank-vault/handoffs/session-resume.md#known-gaps-carried-forward) |
 | K18 | **Crafting gaps known at release.** Using a Blueprint item or a Racial Paradigm Guide prints no line (the item goes and the window changes). Buying several non-stacking components in one purchase shows one stack. A queued crafting job still finishes if you walk away from the station or give the tool away. `/showracialparadigmlevels` and the client's own `/respeccraft` do nothing useful. | Record them; not new bugs. Use `.respeccraft`. | [crafting session resume, known gaps](../analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward) |
 | K19 | **The Social button on the Access bar does nothing** on a client without the client-patches overlay: the shipped client left its handler empty. | Press **O** to open the Social window (contact lists). With the overlay installed, the button opens it too. | [client-patches overlay README](../../crates/client-patches/overlay/README.md#what-changed-in-accesslua) |
+| K20 | **Castle friendlies never fight.** NPCs cannot fight each other yet, so the Op-CORE marines and Praxis Jaffa placed in Castle stand out of the guards' range and never shoot. The marines in the Front Courtyard and the Jaffa at Checkpoint Alpha face the enemy from behind cover on purpose. | Nothing. Report a friendly standing inside a fight. | [castle-population ledger, D-CP06](../analysis/castle-population/README.md#decisions) |
 
 ## Common setup
 
@@ -622,6 +624,39 @@ Castle, from the ring-platform arrival: respawn checkpoints, missions 701-708 (G
 **Things only a human can check:** every provisional coordinate (B1, B7, B12); the "!" indicator (B2); the gate's 4 s timing and crossing animation (B19).
 
 Source: [zone operator guide, runbook B](../analysis/zone-restoration-operator-guide.md#b-castle-world-8-ring-platform-build-current-main-all-of-ca00-ca10-merged) and the [Castle ledger's milestones](../analysis/castle-rebuild/README.md#validation-and-uat-gates).
+
+## Castle population
+
+Ambient Castle NPCs added on top of the missions: Op-CORE marines in the Armory, the infirmary and the courtyard, prisoners in the Interrogation Block, Praxis Jaffa at Checkpoint Alpha, and 36 more NID guards and drones at levels 1-4, some on patrol.
+
+**Status:** Ready. Seed only; every position was checked against the Castle navmesh, but none has been walked in the client yet, so a guard inside a wall or a table is worth reporting.
+
+**Prerequisites:** a character in Castle, or GM travel (`.gotolocation Castle <x> <y> <z>`, positions in the ledger). Run it alongside [Castle (world 8)](#castle-world-8): CP3, CP5, CP8, CP10 and CP12 check that the new guards never interrupt a mission conversation.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| CP1 | Arrive in the Armory by the ring | Four armed marines at the weapon lockers and one unarmed marine, all named "Op-CORE Soldier"; two of the armed ones take a few steps now and then. Nobody stands on the ring pad. | |
+| CP2 | Right-click a marine | No attack starts; nothing else happens. | Ambient NPCs carry no dialog |
+| CP3 | Talk to Gerschon and accept 701 | No hostile interrupts the conversation. | |
+| CP4 | Walk west out of the Armory hall | A three-guard post at the top of Copplemann's corridor, levels 4, 3 and 2. Shooting one pulls that post, not the patrols further west. | |
+| CP5 | Reach Copplemann | Three dead Op-CORE soldiers around her. Talking to her and the Livewire are never interrupted, even after the post respawns (120 s). | Invisible corpse: K5 |
+| CP6 | Go to the south end of that corridor; die and respawn at the Op-Core Triage checkpoint | Ogilvie, a female Castle Medic and an unarmed marine. Nothing shoots you on respawn. | |
+| CP7 | Walk the corridor north and the west hall | Two pairs of guards walking side by side and pausing at each end; a drone patrolling outside the Interrogation Block. | |
+| CP8 | Enter the Interrogation Block; free Zuritska | Two guards beside Romney; four prisoners behind cell doors. Freeing Zuritska does not pull Romney's guards. | |
+| CP9 | Visit the Symbiote Chamber | Two guards and a drone hold position and fire. | Stationary by design |
+| CP10 | Escort Zuritska to the Communications room | Two guards in the antechamber before it; nothing aggroes in the room, at the terminal or while you talk to Zuritska. | |
+| CP11 | Walk from the Comms level to the Throne Room | Three guard posts and a patrol pair on the way. | |
+| CP12 | In the Throne Room use the Access Panel; die and respawn at the Throne checkpoint | Four guards between the pillars; the panel and the respawn point are out of their reach. | |
+| CP13 | Go to the Front Courtyard | Sgt. Stanton and four marines behind the east barricade, facing the field. Nobody fights. | K20 |
+| CP14 | Cross the west of the outdoor field | Three "Exterior NID Guard" by the rock (levels 4, 3, 2) and a drone circling it. | |
+| CP15 | Go to Muelbach's bunker | Two guards on the approach; two in the room past Muelbach. | |
+| CP16 | Reach Checkpoint Alpha; die and respawn there | Three Praxis Jaffa facing the ramp, one more at the back. Nothing shoots you on respawn. | K20 |
+
+**SigNoz:** a guard engaging logs target `npc_ai.aggro`, `event = acquired`, with its spawn `tag` (`Castle_Pop_*`), `cause` (proximity, damage or assist) and `npc_to_target`; anchor each report on a `.bug` bookmark.
+
+**Things only a human can check:** every placement (nobody inside a wall, a locker or a table), the headings, the medic's female body and the soldiers' faces, and the level numbers on the target frame.
+
+Source: [castle-population ledger](../analysis/castle-population/README.md#uat-checklist).
 
 ## Harset
 

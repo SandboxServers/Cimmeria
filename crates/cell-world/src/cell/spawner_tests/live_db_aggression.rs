@@ -133,7 +133,9 @@ async fn aggro_column_checks_reject_bad_values() {
 
 /// D-NA01a seed pin: spawns 20 and 10 carry NEUTRAL, plus the stasis-room
 /// debug crate (404, which must never aggro a new character), and no other
-/// seeded spawn carries an override. No seeded template sets a radius yet.
+/// seeded spawn carries an override. The only seeded aggro radii are the Castle
+/// population's guard templates: 15 u inside (181-183), 20 u outside (184-186)
+/// (docs/analysis/castle-population/README.md, D-CP04).
 #[tokio::test]
 async fn seed_overrides_only_the_chain_armed_spawns() {
     let pool = require_db_or_skip!();
@@ -152,13 +154,23 @@ async fn seed_overrides_only_the_chain_armed_spawns() {
         ],
         "only ArmYourself_PrisonerRetrievalUnit (10), ArmYourself_NIDGuard (20) and DebugHub_LootCrate (404)"
     );
-    let radii: Vec<_> = spawns
+    let radii: std::collections::BTreeSet<_> = spawns
         .iter()
-        .filter(|s| s.aggro_radius.is_some())
-        .map(|s| (s.spawn_id, s.aggro_radius))
+        .filter_map(|s| s.aggro_radius.map(|r| (s.template_id, r.to_bits())))
         .collect();
-    assert!(
-        radii.is_empty(),
-        "no seeded template sets aggro_radius yet; update this test when one does: {radii:?}"
+    let expected: std::collections::BTreeSet<_> = [
+        (181, 15.0f32),
+        (182, 15.0),
+        (183, 15.0),
+        (184, 20.0),
+        (185, 20.0),
+        (186, 20.0),
+    ]
+    .into_iter()
+    .map(|(t, r)| (t, r.to_bits()))
+    .collect();
+    assert_eq!(
+        radii, expected,
+        "only the Castle population guard templates set aggro_radius (15 u inside,          20 u outside); update this test when another template tunes it"
     );
 }
