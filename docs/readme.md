@@ -168,6 +168,7 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [effect-system.md](gameplay/effect-system.md) | Buffs, debuffs, DoTs, HoTs, effect stacking and priority | Complete |
 | [stat-system.md](gameplay/stat-system.md) | Base stats, derived stats, level scaling, equipment modifiers | Complete |
 | [inventory-system.md](gameplay/inventory-system.md) | Item slots, stacking, equipment, bag management | Complete |
+| [consumables.md](gameplay/consumables.md) | Heal items and stimpacks: what a use does, refusals, buff stacking | Complete |
 | [crafting-system.md](gameplay/crafting-system.md) | Blueprints, material requirements, crafting stations, 499 recipes | Complete |
 | [mission-system.md](gameplay/mission-system.md) | Quest objectives, step advancement, rewards, mission scripts | Complete |
 | [gate-travel.md](gameplay/gate-travel.md) | Stargate dialing, 29 defined gates, zone transitions | Complete |

@@ -81,6 +81,12 @@ pub const EF_DOT: u32 = 516; // category: damage-over-time (pulses)
 /// applies such an effect when the ability is learned and removes it when
 /// the ability is unlearned (pets PT-08, 4968 "Pet Summon Speed increase").
 pub const EF_ALWAYS_PERSIST: u32 = 524_288;
+/// `EF_ClearOnDeath` (`EEffectFlag` 4, a real client bit; python
+/// `AbilityManager.onDead` removes these). The stat-buff ledger takes a
+/// buff whose effect carries it off when its entity dies. No stimpack row
+/// sets it: they carry `EF_Offline_Time_Counts` (2), so they outlast a
+/// death.
+pub const EF_CLEAR_ON_DEATH: u32 = 4;
 
 // ── Timer types (sent via onTimerUpdate) ──────────────────────────────────
 

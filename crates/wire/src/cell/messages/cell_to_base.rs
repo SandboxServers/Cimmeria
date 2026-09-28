@@ -5,6 +5,7 @@ use super::black_market_cell_to_base::BlackMarketCellToBase;
 use super::chat_cell_to_base::ChatCellToBase;
 use super::content_mail_cell_to_base::ContentSystemMail;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
+use super::item_use::ConsumeItemForUse;
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
 use crate::cell::vault::VaultAccess;
@@ -870,4 +871,11 @@ pub enum CellToBaseMsg {
     /// later Black Market packets add variants in
     /// `black_market_cell_to_base.rs` instead of here.
     BlackMarket(BlackMarketCellToBase),
+
+    /// Consume one unit of a native consumable (an item whose
+    /// `items_event_sets` event-5 ability the cell applies itself) before
+    /// its effect lands. The base answers with
+    /// `BaseToCellMsg::ItemUseConsumed` only when the unit was taken. See
+    /// `item_use.rs`.
+    ConsumeItemForUse(ConsumeItemForUse),
 }

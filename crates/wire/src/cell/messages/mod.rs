@@ -23,6 +23,8 @@
 //!   action (SS-U3), carried by `CellToBaseMsg::ContentSystemMail`.
 //! - `loot_grant` — `LootGrantSource` and `GrantRefusal`, the loot-grant
 //!   round trip that returns a refused item to its corpse.
+//! - `item_use` — `ConsumeItemForUse` and `ItemUseConsumed`, the native
+//!   consumable round trip (the base consumes, then the cell applies).
 
 mod bank_base_to_cell;
 mod bank_cell_to_base;
@@ -33,6 +35,7 @@ mod chat_cell_to_base;
 mod content_mail_cell_to_base;
 mod data;
 mod duel_base_to_cell;
+mod item_use;
 mod lab;
 mod loot_grant;
 mod mail_gm_cell_to_base;
@@ -54,6 +57,7 @@ pub use data::{
     MailOp, MailSend, MailSendReject, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission,
 };
 pub use duel_base_to_cell::DuelBaseToCell;
+pub use item_use::{ConsumeItemForUse, ItemUseConsumed};
 pub use lab::{
     LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,
     LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,

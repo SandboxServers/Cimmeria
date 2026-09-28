@@ -156,6 +156,11 @@ pub(super) async fn run_cell_loop(
                 // already gone; returns at once when no pet is buffed.
                 crate::cell::abilities::owner_pet_tick(tx, &mut space_mgr).await;
 
+                // Timed stat buffs (the consumable stimpacks) run out, and
+                // the duration icons they owe go to the client. Returns at
+                // once when no entity has one.
+                crate::cell::effects::stat_buff_tick(tx, &mut space_mgr).await;
+
                 // A summoned pet's arrival VFX (PT-03), sent once its owner
                 // witnesses it. After the AoI tick, so it follows the pet's
                 // CREATE_ENTITY; returns at once when nothing is queued.

@@ -431,6 +431,13 @@ pub(super) async fn resolve_death(
 
     side_effects::send_death_sequence(target_eid, tx, space_mgr).await;
 
+    // Timed stat buffs whose effect carries `EF_ClearOnDeath` end with the
+    // death (python `AbilityManager.onDead`). The stimpacks do not carry it
+    // (their rows say `EF_Offline_Time_Counts`), so they outlast a same-world
+    // respawn, which keeps this entity; every other way out of the world
+    // rebuilds the entity and its stats from scratch.
+    crate::cell::effects::clear_stat_buffs_on_death(target_eid, tx, space_mgr).await;
+
     if grant_xp {
         side_effects::grant_kill_xp(target_eid, attacker_id, tx, space_mgr).await;
     }

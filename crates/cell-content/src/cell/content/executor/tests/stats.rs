@@ -20,8 +20,9 @@ fn make_player_with_health(mgr: &mut SpaceManager, cur: i32, max: i32) {
     mgr.connect_entity(1);
 }
 
-/// `change_stat { amount: +500 }` is the canonical heal-on-use shape
-/// (Health Slappack TC1, chain 4001). Three things must hold: HP
+/// `change_stat { amount: +500 }` is the chain-authored heal-on-use
+/// shape (the retired Health Slappack chain 4001's; the id is only a
+/// label here). Three things must hold: HP
 /// advances by exactly the delta when room is available, the change
 /// is broadcast as a single onStatUpdate carrying the new HEALTH
 /// value, and the entity's dirty state is drained so a follow-up
