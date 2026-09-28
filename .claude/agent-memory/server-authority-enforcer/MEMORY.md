@@ -66,3 +66,4 @@
 - [project_bank_vault_bv07_review.md](project_bank_vault_bv07_review.md) — BV-07 org vaults: cleared authz shape; cross-org snap-back leak; KEY SHARE-before-advisory deadlock vs vendor/trade
 - [project_bank_vault_bv08_review.md](project_bank_vault_bv08_review.md) — BV-08 org treasury transfers: cleared KEY SHARE->lock_org->guarded UPDATE shape; kick-race + recycled-eid guards added before merge
 - [project_bank_vault_bv09_review.md](project_bank_vault_bv09_review.md) — BV-09 Team vault expansion from treasury: leader-under-lock cleared; leaver + recycled-eid guards added; other-member onBagInfo open
+- [exploit_refund_not_bound_to_payment.md](exploit_refund_not_bound_to_payment.md) — CR10 respec refunded ASP per discipline held, not per ASP paid; free grant paths minted ASP (fixed: spent counter)
