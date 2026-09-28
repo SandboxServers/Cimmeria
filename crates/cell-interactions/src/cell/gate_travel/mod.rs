@@ -44,10 +44,12 @@ use super::space_manager::SpaceManager;
 use crate::cell::client_methods::gate_travel::ON_STARGATE_PASSAGE;
 
 mod address_book;
+mod dial_feedback;
 pub(crate) mod sequences;
 pub(crate) mod tick;
 
 use address_book::player_knows_stargate;
+use dial_feedback::{send_dial_refusal, DialRefusal};
 pub(crate) use sequences::world_has_stargate_region;
 pub use tick::{crossing_tick, gate_dial_tick};
 
@@ -79,11 +81,11 @@ use sequences::send_gate_sequence;
 /// CA10 path) or, on a world with no gate volume, travelled immediately —
 /// and `false` on every refusal (cancel, an address the player does not
 /// hold, unknown address, entity missing, same world, and, on the immediate
-/// path, an unrecoverable arrival or a closed base channel). The bool exists
-/// because
-/// `cimmeria_cell_console::cell::console::gm::travel` is the one dial caller with a
-/// client-visible feedback channel and used to report "dialing gate address
-/// N" unconditionally — including for dials the primitive refused.
+/// path, an unrecoverable arrival or a closed base channel). Every refusal
+/// except the cancel also tells the player why (`dial_feedback`, #727). The
+/// bool exists because `cimmeria_cell_console::cell::console::gm::travel`
+/// adds its own GM line and used to report "dialing gate address N"
+/// unconditionally — including for dials the primitive refused.
 #[tracing::instrument(
     name = "gate_travel.dial",
     level = "info",
@@ -147,8 +149,12 @@ pub async fn handle_dial_gate(
     // otherwise a player could not walk through a gate somebody else
     // opened, and the crossing would be re-authorising a decision the
     // pending-dial record already carries.
-    if !player_knows_stargate(entity_id, target_address_id, tx, space_mgr).await {
+    //
+    // Every refusal from here down also tells the player why (#727,
+    // `dial_feedback`), on the first press.
+    if let Err(refusal) = player_knows_stargate(entity_id, target_address_id, space_mgr) {
         space_mgr.cancel_gate_dial(entity_id);
+        send_dial_refusal(entity_id, target_address_id, refusal, tx).await;
         return false;
     }
 
@@ -160,8 +166,19 @@ pub async fn handle_dial_gate(
             tracing::warn!(
                 entity_id,
                 target_address_id,
+                reason = "stargate_address_not_found",
                 "onDialGate: invalid stargate address — pending dial cancelled"
             );
+            // Same refusal as the address-book gate above, byte for byte:
+            // a nonexistent address must not be distinguishable from one the
+            // player merely does not hold (existence oracle).
+            send_dial_refusal(
+                entity_id,
+                target_address_id,
+                DialRefusal::UnknownAddress,
+                tx,
+            )
+            .await;
             return false;
         }
     };
@@ -171,7 +188,13 @@ pub async fn handle_dial_gate(
         Some(w) => w,
         None => {
             space_mgr.cancel_gate_dial(entity_id);
-            tracing::warn!(entity_id, "onDialGate: entity not found");
+            tracing::warn!(
+                entity_id,
+                target_address_id,
+                reason = "dial_entity_missing",
+                "onDialGate: entity not found"
+            );
+            send_dial_refusal(entity_id, target_address_id, DialRefusal::NotInWorld, tx).await;
             return false;
         }
     };
@@ -181,8 +204,16 @@ pub async fn handle_dial_gate(
         space_mgr.cancel_gate_dial(entity_id);
         tracing::debug!(
             entity_id, target_address_id, world = %gate.world_name,
+            reason = "already_on_destination",
             "onDialGate: already in destination world — pending dial cancelled"
         );
+        send_dial_refusal(
+            entity_id,
+            target_address_id,
+            DialRefusal::AlreadyOnDestination,
+            tx,
+        )
+        .await;
         return false;
     }
 
@@ -481,6 +512,9 @@ async fn perform_gate_travel(
              Re-pin stargates.arrival_* for this gate or seed a respawner \
              for the world"
         );
+        // Both callers (the immediate fallback and `crossing_tick`) end
+        // here without a transfer, so tell the player once, from here.
+        send_dial_refusal(entity_id, target_address_id, DialRefusal::NoSafeArrival, tx).await;
         return false;
     }
 

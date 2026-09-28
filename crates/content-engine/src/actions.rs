@@ -358,9 +358,10 @@ pub enum Action {
     /// Application order in the executor: `min` / `max` (bounds), then
     /// `set_to_max` (sets `cur` to the new `max`), then `amount`
     /// (additive delta, clamped to `[min, max]`). `amount` is the
-    /// "delta" path consumables use (e.g. Health Slappack TC1: +500
-    /// HP); the bounds-modifying fields are for buffs/debuffs that
-    /// shift the cap.
+    /// "delta" path a chain-authored heal uses (the Health Slappack's
+    /// retired chain did +500 HP; items with an `items_event_sets` heal
+    /// ability now go through the native consumable path instead); the
+    /// bounds-modifying fields are for buffs/debuffs that shift the cap.
     ChangeStat {
         stat_id: i32,
         min: Option<i32>,

@@ -44,6 +44,7 @@ async fn minigame_result_victory_fires_on_victory_chains() {
             amount: Some(10),
         }],
         priority: 1,
+        once: false,
     });
 
     let (tx, mut rx) = mpsc::channel(8);
@@ -133,6 +134,7 @@ async fn assert_non_victory_result_fires_no_chains(result_code: u8) {
             amount: Some(10),
         }],
         priority: 1,
+        once: false,
     });
 
     let (tx, mut rx) = mpsc::channel(8);

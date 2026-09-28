@@ -31,8 +31,9 @@
 //! ## v1 scope (this PR)
 //!
 //! Three scripts are seeded:
-//! - [`scripts::HealFocus`] — `HealPercentage` NVP × max focus
-//! - [`scripts::HealHealth`] — `HealPercentage` NVP × max health
+//! - [`scripts::HealFocus`] — `HealPercentage` NVP × max focus, or a flat
+//!   `HealAmount` (see [`heal`])
+//! - [`scripts::HealHealth`] — the same for health
 //! - [`scripts::MeleeDamage`] — `HealthDamage` NVP through the damage
 //!   pipeline
 //!
@@ -59,10 +60,14 @@
 //! beside a re-export of this module at `cell::effects`.
 
 pub mod cover_stance;
+pub mod heal;
 pub mod passives;
 pub mod pet_scripts;
 pub mod registry;
 pub mod scripts;
+pub mod stat_buff;
+#[cfg(test)]
+mod test_fixtures;
 
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::abilities::EffectDef;

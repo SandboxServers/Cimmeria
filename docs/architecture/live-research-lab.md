@@ -111,6 +111,8 @@ Lives at `crates/client-telemetry/src/bridge/` (directory from day one: `mod.rs`
 
 A Windows-only stdio MCP server. It reuses the launcher's `launch` and `inject` modules, which move into a library target so both binaries share them. It owns the SGW.exe process handle for the whole session.
 
+**Injection goes through the i686 `sgw-start32` helper (#985).** The supervisor is 64-bit and `SGW.exe` is 32-bit. A direct injection hands the remote thread the supervisor's own `LoadLibraryW`, which does not exist in a 32-bit process, and a suspended WOW64 target has no 32-bit kernel32 mapped to resolve it from, so until #985 the supervisor's own launch path never loaded the bridge (lab evidence came from manual injection). `lab_client_start` now runs the helper, as `sgw-launcher` does since #984: `start32::run` with the bridge DLL, then `RunningProcess::open` on the pid it reports. The helper lives beside `cimmeria-lab.exe` or at `CIMMERIA_LAB_START32`; the contract is in [crates/client-launch/README.md](../../crates/client-launch/README.md).
+
 | Tool | Purpose |
 |---|---|
 | `lab_client_start` / `_stop` / `_restart` | Launch suspended, inject, resume; or terminate. Target server (local or colo) is a parameter. |

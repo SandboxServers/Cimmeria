@@ -1,9 +1,11 @@
 //! Inventory event dispatchers: `OnItemUse` (consume / use-on-self
 //! actions) and `OnItemEquipped` (item arrived in the bandolier).
 //!
-//! `fire_item_use` additionally pulls stats into the chain context so
-//! conditions like `StatBelowMax` can fizzle the use cleanly when the
-//! action would have no effect (e.g., a Health Slappack at full HP).
+//! `fire_item_use` first offers the use to the native consumable path
+//! (`consumable_use`: items whose `items_event_sets` event-5 ability is a
+//! heal or a stat buff, such as the Health Slappack); only an item that
+//! path does not own reaches the chains. It also pulls stats into the chain
+//! context so conditions like `StatBelowMax` can gate a chain on headroom.
 
 use tokio::sync::mpsc;
 
@@ -21,6 +23,11 @@ use super::super::mission_context::{
 
 /// Fire `OnItemUse` event when a player uses an inventory item.
 ///
+/// A native consumable (see `consumable_use`) is handled there and fires no
+/// chain: it is refused with feedback, or its unit is consumed and its
+/// ability applied once the base confirms. Everything else runs chains as
+/// before.
+///
 /// `item_id` is the item design id (type_id) — drives chain matching on
 /// `item_use::<type_id>`. `instance_id` is the inventory row id the
 /// player clicked — set into the context so `Action::RemoveItem` can
@@ -36,6 +43,20 @@ pub async fn fire_item_use(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    if super::super::consumable_use::try_native_use(
+        entity_id,
+        player_id,
+        instance_id,
+        item_id,
+        engine,
+        tx,
+        space_mgr,
+    )
+    .await
+    {
+        return;
+    }
+
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("item_id".to_string(), serde_json::json!(item_id));
     ctx.set_param("instance_id".to_string(), serde_json::json!(instance_id));
@@ -43,9 +64,8 @@ pub async fn fire_item_use(
     populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
-        // Stats are needed by `Condition::StatBelowMax` so chains like
-        // the Health Slappack (4001) can fizzle silently at full HP
-        // instead of burning the stack.
+        // Stats are needed by `Condition::StatBelowMax`, so a heal chain
+        // can gate on headroom instead of burning the stack at full HP.
         populate_stats_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {
             ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));

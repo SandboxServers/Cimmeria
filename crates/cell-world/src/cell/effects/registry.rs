@@ -37,6 +37,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "PetDeathTimer" => Some(&super::pet_scripts::PetDeathTimer),
         "HealPetHealth" => Some(&super::pet_scripts::HealPetHealth),
         "PetSummonSpeed" => Some(&super::pet_scripts::PetSummonSpeed),
+        // Timed primary-attribute buffs: the consumable stimpacks.
+        "StatBuff" => Some(&super::stat_buff::StatBuff),
         _ => None,
     }
 }
@@ -58,6 +60,7 @@ mod tests {
         assert!(lookup("RangedEnergyDamage").is_some());
         assert!(lookup("CoverStance").is_some());
         assert!(lookup("RemoveCoverStance").is_some());
+        assert!(lookup("StatBuff").is_some());
         for pet_script in [
             "PetStatBuff",
             "PetDeathTimer",

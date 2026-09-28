@@ -184,10 +184,17 @@ pub fn build_chains_from_rows(
         let mut trigger_list = triggers_by_chain.remove(&chain_id).unwrap_or_default();
         trigger_list.sort_by_key(|t| t.sort_order);
 
-        let triggers: Vec<Trigger> = if trigger_list.is_empty() {
-            vec![Trigger::OnCustomEvent {
-                event_name: format!("__direct_invoke_{}", chain_id),
-            }]
+        // Each trigger keeps its row's `once` flag (#802): "fire once,
+        // then disarm" is a property of the trigger row, so only the
+        // materialization it produced is once. Direct-invoke chains have
+        // no row and are never once.
+        let triggers: Vec<(Trigger, bool)> = if trigger_list.is_empty() {
+            vec![(
+                Trigger::OnCustomEvent {
+                    event_name: format!("__direct_invoke_{}", chain_id),
+                },
+                false,
+            )]
         } else {
             trigger_list
                 .iter()
@@ -200,7 +207,7 @@ pub fn build_chains_from_rows(
                             "Unknown trigger event_type, skipping this trigger row"
                         );
                     }
-                    result
+                    result.map(|trigger| (trigger, t_row.once))
                 })
                 .collect()
         };
@@ -213,7 +220,7 @@ pub fn build_chains_from_rows(
             continue;
         }
 
-        for trigger in triggers {
+        for (trigger, once) in triggers {
             chains.push(Chain {
                 id: chain_id as i64,
                 name: name.clone(),
@@ -223,6 +230,7 @@ pub fn build_chains_from_rows(
                 actions: actions.clone(),
                 action_delays: action_delays.clone(),
                 priority: row.priority,
+                once,
             });
         }
     }

@@ -117,6 +117,10 @@ async fn legacy_p26_gotoxyz_npc_move_broadcast_to_witness() {
     mgr.spawn_npc(npc, "Agnos", [6.0, 0.0, 6.0], [0.0; 3])
         .unwrap();
     mgr.get_entity_mut(gm).unwrap().current_target_id = Some(npc as i32);
+    mgr.get_entity_mut(gm)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(npc as i32));
 
     let _ = mgr.compute_aoi_changes(); // tick 1: NPC enters AoI
 
@@ -165,6 +169,10 @@ async fn legacy_p26_gotoxyz_player_target_emits_teleport_player_exact_bytes() {
     let engine = ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
     mgr.get_entity_mut(gm).unwrap().current_target_id = Some(target as i32);
+    mgr.get_entity_mut(gm)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(target as i32));
 
     exec(
         "gotoxyz",
@@ -213,6 +221,10 @@ async fn legacy_p26_gotoxyz_player_target_move_broadcast_to_witness() {
     let target = 2u32;
     player_target(&mut mgr, target, [6.0, 0.0, 6.0]);
     mgr.get_entity_mut(gm).unwrap().current_target_id = Some(target as i32);
+    mgr.get_entity_mut(gm)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(target as i32));
 
     let _ = mgr.compute_aoi_changes(); // tick 1: target enters caller's AoI
 
@@ -395,6 +407,10 @@ async fn legacy_p26_gotoxyz_cross_space_selection_falls_back_to_caller() {
     mgr.create_entity(2, "Other", [50.0, 0.0, 60.0], [0.0; 3])
         .unwrap();
     mgr.get_entity_mut(gm).unwrap().current_target_id = Some(2);
+    mgr.get_entity_mut(gm)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(2));
     let engine = ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
 
@@ -432,6 +448,10 @@ async fn legacy_p26_gotoxyz_player_target_survives_closed_channel() {
     let target = 2u32;
     player_target(&mut mgr, target, [1.0, 0.0, 1.0]);
     mgr.get_entity_mut(gm).unwrap().current_target_id = Some(target as i32);
+    mgr.get_entity_mut(gm)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(target as i32));
     let engine = ChainEngine::new();
     let (tx, rx) = mpsc::channel(16);
     drop(rx); // simulate a closed base channel

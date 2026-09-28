@@ -85,6 +85,7 @@ fn make_engine() -> ChainEngine {
         }],
         action_delays: Vec::new(),
         priority: 0,
+        once: false,
     });
     engine
 }

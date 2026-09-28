@@ -12,6 +12,10 @@
 //! This module is the server-authoritative counterpart: it skips the
 //! caster/target/hostility gates and goes straight to the effect layer.
 //!
+//! It has two callers: `cell::content::executor` (`Action::LaunchAbility`,
+//! `Action::ApplyEffect`) and `cell::content::consumable_use` (a native
+//! consumable whose unit the base has just consumed).
+//!
 //! # Reachability is the security boundary
 //!
 //! Bypassing the combat gates is only safe because nothing client-driven
@@ -25,11 +29,15 @@
 //!    a hard compile error, not a lint.
 //! 2. **The functions are `pub(super)`.** Even within the crate the only
 //!    modules that can name them are `cell::content` and its descendants
-//!    — in practice `cell::content::executor`.
-//! 3. **The ability/effect id is never client-supplied.** Both entry
-//!    points take their id from a `content_actions` seed row that was
-//!    loaded from the database at startup. No wire field reaches these
-//!    parameters.
+//!    — in practice `cell::content::executor` and
+//!    `cell::content::consumable_use`, both private too.
+//! 3. **The ability/effect id is never client-supplied.** The executor
+//!    takes its id from a `content_actions` seed row loaded at startup.
+//!    `consumable_use` takes it from `items_event_sets`, keyed by the item
+//!    design id the base read from the player's own inventory row (the
+//!    client names only an inventory instance, and the base resolves and
+//!    consumes it under lock before the cell applies anything); its target
+//!    is always the user. No wire field reaches these parameters.
 //!
 //! Do not widen any of the three. Re-exporting these functions from
 //! `cell::content`, or threading a client-supplied id into `ability_id` /
@@ -196,6 +204,12 @@ pub(super) async fn apply_effect(
                 .await;
             }
         }
+
+        // A `StatBuff` script queued a duration timer (and maybe a clear
+        // for the buff it replaced) that the synchronous script could not
+        // send. Send it now so the buff icon lands with the stat change;
+        // a no-op for every other script.
+        effects::flush_stat_buff_timers(target_id, Instant::now(), tx, space_mgr).await;
     }
 
     // Register the pulsing instance. No-ops and returns false for

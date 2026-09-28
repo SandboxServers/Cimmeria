@@ -141,6 +141,8 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 - `onRemoveItem` — Item removed
 - `onStoreOpen` / `onStoreClose` — Store UI
 
+**Consumables**: heal items and the Mark III / V / VII / X stimpacks apply their `items_event_sets` ability on use, with no chain; see [consumables.md](consumables.md).
+
 **Interface**: `SGWInventoryManager.def` — 9 properties, 13 cell methods, 6 client methods
 **Data**: 6,059 items in `db/resources/Items/`
 **RE doc**: [inventory-system.md](inventory-system.md)

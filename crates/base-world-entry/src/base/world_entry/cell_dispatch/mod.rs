@@ -204,6 +204,7 @@ pub async fn handle_cell_message(
         CellToBaseMsg::ListInventoryItems { .. }
         | CellToBaseMsg::MoveInventoryItem { .. }
         | CellToBaseMsg::RemoveInventoryItem { .. }
+        | CellToBaseMsg::ConsumeItemForUse(_)
         | CellToBaseMsg::UseInventoryItem { .. }
         | CellToBaseMsg::RemoveInventoryItemByType { .. }
         | CellToBaseMsg::RepairInventoryItem { .. }

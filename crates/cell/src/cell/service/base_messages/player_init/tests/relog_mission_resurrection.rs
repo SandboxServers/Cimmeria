@@ -46,6 +46,7 @@ async fn mis_gated_player_loaded_chain_cannot_resurrect_completed_mission() {
         conditions: vec![],
         actions: vec![Action::AcceptMission { mission_id: 622 }],
         priority: 0,
+        once: false,
     });
 
     // Relog payload: 622 completed, repeat counter at the cap.

@@ -18,7 +18,7 @@ Recurring bugs — flag in review:
 
 1. **Every `interact_tag` trigger needs a matching `set_interaction_type` action somewhere in its mission.** Without the bit, the entity has `interaction_type=0`, the client treats it as scenery, and right-clicks never reach the server. Common masks: `256` (Livewire-clickable), `32` (ring transporter), `8388608` (A-story mission available). Cookbook: `docs/content/interaction-flags.md`.
 2. **Every `op:"|"` set must have a paired `op:"~"` clear on completion**, plus a `player_loaded`-triggered restore chain so a relog mid-mission doesn't break interactivity.
-3. **Don't add `remove_item` next to a `UseInventoryItem`-driven chain.** The base service already consumes via `UseInventoryItem → ItemUsed`; a redundant `remove_item` double-consumes from any stack >1.
+3. **`useItem` consumes nothing by itself.** An `item_use` chain for a consumable must end with `remove_item` for the item it fires on; a reusable tool's chain must not. A pure heal or buff item needs no chain: it is a native consumable (`items_event_sets` event 5), and an `item_use` chain for it takes it off that path. See `docs/content/consumable-via-onitemuse-pattern.md`.
 4. **Auto-generated chains in `space_*_chains.sql` (5xxx range) often have converter bugs:** `accept_mission` emitted where `complete_mission` was meant, duplicate actions within one chain, shadow conditions. When a PR regenerates these, diff against the previous version — don't trust the converter.
 5. **`sort_order` discipline.** Adding actions to an existing chain → increment past the highest existing value. Don't reuse.
 

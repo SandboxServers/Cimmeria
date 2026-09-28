@@ -13,6 +13,11 @@ use std::path::PathBuf;
 /// Item design ids expected to be **consumed** on use — every `item_use`
 /// chain for these ids must include a `remove_item` action **targeting that
 /// same item id** in the same chain.
+///
+/// 2893 (Health Slappack TC1) has no chain today: it is a native consumable
+/// (`items_event_sets` event 5, `cell::content::consumable_use`), which
+/// consumes it without a chain. It stays listed so that a chain restored
+/// for it (which would take it off the native path) must still consume it.
 const KNOWN_CONSUMABLES: &[i32] = &[19, 2893];
 
 /// Item design ids expected to be **reused** on use — no `item_use` chain

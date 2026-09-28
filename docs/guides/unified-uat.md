@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-09-27
+last_updated: 2026-09-28
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -17,7 +17,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-09-27. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-09-28. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -43,6 +43,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Historical cellblocks](#historical-cellblocks) | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#what-the-uat-must-settle) |
 | [Ring transport](#ring-transport) | [ring-transport README, Phase 1](../analysis/ring-transport-cellblock-castle/README.md#phase-1-status) |
 | [GM console command parity](#gm-console-command-parity) | [legacy command parity README](../analysis/legacy-command-parity/README.md#validation-and-uat-gates) |
+| [Consumables](#consumables) | This section (not a campaign; the design is [consumables.md](../gameplay/consumables.md)) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -84,6 +85,7 @@ Read these before you start. None of them needs a new report.
 | K18 | **Crafting gaps known at release.** Using a Blueprint item or a Racial Paradigm Guide prints no line (the item goes and the window changes). Buying several non-stacking components in one purchase shows one stack. A queued crafting job still finishes if you walk away from the station or give the tool away. `/showracialparadigmlevels` and the client's own `/respeccraft` do nothing useful. | Record them; not new bugs. Use `.respeccraft`. | [crafting session resume, known gaps](../analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward) |
 | K19 | **The Social button on the Access bar does nothing** on a client without the client-patches overlay: the shipped client left its handler empty. | Press **O** to open the Social window (contact lists). With the overlay installed, the button opens it too. | [client-patches overlay README](../../crates/client-patches/overlay/README.md#what-changed-in-accesslua) |
 | K20 | **Castle friendlies never fight.** NPCs cannot fight each other yet, so the Op-CORE marines and Praxis Jaffa placed in Castle stand out of the guards' range and never shoot. The marines in the Front Courtyard and the Jaffa at Checkpoint Alpha face the enemy from behind cover on purpose. | Nothing. Report a friendly standing inside a fight. | [castle-population ledger, D-CP06](../analysis/castle-population/README.md#decisions) |
+| K21 | **Stealth, Energy and Disguise boosts and the antidotes have no effect yet.** Using one shows "This item has no effect yet." and keeps the item: nothing on the server reads those stats or models those conditions. | Record it; not a new bug. | [consumables.md](../gameplay/consumables.md#items-that-do-nothing-yet) |
 
 ## Common setup
 
@@ -170,7 +172,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | Session | Character | Covers | Roughly |
 |---|---|---|---|
 | 1. Arrival | New Tau'ri (Soldier, Commando, Scientist or Archaeologist) | Character creation, the intro movie (K6), Cellblock M1 (T25, T01-T07, T26), then a detour to the debug hub | 45 min |
-| 2. Hub pass | Same character, GM | Ability trees (AT-06 steps 1-7) at the Archetype Skills Trainer, bank steps 1-10 and 13-14 at the Storage Officer, mail steps 1-6 with `.mail`, pets U1-U13 and U17-U20 with `.giveability` | 60-90 min |
+| 2. Hub pass | Same character, GM | Ability trees (AT-06 steps 1-7) at the Archetype Skills Trainer, bank steps 1-10 and 13-14 at the Storage Officer, mail steps 1-6 with `.mail`, pets U1-U13 and U17-U20 with `.giveability`, consumables I1-I10 | 75-105 min |
 | 3. Tutorial run | Same character | Cellblock M2-M5 (T08-T31), dialog UI rows, NPC AI steps 1-9 in the same rooms | 60 min |
 | 4. Jaffa run | New Jaffa (Shol'va) | Cellblock archetype rows (T05/T06, T11/T12, T18/T19 Jaffa), Castle M1 as Jaffa | 60 min |
 | 5. Castle | Tau'ri from session 3 | Castle B1-B20, NPC AI steps 10-15 | 60 min |
@@ -766,6 +768,42 @@ The legacy emulator's `.`-commands, restored on Cimmeria's dev console: search, 
 **Things only a human can check:** the selected player's UI after a grant (M1-3); what an observer sees (M1-3, M2-1); the load screen on a cross-world move (M4-1).
 
 Source: [legacy command parity README, Validation and UAT gates](../analysis/legacy-command-parity/README.md#validation-and-uat-gates), its [work packets](../analysis/legacy-command-parity/work-packets.md), and [commands.md, Command families](../commands.md#command-families).
+
+## Consumables
+
+Heal items and stimpacks used from your bags: the Health Slappack, the Health and Focus Heal Consumables, and the Mark III / V / VII / X stimpacks.
+
+**Status:** Ready. Merged; nothing has been seen in a client yet. Known broken: K21.
+
+**Prerequisites:** a GM character (for `/gmgiveitem` and `/gmsethealth`). Anywhere; the Cellblock guards are handy for losing focus.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| I1 | `/gmgiveitem 2893 3`, then `/gmsethealth 100 0` | Three Health Slappacks in your bag; your health bar drops to 100. | |
+| I2 | Double-click a slappack | Health rises by 500 (or to full), and the stack shows 2. | |
+| I3 | Double-click again until you are at full health, then once more | The use at full health shows "You are already at full health." in chat, and the stack does not change. | The refusal is the expected result |
+| I4 | `/gmsethealth 100 0`, drop to one slappack, and double-click it twice as fast as you can | One heal of 500; the slappack is gone; no second heal. | The double-click guard |
+| I5 | `/gmgiveitem 6106 1` (Focus Heal Consumable); use it at full focus; then take a few shots from a hostile NPC and use it again | At full focus: "You are already at full focus." and the item stays. After the shots: focus rises by 384 (or to full) and the item goes. | |
+| I6 | `/gmgiveitem 6677 1` (Mark III Stimpack: Coordination), open the character window, use the stimpack | Coordination rises by 5. A buff icon appears with about 60 minutes on it. The item goes. Health is unchanged. | Which icon the client draws is unverified |
+| I7 | `/gmgiveitem 6697 1` (Mark V Coordination/Engagement) and use it | Coordination is now 7 above its base, not 12; Engagement is 3 above. The Mark III icon is replaced by the Mark V one. | One buff per attribute, by design |
+| I8 | `/gmgiveitem 6679 1` (Mark III Fortitude) and use it | Fortitude rises by 5, and the Coordination and Engagement buffs are still there. | Different attributes add up |
+| I9 | Die and respawn in the same zone; then relog | After the respawn the buffs are still on (the attributes stay raised). After the relog every attribute is back at its base and no buff icon shows. | The buff is not saved across a relog, zone change or gate trip (known limit). Note whether the icons survived the respawn |
+| I10 | `/gmgiveitem 1893 1` (Opheltes's Injection, a mission item) and use it with focus below full | Nothing heals; the item stays. | Mission items must never heal |
+| I10b | `/gmgiveitem 6206 1` (Stealth Boost Consumable) and use it | Chat shows "This item has no effect yet."; the item stays. | K21: expected |
+| I11 | Wait out a stimpack's full hour (optional, long) | When the hour ends the attribute drops back and the icon goes. | |
+
+**SigNoz** (base `service.name = 'cimmeria-server'`):
+
+| Question | Filter |
+|---|---|
+| Every item use and refusal of a player | `event IN ('consumable_used','consumable_refused','consumable_skipped','consumable_apply_skipped') AND player_id = <id>` |
+| Why a use was refused (I3, I5, I10b) | `event = 'consumable_refused' AND player_id = <id>`: `reason` is `already_at_max` (with `stat_cur` and `stat_max`), `dead` or `consumable_not_implemented` |
+| Did the base take a unit (I4) | `event IN ('consumable_consumed','consumable_consume_refused') AND player_id = <id>` |
+| Stimpack buffs applied, replaced and expired (I6-I9, I11) | `scope_name = 'abilities' AND event IN ('stat_buff_applied','stat_buff_removed') AND player_id = <id>`; `stat_buff_removed` carries `reason` = `replaced`, `expired`, `removed` or `died` |
+
+**Things only a human can check:** the chat lines (I3, I5); the buff icon and its countdown (I6, I7, I9, I11); the attribute values in the character window (I6-I9).
+
+Source: this section; background in [consumables.md](../gameplay/consumables.md).
 
 ## Recording results
 

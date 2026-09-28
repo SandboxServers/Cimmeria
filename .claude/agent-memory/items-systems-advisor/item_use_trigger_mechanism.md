@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **Superseded in part 2026-09-28:** event_id 5 is now LIVE for native consumables (heals, stimpacks): they need no chain, and chain 4001 (Health Slappack) is retired. See [[native_consumables_and_stat_buffs]]. The chain mechanism below is unchanged for mission items.
+
 Confirmed 2026-09-17 during a Harset zone evidence pass (READ-ONLY, no code changed). **CORRECTED 2026-09-18** — the blanket claim below ("nothing reads this table") was WRONG for event_id 6/7. See [[items_event_sets_dual_purpose]] for the full picture: this table has two independent consumers keyed on different `event_id` values, and only the USE_ABILITY (5) path is dead. Melee (6) and ranged (7) are live and load-bearing for every weapon's auto-attack.
 
 **`items_event_sets` (item_id, ability_id, event_id) event_id=5 (EVENT_ITEM_USE_ABILITY) is not consulted by the UseInventoryItem→content-chain path** — that path uses `content_triggers(item_use, <item_id>)` instead, described below. This narrower claim is still correct; the table-wide claim in the original version of this note was not.

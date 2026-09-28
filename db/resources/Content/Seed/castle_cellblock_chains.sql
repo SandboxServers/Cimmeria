@@ -2665,15 +2665,15 @@ VALUES (1175, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
 -- already visible in shipped content. Changing to the nameplate spelling is
 -- a three-row edit if that is preferred.
 --
--- FIRE-ONCE (important, and NOT what the column name suggests).
--- `content_triggers.once` is DEAD in this engine: the loader reads it into
--- `DbTriggerRow.once` (crates/content-engine/src/loader/mod.rs:64,
--- cell/content/engine_loader.rs:79) and `convert_trigger` never looks at it
--- again -- `Chain` has no such field and `ChainEngine` keeps no firing
--- history. So `once = true` on chains 1008 and 1044 is inert, and these
--- three rows say `false` to avoid encoding a guarantee the engine does not
--- provide. "At most once per mission run" is therefore carried entirely by
--- each chain's mission/step gate; each comment below says exactly which
+-- FIRE-ONCE (important: narrower than the column name suggests).
+-- Since #802 `content_triggers.once` is enforced, but only once per player
+-- per cell-entity lifetime: the fired-once set lives in memory on the
+-- player's cell entity (`CellEntity::fired_once_chains`), so a once-chain
+-- re-arms on relog and on every new space visit -- the lifetime of the 2009
+-- per-player level script. Chains 1008 and 1044 carry `once = true` and
+-- rely on it. These three rows stay `false`: "at most once per mission run"
+-- must survive a relog, which only a mission/step gate gives, so it is
+-- carried by each chain's gate; each comment below says exactly which
 -- co-firing chain closes that gate.
 --
 -- The `counter` condition is NOT usable as a tightener here.
@@ -2789,10 +2789,11 @@ VALUES (1176, 'npc_bark', NULL, NULL,
 -- post-mutation context and correctly refuses it
 -- (event_dispatch/step_activation/mod.rs). Known and accepted exposure: a
 -- player who backs out of Region3 and charges back in BEFORE killing a
--- guard hears the line again. The engine has no fire-once primitive (see
--- FIRE-ONCE above) and every `enter_region` chain in this file carries the
--- same exposure; for a combat callout a repeat on a re-entry is the
--- least-bad failure mode.
+-- guard hears the line again. `once = true` would close that for one space
+-- visit (see FIRE-ONCE above), but flipping it is a content decision these
+-- rows have not taken; every gate-only `enter_region` chain in this file
+-- carries the same exposure, and for a combat callout a repeat on a
+-- re-entry is the least-bad failure mode.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1177, 'DU-07 - Mess Hall entry: Marsh barks the long-table flank cue (5019/96352)', 'mission', 681, true, 0);
 

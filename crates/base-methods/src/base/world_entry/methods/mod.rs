@@ -16,7 +16,7 @@ pub mod world_entry_db;
 
 // Re-export all public functions for backward compatibility
 pub use inventory::{
-    handle_grant_item, handle_loot_grant, handle_move_inventory_item,
+    handle_consume_item_for_use, handle_grant_item, handle_loot_grant, handle_move_inventory_item,
     handle_move_inventory_item_with_vault, handle_org_vault_expand, handle_org_vault_open,
     handle_remove_inventory_item, handle_remove_inventory_item_by_type, handle_use_inventory_item,
     send_full_inventory_resync, OrgVaultExpandRequest, OrgVaultIo, OrgVaultOpenRequest,

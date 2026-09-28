@@ -202,7 +202,8 @@ async fn live_db_chain_6101_binds_petbe_and_grants_exactly_three_scarabs() {
 
 /// Adjacent negative: the bind/grant must not resolve for a mission that
 /// is not active. Guards the campaign rule that every grant chain gates
-/// on mission state rather than on the dead `content_triggers.once`.
+/// on mission state rather than on `content_triggers.once`, which only
+/// lasts one space visit (#802).
 #[tokio::test]
 async fn live_db_chain_6101_does_not_resolve_when_742_is_not_active() {
     let pool = require_db_or_skip!();
@@ -271,8 +272,8 @@ async fn live_db_chain_6102_grants_the_disguise_then_unbinds_petbe_then_advances
     );
 }
 
-/// The one-shot guard. `content_triggers.once` is dead code, so the only
-/// thing stopping a second trip through Petbe's dialog from handing out
+/// The one-shot guard. The chain is `once = false` (and `once` would re-arm
+/// on relog, #802), so the only thing stopping a second trip through Petbe's dialog from handing out
 /// a second disguise is the `step_status 2502 eq active` condition that
 /// the chain's own `advance_step` closes.
 #[tokio::test]
@@ -286,7 +287,7 @@ async fn live_db_chain_6102_cannot_grant_a_second_disguise_after_it_advances() {
         assert!(
             actions_of(&resolved, 6102).is_empty(),
             "chain 6102 must not re-resolve with step 2502 {status} — \
-             `once` is not enforced, the step gate is the whole guard"
+             the chain is not `once`, the step gate is the whole guard"
         );
     }
 }
@@ -446,7 +447,7 @@ async fn live_db_each_basket_completes_its_own_objective_and_consumes_one_scarab
 }
 
 /// The spam-drain guard. Nothing stops a player right-clicking one
-/// basket repeatedly — `once` is dead — so the per-basket
+/// basket repeatedly — the chain is not `once` — so the per-basket
 /// `objective_status <own> eq active` condition is what prevents a
 /// single basket from draining all three Scarabs while the other two
 /// stay unplanted. Reverting that condition to the shared

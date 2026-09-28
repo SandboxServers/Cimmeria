@@ -221,6 +221,7 @@ fn chain(id: i64, region_key: &str, conditions: Vec<Condition>, actions: Vec<Act
         actions,
         action_delays: Vec::new(),
         priority: 0,
+        once: false,
     }
 }
 

@@ -1,6 +1,10 @@
 //! `handle_remove_inventory_item` — remove a specific inventory instance
 //! by `item_id` (instance id from the wire), with optional partial
 //! decrement when `quantity < stack_size`.
+//!
+//! [`remove_instance`] is the body, shared with the native consumable's
+//! consume ([`super::consume_for_use`]), which also needs to know whether
+//! the unit was really taken and to hold the row to one design id.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -40,11 +44,65 @@ pub async fn handle_remove_inventory_item(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    let _ = remove_instance(
+        RemoveInstance {
+            entity_id,
+            player_id,
+            item_id,
+            quantity,
+            notify_gm,
+            vault,
+            expected_type_id: None,
+            op: AccessOp::Remove,
+        },
+        db_pool,
+        cell_tx,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+}
+
+/// One instance removal, as [`remove_instance`] takes it.
+pub(super) struct RemoveInstance {
+    pub(super) entity_id: u32,
+    pub(super) player_id: i32,
+    /// The inventory instance (`sgw_inventory.item_id`).
+    pub(super) item_id: i32,
+    pub(super) quantity: i32,
+    pub(super) notify_gm: bool,
+    pub(super) vault: VaultAccess,
+    /// Remove only a row of this design id; any other type is "not found".
+    pub(super) expected_type_id: Option<i32>,
+    /// The operation an inaccessible container refuses, for its feedback.
+    pub(super) op: AccessOp,
+}
+
+/// The removal body. Returns `true` only when the removal committed.
+pub(super) async fn remove_instance(
+    req: RemoveInstance,
+    db_pool: &Option<Arc<PgPool>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> bool {
+    let RemoveInstance {
+        entity_id,
+        player_id,
+        item_id,
+        quantity,
+        notify_gm,
+        vault,
+        expected_type_id,
+        op,
+    } = req;
     let pool = match db_pool {
         Some(p) => p,
         None => {
             tracing::debug!(player_id, item_id, "RemoveInventoryItem: no DB pool");
-            return;
+            return false;
         }
     };
 
@@ -55,7 +113,7 @@ pub async fn handle_remove_inventory_item(
             quantity,
             "RemoveInventoryItem: invalid quantity"
         );
-        return;
+        return false;
     }
 
     let mut tx = match pool.begin().await {
@@ -66,16 +124,19 @@ pub async fn handle_remove_inventory_item(
                 item_id,
                 "RemoveInventoryItem: begin tx failed: {e}"
             );
-            return;
+            return false;
         }
     };
 
     let source = match sqlx::query_as::<_, InventoryInstanceRow>(
         "SELECT stack_size, container_id \
-         FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1 FOR UPDATE",
+         FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 \
+           AND ($3::int IS NULL OR type_id = $3) \
+         LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)
     .bind(item_id)
+    .bind(expected_type_id)
     .fetch_optional(&mut *tx)
     .await
     {
@@ -87,7 +148,7 @@ pub async fn handle_remove_inventory_item(
                 item_id,
                 "RemoveInventoryItem: source query failed: {e}"
             );
-            return;
+            return false;
         }
     };
 
@@ -96,9 +157,10 @@ pub async fn handle_remove_inventory_item(
         tracing::warn!(
             player_id,
             item_id,
-            "RemoveInventoryItem: source item not found"
+            expected_type_id,
+            "RemoveInventoryItem: source item not found (or not of the expected type)"
         );
-        return;
+        return false;
     };
 
     // Only an item the player can reach may be removed (BV-03): not one in
@@ -107,7 +169,7 @@ pub async fn handle_remove_inventory_item(
     if !player_accessible(source.container_id, &vault) {
         let _ = tx.rollback().await;
         refuse_inaccessible(
-            AccessOp::Remove,
+            op,
             entity_id,
             player_id,
             item_id,
@@ -119,7 +181,7 @@ pub async fn handle_remove_inventory_item(
             entity_to_addr,
         )
         .await;
-        return;
+        return false;
     }
 
     let removed_all = quantity >= source.stack_size;
@@ -156,7 +218,7 @@ pub async fn handle_remove_inventory_item(
                 expected = 1,
                 "RemoveInventoryItem: no rows changed -- item missing or stack underflow"
             );
-            return;
+            return false;
         }
         Err(e) => {
             let _ = tx.rollback().await;
@@ -165,7 +227,7 @@ pub async fn handle_remove_inventory_item(
                 item_id,
                 "RemoveInventoryItem: update failed: {e}"
             );
-            return;
+            return false;
         }
     }
 
@@ -188,7 +250,7 @@ pub async fn handle_remove_inventory_item(
                     item_id,
                     "RemoveInventoryItem: outbox enqueue failed, aborting: {e}"
                 );
-                return;
+                return false;
             }
         }
     } else {
@@ -201,7 +263,7 @@ pub async fn handle_remove_inventory_item(
             item_id,
             "RemoveInventoryItem: commit failed: {e}"
         );
-        return;
+        return false;
     }
 
     if removed_all {
@@ -264,4 +326,6 @@ pub async fn handle_remove_inventory_item(
         )
         .await;
     }
+
+    true
 }

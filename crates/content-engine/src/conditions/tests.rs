@@ -172,9 +172,10 @@ fn counter_gte() {
 }
 
 /// `Condition::StatBelowMax` — pin the headroom semantics that gate
-/// consumable chains. Slappack chain 4001 (`stat_below_max stat_id 7`)
-/// relies on three branches: cur < max → fire (heal lands), cur == max
-/// → no-op (chain doesn't fire, stack preserved), and missing populator
+/// chain-authored consumables (`stat_below_max stat_id 7`, the shape the
+/// retired slappack chain 4001 used) on three branches: cur < max →
+/// fire (heal lands), cur == max → no-op (chain doesn't fire, stack
+/// preserved), and missing populator
 /// → fail-closed (treat as "no headroom" so a wiring mistake doesn't
 /// silently make consumables free at full stat).
 #[test]

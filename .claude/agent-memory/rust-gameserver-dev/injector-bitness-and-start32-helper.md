@@ -32,6 +32,13 @@ one stable path `<launcher dir>/sgw-start32.exe` (never %TEMP%, for AV exclusion
   it (non-vacuous), skip locally.
 - `cimmeria-lab` (64-bit) and the telemetry DLL launch should call the same helper;
   tracked in issue #985 (the lab bridge was never injected by the supervisor).
+  Fixed 2026-09-28: `cimmeria-lab` `process::launch` runs the helper
+  (`CIMMERIA_LAB_START32`, else beside the exe). A real-process test needs a
+  target that stays up long enough for `RunningProcess::open`: a copied
+  SysWOW64 exe without its `en-US\<name>.mui` exits at once (OpenProcess
+  error 87); `winver.exe` + its MUI copied as `SGW.exe.mui` works. The old
+  same-bitness path leaves the target SUSPENDED on failure: kill it after a
+  revert proof.
 - A 32-bit exe whose name contains patch/setup/install/update trips UAC installer
   detection (os error 740); the helper name avoids them and embeds `asInvoker`.
 

@@ -300,6 +300,19 @@ impl SpaceManager {
 
             // Update the witness set
             if let Some(entity) = space.entities.get_mut(&player_id) {
+                // #844: a target that just left view is no longer selectable.
+                // Only on the transition, so a self-target (never in the
+                // witness set) is left alone.
+                if let Some(t) = entity.current_target_id.and_then(|t| u32::try_from(t).ok()) {
+                    if previous_aoi.contains(&t) && !current_aoi.contains(&t) {
+                        super::target_lifetime::drop_target_if(
+                            player_id,
+                            entity,
+                            t,
+                            "target_left_aoi",
+                        );
+                    }
+                }
                 entity.witnesses = current_aoi.iter().map(|&id| EntityId(id as i32)).collect();
             }
         }

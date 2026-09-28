@@ -8,13 +8,18 @@
 //! every `crate::cell::effects::X` path compiles unchanged.
 //!
 //! [`pulsing`] — the async DoT/HoT/channel scheduler — is combat and stays
-//! here.
+//! here, beside [`stat_buffs`], the async half of the stat-buff ledger
+//! (expiry, duration timers, the death strip).
 
 pub use cimmeria_cell_world::cell::effects::*;
 
 pub mod pulsing;
+pub mod stat_buffs;
 
 pub use pulsing::{
     cancel_channels_for_invoker_ability, cancel_channels_from_attacker,
     channel_interrupt_on_movement_tick, effect_pulse_tick, register_active_effect,
+};
+pub use stat_buffs::{
+    clear_stat_buffs_on_death, flush_stat_buff_timers, stat_buff_tick, stat_buff_tick_at,
 };

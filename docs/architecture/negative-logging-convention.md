@@ -498,6 +498,26 @@ cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
 exact step, which nothing can inject; the commit classification itself is
 unit-tested (`persist::tests`).
 
+## Native consumable seams (decision 28)
+
+A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`; the use rows also `type_id` and, when known, `instance_id` and `ability_id`.
+
+| `event` | Level | `reason` | Extra fields |
+|---|---|---|---|
+| `consumable_refused` | INFO | `already_at_max`, `dead` | `stat_id`, `stat_cur`, `stat_max` (at max). The player also gets `onErrorCode` and a chat line |
+| `consumable_refused` | WARN | `consumable_not_implemented` | `item_id` (the instance), `cause` (why the ability is not native). A bag consumable (`{1,17}`) with no chain whose effect is not implemented; the player gets the chat line only. Mission items and the 597 filler never log it |
+| `consumable_skipped` | DEBUG | `placeholder_ability` (the 597 filler), `effect_not_native`, `no_ability_def`, `no_effects` | chains decide the use |
+| `consumable_skipped` | INFO | `chain_owns_item` | an `item_use` chain owns the item |
+| `consumable_skipped` | WARN | `no_instance_id` | an `ItemUsed` without an instance; nothing consumed |
+| `consumable_consume_send_failed` | ERROR | `cell_to_base_closed` | `error` |
+| `consumable_feedback_send_failed` | WARN | `cell_to_base_closed` | `method_index`: the refusal could not be shown |
+| `consumable_consume_refused` (base) | INFO | `not_removed` | `remove_instance` logged the cause (row gone, another type, inaccessible container) |
+| `consumable_apply_send_failed` (base) | ERROR | `cell_channel_closed` | a consumed unit whose effect is lost |
+| `consumable_apply_skipped` | WARN | `entity_gone`, `no_native_plan`, `dead_at_apply` | a consumed unit whose effect was not applied |
+| `stat_buff_skipped` | WARN | `no_stat_nvps`, `no_duration`, `target_missing`, `stat_missing` | `effect_id`, `stat_id`: a seed defect |
+
+The success rows are `consumable_used` (INFO, before and after HEALTH and FOCUS), `consumable_consumed` (base, DEBUG), and `stat_buff_applied` / `stat_buff_removed` (INFO, `reason` = `expired`, `replaced`, `removed` or `died`, with `stat_before` / `stat_after`). `LogCapture` guards: `the_refusal_logs_reason_already_at_max`, `the_not_implemented_refusal_logs_its_reason` and `a_user_who_died_before_the_consume_landed_is_not_healed` in `cell/content/consumable_use_tests.rs`, and the `no_stat_nvps`, `no_duration` and `replaced` rows in `cell-world`'s `effects/stat_buff/tests.rs`.
+
 ## Disconnect-teardown `DisconnectEntity` seam (issue #999)
 
 `destroy_client_entities` (`crates/base-session/src/base/helpers/mod.rs`) used
