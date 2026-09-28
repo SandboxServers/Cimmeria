@@ -74,7 +74,7 @@ pub use regions::region_contains_xz;
 // The client's own region hit test, for the friction watcher's
 // `region_dwell_no_hint` candidates.
 pub use regions::client_would_hint_region;
-pub use respawners::{load_respawners, RespawnerDef};
+pub use respawners::{load_respawners, offered_in_world, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;
 // The `entity_templates` SELECT + row mapper, shared between the cell's

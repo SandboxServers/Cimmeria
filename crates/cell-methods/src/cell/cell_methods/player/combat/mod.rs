@@ -34,6 +34,12 @@ pub async fn dispatch(
         CALL_FOR_AID => {
             if args.len() >= 4 {
                 let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                // Gate before the respawn is recorded anywhere, so a refused
+                // call never shows up as a respawn in the friction or journal
+                // rows.
+                if respawn_refusal(entity_id, "callForAid", Some(respawner_id), space_mgr) {
+                    return true;
+                }
                 tracing::info!(entity_id, respawner_id, "callForAid");
                 crate::cell::playtest_friction::respawned(entity_id);
                 crate::cell::player_journal::note(
@@ -139,6 +145,9 @@ pub async fn dispatch(
         }
 
         RESPAWN => {
+            if respawn_refusal(entity_id, "respawn", None, space_mgr) {
+                return true;
+            }
             tracing::debug!(entity_id, "respawn (auto)");
             respawn::handle_respawn(entity_id, -1, tx, space_mgr).await;
             true
@@ -158,4 +167,85 @@ pub async fn dispatch(
 
         _ => false,
     }
+}
+
+/// The server-side gates on the two player respawn entry points,
+/// `callForAid` (67) and `respawn` (70). Returns `true` when the call is
+/// refused; the caller then returns without touching the entity.
+///
+/// `handle_respawn` heals to full, clears every state flag and cooldown,
+/// drops threat and moves the player, and on a foreign-world respawner it
+/// destroys the entity and sends `GateTravel`. So the arm checks, from
+/// server state only:
+///
+/// 1. The caller is dead (`BSF_DEAD`, set by the death path before the
+///    Defeat Window opens and cleared by the respawn). HP is not the
+///    authority: a corpse can hold positive HP. An unmodified client sends
+///    either method only from the Defeat Window, so a living caller is a
+///    forged packet, or the benign race where Release and the timer expiry
+///    both fire and the first one already revived the player.
+///    When `unstuck` is implemented, this widens to "dead OR a
+///    server-recorded pending unstuck aid-wait", never to a wire flag.
+/// 2. For `callForAid`, a positive `respawner_id` is one the Defeat Window
+///    offered, per `spawner::offered_in_world` (the same predicate
+///    `send_begin_aid_wait` builds the list from). Ids `<= 0` are the
+///    server's own world-default fallback, and 0 is the synthetic
+///    "Respawn Point" entry, so they are always accepted.
+///
+/// A refusal sends the client nothing: a living caller has no UI to
+/// update, and a dead caller keeps the Defeat Window open to pick again.
+/// It logs at DEBUG, because the client controls the input and could flood
+/// a WARN index (negative-logging convention, client-input refusals).
+///
+/// A missing entity is not refused here: `handle_respawn`'s own not-found
+/// warn stays the single seam for it.
+fn respawn_refusal(
+    entity_id: u32,
+    method: &'static str,
+    respawner_id: Option<i32>,
+    space_mgr: &SpaceManager,
+) -> bool {
+    let Some(e) = space_mgr.get_entity(entity_id) else {
+        return false;
+    };
+    let id = e.identity();
+    if !crate::cell::combat::is_dead_state(e.state_field) {
+        tracing::debug!(
+            target: "player.respawn",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            respawner_id = respawner_id.unwrap_or(-1),
+            method,
+            state_field = e.state_field,
+            reason = "respawn_not_dead",
+            "respawn request from a living player -- refused (no heal, no move); \
+             only a dead player's Defeat Window may call for aid or respawn"
+        );
+        return true;
+    }
+    let Some(respawner_id) = respawner_id.filter(|&r| r > 0) else {
+        return false;
+    };
+    let world = space_mgr.get_entity_world_name(entity_id);
+    let offered = world.as_deref().is_some_and(|w| {
+        crate::cell::spawner::offered_in_world(&space_mgr.respawners, w)
+            .any(|r| r.respawner_id == respawner_id)
+    });
+    if !offered {
+        tracing::debug!(
+            target: "player.respawn",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            respawner_id,
+            method,
+            world = ?world,
+            reason = "respawner_not_offered",
+            "callForAid for a respawner the Defeat Window did not offer -- refused; \
+             the player stays dead with the Defeat Window open"
+        );
+        return true;
+    }
+    false
 }
