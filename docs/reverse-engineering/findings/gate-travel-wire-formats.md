@@ -1,11 +1,11 @@
 # Gate Travel Wire Formats
 
 > **Date**: 2026-03-01
-> **Last updated**: 2026-09-19 (`onDHDReply` static audit only)
+> **Last updated**: 2026-09-28 (#1024: `onDHDReply` render target resolved — not the DHD window)
 > **Type**: Reference
 > **Audience**: Engineers implementing gate-travel messages
-> **Phase**: 3 — Missing Systems RE
-> **Confidence**: HIGH for the existing gate-travel findings; MEDIUM for the declaration-derived `onDHDReply` signature (binary payload and live-client UI unverified)
+> **Phase**: 3 — Missing Systems RE; #1024 follow-up
+> **Confidence**: HIGH for the existing gate-travel findings; HIGH for `onDHDReply`'s render target (Communicator chat cluster, static RE); MEDIUM for the declaration-derived `onDHDReply` byte layout (binary payload offsets and live-client capture unverified)
 > **Sources**: `GateTravel.def`, `alias.xml`, Ghidra decompilation of universal RPC dispatcher (`0x00c6fc40`)
 
 ---
@@ -47,9 +47,9 @@ Declared directly in [SGWPlayer.def](../../../entities/defs/SGWPlayer.def), `Cli
 |---|---|---|
 | `aMessage` | `WSTRING` | The method's only `<Arg>` in `SGWPlayer.def` |
 
-**Confidence: MEDIUM for the payload signature.** This is declaration evidence, not a binary-verified byte layout. No method-specific length prefix, payload offset, or total wire size is established by this audit. The recorded MemberCallback RTTI associates `Event_NetIn_onDHDReply` with VCommunicator [SGW 0x00cf5440]; `onDisplayDHD` has a separate VGateTravel subscriber [SGW 0x00e2fd90]. Neither observation proves that an NPC entity ID selects the handler or that text appears in a particular chat/dialog widget.
+**Confidence: MEDIUM for the exact byte layout, HIGH for the render target.** No method-specific length prefix, payload offset, or total wire size is established beyond the single `WSTRING`. The recorded MemberCallback RTTI associates `Event_NetIn_onDHDReply` with VCommunicator [SGW 0x00cf5440]; `onDisplayDHD` has a separate VGateTravel subscriber [SGW 0x00e2fd90]. **#1024 (2026-09-28)** resolved what the VCommunicator subscriber means: `0x00cf5440` sits inside a dense chat/system-communication `MemberCallback` accessor cluster (`onSystemCommunication`, `onTellSent`, `onChatJoined/Left`, `onNickChanged`, …), and the uncooked DHD CEGUI Lua (`Content/UI/Core/DHD/DHD.lua`) has no text widget at all — it only shows/hides a frame around an external Scaleform movie. `onDHDReply` therefore renders through the client's chat/communication component, not a DHD-window popup. Full evidence chain: [stargate-dhd-state-machine.md § render-target resolution](stargate-dhd-state-machine.md#ondhdreply-render-target-resolution-1024-2026-09-28).
 
-**Rust status (2026-09-19):** `ON_DHD_REPLY = 100` is declared, and wire-log `decode_100` reads `aMessage` with `wstring()`, but no production Rust emitter was found. See the [DHD declaration and call-site audit](stargate-dhd-state-machine.md#ondhdreply-declaration-and-rust-audit) for source links and verification limits. A decoder and a constant alone do not implement feedback on attempted DHD use.
+**Rust status (2026-09-28):** `ON_DHD_REPLY = 100` is declared, and wire-log `decode_100` reads `aMessage` with `wstring()`, but no production Rust emitter exists, and #1024 decided none should be added: `onDHDReply` renders through the same chat pipeline as the `onPlayerCommunication` line [`dial_feedback`](../../../crates/cell-interactions/src/cell/gate_travel/dial_feedback.rs) already sends on every refused dial, with a less specific payload (one bare `WSTRING`, no channel/speaker). See the [DHD declaration and call-site audit](stargate-dhd-state-machine.md#ondhdreply-declaration-and-rust-audit) for source links and verification limits.
 
 ### `setupStargateInfo` — Initialize Gate Address Lists
 

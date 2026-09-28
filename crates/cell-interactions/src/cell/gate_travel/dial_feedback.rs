@@ -9,12 +9,21 @@
 //! one-player refusal in the cell uses (pets, org registrar, bank, duel).
 //!
 //! Not `onDHDReply` (SGWPlayer client method 100, `WSTRING aMessage`), even
-//! though the `.def` declares it for exactly this. Its only recorded
-//! subscriber is VCommunicator, and neither its payload decode nor where (or
-//! whether) it renders has been verified in a live client
+//! though the `.def` declares it for exactly this. #1024 traced its
+//! recorded subscriber, VCommunicator, to the same `Communicator` chat/
+//! system-communication component that renders `onPlayerCommunication`
+//! itself — `onDHDReply`'s RTTI accessor sits inside a dense cluster of
+//! `Communicator` chat-event accessors (`onSystemCommunication`,
+//! `onTellSent`, `onChatJoined`/`onChatLeft`, `onNickChanged`, …), and the
+//! DHD window's own CEGUI Lua (`Content/UI/Core/DHD/DHD.lua`) has no text
+//! widget at all — it only shows/hides a frame around an external Scaleform
+//! movie. So `onDHDReply` is not a DHD-window message, and switching to it
+//! would trade this verified, byte-exact line for an unverified one that
+//! appears to land in the same chat-adjacent place, with a less specific
+//! payload (one bare `WSTRING`, no channel or speaker)
 //! (`docs/reverse-engineering/findings/stargate-dhd-state-machine.md`
-//! §"onDHDReply Declaration and Rust Audit"). A message we cannot show
-//! renders is the silence this module exists to end.
+//! §"onDHDReply render-target resolution (#1024, 2026-09-28)"). Kept unused
+//! on purpose.
 //!
 //! Not the 2009 shape verbatim either. `SGWPlayer.onError`
 //! (`deprecated/python/cell/SGWPlayer.py:879-884`) sent
