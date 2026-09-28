@@ -14,7 +14,7 @@ use super::{
 use crate::config::{ledger_path, LOG_UPLOAD_SAS_URL};
 use crate::install::Progress;
 use crate::launch::install_dir_writable;
-use crate::worker::Command;
+use crate::worker::{Command, LaunchSgwRequest};
 
 impl eframe::App for LauncherApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -299,7 +299,20 @@ impl LauncherApp {
                 .add_enabled(opts.sgw_present, egui::Button::new("Launch SGW.exe"))
                 .clicked()
             {
-                self.worker.dispatch(Command::LaunchSgw(dir.clone()));
+                // Telemetry follows the game only when the player opted
+                // in and the identity loaded; the client patches are
+                // independent of both.
+                let telemetry = match &self.identity {
+                    Some(id) if self.config.telemetry.enabled => {
+                        Some(build_telemetry_config(&self.config, id))
+                    }
+                    _ => None,
+                };
+                self.worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+                    install_dir: dir.clone(),
+                    client_patches: self.config.client_patches.clone(),
+                    telemetry,
+                }));
             }
             if ui
                 .add_enabled(
@@ -339,6 +352,7 @@ impl LauncherApp {
                     .dispatch(Command::LaunchAteraFixAslr(dir.clone()));
             }
         });
+        self.show_client_patches_toggle(ui);
         if !opts.atera_available() {
             ui.label(
                 egui::RichText::new(
@@ -348,6 +362,33 @@ impl LauncherApp {
                 .small()
                 .italics(),
             );
+        }
+    }
+
+    /// The client-patches opt-out. Saved as soon as it changes, so the
+    /// next launch honours it without a separate Save click.
+    fn show_client_patches_toggle(&mut self, ui: &mut egui::Ui) {
+        let changed = ui
+            .checkbox(
+                &mut self.config.client_patches.enabled,
+                "Load client patches (restores the Black Market window)",
+            )
+            .on_hover_text(
+                "Injects cimmeria-client-patches.dll into SGW.exe on \"Launch SGW.exe\".                  Independent of telemetry. Atera debug launches never load it.",
+            )
+            .changed();
+        if changed {
+            let state = if self.config.client_patches.enabled {
+                "on"
+            } else {
+                "off"
+            };
+            match self.config.save(&self.config_path) {
+                Ok(_) => self.push_status(format!("Client patches {state} for the next launch.")),
+                Err(e) => {
+                    self.push_status(format!("Client patches {state}, but saving failed: {e}"))
+                }
+            }
         }
     }
 

@@ -80,6 +80,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "client-hookgate",
         "library linked into the two SGW.exe DLLs; no `tracing`, logs through their local log files",
     ),
+    (
+        "start32",
+        "i686 launcher helper; runs beside SGW.exe, never inside the server; it prints one stdout line to the launcher and emits no tracing events",
+    ),
     ("lab", "the research-lab supervisor process"),
     ("supervisor", "the process supervisor"),
     ("navmesh-extractor", "offline build tool"),

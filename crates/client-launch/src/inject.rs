@@ -29,6 +29,10 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
+// The process lifecycle moved to `crate::process`; re-exported so
+// `inject::create_process_suspended` and friends keep resolving.
+pub use crate::process::*;
+
 #[derive(Debug, Error)]
 pub enum InjectError {
     #[error("DLL not found on disk: {0}")]
@@ -45,6 +49,32 @@ pub enum InjectError {
     #[cfg(windows)]
     #[error("LoadLibraryW returned NULL in the target process (DLL failed to load or DllMain returned FALSE)")]
     RemoteLoadFailed,
+    /// The injector and the target differ in bitness. `inject_dll`
+    /// passes the injector's own `LoadLibraryW` address to the target,
+    /// which is only valid when both run the same kernel32: a 64-bit
+    /// injector's address is not the 32-bit (WOW64) `SGW.exe`'s
+    /// `LoadLibraryW`, and the remote call fails as a bare
+    /// `RemoteLoadFailed` that does not say why. Refused before any
+    /// remote call.
+    #[error(
+        "the injector is {injector_bits}-bit but the target process is {target_bits}-bit; \
+         DLL injection into SGW.exe needs a 32-bit (i686) launcher build"
+    )]
+    BitnessMismatch {
+        injector_bits: u32,
+        target_bits: u32,
+    },
+}
+
+/// Whether an injector can NOT hand its own `LoadLibraryW` address to the
+/// target: true when they differ in bitness. `injector_32` is this
+/// build's pointer width, `os_64` whether Windows itself is 64-bit, and
+/// `target_wow64` what `IsWow64Process` says of the target. On a 64-bit
+/// OS a 32-bit process is a WOW64 one; on a 32-bit OS everything is
+/// 32-bit and nothing is WOW64.
+pub fn bitness_mismatch(injector_32: bool, os_64: bool, target_wow64: bool) -> bool {
+    let target_32 = !os_64 || target_wow64;
+    injector_32 != target_32
 }
 
 /// Maximum UTF-16 code units we'll write into the remote process,
@@ -162,6 +192,8 @@ pub fn inject_dll(
     let wide = encode_dll_path_w(dll_path)?;
     let wide_bytes = wide.len() * std::mem::size_of::<u16>();
 
+    check_bitness(process)?;
+
     // SAFETY: `process` is a kernel HANDLE owned by the caller; all
     // pointers below either come from kernel allocations we just
     // made or point into stack-owned buffers whose lifetimes
@@ -169,10 +201,12 @@ pub fn inject_dll(
     unsafe {
         // Resolve LoadLibraryW in OUR address space. Because
         // kernel32.dll is mapped at the same base address in every
-        // process on the same OS (it's loaded before ASLR
-        // randomisation applies to the process image), the address
-        // we find here is the same address as in the target —
-        // saving a remote symbol-resolution dance.
+        // process of the same bitness on the same boot (it's loaded
+        // before ASLR randomisation applies to the process image), the
+        // address we find here is the same address as in the target —
+        // saving a remote symbol-resolution dance. `check_bitness`
+        // above is what makes "same bitness" hold: a WOW64 target has
+        // its own 32-bit kernel32 and no 64-bit one at all.
         //
         // `c"..."` literals produce a `&CStr` with a NUL terminator
         // and avoid the easy-to-typo manual `b"...\0"` pattern.
@@ -301,189 +335,45 @@ pub fn inject_dll(
     Ok(())
 }
 
+/// Refuse to inject across a bitness boundary; see
+/// [`InjectError::BitnessMismatch`].
 #[cfg(windows)]
-fn get_last_error() -> u32 {
-    // SAFETY: `GetLastError` is a per-thread TLS read, no
-    // preconditions.
-    unsafe { windows_sys::Win32::Foundation::GetLastError() }
-}
+fn check_bitness(process: windows_sys::Win32::Foundation::HANDLE) -> Result<(), InjectError> {
+    use windows_sys::Win32::Foundation::{FALSE, HANDLE};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, IsWow64Process};
 
-/// A child process that was created with `CREATE_SUSPENDED` and is
-/// waiting on `ResumeThread` to start executing user code. Held as
-/// an RAII guard so the kernel handles are released even on early-
-/// return error paths.
-///
-/// Typical lifecycle:
-/// 1. [`create_process_suspended`] returns this.
-/// 2. Caller invokes [`inject_dll`] with `self.process_handle()`.
-/// 3. Caller calls [`SuspendedProcess::resume`] to start the
-///    target's main thread.
-///
-/// Dropping without calling [`resume`] leaves the child process
-/// suspended forever — the OS reclaims it when the launcher exits,
-/// but if the launcher keeps running you've leaked a zombie. The
-/// `Drop` impl closes the handles either way; it's the caller's
-/// responsibility to call `resume` (or explicitly terminate) on the
-/// happy path.
-#[cfg(windows)]
-pub struct SuspendedProcess {
-    process_handle: windows_sys::Win32::Foundation::HANDLE,
-    thread_handle: windows_sys::Win32::Foundation::HANDLE,
-    pid: u32,
-}
-
-#[cfg(windows)]
-impl SuspendedProcess {
-    /// Process ID of the spawned (suspended) target.
-    pub fn pid(&self) -> u32 {
-        self.pid
-    }
-
-    /// Raw process HANDLE — feed this into [`inject_dll`].
-    pub fn process_handle(&self) -> windows_sys::Win32::Foundation::HANDLE {
-        self.process_handle
-    }
-
-    /// Resume the suspended main thread, allowing the target to
-    /// begin executing user code. Consumes self so the handles are
-    /// closed exactly once on the happy path. Returns the
-    /// suspended-thread previous-suspend-count from `ResumeThread`
-    /// (almost always `1` for a freshly-suspended process; anything
-    /// else indicates an unexpected re-suspension).
-    pub fn resume(self) -> Result<u32, InjectError> {
-        use windows_sys::Win32::System::Threading::ResumeThread;
-
-        // SAFETY: thread_handle was returned by CreateProcessW and
-        // hasn't been closed yet (Drop runs after this).
-        let prev = unsafe { ResumeThread(self.thread_handle) };
-        if prev == u32::MAX {
+    let is_wow64 = |handle: HANDLE| -> Result<bool, InjectError> {
+        let mut flag = FALSE;
+        // SAFETY: `handle` is a live process handle (the caller's, or the
+        // pseudo-handle for this process) and `flag` outlives the call.
+        if unsafe { IsWow64Process(handle, &mut flag) } == FALSE {
             return Err(InjectError::Win32 {
-                api: "ResumeThread",
+                api: "IsWow64Process",
                 code: get_last_error(),
             });
         }
-        Ok(prev)
+        Ok(flag != FALSE)
+    };
+    let injector_32 = cfg!(target_pointer_width = "32");
+    // A 64-bit process only runs on a 64-bit OS; a 32-bit one is on a
+    // 64-bit OS exactly when it is itself WOW64.
+    // SAFETY: `GetCurrentProcess` returns a pseudo-handle; no preconditions.
+    let os_64 = !injector_32 || is_wow64(unsafe { GetCurrentProcess() })?;
+    if bitness_mismatch(injector_32, os_64, is_wow64(process)?) {
+        let bits = |is_32: bool| if is_32 { 32 } else { 64 };
+        return Err(InjectError::BitnessMismatch {
+            injector_bits: bits(injector_32),
+            target_bits: bits(!injector_32),
+        });
     }
+    Ok(())
 }
 
 #[cfg(windows)]
-impl Drop for SuspendedProcess {
-    fn drop(&mut self) {
-        use windows_sys::Win32::Foundation::CloseHandle;
-        // SAFETY: HANDLEs are owned by self; we close them once.
-        unsafe {
-            if !self.thread_handle.is_null() {
-                CloseHandle(self.thread_handle);
-            }
-            if !self.process_handle.is_null() {
-                CloseHandle(self.process_handle);
-            }
-        }
-    }
-}
-
-/// Spawn `exe_path` suspended (`CREATE_SUSPENDED`) so the caller
-/// can inject a DLL before any of the target's user-mode threads
-/// run. The returned [`SuspendedProcess`] owns the kernel handles.
-///
-/// `cwd` sets the target's working directory; pass `None` to inherit
-/// the launcher's. SGW.exe is path-sensitive (it resolves `..\..\Game`
-/// from cwd), so the launcher always passes `Some(install_dir)`.
-///
-/// No arguments are passed to the target. SGW.exe's launch path
-/// doesn't take any.
-#[cfg(windows)]
-pub fn create_process_suspended(
-    exe_path: &Path,
-    cwd: Option<&Path>,
-) -> Result<SuspendedProcess, InjectError> {
-    use windows_sys::Win32::Foundation::{FALSE, TRUE};
-    use windows_sys::Win32::System::Threading::{
-        CreateProcessW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, PROCESS_INFORMATION,
-        STARTUPINFOW,
-    };
-
-    if !exe_path.exists() {
-        return Err(InjectError::DllMissing(exe_path.to_path_buf()));
-    }
-
-    // CreateProcessW reads lpCommandLine as MUTABLE wide-char data
-    // (it can rewrite the buffer in place), so we build it as a
-    // Vec<u16> rather than a string literal pointer. Quote the
-    // path so embedded spaces aren't interpreted as separators.
-    let exe_wide: Vec<u16> = {
-        use std::os::windows::ffi::OsStrExt;
-        let mut v: Vec<u16> = std::iter::once(b'"' as u16)
-            .chain(exe_path.as_os_str().encode_wide())
-            .chain(std::iter::once(b'"' as u16))
-            .chain(std::iter::once(0))
-            .collect();
-        v.shrink_to_fit();
-        v
-    };
-    let mut command_line = exe_wide.clone();
-
-    let app_name: Vec<u16> = {
-        use std::os::windows::ffi::OsStrExt;
-        exe_path
-            .as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    };
-
-    let cwd_wide: Option<Vec<u16>> = cwd.map(|p| {
-        use std::os::windows::ffi::OsStrExt;
-        p.as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    });
-    let cwd_ptr = cwd_wide
-        .as_ref()
-        .map(|v| v.as_ptr())
-        .unwrap_or(std::ptr::null());
-
-    // SAFETY: Zero-init both Win32 structs. STARTUPINFOW's cb field
-    // MUST be set to size_of so the kernel knows which fields exist.
-    let mut startup: STARTUPINFOW = unsafe { std::mem::zeroed() };
-    startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
-    let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
-
-    // SAFETY: All pointers either point to valid wide-string
-    // buffers above or are NULL where the API allows it.
-    let ok = unsafe {
-        CreateProcessW(
-            app_name.as_ptr(),
-            command_line.as_mut_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
-            FALSE,
-            CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
-            std::ptr::null(),
-            cwd_ptr,
-            &startup,
-            &mut pi,
-        )
-    };
-    if ok == TRUE {
-        Ok(SuspendedProcess {
-            process_handle: pi.hProcess,
-            thread_handle: pi.hThread,
-            pid: pi.dwProcessId,
-        })
-    } else {
-        Err(InjectError::Win32 {
-            api: "CreateProcessW",
-            code: get_last_error(),
-        })
-    }
-}
-
-/// Non-Windows stub.
-#[cfg(not(windows))]
-pub fn create_process_suspended(exe_path: &Path, _cwd: Option<&Path>) -> Result<(), InjectError> {
-    Err(InjectError::DllMissing(exe_path.to_path_buf()))
+pub(crate) fn get_last_error() -> u32 {
+    // SAFETY: `GetLastError` is a per-thread TLS read, no
+    // preconditions.
+    unsafe { windows_sys::Win32::Foundation::GetLastError() }
 }
 
 /// Non-Windows stub — the launcher crate compiles on Linux for
@@ -522,6 +412,28 @@ mod tests {
             encoded.len() > 1,
             "encoded buffer should contain more than just the NUL"
         );
+    }
+
+    /// A 64-bit launcher handing its own LoadLibraryW to the 32-bit
+    /// SGW.exe cannot load anything; it must be refused up front.
+    #[test]
+    fn bitness_mismatch_refuses_64_bit_injector_into_wow64_target() {
+        assert!(bitness_mismatch(false, true, true));
+    }
+
+    #[test]
+    fn bitness_mismatch_accepts_same_bitness() {
+        // 32-bit injector and 32-bit target, both WOW64 on a 64-bit OS.
+        assert!(!bitness_mismatch(true, true, true));
+        // 64-bit injector, native 64-bit target.
+        assert!(!bitness_mismatch(false, true, false));
+        // 32-bit OS: everything is 32-bit and nothing is WOW64.
+        assert!(!bitness_mismatch(true, false, false));
+    }
+
+    #[test]
+    fn bitness_mismatch_refuses_32_bit_injector_into_native_64_bit_target() {
+        assert!(bitness_mismatch(true, true, false));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 > **Diátaxis type**: explanation (ADR)
 > **Audience**: engineers extending `cimmeria-client-patches`, or deciding where a new client-side fix belongs
 > **Last updated**: 2026-09-27
-> **Status**: Accepted (decision D2 of the [Black Market plan](../analysis/black-market/README.md), 2026-09-26). The Black Market receive and send paths are built, and verified only statically and by unit tests. The launcher's always-inject step and the UI overlay are later packets.
+> **Status**: Accepted (decision D2 of the [Black Market plan](../analysis/black-market/README.md), 2026-09-26). The Black Market receive and send paths are built, and verified only statically and by unit tests. The launcher injects the DLL on every `SGW.exe` launch (BM-06), and the UI overlay lives in `crates/client-patches/overlay/` (BM-05).
 
 ## Context
 
@@ -87,6 +87,46 @@ The crate README states both Lua contracts the overlay builds against: the
 The addresses and their evidence are in
 [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md).
 
+## How the launcher loads it
+
+The launcher side is BM-06; the operator detail is in
+[sgw-launcher.md](../client/sgw-launcher.md#client-patches-dll).
+
+- **Always, with an opt-out.** **Launch SGW.exe** starts the game
+  suspended, injects the DLL and resumes it. The checkbox **Load client
+  patches** (`client_patches.enabled`, on by default) turns it off; the
+  telemetry opt-in has no effect on it. A launch without the DLL says
+  why in the launcher's status log.
+- **Shipped inside the launcher.** The release workflow builds the i686
+  DLL and embeds it in the launcher, which writes it to a
+  content-addressed directory beside itself at launch.
+- **Injected through a 32-bit helper.** The launcher stays 64-bit.
+  Injection hands a remote thread the injector's own `LoadLibraryW`,
+  which only exists at the target's bitness, and a 64-bit process
+  cannot reach the 32-bit one in `SGW.exe` (a suspended WOW64 process
+  has no 32-bit kernel32 mapped yet, measured, and a thread it starts
+  there runs in 64-bit mode). So the launcher runs `sgw-start32.exe`, a
+  small i686 helper (crate `cimmeria-start32`) it also embeds and keeps
+  at a stable path beside itself: it starts `SGW.exe` suspended,
+  injects the DLLs in order, resumes, and reports the pid, which the
+  launcher follows. The contract is in the
+  [client-launch README](../../crates/client-launch/README.md). A direct
+  injection across bitness is refused with `BitnessMismatch`.
+- **Order.** When the telemetry DLL goes in as well, this DLL goes
+  first (`injection_order`). It hooks at once and normally meets the
+  stock prologues, so it seldom needs the chain rule; the telemetry DLL,
+  which has no gate, chains on top later.
+- **Telemetry.** With telemetry on, the launcher reads this DLL's log
+  and records one `client.patches.boot` event per session: the
+  injection outcome, the DLL version, the fingerprint result per site
+  and whether the hooks went in. The log lines it parses are a contract,
+  listed in the crate README.
+- **The UI overlay** ships as a manifest patch with `"root":
+  "sgw_game"`, extracted into the client's `SGWGame/` directory, packed
+  by `pack-client-overlay` in the launcher release.
+- **Atera debug launches** do not load it: the bat starts `SGW.exe`
+  itself.
+
 ## Consequences
 
 - **Two DLLs hook two of the same functions:** `FEngineLoop::Tick` and the
@@ -96,7 +136,7 @@ The addresses and their evidence are in
   are intact and the jump lands inside the loaded telemetry DLL's image.
   The two MinHook copies do not coordinate, so this DLL re-reads a
   prologue after MinHook has copied it and rebuilds the hook if the bytes
-  changed. The launcher should still inject the DLLs one after the other.
+  changed. The launcher injects the DLLs one after the other, this one first.
   Neither DLL may unhook while the other is loaded, because MinHook's unhook
   restores its own saved bytes over a hook chained on top.
 - **One DLL hooks at a time, in either load order.** Both DLLs link

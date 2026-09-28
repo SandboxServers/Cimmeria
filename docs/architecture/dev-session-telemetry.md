@@ -1,6 +1,6 @@
 # Dev-Session Telemetry — Architecture
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 
 How the launcher streams a developer's session (Atera client log,
 BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
@@ -54,7 +54,8 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/chunk.rs` | Gzipped NDJSON POST to `/api/upload-chunk`. |
 | `crates/launcher/src/telemetry/bundle.rs` | End-of-session multipart POST to `/api/upload-bundle`. |
 | `crates/launcher/src/telemetry/session.rs` | `current-session.json` writer (reserved for future Lua-side hook). |
-| `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking child.wait()` — game-exit signal without burning an async worker. |
+| `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking` wait on the game (`Child::wait` for a plain launch, `RunningProcess::wait` for an injected one) — game-exit signal without burning an async worker. |
+| `crates/launcher/src/telemetry/patch_log.rs` | Reads the client-patches DLL's `cimmeria-client-patches.log` and yields one `client.patches.boot` event per session. |
 | `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
 | `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
 | `crates/admin-api/src/routes/dev_session/` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify), quota tables. |
@@ -62,7 +63,15 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 
 ## Session lifecycle
 
-```
+Two buttons run a session. **Launch + Telemetry** (the Atera debug
+path) is traced below. **Launch SGW.exe** runs one too when
+`telemetry.enabled` and the identity loaded
+(`worker/launch_sgw.rs`): the game starts first, with the
+client-patches DLL injected, and the session follows it, so a failed
+auth handshake never delays play. That session also records the
+`client.patches.boot` event described after this sequence.
+
+```text
 1. User clicks "Launch + Telemetry" in the launcher UI
 2. App composes LaunchTelemetryConfig from LauncherIdentity + LauncherConfig
 3. Worker.spawn_launch_with_telemetry:
@@ -84,6 +93,31 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
    b. multipart POST /api/upload-bundle (metadata JSON + zip)
 8. Worker emits Event::TelemetrySessionComplete(outcome)
 ```
+
+### Client-patches boot event
+
+A **Launch SGW.exe** session passes the runner a `PatchLogWatcher`. On
+each tick it reads `cimmeria-client-patches.log` next to `SGW.exe`
+(ignoring a file older than the launch), and once the DLL has logged
+how its bootstrap ended it enqueues one `client_native` event with
+target `client.patches.boot`. When the DLL was not injected, the event
+goes out on the first tick; when the game exits first, it goes out
+with whatever the log showed. Fields:
+
+| Field | Values |
+|---|---|
+| `injection` | `injected`, `opted_out`, `unavailable`, `inject_failed` (the launcher's side) |
+| `log_found` | whether this launch's log existed |
+| `dll_version` | from the DLL's `attached, version …` line |
+| `fingerprint.<site>` | `stock`, `chained`, `unknown_hook`, `mismatch`, `unreadable` per hooked site |
+| `fingerprint_ok` | every site `stock` or `chained` |
+| `verdict`, `verdict_detail` | `installed`, `nothing_installed`, `hook_failed` or `none`, with the DLL's message |
+
+The level is `info` when the DLL was injected and installed its hooks,
+`warn` otherwise. In SigNoz, `target = 'client.patches.boot'` answers
+"why did the Black Market window not open for this player" without a
+repro. The log lines this parses are listed in the client-patches
+[README](../../crates/client-patches/README.md#log).
 
 ## Failure modes
 

@@ -7,7 +7,7 @@
 [[group]]
 id = "apps"
 title = "Binaries and apps"
-crates = ["cimmeria-server", "cimmeria-app", "cimmeria-lab", "cimmeria-supervisor", "sgw-launcher", "cimmeria-client-launch"]
+crates = ["cimmeria-server", "cimmeria-app", "cimmeria-lab", "cimmeria-supervisor", "sgw-launcher", "cimmeria-client-launch", "cimmeria-start32"]
 
 [[group]]
 id = "api"

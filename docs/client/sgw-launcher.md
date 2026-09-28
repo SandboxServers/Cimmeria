@@ -2,7 +2,7 @@
 title: "SGW Launcher"
 type: explanation
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # SGW Launcher
@@ -33,9 +33,9 @@ window with no webview dependency.
 | **Seed install** | Downloads the seed (the whole client) once, verifies sha256, unpacks it into the install dir. The seed is a zip, or the archive.org client RAR, whose installer cabinets (`Data\DATA1-4.CAB`) are expanded straight into the installed layout. |
 | **Patch install** | Walks declared patches in order; downloads + unpacks each missing patch (overlay over existing files). |
 | **Hostname patch** | Rewrites the 22-byte host slot in `SGW.exe` `.rdata` to the configured emulator host — the original `www.stargateworlds.com` literal on a fresh install, or the previously-written host on a re-patch. |
-| **Launch SGW** | `CreateProcess(SGW.exe)`. |
+| **Launch SGW** | Starts `SGW.exe` suspended, injects `cimmeria-client-patches.dll` (unless the player turned it off), and resumes it. With telemetry on, a telemetry session follows the game. See [Client patches DLL](#client-patches-dll). |
 | **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (enabled only if Atera files were dropped into the install dir). |
-| **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, injects `cimmeria-client-telemetry.dll` into SGW.exe, tails the client logs, and uploads chunks/bundles. See `src/telemetry/`, `src/inject.rs`, and [operations/telemetry.md](../operations/telemetry.md). |
+| **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, tails the client logs, and uploads chunks/bundles. It injects no DLL: the Atera bat starts `SGW.exe` itself. See `src/telemetry/` and [operations/telemetry.md](../operations/telemetry.md). |
 | **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (enabled only if the Atera fix-ASLR bat is present). |
 | **Upload debug logs** | Zips `sgwdebuglog*` (case-blind) + `sessions/**` from the binaries directory and PUTs once to the Azure log SAS URL. |
 
@@ -60,8 +60,11 @@ install, or the install path itself when it points straight at it.
      - Match    → skip seed.
 4. For each manifest.patches[*] not in installed.applied_patches, in
    order:
-     - Download patch blob → verify sha256 → unpack (overlay).
-     - Append id to installed.applied_patches and persist.
+     - Download patch blob → verify sha256 → unpack (overlay)
+       into the install dir, or into the client's SGWGame/ directory
+       for a "root": "sgw_game" patch.
+     - Append the id (<id>@sgw_game for a sgw_game patch) to
+       installed.applied_patches and persist.
 5. Compare expected vs persisted patched_host (or detect the original
    CME literal still in the binary):
      - Differs → re-patch SGW.exe `.rdata`, atomically (.exe.patching
@@ -152,6 +155,17 @@ State files:
 - `size` is informational (drives the progress bar's `total` when the
   server doesn't return `Content-Length` for some reason).
 - `sha256` is hex, lowercase, of the patch zip contents.
+- `root` (optional) is where the zip's entries go. Omitted or
+  `"install_dir"`: the install directory, the one holding `SGW.exe`.
+  `"sgw_game"`: the client's `SGWGame/` directory, found as
+  `<install>/SGWGame` or, in the stock tree where `SGW.exe` is in
+  `Working/Binaries/`, as `<install>/../SGWGame`. A `sgw_game` patch
+  with neither fails the install. A launcher older than this field
+  extracts such a patch into the install directory and records its id,
+  so the launcher records a `sgw_game` patch as `<id>@sgw_game` and a
+  newer launcher applies it again in the right place. The
+  client-patches UI overlay ships this way; see
+  [`patch_dest.rs`](../../crates/launcher/src/patch_dest.rs).
 
 ---
 
@@ -187,7 +201,7 @@ has no such constraints.
 
 | Button | Enabled when | Action |
 |---|---|---|
-| **Launch SGW.exe** | `SGW.exe` exists | `CreateProcess(<install>/SGW.exe)` with `cwd = <install>` |
+| **Launch SGW.exe** | `SGW.exe` exists | `SGW.exe` started suspended with `cwd = <install>`, the client-patches DLL injected, then resumed. A telemetry session follows when `telemetry.enabled` and the identity loaded |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
 | **Launch + Telemetry** | Atera available, `telemetry.enabled`, and identity loaded | Atera debug launch plus the telemetry pipeline |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
@@ -202,6 +216,95 @@ and [docs/technical/atrealoader-config.md](../technical/atrealoader-config.md).
 Atera debug requires ASLR disabled on SGW.exe. The launcher does not
 auto-run Fix ASLR — the user clicks the button once after a fresh
 install, then the debug bat works on subsequent launches.
+
+### Client patches DLL
+
+`cimmeria-client-patches.dll` restores client features the 2009 client
+shipped unfinished, first the Black Market window. The decision record
+is [client-patches.md](../architecture/client-patches.md). On **Launch
+SGW.exe** the launcher:
+
+1. Decides whether to load it ([`client_patches/plan.rs`](../../crates/launcher/src/client_patches/plan.rs)).
+   The checkbox **Load client patches (restores the Black Market
+   window)** under the launch buttons is `client_patches.enabled` in
+   `launcher-config.json`. It is on by default, saved as soon as it
+   changes, and independent of `telemetry.enabled`.
+2. Finds the DLL ([`client_patches/dll_source.rs`](../../crates/launcher/src/client_patches/dll_source.rs)),
+   in this order: `client_patches.dll_override` (a tester's own build);
+   the copy embedded in release launchers, written to
+   `<launcher dir>/client-patches/<sha256 prefix>/cimmeria-client-patches.dll`
+   so that a DLL still loaded by a running game is never overwritten;
+   then `cimmeria-client-patches.dll` beside the launcher (dev builds
+   embed nothing).
+3. Runs the 32-bit `sgw-start32.exe` helper, which starts `SGW.exe`
+   suspended, injects the DLL, resumes it and reports the pid; the
+   launcher then opens that pid to follow the game (see **Bitness**
+   below). If injection fails, the helper kills the suspended process
+   and the launcher starts the game without the DLL.
+
+Every launch that does not load the DLL says why in the status log
+(`Client patches: off (launcher setting)…`, `…unavailable: …`, or
+`…not loaded (…)`), so a missing Black Market window is never silent.
+Atera debug launches never load it, because the bat starts `SGW.exe`
+itself.
+
+**Bitness.** Injection hands a remote thread the injector's own
+`LoadLibraryW` address, which only exists in a process of the same
+bitness. The launcher is 64-bit and `SGW.exe` is 32-bit, and a 64-bit
+process cannot reach the target's 32-bit `LoadLibraryW` either: a
+process created suspended has no 32-bit kernel32 mapped yet, and a
+thread a 64-bit process starts there runs in 64-bit mode. So the
+launcher runs `sgw-start32.exe`, a 32-bit helper (crate
+[`cimmeria-start32`](../../crates/start32/), linking only
+`cimmeria-client-launch`) that does the suspended launch and the
+injection at the right bitness. Release builds embed it and keep it at
+one stable path, `<launcher dir>/sgw-start32.exe`, rewritten only when a
+new launcher carries different bytes. It has a version resource and an
+`asInvoker` manifest, and it is never written to `%TEMP%`, so an
+antivirus exclusion for the launcher's folder keeps working across
+updates (see the
+[launcher guide](launcher-guide.md#windows-defender-or-smartscreen-blocks-the-launcher)).
+Releases are unsigned (code signing is deferred). Its
+command-line contract is in the
+[client-launch README](../../crates/client-launch/README.md); the
+telemetry DLL and `cimmeria-lab` reuse it. A direct injection across
+bitness is refused with `BitnessMismatch` instead of failing as a bare
+`RemoteLoadFailed`. A dev build with no helper says `…unavailable…
+sgw-start32.exe…` and starts the game without the DLL.
+
+**Code signing: deferred.** The owner has deferred code signing, so
+releases ship unsigned (the release notes say so) and rely on the
+measures above plus the
+[Defender / SmartScreen workaround](launcher-guide.md#windows-defender-or-smartscreen-blocks-the-launcher).
+The two routes on the table for later:
+
+- **SignPath Foundation**: free signing for open-source projects, but it
+  needs an OSI-approved license on the repository first.
+- **Azure Trusted Signing** (now Artifact Signing): a small monthly fee,
+  and GitHub Actions signs in over OIDC, so no signing secret is stored.
+
+Either would sign the launcher, `sgw-start32.exe` and the DLLs (the i686
+artifacts before the launcher embeds them), between the stages of
+`tools/launcher-release/build.sh`. A PFX-in-a-secret setup is not an
+option for a new certificate: since June 2023 publicly trusted
+code-signing keys must be generated and kept on hardware (an HSM or a
+token), so they cannot be exported as a `.pfx`.
+
+**Order with the telemetry DLL.** Both DLLs MinHook `FEngineLoop::Tick`
+and the drop callee. When both go in (the unexposed
+`LaunchSgwWithClientTelemetry` command), the client-patches DLL goes
+first. It hooks straight away and normally finds the stock prologues;
+the telemetry DLL reads its session file first, then chains on top.
+`injection_order` pins this order.
+
+**Telemetry.** With telemetry on, the session reads
+`cimmeria-client-patches.log` next to `SGW.exe` and records one
+`client.patches.boot` event per session. It carries the launcher's
+`injection` outcome (`injected`, `opted_out`, `unavailable`,
+`inject_failed`), the DLL version, `fingerprint.<site>` for each hooked
+site, `fingerprint_ok`, and the `verdict` (`installed`,
+`nothing_installed`, `hook_failed`). See
+[`telemetry/patch_log.rs`](../../crates/launcher/src/telemetry/patch_log.rs).
 
 ---
 
@@ -244,18 +347,38 @@ Ed25519 manifest signing setup, and the Azure Blob SAS for log uploads.
 ## Build
 
 ```bash
-# Iteration (Windows host, native):
+# Iteration (Windows host, native). Embeds nothing: it loads the patches
+# only if cimmeria-client-patches.dll and sgw-start32.exe sit beside it.
 cargo build -p sgw-launcher
 
-# Release with log upload enabled:
-$env:LAUNCHER_LOG_SAS_URL = "<container-SAS-url>"
-cargo build -p sgw-launcher --release
+# A launcher that injects, built the way the release workflow builds it:
+# the i686 DLL and helper first, then the 64-bit launcher embedding both.
+cargo build -p cimmeria-client-patches --release --target i686-pc-windows-msvc
+cargo build -p cimmeria-start32 --release --target i686-pc-windows-msvc
+CIMMERIA_CLIENT_PATCHES_DLL=$PWD/target/i686-pc-windows-msvc/release/cimmeria_client_patches.dll \
+CIMMERIA_START32_EXE=$PWD/target/i686-pc-windows-msvc/release/sgw-start32.exe \
+  cargo build -p sgw-launcher --release
 
-# Output: target/release/sgw-launcher.exe
+# Output: target/release/sgw-launcher.exe (64-bit)
 ```
 
+`LAUNCHER_LOG_SAS_URL` enables log upload in any of these builds.
+Without `CIMMERIA_CLIENT_PATCHES_DLL` and `CIMMERIA_START32_EXE` the
+launcher embeds neither and looks for each beside itself.
+
+The release workflow runs these steps through
+[`tools/launcher-release/build.sh`](../../tools/launcher-release/build.sh)
+(`i686`, `launcher`, `verify`, `overlay`); `PROFILE=dev` runs them with the dev profile.
+
+The same package builds `pack-client-overlay`, the release tool that
+packs the client-patches UI overlay into a manifest patch; see
+[launcher-distribution-setup.md](launcher-distribution-setup.md#publishing-the-client-patches-ui-overlay).
+
 The icon at [`crates/launcher/icons/icon.ico`](../../crates/launcher/icons/icon.ico)
-is embedded as a Win32 resource via [`build.rs`](../../crates/launcher/build.rs).
+is embedded as a Win32 resource via [`build.rs`](../../crates/launcher/build.rs),
+which also embeds the client-patches DLL and the `sgw-start32` helper
+when `CIMMERIA_CLIENT_PATCHES_DLL` and `CIMMERIA_START32_EXE` are set. A
+path that is not a PE image fails the build.
 
 ---
 
@@ -265,8 +388,8 @@ Three GitHub Actions workflows mirror the server's pattern:
 
 | Workflow | File | Trigger |
 |---|---|---|
-| **launcher** | [`.github/workflows/launcher-build.yml`](../../.github/workflows/launcher-build.yml) | Path-filtered fmt/clippy/build/test/coverage (five jobs; the `coverage` job runs `cargo llvm-cov`) on PRs touching `crates/launcher/**` or `.github/workflows/launcher-*.yml`. |
-| **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds release exe with `LAUNCHER_LOG_SAS_URL` injected from secrets, creates a GitHub Release tagged `launcher-<date>-<sha7>`. |
+| **launcher** | [`.github/workflows/launcher-build.yml`](../../.github/workflows/launcher-build.yml) | Path-filtered fmt/clippy/build/test/coverage (five jobs; the `coverage` job runs `cargo llvm-cov`) on PRs touching `crates/launcher/**`, `crates/client-launch/**`, `crates/client-patches/overlay/**` or `.github/workflows/launcher-*.yml`. Clippy covers `cimmeria-client-launch` and `cimmeria-start32` too. The test job builds the i686 `sgw-start32` helper and runs the x64 tests with `CIMMERIA_TEST_START32` set, so the helper injects a real DLL into a real 32-bit process. A `release-dry-run` job runs the release build stages (`tools/launcher-release/build.sh`) without signing or publishing, because the release workflow itself only runs on a release. |
+| **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds the i686 client-patches DLL and `sgw-start32` helper, then the 64-bit launcher embedding both with `LAUNCHER_LOG_SAS_URL` injected from secrets, verifies them, packs the UI overlay, and creates a GitHub Release tagged `launcher-<date>-<sha7>` with the exe and, when there is an overlay, its patch zip and `.entry.json`. |
 | **launcher-release-on-comment** | [`.github/workflows/launcher-release-on-comment.yml`](../../.github/workflows/launcher-release-on-comment.yml) | Mirror of `release-on-comment.yml` but matches `/release-launcher` on a merged PR. Validates commenter has write access, dispatches `launcher-release.yml`. |
 
 Two repo secrets feed the release build: `LAUNCHER_LOG_SAS_URL` (log
@@ -288,7 +411,7 @@ Linux system deps don't slow the rest of the workspace pipeline.
 ```text
 crates/launcher/
 ├── Cargo.toml
-├── build.rs                    # winres icon embed
+├── build.rs                    # winres icon embed + client-patches DLL embed
 ├── binaries/                   # bundled 7za executables
 ├── gen/schemas/                # windows-schema.json
 ├── icons/
@@ -311,9 +434,18 @@ crates/launcher/
     │   └── test_fixtures.rs    # hand-built RAR + makecab test inputs
     ├── patch_rdata.rs          # SGW.exe hostname byte-patch
     ├── launch.rs               # SGW.exe + Atera bat detection & spawn
+    ├── patch_dest.rs           # where a patch extracts (install dir or SGWGame/)
+    ├── bundled.rs              # writes the embedded i686 artifacts to disk
+    ├── start32_helper.rs       # keeps sgw-start32.exe beside the launcher
+    ├── overlay_pack.rs         # UI overlay -> patch zip + entry (tests only here)
+    ├── bin/
+    │   └── pack-client-overlay.rs  # release tool around overlay_pack.rs
+    ├── client_patches/
+    │   ├── mod.rs
+    │   ├── dll_source.rs       # override / embedded / beside-the-launcher DLL
+    │   └── plan.rs             # inject decision + injection order
     ├── client_paths.rs         # install-dir path resolution
     ├── identity.rs             # stable per-install identity
-    ├── inject.rs               # cimmeria-client-telemetry.dll injection
     ├── logs.rs                 # log collection + zip + Azure PUT
     ├── state.rs                # InstalledState + UploadedLedger
     ├── telemetry/
@@ -326,9 +458,11 @@ crates/launcher/
     │   ├── queue.rs            # buffering
     │   ├── chunk.rs            # upload-chunk
     │   ├── bundle.rs           # end-of-session upload-bundle
+    │   ├── patch_log.rs        # client.patches.boot from the DLL's log
     │   └── process_watch.rs    # game-exit detection
     └── worker/
         ├── mod.rs              # tokio worker
+        ├── launch_sgw.rs       # SGW.exe launch + client patches + telemetry
         └── messages.rs         # Command/Event channel types
 ```
 

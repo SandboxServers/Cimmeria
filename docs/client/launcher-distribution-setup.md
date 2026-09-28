@@ -2,7 +2,7 @@
 title: "Launcher Distribution Setup"
 type: how-to
 audience: operators
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Launcher Distribution Setup
@@ -123,6 +123,48 @@ gh release create content-current --notes "Rolling manifest pointer"
 # user-facing one.
 # gh release edit content-current --latest
 ```
+
+### Publishing the client-patches UI overlay
+
+The client-patches DLL is embedded in the launcher, so a launcher
+release ships it. Its UI overlay (the Lua and layout files under
+`crates/client-patches/overlay/`,
+listed in its `MANIFEST.txt`) ships as a content patch instead. Every
+launcher release packs it with `pack-client-overlay` and attaches two
+assets to the launcher's GitHub Release:
+
+- `bm-ui-overlay-<hash>.zip`: the overlay files, laid out as they go
+  under the client's `SGWGame/` directory. `<hash>` is the first 12 hex
+  digits of the zip's SHA-256, so an unchanged overlay packs to the same
+  id and a changed one to a new id.
+- `bm-ui-overlay-<hash>.entry.json`: its manifest entry, with the blob
+  URL pointing at that release (an immutable tag) and
+  `"root": "sgw_game"`.
+
+To publish it, add the entry to the content manifest and sign the
+result. The tool does the merge, putting the entry `after` the current
+last patch and leaving the manifest unchanged when the id is already
+there:
+
+```bash
+cargo run -p sgw-launcher --bin pack-client-overlay -- \
+  --overlay crates/client-patches/overlay \
+  --out-dir dist \
+  --blob-base-url https://github.com/SandboxServers/Cimmeria/releases/download/<launcher tag> \
+  --manifest manifest.json --manifest-out manifest.new.json
+# Check manifest.new.json, sign it (Part 2), then upload it as
+# manifest.json with its .sig to content-current.
+```
+
+Run it at the commit the launcher release was built from, or the hash
+will not match the attached zip. The release notes say when an overlay
+was attached; with no overlay committed the release carries the exe
+alone.
+
+Players need a launcher that knows `"root"`. An older launcher extracts
+the overlay into the install directory, where the client never reads
+it; a newer launcher records `sgw_game` patches under `<id>@sgw_game`,
+so it applies the overlay again in the right place.
 
 ---
 

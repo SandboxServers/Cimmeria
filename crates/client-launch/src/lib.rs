@@ -24,3 +24,5 @@
 pub mod inject;
 pub mod launch;
 pub mod patch_rdata;
+pub mod process;
+pub mod start32;

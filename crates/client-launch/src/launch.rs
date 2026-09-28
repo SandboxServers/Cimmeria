@@ -32,7 +32,7 @@ pub enum LaunchError {
     /// CreateProcessW(SUSPENDED) -> inject -> ResumeThread pipeline.
     /// Wrapped from [`inject::InjectError`] so callers see one error
     /// surface for the whole launch path.
-    #[error("Telemetry launch failed: {0}")]
+    #[error("DLL injection failed: {0}")]
     Inject(#[from] inject::InjectError),
 }
 
@@ -87,18 +87,7 @@ pub fn launch_sgw(install_dir: &Path) -> Result<u32, LaunchError> {
 /// launcher death does not kill the game.
 #[cfg(windows)]
 pub fn launch_sgw_with_telemetry(install_dir: &Path, dll_path: &Path) -> Result<u32, LaunchError> {
-    let exe = install_dir.join("SGW.exe");
-    if !exe.exists() {
-        return Err(LaunchError::NotFound(exe));
-    }
-    let canon_install = install_dir.canonicalize()?;
-    let canon_exe = exe.canonicalize()?;
-    if !canon_exe.starts_with(&canon_install) {
-        return Err(LaunchError::PathEscape {
-            install_dir: canon_install,
-            target: canon_exe,
-        });
-    }
+    let (canon_install, canon_exe) = checked_sgw_exe(install_dir)?;
 
     let suspended = inject::create_process_suspended(&canon_exe, Some(&canon_install))?;
     let pid = suspended.pid();
@@ -114,6 +103,72 @@ pub fn launch_sgw_with_telemetry(install_dir: &Path, dll_path: &Path) -> Result<
 
     let _previous_suspend_count = suspended.resume()?;
     Ok(pid)
+}
+
+/// Launch `SGW.exe` suspended, inject each DLL in `dlls` in order, then
+/// resume it. Each injection waits for the DLL's `DllMain` to return
+/// before the next one starts, so the order is the order the DLLs'
+/// bootstrap threads start in.
+///
+/// Unlike [`launch_sgw_with_telemetry`], a failed injection kills the
+/// suspended process (it never ran user code) and returns the error, so
+/// the caller can fall back to a plain [`launch_sgw`] without two
+/// copies of the game. The returned [`inject::RunningProcess`] keeps
+/// the process handle for waiting on the exit.
+#[cfg(windows)]
+pub fn launch_sgw_injected(
+    install_dir: &Path,
+    dlls: &[PathBuf],
+) -> Result<inject::RunningProcess, LaunchError> {
+    let (canon_install, canon_exe) = checked_sgw_exe(install_dir)?;
+    let suspended = inject::create_process_suspended(&canon_exe, Some(&canon_install))?;
+    for dll in dlls {
+        if let Err(e) = inject::inject_dll(suspended.process_handle(), dll) {
+            suspended.terminate();
+            return Err(e.into());
+        }
+    }
+    Ok(suspended.resume_running()?)
+}
+
+/// Non-Windows stub, like [`launch_sgw_with_telemetry`]'s.
+#[cfg(not(windows))]
+pub fn launch_sgw_injected(
+    install_dir: &Path,
+    dlls: &[PathBuf],
+) -> Result<inject::RunningProcess, LaunchError> {
+    let exe = install_dir.join("SGW.exe");
+    if !exe.exists() {
+        return Err(LaunchError::NotFound(exe));
+    }
+    Err(LaunchError::Inject(inject::InjectError::DllMissing(
+        dlls.first().cloned().unwrap_or_default(),
+    )))
+}
+
+/// [`launch_sgw`], returning the [`Child`] so a telemetry session can
+/// wait on the game's exit.
+pub fn launch_sgw_with_child(install_dir: &Path) -> Result<Child, LaunchError> {
+    spawn(install_dir, "SGW.exe", false)
+}
+
+/// `install_dir/SGW.exe`, canonicalized, refusing a target that
+/// resolves outside the install directory. Returns
+/// `(install dir, SGW.exe)`, both canonical.
+pub fn checked_sgw_exe(install_dir: &Path) -> Result<(PathBuf, PathBuf), LaunchError> {
+    let exe = install_dir.join("SGW.exe");
+    if !exe.exists() {
+        return Err(LaunchError::NotFound(exe));
+    }
+    let canon_install = install_dir.canonicalize()?;
+    let canon_exe = exe.canonicalize()?;
+    if !canon_exe.starts_with(&canon_install) {
+        return Err(LaunchError::PathEscape {
+            install_dir: canon_install,
+            target: canon_exe,
+        });
+    }
+    Ok((canon_install, canon_exe))
 }
 
 /// Non-Windows stub — no injection path exists on Linux/macOS;
@@ -224,6 +279,62 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let err = launch_sgw(dir.path()).unwrap_err();
         assert!(matches!(err, LaunchError::NotFound(_)));
+    }
+
+    /// No SGW.exe: refused before any process is created, so no DLL
+    /// is touched and nothing is left suspended.
+    #[cfg(windows)]
+    #[test]
+    fn launch_sgw_injected_errors_when_sgw_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let dll = dir.path().join("x.dll");
+        std::fs::write(&dll, b"").unwrap();
+        let err = launch_sgw_injected(dir.path(), &[dll]).unwrap_err();
+        assert!(matches!(err, LaunchError::NotFound(_)), "got {err:?}");
+    }
+
+    /// A 32-bit stand-in for SGW.exe and a 32-bit DLL from `SysWOW64`,
+    /// or `None` on a machine without WOW64.
+    #[cfg(windows)]
+    fn wow64_fixture(exe: &str) -> Option<(tempfile::TempDir, PathBuf)> {
+        let wow = PathBuf::from(std::env::var("SystemRoot").ok()?).join("SysWOW64");
+        let dll = wow.join("version.dll");
+        if !wow.join(exe).is_file() || !dll.is_file() {
+            return None;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(wow.join(exe), dir.path().join("SGW.exe")).unwrap();
+        Some((dir, dll))
+    }
+
+    /// The real pipeline against a real 32-bit process: a 32-bit
+    /// launcher loads the DLL and the game runs to completion; a 64-bit
+    /// one refuses instead of crashing the target with its own
+    /// LoadLibraryW address.
+    #[cfg(windows)]
+    #[test]
+    fn launch_sgw_injected_into_a_32_bit_process() {
+        let Some((dir, dll)) = wow64_fixture("hostname.exe") else {
+            eprintln!("no SysWOW64 hostname.exe/version.dll; skipping");
+            return;
+        };
+        let result = launch_sgw_injected(dir.path(), &[dll]);
+        if cfg!(target_pointer_width = "32") {
+            let process = result.expect("a 32-bit injector must load a 32-bit DLL");
+            assert_eq!(
+                process.wait().unwrap(),
+                0,
+                "hostname.exe should exit cleanly"
+            );
+        } else {
+            match result {
+                Err(LaunchError::Inject(inject::InjectError::BitnessMismatch {
+                    injector_bits: 64,
+                    target_bits: 32,
+                })) => {}
+                other => panic!("expected BitnessMismatch, got {other:?}"),
+            }
+        }
     }
 
     #[test]

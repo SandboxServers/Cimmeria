@@ -36,6 +36,7 @@ members = [
     "crates/lab-mcp",
     "crates/lab",
     "crates/client-launch",
+    "crates/start32",
     "crates/test-support",
     "crates/resources",
     "crates/auth",

@@ -7,7 +7,10 @@
 //!    zip, or a RAR holding the original installer's cabinet set; see
 //!    [`crate::unpack`].
 //! 2. For each patch in declared order: skip if already applied; else
-//!    download → verify → unpack (overlay-style) → record in state.
+//!    download → verify → unpack (overlay-style) → record in state. A
+//!    patch unpacks into the install dir, or into the client's
+//!    `SGWGame/` directory when its manifest entry says `"root":
+//!    "sgw_game"` (see [`crate::patch_dest`]).
 //! 3. Patch SGW.exe `.rdata` hostname if it still contains the original CME
 //!    string. Idempotent.
 
@@ -22,6 +25,7 @@ use tracing::{info, warn};
 
 use crate::install_layout;
 use crate::manifest::{blob_url, Manifest, PatchEntry, SeedEntry};
+use crate::patch_dest::patch_dest;
 use crate::patch_rdata;
 use crate::state::{InstalledState, StateError};
 use crate::unpack::{self, UnpackError, UnpackSink};
@@ -50,6 +54,8 @@ pub enum InstallError {
     InvalidSha256(String),
     #[error("Cancelled")]
     Cancelled,
+    #[error(transparent)]
+    PatchDest(#[from] crate::patch_dest::NoSgwGameDir),
 }
 
 /// Returns the first 12 chars of `sha` after confirming the whole string
@@ -119,11 +125,12 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
     }
 
     for patch in &ctx.manifest.patches {
-        if state.has_applied(&patch.id) {
+        let key = patch.state_key();
+        if state.has_applied(&key) {
             continue;
         }
         apply_patch(&ctx, patch).await?;
-        state.applied_patches.push(patch.id.clone());
+        state.applied_patches.push(key);
         state.save(ctx.install_dir)?;
     }
 
@@ -165,7 +172,7 @@ async fn apply_seed(ctx: &InstallContext<'_>, seed: &SeedEntry) -> Result<(), In
     )
     .await?;
     info!("Unpacking seed into {}", ctx.install_dir.display());
-    verify_and_unpack(ctx, &tmp, &seed.sha256, "seed").await
+    verify_and_unpack(ctx, &tmp, ctx.install_dir, &seed.sha256, "seed").await
 }
 
 async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(), InstallError> {
@@ -192,6 +199,9 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
         .install_dir
         .join(format!(".tmp-patch-{safe_id}-{safe_sha}.download"));
     let label = format!("patch {}", patch.id);
+    // Resolve the destination before downloading, so a client tree with
+    // no SGWGame directory fails fast instead of after the download.
+    let dest = patch_dest(ctx.install_dir, patch)?;
     download_to_file(
         ctx.http,
         &url,
@@ -202,11 +212,11 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
         &ctx.progress,
     )
     .await?;
-    info!("Applying {} into {}", label, ctx.install_dir.display());
-    verify_and_unpack(ctx, &tmp, &patch.sha256, &label).await
+    info!("Applying {} into {}", label, dest.display());
+    verify_and_unpack(ctx, &tmp, &dest, &patch.sha256, &label).await
 }
 
-/// Hash `tmp` against `sha256`, unpack it into the install dir, then delete
+/// Hash `tmp` against `sha256`, unpack it into `dest`, then delete
 /// it. Both steps are blocking file work over multi-gigabyte files, so they
 /// run on a blocking thread.
 ///
@@ -216,11 +226,12 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
 async fn verify_and_unpack(
     ctx: &InstallContext<'_>,
     tmp: &Path,
+    dest: &Path,
     sha256: &str,
     label: &str,
 ) -> Result<(), InstallError> {
     let tmp = tmp.to_path_buf();
-    let dest = ctx.install_dir.to_path_buf();
+    let dest = dest.to_path_buf();
     let expected = sha256.to_string();
     let sink = UnpackSink {
         progress: ctx.progress.clone(),
@@ -540,7 +551,7 @@ mod tests {
             progress: tx,
             http: &http,
         };
-        let err = verify_and_unpack(&ctx, &tmp, "00", "seed")
+        let err = verify_and_unpack(&ctx, &tmp, ctx.install_dir, "00", "seed")
             .await
             .unwrap_err();
         assert!(matches!(err, InstallError::HashMismatch { .. }), "{err:?}");

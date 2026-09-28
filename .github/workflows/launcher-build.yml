@@ -10,10 +10,18 @@ on:
     branches: [main]
     paths:
       - 'crates/launcher/**'
+      - 'crates/client-launch/**'
+      - 'crates/start32/**'
+      - 'crates/client-patches/**'
+      - 'tools/launcher-release/**'
       - '.github/workflows/launcher-*.yml'
   pull_request:
     paths:
       - 'crates/launcher/**'
+      - 'crates/client-launch/**'
+      - 'crates/start32/**'
+      - 'crates/client-patches/**'
+      - 'tools/launcher-release/**'
       - '.github/workflows/launcher-*.yml'
 
 concurrency:
@@ -59,8 +67,10 @@ jobs:
         with:
           shared-key: launcher-windows
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # client-launch too: its injection code is cfg(windows), so the
+      # workspace clippy on Linux never lints it.
       - name: cargo clippy
-        run: cargo clippy -p sgw-launcher --all-targets -- -D warnings
+        run: cargo clippy -p sgw-launcher -p cimmeria-client-launch -p cimmeria-start32 --all-targets -- -D warnings
 
   build:
     name: cargo build (Windows)
@@ -87,14 +97,63 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: launcher-windows
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install nextest
         uses: taiki-e/install-action@nextest
+      # The launcher is x64 and SGW.exe is 32-bit, so injection goes through
+      # the i686 sgw-start32 helper. Build it, then run the x64 tests with
+      # CIMMERIA_TEST_START32 pointing at it: the start32 tests inject a real
+      # DLL into a real 32-bit process through the helper, check its
+      # asInvoker manifest, and that it starts without elevation. They fail,
+      # rather than skip, when CI is set and the variable is not.
+      - name: build the i686 sgw-start32 helper
+        run: cargo build -p cimmeria-start32 --target i686-pc-windows-msvc
       - name: cargo nextest run
-        run: cargo nextest run --profile=ci -p sgw-launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A Windows path: the test runs the helper through std::process::Command.
+          export CIMMERIA_TEST_START32="$(cygpath -w "$PWD/target/i686-pc-windows-msvc/debug/sgw-start32.exe")"
+          cargo nextest run --profile=ci -p sgw-launcher -p cimmeria-client-launch
+
+  # launcher-release.yml has never run; its build must not be first tested at
+  # release time. This job runs the same tools/launcher-release/build.sh
+  # stages, in release profile, minus publishing: the i686 DLL
+  # and helper, the 64-bit launcher embedding both, the artifact checks
+  # (bitness, the helper's manifest and version resource, both embedded), and
+  # the overlay pack.
+  release-dry-run:
+    name: release build dry run (Windows)
+    runs-on: windows-latest
+    needs: clippy
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: launcher-release-dry-run
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: build the i686 DLL and helper
+        shell: bash
+        run: tools/launcher-release/build.sh i686
+      - name: build the 64-bit launcher, embedding both
+        shell: bash
+        run: tools/launcher-release/build.sh launcher
+      - name: verify the artifacts
+        shell: bash
+        run: tools/launcher-release/build.sh verify
+      - name: pack the client-patches overlay
+        shell: bash
+        run: tools/launcher-release/build.sh overlay https://example.invalid/dry-run
 
   # Coverage runs on ubuntu — the test logic is platform-agnostic, the
   # eframe deps that force the rest of the launcher pipeline onto Windows

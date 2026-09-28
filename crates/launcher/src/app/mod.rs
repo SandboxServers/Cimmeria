@@ -141,6 +141,7 @@ impl LauncherApp {
                 | Event::WipeError(_)
                 | Event::Launched(..)
                 | Event::LaunchError(_)
+                | Event::ClientPatchesNote(_)
                 | Event::UploadStarted
                 | Event::UploadSkipped(_)
                 | Event::UploadComplete { .. }
@@ -235,6 +236,7 @@ fn status_line_for(event: &Event) -> Option<String> {
         Event::InstallError(e) => format!("Install failed: {e}"),
         Event::Launched(name, pid) => format!("Launched {name} (pid {pid})"),
         Event::LaunchError(e) => format!("Launch failed: {e}"),
+        Event::ClientPatchesNote(n) => format!("Client patches: {n}"),
         Event::UploadStarted => "Uploading logs…".into(),
         Event::UploadSkipped(why) => format!("Log upload skipped: {why}"),
         Event::UploadComplete { blob, bytes } => format!("Uploaded {bytes} bytes to {blob}"),
@@ -369,6 +371,13 @@ mod tests {
             line.contains("not verified"),
             "must surface the trust trade-off, got: {line}"
         );
+    }
+
+    #[test]
+    fn status_line_for_formats_client_patches_note() {
+        let line =
+            status_line_for(&Event::ClientPatchesNote("off (launcher setting).".into())).unwrap();
+        assert_eq!(line, "Client patches: off (launcher setting).");
     }
 
     #[test]

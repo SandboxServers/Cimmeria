@@ -4,6 +4,7 @@ pub mod auth;
 pub mod bundle;
 pub mod chunk;
 pub mod events;
+pub mod patch_log;
 pub mod process_watch;
 pub mod queue;
 pub mod runner;

@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use crate::client_paths::WipeReport;
-use crate::config::LauncherConfig;
+use crate::config::{ClientPatchesSettings, LauncherConfig};
 use crate::install::Progress;
 use crate::manifest::Manifest;
 use crate::telemetry::runner::SessionOutcome;
@@ -24,15 +24,18 @@ pub enum Command {
         install_dir: PathBuf,
         manifest: Manifest,
     },
-    LaunchSgw(PathBuf),
+    /// Launch SGW.exe with the client-patches DLL injected (unless
+    /// opted out), and follow it with a telemetry session when
+    /// `telemetry` is set.
+    LaunchSgw(LaunchSgwRequest),
     LaunchAteraDebug(PathBuf),
     LaunchAteraFixAslr(PathBuf),
     /// Launch SGW.exe with the `cimmeria-client-telemetry.dll`
     /// side-loaded via the launcher's own injector (issue #417).
     /// `install_dir` is where SGW.exe lives; `dll_path` is the
-    /// absolute path to the DLL alongside `sgw-launcher.exe`.
-    /// The launcher resolves both paths and hands them through to
-    /// [`launch_sgw_with_telemetry`].
+    /// absolute path to the DLL alongside `sgw-launcher.exe`. The
+    /// client-patches DLL goes in first unless `client_patches` opts
+    /// out; see [`injection_order`].
     ///
     /// `allow(dead_code)`: Phase 1 of issue #417 lands the worker
     /// dispatch + injector primitives. UI exposure (the "Launch
@@ -41,11 +44,12 @@ pub enum Command {
     /// in isolation. The dispatch routing is covered by
     /// [`tests::launch_sgw_with_client_telemetry_routes_through_dispatch`].
     ///
-    /// [`launch_sgw_with_telemetry`]: crate::launch::launch_sgw_with_telemetry
+    /// [`injection_order`]: crate::client_patches::injection_order
     #[allow(dead_code)]
     LaunchSgwWithClientTelemetry {
         install_dir: PathBuf,
         dll_path: PathBuf,
+        client_patches: ClientPatchesSettings,
     },
     /// Launch the Atera debug bat AND run the telemetry pipeline for
     /// the lifetime of the spawned game process. The telemetry config
@@ -92,6 +96,9 @@ pub enum Event {
     WipeError(String),
     Launched(String, u32),
     LaunchError(String),
+    /// What happened to the client-patches DLL on a launch, when it did
+    /// not simply go in: opted out, unavailable, or injection failed.
+    ClientPatchesNote(String),
     /// Telemetry session ended cleanly with a final bundle upload.
     /// Surfaces in the status log so the dev can confirm the upload
     /// completed.
@@ -108,6 +115,15 @@ pub enum Event {
         bytes: usize,
     },
     UploadError(String),
+}
+
+/// A `SGW.exe` launch: where the game is, the client-patches settings,
+/// and the telemetry session to run alongside, if any.
+#[derive(Debug, Clone)]
+pub struct LaunchSgwRequest {
+    pub install_dir: PathBuf,
+    pub client_patches: ClientPatchesSettings,
+    pub telemetry: Option<LaunchTelemetryConfig>,
 }
 
 /// Everything the worker needs to bootstrap a telemetry session at
