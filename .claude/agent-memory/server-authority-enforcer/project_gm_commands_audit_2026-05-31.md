@@ -35,8 +35,8 @@ prerequisite for safely implementing any of the GM cell methods.
 - Two parallel GM dispatch paths exist: (a) the chat slash-command
   registry in `crates/commands` which DOES gate on access_level,
   and (b) the wire cell-method dispatch which does NOT. The
-  in-process `crates/game/src/commands/gm_cmds.rs` handlers use
-  path (a); future implementers MUST NOT confuse the two.
+  in-process `crates/game/src/commands/gm_cmds.rs` handlers used
+  path (a) (deleted in #803, 2026-09-28; never registered anywhere); future implementers MUST NOT confuse the two.
 
 ### What I filed
 

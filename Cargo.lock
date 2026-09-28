@@ -1295,7 +1295,6 @@ dependencies = [
 name = "cimmeria-game"
 version = "0.1.0"
 dependencies = [
- "cimmeria-commands",
  "cimmeria-common",
  "cimmeria-workspace-hack",
  "rand 0.10.3",

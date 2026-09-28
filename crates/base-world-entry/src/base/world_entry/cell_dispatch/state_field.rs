@@ -86,8 +86,8 @@ pub(super) async fn persist_state_field(
 #[cfg(test)]
 mod tests {
     //! Live-DB regression guards for the state_field persistence path
-    //! (#412). Sentinel id range `0x7000_1700` — sibling slot reserved
-    //! past `system_options::tests` at `0x7000_1600`.
+    //! (#412). Sentinel id range `0x7000_8600` (offsets to `+0x20`). It was
+    //! `0x7000_1700`, which `character/delete_live_db_tests.rs` owns (#800).
 
     use super::*;
     use crate::test_support::require_db_or_skip;
@@ -95,7 +95,7 @@ mod tests {
         BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,
     };
 
-    const TEST_BASE: i32 = 0x7000_1700;
+    const TEST_BASE: i32 = 0x7000_8600;
 
     async fn cleanup(pool: &PgPool, account_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_player WHERE account_id = $1")

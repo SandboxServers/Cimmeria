@@ -28,7 +28,8 @@ const OWNER: u32 = 7;
 const OWNER_PLAYER_ID: i32 = 700;
 const MOB_TAG: &str = "CIMMERIA_TEST_PT06_KILLCOUNT_MOB";
 const COUNTER: &str = "pt06_kills";
-const EFFECT_ID: i32 = 0x7000_0604;
+/// Own value since #800 (was `registered_pet_kill_credit`'s `0x7000_0604`).
+const EFFECT_ID: i32 = 0x7000_8C00;
 /// Level 5 pays `kill_xp(5)` = 50.
 const MOB_LEVEL: u32 = 5;
 

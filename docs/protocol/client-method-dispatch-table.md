@@ -23,6 +23,10 @@ last_updated: 2026-09-27
 > against both this table and the constants in
 > `crates/wire/src/cell/client_methods/`. Zero mismatches in either
 > direction.
+> **Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): it replays the flattening rule
+> below over `entities/defs/` in CI and fails on any constant that drifts from it
+> (`method_idx`, the per-interface tables, the SGWMob and SGWPet indices, and the
+> `wire-log` name table).
 > **Total methods**: 157 (indices 0–156)
 > **Encoding**: Methods 0–60 use direct wire encoding (`msg_id = 0x80 + index`);
 > methods 61+ use extended encoding (`msg_id = 0xBD`, sub-byte = `index - 61`).

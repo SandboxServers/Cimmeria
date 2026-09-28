@@ -8,7 +8,8 @@ use cimmeria_wire::black_market::{BMSearchOptions, Encode};
 
 const TEST_ENTITY: u32 = 1;
 const TEST_PLAYER: i32 = 4242;
-const TEST_ACCOUNT: u32 = 0x7000_A0F1;
+/// Own value since #800 (`0x7000_A0F1` is the base-side BM test's player).
+const TEST_ACCOUNT: u32 = 0x7000_8D20;
 
 /// One-player Castle space whose single entity carries a DB `player_id`,
 /// so `resolve_player_id` succeeds. Mirrors the `combatant.rs` fixture.

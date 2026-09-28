@@ -2,7 +2,7 @@
 title: "SGW UE3 Package Binary Format"
 type: reference
 audience: engineers
-last_updated: 2026-09-19
+last_updated: 2026-09-28
 ---
 
 # SGW UE3 Package Binary Format
@@ -366,6 +366,38 @@ its shape. The value is an `i32 count` followed by the elements:
 Struct arrays nest: a Kismet event's `OutputLinks[n].Links[m].LinkedOp` is an
 object ref two arrays deep. Binary structs inside elements (`Vector` in
 `InterpCurvePointVector.OutVal`) still serialize raw.
+
+## Texture2D pixel format (`EPixelFormat`)
+
+A `Texture2D` export's `Format` ByteProperty indexes the client's
+`GPixelFormats` table at `0x01dd6a08` in SGW.exe (stride `0x24`; the UTF-16
+names start at `0x018f7960`). The D3D init code that fills each entry's
+`PlatformFormat` field (`0x01dd6a20 + n * 0x24`) pins the order:
+
+| Byte | `EPixelFormat` | PlatformFormat | Size |
+|---|---|---|---|
+| 0 | `PF_Unknown` | 0 | none |
+| 1 | `PF_A32B32G32R32F` | `0x74` (D3DFMT_A32B32G32R32F) | 16 B/pixel |
+| 2 | `PF_A8R8G8B8` | `0x15` (D3DFMT_A8R8G8B8) | 4 B/pixel |
+| 3 | `PF_G8` | `0x32` (D3DFMT_L8) | 1 B/pixel |
+| 4 | `PF_G16` | 0 | 2 B/pixel |
+| 5 | `PF_DXT1` | `'DXT1'` FourCC | 8 B per 4x4 block |
+| 6 | `PF_DXT3` | `'DXT3'` FourCC | 16 B per 4x4 block |
+| 7 | `PF_DXT5` | `'DXT5'` FourCC | 16 B per 4x4 block |
+| 8 | `PF_UYVY` | `'UYVY'` FourCC | 2 B/pixel |
+
+Stock cooked data agrees. `BS_HF_Torso00_D` is 512x256 with byte 5 and 10
+mips, and its mip 0 is 65,536 bytes (8 bytes per 4x4 block, so DXT1). Hair
+textures use byte 7 (DXT5).
+
+A tagged property equal to its class default is not serialized, and the
+default `Format` is 0. A texture with no `Format` tag is `PF_Unknown`, not
+A8R8G8B8.
+
+`crates/upk-objects/src/texture2d.rs` (`PixelFormat::from_byte`) follows this
+table, and `from_byte_follows_client_gpixelformats_table` pins it. Before
+#839 the map was off by two (3 = DXT1, 5 = DXT5), so DXT1 textures decoded
+as DXT5 and DXT5 textures as `Unknown`.
 
 ## Coordinate system
 

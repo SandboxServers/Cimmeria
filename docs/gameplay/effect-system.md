@@ -2,13 +2,13 @@
 title: "Effect System"
 type: reference
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-09-28
 ---
 
 # Effect System
 
-> **Last updated**: 2026-09-25
-> **Status**: Implemented — application, removal, pulsing, stacking, absorption shields, and channel cancellation all work. Gaps: diminishing returns, the effect-clear flags (none of `EF_ClearOn*` is honoured), and **no effect visuals at all** (no `onSequence` is emitted anywhere in the effect system).
+> **Last updated**: 2026-09-28 (#804: the clear-on-death rows follow the stat-buff ledger)
+> **Status**: Implemented — application, removal, pulsing, stacking, absorption shields, and channel cancellation all work. Gaps: diminishing returns, most of the effect-clear flags (only `EF_ClearOnDeath` is honoured, and only by the timed stat-buff ledger), and **no effect visuals at all** (no `onSequence` is emitted anywhere in the effect system).
 
 ## Overview
 
@@ -33,7 +33,7 @@ The `EffectInstance` class in `deprecated/python/cell/AbilityManager.py` handles
 | Effect scripts | DONE | Dynamic script loading via `cell.effects.<name>` |
 | Kismet sequences (init, pulse, remove, per-QR hit) | NOT IMPL | Nothing under `crates/cell-world/src/cell/effects/` or `crates/cell-combat/src/cell/effects/` emits `onSequence`. Events 2000–2008 are never sent, so effects have no visual at all — see [cinematic-system.md](cinematic-system.md) |
 | Client result reporting | DONE | `onEffectResults` with stat delta list |
-| Clear on death/damage/rez/bandolier | PARTIAL | No `EF_ClearOn*` flag has a Rust constant or check. On death, pulses on a dead target are skipped (the instances stay and age out) and a dying channeller's channels are cancelled (`cell/abilities/death/mod.rs`). Nothing clears effects on damage, revive, or bandolier swap |
+| Clear on death/damage/rez/bandolier | PARTIAL | On death, `resolve_death` ends the timed stat buffs whose effect carries `EF_ClearOnDeath` (`EF_CLEAR_ON_DEATH`, `cell/effects/stat_buffs/`). Pulsing effects ignore the flag: pulses on a dead target are skipped (the instances stay and age out) and a dying channeller's channels are cancelled (`cell/abilities/death/mod.rs`). `EF_ClearOnDamage`, `EF_ClearOnRez` and `EF_RemoveOnBandolierSlotChange` have no Rust constant, and nothing clears effects on damage, revive, or bandolier swap |
 | Effect stacking rules | DONE | Refcounted via `state_flag_counts`; shipped in PR #420 |
 | Absorption shields | DONE | Absorption pool with defined drain ordering; shipped in PR #420 |
 | Channeled effect pulses | DONE | `cell/effects/pulsing/`, including channel cancellation and the `AF_CHANNEL_ALLOWS_MOVEMENT` gate |
@@ -79,7 +79,7 @@ AbilityManager.addEffect(effect, invokerId)
 
 | Flag | Constant | Implemented | Purpose |
 |------|----------|-------------|---------|
-| `EF_ClearOnDeath` | -- | NO | Remove effect on entity death (see the clear row above for the partial death behaviour) |
+| `EF_ClearOnDeath` | `EF_CLEAR_ON_DEATH` (4, `crates/entity/src/abilities/defs.rs`) | PARTIAL | Remove effect on entity death. Only the timed stat-buff ledger reads it; see the clear row above |
 | `EF_ClearOnDamage` | -- | NO | Remove effect when damage received |
 | `EF_ClearOnRez` | -- | NO | Remove effect on revive |
 | `EF_RemoveOnBandolierSlotChange` | -- | NO | Remove on weapon swap |

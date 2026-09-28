@@ -71,7 +71,7 @@ will be unauthenticated by default. Couple the fixes.
   in `execute()`. But that's for chat-typed `/spawn`, `/give`,
   `/kill` commands, NOT for the wire `Event_NetOut_*` GM messages.
   The two paths are completely separate.
-- The chat-command stubs at `crates/game/src/commands/gm_cmds.rs`
+- (Deleted in #803, 2026-09-28.) The chat-command stubs at `crates/game/src/commands/gm_cmds.rs`
   (spawn, teleport, kill, give, setlevel, shutdown) register with
   `AccessLevel::GameMaster` / `Admin` — but they're TODO stubs
   with no actual effect. When wired up they'll use the slash-

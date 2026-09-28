@@ -2,14 +2,14 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-09-19 *(#614 removed the 9 `social/` tests; other rows still the 2026-05-04 snapshot)*  
-> **Total tests**: 60  
+> **Last updated**: 2026-09-28 *(#803 removed the 7 `commands/` and 9 `missions/` tests; #614 removed the 9 `social/` tests; other rows still the 2026-05-04 snapshot, so 4 newer `player.rs` tests are unlisted)*  
+> **Total tests**: 44 listed (48 in the crate)  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
-Game mechanics — combat, abilities, stats, effects, inventory, missions, world simulation, and interactions.
+Game mechanics — combat, abilities, stats, effects, inventory, and world simulation.
 
-## All tests (60)
+## All tests (44 listed)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -29,13 +29,6 @@ Game mechanics — combat, abilities, stats, effects, inventory, missions, world
 | [flat_modifier_adds_to_base](../../../crates/game/src/combat/stats.rs#L121) | unit | Combat / Stats | 2026-03-03 | Asserts on `(block.get(Stat::Damage) - 15.0).abs() < f32::EPSILON` |  |
 | [multiplier_scales_total](../../../crates/game/src/combat/stats.rs#L133) | unit | Combat / Stats | 2026-03-03 | Asserts on `(block.get(Stat::Damage) - 15.0).abs() < f32::EPSILON` |  |
 | [remove_modifiers_by_source](../../../crates/game/src/combat/stats.rs#L145) | unit | Combat / Stats | 2026-03-03 | Asserts on `(block.get(Stat::Armor) - 20.0).abs() < f32::EPSILON` |  |
-| [gm_commands_register](../../../crates/game/src/commands/gm_cmds.rs#L143) | unit | Commands / Gm Cmds | 2026-03-03 | Asserts on `cmds.len() >= 6` |  |
-| [spawn_without_args_shows_usage](../../../crates/game/src/commands/gm_cmds.rs#L151) | unit | Commands / Gm Cmds | 2026-03-03 | Asserts on `matches!(result, CommandResult::Usage(_))` |  |
-| [spawn_with_moniker](../../../crates/game/src/commands/gm_cmds.rs#L159) | unit | Commands / Gm Cmds | 2026-03-03 | Asserts on `msg.contains("jaffa_guard")` |  |
-| [player_cannot_run_gm_commands](../../../crates/game/src/commands/gm_cmds.rs#L173) | unit | Commands / Gm Cmds | 2026-03-03 | Asserts on `matches!(result, CommandResult::Error(_))` |  |
-| [player_commands_register](../../../crates/game/src/commands/player_cmds.rs#L82) | unit | Commands / Player Cmds | 2026-03-03 | Asserts on `cmds.len() >= 4` |  |
-| [stuck_returns_success](../../../crates/game/src/commands/player_cmds.rs#L90) | unit | Commands / Player Cmds | 2026-03-03 | Asserts on `matches!(result, CommandResult::Success(_))` |  |
-| [wave_with_target](../../../crates/game/src/commands/player_cmds.rs#L98) | unit | Commands / Player Cmds | 2026-03-03 | Asserts on `msg.contains("Jack")` |  |
 | [empty_container](../../../crates/game/src/inventory/containers.rs#L89) | unit | Inventory / Containers | 2026-03-03 | Asserts equality on `c.free_slots()` |  |
 | [add_and_retrieve_item](../../../crates/game/src/inventory/containers.rs#L96) | unit | Inventory / Containers | 2026-03-03 | Asserts equality on `slot` |  |
 | [full_container_rejects_item](../../../crates/game/src/inventory/containers.rs#L105) | unit | Inventory / Containers | 2026-03-03 | Asserts on `result.is_err()` |  |
@@ -46,15 +39,6 @@ Game mechanics — combat, abilities, stats, effects, inventory, missions, world
 | [empty_table_drops_nothing](../../../crates/game/src/inventory/loot.rs#L85) | unit | Inventory / Loot | 2026-03-03 | Asserts on `drops.is_empty()` |  |
 | [guaranteed_drop](../../../crates/game/src/inventory/loot.rs#L92) | unit | Inventory / Loot | 2026-03-03 | Asserts equality on `drops.len()` |  |
 | [zero_chance_never_drops](../../../crates/game/src/inventory/loot.rs#L107) | unit | Inventory / Loot | 2026-03-03 | Asserts on `drops.is_empty()` |  |
-| [accept_and_query_mission](../../../crates/game/src/missions/manager.rs#L129) | unit | Missions / Manager | 2026-03-03 | Asserts on `tracker.accept_mission(test_mission(10))` |  |
-| [reject_duplicate_mission](../../../crates/game/src/missions/manager.rs#L136) | unit | Missions / Manager | 2026-03-03 | Asserts on `!tracker.accept_mission(test_mission(10))` |  |
-| [abandon_mission](../../../crates/game/src/missions/manager.rs#L143) | unit | Missions / Manager | 2026-03-03 | Asserts on `tracker.abandon_mission(10)` |  |
-| [step_complete_check](../../../crates/game/src/missions/manager.rs#L151) | unit | Missions / Manager | 2026-03-03 | Asserts on `tracker.is_step_complete(10)` |  |
-| [kill_count_completion](../../../crates/game/src/missions/objectives.rs#L97) | unit | Missions / Objectives | 2026-03-03 | Asserts on `obj.is_complete()` |  |
-| [kill_count_partial](../../../crates/game/src/missions/objectives.rs#L108) | unit | Missions / Objectives | 2026-03-03 | Asserts on `!obj.is_complete()` |  |
-| [visit_region_not_visited](../../../crates/game/src/missions/objectives.rs#L119) | unit | Missions / Objectives | 2026-03-03 | Asserts on `!obj.is_complete()` |  |
-| [xp_only_reward](../../../crates/game/src/missions/rewards.rs#L61) | unit | Missions / Rewards | 2026-03-03 | Asserts equality on `r.xp` |  |
-| [item_reward](../../../crates/game/src/missions/rewards.rs#L69) | unit | Missions / Rewards | 2026-03-03 | Asserts equality on `r.item_template_id` |  |
 | `aggro_range_check` | unit | Mob | 2026-03-03 | Asserts on `mob.is_in_aggro_range(&mob_pos, &close)` | not found in the tree as of 2026-07-25 — location unknown |
 | [npc_roles](../../../crates/game/src/npc.rs#L64) | unit | Npc | 2026-03-03 | Asserts on `!npc.has_dialog()` |  |
 | [new_player_starts_at_level_1](../../../crates/game/src/player.rs#L112) | unit | Player | 2026-03-03 | Asserts equality on `p.level` |  |

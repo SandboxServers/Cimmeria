@@ -8,8 +8,9 @@
 //! docs/architecture/services-crate-split.md) without this test: it drives the
 //! cell's dial handler (`cimmeria-cell-interactions` since wave C4), which
 //! that crate cannot reach. The sentinels and the four
-//! fixture helpers are copies of that module's; this test keeps the ids it had
-//! (`TEST_BASE + 4` and `+ 14`), which no test left there uses.
+//! fixture helpers are copies of that module's. Its base moved off that
+//! module's `0x7000_0600` to its own block (#800); the offsets it had
+//! (`TEST_BASE + 4` and `+ 14`) are unchanged.
 
 use std::sync::Arc;
 
@@ -18,9 +19,9 @@ use sqlx::PgPool;
 use crate::base::world_entry::persist_arrival;
 use crate::test_support::require_db_or_skip;
 
-/// Sentinel range for H06, per the Harset packet allocation
-/// (`0x7006_xxxx`). Cleanup deletes by exact id, never by range.
-const TEST_BASE: i32 = 0x7006_0600;
+/// Sentinel base, own block since #800 (was `persist_arrival`'s
+/// `0x7006_0600`). Cleanup deletes by exact id, never by range.
+const TEST_BASE: i32 = 0x7000_8700;
 
 /// `Castle` (world 8) has a seeded gate (`stargate_id = 2`).
 /// Only used for the world_location FK, which must name a real world.

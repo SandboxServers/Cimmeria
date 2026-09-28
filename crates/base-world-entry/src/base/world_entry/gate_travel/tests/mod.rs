@@ -197,14 +197,12 @@ async fn live_db_gate_travel_persist_branch_is_a_no_op_when_active_player_id_mis
     use crate::test_support::require_db_or_skip;
 
     let pool = require_db_or_skip!();
-    // Sentinel slot 0x7000_0D00 — distinct from prior slots:
-    //   0x100 grant_cash, 0x200 move_inventory, 0x300 grant_item,
-    //   0x400 missions, 0x500 mail, 0x700 vendor/paid_repair,
-    //   0x900 vendor/buyback, 0xB00 inventory/ammo, 0xC00 vendor/data.
-    // Picking 0xD00 avoids collision with paid_repair which also uses 0x700.
-    const TEST_ACCOUNT: i32 = 0x7000_0D00;
-    const CHAR_A: i32 = 0x7000_0D01;
-    const CHAR_B: i32 = 0x7000_0D02;
+    // Sentinel slot 0x7000_8500. It was 0x7000_0D00, which
+    // `player_load/meta.rs` owns (#800); the workspace sentinel lint in
+    // `cimmeria-test-support` now keeps every sentinel value in one file.
+    const TEST_ACCOUNT: i32 = 0x7000_8500;
+    const CHAR_A: i32 = 0x7000_8501;
+    const CHAR_B: i32 = 0x7000_8502;
 
     // Cleanup before + after to keep concurrent tests honest.
     async fn cleanup(p: &PgPool) {

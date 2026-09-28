@@ -273,5 +273,5 @@ The live-DB run must be serialised — some guards share sentinel id ranges and 
 | `wire/src/mercury/` | Services-side Mercury glue — AoI, login/character/world-entry packet builders, world data |
 | `mercury/src/lib.rs` | Mercury packet framing, encryption, reliability |
 | `game/src/combat/` | Combat system |
-| `game/src/inventory/`, `missions/`, `commands/`, `social/`, `world/` | Per-system game logic |
+| `game/src/inventory/`, `world/` | Per-system game logic |
 | `content-engine/src/lib.rs` | Content pipeline (missions, dialogs, sequences) |

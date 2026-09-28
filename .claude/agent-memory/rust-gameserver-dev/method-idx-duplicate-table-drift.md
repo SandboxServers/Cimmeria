@@ -40,5 +40,19 @@ tables; those rows are actually mission traffic. The audits' *conclusions*
 names an interface, verify that `entities/defs/interfaces/<Name>.def`
 actually exists — that check is what exposed this bug.
 
+**Now guarded (2026-09-28, #801).** `crates/wire/src/mercury/def_conformance/`
+flattens `entities/defs/` and checks every const in `method_idx`,
+`cell/client_methods/**`, the cell-console GM tail and local copies,
+`sgw_player_base`, `wire::base::{organization,duel}`, `BASEMSG_ON_*`, every
+`CM_*` (via `cell_method_name`) and the wire-log name table. A const passes
+only if its name normalizes to the def method at its value, so a fabricated
+heading like the vendor one fails CI. When you add a `u16` const to a scanned
+file that is *not* a method index (an enum value), add it to that surface's
+`NOT_METHOD_INDICES`; when a const's name can't match its def method, add an
+alias, not a skip. Moved a scanned file? Update its path in the test (it
+fails loudly on a missing file). Not covered: Account's exposed BaseMethods
+(literal match arms, no consts) and consts in files outside the list
+(wireclient, test-local copies elsewhere).
+
 Related: [[witness-entity-method-dual-fn]] — the same "two places, both
 need changing" shape on the fan-out side.

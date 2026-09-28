@@ -32,10 +32,12 @@ const MOB_TAG: &str = "CIMMERIA_TEST_PT03_PET_KILL";
 /// Level 5 pays `kill_xp(5)` = 50 XP; the seeded `transfer_xp` is 1.0.
 const MOB_LEVEL: u32 = 5;
 const MOB_XP: u64 = 50;
-const WARMUP_ABILITY: i32 = 0x7000_0310;
-const WARMUP_EFFECT: i32 = 0x7000_0311;
-const DOT_EFFECT: i32 = 0x7000_0312;
-const DOT_ABILITY: i32 = 0x7000_0313;
+// Own block since #800 (was `0x7000_0310..=0x7000_0313`, shared with the
+// wireclient squad test's accounts).
+const WARMUP_ABILITY: i32 = 0x7000_8D10;
+const WARMUP_EFFECT: i32 = 0x7000_8D11;
+const DOT_EFFECT: i32 = 0x7000_8D12;
+const DOT_ABILITY: i32 = 0x7000_8D13;
 const PET_WARMUP: f32 = 1.0;
 
 /// The summon fixture, with the owner's character id known before the

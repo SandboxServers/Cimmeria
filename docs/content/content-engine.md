@@ -2,12 +2,12 @@
 title: "Content engine — reference"
 type: reference
 audience: engineers
-last_updated: 2026-09-18
+last_updated: 2026-09-28
 ---
 
 # Content engine — reference
 
-> **Last updated**: 2026-09-18
+> **Last updated**: 2026-09-28 (#804: `system_message` seed count)
 > **Audience**: Engineers working on the Rust server who need to understand, debug, or extend the data-driven content engine.
 > **Prerequisites**: Familiar with the Cimmeria crate layout ([crates/README.md](../../crates/README.md)) and the cell/base service split ([architecture/service-architecture.md](../architecture/service-architecture.md)).
 > **Diátaxis type**: Reference + explanation. For the design rationale ("why does this exist at all?") see [architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md). For "how do I add a new variant?" see [extending-the-engine.md](extending-the-engine.md).
@@ -552,7 +552,7 @@ These have a loader arm, so the seed accepts them and the engine resolves them, 
 | `remove_effect` | `RemoveEffect` | 1 | No chain can strip an effect |
 | `fail_objective` | `FailObjective` | 1 | Objective-fail branches never fire |
 
-`system_message` (`SystemMessage`, **11 seeded rows**) is a third state: it has an executor arm, but the arm only emits an `info!` log. The client wire format is still unknown — see §10.
+`system_message` (`SystemMessage`, **1 seeded row**: chain 1013, `castle_cellblock_chains.sql`) is a third state: it has an executor arm, but the arm only emits an `info!` log. The client wire format is still unknown — see §10.
 
 #### Not authorable — defined in the enum, no loader arm
 
@@ -789,7 +789,7 @@ Three of those **are authorable from seed data and are used today** — `qr_comb
 
 `launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03, and `grant_stargate_address` was added whole in Harset H55. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
 
-Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
+Two more arms exist but are log-only: `SystemMessage` (1 seeded row, chain 1013 in `castle_cellblock_chains.sql` — wire format unknown, see below) and `SendMessage` (no seed verb).
 
 Biggest functional impacts: **no chain can strip an effect, schedule a timer, or deal scripted damage today.** See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 

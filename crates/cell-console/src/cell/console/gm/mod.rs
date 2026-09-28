@@ -13,9 +13,9 @@
 //! Only a subset is implemented; every other 109+ index falls through the
 //! router's auth-gated `warn!` arm (harmless — the call was already
 //! authorized, it just has no handler yet). Each implemented index is pinned
-//! to a constant and the constant is asserted against the document-order count
-//! of `<Exposed/>` methods in `SGWGmPlayer.def`
-//! (`tests::gm_indices_match_def_document_order`).
+//! to a constant, and every constant is checked against the flattened
+//! `<Exposed/>` methods of `SGWGmPlayer.def` by `cimmeria-wire`'s
+//! `mercury::def_conformance` (#801).
 //!
 //! Handlers are grouped by family into submodules:
 //! - [`give`] — grant/remove (xp, item, cash).
@@ -59,9 +59,9 @@ use crate::cell::space_manager::SpaceManager;
 //
 // Counted from SGWGmPlayer.def in document order, starting at 109 for the
 // first own `<Exposed/>` method (gmMissionAssign). The def line references let
-// a reviewer re-count without re-running the script; the offsets (index − 109)
-// are re-asserted in `tests::gm_indices_match_def_document_order`. The three
-// pcap-anchored DONE indices (133/163/190) are the alignment proof.
+// a reviewer re-count by hand; `cimmeria-wire`'s `mercury::def_conformance`
+// (#801) derives every index from the def and fails on drift. The three
+// pcap-anchored indices (133/163/190) are pinned in `tests::pcap_anchored_gm_indices`.
 
 // -- Missions (109–120) -------------------------------------------------------
 /// `gmMissionAssign(WSTRING DesignID, UINT8 popup)` — def line 65. Offset 0.

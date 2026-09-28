@@ -18,9 +18,10 @@ use sqlx::PgPool;
 use crate::base::world_entry::methods::missions::{handle_mission_update, query_saved_missions};
 use crate::test_support::require_db_or_skip;
 
-/// Sentinel base for mission tests. Distinct from grant_cash (0x7000_0100),
-/// move_inventory (0x7000_0200), grant_item (0x7000_0300).
-const TEST_PLAYER_BASE: i32 = 0x7000_0400;
+/// Sentinel base for the mission round trips. Was `0x7000_0400`, shared
+/// with `missions/tests.rs` in `cimmeria-base-methods` (#800). Offsets run
+/// to `+601`, so this owns `0x7000_8200..=0x7000_84FF`.
+const TEST_PLAYER_BASE: i32 = 0x7000_8200;
 
 /// sgw_mission has a FK to sgw_player. Cleanup deletes the account, which
 /// cascades sgw_player rows; sgw_mission rows go away when the player rows

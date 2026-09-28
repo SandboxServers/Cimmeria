@@ -217,9 +217,10 @@ base via `BaseToCellMsg::InitPlayerState` at world entry. Emits fall back to
   (`cell/abilities/loot_drop.rs`); the *looter* isn't known until someone takes
   it, so there's no single character to attribute the generation to. Needs a
   decision on whether to attribute to the killer or the looter before wiring.
-- **`GmTeleport` / `GmSpawn` / `GmItemGrant`**: the GM teleport/spawn/give command
-  *execution* is still TODO in `game/src/commands/gm_cmds.rs` — there's no
-  resolved position/template/quantity to put in the typed embed yet.
+- **`GmTeleport` / `GmSpawn` / `GmItemGrant`**: GM teleport, spawn and give now
+  execute through the client's native `/` console (#518) and the GM-gated `.`
+  console in `crates/cell-console/src/cell/console/` (#523), but neither path
+  calls the Discord helpers yet, so the typed embeds have no emit site.
 - **`MissionRewardGranted`**: reward dispatch isn't implemented cell-side (no
   reward catalog; see `cell/console/mission.rs`).
 - **`AssertionFailure`**: no explicit assertion-failure log site exists today;

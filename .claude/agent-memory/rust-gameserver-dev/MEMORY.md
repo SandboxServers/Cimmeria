@@ -53,7 +53,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Wire format
 
 - [gm-tail-dispatch-doc-filename-trap.md](gm-tail-dispatch-doc-filename-trap.md) — client- vs cell-method dispatch tables are different files; GM tail is `109 + K`.
-- [method-idx-duplicate-table-drift.md](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative; `mercury::method_idx` is a drifted partial copy.
+- [method-idx-duplicate-table-drift.md](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative; `mercury::method_idx` is a drifted partial copy; `def_conformance` guards both (#801).
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns bytes consumed: `offset += n`, never `offset = n`.
 - [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — a bind pushes only `InteractionType`; method 104 is never emitted.
 - [cooked-pak-and-dialog-override-traps.md](cooked-pak-and-dialog-override-traps.md) — `data/cache/*.pak` IS in git; fail-closed patcher vs seed linter diverge silently.
@@ -71,7 +71,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [telemetry-anchor-audit-and-hookgate.md](telemetry-anchor-audit-and-hookgate.md) — telemetry anchors never ran and 5 were wrong (IAT hint/name RVAs, COL-shifted vtable.
 - [injector-bitness-and-start32-helper.md](injector-bitness-and-start32-helper.md) — x64 launcher injects via the i686 sgw-start32 helper; the WOW64 resolver fails on suspended targets.
 - [gm-tail-dispatch-doc-filename-trap](gm-tail-dispatch-doc-filename-trap.md) — client- vs cell-method dispatch tables are different files.
-- [method-idx-duplicate-table-drift](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative.
+- [method-idx-duplicate-table-drift](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative; `def_conformance` guards all index consts (#801).
 - [read-wstring-offset-semantic](read-wstring-offset-semantic.md) — `read_wstring` returns bytes consumed: `offset += n`, never `offset = n`.
 - [dialog-set-bind-carries-no-dialog-id](dialog-set-bind-carries-no-dialog-id.md) — a bind pushes only `InteractionType`; method 104 is never emitted.
 - [cooked-pak-and-dialog-override-traps](cooked-pak-and-dialog-override-traps.md) — `data/cache/*.pak` IS in git; fail-closed patcher vs seed linter diverge silently.

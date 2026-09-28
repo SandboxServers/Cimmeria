@@ -19,7 +19,7 @@
 //!   into the `other =>` catch-all and the `CellToBaseMsg::GrantXP`
 //!   assertion fails.
 //!
-//! Sentinel id range: `0x7000_5000`. Sibling reservations in
+//! Sentinel id range: `0x7000_8900` (was `0x7000_5000`, #800). Sibling reservations in
 //! `crates/services` currently run `0x7000_1000..0x7000_1B00`,
 //! `0x7000_2000`, `0x7000_3000`, `0x7000_4000` and `0x7000_4242`; this
 //! steps past all of them. Cleanup deletes the exact ids inserted, never
@@ -38,7 +38,8 @@ use crate::cell::space_manager::SpaceManager;
 use crate::test_support::require_db_or_skip;
 
 /// Sentinel `content_chains.chain_id`. Fits in `i32` (the column type).
-const TEST_CHAIN_ID: i32 = 0x7000_5000;
+/// Was `0x7000_5000`, `console_authoring`'s base (#800).
+const TEST_CHAIN_ID: i32 = 0x7000_8900;
 /// Sentinel interact tag — namespaced so it can never collide with a
 /// real `content_triggers.event_key`.
 const TEST_TAG: &str = "CIMMERIA_TEST_GRANT_XP_TAG";

@@ -2,12 +2,12 @@
 title: "Mission Chains: Complete Inventory"
 type: reference
 audience: engineers
-last_updated: 2026-09-18
+last_updated: 2026-09-28
 ---
 
 # Mission Chains: Complete Inventory
 
-> **Last updated**: 2026-09-18
+> **Last updated**: 2026-09-28 (#804: SGC_W1 shipped chains)
 > **Scope**: All 1,040 missions in the Stargate Worlds server emulator
 > **Sources**: [db/resources/Missions/Seed/missions.sql](../../db/resources/Missions/Seed/missions.sql) (1,040 mission INSERTs), `deprecated/python/cell/missions/` (20 script files), `deprecated/python/cell/spaces/` (11 space scripts), `deprecated/python/cell/MissionManager.py`
 >
@@ -1148,6 +1148,20 @@ The cost is a stale cue over an NPC or prop the player has finished with; the al
 **All missions**: Level 1
 
 The SGC_W1 space script (`deprecated/python/cell/spaces/SGC_W1.py`) handles mission 1559. The SecurityOffice mission script (`deprecated/python/cell/missions/SGC_W1/SecurityOffice.py`) handles missions 1561 and 1562.
+
+#### Shipped chains (sgc_w1_chains.sql, 3001-3028)
+
+The Python scripts above are ported to content chains in [db/resources/Content/Seed/sgc_w1_chains.sql](../../db/resources/Content/Seed/sgc_w1_chains.sql):
+
+| Chains | Mission | What they cover |
+|---|---|---|
+| 3001-3017 | 1559 | Load and accept, Gen. Hammond, Teal'c, the first elevator, the firearm, the outro, the relog restores, and the `SGC_W1_JaffaBomb` death that opens Hammond's radio dialog 5359 |
+| 3018-3025 | 1561 | Accept from dialog 5359, the `AirmanBody` radio, both radio uses, the Naquadah bomb and its Livewire minigame, completion |
+| 3026-3028 | 1562 | Only the accept (dialog 5365), the relog restore at step 4624, and the `ElevatorButton2` hop. 3028 is the last chain, so 1562 stops at step 4625, as Part D describes |
+
+No chain-replay test covers SGC_W1 yet, so the Part D statuses for 1559 and 1562 are unchanged.
+
+**Unscripted continuation.** Missions 1563-1569 ("Virus", "Self-Destruct", "Tactics", "Tactics pt. 2", "Clear the Way", "Gate Room", "Ordinance") are seeded in `missions.sql` with `mission_label = 'General'`, not SGC_W1. Their step text continues the SGC story ("Take Col. Carter's notes on security protocols.", "Escort Col. Carter to the Failsafe Room on sub-level 28"), so the zone link is inferred from the text (MEDIUM); no script or `.def` evidence exists. The port is tracked in #335.
 
 #### Mission 1559: "Welcome to Stargate Command" [CONFIRMED]
 

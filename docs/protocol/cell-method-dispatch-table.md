@@ -2,13 +2,17 @@
 title: "SGWPlayer / SGWGmPlayer Exposed CellMethod Dispatch Table"
 type: reference
 audience: engineers
-last_updated: 2026-09-17
+last_updated: 2026-09-28
 ---
 
 # SGWPlayer Exposed CellMethod Dispatch Table
 
 Client-to-server cell method calls. Only methods with `<Exposed/>` in the .def file
 get a wire index. Non-exposed methods are server-internal and **skipped** in numbering.
+
+**Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): it flattens the exposed CellMethods of
+`SGWPlayer.def` and `SGWGmPlayer.def` and checks every `CM_*` constant (through
+`cell_method_name`) and every GM constant against them.
 
 ## Wire Encoding
 
@@ -449,8 +453,9 @@ every gm* method, implemented or not. See
 
 A verified subset is wired into the cell router (the rest fall through to the
 already-authorized "unhandled cell method" warn arm — harmless). Each index is
-counted against `SGWGmPlayer.def` document order and asserted in
-`cell::console::gm::tests::gm_indices_match_def_document_order`.
+derived from `SGWGmPlayer.def` by `mercury::def_conformance` in `cimmeria-wire`
+(#801); the three pcap-anchored indices are pinned in
+`cell::console::gm::tests::pcap_anchored_gm_indices`.
 
 | Index | Method | Def line | Args | Behaviour |
 |-------|--------|----------|------|-----------|
@@ -718,7 +723,7 @@ family submodule (`give`/`stats`/`missions`/`travel`/`world`), parse the args pe
 the def, call the primitive in the table (widening visibility / adding a wrapper
 as the status notes), and — for SHOW/LIST rows — emit text via the
 `CHAN_FEEDBACK` `onPlayerCommunication` path. The `gm_gate` already authorized the
-caller, so handlers must **not** re-check access level. Pin the new index in
-`gm_indices_match_def_document_order`. The roadmap for the developer-useful
+caller, so handlers must **not** re-check access level. The new constant is
+checked against the def automatically by `mercury::def_conformance`. The roadmap for the developer-useful
 ADAPT commands is in
 [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).

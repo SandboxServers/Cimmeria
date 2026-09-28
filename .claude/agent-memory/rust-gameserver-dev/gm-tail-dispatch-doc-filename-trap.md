@@ -22,9 +22,11 @@ between them inclusive. Example: `testLOS`=216 (offset 107, def line 619)
 to `onPhysics`=221 (offset 112, def line 645) — five methods in between
 (`toggleCombatLOS`, `trackMob`, `onXRayEyes`, `onInvisible`, then
 `onPhysics` itself) exactly matches offset 107→112. The
-`gm_indices_match_def_document_order` test in `gm/tests/mod.rs` re-asserts
-every constant against this scheme — always add a new `assert_eq!` line
-there when adding a GM index, not just the constant.
+`gm_indices_match_def_document_order` test in `gm/tests/mod.rs` used to
+re-assert every constant by hand. Since #801 (2026-09-28) `cimmeria-wire`'s
+`mercury::def_conformance` derives every GM index from `SGWGmPlayer.def`
+and checks each constant automatically; `gm/tests` keeps only the three
+pcap anchors (133/163/190).
 
 ## Movement-validator bypass pattern (per-entity flag, checked pre-Layer-1)
 
