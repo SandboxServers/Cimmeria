@@ -69,8 +69,8 @@ Abilities are defined as `AbilityType` structs deserialized from PAK files. Two 
 | +0x4C  | TCM_Param2               | float  |
 | +0x54  | Flags (low word)         | uint   |
 | +0x58  | Flags (high word)        | uint   |
-| +0x60  | MinRange                 | float  |
-| +0x64  | MaxRange                 | float  |
+| +0x60  | MinRange                 | uint (`%lu`), UE3 units; see [Range units](#range-units-919-verified-2026-09-28) |
+| +0x64  | MaxRange                 | uint (`%lu`), UE3 units |
 
 EffectIds array serialized at param_4+4 via `FUN_015d3e60`.
 
@@ -87,6 +87,55 @@ EffectIds array serialized at param_4+4 via `FUN_015d3e60`.
 **Note**: PAK and runtime layouts have different offsets for the same fields. This is typical of a 2009
 engine that had separate data loading and runtime-cache paths. The PAK offsets are serialization order;
 the runtime offsets are memory layout after initialization.
+
+### Range units (#919, verified 2026-09-28)
+
+**`MinRange` / `MaxRange` are unsigned integers in UE3 world units: 100 per BigWorld metre.** The
+server's positions are BigWorld metres, so it must divide the seeded value by 100 before comparing it
+with a distance. Evidence, all from SGW.exe via headless Ghidra plus the shipped data:
+
+1. **The cooked data carries the big numbers.** The 2009 client's bundled
+   `SourceCache.en-us/CookedDataAbilities.pak` has `_1652` (Jaffa: Double Blast) with `MaxRange="3000"`,
+   the same value as `db/resources/Abilities/Seed/abilities.sql`. So the seed is original data, not a
+   reconstruction artefact. Every non-zero `min_range` / `max_range` in the seed is a multiple of 100
+   (100 to 10000).
+2. **They are integers, not floats.** The gSOAP serializer at `0x015d51c0` (listed above as
+   `AbilityType_DeserializePak`; it is really the *writer*, which emits `name="value"` attributes)
+   formats `+0x60` / `+0x64` with `0x00a414c0`, which is `sprintf("%lu")`, the same formatter it uses
+   for `AbilityId`. Floats (`WarmupSeconds`, `Velocity`) go through `0x00a3cab0` instead. The reader is
+   `0x015e5840`.
+3. **Runtime copy, unconverted.** `FUN_00d2a470` parses `COOKED_ABILITY` and copies cooked `+0x60`
+   â†’ runtime `+0x8c` (min) and `+0x64` â†’ `+0x90` (max) raw. The getters `FUN_00d29e00` (min) and
+   `FUN_00d29e30` (max) return those fields, or, when `flags & 4` (`UseWeaponRange`), the equipped
+   weapon's `{min, max}` pair via `FUN_00d29da0` (item runtime `+0x8c` melee / `+0x90` ranged, chosen
+   by `IsRanged` at ability `+0x59`).
+4. **The client uses them in UE3 space.** `AbilitySet_ActivateGroundTargetReticle` (`0x00dea330`)
+   passes the getters' values, converted to float, to `USGWGroundTarget` setup `FUN_00eadf00`
+   (`SGWGroundTarget.cpp`, asserts `"maxRange >= 0"` / `"minRange >= 0"`), which stores them at
+   `+0x40` / `+0x44`. The reticule tick `FUN_00eae080` reads the player pawn's `AActor::Location`
+   (`+0xdc`, via `0x00e685c0`), measures the horizontal distance to the decal, clamps the reticule to
+   `maxRange` and outside `minRange`, and traces down to `-262144` (the UE3 world floor,
+   `DAT_01853640`) with a level line check. Everything in that function is UE3 units.
+5. **Next to AoE radii that are converted.** The same setup call takes the AE radius from runtime
+   `+0xa0`, which `FUN_00d29e90` builds from the `TCM_Param1` tier string: Melee 250, Short 500,
+   Medium 1000, Long 1500, Extreme 2000. Those are `ETargetCollectionParams` `AE_RADIUS_*` (2.5 / 5 /
+   10 / 15 / 20 m, flagged `BW_TO_UE3_DIST_CONVERT` in `enumerations.xml`) times 100. For contrast,
+   `onMeleeRangeUpdate` (`FUN_00e01b80`) multiplies the BigWorld `range` by `BW_TO_UE3_SCALE`
+   (`0x018cad90` = 100.0) before storing it; ability ranges arrive already in UE3 units.
+6. **The client does not range-check targeted casts.** `AbilitySet_EmitUseAbilityOrGroundTarget`
+   (`0x00d2ae40`) emits `Event_NetOut_UseAbility` with only `AbilityID` and `TargetID`; the reticule
+   clamp is the only client-side range use. The server's `useAbility` check is the only gate.
+
+**Weapon ranges are metres.** The cooked items' `RangeRanges` / `MeleeRanges` carry `MaxRange` 20 / 30
+/ 35 / 40 / 50 and 2 / 3 / 35, the same metres as `resources.items.*_range`. The client copies them raw
+too, so for a ground-target ability flagged `UseWeaponRange` its reticule clamp would be 30 UE3 units
+(30 cm). That is a client quirk the server does not need to reproduce: the server compares weapon ranges
+in metres and ability ranges in metres after the conversion.
+
+**Cimmeria.** `load_ability_defs` (`crates/cell-catalog/src/cell/spawner/abilities.rs`) divides both
+columns by `ABILITY_RANGE_UNITS_PER_METRE` (100) once, and `AbilityDef::min_range` / `max_range` are
+metres (`crates/entity/src/abilities/range.rs`). Before #919 the raw value was compared with metre
+distances, so 1652 reached 3000 m.
 
 ### Cimmeria implementation audit (2026-09-19)
 

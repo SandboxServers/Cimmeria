@@ -182,13 +182,9 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // that's an error packet every ~600 ms while out of
             // range. Loop stays armed so walking back into range
             // resumes firing on the next tick.
-            let max_range = space_mgr.ability_defs.get(&ability_id).map_or(30.0, |d| {
-                if d.max_range > 0 {
-                    d.max_range as f32
-                } else {
-                    30.0
-                }
-            });
+            let max_range = cimmeria_entity::abilities::ability_max_range(
+                space_mgr.ability_defs.get(&ability_id),
+            );
             if let Some(t) = target {
                 if e.position.distance_to(&t.position) > max_range {
                     return None;

@@ -173,7 +173,8 @@ pub(super) fn make_aggression_fixture(
 }
 
 /// Seed an `AbilityDef` for `NPC_DEFAULT_ABILITY` with explicit min/max
-/// range. Cooldown stays at the same 1.0s used by
+/// range, in metres (the unit `AbilityDef` holds after the loader's #919
+/// conversion). Cooldown stays at the same 1.0s used by
 /// `selector_picks_ammo_bearing_ability_for_npc` so a future cooldown
 /// bump doesn't accidentally start gating these tests.
 pub(super) fn seed_default_ability(mgr: &mut SpaceManager, min_range: i32, max_range: i32) {
@@ -187,8 +188,8 @@ pub(super) fn seed_default_ability(mgr: &mut SpaceManager, min_range: i32, max_r
             warmup: 0.0,
             flags: 0,
             is_ranged: true,
-            min_range,
-            max_range,
+            min_range: min_range as f32,
+            max_range: max_range as f32,
             target_type_id: 0,
             effect_ids: vec![],
             moniker_ids: vec![],
