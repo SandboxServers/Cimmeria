@@ -82,7 +82,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | Mail | 9 | Not implemented |
 | Trading | 4 | Not implemented |
 | Black Market | 4 | Partial (server only; client patch pending) |
-| Crafting & Research | 6 | Not implemented |
+| Crafting & Research | 6 | Implemented server-side by the crafting campaign (CR-01 to CR-10); not yet client-verified |
 | Abilities & Training | 4 | Partial |
 | Stargates | 5 | Partial (~20%) |
 | Minigames | 14 | Not implemented |
@@ -219,12 +219,12 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 
 | Event Name | String Addr | Handler Addr | .def Method | Impl |
 |------------|-------------|--------------|-------------|------|
-| `Event_NetOut_Craft` | — | TBD | SGWPlayer.craft | NO |
-| `Event_NetOut_Alloy` | — | TBD | SGWPlayer.alloy | NO |
-| `Event_NetOut_Research` | — | TBD | SGWPlayer.research | NO |
-| `Event_NetOut_ReverseEngineer` | — | TBD | SGWPlayer.reverseEngineer | NO |
-| `Event_NetOut_RespecCraft` | 0195fb28 | TBD | SGWPlayer.respecCraft | NO |
-| `Event_NetOut_SpendAppliedSciencePoint` | — | TBD | SGWPlayer.spendAppliedSciencePoint | NO |
+| `Event_NetOut_Craft` | — | TBD | SGWPlayer.craft | YES |
+| `Event_NetOut_Alloy` | — | TBD | SGWPlayer.alloy | YES |
+| `Event_NetOut_Research` | — | TBD | SGWPlayer.research | YES |
+| `Event_NetOut_ReverseEngineer` | — | TBD | SGWPlayer.reverseEngineer | YES |
+| `Event_NetOut_RespecCraft` | 0195fb28 | TBD | SGWPlayer.respecCraft | YES (confirms a respec a player's `.respeccraft` opened) |
+| `Event_NetOut_SpendAppliedSciencePoint` | — | TBD | SGWPlayer.spendAppliedSciencePoint | YES |
 
 ### Mail
 
@@ -370,7 +370,7 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 | Contact Lists | 5 | Implemented |
 | Mail | 4 | Not implemented |
 | Stargates | 8 | Partial (~20%) |
-| Crafting | 6 | Parsed and forwarded to the base; answered "not available yet" (crafting CR-01) |
+| Crafting | 6 | Sent: 112 (respec prompt), 136-139 at login and on every change, 140 at login and when stations or tools change (crafting campaign) |
 | Black Market | 5 | Not implemented |
 | Minigames | 12 | Not implemented |
 | Dueling | 4 | Partial: `onDuelChallenge` (SS-D1); `onDuelEntitiesSet` and `Clear` (SS-D2); 152 is AoI's only |
@@ -467,7 +467,7 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | Mail | 0 | 9 | 0 | 4 | 0% |
 | Trading | 0 | 4 | 0 | 2 | 0% |
 | Black Market | 0 | 4 | 0 | 5 | 0% |
-| Crafting | 0 | 6 | 0 | 6 | 0% |
+| Crafting | 6 | 6 | 6 | 6 | 100% |
 | Stargates | 1 | 5 | 1 | 8 | 15% |
 | Minigames | 0 | 14 | 0 | 12 | 0% |
 | Dueling | 3 | 3 | 3 | 4 | 86% |
@@ -476,7 +476,7 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | World/Entity | — | — | 13 | 13 | 100% |
 | GM/Debug | ~20 | 59 | — | — | ~34% |
 | Protocol | 4 | 7 | — | — | 57% |
-| **TOTAL** | **~77** | **253** | **~65** | **167** | **~34%** |
+| **TOTAL** | **~83** | **253** | **~71** | **167** | **~37%** |
 
 ---
 
