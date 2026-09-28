@@ -234,7 +234,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (115, 326.414001, 70.2720032, 933.495972, 0, 8, 148, 'Castle_NidGuard17Inside', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (89, 381.843994, 70.2720032, 997.200012, 0, 8, 148, 'CastleNidGuardXInside', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, loot_table_id) VALUES (89, 381.843994, 70.2720032, 997.200012, 0, 8, 148, 'CastleNidGuardXInside', NULL, 120, 7);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (116, 294.158997, 55.3919983, 894.442993, 0, 8, 148, 'CastleNidGuard18Inside', NULL, 120);
 
@@ -617,16 +617,20 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (211, 803.0, 56.36, 533.0, 0.75, 8, 160, 'Castle_Standoff_Alpha_Jaffa3', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (212, 795.0, 56.26, 520.0, 1.570796, 8, 160, 'Castle_Pop_Alpha_WoundedJaffa', NULL);
 
+-- Castle hall loot (Decision (@Cadacious, 2026-09-28)): the three HallPost
+-- guards, CastleNidGuardXInside (89) and the north patrol pair on the
+-- corridor to the Interrogation Block roll loot table 7 through the per-spawn
+-- `loot_table_id` override; their templates keep tables 4/5 everywhere else.
 -- 701 hallway hostiles. A three-guard post (L4 lead, L3, L2) holds the junction room
 -- at the top of Copplemann's corridor, 40 u or more from her; two patrol pairs walk parallel
 -- lines 3 u apart (the north corridor to the Interrogation Block and the west hall
 -- toward the Comms level), dwelling 4 s at each end; a Prisoner Retrieval Unit (145)
 -- patrols the Interrogation Block antechamber.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (247, 351.0, 70.38, 1000.5, 1.570796, 8, 183, 'Castle_Pop_HallPost_1', NULL, 120);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (248, 356.0, 70.38, 1006.0, 1.570796, 8, 182, 'Castle_Pop_HallPost_2', NULL, 120);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (249, 350.0, 70.38, 993.0, 1.570796, 8, 181, 'Castle_Pop_HallPost_3', NULL, 120);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (250, 279.0, 70.18, 952.0, 0, 8, 182, 'Castle_Pop_HallPatrolN_1', NULL, 120, 2086, 4);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (251, 282.0, 70.18, 952.0, 0, 8, 181, 'Castle_Pop_HallPatrolN_2', NULL, 120, 2087, 4);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, loot_table_id) VALUES (247, 351.0, 70.38, 1000.5, 1.570796, 8, 183, 'Castle_Pop_HallPost_1', NULL, 120, 7);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, loot_table_id) VALUES (248, 356.0, 70.38, 1006.0, 1.570796, 8, 182, 'Castle_Pop_HallPost_2', NULL, 120, 7);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, loot_table_id) VALUES (249, 350.0, 70.38, 993.0, 1.570796, 8, 181, 'Castle_Pop_HallPost_3', NULL, 120, 7);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay, loot_table_id) VALUES (250, 279.0, 70.18, 952.0, 0, 8, 182, 'Castle_Pop_HallPatrolN_1', NULL, 120, 2086, 4, 7);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay, loot_table_id) VALUES (251, 282.0, 70.18, 952.0, 0, 8, 181, 'Castle_Pop_HallPatrolN_2', NULL, 120, 2087, 4, 7);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (252, 262.0, 70.18, 929.0, 1.570796, 8, 182, 'Castle_Pop_HallPatrolW_1', NULL, 120, 2088, 4);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id, patrol_point_delay) VALUES (253, 262.0, 70.18, 932.0, 1.570796, 8, 181, 'Castle_Pop_HallPatrolW_2', NULL, 120, 2089, 4);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, patrol_path_id) VALUES (254, 256.0, 70.25, 996.0, 1.570796, 8, 145, 'Castle_Pop_HallPRU_1', NULL, 120, 2090);

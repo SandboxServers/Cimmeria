@@ -57,6 +57,11 @@ pub(super) fn populate_world_context(
     ctx: &mut ExecutionContext,
 ) {
     ctx.world_id = space_mgr.get_entity_world_id(entity_id);
+    // The same "where is the acting player" resolution feeds the live-tag
+    // set `Condition::EntityTagState` reads, so every dispatcher that already
+    // honours the contract above gets it too. `None` (no space) makes that
+    // condition fail closed, as `world_id` does for `Condition::World`.
+    ctx.live_tags = space_mgr.live_tags_in_space_of(entity_id);
 
     let world_name = space_mgr
         .get_entity_world_name(entity_id)

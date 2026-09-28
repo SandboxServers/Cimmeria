@@ -35,7 +35,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                t.components, t.flags, t.interaction_type, t.event_set_id, t.level, \
                t.alignment, t.faction, t.name_id, t.speaker_id, \
                t.static_interaction_sets, t.has_dynamic_properties, \
-               t.loot_table_id, \
+               COALESCE(s.loot_table_id, t.loot_table_id) AS loot_table_id, \
                COALESCE(s.patrol_path_id, t.patrol_path_id) AS patrol_path_id, \
                COALESCE(s.patrol_point_delay, t.patrol_point_delay, 2.0) AS patrol_point_delay, \
                COALESCE(t.wander_radius, 0.0) AS wander_radius, \

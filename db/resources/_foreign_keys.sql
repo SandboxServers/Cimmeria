@@ -418,6 +418,13 @@ ALTER TABLE ONLY loot
     ADD CONSTRAINT loot_design_id_fkey FOREIGN KEY (design_id) REFERENCES items(item_id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 --
+-- Name: spawnlist_loot_table_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY spawnlist
+    ADD CONSTRAINT spawnlist_loot_table_id_fkey FOREIGN KEY (loot_table_id) REFERENCES loot_tables(loot_table_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
 -- TOC entry 3115 (class 2606 OID 63592)
 -- Name: loot_loot_table_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --

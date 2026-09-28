@@ -8,7 +8,7 @@
 //! The context is created fresh for each chain evaluation pass and passed
 //! mutably through the condition/action pipeline.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use cimmeria_common::{EntityId, SpaceId};
 
@@ -44,6 +44,15 @@ pub struct ExecutionContext {
     /// treats that as fail-closed (see its evaluator arm).
     pub world_id: Option<i32>,
 
+    /// The spawn tags carried by at least one **living** entity in the
+    /// acting player's space, read by
+    /// [`Condition::EntityTagState`](crate::conditions::Condition::EntityTagState).
+    ///
+    /// A typed field for the same reason as [`Self::world_id`]: `None` means
+    /// "nobody populated it", and the condition fails closed on it rather than
+    /// reading every tag as dead.
+    pub live_tags: Option<HashSet<String>>,
+
     /// Arbitrary key-value parameters carried through the chain. Triggers
     /// populate initial values; actions may add or modify them.
     pub params: HashMap<String, serde_json::Value>,
@@ -60,6 +69,7 @@ impl ExecutionContext {
             target_entity_id: None,
             space_id: None,
             world_id: None,
+            live_tags: None,
             params: HashMap::new(),
             results: Vec::new(),
         }
@@ -90,6 +100,16 @@ impl ExecutionContext {
     /// one a `world` condition row is authored against.
     pub fn with_world(mut self, world_id: i32) -> Self {
         self.world_id = Some(world_id);
+        self
+    }
+
+    /// Set the live-tag set and return `self` for builder-style chaining.
+    pub fn with_live_tags<I, S>(mut self, tags: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.live_tags = Some(tags.into_iter().map(Into::into).collect());
         self
     }
 

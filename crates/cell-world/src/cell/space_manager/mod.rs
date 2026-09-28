@@ -37,6 +37,7 @@ mod interact_range;
 pub use interact_range::{interact_range, InteractRangeFail, MAX_INTERACT_DISTANCE};
 mod lab_snapshots;
 mod lifecycle;
+mod live_tags;
 mod movement_telemetry;
 mod navmesh_containment;
 pub mod npc_identity;

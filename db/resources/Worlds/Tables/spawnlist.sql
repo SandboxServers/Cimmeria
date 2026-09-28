@@ -37,6 +37,13 @@ CREATE TABLE spawnlist (
     -- content chain, not proximity, must start the fight: the chain's
     -- `set_aggression` replaces it at runtime. Python `aggressionOverride`.
     aggression_override smallint,
+    -- Per-spawn loot-table override. Takes precedence over
+    -- `entity_templates.loot_table_id` for THIS spawn only; NULL falls
+    -- back to the template's table. Lets one hall of a shared guard
+    -- template roll a different table from the same template elsewhere
+    -- (2026-09-28: the Castle hall before the Interrogation Block,
+    -- loot table 7). The loader COALESCEs it in `load_spawns_from_db`.
+    loot_table_id integer,
     CONSTRAINT spawnlist_aggression_override_level
         CHECK (aggression_override IS NULL OR aggression_override BETWEEN 1 AND 5),
     CONSTRAINT spawnlist_respawn_secs_min_3

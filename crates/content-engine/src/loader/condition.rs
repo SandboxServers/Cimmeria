@@ -4,7 +4,9 @@
 
 use tracing::warn;
 
-use crate::conditions::{ComparisonOp, Condition, MissionStatusValue, StepStatusValue};
+use crate::conditions::{
+    ComparisonOp, Condition, EntityTagStateValue, MissionStatusValue, StepStatusValue,
+};
 
 use super::DbConditionRow;
 
@@ -96,6 +98,35 @@ pub(super) fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
                 world_id,
             })
         }
+        "entity_tag_state" => {
+            // `target_key` = the spawn tag, `value` = `alive` | `dead`,
+            // operator `eq` / `neq`. A malformed row must not come back
+            // `None`: that drops the row and publishes the chain *ungated*,
+            // and an ungated backstop completes a mission on accept. Every
+            // malformed shape builds a condition that never matches instead
+            // (an ordered operator answers `false` in the evaluator).
+            let tag = row.target_key.clone().unwrap_or_default();
+            let expected = parse_entity_tag_state(row.value.as_deref().unwrap_or(""));
+            let well_formed = !tag.is_empty()
+                && expected.is_some()
+                && matches!(op, ComparisonOp::Eq | ComparisonOp::Neq);
+            if !well_formed {
+                warn!(
+                    chain_id = row.chain_id,
+                    tag = %tag,
+                    operator = %row.operator,
+                    value = ?row.value,
+                    reason = "malformed_entity_tag_state",
+                    "entity_tag_state needs target_key = a spawn tag, value = alive|dead \
+                     and operator eq|neq — this row will never match",
+                );
+            }
+            Some(Condition::EntityTagState {
+                tag,
+                operator: if well_formed { op } else { ComparisonOp::Gt },
+                expected: expected.unwrap_or(EntityTagStateValue::Alive),
+            })
+        }
         _ => None,
     }
 }
@@ -117,6 +148,14 @@ pub(super) fn parse_mission_status(s: &str) -> Option<MissionStatusValue> {
         "not_active" => Some(MissionStatusValue::NotActive),
         "active" => Some(MissionStatusValue::Active),
         "completed" => Some(MissionStatusValue::Completed),
+        _ => None,
+    }
+}
+
+pub(super) fn parse_entity_tag_state(s: &str) -> Option<EntityTagStateValue> {
+    match s {
+        "alive" => Some(EntityTagStateValue::Alive),
+        "dead" => Some(EntityTagStateValue::Dead),
         _ => None,
     }
 }

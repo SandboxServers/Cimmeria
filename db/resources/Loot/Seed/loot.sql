@@ -111,11 +111,16 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (46, 5, 6681, 1, 0.02, 1);
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (47, 5, 6682, 1, 0.02, 1);
 
+-- Table 7, Castle hall NID guard (Decision (@Cadacious, 2026-09-28)):
+-- naquadah 5-25 half the time, a Health Slappack three kills in ten.
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (48, 7, NULL, 5, 0.5, 25);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (49, 7, 2893, 1, 0.3, 1);
+
 --
 -- TOC entry 3323 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: loot_loot_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_loot_id_seq', 47, true);
+SELECT pg_catalog.setval('loot_loot_id_seq', 49, true);
 

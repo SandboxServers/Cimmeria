@@ -38,8 +38,25 @@ mod live_db {
     ];
     /// `(loot_table_id, lowest, highest)` chance that a corpse drops nothing,
     /// the product of every row's miss chance. Seeded: 30.5 %, 17.5 %, 56 %.
-    const EMPTY_RATE_BANDS: [(i32, f32, f32); 3] =
-        [(4, 0.25, 0.35), (5, 0.15, 0.20), (6, 0.50, 0.60)];
+    /// Table 7, the Castle hall before the Interrogation Block: 35 %.
+    const EMPTY_RATE_BANDS: [(i32, f32, f32); 4] = [
+        (4, 0.25, 0.35),
+        (5, 0.15, 0.20),
+        (6, 0.50, 0.60),
+        (7, 0.30, 0.40),
+    ];
+
+    /// The hall spawns bound to table 7 per spawn (Decision (@Cadacious,
+    /// 2026-09-28)): the three HallPost guards, CastleNidGuardXInside and the
+    /// north patrol pair on the corridor to the Interrogation Block.
+    const HALL_TABLE_7_TAGS: [&str; 6] = [
+        "Castle_Pop_HallPost_1",
+        "Castle_Pop_HallPost_2",
+        "Castle_Pop_HallPost_3",
+        "CastleNidGuardXInside",
+        "Castle_Pop_HallPatrolN_1",
+        "Castle_Pop_HallPatrolN_2",
+    ];
 
     /// The item-use ability id the seed binds to 158 mission items as a
     /// filler. Mirrors `PLACEHOLDER_ITEM_USE_ABILITY` in cell-content's
@@ -181,7 +198,7 @@ mod live_db {
             "SELECT l.loot_id, l.loot_table_id, l.design_id, l.probability::real, \
                         l.min_quantity, l.max_quantity, i.name \
                  FROM resources.loot l LEFT JOIN resources.items i ON i.item_id = l.design_id \
-                 WHERE l.loot_table_id IN (4, 5, 6) ORDER BY l.loot_id",
+                 WHERE l.loot_table_id IN (4, 5, 6, 7) ORDER BY l.loot_id",
         )
         .fetch_all(&pool)
         .await
@@ -246,5 +263,76 @@ mod live_db {
                 hi * 100.0
             );
         }
+    }
+
+    /// The per-spawn `spawnlist.loot_table_id` override: the six hall guards
+    /// roll table 7 while every other spawn of the same four templates keeps
+    /// its template's table (4, or 5 for the L4 template 183). Reverting the
+    /// loader's `COALESCE(s.loot_table_id, t.loot_table_id)` makes the hall
+    /// guards read 4/5 and fails the first loop.
+    #[tokio::test]
+    async fn castle_live_db_hall_guards_roll_table_7_per_spawn() {
+        let pool = require_db_or_skip!();
+        let spawns = load_spawns_from_db(&pool)
+            .await
+            .expect("load_spawns_from_db must succeed");
+        for tag in HALL_TABLE_7_TAGS {
+            let s = spawns
+                .iter()
+                .find(|r| r.tag.as_deref() == Some(tag))
+                .unwrap_or_else(|| panic!("{tag} must be seeded"));
+            assert_eq!(s.world_name, "Castle", "{tag} is a World 8 spawn");
+            assert_eq!(
+                s.loot_table_id,
+                Some(7),
+                "{tag} (spawn {}) must roll the Castle hall table 7",
+                s.spawn_id
+            );
+        }
+        let hall_templates: HashSet<i32> = spawns
+            .iter()
+            .filter(|r| {
+                r.tag
+                    .as_deref()
+                    .is_some_and(|t| HALL_TABLE_7_TAGS.contains(&t))
+            })
+            .map(|r| r.template_id)
+            .collect();
+        let elsewhere: Vec<_> = spawns
+            .iter()
+            .filter(|r| hall_templates.contains(&r.template_id))
+            .filter(|r| {
+                !r.tag
+                    .as_deref()
+                    .is_some_and(|t| HALL_TABLE_7_TAGS.contains(&t))
+            })
+            .collect();
+        assert!(
+            !elsewhere.is_empty(),
+            "the hall templates are shared, which is why the binding is per spawn"
+        );
+        for s in elsewhere {
+            let want = CASTLE_LOOT
+                .iter()
+                .find(|(id, _)| *id == s.template_id)
+                .map(|(_, t)| *t);
+            assert_eq!(
+                s.loot_table_id, want,
+                "{:?} (spawn {}) is outside the hall and keeps its template's table",
+                s.tag, s.spawn_id
+            );
+        }
+
+        let rows: Vec<(Option<i32>, i32, i32, f32)> = sqlx::query_as(
+            "SELECT design_id, min_quantity, max_quantity, probability::real              FROM resources.loot WHERE loot_table_id = 7 ORDER BY loot_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("table 7 rows");
+        assert_eq!(
+            rows,
+            vec![(None, 5, 25, 0.5), (Some(2893), 1, 1, 0.3)],
+            "table 7 is naquadah 5-25 at 0.5 and a Health Slappack at 0.3"
+        );
     }
 }

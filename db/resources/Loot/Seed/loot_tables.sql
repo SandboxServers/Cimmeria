@@ -19,11 +19,18 @@ INSERT INTO loot_tables (loot_table_id, description) VALUES (5, 'Castle NID vete
 
 INSERT INTO loot_tables (loot_table_id, description) VALUES (6, 'Castle PRU salvage');
 
+-- Decision (@Cadacious, 2026-09-28): the NID guards in the Castle hall before
+-- the Interrogation Block roll this table instead of 4/5, bound per spawn
+-- (spawnlist.loot_table_id) because templates 148/181/182/183 are shared
+-- with the rest of the Castle. Richer than table 4 so a player who dies
+-- there on the way to Romney has something to recover with.
+INSERT INTO loot_tables (loot_table_id, description) VALUES (7, 'Castle hall NID guard');
+
 --
 -- TOC entry 3324 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: loot_tables_loot_table_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_tables_loot_table_id_seq', 6, true);
+SELECT pg_catalog.setval('loot_tables_loot_table_id_seq', 7, true);
 
