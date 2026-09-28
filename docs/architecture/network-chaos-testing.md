@@ -178,7 +178,11 @@ The reorder buffer is keyed per destination
 destinations was tried first and rejected: it held up the first two
 packets of *any* fresh connection's Mercury phase-3 handshake
 (`BASEMSG_REPLY` + time-sync), which the client parses positionally,
-breaking every multi-client test that shared the transport. These
+breaking every multi-client test that shared the transport. (Loss of
+those two packets, as opposed to reordering, is covered separately:
+since #842 both are in the session channel's TX window and resent on
+RTO, and `crates/base/src/base/login/tests/handshake_retransmit.rs`
+drops each once through the real base receive loop.) These
 additions were built to reproduce a live AoI witness-fanout ordering
 hazard against a real `BaseService` socket
 (`crates/wireclient/tests/it/two_client_castle_visibility_chaos.rs`,

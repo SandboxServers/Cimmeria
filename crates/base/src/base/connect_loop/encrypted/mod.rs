@@ -69,7 +69,7 @@ pub(crate) async fn handle_encrypted_datagram(
             // alarm in SigNoz, and a client's plaintext login retry is
             // told apart from a real decrypt failure (see
             // `decrypt_reject`).
-            decrypt_reject::log_decrypt_reject(addr, account_id, raw, &e);
+            decrypt_reject::log_decrypt_reject(connected, addr, account_id, raw, &e);
             return Ok(());
         }
     };

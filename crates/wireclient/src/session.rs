@@ -125,6 +125,14 @@ impl GameSession {
             .lock()
             .expect("channel poisoned")
             .anchor_rx_seq(handshake::FIRST_CHANNEL_SEQ);
+        // The server tracks both handshake packets for retransmit (#842)
+        // until they are acked. Ack them on the first send, as the SGW
+        // client does in the captured logins (`acks [2, 1]`); otherwise
+        // the server resends both about 1.5 s in and the pump acks the
+        // duplicates then.
+        for seq in 1..handshake::FIRST_CHANNEL_SEQ {
+            peer.queue_ack(seq);
+        }
 
         Ok(Self {
             peer,
