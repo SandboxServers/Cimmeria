@@ -87,6 +87,20 @@ impl fmt::Display for DecodeError {
     }
 }
 
+impl DecodeError {
+    /// A stable label for the kind of failure, for a log `reason`.
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Truncated { .. } => "truncated",
+            Self::CountTooLarge { .. } => "count_too_large",
+            Self::StringTooLong { .. } => "string_too_long",
+            Self::InvalidUtf8 { .. } => "invalid_utf8",
+            Self::SourceFailed { .. } => "source_failed",
+            Self::TrailingBytes { .. } => "trailing_bytes",
+        }
+    }
+}
+
 impl std::error::Error for DecodeError {}
 
 /// Why a value could not be encoded. The encoders enforce the same caps as

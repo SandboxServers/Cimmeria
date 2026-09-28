@@ -4,8 +4,8 @@
 > **Audience**: Engineers touching the auction house, escrow, or the client-side method-binding patch
 > **Type**: ADR + reference
 > **Owner**: Social systems
-> **Status**: Implemented on `main`, not player-visible. Phases 1–3 were written on `feat/571-black-market-phase1` (PR #586, issue #571) and ported onto the split crates by packet BM-01 of the [restoration plan](../analysis/black-market/README.md), with no behaviour change. The base side is `crates/base-session/src/base/black_market/`. The client drops methods 90–95 until the client patch ships (issue #587; packets BM-03 to BM-06). The plan's client-IO pass found contract mismatches in this design (S1–S8: `onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, duration and time-left enums, search paging, caller-scoped views, seller names). Packet BM-02 fixes them; until it lands, the tables below describe what the code does, not what the client expects.
-> **Confidence**: High for the server state machine (code + tests in-branch); Medium for the wire contract (three constants are admitted guesses pending x64dbg capture); High for the client-binding diagnosis (owner-confirmed live, 2026-06-21)
+> **Status**: Implemented on `main`, not player-visible. Phases 1–3 were written on `feat/571-black-market-phase1` (PR #586, issue #571) and ported onto the split crates by packet BM-01 of the [restoration plan](../analysis/black-market/README.md), with no behaviour change. The base side is `crates/base-session/src/base/black_market/`. Packet BM-02 fixed the contract mismatches the plan's client-IO pass found (S1–S8: `onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, duration and time-left enums, search paging, caller-scoped views, seller names), so the tables below now describe what the client expects. The client still drops methods 90–95 until the client patch ships (issue #587; packets BM-03 to BM-06). The server and the patch DLL share one codec crate, `cimmeria-patch-wire` (`crates/patch-wire`), which the server re-exports as `cimmeria_wire::black_market`.
+> **Confidence**: High for the server state machine (code + tests); High for the wire contract (client IO decompiles, one shared codec); Low only for the duration table, which is design; High for the client-binding diagnosis (owner-confirmed live, 2026-06-21)
 
 ## Context
 
@@ -47,22 +47,26 @@ binary-patch problem rather than as a reason to reshape the server.
 
 `SGWBlackMarketManager` is the 10th `<Implements>` interface on
 `SGWPlayer`, which fixes both index ranges. The inbound half is decoded
-in the cell and forwarded to the base; nothing about an auction is
-decided cell-side.
+in the cell and forwarded to the base; the cell decides only whether the
+caller may reach the auction house at all (§3), and nothing about an
+auction itself.
 
 | Cell method | Name | Payload | Handling |
 |---|---|---|---|
-| 61 | `BMSearch` | `BMSearchOptions` (11 fields, variable) | `BlackMarketCellToBase::Search` |
-| 62 | `BMCreateAuction` | `INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice` — **13 bytes**, `.def` order. The branch decodes `item, starting, buyout, length`, which is wrong: see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4 | `BlackMarketCellToBase::CreateAuction` |
-| 63 | `BMPlaceBid` | `INT32 sequenceId, INT32 bidAmount` — 8 bytes | `BlackMarketCellToBase::PlaceBid` |
-| 64 | `BMCancelAuction` | `INT32 sequenceId` — 4 bytes | `BlackMarketCellToBase::CancelAuction` |
-| 65 | `BMStartWatchingItem` | `INT32 itemDefId` | logged `UNIMPLEMENTED`, no state |
-| 66 | `BMStopWatchingItem` | `INT32 itemDefId` | logged `UNIMPLEMENTED`, no state |
+| 61 | `BMSearch` | `BMSearchOptions` (11 fields, variable) | `BlackMarketCellToBase::Search`; ungated |
+| 62 | `BMCreateAuction` | `INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice` — **13 bytes**, `.def` order (S4). A payload with trailing bytes is refused | `BlackMarketCellToBase::CreateAuction`, auctioneer-gated |
+| 63 | `BMPlaceBid` | `INT32 sequenceId, INT32 bidAmount` — 8 bytes | `BlackMarketCellToBase::PlaceBid`, auctioneer-gated |
+| 64 | `BMCancelAuction` | `INT32 sequenceId` — 4 bytes | `BlackMarketCellToBase::CancelAuction`, auctioneer-gated |
+| 65 | `BMStartWatchingItem` | `INT32 itemDefId` | answered `onBMError(WatchUnavailable)` (D4), no state |
+| 66 | `BMStopWatchingItem` | `INT32 itemDefId` | answered `onBMError(WatchUnavailable)` (D4), no state |
 
-Decoders live in
-`crates/cell-methods/src/cell/cell_methods/black_market/mod.rs`
-(`BMSearchOptions` and its decoder are `crates/wire/src/black_market.rs`,
-because the cell and the base both name them);
+Every argument layout, inbound and outbound, is defined once in
+`cimmeria-patch-wire` (`crates/patch-wire/src/black_market/`), the
+std-only codec crate the injected client-patch DLL links too, so the
+server and the patch cannot drift apart. `crates/wire/src/black_market.rs`
+re-exports it for the cell and the base. The cell-side decoders and
+routing live in
+`crates/cell-methods/src/cell/cell_methods/black_market/mod.rs`;
 the base-side routing arms in
 `crates/base-world-entry/src/base/world_entry/cell_dispatch/black_market_dispatch.rs`.
 Every base-side file named below without a path is in
@@ -71,15 +75,16 @@ Every base-side file named below without a path is in
 | Client method | Name | Args | Sent by |
 |---|---|---|---|
 | 90 | `onBMOpen` | `INT32 entityId` (the auctioneer NPC) | content-engine `Action::OpenBlackMarket` |
-| 91 | `onBMError` | `INT32 errorId` | every rejection branch of create / bid / cancel |
-| 92 | `onBMAuctions` | `UINT32 count`, `count ×AuctionItem`, `INT32 totalResults`, `INT32 clientKey` (`.def` order; `clientKey` is the view the client asked for, echoed back). The branch sends `view, total` with `view` taken from `sortId`, which is wrong: see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4 | search |
-| 93 | `onBMAuctionRemove` | `INT32 sequenceId` | cancel, expiry sweep |
-| 94 | `onBMAuctionUpdate` | one `AuctionItem` | create, bid |
-| 95 | `onBMWatchedItemsUpdate` | `ARRAY<INT32>` | never (watch list unimplemented) |
+| 91 | `onBMError` | `INT32 errorId` — a `BMError` id (D3, table below) | every refusal branch of search / create / bid / cancel / watch, and the cell's auctioneer gate |
+| 92 | `onBMAuctions` | `ARRAY<AuctionItem>`, `INT32 totalResults`, `INT32 clientKey` (`.def` order, S1). `clientKey` is the `UIAuctionView` the client asked for, echoed back (S2); `totalResults` is the full match count, not the page size | search |
+| 93 | `onBMAuctionRemove` | `INT32 sequenceId` | cancel, buyout, expiry sweep |
+| 94 | `onBMAuctionUpdate` | one `AuctionItem` | create, bid (to the bidder and any online outbid player) |
+| 95 | `onBMWatchedItemsUpdate` | `ARRAY<INT32>` | never (watch list deferred, D4) |
 
-Serializers are in `wire.rs`, except `onBMOpen`'s, which the cell sends
-and so lives in `crates/wire/src/black_market.rs`; the send wrappers are in
-`send.rs`. Indices are pinned in
+The base-side serializers are in `wire/`, except `onBMOpen`'s and
+`onBMError`'s, which both halves of the split send and so live in
+`crates/wire/src/black_market.rs`; the send wrappers are in `send.rs`.
+Indices are pinned in
 `crates/wire/src/cell/client_methods/black_market.rs` (90–95) and
 `crates/wire/src/cell/cell_methods/black_market.rs` (61–66).
 
@@ -87,15 +92,51 @@ and so lives in `crates/wire/src/black_market.rs`; the send wrappers are in
 `WSTRING`/UTF-16 as most other SGW social systems use. This is
 deliberate and load-bearing — see the open item on `sellerName` below.
 
+**Error ids are a decision, not a recovery (D3).** The shipped
+`EBlackMarketError` has two values, `0 InvalidSortType` and
+`1 BMUnavailable`; the server keeps both and numbers its own refusals
+after them, `2 NotEnoughFunds` through `14 WatchUnavailable`. The enum is
+`BMError` in `cimmeria-patch-wire`, and the client patch's UI overlay maps
+each id to text. The full table, with the `reason` label each refusal
+logs, is in [gameplay/black-market.md § Error ids](../gameplay/black-market.md#error-ids).
+
 ### 2. `player_id` resolution fails closed
 
 Every inbound method resolves the caller's `player_id` through
 `resolve_player_id`, which returns `None` rather than defaulting to `0`.
 An auction op keyed on `player_id = 0` would target a sentinel row, so
-the dispatcher logs a warn and drops the action instead. This is the one
-piece of authorisation the cell does; everything else is base-side.
+the dispatcher logs a warn and drops the action instead.
 
-### 3. Lifecycle: four states, one terminal transition each
+### 3. Create, bid and cancel need an open auctioneer
+
+Without a gate, any client could call 62–64 from anywhere in the world:
+the audit's missing-authorisation shape (CWE-862). The cell forwards
+those three methods only while `black_market_access`
+(`crates/cell-world/src/cell/black_market.rs`) passes, and it checks three
+things on every call:
+
+- **A recorded session.** The `open_black_market` action records a
+  `BlackMarketSessions` entry, keyed by `player_id`, after it sends
+  `onBMOpen`. A player the server never sent to an auctioneer has none.
+- **The same auctioneer.** The player's `last_interaction_target` is
+  still that auctioneer; interacting with anything else ends the right to
+  trade.
+- **In range.** `interact_range`, the same rule the `interact` handler
+  uses: the NPC exists, is in the player's space, and is within
+  `MAX_INTERACT_DISTANCE` (5 units).
+
+A refusal is `onBMError(NotAtAuctioneer)`, logged with `access=<label>`
+naming which check failed. `BMSearch` is ungated on purpose: it is
+read-only and every view is scoped server-side to the caller (§7), so it
+exposes nothing a gate would protect. The server-authority-enforcer
+reviewed the gate.
+
+One known limit: `open_black_market` does not check that the NPC it binds
+is an auctioneer, because no auctioneer interaction type exists to check
+against. A chain author must bind the action only to auctioneers until
+packet BM-07 adds the content and the check.
+
+### 4. Lifecycle: four states, one terminal transition each
 
 `sgw_auction.status` is the whole state machine: `0 = ACTIVE`,
 `1 = SOLD`, `2 = CANCELLED`, `3 = EXPIRED`. There is no intermediate
@@ -104,16 +145,19 @@ transaction that also moves the item and the cash.
 
 ```text
                      createAuction
-                          │  (escrow item out of inventory)
+                          │  (item row moved into container 18)
                           ▼
    placeBid ────────►  ACTIVE  ────────► CANCELLED   (seller reclaim:
-   (refund prior,        │  │             item returned, bidder refunded)
-    hold new)            │  │
+   (refund prior,        │  │  │          row back to seller's bags,
+    hold new)            │  │  │          bidder refunded)
+                         │  │  │
+                         │  │  └───────► SOLD        (buyout bid, D8:
+                         │  │                         settled at once)
                          │  └──────────► EXPIRED     (sweep, no bidder:
-                         │                            item mailed back)
+                         │                            row back to seller)
                          └─────────────► SOLD        (sweep, has bidder:
                                                       cash mailed to seller,
-                                                      item mailed to buyer)
+                                                      row moved to buyer)
 ```
 
 Accept/reject decisions are factored out into pure predicates in
@@ -122,29 +166,81 @@ so every rejection branch is unit-testable without a database. Bid
 precedence is fixed: auction-gone → is-seller → bid-too-low →
 insufficient-funds.
 
-### 4. Escrow is a DELETE, not a flag
+**The window closes at `expires_at`, not at the sweep.** Between
+`expires_at` and the next sweep pass the row is still `ACTIVE`, but
+`is_open` treats it as closed: a bid or cancel in that gap is refused
+with `AuctionGone`, and search stops offering the row. Otherwise a late
+bid could land on an auction the sweep is about to settle for the
+previous high bidder.
 
-`createAuction` escrows by **deleting the inventory instance row** and
-recording its snapshot (`item_def_id`, `stack_size`, `durability`,
-`charges`) onto the auction. The `DELETE … WHERE character_id = $1 AND
-item_id = $2 RETURNING …` both proves ownership and yields the snapshot
-in one statement — a miss means the seller did not own that instance, and
-`validate_create` fails closed on `Ok(None)`.
+**Rules the validators enforce.** The starting price is at least 1; a
+buyout, if set, is at least the starting price (`InvalidPrice`). Only
+unbound rows in the main bag (1) or the crafting bag (15) are listable
+(`InvalidItem`, `ItemBound`). A seller holds at most 20 active listings,
+and listing is free (D5, `TooManyListings`). The next minimum bid is 5 %
+over the standing bid, and at least +1 (D6).
 
-Returning an item (cancel, or either sweep path) **re-inserts a fresh
-instance** via `return_item`: the original `item_id` was consumed by the
-escrow DELETE, so the returned item gets a new id from the sequence. It
-lands in container 0 at `COALESCE(MAX(slot_id), -1) + 1` — never at
-`slot_id = -1`, which is the inventory swap sentinel elsewhere in the
-codebase and would break the move/swap path if a row parked there.
+**A buyout settles at once (D8).** A bid at or over a non-zero buyout
+price is charged the buyout price, not the bid, refunds the prior
+bidder, and settles in the same transaction through `settle.rs`, the
+same settlement the sweep uses. The buyer must have a free bag slot
+first, or the bid is refused with `BagFull` and nothing changes.
+
+### 5. Escrow is a container move, not a DELETE
+
+`createAuction` escrows by **moving the `sgw_inventory` row into the
+seller's container 18** (`INV_AUCTION`). The row keeps its instance id,
+its owner and every column — durability, charges, ammo — and the auction
+records the listed row's `item_id` plus a snapshot (`item_def_id`,
+`stack_size`, `durability`, `charges`) for the wire. The move is
+`list_into_escrow` in `escrow.rs`; it proves ownership and the listable
+bag under the seller's inventory locks, and fails closed on a miss.
+
+Why a move: packet BM-02b delivers settlements through the
+social-systems system-mail writer, and `send_system_mail_tx` with
+`SystemItem::ExistingInstance` accepts only a container-18 row owned by
+`owner_player_id`. The DELETE-and-snapshot design this replaces could
+never feed that writer, and it lost data on the way back: a re-inserted
+row had a new instance id and none of the columns the snapshot did not
+carry.
+
+Container 18 is server-held, so an escrowed row is still unreachable to
+the player — but that property now comes from two places rather than from
+the row being gone:
+
+- **Read filters.** The login inventory load, every resync, the
+  one-item snap-back read after a refused move, and the crafting reads
+  exclude container 18.
+- **Container allowlists.** The move, use, trade, mail and vendor paths
+  accept only the containers they name, and none names 18.
+
+A new inventory path that reads or writes by `item_id` without a
+container allowlist would reopen the hole; see Consequences.
+
+Returning or delivering an item is `deliver_from_escrow`:
+
+- **Cancel and expiry** move the row back into the seller's first free
+  slot in bag 1, then bag 15. Cancel refuses with `BagFull` when both are
+  full; the sweep cannot refuse, so it places the row past the main bag's
+  last slot and logs `bm.delivery_overflow`.
+- **A sale** moves the row into the buyer's bags. The seller's cash is
+  still mailed (`send_mail_to_player`); the buyer, and the seller of an
+  unsold item, get a notice mail.
+- **A missing row is never minted.** A player's listing whose
+  container-18 row is gone is refused and logged `bm.escrow_missing`.
+  Only a boot-seed listing (`item_id = 0`, or the system seller) mints
+  its item from the snapshot, because it never had an instance.
 
 Cash escrow is symmetric: a bid **debits the bidder immediately** and the
-prior high bidder is credited back in the same transaction. The overdraw
-guard is in SQL (`WHERE naquadah + $1::int >= 0`) so check and write are
-atomic — two concurrent bids cannot both pass a stale balance snapshot. A
-`RETURNING` miss is disambiguated from a missing player row by a
-follow-up existence probe, so callers get `InsufficientFunds` vs
-`NoSuchPlayer` correctly.
+prior high bidder is credited back in the same transaction.
+`adjust_player_cash` (`helpers.rs`) does the arithmetic in `bigint`
+inside the `UPDATE`, guarded by `naquadah + delta BETWEEN 0 AND
+2147483647`, so check and write are atomic — two concurrent bids cannot
+both pass a stale balance snapshot, and a credit past the column's
+maximum is a named `BalanceOverflow` rather than a Postgres
+integer-overflow error. A `RETURNING` miss is disambiguated by a
+follow-up existence probe, so callers get `InsufficientFunds`,
+`BalanceOverflow` or `NoSuchPlayer` correctly.
 
 One subtlety worth preserving: a bidder **raising their own** high bid is
 validated against the post-refund effective balance
@@ -152,20 +248,63 @@ validated against the post-refund effective balance
 new debit. Validating on the pre-refund snapshot would wrongly reject a
 legitimate self-raise.
 
-Helpers are shared and executor-generic (`sqlx::PgExecutor`) so the same
-functions compose inside a transaction or against a bare pool —
-`helpers.rs`.
+### 6. Row locks in one order, not optimistic retry
 
-### 5. Row locks, not optimistic retry
+Every writer takes its locks in a fixed order, so no two of them can
+deadlock:
 
-`placeBid` and `cancelAuction` both `SELECT … FOR UPDATE` the auction row
-before touching cash. The sweep does the same, and re-reads the locked
-row rather than trusting its own pre-lock snapshot, so the sold/unsold
-decision uses post-lock `current_bid` / `current_bidder`. Concurrent
-settlement is harmless: the second worker's `status == ACTIVE` guard
-fails and it returns `Ok(None)`.
+- **Create:** the seller's inventory advisory locks
+  (`take_inventory_locks`), then the item row `FOR UPDATE`, then the
+  seller's `sgw_player` row. Locking the seller's player row also
+  serializes the listing-cap count, so two concurrent creates cannot both
+  see 19 listings.
+- **Bid, cancel and settlement:** the `sgw_auction` row `FOR UPDATE`,
+  then the advisory locks (the seller's escrow and the recipient's bags,
+  in ascending `player_id`), then the `sgw_player` rows and the escrowed
+  item row.
 
-### 6. Expiry sweep: a 30-second background task, one transaction per auction
+Every writer of a container-18 row holds the seller's escrow advisory
+lock before touching it, and no writer takes an advisory lock and then an
+`sgw_auction` row lock. Keep both true when you add a path.
+
+The sweep re-reads the locked row rather than trusting its own pre-lock
+snapshot, so the sold/unsold decision uses post-lock `current_bid` /
+`current_bidder`. The settlement status write is conditional
+(`… AND status = 0`), so a second worker — the sweep racing a buyout, or
+two sweep passes — finds nothing to update and cannot pay twice.
+
+### 7. Search: caller-scoped views, one bounded page
+
+`search.rs` answers `BMSearch` with one `onBMAuctions` per request, and
+`clientKey` picks the view (S2): `0` Search, `1` My Auctions, `2` My
+Bids. An unknown key is refused with `onBMError(InvalidSortType)`.
+
+- **My views are the caller's own (S3).** My Auctions is the caller's
+  listings and My Bids is every open auction with an `sgw_auction_bid`
+  row by the caller, so an outbid player still sees it. Both are scoped
+  to the caller's `player_id` server-side; the client's `sellerName` and
+  `bidderName` are ignored, so no one can read another player's views.
+- **One page, one message (S7).** The query reads at most
+  `SEARCH_PAGE_ROWS` (50) rows from the `sequenceId` / `bForward` cursor,
+  and the reply is cut to `AUCTIONS_ARG_BUDGET` (1,200 bytes of
+  arguments) so it fits one unfragmented Mercury message: `MAX_BODY`
+  1,348, less the 8-byte header and room for acks. That is about 23
+  typical rows, more than two of the UI's 8-row pages. `totalResults`
+  is the full match count.
+- **Filters.** `itemName` is a case-insensitive substring (`ILIKE`);
+  `minTC` / `maxTC` bound tech competency, with 0 meaning no bound.
+  `sortId`, `quality` and `filterFlags` are logged and not applied.
+  Rows past `expires_at` are not offered.
+- **Seller names come from `sgw_player` (S8)**, so offline sellers show
+  too.
+- **`endTimeValue` is a time-left bucket (S6):** the smallest
+  `UIAuctionTime` tier whose duration covers the time left, which is
+  what the client's timer icon expects. `auctionLength` on create is the
+  1-based `UIAuctionTime` value 1–5 (S5); an out-of-range byte is clamped
+  to the nearest tier and the clamped tier is stored, so storage and
+  duration agree.
+
+### 8. Expiry sweep: a 30-second background task, one transaction per auction
 
 `sweep.rs` mirrors
 the outbox-drainer pattern — `tokio::spawn`, a startup pass to settle
@@ -174,18 +313,21 @@ ticker at `SWEEP_INTERVAL = 30s`.
 
 Settlement is per-auction, not per-batch, so a crash mid-sweep cannot
 double-deliver: each auction commits its own item movement, mail, and
-status flip together. Payout reuses the existing `sgw_gate_mail` table
-(the same COD mechanism the original game used) — sold auctions mail cash
-to the seller and the item to the buyer; unsold auctions mail the item
-back to the seller. Every mail write goes through `payout_mail.rs`
-(`send_mail_to_player` and the subject/body texts), so packet BM-02b can
-move the payouts onto the social-systems mail API without touching the
-settlement logic. `settle_expired_once` carries no transport state so
-the live-DB test can drive it directly; the notification fan-out
-(`onBMAuctionRemove` to any online seller/buyer) is layered on top by
+status flip together, through `settle_locked` in `settle.rs` — the
+function a buyout calls too. Cash payout reuses the existing
+`sgw_gate_mail` table (the same COD mechanism the original game used):
+sold auctions mail cash to the seller and a notice to the buyer, whose
+item has already moved into their bags; unsold auctions move the item
+back and mail the seller a notice. Every mail write goes through
+`payout_mail.rs` (`send_mail_to_player` and the subject/body texts), so
+packet BM-02b can move the payouts onto the social-systems mail API
+without touching the settlement logic. `settle_expired_once` carries no
+transport state so the live-DB test can drive it directly; the
+notification fan-out (`onBMAuctionRemove` to any online seller/buyer,
+`onUpdateItem` to whoever got the item) is layered on top by
 `run_sweep_pass`.
 
-### 7. Boot-seed uses a reserved system seller
+### 9. Boot-seed uses a reserved system seller
 
 The house seeds three listings at boot (Pistol 55, P90 21, Health
 Slappack TC1 2893) so search returns data before any player posts
@@ -207,18 +349,35 @@ ever be allocated to a real account. Two `const` assertions pin that
 invariant; raising `SYSTEM_SELLER_ID` into sequence range would let a
 freshly-created player become the implicit system seller.
 
-### 8. Persistence: two tables, `sequence_id` is the wire identity
+Seed listings have `item_id = 0`: they never had an inventory row, so
+they are the one case where settlement mints an item from the auction's
+snapshot (§5).
+
+### 10. Persistence: two tables, `sequence_id` is the wire identity
 
 [`db/sgw/BlackMarket/`](../../db/sgw/BlackMarket/) adds `sgw_auction`
 (one row per listing; `sequence_id` is both the primary key and the
 identity the client tracks across `onBMAuctions` / `onBMAuctionUpdate` /
 `onBMAuctionRemove`) and `sgw_auction_bid` (append-only bid history for
-refund/audit — the *live* current bid is denormalised onto `sgw_auction`).
-`auction_length` is stored `SMALLINT` because PostgreSQL has no unsigned
-one-byte integer; time columns are unix epoch seconds `INTEGER`, matching
+refund/audit and the My Bids view — the *live* current bid is
+denormalised onto `sgw_auction`). `auction_length` is stored `SMALLINT`
+(the 1-based tier) because PostgreSQL has no unsigned one-byte integer;
+time columns are unix epoch seconds `INTEGER`, matching
 `sgw_gate_mail.sent_time`.
 
-### 9. Player entry is a content chain, not a hardcoded interaction
+**Character deletion (D-BM09).** `sgw_auction.seller_id` is
+`ON DELETE CASCADE` and `current_bidder` is `ON DELETE SET NULL`. Before
+either fires, the `BEFORE DELETE` trigger
+`sgw_player_before_delete_auctions` runs `bm_player_before_delete()`
+(`db/sgw/_functions.sql`, `db/sgw/_triggers.sql`): it locks the affected
+open auctions, clears the deleted character's standing bids so the
+auction reopens with no phantom bid, and refunds the standing bidders of
+the deleted seller's open auctions (capped at the column's maximum). The
+earlier `RESTRICT` blocked the deletion of every character that had ever
+listed or won anything. A deleted seller's listings and escrowed rows go
+with the character, like the rest of its inventory.
+
+### 11. Player entry is a content chain, not a hardcoded interaction
 
 The auctioneer is reached through the ordinary content engine: one chain
 sets the `INT_Auction` interaction bit on `player_loaded` so the prompt
@@ -233,6 +392,29 @@ resolves the auctioneer entity id with the same precedence
 `dialog::display` uses — chain `params["target_entity_id"]`, then the
 player's `last_interaction_target` pin — and **aborts with a warn** if
 neither resolves, rather than binding the window to the player's own id.
+After it sends `onBMOpen` it records the session the §3 gate checks.
+
+### 12. Telemetry: every transition and refusal is an event
+
+The system is debuggable from SigNoz alone:
+
+- **Transitions** are DEBUG events — `bm.listed`, `bm.bid`,
+  `bm.outbid_refund`, `bm.cancelled`, `bm.sold`, `bm.expired` — carrying
+  `auction_id`, the seller and bidder ids, the bid and the escrowed cash
+  before and after, `item_def_id`, and the actor's `account_id` and
+  `player_id`.
+- **Refusals** are `bm.refused` at INFO with `reason` (`BMError::reason`)
+  and `error_id`, and every request counts on
+  `bm_outcome_total{op, outcome}`.
+- **Search** logs `bm.search` at INFO with `client_key`, the filters,
+  `rows_read`, `rows_returned` and `total_results`.
+- **The cell** logs `bm.decode_failed` (WARN, with `arg_len` and
+  `reason`) and `bm.open` (DEBUG, the recorded auctioneer); at logout,
+  `bm.open_without_client_call` (INFO) marks a player who was sent
+  `onBMOpen` but whose client never called 61–66 — the sign the client
+  patch is missing.
+- **Sends:** each `onBM*` send logs `bm.send` at DEBUG with the method
+  and payload size.
 
 ## The client-side problem
 
@@ -275,30 +457,35 @@ ritual. Addresses are build-specific to this `SGW.exe`.
 
 ## Alternatives considered
 
-**Escrow by flagging the inventory row instead of deleting it.** Rejected:
-a flag leaves the instance addressable by every other inventory path
-(move, equip, split, vendor-sell), so every one of them would need a
-new "is this escrowed?" check, and any path that forgot one would let a
-seller sell the item twice. Deleting the row makes the item
-*unreachable* by construction, and the escrow DELETE doubles as the
-ownership proof. The cost is that returned items get a new `item_id`,
-which is acceptable because the client tracks auctions by `sequence_id`,
-not by item instance.
+**Escrow by flagging the inventory row instead of moving it.** Rejected:
+a flag leaves the instance in a player container, addressable by every
+inventory path (move, equip, split, vendor-sell), so every one of them
+would need a new "is this escrowed?" check, and any path that forgot one
+would let a seller sell the item twice. Moving the row into container 18
+reuses the checks those paths already have — their container allowlists
+and the read filters — instead of adding a new one.
 
-**Immediate buyout settlement at bid time.** Deferred, not rejected. The
-original game settled a buyout instantly; the current code records a
-buyout-clearing bid as a normal high bid and lets the sweep settle it at
-expiry. The blocker is that settlement needs the COD/mail payout path
-that the sweep owns — the right fix is to factor that into a shared
-helper both call. Recorded as a `TODO` in
-`bid.rs`.
+**Escrow by deleting the row and snapshotting it.** This was the Phase 1
+design, and BM-02 replaced it. Deleting made the item unreachable by
+construction and doubled as the ownership proof, but the snapshot
+carried only four columns, so a returned or delivered item came back with
+a new `item_id` and without its ammo or any column the snapshot missed.
+It also could not feed the social-systems system-mail writer, which
+BM-02b needs, because that writer mails an existing container-18 row.
 
-**Applying the `BMSearchOptions` filters as SQL predicates now.** All 11
-fields are parsed and forwarded, but only `sort_id` is used (echoed back
-as `view`). Deferred until the client-side result shape is confirmed via
-x64dbg — pushing guessed predicates into SQL would produce a filtered
-result set we could not verify against the client's rendering, and the
-filter semantics (`filter_flags` in particular) are still unknown.
+**Settling a buyout at the next sweep.** Rejected by D8. The original
+game settled a buyout instantly, and a buyer who paid the buyout price
+should not wait up to 30 seconds and see the auction still listed. Once
+settlement was factored into `settle.rs`, the bid path could call the
+same function the sweep does, so there is one settlement and no second
+payout path to keep in step.
+
+**Applying every `BMSearchOptions` filter as a SQL predicate.** Only
+`itemName` and `minTC` / `maxTC` are applied. `sortId` and `quality` are
+logged, not applied, and `filterFlags` (the `.def` calls it
+`monikerCRC`) is always 0 from the shipped UI, so its semantics are
+unknown. Pushing guessed predicates into SQL would produce a result set
+we could not verify against the client's rendering.
 
 **Native binding of the client methods instead of a runtime patch.** Not
 available: a bare dispatch node whose `eventKey` does not resolve is a
@@ -317,48 +504,40 @@ whose constructors are dead code.
 ## Known-open items
 
 These are **not** oversights to be quietly fixed by the next reader —
-each one is blocked on evidence we do not have.
+each one is either blocked on evidence we do not have or scheduled into a
+named packet.
 
-### `next_min_bid` is a guess
+### Durations are design
 
-`wire.rs:63-71`
-computes the bid floor as a **5 % increment with a floor of +1**
-(`current + max(current / 20, 1)`). The real `nextMinBidPrice` formula is
-unknown — this is an admitted placeholder pending **x64dbg D.6**
-(capture several `currentBid → nextMinBidPrice` pairs from the client).
+`auction_length_seconds` (`wire/mod.rs`) maps the five `UIAuctionTime`
+tiers to 12 / 24 / 48 / 72 / 96 hours. No source gives the shipped
+durations, so this table is design, not recovery. It is isolated in one
+named function (with `time_left_bucket` built on it), so replacing it is
+a one-place edit — do not inline the hours at call sites.
 
-**The bid floor is therefore not known-correct.** It is load-bearing in
-two places: the `nextMinBidPrice` field the client displays
-(`push_auction_item`) and `required_min_bid`, which the server enforces
-in `validate_bid`. If the real formula differs, the server will reject
-bids the client presents as legal, or accept bids below the client's
-displayed floor. The guess is isolated to a single named function
-precisely so swapping in the captured value is a one-line edit — do not
-inline it at call sites.
+The bid increment and the error ids used to share this status. They are
+now decisions: the increment is 5 %, at least +1 (D6, `next_min_bid`),
+and the ids are D3's `BMError`. Both are load-bearing — the client
+displays `nextMinBidPrice` and the server enforces `required_min_bid`
+in `validate_bid`, and the patch overlay maps each id to text — so a
+change to either is a change to the shared codec and the plan, not a
+local edit.
 
-Two neighbouring constants have the same status: the `EBlackMarketError`
-ordinals in `wire::error_code` (pending **D.1**) and the
-`auction_length` duration→hours table in `auction_length_seconds`
-(pending **D.5**, currently 12/24/48/72/96 h).
+### The sweep has no quarantine
 
-### Auction search has no `LIMIT` — CAT-I-05, still open
+`settle_expired_once` settles each due auction in its own transaction,
+but one auction whose settlement fails aborts the whole pass
+(`black_market: sweep failed`), and the next pass retries the same
+auction first. A permanently failing auction therefore stalls every
+settlement behind it. Packet BM-02b adds a quarantine alongside the move
+to the mail API.
 
-`search.rs:35-47`
-runs `SELECT … FROM sgw_auction WHERE status = $1 ORDER BY sequence_id`
-with `fetch_all` — **every matching row**, no cap, no pagination, no
-per-request bound. `handle_search` then resolves a seller name per row
-and serializes the lot into a single `onBMAuctions` payload.
+### Settlement still uses the branch's delivery paths
 
-This is the **one CAT-I finding the implementation did not address**. It
-is a self-inflicted DoS surface that grows with the size of the auction
-house: any player can trigger an unbounded query, an unbounded
-serialization, and an unbounded reliable send at whatever rate they can
-click. The `BMSearchOptions` wire already carries the cursor fields
-(`client_key`, `sequence_id`, `b_forward`) the real pagination would use,
-so the fix is a bounded page plus a cursor translation — but per CAT-I-05
-the server must also treat `sequenceId` as a *client-asserted cursor*,
-not a trusted row id, and translate it through the caller's own most
-recent result set.
+Seller cash is mailed through `send_mail_to_player` (`payout_mail.rs`),
+and items move straight into the recipient's bags. Packet BM-02b moves
+both onto the social-systems mail API, with the item mailed from
+container 18.
 
 ### `sellerName` cannot be decoded by the client's engine — and that is probably why the feature was shelved
 
@@ -376,39 +555,56 @@ original reason the data side of the Black Market was abandoned, and it
 is what forces the client-side workaround: methods 92 and 94 must parse
 the raw wire **manually** (count + 7×INT32 + UINT8 + INT32 +
 length-prefixed narrow string) and must not route through the engine
-arg-decode.
+arg-decode. The patch DLL does exactly that, by hand, with the
+`cimmeria-patch-wire` decoder the server encodes with.
 
-**Do not "fix" `wire.rs` to emit WSTRING.** The narrow encoding is
+**Do not "fix" the encoder to emit WSTRING.** The narrow encoding is
 wire-correct for a manual parser and matches the shipped field
 descriptor; widening it would break the manual parser without making the
 engine decoder work.
 
 ### Smaller gaps
 
-- **Watch list (65/66, and method 95) is unimplemented.** Both cell
-  methods log `UNIMPLEMENTED` and hold no state, so
+- **Watch list (65/66, and method 95) is deferred (D4).** Both cell
+  methods answer `onBMError(WatchUnavailable)` and hold no state, so
   `onBMWatchedItemsUpdate` is never sent. The `SGWBlackMarket` entity's
   one property (`watchedItems: PYTHON`, an itemDefId → subscriber
-  registry) has no server-side equivalent yet.
-- **Bid fan-out is requester-only.** `onBMAuctionUpdate` after a bid goes
-  to the bidder; the seller learns about it from the sweep or their next
-  search. Per-witness fan-out was out of scope for Phase 2.
-- **Offline seller names render empty.** `player_name_for_player_id`
-  scans the connected-session map, so an offline seller's name falls back
-  to `""`. Cosmetic — no behaviour gates on it — but it means the search
-  result for a mostly-offline population shows mostly blank sellers. A DB
-  lookup is the obvious fix.
-- **No listing fee and no per-player listing cap** (the remaining half of
-  CAT-I-02).
-- **A prior bidder whose account is gone cannot be refunded.** Both
-  `bid.rs` and `cancel.rs` log a loud `warn` and proceed rather than
-  blocking the new bid; the held cash is unrecoverable.
+  registry) has no server-side equivalent yet; packet BM-08 picks it up
+  once the core loop passes UAT.
+- **The auctioneer is not type-checked.** `open_black_market` trusts the
+  chain author to bind it only to an auctioneer (§3); BM-07.
+- **Bind-on-acquire items are listable**, the same way they are
+  tradeable and mailable. Bound rows are refused; items that bind on
+  acquire are not bound yet while they sit in a bag. This is a systemic
+  gap, not a Black Market one.
+- **The seller is not told about bids.** `onBMAuctionUpdate` after a bid
+  goes to the bidder and any online outbid player; the seller learns
+  about it from the sweep or their next search.
+- **No listing fee** (D5). The economy-sink design in
+  [gameplay/black-market.md](../gameplay/black-market.md#economy-sink-design-unbuilt)
+  waits on currency-flow instrumentation.
+- **A prior bidder whose row is gone cannot be refunded.** The D-BM09
+  trigger refunds bidders before a deletion, so this should not happen;
+  if it does, `bid.rs` and `cancel.rs` log a loud `warn` and proceed
+  rather than blocking the new bid.
 
 ## Consequences
 
 - **New schema**: `sgw_auction` + `sgw_auction_bid` and their sequences,
-  under `db/sgw/BlackMarket/`. No migration script — per repo convention
-  the seed in `db/` is edited directly.
+  under `db/sgw/BlackMarket/`, plus the `bm_player_before_delete()`
+  function and its `sgw_player` trigger. No migration script — per repo
+  convention the seed in `db/` is edited directly.
+- **Container 18 is now live.** Escrowed rows sit in `sgw_inventory`
+  with `container_id = 18`. Any new inventory path that reads rows for
+  the client, or acts on a client-supplied `item_id`, must exclude
+  container 18 or use a container allowlist that omits it; a path that
+  does neither lets a seller touch an item that is up for auction.
+- **A second writer of container 18 must follow the lock order** in §6:
+  the seller's escrow advisory lock first, and never an advisory lock
+  before an `sgw_auction` row lock.
+- **A second wire consumer shares the codec.** `cimmeria-patch-wire` is
+  built into both the server and the client-patch DLL, so it stays
+  std-only, and a layout change there is a change to both sides at once.
 - **New background task**: the expiry sweep is spawned at base startup
   (`crates/base/src/base/service.rs`) alongside the boot seed. Both are fire-and-forget `tokio::spawn`
   spawners so the caller need not be async, and they are benign if they
@@ -421,22 +617,19 @@ engine decoder work.
 - **`sgw_gate_mail` is now written by a system path.** Auction mail has
   `sender_id = NULL` and `sender_name = "Black Market"`; any mail code
   that assumes a non-null sender must tolerate it.
-- **Reusable helpers landed**: `adjust_player_cash`, `escrow_item` and
-  `return_item` (`helpers.rs`) are deliberately generic over the executor
-  and are the right building blocks for other systems that move items and
-  cash atomically (trade, guild bank). `send_mail_to_player`
-  (`payout_mail.rs`) is too, but it is scheduled to be replaced by the
-  social-systems mail API (BM-02b), so new code should not call it.
+- **Reusable helpers landed**: `adjust_player_cash` (`helpers.rs`) is
+  deliberately generic and the right building block for other systems
+  that move cash atomically (trade, guild bank). `send_mail_to_player`
+  (`payout_mail.rs`) is scheduled to be replaced by the social-systems
+  mail API (BM-02b), so new code should not call it.
 - **Test coverage** is in
   `crates/base-session/src/base/black_market/tests/`
-  (live-DB: create/bid/cancel, search, sweep; sentinels in the
-  `0x7000_Axxx` block) plus in-module unit tests
-  for the pure validators, the wire serializers (byte-exact layout
-  guards), the `BMSearchOptions` deserializer (11-field round-trip and a
-  UTF-8-not-WSTRING pin), and the seed's system-seller invariants.
-  `fetch_active_auctions` is exposed as a test seam so the search tests
-  assert the real `WHERE status = ACTIVE` result set instead of decoding
-  an encrypted Mercury packet.
+  (live-DB: create/bid/cancel, buyout, search, sweep, escrow and the
+  deletion trigger; sentinels in the `0x7000_Axxx` block) plus in-module
+  unit tests for the pure validators, the auctioneer gate, the wire
+  serializers (byte-exact layout guards) and the seed's system-seller
+  invariants. The codec's own `.def`-order and round-trip tests live in
+  `crates/patch-wire/src/black_market/tests/`.
 - **The feature is not player-visible on merge.** Server-side correctness
   buys nothing until the client patch of issue #587 ships; today only the
   window chrome opens (method 90, by hand-applied patch) and its tabs
@@ -446,16 +639,20 @@ engine decoder work.
 
 | Area | Confidence | Basis |
 |---|---|---|
-| Cell/base split, state machine, escrow semantics | **High** | Code + unit and live-DB tests on `main` |
+| Cell/base split, state machine, escrow semantics, lock order | **High** | Code + unit and live-DB tests on `main` |
+| Auctioneer gate (62–64) | **High** | Unit tests over `black_market_access`; server-authority review |
 | Inbound wire layouts (61–64) | **High** | Ghidra emitter decompiles; the 13-byte `BMCreateAuction` and 11-field `BMSearchOptions` are corrections to earlier docs |
-| Outbound `AuctionItem` field order | **High** | Matches the client's 10 field descriptors at `0xEF770400` exactly |
-| `next_min_bid`, `EBlackMarketError` ordinals, duration table | **Low** | Admitted guesses, pending x64dbg D.6 / D.1 / D.5 |
+| Outbound layouts (`onBMAuctions` order, `clientKey`, `AuctionItem`) | **High** | Client IO decompiles ([black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4); `AuctionItem` matches the client's 10 field descriptors at `0xEF770400`; one codec on both sides |
+| Error ids, bid increment, listing cap, buyout | **High** (as decisions) | D3, D6, D5, D8 in the [restoration plan](../analysis/black-market/README.md); not recovered from the client, and not meant to be |
+| Duration table | **Low** | Design; no source gives the shipped durations |
 | COD/payout shape | **Medium** | Architecture-inferred from `sgw_gate_mail` + `payCODForMailMessage`; no Python reference implementation exists |
 | Client-side binding diagnosis and patch | **High** | Owner-confirmed working in-world, 2026-06-21; byte-level descriptor comparison plus a live registry walk |
 
 ## See also
 
-- [gameplay/black-market.md](../gameplay/black-market.md) — the system reference: what the auction house *does*, entity definitions, per-message wire tables, and current implementation status. This ADR is the complement — *why* the server is shaped the way it is.
+- [gameplay/black-market.md](../gameplay/black-market.md) — the system reference: what the auction house *does*, entity definitions, per-message wire tables, the error-id and rules tables, and current implementation status. This ADR is the complement — *why* the server is shaped the way it is.
+- [analysis/black-market/README.md](../analysis/black-market/README.md) — the restoration plan: S1–S8, decisions D1–D8, and the packet sequence (BM-02b, BM-03 to BM-08)
+- [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) — the client's own IO: the evidence behind S1–S8
 - [black-market-restoration.md](../reverse-engineering/findings/black-market-restoration.md) — server-side RE, entity model, completeness assessment
 - [black-market-wire-formats.md](../reverse-engineering/findings/black-market-wire-formats.md) — per-message wire tables
 - [black-market-client-window-patch.md](../reverse-engineering/findings/black-market-client-window-patch.md) — the client binding gap, both patch recipes, and the fork-B build spec for methods 91–95

@@ -1,14 +1,9 @@
 //! Expiry sweep — a periodic background task that settles auctions whose
-//! `expires_at` has passed.
-//!
-//! - **Sold** (a current bidder exists): the seller is mailed the winning cash
-//!   and the buyer is mailed the item; status → `SOLD`.
-//! - **Unsold** (no bidder): the escrowed item is mailed back to the seller;
-//!   status → `EXPIRED`.
+//! `expires_at` has passed, through [`super::settle::settle_locked`].
 //!
 //! Settlement runs in one transaction per auction so a crash mid-settlement
-//! can't double-deliver. Each settled auction's `sequence_id` is returned so the
-//! caller can push `onBMAuctionRemove` to any interested online clients.
+//! can't double-deliver. Each settled auction is returned so the caller can
+//! push `onBMAuctionRemove` (and the item update) to the online parties.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -19,25 +14,16 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::helpers::now_unix_secs;
-use super::payout_mail::{
-    send_mail_to_player, BM_SENDER_NAME, SOLD_BUYER_BODY, SOLD_BUYER_SUBJECT, SOLD_SELLER_BODY,
-    SOLD_SELLER_SUBJECT, UNSOLD_BODY, UNSOLD_SUBJECT,
-};
-use super::send::send_bm_auction_remove;
-use super::types::{auction_status, AuctionRow};
+use super::send::{send_bm_auction_remove, send_item_placed, BmNet};
+use super::settle::{settle_locked, SettleCause};
+use super::telemetry::{count_bm_outcome, log_transition};
+use super::types::{auction_columns, auction_status, AuctionRow};
 use crate::base::ConnectedClientState;
+
+pub use super::settle::SettledAuction;
 
 /// How often the expiry sweep runs.
 pub const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
-
-/// One settled auction's outcome, for caller-side notification.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettledAuction {
-    pub sequence_id: i32,
-    pub seller_id: i32,
-    pub buyer_id: Option<i32>,
-    pub sold: bool,
-}
 
 /// Settle every auction that is `ACTIVE` and past its `expires_at`. Returns the
 /// list of settled auctions. Idempotent: an already-settled auction (status not
@@ -51,12 +37,11 @@ pub async fn settle_expired_once(pool: &PgPool) -> Result<Vec<SettledAuction>, s
     // Snapshot the due auctions up front. We re-lock each row inside its own
     // transaction before mutating, so a row that another worker settles between
     // the snapshot and the lock is harmlessly skipped by the status guard.
-    let due = sqlx::query_as::<_, AuctionRow>(
-        "SELECT sequence_id, seller_id, item_id, item_def_id, stack_size, durability, \
-                charges, starting_price, buyout_price, current_bid, current_bidder, \
-                auction_length, created_at, expires_at, status \
-         FROM sgw_auction WHERE status = $1 AND expires_at <= $2",
-    )
+    let due: Vec<AuctionRow> = sqlx::query_as(concat!(
+        "SELECT ",
+        auction_columns!(),
+        " FROM sgw_auction WHERE status = $1 AND expires_at <= $2"
+    ))
     .bind(auction_status::ACTIVE)
     .bind(now)
     .fetch_all(pool)
@@ -82,12 +67,11 @@ async fn settle_one(
     // Re-lock and re-read the live row so concurrent sweeps don't double-settle
     // and so the sold/unsold decision uses the post-lock current_bid /
     // current_bidder (not the pre-lock snapshot which may be stale).
-    let locked = sqlx::query_as::<_, AuctionRow>(
-        "SELECT sequence_id, seller_id, item_id, item_def_id, stack_size, durability, \
-                charges, starting_price, buyout_price, current_bid, current_bidder, \
-                auction_length, created_at, expires_at, status \
-         FROM sgw_auction WHERE sequence_id = $1 FOR UPDATE",
-    )
+    let locked: Option<AuctionRow> = sqlx::query_as(concat!(
+        "SELECT ",
+        auction_columns!(),
+        " FROM sgw_auction WHERE sequence_id = $1 FOR UPDATE"
+    ))
     .bind(auction.sequence_id)
     .fetch_optional(&mut *tx)
     .await?;
@@ -99,114 +83,56 @@ async fn settle_one(
         }
     };
 
-    let sold = live.current_bidder.is_some() && live.current_bid > 0;
+    let Some(settled) = settle_locked(&mut tx, &live, SettleCause::Expired).await? else {
+        tx.rollback().await?;
+        return Ok(None);
+    };
+    tx.commit().await?;
 
-    if let Some(buyer_id) = live.current_bidder.filter(|_| sold) {
-        // Sold: seller gets cash mail, buyer gets item mail.
-        send_mail_to_player(
-            &mut *tx,
-            live.seller_id,
-            live.current_bid as i64,
-            None,
-            0,
-            SOLD_SELLER_SUBJECT,
-            SOLD_SELLER_BODY,
-            BM_SENDER_NAME,
-        )
-        .await?;
-        // The buyer's held cash was already deducted at bid time; deliver the
-        // item by re-materialising the instance and attaching it to the mail.
-        let item_id = super::helpers::return_item(
-            &mut *tx,
-            buyer_id,
-            live.item_def_id,
-            live.stack_size,
-            live.durability,
-            live.charges,
-        )
-        .await?;
-        send_mail_to_player(
-            &mut *tx,
-            buyer_id,
-            0,
-            Some(item_id),
-            0,
-            SOLD_BUYER_SUBJECT,
-            SOLD_BUYER_BODY,
-            BM_SENDER_NAME,
-        )
-        .await?;
-
-        sqlx::query("UPDATE sgw_auction SET status = $1 WHERE sequence_id = $2")
-            .bind(auction_status::SOLD)
-            .bind(live.sequence_id)
-            .execute(&mut *tx)
-            .await?;
-
-        tx.commit().await?;
-        Ok(Some(SettledAuction {
-            sequence_id: live.sequence_id,
-            seller_id: live.seller_id,
-            buyer_id: Some(buyer_id),
-            sold: true,
-        }))
+    let event = if settled.sold {
+        "bm.sold"
     } else {
-        // Unsold: mail the escrowed item back to the seller.
-        let item_id = super::helpers::return_item(
-            &mut *tx,
-            live.seller_id,
-            live.item_def_id,
-            live.stack_size,
-            live.durability,
-            live.charges,
-        )
-        .await?;
-        send_mail_to_player(
-            &mut *tx,
-            live.seller_id,
-            0,
-            Some(item_id),
-            0,
-            UNSOLD_SUBJECT,
-            UNSOLD_BODY,
-            BM_SENDER_NAME,
-        )
-        .await?;
+        "bm.expired"
+    };
+    let account_id = account_of(pool, settled.seller_id).await;
+    log_transition(
+        event,
+        account_id,
+        settled.seller_id,
+        Some(&settled.before),
+        &settled.after,
+    );
+    count_bm_outcome("settle", event.trim_start_matches("bm."));
+    Ok(Some(settled))
+}
 
-        sqlx::query("UPDATE sgw_auction SET status = $1 WHERE sequence_id = $2")
-            .bind(auction_status::EXPIRED)
-            .bind(live.sequence_id)
-            .execute(&mut *tx)
-            .await?;
-
-        tx.commit().await?;
-        Ok(Some(SettledAuction {
-            sequence_id: live.sequence_id,
-            seller_id: live.seller_id,
-            buyer_id: None,
-            sold: false,
-        }))
-    }
+/// The account a player belongs to, for a settlement row's `account_id`
+/// (the sweep has no session). `None` if the lookup fails.
+async fn account_of(pool: &PgPool, player_id: i32) -> Option<u32> {
+    sqlx::query_scalar::<_, i32>("SELECT account_id FROM sgw_player WHERE player_id = $1")
+        .bind(player_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|a| u32::try_from(a).ok())
 }
 
 /// Push `onBMAuctionRemove` to the seller and buyer (when online) for each
-/// settled auction. The auction left the active set, so any client showing it
-/// must drop the row.
-async fn notify_settled(
-    settled: &[SettledAuction],
-    transport: &Arc<dyn Transport>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
-    for s in settled {
-        let mut targets = vec![s.seller_id];
-        if let Some(b) = s.buyer_id {
-            targets.push(b);
-        }
-        for player_id in targets {
-            if let Some(eid) = super::entity_id_for_player_id(player_id, connected) {
-                send_bm_auction_remove(eid, s.sequence_id, transport, connected, entity_to_addr)
-                    .await;
+/// settled auction, and `onUpdateItem` to whoever got the item. The auction
+/// left the active set, so any client showing it must drop the row.
+pub(super) async fn notify_settled(net: BmNet<'_>, pool: &PgPool, s: &SettledAuction) {
+    let recipient = s.buyer_id.unwrap_or(s.seller_id);
+    let mut targets = vec![s.seller_id];
+    targets.extend(s.buyer_id);
+    for player_id in targets {
+        let Some(eid) = net.entity_of(player_id) else {
+            continue;
+        };
+        send_bm_auction_remove(net, eid, s.sequence_id).await;
+        if player_id == recipient {
+            if let Some(placed) = s.placed {
+                send_item_placed(net, pool, eid, player_id, placed.item_id).await;
             }
         }
     }
@@ -225,12 +151,17 @@ pub fn spawn_sweep(
 ) {
     tokio::spawn(async move {
         tracing::debug!("black_market expiry sweep started");
-        run_sweep_pass(&pool, &transport, &connected, &entity_to_addr).await;
+        let net = BmNet {
+            transport: &transport,
+            connected: &connected,
+            entity_to_addr: &entity_to_addr,
+        };
+        run_sweep_pass(&pool, net).await;
         let mut ticker = tokio::time::interval(SWEEP_INTERVAL);
         ticker.tick().await; // skip the immediate first tick — handled above
         loop {
             ticker.tick().await;
-            run_sweep_pass(&pool, &transport, &connected, &entity_to_addr).await;
+            run_sweep_pass(&pool, net).await;
         }
     });
 }
@@ -243,12 +174,7 @@ pub fn spawn_sweep(
     skip_all,
     fields(settled = tracing::field::Empty)
 )]
-async fn run_sweep_pass(
-    pool: &PgPool,
-    transport: &Arc<dyn Transport>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
+async fn run_sweep_pass(pool: &PgPool, net: BmNet<'_>) {
     match settle_expired_once(pool).await {
         Ok(settled) if !settled.is_empty() => {
             tracing::Span::current().record("settled", settled.len());
@@ -256,7 +182,9 @@ async fn run_sweep_pass(
                 count = settled.len(),
                 "black_market: settled expired auctions"
             );
-            notify_settled(&settled, transport, connected, entity_to_addr).await;
+            for s in &settled {
+                notify_settled(net, pool, s).await;
+            }
         }
         Ok(_) => {}
         Err(e) => tracing::warn!("black_market: sweep failed: {e}"),

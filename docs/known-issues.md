@@ -187,9 +187,10 @@ No longer stubbed:
   55–60, and GainLevel / Death / GateTravel presence events. Server-side chat
   and AoI ignore enforcement landed separately.
 - **Black market**: 4 of 6 CellMethods implemented (`BMSearch`,
-  `BMCreateAuction`, `BMPlaceBid`, `BMCancelAuction`) with an expiry sweep and
-  payout mail at settlement (cash to the seller, the item to the buyer, or the
-  item back to the seller when unsold), on `main` since BM-01 (2026-09-27;
-  `crates/base-session/src/base/black_market/`). `BMStartWatchingItem` /
-  `BMStopWatchingItem` remain stubs, and the client drops every `onBM*` reply
-  until the client patch ships (#587).
+  `BMCreateAuction`, `BMPlaceBid`, `BMCancelAuction`), with immediate buyout
+  and an expiry sweep (the item moves from escrow to the buyer, or back to the
+  seller when unsold; the seller is mailed the cash), on `main` since BM-01 and
+  BM-02 (2026-09-27; `crates/base-session/src/base/black_market/`). The watch
+  list (`BMStartWatchingItem` / `BMStopWatchingItem`) answers "unavailable" on
+  purpose, and the client drops every `onBM*` reply until the client patch
+  ships (#587).

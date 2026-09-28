@@ -183,26 +183,28 @@ ALTER TABLE ONLY sgw_organization_members
 --
 -- Name: sgw_auction_seller_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
--- ON DELETE RESTRICT: the escrow-return handler (Phase 2) must cancel active
--- listings and return the escrowed item via mail before the character row can
--- be deleted. Premature CASCADE would lose the escrowed item with no recovery
--- path. Flip to CASCADE once the deletion cascade handler is wired.
+-- ON DELETE CASCADE (D-BM09): a deleted character's listings go with it,
+-- settled or open. An open listing's item is a container-18 row of the
+-- seller's inventory and cascades with it; the BEFORE DELETE trigger
+-- bm_player_before_delete() refunds the standing bidder first. RESTRICT
+-- blocked every character that had ever listed from being deleted, because
+-- settled rows are kept.
 --
 
 ALTER TABLE ONLY sgw_auction
-    ADD CONSTRAINT sgw_auction_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+    ADD CONSTRAINT sgw_auction_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
 --
 -- Name: sgw_auction_current_bidder_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
--- ON DELETE RESTRICT: SET NULL would leave current_bid > 0 with
--- current_bidder IS NULL, creating phantom bids that the sweep and validator
--- cannot handle cleanly. RESTRICT is safe until the bidder-deletion refund
--- handler (Phase 2) is wired to return held cash before the row is removed.
+-- ON DELETE SET NULL (D-BM09): a settled row keeps its history without its
+-- buyer. On an open row the BEFORE DELETE trigger bm_player_before_delete()
+-- has already cleared the bid (current_bid = 0), so no phantom bid is left
+-- for the sweep: the auction simply reopens.
 --
 
 ALTER TABLE ONLY sgw_auction
-    ADD CONSTRAINT sgw_auction_current_bidder_fkey FOREIGN KEY (current_bidder) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+    ADD CONSTRAINT sgw_auction_current_bidder_fkey FOREIGN KEY (current_bidder) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE SET NULL;
 
 --
 -- Name: sgw_auction_bid_sequence_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

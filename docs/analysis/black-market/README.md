@@ -92,7 +92,7 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 |---|---|---|---|
 | BM-00 | Live spike: checks V1–V5 from the evidence doc, run through the lab bridge (main-thread native calls, SEH-guarded) or non-freezing x64dbg reads | — | Updates the evidence doc; go/no-go for BM-03/04 |
 | BM-01 | Port `feat/571` onto the split crates. Tests green, no behavior change | — | PR |
-| BM-02 | Server contract fixes S1–S8, plus the shared codec crate | BM-01 | PR with byte-exact wire tests and live-DB search/paging guards |
+| BM-02 | Server contract fixes S1–S8, plus the shared codec crate | BM-01 | PR with byte-exact wire tests and live-DB search/paging guards. **Done** (PR #971): see [5.3](#53-bm-02-outcome) |
 | BM-02b | S9: move sweep and buyout payouts onto the social-systems mail API | BM-01, SS-M1 + SS-M2 merged | PR with live-DB guards for sold, unsold and cancelled settlement |
 | BM-03 | Patch DLL skeleton: fingerprint gate, receive hooks, decode, main-thread delivery | BM-00, BM-02 codec | PR; off-target unit tests for the decoders |
 | BM-04 | Patch DLL send natives and `CimmeriaBM` registration | BM-03 | PR |
@@ -101,7 +101,7 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 | BM-07 | Content and UAT: the auctioneer template, spawn and chains 5030/5031, seed listings, a UAT checklist, and a `.`-console helper to seed or expire listings. The branch's ids (template 168, spawn 238) now collide with the Castle rebuild. Use the Black Market seed block allocated by the social-systems coordinator: **templates 305–309, spawns 405–409**. Put the chains in `castle_cellblock_chains.sql` with scope `'space', 12` | BM-02 | PR + checklist |
 | BM-08 | Watch list (65/66/95), if D4 says yes | BM-05 | PR |
 
-BM-01, BM-00 and BM-03 can run in parallel. BM-02b waits for the social-systems mail packets; the coordinator (cimmeria-19) will say when SS-M1 and SS-M2 merge. D8 (immediate buyout) shares the same payout path, so it lands with BM-02b.
+BM-01, BM-00 and BM-03 can run in parallel. BM-02b waits for the social-systems mail packets; the coordinator (cimmeria-19) will say when SS-M1 and SS-M2 merge. D8 (immediate buyout) landed in BM-02 on the sweep's settlement step; BM-02b moves that shared step onto the mail API.
 
 ### 5.1 Telemetry acceptance
 
@@ -126,14 +126,26 @@ BM-01 (#965) ported the branch without changing its behaviour. The review of #96
 
 | Finding | Packet | Note |
 |---|---|---|
-| `auction_length` is stored and echoed as the raw client byte, but `auction_length_seconds` maps every value above 3 to the 96 h tier | BM-02 | Fix with S5 (1-based durations) and S6 (time-left bucket) |
-| A bid or cancel in the window between `expires_at` and the next sweep pass changes or voids a closed auction | BM-02 | Reject with `AUCTION_GONE` when `expires_at <= now` |
-| Search sizes its reply by row count, not serialized size, so a large result can exceed the packet limit | BM-02 | Paging guards with S7 |
-| Cell methods 62-64 are forwarded without proof that the player is at an auctioneer (CWE-862) | BM-02 | Server-authority check: an auctioneer interaction target in range, set by `open_black_market` |
-| `ON DELETE RESTRICT` on `sgw_auction.seller_id` / `current_bidder` blocks deleting a character forever once it has listed or won, because settled rows are never removed | BM-02 | Decide the FK and settled-row retention with the escrow move |
+| `auction_length` is stored and echoed as the raw client byte, but `auction_length_seconds` maps every value above 3 to the 96 h tier | BM-02 | **Done.** Clamped to 1–5 and stored clamped (S5); `endTimeValue` is the time-left bucket (S6) |
+| A bid or cancel in the window between `expires_at` and the next sweep pass changes or voids a closed auction | BM-02 | **Done.** Both refused `AuctionGone` when `expires_at <= now` |
+| Search sizes its reply by row count, not serialized size, so a large result can exceed the packet limit | BM-02 | **Done.** At most 50 rows read, the reply cut to a 1,200-byte argument budget; `totalResults` stays the full count (S7) |
+| Cell methods 62-64 are forwarded without proof that the player is at an auctioneer (CWE-862) | BM-02 | **Done.** `black_market_access` (cell-world): a session recorded by `open_black_market`, the interaction target still that auctioneer, in range; refusal `NotAtAuctioneer`. Reviewed by the server-authority-enforcer |
+| `ON DELETE RESTRICT` on `sgw_auction.seller_id` / `current_bidder` blocks deleting a character forever once it has listed or won, because settled rows are never removed | BM-02 | **Done.** Decision D-BM09 |
 | One failing auction aborts the whole sweep pass (no `ORDER BY`, `?` on the first error); `return_item` uses `fetch_one` and fails on a missing `item_def_id` | BM-02b | Log and skip or quarantine the row when settlement moves onto `send_system_mail_tx` |
 | Settlement mail is inserted directly into `sgw_gate_mail`: no `expires_at` and no `sgw_gate_mail_item` escrow row | BM-02b | S9 |
 | The boot seed's reserved system seller (account 1, player 1) is inserted without checking what those ids hold | BM-07 | Content and seed packet |
+| `open_black_market` pins whatever NPC its chain names; nothing checks the NPC is an auctioneer (no auctioneer interaction type exists), so a chain bound to another NPC would make it a Black Market terminal | BM-07 | Found in the BM-02 authority review. Bind `open_black_market` only to the auctioneer template, or add an auctioneer marker the open checks |
+| A settlement whose escrow row is missing, or that fails, is skipped and retried by every sweep pass (`bm.escrow_missing` each time); there is no quarantine | BM-02b | With the log-and-skip change above |
+| Bind-on-acquire items are listable, as they are tradeable and mailable: grants never set `bound` | Systemic | Found in the BM-02 authority review; not Black Market specific |
+
+### 5.3 BM-02 outcome
+
+- **S1–S8** as §3.1, through the shared codec: the server decodes 61–66 and encodes 90–95 with `cimmeria-patch-wire` (re-exported as `cimmeria_wire::black_market`), so the server and the client patch cannot disagree on a layout. Byte-exact tests in `base-session`'s `black_market/wire/tests.rs` and the cell's `black_market/tests.rs`.
+- **D3** `BMError` in `cimmeria-patch-wire`: 0 and 1 shipped, 2–14 the server's refusals, each with a logged `reason`. **D4** watch calls answer `WatchUnavailable`. **D5** 20 active listings. **D6** +5%, at least +1. **D8** immediate buyout. **D7** is the DLL's (no server change).
+- **Escrow.** A listing moves its row into the seller's container 18 instead of deleting it; cancel and expiry move it back, a sale moves it to the buyer. Container 18 is excluded from every client-bound inventory read. Starting price at least 1, bound items refused, only bags 1 and 15 listable.
+- **Authority, expired window, paging, FK**: the §5.2 rows marked done.
+- **Telemetry**: the §5.1 BM-02 line, with `bm_outcome_total{op, outcome}` as the counter's exported name.
+- **Deferred**: the new §5.2 rows (BM-07, BM-02b, systemic).
 
 ## 6. Decisions
 
@@ -148,7 +160,8 @@ All eight were answered in session on 2026-09-26, each as recommended.
 | D5 | Listing fee and per-player listing cap (CAT-I-02)? No source shows the original had either. | **A cap of 20 active listings per player, no fee.** |
 | D6 | Next-minimum-bid rule. The client only displays the server's `nextMinBidPrice`, so this is design, not recovery. | **5% of the current bid, at least +1.** |
 | D7 | Tech-competency column: add a native getter in the DLL, or leave it blank? | **Native getter.** One read, with the item-cache refcount handled. |
-| D8 | Buyout: settle immediately or at expiry? | **Immediately.** Lands with BM-02b, because it shares the payout path with the sweep. |
+| D8 | Buyout: settle immediately or at expiry? | **Immediately.** Landed in BM-02 through the sweep's settlement step (`settle.rs`); BM-02b moves that step onto the mail API. |
+| D-BM09 | Character deletion: `sgw_auction`'s `RESTRICT` foreign keys block deleting any character that ever listed or won. What happens to its auctions? | **The listings go with the seller, and nobody else loses cash.** `seller_id` is `ON DELETE CASCADE` (the escrowed item is a container-18 row of the seller and cascades with the inventory), `current_bidder` is `ON DELETE SET NULL` (settled rows keep their history). A `BEFORE DELETE` trigger on `sgw_player`, `bm_player_before_delete()`, refunds the standing bidders of the seller's open auctions and reopens the open auctions the deleted character was winning. Decided in BM-02. |
 
 ## 7. Risks
 

@@ -18,6 +18,9 @@ cimmeria-entity = { workspace = true }
 # transport crate, and the world-entry payload reads the XP curve from `game`.
 cimmeria-mercury = { workspace = true }
 cimmeria-game = { workspace = true }
+# The Black Market argument codecs the injected client-patch DLL shares
+# (`black_market`): one encoder and decoder for both sides of the wire.
+cimmeria-patch-wire = { workspace = true }
 # `BaseToCellMsg` carries `oneshot` reply channels; the lab query contract is
 # serde-serialisable.
 tokio = { workspace = true }

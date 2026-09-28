@@ -1,6 +1,7 @@
 //! `CellToBaseMsg::BlackMarket` routing (BM-01): every nested variant reaches
-//! its own base handler. With no DB pool each handler returns at its first
-//! guard and logs `"<op>: no DB pool"`, which names the handler that ran.
+//! its own base handler. With no DB pool each handler refuses at its first
+//! guard (`BMUnavailable`, BM-02) and logs `bm.refused` with its own `op`,
+//! which names the handler that ran.
 
 use super::super::*;
 use super::empty_maps;
@@ -18,7 +19,7 @@ async fn every_black_market_variant_reaches_its_handler() {
                 player_id: 11,
                 options: BMSearchOptions::default(),
             },
-            "search: no DB pool",
+            "search",
         ),
         (
             BlackMarketCellToBase::CreateAuction {
@@ -29,7 +30,7 @@ async fn every_black_market_variant_reaches_its_handler() {
                 buyout_price: 20,
                 auction_length: 3,
             },
-            "createAuction: no DB pool",
+            "create",
         ),
         (
             BlackMarketCellToBase::PlaceBid {
@@ -38,7 +39,7 @@ async fn every_black_market_variant_reaches_its_handler() {
                 sequence_id: 5,
                 bid_amount: 10,
             },
-            "placeBid: no DB pool",
+            "bid",
         ),
         (
             BlackMarketCellToBase::CancelAuction {
@@ -46,7 +47,7 @@ async fn every_black_market_variant_reaches_its_handler() {
                 player_id: 11,
                 sequence_id: 5,
             },
-            "cancelAuction: no DB pool",
+            "cancel",
         ),
     ];
     for (msg, expected) in msgs {
@@ -66,10 +67,12 @@ async fn every_black_market_variant_reaches_its_handler() {
         )
         .await;
         assert!(
-            capture
-                .find_message(tracing::Level::DEBUG, expected)
-                .is_some(),
-            "missing {expected:?}: {:#?}",
+            capture.all().iter().any(|e| {
+                e.message_contains("Black Market request refused")
+                    && e.has_field("op", expected)
+                    && e.has_field("reason", "bm_unavailable")
+            }),
+            "missing the {expected:?} refusal: {:#?}",
             capture.all()
         );
         assert!(typed_transport.is_empty(), "{expected}: nothing sent");

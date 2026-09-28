@@ -1,6 +1,7 @@
 //! The Black Market (`SGWBlackMarketManager`, implemented by `SGWPlayer`).
 //!
 //! - [`methods`]: the method indices, names and the two UI enums.
+//! - [`error`]: the `onBMError` id vocabulary ([`BMError`]).
 //! - [`types`]: the `AuctionItem` and `BMSearchOptions` `FIXED_DICT`s.
 //! - [`client`]: the server-to-client methods `onBMOpen` … `onBMWatchedItemsUpdate`
 //!   (client indices 90–95), which the stock client drops.
@@ -30,6 +31,7 @@
 
 pub mod cell;
 pub mod client;
+pub mod error;
 pub mod methods;
 pub mod types;
 
@@ -41,6 +43,7 @@ pub use client::{
     ClientCall, OnBMAuctionRemove, OnBMAuctionUpdate, OnBMAuctions, OnBMError, OnBMOpen,
     OnBMWatchedItemsUpdate,
 };
+pub use error::BMError;
 pub use methods::{
     CellMethod, ClientMethod, UIAuctionTime, UIAuctionView, EXTENDED_MESSAGE_ID,
     EXTENDED_METHOD_BASE,

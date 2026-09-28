@@ -13,6 +13,7 @@
 
 - [project_mail_handlers_unimplemented.md](project_mail_handlers_unimplemented.md) — Mail send/take/COD/return paths are stubs; future implementers inherit unvalidated wire surface
 - [project_trade_handlers_unimplemented.md](project_trade_handlers_unimplemented.md) — All four player-trade RPCs are stubs in social.rs; ordered invariant checklist for the next implementer
+- [project_black_market_bm02_review.md](project_black_market_bm02_review.md) — BM-02 auctioneer gate + container-18 escrow cleared; residual mint-on-missing-escrow, int4 refund overflow
 - [project_black_market_unimplemented.md](project_black_market_unimplemented.md) — BM/Auction surface was stubbed (superseded 2026-09-27 by the BM-01 port); CAT-I invariants still open go to BM-02
 - [project_mission_dialog_audit_2026-05-31.md](project_mission_dialog_audit_2026-05-31.md) — CAT-J audit findings; mission/dialog/interaction trust posture as of 2026-05-31
 - [project_gm_commands_audit_2026-05-31.md](project_gm_commands_audit_2026-05-31.md) — CAT-N audit findings; GM/debug/cheat commands trust posture as of 2026-05-31

@@ -41,3 +41,13 @@ CREATE TRIGGER sgw_player_before_delete_lock_orgs BEFORE DELETE ON sgw_player FO
 --
 
 CREATE TRIGGER account_before_delete_lock_orgs BEFORE DELETE ON account FOR EACH ROW EXECUTE FUNCTION org_account_before_delete();
+
+--
+-- Name: sgw_player_before_delete_auctions; Type: TRIGGER; Schema: public; Owner: -
+--
+-- Refunds the standing bidders of a deleted character's open auctions and
+-- clears its own standing bids before the cascade (D-BM09). See
+-- bm_player_before_delete() in _functions.sql.
+--
+
+CREATE TRIGGER sgw_player_before_delete_auctions BEFORE DELETE ON sgw_player FOR EACH ROW EXECUTE FUNCTION bm_player_before_delete();
