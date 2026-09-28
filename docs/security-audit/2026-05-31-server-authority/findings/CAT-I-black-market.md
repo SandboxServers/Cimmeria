@@ -2,7 +2,7 @@
 
 > **Merged (2026-09-27).** Packet BM-01 ported `feat/571-black-market-phase1`
 > onto `main` without behaviour changes, so the "addressed" items below are
-> live. The code is in `crates/base-session/src/base/black_market/` (the file
+> live. The code is in `crates/base-methods/src/base/world_entry/methods/black_market/` (the file
 > paths below are relative to it); `validate.rs`, `bid.rs` and `cancel.rs` are
 > byte-identical to the branch, and their guards passed the live-DB tier at
 > merge. The line references in `wire.rs` and `search.rs` are updated to the

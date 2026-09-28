@@ -41,7 +41,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Minigames](#minigames) | IM | MinigamePlayer | `minigame/` | LOW |
 | [Mail](#mail) | NT | SGWMailManager | `cell/mail.rs`, `base/world_entry/methods/mail/` | MEDIUM |
 | [Trading](#trading) | IM | SGWPlayer | `cell/cell_methods/player/trade/`, `base/world_entry/methods/trade/` | LOW |
-| [Black Market](#black-market) | IM | SGWBlackMarketManager | `base/black_market/` (base-session), `cell/cell_methods/black_market/` | LOW |
+| [Black Market](#black-market) | IM | SGWBlackMarketManager | `base/world_entry/methods/black_market/` (base-methods), `cell/cell_methods/black_market/` | LOW |
 | [Pets](#pets) | KM | (SGWPet entity) | — | LOW |
 | [Dueling](#dueling) | IM | (SGWPlayer direct) | `base/dispatch/duel.rs`, `cell/duel/` | LOW |
 | [Groups](#groups) | KM | GroupAuthority | — | MEDIUM |

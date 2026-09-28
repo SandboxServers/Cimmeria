@@ -142,7 +142,7 @@ BM-01 (#965) ported the branch without changing its behaviour. The review of #96
 
 ### 5.3 BM-02 outcome
 
-- **S1–S8** as §3.1, through the shared codec: the server decodes 61–66 and encodes 90–95 with `cimmeria-patch-wire` (re-exported as `cimmeria_wire::black_market`), so the server and the client patch cannot disagree on a layout. Byte-exact tests in `base-session`'s `black_market/wire/tests.rs` and the cell's `black_market/tests.rs`.
+- **S1–S8** as §3.1, through the shared codec: the server decodes 61–66 and encodes 90–95 with `cimmeria-patch-wire` (re-exported as `cimmeria_wire::black_market`), so the server and the client patch cannot disagree on a layout. Byte-exact tests in `base-methods`' `methods/black_market/wire/tests.rs` and the cell's `black_market/tests.rs`.
 - **D3** `BMError` in `cimmeria-patch-wire`: 0 and 1 shipped, 2–14 the server's refusals, each with a logged `reason`. **D4** watch calls answer `WatchUnavailable`. **D5** 20 active listings. **D6** +5%, at least +1. **D8** immediate buyout. **D7** is the DLL's (no server change).
 - **Escrow.** A listing moves its row into the seller's container 18 instead of deleting it; cancel and expiry move it back, a sale moves it to the buyer. Container 18 is excluded from every client-bound inventory read. Starting price at least 1, bound items refused, only bags 1 and 15 listable.
 - **Authority, expired window, paging, FK**: the §5.2 rows marked done.
