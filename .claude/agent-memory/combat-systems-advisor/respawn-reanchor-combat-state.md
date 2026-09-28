@@ -1,12 +1,12 @@
 ---
 name: respawn-reanchor-combat-state
-description: Same-world respawn reanchor (CREATE_BASE_PLAYER) wipes client combat caches; stats were pushed BEFORE the reanchor and never after (FIXED, PR __PR__); auto-attack arrives as interact (idx 74), not useAbility (68)
+description: Same-world respawn reanchor (CREATE_BASE_PLAYER) wipes client combat caches; stats were pushed BEFORE the reanchor and never after (FIXED, PR #1032); auto-attack arrives as interact (idx 74), not useAbility (68)
 metadata:
   type: project
 ---
 
 Diagnosed 2026-09-28 (colo build 5f9730c6, "abilities die after respawn", player 71).
-**Fixed in PR __PR__** (same PR also fixed NPCs respawning in the death pose).
+**Fixed in PR #1032** (same PR also fixed NPCs respawning in the death pose).
 
 - Auto-attack (559 SMG, 579 pistol) reaches the server as cell method 74 `interact`
   (9 bytes, `00000000 0d <target u32>`), and the interact handler turns it into
