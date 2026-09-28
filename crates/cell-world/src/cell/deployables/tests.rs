@@ -382,6 +382,8 @@ fn radius_and_schedule_come_from_the_effects() {
     assert_eq!(pulse_schedule(&life), Some((30, Duration::from_secs(1))));
     life.pulse_duration = 0.0;
     assert_eq!(pulse_schedule(&life), None);
+    life.pulse_duration = f32::INFINITY;
+    assert_eq!(pulse_schedule(&life), None, "never an infinite interval");
     life.pulse_duration = 1.0;
     life.pulse_count = 0;
     assert_eq!(pulse_schedule(&life), None);

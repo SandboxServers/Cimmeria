@@ -71,7 +71,10 @@ impl DeployableSpawnError {
 /// The timing a lifetime effect gives a deployable: `(pulses, interval)`.
 /// `None` for an effect that does not pulse on a positive interval.
 pub fn pulse_schedule(lifetime: &EffectDef) -> Option<(u32, Duration)> {
-    if lifetime.pulse_count < 1 || !(lifetime.pulse_duration > 0.0) {
+    if lifetime.pulse_count < 1
+        || !lifetime.pulse_duration.is_finite()
+        || lifetime.pulse_duration <= 0.0
+    {
         return None;
     }
     Some((

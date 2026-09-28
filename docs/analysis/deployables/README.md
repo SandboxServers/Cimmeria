@@ -49,12 +49,13 @@ The cooked client data in the repo (`data/cache/CookedData*.pak`, zips of one SO
 
 ### Tests and revert proofs
 
-Every guard below was run against a mutation of the code or seed it guards (a scratch driver applied one mutation, ran the named tests, and restored the file; the seed mutations ran through `tools/build-lane/live-db-test.sh`, which reloads the worktree database). Each of the 24 mutations failed its guard.
+Every guard below was run against a mutation of the code or seed it guards (a scratch driver applied one mutation, ran the named tests, and restored the file; the seed mutations ran through `tools/build-lane/live-db-test.sh`, which reloads the worktree database). Each of the 25 mutations failed its guard; the range, line-of-sight, navmesh and radius ones were re-run after the rebase onto #919's metre ranges.
 
 | Guard | Test | Mutation that fails it |
 |---|---|---|
 | Hostile-only targeting | `pulse::a_pulse_targets_live_hostile_npcs_in_its_radius_only` | drop the `may_hit_in_area` filter |
 | Radius edge (10 m inclusive) | same | `<=` to `<` |
+| The client's AE radius (10 m), not the cone tier (8 m) | `deployables::tests::radius_and_schedule_come_from_the_effects`, `deployables::tests::spawn_places_a_stationary_being_owned_by_the_caster` | use `tcm_range_meters` for the radius |
 | Damage is the owner's | `pulse::a_pulse_damages_as_the_owner`, `pulse::a_pulse_kill_is_the_owners_kill` | pass the object as the attacker |
 | The lifetime effect never lands on a target | `pulse::a_pulse_registers_no_lifetime_effect_on_its_target` | hand the pipeline the whole ability |
 | Owner death | `pulse::the_owners_death_removes_the_object_before_it_pulses` | drop the `OwnerDead` verdict |
