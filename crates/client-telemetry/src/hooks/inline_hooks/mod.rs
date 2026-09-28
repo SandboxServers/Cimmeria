@@ -10,13 +10,13 @@
 //! One submodule per hook family; each owns its target addresses,
 //! trampoline statics, samplers, install fns, and detours:
 //!
-//! - [`mercury_dispatch`] — inbound Mercury packet dispatch + the
-//!   entity-method silent-drop oracle (network thread).
+//! - [`mercury_dispatch`] — the entity-method silent-drop oracle
+//!   (network thread).
 //! - [`engine_frame`] — per-frame drivers: `FEngineLoop::Tick` and
 //!   `FFullScreenMovieBink::Tick`.
 //! - [`engine_loading`] — asset/package loading + level streaming:
 //!   `FArchiveAsync::Serialize`, `UObject::StaticLoadObject`,
-//!   `UWorld::UpdateLevelStreamingInner`, cooked-data PAK load.
+//!   `UWorld::UpdateLevelStreamingInner`.
 //! - [`state_flags`] — `GameBeing::onStateFieldUpdate` (all 9
 //!   BSF_* flags via one dispatcher hook).
 //! - [`anim_notify`] — `USGWAnimNotify_Event::Notify` A + B.
@@ -24,23 +24,32 @@
 //!
 //! # What's installed
 //!
-//! Phase 2 (5 hooks) + Phase 3/5 (6 additional inline hooks) + the
-//! client-dispatch drop oracle (PR #620) = 12 hooks. All Phase 3-5
-//! anchors resolved + signature-confirmed in Ghidra on 2026-06-04
-//! (see `client-instrumentation-entry-points.md`).
+//! 10 hooks. Every address below was re-checked against the QA
+//! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
+//! argument count) and is covered by the [fingerprint
+//! gate](crate::fingerprint), which installs none of them on a build
+//! whose bytes differ. Two earlier anchors were removed then:
+//! `Mercury::Nub::handleMessage` (`0x01b18be0` is a log string) and the
+//! cooked-data PAK load (`0x00420074` is mid-function). #989 tracks
+//! re-adding them.
+//!
+//! Every detour, and the trampoline type it calls the original
+//! through, uses the `-unwind` ABI (`thiscall-unwind`, `C-unwind`).
+//! UE3 reports errors by throwing C++ exceptions; with a plain ABI the
+//! unwind aborts the process at the detour instead of reaching the
+//! engine's handler. Rust panics inside a detour stay inside
+//! `catch_unwind`, so none can unwind into the game.
 //!
 //! | Function | Address | Target | Sampling |
 //! |---|---|---|---|
-//! | `Mercury::Nub::handleMessage` | `0x01b18be0` | `client.mercury.dispatch` | none (network-bounded) |
 //! | `FEngineLoop::Tick` | `0x00416ec0` | `client.engine.tick` | 1/100 (~0.3-1.2 Hz at 30-120 fps) |
 //! | `FArchiveAsync::Serialize` (vtbl slot 1) | `0x004c7ae0` | `client.engine.async_archive_serialize` | 1/1000 (hot during loads) |
 //! | `UWorld::UpdateLevelStreamingInner` | `0x0054e9c0` | `client.engine.update_level_streaming` | 1/10 (fires per streaming level per frame) |
 //! | `UObject::StaticLoadObject` | `0x004a8e10` | `client.engine.static_load_object` (with `package_name` field) | 1/10 (bursts during cold loads) |
-//! | `GameBeing::onStateFieldUpdate` | `0x00e01c90` | `client.state.field_update` | 1/1 (one hook covers all 9 BSF_* flags via dispatcher) |
+//! | `GameBeing::onStateFieldUpdate` (2 stack args) | `0x00e01c90` | `client.state.field_update` | 1/1 (one hook covers all 9 BSF_* flags via dispatcher) |
 //! | `USGWAnimNotify_Event::Notify` (A) | `0x00e974b0` | `client.anim.notify` (`variant=a`) | 1/100 (shared with B) |
 //! | `USGWAnimNotify_Event::Notify` (B) | `0x00e97070` | `client.anim.notify` (`variant=b`) | 1/100 (shared with A) |
-//! | Cooked-data PAK load | `0x00420074` | `client.engine.pak_load` (with `category` field) | 1/1 (21 PAKs total) |
-//! | `APlayerController::execConsoleCommand` | `0x00539850` | `client.input.console_command` | 1/1 |
+//! | `APlayerController::execConsoleCommand` (`this, FFrame&, Result*`) | `0x00539850` | `client.input.console_command` | 1/1 |
 //! | `FFullScreenMovieBink::Tick` (vtbl slot 1) | `0x0050bbc0` | `client.engine.bink_tick` (with `delta_seconds` field) | 1/30 (~1/sec during cinematics) |
 //! | `EntityDescription_GetExposedClientMethodByIndex` (silent-drop oracle) | `0x01590f30` | `client.dispatch.method_dropped` (with `method_index` field) | 1/1 unsampled — drops are the finding |
 //!
@@ -98,7 +107,6 @@ unsafe fn install_inner(producer: Producer) {
         return;
     }
 
-    mercury_dispatch::install_handle_message(&producer);
     engine_frame::install_engine_tick(&producer);
     engine_loading::install_archive_async_serialize(&producer);
     engine_loading::install_update_level_streaming_inner(&producer);
@@ -106,7 +114,6 @@ unsafe fn install_inner(producer: Producer) {
     state_flags::install_state_field_update(&producer);
     anim_notify::install_anim_notify_a(&producer);
     anim_notify::install_anim_notify_b(&producer);
-    engine_loading::install_cooked_data_load(&producer);
     console_command::install_console_command(&producer);
     engine_frame::install_bink_tick(&producer);
     mercury_dispatch::install_entity_method_not_found(&producer);
@@ -114,7 +121,7 @@ unsafe fn install_inner(producer: Producer) {
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(12))],
+        [("hook_count", serde_json::json!(10))],
     );
 }
 
@@ -191,7 +198,6 @@ mod tests {
         // Ghidra resolution 2026-06-04 (PR #504 follow-up):
         #[cfg(all(target_os = "windows", target_arch = "x86"))]
         {
-            assert_eq!(super::mercury_dispatch::ADDR_HANDLE_MESSAGE, 0x01b18be0);
             assert_eq!(super::engine_frame::ADDR_FENGINE_LOOP_TICK, 0x00416ec0);
             assert_eq!(
                 super::engine_loading::ADDR_ARCHIVE_ASYNC_SERIALIZE,
@@ -206,7 +212,6 @@ mod tests {
             assert_eq!(super::state_flags::ADDR_STATE_FIELD_UPDATE, 0x00e01c90);
             assert_eq!(super::anim_notify::ADDR_ANIM_NOTIFY_A, 0x00e974b0);
             assert_eq!(super::anim_notify::ADDR_ANIM_NOTIFY_B, 0x00e97070);
-            assert_eq!(super::engine_loading::ADDR_COOKED_DATA_LOAD, 0x00420074);
             assert_eq!(super::console_command::ADDR_CONSOLE_COMMAND, 0x00539850);
             assert_eq!(super::engine_frame::ADDR_BINK_TICK, 0x0050bbc0);
             // Sole callee of the silent-drop path in
@@ -216,6 +221,32 @@ mod tests {
             assert_eq!(
                 super::mercury_dispatch::ADDR_ENTITY_METHOD_NOT_FOUND,
                 0x01590f30
+            );
+        }
+    }
+    /// Every inline-hooked address is a fingerprinted site, so a build
+    /// whose bytes differ there installs nothing.
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn every_hooked_address_is_fingerprinted() {
+        let hooked = [
+            super::mercury_dispatch::ADDR_ENTITY_METHOD_NOT_FOUND,
+            super::engine_frame::ADDR_FENGINE_LOOP_TICK,
+            super::engine_frame::ADDR_BINK_TICK,
+            super::engine_loading::ADDR_ARCHIVE_ASYNC_SERIALIZE,
+            super::engine_loading::ADDR_UPDATE_LEVEL_STREAMING_INNER,
+            super::engine_loading::ADDR_STATIC_LOAD_OBJECT,
+            super::state_flags::ADDR_STATE_FIELD_UPDATE,
+            super::anim_notify::ADDR_ANIM_NOTIFY_A,
+            super::anim_notify::ADDR_ANIM_NOTIFY_B,
+            super::console_command::ADDR_CONSOLE_COMMAND,
+        ];
+        for addr in hooked {
+            assert!(
+                crate::fingerprint::CODE_SITES
+                    .iter()
+                    .any(|s| s.address == addr),
+                "0x{addr:08x} is hooked but not fingerprinted"
             );
         }
     }

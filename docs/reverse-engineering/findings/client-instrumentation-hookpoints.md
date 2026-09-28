@@ -77,7 +77,7 @@ The minimum hook set that turns "client froze somewhere during world entry" into
 | `Event_NetIn_onClientMapLoad` handler | TypedEmitInfo `0x01e4da90` | CME subscribe | `client.network.on_client_map_load` | CONFIRMED |
 | `Event_NetIn_onClientReady` handler | string `0x019c2828` ("onClientReady") | CME subscribe | `client.network.on_client_ready` | CONFIRMED (string at address is the bare `onClientReady` — the full `Event_NetIn_onClientReady` is the RTTI-derived signal name) |
 | `recvfrom` / `WSARecv` | `ws2_32.dll` IAT | IAT | `client.os.udp_recv` (sampled) | DEFERRED — IAT walker work |
-| `Mercury::Nub::handleMessage` | `0x01b18be0` | Inline | `client.mercury.dispatch` | CONFIRMED |
+| `Mercury::Nub::handleMessage` | ~~`0x01b18be0`~~ (that is the log string `"Mercury::Nub::handleMessage: received the wrong kind of message!\n"`); the function that logs it starts at `0x0157bd30` and pops 4 stack args (`ret 0x10`) | Inline | `client.mercury.dispatch` | WRONG — hook removed 2026-09-27, re-resolution is #989 |
 | log4cxx appender tee | `log4cxx.dll` (config @ `SGWLogConfig.xml`) | Interpose | `client.log.<level>` | DEFERRED — appender install path TBD |
 
 **Anchor corrections from the issue body's original draft:**
@@ -123,7 +123,7 @@ Anchors from existing RE docs; per-anchor Ghidra revalidation deferred to implem
 | `Event_AppearanceJob_Completed` | RTTI `0x01e21c80` (5 subscribers: `SequenceManager`, `CharacterCreation`, `GameProxyPlayer`, `GameBeing`, `PortraitManager`) | CME subscribe (free piggyback on existing signal) | [`appearance-system.md`](appearance-system.md) |
 | `USGWAnimNotify_Event::Notify` | `0x00e974b0`, `0x00e97070` | Inline | [`animation-system.md`](animation-system.md) |
 | `onEffectResults` dispatch (16 result codes incl. `EFFECT_PULSE_BEGIN`/`END`) | CME via `Event_NetIn_*` | CME subscribe | [`effect-execution-model.md`](effect-execution-model.md) |
-| Cooked data category load (21 PAKs) | `0x00420074` | Inline | [`cooked-data-pipeline.md`](cooked-data-pipeline.md) |
+| Cooked data category load (21 PAKs) | ~~`0x00420074`~~ is mid-function; the enclosing entry is `0x0041f620` (signature unresolved, #989) | Inline | [`cooked-data-pipeline.md`](cooked-data-pipeline.md) |
 | `Event_NetIn_LootDisplay` + `DBInvItem` cache warm | `0x00d804f0`, `0x00e248f0` | CME subscribe | [`loot-generation.md`](loot-generation.md) |
 
 ## Tier 4 — Kismet, dispatcher, matinee (Phase 3 cont.)

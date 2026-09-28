@@ -20,6 +20,9 @@ crate-type = ["cdylib", "rlib"]
 # The Black Market argument codecs, shared with the server. std-only, so
 # nothing heavy comes into SGW.exe with it.
 cimmeria-patch-wire = { workspace = true }
+# The prologue check, chaining rule and install lock it shares with the
+# telemetry DLL, so the two agree on which hooks each may chain onto.
+cimmeria-client-hookgate = { workspace = true }
 
 [target.'cfg(all(windows, target_arch = "x86"))'.dependencies]
 # DllMain, the bootstrap thread, VirtualQuery page checks, the lua51.dll

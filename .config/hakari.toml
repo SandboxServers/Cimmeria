@@ -45,6 +45,8 @@ workspace-members = [
 # although CI builds it with the rest of the workspace: it is linked into the client-patch
 # DLL inside SGW.exe and must stay free of dependencies, and the workspace-hack would pull
 # tokio, hyper and sqlx into it. It has no dependencies, so it has no features to unify.
+# cimmeria-client-hookgate is here for the same reason: both client DLLs link it. Its only
+# dependency (windows-sys) is for the i686 target, which is not one of the platforms above.
 [final-excludes]
 workspace-members = [
     "cimmeria-app",
@@ -55,4 +57,5 @@ workspace-members = [
     "cimmeria-client-patches",
     "cimmeria-lab",
     "cimmeria-patch-wire",
+    "cimmeria-client-hookgate",
 ]

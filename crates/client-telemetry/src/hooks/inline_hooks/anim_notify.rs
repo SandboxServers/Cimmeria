@@ -56,13 +56,13 @@ pub(super) unsafe fn install_anim_notify_b(producer: &Producer) {
 
 /// Detour for `USGWAnimNotify_Event::Notify` (variant A).
 ///
-/// Signature: `extern "thiscall" fn(*mut this, int notify_type)`.
+/// Signature: `extern "thiscall-unwind" fn(*mut this, int notify_type)`.
 ///
 /// **Hot path discipline:** fires several times per actor per frame
 /// during combat animations. Sampled at 1/100 via `ANIM_NOTIFY_SAMPLER`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn anim_notify_a_detour(this: *mut c_void, notify_arg: i32) {
+unsafe extern "thiscall-unwind" fn anim_notify_a_detour(this: *mut c_void, notify_arg: i32) {
     let _ = std::panic::catch_unwind(|| {
         if ANIM_NOTIFY_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
@@ -75,7 +75,7 @@ unsafe extern "thiscall" fn anim_notify_a_detour(this: *mut c_void, notify_arg: 
     });
 
     if let Some(t) = ANIM_NOTIFY_A_TRAMPOLINE.get() {
-        let original: unsafe extern "thiscall" fn(*mut c_void, i32) =
+        let original: unsafe extern "thiscall-unwind" fn(*mut c_void, i32) =
             unsafe { std::mem::transmute(*t) };
         original(this, notify_arg);
     }
@@ -86,7 +86,7 @@ unsafe extern "thiscall" fn anim_notify_a_detour(this: *mut c_void, notify_arg: 
 /// 1/100 per (A or B) call.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn anim_notify_b_detour(this: *mut c_void, notify_arg: i32) {
+unsafe extern "thiscall-unwind" fn anim_notify_b_detour(this: *mut c_void, notify_arg: i32) {
     let _ = std::panic::catch_unwind(|| {
         if ANIM_NOTIFY_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
@@ -99,7 +99,7 @@ unsafe extern "thiscall" fn anim_notify_b_detour(this: *mut c_void, notify_arg: 
     });
 
     if let Some(t) = ANIM_NOTIFY_B_TRAMPOLINE.get() {
-        let original: unsafe extern "thiscall" fn(*mut c_void, i32) =
+        let original: unsafe extern "thiscall-unwind" fn(*mut c_void, i32) =
             unsafe { std::mem::transmute(*t) };
         original(this, notify_arg);
     }

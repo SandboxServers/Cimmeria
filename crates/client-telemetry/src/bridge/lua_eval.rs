@@ -103,20 +103,22 @@ mod win {
     /// Dereferences fixed client addresses; only valid inside
     /// SGW.exe on the main thread.
     unsafe fn resolve_lua_state() -> Option<usize> {
-        let uimgr = *(G_SGW_UI_MANAGER_PTR as *const usize);
-        if uimgr == 0 {
-            return None;
-        }
-        let holder = *((uimgr + 0x10) as *const usize);
-        if holder == 0 {
-            return None;
-        }
-        let l = *(holder as *const usize);
-        if l == 0 {
-            return None;
-        }
+        // Every hop is read through `ReadProcessMemory`: before the UI
+        // exists, or in a process that is not SGW.exe at all, any of
+        // these pointers can be garbage, and a plain dereference would
+        // fault.
+        let read_ptr = |addr: usize| -> Option<usize> {
+            let bytes = cimmeria_client_hookgate::os::read_bytes(addr, 4)?;
+            match u32::from_le_bytes(bytes.try_into().ok()?) {
+                0 => None,
+                p => Some(p as usize),
+            }
+        };
+        let uimgr = read_ptr(G_SGW_UI_MANAGER_PTR)?;
+        let holder = read_ptr(uimgr.checked_add(0x10)?)?;
+        let l = read_ptr(holder)?;
         // Byte compare — tt is the low byte of the dword at [L+4].
-        let tt = *((l + 4) as *const u8);
+        let tt = *cimmeria_client_hookgate::os::read_bytes(l.checked_add(4)?, 1)?.first()?;
         if tt != LUA_TTHREAD {
             return None;
         }

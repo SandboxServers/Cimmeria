@@ -1,6 +1,6 @@
 ---
 name: injected-dll-unwind-and-lua-error-rules
-description: Detours of SGW.exe functions with a C++ EH prologue use extern "thiscall-unwind"; client Lua errors outside pcall exit, never unwind; MinHook chains two DLLs on one target
+description: Detours of SGW.exe functions with a C++ EH prologue use extern "thiscall-unwind" (and lua51 detours C-unwind: it throws C++ exceptions); client Lua errors outside pcall exit, never unwind; MinHook chains two DLLs on one target
 metadata:
   type: reference
 ---

@@ -53,7 +53,7 @@ id = "tools"
 title = "Tools, test clients and asset toolchain"
 crates = ["cimmeria-wireclient", "cimmeria-navmesh-extractor", "cimmeria-upk", "cimmeria-upk-objects",
           "cimmeria-scene-editor", "cimmeria-content-editor", "cimmeria-spec-lint", "cimmeria-client-telemetry",
-          "cimmeria-client-patches"]
+          "cimmeria-client-patches", "cimmeria-client-hookgate"]
 
 [[group]]
 id = "test"

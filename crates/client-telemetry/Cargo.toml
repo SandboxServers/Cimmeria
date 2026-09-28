@@ -43,6 +43,11 @@ lab-bridge = ["dep:microseh"]
 # existing /api/telemetry/upload-chunk endpoint.
 thiserror = { workspace = true }
 
+# The prologue fingerprint, the chaining rule and the install lock this DLL
+# shares with cimmeria-client-patches (both hook FEngineLoop::Tick and the
+# drop callee). std-only apart from windows-sys on i686.
+cimmeria-client-hookgate = { workspace = true }
+
 # Phase 2 — Event queue + uploader. Cross-platform deps so the rlib
 # builds and tests on Linux; the cdylib's network path only runs on
 # Windows but the queue / serialization / batching logic is portable

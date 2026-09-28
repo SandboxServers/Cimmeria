@@ -218,6 +218,19 @@ fn bootstrap_phase2() {
         None => return, // can't locate; can't proceed
     };
 
+    // The local log goes next to the host executable, before anything
+    // can fail, so "loaded but silent" is visible without SigNoz.
+    crate::log::init(host_exe.parent());
+    crate::log::line(format_args!(
+        "attached, version {}, host {}, dll {}",
+        env!("CARGO_PKG_VERSION"),
+        host_exe.display(),
+        ATTACH_DIAG
+            .get()
+            .and_then(|d| d.dll_path.as_deref())
+            .map_or_else(|| "?".into(), |p| p.display().to_string())
+    ));
+
     // Step 2: load `current-session.json`. Errors here include
     // file-missing (launcher didn't write it — likely user
     // launched SGW.exe directly without going through the
@@ -228,8 +241,17 @@ fn bootstrap_phase2() {
         .and_then(|p| crate::session::load_session(&p))
     {
         Ok(s) => s,
-        Err(_) => return,
+        Err(e) => {
+            crate::log::line(format_args!(
+                "no telemetry session ({e}); nothing installed"
+            ));
+            return;
+        }
     };
+    crate::log::line(format_args!(
+        "session {} loaded; uploading to {}",
+        session.session_id, session.telemetry.upload_endpoint
+    ));
 
     // Step 3 + 4: queue + global producer.
     let (producer, consumer) = crate::queue::channel();
@@ -274,13 +296,13 @@ fn bootstrap_phase2() {
         })
         .ok();
 
-    // Step 6.5: install hooks. Each hook clones the producer
-    // handle (Arc-backed inside crossbeam-channel) so the clones
-    // are cheap. Per-hook success/failure events flow through the
-    // queue and ship like any other telemetry. Hook installation
-    // is best-effort — a missing CME signal or a failed MinHook
-    // create logs a warn event and the hook becomes a no-op.
-    crate::hooks::install_all(producer);
+    // Step 6.5: the fingerprint gate, then the hooks. Each hook clones
+    // the producer handle (Arc-backed inside crossbeam-channel) so the
+    // clones are cheap. Per-hook success/failure events flow through the
+    // queue and ship like any other telemetry. Hook installation is
+    // best-effort — a missing CME signal or a failed MinHook create logs
+    // a warn event and the hook becomes a no-op.
+    let hooked = gate_and_install(producer);
 
     // Step 6.6: start the Live Research Lab bridge if this launch is
     // a lab session. Double-gated: this code only exists under the
@@ -288,8 +310,20 @@ fn bootstrap_phase2() {
     // nothing) unless `current-session.json` carried a `lab` block.
     // The Tick hook's drain is a no-op until the handle is installed.
     #[cfg(feature = "lab-bridge")]
-    {
-        if let Some(handle) = crate::bridge::maybe_start(&session) {
+    match crate::bridge::maybe_start(&session) {
+        None => crate::log::line("no lab block in the session; lab bridge not started"),
+        Some(Err(e)) => crate::log::line(format_args!("lab bridge failed to start: {e}")),
+        Some(Ok(handle)) => {
+            crate::log::line(format_args!(
+                "lab bridge listening on {}{}",
+                handle.local_addr(),
+                if hooked {
+                    ""
+                } else {
+                    "; commands dispatch from FEngineLoop::Tick, which is not hooked, so they \
+                     will time out"
+                }
+            ));
             let _ = crate::bridge::install_handle(handle);
             // Outer-tier crash capture (ADR §6 / #685 scope 4). Only in
             // a lab session — a normal telemetry launch must not replace
@@ -303,6 +337,8 @@ fn bootstrap_phase2() {
             }
         }
     }
+    #[cfg(not(feature = "lab-bridge"))]
+    let _ = hooked;
 
     // Step 7: park the bootstrap thread. Future Phase 7 hooks can
     // wake us via an `Event` to drive shutdown drain. For now,
@@ -311,6 +347,82 @@ fn bootstrap_phase2() {
     loop {
         std::thread::park();
     }
+}
+
+/// How long to wait for the client-patches DLL to finish hooking before
+/// going on without the shared install lock.
+#[cfg(all(windows, target_arch = "x86"))]
+const HOOK_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Run the [fingerprint gate](crate::fingerprint) and, when every site
+/// matches, install the hooks. Both steps run under the install lock
+/// shared with the client-patches DLL, so neither DLL can hook a shared
+/// site between the other's check and its hook. Reports the gate's result
+/// in the local log and as a `client.hooks.fingerprint` event. Returns
+/// whether the hooks went in.
+#[cfg(all(windows, target_arch = "x86"))]
+fn gate_and_install(producer: crate::queue::Producer) -> bool {
+    use cimmeria_client_hookgate::os::{loaded_hook_owners, read_bytes, HookLock, LockOutcome};
+
+    let lock = HookLock::acquire(HOOK_LOCK_WAIT);
+    crate::log::line(match lock.outcome() {
+        LockOutcome::Acquired => "install lock taken",
+        LockOutcome::AcquiredAfterWait => "install lock taken after waiting for another DLL",
+        LockOutcome::Abandoned => "install lock taken (abandoned by a thread that exited)",
+        LockOutcome::Unavailable => "install lock unavailable; hooking without it",
+    });
+
+    let owners: Vec<_> = loaded_hook_owners()
+        .into_iter()
+        .filter_map(|owner| {
+            match &owner.image {
+                Some(r) => crate::log::line(format_args!(
+                    "{} loaded at 0x{:08x}..0x{:08x}; its hooks may be chained",
+                    owner.name, r.start, r.end
+                )),
+                None => crate::log::line(format_args!(
+                    "{} loaded at 0x{:08x} but its PE header is unreadable",
+                    owner.name, owner.base
+                )),
+            }
+            owner.image
+        })
+        .collect();
+
+    let report = crate::fingerprint::check(read_bytes, &owners);
+    for line in report.lines() {
+        crate::log::line(line);
+    }
+    let usable = report.is_usable();
+    let mut event = crate::events::ClientNativeEvent::builder(
+        "client.hooks.fingerprint",
+        if usable { "info" } else { "warn" },
+    )
+    .field("usable", serde_json::json!(usable));
+    for (site, verdict) in report.verdicts() {
+        event = event.field(&format!("site.{site}"), serde_json::json!(verdict));
+    }
+    producer.try_emit(event);
+
+    if !usable {
+        crate::log::line(
+            "fingerprint mismatch: not the SGW.exe build these addresses belong to, or another \
+             patch at one of them; no hooks installed",
+        );
+        return false;
+    }
+    crate::hooks::install_all(producer);
+    crate::log::line("hooks installed");
+    drop(lock);
+    true
+}
+
+/// Off the i686 target there is no `SGW.exe` to hook (the x86_64 build
+/// exists only for host unit tests).
+#[cfg(all(windows, not(target_arch = "x86")))]
+fn gate_and_install(_producer: crate::queue::Producer) -> bool {
+    crate::log::line("not an i686 build; no hooks installed");
+    false
 }
 
 #[cfg(windows)]

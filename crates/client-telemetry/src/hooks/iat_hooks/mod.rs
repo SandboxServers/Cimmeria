@@ -8,15 +8,35 @@
 //! # Hook surface (this module)
 //!
 //! Phase 4 (Lua / scripted UI):
-//! - `lua_pcall` @ IAT `0x01988A0C` — most common Lua dispatch
-//! - `lua_call`  @ IAT `0x01988904` — unprotected Lua call
-//! - `lua_newstate` @ IAT `0x01988656` — Lua state creation
+//! - `lua_pcall` @ IAT `0x017F0228` — most common Lua dispatch
+//! - `lua_call`  @ IAT `0x017F0244` — unprotected Lua call
+//! - `lua_newstate` @ IAT `0x017F0288` — Lua state creation
 //!
 //! Phase 5 (OS correlators):
-//! - `CreateThread`       @ IAT `0x0196B65A` (KERNEL32) — thread timeline
-//! - `LoadLibraryW`       @ IAT `0x0196B5BC` (KERNEL32) — module timeline
-//! - `LoadLibraryA`       @ IAT `0x0196B5AC` (KERNEL32) — module timeline (ANSI)
-//! - `GetForegroundWindow`@ IAT `0x0196AF20` (USER32)   — focus correlation
+//! - `CreateThread`       @ IAT `0x017EF290` (KERNEL32) — thread timeline
+//! - `LoadLibraryW`       @ IAT `0x017EF26C` (KERNEL32) — module timeline
+//! - `LoadLibraryA`       @ IAT `0x017EF268` (KERNEL32) — module timeline (ANSI)
+//! - `GetForegroundWindow`@ IAT `0x017EFDF8` (USER32)   — focus correlation
+//!
+//! The slot addresses come from the import directory of the QA
+//! `SGW.exe`. The addresses used before 2026-09-27 (`0x01988A0C`,
+//! `0x0196B65A`, ...) were the on-disk *contents* of these slots: RVAs
+//! of the hint/name entries, read as if they were VAs. They pointed into
+//! UTF-16 strings in `.rdata`, so every install would have written a
+//! detour pointer over string data.
+//!
+//! Each slot is checked before it is swapped: it must hold exactly the
+//! address its import resolves to (`GetProcAddress` on the loaded
+//! module). Anything else (a different build, another IAT hook, a
+//! delay-load stub) skips that one hook with a `slot_mismatch` warning.
+//!
+//! `lua51.dll` raises Lua errors as C++ exceptions (it imports
+//! `_CxxThrowException`), so an error inside `lua_call` unwinds through
+//! `lua_call_detour` to the nearest `lua_pcall`. Every detour here uses
+//! an `-unwind` ABI so that unwind reaches its handler instead of
+//! aborting the process. The Win32 APIs do not throw, but they use
+//! `stdcall-unwind` too: it costs nothing, and one rule is easier to
+//! review than a list of exceptions.
 //!
 //! # Technique
 //!
@@ -53,23 +73,10 @@ use std::ffi::c_void;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-// ─── IAT slot addresses (2026-06-04 manifest) ───────────────────
+mod imports;
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const IAT_LUA_PCALL: usize = 0x01988A0C;
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-const IAT_LUA_CALL: usize = 0x01988904;
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-const IAT_LUA_NEWSTATE: usize = 0x01988656;
-
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-const IAT_CREATE_THREAD: usize = 0x0196B65A;
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-const IAT_LOAD_LIBRARY_W: usize = 0x0196B5BC;
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-const IAT_LOAD_LIBRARY_A: usize = 0x0196B5AC;
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-const IAT_GET_FOREGROUND_WINDOW: usize = 0x0196AF20;
+use imports::*;
 
 // ─── Saved originals (set at install time, used in detours) ─────
 //
@@ -176,16 +183,41 @@ unsafe fn install_inner(producer: Producer) {
 unsafe fn install_one(
     producer: &Producer,
     hook_name: &'static str,
-    iat_slot_addr: usize,
+    import: Import,
     detour: usize,
     orig_slot: &AtomicUsize,
 ) {
+    let iat_slot_addr = import.slot;
+    let (expected, current) = (import.resolved(), import.current());
+    let Some(original) = expected.filter(|e| Some(*e) == current) else {
+        let show = |v: Option<usize>| {
+            serde_json::Value::String(v.map_or("none".into(), |v| format!("0x{v:08x}")))
+        };
+        super::emit_warn(
+            producer,
+            "client.hooks.iat.slot_mismatch",
+            [
+                ("hook", serde_json::Value::String(hook_name.into())),
+                (
+                    "address",
+                    serde_json::Value::String(format!("0x{iat_slot_addr:08x}")),
+                ),
+                ("expected", show(expected)),
+                ("actual", show(current)),
+            ],
+        );
+        return;
+    };
+    // Publish the original before the swap: a call through the slot can
+    // reach the detour the moment it is written.
+    orig_slot.store(original, Ordering::Release);
     // Delegate the protect → swap → restore mechanics to the shared
     // primitive. On failure it returns `ProtectFailed`, which we map
     // to the same `protect_failed` event this hook always emitted.
     let original = match super::primitives::replace_iat_slot(iat_slot_addr, detour) {
         Ok(orig) => orig,
         Err(_) => {
+            orig_slot.store(0, Ordering::Release);
             super::emit_warn(
                 producer,
                 "client.hooks.iat.protect_failed",
@@ -257,7 +289,7 @@ static GET_FOREGROUND_WINDOW_SAMPLER: super::sampling::SamplingCounter =
 /// `lua_pcall(lua_State* L, int nargs, int nresults, int errfunc) -> int`
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "C" fn lua_pcall_detour(
+unsafe extern "C-unwind" fn lua_pcall_detour(
     l: *mut c_void,
     nargs: i32,
     nresults: i32,
@@ -282,7 +314,7 @@ unsafe extern "C" fn lua_pcall_detour(
         // errors are 1-5; -1 is invalid but safe).
         return -1;
     }
-    let original: unsafe extern "C" fn(*mut c_void, i32, i32, i32) -> i32 =
+    let original: unsafe extern "C-unwind" fn(*mut c_void, i32, i32, i32) -> i32 =
         unsafe { std::mem::transmute(orig_addr) };
     original(l, nargs, nresults, errfunc)
 }
@@ -290,7 +322,7 @@ unsafe extern "C" fn lua_pcall_detour(
 /// `lua_call(lua_State* L, int nargs, int nresults) -> void`
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "C" fn lua_call_detour(l: *mut c_void, nargs: i32, nresults: i32) {
+unsafe extern "C-unwind" fn lua_call_detour(l: *mut c_void, nargs: i32, nresults: i32) {
     let _ = std::panic::catch_unwind(|| {
         if LUA_CALL_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
@@ -307,7 +339,7 @@ unsafe extern "C" fn lua_call_detour(l: *mut c_void, nargs: i32, nresults: i32) 
     if orig_addr == 0 {
         return;
     }
-    let original: unsafe extern "C" fn(*mut c_void, i32, i32) =
+    let original: unsafe extern "C-unwind" fn(*mut c_void, i32, i32) =
         unsafe { std::mem::transmute(orig_addr) };
     original(l, nargs, nresults);
 }
@@ -315,7 +347,7 @@ unsafe extern "C" fn lua_call_detour(l: *mut c_void, nargs: i32, nresults: i32) 
 /// `lua_newstate(lua_Alloc f, void* ud) -> lua_State*`
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "C" fn lua_newstate_detour(f: *mut c_void, ud: *mut c_void) -> *mut c_void {
+unsafe extern "C-unwind" fn lua_newstate_detour(f: *mut c_void, ud: *mut c_void) -> *mut c_void {
     let _ = std::panic::catch_unwind(|| {
         if let Some(p) = crate::boot::producer() {
             p.try_emit(crate::events::ClientNativeEvent::builder(
@@ -329,7 +361,7 @@ unsafe extern "C" fn lua_newstate_detour(f: *mut c_void, ud: *mut c_void) -> *mu
     if orig_addr == 0 {
         return std::ptr::null_mut();
     }
-    let original: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+    let original: unsafe extern "C-unwind" fn(*mut c_void, *mut c_void) -> *mut c_void =
         unsafe { std::mem::transmute(orig_addr) };
     original(f, ud)
 }
@@ -339,7 +371,7 @@ unsafe extern "C" fn lua_newstate_detour(f: *mut c_void, ud: *mut c_void) -> *mu
 ///   LPDWORD out_thread_id)` — `__stdcall`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall" fn create_thread_detour(
+unsafe extern "stdcall-unwind" fn create_thread_detour(
     sec_attrs: *mut c_void,
     stack_size: usize,
     start_routine: *mut c_void,
@@ -361,7 +393,7 @@ unsafe extern "stdcall" fn create_thread_detour(
     if orig_addr == 0 {
         return std::ptr::null_mut();
     }
-    let original: unsafe extern "stdcall" fn(
+    let original: unsafe extern "stdcall-unwind" fn(
         *mut c_void,
         usize,
         *mut c_void,
@@ -382,7 +414,7 @@ unsafe extern "stdcall" fn create_thread_detour(
 /// `HMODULE LoadLibraryW(LPCWSTR lib_filename)` — `__stdcall`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall" fn load_library_w_detour(lib_filename: *const u16) -> *mut c_void {
+unsafe extern "stdcall-unwind" fn load_library_w_detour(lib_filename: *const u16) -> *mut c_void {
     let _ = std::panic::catch_unwind(|| {
         if let Some(p) = crate::boot::producer() {
             let name = super::inline_hooks::read_utf16_bounded(lib_filename, 256);
@@ -398,7 +430,7 @@ unsafe extern "stdcall" fn load_library_w_detour(lib_filename: *const u16) -> *m
     if orig_addr == 0 {
         return std::ptr::null_mut();
     }
-    let original: unsafe extern "stdcall" fn(*const u16) -> *mut c_void =
+    let original: unsafe extern "stdcall-unwind" fn(*const u16) -> *mut c_void =
         unsafe { std::mem::transmute(orig_addr) };
     original(lib_filename)
 }
@@ -406,7 +438,7 @@ unsafe extern "stdcall" fn load_library_w_detour(lib_filename: *const u16) -> *m
 /// `HMODULE LoadLibraryA(LPCSTR lib_filename)` — `__stdcall`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall" fn load_library_a_detour(lib_filename: *const u8) -> *mut c_void {
+unsafe extern "stdcall-unwind" fn load_library_a_detour(lib_filename: *const u8) -> *mut c_void {
     let _ = std::panic::catch_unwind(|| {
         if let Some(p) = crate::boot::producer() {
             let name = read_ascii_bounded(lib_filename, 256);
@@ -422,7 +454,7 @@ unsafe extern "stdcall" fn load_library_a_detour(lib_filename: *const u8) -> *mu
     if orig_addr == 0 {
         return std::ptr::null_mut();
     }
-    let original: unsafe extern "stdcall" fn(*const u8) -> *mut c_void =
+    let original: unsafe extern "stdcall-unwind" fn(*const u8) -> *mut c_void =
         unsafe { std::mem::transmute(orig_addr) };
     original(lib_filename)
 }
@@ -430,7 +462,7 @@ unsafe extern "stdcall" fn load_library_a_detour(lib_filename: *const u8) -> *mu
 /// `HWND GetForegroundWindow(void)` — `__stdcall`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall" fn get_foreground_window_detour() -> *mut c_void {
+unsafe extern "stdcall-unwind" fn get_foreground_window_detour() -> *mut c_void {
     let _ = std::panic::catch_unwind(|| {
         if GET_FOREGROUND_WINDOW_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
@@ -446,7 +478,7 @@ unsafe extern "stdcall" fn get_foreground_window_detour() -> *mut c_void {
     if orig_addr == 0 {
         return std::ptr::null_mut();
     }
-    let original: unsafe extern "stdcall" fn() -> *mut c_void =
+    let original: unsafe extern "stdcall-unwind" fn() -> *mut c_void =
         unsafe { std::mem::transmute(orig_addr) };
     original()
 }
@@ -474,61 +506,4 @@ fn read_ascii_bounded(ptr: *const u8, max_chars: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    #[cfg(all(target_os = "windows", target_arch = "x86"))]
-    use super::*;
-
-    /// IAT slot pin — bumps tests if any address shifts.
-    #[test]
-    fn iat_slots_match_manifest() {
-        #[cfg(all(target_os = "windows", target_arch = "x86"))]
-        {
-            assert_eq!(IAT_LUA_PCALL, 0x01988A0C);
-            assert_eq!(IAT_LUA_CALL, 0x01988904);
-            assert_eq!(IAT_LUA_NEWSTATE, 0x01988656);
-            assert_eq!(IAT_CREATE_THREAD, 0x0196B65A);
-            assert_eq!(IAT_LOAD_LIBRARY_W, 0x0196B5BC);
-            assert_eq!(IAT_LOAD_LIBRARY_A, 0x0196B5AC);
-            assert_eq!(IAT_GET_FOREGROUND_WINDOW, 0x0196AF20);
-        }
-    }
-
-    /// Sampler rates pin.
-    #[cfg(all(target_os = "windows", target_arch = "x86"))]
-    #[test]
-    fn iat_sampler_rates() {
-        let pcall_emits: usize = (0..10).filter(|_| LUA_PCALL_SAMPLER.should_emit()).count();
-        assert_eq!(pcall_emits, 1, "lua_pcall sampler should emit 1/10");
-
-        let call_emits: usize = (0..10).filter(|_| LUA_CALL_SAMPLER.should_emit()).count();
-        assert_eq!(call_emits, 1, "lua_call sampler should emit 1/10");
-
-        let focus_emits: usize = (0..1000)
-            .filter(|_| GET_FOREGROUND_WINDOW_SAMPLER.should_emit())
-            .count();
-        assert_eq!(focus_emits, 1, "focus sampler should emit 1/1000");
-    }
-
-    /// ASCII bounded reader stops at NUL.
-    #[cfg(all(target_os = "windows", target_arch = "x86"))]
-    #[test]
-    fn ascii_bounded_stops_at_nul() {
-        let s = b"kernel32.dll\0extra";
-        assert_eq!(read_ascii_bounded(s.as_ptr(), 256), "kernel32.dll");
-    }
-
-    /// ASCII bounded reader caps at max_chars.
-    #[cfg(all(target_os = "windows", target_arch = "x86"))]
-    #[test]
-    fn ascii_bounded_caps_at_max() {
-        let s = vec![b'A'; 500];
-        assert_eq!(read_ascii_bounded(s.as_ptr(), 16).len(), 16);
-    }
-
-    /// Null pointer → sentinel string, no UB.
-    #[cfg(all(target_os = "windows", target_arch = "x86"))]
-    #[test]
-    fn ascii_bounded_null() {
-        assert_eq!(read_ascii_bounded(std::ptr::null(), 256), "<null>");
-    }
-}
+mod tests;

@@ -3,10 +3,15 @@
 //! # Scope of the phase-3 native path
 //!
 //! - **Function-entry only.** We patch the function *prologue* with a
-//!   JMP to a detour (via [`crate::hooks::primitives::install_inline_hook`]),
-//!   never a mid-function splice. Per ADR open-question 3, entry-only is
-//!   the accepted phase-3 shape; mid-function trampolines need a
-//!   length-disassembler and are deferred.
+//!   JMP to a detour, through MinHook (the same library the telemetry
+//!   and client-patches DLLs hook with), never a mid-function splice.
+//!   Per ADR open-question 3, entry-only is the accepted phase-3 shape.
+//!   MinHook, unlike a fixed five-byte copy, decodes instruction lengths:
+//!   most SGW.exe functions open with `push -1; push <handler>`
+//!   (2 + 5 bytes), which a five-byte copy would cut in half. It refuses
+//!   a target that is not executable memory, relocates an existing
+//!   `E9 rel32` so a hook on `FEngineLoop::Tick` chains onto the other
+//!   DLLs' hooks, and suspends the other threads while it writes.
 //! - **`cdecl` only.** The detour is a fixed 8-argument `extern "cdecl"`
 //!   function. Under cdecl the **caller** cleans the stack, so declaring
 //!   more parameters than the target really takes is safe: we read up to
@@ -31,11 +36,15 @@
 //! the trampoline call (which can re-enter the hooked function), and it is
 //! `catch_unwind`-wrapped so a capture bug can't unwind into the client.
 //!
-//! Removing a hook restores the prologue bytes; per the primitives'
-//! contract this is unsafe if another thread is executing inside the
-//! patched prologue at that instant. This crate does not freeze threads
-//! (unlike MinHook), so a `hook_remove` races a concurrent fire — an
-//! accepted research-tool risk, documented here and in the ADR.
+//! Removing a hook restores the bytes MinHook saved. If another hook was
+//! chained on top of it since, that one is cut out too, so remove lab
+//! hooks in the reverse order they were installed. Install and remove
+//! take the install lock shared with the client-patches DLL
+//! (`cimmeria-client-hookgate`).
+//!
+//! The detours and the trampoline type use `C-unwind`: the hooked
+//! original may throw a C++ exception, which must reach the game's
+//! handler instead of aborting the process at the detour.
 
 /// Slots in the hook pool. Eight distinct detour functions, so eight
 /// concurrent dynamic hooks. Bounded on purpose: this is a research
@@ -60,55 +69,72 @@ pub fn unpatch(_id: u32) -> Result<(), String> {
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod imp {
     use super::NUM_SLOTS;
-    use crate::hooks::primitives::{install_inline_hook, InlineHook};
+    use cimmeria_client_hookgate::os::HookLock;
+    use core::ffi::c_void;
+    use minhook_sys::{
+        MH_CreateHook, MH_DisableHook, MH_EnableHook, MH_Initialize, MH_RemoveHook,
+        MH_ERROR_ALREADY_INITIALIZED, MH_OK,
+    };
     use std::panic::catch_unwind;
     use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::time::Duration;
+
+    /// How long an install or remove waits for another DLL's hooking.
+    const LOCK_WAIT: Duration = Duration::from_secs(5);
 
     /// Per-slot trampoline address, read lock-free by the detour. 0 = free.
     static SLOT_TRAMPOLINES: [AtomicUsize; NUM_SLOTS] = [const { AtomicUsize::new(0) }; NUM_SLOTS];
     /// Per-slot hook id, read lock-free by the detour. 0 = free.
     static SLOT_IDS: [AtomicU32; NUM_SLOTS] = [const { AtomicU32::new(0) }; NUM_SLOTS];
 
-    /// Storage for the live `InlineHook` (keeps the trampoline alive and
-    /// restores the prologue on drop). Touched only on the main thread
-    /// during install / remove; the detour never reads it (it uses the
-    /// atomics above). `InlineHook` holds raw pointers, so wrap it to
-    /// carry it in a `static` — sound because it never actually crosses
-    /// threads (install and remove are both main-thread).
-    // Held only for its RAII `Drop`, which restores the patched prologue
-    // on `hook_remove`; the trampoline is reached via the atomic, so the
-    // field itself is never read.
-    struct SendHook(#[allow(dead_code)] InlineHook);
-    // SAFETY: the InlineHook is only constructed, stored, and dropped on
-    // the main thread; the detour reaches the trampoline via a separate
-    // atomic, never through this value.
-    unsafe impl Send for SendHook {}
-
-    static SLOT_HOOKS: [Mutex<Option<SendHook>>; NUM_SLOTS] =
-        [const { Mutex::new(None) }; NUM_SLOTS];
+    /// Per-slot hooked address, so a remove knows what to unhook. 0 = free.
+    static SLOT_TARGETS: [AtomicUsize; NUM_SLOTS] = [const { AtomicUsize::new(0) }; NUM_SLOTS];
 
     /// Install an entry hook at `addr` bound to `id`, allocating a free
-    /// slot. Returns an error if the pool is full or the byte-patch fails.
+    /// slot. Returns an error if the pool is full or MinHook refuses the
+    /// target (not executable memory, already hooked by this DLL, an
+    /// instruction it cannot relocate).
     pub fn patch(addr: usize, id: u32) -> Result<(), String> {
         let slot = (0..NUM_SLOTS)
             .find(|&i| SLOT_IDS[i].load(Ordering::Acquire) == 0)
             .ok_or_else(|| format!("hook pool full ({NUM_SLOTS} slots)"))?;
 
-        let detour = DETOURS[slot] as usize;
-        // SAFETY: `addr` is a caller-supplied function entry; the detour
-        // has the cdecl ABI documented above. A bad address surfaces as a
-        // HookError, not a fault. No thread runs in the prologue at
-        // install time in practice (see module docs).
-        let hook = unsafe { install_inline_hook(addr, detour) }
-            .map_err(|e| format!("install_inline_hook: {e}"))?;
-
-        let tramp = hook.trampoline() as usize;
-        // Publish the trampoline + id *before* storing the hook so a fire
-        // that races install finds a consistent pair.
-        SLOT_TRAMPOLINES[slot].store(tramp, Ordering::Release);
+        let _lock = HookLock::acquire(LOCK_WAIT);
+        // SAFETY: no preconditions; a second call reports
+        // ALREADY_INITIALIZED.
+        match unsafe { MH_Initialize() } {
+            MH_OK | MH_ERROR_ALREADY_INITIALIZED => {}
+            status => return Err(format!("MH_Initialize failed with status {status}")),
+        }
+        let target = addr as *mut c_void;
+        let detour = DETOURS[slot] as *mut c_void;
+        let mut tramp: *mut c_void = core::ptr::null_mut();
+        // SAFETY: MinHook validates that `target` is executable and
+        // decodes whole instructions for the trampoline; the detour has
+        // the cdecl ABI documented above.
+        let status = unsafe { MH_CreateHook(target, detour, &mut tramp) };
+        if status != MH_OK {
+            return Err(format!(
+                "MH_CreateHook at {addr:#x} failed with status {status}"
+            ));
+        }
+        // Publish the trampoline + id *before* enabling so a fire that
+        // races install finds a consistent pair.
+        SLOT_TRAMPOLINES[slot].store(tramp as usize, Ordering::Release);
         SLOT_IDS[slot].store(id, Ordering::Release);
-        *SLOT_HOOKS[slot].lock().unwrap() = Some(SendHook(hook));
+        SLOT_TARGETS[slot].store(addr, Ordering::Release);
+        // SAFETY: created above.
+        let status = unsafe { MH_EnableHook(target) };
+        if status != MH_OK {
+            // SAFETY: created above and not enabled.
+            unsafe { MH_RemoveHook(target) };
+            SLOT_IDS[slot].store(0, Ordering::Release);
+            SLOT_TARGETS[slot].store(0, Ordering::Release);
+            SLOT_TRAMPOLINES[slot].store(0, Ordering::Release);
+            return Err(format!(
+                "MH_EnableHook at {addr:#x} failed with status {status}"
+            ));
+        }
         Ok(())
     }
 
@@ -118,14 +144,18 @@ mod imp {
         let slot = (0..NUM_SLOTS)
             .find(|&i| SLOT_IDS[i].load(Ordering::Acquire) == id)
             .ok_or_else(|| format!("hook id {id} not installed natively"))?;
+        let target = SLOT_TARGETS[slot].load(Ordering::Acquire) as *mut c_void;
 
-        // Clear the atomics first so a concurrent fire stops capturing and
-        // (if the InlineHook is already gone) doesn't chase a stale
-        // trampoline.
+        let _lock = HookLock::acquire(LOCK_WAIT);
+        // Stop capturing first; MinHook then suspends the other threads,
+        // moves any that sit in the patched bytes, and restores them.
         SLOT_IDS[slot].store(0, Ordering::Release);
-        // Dropping the InlineHook restores the original prologue bytes.
-        let taken = SLOT_HOOKS[slot].lock().unwrap().take();
-        drop(taken);
+        // SAFETY: a hook this module created and enabled.
+        unsafe {
+            MH_DisableHook(target);
+            MH_RemoveHook(target);
+        }
+        SLOT_TARGETS[slot].store(0, Ordering::Release);
         SLOT_TRAMPOLINES[slot].store(0, Ordering::Release);
         Ok(())
     }
@@ -147,8 +177,16 @@ mod imp {
             // SAFETY: the trampoline runs the displaced prologue then jumps
             // back into the original. cdecl: we forward all 8 dwords; the
             // original reads only its real args; we (the caller) clean up.
-            let original: unsafe extern "cdecl" fn(u32, u32, u32, u32, u32, u32, u32, u32) -> u32 =
-                unsafe { core::mem::transmute(tramp) };
+            let original: unsafe extern "C-unwind" fn(
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+            ) -> u32 = unsafe { core::mem::transmute(tramp) };
             unsafe {
                 original(
                     args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
@@ -166,7 +204,7 @@ mod imp {
     macro_rules! slot_detour {
         ($name:ident, $slot:literal) => {
             #[allow(improper_ctypes_definitions)]
-            unsafe extern "cdecl" fn $name(
+            unsafe extern "C-unwind" fn $name(
                 a0: u32,
                 a1: u32,
                 a2: u32,
@@ -190,7 +228,7 @@ mod imp {
     slot_detour!(detour_6, 6);
     slot_detour!(detour_7, 7);
 
-    type Detour = unsafe extern "cdecl" fn(u32, u32, u32, u32, u32, u32, u32, u32) -> u32;
+    type Detour = unsafe extern "C-unwind" fn(u32, u32, u32, u32, u32, u32, u32, u32) -> u32;
 
     static DETOURS: [Detour; NUM_SLOTS] = [
         detour_0, detour_1, detour_2, detour_3, detour_4, detour_5, detour_6, detour_7,

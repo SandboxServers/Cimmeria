@@ -279,12 +279,22 @@ mod tests {
     /// convention. Pins routing + response shape end to end.
     #[test]
     fn dispatch_echoes_id_and_validates_offtarget() {
+        // On the i686 target the call is real, so it must go to a function
+        // that exists here: an address inside SGW.exe (the old
+        // `0x404030`) is arbitrary code in the test executable.
+        extern "C" fn add(a: u32, b: u32) -> u32 {
+            a + b
+        }
+        let addr = format!("{:#x}", add as *const () as usize);
         let r = dispatch(
             json!(9),
-            &json!({ "addr": "0x404030", "conv": "cdecl", "args": [] }),
+            &json!({ "addr": addr, "conv": "cdecl", "args": [40, 2] }),
         );
         assert_eq!(r.id, json!(9));
-        assert!(r.result.is_some() || r.error.is_some());
+        #[cfg(all(target_os = "windows", target_arch = "x86"))]
+        assert_eq!(r.result.expect("called")["ret_u32"], json!(42));
+        #[cfg(not(all(target_os = "windows", target_arch = "x86")))]
+        assert!(r.error.is_some());
 
         let bad = dispatch(json!(10), &json!({ "addr": "0x1", "conv": "pascal" }));
         assert_eq!(bad.error.expect("error").code, INVALID_PARAMS);

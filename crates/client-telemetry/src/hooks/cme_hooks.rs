@@ -198,25 +198,34 @@ const fn placeholder_slot_static() -> *const c_void {
 // reference in install_inner — the producer handle is the same
 // either way (cloned from the same OnceLock), but the
 // `boot::producer()` route is what other future hooks will share.
+//
+// Plain `thiscall`, not `thiscall-unwind`: these are callbacks, not
+// detours. They call nothing in the game, so no C++ exception can pass
+// through them, and the `catch_unwind` keeps a Rust panic from reaching
+// the engine's signal emitter.
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
 unsafe extern "thiscall" fn on_client_map_load_thunk(_this: *mut c_void, _event_data: *mut c_void) {
-    if let Some(p) = crate::boot::producer() {
-        p.try_emit(ClientNativeEvent::builder(
-            "client.network.on_client_map_load",
-            "info",
-        ));
-    }
+    let _ = std::panic::catch_unwind(|| {
+        if let Some(p) = crate::boot::producer() {
+            p.try_emit(ClientNativeEvent::builder(
+                "client.network.on_client_map_load",
+                "info",
+            ));
+        }
+    });
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
 unsafe extern "thiscall" fn on_client_ready_thunk(_this: *mut c_void, _event_data: *mut c_void) {
-    if let Some(p) = crate::boot::producer() {
-        p.try_emit(ClientNativeEvent::builder(
-            "client.network.on_client_ready",
-            "info",
-        ));
-    }
+    let _ = std::panic::catch_unwind(|| {
+        if let Some(p) = crate::boot::producer() {
+            p.try_emit(ClientNativeEvent::builder(
+                "client.network.on_client_ready",
+                "info",
+            ));
+        }
+    });
 }

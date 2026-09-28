@@ -18,36 +18,19 @@
 //! detour. A jump anywhere else, such as a stale patch or an unknown DLL,
 //! is [`Prologue::UnknownHook`] and fails the gate: chaining would run
 //! code nobody has vetted.
+//!
+//! The classification itself, and the list of hook owners, live in
+//! `cimmeria-client-hookgate`, which the telemetry DLL links too: both
+//! DLLs apply the same rule to each other's hooks.
 
 use core::ops::Range;
 
+pub use cimmeria_client_hookgate::{
+    classify, hex, Prologue, Site, HOOK_OWNER_MODULES, JMP_REL32_LEN,
+};
+
 use crate::addresses;
 use crate::memory::MemoryReader;
-
-/// Modules whose MinHook detours may already sit on a chainable site: the
-/// telemetry DLL, under the name the launcher installs it as and under
-/// cargo's output name.
-pub const HOOK_OWNER_MODULES: [&str; 2] = [
-    "cimmeria-client-telemetry.dll",
-    "cimmeria_client_telemetry.dll",
-];
-
-/// Length of the `E9 rel32` jump MinHook writes over a prologue.
-pub const JMP_REL32_LEN: usize = 5;
-
-/// A function the DLL hooks or calls, and its expected first bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Site {
-    /// Name for the log.
-    pub name: &'static str,
-    /// Address in `SGW.exe`.
-    pub address: usize,
-    /// The first bytes of the function in this build.
-    pub expected: &'static [u8],
-    /// Whether another DLL may already have hooked it (see the module
-    /// docs), so a leading `E9 rel32` is acceptable.
-    pub may_be_chained: bool,
-}
 
 /// `Client_NetIn_EntityMethodDispatch`: `push -1; push 0x016f50bf; mov
 /// eax, fs:[0]`. Nothing else hooks it.
@@ -153,70 +136,6 @@ pub const SITES: [Site; 8] = [
     BUNDLE_WRITE_U8,
 ];
 
-/// What a site's first bytes turned out to be.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Prologue {
-    /// Exactly the expected bytes.
-    Stock,
-    /// An `E9 rel32` to `jump_to`, then the expected bytes: hooked by
-    /// another MinHook user, to be chained on top of.
-    Chained {
-        /// Where the existing jump goes.
-        jump_to: usize,
-    },
-    /// An `E9 rel32` with the rest intact, but jumping outside every
-    /// module in [`HOOK_OWNER_MODULES`]: not a hook this DLL may chain.
-    UnknownHook {
-        /// Where the existing jump goes.
-        jump_to: usize,
-    },
-    /// Something else: a different build, or a patch this DLL does not
-    /// know how to chain.
-    Mismatch {
-        /// The bytes found.
-        actual: Vec<u8>,
-    },
-    /// The bytes could not be read at all.
-    Unreadable,
-}
-
-impl Prologue {
-    /// Whether the DLL may hook or call the site.
-    pub fn is_usable(&self) -> bool {
-        matches!(self, Self::Stock | Self::Chained { .. })
-    }
-}
-
-/// Classify `actual`, the bytes read at `site` (or `None` if unreadable).
-/// `hook_owners` are the address ranges a chainable jump may land in: the
-/// images of the loaded [`HOOK_OWNER_MODULES`].
-pub fn classify(site: &Site, actual: Option<&[u8]>, hook_owners: &[Range<usize>]) -> Prologue {
-    let Some(actual) = actual else {
-        return Prologue::Unreadable;
-    };
-    if actual == site.expected {
-        return Prologue::Stock;
-    }
-    let chained = site.may_be_chained
-        && actual.len() == site.expected.len()
-        && actual.len() > JMP_REL32_LEN
-        && actual[0] == 0xE9
-        && actual[JMP_REL32_LEN..] == site.expected[JMP_REL32_LEN..];
-    if chained {
-        let rel = i32::from_le_bytes([actual[1], actual[2], actual[3], actual[4]]);
-        let jump_to = (site.address as u32)
-            .wrapping_add(JMP_REL32_LEN as u32)
-            .wrapping_add(rel as u32) as usize;
-        if hook_owners.iter().any(|owner| owner.contains(&jump_to)) {
-            return Prologue::Chained { jump_to };
-        }
-        return Prologue::UnknownHook { jump_to };
-    }
-    Prologue::Mismatch {
-        actual: actual.to_vec(),
-    }
-}
-
 /// Read and classify one site.
 pub fn check<M: MemoryReader>(mem: &M, site: &Site, hook_owners: &[Range<usize>]) -> Prologue {
     classify(
@@ -237,26 +156,7 @@ pub fn check_all<M: MemoryReader>(mem: &M, hook_owners: &[Range<usize>]) -> Vec<
 /// The address range of the PE image loaded at `base`, from its
 /// `SizeOfImage`. `None` unless `base` holds a readable `MZ`/`PE` header.
 pub fn image_range<M: MemoryReader>(mem: &M, base: usize) -> Option<Range<usize>> {
-    if mem.read_bytes(base, 2)? != b"MZ" {
-        return None;
-    }
-    let nt = base.checked_add(mem.read_u32(base.checked_add(0x3C)?)? as usize)?;
-    if mem.read_bytes(nt, 4)? != b"PE\0\0" {
-        return None;
-    }
-    // IMAGE_NT_HEADERS: 4-byte signature, 20-byte file header, then the
-    // optional header, whose SizeOfImage is at +0x38.
-    let size = mem.read_u32(nt.checked_add(0x50)?)? as usize;
-    Some(base..base.checked_add(size)?)
-}
-
-/// Space-separated hex, for the log.
-pub fn hex(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{b:02X}"))
-        .collect::<Vec<_>>()
-        .join(" ")
+    cimmeria_client_hookgate::image_range(|addr, len| mem.read_bytes(addr, len), base)
 }
 
 #[cfg(test)]
@@ -275,6 +175,14 @@ mod tests {
         bytes[0] = 0xE9;
         bytes[1..5].copy_from_slice(&rel.to_le_bytes());
         bytes
+    }
+
+    /// The sites the telemetry DLL hooks too must be described the same way
+    /// in both DLLs, or one would refuse the other's chain.
+    #[test]
+    fn shared_sites_agree_with_hookgate() {
+        assert_eq!(ENGINE_TICK, cimmeria_client_hookgate::ENGINE_TICK);
+        assert_eq!(DROP_CALLEE, cimmeria_client_hookgate::DROP_CALLEE);
     }
 
     #[test]
