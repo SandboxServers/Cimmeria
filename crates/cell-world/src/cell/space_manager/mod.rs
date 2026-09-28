@@ -294,6 +294,12 @@ pub struct SpaceManager {
     /// asks `pet_summons.pet_summon_for(ability_id)` whether a fired ability
     /// summons a pet; the template itself comes from `spawn_templates`.
     pub pet_summons: super::spawner::PetSummonCatalog,
+    /// Deployable ability → template, lifetime and pulse effects
+    /// (`resources.deployables`), loaded at startup by
+    /// [`super::spawner::load_deployables`]. The ability pipeline asks
+    /// `deployable_specs.deployable_for(ability_id)` whether a fired ability
+    /// places a deployable.
+    pub deployable_specs: super::spawner::DeployableCatalog,
     /// Ring transporter region definitions keyed by `region_id` (cross-world unique).
     /// Loaded once at startup from `resources.ring_transport_regions`.
     pub ring_regions: HashMap<i32, super::ring_transport::RingRegion>,
@@ -307,6 +313,10 @@ pub struct SpaceManager {
     /// for every client command that names a pet. Scrubbed by
     /// `destroy_entity` / `destroy_space`; see `cell::pets`.
     pub pets: super::pets::PetRegistry,
+    /// Live deployables and the ground points their casts wait on
+    /// (deployables Phase 0). Scrubbed by `destroy_entity` /
+    /// `destroy_space`; see `cell::deployables`.
+    pub deployables: super::deployables::DeployableRegistry,
     /// NPCs with a pending `ai_retry_at` deadline. Updated whenever
     /// `npc_ai_fight` schedules a launch-failure retry and whenever
     /// `npc_ai_retry_sweep` consumes one. The retry sweep iterates
@@ -492,10 +502,12 @@ impl SpaceManager {
             respawners: Vec::new(),
             spawn_templates: HashMap::new(),
             pet_summons: super::spawner::PetSummonCatalog::default(),
+            deployable_specs: super::spawner::DeployableCatalog::default(),
             ring_regions: HashMap::new(),
             ring_point_set_to_region: HashMap::new(),
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
             pets: super::pets::PetRegistry::default(),
+            deployables: super::deployables::DeployableRegistry::default(),
             pending_ai_retries: std::collections::HashSet::new(),
             pending_casts: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),

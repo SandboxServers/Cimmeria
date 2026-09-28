@@ -474,6 +474,34 @@ ALTER TABLE ONLY mission_tasks
     ADD CONSTRAINT mission_tasks_objective_id_fkey FOREIGN KEY (objective_id) REFERENCES mission_objectives(objective_id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 --
+-- Name: deployables_ability_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY deployables
+    ADD CONSTRAINT deployables_ability_id_fkey FOREIGN KEY (ability_id) REFERENCES abilities(ability_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: deployables_template_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY deployables
+    ADD CONSTRAINT deployables_template_id_fkey FOREIGN KEY (template_id) REFERENCES entity_templates(template_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: deployables_lifetime_effect_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY deployables
+    ADD CONSTRAINT deployables_lifetime_effect_id_fkey FOREIGN KEY (lifetime_effect_id) REFERENCES effects(effect_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: deployables_pulse_effect_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY deployables
+    ADD CONSTRAINT deployables_pulse_effect_id_fkey FOREIGN KEY (pulse_effect_id) REFERENCES effects(effect_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
 -- Name: pet_summons_ability_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --
 

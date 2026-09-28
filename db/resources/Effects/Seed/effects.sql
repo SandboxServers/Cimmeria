@@ -2305,7 +2305,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Despawn Target on Finish', 0, 0, 'set:CoreWidgets image:IconMissing', 30, 1, 'Medium', NULL, 'TCM_Single', true, false, 'Pulser', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (5066, 1012, 0, 'Medium Radius AE
-Secondary -100F', 0, 144, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', NULL, 'TCM_AERadius', true, false, 'Damage', 0, NULL, NULL);
+Secondary -100F', 0, 144, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', NULL, 'TCM_AERadius', true, false, 'Damage', 0, NULL, 'RangedPhysicalDamage');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (5109, 3404, 2, 'CountDownGreen', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, 'Melee', NULL, 'TCM_Single', true, false, 'CountDownGreen', 0, NULL, NULL);
 

@@ -20,6 +20,8 @@
 //! - `abilities` — ability/effect defs + event-set sequence map.
 //! - `loot` — loot tables + item container map + weapon defs.
 //! - `pet_summons` — summon ability → pet template (`resources.pet_summons`).
+//! - `deployables` — deployable ability → template and its timing and pulse
+//!   effects (`resources.deployables`).
 //! - `templates` — prototype `SpawnRecord` per `entity_templates` row, for
 //!   the content engine's `spawn_entity` action (no `spawnlist` row exists
 //!   for a mission-scoped spawn).
@@ -28,6 +30,7 @@
 //!            `python/cell/SGWSpawnableEntity.py`
 
 mod abilities;
+mod deployables;
 mod dialogs;
 mod eye_heights;
 mod loot;
@@ -52,6 +55,7 @@ pub use abilities::{
     EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE,
     EVENT_ITEM_USE_ABILITY,
 };
+pub use deployables::{load_deployables, DeployableCatalog, DeployableSpec};
 pub use dialogs::{
     load_dialog_screen_text, load_dialog_set_maps, load_monologue_dialog_ids,
     load_tutorial_dialog_ids, DialogSetMapEntry,

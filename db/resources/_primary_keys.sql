@@ -466,6 +466,13 @@ ALTER TABLE ONLY paths
     ADD CONSTRAINT paths_pkey PRIMARY KEY (path_id, index);
 
 --
+-- Name: deployables_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY deployables
+    ADD CONSTRAINT deployables_pkey PRIMARY KEY (ability_id);
+
+--
 -- Name: pet_summons_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
 --
 

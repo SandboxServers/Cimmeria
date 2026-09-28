@@ -406,6 +406,20 @@ impl CellService {
                     );
                 }
             }
+            // Deployable ability → template and effects. Not fatal: with no
+            // catalog every deployable ability is refused at the fire as a
+            // non-damage ground cast does today.
+            match spawner::load_deployables(pool).await {
+                Ok(catalog) => {
+                    space_mgr.deployable_specs = catalog;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to load deployables: {e} -- no deployable ability \
+                         will place an object for this process lifetime"
+                    );
+                }
+            }
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
                     space_mgr.ring_transporters.load(&regions);

@@ -141,6 +141,12 @@ In-game mail with:
 
 **Server:** Say, emote, and yell fan out to AoI witnesses, and since #737 (players in a shared world see each other) those witnesses include other players. The social-systems campaign (2026-09-27) added tells with AFK and DND replies, `chatIgnore` and a one-way Ignore filter (SS-C1), a flood limit and text rules (SS-00), GM broadcast through `/gmshout` and `.announce` (SS-C2), a channel allowlist, GM `.mute` / `.unmute` and a feedback line for every unimplemented Communicator method (SS-C3), and channel ids that match the client's, with no channel registration at login (SS-C4). Squad chat (ORG-04) and team, command and officer chat (ORG-09) work. Still missing: user channels, channel moderation and petitions. Nothing here has been checked with two real clients yet. See [chat-system.md](gameplay/chat-system.md).
 
+## Deployables
+
+Stationary objects a player places with a Scientist "Deployable:" ability; each pulses an effect around itself for a fixed lifetime.
+
+**Data:** The cooked effects describe the shape (1012's 5065 "Pulser, 30 pulses x1 Second, Despawn Target on Finish" and 5066 "Medium Radius AE, -100F"); no row names the object. The "Kit:" items are crafting components. **Server:** Phase 0 (2026-09-28): 1012 Microwave Emitter works server-side through `resources.deployables`, an owned `SGWBeing` whose pulses damage hostile NPCs within 10 m as its owner, removed on expiry, re-cast, or the owner's death, logout or zone change. Not client-tested. See [deployables.md](gameplay/deployables.md).
+
 ## Pets
 
 Companion pets with their own abilities and stances. Players can command pets to use abilities, change stance, and toggle ability auto-use.

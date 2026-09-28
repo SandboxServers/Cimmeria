@@ -1148,6 +1148,23 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   column, which the client never sees, does.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (305, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Torso00_00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Legs_00,NPC_Human.NPC_HM_Nerus_Boots_BC,NPC_Human.NPC_HM_Nerus_Hands_BC,NPC_Human.NPC_HM_Nerus_Head_BC,NPC_Human.NPC_HM_Nerus_Legs_BC,NPC_Human.NPC_HM_Nerus_Robe_BC,NPC_Human.NPC_HM_Nerus_Torso_BC}', 0, 4, 570, 1, 0, 1, 7133, 'Black Market Auctioneer', NULL, NULL, 'Debug Hub - Black Market Auctioneer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
+-- Deployables Phase 0: templates 400-409 are the objects deployable
+-- abilities place (docs/analysis/deployables/, resources.deployables). Never
+-- in spawnlist: only a cast places one.
+-- 400 'Deployable: Microwave Emitter', placed by ability 1012.
+--   Body: WP-Human.BS_DeployableLow (reference skeletal mesh DP-Base100) wearing
+--   WP-Human.Dp_Standard100 at its Mount slot (body_components.sql). All three
+--   are exports of the client's CookedPC/Packages/Character/WP-Human.upk
+--   (BodySet, SkeletalMesh and BodyComponent, with the DP_IdleAnim anim set);
+--   Dp_Standard is the family's untyped variant, beside Dp_Offensive and
+--   Dp_Defensive. Never rendered by this server before: an in-client UAT step.
+--   name_id 5463 'Deployable: Microwave Emitter', the ability's own display
+--   name moniker. class 'being' (the spawn forces it anyway): a being is in
+--   no AoE or cone candidate list and never fights, so nothing can target
+--   it. faction 1 is a placeholder the spawn overwrites with the owner's.
+--   level 1, no ability set, no loot, no respawn, use_cover false.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover) VALUES (400, NULL, 'WP-Human.BS_DeployableLow', '{WP-Human.Dp_Standard100}', 0, 0, NULL, 1, 0, 1, 5463, NULL, NULL, NULL, 'Deployable: Microwave Emitter', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, false, NULL, NULL, NULL, false);
+
 --
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210
@@ -1156,9 +1173,9 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 -- Past every seeded row and every reserved campaign template block (Harset
 -- 200-299, debug hub 300-304, black market 305-309, crafting 310-329, organizations 330-349, pets
--- 350-369, bank 370-389, social 390-399), and never lowered, so a row
--- inserted without a template_id never takes a seeded or reserved id. Raise
--- the floor when a block is reserved above 399; live_db_seed_sequences.rs
--- guards it.
-SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 399), true);
+-- 350-369, bank 370-389, social 390-399, deployables 400-409), and never
+-- lowered, so a row inserted without a template_id never takes a seeded or
+-- reserved id. Raise the floor when a block is reserved above 409;
+-- live_db_seed_sequences.rs guards it.
+SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 409), true);
 

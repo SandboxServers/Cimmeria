@@ -57,6 +57,25 @@ pub fn ability_max_range(def: Option<&AbilityDef>) -> f32 {
     def.map_or(DEFAULT_ABILITY_MAX_RANGE, AbilityDef::max_range_or_default)
 }
 
+/// The radius, in metres, of a `TCM_AERadius` effect's `tcm_param1` tier,
+/// by the client's own table (`AbilityInfo_AERadiusFromTier`, `0x00d29e90`:
+/// Melee 250, Short 500, Medium 1000, Long 1500, Extreme 2000 UE3 units).
+/// `None` for a tier the client does not know.
+///
+/// Not the cone table (`EffectDef::tcm_range_meters`, whose "Medium" is a
+/// server-side 8 m): the client converts only AE radii this way.
+pub fn ae_radius_metres(tier: &str) -> Option<f32> {
+    let ue3 = match tier {
+        "Melee" => 250.0,
+        "Short" => 500.0,
+        "Medium" => 1000.0,
+        "Long" => 1500.0,
+        "Extreme" => 2000.0,
+        _ => return None,
+    };
+    Some(ue3 / ABILITY_RANGE_UNITS_PER_METRE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +112,16 @@ mod tests {
         assert_eq!(def(0.0).max_range_or_default(), DEFAULT_ABILITY_MAX_RANGE);
         assert_eq!(def(8.0).max_range_or_default(), 8.0);
         assert_eq!(ability_max_range(None), DEFAULT_ABILITY_MAX_RANGE);
+    }
+
+    #[test]
+    fn ae_radius_tiers_are_the_clients() {
+        assert_eq!(ae_radius_metres("Melee"), Some(2.5));
+        assert_eq!(ae_radius_metres("Short"), Some(5.0));
+        assert_eq!(ae_radius_metres("Medium"), Some(10.0), "5066, 1012's pulse");
+        assert_eq!(ae_radius_metres("Long"), Some(15.0));
+        assert_eq!(ae_radius_metres("Extreme"), Some(20.0));
+        assert_eq!(ae_radius_metres("Weapon"), None);
+        assert_eq!(ae_radius_metres(""), None);
     }
 }

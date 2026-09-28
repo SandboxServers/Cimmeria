@@ -17,16 +17,24 @@
 //!   a cached pet template and a ready owner (issue #570); [`make_pet_world`]
 //!   and [`watched_pet_world`] build the pet lifecycle world, and the
 //!   `drain_*_for` / [`assert_pet_fully_gone`] helpers read its results.
+//! - [`seed_deployable`] and the `DEPLOYABLE_*` constants: the seeded 1012
+//!   Microwave Emitter (ability, effects, template 400, deployables row).
 //! - [`npc_spawn_record`]: a template-shaped `SpawnRecord` for spawning an
 //!   NPC through the real spawn-time derivations.
 
 mod content_events;
+mod deployables;
 pub mod occluder_fixtures;
 mod pets;
 mod space_manager;
 mod spawn_record;
 
 pub use content_events::{NoContentEvents, RecordedContentEvent, RecordingContentEvents};
+pub use deployables::{
+    deployable_ability_def, deployable_effect_defs, deployable_template_record, seed_deployable,
+    DEPLOYABLE_ABILITY, DEPLOYABLE_FLAGS, DEPLOYABLE_LIFETIME_EFFECT, DEPLOYABLE_MAX_RANGE,
+    DEPLOYABLE_PULSE_EFFECT, DEPLOYABLE_SPEC, DEPLOYABLE_TEMPLATE, DEPLOYABLE_WARMUP,
+};
 pub use pets::{
     add_pet_owner, assert_pet_fully_gone, drain_entity_moved_for, drain_left_aoi_for,
     make_pet_world, pet_template_record, seed_pet_template, watched_pet_world,

@@ -104,6 +104,8 @@ pub(crate) async fn interrupt_pending_cast(
         cooldown_refunded,
         "ability warmup interrupted; the cast did not fire"
     );
+    // A deployable's staged ground point dies with its warmup.
+    space_mgr.deployables.clear_staged(entity_id);
     super::super::summon::log_summon_interrupted(
         space_mgr,
         entity_id,

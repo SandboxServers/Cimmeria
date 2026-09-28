@@ -11,6 +11,7 @@ pub mod black_market;
 pub mod combat;
 pub mod content_events;
 pub mod cover;
+pub mod deployables;
 pub mod dispatch;
 pub mod duel;
 pub mod effects;

@@ -50,6 +50,22 @@ pub(in crate::cell::abilities) async fn fire_cast(
         .await;
         return;
     }
+    // A deployable places its object instead (deployables Phase 0).
+    if let Some(spec) =
+        super::super::deployable::player_deployable(space_mgr, entity_id, ability_id)
+    {
+        super::super::deployable::fire_deploy(
+            entity_id,
+            ability_id,
+            effect_seq,
+            spec,
+            ability_def,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return;
+    }
     // An owner ability runs its pet effects on the owner's pet (PT-08).
     if super::owner_pet::player_owner_pet_ability(space_mgr, entity_id, ability_id) {
         super::owner_pet::fire_owner_pet(
