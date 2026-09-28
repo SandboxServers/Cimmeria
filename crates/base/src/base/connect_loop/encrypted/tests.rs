@@ -200,30 +200,41 @@ fn word_length_truncated_prefix_returns_none() {
 }
 
 // --- parse_request_entity_update parser pins (msg 0x07 body) ---
+//
+// Wire (corrected 2026-09-28, issue #838):
+// `[u32 entityId][N × u32 cacheStamp]`. These pins replace the pre-#838
+// `[u32 header][N × u32 entity_id]` suite, which decoded every real client
+// payload (a bare 4-byte entity id) to an empty list -- see
+// `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`.
 
-/// Three ids round-trip cleanly with a zero header.
+/// The real client payload observed on the wire: exactly 4 bytes, the bare
+/// entity id, no cache stamps. This is the byte-exact regression guard for
+/// #838 -- it fails against the pre-fix `[u32 header][N × u32 entity_id]`
+/// parser, which decodes this exact payload to an empty `Vec`.
 #[test]
-fn parses_header_plus_three_ids() {
-    // [u32 header = 0][u32 100][u32 200][u32 300] = 16 bytes
+fn parses_bare_entity_id_with_no_cache_stamps() {
+    // `52 88 01 00` little-endian = entity 100434, from the issue's colo
+    // telemetry citation.
+    let body = [0x52, 0x88, 0x01, 0x00];
+    assert_eq!(parse_request_entity_update(&body), vec![100434]);
+}
+
+/// An entity id followed by cache stamps still decodes to just the entity
+/// id -- the stamps are consumed but not interpreted (the server has no
+/// per-property cache to diff them against, and no observed client build
+/// ever sends a non-empty stamp list).
+#[test]
+fn cache_stamps_after_the_entity_id_do_not_change_the_decoded_id() {
     let mut body = Vec::new();
-    body.extend_from_slice(&0u32.to_le_bytes());
-    body.extend_from_slice(&100u32.to_le_bytes());
-    body.extend_from_slice(&200u32.to_le_bytes());
-    body.extend_from_slice(&300u32.to_le_bytes());
-    assert_eq!(parse_request_entity_update(&body), vec![100, 200, 300]);
+    body.extend_from_slice(&100u32.to_le_bytes()); // entityId
+    body.extend_from_slice(&1u32.to_le_bytes()); // cacheStamp[0]
+    body.extend_from_slice(&2u32.to_le_bytes()); // cacheStamp[1]
+    assert_eq!(parse_request_entity_update(&body), vec![100]);
 }
 
-/// Header-only payload (4 bytes) decodes to an empty id list — that's
-/// the no-op case, not an error.
-#[test]
-fn header_only_payload_decodes_empty() {
-    let body = [0u8; 4];
-    assert_eq!(parse_request_entity_update(&body), Vec::<u32>::new());
-}
-
-/// Sub-header payloads (< 4 bytes) defensively return empty. The dispatch
-/// arm relies on this to no-op without panicking when the client (or a
-/// fuzzer) sends a malformed body.
+/// Sub-4-byte payloads (no complete entity id) defensively return empty.
+/// The dispatch arm relies on this to no-op without panicking when the
+/// client (or a fuzzer) sends a malformed body.
 #[test]
 fn truncated_payload_returns_empty() {
     for len in 0..4 {
@@ -235,36 +246,28 @@ fn truncated_payload_returns_empty() {
     }
 }
 
-/// Trailing bytes that don't form a complete u32 are dropped — the parser
-/// reads as many whole ids as the length allows.
+/// Trailing cache-stamp bytes that don't form a complete u32 are consumed
+/// without affecting the decoded entity id.
 #[test]
-fn trailing_partial_id_is_dropped() {
-    // header + one full id (8 bytes) + 3 trailing bytes that can't form a u32
+fn trailing_partial_cache_stamp_is_dropped() {
     let mut body = Vec::new();
-    body.extend_from_slice(&0u32.to_le_bytes());
-    body.extend_from_slice(&42u32.to_le_bytes());
-    body.extend_from_slice(&[0xAA, 0xBB, 0xCC]);
+    body.extend_from_slice(&42u32.to_le_bytes()); // entityId
+    body.extend_from_slice(&[0xAA, 0xBB, 0xCC]); // partial cacheStamp, dropped
     assert_eq!(parse_request_entity_update(&body), vec![42]);
 }
 
-/// Header value is opaque — non-zero header bytes do NOT change which ids
-/// are decoded. Documents the "skip 4, then read ids" contract.
+/// Endianness: the entity id is little-endian.
 #[test]
-fn non_zero_header_does_not_affect_id_decode() {
-    let mut body = Vec::new();
-    body.extend_from_slice(&0xDEADBEEFu32.to_le_bytes());
-    body.extend_from_slice(&7u32.to_le_bytes());
-    body.extend_from_slice(&8u32.to_le_bytes());
-    assert_eq!(parse_request_entity_update(&body), vec![7, 8]);
+fn entity_id_is_little_endian() {
+    // 0x01020304 little-endian = [04, 03, 02, 01]
+    let body = [0x04, 0x03, 0x02, 0x01];
+    assert_eq!(parse_request_entity_update(&body), vec![0x01020304]);
 }
 
-/// Endianness: little-endian u32s only.
+/// A zero entity id is a valid decode, not a sentinel for "empty" -- only a
+/// too-short payload produces an empty `Vec`.
 #[test]
-fn ids_are_little_endian() {
-    // header(0) + bytes for id = 0x01020304 little-endian = [04, 03, 02, 01]
-    let body = [
-        0, 0, 0, 0, // header
-        0x04, 0x03, 0x02, 0x01, // id = 0x01020304
-    ];
-    assert_eq!(parse_request_entity_update(&body), vec![0x01020304]);
+fn zero_entity_id_decodes_as_a_real_id_not_as_empty() {
+    let body = [0u8; 4];
+    assert_eq!(parse_request_entity_update(&body), vec![0]);
 }

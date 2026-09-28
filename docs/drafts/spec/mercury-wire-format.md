@@ -2201,15 +2201,17 @@ This is an S-row-shaped finding: dead-on-arrival on this build, but the descript
 
 ##### `requestEntityUpdate` (slot 7, msg `0x07`, `flag=1`/`size=2`)
 
-**Emitter**: `ServerConnection::sendAvatarUpdates` at `ghidra://SGW.exe@0x00dd80d3` — **misnamed by Ghidra's auto-annotation pass** (the function emits `requestEntityUpdate`, not avatarUpdate; the slot's data symbol `g_pAvatarUpdateInterfaceElement` is similarly mis-attached to slot 7's pointer at `0x01EF24FC`).
+**Emitter**: function body at `ghidra://SGW.exe@0x00dd80c0`/`0x00dd80d3` — **misnamed twice by two different Ghidra auto-annotation passes** (previously labeled `ServerConnection::sendAvatarUpdates` here, and separately `Mercury_Channel_3` in the headless-probe project; the slot's data symbol `g_pAvatarUpdateInterfaceElement` is similarly mis-attached to slot 7's pointer at `0x01EF24FC`). See the annotation-script-shift-bugs pattern.
 
-The function:
+**Corrected 2026-09-28 (issue #838, RE cross-checked against #1000).** The decompiler's default signature for this function undercounts its arguments (it shows one `int param_1`, but the caller and the raw disassembly both need two: an entity id and a cache-stamp vector pointer). Reading the disassembly directly: at `0x00dd80f9`/`0x00dd80fd` the function loads `ECX = [ESP+0x18]` (the entity id) and `EBX = [ESP+0x1c]` (a `{begin, end}` vector-of-`u32` pointer pair) — both are the caller's real stack arguments, not the `unaff_retaddr` artifact the decompiler printed. The function:
 
 1. Calls `Bundle::startMessage(slot_7)` (u16-prefixed message).
-2. Reserves 4 bytes for an initial field (decompiler shows `*puVar2 = unaff_retaddr` — artifact; the field is a count-or-header dword whose semantic is not pinned in this pass).
-3. Iterates a list at `pUpdateList+0x04..pUpdateList+0x08` and writes 4 bytes per entry into the bundle.
+2. Writes the **entity id** as the first 4-byte field into the bundle.
+3. Loops from the vector's `begin` to `end` pointer, writing one `u32` **cache stamp** per element.
 
-**Wire shape (provisional)**: `[msg_id=0x07][u16 length-prefix][u32 header][N × u32 entity_id]` where N is implied by the length prefix. The header dword's semantic (count? flags? both? a u32 last-known-revision base?) is the open question; pinning it requires tracing the caller of `sendAvatarUpdates` to see what `pUpdateList` holds in practice. A reimplementation server can decode the body as "u32 header, then N entity_ids until length is exhausted" — N is recoverable from the length prefix even without the header semantic.
+The sole caller, `EntityManager::onEntityEnter @ ghidra://SGW.exe@0x00dd24f0` (confirmed by the embedded `entity_manager.cpp` `vehicleID == 0` assert; this is vtable slot 3 of the corrected `GameEntityManager` vtable — see `request-entity-update-cache-stamp.md`), passes the entering entity's id plus a freshly constructed, empty cache-stamp vector — BigWorld's cache-stamp system is never populated on this client build. It fires once per distinct entity-enter (deduped against a last-id/last-object pair at `GameEntityManager+0x10`/`+0x14`), and does not block the entity becoming visible while waiting for a reply.
+
+**Wire shape**: `[msg_id=0x07][u16 length-prefix][u32 entityId][N × u32 cacheStamp]`, N recoverable from the length prefix. In every observed case — both the cache-stamp vector's construction site in `onEntityEnter` and 2,275/2,275 colo `requestEntityUpdate` captures over seven days — N is 0, so the body on the wire is exactly 4 bytes: the bare entity id. The previous `[u32 header][N × u32 entity_id]` layout in this section was wrong; it swapped which field is singular (it's the id, not a header) and which repeats (cache stamps, not ids). See `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md` for the full evidence trail and `crates/base/src/base/connect_loop/encrypted/mod.rs` (`parse_request_entity_update`) for the corrected parser.
 
 ##### `enableEntities` (slot 8, msg `0x08`, `flag=0`/`size=8`) — **SGW expansion: 8 dummy bytes, no content**
 
@@ -2299,7 +2301,7 @@ For quick reference — the post-`msg_id` wire byte specification for every clie
 | `0x04` | avatarUpdateWardImplicit | `0x00de2b30` (reservation helper) | 36 bytes — see [position-updates.md](position-updates.md) | Consume 36 bytes; semantic in position-updates chapter |
 | `0x05` | avatarUpdateWardExplicit | `0x00de2b80` (reservation helper) | 40 bytes — see [position-updates.md](position-updates.md) | Consume 40 bytes; semantic in position-updates chapter |
 | `0x06` | switchInterface | *no emitter — dead code* | 0 bytes | Accept and no-op (defensive — current client does not emit) |
-| `0x07` | requestEntityUpdate | `0x00dd80d3` | `[u16 len][u32 header][N × u32 entity_id]` | Push state for each requested entity_id; header semantic open |
+| `0x07` | requestEntityUpdate | `0x00dd80c0` | `[u16 len][u32 entityId][N × u32 cacheStamp]` (N is 0 on this client build) | For an entity the base already has in the witness's AoI, answer with nothing (or resend only missing state); for an id the base doesn't recognize as in this witness's AoI, do a full re-create |
 | `0x08` | enableEntities | `0x00dd928f` | 8 bytes (undefined content — emitter writes nothing) | Accept 8 bytes, ignore them, transition to entity-active |
 | `0x09` | setSpaceViewportAck | `0x00dd8047` | `[u32 entity_id][u32 viewport_id (likely)]` | Mark viewport ack received |
 | `0x0A` | setVehicleAck | `0x00dd809b` | `[u32 entity_id][u32 vehicle_id (likely)]` | Mark vehicle ack received |

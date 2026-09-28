@@ -1,19 +1,28 @@
 //! Tests for `BaseToCellMsg::RequestEntityUpdate`.
 //!
-//! Bug shape these guards prevent: client sends `requestEntityUpdate` for an
-//! entity it's missing (because `createEntity` was dropped on the wire past
-//! the 20-retry cap), and the server's handler either (a) silently drops the
-//! request, leaving the NPC permanently invisible, or (b) re-emits state for
-//! entities the requesting witness shouldn't be able to see.
+//! Bug shape these guards prevent: the client's `requestEntityUpdate` (0x07)
+//! cache-stamp handshake fires once per non-player entity on *every* normal
+//! AoI entry, not just when something was genuinely dropped (see
+//! `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`).
+//! A handler that still re-emits `CREATE_ENTITY` + cascade for every in-AoI
+//! id would double that traffic on every single entry. These guards pin: (a)
+//! an in-AoI id produces no cell→base traffic at all, (b) an out-of-AoI id is
+//! still refused (anti-probe, unchanged from PR #390), and (c) neither path
+//! panics on an unknown witness.
 
 use super::*;
+use crate::test_support::LogCapture;
 use cimmeria_common::EntityId;
+use tracing::Level;
 
-/// Witness has target entity in AoI → handler emits exactly one EnteredAoI
-/// for that entity with the entity's current state (class_id, position,
-/// level, npc_data). This is the recovery path the issue describes.
+/// Normal on-enter case: witness has the target entity in AoI (the base
+/// already sent it a full CREATE_ENTITY + cascade). The handler must answer
+/// with nothing -- no EnteredAoI, no cascade. This is the regression guard
+/// for "fixing only the parser would double-create on every normal AoI
+/// entry" (issue #838's acceptance criteria); it must fail if the handler is
+/// reverted to PR #390's unconditional re-emit.
 #[tokio::test]
-async fn request_entity_update_reemits_entered_aoi_for_witnessed_entity() {
+async fn request_entity_update_answers_nothing_for_witnessed_entity() {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
@@ -28,20 +37,8 @@ async fn request_entity_update_reemits_entered_aoi_for_witnessed_entity() {
         // Simulate the AoI tick having already added entity 42 to this witness.
         w.witnesses.insert(EntityId(42));
     }
-    // Target NPC entity 42 at (5,0,0) with concrete values that should surface
-    // in the re-emitted EnteredAoI.
     mgr.create_entity(42, "Castle_CellBlock", [5.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
-    if let Some(t) = mgr.get_entity_mut(42) {
-        t.is_player = false;
-        t.class_id = 0x04;
-        t.level = 7;
-        t.faction = 2;
-        t.alignment = 1;
-        t.entity_flags = 0xABCD;
-        t.speaker_id = Some(156); // Vala -- arbitrary, just to verify pass-through
-        t.body_set = Some("BS_HumanFemale.BS_HumanFemale".to_string());
-    }
 
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
@@ -58,49 +55,19 @@ async fn request_entity_update_reemits_entered_aoi_for_witnessed_entity() {
     )
     .await;
 
-    // Expect exactly one EnteredAoI carrying entity 42's state.
-    let mut entered = Vec::new();
-    while let Ok(msg) = rx.try_recv() {
-        if let CellToBaseMsg::EnteredAoI { .. } = msg {
-            entered.push(msg);
-        }
-    }
+    let count = std::iter::from_fn(|| rx.try_recv().ok()).count();
     assert_eq!(
-        entered.len(),
-        1,
-        "exactly one EnteredAoI re-emitted for the requested+witnessed entity"
+        count, 0,
+        "an id already in the witness's AoI must produce no cell\u{2192}base traffic \
+         (the client already has full state from its original CREATE_ENTITY)"
     );
-    match &entered[0] {
-        CellToBaseMsg::EnteredAoI {
-            witness_id,
-            entity_id,
-            class_id,
-            position,
-            level,
-            npc_data,
-            ..
-        } => {
-            assert_eq!(*witness_id, 1);
-            assert_eq!(*entity_id, 42);
-            assert_eq!(*class_id, 0x04);
-            assert_eq!(*position, [5.0, 0.0, 0.0]);
-            assert_eq!(*level, 7);
-            let d = npc_data.as_ref().expect("NPC must carry npc_data");
-            assert_eq!(d.faction, 2);
-            assert_eq!(d.alignment, 1);
-            assert_eq!(d.entity_flags, 0xABCD);
-            assert_eq!(d.speaker_id, Some(156));
-            assert_eq!(d.body_set.as_deref(), Some("BS_HumanFemale.BS_HumanFemale"));
-        }
-        other => panic!("unexpected message variant: {other:?}"),
-    }
 }
 
-/// Security guard: witness does NOT have target in AoI. Re-emit MUST be
-/// suppressed — otherwise a malicious client can probe any entity id and
-/// receive its full state. Regression for the obvious authorization gap.
+/// Security guard: witness does NOT have target in AoI. The request MUST be
+/// refused -- otherwise a malicious client can probe any entity id and
+/// receive its full state. Unchanged from PR #390.
 #[tokio::test]
-async fn request_entity_update_drops_when_entity_not_in_witness_aoi() {
+async fn request_entity_update_refuses_when_entity_not_in_witness_aoi() {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
@@ -132,22 +99,68 @@ async fn request_entity_update_drops_when_entity_not_in_witness_aoi() {
     )
     .await;
 
-    let mut entered = 0u32;
-    while let Ok(msg) = rx.try_recv() {
-        if matches!(msg, CellToBaseMsg::EnteredAoI { .. }) {
-            entered += 1;
-        }
-    }
+    let count = std::iter::from_fn(|| rx.try_recv().ok()).count();
     assert_eq!(
-        entered, 0,
-        "out-of-AoI request must NOT emit EnteredAoI (anti-probe)"
+        count, 0,
+        "out-of-AoI request must produce no cell\u{2192}base traffic (anti-probe)"
     );
 }
 
-/// Mixed request: one entity in AoI, one out of AoI, one unknown id. Only
-/// the in-AoI id should re-emit; the other two are dropped without error.
+/// Negative log: an out-of-AoI request is refused with a WARN carrying
+/// `reason = "not_in_witness_aoi"` plus `entity_id`/`witness_id` -- per
+/// `docs/architecture/negative-logging-convention.md`, this must be
+/// greppable, not a silent drop.
 #[tokio::test]
-async fn request_entity_update_filters_mixed_request_to_in_aoi_only() {
+async fn request_entity_update_out_of_aoi_logs_a_negative_event() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(w) = mgr.get_entity_mut(1) {
+        w.is_player = true;
+        w.account_id = Some(10);
+        w.player_id = Some(100);
+    }
+    mgr.create_entity(42, "Castle_CellBlock", [500.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let guard = LogCapture::install();
+
+    handle_base_message(
+        BaseToCellMsg::RequestEntityUpdate {
+            witness_id: 1,
+            entity_ids: vec![42],
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let row = guard
+        .find_event(
+            Level::WARN,
+            "id outside witness's AoI",
+            "not_in_witness_aoi",
+        )
+        .unwrap_or_else(|| panic!("no not_in_witness_aoi row; saw {:#?}", guard.all()));
+    assert!(row.has_field("witness_id", "1"));
+    assert!(row.has_field("entity_id", "42"));
+    assert!(row.has_field("account_id", "10"));
+    assert!(row.has_field("player_id", "100"));
+}
+
+/// Mixed request: one entity in AoI, one out of AoI, one unknown id. None of
+/// them should produce any cell→base traffic — the in-AoI id is acknowledged
+/// silently, the other two are refused/skipped, all without panic.
+#[tokio::test]
+async fn request_entity_update_produces_no_traffic_for_a_mixed_request() {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
@@ -181,16 +194,11 @@ async fn request_entity_update_filters_mixed_request_to_in_aoi_only() {
     )
     .await;
 
-    let mut emitted_ids = Vec::new();
-    while let Ok(msg) = rx.try_recv() {
-        if let CellToBaseMsg::EnteredAoI { entity_id, .. } = msg {
-            emitted_ids.push(entity_id);
-        }
-    }
+    let count = std::iter::from_fn(|| rx.try_recv().ok()).count();
     assert_eq!(
-        emitted_ids,
-        vec![42],
-        "only the in-AoI requested entity should re-emit; out-of-AoI and unknown ids dropped"
+        count, 0,
+        "no id in a mixed request should produce cell\u{2192}base traffic: the in-AoI id \
+         is acknowledged silently, the others are refused"
     );
 }
 
@@ -223,14 +231,13 @@ async fn request_entity_update_drops_when_witness_missing() {
     let count = std::iter::from_fn(|| rx.try_recv().ok()).count();
     assert_eq!(
         count, 0,
-        "unknown witness must produce no cell→base traffic"
+        "unknown witness must produce no cell\u{2192}base traffic"
     );
 }
 
 /// DoS guard: a payload larger than `MAX_REQUEST_ENTITIES` (64) is truncated
-/// to the cap. Asserts the handler never processes more than the cap, even
-/// when every requested id is legitimately in the witness's AoI. Regression
-/// for the spam-1000-ids-per-packet shape Clara called out.
+/// to the cap and still produces no cell→base traffic (every id is in AoI,
+/// which now means "acknowledged silently", not "re-created").
 #[tokio::test]
 async fn request_entity_update_truncates_request_above_cap() {
     let mut mgr = SpaceManager::new(1);
@@ -241,9 +248,6 @@ async fn request_entity_update_truncates_request_above_cap() {
     mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
         .unwrap();
 
-    // Spawn 200 NPCs in this player's witness set so EVERY requested id
-    // would, in the absence of the cap, generate one EnteredAoI.
-    const CAP: usize = 64;
     const SPAM_COUNT: usize = 200;
     if let Some(w) = mgr.get_entity_mut(1) {
         w.is_player = true;
@@ -273,140 +277,9 @@ async fn request_entity_update_truncates_request_above_cap() {
     )
     .await;
 
-    let mut entered = 0usize;
-    while let Ok(msg) = rx.try_recv() {
-        if matches!(msg, CellToBaseMsg::EnteredAoI { .. }) {
-            entered += 1;
-        }
-    }
+    let count = std::iter::from_fn(|| rx.try_recv().ok()).count();
     assert_eq!(
-        entered, CAP,
-        "request of {SPAM_COUNT} ids must be truncated to the {CAP}-id cap, got {entered}"
-    );
-}
-
-/// Pets PT-01 (A-23): the re-emit path replays a pet's owner-only lists
-/// after its `EnteredAoI`, exactly like the AoI tick. Without it a client
-/// that re-requests its own pet gets the entity back with an empty pet bar.
-/// The second request, from a player who does not own the pet, must get the
-/// `EnteredAoI` and nothing else (the lists are the owner's alone). The
-/// third, after the owner's entity id was handed to another player before
-/// the sweep (Copilot, #870), must get nothing owner-only either: the id
-/// matches `pet.owner_id` but the live identity is not the summoner's.
-#[tokio::test]
-async fn request_entity_update_replays_pet_lists_to_the_owner_only() {
-    use cimmeria_entity::cell_entity::{PetStance, PetState, PlayerIdentity, ALL_STANCES_MASK};
-    use cimmeria_wire::cell::client_methods::pet::{
-        ON_PET_ABILITY_LIST, ON_PET_STANCE_LIST, ON_PET_STANCE_UPDATE,
-    };
-
-    const OWNER: u32 = 1;
-    const OTHER: u32 = 2;
-    const PET: u32 = 42;
-    let mut mgr = SpaceManager::new(1);
-    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
-    mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(
-        r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#,
-    )
-    .unwrap();
-    for (id, x) in [(OWNER, 0.0), (OTHER, 1.0)] {
-        mgr.create_entity(id, "Agnos", [x, 0.0, 0.0], [0.0; 3])
-            .unwrap();
-        let w = mgr.get_entity_mut(id).unwrap();
-        w.is_player = true;
-        w.account_id = Some(id * 10);
-        w.player_id = Some(id as i32 * 100);
-        w.witnesses.insert(EntityId(PET as i32));
-    }
-    mgr.create_entity(PET, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
-        .unwrap();
-    {
-        let p = mgr.get_entity_mut(PET).unwrap();
-        p.class_id = 0x05;
-        let mut state = PetState::new(OWNER, vec![592], ALL_STANCES_MASK, 0);
-        state.stance = PetStance::Aggressive;
-        p.pet = Some(Box::new(state));
-    }
-    // With the summoner's identity, as `spawn_pet_from_template` captures it.
-    mgr.pets.register(
-        OWNER,
-        PET,
-        PlayerIdentity::new(Some(OWNER * 10), Some(OWNER as i32 * 100)),
-    );
-    let engine = ChainEngine::new();
-
-    let mut per_witness = Vec::new();
-    for (round, witness_id) in [OWNER, OTHER, OWNER].into_iter().enumerate() {
-        if round == 2 {
-            // The owner's id now belongs to a different account and character.
-            let impostor = mgr.get_entity_mut(OWNER).unwrap();
-            impostor.account_id = Some(4242);
-            impostor.player_id = Some(4243);
-        }
-        let (tx, mut rx) = mpsc::channel(16);
-        handle_base_message(
-            BaseToCellMsg::RequestEntityUpdate {
-                witness_id,
-                entity_ids: vec![PET],
-            },
-            &tx,
-            &mut mgr,
-            &engine,
-            &[],
-        )
-        .await;
-        let mut seen = Vec::new();
-        while let Ok(msg) = rx.try_recv() {
-            match msg {
-                CellToBaseMsg::EnteredAoI {
-                    witness_id: w,
-                    entity_id,
-                    npc_data,
-                    ..
-                } => {
-                    assert_eq!((w, entity_id), (witness_id, PET));
-                    assert_eq!(
-                        npc_data.and_then(|d| d.pet_owner_id),
-                        Some(OWNER),
-                        "the re-emitted cascade keeps the owner binding"
-                    );
-                    seen.push("entered".to_string());
-                }
-                CellToBaseMsg::WitnessEntityMethod {
-                    witness_id: w,
-                    entity_id,
-                    method_index,
-                    args,
-                    ..
-                } => {
-                    assert_eq!((w, entity_id), (witness_id, PET));
-                    seen.push(format!("{method_index}:{args:?}"));
-                }
-                _ => {}
-            }
-        }
-        per_witness.push(seen);
-    }
-
-    assert_eq!(
-        per_witness[0],
-        vec![
-            "entered".to_string(),
-            format!("{ON_PET_ABILITY_LIST}:[1, 0, 0, 0, 80, 2, 0, 0]"),
-            format!("{ON_PET_STANCE_LIST}:[3, 0, 0, 0, 0, 1, 2]"),
-            format!("{ON_PET_STANCE_UPDATE}:[2]"),
-        ],
-        "owner: EnteredAoI, the two lists, then the non-default stance"
-    );
-    assert_eq!(
-        per_witness[1],
-        vec!["entered".to_string()],
-        "a non-owner gets the entity and none of the lists"
-    );
-    assert_eq!(
-        per_witness[2],
-        vec!["entered".to_string()],
-        "a player holding a reused owner id gets the entity and none of the lists"
+        count, 0,
+        "a truncated, all-in-AoI request must still produce no cell\u{2192}base traffic"
     );
 }

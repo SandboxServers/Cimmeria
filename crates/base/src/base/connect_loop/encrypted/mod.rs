@@ -389,25 +389,30 @@ async fn dispatch_client_bundle(
             0x09 => {
                 tracing::trace!(%addr, "Client sent VIEWPORT_ACK");
             }
-            // REQUEST_ENTITY_UPDATE (0x07) -- client wants re-sync for one or
-            // more entities it thinks it's missing or has stale state for.
+            // REQUEST_ENTITY_UPDATE (0x07) -- the client's cache-stamp
+            // handshake, fired once per non-player entity from
+            // `EntityManager::onEntityEnter` for EVERY normal AoI entry, not
+            // just recovery from a dropped `createEntity`.
             //
-            // Wire (spec §2.5.2): `[u32 header][N × u32 entity_id]`. The
-            // header semantic is unknown (likely flags or last-known-revision);
-            // payload is safe to decode by skipping the first 4 bytes and
-            // reading u32 ids until the length is exhausted.
+            // Wire (spec §2.5.2, corrected 2026-09-28 per issue #838):
+            // `[u32 entityId][N × u32 cacheStamp]`, N always 0 on this client
+            // build. See
+            // `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`
+            // for the RE evidence.
             //
-            // Forward to the cell, which re-emits a synthetic `EnteredAoI`
-            // per requested entity that is currently in the witness's AoI.
-            // Out-of-AoI requests are dropped on the cell side -- the client
-            // must not be able to probe arbitrary ids.
+            // Forward to the cell: an id already in the witness's AoI gets no
+            // reply (the client already has full state from its original
+            // CREATE_ENTITY); an id outside it is refused (anti-probe -- the
+            // client must not be able to probe arbitrary ids).
             0x07 => {
                 let entity_ids = parse_request_entity_update(payload);
                 if entity_ids.is_empty() {
-                    tracing::debug!(
+                    tracing::warn!(
                         %addr,
+                        account_id,
                         payload_len = payload.len(),
-                        "REQUEST_ENTITY_UPDATE with no decoded entity ids -- ignoring"
+                        reason = "payload_too_short",
+                        "REQUEST_ENTITY_UPDATE: payload shorter than the 4-byte entity id -- dropping"
                     );
                 } else {
                     let witness_id = connected
@@ -418,8 +423,9 @@ async fn dispatch_client_bundle(
                     if let Some(witness_id) = witness_id {
                         if let Some(tx) = cell_tx {
                             let count = entity_ids.len();
-                            tracing::info!(
+                            tracing::debug!(
                                 %addr,
+                                account_id,
                                 witness_id,
                                 count,
                                 "REQUEST_ENTITY_UPDATE -> cell::RequestEntityUpdate"
@@ -433,6 +439,7 @@ async fn dispatch_client_bundle(
                             {
                                 tracing::warn!(
                                     %addr,
+                                    account_id,
                                     witness_id,
                                     count,
                                     "REQUEST_ENTITY_UPDATE: cell send failed -- request dropped: {e}"
@@ -441,6 +448,7 @@ async fn dispatch_client_bundle(
                         } else {
                             tracing::debug!(
                                 %addr,
+                                account_id,
                                 witness_id,
                                 count = entity_ids.len(),
                                 "REQUEST_ENTITY_UPDATE: no cell channel -- ignoring"
@@ -449,6 +457,7 @@ async fn dispatch_client_bundle(
                     } else {
                         tracing::warn!(
                             %addr,
+                            account_id,
                             count = entity_ids.len(),
                             reason = "no_player_entity",
                             "REQUEST_ENTITY_UPDATE before player entity is connected -- dropping"
@@ -613,23 +622,30 @@ fn read_client_message_payload<'a>(
 
 /// Parse a `requestEntityUpdate` (msg `0x07`) payload.
 ///
-/// Wire layout (spec §2.5.2): `[u32 header][N × u32 entity_id]`. The header's
-/// exact semantic (flags? last-known-revision?) is not documented; the spec
-/// notes the payload is safe to decode by skipping the first 4 bytes and
-/// reading consecutive u32s. Trailing bytes that don't form a complete u32
-/// are dropped.
+/// Wire layout (spec §2.5.2, corrected 2026-09-28 per issue #838): `[u32
+/// entityId][N × u32 cacheStamp]`. The client's `EntityManager::onEntityEnter`
+/// (`ghidra://SGW.exe@0x00dd24f0`) sends this once per non-player entity
+/// entering its AoI, with `N` always 0 on this client build -- BigWorld's
+/// cache-stamp versioning is never populated. See
+/// `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`
+/// for the full RE evidence. The pre-#838 layout here, `[u32 header][N × u32
+/// entity_id]`, was wrong: it read the entity id as a discardable header and
+/// treated the (always-empty) cache-stamp tail as the entity id list, so
+/// every real payload decoded to zero ids.
 ///
-/// Returns an empty `Vec` when the payload is shorter than the 4-byte header.
+/// The cache-stamp values themselves are not interpreted -- the server has
+/// no per-property cache to diff them against, and every observed client
+/// build sends none.
+///
+/// Returns an empty `Vec` when the payload is shorter than the 4-byte entity
+/// id, else a single-element `Vec` containing it. Trailing cache-stamp bytes
+/// are consumed (ignored) rather than left to desync the bundle.
 fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
     if payload.len() < 4 {
         return Vec::new();
     }
-    let body = &payload[4..];
-    let complete_len = body.len() - body.len() % 4;
-    body[..complete_len]
-        .chunks(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect()
+    let entity_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+    vec![entity_id]
 }
 
 mod decrypt_reject;

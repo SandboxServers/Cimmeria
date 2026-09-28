@@ -1341,14 +1341,23 @@ update (property/move/create/delete/rename/console)".
 `GameEntityManager_OnEntityEnterAoI`") is retracted. The current Ghidra name is accurate.
 No annotation-script-shift-bugs record should be filed for `0x00dd0bb0`.
 
-**New annotation-script-shift-bugs record (Appendix D plate comments):** The plate comment on
-`0x00dd0bb0` claims "VTable slot 5 of vtable_GameEntityManager at 0x019aaec4". This is
-doubly wrong: (a) slot 5 of the raw vtable at `0x019aaeb8` is `0x00dd0c10`
-(`GameEntityManager_SetPlayerControlTarget`), not `0x00dd0bb0`; (b) the function at `0x00dd0bb0`
-is at raw slot 8 (`0x019aaed8`). The plate comment on `0x00dd0c10` also claims "VTable slot 2"
-which contradicts the raw memory. Both plate comments contain wrong slot numbers and should be
-corrected. This is an annotation-script-shift class of bug (systematic vtable slot numbering
-error in the GameEntityManager vtable annotation pass).
+**Correction (2026-09-28, issue #1000): the note above is itself wrong — retracted.** This
+appendix used `0x019aaeb8` as "the raw vtable" and counted slots from there. That base is
+wrong. `0x019aaec4 - 4 = 0x019aaec0` holds `0x01b988f4`, a data pointer, not a function —
+the MSVC RTTI Complete Object Locator pointer that always sits immediately before a
+polymorphic class's vtable. That is the textbook vtable-start marker, and it places
+`GameEntityManager`'s real vtable at `0x019aaec4`, exactly where the original Appendix D
+plate comments said. The two dwords at `0x019aaeb8`/`0x019aaebc` sit before the COL pointer
+and belong to an unrelated adjacent object, not `GameEntityManager`.
+
+Re-deriving indices from the true base `0x019aaec4` (headless-Ghidra vtable dump,
+2026-09-28): `0x00dd0c10` is index 2 and `0x00dd0bb0` is index 5 — **both original plate
+comments ("VTable slot 5" for `0x00dd0bb0`, "VTable slot 2" for `0x00dd0c10`) were correct.**
+No annotation-script-shift-bugs record should be filed for either plate comment; this
+appendix's 2026-05-16 "doubly wrong" / "systematic vtable slot numbering error" conclusion
+is withdrawn. See `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`
+for the corrected 12-slot vtable table and the independent vfunc-by-vfunc confirmation
+(issue #1000).
 
 ### E.5 — Net effect on chapter
 

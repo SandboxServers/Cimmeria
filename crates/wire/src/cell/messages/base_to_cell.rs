@@ -408,17 +408,21 @@ pub enum BaseToCellMsg {
         on_victory_chains: Vec<i64>,
     },
 
-    /// Client→server `requestEntityUpdate` (msg `0x07`): the client believes it
-    /// is missing or has stale state for one or more entities and is asking the
-    /// server to re-emit them. This is the canonical recovery path when a
-    /// `createEntity` (`0x09`) for an NPC gets dropped on the wire past the
-    /// 20-retry lifetime cap — otherwise the NPC stays permanently invisible
-    /// on that client.
+    /// Client→server `requestEntityUpdate` (msg `0x07`): the client's
+    /// cache-stamp handshake, fired once per non-player entity from
+    /// `EntityManager::onEntityEnter` for **every** normal AoI entry, not
+    /// just recovery from a dropped `createEntity`. Wire is `[u32
+    /// entityId][N × u32 cacheStamp]`, `N` always 0 on this client build.
+    /// See
+    /// `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`
+    /// (issues #838, #1000).
     ///
-    /// The cell re-emits a synthetic `CellToBaseMsg::EnteredAoI` for each
-    /// requested `entity_id` that is currently in `witness_id`'s AoI. Entities
-    /// not in the witness's witness set are dropped silently — the client must
-    /// not be able to probe arbitrary entity ids.
+    /// `entity_ids` is the parsed entity id(s) — in practice always a single
+    /// element, since the corrected wire format carries one id plus a
+    /// (typically empty) cache-stamp tail, not a list of ids. An id already
+    /// in `witness_id`'s AoI gets no reply (the client already has full
+    /// state from its original `CREATE_ENTITY`); an id outside it is
+    /// refused — the client must not be able to probe arbitrary entity ids.
     RequestEntityUpdate {
         witness_id: u32,
         entity_ids: Vec<u32>,
