@@ -27,3 +27,8 @@ data/spaces/*.occ binary
 .claude/agent-memory/*/MEMORY.md merge=union
 docs/reverse-engineering/findings/README.md merge=union
 docs/readme.md merge=union
+
+# Client UI overlay (BM-05): byte-for-byte copies of stock client files, patched.
+# The client reads them as-is, so they keep their CRLF line endings on every
+# checkout and are never converted.
+crates/client-patches/overlay/Content/** -text

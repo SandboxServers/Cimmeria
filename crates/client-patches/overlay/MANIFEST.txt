@@ -1,0 +1,2 @@
+Content/UI/Core/BlackMarket/BlackMarket.lua
+Content/UI/Core/BlackMarket/BlackMarket.layout

@@ -112,6 +112,9 @@ are in `src/addresses.rs` and
 
 ## The Lua contract (for the UI overlay)
 
+The overlay that implements this contract, a patched `BlackMarket.lua` and
+`BlackMarket.layout`, is in [overlay/](overlay/README.md).
+
 The overlay defines one global table, `CimmeriaBM`, and a plain function on
 it for each call. The DLL calls them with no `self`:
 
