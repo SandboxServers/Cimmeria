@@ -218,7 +218,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [test-session-packets-are-encrypted.md](test-session-packets-are-encrypted.md) — TestTransport packets are encrypted (zero key) and feedback lines need player_entity_id; decrypt before grepping text.
 - [wireclient-passive-session-dies.md](wireclient-passive-session-dies.md) — a listen-only `GameSession` is reaped at 60 s; send an unreliable AUTHENTICATE heartbeat, as `sparbot::run` does.
 - [live-db-lock-race-tests.md](live-db-lock-race-tests.md) — a lock-race test must see the waiter blocked first.
-- [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race: hold `LOCK TABLE ..
+- [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race with no code hook: hold `LOCK TABLE ... IN SHARE MODE`, release once `pg_stat_activity` shows N lock waiters
 
 ## Campaign judgment
 
