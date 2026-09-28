@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use super::escrow::{deliver_from_escrow, Placed};
+use super::escrow::{deliver_from_escrow, DeliveryRefused, Placed};
 use super::helpers::{adjust_player_cash, now_unix_secs, CashError};
 use super::send::{send_bm_auction_remove, send_bm_error, send_item_placed, BmNet};
 use super::telemetry::{
@@ -120,7 +120,10 @@ pub(super) async fn cancel_auction(
     let placed = deliver_from_escrow(&mut tx, &auction, auction.seller_id, false)
         .await
         .map_err(db("return_item"))?
-        .ok_or(BMError::BagFull)?;
+        .map_err(|refused| match refused {
+            DeliveryRefused::BagFull => BMError::BagFull,
+            DeliveryRefused::EscrowMissing => BMError::Internal,
+        })?;
 
     let mut refunded = None;
     if let Some(bidder) = auction.current_bidder.filter(|_| auction.current_bid > 0) {

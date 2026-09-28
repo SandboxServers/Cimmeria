@@ -9,16 +9,23 @@
 //! login and resync item sends skip it, and the move, use, trade, mail and
 //! vendor paths refuse it.
 //!
-//! **Lock order** (the shared inventory order): every advisory lock first
-//! (`take_inventory_locks`, player-wide key then per-bag keys), then the
-//! inventory row `FOR UPDATE`, then `sgw_player` rows. With two players the
-//! advisory locks go in ascending `player_id`. Advisory locks are
+//! **Lock order.** A create takes the seller's inventory advisory locks
+//! (`take_inventory_locks`: player-wide key, then per-bag keys), then the
+//! item row `FOR UPDATE`, then the seller's `sgw_player` row: the shared
+//! inventory order. A bid, cancel or settlement locks the `sgw_auction` row
+//! first, then the advisory locks (seller's escrow, recipient's bags, in
+//! ascending `player_id`), then `sgw_player` rows and the escrowed item row.
+//! Every writer of a container-18 row holds the seller's escrow advisory
+//! lock before touching the row, so the order between the item row and the
+//! player rows cannot deadlock. No writer takes an inventory advisory lock
+//! and then an `sgw_auction` row lock; keep it that way. Advisory locks are
 //! re-entrant within a transaction, so a caller may take them early and a
 //! helper here take them again.
 
 use cimmeria_entity::inventory::{bag_max_slots, INV_AUCTION, INV_MAIN};
 use sqlx::PgConnection;
 
+use super::seed::SYSTEM_SELLER_ID;
 use super::types::{AuctionRow, LISTABLE_BAGS};
 use super::wire::BMError;
 use crate::base::crafting::inventory_locks::take_inventory_locks;
@@ -34,6 +41,21 @@ pub struct EscrowedItem {
     /// The bag it was listed from.
     pub container_id: i32,
     pub bound: bool,
+}
+
+/// Why an escrowed item could not be delivered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeliveryRefused {
+    /// Every carried bag of the recipient is full.
+    BagFull,
+    /// A player's listing has no container-18 row. Nothing removes one
+    /// today; if something ever does, the listing must not mint a copy.
+    EscrowMissing,
+}
+
+/// Is `auction` a boot-seed listing, which never had an instance?
+pub fn is_seed_listing(auction: &AuctionRow) -> bool {
+    auction.item_id == 0 || auction.seller_id == SYSTEM_SELLER_ID
 }
 
 /// Where a returned or delivered item landed.
@@ -165,17 +187,18 @@ pub async fn free_bag_slot(
 /// free slot of `recipient_id`'s bags: the seller again on cancel or
 /// expiry, the buyer on a sale.
 ///
-/// With no escrow row (a boot-seed listing, which never had an instance)
-/// a new instance is made from the auction's snapshot. `Ok(None)` means
-/// every carried bag is full; with `allow_overflow` (the sweep, which must
-/// settle) the row goes past the main bag's last slot instead, as the
-/// branch's `return_item` did, and `Placed::overflow` says so.
+/// A boot-seed listing (no instance) is delivered as a new instance made
+/// from the auction's snapshot; a player's listing whose row is missing is
+/// refused (`EscrowMissing`), never minted. `BagFull` means every carried
+/// bag is full; with `allow_overflow` (the sweep, which must settle) the row
+/// goes past the main bag's last slot instead, as the branch's
+/// `return_item` did, and `Placed::overflow` says so.
 pub async fn deliver_from_escrow(
     conn: &mut PgConnection,
     auction: &AuctionRow,
     recipient_id: i32,
     allow_overflow: bool,
-) -> Result<Option<Placed>, sqlx::Error> {
+) -> Result<Result<Placed, DeliveryRefused>, sqlx::Error> {
     lock_for_delivery(conn, auction.seller_id, recipient_id).await?;
     let escrowed: Option<i32> = sqlx::query_scalar(
         "SELECT item_id FROM sgw_inventory \
@@ -186,6 +209,17 @@ pub async fn deliver_from_escrow(
     .bind(INV_AUCTION)
     .fetch_optional(&mut *conn)
     .await?;
+    if escrowed.is_none() && !is_seed_listing(auction) {
+        tracing::warn!(
+            event = "bm.escrow_missing",
+            auction_id = auction.sequence_id,
+            seller_id = auction.seller_id,
+            item_id = auction.item_id,
+            reason = "escrow_missing",
+            "Black Market listing has no container-18 row; refusing to deliver a copy"
+        );
+        return Ok(Err(DeliveryRefused::EscrowMissing));
+    }
 
     let (container_id, slot_id, overflow) = match free_bag_slot(conn, recipient_id).await? {
         Some((bag, slot)) => (bag, slot, false),
@@ -201,7 +235,7 @@ pub async fn deliver_from_escrow(
             .await?;
             (INV_MAIN, slot, true)
         }
-        None => return Ok(None),
+        None => return Ok(Err(DeliveryRefused::BagFull)),
     };
 
     let (item_id, minted) = match escrowed {
@@ -224,7 +258,7 @@ pub async fn deliver_from_escrow(
             true,
         ),
     };
-    Ok(Some(Placed {
+    Ok(Ok(Placed {
         item_id,
         container_id,
         slot_id,

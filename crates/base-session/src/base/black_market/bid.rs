@@ -227,10 +227,10 @@ pub(super) async fn place_bid(
         Err(CashError::InsufficientFunds | CashError::NoSuchPlayer) => {
             return Err(BMError::NotEnoughFunds.into())
         }
-        Err(CashError::Db(e)) => {
+        Err(e) => {
             return Err(Failure::Db {
                 stage: "hold",
-                error: e,
+                error: e.to_string(),
             })
         }
     }

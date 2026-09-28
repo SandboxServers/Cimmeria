@@ -19,6 +19,8 @@ pub enum CashError {
     NoSuchPlayer,
     /// The adjustment would push the balance below zero (overdraw on a debit).
     InsufficientFunds,
+    /// A credit would push the balance past the column's `i32` maximum.
+    BalanceOverflow,
     /// Underlying DB failure.
     Db(String),
 }
@@ -28,6 +30,7 @@ impl std::fmt::Display for CashError {
         match self {
             CashError::NoSuchPlayer => write!(f, "no such player"),
             CashError::InsufficientFunds => write!(f, "insufficient funds"),
+            CashError::BalanceOverflow => write!(f, "balance overflow"),
             CashError::Db(e) => write!(f, "db error: {e}"),
         }
     }
@@ -37,8 +40,10 @@ impl std::fmt::Display for CashError {
 /// rejecting any debit that would leave a negative balance. Returns the new
 /// balance on success.
 ///
-/// The overdraw guard is enforced in SQL (`WHERE naquadah + $1 >= 0`) so the
-/// check and the write are atomic — important for the bid-hold path where two
+/// Both guards are enforced in SQL, in `bigint` arithmetic (`naquadah + $1`
+/// between 0 and the `integer` maximum), so the check and the write are
+/// atomic and a large credit is a named `BalanceOverflow` rather than an
+/// integer-overflow error from Postgres — important for the bid-hold path where two
 /// concurrent bids must not both pass a stale balance check. A `RETURNING`
 /// miss is disambiguated from a missing row by a follow-up existence probe so
 /// the caller gets `InsufficientFunds` vs `NoSuchPlayer` correctly.
@@ -51,8 +56,8 @@ pub async fn adjust_player_cash(
     delta: i64,
 ) -> Result<i64, CashError> {
     let updated = sqlx::query_scalar::<_, i64>(
-        "UPDATE sgw_player SET naquadah = naquadah + $1::int \
-         WHERE player_id = $2 AND naquadah + $1::int >= 0 \
+        "UPDATE sgw_player SET naquadah = (naquadah::bigint + $1)::integer \
+         WHERE player_id = $2 AND naquadah::bigint + $1 BETWEEN 0 AND 2147483647 \
          RETURNING naquadah::bigint",
     )
     .bind(delta)
@@ -74,7 +79,9 @@ pub async fn adjust_player_cash(
         .map_err(|e| CashError::Db(e.to_string()))?
         .is_some();
 
-    if exists {
+    if exists && delta > 0 {
+        Err(CashError::BalanceOverflow)
+    } else if exists {
         Err(CashError::InsufficientFunds)
     } else {
         Err(CashError::NoSuchPlayer)

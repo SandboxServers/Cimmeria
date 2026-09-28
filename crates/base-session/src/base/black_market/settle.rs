@@ -15,12 +15,11 @@
 
 use sqlx::PgConnection;
 
-use super::escrow::{deliver_from_escrow, Placed};
+use super::escrow::{deliver_from_escrow, is_seed_listing, Placed};
 use super::payout_mail::{
     send_mail_to_player, BM_SENDER_NAME, SOLD_BUYER_BODY, SOLD_BUYER_SUBJECT, SOLD_SELLER_BODY,
     SOLD_SELLER_SUBJECT, UNSOLD_BODY, UNSOLD_SUBJECT,
 };
-use super::seed::SYSTEM_SELLER_ID;
 use super::types::{auction_columns, auction_status, AuctionRow};
 
 /// Why an auction was settled.
@@ -57,8 +56,10 @@ pub struct SettledAuction {
 }
 
 /// Settle `live`, a row the caller has locked `FOR UPDATE` in this
-/// transaction and found `ACTIVE`. Returns `Ok(None)` if the conditional
-/// status write matched nothing (someone settled it first); the caller
+/// transaction and found `ACTIVE`. Returns `Ok(None)` if it cannot settle:
+/// the conditional status write matched nothing (someone settled it first),
+/// or a player's escrowed row is missing (`bm.escrow_missing`; the auction
+/// is left for an operator rather than paid out or duplicated). The caller
 /// then rolls back.
 pub async fn settle_locked(
     conn: &mut PgConnection,
@@ -79,7 +80,9 @@ pub async fn settle_locked(
                 BM_SENDER_NAME,
             )
             .await?;
-            let placed = deliver_from_escrow(conn, live, buyer_id, true).await?;
+            let Ok(placed) = deliver_from_escrow(conn, live, buyer_id, true).await? else {
+                return Ok(None);
+            };
             send_mail_to_player(
                 &mut *conn,
                 buyer_id,
@@ -91,15 +94,15 @@ pub async fn settle_locked(
                 BM_SENDER_NAME,
             )
             .await?;
-            (auction_status::SOLD, placed)
+            (auction_status::SOLD, Some(placed))
         }
         // A boot-seed listing has no instance and a reserved seller:
         // nothing to hand back.
-        None if live.item_id == 0 || live.seller_id == SYSTEM_SELLER_ID => {
-            (auction_status::EXPIRED, None)
-        }
+        None if is_seed_listing(live) => (auction_status::EXPIRED, None),
         None => {
-            let placed = deliver_from_escrow(conn, live, live.seller_id, true).await?;
+            let Ok(placed) = deliver_from_escrow(conn, live, live.seller_id, true).await? else {
+                return Ok(None);
+            };
             send_mail_to_player(
                 &mut *conn,
                 live.seller_id,
@@ -111,7 +114,7 @@ pub async fn settle_locked(
                 BM_SENDER_NAME,
             )
             .await?;
-            (auction_status::EXPIRED, placed)
+            (auction_status::EXPIRED, Some(placed))
         }
     };
 

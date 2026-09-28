@@ -16,7 +16,7 @@ use super::{
     cleanup, insert_account_and_player, insert_item, insert_item_in, inventory_count, item_state,
     ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::escrow::{deliver_from_escrow, list_into_escrow};
+use crate::base::black_market::escrow::{deliver_from_escrow, list_into_escrow, DeliveryRefused};
 use crate::base::black_market::helpers::{adjust_player_cash, CashError};
 use crate::base::black_market::payout_mail::send_mail_to_player;
 use crate::base::black_market::types::{auction_status, AuctionRow};
@@ -241,7 +241,11 @@ async fn delivery_mints_without_a_row_and_respects_full_bags() {
     let none = deliver_from_escrow(&mut conn, &auction_over(player, 0), player, false)
         .await
         .unwrap();
-    assert_eq!(none, None, "full bags refuse a delivery");
+    assert_eq!(
+        none,
+        Err(DeliveryRefused::BagFull),
+        "full bags refuse a delivery"
+    );
     let over = deliver_from_escrow(&mut conn, &auction_over(player, 0), player, true)
         .await
         .unwrap()
@@ -281,6 +285,61 @@ async fn send_mail_persists_cash_and_sender() {
             .unwrap();
     assert_eq!(cash, 555);
     assert_eq!(sender.as_deref(), Some("Black Market"));
+
+    cleanup(&pool, &[account_id], &[player]).await;
+}
+
+/// A player's listing whose container-18 row is gone is refused, never
+/// minted: otherwise anything that ever removed an escrowed row would let
+/// the sale or cancel hand out a second copy (authority review, BM-02).
+#[tokio::test]
+async fn delivery_refuses_a_player_listing_with_no_escrow_row() {
+    let pool = require_db_or_skip!();
+    let (account_id, seller) = (TEST_BASE + 850, TEST_BASE + 860);
+    cleanup(&pool, &[account_id], &[seller]).await;
+    insert_account_and_player(&pool, account_id, seller, 0).await;
+    let item = insert_item(&pool, seller, ITEM_DEF_ID).await;
+    let mut conn = pool.acquire().await.unwrap();
+    list_into_escrow(&mut conn, seller, item)
+        .await
+        .unwrap()
+        .unwrap();
+    sqlx::query("DELETE FROM sgw_inventory WHERE item_id = $1")
+        .bind(item)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+    let res = deliver_from_escrow(&mut conn, &auction_over(seller, item), seller, true)
+        .await
+        .unwrap();
+    assert_eq!(res, Err(DeliveryRefused::EscrowMissing));
+    drop(conn);
+    assert_eq!(inventory_count(&pool, seller).await, 0, "no copy was made");
+
+    cleanup(&pool, &[account_id], &[seller]).await;
+}
+
+/// A refund that would pass the `integer` maximum is a named
+/// `BalanceOverflow`, not a Postgres overflow error that fails every later
+/// bid on the auction (authority review, BM-02).
+#[tokio::test]
+async fn adjust_player_cash_refuses_a_credit_past_the_integer_maximum() {
+    let pool = require_db_or_skip!();
+    let (account_id, player) = (TEST_BASE + 870, TEST_BASE + 880);
+    cleanup(&pool, &[account_id], &[player]).await;
+    insert_account_and_player(&pool, account_id, player, i32::MAX - 5).await;
+
+    let mut conn = pool.acquire().await.unwrap();
+    let err = adjust_player_cash(&mut conn, player, 10)
+        .await
+        .expect_err("overflow must be refused");
+    assert_eq!(err, CashError::BalanceOverflow);
+    assert_eq!(
+        adjust_player_cash(&mut conn, player, 5).await,
+        Ok(i64::from(i32::MAX))
+    );
+    drop(conn);
 
     cleanup(&pool, &[account_id], &[player]).await;
 }
