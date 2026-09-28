@@ -260,7 +260,7 @@ mod tests {
     fn patch_hostname_accepts_typical_dns_names() {
         for good in &[
             "localhost",
-            "play.cimmeria.gg",
+            "play.cimmeria.app",
             "auth.example.com",
             "host-1.x",
         ] {
@@ -276,7 +276,7 @@ mod tests {
     fn needs_patching_flips_after_patch() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
         assert!(needs_patching(&data));
-        patch_hostname(&mut data, "play.cimmeria.gg").unwrap();
+        patch_hostname(&mut data, "play.cimmeria.app").unwrap();
         assert!(!needs_patching(&data));
     }
 
@@ -289,12 +289,12 @@ mod tests {
     fn patch_hostname_any_repatches_when_host_changes() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
         // First patch — original CME literal in the slot.
-        let off1 = patch_hostname_any(&mut data, "play.cimmeria.gg", None).unwrap();
+        let off1 = patch_hostname_any(&mut data, "play.cimmeria.app", None).unwrap();
         assert_eq!(off1, 40);
         assert!(
-            data.windows(b"play.cimmeria.gg".len())
-                .any(|w| w == b"play.cimmeria.gg"),
-            "first patch should have written play.cimmeria.gg"
+            data.windows(b"play.cimmeria.app".len())
+                .any(|w| w == b"play.cimmeria.app"),
+            "first patch should have written play.cimmeria.app"
         );
         assert!(
             !data
@@ -305,18 +305,18 @@ mod tests {
 
         // Second patch with a different host — must find the previously-
         // patched slot via the `previous_host` fallback.
-        let off2 =
-            patch_hostname_any(&mut data, "staging.cimmeria.gg", Some("play.cimmeria.gg")).unwrap();
+        let off2 = patch_hostname_any(&mut data, "staging.cimmeria.app", Some("play.cimmeria.app"))
+            .unwrap();
         assert_eq!(off2, 40, "should target the same .rdata offset");
         assert!(
-            data.windows(b"staging.cimmeria.gg".len())
-                .any(|w| w == b"staging.cimmeria.gg"),
-            "second patch should have written staging.cimmeria.gg"
+            data.windows(b"staging.cimmeria.app".len())
+                .any(|w| w == b"staging.cimmeria.app"),
+            "second patch should have written staging.cimmeria.app"
         );
         assert!(
             !data
-                .windows(b"play.cimmeria.gg".len())
-                .any(|w| w == b"play.cimmeria.gg"),
+                .windows(b"play.cimmeria.app".len())
+                .any(|w| w == b"play.cimmeria.app"),
             "old patched host should be gone after the re-patch"
         );
     }
@@ -336,30 +336,30 @@ mod tests {
     #[test]
     fn host_differs_false_when_slot_matches_expected() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
-        patch_hostname_any(&mut data, "play.cimmeria.gg", None).unwrap();
+        patch_hostname_any(&mut data, "play.cimmeria.app", None).unwrap();
         assert!(!host_differs(
             &data,
-            "play.cimmeria.gg",
-            Some("play.cimmeria.gg")
+            "play.cimmeria.app",
+            Some("play.cimmeria.app")
         ));
     }
 
     #[test]
     fn host_differs_true_when_binary_still_has_original() {
         let data = make_fake_exe(b"www.stargateworlds.com");
-        assert!(host_differs(&data, "play.cimmeria.gg", None));
+        assert!(host_differs(&data, "play.cimmeria.app", None));
     }
 
     #[test]
     fn host_differs_true_when_expected_changed() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
-        patch_hostname_any(&mut data, "play.cimmeria.gg", None).unwrap();
+        patch_hostname_any(&mut data, "play.cimmeria.app", None).unwrap();
         // User edits server_host to a new value — host_differs must report
         // the binary as out of sync.
         assert!(host_differs(
             &data,
-            "staging.cimmeria.gg",
-            Some("play.cimmeria.gg")
+            "staging.cimmeria.app",
+            Some("play.cimmeria.app")
         ));
     }
 
