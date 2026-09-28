@@ -12,6 +12,8 @@ last_updated: 2026-07-25
 
 ## Overview
 
+The player opens the lists in the **Social** window: the O key, or the Social button on the Access bar. The stock client ships that button with an empty handler; the client-patches overlay wires it to the same toggle as the O key (`crates/client-patches/overlay/`, `Access.lua`), so until the overlay is installed only the O key works.
+
 The contact list system manages player-curated lists of other players -- friends, ignore lists, and custom-named lists with configurable flags. It provides online/offline notifications for listed contacts and supports game event notifications (level-up, death, gate travel). The system is generic: rather than a hardcoded "friends list," it supports arbitrary named lists identified by integer IDs, each with a flags bitmask.
 
 The `ContactListManager` interface is defined in `entities/defs/interfaces/ContactListManager.def`. It is implemented by `SGWPlayer`. All list management methods (create, delete, rename, add/remove members) are exposed cell methods invoked by the client. Server-to-client notifications use client methods for list state sync and contact events.
