@@ -54,12 +54,15 @@ use super::super::ConnectedClientState;
 /// (yes, u16 — the trailing `propertyCount` byte gets folded into the
 /// class read; see the in-tree `phases::build_create_player` for the
 /// reference layout this mirrors).
+///
+/// The class byte is `info.class_id`, the class the client created the
+/// player with at login, as `phases::build_create_player` writes it.
 fn build_reanchor_burst_body(entity_id: u32, info: &WorldEntryInfo) -> Vec<u8> {
     let mut body = Vec::with_capacity(128);
     body.push(BASEMSG_CREATE_BASE_PLAYER);
     body.extend_from_slice(&6u16.to_le_bytes());
     body.extend_from_slice(&entity_id.to_le_bytes());
-    body.push(SGWPLAYER_CLASS_ID);
+    body.push(info.class_id);
     body.push(0x00); // propertyCount = 0
                      // Reanchor passes None for `load`: the appearance/tint replay is sent
                      // as separate packets after the burst (see `build_reanchor_packets`),
@@ -151,7 +154,7 @@ pub(crate) async fn handle_reanchor_player(
         .copied()
         .ok_or("Reanchor: no client addr for entity")?;
 
-    let (key, enc_version, pending_acks_arc, next_seq, appearance_args, tint_args) = {
+    let (key, enc_version, pending_acks_arc, next_seq, appearance_args, tint_args, class_id) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
@@ -163,18 +166,30 @@ pub(crate) async fn handle_reanchor_player(
             Arc::clone(&c.next_seq),
             c.cached_appearance_args.clone(),
             c.cached_tint_args.clone(),
+            c.player_class_id,
         )
     };
 
-    // Always SGWPlayer (0x02). gate_travel uses the same convention — the
-    // explicit note there is that SGWGmPlayer (0x03) shifts method indices.
+    // The class the client created the player with at login. A GM logs in
+    // as SGWGmPlayer (0x03); re-creating it as SGWPlayer (0x02) demoted the
+    // GM on every respawn. The old "0x03 shifts method indices" reason was
+    // disproved (play_character.rs: SGWGmPlayer only appends methods).
+    let class_id = class_id.unwrap_or_else(|| {
+        tracing::warn!(
+            entity_id,
+            %addr,
+            reason = "login_class_unknown",
+            "Reanchor: no login class cached for this session; re-creating as SGWPlayer"
+        );
+        SGWPLAYER_CLASS_ID
+    });
     let info = WorldEntryInfo {
         player_entity_id: entity_id,
         space_id,
         pos: position,
         rot: rotation,
         world_name: String::new(),
-        class_id: SGWPLAYER_CLASS_ID,
+        class_id,
         world_stargates: Vec::new(),
     };
 
@@ -226,12 +241,13 @@ pub(crate) async fn handle_reanchor_player(
     );
     if has_replay {
         tracing::info!(
-            entity_id, %addr, space_id, ?position,
+            entity_id, %addr, space_id, ?position, class_id,
             resent = "create_base_player,being_appearance,entity_tint",
-            // The cell re-registers the generic regions itself, right behind this
-            // burst (`cell::respawn` -> `send_client_hinted_regions`).
-            resent_by_cell = "generic_regions,inventory",
-            not_resent = "mission_log,abilities,stats",
+            // The cell queues the rest right behind this burst
+            // (`cell::respawn`: `send_client_hinted_regions`, the inventory
+            // snapshot, and `resync::resync_after_pawn_recreate`).
+            resent_by_cell = "generic_regions,inventory,level,state_field,stats,base_stats,\
+                              archetype,ability_tree,known_abilities,active_slot,missions",
             "Reanchor: sent CREATE_BASE_PLAYER burst + BeingAppearance + onEntityTint (no RESET_ENTITIES)"
         );
     } else {
@@ -247,6 +263,7 @@ pub(crate) async fn handle_reanchor_player(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mercury::SGWGMPLAYER_CLASS_ID;
 
     fn sample_info(entity_id: u32) -> WorldEntryInfo {
         WorldEntryInfo {
@@ -289,8 +306,8 @@ mod tests {
             "entity_id must be little-endian u32"
         );
         assert_eq!(
-            body[7], SGWPLAYER_CLASS_ID,
-            "class_id must be SGWPlayer (0x02) — SGWGmPlayer (0x03) shifts method indices"
+            body[7], info.class_id,
+            "class_id byte must be the info's (login) class"
         );
         assert_eq!(body[8], 0x00, "propertyCount byte must be 0");
 
@@ -304,20 +321,80 @@ mod tests {
         );
     }
 
-    /// Guard against accidental class_id changes leaking from auth context.
-    /// Even if a future caller plumbs `access_level` through, Reanchor must
-    /// continue to send SGWPlayer (0x02) — SGWGmPlayer (0x03) shifts method
-    /// indices and corrupts the client's entity table.
+    /// A GM's reanchor re-creates SGWGmPlayer (0x03), the class it logged in
+    /// with. Hard-coding SGWPlayer (0x02) demoted a GM on every respawn; the
+    /// "0x03 shifts method indices" reason for it was disproved
+    /// (`play_character.rs`).
     #[test]
-    fn build_reanchor_burst_body_always_uses_sgwplayer_class() {
+    fn build_reanchor_burst_body_writes_the_login_class() {
         let info = WorldEntryInfo {
-            class_id: 0x03, // pretend caller asked for SGWGmPlayer
+            class_id: SGWGMPLAYER_CLASS_ID,
             ..sample_info(99)
         };
         let body = build_reanchor_burst_body(99, &info);
         assert_eq!(
-            body[7], SGWPLAYER_CLASS_ID,
-            "class_id in the burst must hard-code SGWPlayer regardless of caller-supplied class"
+            body[7], SGWGMPLAYER_CLASS_ID,
+            "the burst must carry the login class, not a hard-coded SGWPlayer"
+        );
+    }
+
+    /// Fan-out byte test: a GM session (login class 0x03 cached on the
+    /// connected state) gets a reanchor burst that re-creates SGWGmPlayer,
+    /// byte for byte. Fails on the old handler, which always sent 0x02.
+    #[tokio::test]
+    async fn reanchor_keeps_the_gm_class_for_a_gm_session() {
+        use crate::test_support::{test_default_connected_client_state, TestTransport};
+
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let entity_id = 0x4322u32;
+        let space_id = 0x0001_0042u32;
+        let position = [1.0f32, 2.0, 3.0];
+        let addr: SocketAddr = "127.0.0.1:40201".parse().unwrap();
+
+        let mut gm = test_default_connected_client_state();
+        gm.player_class_id = Some(SGWGMPLAYER_CLASS_ID);
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::from([(addr, gm)])));
+
+        handle_reanchor_player(
+            entity_id,
+            space_id,
+            position,
+            [0.0; 3],
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await
+        .expect("reanchor must succeed");
+
+        let sent = transport.drain();
+        assert_eq!(sent.len(), 1, "burst only (no cached appearance)");
+        let info = WorldEntryInfo {
+            player_entity_id: entity_id,
+            space_id,
+            pos: position,
+            rot: [0.0; 3],
+            world_name: String::new(),
+            class_id: SGWGMPLAYER_CLASS_ID,
+            world_stargates: Vec::new(),
+        };
+        // Built by hand, not through `build_reanchor_burst_body`, so the
+        // expectation cannot inherit a class byte the handler got wrong.
+        let mut body = vec![BASEMSG_CREATE_BASE_PLAYER];
+        body.extend_from_slice(&6u16.to_le_bytes());
+        body.extend_from_slice(&entity_id.to_le_bytes());
+        body.push(SGWGMPLAYER_CLASS_ID);
+        body.push(0x00);
+        body.extend_from_slice(&build_enter_world_body(&info, None));
+        let plaintext = build_outgoing(REPLY_FLAGS, &body, Some(0), &[], None);
+        let expected = encrypt_packet(&plaintext, &[0u8; 32], EncryptionVersion::V1);
+        assert_eq!(
+            sent[0].1, expected,
+            "a GM's reanchor must re-create SGWGmPlayer (0x03), the login class"
         );
     }
 

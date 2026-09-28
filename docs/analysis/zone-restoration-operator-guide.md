@@ -152,6 +152,9 @@ Provisional (reconstructed, MEDIUM confidence) coordinates: the four CA00 respaw
 | B8 | Zuritska | Free her | Completes 702 once | Not complete, or completes twice |
 | B9 | Romney | Kill him | Completes 703 | Not complete |
 | B10 | Any hostile Castle mob | Kill it, wait 120 s | It respawns after about 120 s | Respawn time, or it never respawns |
+| B10a | The B10 mob | Stay in view while it respawns, then auto-target it | It stands up at its post and auto-targeting picks it | Whether it lay or floated on the floor; `.bug respawn pose` next to it |
+| B10b | Any Castle checkpoint | Die, respawn, press two hotbar abilities | Both fire; health and focus bars are full | Which ability did nothing, and the bar values |
+| B10c | Any Castle checkpoint (GM) | Die, respawn, use a GM `/` command | Still a GM; the command works | The command and the reply |
 | B11 | Interrogation Block | Walk in | Fires mission 702 step 2402. Region boxes now have ceilings, so watch for a box that does not fire | The exact spot where you crossed and nothing happened |
 | B12 | Communications room (Level 5) | Take Zuritska there, or enter the region | Zuritska follows to the room, or the step advances on region entry | Neither happened |
 | B13 | Communications terminal | Win its Livewire | Grants 5029 exactly once; delivering it starts 706 | Missing or granted twice |

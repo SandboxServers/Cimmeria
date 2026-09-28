@@ -91,6 +91,7 @@ pub(super) fn make_state() -> ConnectedClientState {
         player_name: Some("Tester".to_string()),
         player_level: Some(5),
         player_archetype: Some(1),
+        player_class_id: None,
         player_alignment: None,
         world_name: Some("Agnos".to_string()),
         player_xp: Some(0),

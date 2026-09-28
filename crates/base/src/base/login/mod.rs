@@ -223,6 +223,7 @@ pub(crate) async fn handle_login(
                 player_name: None,
                 player_level: None,
                 player_archetype: None,
+                player_class_id: None,
                 player_alignment: None,
                 world_name: None,
                 player_xp: None,

@@ -614,6 +614,9 @@ Castle, from the ring-platform arrival: respawn checkpoints, missions 701-708 (G
 | B8 | Free Zuritska | 702 completes once. | |
 | B9 | Kill Romney | 703 completes. | |
 | B10 | Kill a hostile Castle mob; wait | It respawns after about 120 s. | |
+| B10a | Stay in view while the B10 mob respawns; then auto-target it (Tab / auto-shoot) | It stands up at its post, not lying or floating on the floor, and auto-targeting picks it. | Lying on the floor = the respawn re-create did not reach you; `.bug respawn pose` next to it |
+| B10b | Die and respawn in Castle (any checkpoint); press two hotbar abilities; look at the health and focus bars | Both abilities fire and the bars are full. | Dead hotbar after a respawn was the 2026-09-28 playtest bug |
+| B10c | As a GM, die and respawn in Castle; then use a GM `/` command | You are still a GM: the `/` command works. | GM only |
 | B11 | Walk into the Interrogation Block | Fires 702 step 2402. | Region boxes have ceilings: report the spot if one does not fire |
 | B12 | Take Zuritska to the Communications room (Level 5), or enter the region | She follows there, or the step advances on region entry. | Comms-room placement provisional |
 | B13 | Win the Communications terminal's Livewire; deliver | Grants 5029 exactly once; delivery starts 706. | |

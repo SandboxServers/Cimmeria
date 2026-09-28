@@ -10,5 +10,6 @@
 - [navmesh-los-reliability.md](navmesh-los-reliability.md) — navmesh LoS vs collision geometry: 45% false Blocked; PRU desk (S11); rejected heuristics; no fire-time LoS until an occluder exists
 - [qr-direction-and-cover.md](qr-direction-and-cover.md) — python QR beta branches were inverted (NA32 swapped them); cover QR units from alias.xml; test new QR terms on damage
 - [colo-combat-forensics.md](colo-combat-forensics.md) — Proving combat playtest reports from SigNoz: onStatUpdate decoder shows Min not Current, zombie detector, beam race, corpse re-create
+- [respawn-reanchor-combat-state.md](respawn-reanchor-combat-state.md) — reanchor wipes client stats/archetype/tree (sent pre-reanchor, never after); auto-attack = interact idx 74; stale not_resent log
 - [same-space-target-gate.md](same-space-target-gate.md) — #906 cross-space cast gate in fire_los; Instanced="true" test fixtures split caster/target into separate spaces
 - [ability-range-units.md](ability-range-units.md) — ability ranges UE3 units -> metres (#919); caster_range_bounds choke point, player min_range (#1016), UseWeaponRange fallback (#1017)

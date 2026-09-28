@@ -138,7 +138,9 @@ async fn gm_respawn_requires_player_id() {
 #[tokio::test]
 async fn gm_respawn_runs_for_player() {
     let mut mgr = mgr_with_player(1, "Castle");
-    let (tx, mut rx) = mpsc::channel(16);
+    // Room for the whole same-world respawn burst: the sends await a
+    // bounded channel nothing drains until the dispatch returns.
+    let (tx, mut rx) = mpsc::channel(64);
 
     assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr, &test_engine()).await);
     // The respawn sequence always opens by closing the Defeat Window, so at
