@@ -36,6 +36,7 @@ mod target_validity;
 mod warmup;
 mod warmup_interrupt;
 mod weapon_grant;
+mod weapon_range;
 
 fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
     AbilityDef {

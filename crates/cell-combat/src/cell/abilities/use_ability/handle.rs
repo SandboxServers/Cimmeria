@@ -11,7 +11,7 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
-    ability_range_bounds, serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE,
+    caster_range_bounds, serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE,
     AF_DO_NOT_ACTIVATE_AUTO_CYCLE, TIMER_ABILITY_COOLDOWN,
 };
 
@@ -281,9 +281,10 @@ pub async fn handle_use_ability(
                 }
                 // Range check, in metres: the loader converted the
                 // ability's UE3-unit ranges (#919). A player is also held
-                // to the ability's `min_range` (#1016). See `cast_range`.
+                // to the ability's `min_range` (#1016), and a `UseWeaponRange`
+                // ability to its weapon's reach (#1017). See `cast_range`.
                 out_of_range = super::cast_range::check_cast_range(
-                    ability_range_bounds(ability_def.as_ref()),
+                    caster_range_bounds(ability_def.as_ref(), entity, &space_mgr.weapon_ranges),
                     entity.position.distance_to(&target.position),
                     entity.is_player,
                 );

@@ -34,3 +34,53 @@ async fn auto_cycle_tick_skips_a_target_inside_min_range_silently() {
 
     assert_skipped_silently(&mgr, &mut rx);
 }
+
+/// #1017: a `UseWeaponRange` auto-attack with a 40 m weapon keeps firing at
+/// a target 35 m away. Revert proof: with the flag ignored the pre-gate
+/// uses the ability's 30 m and skips the target, so nothing fires.
+#[tokio::test]
+async fn auto_cycle_tick_uses_the_weapons_reach_for_a_weapon_range_ability() {
+    use cimmeria_entity::abilities::{WeaponRanges, AF_USE_WEAPON_RANGE};
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_auto_cycle_mgr();
+    {
+        let def = mgr.ability_defs.get_mut(&7).unwrap();
+        def.flags |= AF_USE_WEAPON_RANGE;
+        def.is_ranged = true;
+        def.max_range = 0.0;
+    }
+    mgr.weapon_ranges.insert(
+        3287,
+        WeaponRanges {
+            min_ranged: 2.0,
+            max_ranged: 40.0,
+            min_melee: 0.0,
+            max_melee: 2.0,
+        },
+    );
+    {
+        let p = mgr.get_entity_mut(1).unwrap();
+        p.active_bandolier_slot = 0;
+        p.bandolier_items.insert(
+            0,
+            BandolierItem {
+                instance_id: 77,
+                item_id: 3287,
+                clip_size: 30,
+                default_ammo_type: 0,
+                current_ammo: 30,
+                cur_ammo_type: 0,
+            },
+        );
+    }
+    mgr.get_entity_mut(50).unwrap().position = cimmeria_common::Vector3::new(35.0, 0.0, 0.0);
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    assert!(
+        mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+        "the 40 m weapon reaches 35 m: the tick must re-fire"
+    );
+}

@@ -183,9 +183,12 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // range. Loop stays armed so walking back into range
             // resumes firing on the next tick.
             // Inside the ability's `min_range` is skipped the same way
-            // (#1016).
-            let bounds = cimmeria_entity::abilities::ability_range_bounds(
+            // (#1016), and a `UseWeaponRange` ability uses the active
+            // weapon's reach (#1017).
+            let bounds = cimmeria_entity::abilities::caster_range_bounds(
                 space_mgr.ability_defs.get(&ability_id),
+                e,
+                &space_mgr.weapon_ranges,
             );
             if let Some(t) = target {
                 if bounds

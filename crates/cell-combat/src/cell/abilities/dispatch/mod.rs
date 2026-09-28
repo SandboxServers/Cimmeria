@@ -120,20 +120,32 @@ pub async fn handle_use_ability_on_ground(
     let targets = collect_ground_targets(space_mgr, entity_id, attacker_space, ground, radius_sq);
 
     // Primary range check: the closest target must also be within the
-    // ability's own `max_range` from the attacker, otherwise
-    // handle_use_ability bails before the cooldown starts and the player
-    // can spam-click. Falling back to target_id = 0 keeps the
+    // range `handle_use_ability` will check (the ability's, or the weapon's
+    // for `UseWeaponRange`, #1017; a player's `min_range` too, #1016),
+    // otherwise handle_use_ability bails before the cooldown starts and the
+    // player can spam-click. Falling back to target_id = 0 keeps the
     // cooldown/ammo charge in that case.
-    let max_range = cimmeria_entity::abilities::ability_max_range(ability_def.as_ref());
+    let bounds = space_mgr.get_entity(entity_id).map(|attacker| {
+        cimmeria_entity::abilities::caster_range_bounds(
+            ability_def.as_ref(),
+            attacker,
+            &space_mgr.weapon_ranges,
+        )
+    });
+    let max_range = bounds.map_or(0.0, |b| b.max);
 
     let primary_in_range = targets.first().is_some_and(|&(target_eid, _)| {
         match (
             space_mgr.get_entity(entity_id),
             space_mgr.get_entity(target_eid),
+            bounds,
         ) {
-            (Some(attacker), Some(target)) => {
-                attacker.position.distance_to(&target.position) <= max_range
-            }
+            (Some(attacker), Some(target), Some(bounds)) => bounds
+                .refusal(
+                    attacker.position.distance_to(&target.position),
+                    attacker.is_player,
+                )
+                .is_none(),
             _ => false,
         }
     });

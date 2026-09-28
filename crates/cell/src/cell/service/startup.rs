@@ -362,6 +362,14 @@ impl CellService {
                     tracing::warn!("Failed to load item defs: {e}");
                 }
             }
+            match spawner::load_weapon_ranges(pool).await {
+                Ok(map) => {
+                    space_mgr.weapon_ranges = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load weapon ranges: {e}");
+                }
+            }
             match spawner::load_loot_tables(pool).await {
                 Ok(tables) => {
                     space_mgr.loot_tables = tables;

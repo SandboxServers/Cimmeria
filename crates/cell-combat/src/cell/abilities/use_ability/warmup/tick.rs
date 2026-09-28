@@ -171,9 +171,14 @@ async fn fire_time_refusal(
     }
 
     // Same range rule as the launch check in `handle_use_ability`,
-    // `min_range` included for a player (#1016).
+    // `min_range` included for a player (#1016) and the weapon's reach for a
+    // `UseWeaponRange` ability (#1017).
     if let Some(failure) = super::super::cast_range::check_cast_range(
-        cimmeria_entity::abilities::ability_range_bounds(ability_def),
+        cimmeria_entity::abilities::caster_range_bounds(
+            ability_def,
+            caster,
+            &space_mgr.weapon_ranges,
+        ),
         caster.position.distance_to(&target.position),
         caster.is_player,
     ) {

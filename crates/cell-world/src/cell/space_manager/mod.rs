@@ -271,6 +271,13 @@ pub struct SpaceManager {
     /// GrantItem path to seed bandolier slots when a weapon is granted at
     /// runtime, so the client renders the correct empty magazine.
     pub item_defs: HashMap<i32, super::spawner::WeaponDef>,
+    /// Weapon reach in metres, keyed by item design id, for every item with a
+    /// non-zero range (`spawner::load_weapon_ranges`). Read through
+    /// `cimmeria_entity::abilities::caster_range_bounds` for abilities flagged
+    /// `UseWeaponRange` (#1017). Separate from `item_defs`, which holds only
+    /// `clip_size > 0` rows: most seeded weapons (every Jaffa staff) have
+    /// clip 0 but a real reach.
+    pub weapon_ranges: HashMap<i32, cimmeria_entity::abilities::WeaponRanges>,
     /// Loot tables: loot_table_id → entries.
     /// Loaded from `resources.loot` at startup for NPC death loot generation.
     pub loot_tables: HashMap<i32, Vec<super::spawner::LootTableEntry>>,
@@ -498,6 +505,7 @@ impl SpaceManager {
             trainer_abilities: HashMap::new(),
             template_trainer_lists: HashMap::new(),
             item_defs: HashMap::new(),
+            weapon_ranges: HashMap::new(),
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
             spawn_templates: HashMap::new(),

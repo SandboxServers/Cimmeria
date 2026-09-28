@@ -20,9 +20,14 @@
 //! 100, and 3000 is the 30 m server default below.
 //!
 //! Weapon ranges are **not** in these units: `resources.items`
-//! `*_ranged_range` / `*_melee_range` are already metres (30, 2, 3).
+//! `*_ranged_range` / `*_melee_range` are already metres (30, 2, 3), and
+//! an ability flagged `UseWeaponRange` takes its bounds from them
+//! ([`ability_range_bounds`], #1017).
 
-use super::AbilityDef;
+use std::collections::HashMap;
+
+use super::{AbilityDef, AF_USE_WEAPON_RANGE};
+use crate::cell_entity::CellEntity;
 
 /// UE3 units per BigWorld metre in ability `MinRange` / `MaxRange` data.
 /// The client's own conversion constant is `BW_TO_UE3_SCALE = 100.0`
@@ -51,20 +56,75 @@ impl AbilityDef {
     }
 }
 
-/// [`AbilityDef::max_range_or_default`] for an optional def: an unknown
-/// ability gets [`DEFAULT_ABILITY_MAX_RANGE`].
-pub fn ability_max_range(def: Option<&AbilityDef>) -> f32 {
-    ability_range_bounds(def).max
+/// The reach, in metres, of a cast of `def` with `weapon` equipped: the
+/// `max` of [`ability_range_bounds`]. An unknown ability gets
+/// [`DEFAULT_ABILITY_MAX_RANGE`].
+pub fn ability_max_range(def: Option<&AbilityDef>, weapon: Option<&WeaponRanges>) -> f32 {
+    ability_range_bounds(def, weapon).max
+}
+
+/// An item's weapon reach, in metres, from `resources.items`
+/// `min_ranged_range` / `max_ranged_range` / `min_melee_range` /
+/// `max_melee_range`. These are already metres (30 / 35 / 40, melee 2 / 3)
+/// and are never converted: the cooked items' `RangeRanges` / `MeleeRanges`
+/// carry the same numbers.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct WeaponRanges {
+    pub min_ranged: f32,
+    pub max_ranged: f32,
+    pub min_melee: f32,
+    pub max_melee: f32,
+}
+
+impl WeaponRanges {
+    /// The `(min, max)` pair for a ranged or a melee ability, the choice the
+    /// client's getter makes on the ability's `IsRanged` (`FUN_00d29da0`) and
+    /// python's `getWeaponRange(self.ability.ranged)`. `None` when the weapon
+    /// has no reach of that kind (`max` 0), which falls back to the
+    /// ability's own range like the `0` sentinel does.
+    pub fn for_kind(&self, ranged: bool) -> Option<(f32, f32)> {
+        let (min, max) = if ranged {
+            (self.min_ranged, self.max_ranged)
+        } else {
+            (self.min_melee, self.max_melee)
+        };
+        (max > 0.0).then_some((min.max(0.0), max))
+    }
+}
+
+/// Where a cast's [`RangeBounds`] came from (logged with a refusal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeSource {
+    /// The ability's own `min_range` / `max_range`.
+    Ability,
+    /// The equipped weapon's reach (`UseWeaponRange`, #1017).
+    Weapon,
+    /// `UseWeaponRange`, but no weapon with a reach of the ability's kind is
+    /// equipped: the ability's own range applies (#1017).
+    AbilityNoWeapon,
+}
+
+impl RangeSource {
+    /// The `range_source=` value of a log row.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ability => "ability",
+            Self::Weapon => "weapon",
+            Self::AbilityNoWeapon => "ability_no_weapon",
+        }
+    }
 }
 
 /// The distances, in metres, a targeted cast may reach: at least `min`, at
 /// most `max`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RangeBounds {
-    /// The ability's `min_range`; `0` means no minimum.
+    /// The minimum; `0` means none.
     pub min: f32,
-    /// The ability's reach ([`AbilityDef::max_range_or_default`]).
+    /// The reach.
     pub max: f32,
+    /// Ability data or the weapon's.
+    pub source: RangeSource,
 }
 
 /// Why a target's distance fails a cast's [`RangeBounds`]. Both get the same
@@ -105,13 +165,62 @@ impl RangeBounds {
     }
 }
 
-/// The range bounds of a cast of `def`, in metres. An unknown ability has no
-/// minimum and the default reach.
-pub fn ability_range_bounds(def: Option<&AbilityDef>) -> RangeBounds {
-    RangeBounds {
+/// The range bounds of a cast of `def` with `weapon` equipped, in metres.
+/// The single place every targeted-cast range check resolves its numbers.
+///
+/// - An ability flagged [`AF_USE_WEAPON_RANGE`] (4) takes both bounds from
+///   the equipped weapon, ranged or melee by the ability's `is_ranged` (the
+///   client's getters `FUN_00d29e00` / `FUN_00d29e30`, python
+///   `AbilityManager.py:555`). #1017.
+/// - With no weapon, or a weapon with no reach of that kind, it falls back
+///   to the ability's own range. Python has no deliberate answer (its
+///   player path would raise on `getActiveItem().type`, and its mobs always
+///   had a template weapon); here NPCs and pets carry no weapon item, and
+///   every seeded NPC attack (592 included) carries the flag, so refusing
+///   would disarm every NPC.
+/// - Otherwise the ability's `min_range` and
+///   [`AbilityDef::max_range_or_default`]. An unknown ability has no
+///   minimum and the default reach.
+pub fn ability_range_bounds(
+    def: Option<&AbilityDef>,
+    weapon: Option<&WeaponRanges>,
+) -> RangeBounds {
+    let own = |source| RangeBounds {
         min: def.map_or(0.0, |d| d.min_range.max(0.0)),
         max: def.map_or(DEFAULT_ABILITY_MAX_RANGE, AbilityDef::max_range_or_default),
+        source,
+    };
+    let Some(d) = def.filter(|d| d.flags & AF_USE_WEAPON_RANGE != 0) else {
+        return own(RangeSource::Ability);
+    };
+    match weapon.and_then(|w| w.for_kind(d.is_ranged)) {
+        Some((min, max)) => RangeBounds {
+            min,
+            max,
+            source: RangeSource::Weapon,
+        },
+        None => own(RangeSource::AbilityNoWeapon),
     }
+}
+
+/// The reach of the weapon in `entity`'s active bandolier slot, looked up
+/// by its design id in `table` (`SpaceManager::weapon_ranges`). `None` for
+/// an empty slot, an NPC or pet (no bandolier), or an item with no reach.
+pub fn active_weapon_ranges<'a>(
+    entity: &CellEntity,
+    table: &'a HashMap<i32, WeaponRanges>,
+) -> Option<&'a WeaponRanges> {
+    let item = entity.bandolier_items.get(&entity.active_bandolier_slot)?;
+    table.get(&item.item_id)
+}
+
+/// [`ability_range_bounds`] for `caster`, with its active weapon.
+pub fn caster_range_bounds(
+    def: Option<&AbilityDef>,
+    caster: &CellEntity,
+    weapons: &HashMap<i32, WeaponRanges>,
+) -> RangeBounds {
+    ability_range_bounds(def, active_weapon_ranges(caster, weapons))
 }
 
 /// The radius, in metres, of a `TCM_AERadius` effect's `tcm_param1` tier,
@@ -168,7 +277,7 @@ mod tests {
     fn zero_max_range_uses_the_default() {
         assert_eq!(def(0.0).max_range_or_default(), DEFAULT_ABILITY_MAX_RANGE);
         assert_eq!(def(8.0).max_range_or_default(), 8.0);
-        assert_eq!(ability_max_range(None), DEFAULT_ABILITY_MAX_RANGE);
+        assert_eq!(ability_max_range(None, None), DEFAULT_ABILITY_MAX_RANGE);
     }
 
     /// #1016: a 3 m minimum refuses a player at 1 m and allows one at 5 m.
@@ -177,12 +286,75 @@ mod tests {
     fn min_range_refuses_a_player_inside_it() {
         let mut turret = def(30.0);
         turret.min_range = 3.0;
-        let bounds = ability_range_bounds(Some(&turret));
+        let bounds = ability_range_bounds(Some(&turret), None);
         assert_eq!(bounds.refusal(1.0, true), Some(RangeRefusal::TooClose));
         assert_eq!(bounds.refusal(5.0, true), None);
         assert_eq!(bounds.refusal(31.0, true), Some(RangeRefusal::TooFar));
         assert_eq!(bounds.refusal(1.0, false), None, "NPCs keep their own rule");
-        assert_eq!(ability_range_bounds(None).min, 0.0);
+        assert_eq!(ability_range_bounds(None, None).min, 0.0);
+    }
+
+    /// A 40 m rifle: ranged 2-40 m, melee 0-2 m.
+    const RIFLE: WeaponRanges = WeaponRanges {
+        min_ranged: 2.0,
+        max_ranged: 40.0,
+        min_melee: 0.0,
+        max_melee: 2.0,
+    };
+
+    fn weapon_ranged_ability() -> AbilityDef {
+        let mut d = def(0.0);
+        d.flags = AF_USE_WEAPON_RANGE;
+        d
+    }
+
+    /// #1017: a `UseWeaponRange` ability with a 40 m weapon is in range at
+    /// 35 m and refused at 45 m. Revert proof: with the flag ignored the
+    /// ability's own 30 m default refuses 35 m.
+    #[test]
+    fn use_weapon_range_takes_the_weapons_reach() {
+        let b = ability_range_bounds(Some(&weapon_ranged_ability()), Some(&RIFLE));
+        assert_eq!((b.min, b.max, b.source), (2.0, 40.0, RangeSource::Weapon));
+        assert_eq!(b.refusal(35.0, true), None);
+        assert_eq!(b.refusal(45.0, true), Some(RangeRefusal::TooFar));
+        assert_eq!(b.refusal(1.0, true), Some(RangeRefusal::TooClose));
+    }
+
+    #[test]
+    fn a_melee_weapon_range_ability_takes_the_melee_pair() {
+        let mut melee = weapon_ranged_ability();
+        melee.is_ranged = false;
+        let b = ability_range_bounds(Some(&melee), Some(&RIFLE));
+        assert_eq!((b.min, b.max), (0.0, 2.0));
+    }
+
+    /// No weapon, or a weapon with no reach of the ability's kind: the
+    /// ability's own range applies.
+    #[test]
+    fn use_weapon_range_without_a_weapon_falls_back_to_the_ability() {
+        let mut d = weapon_ranged_ability();
+        d.max_range = 8.0;
+        let b = ability_range_bounds(Some(&d), None);
+        assert_eq!(
+            (b.min, b.max, b.source),
+            (0.0, 8.0, RangeSource::AbilityNoWeapon)
+        );
+        let melee_only = WeaponRanges {
+            max_melee: 2.0,
+            ..WeaponRanges::default()
+        };
+        let b = ability_range_bounds(Some(&d), Some(&melee_only));
+        assert_eq!((b.max, b.source), (8.0, RangeSource::AbilityNoWeapon));
+    }
+
+    /// An unflagged ability ignores the weapon.
+    #[test]
+    fn an_unflagged_ability_ignores_the_weapon() {
+        let b = ability_range_bounds(Some(&def(0.0)), Some(&RIFLE));
+        assert_eq!(
+            (b.max, b.source),
+            (DEFAULT_ABILITY_MAX_RANGE, RangeSource::Ability)
+        );
     }
 
     #[test]
