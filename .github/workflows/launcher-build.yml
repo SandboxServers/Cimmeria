@@ -18,7 +18,7 @@ on:
 
 concurrency:
   group: launcher-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -58,6 +58,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: launcher-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo clippy
         run: cargo clippy -p sgw-launcher --all-targets -- -D warnings
 
@@ -73,6 +74,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: launcher-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo build
         run: cargo build -p sgw-launcher --all-targets
 
@@ -88,6 +90,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: launcher-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install nextest
         uses: taiki-e/install-action@nextest
       - name: cargo nextest run
@@ -126,6 +129,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: launcher-coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: install nextest

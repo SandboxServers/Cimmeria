@@ -419,7 +419,7 @@ The script runs `cargo nextest run --profile=ci-live-db --lib` once over every c
 
 ### CI (every PR)
 
-`.github/workflows/test.yml` defines six jobs. Five gate merge: `fmt`, `clippy`, `build`, `test` (workspace, no DB, nextest), `test-live-db` (postgres:17.9 service container, nextest). The sixth, `coverage` (`cargo llvm-cov` over a no-DB workspace pass plus a live-DB pass through `tools/test-live-db.sh --llvm-cov`), is `continue-on-error: true` — its artifact and summary are advisory, so a coverage-tool flake never blocks a merge. Nextest's JUnit XML output from the `test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
+`.github/workflows/test.yml` defines its jobs behind a `changes` job, which skips them (reported as passed) when a PR changes only Markdown, `.claude/` or images under `docs/`; `docs/protocol/` always runs because tests read the dispatch tables. Four jobs gate merge: `fmt`, `clippy`, `build-and-test` (`cargo build --all-targets`, then the workspace nextest pass without a DB on the same artifacts), `test-live-db` (postgres:17.9 service container, nextest). The sixth, `coverage` (`cargo llvm-cov` over a no-DB workspace pass plus a live-DB pass through `tools/test-live-db.sh --llvm-cov`), is `continue-on-error: true` — its artifact and summary are advisory, so a coverage-tool flake never blocks a merge. Nextest's JUnit XML output from the `build-and-test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
 
 ---
 
