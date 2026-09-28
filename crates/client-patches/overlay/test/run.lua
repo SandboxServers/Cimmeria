@@ -452,6 +452,61 @@ scenario('CimmeriaBMNative registered after the file loaded is found at open and
     eq(row(env, 'Search', 1, 'TCText'):getText(), '', 'TC blank when techCompetency returns nil (D7 fallback)')
 end)
 
+scenario('form input reaches the native as whole INT32 numbers and short strings', function()
+    -- CimmeriaBMNative refuses "5", 2.5 and out-of-range numbers (bad_args),
+    -- and strings over 255 UTF-8 bytes.
+    local function isInt( v ) return type(v) == 'number' and v == math.floor(v) and v >= -2147483648 and v <= 2147483647 end
+    local env = newClient()
+    env.CimmeriaBM.onOpen(4242)
+    tick(env, 5)
+    env.BlackMarket_SearchItemText:setText(string.rep('z', 300))
+    env.BlackMarket_MinTC:setText('2.5')
+    env.BlackMarket_MaxTC:setText('9e99')
+    click(env, 'BlackMarket_SearchButton')
+    local o = lastCall(env).args[1]
+    eq(string.len(o.itemName), 85, 'item-name filter trimmed')
+    eq(o.minTC, 2, 'fractional minTC floored'); eq(o.maxTC, 0, 'out-of-range maxTC dropped')
+    for k, v in pairs(o) do
+        if type(v) ~= 'string' and type(v) ~= 'boolean' then
+            ok(isInt(v), 'search.'..k..' is not a whole INT32: '..tostring(v))
+        end
+    end
+
+    env.CimmeriaBM.onAuctions(items(1, 2), 2, 0)
+    row(env, 'Search', 2):fire('EventMouseButtonDown')
+    env.BlackMarket_NewBidText:setText('25.9')
+    click(env, 'BlackMarket_SearchBidButton')
+    eq(lastCall(env).op, 'bid', 'bid sent'); eq(lastCall(env).args[2], 25, 'fractional bid floored')
+    env.CimmeriaBM.onError(5)
+    env.BlackMarket_NewBidText:setText('1e12')
+    local before = callCount(env)
+    click(env, 'BlackMarket_SearchBidButton')
+    eq(callCount(env), before, 'out-of-range bid not sent')
+    eq(status(env), 'Your bid must be at least 21.', 'out-of-range bid refused locally')
+
+    env.bags['1:1'] = { itemId = 900, itemDefId = 130, qty = 1 }
+    env.drag = { env.UIDragType.Item, { container = 1, slot = 1 } }
+    env.BlackMarket_Tab2:fire('EventDragDropItemDropped')
+    env.BlackMarket_NewAuctionBidText:setText('100.7')
+    env.BlackMarket_NewAuctionBuyoutText:setText('-5')
+    env.BlackMarket_NewAuctionBuyoutText:fire('EventTextChanged')
+    eq(env.BlackMarket_CreateButton.enabled, false, 'negative buyout disables Create')
+    env.BlackMarket_NewAuctionBuyoutText:setText('abc')
+    env.BlackMarket_NewAuctionBuyoutText:fire('EventTextChanged')
+    eq(env.BlackMarket_CreateButton.enabled, false, 'non-numeric buyout disables Create')
+    env.BlackMarket_NewAuctionBuyoutText:setText('')
+    env.BlackMarket_NewAuctionBuyoutText:fire('EventTextChanged')
+    eq(env.BlackMarket_CreateButton.enabled, true, 'no buyout is allowed')
+    click(env, 'BlackMarket_CreateButton')
+    local call = lastCall(env)
+    eq(call.op, 'create', 'create sent')
+    eq(call.args[2], 100, 'fractional start floored'); eq(call.args[3], 0, 'no buyout is 0')
+    for i = 1, 4 do
+        ok(isInt(call.args[i]), 'create arg '..i..' is not a whole INT32: '..tostring(call.args[i]))
+    end
+    ok(call.args[4] >= 1 and call.args[4] <= 5, 'auctionLength in 1..5')
+end)
+
 scenario('a refused send says why and re-enables the button', function()
     local env = newClient()
     env.CimmeriaBMNative.reply.search = { nil, 'offline' }
