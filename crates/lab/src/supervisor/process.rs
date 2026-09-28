@@ -3,6 +3,15 @@
 //! liveness/exit checks, terminate, and top-level-window resolution by
 //! PID (for `lab_screenshot`).
 //!
+//! **The launch goes through the i686 `sgw-start32` helper** (#985). The
+//! supervisor is 64-bit and `SGW.exe` is 32-bit, and an injection across
+//! bitness cannot work: the remote thread would be handed the supervisor's
+//! own `LoadLibraryW`, and a suspended WOW64 target has no 32-bit kernel32
+//! mapped yet anyway. `inject_dll` refuses it with `BitnessMismatch`. The
+//! helper does the suspended launch and the injection at the target's
+//! bitness, exactly as `sgw-launcher` does since #984; the contract is in
+//! `crates/client-launch/README.md`.
+//!
 //! Everything is keyed on the **PID** rather than a retained kernel
 //! handle: a PID is `Copy`/`Send`, so the supervisor state and the
 //! background watchdog can be `Send`/`Sync` without wrapping a raw
@@ -11,6 +20,33 @@
 //! The Win32 calls are integration-only and need live validation. The
 //! window-selection *policy* ([`pick_window`]) is pure and unit-tested;
 //! the `EnumWindows` walk only gathers candidates and hands them to it.
+
+use std::path::{Path, PathBuf};
+
+use cimmeria_client_launch::start32::{Request, Target, HELPER_EXE_NAME};
+
+/// Where the `sgw-start32` helper is: `override_path` (the
+/// `CIMMERIA_LAB_START32` environment variable) when set, else
+/// `sgw-start32.exe` beside the supervisor's own executable, the one
+/// stable place the client-launch contract asks a separately shipped caller
+/// to keep it. `None` only when neither is known.
+pub fn resolve_helper(override_path: Option<PathBuf>, exe_dir: Option<&Path>) -> Option<PathBuf> {
+    override_path.or_else(|| exe_dir.map(|d| d.join(HELPER_EXE_NAME)))
+}
+
+/// The helper request for one supervised launch: start `exe` suspended in
+/// `install_dir`, inject the bridge DLL (the only DLL), resume. Pure so the
+/// command line the helper receives is testable without Windows.
+pub fn launch_request(install_dir: &Path, exe: &Path, dll_path: &Path) -> Request {
+    Request {
+        target: Target::Spawn {
+            exe: exe.to_path_buf(),
+            cwd: Some(install_dir.to_path_buf()),
+            args: Vec::new(),
+        },
+        dlls: vec![dll_path.to_path_buf()],
+    }
+}
 
 /// A top-level window candidate gathered during the `EnumWindows` walk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,8 +72,12 @@ pub fn pick_window(candidates: &[WindowCandidate], target_pid: u32) -> Option<is
 
 #[cfg(windows)]
 mod win {
-    use super::{pick_window, WindowCandidate};
+    use super::{launch_request, pick_window, WindowCandidate, HELPER_EXE_NAME};
     use std::path::Path;
+
+    use cimmeria_client_launch::inject::RunningProcess;
+    use cimmeria_client_launch::launch::checked_sgw_exe;
+    use cimmeria_client_launch::start32;
 
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::{
@@ -50,12 +90,36 @@ mod win {
 
     const STILL_ACTIVE: u32 = 259;
 
-    /// Launch SGW.exe with the (lab-bridge) telemetry DLL injected and
-    /// return its PID. The session file must already be written (the DLL
-    /// reads it during `DllMain`).
-    pub fn launch(install_dir: &Path, dll_path: &Path) -> Result<u32, String> {
-        cimmeria_client_launch::launch::launch_sgw_with_telemetry(install_dir, dll_path)
-            .map_err(|e| format!("launch+inject: {e}"))
+    /// Launch SGW.exe with the (lab-bridge) telemetry DLL injected, through
+    /// the i686 `helper`, and return its PID. The session file must already
+    /// be written (the DLL reads it during `DllMain`).
+    ///
+    /// A failed injection comes back as the helper's `error kind=...` line;
+    /// the helper has already terminated the suspended process by then.
+    pub fn launch(install_dir: &Path, dll_path: &Path, helper: &Path) -> Result<u32, String> {
+        let (dir, exe) = checked_sgw_exe(install_dir).map_err(|e| format!("launch: {e}"))?;
+        if !dll_path.is_file() {
+            return Err(format!(
+                "launch: bridge DLL not found at {}",
+                dll_path.display()
+            ));
+        }
+        if !helper.is_file() {
+            return Err(format!(
+                "launch: {HELPER_EXE_NAME} not found at {}; build it with `cargo build -p \
+                 cimmeria-start32 --target i686-pc-windows-msvc` and put it beside \
+                 cimmeria-lab.exe, or set CIMMERIA_LAB_START32",
+                helper.display()
+            ));
+        }
+        let pid = start32::run(helper, &launch_request(&dir, &exe, dll_path))
+            .map_err(|e| format!("launch+inject via {HELPER_EXE_NAME}: {e}"))?;
+        // The helper exits as soon as the game is resumed. Opening the pid
+        // confirms it names a process this supervisor can follow before the
+        // pid is recorded; liveness after that is `is_alive`.
+        RunningProcess::open(pid)
+            .map_err(|e| format!("started SGW.exe (pid {pid}) but could not open it: {e}"))?;
+        Ok(pid)
     }
 
     /// Whether a PID is still running.
@@ -121,7 +185,7 @@ pub use win::{find_main_window, is_alive, launch, terminate};
 // and the portable supervisor tests still run. The lab only runs on the
 // owner's Windows box.
 #[cfg(not(windows))]
-pub fn launch(_install_dir: &std::path::Path, _dll_path: &std::path::Path) -> Result<u32, String> {
+pub fn launch(_install_dir: &Path, _dll_path: &Path, _helper: &Path) -> Result<u32, String> {
     Err("process launch is Windows-only".to_string())
 }
 #[cfg(not(windows))]
@@ -146,6 +210,110 @@ mod tests {
             visible,
             title_len,
         }
+    }
+
+    /// #985: the supervised launch asks the helper to spawn SGW.exe in the
+    /// install dir with exactly the bridge DLL. The command line pins the
+    /// contract (`spawn <exe> --cwd <dir> --dll <path>`) the i686 helper
+    /// parses, so a drift in how the lab builds the request shows here.
+    #[test]
+    fn the_launch_request_spawns_sgw_in_the_install_dir_with_the_bridge_dll() {
+        let install = Path::new("C:/SGW");
+        let exe = Path::new("C:/SGW/SGW.exe");
+        let dll = Path::new("C:/lab/cimmeria-client-telemetry.dll");
+        let req = launch_request(install, exe, dll);
+        assert_eq!(req.dlls, vec![dll.to_path_buf()]);
+        let args: Vec<String> = req
+            .to_args()
+            .into_iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "spawn",
+                "C:/SGW/SGW.exe",
+                "--cwd",
+                "C:/SGW",
+                "--dll",
+                "C:/lab/cimmeria-client-telemetry.dll"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_helper_is_the_override_else_beside_the_supervisor() {
+        let dir = Path::new("C:/tools");
+        assert_eq!(
+            resolve_helper(None, Some(dir)),
+            Some(dir.join("sgw-start32.exe"))
+        );
+        let custom = PathBuf::from("D:/build/sgw-start32.exe");
+        assert_eq!(
+            resolve_helper(Some(custom.clone()), Some(dir)),
+            Some(custom)
+        );
+        assert_eq!(resolve_helper(None, None), None);
+    }
+
+    /// A missing helper is refused with a message that says how to get one,
+    /// before anything is started (Windows only: elsewhere launch is a stub).
+    #[cfg(windows)]
+    #[test]
+    fn a_missing_helper_is_refused_before_anything_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"MZ").unwrap();
+        let dll = dir.path().join("bridge.dll");
+        std::fs::write(&dll, b"MZ").unwrap();
+        let err = launch(dir.path(), &dll, &dir.path().join("sgw-start32.exe")).unwrap_err();
+        assert!(err.contains("sgw-start32.exe not found"), "{err}");
+        assert!(err.contains("CIMMERIA_LAB_START32"), "{err}");
+    }
+
+    /// End to end, the #985 bug shape: from this 64-bit build, `launch`
+    /// starts a real 32-bit program (a copy of `SysWOW64\winver.exe` named
+    /// SGW.exe) with a real 32-bit DLL (`SysWOW64\version.dll`) injected.
+    /// `Ok(pid)` is the proof: the helper answers `ok` only after the
+    /// remote `LoadLibraryW` returned a module and the process was resumed,
+    /// and `launch` then opened the pid. The old same-bitness injector
+    /// refuses this pair (`BitnessMismatch`).
+    ///
+    /// Needs the built i686 helper in `CIMMERIA_TEST_START32` (see
+    /// `crates/client-launch/README.md`); skips without it. The lab is not
+    /// in CI, so this is a manual check.
+    #[cfg(windows)]
+    #[test]
+    fn launch_injects_into_a_real_32_bit_process_through_the_helper() {
+        let Some(helper) = std::env::var_os("CIMMERIA_TEST_START32").map(PathBuf::from) else {
+            eprintln!("CIMMERIA_TEST_START32 unset; skipping");
+            return;
+        };
+        let Some(wow) = std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("SysWOW64"))
+        else {
+            return;
+        };
+        let (exe, dll) = (wow.join("winver.exe"), wow.join("version.dll"));
+        if !exe.is_file() || !dll.is_file() {
+            eprintln!("no SysWOW64 winver.exe/version.dll; skipping");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(&exe, dir.path().join("SGW.exe")).unwrap();
+        // Without its language resource the copy exits at once, before
+        // `launch` can open the pid. With it, it shows the About dialog
+        // until terminated below.
+        let mui = wow.join("en-US").join("winver.exe.mui");
+        if !mui.is_file() {
+            eprintln!("no SysWOW64 en-US winver.exe.mui; skipping");
+            return;
+        }
+        std::fs::create_dir(dir.path().join("en-US")).unwrap();
+        std::fs::copy(&mui, dir.path().join("en-US").join("SGW.exe.mui")).unwrap();
+
+        let pid = launch(dir.path(), &dll, &helper).expect("launch through the helper");
+        let alive = is_alive(pid);
+        terminate(pid);
+        assert!(alive, "the injected program is still running after launch");
     }
 
     #[test]

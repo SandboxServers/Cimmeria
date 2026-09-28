@@ -17,6 +17,8 @@
 //!   client (unused once the supervisor starts one).
 //! - `CIMMERIA_LAB_INSTALL_DIR` — game install dir (for the supervisor
 //!   lifecycle tools). `CIMMERIA_LAB_DLL` overrides the DLL path.
+//! - `CIMMERIA_LAB_START32` — the i686 `sgw-start32.exe` helper that
+//!   injects the DLL (#985); default: beside this executable.
 //! - `CIMMERIA_LAB_BRIDGE_BIND` / `_PORT`, `CIMMERIA_LAB_UPLOAD_ENDPOINT`
 //!   — written into the session file the supervisor generates.
 
