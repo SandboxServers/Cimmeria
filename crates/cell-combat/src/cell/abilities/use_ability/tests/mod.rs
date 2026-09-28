@@ -20,6 +20,7 @@ mod duel_nonlethal;
 mod fire_los;
 mod gating;
 mod holster_queue;
+mod min_range;
 mod pet_kill_credit;
 mod range_units;
 mod range_units_live_db;
@@ -75,6 +76,7 @@ fn make_player(mgr: &mut SpaceManager, id: u32, pos: [f32; 3]) {
     if let Some(p) = mgr.get_entity_mut(id) {
         p.is_player = true;
         p.player_id = Some(100 + id as i32);
+        p.account_id = Some(900 + id);
     }
 }
 

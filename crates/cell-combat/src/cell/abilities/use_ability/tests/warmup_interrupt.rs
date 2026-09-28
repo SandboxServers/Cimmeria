@@ -212,6 +212,32 @@ async fn target_out_of_range_at_fire_interrupts_with_error_42() {
     assert_never_fires(&mut mgr, &tx, &mut rx).await;
 }
 
+/// #1016: a target that closes inside the ability's `min_range` during the
+/// warmup interrupts the cast at fire time, with the same error 42. Revert
+/// proof: without the minimum the cast fires at 1 m.
+#[tokio::test]
+async fn target_inside_min_range_at_fire_interrupts_with_error_42() {
+    let mut mgr = warmup_mgr();
+    mgr.ability_defs.get_mut(&WARMUP_ABILITY).unwrap().min_range = 2.0;
+    let (tx, mut rx) = mpsc::channel(256);
+    // The fixture's target stands 3 m away: outside the 2 m minimum.
+    launch(&mut mgr, &tx, &mut rx).await;
+
+    mgr.get_entity_mut(2).unwrap().position.x = 1.0;
+    resolve_warmups(after_warmup(), &tx, &mut mgr, &NoContentEvents).await;
+    let msgs = drain(&mut rx);
+    assert_eq!(effect_results(&msgs, 1), 0);
+    let mut err = vec![0u8];
+    err.extend_from_slice(&WARMUP_ABILITY.to_le_bytes());
+    err.extend_from_slice(&42u16.to_le_bytes());
+    assert!(
+        calls(&msgs).contains(&(1, method_idx::ON_ERROR_CODE, err)),
+        "onErrorCode 42; got {msgs:?}"
+    );
+    assert!(sequences(&msgs, 1).contains(&SEQ_INTERRUPT));
+    assert_never_fires(&mut mgr, &tx, &mut rx).await;
+}
+
 /// A target that steps behind a wall during the warmup interrupts the cast
 /// at fire time, with the launch's line-of-sight error (code 39).
 #[tokio::test]

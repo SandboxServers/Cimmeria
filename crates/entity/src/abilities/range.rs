@@ -54,7 +54,64 @@ impl AbilityDef {
 /// [`AbilityDef::max_range_or_default`] for an optional def: an unknown
 /// ability gets [`DEFAULT_ABILITY_MAX_RANGE`].
 pub fn ability_max_range(def: Option<&AbilityDef>) -> f32 {
-    def.map_or(DEFAULT_ABILITY_MAX_RANGE, AbilityDef::max_range_or_default)
+    ability_range_bounds(def).max
+}
+
+/// The distances, in metres, a targeted cast may reach: at least `min`, at
+/// most `max`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RangeBounds {
+    /// The ability's `min_range`; `0` means no minimum.
+    pub min: f32,
+    /// The ability's reach ([`AbilityDef::max_range_or_default`]).
+    pub max: f32,
+}
+
+/// Why a target's distance fails a cast's [`RangeBounds`]. Both get the same
+/// client feedback, `CONDITION_FEEDBACK_OutsideWeaponRange` (42): the 2009
+/// Python reference (`AbilityManager.py:561`) refuses
+/// `distance < minRange or distance > maxRange` with that one code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeRefusal {
+    /// Farther than `max`.
+    TooFar,
+    /// Closer than `min` (#1016).
+    TooClose,
+}
+
+impl RangeRefusal {
+    /// The `reason=` value of the refusal's log row.
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::TooFar => "target_out_of_range",
+            Self::TooClose => "target_too_close",
+        }
+    }
+}
+
+impl RangeBounds {
+    /// Whether `distance` fails these bounds. `enforce_min` is false for an
+    /// NPC caster: the NPC fight tick owns its minimum-range behaviour (a
+    /// mobile NPC backs away, a stationary one keeps firing), so only a
+    /// player's cast is refused inside `min` (#1016).
+    pub fn refusal(&self, distance: f32, enforce_min: bool) -> Option<RangeRefusal> {
+        if distance > self.max {
+            Some(RangeRefusal::TooFar)
+        } else if enforce_min && distance < self.min {
+            Some(RangeRefusal::TooClose)
+        } else {
+            None
+        }
+    }
+}
+
+/// The range bounds of a cast of `def`, in metres. An unknown ability has no
+/// minimum and the default reach.
+pub fn ability_range_bounds(def: Option<&AbilityDef>) -> RangeBounds {
+    RangeBounds {
+        min: def.map_or(0.0, |d| d.min_range.max(0.0)),
+        max: def.map_or(DEFAULT_ABILITY_MAX_RANGE, AbilityDef::max_range_or_default),
+    }
 }
 
 /// The radius, in metres, of a `TCM_AERadius` effect's `tcm_param1` tier,
@@ -112,6 +169,20 @@ mod tests {
         assert_eq!(def(0.0).max_range_or_default(), DEFAULT_ABILITY_MAX_RANGE);
         assert_eq!(def(8.0).max_range_or_default(), 8.0);
         assert_eq!(ability_max_range(None), DEFAULT_ABILITY_MAX_RANGE);
+    }
+
+    /// #1016: a 3 m minimum refuses a player at 1 m and allows one at 5 m.
+    /// An NPC caster is not held to the minimum.
+    #[test]
+    fn min_range_refuses_a_player_inside_it() {
+        let mut turret = def(30.0);
+        turret.min_range = 3.0;
+        let bounds = ability_range_bounds(Some(&turret));
+        assert_eq!(bounds.refusal(1.0, true), Some(RangeRefusal::TooClose));
+        assert_eq!(bounds.refusal(5.0, true), None);
+        assert_eq!(bounds.refusal(31.0, true), Some(RangeRefusal::TooFar));
+        assert_eq!(bounds.refusal(1.0, false), None, "NPCs keep their own rule");
+        assert_eq!(ability_range_bounds(None).min, 0.0);
     }
 
     #[test]

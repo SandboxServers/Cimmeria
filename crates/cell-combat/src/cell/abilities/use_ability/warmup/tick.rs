@@ -17,10 +17,6 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::interrupt::{interrupt_pending_cast, InterruptReason};
 
-/// `CONDITION_FEEDBACK_OutsideWeaponRange`, the code the launch range check
-/// already sends.
-const CONDITION_FEEDBACK_OUTSIDE_WEAPON_RANGE: u16 = 42;
-
 /// Per-tick entry point, wired into the cell message loop.
 pub async fn warmup_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -174,22 +170,23 @@ async fn fire_time_refusal(
         return Some(InterruptReason::TargetLost);
     }
 
-    // Same range rule as the launch check in `handle_use_ability`.
-    let max_range = cimmeria_entity::abilities::ability_max_range(ability_def);
-    if caster.position.distance_to(&target.position) > max_range {
-        if caster.is_player {
-            let mut err_args = Vec::with_capacity(7);
-            err_args.push(0u8); // SystemID = ERRORCODE_SYSTEM_Ability
-            err_args.extend_from_slice(&pc.ability_id.to_le_bytes()); // InstanceID
-            err_args.extend_from_slice(&CONDITION_FEEDBACK_OUTSIDE_WEAPON_RANGE.to_le_bytes());
-            let _ = tx
-                .send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-                    args: err_args,
-                })
-                .await;
-        }
+    // Same range rule as the launch check in `handle_use_ability`,
+    // `min_range` included for a player (#1016).
+    if let Some(failure) = super::super::cast_range::check_cast_range(
+        cimmeria_entity::abilities::ability_range_bounds(ability_def),
+        caster.position.distance_to(&target.position),
+        caster.is_player,
+    ) {
+        super::super::cast_range::refuse_out_of_range(
+            entity_id,
+            pc.ability_id,
+            target_eid,
+            failure,
+            "warmup_fire",
+            tx,
+            space_mgr,
+        )
+        .await;
         return Some(InterruptReason::TargetOutOfRange);
     }
 

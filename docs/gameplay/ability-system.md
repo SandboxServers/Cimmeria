@@ -28,6 +28,7 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Ability interruption | DONE | AT-10. Death, a bandolier slot change, moving 0.5 m, and fire-time target, range, line-of-sight and ammo checks. Refunds the cooldown |
 | Ammo consumption | DONE | `requiredAmmo`, `consumeAmmo()` |
 | Weapon range check | NOT DONE | The server ignores `UseWeaponRange` (flag 4). It uses the ability's own `max_range`, or 30 m when that is 0, which matches the 30 m most ranged weapons carry |
+| Minimum range check | DONE | #1016. A player's targeted cast closer than the ability's `min_range` is refused at launch and at warmup fire with `onErrorCode` 42 (`OutsideWeaponRange`), the same answer as out of range, and the auto-cycle loop skips the target silently. NPC casters are not held to it: the NPC fight tick backs away instead. See [the ADR, decision 30](../architecture/abilities-and-effects-system.md#30-a-players-cast-honours-min_range-1016) |
 | Range units | DONE | `resources.abilities` ranges are UE3 units (100 per metre); the loader converts them to metres (#919). See [the ADR, decision 27](../architecture/abilities-and-effects-system.md#27-ability-ranges-are-ue3-units-in-the-data-and-metres-on-abilitydef-919) |
 | Position/facing check | NOT IMPL (Rust) | Python validated the front/flank/rear mask. Rust `AbilityDef` has no `positions` field and `handle_use_ability` checks no facing |
 | Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |

@@ -182,11 +182,16 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // that's an error packet every ~600 ms while out of
             // range. Loop stays armed so walking back into range
             // resumes firing on the next tick.
-            let max_range = cimmeria_entity::abilities::ability_max_range(
+            // Inside the ability's `min_range` is skipped the same way
+            // (#1016).
+            let bounds = cimmeria_entity::abilities::ability_range_bounds(
                 space_mgr.ability_defs.get(&ability_id),
             );
             if let Some(t) = target {
-                if e.position.distance_to(&t.position) > max_range {
+                if bounds
+                    .refusal(e.position.distance_to(&t.position), e.is_player)
+                    .is_some()
+                {
                     return None;
                 }
             }
@@ -291,3 +296,7 @@ mod tests;
 #[cfg(test)]
 #[path = "auto_cycle_duel_tests.rs"]
 mod duel_tests;
+
+#[cfg(test)]
+#[path = "auto_cycle_range_tests.rs"]
+mod range_tests;
