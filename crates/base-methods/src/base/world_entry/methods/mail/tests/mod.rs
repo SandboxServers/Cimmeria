@@ -6,8 +6,10 @@
 //! the GM tools (`system_live`, `gm_live`, SS-U1), the content engine's
 //! `send_system_mail` with its cooldown (`content_live`, SS-U3), and
 //! expiry, quarantine and new-mail notification (`expiry_live`,
-//! `expiry_race`, `quarantine_live`, `notify_live`, SS-M4); and the
-//! send and COD gates on an item no take could place (`placement_gate`).
+//! `expiry_race`, `quarantine_live`, `notify_live`, SS-M4); the
+//! send and COD gates on an item no take could place (`placement_gate`);
+//! and the BIND_ON_ACQUIRE grant-time fix, end to end from the real grant
+//! path through the send refusal (`bind_on_acquire_live`, issue #914).
 //!
 //! The live-DB tests assert on SQL side effects and, where the invariant is
 //! what the client is told, on the decoded packets the handler sent.
@@ -20,6 +22,7 @@ mod attach_live;
 mod attach_race;
 mod attach_rollback;
 mod attach_vault;
+mod bind_on_acquire_live;
 mod cod_live;
 mod content_live;
 mod delete_guard;

@@ -2,12 +2,12 @@
 title: "Inventory System"
 type: reference
 audience: engineers
-last_updated: 2026-09-27
+last_updated: 2026-09-28
 ---
 
 # Inventory System
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Status**: Implemented, including the full vendor stack in code. The vendor stack has **never been tested in a client on working code** (see [Vendor caveat](#vendor-caveat)). Remaining gaps are stat recalculation on equip and a player-facing vault expansion: both the personal and the Team vault expand only through GM commands until the Expand dialog is served (see [Expanding the vault](#expanding-the-vault) and [Expanding the Team vault](#expanding-the-team-vault-bv-09)). The personal vault and the Team and Command vaults are done server-side and await the owner's UAT.
 
 ## Overview
@@ -134,6 +134,8 @@ No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE
 **Grants never write into buyback (16) or 17-20; they fall through to a carried bag.** Every grant names a container: loot and the content engine's `grant_item` take it from the cell's `item_containers` cache, which holds an item's first `container_sets` entry that is not a storage container (so 15 for the seeded crafting components, `{17,15}`, 3 for weapons and 2 for mission items), and `gmGiveItem` asks for the main bag. `handle_grant_item` then places the item by its `container_sets` (`item_placement::grant_container`): a request for 16-20 goes to the first carried bag (1 or 15) the item lists, and never to another vault or to buyback, and a request for a carried bag the item does not allow goes to the one it does, so a `{17,15}` component lands in the crafting bag whoever granted it. Requests the item allows (a weapon into the main bag or the bandolier) and requests for other containers are kept. Vendor purchases place each line the same way, reserving slots per bag in ascending container order. Only an item that lists nothing but storage containers is refused: `grant_rejected` under `bank` with `reason=grant_into_storage_container`. One that resolves to buyback is refused with `grant_refused reason=not_grantable_container` under `inventory`. When the carried bag is full the grant is refused (`grant_refused reason=container_full`, a GM line for `gmGiveItem`, the corpse keeps a looted item); it never spills into a vault. Each committed grant logs `grant_container_chosen` under `inventory` with the requested and chosen container, the slot and the stack before and after.
 
 **A refused loot pickup goes back on the corpse.** `lootItem` takes the item off the corpse before the base writes it, so a grant that commits nothing (the bag is full, the item cannot be carried, a database error) is answered with `LootGrantRefused` and the cell puts the item back at its index. It only does so on the same corpse: one that respawned while the grant was in flight, or already has that index, does not get it (`loot_restore_failed`). The corpse's loot bit comes back if taking the item had cleared it, an open loot window refreshes, and the looter reads why ("Your crafting bag is full. The item was left on the corpse."). A grant whose `COMMIT` failed without an answer is not handed back, since the item may already be in the inventory. A refused `gmGiveItem` now tells the GM why.
+
+**Binding at grant time (BIND_ON_ACQUIRE, issue #914).** `resources.items.flags & 4` marks a design bind-on-acquire. Every path that mints a fresh `sgw_inventory` row reads that flag and sets the new instance's `bound` column from it, instead of hardcoding `false`: the shared grant transaction (`inventory/grant/persist.rs`, behind loot pickup, the content engine's `grant_item` and `gmGiveItem`), vendor purchase (`vendor/purchase/mod.rs`), crafting output (`base-session`'s `crafting/transaction/grant.rs`), and a system-mail minted attachment (`mail/system/write.rs`). A bound grant also skips the stack-merge fast path entirely — it never merges into an existing (necessarily unbound) row and never merges two separate bound grants together — so it always lands in its own row; a non-bound grant merges exactly as before. Once `bound` is set, the existing move, mail-send (`send/escrow.rs::check_source`) and trade (`trade/execute/swap.rs`) checks — which only ever read the instance's own `bound` column — refuse to move it, so a bind-on-acquire reward can no longer be mailed or traded off the character it was granted to. Paths that move an *existing* row (a move, an org-vault deposit, a mail send/take, a trade swap, a vendor sell/buyback) already carried `bound` through untouched; only the creation paths were the gap. Existing seeded inventory rows are not backfilled — this is a grant-time fix, not a data migration.
 
 ## Bandolier and ammo
 
