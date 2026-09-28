@@ -565,6 +565,9 @@ scenario('reopening while open refreshes; reopening during the search delay says
     eq(env.BlackMarketMod.getAuctionVisibleCount(0), 0, 'store starts clean')
 end)
 
+-- The Access-bar suite (access.lua) registers its scenarios here too.
+dofile(here..'/access.lua')(here, scenario, eq, ok)
+
 --=============================================================================
 local failed = 0
 for i, s in ipairs(scenarios) do

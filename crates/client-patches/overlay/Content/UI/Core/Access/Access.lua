@@ -174,7 +174,10 @@ function AccessMod.onCraftingClicked( this )
 end
 
 function AccessMod.onSocialClicked( this )
-    --TODO
+    -- Shipped as an empty TODO. Open the Social window the way its O key
+    -- binding does (Actions.ToggleSocial), like the Crafting button above.
+    SocialMod.onToggleSocial(SocialWin)
+    AccessWin:hide()
 end
 
 function AccessMod.onMailClicked( this )

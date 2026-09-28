@@ -1,2 +1,3 @@
 Content/UI/Core/BlackMarket/BlackMarket.lua
 Content/UI/Core/BlackMarket/BlackMarket.layout
+Content/UI/Core/Access/Access.lua

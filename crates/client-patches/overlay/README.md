@@ -16,6 +16,7 @@ is not shipped. `test/` is the logic UAT and is not shipped.
 |---|---|
 | `Content/UI/Core/BlackMarket/BlackMarket.lua` | QA client build, `Working/SGWGame/Content/UI/Core/BlackMarket/BlackMarket.lua`, 2009-06-30, 33,682 bytes, SHA-256 `66e159de2e90e441e7be7f80542614aad67b89d5aeb00d1169aadf68b617a2da` |
 | `Content/UI/Core/BlackMarket/BlackMarket.layout` | the same folder, `BlackMarket.layout`, 2009-06-30, 79,891 bytes, SHA-256 `8fe7ad58cd9869837327360a045ace74d03ade00deb5fcdec6b38c8878885173` |
+| `Content/UI/Core/Access/Access.lua` | the same client, `Working/SGWGame/Content/UI/Core/Access/Access.lua`, 2014-11-07, 6,799 bytes, SHA-256 `5eb04095e2405dd1aa14ea21cbc63897d8920d3603c35558201ad01e22ce54ab`. Dated 2014, not 2009: the file in the distributed client was edited after launch (its Support button points at a fan site), so this is the base every player has |
 
 The module's other files are unchanged and are not in the overlay:
 `BlackMarket.toc` (it loads the `.lua` and the `.layout`), the two row
@@ -76,6 +77,12 @@ The plan is [docs/analysis/black-market/README.md](../../../docs/analysis/black-
 | Eight more in the Watched tab (`BlackMarket_Watched1`–`8`) | U8 |
 | A `BlackMarket_ErrorText` static text in the tab container, below the tab pages | The stock Lua writes to it on every tab switch and error, but the stock layout never defined it, so each of those writes raised an error. It is now the status and error line. |
 
+## What changed in `Access.lua`
+
+| Change | Why |
+|---|---|
+| `AccessMod.onSocialClicked` calls `SocialMod.onToggleSocial(SocialWin)` and hides the Access bar | The shipped handler was an empty `--TODO`, so the Social button on the Access bar did nothing. The Social window (contact lists) always opened with its O key binding (`Actions.ToggleSocial`); the button now takes the same path, and hides the bar like every other button |
+
 ## Logic UAT
 
 `test/run.lua` is a REPL-style logic UAT in stock Lua 5.1. It builds stub
@@ -87,6 +94,12 @@ bid, buyout, errors, create, cancel, the My Bids and Watched tabs, a missing
 DLL, refused and throwing sends, reply timeouts, guarded handlers, and
 reopening. It also checks that every `BMError` id in `error.rs` has text.
 Run against the stock files, every scenario fails.
+
+`test/access.lua` is the Access-bar suite, which `run.lua` loads. It loads the
+overlay `Access.lua` against stub windows and modules and clicks every
+subscribed button: each must do something on the first press and hide the
+bar, and Social must toggle the Social window through `SocialMod.onToggleSocial`.
+Against the stock `Access.lua`, the two Social scenarios fail.
 
 ```sh
 lua5.1 crates/client-patches/overlay/test/run.lua          # Linux; CI runs this (test.yml, "overlay-lua")
