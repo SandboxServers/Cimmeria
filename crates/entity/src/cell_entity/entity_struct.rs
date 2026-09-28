@@ -735,6 +735,17 @@ pub struct CellEntity {
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
 
+    /// Fire-once content chains (`content_triggers.once`, #802) that have
+    /// already fired for this entity. Checked and filled by the cell
+    /// executor's once gate (`cimmeria_cell_content::cell::content::executor::
+    /// once_gate`) before any action runs.
+    ///
+    /// Not persisted, like `counters`: it dies with the entity, so a
+    /// once-chain re-arms on relog or on the next space visit — the lifetime
+    /// of the 2009 per-player level script whose `once = True` subscriptions
+    /// this models.
+    pub fired_once_chains: HashSet<i64>,
+
     /// Character names this player ignores: the base's contact-list Ignore
     /// list (flags 301), pushed by `BaseToCellMsg::UpdateIgnoreList` after
     /// `InitPlayerState` and on every change. Spatial chat skips a witness

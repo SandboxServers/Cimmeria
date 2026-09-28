@@ -78,6 +78,17 @@ Review rules:
 - A chain that should repaint an offer after an **abandon** uses the
   `mission_abandoned` trigger, not a second `mission_completed` row.
 
+## `once = true` lasts one space visit
+
+`content_triggers.once` is enforced (#802), but only **once per player per
+cell-entity lifetime**: the fired-once set is in memory on the player's cell
+entity, so the chain re-arms on relog and on every new space visit. It
+disarms only when the chain actually fires, so a failed condition leaves it
+armed. Flag a chain that relies on `once` to stay closed across a relog: that
+needs a mission or step gate. Do not flip existing `once = false` rows as a
+side effect of an unrelated change; whether a chain should be `once` is a
+content decision. Semantics: `docs/content/content-engine.md` §5.
+
 ## Mission grants must gate on `not_active`
 
 Every chain whose actions include `accept_mission` must carry a

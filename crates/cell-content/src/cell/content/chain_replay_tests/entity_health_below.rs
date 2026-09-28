@@ -88,9 +88,9 @@ async fn seed_sentinel_chain_with_key(pool: &PgPool, event_key: &str) {
     .await
     .expect("sentinel content_triggers insert must succeed");
 
-    // The one-shot guard is the author's job (`content_triggers.once` is
-    // dead); this is the condition H21 will carry so a relog + re-cross
-    // after the step has advanced resolves nothing.
+    // The one-shot guard is the author's job (`content_triggers.once` only
+    // lasts one space visit, #802); this is the condition H21 will carry so
+    // a relog + re-cross after the step has advanced resolves nothing.
     sqlx::query(
         "INSERT INTO resources.content_conditions \
          (chain_id, condition_type, target_id, target_key, operator, value, sort_order) \
@@ -326,7 +326,8 @@ async fn live_db_a_chain_with_an_unusable_percentage_is_dropped_at_load() {
 /// guard**: `step_status` evaluation is pre-existing engine code that no
 /// change in this packet can break, and four other replay modules
 /// already cover it. It earns its place because the stateless crossing
-/// design has no one-shot of its own (`content_triggers.once` is dead),
+/// design has no relog-proof one-shot (`content_triggers.once` re-arms
+/// with the cell entity, #802),
 /// so every chain on this trigger *must* carry a gate — and H21's
 /// mission 1325 is the first one that will. Reverting the condition row
 /// out of `seed_sentinel_chain_with_key` fails it, which is the point:

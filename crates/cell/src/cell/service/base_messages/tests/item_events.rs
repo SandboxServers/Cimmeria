@@ -37,6 +37,7 @@ async fn item_move_applied_into_bandolier_fires_equip_event() {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
 
     let (tx, _rx) = mpsc::channel(16);
@@ -101,6 +102,7 @@ async fn item_move_within_bandolier_does_not_fire_equip_event() {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
 
     let (tx, _rx) = mpsc::channel(16);
@@ -163,6 +165,7 @@ async fn item_move_out_of_bandolier_does_not_fire_equip_event() {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
 
     let (tx, _rx) = mpsc::channel(16);
@@ -231,6 +234,7 @@ async fn item_used_fires_on_item_use_content_event() {
             amount: Some(10),
         }],
         priority: 1,
+        once: false,
     });
 
     let (tx, mut rx) = mpsc::channel(8);

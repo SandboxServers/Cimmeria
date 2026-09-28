@@ -248,6 +248,7 @@ mod tests {
             actions,
             action_delays: Vec::new(),
             priority: 0,
+            once: false,
         }
     }
 

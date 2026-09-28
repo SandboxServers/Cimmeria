@@ -599,12 +599,15 @@ Schema source: [db/resources/Content/Tables/](../../db/resources/Content/Tables/
 
 The `_type` discriminator columns (`event_type`, `condition_type`, `action_type`) are `varchar(50)` with no CHECK constraint. This is intentional: new variants ship without DDL — the loader gains a match arm, and a typo'd type silently drops the row with a `warn!`.
 
+**`content_triggers.once`** is "fire once, then disarm" (#802). It is carried per trigger row onto the `Chain` it materializes (`Chain.once`) and enforced by the cell executor's once gate ([executor/once_gate.rs](../../crates/cell-content/src/cell/content/executor/once_gate.rs)), not by `resolve_event`. The scope is **once per player per cell-entity lifetime**: the set of fired once-chains lives in memory on the entity the actions execute for, so the chain re-arms on relog and on every new space visit, the lifetime of the 2009 per-player level script whose `once = True` subscriptions it models. It disarms only when the chain actually fires (trigger matched, every condition passed); a matched trigger whose conditions fail stays armed. The `scope` column is still not read, so `once` is per entity whatever `scope` says. It is not a substitute for a mission gate when a chain must stay closed across relogs. Seeded use: chains 1008 and 1044.
+
 The `params jsonb` column is the catch-all for new action fields. Every new field rides in JSON. The trade-off: zero migration cost, but no schema-level type safety. A typo'd key ("ammount") silently no-ops.
 
 ### What's stored but NOT in these tables
 
 - **Per-player mission state** — `sgw_mission` (player_id, mission_id, status, current_step_id, completed_step_ids[], …). Loaded by the world-entry path in [base/world_entry/methods/missions.rs](../../crates/base-methods/src/base/world_entry/methods/missions.rs), not by `engine_loader`. The engine reads it via `CellEntity.missions` after the populator runs.
 - **Counter state** — in-memory only on `CellEntity.counters: HashMap<String, i32>` ([cell_entity/mod.rs:290](../../crates/entity/src/cell_entity/mod.rs#L290)). **Not persisted; lost on logout.** Counter design assumes the completion threshold is reachable in one session. See §8.
+- **Fired-once chains** — in-memory only on `CellEntity.fired_once_chains: HashSet<i64>`. **Not persisted; lost with the entity** (logout, space change), which is what re-arms a `once` chain. See `content_triggers.once` above.
 - **Inventory, stats, abilities, effects** — all live on `CellEntity` and persist via the existing per-domain save paths. The engine consumes them via populators.
 
 ---
@@ -642,6 +645,7 @@ When a chain action mutates **player** state, persistence is **not** the engine'
 | `GrantItem`, `RemoveItem` | `CellToBaseMsg::GrantItem` / `RemoveInventoryItem` / `RemoveInventoryItemByType` → BaseApp inventory write |
 | `ChangeStat` | Mutates `CellEntity.stats`; persistence rides existing player save |
 | `IncrementCounter`, `ResetCounter` | **Not persisted.** In-memory `CellEntity.counters` only |
+| Any action of a `once` chain | The fired-once record is **not persisted**: in-memory `CellEntity.fired_once_chains` only |
 
 The chain itself never touches a persistence table. Trace example: chain 1087 fires on `entity_dead_tag` `MessHall_Guard1`, condition `mission_status 681 eq active` passes → action `complete_mission 681` runs → `complete_mission_direct` mutates `MissionInstance` on the cell entity → emits `CellToBaseMsg::MissionUpdate { mission_id: 681, status: 2, repeats: bumped, ... }` over the outbox → BaseApp dequeues, runs the `UPSERT` ([missions.rs:103](../../crates/base-methods/src/base/world_entry/methods/missions.rs#L103)).
 
@@ -734,6 +738,7 @@ Worked example chains in [chain_replay_tests/](../../crates/cell-content/src/cel
 | Missing populator for `StatBelowMax` | **Fail-closed**: returns `false` ([conditions.rs:260-267](../../crates/content-engine/src/conditions.rs#L260-L267)). Deliberate. |
 | Trigger filter mismatch | `trace!` at [chain.rs:144-150](../../crates/content-engine/src/chain.rs#L144-L150) — only visible at trace level |
 | Condition fails | `trace!` at [chain.rs:163-169](../../crates/content-engine/src/chain.rs#L163-L169) |
+| Fire-once chain already fired for this entity | `debug!` on target `content.resolve` with `reason = "once_spent"`, `chain_id`, `entity_id` ([executor/once_gate.rs](../../crates/cell-content/src/cell/content/executor/once_gate.rs)); the chain's actions are dropped before any runs or is scheduled |
 | Action `Error` result | `warn!` at [chain.rs:201-209](../../crates/content-engine/src/chain.rs#L201-L209) |
 | `RemoveItem` channel send fails | `error!` at [executor/inventory.rs:226](../../crates/cell-content/src/cell/content/executor/inventory.rs#L226) — explicitly loud because mission progress depends on the consume |
 | `ChangeStat` source entity missing | `warn!` at [executor/stats.rs:37](../../crates/cell-content/src/cell/content/executor/stats.rs#L37) |

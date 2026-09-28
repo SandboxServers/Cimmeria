@@ -103,6 +103,7 @@ fn submit_on_crossing_engine() -> ChainEngine {
             state: NpcAiStateAction::Submit,
         }],
         priority: 0,
+        once: false,
     });
     engine
 }

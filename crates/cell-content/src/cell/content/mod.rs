@@ -249,6 +249,7 @@ mod tests {
             actions: vec![Action::GrantXP { amount: xp }],
             action_delays: Vec::new(),
             priority: 0,
+            once: false,
         };
 
         let mut engine = ChainEngine::new();
@@ -325,6 +326,7 @@ mod tests {
             actions: vec![Action::GrantXP { amount: DOOR_XP }],
             action_delays: Vec::new(),
             priority: 0,
+            once: false,
         });
 
         async fn enter_region_from(world_name: &str, engine: &ChainEngine, tag: &str) -> Vec<u64> {

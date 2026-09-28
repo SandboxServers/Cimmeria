@@ -107,6 +107,7 @@ fn harset_gated_engine(id: i64, trigger: Trigger) -> ChainEngine {
         }],
         action_delays: Vec::new(),
         priority: 0,
+        once: false,
     });
     engine
 }

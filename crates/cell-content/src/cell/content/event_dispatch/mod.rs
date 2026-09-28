@@ -240,6 +240,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -276,6 +277,7 @@ mod tests {
                 amount: 5,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -375,6 +377,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -422,6 +425,7 @@ mod tests {
                 amount: 7,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -473,6 +477,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -516,6 +521,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -557,6 +563,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -600,6 +607,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -642,6 +650,7 @@ mod tests {
                 amount: 100,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);

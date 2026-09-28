@@ -51,6 +51,7 @@ fn flank_chain(id: i64, template: Option<&str>, actions: Vec<Action>) -> Chain {
         conditions: vec![],
         actions,
         priority: 0,
+        once: false,
     }
 }
 

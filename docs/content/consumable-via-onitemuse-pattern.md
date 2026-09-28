@@ -50,6 +50,8 @@ VALUES
   (<chain_id>, 'remove_item', <design_id>, NULL, '{"qty": 1}', 0, 1);
 ```
 
+Keep `once = false`: `once = true` disarms the chain for the rest of the space visit after the first use ([content-engine.md §5](content-engine.md#5-schema)), so a second item of the same design would do nothing.
+
 `Action::RemoveItem` routes through `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack and applies the full wire-update sequence.
 
 ### Reusable (omit `remove_item`)
