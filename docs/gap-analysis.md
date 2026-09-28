@@ -1315,7 +1315,7 @@ Recomputed 2026-09-27 directly from the feature rows above, by script: every mat
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **<!-- gen:gap-count total -->486<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->112<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->109<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->95<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
+| | **TOTALS** | **<!-- gen:gap-count total -->486<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->121<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->101<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->94<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
 
 ### Summary Percentages
 
@@ -1324,13 +1324,13 @@ The TOTALS line above and every number in this section are generated from the ma
 | Status | Count | Percentage |
 |--------|-------|-----------|
 | Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->34.4%<!-- /gen:gap-pct --> |
-| Needs Test (NT) | <!-- gen:gap-count NT -->112<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->23.0%<!-- /gen:gap-pct --> |
-| Implemented (IM) | <!-- gen:gap-count IM -->109<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->22.4%<!-- /gen:gap-pct --> |
-| Known/Missing (KM) | <!-- gen:gap-count KM -->95<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->19.5%<!-- /gen:gap-pct --> |
+| Needs Test (NT) | <!-- gen:gap-count NT -->121<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->24.9%<!-- /gen:gap-pct --> |
+| Implemented (IM) | <!-- gen:gap-count IM -->101<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->20.8%<!-- /gen:gap-pct --> |
+| Known/Missing (KM) | <!-- gen:gap-count KM -->94<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->19.3%<!-- /gen:gap-pct --> |
 | Needed/Unknown (NU) | <!-- gen:gap-count NU -->3<!-- /gen:gap-count --> | <!-- gen:gap-pct NU -->0.6%<!-- /gen:gap-pct --> |
 
-**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->388<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->79.8%<!-- /gen:gap-pct -->)
-**Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->98<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->20.2%<!-- /gen:gap-pct -->)
+**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->389<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->80.0%<!-- /gen:gap-pct -->)
+**Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->97<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->20.0%<!-- /gen:gap-pct -->)
 
 **Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->34.4%<!-- /gen:gap-pct -->).
 
