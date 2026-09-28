@@ -28,14 +28,14 @@ gethostname = "1.1"
 # OTLP collector) via gRPC. The integration is opt-in via the standard
 # `OTEL_EXPORTER_OTLP_ENDPOINT` env var; with it unset the exporter is
 # a no-op and these crates' code never executes.
-opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "logs", "metrics"] }
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "logs", "metrics"] }
+opentelemetry = "0.33"
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio", "logs", "metrics"] }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "logs", "metrics"] }
 # Bridges root-level `tracing::*` events (those NOT inside an active span)
 # into OpenTelemetry log records. `tracing-opentelemetry` alone only handles
 # spans and span-events; without this appender, every `tracing::info!` that
 # fires outside a span (including the entire mercury.packet stream) is
 # silently dropped by the OTLP exporter and never reaches SigNoz.
-opentelemetry-appender-tracing = "0.32"
-tracing-opentelemetry = "0.33"
+opentelemetry-appender-tracing = "0.33"
+tracing-opentelemetry = "0.34"
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
