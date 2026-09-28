@@ -4,7 +4,7 @@
 > **Audience**: Engineers touching the auction house, escrow, or the client-side method-binding patch
 > **Type**: ADR + reference
 > **Owner**: Social systems
-> **Status**: Implemented on `main`, not player-visible. Phases 1–3 were written on `feat/571-black-market-phase1` (PR #586, issue #571) and ported onto the split crates by packet BM-01 of the [restoration plan](../analysis/black-market/README.md), with no behaviour change. The base side is `crates/base-session/src/base/black_market/`. Packet BM-02 fixed the contract mismatches the plan's client-IO pass found (S1–S8: `onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, duration and time-left enums, search paging, caller-scoped views, seller names), so the tables below now describe what the client expects. The client still drops methods 90–95 until the client patch ships (issue #587; packets BM-03 to BM-06). The server and the patch DLL share one codec crate, `cimmeria-patch-wire` (`crates/patch-wire`), which the server re-exports as `cimmeria_wire::black_market`.
+> **Status**: Implemented on `main`, not player-visible. Phases 1–3 were written on `feat/571-black-market-phase1` (PR #586, issue #571) and ported onto the split crates by packet BM-01 of the [restoration plan](../analysis/black-market/README.md), with no behaviour change. The base side is `crates/base-methods/src/base/world_entry/methods/black_market/`. Packet BM-02 fixed the contract mismatches the plan's client-IO pass found (S1–S8: `onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, duration and time-left enums, search paging, caller-scoped views, seller names), so the tables below now describe what the client expects. The client still drops methods 90–95 until the client patch ships (issue #587; packets BM-03 to BM-06). The server and the patch DLL share one codec crate, `cimmeria-patch-wire` (`crates/patch-wire`), which the server re-exports as `cimmeria_wire::black_market`.
 > **Confidence**: High for the server state machine (code + tests); High for the wire contract (client IO decompiles, one shared codec); Low only for the duration table, which is design; High for the client-binding diagnosis (owner-confirmed live, 2026-06-21)
 
 ## Context
@@ -70,7 +70,7 @@ routing live in
 the base-side routing arms in
 `crates/base-world-entry/src/base/world_entry/cell_dispatch/black_market_dispatch.rs`.
 Every base-side file named below without a path is in
-`crates/base-session/src/base/black_market/`.
+`crates/base-methods/src/base/world_entry/methods/black_market/`.
 
 | Client method | Name | Args | Sent by |
 |---|---|---|---|
@@ -623,7 +623,7 @@ engine decoder work.
   (`payout_mail.rs`) is scheduled to be replaced by the social-systems
   mail API (BM-02b), so new code should not call it.
 - **Test coverage** is in
-  `crates/base-session/src/base/black_market/tests/`
+  `crates/base-methods/src/base/world_entry/methods/black_market/tests/`
   (live-DB: create/bid/cancel, buyout, search, sweep, escrow and the
   deletion trigger; sentinels in the `0x7000_Axxx` block) plus in-module
   unit tests for the pure validators, the auctioneer gate, the wire

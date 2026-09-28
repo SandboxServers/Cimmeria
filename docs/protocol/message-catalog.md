@@ -15,7 +15,7 @@
 >   dispatch arms today — all of Crafting, Mail, Black Market, Trading, Pets,
 >   and most Minigame rows. Check `cell_methods/` before trusting a "NO".
 >   Black Market's base-side service
->   (`crates/base-session/src/base/black_market/`) landed on 2026-09-27
+>   (`crates/base-methods/src/base/world_entry/methods/black_market/`) landed on 2026-09-27
 >   (packet BM-01, the port of PR #586), so its four rows below now read
 >   PARTIAL: served by the server, but the client drops the replies until
 >   the client patch ships (#587). Packet BM-02 made the server's argument

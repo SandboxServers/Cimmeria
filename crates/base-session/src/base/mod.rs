@@ -24,7 +24,6 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 pub mod bank_dump;
 pub mod bank_expand;
-pub mod black_market;
 pub mod cinematic_aoi_hold;
 pub mod console_authoring;
 pub mod contact_list;

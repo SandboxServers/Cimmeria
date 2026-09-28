@@ -1,7 +1,7 @@
 //! Live-DB integration tests for the reusable persistence helpers:
-//! [`crate::base::black_market::helpers::adjust_player_cash`], the escrow
-//! moves in [`crate::base::black_market::escrow`], and the mail payout
-//! writer [`crate::base::black_market::payout_mail::send_mail_to_player`].
+//! [`crate::base::world_entry::methods::black_market::helpers::adjust_player_cash`], the escrow
+//! moves in [`crate::base::world_entry::methods::black_market::escrow`], and the mail payout
+//! writer [`crate::base::world_entry::methods::black_market::payout_mail::send_mail_to_player`].
 //!
 //! Skip cleanly when `DATABASE_URL` is unset (via `require_db_or_skip!`).
 //! These pin the error/edge branches the create/bid/cancel handlers depend on:
@@ -16,11 +16,13 @@ use super::{
     cleanup, insert_account_and_player, insert_item, insert_item_in, inventory_count, item_state,
     ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::escrow::{deliver_from_escrow, list_into_escrow, DeliveryRefused};
-use crate::base::black_market::helpers::{adjust_player_cash, CashError};
-use crate::base::black_market::payout_mail::send_mail_to_player;
-use crate::base::black_market::types::{auction_status, AuctionRow};
-use crate::base::black_market::wire::BMError;
+use crate::base::world_entry::methods::black_market::escrow::{
+    deliver_from_escrow, list_into_escrow, DeliveryRefused,
+};
+use crate::base::world_entry::methods::black_market::helpers::{adjust_player_cash, CashError};
+use crate::base::world_entry::methods::black_market::payout_mail::send_mail_to_player;
+use crate::base::world_entry::methods::black_market::types::{auction_status, AuctionRow};
+use crate::base::world_entry::methods::black_market::wire::BMError;
 use crate::test_support::require_db_or_skip;
 
 /// A debit larger than the balance is rejected with `InsufficientFunds`, and

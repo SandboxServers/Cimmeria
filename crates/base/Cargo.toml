@@ -19,6 +19,8 @@ cimmeria-base-world-entry = { workspace = true }
 # The session types, the send helpers, tick sync, the outbox, cooked-data
 # delivery and the contact list's login fan-out.
 cimmeria-base-session = { workspace = true }
+# The Black Market seed and expiry sweep `BaseService` spawns.
+cimmeria-base-methods = { workspace = true }
 # The Base<->Cell messages, the services-side packet builders and the
 # firehoses.
 cimmeria-wire = { workspace = true }

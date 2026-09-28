@@ -15,8 +15,8 @@ use super::{
     cleanup, expire_now, insert_account_and_player, insert_item, insert_item_in, last_auction_of,
     Harness, Session, ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::types::BMSearchOptions;
-use crate::base::black_market::wire::BMError;
+use crate::base::world_entry::methods::black_market::types::BMSearchOptions;
+use crate::base::world_entry::methods::black_market::wire::BMError;
 use crate::test_support::{require_db_or_skip, LogCapture, LogCaptureGuard};
 
 const BASE: i32 = TEST_BASE + 0x700;

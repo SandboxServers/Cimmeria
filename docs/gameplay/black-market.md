@@ -23,7 +23,7 @@ The `SGWBlackMarketManager` interface defines the player-side protocol. The `SGW
 
 ## Implementation Status
 
-The Rust implementation is split across two layers. Client RPCs land on the cell methods (indices 61–66) in `crates/cell-methods/src/cell/cell_methods/black_market/mod.rs`, which decode the payload with the shared codec, check that a create, bid or cancel comes from a player at an auctioneer, and forward to the base via `CellToBaseMsg::BlackMarket(BlackMarketCellToBase)` (routed by `crates/base-world-entry/src/base/world_entry/cell_dispatch/black_market_dispatch.rs`). The base side (`crates/base-session/src/base/black_market/`) owns all database, escrow, cash, and mail work and sends the `onBM*` replies (client indices 90–95) back to the requesting player. Every argument layout comes from `crates/patch-wire` (`cimmeria-patch-wire`), re-exported as `cimmeria_wire::black_market`; the injected client-patch DLL links the same crate. The file names in the table below are relative to the base-side directory.
+The Rust implementation is split across two layers. Client RPCs land on the cell methods (indices 61–66) in `crates/cell-methods/src/cell/cell_methods/black_market/mod.rs`, which decode the payload with the shared codec, check that a create, bid or cancel comes from a player at an auctioneer, and forward to the base via `CellToBaseMsg::BlackMarket(BlackMarketCellToBase)` (routed by `crates/base-world-entry/src/base/world_entry/cell_dispatch/black_market_dispatch.rs`). The base side (`crates/base-methods/src/base/world_entry/methods/black_market/`) owns all database, escrow, cash, and mail work and sends the `onBM*` replies (client indices 90–95) back to the requesting player. Every argument layout comes from `crates/patch-wire` (`cimmeria-patch-wire`), re-exported as `cimmeria_wire::black_market`; the injected client-patch DLL links the same crate. The file names in the table below are relative to the base-side directory.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -38,7 +38,7 @@ The Rust implementation is split across two layers. Client RPCs land on the cell
 | Auction results display | DONE | `onBMAuctions` built by `wire::serialize_on_bm_auctions` |
 | Auction updates | DONE | `onBMAuctionUpdate`, `onBMAuctionRemove` in `wire/` and `send.rs` |
 | Error handling | DONE | `onBMError` ids 0 and 1 are the shipped `EBlackMarketError`; the server's rejection ids follow (D3), see [Error ids](#error-ids) |
-| Server-side entity | DONE | `SGWBlackMarket` base-side state machine under `crates/base-session/src/base/black_market/` |
+| Server-side entity | DONE | `SGWBlackMarket` base-side state machine under `crates/base-methods/src/base/world_entry/methods/black_market/` |
 | Persistence | DONE | `sgw_auction` + `sgw_auction_bid` tables under `db/sgw/BlackMarket/` |
 
 ## Entity Definitions

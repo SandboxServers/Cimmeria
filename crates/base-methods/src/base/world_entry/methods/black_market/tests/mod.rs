@@ -19,8 +19,8 @@ use cimmeria_entity::inventory::{INV_AUCTION, INV_MAIN};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::base::black_market::types::BMSearchOptions;
-use crate::base::black_market::{bid, cancel, create, search as bm_search};
+use crate::base::world_entry::methods::black_market::types::BMSearchOptions;
+use crate::base::world_entry::methods::black_market::{bid, cancel, create, search as bm_search};
 use crate::base::ConnectedClientState;
 use crate::test_support::{test_default_connected_client_state, TestTransport};
 

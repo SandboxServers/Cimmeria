@@ -15,7 +15,7 @@ use super::{
     cleanup, expire_now, insert_account_and_player, insert_item, item_state, last_auction_of,
     naquadah_of, status_of, Harness, Session, ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::types::{auction_status, MAX_ACTIVE_LISTINGS};
+use crate::base::world_entry::methods::black_market::types::{auction_status, MAX_ACTIVE_LISTINGS};
 use crate::test_support::require_db_or_skip;
 
 const BASE: i32 = TEST_BASE + 0x600;

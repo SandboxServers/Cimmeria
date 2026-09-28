@@ -4,6 +4,7 @@
 
 // Renamed from `world_entry.rs` to avoid name-collision with the parent
 // `world_entry/` module after the split-and-consolidate refactor.
+pub mod black_market;
 pub mod inventory;
 pub mod mail;
 pub mod missions;

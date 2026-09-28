@@ -190,7 +190,7 @@ No longer stubbed:
   `BMCreateAuction`, `BMPlaceBid`, `BMCancelAuction`), with immediate buyout
   and an expiry sweep (the item moves from escrow to the buyer, or back to the
   seller when unsold; the seller is mailed the cash), on `main` since BM-01 and
-  BM-02 (2026-09-27; `crates/base-session/src/base/black_market/`). The watch
+  BM-02 (2026-09-27; `crates/base-methods/src/base/world_entry/methods/black_market/`). The watch
   list (`BMStartWatchingItem` / `BMStopWatchingItem`) answers "unavailable" on
   purpose, and the client drops every `onBM*` reply until the client patch
   ships (#587).

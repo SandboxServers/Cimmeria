@@ -18,9 +18,9 @@ use super::{
     cleanup, insert_account_and_player, insert_item, inventory_count, item_state, make_state,
     naquadah_of, ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::helpers::now_unix_secs;
-use crate::base::black_market::types::auction_status;
-use crate::base::black_market::{bid, cancel, create};
+use crate::base::world_entry::methods::black_market::helpers::now_unix_secs;
+use crate::base::world_entry::methods::black_market::types::auction_status;
+use crate::base::world_entry::methods::black_market::{bid, cancel, create};
 use crate::test_support::require_db_or_skip;
 
 // ── createAuction ─────────────────────────────────────────────────────────

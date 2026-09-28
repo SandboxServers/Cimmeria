@@ -18,8 +18,8 @@ use super::{
     cleanup, expire_now, insert_account_and_player, insert_item, insert_item_in, item_state,
     make_state, status_of, ITEM_DEF_ID, TEST_BASE,
 };
-use crate::base::black_market::types::auction_status;
-use crate::base::black_market::{bid, create, sweep};
+use crate::base::world_entry::methods::black_market::types::auction_status;
+use crate::base::world_entry::methods::black_market::{bid, create, sweep};
 use crate::test_support::require_db_or_skip;
 
 /// Mail rows a recipient has with `cash`.
