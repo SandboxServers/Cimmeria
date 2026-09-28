@@ -15,3 +15,7 @@ A campaign close-out's status sweep reaches further than the campaign's own gap-
 Line endings: the Edit tool keeps a file's CRLF; the Write tool writes LF, so normalize a written file to CRLF afterwards. Related: [[feedback-source-doc-override]].
 
 Lint: `tools/lint-md.ps1 <files>` lints the whole repo anyway (the config's globs win), so filter its output to your files and diff against the base. MD029 flags an ordered list that restarts at 15 after a heading; a UAT checklist that continues its numbering needs a scoped `<!-- markdownlint-disable MD029 -->` / `enable` pair.
+
+Checking a recount without committing generated blocks: `python tools/docs-gen/regen.py --check --skip-crate-graph` prints each stale `gen:gap-count` / `gen:gap-pct` value as `old -> new`, which is the post-merge headline; it exits 1 and writes nothing. project-status's hand-maintained "Code exists" line had drifted from its own table before the crafting close-out (CR-13, 2026-09-27), so recompute it rather than adjusting it.
+
+Git Bash `sed -i` on a CRLF doc rewrites it with LF endings; edit docs with Python (binary read/write) or the Edit tool, and re-check with `file`.
