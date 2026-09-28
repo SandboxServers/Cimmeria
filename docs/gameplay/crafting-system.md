@@ -203,16 +203,17 @@ Uses up an item, and any kickers, for a chance at expertise in one of the item's
 | A kicker is not flagged `Kicker`, or has no applied science | That item is not a research kicker. Nothing was used. | `not_kicker` |
 | A kicker of the item's own applied science | Kickers cannot come from the same applied science as the item being researched. Nothing was used. | `kicker_same_science` |
 | A second kicker of one applied science | Only one kicker per applied science can be used. Nothing was used. | `kicker_duplicate_science` |
+| No eligible discipline: none of the item's disciplines is one the player knows with `0 < expertise < item tech competency` | None of your disciplines can learn from that item: research needs one of its disciplines at an expertise above 0 and below <tech competency>. Nothing was used. | `no_eligible_discipline` |
 
 The kicker rules are the client's (`ResearchPage.lua`: one kicker slot per science, never the item's own); the client sends the request even when its own checks fail, so the server repeats them.
 
 **When the bar ends** the job reads the player's crafting state and rolls:
 
-1. The eligible disciplines are the item's disciplines the player knows with `0 < expertise < item tech competency`. With none, nothing is rolled: the item and kickers are used and the line says the research taught nothing new. Owner decision D-CR29 (2026-09-27) changes this: such a research will be refused before anything is consumed (follow-up packet CR-18).
+1. The eligible disciplines are the item's disciplines the player knows with `0 < expertise < item tech competency`, the same rule as at the request. With none (a discipline forgotten, or an expertise that reached the tech competency, during the bar) the research is refused with the `no_eligible_discipline` line above, nothing is rolled or used, and the inventory is resynced.
 2. One discipline is picked uniformly, then the chance is `100 − expertise + 5 × kickers` percent against a roll in `[0, 100)`.
-3. One transaction consumes exactly the named item and kickers. On a success it adds 5 expertise to the picked discipline and teaches every blueprint that makes the item whose discipline the player knows (checked again under the player row lock), then sends `onUpdateDiscipline` (136) and the whole known list, `onUpdateKnownCrafts` (139).
+3. One transaction checks the eligibility again, reading the crafting state with the player row locked `FOR UPDATE`, and refuses and rolls back the same way if it no longer holds. It consumes exactly the named item and kickers. On a success it adds 5 expertise to the picked discipline and teaches every blueprint that makes the item whose discipline the player knows (checked again under the player row lock), then sends `onUpdateDiscipline` (136) and the whole known list, `onUpdateKnownCrafts` (139).
 
-The player reads "Research succeeded: <discipline> expertise increased to <n>." (plus "You learned 1 new blueprint." when one was taught) or "Research complete, but no expertise was gained." The item and kickers are used whatever the roll, as in the original server.
+The player reads "Research succeeded: <discipline> expertise increased to <n>." (plus "You learned 1 new blueprint." when one was taught) or "Research complete, but no expertise was gained." Once the roll is made the item and kickers are used whatever it gives, as in the original server. The original server also used them when no discipline was eligible and nothing was rolled; Cimmeria refuses that research instead and uses nothing (owner decision D-CR29). `.allcraft` sets every discipline to 100, so after it only an item with a tech competency above 100 can be researched.
 
 ### Reverse Engineer
 
