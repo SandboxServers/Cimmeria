@@ -19,9 +19,9 @@ use crate::test_support::require_db_or_skip;
 /// Sentinel `content_chains.chain_id`. Fits in `i32`. Sibling reservations in
 /// `crates/services` currently run `0x7000_1000..0x7000_1B00`, `0x7000_2000`,
 /// `0x7000_3000`, `0x7000_4000`, `0x7000_4242` and `0x7000_5000`
-/// (`grant_xp`); this steps past all of them. Cleanup deletes the exact ids
-/// inserted, never a range.
-const DIFFICULTY_CHAIN_ID: i32 = 0x7000_6000;
+/// (`grant_xp`). It was `0x7000_6000`, mission 701's `TEST_ACCOUNT`, until
+/// #800. Cleanup deletes the exact ids inserted, never a range.
+const DIFFICULTY_CHAIN_ID: i32 = 0x7000_8A00;
 const DIFFICULTY_TAG: &str = "CIMMERIA_TEST_MINIGAME_DIFFICULTY_TAG";
 /// Neither the loader default (1) nor a boundary — a hardcoded default or a
 /// clamp-to-range bug would not reproduce it.

@@ -43,6 +43,9 @@ mod live_db_slot;
 #[cfg(test)]
 mod live_db_group;
 mod log_capture;
+// The workspace registry of sentinel ids: no value in two files (#800).
+#[cfg(test)]
+mod sentinel_lint;
 pub mod source_scan;
 
 pub use live_db_gate::{pool_or_skip, test_pool, test_pool_from_url, SkipReason};

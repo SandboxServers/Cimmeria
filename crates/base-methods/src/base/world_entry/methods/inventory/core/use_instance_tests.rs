@@ -19,10 +19,10 @@ use super::handle_use_inventory_item;
 use crate::base::ConnectedClientState;
 use crate::test_support::{require_db_or_skip, TestTransport};
 
-/// Sentinel base — picks a window well above the move-handler tests
-/// (`TEST_BASE = 0x7000_0200`) and well below `i32::MAX` so it can't
-/// collide with player_id auto-increment.
-const TEST_BASE: i32 = 0x7000_0400;
+/// Sentinel base. Was `0x7000_0400`, which `missions/tests.rs` owns (#800);
+/// the largest offset is `+201`. The workspace sentinel lint
+/// (`cimmeria-test-support`) keeps every sentinel value in one file.
+const TEST_BASE: i32 = 0x7000_8100;
 
 /// Slappack TC1 — `clip_size = 0`, `container_sets = '{1, 17}'`. Pinned
 /// to the seed row at `db/resources/Items/Seed/items.sql:4879`. If that

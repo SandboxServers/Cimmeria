@@ -23,7 +23,8 @@ use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
 
-const TEST_BASE: i32 = 0x7000_0500;
+/// Sentinel base. Was `0x7000_0500`, which `mail/tests/read.rs` owns (#800).
+const TEST_BASE: i32 = 0x7000_8000;
 const SLAPPACK_TYPE_ID: i32 = 2893;
 const TEST_NAQUADAH: i32 = 4242;
 const TEST_BANDOLIER_SLOT: i32 = 2;
@@ -106,7 +107,7 @@ async fn live_db_resync_sends_bag_info_active_slot_cash_then_items_in_order() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
-    let entity_id: u32 = 0x7000_0501;
+    let entity_id: u32 = (TEST_BASE + 1) as u32;
 
     cleanup(&pool, account_id, player_id).await;
     insert_account_player_and_item(&pool, account_id, player_id).await;

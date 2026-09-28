@@ -85,7 +85,9 @@ mod tests {
     /// scoped to the rows the test actually inserts (rather than a
     /// blanket `>= TEST_SHARD_BASE` that would also nuke rows from
     /// concurrent tests).
-    const TEST_SHARD_BASE: i32 = 0x7000_0000;
+    // Was 0x7000_0000, which the outbox tests use as `cell_event_outbox`
+    // entity ids (#800).
+    const TEST_SHARD_BASE: i32 = 0x7000_8800;
 
     /// Delete only the rows the test actually inserted. Per-test
     /// scoping keeps a future addition that uses a different sentinel

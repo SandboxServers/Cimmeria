@@ -22,16 +22,18 @@
 //!
 //! | Id | Used by |
 //! |---|---|
-//! | `0x7000_6200` | [`DIALED_CHAIN_ID`] — the `stargate_dialed` sentinel |
-//! | `0x7000_6210` | [`CROSSED_CHAIN_ID`] — the `stargate_crossed` sentinel |
-//! | `0x7000_6220` | [`WILDCARD_CHAIN_ID`] — the NULL-`event_key` sentinel |
+//! | `0x7000_8B00` | [`DIALED_CHAIN_ID`] — the `stargate_dialed` sentinel |
+//! | `0x7000_8B10` | [`CROSSED_CHAIN_ID`] — the `stargate_crossed` sentinel |
+//! | `0x7000_8B20` | [`WILDCARD_CHAIN_ID`] — the NULL-`event_key` sentinel |
 //!
 //! Neighbouring slots, so a future packet can see what is free: the
 //! `crates/services` reservations run `0x7000_0000`–`0x7000_5000` with
 //! scattered `+1`/`+0x10` derivatives; `0x7000_6000` and `0x7000_6010`
 //! belong to CA04's `livewire_pairs` and `0x7000_6001` to mission 701's
-//! `TEST_PLAYER`, which is why this module moved to the `_62xx` block.
-//! `0x7000_6230` upward is unclaimed.
+//! `TEST_PLAYER`, which is why this module moved to the `_62xx` block, and
+//! `_62xx` was then the Harset spawner's `SENTINEL_ABILITY_SET_ID`, which is
+//! why it moved again to `_8Bxx` (#800). The workspace sentinel lint in
+//! `cimmeria-test-support` is now the registry of what is taken.
 //!
 //! Cleanup deletes the exact ids inserted, never a range.
 
@@ -43,13 +45,13 @@ use sqlx::PgPool;
 use super::super::engine_loader::load_single_chain_for_test;
 use crate::test_support::require_db_or_skip;
 
-const DIALED_CHAIN_ID: i32 = 0x7000_6200;
-const CROSSED_CHAIN_ID: i32 = 0x7000_6210;
+const DIALED_CHAIN_ID: i32 = 0x7000_8B00;
+const CROSSED_CHAIN_ID: i32 = 0x7000_8B10;
 /// The NULL-`event_key` wildcard sentinel. Declared rather than derived
 /// as `DIALED_CHAIN_ID + 1` — a derived id is invisible to anyone
 /// grepping for reservations, which is exactly how `0x7000_6001` ended up
 /// shared with mission 701's `TEST_PLAYER`.
-const WILDCARD_CHAIN_ID: i32 = 0x7000_6220;
+const WILDCARD_CHAIN_ID: i32 = 0x7000_8B20;
 
 /// The destination world the sentinel chains key on. A real
 /// `resources.worlds.world` value so the fixture matches what

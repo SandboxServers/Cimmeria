@@ -1,6 +1,6 @@
 # Integration Test Infrastructure
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Audience**: Engineers writing tests against PostgreSQL or any other
 > live external dependency
 > **Type**: Architecture decision + how-to
@@ -135,11 +135,11 @@ Each test is responsible for its own data isolation: either work
 inside a transaction it rolls back at the end (works for tests that
 don't need to span their own commit boundary), or pick a sentinel
 from the module's reserved `0x7000_xxxx` slot and delete its own
-rows on cleanup. The reserved-slot scheme is documented per-module
-(see `crates/base-world-entry/src/base/character/mod.rs:276-281` and
-`crates/base-methods/src/base/world_entry/methods/missions.rs:146-148`
-for the canonical doc-comment shape) and is also summarised in the
-"Sentinel id discipline" section of [TESTING.md](../../TESTING.md).
+rows on cleanup. No two files may declare the same sentinel value:
+`sentinel_consts_are_unique_across_files` in
+`crates/test-support/src/sentinel_lint.rs` enforces that across the
+workspace and is the registry of taken slots (#800). The rules are in
+the "Sentinel id discipline" section of [TESTING.md](../../TESTING.md).
 
 ## Setup for local dev
 

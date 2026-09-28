@@ -40,7 +40,7 @@ const PLAYER_ID: i32 = 100;
 /// Moh'katan's offer chain family; 1324 is the mission the packet names.
 const MISSION: i32 = 1324;
 const STEP: i32 = 3954;
-const CHAIN: i64 = 0x7005_4001;
+const CHAIN: i64 = 0x7005_4002;
 const COUNTER: &str = "offer_repainted";
 
 fn make_mgr() -> SpaceManager {

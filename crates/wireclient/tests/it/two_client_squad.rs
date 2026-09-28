@@ -25,10 +25,12 @@ use crate::support::{
     start_server, wait_for, wait_for_recording, CASTLE_BASE_POS,
 };
 
-const ALPHA_ACCOUNT: i32 = 0x7000_0311;
-const BRAVO_ACCOUNT: i32 = 0x7000_0312;
-const ALPHA_PLAYER: i32 = 0x7000_0301;
-const BRAVO_PLAYER: i32 = 0x7000_0302;
+// Own block since #800: the old `0x7000_0301`/`_0302` players were
+// `inventory/grant/tests.rs`'s `sgw_player` ids.
+const ALPHA_ACCOUNT: i32 = 0x7000_8E11;
+const BRAVO_ACCOUNT: i32 = 0x7000_8E12;
+const ALPHA_PLAYER: i32 = 0x7000_8E01;
+const BRAVO_PLAYER: i32 = 0x7000_8E02;
 const BRAVO_NAME: &str = "ORG03Bravo";
 const ALPHA_NAME: &str = "ORG03Alpha";
 
