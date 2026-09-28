@@ -177,7 +177,7 @@ fn harset_space_manager() -> SpaceManager {
 /// radius inside Harset and wins the COALESCE over whatever H11 later
 /// puts on the template.
 #[tokio::test]
-async fn harset_hub_mob_spawns_carry_the_documented_respawn_delay() {
+async fn live_db_harset_hub_mob_spawns_carry_the_documented_respawn_delay() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
 
@@ -202,7 +202,7 @@ async fn harset_hub_mob_spawns_carry_the_documented_respawn_delay() {
 /// and 742 for every other player on the shard until a restart. Separate
 /// from the sentry test so a regression names the right culprit.
 #[tokio::test]
-async fn harset_named_story_npcs_respawn_rather_than_staying_dead() {
+async fn live_db_harset_named_story_npcs_respawn_rather_than_staying_dead() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
 
@@ -225,7 +225,7 @@ async fn harset_named_story_npcs_respawn_rather_than_staying_dead() {
 /// rows would schedule respawn timers for a DHD and five ring switches
 /// that can never die, which reads as intent to a future author.
 #[tokio::test]
-async fn harset_prop_spawns_stay_one_shot() {
+async fn live_db_harset_prop_spawns_stay_one_shot() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
 
@@ -262,7 +262,7 @@ async fn harset_prop_spawns_stay_one_shot() {
 /// the COALESCE — that is downstream of H11's template value and a decision
 /// for the Castle campaign, not something H13 should pin.
 #[tokio::test]
-async fn harset_respawn_delay_is_written_on_the_spawn_row_and_spares_castle() {
+async fn live_db_harset_respawn_delay_is_written_on_the_spawn_row_and_spares_castle() {
     use sqlx::Row;
 
     let pool = require_db_or_skip!();
@@ -345,7 +345,7 @@ async fn harset_respawn_delay_is_written_on_the_spawn_row_and_spares_castle() {
 /// and has to argue for it, which is the intended friction.
 /// [`NA29_MOBILE_SPAWN_IDS`] is the first set that did.
 #[tokio::test]
-async fn every_harset_mob_row_carries_respawn_and_stationary_data() {
+async fn live_db_every_harset_mob_row_carries_respawn_and_stationary_data() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
 
@@ -395,7 +395,7 @@ async fn every_harset_mob_row_carries_respawn_and_stationary_data() {
 /// AI down the hold-position-and-fire branch instead, which is correct
 /// behavior for a sentry and survives GH1's navmesh rebuild.
 #[tokio::test]
-async fn harset_gate_and_door_sentries_are_stationary() {
+async fn live_db_harset_gate_and_door_sentries_are_stationary() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
 
@@ -418,7 +418,7 @@ async fn harset_gate_and_door_sentries_are_stationary() {
 /// `stationary_holds` branch. H12 will extend the same rule to the ~20
 /// rows it adds to world 68.
 #[tokio::test]
-async fn harset_named_story_npcs_are_stationary() {
+async fn live_db_harset_named_story_npcs_are_stationary() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
 
@@ -456,7 +456,7 @@ async fn harset_named_story_npcs_are_stationary() {
 /// 23 or 25 to some *other* zone would not be caught here — that would
 /// need a workspace-wide assertion, which is out of H13's scope.
 #[tokio::test]
-async fn harset_debug_spawns_are_absent_from_the_production_world() {
+async fn live_db_harset_debug_spawns_are_absent_from_the_production_world() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
 
@@ -499,7 +499,7 @@ async fn harset_debug_spawns_are_absent_from_the_production_world() {
 /// NULL, `mark_npc_dead` leaves `respawn_at` as `None` and the test fails
 /// there, before the deadline rewind that drives the tick.
 #[tokio::test]
-async fn killed_harset_guard_is_stamped_and_revived_by_the_respawn_tick() {
+async fn live_db_killed_harset_guard_is_stamped_and_revived_by_the_respawn_tick() {
     let pool = require_db_or_skip!();
     let records = harset_records(&pool).await;
     // Spawn 225 — a plaza guard flanking the stargate, template 160.

@@ -57,7 +57,7 @@ async fn wait_held(pool: &PgPool, gate_pid: i32, n: i64) {
 /// the withdrawal gets the organization and waits on the delete's row lock
 /// while the delete waits on the organization: Postgres aborts one side.
 #[tokio::test]
-async fn a_withdrawal_racing_a_delete_of_the_same_character_does_not_deadlock() {
+async fn live_db_a_withdrawal_racing_a_delete_of_the_same_character_does_not_deadlock() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 17, 2).await;
     let team = fx.org(0, 0, &[1]).await;

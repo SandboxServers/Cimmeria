@@ -15,7 +15,7 @@ use cimmeria_entity::cell_entity::VaultScope;
 /// A split into the vault conserves the count: 10 becomes 6 carried and a
 /// new vault row of 4, and `move_accepted` records both stacks.
 #[tokio::test]
-async fn a_split_into_the_vault_conserves_the_count() {
+async fn live_db_a_split_into_the_vault_conserves_the_count() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x70, BASE + 0x71, 0x7000_B5E7);
     setup(&pool, account_id, player_id).await;
@@ -59,7 +59,7 @@ async fn a_split_into_the_vault_conserves_the_count() {
 /// `Inventory.py:391-395`): a partial merge takes from the source, a whole
 /// one deletes it and sends `onRemoveItem`. The count never changes.
 #[tokio::test]
-async fn a_deposit_merges_into_a_same_type_vault_stack() {
+async fn live_db_a_deposit_merges_into_a_same_type_vault_stack() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x80, BASE + 0x81, 0x7000_B5E8);
     setup(&pool, account_id, player_id).await;
@@ -107,7 +107,7 @@ async fn a_deposit_merges_into_a_same_type_vault_stack() {
 
 /// A merge that would overflow the stack (20) swaps instead, as before.
 #[tokio::test]
-async fn a_full_same_type_stack_swaps_instead_of_merging() {
+async fn live_db_a_full_same_type_stack_swaps_instead_of_merging() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x90, BASE + 0x91, 0x7000_B5E9);
     setup(&pool, account_id, player_id).await;
@@ -133,7 +133,7 @@ async fn a_full_same_type_stack_swaps_instead_of_merging() {
 /// mailable. The move swaps instead, and each row keeps its own `bound`.
 /// Fails if the merge ignores `bound` (one row of 7).
 #[tokio::test]
-async fn a_bound_stack_does_not_merge_into_an_unbound_one() {
+async fn live_db_a_bound_stack_does_not_merge_into_an_unbound_one() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0xB2, BASE + 0xB3, 0x7000_B5EE);
     setup(&pool, account_id, player_id).await;
@@ -170,7 +170,7 @@ async fn a_bound_stack_does_not_merge_into_an_unbound_one() {
 /// A GM `.bank` session has no Banker and skips proximity: the deposit is
 /// accepted and `move_accepted` says `gm_override=true`.
 #[tokio::test]
-async fn a_gm_session_deposits_without_a_banker() {
+async fn live_db_a_gm_session_deposits_without_a_banker() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0xA0, BASE + 0xA1, 0x7000_B5EA);
     setup(&pool, account_id, player_id).await;
@@ -201,7 +201,7 @@ async fn a_gm_session_deposits_without_a_banker() {
 /// A move that never touches the vault logs no `move_accepted`: the event
 /// is the bank's, not every move's.
 #[tokio::test]
-async fn a_carried_move_logs_no_bank_event() {
+async fn live_db_a_carried_move_logs_no_bank_event() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0xB0, BASE + 0xB1, 0x7000_B5EB);
     setup(&pool, account_id, player_id).await;

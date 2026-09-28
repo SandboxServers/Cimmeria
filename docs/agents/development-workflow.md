@@ -111,7 +111,7 @@ bash tools/build-lane/rm-worktree.sh --dry-run --merged  # show what a sweep wou
 bash tools/build-lane/rm-worktree.sh --merged            # every merged, idle worktree
 ```
 
-The script deletes the target dir, unlinks `external/`, removes the worktree, deletes the local branch, and drops the worktree's `sgw_<name>` test database. It refuses a worktree when:
+The script deletes the target dir, unlinks `external/`, removes the worktree, deletes the local branch, and drops the worktree's `sgw_<name>` test database and its live-DB slot clones (`sgw_<name>_0`, `sgw_<name>_1`, ...). It refuses a worktree when:
 
 - a lane job is building in it (nothing overrides this);
 - it has uncommitted changes, or it is locked (an agent may still be using it);
@@ -153,7 +153,7 @@ A worktree that already has a local `target\` keeps building there, so a job in 
 Live-DB tests reload and mutate the database, so each worktree uses its own on the bundled Postgres (`:5433`). Never reload a database another run is using.
 
 - `bash tools/build-lane/reload-db.sh`, run from the worktree root, drops and reloads the worktree's database from `db/database.sql` and prints the `DATABASE_URL` to use. The database is `sgw_<worktree name>`; the main checkout keeps `sgw`. `CIMMERIA_TEST_DB=<name>` overrides it.
-- `bash tools/build-lane/live-db-test.sh <test-name filter>` reloads that database, then runs the live-DB tier (`tools/test-live-db.sh`, the same crates, profile and serialisation as CI) in one lane slot.
+- `bash tools/build-lane/live-db-test.sh <test-name filter>` reloads that database, then runs the live-DB tier (`tools/test-live-db.sh`, the same crates and profile as CI) in one lane slot. The tier clones the database into one copy per live-DB slot, `sgw_<worktree name>_0` .. `_<N-1>`, and each running live-DB test uses its slot's copy.
 
 Starting the bundled Postgres is documented in [`docs/architecture/integration-test-infra.md`](../architecture/integration-test-infra.md).
 

@@ -284,7 +284,7 @@ fn assert_rejected(
 /// Success: 78 is learned at expertise 1, one ASP is spent, no blueprint is
 /// granted, and the client gets 136 then the new ASP total.
 #[tokio::test]
-async fn spend_learns_the_discipline_and_pushes_it() {
+async fn live_db_spend_learns_the_discipline_and_pushes_it() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -346,7 +346,7 @@ async fn spend_learns_the_discipline_and_pushes_it() {
 /// Replay (CAT-F F-02): the same request twice learns once and spends
 /// once. The second is refused as already known and writes nothing.
 #[tokio::test]
-async fn replayed_spend_changes_nothing() {
+async fn live_db_replayed_spend_changes_nothing() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = player(&pool, 1, 2, &[]).await;
     let session = OneSession::new(ENTITY, 55751);
@@ -370,7 +370,7 @@ async fn replayed_spend_changes_nothing() {
 /// No ASP: the text line, then `onErrorCode(0, 0, 214)`, and nothing
 /// written.
 #[tokio::test]
-async fn spend_without_asp_is_refused_with_code_214() {
+async fn live_db_spend_without_asp_is_refused_with_code_214() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 2, 0, &[]).await;
@@ -395,7 +395,7 @@ async fn spend_without_asp_is_refused_with_code_214() {
 
 /// Already known (not a replay: the character learned it earlier).
 #[tokio::test]
-async fn spend_on_a_known_discipline_is_refused() {
+async fn live_db_spend_on_a_known_discipline_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 3, 3, &[(78, 40)]).await;
@@ -422,7 +422,7 @@ async fn spend_on_a_known_discipline_is_refused() {
 
 /// Paradigm: Ceramic Composites (82) needs Human 3; the default is 1.
 #[tokio::test]
-async fn spend_below_the_paradigm_level_is_refused() {
+async fn live_db_spend_below_the_paradigm_level_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 4, 3, &[(78, 100)]).await;
@@ -460,7 +460,7 @@ async fn spend_below_the_paradigm_level_is_refused() {
 /// prerequisite loop from `check_spend` makes the first two learn and fails
 /// this test.
 #[tokio::test]
-async fn spend_without_the_prerequisite_at_fifty_is_refused() {
+async fn live_db_spend_without_the_prerequisite_at_fifty_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let cases = [
@@ -514,7 +514,7 @@ async fn spend_without_the_prerequisite_at_fifty_is_refused() {
 /// and refuse. Reading without the lock, it would check a stale 1 ASP,
 /// learn 78 and leave the total at -1.
 #[tokio::test]
-async fn spend_rechecks_after_waiting_for_the_row_lock() {
+async fn live_db_spend_rechecks_after_waiting_for_the_row_lock() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = player(&pool, 9, 1, &[]).await;
     let catalog = cimmeria_cell_catalog::crafting::shared_crafting_catalog(&pool)
@@ -549,7 +549,7 @@ async fn spend_rechecks_after_waiting_for_the_row_lock() {
 
 /// A discipline the catalog does not have.
 #[tokio::test]
-async fn spend_on_an_unknown_discipline_is_refused() {
+async fn live_db_spend_on_an_unknown_discipline_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 8, 3, &[]).await;
@@ -576,7 +576,7 @@ async fn spend_on_an_unknown_discipline_is_refused() {
 /// paired `rows_affected = 0` / `expected = 1`, and the player still gets
 /// the "unavailable" line.
 #[tokio::test]
-async fn spend_for_a_missing_player_row_warns_with_rows_affected() {
+async fn live_db_spend_for_a_missing_player_row_warns_with_rows_affected() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     // Inside the spend block, never inserted.

@@ -15,7 +15,7 @@ use crate::test_support::require_db_or_skip;
 /// the vault; a merge withdrawal onto a carried stack of the same type
 /// empties the vault row and deletes it. The total stays 7 throughout.
 #[tokio::test]
-async fn split_and_merge_conserve_the_count() {
+async fn live_db_split_and_merge_conserve_the_count() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 9, 1).await;
     let team = fx.org(0, 0, &[]).await;
@@ -57,7 +57,7 @@ async fn split_and_merge_conserve_the_count() {
 /// swap across the vault (the leader drags a carried item onto a vault
 /// stack it cannot merge with): each item ends where the other was.
 #[tokio::test]
-async fn swaps_within_and_across_the_vault() {
+async fn live_db_swaps_within_and_across_the_vault() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 10, 1).await;
     let team = fx.org(0, 0, &[]).await;
@@ -102,7 +102,7 @@ async fn swaps_within_and_across_the_vault() {
 /// the reads and `FOR UPDATE` through and blocks every write) until both
 /// moves are parked behind it, counting only sessions the gate holds.
 #[tokio::test]
-async fn two_members_merging_onto_one_stack_cannot_overfill_it() {
+async fn live_db_two_members_merging_onto_one_stack_cannot_overfill_it() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 11, 3).await;
     let team = fx.org(0, 2, &[0, 1]).await;
@@ -176,7 +176,7 @@ async fn two_members_merging_onto_one_stack_cannot_overfill_it() {
 /// added to one table and not the other (the move SQL in
 /// `move_/org/apply.rs` must then name it too).
 #[tokio::test]
-async fn the_vault_table_carries_every_inventory_column() {
+async fn live_db_the_vault_table_carries_every_inventory_column() {
     let pool = require_db_or_skip!();
     let columns = |table: &'static str| {
         let pool = pool.clone();

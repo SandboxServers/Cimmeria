@@ -195,7 +195,7 @@ fn sentinel_actions(resolved: &cimmeria_content_engine::chain::ResolvedActions) 
 /// authored actions, in order — `set_npc_ai_state submit` then
 /// `advance_step`.
 #[tokio::test]
-async fn crossing_the_threshold_resolves_submit_then_advance_step() {
+async fn live_db_crossing_the_threshold_resolves_submit_then_advance_step() {
     let pool = require_db_or_skip!();
     let engine = engine_with_sentinel_chain(&pool).await;
 
@@ -235,7 +235,7 @@ async fn crossing_the_threshold_resolves_submit_then_advance_step() {
 /// half of the `event_key` is load-bearing, and a duel chain firing on an
 /// unrelated mob's wound would advance the mission from across the zone.
 #[tokio::test]
-async fn a_crossing_on_a_different_tag_resolves_nothing() {
+async fn live_db_a_crossing_on_a_different_tag_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = engine_with_sentinel_chain(&pool).await;
 
@@ -253,7 +253,7 @@ async fn a_crossing_on_a_different_tag_resolves_nothing() {
 /// resolves nothing. Pins the `pct_after <= pct` half of the predicate:
 /// drop it and every wounding hit fires the chain.
 #[tokio::test]
-async fn a_hit_that_does_not_reach_the_threshold_resolves_nothing() {
+async fn live_db_a_hit_that_does_not_reach_the_threshold_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = engine_with_sentinel_chain(&pool).await;
 
@@ -270,7 +270,7 @@ async fn a_hit_that_does_not_reach_the_threshold_resolves_nothing() {
 /// Pins the `pct_before > pct` half: drop it and the duel re-advances
 /// its step on every subsequent shot.
 #[tokio::test]
-async fn a_follow_up_hit_below_the_threshold_resolves_nothing() {
+async fn live_db_a_follow_up_hit_below_the_threshold_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = engine_with_sentinel_chain(&pool).await;
 
@@ -300,7 +300,7 @@ async fn a_follow_up_hit_below_the_threshold_resolves_nothing() {
 /// cannot reach: they prove the arm returns `None`, not that the loader
 /// then discards the chain rather than registering it triggerless.
 #[tokio::test]
-async fn a_chain_with_an_unusable_percentage_is_dropped_at_load() {
+async fn live_db_a_chain_with_an_unusable_percentage_is_dropped_at_load() {
     let pool = require_db_or_skip!();
 
     cleanup_sentinel_chain(&pool).await;
@@ -332,7 +332,7 @@ async fn a_chain_with_an_unusable_percentage_is_dropped_at_load() {
 /// out of `seed_sentinel_chain_with_key` fails it, which is the point:
 /// it pins the seed shape H21 copies.
 #[tokio::test]
-async fn a_recrossing_after_the_step_advanced_resolves_nothing() {
+async fn live_db_a_recrossing_after_the_step_advanced_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = engine_with_sentinel_chain(&pool).await;
 

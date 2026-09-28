@@ -43,7 +43,7 @@ fn assert_refused(
 }
 
 #[tokio::test]
-async fn a_quantity_outside_one_to_a_hundred_is_refused() {
+async fn live_db_a_quantity_outside_one_to_a_hundred_is_refused() {
     let pool = require_db_or_skip!();
     for (slot, quantity) in [(10, 0), (11, MAX_CRAFT_QUANTITY + 1), (12, -3)] {
         let capture = LogCapture::install();
@@ -69,7 +69,7 @@ async fn a_quantity_outside_one_to_a_hundred_is_refused() {
 }
 
 #[tokio::test]
-async fn an_unknown_blueprint_is_refused() {
+async fn live_db_an_unknown_blueprint_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 13).await;
@@ -91,7 +91,7 @@ async fn an_unknown_blueprint_is_refused() {
 
 /// The guard for the discipline rule: the blueprint alone is not enough.
 #[tokio::test]
-async fn a_known_blueprint_of_an_unknown_discipline_is_refused() {
+async fn live_db_a_known_blueprint_of_an_unknown_discipline_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 14).await;
@@ -116,7 +116,7 @@ async fn a_known_blueprint_of_an_unknown_discipline_is_refused() {
 }
 
 #[tokio::test]
-async fn an_alloy_blueprint_is_refused() {
+async fn live_db_an_alloy_blueprint_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 15).await;
@@ -136,7 +136,7 @@ async fn an_alloy_blueprint_is_refused() {
 
 /// Titanium Cores alone are part of set 2 but match no whole set.
 #[tokio::test]
-async fn components_that_match_no_set_are_refused() {
+async fn live_db_components_that_match_no_set_are_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 16).await;
@@ -162,7 +162,7 @@ async fn components_that_match_no_set_are_refused() {
 /// Blueprint 21 has no component set in the seed: no submission can
 /// craft it.
 #[tokio::test]
-async fn a_blueprint_with_no_components_is_refused() {
+async fn live_db_a_blueprint_with_no_components_is_refused() {
     let pool = require_db_or_skip!();
     let count: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM resources.blueprints_components WHERE blueprint_id = $1",
@@ -194,7 +194,7 @@ async fn a_blueprint_with_no_components_is_refused() {
 /// 13 Steel Cores for set 1's 14; the Steel Core in the bank does not
 /// count.
 #[tokio::test]
-async fn too_few_components_in_the_two_bags_are_refused() {
+async fn live_db_too_few_components_in_the_two_bags_are_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 18).await;
@@ -222,7 +222,7 @@ async fn too_few_components_in_the_two_bags_are_refused() {
 
 /// An instance id that is not the player's (another player's, or none).
 #[tokio::test]
-async fn a_component_that_is_not_the_players_is_refused() {
+async fn live_db_a_component_that_is_not_the_players_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 19).await;
@@ -247,7 +247,7 @@ async fn a_component_that_is_not_the_players_is_refused() {
 }
 
 #[tokio::test]
-async fn a_component_in_the_bank_is_refused() {
+async fn live_db_a_component_in_the_bank_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 21).await;
@@ -275,7 +275,7 @@ async fn a_component_in_the_bank_is_refused() {
 /// completes, so it is refused with the discipline line and nothing is
 /// consumed or granted.
 #[tokio::test]
-async fn a_discipline_forgotten_during_the_bar_refuses_the_craft() {
+async fn live_db_a_discipline_forgotten_during_the_bar_refuses_the_craft() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 23).await;
@@ -326,7 +326,7 @@ async fn a_discipline_forgotten_during_the_bar_refuses_the_craft() {
 /// during the bar leave the craft refused at completion, with the line
 /// and a resync, and no product.
 #[tokio::test]
-async fn components_gone_by_the_end_of_the_bar_refuse_the_craft() {
+async fn live_db_components_gone_by_the_end_of_the_bar_refuse_the_craft() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 22).await;

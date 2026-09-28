@@ -112,7 +112,7 @@ async fn insert_item(
 /// drops the ORDER BY or moves the price join, which would either
 /// reorder the items or strip costs.
 #[tokio::test]
-async fn load_store_buy_items_returns_indexed_rows_with_cost_lists() {
+async fn live_db_load_store_buy_items_returns_indexed_rows_with_cost_lists() {
     let pool = require_db_or_skip!();
     let arc_pool = Arc::new(pool.clone());
 
@@ -163,7 +163,7 @@ async fn load_store_buy_items_returns_indexed_rows_with_cost_lists() {
 /// templates with no buy list are common and the caller relies on
 /// the empty-Vec path to render an "empty store" panel.
 #[tokio::test]
-async fn load_store_buy_items_with_none_returns_empty() {
+async fn live_db_load_store_buy_items_with_none_returns_empty() {
     let pool = require_db_or_skip!();
     let arc_pool = Arc::new(pool.clone());
 
@@ -179,7 +179,7 @@ async fn load_store_buy_items_with_none_returns_empty() {
 /// shape: a future refactor that uses `flags >= 0` would surface
 /// freshly-created rows with default flags as free buyback offerings.
 #[tokio::test]
-async fn load_vendor_buyback_prices_excludes_zero_flag_rows() {
+async fn live_db_load_vendor_buyback_prices_excludes_zero_flag_rows() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
@@ -240,7 +240,7 @@ async fn load_vendor_buyback_prices_excludes_zero_flag_rows() {
 /// pristine items, which the GREATEST(...,1) floor would then bill
 /// as 1 — confusing UX and a money sink.
 #[tokio::test]
-async fn load_vendor_repair_prices_excludes_full_durability() {
+async fn live_db_load_vendor_repair_prices_excludes_full_durability() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;
@@ -299,7 +299,7 @@ async fn load_vendor_repair_prices_excludes_full_durability() {
 /// gear at a vendor — both a UX bug (the sell action would later
 /// fail) and an exploit risk if the inverse path stops checking too.
 #[tokio::test]
-async fn load_vendor_sell_prices_excludes_bound_rows() {
+async fn live_db_load_vendor_sell_prices_excludes_bound_rows() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 300;
     let player_id = TEST_BASE + 301;

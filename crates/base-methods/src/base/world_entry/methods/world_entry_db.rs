@@ -395,7 +395,7 @@ mod tests {
     /// fails must not be admitted into the stock CellBlock space (the
     /// unknown-world fallback). Entry is refused and the id handed back.
     #[tokio::test]
-    async fn historical_cellblock_login_fails_closed_when_the_cell_create_fails() {
+    async fn live_db_historical_cellblock_login_fails_closed_when_the_cell_create_fails() {
         let pool = require_db_or_skip!();
         let account_id = HISTORICAL_LOGIN_BASE;
         let player_id = HISTORICAL_LOGIN_BASE + 1;
@@ -423,7 +423,7 @@ mod tests {
     /// Control for the guard above: a stock world keeps its fallback space,
     /// so the refusal is scoped to the worlds that have no safe one.
     #[tokio::test]
-    async fn stock_cellblock_login_keeps_its_fallback_space_when_the_cell_create_fails() {
+    async fn live_db_stock_cellblock_login_keeps_its_fallback_space_when_the_cell_create_fails() {
         let pool = require_db_or_skip!();
         let account_id = HISTORICAL_LOGIN_BASE + 2;
         let player_id = HISTORICAL_LOGIN_BASE + 3;

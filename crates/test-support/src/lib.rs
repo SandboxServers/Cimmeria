@@ -6,7 +6,9 @@
 //! - **Live-DB gate**: tests that need PostgreSQL call
 //!   [`require_db_or_skip!`]. They skip when `DATABASE_URL` is unset and
 //!   **fail** when it is set but unreachable (#615). See
-//!   `docs/architecture/integration-test-infra.md`.
+//!   `docs/architecture/integration-test-infra.md`. Under nextest's
+//!   `live-db` test group each test gets its slot's own database clone
+//!   ([`database_url`]).
 //! - **Log capture**: [`LogCapture`] records tracing events so a regression
 //!   guard can assert that a WARN/ERROR fired with the right structured
 //!   fields. See `docs/architecture/negative-logging-convention.md`.
@@ -35,10 +37,16 @@
 #![warn(unreachable_pub)]
 
 mod live_db_gate;
+mod live_db_slot;
+// The guard that keeps every live-DB test inside the `ci-live-db` serial
+// filter (see its module docs). Test-only: nothing outside this crate uses it.
+#[cfg(test)]
+mod live_db_group;
 mod log_capture;
 pub mod source_scan;
 
 pub use live_db_gate::{pool_or_skip, test_pool, test_pool_from_url, SkipReason};
+pub use live_db_slot::{database_url, LIVE_DB_GROUP};
 pub use log_capture::{Captured, LogCapture, LogCaptureGuard};
 
 /// The canonical recording UDP fake: a

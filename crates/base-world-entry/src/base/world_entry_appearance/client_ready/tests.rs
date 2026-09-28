@@ -108,7 +108,7 @@ async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
 /// fixture base ranges; nothing to clean up because the test
 /// does NOT insert the row.
 #[tokio::test]
-async fn first_login_update_errors_when_player_row_missing() {
+async fn live_db_first_login_update_errors_when_player_row_missing() {
     use crate::test_support::{
         require_db_or_skip, test_default_connected_client_state, LogCapture, TestTransport,
     };
@@ -203,7 +203,7 @@ async fn first_login_update_errors_when_player_row_missing() {
 /// leaves no such packet at any sequence number, and a separate options
 /// push instead of the one in the bundle leaves no packet of this shape.
 #[tokio::test]
-async fn on_client_ready_pushes_the_stored_crafting_state() {
+async fn live_db_on_client_ready_pushes_the_stored_crafting_state() {
     use crate::test_support::{
         require_db_or_skip, test_default_connected_client_state, TestTransport,
     };
@@ -317,7 +317,7 @@ async fn on_client_ready_pushes_the_stored_crafting_state() {
 /// so this is what keeps spatial chat filtering after a world change. Fails
 /// when the `resync_ignore_cache(.., "world_entry")` call is removed.
 #[tokio::test]
-async fn on_client_ready_seeds_ignore_list_after_init_player_state() {
+async fn live_db_on_client_ready_seeds_ignore_list_after_init_player_state() {
     use crate::test_support::{
         require_db_or_skip, test_default_connected_client_state, TestTransport,
     };

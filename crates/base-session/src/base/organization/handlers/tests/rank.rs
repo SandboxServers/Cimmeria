@@ -16,7 +16,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// CAT-M-06, D-ORG09 (2): a Senior Officer (7, holding `Promote`) can
 /// promote nobody to Senior Officer, and cannot touch a peer.
 #[tokio::test]
-async fn rank_change_rejects_promote_above_self() {
+async fn live_db_rank_change_rejects_promote_above_self() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 21, 3, &["Org07 Promote"]).await;
     let cmd = fx.org(OrgType::Command, "Org07 Promote", 0, &[1, 2]).await;
@@ -59,7 +59,7 @@ async fn rank_change_rejects_promote_above_self() {
 /// CAT-M-06, D-ORG09 (4): `Leader` is never assigned by a rank change, not
 /// even by the Leader.
 #[tokio::test]
-async fn rank_change_rejects_assign_leader() {
+async fn live_db_rank_change_rejects_assign_leader() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 22, 2, &["Org07 Crown"]).await;
     let team = fx.org(OrgType::Team, "Org07 Crown", 0, &[1]).await;
@@ -87,7 +87,7 @@ async fn rank_change_rejects_assign_leader() {
 /// CAT-M-06, D-ORG09 (5): a rank the type does not use is refused: 0 in
 /// any type, 5 in a Team, and anything above 8.
 #[tokio::test]
-async fn rank_change_rejects_rank_not_in_type() {
+async fn live_db_rank_change_rejects_rank_not_in_type() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 23, 2, &["Org07 Ladder"]).await;
     let team = fx.org(OrgType::Team, "Org07 Ladder", 0, &[1]).await;
@@ -117,7 +117,7 @@ async fn rank_change_rejects_rank_not_in_type() {
 /// no `Demote`) can do neither; a changed rank to the same value is
 /// refused before a bit is chosen.
 #[tokio::test]
-async fn rank_change_needs_the_bit_for_its_direction() {
+async fn live_db_rank_change_needs_the_bit_for_its_direction() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 24, 3, &["Org07 Bits"]).await;
     let cmd = fx.org(OrgType::Command, "Org07 Bits", 0, &[1, 2]).await;
@@ -146,7 +146,7 @@ async fn rank_change_needs_the_bit_for_its_direction() {
 /// the target included, gets [40] with the target's entity id; the target
 /// and the actor each get a line; one `ok` row carries all three ranks.
 #[tokio::test]
-async fn rank_change_updates_and_fans_out() {
+async fn live_db_rank_change_updates_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 25, 3, &["Org07 Promoted"]).await;
     let cmd = fx.org(OrgType::Command, "Org07 Promoted", 0, &[1, 2]).await;

@@ -29,7 +29,7 @@ const RESTORES: [(i32, i32); 4] = [(2399, 1240), (2400, 1241), (2401, 1242), (24
 /// Chain 1240 — logging in mid-step-2399 re-binds the Copplemann
 /// in-progress topic so she is clickable and chain 1231 can fire.
 #[tokio::test]
-async fn chain_1240_restores_copplemann_topic_on_step_2399() {
+async fn live_db_chain_1240_restores_copplemann_topic_on_step_2399() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1240).await;
 
@@ -49,7 +49,7 @@ async fn chain_1240_restores_copplemann_topic_on_step_2399() {
 /// launcher reachable after a relog. Losing this strands the player with
 /// an unclickable Copplemann and no way to free her.
 #[tokio::test]
-async fn chain_1241_restores_copplemann_topic_on_step_2400() {
+async fn live_db_chain_1241_restores_copplemann_topic_on_step_2400() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1241).await;
 
@@ -71,7 +71,7 @@ async fn chain_1241_restores_copplemann_topic_on_step_2400() {
 /// the mission is permanently stuck. The re-armed actions must be
 /// identical to chain 1235's, delays included.
 #[tokio::test]
-async fn chain_1242_rearms_the_escort_timer_on_step_2401() {
+async fn live_db_chain_1242_rearms_the_escort_timer_on_step_2401() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1242).await;
 
@@ -96,7 +96,7 @@ async fn chain_1242_rearms_the_escort_timer_on_step_2401() {
 /// Chain 1243 — the turn-in "?" comes back on login so the player can
 /// hand 701 in after a relog.
 #[tokio::test]
-async fn chain_1243_restores_the_turn_in_topic_on_step_2421() {
+async fn live_db_chain_1243_restores_the_turn_in_topic_on_step_2421() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1243).await;
 
@@ -115,7 +115,7 @@ async fn chain_1243_restores_the_turn_in_topic_on_step_2421() {
 /// restores on one login would double-bind (and for 1242, arm a second
 /// escort timer that advances the mission a second time).
 #[tokio::test]
-async fn each_restore_chain_fires_only_on_its_own_step() {
+async fn live_db_each_restore_chain_fires_only_on_its_own_step() {
     let pool = require_db_or_skip!();
 
     for (own_step, chain_id) in RESTORES {
@@ -143,7 +143,7 @@ async fn each_restore_chain_fires_only_on_its_own_step() {
 /// `MissionInstance::complete()` marks the final step `completed`, which
 /// is the state asserted here.
 #[tokio::test]
-async fn no_restore_chain_fires_after_701_completes() {
+async fn live_db_no_restore_chain_fires_after_701_completes() {
     let pool = require_db_or_skip!();
 
     for (step, chain_id) in RESTORES {
@@ -164,7 +164,7 @@ async fn no_restore_chain_fires_after_701_completes() {
 /// (where the player spends missions 622-688) must not paint Castle's
 /// indicators.
 #[tokio::test]
-async fn restore_chains_are_scoped_to_the_castle_world() {
+async fn live_db_restore_chains_are_scoped_to_the_castle_world() {
     let pool = require_db_or_skip!();
 
     for (step, chain_id) in RESTORES {

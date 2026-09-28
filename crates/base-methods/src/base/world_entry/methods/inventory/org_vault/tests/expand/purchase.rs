@@ -16,7 +16,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// if the `UPDATE`, the log insert, the broadcast or the `onBagInfo` is
 /// removed.
 #[tokio::test]
-async fn a_leader_quotes_then_buys_one_step_from_the_treasury() {
+async fn live_db_a_leader_quotes_then_buys_one_step_from_the_treasury() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 0, 2).await;
     let team = fx.org(OrgType::Team, 0, &[1], 250).await;
@@ -118,7 +118,7 @@ async fn a_leader_quotes_then_buys_one_step_from_the_treasury() {
 /// step, one debit, one log row. Fails if the purchase is not keyed on the
 /// size the GM named (both buy: 60 slots, 200 paid).
 #[tokio::test]
-async fn a_double_purchase_is_charged_once() {
+async fn live_db_a_double_purchase_is_charged_once() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 1, 1).await;
     let team = fx.org(OrgType::Team, 0, &[], 1000).await;
@@ -153,7 +153,7 @@ async fn a_double_purchase_is_charged_once() {
 /// ceiling check is removed (the schema's CHECK then aborts the statement
 /// and the refusal becomes `query_failed`).
 #[tokio::test]
-async fn the_ceiling_is_one_hundred_slots() {
+async fn live_db_the_ceiling_is_one_hundred_slots() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 2, 1).await;
     let team = fx.org(OrgType::Team, 0, &[], 1000).await;

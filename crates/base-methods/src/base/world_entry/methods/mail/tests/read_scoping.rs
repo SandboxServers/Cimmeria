@@ -14,7 +14,7 @@ const BASE: i32 = 0x7300_1300;
 /// archived mail. Fails when the filter is reverted: both lists then carry
 /// both rows.
 #[tokio::test]
-async fn request_headers_archive_filter_returns_requested_category() {
+async fn live_db_request_headers_archive_filter_returns_requested_category() {
     let pool = require_db_or_skip!();
     let (acct, owner) = (BASE, BASE + 1);
     cleanup(&pool, acct).await;
@@ -58,7 +58,7 @@ async fn request_headers_archive_filter_returns_requested_category() {
 /// mail changes nothing; the owner's changes it once. Fails when
 /// `AND character_id = $3` is removed from the update.
 #[tokio::test]
-async fn read_time_update_scoped_to_owner() {
+async fn live_db_read_time_update_scoped_to_owner() {
     let pool = require_db_or_skip!();
     let (acct, owner, other) = (BASE + 10, BASE + 11, BASE + 12);
     cleanup(&pool, acct).await;
@@ -89,7 +89,7 @@ async fn read_time_update_scoped_to_owner() {
 /// row, not the reader's session name. The session here holds a different
 /// name; with the old session lookup `ToText` was that name.
 #[tokio::test]
-async fn mail_read_to_text_is_stored_recipient() {
+async fn live_db_mail_read_to_text_is_stored_recipient() {
     let pool = require_db_or_skip!();
     let (acct, owner) = (BASE + 20, BASE + 21);
     cleanup(&pool, acct).await;
@@ -115,7 +115,7 @@ async fn mail_read_to_text_is_stored_recipient() {
 /// refusals (`send_rejects_negative_cash` checks those). Here character A
 /// asks for character B's body: WARN `reason=not_found_for_owner`.
 #[tokio::test]
-async fn read_side_events_carry_account_player_and_entity() {
+async fn live_db_read_side_events_carry_account_player_and_entity() {
     let capture = crate::test_support::LogCapture::install();
     let pool = require_db_or_skip!();
     let (acct, a, b) = (BASE + 30, BASE + 31, BASE + 32);

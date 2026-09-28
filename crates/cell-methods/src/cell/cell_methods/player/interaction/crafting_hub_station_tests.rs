@@ -53,7 +53,7 @@ fn eid_of(spawned: &[(String, u32)], tag: &str) -> u32 {
 /// away). From the respawner, 7.4 units from the nearest station, none is
 /// in reach.
 #[tokio::test]
-async fn a_player_at_the_supplies_vendor_reaches_a_station_for_every_verb() {
+async fn live_db_a_player_at_the_supplies_vendor_reaches_a_station_for_every_verb() {
     let pool = require_db_or_skip!();
     let records = spawner::load_spawns_from_db(&pool)
         .await

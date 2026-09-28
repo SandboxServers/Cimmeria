@@ -83,7 +83,7 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
 /// fidelity for them is a separate concern; this test pins the
 /// EXISTING contract (lossy completion) round-trips end-to-end.
 #[tokio::test]
-async fn mission_completion_cell_to_base_to_db_to_relogin_round_trip() {
+async fn live_db_mission_completion_cell_to_base_to_db_to_relogin_round_trip() {
     use crate::base::world_entry::handle_cell_message;
     use crate::cell::messages::CellToBaseMsg;
     use crate::cell::missions::{accept_mission, complete_mission_direct};
@@ -211,7 +211,7 @@ async fn mission_completion_cell_to_base_to_db_to_relogin_round_trip() {
 /// `EXCLUDED.repeats` UPSERT in place, because the cell→base bridge
 /// or the UPSERT could regress independently.
 #[tokio::test]
-async fn second_completion_advances_persisted_repeats_counter_end_to_end() {
+async fn live_db_second_completion_advances_persisted_repeats_counter_end_to_end() {
     use crate::cell::missions::{accept_mission, complete_mission_direct};
     use crate::cell::space_manager::SpaceManager;
     use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
@@ -407,7 +407,7 @@ async fn second_completion_advances_persisted_repeats_counter_end_to_end() {
 /// or that ties mission persistence to the *entity* rather than the
 /// *player_id*, would break here first.
 #[tokio::test]
-async fn frosts_letter_accept_round_trips_cell_to_base_to_db() {
+async fn live_db_frosts_letter_accept_round_trips_cell_to_base_to_db() {
     use crate::base::world_entry::handle_cell_message;
     use crate::cell::messages::CellToBaseMsg;
     use crate::cell::missions::accept_mission;

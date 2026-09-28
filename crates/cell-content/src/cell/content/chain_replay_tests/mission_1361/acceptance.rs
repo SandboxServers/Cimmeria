@@ -25,7 +25,7 @@ use super::*;
 ///
 /// Every one of those drifts fails here. All four chains move in one change.
 #[tokio::test]
-async fn praxis_acceptance_is_enabled_iff_the_return_door_is() {
+async fn live_db_praxis_acceptance_is_enabled_iff_the_return_door_is() {
     let pool = require_db_or_skip!();
 
     let door = load(&pool, 6007).await;
@@ -58,7 +58,7 @@ async fn praxis_acceptance_is_enabled_iff_the_return_door_is() {
 /// left three chains that still did nothing with the suite green. The
 /// per-chain action assertions below are what close that.
 #[tokio::test]
-async fn acceptance_chains_resolve_their_actions_now_the_door_is_open() {
+async fn live_db_acceptance_chains_resolve_their_actions_now_the_door_is_open() {
     let pool = require_db_or_skip!();
 
     let mut ctx = ExecutionContext::new();
@@ -173,7 +173,7 @@ async fn acceptance_chains_resolve_their_actions_now_the_door_is_open() {
 /// `sort_order` of the add against every remove on the same slot is what
 /// catches a re-ordering that leaves the action set unchanged.
 #[tokio::test]
-async fn the_1361_abandon_twin_clears_before_it_repaints() {
+async fn live_db_the_1361_abandon_twin_clears_before_it_repaints() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(String, i32, serde_json::Value, i32)> = sqlx::query_as(
@@ -241,7 +241,7 @@ async fn the_1361_abandon_twin_clears_before_it_repaints() {
 /// 6512 displays 4457 instead precisely to avoid that, so the invariant
 /// that keeps 4456 unreachable is this equality.
 #[tokio::test]
-async fn offer_bind_and_offer_dialog_carry_identical_conditions() {
+async fn live_db_offer_bind_and_offer_dialog_carry_identical_conditions() {
     let pool = require_db_or_skip!();
     let bind = load(&pool, 6511).await;
     let dialog = load(&pool, 6512).await;
@@ -268,7 +268,7 @@ async fn offer_bind_and_offer_dialog_carry_identical_conditions() {
 /// archetypes, so a regression that collapsed them into `eq 5` would
 /// silently lock out Commandos, Scientists and Engineers.
 #[tokio::test]
-async fn the_praxis_offer_is_human_only() {
+async fn live_db_the_praxis_offer_is_human_only() {
     let pool = require_db_or_skip!();
 
     for chain_id in [6511, 6512] {
@@ -311,7 +311,7 @@ async fn the_praxis_offer_is_human_only() {
 /// letter — the other half of the Marsh disjointness contract, tested at
 /// the condition level because the chains are parked.
 #[tokio::test]
-async fn the_praxis_offer_waits_for_the_letter_to_be_delivered() {
+async fn live_db_the_praxis_offer_waits_for_the_letter_to_be_delivered() {
     let pool = require_db_or_skip!();
 
     for chain_id in [6511, 6512] {
@@ -343,7 +343,7 @@ async fn the_praxis_offer_waits_for_the_letter_to_be_delivered() {
 /// The accept action list, checked on the parked chain so it cannot rot
 /// while unreachable.
 #[tokio::test]
-async fn chain_6513_is_authored_to_accept_and_point_at_mohkatan() {
+async fn live_db_chain_6513_is_authored_to_accept_and_point_at_mohkatan() {
     let pool = require_db_or_skip!();
     let chain = load(&pool, 6513).await;
 

@@ -53,7 +53,7 @@ async fn answer(
 /// tells the other online member with [37] (`aNewMember = 1`, the joiner's
 /// entity id), and ends in one `ok` row naming the inviter as the target.
 #[tokio::test]
-async fn org_accept_joins_at_entry_rank_and_fans_out() {
+async fn live_db_org_accept_joins_at_entry_rank_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 9, 2, &["Org07 Accept"]).await;
     let cmd = fx.org(OrgType::Command, "Org07 Accept", 0, &[]).await;
@@ -115,7 +115,7 @@ async fn org_accept_joins_at_entry_rank_and_fans_out() {
 /// in the log but reads like any stale invite, and leaves the real
 /// invitee's entry usable.
 #[tokio::test]
-async fn invite_response_rejects_foreign_request_id() {
+async fn live_db_invite_response_rejects_foreign_request_id() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 10, 3, &["Org07 Foreign Id"]).await;
     let team = fx.org(OrgType::Team, "Org07 Foreign Id", 0, &[]).await;
@@ -144,7 +144,7 @@ async fn invite_response_rejects_foreign_request_id() {
 /// CAT-M-18: an invite is consumed by its first response, so a replayed
 /// accept (or an accept after a decline) finds nothing.
 #[tokio::test]
-async fn invite_response_rejects_replay() {
+async fn live_db_invite_response_rejects_replay() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 11, 3, &["Org07 Replay"]).await;
     let team = fx.org(OrgType::Team, "Org07 Replay", 0, &[]).await;
@@ -185,7 +185,7 @@ async fn invite_response_rejects_replay() {
 /// CAT-M-18: the accept re-validates under ORG-LOCK. An inviter kicked
 /// after sending the invite no longer vouches for it.
 #[tokio::test]
-async fn org_accept_rejects_after_inviter_kicked() {
+async fn live_db_org_accept_rejects_after_inviter_kicked() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 12, 3, &["Org07 Kicked Inviter"]).await;
     let cmd = fx
@@ -227,7 +227,7 @@ async fn org_accept_rejects_after_inviter_kicked() {
 /// An inviter demoted to a rank without `Invite` no longer vouches for it
 /// either.
 #[tokio::test]
-async fn org_accept_rejects_after_inviter_loses_invite() {
+async fn live_db_org_accept_rejects_after_inviter_loses_invite() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 13, 3, &["Org07 Demoted Inviter"]).await;
     let cmd = fx
@@ -257,7 +257,7 @@ async fn org_accept_rejects_after_inviter_loses_invite() {
 /// An organization disbanded after the invite is gone; the accept joins
 /// nothing.
 #[tokio::test]
-async fn org_accept_rejects_after_disband() {
+async fn live_db_org_accept_rejects_after_disband() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 14, 2, &["Org07 Gone"]).await;
     let team = fx.org(OrgType::Team, "Org07 Gone", 0, &[]).await;
@@ -300,7 +300,7 @@ async fn org_accept_rejects_after_disband() {
 /// D-ORG18 on accept: two Teams invite the same player; once they have
 /// joined one, the other accept is refused and joins nothing.
 #[tokio::test]
-async fn org_accept_rejects_a_second_team() {
+async fn live_db_org_accept_rejects_a_second_team() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 15, 3, &["Org07 First", "Org07 Second"]).await;
     let a = fx.org(OrgType::Team, "Org07 First", 0, &[]).await;
@@ -331,7 +331,7 @@ async fn org_accept_rejects_a_second_team() {
 /// A decline tells an online inviter and ends in one `ok` row (`after =
 /// declined`); nobody joins and nothing is sent to the cell.
 #[tokio::test]
-async fn decline_tells_the_inviter() {
+async fn live_db_decline_tells_the_inviter() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 16, 2, &["Org07 Decline"]).await;
     let team = fx.org(OrgType::Team, "Org07 Decline", 0, &[]).await;

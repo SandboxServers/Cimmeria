@@ -19,7 +19,7 @@ use super::*;
 /// one — `interact` reroutes right-click on an alive faction-10 NPC to
 /// auto-attack — and nothing else in the suite would notice.
 #[tokio::test]
-async fn talk_and_kill_template_pairs_have_opposite_factions_and_equal_levels() {
+async fn live_db_talk_and_kill_template_pairs_have_opposite_factions_and_equal_levels() {
     let pool = require_db_or_skip!();
 
     // (talk template, kill template, character) — see the seed header.
@@ -82,7 +82,7 @@ async fn talk_and_kill_template_pairs_have_opposite_factions_and_equal_levels() 
 /// mission 1245's hostile ambush uses template 221 instead. Flipping 163 to
 /// 10 would make Petbe unspeakable and break 742.
 #[tokio::test]
-async fn petbe_template_163_has_faction_level_and_alignment() {
+async fn live_db_petbe_template_163_has_faction_level_and_alignment() {
     let pool = require_db_or_skip!();
 
     let (level, alignment, faction, name_id): (Option<i32>, Option<i32>, Option<i32>, Option<i32>) =
@@ -135,7 +135,7 @@ async fn petbe_template_163_has_faction_level_and_alignment() {
 /// `respawn_secs = 30` on the Harset *spawn* rows instead. A future packet
 /// that "helpfully" adds a template default trips this test.
 #[tokio::test]
-async fn praxis_jaffa_guard_templates_use_the_staff_ability_set() {
+async fn live_db_praxis_jaffa_guard_templates_use_the_staff_ability_set() {
     let pool = require_db_or_skip!();
 
     for template_id in [159_i32, 160] {

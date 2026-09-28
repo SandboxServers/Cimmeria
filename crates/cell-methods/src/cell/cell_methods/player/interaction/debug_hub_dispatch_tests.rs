@@ -202,7 +202,7 @@ fn opened_store(msgs: &[CellToBaseMsg]) -> Vec<Option<i32>> {
 /// The vendor, trainer, dialog NPC and Livewire terminal each answer a
 /// click with their own interaction and nobody else's.
 #[tokio::test]
-async fn debug_hub_npcs_answer_a_click_with_their_own_interaction() {
+async fn live_db_debug_hub_npcs_answer_a_click_with_their_own_interaction() {
     let pool = require_db_or_skip!();
     let (mut mgr, hub) = staged_hub(load_hub!(pool));
     let engine = crate::cell::content::build_engine(Some(&pool)).await;
@@ -338,7 +338,7 @@ async fn debug_hub_npcs_answer_a_click_with_their_own_interaction() {
 /// click displays. Dying goes through the same resolver a GM `.kill` and a
 /// killing shot use, so the loot comes from the real roll.
 #[tokio::test]
-async fn debug_hub_crate_is_shot_then_looted_from_table_3() {
+async fn live_db_debug_hub_crate_is_shot_then_looted_from_table_3() {
     let pool = require_db_or_skip!();
     let (mut mgr, hub) = staged_hub(load_hub!(pool));
     let engine = ChainEngine::new();
@@ -393,7 +393,7 @@ async fn debug_hub_crate_is_shot_then_looted_from_table_3() {
 /// the base. Pinned to the vendor instead, the same call is refused, so the
 /// pass is the trainer's doing and not a gate that lets everything through.
 #[tokio::test]
-async fn debug_hub_trainer_pin_passes_the_respec_gate() {
+async fn live_db_debug_hub_trainer_pin_passes_the_respec_gate() {
     let pool = require_db_or_skip!();
     let (mut mgr, hub) = staged_hub(load_hub!(pool));
     let engine = ChainEngine::new();
@@ -449,7 +449,7 @@ async fn debug_hub_trainer_pin_passes_the_respec_gate() {
 /// list 350: the pet nodes for a Goa'uld, nothing for any other archetype
 /// (the list is keyed to the Goa'uld only, the one tree that holds them).
 #[tokio::test]
-async fn debug_hub_pet_trainer_opens_list_350() {
+async fn live_db_debug_hub_pet_trainer_opens_list_350() {
     let pool = require_db_or_skip!();
     let (mut mgr, hub) = staged_hub(load_hub!(pool));
     let engine = crate::cell::content::build_engine(Some(&pool)).await;
@@ -503,7 +503,7 @@ async fn debug_hub_pet_trainer_opens_list_350() {
 /// its tag or template, a dialog bind) may claim the click: the real content
 /// engine is loaded, so a chain added on `DebugHub_Banker` fails this.
 #[tokio::test]
-async fn debug_hub_banker_opens_the_personal_vault() {
+async fn live_db_debug_hub_banker_opens_the_personal_vault() {
     let pool = require_db_or_skip!();
     let (mut mgr, hub) = staged_hub(load_hub!(pool));
     let engine = crate::cell::content::build_engine(Some(&pool)).await;

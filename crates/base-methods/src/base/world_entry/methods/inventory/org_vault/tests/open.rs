@@ -106,7 +106,7 @@ fn org_vault_bag_info_declares_the_real_team_size() {
 /// and bits, and grants the cell the vault of that org. Fails if the open
 /// is refused, sends no size, or grants another org.
 #[tokio::test]
-async fn a_member_gets_size_contents_and_a_grant() {
+async fn live_db_a_member_gets_size_contents_and_a_grant() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 0, 2).await;
     let team = fx.org(0, 1, &[0]).await;
@@ -198,7 +198,7 @@ fn assert_refused(
 /// A player in no Team is refused `not_in_org`, told, and not granted.
 /// Fails if the open skips the membership lookup.
 #[tokio::test]
-async fn a_player_in_no_team_is_refused_not_in_org() {
+async fn live_db_a_player_in_no_team_is_refused_not_in_org() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 1, 2).await;
     // Only the other character is in a Team.
@@ -270,7 +270,7 @@ async fn a_request_without_a_player_is_refused_player_unknown() {
 /// a Command (`wrong_org_type`), and a missing character
 /// (`player_missing`). Fails if membership is not re-read under the lock.
 #[tokio::test]
-async fn lock_actor_refuses_non_members_gone_orgs_and_the_wrong_type() {
+async fn live_db_lock_actor_refuses_non_members_gone_orgs_and_the_wrong_type() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 2, 2).await;
     let team = fx.org(0, 0, &[]).await;

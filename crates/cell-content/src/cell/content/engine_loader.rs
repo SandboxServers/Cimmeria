@@ -355,7 +355,7 @@ mod tests {
     /// breakage, a column rename, or a content_chains schema drift
     /// that the rest of the test suite wouldn't surface.
     #[tokio::test]
-    async fn build_engine_with_db_pool_loads_seeded_chains() {
+    async fn live_db_build_engine_with_db_pool_loads_seeded_chains() {
         let pool = crate::test_support::require_db_or_skip!();
         let engine = build_engine(Some(&pool)).await;
         assert!(
@@ -377,7 +377,7 @@ mod tests {
     /// switches to `set_to_max`, the assertions fail with the exact
     /// diff.
     #[tokio::test]
-    async fn item_use_2893_resolves_to_health_slappack_heal_and_consume() {
+    async fn live_db_item_use_2893_resolves_to_health_slappack_heal_and_consume() {
         use cimmeria_content_engine::actions::Action;
         use cimmeria_content_engine::context::ExecutionContext;
         use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
@@ -485,7 +485,7 @@ mod tests {
     /// so 0x7000_2000 is guaranteed to miss without the loader needing
     /// to special-case negatives.
     #[tokio::test]
-    async fn load_single_chain_returns_none_for_missing_id() {
+    async fn live_db_load_single_chain_returns_none_for_missing_id() {
         let pool = crate::test_support::require_db_or_skip!();
         const TEST_MISSING_CHAIN_ID: i32 = 0x7000_2000;
         let result = load_single_chain_for_test(&pool, TEST_MISSING_CHAIN_ID)

@@ -72,7 +72,7 @@ const TAGS_WITH_LIVE_CHAINS: [&str; 4] = [
 /// Fails if a PL-C row is deleted (missing id), if its template is swapped, or
 /// if anyone adds a twelfth spawn to the shared council room.
 #[tokio::test]
-async fn world_68_holds_exactly_the_pl_c_roster_plus_anat() {
+async fn live_db_world_68_holds_exactly_the_pl_c_roster_plus_anat() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(i32, i32, Option<String>)> = sqlx::query_as(
@@ -110,7 +110,7 @@ async fn world_68_holds_exactly_the_pl_c_roster_plus_anat() {
 /// faction-10 row in the council room would reroute right-click from dialog to
 /// auto-attack and silence the quest-giver it is attached to.
 #[tokio::test]
-async fn no_world_68_spawn_uses_a_hostile_template() {
+async fn live_db_no_world_68_spawn_uses_a_hostile_template() {
     let pool = require_db_or_skip!();
 
     let offenders: Vec<(i32, i32, Option<String>)> = sqlx::query_as(
@@ -148,7 +148,7 @@ async fn no_world_68_spawn_uses_a_hostile_template() {
 /// also be 0.0, so PL-C deliberately never derives one, and any future 0.0 in
 /// world 68 is an author who skipped the step rather than one who measured it.
 #[tokio::test]
-async fn world_68_rows_are_stationary_respawning_and_not_heading_zero() {
+async fn live_db_world_68_rows_are_stationary_respawning_and_not_heading_zero() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(i32, bool, Option<i32>, f32)> = sqlx::query_as(
@@ -202,7 +202,7 @@ async fn world_68_rows_are_stationary_respawning_and_not_heading_zero() {
 /// the constraint were ever dropped, `find_entity_by_tag` returns the first
 /// match and which Marsh answers a mission would depend on spawn order.
 #[tokio::test]
-async fn chain_referenced_cmdcenter_tags_are_unique_and_present() {
+async fn live_db_chain_referenced_cmdcenter_tags_are_unique_and_present() {
     let pool = require_db_or_skip!();
 
     for tag in TAGS_WITH_LIVE_CHAINS {
@@ -239,7 +239,7 @@ async fn chain_referenced_cmdcenter_tags_are_unique_and_present() {
 /// missing, so a template-id typo in the seed would pass every DB-only
 /// assertion and still leave the council room empty at runtime.
 #[tokio::test]
-async fn the_spawn_loader_returns_the_full_cmdcenter_roster() {
+async fn live_db_the_spawn_loader_returns_the_full_cmdcenter_roster() {
     let pool = require_db_or_skip!();
 
     let spawns = load_spawns_from_db(&pool)

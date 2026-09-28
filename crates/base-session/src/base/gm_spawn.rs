@@ -247,7 +247,7 @@ mod tests {
     /// spawn-instance fields (position, world, spawn_id) come from the command.
     /// Reverting the query or the record construction trips this.
     #[tokio::test]
-    async fn gm_spawn_resolves_real_template_and_replies() {
+    async fn live_db_gm_spawn_resolves_real_template_and_replies() {
         let pool = require_db_or_skip!();
         // Pick any fully-populated template — the handler reads template_name /
         // class / body_set as NOT NULL, so filter to a row it can materialize.
@@ -333,7 +333,7 @@ mod tests {
     /// this graceful drop into a panic — the handler would unwind instead of
     /// returning, and this test (which expects a clean no-reply) would fail.
     #[tokio::test]
-    async fn gm_spawn_malformed_template_drops_gracefully() {
+    async fn live_db_gm_spawn_malformed_template_drops_gracefully() {
         let pool = require_db_or_skip!();
         // Sentinel template id in the 0x7000_xxxx range, well within i32.
         const SENTINEL_TEMPLATE_ID: i32 = 0x7000_4242;
@@ -419,7 +419,7 @@ mod tests {
     /// A template id that doesn't exist must drop the spawn — no
     /// `GmSpawnNpcReady` reply (so the cell never spawns a bogus mob).
     #[tokio::test]
-    async fn gm_spawn_missing_template_sends_nothing() {
+    async fn live_db_gm_spawn_missing_template_sends_nothing() {
         let pool = require_db_or_skip!();
         let (cell_tx, mut cell_rx) = mpsc::channel(8);
         let db_pool = Some(Arc::new(pool.clone()));

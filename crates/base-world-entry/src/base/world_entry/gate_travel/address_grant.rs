@@ -249,7 +249,7 @@ mod tests {
     /// cell and the dial gate accepts it. This is the "survives a relog"
     /// acceptance: the row IS what a relog reads.
     #[tokio::test]
-    async fn a_granted_address_lands_in_the_column_a_relog_reads() {
+    async fn live_db_a_granted_address_lands_in_the_column_a_relog_reads() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE, TEST_BASE + 10);
         seed(&pool, account_id, player_id, &[]).await;
@@ -277,7 +277,7 @@ mod tests {
     /// the schema would ever clean it up, because `known_stargates` is a
     /// bare `integer[]` with no uniqueness constraint.
     #[tokio::test]
-    async fn a_second_grant_of_the_same_address_does_not_double_append() {
+    async fn live_db_a_second_grant_of_the_same_address_does_not_double_append() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE + 100, TEST_BASE + 110);
         seed(&pool, account_id, player_id, &[]).await;
@@ -302,7 +302,7 @@ mod tests {
     /// list is serialised in array order (`world_data::map_loaded`), so a
     /// statement that rewrote the array would shuffle the player's dial UI.
     #[tokio::test]
-    async fn an_address_already_held_leaves_the_book_untouched() {
+    async fn live_db_an_address_already_held_leaves_the_book_untouched() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE + 200, TEST_BASE + 210);
         seed(&pool, account_id, player_id, &[10, HARSET_GATE, 2]).await;
@@ -324,7 +324,7 @@ mod tests {
     /// stranger's row. Dropping `AND account_id = $3` from the statement
     /// makes this grant succeed.
     #[tokio::test]
-    async fn a_wrong_account_writes_nothing() {
+    async fn live_db_a_wrong_account_writes_nothing() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE + 300, TEST_BASE + 310);
         seed(&pool, account_id, player_id, &[]).await;

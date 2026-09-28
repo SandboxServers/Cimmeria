@@ -31,7 +31,7 @@ async fn quarantine(pool: &PgPool, mail_id: i32) {
 /// Fails if `AND NOT quarantined` leaves `claim::lock_mail`, the archive
 /// `UPDATE` or the delete guard.
 #[tokio::test]
-async fn quarantined_mail_is_out_of_every_player_op() {
+async fn live_db_quarantined_mail_is_out_of_every_player_op() {
     let pool = require_db_or_skip!();
     cleanup(&pool, BASE).await;
     let (owner, sender) = (BASE + 1, BASE + 2);
@@ -104,7 +104,7 @@ async fn quarantined_mail_is_out_of_every_player_op() {
 /// client drops any mail that left server-side since the last open. Fails
 /// if the cap count, the header list or the reset flag is reverted.
 #[tokio::test]
-async fn quarantined_mail_is_not_listed_or_capped() {
+async fn live_db_quarantined_mail_is_not_listed_or_capped() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x08;
     cleanup(&pool, base).await;

@@ -52,7 +52,7 @@ async fn assert_refused(f: &VerbFixture, capture: &LogCaptureGuard, item: i32, w
 }
 
 #[tokio::test]
-async fn an_item_that_is_not_reverse_engineerable_is_refused() {
+async fn live_db_an_item_that_is_not_reverse_engineerable_is_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -67,7 +67,7 @@ async fn an_item_that_is_not_reverse_engineerable_is_refused() {
 }
 
 #[tokio::test]
-async fn an_item_no_blueprint_makes_is_refused() {
+async fn live_db_an_item_no_blueprint_makes_is_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -82,7 +82,7 @@ async fn an_item_no_blueprint_makes_is_refused() {
 }
 
 #[tokio::test]
-async fn an_item_in_the_bank_is_refused() {
+async fn live_db_an_item_in_the_bank_is_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();

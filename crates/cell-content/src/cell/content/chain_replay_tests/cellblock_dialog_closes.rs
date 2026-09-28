@@ -178,7 +178,7 @@ async fn assert_other_dialog_resolves_nothing(chain_id: i64, mission_state: &[(&
 /// Chain 1019 is the only one of the five that is conditional: it gates
 /// on step 2116 being active, so the close has to arrive in that window.
 #[tokio::test]
-async fn chain_1019_fires_on_the_close_of_button_less_2299() {
+async fn live_db_chain_1019_fires_on_the_close_of_button_less_2299() {
     assert_close_matches_click(
         1019,
         2299,
@@ -198,7 +198,7 @@ async fn chain_1019_fires_on_the_close_of_button_less_2299() {
 }
 
 #[tokio::test]
-async fn chain_1019_ignores_a_close_of_a_dialog_it_does_not_key() {
+async fn live_db_chain_1019_ignores_a_close_of_a_dialog_it_does_not_key() {
     assert_other_dialog_resolves_nothing(1019, &[("mission_638_step_2116_status", "active")]).await;
 }
 
@@ -210,7 +210,7 @@ async fn chain_1019_ignores_a_close_of_a_dialog_it_does_not_key() {
 /// invalidates — and which a `-1` close reaches no differently from a
 /// click.
 #[tokio::test]
-async fn chain_1019_does_not_fire_once_step_2116_is_past() {
+async fn live_db_chain_1019_does_not_fire_once_step_2116_is_past() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1019)
         .await
@@ -247,22 +247,22 @@ fn briefing_accept_actions() -> Vec<Action> {
 }
 
 #[tokio::test]
-async fn chain_1053_fires_on_the_close_of_button_less_4001() {
+async fn live_db_chain_1053_fires_on_the_close_of_button_less_4001() {
     assert_close_matches_click(1053, 4001, 8, &[], briefing_accept_actions()).await;
 }
 
 #[tokio::test]
-async fn chain_1053_ignores_a_close_of_a_dialog_it_does_not_key() {
+async fn live_db_chain_1053_ignores_a_close_of_a_dialog_it_does_not_key() {
     assert_other_dialog_resolves_nothing(1053, &[]).await;
 }
 
 #[tokio::test]
-async fn chain_1054_fires_on_the_close_of_button_less_5022() {
+async fn live_db_chain_1054_fires_on_the_close_of_button_less_5022() {
     assert_close_matches_click(1054, 5022, 8, &[], briefing_accept_actions()).await;
 }
 
 #[tokio::test]
-async fn chain_1054_ignores_a_close_of_a_dialog_it_does_not_key() {
+async fn live_db_chain_1054_ignores_a_close_of_a_dialog_it_does_not_key() {
     assert_other_dialog_resolves_nothing(1054, &[]).await;
 }
 
@@ -293,7 +293,7 @@ fn second_briefing_actions() -> Vec<Action> {
 /// was a lie in both shapes — item 21 comes from chain 1055's `add_item`
 /// on the locker interact, long before 3999 is reachable.
 #[tokio::test]
-async fn chain_1058_fires_on_the_close_of_button_less_3999() {
+async fn live_db_chain_1058_fires_on_the_close_of_button_less_3999() {
     assert_close_matches_click(
         1058,
         3999,
@@ -305,17 +305,17 @@ async fn chain_1058_fires_on_the_close_of_button_less_3999() {
 }
 
 #[tokio::test]
-async fn chain_1058_ignores_a_close_of_a_dialog_it_does_not_key() {
+async fn live_db_chain_1058_ignores_a_close_of_a_dialog_it_does_not_key() {
     assert_other_dialog_resolves_nothing(1058, &[]).await;
 }
 
 #[tokio::test]
-async fn chain_1059_fires_on_the_close_of_button_less_5023() {
+async fn live_db_chain_1059_fires_on_the_close_of_button_less_5023() {
     assert_close_matches_click(1059, 5023, 70, &[], second_briefing_actions()).await;
 }
 
 #[tokio::test]
-async fn chain_1059_ignores_a_close_of_a_dialog_it_does_not_key() {
+async fn live_db_chain_1059_ignores_a_close_of_a_dialog_it_does_not_key() {
     assert_other_dialog_resolves_nothing(1059, &[]).await;
 }
 
@@ -327,7 +327,7 @@ async fn chain_1059_ignores_a_close_of_a_dialog_it_does_not_key() {
 /// with. Pinned here rather than left to the prose so a future edit that
 /// moves the grant onto the dialog trips a test.
 #[tokio::test]
-async fn neither_second_briefing_chain_grants_an_item() {
+async fn live_db_neither_second_briefing_chain_grants_an_item() {
     for (chain_id, dialog_id) in [(1058_i64, 3999_i32), (1059, 5023)] {
         let pool = require_db_or_skip!();
         let chain = load_single_chain_for_test(&pool, chain_id as i32)

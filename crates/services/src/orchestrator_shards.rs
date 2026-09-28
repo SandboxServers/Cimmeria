@@ -102,7 +102,7 @@ mod tests {
     /// `query_all_shards`. This is the smoke that proves the column
     /// names + types in the query line up with the schema.
     #[tokio::test]
-    async fn query_all_shards_returns_seeded_test_shard() {
+    async fn live_db_query_all_shards_returns_seeded_test_shard() {
         let pool = Arc::new(require_db_or_skip!());
         let rows = query_all_shards(&pool).await;
 
@@ -138,7 +138,7 @@ mod tests {
     /// silently pass even if `ORDER BY shard_id` got swapped for
     /// `ORDER BY name`, since the two would coincide.
     #[tokio::test]
-    async fn query_all_shards_orders_results_by_shard_id() {
+    async fn live_db_query_all_shards_orders_results_by_shard_id() {
         let pool = Arc::new(require_db_or_skip!());
         let low_id = TEST_SHARD_BASE + 0x10;
         let high_id = TEST_SHARD_BASE + 0x20;
@@ -194,7 +194,7 @@ mod tests {
     /// (deserialization-dependent behavior), which the client treats
     /// as a malformed catalog entry. Pin the filter explicitly.
     #[tokio::test]
-    async fn query_all_shards_filters_null_name_rows() {
+    async fn live_db_query_all_shards_filters_null_name_rows() {
         let pool = Arc::new(require_db_or_skip!());
         let null_name_id = TEST_SHARD_BASE + 0x30;
         let real_name_id = TEST_SHARD_BASE + 0x31;
@@ -240,7 +240,7 @@ mod tests {
     /// auth — a column-mapping drift would silently flip every shard's
     /// gating.
     #[tokio::test]
-    async fn query_all_shards_preserves_protected_flag() {
+    async fn live_db_query_all_shards_preserves_protected_flag() {
         let pool = Arc::new(require_db_or_skip!());
         let protected_id = TEST_SHARD_BASE + 0x40;
         let unprotected_id = TEST_SHARD_BASE + 0x41;

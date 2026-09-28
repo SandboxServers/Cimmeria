@@ -39,7 +39,7 @@ fn disband_row(capture: &crate::test_support::LogCaptureGuard) -> crate::test_su
 /// ranks and its members are gone, each online member gets
 /// `onOrganizationLeft(Disbanded)`, and the GM a confirmation line.
 #[tokio::test]
-async fn gm_disband_cascades_and_tells_online_members() {
+async fn live_db_gm_disband_cascades_and_tells_online_members() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 9, 4, &["Org06 Disband"]).await;
     let cmd = fx.org(OrgType::Command, "Org06 Disband", 0, &[1, 2]).await;
@@ -95,7 +95,7 @@ async fn gm_disband_cascades_and_tells_online_members() {
 /// D-ORG20 holds for GMs too: a non-empty vault refuses the disband and
 /// nothing is deleted or sent to the members.
 #[tokio::test]
-async fn gm_disband_refused_while_vault_not_empty() {
+async fn live_db_gm_disband_refused_while_vault_not_empty() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 10, 3, &["Org06 Disband Vault"]).await;
     let team = fx.org(OrgType::Team, "Org06 Disband Vault", 0, &[1]).await;
@@ -118,7 +118,7 @@ async fn gm_disband_refused_while_vault_not_empty() {
 /// The base re-reads the access level: a forwarded disband from a session
 /// below GameMaster is refused and deletes nothing.
 #[tokio::test]
-async fn gm_disband_rejects_non_gm() {
+async fn live_db_gm_disband_rejects_non_gm() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 11, 2, &["Org06 Not Gm"]).await;
     let team = fx.org(OrgType::Team, "Org06 Not Gm", 0, &[]).await;

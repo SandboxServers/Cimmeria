@@ -181,7 +181,7 @@ mod tests {
     /// PK (`sgw_inventory.item_id`), so the UPDATE writes the new ammo +
     /// cur_ammo_type and rows_affected==1.
     #[tokio::test]
-    async fn update_writes_ammo_and_cur_ammo_type_when_type_matches() {
+    async fn live_db_update_writes_ammo_and_cur_ammo_type_when_type_matches() {
         let pool = require_db_or_skip!();
         let (primary_type, _) = pick_two_bandolier_types(&pool).await;
         let account_id = TEST_BASE;
@@ -213,7 +213,7 @@ mod tests {
     /// predicate must reject the write so the new weapon's ammo stays
     /// untouched.
     #[tokio::test]
-    async fn update_no_op_when_slot_holds_different_type() {
+    async fn live_db_update_no_op_when_slot_holds_different_type() {
         let pool = require_db_or_skip!();
         let (primary_type, swapped_type) = pick_two_bandolier_types(&pool).await;
         let account_id = TEST_BASE + 100;
@@ -257,7 +257,7 @@ mod tests {
     /// this test FAIL — both rows share design `T`, so the predicate
     /// matches the new instance and 999/99 gets written.
     #[tokio::test]
-    async fn update_no_op_for_same_type_swap_different_instance() {
+    async fn live_db_update_no_op_for_same_type_swap_different_instance() {
         let pool = require_db_or_skip!();
         // Only need ONE design — both physical instances share it.
         let (design_t, _) = pick_two_bandolier_types(&pool).await;
@@ -302,7 +302,7 @@ mod tests {
     /// callers don't distinguish "unequipped" from "swapped" (per the
     /// docstring on update_bandolier_ammo).
     #[tokio::test]
-    async fn update_no_op_when_slot_is_empty() {
+    async fn live_db_update_no_op_when_slot_is_empty() {
         let pool = require_db_or_skip!();
         let (primary_type, _) = pick_two_bandolier_types(&pool).await;
         let account_id = TEST_BASE + 200;

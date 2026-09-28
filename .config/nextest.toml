@@ -3,15 +3,27 @@
 #
 #   * `ci`         — workspace pass without DATABASE_URL; the live-DB
 #                    tests self-skip via require_db_or_skip!. Parallel.
-#   * `ci-live-db` — services-only pass against a live Postgres. Must
-#                    be serialised because some live-DB tests share
-#                    sentinel id ranges in the resources.* tables and
-#                    collide under parallel execution against a single
-#                    shared DB. That's a fixture-design constraint, not
-#                    a bug in the handlers.
+#   * `ci-live-db` — the live-DB tier (tools/test-live-db.sh) against a
+#                    live Postgres. The live-DB tests run in the `live-db`
+#                    test group, up to N at once, each against its group
+#                    slot's own database. Every other test in those crates
+#                    runs in parallel beside them.
 #
 # JUnit XML is emitted under target/nextest/<profile>/junit.xml and
 # uploaded to Codecov Test Analytics by the workflow.
+
+[test-groups]
+# N, the number of live-DB tests that run at once. It is also the number of
+# database clones: tools/test-live-db.sh (and .ps1) read this exact line and
+# clone the template database into <db>_0 .. <db>_<N-1> before the run, and
+# each test in the group uses the clone for its NEXTEST_TEST_GROUP_SLOT
+# (`database_url()` in crates/test-support/src/live_db_slot.rs). No two
+# running tests share a slot, so no two share a database: tests that reuse
+# sentinel ids or seed rows cannot collide. Keep the line's shape; the
+# scripts parse it and `nextest_profile_groups_the_live_db_filter` pins
+# it. The tests mostly wait on the database, so N is tuned by measurement
+# (TESTING.md, "Live-DB tests"), not by core count.
+live-db = { max-threads = 8 }
 
 [profile.ci]
 fail-fast = false
@@ -27,9 +39,15 @@ fail-fast = false
 path = "junit.xml"
 report-name = "cimmeria-live-db"
 
-# Replaces the `cargo test -- --test-threads=1` flag we used before
-# nextest. Each test claims every available test thread, so nextest
-# runs them strictly one-at-a-time even on a multi-core runner.
+# A live-DB test is one whose name (module path + fn name) contains
+# `live_db`: a `live_db_*` test fn, or any test in a `*live_db*` module.
+# The `every_live_db_test_is_in_the_live_db_group` guard in
+# cimmeria-test-support (crates/test-support/src/live_db_group/) fails
+# when a test that reaches `require_db_or_skip!` misses this filter, and
+# `nextest_profile_groups_the_live_db_filter` pins these lines.
+# Replaces the old `filter = "all()"` + `threads-required =
+# "num-test-threads"` override, which ran all ~5,500 tests one at a time
+# against one database.
 [[profile.ci-live-db.overrides]]
-filter = "all()"
-threads-required = "num-test-threads"
+filter = "test(~live_db)"
+test-group = "live-db"

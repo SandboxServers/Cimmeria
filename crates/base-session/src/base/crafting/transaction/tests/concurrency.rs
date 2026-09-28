@@ -32,7 +32,7 @@ async fn wait_for_lock_waiter(pool: &PgPool) {
 /// without holding the player row, so the other transaction gets it and
 /// commits, and then the completion consumes. Neither is aborted.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_completion_never_holds_the_player_row_while_waiting_for_an_item() {
+async fn live_db_a_completion_never_holds_the_player_row_while_waiting_for_an_item() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 19).await;

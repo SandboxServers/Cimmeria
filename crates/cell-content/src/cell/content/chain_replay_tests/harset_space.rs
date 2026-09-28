@@ -125,7 +125,7 @@ fn resolve_enter_region(
 /// ring runtime, finds no transporter, and logs. Asserting the exact
 /// region id is what turns that silent dead switch into a test failure.
 #[tokio::test]
-async fn each_harset_ring_tag_resolves_exactly_its_own_transporter() {
+async fn live_db_each_harset_ring_tag_resolves_exactly_its_own_transporter() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -173,7 +173,7 @@ async fn each_harset_ring_tag_resolves_exactly_its_own_transporter() {
 /// A transposed `regionId` breaks the correspondence immediately, with
 /// no dependence on anything H10 authored.
 #[tokio::test]
-async fn harset_ring_chain_tags_agree_with_their_regions_point_set() {
+async fn live_db_harset_ring_chain_tags_agree_with_their_regions_point_set() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(i32, String, i32, String)> = sqlx::query_as(
@@ -229,7 +229,7 @@ async fn harset_ring_chain_tags_agree_with_their_regions_point_set() {
 /// chains resolve fine, the player just can never fire them. An allowlist
 /// entry should earn a pin.
 #[tokio::test]
-async fn ring_switch_template_carries_the_ring_network_bit() {
+async fn live_db_ring_switch_template_carries_the_ring_network_bit() {
     let pool = require_db_or_skip!();
 
     // INT_RingNetwork, bit 5. See docs/content/interaction-flags.md.
@@ -269,7 +269,7 @@ async fn ring_switch_template_carries_the_ring_network_bit() {
 /// through this test rather than silently landing the player somewhere
 /// else.
 #[tokio::test]
-async fn harset_command_center_door_teleports_only_to_the_command_center() {
+async fn live_db_harset_command_center_door_teleports_only_to_the_command_center() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -341,7 +341,7 @@ async fn harset_command_center_door_teleports_only_to_the_command_center() {
 /// advisory world, respawner row) is in
 /// [`harset_return_arrival_is_offmesh_but_survivable`].
 #[tokio::test]
-async fn harset_return_door_is_enabled_and_structurally_intact() {
+async fn live_db_harset_return_door_is_enabled_and_structurally_intact() {
     let pool = require_db_or_skip!();
 
     let (enabled,): (bool,) =
@@ -491,7 +491,7 @@ async fn harset_return_door_is_enabled_and_structurally_intact() {
 /// Since NA26 the rebuilt `harset.nav` covers the Command Center door, so
 /// today this test takes the `on_mesh` early return.
 #[tokio::test]
-async fn harset_return_arrival_is_offmesh_but_survivable() {
+async fn live_db_harset_return_arrival_is_offmesh_but_survivable() {
     let pool = require_db_or_skip!();
 
     let (enabled, x, y, z): (bool, f64, f64, f64) = sqlx::query_as(
@@ -593,7 +593,7 @@ async fn harset_return_arrival_is_offmesh_but_survivable() {
 /// `content_actions`/`respawners`, boxes from `point_set_points`) so an
 /// M0 re-pin is checked rather than assumed.
 #[tokio::test]
-async fn door_arrivals_and_respawner_sit_outside_the_opposing_trigger_box() {
+async fn live_db_door_arrivals_and_respawner_sit_outside_the_opposing_trigger_box() {
     let pool = require_db_or_skip!();
 
     // AABB of a BoundingBox point set, from its corner points.

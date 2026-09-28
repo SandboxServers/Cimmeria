@@ -15,7 +15,7 @@ use crate::base::organization::handlers::{handle_kick, OrgReject};
 use crate::test_support::require_db_or_skip;
 
 #[tokio::test]
-async fn kick_racing_a_held_lock_never_lets_the_kicked_member_act() {
+async fn live_db_kick_racing_a_held_lock_never_lets_the_kicked_member_act() {
     let pool = require_db_or_skip!();
     let fx = Arc::new(Fixture::org07(&pool, 30, 3, &["Org07 Race"]).await);
     let cmd = fx.org(OrgType::Command, "Org07 Race", 0, &[1, 2]).await;
@@ -62,7 +62,7 @@ async fn kick_racing_a_held_lock_never_lets_the_kicked_member_act() {
 /// the founding passes its pre-check, draws an id, and only then fails on
 /// the member key.
 #[tokio::test]
-async fn an_accept_racing_a_creation_burns_no_org_id() {
+async fn live_db_an_accept_racing_a_creation_burns_no_org_id() {
     use crate::base::organization::persistence::{add_member, create_org, OrgStoreError};
 
     let pool = require_db_or_skip!();

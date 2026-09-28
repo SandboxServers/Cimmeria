@@ -177,7 +177,7 @@ mod tests {
     /// it. Reverting the persist implementation to a no-op leaves the row at
     /// the creation point and fails the first assertion.
     #[tokio::test]
-    async fn logout_position_round_trips_with_world_id() {
+    async fn live_db_logout_position_round_trips_with_world_id() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -224,7 +224,7 @@ mod tests {
     /// without the world would resume the player at foreign coordinates in
     /// their previous world; this guard fails that "fix".
     #[tokio::test]
-    async fn unknown_world_name_is_refused_and_the_row_is_unchanged() {
+    async fn live_db_unknown_world_name_is_refused_and_the_row_is_unchanged() {
         use crate::test_support::LogCapture;
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 0x10;
@@ -267,7 +267,7 @@ mod tests {
     /// previous position stays and the documented warn fires. Reverting the
     /// `is_finite` check stores NaN and fails the position assertion.
     #[tokio::test]
-    async fn non_finite_position_is_refused_and_warned() {
+    async fn live_db_non_finite_position_is_refused_and_warned() {
         use crate::test_support::LogCapture;
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 0x20;
@@ -304,7 +304,7 @@ mod tests {
     /// must warn (not error / not silently succeed), mirroring the sibling
     /// persistence handlers per the negative-logging convention.
     #[tokio::test]
-    async fn persist_no_row_is_silent_warn() {
+    async fn live_db_persist_no_row_is_silent_warn() {
         use crate::test_support::LogCapture;
         let pool = require_db_or_skip!();
         let pool_opt = Some(Arc::new(pool.clone()));

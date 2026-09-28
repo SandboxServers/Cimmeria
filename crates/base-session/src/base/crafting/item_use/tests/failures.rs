@@ -12,7 +12,7 @@ const SLAPPACK: i32 = 2893;
 /// A row with an empty stack is corrupt: the use fails with a WARN, the
 /// player gets the "unavailable" line, and nothing is granted.
 #[tokio::test]
-async fn a_corrupt_stack_grants_nothing() {
+async fn live_db_a_corrupt_stack_grants_nothing() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let slot = Slot::new(7);
@@ -80,7 +80,7 @@ async fn no_database_is_a_refusal_with_a_line() {
 /// only routes items that have some) is a lookup miss: a WARN, the
 /// "unavailable" line, and the item stays.
 #[tokio::test]
-async fn an_item_without_effect_rows_is_a_lookup_miss() {
+async fn live_db_an_item_without_effect_rows_is_a_lookup_miss() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let slot = Slot::new(12);

@@ -43,7 +43,7 @@ fn clear_spawn_instance_fields(record: &mut SpawnRecord) {
 /// resolves a single id), so a record with an empty path on both sides
 /// would pass vacuously.
 #[tokio::test]
-async fn gm_spawn_record_matches_the_cached_template_prototype() {
+async fn live_db_gm_spawn_record_matches_the_cached_template_prototype() {
     let pool = require_db_or_skip!();
 
     let cache = load_spawn_templates(&pool)

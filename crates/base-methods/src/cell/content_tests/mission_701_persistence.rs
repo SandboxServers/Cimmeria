@@ -134,7 +134,7 @@ async fn seed_mission(pool: &PgPool, mission_id: i32, status: i32, current_step:
 /// `MissionManager` on world entry. If someone ever added a world or space
 /// filter to its `WHERE` clause, this fails.
 #[tokio::test]
-async fn missions_survive_the_cellblock_to_castle_world_change() {
+async fn live_db_missions_survive_the_cellblock_to_castle_world_change() {
     let pool = require_db_or_skip!();
 
     // A previous panicking run may have leaked rows.
@@ -204,7 +204,7 @@ async fn missions_survive_the_cellblock_to_castle_world_change() {
 /// Kept because the assertion states the invariant plainly for the next
 /// reader, and the cost is one cheap query.
 #[tokio::test]
-async fn sgw_mission_has_no_world_scoping_column() {
+async fn live_db_sgw_mission_has_no_world_scoping_column() {
     let pool = require_db_or_skip!();
 
     let cols: Vec<String> = sqlx::query_scalar(

@@ -73,7 +73,7 @@ async fn assert_refused(
 }
 
 #[tokio::test]
-async fn an_item_that_is_not_researchable_is_refused() {
+async fn live_db_an_item_that_is_not_researchable_is_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -92,7 +92,7 @@ async fn an_item_that_is_not_researchable_is_refused() {
 }
 
 #[tokio::test]
-async fn a_kicker_that_is_not_a_kicker_is_refused() {
+async fn live_db_a_kicker_that_is_not_a_kicker_is_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -109,7 +109,7 @@ async fn a_kicker_that_is_not_a_kicker_is_refused() {
 }
 
 #[tokio::test]
-async fn a_kicker_of_the_items_own_science_is_refused() {
+async fn live_db_a_kicker_of_the_items_own_science_is_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -127,7 +127,7 @@ async fn a_kicker_of_the_items_own_science_is_refused() {
 }
 
 #[tokio::test]
-async fn two_kickers_of_one_science_are_refused() {
+async fn live_db_two_kickers_of_one_science_are_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -150,7 +150,7 @@ async fn two_kickers_of_one_science_are_refused() {
 
 /// An item in the bank, and an item id the player does not hold.
 #[tokio::test]
-async fn an_item_outside_the_crafting_bags_or_gone_is_refused() {
+async fn live_db_an_item_outside_the_crafting_bags_or_gone_is_refused() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();

@@ -34,7 +34,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 #[tokio::test]
-async fn vault_row_placed_by_hand_loads_and_is_sent() {
+async fn live_db_vault_row_placed_by_hand_loads_and_is_sent() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")

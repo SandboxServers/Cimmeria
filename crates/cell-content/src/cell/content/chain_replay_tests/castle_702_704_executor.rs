@@ -121,7 +121,7 @@ async fn resolve_seeded(
 /// `use_player` for a `target_tag` lookup, would leave `follow_target_id`
 /// at `None` while every resolve assertion still passed.
 #[tokio::test]
-async fn chain_1263_makes_zuritska_follow_the_rescuing_player() {
+async fn live_db_chain_1263_makes_zuritska_follow_the_rescuing_player() {
     let pool = require_db_or_skip!();
     let resolved = resolve_seeded(
         &pool,
@@ -170,7 +170,7 @@ async fn chain_1263_makes_zuritska_follow_the_rescuing_player() {
 /// leave Zuritska trailing the player for the rest of the mission while
 /// every seed assertion still passed.
 #[tokio::test]
-async fn chain_1291_clears_the_escort_follow() {
+async fn live_db_chain_1291_clears_the_escort_follow() {
     let pool = require_db_or_skip!();
     let resolved = resolve_seeded(
         &pool,
@@ -224,7 +224,7 @@ async fn chain_1291_clears_the_escort_follow() {
 /// id in the seed, or a `get_chain_actions` lookup that missed a
 /// triggerless chain, would break the mission silently.
 #[tokio::test]
-async fn the_livewire_victory_hop_reaches_the_data_crystal_grant() {
+async fn live_db_the_livewire_victory_hop_reaches_the_data_crystal_grant() {
     let pool = require_db_or_skip!();
     let resolved = resolve_seeded(
         &pool,
@@ -337,7 +337,7 @@ async fn the_livewire_victory_hop_reaches_the_data_crystal_grant() {
 /// from one transition — the arm did run (the value changed) and it refused
 /// the NPC (the value is not `Some(NOT_A_PLAYER_EID)`).
 #[tokio::test]
-async fn chain_1263_refuses_to_follow_a_non_player_trigger_entity() {
+async fn live_db_chain_1263_refuses_to_follow_a_non_player_trigger_entity() {
     const NOT_A_PLAYER_EID: u32 = 7433;
 
     let pool = require_db_or_skip!();

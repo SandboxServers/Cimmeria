@@ -147,7 +147,7 @@ mod tests {
     /// it. Reverting the persist implementation to a no-op fails the
     /// middle assertion.
     #[tokio::test]
-    async fn auto_cycle_bit_round_trips() {
+    async fn live_db_auto_cycle_bit_round_trips() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -186,7 +186,7 @@ mod tests {
     /// `& PERSISTED_STATE_FIELD_MASK` in `persist_state_field` fails
     /// this.
     #[tokio::test]
-    async fn transient_combat_bits_are_masked_out() {
+    async fn live_db_transient_combat_bits_are_masked_out() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 0x10;
         let player_id = TEST_BASE + 0x11;
@@ -218,7 +218,7 @@ mod tests {
     /// must warn (not error / not silently succeed), mirroring the
     /// system-options handler per the negative-logging convention.
     #[tokio::test]
-    async fn persist_no_row_is_silent_warn() {
+    async fn live_db_persist_no_row_is_silent_warn() {
         use crate::test_support::LogCapture;
         let pool = require_db_or_skip!();
         let pool_opt = Some(Arc::new(pool.clone()));

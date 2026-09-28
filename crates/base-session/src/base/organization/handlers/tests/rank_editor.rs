@@ -40,7 +40,7 @@ async fn rank_table(fx: &Fixture, org_id: i32) -> Vec<u8> {
 /// strip it once the server set it; an edit that leaves the unheld bit
 /// alone and grants a held bit goes through.
 #[tokio::test]
-async fn set_perms_rejects_grant_of_unheld_bit() {
+async fn live_db_set_perms_rejects_grant_of_unheld_bit() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 7, 2, &["Org08 Unheld"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Unheld", 0, &[1]).await;
@@ -103,7 +103,7 @@ async fn set_perms_rejects_grant_of_unheld_bit() {
 /// CAT-M-07, D-ORG09 (3): nobody edits their own rank's mask, the Leader
 /// included (whose row is pinned anyway).
 #[tokio::test]
-async fn set_perms_rejects_own_rank() {
+async fn live_db_set_perms_rejects_own_rank() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 8, 2, &["Org08 Own Rank"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Own Rank", 0, &[1]).await;
@@ -136,7 +136,7 @@ async fn set_perms_rejects_own_rank() {
 /// CAT-M-07, D-ORG08: the `Leader` row is refused for any editor, the
 /// Leader first.
 #[tokio::test]
-async fn set_perms_rejects_leader_row() {
+async fn live_db_set_perms_rejects_leader_row() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 9, 1, &["Org08 Crown"]).await;
     let team = fx.org(OrgType::Team, "Org08 Crown", 0, &[]).await;
@@ -161,7 +161,7 @@ async fn set_perms_rejects_leader_row() {
 /// Officer granted `AlterPerms` still cannot edit the Senior Officer rank
 /// above it (`rank_too_low`); a rank the type does not use is refused.
 #[tokio::test]
-async fn set_perms_needs_alter_perms_a_lower_rank_and_a_rank_in_type() {
+async fn live_db_set_perms_needs_alter_perms_a_lower_rank_and_a_rank_in_type() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 10, 2, &["Org08 Editor Rules"]).await;
     let cmd = fx
@@ -216,7 +216,7 @@ async fn set_perms_needs_alter_perms_a_lower_rank_and_a_rank_in_type() {
 /// show keep their value whatever the wire says), then every online member
 /// gets [49] with the whole table; one `ok` row carries all three masks.
 #[tokio::test]
-async fn set_perms_updates_and_fans_out() {
+async fn live_db_set_perms_updates_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 11, 3, &["Org08 Perms"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Perms", 0, &[1, 2]).await;
@@ -274,7 +274,7 @@ async fn set_perms_updates_and_fans_out() {
 
 /// CAT-M-08: CM 17 needs `RankNames`; an Officer (6) lacks it.
 #[tokio::test]
-async fn set_rank_name_rejects_without_perm() {
+async fn live_db_set_rank_name_rejects_without_perm() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 12, 2, &["Org08 Names Perm"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Names Perm", 0, &[1]).await;
@@ -300,7 +300,7 @@ async fn set_rank_name_rejects_without_perm() {
 /// empty once trimmed, is rejected; so is the actor's own rank (D-ORG09
 /// (3)), which is why even the Leader cannot rename rank 8.
 #[tokio::test]
-async fn set_rank_name_rejects_over_cap() {
+async fn live_db_set_rank_name_rejects_over_cap() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 13, 1, &["Org08 Names Cap"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Names Cap", 0, &[]).await;
@@ -330,7 +330,7 @@ async fn set_rank_name_rejects_over_cap() {
 /// A rank name is stored trimmed and collapsed, then every online member
 /// gets [50] with every custom name (the renamed rank included).
 #[tokio::test]
-async fn set_rank_name_updates_and_fans_out() {
+async fn live_db_set_rank_name_updates_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 14, 2, &["Org08 Names"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Names", 0, &[1]).await;

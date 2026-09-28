@@ -116,7 +116,7 @@ fn assert_interaction(a: &Action, tag: &str, op: &str, mask: i64, what: &str) {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1292_terminal_starts_livewire_naming_the_victory_chain() {
+async fn live_db_chain_1292_terminal_starts_livewire_naming_the_victory_chain() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -170,7 +170,7 @@ async fn chain_1292_terminal_starts_livewire_naming_the_victory_chain() {
 /// terminal is not yet the objective; on 2407 a second win would re-run
 /// 1293 and grant a second Data Crystal.
 #[tokio::test]
-async fn chain_1292_does_not_resolve_on_the_escort_step() {
+async fn live_db_chain_1292_does_not_resolve_on_the_escort_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -189,7 +189,7 @@ async fn chain_1292_does_not_resolve_on_the_escort_step() {
 }
 
 #[tokio::test]
-async fn chain_1292_does_not_resolve_on_the_delivery_step() {
+async fn live_db_chain_1292_does_not_resolve_on_the_delivery_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -218,7 +218,7 @@ async fn chain_1292_does_not_resolve_on_the_delivery_step() {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1293_victory_grants_the_crystal_and_swaps_the_cursors() {
+async fn live_db_chain_1293_victory_grants_the_crystal_and_swaps_the_cursors() {
     let pool = require_db_or_skip!();
     let chain = load(&pool, 1293).await;
     let actions = chain.actions;
@@ -300,7 +300,7 @@ async fn chain_1293_victory_grants_the_crystal_and_swaps_the_cursors() {
 /// guarding nothing. A trigger row would make the chain fire on a real
 /// world event as well as on victory, double-granting the crystal.
 #[tokio::test]
-async fn chain_1293_is_triggerless_and_conditionless() {
+async fn live_db_chain_1293_is_triggerless_and_conditionless() {
     let pool = require_db_or_skip!();
     let chain = load(&pool, 1293).await;
 
@@ -330,7 +330,7 @@ async fn chain_1293_is_triggerless_and_conditionless() {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1299_interact_displays_the_terminal_instruction() {
+async fn live_db_chain_1299_interact_displays_the_terminal_instruction() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -354,7 +354,7 @@ async fn chain_1299_interact_displays_the_terminal_instruction() {
 /// only by their step gate. Both firing on one click would stack two
 /// dialogs on the player.
 #[tokio::test]
-async fn chains_1299_and_1294_never_claim_the_same_click() {
+async fn live_db_chains_1299_and_1294_never_claim_the_same_click() {
     let pool = require_db_or_skip!();
     let mut engine = ChainEngine::new();
     for chain_id in [1294, 1299] {
@@ -405,7 +405,7 @@ async fn chains_1299_and_1294_never_claim_the_same_click() {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1294_interact_displays_the_delivery_briefing() {
+async fn live_db_chain_1294_interact_displays_the_delivery_briefing() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -426,7 +426,7 @@ async fn chain_1294_interact_displays_the_delivery_briefing() {
 }
 
 #[tokio::test]
-async fn chain_1294_does_not_resolve_before_the_crystal_step() {
+async fn live_db_chain_1294_does_not_resolve_before_the_crystal_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -445,7 +445,7 @@ async fn chain_1294_does_not_resolve_before_the_crystal_step() {
 }
 
 #[tokio::test]
-async fn chain_1295_delivery_consumes_the_crystal_completes_704_accepts_706() {
+async fn live_db_chain_1295_delivery_consumes_the_crystal_completes_704_accepts_706() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -514,7 +514,7 @@ async fn chain_1295_delivery_consumes_the_crystal_completes_704_accepts_706() {
 }
 
 #[tokio::test]
-async fn chain_1295_does_not_resolve_when_706_is_already_active() {
+async fn live_db_chain_1295_does_not_resolve_when_706_is_already_active() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -539,7 +539,7 @@ async fn chain_1295_does_not_resolve_when_706_is_already_active() {
 /// finished 706 and somehow re-reaches this dialog neither re-consumes a
 /// crystal nor re-accepts. Mirrors `mission_702`'s pair on chain 1263.
 #[tokio::test]
-async fn chain_1295_does_not_resolve_when_706_is_already_completed() {
+async fn live_db_chain_1295_does_not_resolve_when_706_is_already_completed() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -560,7 +560,7 @@ async fn chain_1295_does_not_resolve_when_706_is_already_completed() {
 }
 
 #[tokio::test]
-async fn chain_1295_does_not_resolve_on_the_wrong_step() {
+async fn live_db_chain_1295_does_not_resolve_on_the_wrong_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,

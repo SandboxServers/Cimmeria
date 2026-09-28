@@ -245,7 +245,7 @@ mod tests {
     /// `array_append` duplicates ids and fails the second assertion; dropping
     /// the `DISTINCT` fails the first.
     #[tokio::test]
-    async fn an_arrival_learns_each_address_exactly_once() {
+    async fn live_db_an_arrival_learns_each_address_exactly_once() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE, TEST_BASE + 10);
         // Gateless on both ends, so the statement's origin half contributes
@@ -297,7 +297,7 @@ mod tests {
     /// `world_location` and `pos_*`, and the player rubber-bands to their
     /// pre-gate location on relog.
     #[tokio::test]
-    async fn an_arrival_with_nothing_new_to_learn_still_persists_the_destination() {
+    async fn live_db_an_arrival_with_nothing_new_to_learn_still_persists_the_destination() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE + 1, TEST_BASE + 11);
         // Gateless on both ends: see `an_arrival_learns_each_address_exactly_once`.
@@ -336,7 +336,7 @@ mod tests {
     /// Reverting the `w.world = sgw_player.world_location` correlation leaves
     /// the book empty and fails this.
     #[tokio::test]
-    async fn an_arrival_learns_the_world_the_traveller_left() {
+    async fn live_db_an_arrival_learns_the_world_the_traveller_left() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE + 3, TEST_BASE + 13);
         seed(&pool, account_id, player_id, &[]).await;
@@ -384,7 +384,7 @@ mod tests {
     /// at the right `player_id` from the wrong account must match no row, and
     /// must say so.
     #[tokio::test]
-    async fn a_wrong_account_writes_nothing_and_warns() {
+    async fn live_db_a_wrong_account_writes_nothing_and_warns() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE + 2, TEST_BASE + 12);
         seed(&pool, account_id, player_id, &[]).await;

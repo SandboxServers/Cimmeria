@@ -200,7 +200,7 @@ async fn unsent_push_is_a_warn() {
 /// `reason = send` and the send failure as the error class, not a
 /// `login_sync`.
 #[tokio::test]
-async fn unsent_login_bundle_is_login_sync_failed() {
+async fn live_db_unsent_login_bundle_is_login_sync_failed() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE + 6, TEST_BASE + 7);
     cleanup(&pool, account_id, player_id).await;
@@ -288,7 +288,7 @@ async fn single_pushes_carry_their_method_and_arguments() {
 /// bundle. Dropping any field from the load (or the push) fails the
 /// packet comparison against the independently built expected state.
 #[tokio::test]
-async fn relog_restores_and_pushes_the_whole_crafting_state() {
+async fn live_db_relog_restores_and_pushes_the_whole_crafting_state() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE, TEST_BASE + 1);
     cleanup(&pool, account_id, player_id).await;
@@ -339,7 +339,7 @@ async fn relog_restores_and_pushes_the_whole_crafting_state() {
 /// Reverting the column default in `sgw_player.sql` fails the first
 /// assertion.
 #[tokio::test]
-async fn new_character_column_default_is_the_starting_paradigm_levels() {
+async fn live_db_new_character_column_default_is_the_starting_paradigm_levels() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE + 2, TEST_BASE + 3);
     cleanup(&pool, account_id, player_id).await;
@@ -369,7 +369,7 @@ async fn new_character_column_default_is_the_starting_paradigm_levels() {
 /// the starting levels, and the login push tells the client Common is 5.
 /// Removing the default from the load fails both assertions.
 #[tokio::test]
-async fn existing_character_with_no_levels_loads_and_pushes_the_defaults() {
+async fn live_db_existing_character_with_no_levels_loads_and_pushes_the_defaults() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE + 4, TEST_BASE + 5);
     cleanup(&pool, account_id, player_id).await;
@@ -413,7 +413,7 @@ async fn existing_character_with_no_levels_loads_and_pushes_the_defaults() {
 /// Goa'uld, Asgard and Ancient levels at whatever they were before the relog.
 /// Filling in only an empty map fails every assertion.
 #[tokio::test]
-async fn partial_stored_levels_load_and_push_all_five_paradigms() {
+async fn live_db_partial_stored_levels_load_and_push_all_five_paradigms() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE + 8, TEST_BASE + 9);
     cleanup(&pool, account_id, player_id).await;

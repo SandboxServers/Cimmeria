@@ -102,7 +102,7 @@ pub(super) async fn setup(
 /// 3. one naquadah short of cash plus postage: `NotEnoughCash`, nothing
 ///    changes; exactly enough: sent, balance 0.
 #[tokio::test]
-async fn send_debits_cash_and_postage_atomically() {
+async fn live_db_send_debits_cash_and_postage_atomically() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE, BASE + 1, BASE + 2);
@@ -309,7 +309,7 @@ pub(super) async fn assert_untouched(
 /// id alone, this would mail the recipient's item to themselves at the
 /// sender's cost.
 #[tokio::test]
-async fn send_rejects_item_not_owned() {
+async fn live_db_send_rejects_item_not_owned() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE + 10, BASE + 11, BASE + 12);
@@ -352,7 +352,7 @@ async fn send_rejects_item_not_owned() {
 
 /// CAT-G-01 / D-SS08: a bound item is `ItemNotAvailable`, nothing moves.
 #[tokio::test]
-async fn send_rejects_bound_item() {
+async fn live_db_send_rejects_bound_item() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE + 20, BASE + 21, BASE + 22);
@@ -411,7 +411,7 @@ async fn send_rejects_bound_item() {
 /// item on the bandolier or equipped is refused, and so is asking for more
 /// than the stack holds. Nothing moves in any case.
 #[tokio::test]
-async fn send_rejects_item_outside_main_bag_or_over_stack() {
+async fn live_db_send_rejects_item_outside_main_bag_or_over_stack() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE + 30, BASE + 31, BASE + 32);
@@ -474,7 +474,7 @@ async fn send_rejects_item_outside_main_bag_or_over_stack() {
 /// escrowed stack, durability and charges), the cash on every header, and
 /// `MAIL_COD` on the COD mail. A mail with cash only has no attachment.
 #[tokio::test]
-async fn headers_carry_attachment_and_cod_flag() {
+async fn live_db_headers_carry_attachment_and_cod_flag() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (BASE + 50, BASE + 51, BASE + 52);
     let type_id = setup(
@@ -537,7 +537,7 @@ async fn headers_carry_attachment_and_cod_flag() {
 /// recipient's (it is theirs only on take). A split leaves only the
 /// remainder in the sender's list.
 #[tokio::test]
-async fn escrowed_item_absent_from_inventory_select() {
+async fn live_db_escrowed_item_absent_from_inventory_select() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (BASE + 60, BASE + 61, BASE + 62);
     let type_id = setup(

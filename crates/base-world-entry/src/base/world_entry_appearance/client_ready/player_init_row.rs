@@ -60,7 +60,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn purchase_round_trips_through_the_world_entry_read() {
+    async fn live_db_purchase_round_trips_through_the_world_entry_read() {
         let pool = require_db_or_skip!();
         cleanup(&pool).await;
         sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")

@@ -11,7 +11,7 @@ use cimmeria_observability::testing::{counter_total, install as install_meter};
 /// lists, with the full identity; the request is counted accepted once and
 /// the job completed once.
 #[tokio::test]
-async fn completed_names_the_blueprint_set_and_quantity() {
+async fn live_db_completed_names_the_blueprint_set_and_quantity() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -112,7 +112,7 @@ async fn no_database_is_a_lookup_warning_and_a_line() {
 /// A product with no `resources.items` row still crafts, named by id, and
 /// the miss is a WARN.
 #[tokio::test]
-async fn a_missing_product_name_is_a_warning() {
+async fn live_db_a_missing_product_name_is_a_warning() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let who = super::super::Who {

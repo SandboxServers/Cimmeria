@@ -105,7 +105,7 @@ fn best_tool_is_highest_tech_comp_then_lowest_instance() {
 /// the item's description ("Bio-Medical Engineering Field Crafting Tool",
 /// ...), the only other place the science is written down.
 #[tokio::test]
-async fn every_seeded_tool_classifies_and_matches_its_description() {
+async fn live_db_every_seeded_tool_classifies_and_matches_its_description() {
     let pool = require_db_or_skip!();
     let table = tool_table(&pool).await.expect("tool table");
     assert_eq!(table.len(), 48, "48 seeded Field Crafting Tools");
@@ -162,7 +162,7 @@ async fn cleanup(pool: &PgPool) {
 /// container 15 is held, read end to end from `sgw_inventory` through the
 /// tool table.
 #[tokio::test]
-async fn load_held_tools_reads_only_the_crafting_bag() {
+async fn live_db_load_held_tools_reads_only_the_crafting_bag() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")

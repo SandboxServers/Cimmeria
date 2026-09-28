@@ -15,7 +15,7 @@ use super::*;
 /// `COALESCE(..., ARRAY[]::int[])` would hand the spawn path an empty bucket
 /// that falls straight back to `NPC_DEFAULT_ABILITY`).
 #[tokio::test]
-async fn every_harset_mob_template_carries_a_non_default_ability_set() {
+async fn live_db_every_harset_mob_template_carries_a_non_default_ability_set() {
     let pool = require_db_or_skip!();
 
     // Aggregated, not a bare LEFT JOIN. H11 wrote this as a plain join and
@@ -85,7 +85,7 @@ async fn every_harset_mob_template_carries_a_non_default_ability_set() {
 /// as well as a seed edit that drops to 0 (which
 /// `normalize_respawn_secs` would downgrade back to `None`).
 #[tokio::test]
-async fn every_harset_mob_template_carries_a_respawn_delay() {
+async fn live_db_every_harset_mob_template_carries_a_respawn_delay() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(i32, String, Option<i32>)> = sqlx::query_as(
@@ -134,7 +134,7 @@ async fn every_harset_mob_template_carries_a_respawn_delay() {
 /// revert that deletes every H11 row would leave the sweep scanning ten rows
 /// and still passing.
 #[tokio::test]
-async fn no_harset_template_carries_a_loot_table() {
+async fn live_db_no_harset_template_carries_a_loot_table() {
     let pool = require_db_or_skip!();
 
     let expected_roster =
@@ -186,7 +186,7 @@ async fn no_harset_template_carries_a_loot_table() {
 /// The per-id loop is the revert guard: it names the first missing template
 /// rather than reporting a count mismatch.
 #[tokio::test]
-async fn harset_template_names_match_the_allocation() {
+async fn live_db_harset_template_names_match_the_allocation() {
     let pool = require_db_or_skip!();
 
     let ids: Vec<i32> = MOB_TEMPLATES
@@ -250,7 +250,7 @@ async fn harset_template_names_match_the_allocation() {
 /// a row with components, an empty body_set and no static_mesh would fall
 /// through both branches while a components-only check waved it past.
 #[tokio::test]
-async fn every_harset_template_has_a_renderable_appearance() {
+async fn live_db_every_harset_template_has_a_renderable_appearance() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(i32, String, String, Option<String>, Option<Vec<String>>)> = sqlx::query_as(
@@ -303,7 +303,7 @@ async fn every_harset_template_has_a_renderable_appearance() {
 /// Volunteer, 220 Lethander's Contact, 243 Shield Tower, 244 Petbe's
 /// Quarters) have no moniker anywhere in the 2009 data.
 #[tokio::test]
-async fn harset_templates_with_a_name_id_resolve_to_non_empty_text() {
+async fn live_db_harset_templates_with_a_name_id_resolve_to_non_empty_text() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(i32, String, i32, Option<String>)> = sqlx::query_as(

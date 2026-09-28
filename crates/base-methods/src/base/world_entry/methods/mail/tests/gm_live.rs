@@ -62,7 +62,7 @@ async fn mails(pool: &PgPool, character_id: i32) -> Vec<(i32, Option<i32>, Strin
 /// and exactly one escrow row; nothing is debited; the GM is told the mail
 /// id, and `mail.gm_action` names the GM and the subject.
 #[tokio::test]
-async fn gm_mail_creates_one_mail_and_one_escrow_row() {
+async fn live_db_gm_mail_creates_one_mail_and_one_escrow_row() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, gm) = (0x7300_5160, 0x7300_5161);
@@ -118,7 +118,7 @@ async fn gm_mail_creates_one_mail_and_one_escrow_row() {
 /// `MAIL_COD`, the price in `cash`, the item minted into escrow, and no
 /// postage taken from the GM. The name resolves by the D-SS13 fold.
 #[tokio::test]
-async fn gm_mail_cod_is_sent_from_the_gm() {
+async fn live_db_gm_mail_cod_is_sent_from_the_gm() {
     let pool = require_db_or_skip!();
     let (acct, gm, rcpt) = (0x7300_5170, 0x7300_5171, 0x7300_5172);
     cleanup(&pool, acct).await;
@@ -156,7 +156,7 @@ async fn gm_mail_cod_is_sent_from_the_gm() {
 /// Type 12: an unknown recipient writes nothing, answers the GM, and logs
 /// `mail.gm_rejected reason=unknown_recipient` with the GM's ids.
 #[tokio::test]
-async fn gm_mail_unknown_recipient_writes_nothing() {
+async fn live_db_gm_mail_unknown_recipient_writes_nothing() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, gm) = (0x7300_5180, 0x7300_5181);
@@ -196,7 +196,7 @@ async fn gm_mail_unknown_recipient_writes_nothing() {
 /// what is in escrow: items, gift cash (COD prices excluded) and unpaid
 /// COD.
 #[tokio::test]
-async fn gm_mailbox_reports_counts_and_escrow() {
+async fn live_db_gm_mailbox_reports_counts_and_escrow() {
     let pool = require_db_or_skip!();
     let (acct, gm, rcpt) = (0x7300_5188, 0x7300_5189, 0x7300_518A);
     cleanup(&pool, acct).await;
@@ -262,7 +262,7 @@ async fn gm_mailbox_reports_counts_and_escrow() {
 /// that could never be paid (a price below 1) is never written:
 /// `mail.gm_rejected reason=cod_price_invalid` with what the GM asked for.
 #[tokio::test]
-async fn gm_mail_refuses_cod_without_a_price() {
+async fn live_db_gm_mail_refuses_cod_without_a_price() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, gm) = (0x7300_5184, 0x7300_5185);
@@ -296,7 +296,7 @@ async fn gm_mail_refuses_cod_without_a_price() {
 /// `mail.gm_action action=mail_expire` names the GM and the mailbox. Fails
 /// if the refusal comes back or the command stops expiring the mail.
 #[tokio::test]
-async fn gm_mail_expire_expires_the_mail_now() {
+async fn live_db_gm_mail_expire_expires_the_mail_now() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, gm, owner, sender) = (0x7300_2400, 0x7300_2401, 0x7300_2402, 0x7300_2403);
@@ -354,7 +354,7 @@ async fn gm_mail_expire_expires_the_mail_now() {
 /// `mail.gm_rejected reason=<why>` and the mail id, a line naming why, and
 /// no change to the row.
 #[tokio::test]
-async fn gm_mail_expire_refuses_archived_quarantined_and_unknown_mail() {
+async fn live_db_gm_mail_expire_refuses_archived_quarantined_and_unknown_mail() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, gm, owner) = (0x7300_2420, 0x7300_2421, 0x7300_2422);

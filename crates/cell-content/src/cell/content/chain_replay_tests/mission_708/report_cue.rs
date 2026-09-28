@@ -40,7 +40,7 @@ use crate::test_support::require_db_or_skip;
 /// expansion is registered — a regression that dropped rows 2..4 would
 /// leave a player who killed Muelbach with no cue at all.
 #[tokio::test]
-async fn crystal_death_marks_exactly_one_report_npc_by_archetype() {
+async fn live_db_crystal_death_marks_exactly_one_report_npc_by_archetype() {
     let pool = require_db_or_skip!();
     let marsh = engine_for_all_expansions(&pool, 1350).await;
     let mohkatan = engine_for_all_expansions(&pool, 1351).await;
@@ -86,7 +86,7 @@ async fn crystal_death_marks_exactly_one_report_npc_by_archetype() {
 /// respawn) must not re-light a report NPC the player has already
 /// reported to.
 #[tokio::test]
-async fn report_cue_chains_do_not_fire_outside_step_2416() {
+async fn live_db_report_cue_chains_do_not_fire_outside_step_2416() {
     let pool = require_db_or_skip!();
     let marsh = engine_for_all_expansions(&pool, 1350).await;
 
@@ -129,7 +129,7 @@ async fn report_cue_chains_do_not_fire_outside_step_2416() {
 /// in one `ResolvedActions`, which is exactly what `resolve_event`
 /// decides.
 #[tokio::test]
-async fn the_crystal_grant_and_its_report_cue_resolve_in_one_batch() {
+async fn live_db_the_crystal_grant_and_its_report_cue_resolve_in_one_batch() {
     let pool = require_db_or_skip!();
 
     // One engine holding the grant chain AND every expansion of the cue

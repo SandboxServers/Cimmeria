@@ -109,7 +109,7 @@ fn assert_interaction(a: &Action, tag: &str, op: &str, mask: i64, what: &str) {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1261_region_entry_advances_to_2419_and_lights_the_cell_actor() {
+async fn live_db_chain_1261_region_entry_advances_to_2419_and_lights_the_cell_actor() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -153,7 +153,7 @@ async fn chain_1261_region_entry_advances_to_2419_and_lights_the_cell_actor() {
 /// chain must not re-advance (which would force-complete 2419's objective
 /// 4653 and skip the rescue entirely).
 #[tokio::test]
-async fn chain_1261_does_not_resolve_once_2419_is_the_active_step() {
+async fn live_db_chain_1261_does_not_resolve_once_2419_is_the_active_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -179,7 +179,7 @@ async fn chain_1261_does_not_resolve_once_2419_is_the_active_step() {
 /// A player who never accepted 702 walking through the same volume must
 /// get nothing — the region is shared with mission 703's chain 1271.
 #[tokio::test]
-async fn chain_1261_does_not_resolve_without_the_mission() {
+async fn live_db_chain_1261_does_not_resolve_without_the_mission() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -202,7 +202,7 @@ async fn chain_1261_does_not_resolve_without_the_mission() {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1262_interact_displays_dialog_2577() {
+async fn live_db_chain_1262_interact_displays_dialog_2577() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -229,7 +229,7 @@ async fn chain_1262_interact_displays_dialog_2577() {
 /// Clicking the cell actor while still on the travel step must not open
 /// the rescue dialog — 2577's choice is what completes the mission.
 #[tokio::test]
-async fn chain_1262_does_not_resolve_on_the_travel_step() {
+async fn live_db_chain_1262_does_not_resolve_on_the_travel_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -262,7 +262,7 @@ fn rescue_params() -> Vec<(&'static str, serde_json::Value)> {
 }
 
 #[tokio::test]
-async fn chain_1263_completes_702_accepts_704_and_starts_the_escort() {
+async fn live_db_chain_1263_completes_702_accepts_704_and_starts_the_escort() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(&pool, 1263, TriggerType::DialogChoice, &rescue_params()).await;
 
@@ -336,7 +336,7 @@ async fn chain_1263_completes_702_accepts_704_and_starts_the_escort() {
 /// Re-firing would also re-arm the follow, snapping Zuritska back onto a
 /// player who has already reached the Communications Room.
 #[tokio::test]
-async fn chain_1263_does_not_resolve_when_704_is_already_active() {
+async fn live_db_chain_1263_does_not_resolve_when_704_is_already_active() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -356,7 +356,7 @@ async fn chain_1263_does_not_resolve_when_704_is_already_active() {
 }
 
 #[tokio::test]
-async fn chain_1263_does_not_resolve_when_704_is_already_completed() {
+async fn live_db_chain_1263_does_not_resolve_when_704_is_already_completed() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -376,7 +376,7 @@ async fn chain_1263_does_not_resolve_when_704_is_already_completed() {
 }
 
 #[tokio::test]
-async fn chain_1263_does_not_resolve_on_the_wrong_step() {
+async fn live_db_chain_1263_does_not_resolve_on_the_wrong_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -400,7 +400,7 @@ async fn chain_1263_does_not_resolve_on_the_wrong_step() {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1264_restores_the_cell_indicator_on_login() {
+async fn live_db_chain_1264_restores_the_cell_indicator_on_login() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -429,7 +429,7 @@ async fn chain_1264_restores_the_cell_indicator_on_login() {
 /// The restore must not re-light the actor for a player who already
 /// freed Zuritska, or the `!` sticks forever in a shared zone.
 #[tokio::test]
-async fn chain_1264_does_not_restore_after_the_rescue() {
+async fn live_db_chain_1264_does_not_restore_after_the_rescue() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -453,7 +453,7 @@ async fn chain_1264_does_not_restore_after_the_rescue() {
 /// The restore is keyed to the Castle world. Loading into any other world
 /// must not touch Castle's actors.
 #[tokio::test]
-async fn chain_1264_does_not_restore_in_another_world() {
+async fn live_db_chain_1264_does_not_restore_in_another_world() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -480,7 +480,7 @@ async fn chain_1264_does_not_restore_in_another_world() {
 /// step 2419, who then cannot click the actor at all. Chain 1264 repairs that
 /// only on a relog; 1265 repairs it on walking back into the volume.
 #[tokio::test]
-async fn chain_1265_repairs_the_cell_indicator_on_region_re_entry() {
+async fn live_db_chain_1265_repairs_the_cell_indicator_on_region_re_entry() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -512,7 +512,7 @@ async fn chain_1265_repairs_the_cell_indicator_on_region_re_entry() {
 /// the repair's `|` would immediately undo 1261's own advance semantics by
 /// re-lighting an actor the player has not reached yet.
 #[tokio::test]
-async fn chains_1261_and_1265_never_claim_the_same_region_entry() {
+async fn live_db_chains_1261_and_1265_never_claim_the_same_region_entry() {
     let pool = require_db_or_skip!();
     let mut engine = ChainEngine::new();
     for chain_id in [1261, 1265] {

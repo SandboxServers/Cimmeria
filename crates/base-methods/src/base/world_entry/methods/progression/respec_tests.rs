@@ -68,7 +68,7 @@ async fn setup_trained(pool: &sqlx::PgPool, id: i32, points_left: i32, naquadah:
 }
 
 #[tokio::test]
-async fn respec_removes_only_trainer_abilities_refunds_the_spend_and_charges_once() {
+async fn live_db_respec_removes_only_trainer_abilities_refunds_the_spend_and_charges_once() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0801;
     // Enough naquadah for two respecs, so only the "something trainer-bought"
@@ -111,7 +111,7 @@ async fn respec_removes_only_trainer_abilities_refunds_the_spend_and_charges_onc
 }
 
 #[tokio::test]
-async fn respec_short_of_naquadah_leaves_every_field_untouched() {
+async fn live_db_respec_short_of_naquadah_leaves_every_field_untouched() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0802;
     setup_trained(&pool, ID, 2, RESPEC_COST_NAQUADAH - 1).await;
@@ -135,7 +135,7 @@ async fn respec_short_of_naquadah_leaves_every_field_untouched() {
 /// D-AT11: a character with no trainer purchases (every character created
 /// before AT-01) pays nothing and loses nothing.
 #[tokio::test]
-async fn respec_with_nothing_trained_is_free() {
+async fn live_db_respec_with_nothing_trained_is_free() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0803;
     cleanup(&pool, ID).await;
@@ -162,7 +162,7 @@ async fn respec_with_nothing_trained_is_free() {
 /// Cross-task (AT-03): after a respec the spend is 0 and the points are
 /// back, so the root the character bought before is buyable again at once.
 #[tokio::test]
-async fn respecced_character_can_rebuy_the_root_immediately() {
+async fn live_db_respecced_character_can_rebuy_the_root_immediately() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0804;
     setup_trained(&pool, ID, 0, 1500).await;
@@ -223,7 +223,7 @@ async fn run_handler(
 }
 
 #[tokio::test]
-async fn handler_reports_the_reset_and_refreshes_the_point_cache() {
+async fn live_db_handler_reports_the_reset_and_refreshes_the_point_cache() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0805;
     setup_trained(&pool, ID, 2, 1500).await;
@@ -252,7 +252,7 @@ async fn handler_reports_the_reset_and_refreshes_the_point_cache() {
 /// Too little naquadah: the cell still hears about it, so the player gets
 /// feedback on the first press.
 #[tokio::test]
-async fn handler_reports_a_short_balance_to_the_cell() {
+async fn live_db_handler_reports_a_short_balance_to_the_cell() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0806;
     setup_trained(&pool, ID, 2, 10).await;
@@ -272,7 +272,7 @@ async fn handler_reports_a_short_balance_to_the_cell() {
 /// A reused entity id: the session now plays another character. The base
 /// must not reset the validated one.
 #[tokio::test]
-async fn handler_refuses_when_the_session_plays_another_character() {
+async fn live_db_handler_refuses_when_the_session_plays_another_character() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0807;
     setup_trained(&pool, ID, 2, 1500).await;
@@ -287,7 +287,7 @@ async fn handler_refuses_when_the_session_plays_another_character() {
 }
 
 #[tokio::test]
-async fn handler_refuses_a_negative_cost_without_touching_the_row() {
+async fn live_db_handler_refuses_a_negative_cost_without_touching_the_row() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0808;
     setup_trained(&pool, ID, 2, 1500).await;

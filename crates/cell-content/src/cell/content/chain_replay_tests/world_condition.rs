@@ -237,7 +237,7 @@ async fn grants_after_entering_region(
 /// moment `populate_world_context` is dropped from `fire_enter_region`, or
 /// `stamp_world_ids` stops filling `WorldDef::world_id`.
 #[tokio::test]
-async fn world_gated_chain_fires_in_the_authored_world() {
+async fn live_db_world_gated_chain_fires_in_the_authored_world() {
     let pool = require_db_or_skip!();
     let engine = load_sentinel_engine(&pool, CHAIN_ID_POSITIVE).await;
 
@@ -260,7 +260,7 @@ async fn world_gated_chain_fires_in_the_authored_world() {
 /// world, so without the condition this event resolves identically in
 /// `Harset_CmdCenter`.
 #[tokio::test]
-async fn world_gated_chain_does_not_fire_in_the_adjacent_world() {
+async fn live_db_world_gated_chain_does_not_fire_in_the_adjacent_world() {
     let pool = require_db_or_skip!();
     let engine = load_sentinel_engine(&pool, CHAIN_ID_NEGATIVE).await;
 

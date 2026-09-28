@@ -207,7 +207,7 @@ async fn refusal_under_a_held_lock(
 /// `move_lock_failed` then `move_resync_skipped reason=lock_timeout` on the
 /// per-player move lock: another move holds `(player, 0)`.
 #[tokio::test]
-async fn refusal_logs_move_lock_failed_when_the_move_lock_times_out() {
+async fn live_db_refusal_logs_move_lock_failed_when_the_move_lock_times_out() {
     refusal_under_a_held_lock(
         0x7000_B1C2,
         0x7000_B1C3,
@@ -223,7 +223,7 @@ async fn refusal_logs_move_lock_failed_when_the_move_lock_times_out() {
 /// refused item's row lock: a write to the row (a grant's stack merge, a
 /// remove, a trade) is still open.
 #[tokio::test]
-async fn refusal_logs_move_lock_failed_when_the_item_row_lock_times_out() {
+async fn live_db_refusal_logs_move_lock_failed_when_the_item_row_lock_times_out() {
     refusal_under_a_held_lock(
         0x7000_B1C4,
         0x7000_B1C5,

@@ -40,7 +40,7 @@ use crate::test_support::require_db_or_skip;
 /// 1005). Frost owning the 2113 → 80623 advance is what self-gates it (the
 /// step-2113 gate flips false) and opens chain 1005's 80623 gate.
 #[tokio::test]
-async fn chain_1003_grants_letter_and_advances_to_guard_search_step() {
+async fn live_db_chain_1003_grants_letter_and_advances_to_guard_search_step() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1003)
         .await
@@ -119,7 +119,7 @@ async fn chain_1003_grants_letter_and_advances_to_guard_search_step() {
 /// and self-limits once it advances to 80623 (a re-click can't re-grant the
 /// letter or re-advance). Pins the gate + the resolved 80623 advance together.
 #[tokio::test]
-async fn chain_1003_fires_on_step_2113_and_advances_to_80623() {
+async fn live_db_chain_1003_fires_on_step_2113_and_advances_to_80623() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1003)
         .await
@@ -168,7 +168,7 @@ async fn chain_1003_fires_on_step_2113_and_advances_to_80623() {
 /// Re-loot guard: chain 1003 must NOT fire once it has advanced past step 2113
 /// (to 80623). Re-clicking Frost can't re-grant the letter or re-advance.
 #[tokio::test]
-async fn chain_1003_does_not_fire_after_advancing_to_80623() {
+async fn live_db_chain_1003_does_not_fire_after_advancing_to_80623() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1003)
         .await
@@ -214,7 +214,7 @@ async fn chain_1003_does_not_fire_after_advancing_to_80623() {
 /// Chain 1005 (Guard corpse, dialog 3996) grants the pistol (55) to the
 /// backpack and advances to the equip step. No letter, no completion.
 #[tokio::test]
-async fn chain_1005_grants_pistol_and_advances_to_equip_step() {
+async fn live_db_chain_1005_grants_pistol_and_advances_to_equip_step() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1005)
         .await
@@ -279,7 +279,7 @@ async fn chain_1005_grants_pistol_and_advances_to_equip_step() {
 /// only AFTER Frost advanced us to the intermediate step. Positive case: it
 /// fires (grants the pistol, advances to 80622) when 80623 is active.
 #[tokio::test]
-async fn chain_1005_fires_on_step_80623() {
+async fn live_db_chain_1005_fires_on_step_80623() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1005)
         .await
@@ -332,7 +332,7 @@ async fn chain_1005_fires_on_step_80623() {
 /// 80623 (not 2113) means that even a spoofed dialog_open can't grant the
 /// pistol before Frost is searched.
 #[tokio::test]
-async fn chain_1005_does_not_fire_before_frost_searched() {
+async fn live_db_chain_1005_does_not_fire_before_frost_searched() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1005)
         .await
@@ -374,7 +374,7 @@ async fn chain_1005_does_not_fire_before_frost_searched() {
 /// Re-loot guard: chain 1005 must NOT fire once it has advanced past 80623 (to
 /// the equip step 80622). Re-searching the Guard can't re-grant the pistol.
 #[tokio::test]
-async fn chain_1005_does_not_fire_after_advancing_to_80622() {
+async fn live_db_chain_1005_does_not_fire_after_advancing_to_80622() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1005)
         .await
@@ -420,7 +420,7 @@ async fn chain_1005_does_not_fire_after_advancing_to_80622() {
 /// Chain 1004 fires on `item_equipped(55)` while step 80622 is active.
 /// Plays the door kismet sequence and completes the mission.
 #[tokio::test]
-async fn chain_1004_fires_on_pistol_equip_at_step_80622() {
+async fn live_db_chain_1004_fires_on_pistol_equip_at_step_80622() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1004)
         .await
@@ -472,7 +472,7 @@ async fn chain_1004_fires_on_pistol_equip_at_step_80622() {
 /// looting Frost (so step 80622 was never reached), equipping must not
 /// short-circuit the door + mission completion.
 #[tokio::test]
-async fn chain_1004_does_not_fire_without_step_80622_active() {
+async fn live_db_chain_1004_does_not_fire_without_step_80622_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1004)
         .await
@@ -514,7 +514,7 @@ async fn chain_1004_does_not_fire_without_step_80622_active() {
 /// moved back to 1001, both corpses would be searchable at once and the
 /// Frost → Guard ordering the player asked for would be gone.
 #[tokio::test]
-async fn frost_loot_unlocks_guard_and_accept_does_not_bind_guard() {
+async fn live_db_frost_loot_unlocks_guard_and_accept_does_not_bind_guard() {
     let pool = require_db_or_skip!();
 
     let chain_1001 = load_single_chain_for_test(&pool, 1001)
@@ -581,7 +581,7 @@ async fn frost_loot_unlocks_guard_and_accept_does_not_bind_guard() {
 /// nothing — a player who searched Frost then logged out would lose the Guard
 /// binding and the pistol would be unobtainable.
 #[tokio::test]
-async fn login_restore_chains_rebind_corpses_per_step() {
+async fn live_db_login_restore_chains_rebind_corpses_per_step() {
     let pool = require_db_or_skip!();
 
     let chain_1006 = load_single_chain_for_test(&pool, 1006)
@@ -630,7 +630,7 @@ async fn login_restore_chains_rebind_corpses_per_step() {
 /// particular is the whole point of the intermediate step: it must fire while
 /// step 80623 is active.
 #[tokio::test]
-async fn chain_1007_fires_on_login_at_step_80623() {
+async fn live_db_chain_1007_fires_on_login_at_step_80623() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1007)
         .await

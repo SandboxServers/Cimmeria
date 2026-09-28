@@ -70,7 +70,7 @@ fn line(speaker: &str, channel: u8, text: &str) -> Call {
 /// row counts the members reached, not the speaker's own copy. Nothing is
 /// forwarded to the cell.
 #[tokio::test]
-async fn team_and_command_chat_reach_every_online_member() {
+async fn live_db_team_and_command_chat_reach_every_online_member() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org09(&pool, 0, 5, &["Org09 Team", "Org09 Command"]).await;
     let team = fx.org(OrgType::Team, "Org09 Team", 0, &[1, 2, 3]).await;
@@ -119,7 +119,7 @@ async fn team_and_command_chat_reach_every_online_member() {
 /// the same Command gets nothing, and a Team never hears it. No member is
 /// ever sent `onChatJoined`: the client hardcodes 6 (D-ORG14).
 #[tokio::test]
-async fn officer_chat_reaches_only_officer_chat_ranks() {
+async fn live_db_officer_chat_reaches_only_officer_chat_ranks() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org09(&pool, 1, 4, &["Org09 Officers", "Org09 Officers Team"]).await;
     let cmd = fx.org(OrgType::Command, "Org09 Officers", 0, &[1, 2]).await;
@@ -158,7 +158,7 @@ async fn officer_chat_reaches_only_officer_chat_ranks() {
 /// else hears it, the speaker reads why, and the row says
 /// `missing_permission`.
 #[tokio::test]
-async fn officer_chat_without_officer_chat_is_refused_with_feedback() {
+async fn live_db_officer_chat_without_officer_chat_is_refused_with_feedback() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org09(&pool, 2, 3, &["Org09 No Officer"]).await;
     let cmd = fx
@@ -187,7 +187,7 @@ async fn officer_chat_without_officer_chat_is_refused_with_feedback() {
 /// a team." / "... command.", and the row says `not_in_org`. Being in the
 /// other type does not count: a Command member has no Team.
 #[tokio::test]
-async fn speaker_in_no_org_of_that_type_gets_feedback() {
+async fn live_db_speaker_in_no_org_of_that_type_gets_feedback() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org09(&pool, 3, 2, &["Org09 Only Command"]).await;
     fx.org(OrgType::Command, "Org09 Only Command", 0, &[1])
@@ -227,7 +227,7 @@ async fn speaker_in_no_org_of_that_type_gets_feedback() {
 /// `org.send_failed` (`what = chat_echo`) while the members still get the
 /// line; with no database the line is refused (`no_db`) with feedback.
 #[tokio::test]
-async fn org_chat_seams_warn_with_reason() {
+async fn live_db_org_chat_seams_warn_with_reason() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org09(&pool, 5, 2, &["Org09 Seams"]).await;
     fx.org(OrgType::Team, "Org09 Seams", 0, &[1]).await;

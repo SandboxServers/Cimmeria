@@ -87,7 +87,7 @@ async fn take_then_sweep(
 /// re-checks the owner, not the cash, so a sweep that read `cash = 500`
 /// before the take committed would write it back onto the returned mail.
 #[tokio::test]
-async fn sweep_racing_take_cash_pays_out_once() {
+async fn live_db_sweep_racing_take_cash_pays_out_once() {
     let pool = require_db_or_skip!();
     cleanup(&pool, BASE).await;
     let (owner, sender) = (BASE + 1, BASE + 2);
@@ -135,7 +135,7 @@ async fn sweep_racing_take_cash_pays_out_once() {
 /// is unique and the take deletes the escrow row with `rows_affected == 1`;
 /// this pins the path the sweep then takes.)
 #[tokio::test]
-async fn sweep_racing_take_item_moves_it_once() {
+async fn live_db_sweep_racing_take_item_moves_it_once() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x08;
     cleanup(&pool, base).await;
@@ -185,7 +185,7 @@ async fn sweep_racing_take_item_moves_it_once() {
 /// the payer is debited once, the seller gets one payment mail, and the
 /// mail stays the payer's with its item and a fresh expiry.
 #[tokio::test]
-async fn sweep_racing_pay_cod_never_returns_a_paid_cod() {
+async fn live_db_sweep_racing_pay_cod_never_returns_a_paid_cod() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x10;
     cleanup(&pool, base).await;

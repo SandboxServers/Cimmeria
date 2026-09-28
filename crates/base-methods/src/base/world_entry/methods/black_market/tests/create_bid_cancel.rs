@@ -32,7 +32,7 @@ use crate::test_support::require_db_or_skip;
 /// (`SystemItem::ExistingInstance` takes only a container-18 row of its
 /// owner). Bug shape: the branch's DELETE leaves no row at all.
 #[tokio::test]
-async fn create_auction_inserts_row_and_escrows_item() {
+async fn live_db_create_auction_inserts_row_and_escrows_item() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_A901;
     let account_id = TEST_BASE;
@@ -93,7 +93,7 @@ async fn create_auction_inserts_row_and_escrows_item() {
 /// Bug shape: a direct credit (the pre-BM-02b refund) leaves no mail and
 /// changes the balance; a missing refund leaves neither.
 #[tokio::test]
-async fn place_bid_updates_refunds_prior_and_records_bid() {
+async fn live_db_place_bid_updates_refunds_prior_and_records_bid() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_A911;
     let acc_seller = TEST_BASE + 100;
@@ -196,7 +196,7 @@ async fn place_bid_updates_refunds_prior_and_records_bid() {
 /// instance, whole) and the held bid back to the current bidder, and marks
 /// the auction CANCELLED. Decision D-BM10: cancel returns by mail.
 #[tokio::test]
-async fn cancel_auction_returns_item_and_refunds_bidder() {
+async fn live_db_cancel_auction_returns_item_and_refunds_bidder() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_A921;
     let acc_seller = TEST_BASE + 200;
@@ -268,7 +268,7 @@ async fn cancel_auction_returns_item_and_refunds_bidder() {
 /// bid is added back to the validated balance — reverting the effective-balance
 /// fix leaves `current_bid` stuck at the first bid.
 #[tokio::test]
-async fn place_bid_self_raise_credits_held_bid() {
+async fn live_db_place_bid_self_raise_credits_held_bid() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_A913;
     let acc_seller = TEST_BASE + 130;

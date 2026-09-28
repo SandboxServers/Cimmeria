@@ -42,7 +42,7 @@ fn csv_mapping() -> (BTreeSet<i32>, BTreeMap<i32, Vec<i32>>) {
 }
 
 #[tokio::test]
-async fn seed_holds_exactly_the_resolved_mapping_and_the_guides() {
+async fn live_db_seed_holds_exactly_the_resolved_mapping_and_the_guides() {
     let pool = require_db_or_skip!();
     let rows: Vec<EffectRow> = sqlx::query_as(
         "SELECT item_id, blueprint_id, racial_paradigm_id FROM resources.crafting_item_effects",
@@ -116,7 +116,7 @@ async fn seed_holds_exactly_the_resolved_mapping_and_the_guides() {
 /// to crafting and never raises `OnItemUse`), and one that removed the item
 /// would consume it twice.
 #[tokio::test]
-async fn no_content_trigger_listens_for_a_crafting_item() {
+async fn live_db_no_content_trigger_listens_for_a_crafting_item() {
     let pool = require_db_or_skip!();
     let triggers: Vec<(i32, String)> = sqlx::query_as(
         "SELECT t.chain_id, t.event_key FROM resources.content_triggers t \

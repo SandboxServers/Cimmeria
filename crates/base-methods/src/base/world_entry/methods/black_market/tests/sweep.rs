@@ -30,7 +30,7 @@ use crate::test_support::require_db_or_skip;
 /// no-op sweep fails; a settlement that bypassed the mail writer leaves no
 /// `sgw_gate_mail_item` row.
 #[tokio::test]
-async fn sweep_settles_sold_auction() {
+async fn live_db_sweep_settles_sold_auction() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_A931;
     let acc_seller = TEST_BASE + 300;
@@ -102,7 +102,7 @@ async fn sweep_settles_sold_auction() {
 /// Sweep settles an unsold auction: the escrowed row is mailed back to the
 /// seller and status → EXPIRED.
 #[tokio::test]
-async fn sweep_settles_unsold_auction_returns_item() {
+async fn live_db_sweep_settles_unsold_auction_returns_item() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_A941;
     let account_id = TEST_BASE + 400;
@@ -157,7 +157,7 @@ async fn sweep_settles_unsold_auction_returns_item() {
 /// a `break`-instead-of-`continue` (or a single-row query) in the sweep loop
 /// would settle only one and leave the other ACTIVE.
 #[tokio::test]
-async fn sweep_settles_multiple_expired_in_one_pass() {
+async fn live_db_sweep_settles_multiple_expired_in_one_pass() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_A951;
     let acc_seller = TEST_BASE + 500;
@@ -218,7 +218,7 @@ async fn sweep_settles_multiple_expired_in_one_pass() {
 /// EXPIRED. The row is INSERTed directly so the inconsistent state can be
 /// staged precisely.
 #[tokio::test]
-async fn sweep_phantom_bidder_zero_bid_settles_unsold() {
+async fn live_db_sweep_phantom_bidder_zero_bid_settles_unsold() {
     let pool = require_db_or_skip!();
     let acc_seller = TEST_BASE + 600;
     let acc_bidder = TEST_BASE + 601;

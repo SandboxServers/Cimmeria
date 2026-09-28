@@ -188,7 +188,7 @@ pub(super) fn make_state(
 /// commits but the inventory INSERT silently no-ops (the prior bug
 /// shape that motivated the rows_affected == 1 guard in mod.rs).
 #[tokio::test]
-async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
+async fn live_db_pure_cash_purchase_debits_balance_and_grants_inventory_row() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -261,7 +261,7 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
 /// player's naquadah is unchanged (cash_cost == 0 short-circuits the
 /// cash UPDATE in mod.rs — locking that branch in).
 #[tokio::test]
-async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
+async fn live_db_item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
@@ -321,7 +321,7 @@ async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
 /// Pre-fix bug shape: the inventory INSERT runs before the balance
 /// check, leaving a free item if the cash UPDATE silently fails.
 #[tokio::test]
-async fn purchase_rejected_when_player_cannot_afford() {
+async fn live_db_purchase_rejected_when_player_cannot_afford() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;
@@ -368,7 +368,7 @@ async fn purchase_rejected_when_player_cannot_afford() {
 /// sentinel, run cleanup, assert the row is gone. Reverting cleanup
 /// to `entity_id < 0` leaves count == 1 and fails this guard.
 #[tokio::test]
-async fn cleanup_deletes_outbox_rows_for_test_entity() {
+async fn live_db_cleanup_deletes_outbox_rows_for_test_entity() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 400;
     let player_id = TEST_BASE + 401;
@@ -413,7 +413,7 @@ async fn cleanup_deletes_outbox_rows_for_test_entity() {
 /// no-DB-changes invariant: balance unchanged, no crafting-bag rows of any
 /// of the seeded designs.
 #[tokio::test]
-async fn purchase_rejected_for_index_not_in_buy_list() {
+async fn live_db_purchase_rejected_for_index_not_in_buy_list() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 300;
     let player_id = TEST_BASE + 301;

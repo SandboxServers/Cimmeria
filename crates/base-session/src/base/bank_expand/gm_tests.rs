@@ -42,7 +42,7 @@ async fn gm_expand(pool: &PgPool, client: &TestClient, c: ExpandCaller, vault: V
 /// gm_override=true`, and the same three sends. Fails if the console
 /// trigger is refused as `no_offer` like a dialog answer without one.
 #[tokio::test]
-async fn gm_bankexpand_buys_the_current_step() {
+async fn live_db_gm_bankexpand_buys_the_current_step() {
     let pool = require_db_or_skip!();
     let c = caller(0x200, 0x7000_BC00);
     setup(&pool, c, 60, 150).await;
@@ -76,7 +76,7 @@ async fn gm_bankexpand_buys_the_current_step() {
 /// The console gets the dialog's checks: at 100 it is `at_ceiling`, short
 /// of cash it is `insufficient_cash`, and nothing changes either way.
 #[tokio::test]
-async fn gm_bankexpand_keeps_the_ceiling_and_the_cash_check() {
+async fn live_db_gm_bankexpand_keeps_the_ceiling_and_the_cash_check() {
     let pool = require_db_or_skip!();
     for (n, entity_id, slots, cash, reason) in [
         (0x202, 0x7000_BC01, 100i16, 1000, "at_ceiling"),
@@ -105,7 +105,7 @@ async fn gm_bankexpand_keeps_the_ceiling_and_the_cash_check() {
 /// `.bankexpand` with no vault session is refused with the verdict's
 /// label and a line telling the GM to open the vault first.
 #[tokio::test]
-async fn gm_bankexpand_needs_an_open_vault() {
+async fn live_db_gm_bankexpand_needs_an_open_vault() {
     let pool = require_db_or_skip!();
     let c = caller(0x206, 0x7000_BC03);
     setup(&pool, c, 40, 500).await;

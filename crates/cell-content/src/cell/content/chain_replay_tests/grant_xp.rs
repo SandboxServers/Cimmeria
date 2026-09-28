@@ -120,7 +120,7 @@ fn make_space_mgr() -> SpaceManager {
 /// is gameplay, not a GM action — leaving it `Some(_)` would spam every
 /// player who completes the chain with GM chatter.
 #[tokio::test]
-async fn grant_xp_action_row_reaches_base_with_the_authored_amount() {
+async fn live_db_grant_xp_action_row_reaches_base_with_the_authored_amount() {
     let pool = require_db_or_skip!();
 
     // Start from a clean slate in case a previous panicking run leaked.

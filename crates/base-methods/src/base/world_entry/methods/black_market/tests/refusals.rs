@@ -46,7 +46,7 @@ fn errors_sent(capture: &LogCaptureGuard) -> usize {
 }
 
 #[tokio::test]
-async fn every_create_refusal_logs_its_reason_and_answers() {
+async fn live_db_every_create_refusal_logs_its_reason_and_answers() {
     let pool = require_db_or_skip!();
     let seller: Session = (0x7000_AA71, BASE, BASE + 1);
     let other: Session = (0x7000_AA72, BASE + 2, BASE + 3);
@@ -75,7 +75,7 @@ async fn every_create_refusal_logs_its_reason_and_answers() {
 }
 
 #[tokio::test]
-async fn every_bid_and_cancel_refusal_logs_its_reason_and_answers() {
+async fn live_db_every_bid_and_cancel_refusal_logs_its_reason_and_answers() {
     let pool = require_db_or_skip!();
     let seller: Session = (0x7000_AA81, BASE + 0x10, BASE + 0x11);
     let poor: Session = (0x7000_AA82, BASE + 0x12, BASE + 0x13);
@@ -115,7 +115,7 @@ async fn every_bid_and_cancel_refusal_logs_its_reason_and_answers() {
 }
 
 #[tokio::test]
-async fn cap_and_client_key_refusals_log_their_reason() {
+async fn live_db_cap_and_client_key_refusals_log_their_reason() {
     let pool = require_db_or_skip!();
     let seller: Session = (0x7000_AA91, BASE + 0x20, BASE + 0x21);
     cleanup(&pool, &[seller.1], &[seller.2]).await;

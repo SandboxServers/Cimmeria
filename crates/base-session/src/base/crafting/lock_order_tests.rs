@@ -80,7 +80,7 @@ async fn expertise(pool: &PgPool, player_id: i32, discipline_id: i32) -> Option<
 /// A spend waits for an in-flight completion, then learns on the committed
 /// state; the completion's +1 on the prerequisite survives.
 #[tokio::test]
-async fn spend_waits_for_a_completion_in_flight() {
+async fn live_db_spend_waits_for_a_completion_in_flight() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = player(&pool, 0).await;
     let catalog = shared_crafting_catalog(&pool).await.expect("catalog");
@@ -109,7 +109,7 @@ async fn spend_waits_for_a_completion_in_flight() {
 /// completion is in flight and writes 50 back after the completion commits
 /// 51.
 #[tokio::test]
-async fn gm_expertise_grant_keeps_a_completions_expertise() {
+async fn live_db_gm_expertise_grant_keeps_a_completions_expertise() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = player(&pool, 1).await;
 

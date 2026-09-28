@@ -68,7 +68,7 @@ fn copplemann_ctx() -> ExecutionContext {
 /// assertion fails and points at the item-grant precondition instead of
 /// letting a half-wired mission reach a player.
 #[tokio::test]
-async fn chains_6503_and_6504_are_disabled_pending_the_2698_grant() {
+async fn live_db_chains_6503_and_6504_are_disabled_pending_the_2698_grant() {
     let pool = require_db_or_skip!();
 
     for chain_id in [6503, 6504] {
@@ -98,7 +98,7 @@ async fn chains_6503_and_6504_are_disabled_pending_the_2698_grant() {
 /// trigger, so this is the guard that proves a parked chain is inert
 /// rather than merely un-reached.
 #[tokio::test]
-async fn chain_6503_resolves_nothing_while_disabled() {
+async fn live_db_chain_6503_resolves_nothing_while_disabled() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 6503)
         .await
@@ -130,7 +130,7 @@ async fn chain_6503_resolves_nothing_while_disabled() {
 /// indicator on a shared-hub NPC would be visible to that player on every
 /// Command Center visit with nothing behind the click.
 #[tokio::test]
-async fn chain_6504_resolves_nothing_while_disabled() {
+async fn live_db_chain_6504_resolves_nothing_while_disabled() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 6504)
         .await
@@ -174,7 +174,7 @@ async fn chain_6504_resolves_nothing_while_disabled() {
 /// chain (rather than resolving) is what lets a disabled chain still be
 /// checked.
 #[tokio::test]
-async fn chain_6503_is_authored_ready_for_the_day_2698_is_granted() {
+async fn live_db_chain_6503_is_authored_ready_for_the_day_2698_is_granted() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 6503)
         .await
@@ -229,7 +229,7 @@ async fn chain_6503_is_authored_ready_for_the_day_2698_is_granted() {
 /// The restore chain's single action is the matching bind. Same
 /// rot-protection rationale as the test above.
 #[tokio::test]
-async fn chain_6504_is_authored_ready_too() {
+async fn live_db_chain_6504_is_authored_ready_too() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 6504)
         .await

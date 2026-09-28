@@ -73,7 +73,7 @@ fn gate_ctx(destination: &str, step_id: i32, archetype: i32) -> ExecutionContext
 /// resolves but never launches leaves the player stuck on 2418 with a
 /// lit DHD that does nothing.
 #[tokio::test]
-async fn chain_1356_launches_livewire_with_1357_as_its_victory_chain() {
+async fn live_db_chain_1356_launches_livewire_with_1357_as_its_victory_chain() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1356).await;
 
@@ -167,7 +167,7 @@ async fn chain_1356_launches_livewire_with_1357_as_its_victory_chain() {
 /// 4462 matters most: the DHD is the dial device, and a launcher that
 /// still answered there would open a minigame instead of the gate UI.
 #[tokio::test]
-async fn the_dhd_launcher_only_answers_on_step_2418() {
+async fn live_db_the_dhd_launcher_only_answers_on_step_2418() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1356).await;
 
@@ -205,7 +205,7 @@ async fn the_dhd_launcher_only_answers_on_step_2418() {
 /// so the step the previous three actions advance to could not be
 /// completed by anyone.
 #[tokio::test]
-async fn chain_1357_advances_to_4462_clears_livewire_binds_the_topic_and_grants_harset() {
+async fn live_db_chain_1357_advances_to_4462_clears_livewire_binds_the_topic_and_grants_harset() {
     let pool = require_db_or_skip!();
     let chain = super::super::super::engine_loader::load_single_chain_for_test(&pool, 1357)
         .await
@@ -278,7 +278,7 @@ async fn chain_1357_advances_to_4462_clears_livewire_binds_the_topic_and_grants_
 /// `archetype` (`event_dispatch/stargate.rs:96-101`), so unlike the
 /// dialog halves at step 2417 the split here is a real gate.
 #[tokio::test]
-async fn dialling_harset_advances_to_4469_with_the_right_closing_line() {
+async fn live_db_dialling_harset_advances_to_4469_with_the_right_closing_line() {
     let pool = require_db_or_skip!();
 
     for (chain_id, archetype, dialog_id) in [(1358, TAURI, 5010), (1359, JAFFA, 5011)] {
@@ -331,7 +331,7 @@ async fn dialling_harset_advances_to_4469_with_the_right_closing_line() {
 /// some other world out of curiosity; the archetype gate is what stops a
 /// Jaffa getting Col. Marsh's send-off.
 #[tokio::test]
-async fn the_dial_chains_reject_the_wrong_archetype_and_the_wrong_destination() {
+async fn live_db_the_dial_chains_reject_the_wrong_archetype_and_the_wrong_destination() {
     let pool = require_db_or_skip!();
     let tauri_chain = engine_for(&pool, 1358).await;
     let jaffa_chain = engine_for(&pool, 1359).await;
@@ -402,7 +402,7 @@ async fn the_dial_chains_reject_the_wrong_archetype_and_the_wrong_destination() 
 /// this chain, 708 would complete at step 4462 and the final objective
 /// would never be seen.
 #[tokio::test]
-async fn chain_1360_completes_708_on_crossing_and_never_on_dialling() {
+async fn live_db_chain_1360_completes_708_on_crossing_and_never_on_dialling() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1360).await;
 
@@ -469,7 +469,7 @@ async fn chain_1360_completes_708_on_crossing_and_never_on_dialling() {
 /// Fired by id with no condition evaluation, which is how the minigame
 /// victory callback reaches it (`event_dispatch/mod.rs::fire_chain_by_id`).
 #[tokio::test]
-async fn chain_1357_executed_grants_harset_to_the_player_and_the_client() {
+async fn live_db_chain_1357_executed_grants_harset_to_the_player_and_the_client() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1357).await;
 

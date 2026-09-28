@@ -24,7 +24,7 @@ use crate::test_support::require_db_or_skip;
 /// pins that chain 1034 is therefore the only place ability 1374 actually
 /// fires.
 #[tokio::test]
-async fn chain_1034_launches_cure_ability_1374() {
+async fn live_db_chain_1034_launches_cure_ability_1374() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -147,17 +147,17 @@ async fn assert_1112_player_loaded_resolves(mission_639_status: &str, should_fir
 }
 
 #[tokio::test]
-async fn chain_1112_launches_stasis_sickness_when_not_active() {
+async fn live_db_chain_1112_launches_stasis_sickness_when_not_active() {
     assert_1112_player_loaded_resolves("not_active", true).await;
 }
 
 #[tokio::test]
-async fn chain_1112_launches_stasis_sickness_when_active() {
+async fn live_db_chain_1112_launches_stasis_sickness_when_active() {
     assert_1112_player_loaded_resolves("active", true).await;
 }
 
 #[tokio::test]
-async fn chain_1112_does_not_relaunch_once_cured() {
+async fn live_db_chain_1112_does_not_relaunch_once_cured() {
     assert_1112_player_loaded_resolves("completed", false).await;
 }
 
@@ -166,7 +166,7 @@ async fn chain_1112_does_not_relaunch_once_cured() {
 /// DB without a re-seed surfaced as "ambernol use no longer removes the
 /// vial". This test would have failed in CI on the broken seed.
 #[tokio::test]
-async fn chain_1034_includes_remove_item_for_ambernol() {
+async fn live_db_chain_1034_includes_remove_item_for_ambernol() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -212,7 +212,7 @@ async fn chain_1034_includes_remove_item_for_ambernol() {
 /// guards against regression of the curated re-insert; the bug shape the
 /// guard catches is a future seed change that drops either action back.
 #[tokio::test]
-async fn chain_1032_seven_actions_match_python_ordering() {
+async fn live_db_chain_1032_seven_actions_match_python_ordering() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();

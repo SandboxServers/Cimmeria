@@ -27,7 +27,7 @@ impl Fixture {
 /// [37]; a second Team for the same player is refused (D-ORG18); a
 /// non-GM session is refused before anything is read.
 #[tokio::test]
-async fn gm_join_adds_at_entry_rank_and_keeps_the_type_rule() {
+async fn live_db_gm_join_adds_at_entry_rank_and_keeps_the_type_rule() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 28, 4, &["Org07 GmJoin", "Org07 GmJoin Two"]).await;
     let team = fx.org(OrgType::Team, "Org07 GmJoin", 0, &[]).await;
@@ -77,7 +77,7 @@ async fn gm_join_adds_at_entry_rank_and_keeps_the_type_rule() {
 /// (1)-(2) skipped), resolving the organization from the member's only
 /// one; `Leader` and a rank the type does not use are still refused.
 #[tokio::test]
-async fn gm_rank_skips_authority_but_not_the_rank_rules() {
+async fn live_db_gm_rank_skips_authority_but_not_the_rank_rules() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 29, 3, &["Org07 GmRank"]).await;
     let team = fx.org(OrgType::Team, "Org07 GmRank", 0, &[1]).await;
@@ -125,7 +125,7 @@ async fn gm_rank_skips_authority_but_not_the_rank_rules() {
 /// entity id now belongs to a session playing another character (a
 /// recycled id) finds no GM, even when that session is a GameMaster's.
 #[tokio::test]
-async fn gm_commands_from_a_recycled_entity_id_are_refused() {
+async fn live_db_gm_commands_from_a_recycled_entity_id_are_refused() {
     use crate::base::organization::handlers::gm_disband;
 
     let pool = require_db_or_skip!();

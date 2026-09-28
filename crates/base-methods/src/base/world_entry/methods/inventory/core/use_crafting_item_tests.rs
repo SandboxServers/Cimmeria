@@ -109,7 +109,7 @@ fn packet(entity_id: u32, seq: u32, method: u16, args: &[u8]) -> Vec<u8> {
 /// `onRemoveItem`, and the cell is told the item was removed. No
 /// `item_used` row is queued, so no content chain can also consume it.
 #[tokio::test]
-async fn a_guide_is_used_by_crafting_not_on_item_use() {
+async fn live_db_a_guide_is_used_by_crafting_not_on_item_use() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE, TEST_BASE + 1);
     let entity_id = account_id as u32;
@@ -235,7 +235,7 @@ const GONE: &str = "That item is no longer in your inventory.";
 /// Another character's guide: the lookup by owner misses, and the use gets
 /// the crafting refusal line instead of silence. The owner keeps the guide.
 #[tokio::test]
-async fn another_characters_guide_is_refused_with_a_line() {
+async fn live_db_another_characters_guide_is_refused_with_a_line() {
     let pool = require_db_or_skip!();
     let (user_account, user) = (TEST_BASE + 2, TEST_BASE + 3);
     let (owner_account, owner) = (TEST_BASE + 4, TEST_BASE + 5);
@@ -274,7 +274,7 @@ async fn another_characters_guide_is_refused_with_a_line() {
 /// A second press on a guide already used up: the row is gone, and the
 /// press still gets the refusal line.
 #[tokio::test]
-async fn a_replayed_guide_use_is_refused_with_a_line() {
+async fn live_db_a_replayed_guide_use_is_refused_with_a_line() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE + 6, TEST_BASE + 7);
     let entity_id = account_id as u32;
@@ -311,7 +311,7 @@ async fn a_replayed_guide_use_is_refused_with_a_line() {
 /// Another character's ordinary item keeps the old behavior: nothing is
 /// sent and nothing is queued.
 #[tokio::test]
-async fn another_characters_ordinary_item_stays_silent() {
+async fn live_db_another_characters_ordinary_item_stays_silent() {
     let pool = require_db_or_skip!();
     let (user_account, user) = (TEST_BASE + 8, TEST_BASE + 9);
     let (owner_account, owner) = (TEST_BASE + 10, TEST_BASE + 11);

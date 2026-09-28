@@ -10,7 +10,7 @@ use crate::test_support::require_db_or_skip;
 /// the crafting bag. The client gets one `onUpdateItem` with both stacks
 /// and no `onRemoveItem`.
 #[tokio::test]
-async fn partial_stack_shrinks_and_a_bank_first_product_lands_in_the_crafting_bag() {
+async fn live_db_partial_stack_shrinks_and_a_bank_first_product_lands_in_the_crafting_bag() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 0).await;
@@ -70,7 +70,7 @@ async fn partial_stack_shrinks_and_a_bank_first_product_lands_in_the_crafting_ba
 /// stack is deleted and removed on the client with `onRemoveItem`; the
 /// product merges into an existing stack with room.
 #[tokio::test]
-async fn consumption_by_design_drains_across_both_bags_and_the_product_merges() {
+async fn live_db_consumption_by_design_drains_across_both_bags_and_the_product_merges() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 1).await;
@@ -134,7 +134,7 @@ async fn consumption_by_design_drains_across_both_bags_and_the_product_merges() 
 /// More than one full stack's worth of a product takes one slot per
 /// stack.
 #[tokio::test]
-async fn a_product_larger_than_a_stack_takes_several_slots() {
+async fn live_db_a_product_larger_than_a_stack_takes_several_slots() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 2).await;
@@ -159,7 +159,7 @@ async fn a_product_larger_than_a_stack_takes_several_slots() {
 /// Expertise moves only for known disciplines, is capped at 100, and the
 /// client gets `onUpdateDiscipline` with the stored value.
 #[tokio::test]
-async fn expertise_is_capped_and_sent() {
+async fn live_db_expertise_is_capped_and_sent() {
     let pool = require_db_or_skip!();
     let f = Fixture::new(&pool, 3).await;
     sqlx::query(
@@ -203,7 +203,7 @@ async fn expertise_is_capped_and_sent() {
 /// A product merges only when the whole quantity fits: exactly filling a
 /// stack merges, one more takes a new slot.
 #[tokio::test]
-async fn a_product_merges_only_when_the_whole_quantity_fits() {
+async fn live_db_a_product_merges_only_when_the_whole_quantity_fits() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 14).await;

@@ -532,7 +532,7 @@ mod consume_design_quantity_tests {
     /// loop forever (negative remaining) or no-op silently after
     /// holding `FOR UPDATE` locks for nothing.
     #[tokio::test]
-    async fn zero_quantity_short_circuits_without_state_change() {
+    async fn live_db_zero_quantity_short_circuits_without_state_change() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -564,7 +564,7 @@ mod consume_design_quantity_tests {
     /// drops the i64 cast would silently allow underflow on
     /// adversarial inputs.
     #[tokio::test]
-    async fn insufficient_inventory_returns_false_without_mutation() {
+    async fn live_db_insufficient_inventory_returns_false_without_mutation() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;
@@ -601,7 +601,7 @@ mod consume_design_quantity_tests {
     /// `stack_size = 0` row which downstream UI / inventory queries
     /// have to repeatedly filter out.
     #[tokio::test]
-    async fn full_stack_consume_deletes_row() {
+    async fn live_db_full_stack_consume_deletes_row() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 200;
         let player_id = TEST_BASE + 201;
@@ -629,7 +629,7 @@ mod consume_design_quantity_tests {
     /// independently keeps the multi-stack test from masking a
     /// regression in the partial branch.
     #[tokio::test]
-    async fn partial_stack_consume_decrements_size() {
+    async fn live_db_partial_stack_consume_decrements_size() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 300;
         let player_id = TEST_BASE + 301;
@@ -657,7 +657,7 @@ mod consume_design_quantity_tests {
     /// = 4, BANK slot 0 = 4] and consumes 9 — must delete both MAIN
     /// stacks and decrement BANK to 3.
     #[tokio::test]
-    async fn multi_stack_consume_walks_stacks_in_order() {
+    async fn live_db_multi_stack_consume_walks_stacks_in_order() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 400;
         let player_id = TEST_BASE + 401;

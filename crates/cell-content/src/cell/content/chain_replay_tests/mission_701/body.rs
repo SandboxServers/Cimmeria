@@ -33,7 +33,7 @@ const ESCORT_DELAY_MS: i32 = 10_500;
 /// Chain 1231 — clicking Copplemann on the opening step plays 2574
 /// ("I got caught by one of those drones...").
 #[tokio::test]
-async fn chain_1231_shows_dialog_2574_on_step_2399() {
+async fn live_db_chain_1231_shows_dialog_2574_on_step_2399() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1231).await;
 
@@ -50,7 +50,7 @@ async fn chain_1231_shows_dialog_2574_on_step_2399() {
 /// is real: the intro dialog must not replay once the player is past
 /// 2399.
 #[tokio::test]
-async fn chain_1231_does_not_replay_after_2399() {
+async fn live_db_chain_1231_does_not_replay_after_2399() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1231).await;
 
@@ -69,7 +69,7 @@ async fn chain_1231_does_not_replay_after_2399() {
 /// Chain 1232 — the 2574 choice advances to step 2400 ("Free Capt.
 /// Copplemann from her security boot").
 #[tokio::test]
-async fn chain_1232_advances_to_step_2400() {
+async fn live_db_chain_1232_advances_to_step_2400() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1232).await;
 
@@ -87,7 +87,7 @@ async fn chain_1232_advances_to_step_2400() {
 /// the chain's own gate is the only thing stopping a re-advance from
 /// rewinding the mission.
 #[tokio::test]
-async fn chain_1232_does_not_advance_twice() {
+async fn live_db_chain_1232_does_not_advance_twice() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1232).await;
 
@@ -106,7 +106,7 @@ async fn chain_1232_does_not_advance_twice() {
 /// the chain up by this number, so a typo here is a mission that can be
 /// won but never progresses, with only a `warn` to show for it.
 #[tokio::test]
-async fn chain_1233_launches_livewire_with_victory_chain_1234() {
+async fn live_db_chain_1233_launches_livewire_with_victory_chain_1234() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1233).await;
 
@@ -127,7 +127,7 @@ async fn chain_1233_launches_livewire_with_victory_chain_1234() {
 /// gate: `fire_chain_by_id` evaluates no conditions on the victory
 /// chain, so anything the launcher lets through wins the mission step.
 #[tokio::test]
-async fn chain_1233_does_not_launch_on_step_2399_or_2401() {
+async fn live_db_chain_1233_does_not_launch_on_step_2399_or_2401() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1233).await;
 
@@ -147,7 +147,7 @@ async fn chain_1233_does_not_launch_on_step_2399_or_2401() {
 /// chain an inert synthetic `OnCustomEvent`, so `resolve_event` can
 /// never reach it).
 #[tokio::test]
-async fn chain_1234_victory_unbinds_shows_2575_and_advances_to_2401() {
+async fn live_db_chain_1234_victory_unbinds_shows_2575_and_advances_to_2401() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1234).await;
 
@@ -194,7 +194,7 @@ async fn chain_1234_victory_unbinds_shows_2575_and_advances_to_2401() {
 /// resolve-only test cannot see it — the action list is identical either
 /// way.
 #[tokio::test]
-async fn chain_1234_victory_dialog_binds_the_player_not_copplemann() {
+async fn live_db_chain_1234_victory_dialog_binds_the_player_not_copplemann() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1234).await;
 
@@ -250,7 +250,7 @@ async fn chain_1234_victory_dialog_binds_the_player_not_copplemann() {
 /// authored 10.5 s, and the resolved list must be exactly the advance
 /// plus the turn-in bind.
 #[tokio::test]
-async fn chain_1235_defers_both_escort_actions() {
+async fn live_db_chain_1235_defers_both_escort_actions() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1235).await;
 
@@ -276,7 +276,7 @@ async fn chain_1235_defers_both_escort_actions() {
 /// already finished); 2399 and 2400 are the "somehow got the dialog
 /// early" case, where arming would skip the Livewire entirely.
 #[tokio::test]
-async fn chain_1235_only_arms_on_step_2401() {
+async fn live_db_chain_1235_only_arms_on_step_2401() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1235).await;
 
@@ -414,7 +414,7 @@ fn make_space_mgr() -> SpaceManager {
 /// Time is driven by rewinding the queued entries' `fire_at`, the same
 /// non-sleeping technique `executor/tests/deferred.rs` uses.
 #[tokio::test]
-async fn chain_1235_escort_walk_defers_then_advances_to_2421() {
+async fn live_db_chain_1235_escort_walk_defers_then_advances_to_2421() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1235).await;
 
@@ -551,7 +551,7 @@ async fn chain_1235_escort_walk_defers_then_advances_to_2421() {
 /// `Castle.py`'s `dialog_set.open 3062` node, which has no dispatch site
 /// in services and has never fired (D-CA04).
 #[tokio::test]
-async fn chain_1236_shows_turn_in_dialog_2576_on_step_2421() {
+async fn live_db_chain_1236_shows_turn_in_dialog_2576_on_step_2421() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1236).await;
 
@@ -568,7 +568,7 @@ async fn chain_1236_shows_turn_in_dialog_2576_on_step_2421() {
 /// earlier step. On 2401 it would let the player take 702/703 without
 /// finishing the walk; on 2399/2400 it would skip the whole mission body.
 #[tokio::test]
-async fn chain_1236_does_not_show_turn_in_before_step_2421() {
+async fn live_db_chain_1236_does_not_show_turn_in_before_step_2421() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1236).await;
 
@@ -583,7 +583,7 @@ async fn chain_1236_does_not_show_turn_in_before_step_2421() {
 
 /// Chain 1237 — the turn-in itself: drop the "?" topic, complete 701.
 #[tokio::test]
-async fn chain_1237_completes_701_and_clears_the_turn_in_topic() {
+async fn live_db_chain_1237_completes_701_and_clears_the_turn_in_topic() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1237).await;
 
@@ -602,7 +602,7 @@ async fn chain_1237_completes_701_and_clears_the_turn_in_topic() {
 /// second choice sees `completed` and must resolve nothing. Without the
 /// step gate the player could re-complete 701 and re-take 702/703.
 #[tokio::test]
-async fn chain_1237_completes_701_exactly_once() {
+async fn live_db_chain_1237_completes_701_exactly_once() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1237).await;
 
@@ -617,7 +617,7 @@ async fn chain_1237_completes_701_exactly_once() {
 
 /// Chain 1238 — accept 702 "Rescue Dr. Zuritska" on the same choice.
 #[tokio::test]
-async fn chain_1238_accepts_702() {
+async fn live_db_chain_1238_accepts_702() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1238).await;
 
@@ -637,7 +637,7 @@ async fn chain_1238_accepts_702() {
 /// 701's completion, so this test is paired with
 /// `turn_in_completes_701_even_when_702_is_already_active` below.
 #[tokio::test]
-async fn chain_1238_does_not_re_accept_an_active_702() {
+async fn live_db_chain_1238_does_not_re_accept_an_active_702() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1238).await;
 
@@ -656,7 +656,7 @@ async fn chain_1238_does_not_re_accept_an_active_702() {
 /// assuming 703 is live. Held in its own chain so it can be withdrawn
 /// with one `enabled = false`.
 #[tokio::test]
-async fn chain_1239_accepts_703() {
+async fn live_db_chain_1239_accepts_703() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1239).await;
 
@@ -672,7 +672,7 @@ async fn chain_1239_accepts_703() {
 
 /// Chain 1239 negative — same not-active gate.
 #[tokio::test]
-async fn chain_1239_does_not_re_accept_an_active_703() {
+async fn live_db_chain_1239_does_not_re_accept_an_active_703() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1239).await;
 
@@ -693,7 +693,7 @@ async fn chain_1239_does_not_re_accept_an_active_703() {
 /// Each case here leaves the mission `not_active` — so the mission gate
 /// passes — and varies only the step.
 #[tokio::test]
-async fn accept_chains_also_require_step_2421() {
+async fn live_db_accept_chains_also_require_step_2421() {
     let pool = require_db_or_skip!();
 
     for (chain_id, mission) in [(1238, 702), (1239, 703)] {
@@ -736,7 +736,7 @@ async fn accept_chains_also_require_step_2421() {
 /// would make 702's `not_active` gate block the completion too, which is
 /// a permanent soft-stuck on the last step of the mission.
 #[tokio::test]
-async fn turn_in_completes_701_even_when_702_is_already_active() {
+async fn live_db_turn_in_completes_701_even_when_702_is_already_active() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1237).await;
 
@@ -755,7 +755,7 @@ async fn turn_in_completes_701_even_when_702_is_already_active() {
 /// `Castle_Coppleman` with a single 'n' even though the character is
 /// named "Copplemann"; a trigger spelled the prose way never fires.
 #[tokio::test]
-async fn copplemann_chains_are_keyed_to_the_spawnlist_tag() {
+async fn live_db_copplemann_chains_are_keyed_to_the_spawnlist_tag() {
     let pool = require_db_or_skip!();
 
     for (chain_id, step) in [(1231, 2399), (1233, 2400), (1236, 2421)] {

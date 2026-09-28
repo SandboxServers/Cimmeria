@@ -62,7 +62,7 @@ async fn gate(pool: &PgPool, org_id: i32) -> (sqlx::Transaction<'static, sqlx::P
 /// (both land, and 60 naquadah is created), or if its guards are removed
 /// (the second is caught only by the `CHECK`, as `query_failed`).
 #[tokio::test]
-async fn two_withdrawals_that_exceed_the_treasury_let_exactly_one_through() {
+async fn live_db_two_withdrawals_that_exceed_the_treasury_let_exactly_one_through() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 5, 2, 0).await;
     let team = fx.org(OrgType::Team, 0, &[1]).await;
@@ -116,7 +116,7 @@ async fn two_withdrawals_that_exceed_the_treasury_let_exactly_one_through() {
 /// then `not_a_member`, and nothing moves. Fails if the membership read
 /// moves ahead of `lock_org`, or off the transaction onto the pool.
 #[tokio::test]
-async fn a_demote_or_kick_that_lands_while_a_withdrawal_waits_is_seen() {
+async fn live_db_a_demote_or_kick_that_lands_while_a_withdrawal_waits_is_seen() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 7, 2, 0).await;
     let team = fx.org(OrgType::Team, 0, &[1]).await;

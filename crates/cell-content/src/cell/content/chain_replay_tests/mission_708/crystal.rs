@@ -124,7 +124,7 @@ fn drain_grants(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u32, i32, i32, i
 /// Every officer chain resolves the same three actions in the same
 /// order, and only for its own tag.
 #[tokio::test]
-async fn each_crystal_source_grants_2790_completes_its_objective_and_advances() {
+async fn live_db_each_crystal_source_grants_2790_completes_its_objective_and_advances() {
     let pool = require_db_or_skip!();
 
     for (chain_id, tag, objective_id) in SOURCES {
@@ -210,7 +210,7 @@ async fn each_crystal_source_grants_2790_completes_its_objective_and_advances() 
 /// see chain 1349's seed comment — but pinned so it can't silently
 /// disappear in a seed edit.
 #[tokio::test]
-async fn chain_1349_also_grants_the_muelbach_item() {
+async fn live_db_chain_1349_also_grants_the_muelbach_item() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1349).await;
 
@@ -250,7 +250,7 @@ async fn chain_1349_also_grants_the_muelbach_item() {
 /// bank the crystal, and the step would advance the moment 708 reached
 /// 2416 — or worse, `advance_step` would yank them out of 2415.
 #[tokio::test]
-async fn no_crystal_source_fires_outside_step_2416() {
+async fn live_db_no_crystal_source_fires_outside_step_2416() {
     let pool = require_db_or_skip!();
 
     for (chain_id, tag, _) in SOURCES {
@@ -336,7 +336,7 @@ async fn no_crystal_source_fires_outside_step_2416() {
 /// `execute_one`'s `other =>` catch-all would produce zero messages and
 /// fail the first assertion.
 #[tokio::test]
-async fn crystal_is_granted_only_once_across_two_officer_deaths() {
+async fn live_db_crystal_is_granted_only_once_across_two_officer_deaths() {
     let pool = require_db_or_skip!();
     let mut engine = ChainEngine::new();
     for (chain_id, _, _) in SOURCES {

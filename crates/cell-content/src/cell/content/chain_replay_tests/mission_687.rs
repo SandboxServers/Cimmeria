@@ -15,7 +15,7 @@ use crate::test_support::require_db_or_skip;
 /// Cellblock_WoodenCrate as a quest world object. Without this, the
 /// player has no visual cue that the crate is interactable.
 #[tokio::test]
-async fn chain_1097_highlights_wooden_crate_when_mission_687_accepted() {
+async fn live_db_chain_1097_highlights_wooden_crate_when_mission_687_accepted() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -77,7 +77,7 @@ async fn chain_1097_highlights_wooden_crate_when_mission_687_accepted() {
 /// (e.g. someone changes container_id away from 1, or drops one of
 /// the items) shows up here.
 #[tokio::test]
-async fn chain_1098_grants_stealth_set_and_advances_step_for_non_jaffa() {
+async fn live_db_chain_1098_grants_stealth_set_and_advances_step_for_non_jaffa() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -160,7 +160,7 @@ async fn chain_1098_grants_stealth_set_and_advances_step_for_non_jaffa() {
 /// condition, both archetype branches would fire and the player
 /// would receive both kits.
 #[tokio::test]
-async fn chain_1098_does_not_match_jaffa_archetype() {
+async fn live_db_chain_1098_does_not_match_jaffa_archetype() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1098)
         .await
@@ -209,7 +209,7 @@ async fn chain_1098_does_not_match_jaffa_archetype() {
 /// Chain 1099: Jaffa-branch sibling of 1098. Grants the Armored Prison
 /// Jacket + Serpent Staff to the backpack and advances to step 2355.
 #[tokio::test]
-async fn chain_1099_grants_jaffa_kit_and_advances_step_for_jaffa() {
+async fn live_db_chain_1099_grants_jaffa_kit_and_advances_step_for_jaffa() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -294,7 +294,7 @@ async fn chain_1099_grants_jaffa_kit_and_advances_step_for_jaffa() {
 /// trigger rows (one per guard tag) — a single-expansion load would
 /// silently miss the OR shape and only test the Guard1 path.
 #[tokio::test]
-async fn chain_1103_completes_687_on_third_barracks_kill() {
+async fn live_db_chain_1103_completes_687_on_third_barracks_kill() {
     use super::super::engine_loader::load_chain_expansions_for_test;
     use cimmeria_content_engine::actions::Action;
 
@@ -363,7 +363,7 @@ async fn chain_1103_completes_687_on_third_barracks_kill() {
 /// regression that lowers the threshold below 2 (which would
 /// complete the mission on the first kill).
 #[tokio::test]
-async fn chain_1103_does_not_complete_687_on_first_barracks_kill() {
+async fn live_db_chain_1103_does_not_complete_687_on_first_barracks_kill() {
     use super::super::engine_loader::load_chain_expansions_for_test;
     use cimmeria_content_engine::actions::Action;
 

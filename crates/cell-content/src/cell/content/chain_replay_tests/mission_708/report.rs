@@ -86,7 +86,7 @@ fn stage_player_on_step_2417(mgr: &mut SpaceManager, archetype: i32) {
 /// officer, while a Tau'ri seeing 5009 would be addressed as "Jaffa!"
 /// by an ally.
 #[tokio::test]
-async fn the_report_dialogs_are_archetype_exclusive() {
+async fn live_db_the_report_dialogs_are_archetype_exclusive() {
     let pool = require_db_or_skip!();
     let marsh = engine_for(&pool, 1352).await;
     let mohkatan = engine_for(&pool, 1354).await;
@@ -156,7 +156,7 @@ async fn the_report_dialogs_are_archetype_exclusive() {
 /// are permanent Checkpoint Alpha NPCs, so without the gate every walk
 /// past them would replay the briefing and re-advance the mission.
 #[tokio::test]
-async fn the_report_dialogs_do_not_fire_outside_step_2417() {
+async fn live_db_the_report_dialogs_do_not_fire_outside_step_2417() {
     let pool = require_db_or_skip!();
 
     for (chain_id, tag, archetype) in [
@@ -189,7 +189,7 @@ async fn the_report_dialogs_do_not_fire_outside_step_2417() {
 /// force-completion instead (`missions/progression.rs:57-66`), which
 /// never runs the all-required check.
 #[tokio::test]
-async fn each_report_completes_only_its_own_objective_and_arms_the_dhd() {
+async fn live_db_each_report_completes_only_its_own_objective_and_arms_the_dhd() {
     let pool = require_db_or_skip!();
 
     for (chain_id, dialog_id, mine, theirs, npc_tag) in [
@@ -266,7 +266,7 @@ async fn each_report_completes_only_its_own_objective_and_arms_the_dhd() {
 /// Neither report chain may answer the other's dialog, and neither may
 /// fire outside step 2417.
 #[tokio::test]
-async fn report_dialog_choices_are_step_gated_and_do_not_cross_over() {
+async fn live_db_report_dialog_choices_are_step_gated_and_do_not_cross_over() {
     let pool = require_db_or_skip!();
     let marsh = engine_for(&pool, 1353).await;
     let mohkatan = engine_for(&pool, 1355).await;
@@ -377,7 +377,7 @@ async fn assert_report_advances_without_completing(
 
 /// Executed guard for the Tau'ri report (chain 1353, objective 5185).
 #[tokio::test]
-async fn reporting_in_advances_the_step_without_completing_the_mission() {
+async fn live_db_reporting_in_advances_the_step_without_completing_the_mission() {
     let pool = require_db_or_skip!();
     assert_report_advances_without_completing(&pool, 1353, 5008, TAURI, 5185).await;
 }
@@ -387,7 +387,7 @@ async fn reporting_in_advances_the_step_without_completing_the_mission() {
 /// branch a mis-copied `archetype eq 8` condition would silently kill —
 /// see [`archetype_conditions_are_never_placed_on_the_dialog_halves`].
 #[tokio::test]
-async fn the_jaffa_report_advances_without_completing_the_mission() {
+async fn live_db_the_jaffa_report_advances_without_completing_the_mission() {
     let pool = require_db_or_skip!();
     assert_report_advances_without_completing(&pool, 1355, 5009, JAFFA, 5186).await;
 }
@@ -399,7 +399,7 @@ async fn the_jaffa_report_advances_without_completing_the_mission() {
 /// behaviour for a Tau'ri — it would only silently kill the Jaffa
 /// branch if the `eq` form were used.
 #[tokio::test]
-async fn archetype_conditions_are_never_placed_on_the_dialog_halves() {
+async fn live_db_archetype_conditions_are_never_placed_on_the_dialog_halves() {
     use cimmeria_content_engine::conditions::Condition;
 
     let pool = require_db_or_skip!();

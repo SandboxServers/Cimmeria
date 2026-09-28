@@ -13,7 +13,7 @@ use crate::test_support::require_db_or_skip;
 /// Test 1: with `mission_1562_status = 'not_active'`, the chain matches
 /// and the engine resolves its actions. Pins the happy-path acceptance.
 #[tokio::test]
-async fn chain_3026_fires_dialog_5365_when_mission_1562_is_not_active() {
+async fn live_db_chain_3026_fires_dialog_5365_when_mission_1562_is_not_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 3026)
         .await
@@ -65,7 +65,7 @@ async fn chain_3026_fires_dialog_5365_when_mission_1562_is_not_active() {
 /// other chains may match `dialog_id=5365`, and the goal is specifically
 /// to pin chain 3026's behavior, not the whole content pipeline.
 #[tokio::test]
-async fn chain_3026_does_not_fire_when_mission_1562_is_active() {
+async fn live_db_chain_3026_does_not_fire_when_mission_1562_is_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 3026)
         .await
@@ -109,7 +109,7 @@ async fn chain_3026_does_not_fire_when_mission_1562_is_active() {
 /// MissionStatusValue enum so a future "operator changed from eq to !="
 /// regression on the seed surfaces here.
 #[tokio::test]
-async fn chain_3026_does_not_fire_when_mission_1562_is_completed() {
+async fn live_db_chain_3026_does_not_fire_when_mission_1562_is_completed() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 3026)
         .await

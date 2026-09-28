@@ -514,7 +514,7 @@ mod tests {
     /// promotes, so a partial regression is caught too. Runs against the CI
     /// live DB loaded from `db/database.sql` (which seeds the account table).
     #[tokio::test]
-    async fn seed_dev_accounts_are_at_least_gamemaster() {
+    async fn live_db_seed_dev_accounts_are_at_least_gamemaster() {
         use crate::test_support::require_db_or_skip;
         let pool = require_db_or_skip!();
 

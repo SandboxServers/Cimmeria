@@ -212,7 +212,7 @@ const MOBILE: [i32; 5] = [303, 304, 306, 307, 313];
 /// shown to stand and path on the NA26 mesh. D-H17 wants `respawn_secs` on
 /// every row, including the props (where it can never fire).
 #[tokio::test]
-async fn world57_placement_rows_are_seeded_with_their_tags_and_templates() {
+async fn live_db_world57_placement_rows_are_seeded_with_their_tags_and_templates() {
     let pool = require_db_or_skip!();
 
     for (spawn_id, tag, template_id, _) in PLACED {
@@ -277,7 +277,7 @@ async fn world57_placement_rows_are_seeded_with_their_tags_and_templates() {
 /// NULL is treated as "not hostile" rather than as a failure — the combat path
 /// reads a missing faction as non-hostile too.
 #[tokio::test]
-async fn no_shared_hub_spawn_stands_a_hostile_template() {
+async fn live_db_no_shared_hub_spawn_stands_a_hostile_template() {
     let pool = require_db_or_skip!();
 
     let offenders: Vec<(i32, i32, Option<String>, String)> = sqlx::query_as(
@@ -333,7 +333,7 @@ async fn no_shared_hub_spawn_stands_a_hostile_template() {
 /// pass does not own is reported with the chain id so the coordinator can route
 /// it, rather than failing a packet that could not have fixed it.
 #[tokio::test]
-async fn world57_interact_tags_from_merged_chains_all_have_a_spawn_row() {
+async fn live_db_world57_interact_tags_from_merged_chains_all_have_a_spawn_row() {
     let pool = require_db_or_skip!();
 
     let expected: Vec<(i32, String)> = sqlx::query_as(
@@ -400,7 +400,7 @@ async fn world57_interact_tags_from_merged_chains_all_have_a_spawn_row() {
 /// seed row is a one-file change; only the on/off verdict lives in code, and
 /// that is the thing the ledger is asserting.
 #[tokio::test]
-async fn world57_placements_match_their_recorded_navmesh_verdict() {
+async fn live_db_world57_placements_match_their_recorded_navmesh_verdict() {
     let pool = require_db_or_skip!();
     let mesh = harset_mesh();
 
@@ -455,7 +455,7 @@ async fn world57_placements_match_their_recorded_navmesh_verdict() {
 /// The 308 half is a tripwire in the other direction: when someone re-pins
 /// its Y onto the surface, this fails and says 308 can now be made mobile.
 #[tokio::test]
-async fn world57_mobile_placements_can_walk() {
+async fn live_db_world57_mobile_placements_can_walk() {
     use cimmeria_entity::navigation::PathStatus;
 
     const DISC_RADIUS: f32 = 0.6;
@@ -538,7 +538,7 @@ async fn world57_mobile_placements_can_walk() {
 /// any other count, so a five-corner box or a cylinder that lost its radius is
 /// a volume that can never be entered — and nothing else in the stack says so.
 #[tokio::test]
-async fn world57_named_regions_load_and_enclose_their_landmarks() {
+async fn live_db_world57_named_regions_load_and_enclose_their_landmarks() {
     let pool = require_db_or_skip!();
 
     let regions = load_regions_from_db(&pool)
@@ -614,7 +614,7 @@ async fn world57_named_regions_load_and_enclose_their_landmarks() {
 /// `Harset.`-prefixed set pointed at another world is a region that silently
 /// never fires.
 #[tokio::test]
-async fn dotted_harset_regions_all_belong_to_world_57() {
+async fn live_db_dotted_harset_regions_all_belong_to_world_57() {
     let pool = require_db_or_skip!();
 
     let rows: Vec<(i32, String, String, i32)> = sqlx::query_as(

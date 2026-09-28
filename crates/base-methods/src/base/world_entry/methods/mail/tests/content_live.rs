@@ -81,7 +81,7 @@ fn sent(r: Result<ContentSent, ContentRefusal>) -> ContentSent {
 /// told the wait, and logs `content.send_system_mail reason=cooldown` with
 /// the player's ids.
 #[tokio::test]
-async fn content_mail_sends_once_then_refuses_inside_the_cooldown() {
+async fn live_db_content_mail_sends_once_then_refuses_inside_the_cooldown() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, player) = (0x7300_5300, 0x7300_5301);
@@ -154,7 +154,7 @@ async fn content_mail_sends_once_then_refuses_inside_the_cooldown() {
 /// mail does not reopen it, one second short is still refused with 1 s
 /// left, and at exactly `secs` a new mail goes out and moves the claim.
 #[tokio::test]
-async fn content_mail_cooldown_outlives_the_mail_and_expires_on_time() {
+async fn live_db_content_mail_cooldown_outlives_the_mail_and_expires_on_time() {
     let pool = require_db_or_skip!();
     let (acct, player) = (0x7300_5310, 0x7300_5311);
     cleanup(&pool, acct).await;
@@ -198,7 +198,7 @@ async fn content_mail_cooldown_outlives_the_mail_and_expires_on_time() {
 /// (an unknown item type) leaves no claim behind, so the player can ask
 /// again at once; and a mail without a cooldown is sent on every firing.
 #[tokio::test]
-async fn content_mail_claim_rolls_back_with_a_refused_mail() {
+async fn live_db_content_mail_claim_rolls_back_with_a_refused_mail() {
     let pool = require_db_or_skip!();
     let (acct, player) = (0x7300_5320, 0x7300_5321);
     cleanup(&pool, acct).await;
@@ -229,7 +229,7 @@ async fn content_mail_claim_rolls_back_with_a_refused_mail() {
 /// write one mail: the recipient row lock orders them, and the second's
 /// claim finds the first's.
 #[tokio::test]
-async fn content_mail_concurrent_presses_write_one_mail() {
+async fn live_db_content_mail_concurrent_presses_write_one_mail() {
     let pool = require_db_or_skip!();
     let (acct, player) = (0x7300_5330, 0x7300_5331);
     cleanup(&pool, acct).await;
@@ -257,7 +257,7 @@ async fn content_mail_concurrent_presses_write_one_mail() {
 /// A player row that does not exist is `RecipientNotFound` and writes no
 /// claim; with no database the player is still answered (type 12).
 #[tokio::test]
-async fn content_mail_refusals_answer_the_player() {
+async fn live_db_content_mail_refusals_answer_the_player() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let ghost = Client::new(0x7300_5394, 0x7300_53FE, 54_834, "SsuThreeGhost");

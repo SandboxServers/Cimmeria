@@ -138,7 +138,7 @@ fn make_state(
 /// a buyback refund) and debits the player by `unit_price *
 /// stack_size`.
 #[tokio::test]
-async fn full_buyback_clears_flags_and_moves_to_main() {
+async fn live_db_full_buyback_clears_flags_and_moves_to_main() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -196,7 +196,7 @@ async fn full_buyback_clears_flags_and_moves_to_main() {
 /// price) must NOT be touched — the player should still be able to
 /// buy back the rest at the same price.
 #[tokio::test]
-async fn partial_buyback_preserves_price_on_remainder() {
+async fn live_db_partial_buyback_preserves_price_on_remainder() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
@@ -299,7 +299,7 @@ async fn partial_buyback_preserves_price_on_remainder() {
 /// unchanged. Pre-fix bugs in this stack would have committed the
 /// inventory move and let the cash UPDATE fail separately.
 #[tokio::test]
-async fn buyback_rejected_when_player_cannot_afford() {
+async fn live_db_buyback_rejected_when_player_cannot_afford() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;
@@ -359,7 +359,7 @@ async fn buyback_rejected_when_player_cannot_afford() {
 /// in a different container, or doesn't exist) is silently rejected
 /// via the rows_by_id miss — no DB changes.
 #[tokio::test]
-async fn buyback_rejected_for_item_not_in_buyback_container() {
+async fn live_db_buyback_rejected_for_item_not_in_buyback_container() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 300;
     let player_id = TEST_BASE + 301;

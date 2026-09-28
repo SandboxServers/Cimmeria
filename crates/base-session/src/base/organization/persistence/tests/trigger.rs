@@ -61,7 +61,7 @@ async fn add(pool: &PgPool, org_id: i32, player_id: i32, rank: OrgRank) {
 /// member disbands; a character leading two organizations is handled in
 /// both; and at no point does an organization with members lack a Leader.
 #[tokio::test]
-async fn leader_delete_leaves_no_leaderless_org() {
+async fn live_db_leader_delete_leaves_no_leaderless_org() {
     let pool = require_db_or_skip!();
     let names = ["Org02 Heir Cmd", "Org02 Heir Solo", "Org02 Heir Team"];
     let fx = setup(&pool, 8, 4, &names).await;
@@ -127,7 +127,7 @@ async fn leader_delete_leaves_no_leaderless_org() {
 /// "not empty" inside its own transaction and rolls everything back; the
 /// replacement is never visible to another session.
 #[tokio::test]
-async fn last_member_delete_with_vault_leaves_memberless_org() {
+async fn live_db_last_member_delete_with_vault_leaves_memberless_org() {
     let pool = require_db_or_skip!();
     let names = ["Org02 Vault Cmd", "Org02 Vault Team"];
     let fx = setup(&pool, 9, 3, &names).await;
@@ -204,7 +204,7 @@ async fn last_member_delete_with_vault_leaves_memberless_org() {
 /// `remove_member` reports what the trigger did: nothing for a plain
 /// member, a promotion for the leader, a disband for the last member.
 #[tokio::test]
-async fn remove_member_reports_what_the_trigger_did() {
+async fn live_db_remove_member_reports_what_the_trigger_did() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 10, 3, &["Org02 Leave"]).await;
     let (p0, p1, p2) = (fx.player(0), fx.player(1), fx.player(2));
@@ -253,7 +253,7 @@ async fn remove_member_reports_what_the_trigger_did() {
 /// gone after the wait, and leave an empty organization behind that nothing
 /// ever disbands.
 #[tokio::test]
-async fn trigger_waits_for_the_org_lock() {
+async fn live_db_trigger_waits_for_the_org_lock() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 11, 2, &["Org02 Lock"]).await;
     let (leader, member) = (fx.player(0), fx.player(1));
@@ -312,7 +312,7 @@ async fn trigger_waits_for_the_org_lock() {
 /// trigger firing already sees them all gone, promotes the survivor, and a
 /// statement that deletes everyone disbands.
 #[tokio::test]
-async fn multi_row_member_delete_promotes_or_disbands_once() {
+async fn live_db_multi_row_member_delete_promotes_or_disbands_once() {
     let pool = require_db_or_skip!();
     let names = ["Org02 Multi A", "Org02 Multi B"];
     let fx = setup(&pool, 18, 3, &names).await;
@@ -350,7 +350,7 @@ async fn multi_row_member_delete_promotes_or_disbands_once() {
 /// the organization inside the trigger while the kick waits for the member
 /// row: a deadlock, and Postgres aborts one of the two.
 #[tokio::test]
-async fn kick_during_character_delete_does_not_deadlock() {
+async fn live_db_kick_during_character_delete_does_not_deadlock() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 19, 2, &["Org02 Kick"]).await;
     let (leader, member) = (fx.player(0), fx.player(1));

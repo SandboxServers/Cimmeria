@@ -113,7 +113,7 @@ fn disc_on_mesh(mesh: &NavMesh, c: [f32; 3], radius: f32) -> Result<(), Vec<[f32
 /// `Unvalidated` for any coordinate there and could not tell a good arrival
 /// from a bad one.
 #[tokio::test]
-async fn harset_gate_arrival_is_the_gate_row_on_the_mesh_and_inert_in_the_gate_volume() {
+async fn live_db_harset_gate_arrival_is_the_gate_row_on_the_mesh_and_inert_in_the_gate_volume() {
     use crate::cell::space_manager::REGION_FLAG_STARGATE;
     use crate::cell::spawner::{is_point_in_region, load_regions_from_db};
 
@@ -222,7 +222,7 @@ async fn harset_gate_arrival_is_the_gate_row_on_the_mesh_and_inert_in_the_gate_v
 /// fallback caught it would put every traveller on the respawner instead of
 /// the gate, and `is_usable` cannot tell the two apart.
 #[tokio::test]
-async fn validate_gate_arrival_accepts_the_harset_gate_row_verbatim() {
+async fn live_db_validate_gate_arrival_accepts_the_harset_gate_row_verbatim() {
     use crate::cell::arrival::{test_insert_navmesh_space, validate_gate_arrival, ArrivalSource};
 
     let pool = require_db_or_skip!();
@@ -265,7 +265,7 @@ async fn validate_gate_arrival_accepts_the_harset_gate_row_verbatim() {
 /// `UnrecoverableOffMesh`. World 70 is the case — it has a mesh and is left at
 /// the default `enforce`.
 #[tokio::test]
-async fn the_three_harset_respawners_exist_and_stand_on_real_ground() {
+async fn live_db_the_three_harset_respawners_exist_and_stand_on_real_ground() {
     let pool = require_db_or_skip!();
     let rows = load_respawners(&pool).await.expect("load_respawners");
 
@@ -344,7 +344,7 @@ async fn the_three_harset_respawners_exist_and_stand_on_real_ground() {
 /// that pad and `audit_ring_pads` reports it at boot. This test fails first
 /// and names the pad.
 #[tokio::test]
-async fn all_five_harset_ring_pads_are_on_the_mesh_and_advisory_refuses_none() {
+async fn live_db_all_five_harset_ring_pads_are_on_the_mesh_and_advisory_refuses_none() {
     use crate::cell::arrival::{check_arrival, test_insert_navmesh_space, ArrivalCheck};
     use crate::cell::ring_transport::load_ring_regions;
 

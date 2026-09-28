@@ -24,7 +24,7 @@ fn org_events(capture: &LogCaptureGuard, level: Level, event: &str) -> Vec<Captu
 /// Each typed miss is one WARN on `org` with the function as `event` and a
 /// closed `reason`, and the ORG-API lookups warn on their own misses.
 #[tokio::test]
-async fn typed_misses_log_one_warn_with_reason() {
+async fn live_db_typed_misses_log_one_warn_with_reason() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 23, 2, &["Org02 Warn"]).await;
     let (p0, outsider) = (fx.player(0), fx.player(1));
@@ -77,7 +77,7 @@ async fn typed_misses_log_one_warn_with_reason() {
 
 /// Changes log DEBUG with before/after values; text is logged as lengths.
 #[tokio::test]
-async fn changes_log_debug_with_before_and_after() {
+async fn live_db_changes_log_debug_with_before_and_after() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 24, 2, &["Org02 Debug"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));

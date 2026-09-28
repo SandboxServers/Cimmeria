@@ -42,7 +42,7 @@ fn assert_refused_with(f: &Fixture, text: &str, items_held: usize) {
 /// A full crafting bag rolls back the consumption that already ran in the
 /// same transaction.
 #[tokio::test]
-async fn full_bag_rolls_back_and_tells_the_player() {
+async fn live_db_full_bag_rolls_back_and_tells_the_player() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 4).await;
@@ -98,7 +98,7 @@ async fn full_bag_rolls_back_and_tells_the_player() {
 /// the completion re-checks it and refuses, though the crafting bag alone
 /// would cover the quantity.
 #[tokio::test]
-async fn a_component_moved_to_the_bank_before_completion_rolls_back() {
+async fn live_db_a_component_moved_to_the_bank_before_completion_rolls_back() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 5).await;
@@ -145,7 +145,7 @@ async fn a_component_moved_to_the_bank_before_completion_rolls_back() {
 /// Only the main and crafting bags feed a craft: a bank stack does not
 /// make up a shortfall, and is not touched.
 #[tokio::test]
-async fn bank_stacks_do_not_count_toward_consumption() {
+async fn live_db_bank_stacks_do_not_count_toward_consumption() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 6).await;
@@ -186,7 +186,7 @@ async fn bank_stacks_do_not_count_toward_consumption() {
 /// A request naming another player's item is refused as missing; the
 /// other player's stack is untouched.
 #[tokio::test]
-async fn a_component_of_another_player_is_missing() {
+async fn live_db_a_component_of_another_player_is_missing() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 7).await;
@@ -225,7 +225,7 @@ async fn a_component_of_another_player_is_missing() {
 /// A product whose `container_sets` allow no carried bag is refused
 /// before anything is consumed.
 #[tokio::test]
-async fn a_product_with_no_carried_bag_is_refused() {
+async fn live_db_a_product_with_no_carried_bag_is_refused() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 9).await;
@@ -336,7 +336,7 @@ async fn no_database_is_reported_to_the_player() {
 /// A non-positive cost is a verb bug, never a free craft: the grant does
 /// not happen.
 #[tokio::test]
-async fn a_non_positive_consume_quantity_refuses_the_grant() {
+async fn live_db_a_non_positive_consume_quantity_refuses_the_grant() {
     let pool = require_db_or_skip!();
     let capture = crate::test_support::LogCapture::install();
     assert_seed_shape(&pool).await;
@@ -367,7 +367,7 @@ async fn a_non_positive_consume_quantity_refuses_the_grant() {
 /// A product id the item table does not know is a data error: refused,
 /// nothing consumed.
 #[tokio::test]
-async fn an_unknown_product_is_refused() {
+async fn live_db_an_unknown_product_is_refused() {
     let pool = require_db_or_skip!();
     let capture = crate::test_support::LogCapture::install();
     let f = Fixture::new(&pool, 12).await;
@@ -396,7 +396,7 @@ async fn an_unknown_product_is_refused() {
 /// A database failure (here: the player row is gone) rolls back and is
 /// reported as a failed craft.
 #[tokio::test]
-async fn a_database_failure_rolls_back_and_is_reported() {
+async fn live_db_a_database_failure_rolls_back_and_is_reported() {
     let pool = require_db_or_skip!();
     let capture = crate::test_support::LogCapture::install();
     let f = Fixture::new(&pool, 13).await;

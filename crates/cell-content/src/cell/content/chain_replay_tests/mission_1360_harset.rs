@@ -123,7 +123,7 @@ async fn resolve_chain(
 /// pinning it as a vec is what makes an accidental verb swap or a dropped
 /// action fail loudly instead of silently changing what the player gets.
 #[tokio::test]
-async fn chain_6501_delivers_the_letter_on_the_first_marsh_click() {
+async fn live_db_chain_6501_delivers_the_letter_on_the_first_marsh_click() {
     let ctx = marsh_ctx(CMD_CENTER, "active", "active", "not_active");
     let pool = require_db_or_skip!();
     let resolved = resolve_chain(&pool, 6501, &ctx, TriggerType::InteractTag).await;
@@ -173,7 +173,7 @@ async fn chain_6501_delivers_the_letter_on_the_first_marsh_click() {
 /// some other action were dropped in the same edit, so count it directly.
 /// Mirrors `mission_639::chain_1034_includes_remove_item_for_ambernol`.
 #[tokio::test]
-async fn chain_6501_removes_the_letter_exactly_once_in_the_seed() {
+async fn live_db_chain_6501_removes_the_letter_exactly_once_in_the_seed() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 6501)
         .await
@@ -217,7 +217,7 @@ async fn chain_6501_removes_the_letter_exactly_once_in_the_seed() {
 /// is removed exactly once"*, so it is pinned end-to-end here rather than
 /// inferred from two separate tests.
 #[tokio::test]
-async fn chain_6501_emits_exactly_one_letter_removal_through_the_executor() {
+async fn live_db_chain_6501_emits_exactly_one_letter_removal_through_the_executor() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 6501)
         .await
@@ -266,7 +266,7 @@ async fn chain_6501_emits_exactly_one_letter_removal_through_the_executor() {
 /// `completed_steps`, so both the mission gate and the step gate flip in
 /// the same transition; this models the post-completion context exactly.
 #[tokio::test]
-async fn chain_6501_does_not_refire_once_1360_is_completed() {
+async fn live_db_chain_6501_does_not_refire_once_1360_is_completed() {
     let ctx = marsh_ctx(CMD_CENTER, "completed", "completed", "not_active");
     let pool = require_db_or_skip!();
     let resolved = resolve_chain(&pool, 6501, &ctx, TriggerType::InteractTag).await;
@@ -282,7 +282,7 @@ async fn chain_6501_does_not_refire_once_1360_is_completed() {
 /// 4037 ("find a way to get the letter to his family") — they have not
 /// reached the delivery step, so Marsh must not take the letter.
 #[tokio::test]
-async fn chain_6501_does_not_fire_on_the_earlier_step_4037() {
+async fn live_db_chain_6501_does_not_fire_on_the_earlier_step_4037() {
     let ctx = marsh_ctx(CMD_CENTER, "active", "not_active", "not_active");
     let pool = require_db_or_skip!();
     let resolved = resolve_chain(&pool, 6501, &ctx, TriggerType::InteractTag).await;
@@ -299,7 +299,7 @@ async fn chain_6501_does_not_fire_on_the_earlier_step_4037() {
 /// standing between this chain and a Harset-side entity that happened to
 /// carry Marsh's tag.
 #[tokio::test]
-async fn chain_6501_does_not_fire_from_harset() {
+async fn live_db_chain_6501_does_not_fire_from_harset() {
     let ctx = marsh_ctx(HARSET, "active", "active", "not_active");
     let pool = require_db_or_skip!();
     let resolved = resolve_chain(&pool, 6501, &ctx, TriggerType::InteractTag).await;
@@ -315,7 +315,7 @@ async fn chain_6501_does_not_fire_from_harset() {
 /// closed on an unset id — unlike the mission conditions, which fall back
 /// to `not_active` and can fail *open*.
 #[tokio::test]
-async fn chain_6501_fails_closed_without_a_world_context() {
+async fn live_db_chain_6501_fails_closed_without_a_world_context() {
     let mut ctx = marsh_ctx(CMD_CENTER, "active", "active", "not_active");
     ctx.world_id = None;
     let pool = require_db_or_skip!();
@@ -343,7 +343,7 @@ async fn chain_6501_fails_closed_without_a_world_context() {
 /// discarded dialog's late close, so its own chain is no longer lost;
 /// the unread blurb still is.)
 #[tokio::test]
-async fn chain_6501_yields_to_the_praxis_turn_in() {
+async fn live_db_chain_6501_yields_to_the_praxis_turn_in() {
     let ctx = marsh_ctx(CMD_CENTER, "active", "active", "active");
     let pool = require_db_or_skip!();
     let resolved = resolve_chain(&pool, 6501, &ctx, TriggerType::InteractTag).await;
@@ -364,7 +364,7 @@ async fn chain_6501_yields_to_the_praxis_turn_in() {
 /// binding table. Without 6502 the very first visit — the normal way to
 /// reach Marsh — would find him inert.
 #[tokio::test]
-async fn chain_6502_rebinds_the_letter_indicator_on_world_entry() {
+async fn live_db_chain_6502_rebinds_the_letter_indicator_on_world_entry() {
     let mut ctx = ExecutionContext::new();
     ctx.world_id = Some(CMD_CENTER);
     ctx.set_param(
@@ -403,7 +403,7 @@ async fn chain_6502_rebinds_the_letter_indicator_on_world_entry() {
 /// re-paint the indicator. A stale "!" on a shared-hub NPC is exactly the
 /// forgotten-clear failure the interaction-flag convention exists to stop.
 #[tokio::test]
-async fn chain_6502_does_not_rebind_after_delivery() {
+async fn live_db_chain_6502_does_not_rebind_after_delivery() {
     let mut ctx = ExecutionContext::new();
     ctx.world_id = Some(CMD_CENTER);
     ctx.set_param(

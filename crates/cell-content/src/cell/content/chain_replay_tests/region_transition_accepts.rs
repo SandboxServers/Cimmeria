@@ -84,7 +84,7 @@ async fn assert_region_transition_resolves_exactly_one_accept(
 /// (exercised implicitly by the exit-vs-enter event-type split — 5022
 /// never matched an exit_region event).
 #[tokio::test]
-async fn region3_exit_resolves_exactly_one_accept_682() {
+async fn live_db_region3_exit_resolves_exactly_one_accept_682() {
     assert_region_transition_resolves_exactly_one_accept(
         TriggerType::RegionExit,
         "Castle_Cellblock.Region3",
@@ -97,7 +97,7 @@ async fn region3_exit_resolves_exactly_one_accept_682() {
 /// Chain 1082: entering Region4 with 683 completed accepts 684 exactly
 /// once.
 #[tokio::test]
-async fn region4_enter_resolves_exactly_one_accept_684() {
+async fn live_db_region4_enter_resolves_exactly_one_accept_684() {
     assert_region_transition_resolves_exactly_one_accept(
         TriggerType::RegionEnter,
         "Castle_Cellblock.Region4",
@@ -110,7 +110,7 @@ async fn region4_enter_resolves_exactly_one_accept_684() {
 /// Chain 1083: entering Region5 with 685 completed accepts 686 exactly
 /// once.
 #[tokio::test]
-async fn region5_enter_resolves_exactly_one_accept_686() {
+async fn live_db_region5_enter_resolves_exactly_one_accept_686() {
     assert_region_transition_resolves_exactly_one_accept(
         TriggerType::RegionEnter,
         "Castle_Cellblock.Region5",
@@ -123,7 +123,7 @@ async fn region5_enter_resolves_exactly_one_accept_686() {
 /// Chain 1084: entering Region6 with 686 completed accepts 687 exactly
 /// once.
 #[tokio::test]
-async fn region6_enter_resolves_exactly_one_accept_687() {
+async fn live_db_region6_enter_resolves_exactly_one_accept_687() {
     assert_region_transition_resolves_exactly_one_accept(
         TriggerType::RegionEnter,
         "Castle_Cellblock.Region6",

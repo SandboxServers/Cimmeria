@@ -364,7 +364,7 @@ mod tests {
     /// the discipline in `discipline_ids` when it's the first grant. Reverting
     /// either the `set_expertise` save or the `discipline_ids.push` trips this.
     #[tokio::test]
-    async fn grant_expertise_persists_and_registers_discipline() {
+    async fn live_db_grant_expertise_persists_and_registers_discipline() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -430,7 +430,7 @@ mod tests {
 
     /// `handle_grant_applied_science` must accumulate ASP across grants.
     #[tokio::test]
-    async fn grant_applied_science_accumulates() {
+    async fn live_db_grant_applied_science_accumulates() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 10;
         let player_id = TEST_BASE + 11;
@@ -477,7 +477,7 @@ mod tests {
     /// without a relog. Removing the push leaves one packet;
     /// pushing the change (+5) instead of the total (9) fails the bytes.
     #[tokio::test]
-    async fn grant_applied_science_pushes_the_total_property() {
+    async fn live_db_grant_applied_science_pushes_the_total_property() {
         use crate::base::crafting::test_players::{OneSession, SESSION_ACCOUNT_ID};
         use crate::mercury::{build_player_entity_method_packet, method_idx};
         use crate::test_support::LogCapture;
@@ -561,7 +561,7 @@ mod tests {
     /// ERROR with the paired `rows_affected = 0` / `expected = 1` and the
     /// `phase`, and a GM line saying it failed.
     #[tokio::test]
-    async fn grant_applied_science_for_a_missing_row_logs_rows_affected() {
+    async fn live_db_grant_applied_science_for_a_missing_row_logs_rows_affected() {
         use crate::base::crafting::test_players::OneSession;
         use crate::test_support::LogCapture;
 

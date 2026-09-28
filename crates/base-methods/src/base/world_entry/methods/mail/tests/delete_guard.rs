@@ -72,7 +72,7 @@ async fn attached_mails(pool: &PgPool, sender: i32, rcpt_name: &str, type_id: i3
 /// deletes. Fails when the delete guard is reverted (the three mails would
 /// be deleted, and their escrow rows with them).
 #[tokio::test]
-async fn delete_refused_while_attachment_present() {
+async fn live_db_delete_refused_while_attachment_present() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE, BASE + 1, BASE + 2);
@@ -157,7 +157,7 @@ async fn delete_refused_while_attachment_present() {
 /// taken (simulated by removing its escrow row, as SS-M3's take will) is
 /// still refused while the price is unpaid.
 #[tokio::test]
-async fn delete_refused_for_unpaid_cod_without_item() {
+async fn live_db_delete_refused_for_unpaid_cod_without_item() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (BASE + 10, BASE + 11, BASE + 12);
     cleanup(&pool, acct).await;
@@ -197,7 +197,7 @@ async fn delete_refused_for_unpaid_cod_without_item() {
 /// Also checks the guard is owner-scoped: another character's delete of
 /// the same mail id reports `not_found_for_owner` and changes nothing.
 #[tokio::test]
-async fn no_orphaned_escrow_after_delete() {
+async fn live_db_no_orphaned_escrow_after_delete() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE + 20, BASE + 21, BASE + 22);

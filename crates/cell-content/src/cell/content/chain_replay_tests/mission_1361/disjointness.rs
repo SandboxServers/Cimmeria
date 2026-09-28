@@ -25,7 +25,7 @@ use super::*;
 /// means a *future* chain that keys on Marsh without gating itself will
 /// fail here rather than in a player's log.
 #[tokio::test]
-async fn marsh_interact_chains_are_pairwise_disjoint() {
+async fn live_db_marsh_interact_chains_are_pairwise_disjoint() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -101,7 +101,7 @@ async fn marsh_interact_chains_are_pairwise_disjoint() {
 /// mission has one current step — but "for free" is exactly the kind of
 /// reasoning that stops being true when someone adds a third chain.
 #[tokio::test]
-async fn mohkatan_interact_chains_are_pairwise_disjoint() {
+async fn live_db_mohkatan_interact_chains_are_pairwise_disjoint() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -139,7 +139,7 @@ async fn mohkatan_interact_chains_are_pairwise_disjoint() {
 /// that for any reachable mission state, at most one of them fires per
 /// slot.
 #[tokio::test]
-async fn no_template_slot_ever_holds_two_binds_at_once() {
+async fn live_db_no_template_slot_ever_holds_two_binds_at_once() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -228,7 +228,7 @@ async fn no_template_slot_ever_holds_two_binds_at_once() {
 /// it stays silent for one who does not (the overwhelmingly common case,
 /// where a stray bind would put a "!" on Marsh with nothing behind it).
 #[tokio::test]
-async fn chain_6505_hands_the_letter_indicator_back_when_1361_completes() {
+async fn live_db_chain_6505_hands_the_letter_indicator_back_when_1361_completes() {
     let pool = require_db_or_skip!();
 
     // Positive: 1360 still active on step 4038 when 1361 completes.
@@ -296,7 +296,7 @@ async fn chain_6505_hands_the_letter_indicator_back_when_1361_completes() {
 /// the bind — harmless once, but it would also mask a regression in
 /// 6502's gate by papering over it on every unrelated completion.
 #[tokio::test]
-async fn chain_6505_only_answers_to_1361() {
+async fn live_db_chain_6505_only_answers_to_1361() {
     let pool = require_db_or_skip!();
 
     let mut ctx = ExecutionContext::new();

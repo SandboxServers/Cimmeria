@@ -102,7 +102,7 @@ async fn insert_account_player_and_item(pool: &PgPool, account_id: i32, player_i
 /// because their `onUpdateItem` landed against the same broken
 /// bag-less state.
 #[tokio::test]
-async fn resync_sends_bag_info_active_slot_cash_then_items_in_order() {
+async fn live_db_resync_sends_bag_info_active_slot_cash_then_items_in_order() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;

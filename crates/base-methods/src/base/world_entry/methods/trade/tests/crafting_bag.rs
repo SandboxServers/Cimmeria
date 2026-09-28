@@ -239,7 +239,7 @@ async fn run_trade(
 /// refused and the component stays with A; with the destination forced
 /// to `INV_MAIN` it lands in B's backpack.
 #[tokio::test]
-async fn crafting_component_lands_in_the_recipients_crafting_bag() {
+async fn live_db_crafting_component_lands_in_the_recipients_crafting_bag() {
     let pool = require_db_or_skip!();
     let f = ids(0);
     setup(&pool, f, 0).await;
@@ -313,7 +313,7 @@ async fn crafting_component_lands_in_the_recipients_crafting_bag() {
 /// both clients without the cause; sending the space codes (3/4) again
 /// fails the result-code assertions.
 #[tokio::test]
-async fn full_destination_crafting_bag_refuses_the_whole_trade() {
+async fn live_db_full_destination_crafting_bag_refuses_the_whole_trade() {
     let pool = require_db_or_skip!();
     let f = ids(1);
     setup(&pool, f, 500).await;
@@ -387,7 +387,7 @@ async fn full_destination_crafting_bag_refuses_the_whole_trade() {
 /// Equipment, buyback and every vault stay refused now that bag 15 is a
 /// source; the offerer is told the item cannot be traded.
 #[tokio::test]
-async fn equipment_buyback_and_vault_items_stay_refused() {
+async fn live_db_equipment_buyback_and_vault_items_stay_refused() {
     let pool = require_db_or_skip!();
     let backpack = backpack_type(&pool).await;
     let cases = [
@@ -438,7 +438,7 @@ async fn equipment_buyback_and_vault_items_stay_refused() {
 /// Revert-verifier: dropping the WARN in `send_refusal_line` leaves the
 /// miss unlogged and the `find_event` below fails.
 #[tokio::test]
-async fn refusal_line_to_an_unmapped_partner_is_logged() {
+async fn live_db_refusal_line_to_an_unmapped_partner_is_logged() {
     let pool = require_db_or_skip!();
     let f = ids(8);
     setup(&pool, f, 0).await;
@@ -494,7 +494,7 @@ async fn refusal_line_to_an_unmapped_partner_is_logged() {
 /// aborts one of them as a deadlock: either the completion's commit fails
 /// or the component never moves.
 #[tokio::test]
-async fn trade_and_crafting_completion_on_one_player_serialize() {
+async fn live_db_trade_and_crafting_completion_on_one_player_serialize() {
     let pool = require_db_or_skip!();
     let f = ids(7);
     setup(&pool, f, 0).await;

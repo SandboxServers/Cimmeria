@@ -44,7 +44,7 @@ async fn set_charges(fx: &Fx, item_id: i32, charges: i32) {
 /// carried item into the vault also deposits, and needs `DepositBank`; so
 /// does rearranging the vault. Fails if either check is removed.
 #[tokio::test]
-async fn withdraw_only_ranks_cannot_swap_in_or_rearrange() {
+async fn live_db_withdraw_only_ranks_cannot_swap_in_or_rearrange() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 13, 2).await;
     let team = fx.org(0, 1, &[0]).await;
@@ -77,7 +77,7 @@ async fn withdraw_only_ranks_cannot_swap_in_or_rearrange() {
 /// item also withdraws it, and needs `WithdrawBank`. Fails if the swap's
 /// second bit is not checked.
 #[tokio::test]
-async fn a_deposit_swap_needs_withdraw_bank() {
+async fn live_db_a_deposit_swap_needs_withdraw_bank() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 14, 2).await;
     let team = fx.org(0, 1, &[0]).await;
@@ -106,7 +106,7 @@ async fn a_deposit_swap_needs_withdraw_bank() {
 /// Fails if the occupant's entry rules are skipped (the refusal is then
 /// `move_failed`).
 #[tokio::test]
-async fn a_withdraw_swap_cannot_bring_a_bound_item_into_the_vault() {
+async fn live_db_a_withdraw_swap_cannot_bring_a_bound_item_into_the_vault() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 15, 1).await;
     let team = fx.org(0, 0, &[]).await;

@@ -174,7 +174,7 @@ async fn wait_until_blocked(pool: &PgPool, holder_pid: i32) {
 /// row, and Postgres aborts one of them: the trade's player-row lock
 /// fails, or the item stays in the buyback bag.
 #[tokio::test]
-async fn buyback_waits_for_a_trade_on_the_same_player() {
+async fn live_db_buyback_waits_for_a_trade_on_the_same_player() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C590, 0x7000_C591, 0x7000_C5A8_u32);
     setup(&pool, account_id, player_id, entity_id, 5_000).await;
@@ -241,7 +241,7 @@ async fn buyback_waits_for_a_trade_on_the_same_player() {
 /// 16, the buyback waits for the sold row, and Postgres aborts one of
 /// them.
 #[tokio::test]
-async fn sell_waits_for_a_buyback_on_the_same_player() {
+async fn live_db_sell_waits_for_a_buyback_on_the_same_player() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C592, 0x7000_C593, 0x7000_C5A9_u32);
     setup(&pool, account_id, player_id, entity_id, 5_000).await;

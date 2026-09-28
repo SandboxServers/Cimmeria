@@ -47,7 +47,7 @@ impl Fixture {
 /// with its rank and mask; with no name it reports the GM. One `ok`
 /// `org.gm_action` row carries the target and the count.
 #[tokio::test]
-async fn gm_info_lists_every_membership_with_rank_and_mask() {
+async fn live_db_gm_info_lists_every_membership_with_rank_and_mask() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org10(&pool, 0, 3, &["Org10 Info Team", "Org10 Info Command"]).await;
     let team = fx.org(OrgType::Team, "Org10 Info Team", 0, &[1]).await;
@@ -110,7 +110,7 @@ async fn gm_info_lists_every_membership_with_rank_and_mask() {
 
 /// `.org_list` names every organization with its member count and leader.
 #[tokio::test]
-async fn gm_list_lists_every_organization() {
+async fn live_db_gm_list_lists_every_organization() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org10(&pool, 1, 3, &["Org10 List Team", "Org10 List Command"]).await;
     let team = fx.org(OrgType::Team, "Org10 List Team", 0, &[1]).await;
@@ -144,7 +144,7 @@ async fn gm_list_lists_every_organization() {
 /// which bits were ignored, and every online member gets the new rank table
 /// [49].
 #[tokio::test]
-async fn gm_set_perms_clamps_to_the_editor_bits_and_fans_out() {
+async fn live_db_gm_set_perms_clamps_to_the_editor_bits_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org10(&pool, 2, 3, &["Org10 Perms"]).await;
     let team = fx.org(OrgType::Team, "Org10 Perms", 0, &[1]).await;
@@ -209,7 +209,7 @@ async fn gm_set_perms_clamps_to_the_editor_bits_and_fans_out() {
 /// The `Leader` row, a rank the type does not use, an unknown organization
 /// and a non-GM are refused, and nothing is written.
 #[tokio::test]
-async fn gm_set_perms_refuses_the_leader_row_and_unused_ranks() {
+async fn live_db_gm_set_perms_refuses_the_leader_row_and_unused_ranks() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org10(&pool, 3, 2, &["Org10 Leader Row"]).await;
     let team = fx.org(OrgType::Team, "Org10 Leader Row", 0, &[]).await;
@@ -249,7 +249,7 @@ async fn gm_set_perms_refuses_the_leader_row_and_unused_ranks() {
 /// `gmReloadOrganizations` re-sends the GM's own push for each Team and
 /// Command (one [35] each) and tells nobody else anything.
 #[tokio::test]
-async fn gm_reload_resends_the_login_push() {
+async fn live_db_gm_reload_resends_the_login_push() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org10(&pool, 4, 2, &["Org10 Reload Team", "Org10 Reload Command"]).await;
     fx.org(OrgType::Team, "Org10 Reload Team", 0, &[1]).await;
@@ -292,7 +292,7 @@ async fn gm_reload_resends_the_login_push() {
 /// the lock (`not_gm`) left none, and a success left only the lock-time
 /// audit with no result.
 #[tokio::test]
-async fn every_gm_org_command_writes_one_gm_action_row() {
+async fn live_db_every_gm_org_command_writes_one_gm_action_row() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org10(&pool, 5, 3, &["Org10 Audit"]).await;
     let team = fx.org(OrgType::Team, "Org10 Audit", 0, &[]).await;

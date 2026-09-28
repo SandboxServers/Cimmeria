@@ -25,7 +25,7 @@ use crate::test_support::require_db_or_skip;
 /// n120_trigger_In), not the auto-export's dropped-aggression /
 /// threat_level=5000 shape.
 #[tokio::test]
-async fn chain_1008_fires_aggression_then_threat_on_correct_key() {
+async fn live_db_chain_1008_fires_aggression_then_threat_on_correct_key() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -94,7 +94,7 @@ async fn chain_1008_fires_aggression_then_threat_on_correct_key() {
 /// any other Cellblock region key in this seed, all of which use the
 /// lowercase form.
 #[tokio::test]
-async fn chain_1008_does_not_match_old_lowercase_key() {
+async fn live_db_chain_1008_does_not_match_old_lowercase_key() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1008)
         .await
@@ -134,7 +134,7 @@ async fn chain_1008_does_not_match_old_lowercase_key() {
 /// before Region8) — the trigger's exact-string `region_key` match means
 /// this can only resolve if the chain (wrongly) ignored its own key.
 #[tokio::test]
-async fn chain_1008_does_not_fire_for_an_earlier_region() {
+async fn live_db_chain_1008_does_not_fire_for_an_earlier_region() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1008)
         .await

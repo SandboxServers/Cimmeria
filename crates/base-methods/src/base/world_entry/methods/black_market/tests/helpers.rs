@@ -28,7 +28,7 @@ use crate::test_support::require_db_or_skip;
 /// Bug shape: removing the `WHERE naquadah + $1 >= 0` guard would let the
 /// balance go negative and return `Ok`.
 #[tokio::test]
-async fn adjust_player_cash_rejects_overdraw() {
+async fn live_db_adjust_player_cash_rejects_overdraw() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 700;
     let player = TEST_BASE + 710;
@@ -56,7 +56,7 @@ async fn adjust_player_cash_rejects_overdraw() {
 /// A debit that exactly clears the balance is accepted and returns the new
 /// balance (0). This pins the boundary the overdraw guard allows (`>= 0`).
 #[tokio::test]
-async fn adjust_player_cash_allows_exact_zero() {
+async fn live_db_adjust_player_cash_allows_exact_zero() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 720;
     let player = TEST_BASE + 730;
@@ -76,7 +76,7 @@ async fn adjust_player_cash_allows_exact_zero() {
 /// `InsufficientFunds`. Bug shape: the existence probe is what separates the
 /// two — if it were dropped, a missing player would masquerade as an overdraw.
 #[tokio::test]
-async fn adjust_player_cash_missing_player_is_no_such_player() {
+async fn live_db_adjust_player_cash_missing_player_is_no_such_player() {
     let pool = require_db_or_skip!();
     let ghost = TEST_BASE + 740; // never inserted
                                  // Defensive: ensure the row really is absent.
@@ -119,7 +119,7 @@ fn auction_over(seller: i32, item_id: i32) -> AuctionRow {
 /// Listing someone else's row is refused and touches nothing. Bug shape: a
 /// move keyed on `item_id` alone would take another player's item.
 #[tokio::test]
-async fn list_into_escrow_refuses_a_row_the_seller_does_not_own() {
+async fn live_db_list_into_escrow_refuses_a_row_the_seller_does_not_own() {
     let pool = require_db_or_skip!();
     let (acc_owner, acc_thief) = (TEST_BASE + 750, TEST_BASE + 751);
     let (owner, thief) = (TEST_BASE + 760, TEST_BASE + 761);
@@ -144,7 +144,7 @@ async fn list_into_escrow_refuses_a_row_the_seller_does_not_own() {
 /// container 18, every column intact, and a settlement mails that row.
 /// Bug shape: the branch's DELETE-and-snapshot would lose the id.
 #[tokio::test]
-async fn escrow_moves_the_row_into_container_18() {
+async fn live_db_escrow_moves_the_row_into_container_18() {
     let pool = require_db_or_skip!();
     let (account_id, seller) = (TEST_BASE + 770, TEST_BASE + 780);
     cleanup(&pool, &[account_id], &[seller]).await;
@@ -185,7 +185,7 @@ async fn escrow_moves_the_row_into_container_18() {
 
 /// Only carried bags list: a banked or bound row is refused.
 #[tokio::test]
-async fn list_into_escrow_refuses_vault_and_bound_rows() {
+async fn live_db_list_into_escrow_refuses_vault_and_bound_rows() {
     let pool = require_db_or_skip!();
     let (account_id, seller) = (TEST_BASE + 790, TEST_BASE + 800);
     cleanup(&pool, &[account_id], &[seller]).await;
@@ -215,7 +215,7 @@ async fn list_into_escrow_refuses_vault_and_bound_rows() {
 /// hand out a second one (authority review, BM-02). A boot-seed listing,
 /// which never had a row, mails a new instance of its type.
 #[tokio::test]
-async fn escrowed_item_refuses_a_player_listing_with_no_escrow_row() {
+async fn live_db_escrowed_item_refuses_a_player_listing_with_no_escrow_row() {
     let pool = require_db_or_skip!();
     let (account_id, seller) = (TEST_BASE + 850, TEST_BASE + 860);
     cleanup(&pool, &[account_id], &[seller]).await;
@@ -255,7 +255,7 @@ async fn escrowed_item_refuses_a_player_listing_with_no_escrow_row() {
 /// `BalanceOverflow`, not a Postgres overflow error that fails every later
 /// bid on the auction (authority review, BM-02).
 #[tokio::test]
-async fn adjust_player_cash_refuses_a_credit_past_the_integer_maximum() {
+async fn live_db_adjust_player_cash_refuses_a_credit_past_the_integer_maximum() {
     let pool = require_db_or_skip!();
     let (account_id, player) = (TEST_BASE + 870, TEST_BASE + 880);
     cleanup(&pool, &[account_id], &[player]).await;

@@ -113,7 +113,7 @@ fn jaffa_who_abandoned(mission_id: i32) -> ExecutionContext {
 /// seed and Moh'katan keeps replaying the step-3954 turn-in dialog for a
 /// player who no longer holds the mission.
 #[tokio::test]
-async fn abandoning_1324_clears_the_live_binds_and_repaints_the_offer() {
+async fn live_db_abandoning_1324_clears_the_live_binds_and_repaints_the_offer() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -137,7 +137,7 @@ async fn abandoning_1324_clears_the_live_binds_and_repaints_the_offer() {
 /// Command Center needs nothing — `available_interactions` is rebuilt empty
 /// on world entry and chain 6301 repaints on the way back in.
 #[tokio::test]
-async fn abandoning_1324_outside_the_command_center_resolves_nothing() {
+async fn live_db_abandoning_1324_outside_the_command_center_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -152,7 +152,7 @@ async fn abandoning_1324_outside_the_command_center_resolves_nothing() {
 /// repaint must carry chain 6301's archetype gate too. Without it a Human
 /// who somehow abandoned 1324 would get an offer icon they can never use.
 #[tokio::test]
-async fn abandoning_1324_as_a_non_jaffa_resolves_nothing() {
+async fn live_db_abandoning_1324_as_a_non_jaffa_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -169,7 +169,7 @@ async fn abandoning_1324_as_a_non_jaffa_resolves_nothing() {
 /// one that proves the positive above is not matching on the trigger type
 /// alone.
 #[tokio::test]
-async fn abandoning_a_different_mission_does_not_repaint_1324() {
+async fn live_db_abandoning_a_different_mission_does_not_repaint_1324() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -197,7 +197,7 @@ fn jaffa_who_abandoned_1326() -> ExecutionContext {
 /// Positive: abandoning 1326 clears Moh'katan's turn-in bind and repaints
 /// his offer. Same unbind-before-rebind order as 6308, on one slot.
 #[tokio::test]
-async fn abandoning_1326_clears_the_turn_in_bind_and_repaints_the_offer() {
+async fn live_db_abandoning_1326_clears_the_turn_in_bind_and_repaints_the_offer() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -219,7 +219,7 @@ async fn abandoning_1326_clears_the_turn_in_bind_and_repaints_the_offer() {
 /// repaint an offer the player cannot accept — chain 6333's own gate would
 /// then refuse the click and the icon would be permanently dead.
 #[tokio::test]
-async fn abandoning_1326_without_the_prerequisites_resolves_nothing() {
+async fn live_db_abandoning_1326_without_the_prerequisites_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -248,7 +248,7 @@ fn goauld_who_abandoned_742() -> ExecutionContext {
 /// Positive: abandoning 742 clears Anat's in-progress topic and repaints her
 /// offer topic.
 #[tokio::test]
-async fn abandoning_742_clears_the_in_progress_topic_and_repaints_the_offer() {
+async fn live_db_abandoning_742_clears_the_in_progress_topic_and_repaints_the_offer() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -270,7 +270,7 @@ async fn abandoning_742_clears_the_in_progress_topic_and_repaints_the_offer() {
 /// before 1200 completes would put the 742 offer on an NPC the 1200 chains
 /// still own.
 #[tokio::test]
-async fn abandoning_742_before_1200_is_done_resolves_nothing() {
+async fn live_db_abandoning_742_before_1200_is_done_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -286,7 +286,7 @@ async fn abandoning_742_before_1200_is_done_resolves_nothing() {
 /// Negative (wrong archetype): 742 is a Goa'uld mission; the Jaffa gate on
 /// the twin chains must not let a Jaffa pick up Anat's topic.
 #[tokio::test]
-async fn abandoning_742_as_a_non_goauld_resolves_nothing() {
+async fn live_db_abandoning_742_as_a_non_goauld_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -312,7 +312,7 @@ async fn abandoning_742_as_a_non_goauld_resolves_nothing() {
 /// to the end of an action list. Driven over all three chains at once so a
 /// fourth abandon chain authored later is covered without editing this file.
 #[tokio::test]
-async fn every_abandon_chain_unbinds_before_it_rebinds() {
+async fn live_db_every_abandon_chain_unbinds_before_it_rebinds() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 

@@ -52,7 +52,7 @@ fn refusals(
 /// A full crafting bag refuses the grant: nothing is written and the cell
 /// gets the item back, with the bag it was going to.
 #[tokio::test]
-async fn full_bag_hands_the_loot_back_to_the_cell() {
+async fn live_db_full_bag_hands_the_loot_back_to_the_cell() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C410, 0x7000_C411, 0x7000_C4E4_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -119,7 +119,7 @@ async fn full_bag_hands_the_loot_back_to_the_cell() {
 /// A storage-only item is refused by the vault guard, and the refusal goes
 /// back to the cell too.
 #[tokio::test]
-async fn storage_only_loot_is_handed_back_to_the_cell() {
+async fn live_db_storage_only_loot_is_handed_back_to_the_cell() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C412, 0x7000_C413, 0x7000_C4E5_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -178,7 +178,7 @@ async fn storage_only_loot_is_handed_back_to_the_cell() {
 /// A committed loot grant answers nothing: the corpse must not get a copy
 /// of an item the player now holds.
 #[tokio::test]
-async fn committed_loot_grant_hands_nothing_back() {
+async fn live_db_committed_loot_grant_hands_nothing_back() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C414, 0x7000_C415, 0x7000_C4E6_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;

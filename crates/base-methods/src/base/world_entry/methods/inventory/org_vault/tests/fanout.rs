@@ -13,7 +13,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// the fan-out. Fails if the move path stops broadcasting, or broadcasts
 /// the removal to the mover too.
 #[tokio::test]
-async fn other_members_see_deposits_and_withdrawals() {
+async fn live_db_other_members_see_deposits_and_withdrawals() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 16, 2).await;
     let team = fx.org(0, 0, &[1]).await;

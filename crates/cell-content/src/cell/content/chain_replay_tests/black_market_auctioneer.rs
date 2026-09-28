@@ -124,7 +124,7 @@ async fn click(
 /// chain 5030: `onBMOpen` to the player naming the auctioneer, the open
 /// line, and a Black Market session at him.
 #[tokio::test]
-async fn clicking_the_seeded_auctioneer_opens_the_black_market() {
+async fn live_db_clicking_the_seeded_auctioneer_opens_the_black_market() {
     let pool = require_db_or_skip!();
     let (mut mgr, auctioneer, _) = fixture(&pool, AUCTIONEER_SPAWN).await;
     assert_eq!(
@@ -160,7 +160,7 @@ async fn clicking_the_seeded_auctioneer_opens_the_black_market() {
 /// player is told nobody here runs the Black Market. Fails if
 /// `open_black_market` stops checking for an auctioneer.
 #[tokio::test]
-async fn the_open_chain_at_another_npc_opens_nothing() {
+async fn live_db_the_open_chain_at_another_npc_opens_nothing() {
     let pool = require_db_or_skip!();
     let (mut mgr, _, dialog_npc) = fixture(&pool, DIALOG_NPC_SPAWN).await;
     assert_ne!(

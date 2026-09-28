@@ -152,7 +152,7 @@ impl Sessions {
 /// The grant reaches `abilities` only: the respec provenance and both point
 /// counters are untouched, and the cell and the GM both hear about it.
 #[tokio::test]
-async fn giveability_persists_to_abilities_only_and_tells_the_cell_and_the_gm() {
+async fn live_db_giveability_persists_to_abilities_only_and_tells_the_cell_and_the_gm() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A01;
     setup(&pool, ID, &[592, 1643], &[1643]).await;
@@ -201,7 +201,7 @@ async fn giveability_persists_to_abilities_only_and_tells_the_cell_and_the_gm() 
 /// A second grant of the same id changes nothing and tells the cell nothing,
 /// but still answers the GM.
 #[tokio::test]
-async fn giveability_twice_does_not_duplicate_the_ability() {
+async fn live_db_giveability_twice_does_not_duplicate_the_ability() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A02;
     setup(&pool, ID, &[592], &[]).await;
@@ -235,7 +235,7 @@ async fn giveability_twice_does_not_duplicate_the_ability() {
 /// The subject's session moved on to another character between the cell's
 /// send and the base: the resolved character must not be written.
 #[tokio::test]
-async fn giveability_for_a_character_the_session_no_longer_plays_is_refused() {
+async fn live_db_giveability_for_a_character_the_session_no_longer_plays_is_refused() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A03;
     setup(&pool, ID, &[592], &[]).await;
@@ -263,7 +263,7 @@ async fn giveability_for_a_character_the_session_no_longer_plays_is_refused() {
 /// The GM relogged (its entity id now plays another character): the grant
 /// still lands, but the feedback line must not reach the stranger.
 #[tokio::test]
-async fn giveability_feedback_skips_a_recycled_gm_entity() {
+async fn live_db_giveability_feedback_skips_a_recycled_gm_entity() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A04;
     setup(&pool, ID, &[592], &[]).await;
@@ -294,7 +294,7 @@ async fn giveability_feedback_skips_a_recycled_gm_entity() {
 /// A trainer respec removes only trainer-bought abilities: the GM-granted id
 /// stays and the refund is exactly the trainer spend.
 #[tokio::test]
-async fn giveability_survives_a_respec_and_refunds_nothing() {
+async fn live_db_giveability_survives_a_respec_and_refunds_nothing() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A05;
     setup(&pool, ID, &[592, 1643], &[1643]).await;
@@ -317,7 +317,7 @@ async fn giveability_survives_a_respec_and_refunds_nothing() {
 /// names the GM actor on the event itself: closed channel (ERROR) and no
 /// channel (WARN).
 #[tokio::test]
-async fn giveability_mirror_failure_names_the_gm_and_the_subject() {
+async fn live_db_giveability_mirror_failure_names_the_gm_and_the_subject() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A06;
     let s = Sessions::new(ID, GM_PLAYER);
@@ -352,7 +352,7 @@ async fn giveability_mirror_failure_names_the_gm_and_the_subject() {
 /// told there is no saved record, not that it "already knows" the ability,
 /// and the refusal carries its own reason.
 #[tokio::test]
-async fn giveability_for_a_missing_player_row_says_so() {
+async fn live_db_giveability_for_a_missing_player_row_says_so() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A07;
     cleanup(&pool, ID).await;

@@ -373,7 +373,7 @@ mod query_character_list_tests {
     /// ordering) breaks the client-side "first character" pick on the
     /// character-select screen.
     #[tokio::test]
-    async fn returns_account_characters_ordered_by_player_id() {
+    async fn live_db_returns_account_characters_ordered_by_player_id() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_a = TEST_BASE + 2;
@@ -408,7 +408,7 @@ mod query_character_list_tests {
     /// turn the character-select screen into "every character on the
     /// shard" — a session-confusion + privacy vector.
     #[tokio::test]
-    async fn other_accounts_characters_are_isolated() {
+    async fn live_db_other_accounts_characters_are_isolated() {
         let pool = require_db_or_skip!();
         let account_mine = TEST_BASE + 100;
         let account_other = TEST_BASE + 101;

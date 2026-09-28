@@ -83,7 +83,7 @@ fn completed(capture: &LogCaptureGuard, f: &VerbFixture) -> bool {
 /// and the item, the kicker, the expertise and the blueprints are as they
 /// were.
 #[tokio::test]
-async fn a_research_with_no_eligible_discipline_is_refused_at_the_request() {
+async fn live_db_a_research_with_no_eligible_discipline_is_refused_at_the_request() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -127,7 +127,7 @@ async fn a_research_with_no_eligible_discipline_is_refused_at_the_request() {
 /// kicker stay, no expertise or blueprint appears, and no `completed` is
 /// logged.
 #[tokio::test]
-async fn a_discipline_dropped_during_the_bar_refuses_the_research_at_completion() {
+async fn live_db_a_discipline_dropped_during_the_bar_refuses_the_research_at_completion() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -170,7 +170,7 @@ async fn a_discipline_dropped_during_the_bar_refuses_the_research_at_completion(
 /// lock, refuses, and rolls back, so a change that lands between the
 /// completion's read and the transaction still uses nothing.
 #[tokio::test]
-async fn the_transaction_refuses_a_research_the_player_can_no_longer_learn_from() {
+async fn live_db_the_transaction_refuses_a_research_the_player_can_no_longer_learn_from() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();

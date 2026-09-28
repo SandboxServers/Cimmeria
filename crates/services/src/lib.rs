@@ -82,6 +82,11 @@ mod mission_round_trip_tests;
 #[cfg(test)]
 pub(crate) mod test_support;
 
+/// The `resources.resource_update_trigger` schema under many concurrent
+/// transactions (the snapshot column width). Test-only.
+#[cfg(test)]
+mod resource_versions_live_db_tests;
+
 // Guards `tools/test-live-db.{sh,ps1}`: every crate with a
 // `cimmeria-test-support` dev-dependency must be in the live-DB crate list.
 #[cfg(test)]

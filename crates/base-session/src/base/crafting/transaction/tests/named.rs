@@ -11,7 +11,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// component design consumed in its place: nothing is used, the player
 /// reads why, and the refusal names both designs.
 #[tokio::test]
-async fn a_named_instance_of_another_design_is_refused() {
+async fn live_db_a_named_instance_of_another_design_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     assert_seed_shape(&pool).await;
@@ -64,7 +64,7 @@ async fn a_named_instance_of_another_design_is_refused() {
 /// consumption by design would start with another stack (the crafting
 /// bag comes first).
 #[tokio::test]
-async fn an_exact_consumption_takes_only_the_named_instance() {
+async fn live_db_an_exact_consumption_takes_only_the_named_instance() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 17).await;
@@ -89,7 +89,7 @@ async fn an_exact_consumption_takes_only_the_named_instance() {
 /// Asking for more than the named instance holds refuses the whole
 /// transaction, even when other stacks of the design would cover it.
 #[tokio::test]
-async fn an_exact_consumption_larger_than_the_instance_is_refused() {
+async fn live_db_an_exact_consumption_larger_than_the_instance_is_refused() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 18).await;

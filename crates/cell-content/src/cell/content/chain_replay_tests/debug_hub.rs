@@ -170,7 +170,7 @@ fn bark_text(call: &(u32, u16, Vec<u8>)) -> (String, String) {
 /// The click's `target_entity_id` names the speaker, so the frame's
 /// EntityId must be the NPC, not the player.
 #[tokio::test]
-async fn debug_hub_dialog_npc_click_opens_dialog_60100_as_the_npc() {
+async fn live_db_debug_hub_dialog_npc_click_opens_dialog_60100_as_the_npc() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7001).await;
 
@@ -219,7 +219,7 @@ async fn debug_hub_dialog_npc_click_opens_dialog_60100_as_the_npc() {
 /// (every screen speaker 0) it would become a monologue and bind the
 /// player instead, and this fails.
 #[tokio::test]
-async fn debug_hub_dialog_button_opens_dialog_60101_through_the_pin() {
+async fn live_db_debug_hub_dialog_button_opens_dialog_60101_through_the_pin() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7002).await;
 
@@ -248,7 +248,7 @@ async fn debug_hub_dialog_button_opens_dialog_60101_through_the_pin() {
 /// The line is read from the seeded `dialog_screens` row, so this also
 /// pins that the row says what the hub doc promises.
 #[tokio::test]
-async fn debug_hub_dialog_close_confirms_in_chat() {
+async fn live_db_debug_hub_dialog_close_confirms_in_chat() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7003).await;
 
@@ -276,7 +276,7 @@ async fn debug_hub_dialog_close_confirms_in_chat() {
 /// session whose win fires only 7005, at the default difficulty, with no
 /// gate; and 7005 speaks the win line from screen 200004.
 #[tokio::test]
-async fn debug_hub_livewire_terminal_round_trip() {
+async fn live_db_debug_hub_livewire_terminal_round_trip() {
     let pool = require_db_or_skip!();
 
     let actions = resolve_interact(&pool, 7004, "DebugHub_LivewireTerminal", &[]).await;

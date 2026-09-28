@@ -82,7 +82,7 @@ async fn engine_for_all(pool: &sqlx::PgPool, chain_ids: &[i32]) -> ChainEngine {
 
 /// Clicking Accept on 2573's final screen accepts 701 for a Human.
 #[tokio::test]
-async fn accept_on_2573_final_screen_accepts_701_for_a_human() {
+async fn live_db_accept_on_2573_final_screen_accepts_701_for_a_human() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1204).await;
 
@@ -109,7 +109,7 @@ async fn accept_on_2573_final_screen_accepts_701_for_a_human() {
 /// close, a close on a dialog that HAS buttons sends nothing, and
 /// mission 701 was unacceptable for that player. Castle audit D-CA13.
 #[tokio::test]
-async fn accept_on_5861_final_screen_accepts_701_for_a_jaffa() {
+async fn live_db_accept_on_5861_final_screen_accepts_701_for_a_jaffa() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1205).await;
 
@@ -139,7 +139,7 @@ async fn accept_on_5861_final_screen_accepts_701_for_a_jaffa() {
 /// snapshot. A per-chain engine would pass even if 1237's
 /// `complete_mission` starved the other two.
 #[tokio::test]
-async fn take_missions_on_2576_final_screen_runs_the_whole_turn_in() {
+async fn live_db_take_missions_on_2576_final_screen_runs_the_whole_turn_in() {
     let pool = require_db_or_skip!();
     let engine = engine_for_all(&pool, &[1237, 1238, 1239]).await;
 
@@ -177,7 +177,7 @@ async fn take_missions_on_2576_final_screen_runs_the_whole_turn_in() {
 /// this test is what turns "DU-06 landed and inverted the sense" from a
 /// silent progression break into a failure.
 #[tokio::test]
-async fn the_turn_in_does_not_filter_on_button_id_today() {
+async fn live_db_the_turn_in_does_not_filter_on_button_id_today() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1237).await;
 

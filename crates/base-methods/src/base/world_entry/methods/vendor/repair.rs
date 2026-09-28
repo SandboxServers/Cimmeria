@@ -320,7 +320,7 @@ mod tests {
     /// Single-item repair adds repair_points = round(ratio * 100) to durability.
     /// Pins the math: 50 + 30 = 80.
     #[tokio::test]
-    async fn single_item_partial_repair_increases_durability_by_ratio() {
+    async fn live_db_single_item_partial_repair_increases_durability_by_ratio() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -357,7 +357,7 @@ mod tests {
     /// A near-full item (95) repaired with ratio 1.0 (would add 100) ends
     /// at exactly 100 — never above.
     #[tokio::test]
-    async fn single_item_repair_clamps_durability_at_one_hundred() {
+    async fn live_db_single_item_repair_clamps_durability_at_one_hundred() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;
@@ -395,7 +395,7 @@ mod tests {
     /// must skip already-full items so a stack of full + damaged repairs
     /// only the damaged one. Tests both invariants in a single call.
     #[tokio::test]
-    async fn free_repair_sets_damaged_to_full_and_skips_already_full() {
+    async fn live_db_free_repair_sets_damaged_to_full_and_skips_already_full() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 200;
         let player_id = TEST_BASE + 201;

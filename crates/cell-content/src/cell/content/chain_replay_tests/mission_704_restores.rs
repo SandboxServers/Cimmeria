@@ -116,7 +116,7 @@ async fn restore_actions(pool: &sqlx::PgPool, chain_id: i32, active_step: i32) -
 }
 
 #[tokio::test]
-async fn chain_1296_restores_the_escort_follow_and_indicator_on_login() {
+async fn live_db_chain_1296_restores_the_escort_follow_and_indicator_on_login() {
     let pool = require_db_or_skip!();
     let actions = restore_actions(&pool, 1296, 2405).await;
     assert_eq!(actions.len(), 2, "got {actions:?}");
@@ -155,7 +155,7 @@ async fn chain_1296_restores_the_escort_follow_and_indicator_on_login() {
 /// restore that only re-armed the terminal would leave a relogged player
 /// unable to click Zuritska for the instruction dialog.
 #[tokio::test]
-async fn chain_1297_restores_both_2406_bits_on_login() {
+async fn live_db_chain_1297_restores_both_2406_bits_on_login() {
     let pool = require_db_or_skip!();
     let actions = restore_actions(&pool, 1297, 2406).await;
     assert_eq!(actions.len(), 2, "got {actions:?}");
@@ -176,7 +176,7 @@ async fn chain_1297_restores_both_2406_bits_on_login() {
 }
 
 #[tokio::test]
-async fn chain_1298_restores_the_workstation_indicator_on_login() {
+async fn live_db_chain_1298_restores_the_workstation_indicator_on_login() {
     let pool = require_db_or_skip!();
     let actions = restore_actions(&pool, 1298, 2407).await;
     assert_eq!(actions.len(), 1, "got {actions:?}");
@@ -193,7 +193,7 @@ async fn chain_1298_restores_the_workstation_indicator_on_login() {
 /// not re-arm the escort or the terminal — the escort is over and the
 /// terminal was cleared at victory.
 #[tokio::test]
-async fn the_restores_do_not_cross_steps() {
+async fn live_db_the_restores_do_not_cross_steps() {
     let pool = require_db_or_skip!();
     for (chain_id, wrong_step) in [(1296, 2407), (1297, 2405), (1298, 2406)] {
         let actions = restore_actions(&pool, chain_id, wrong_step).await;
@@ -207,7 +207,7 @@ async fn the_restores_do_not_cross_steps() {
 
 /// The restores are keyed to the Castle world.
 #[tokio::test]
-async fn chain_1297_does_not_restore_in_another_world() {
+async fn live_db_chain_1297_does_not_restore_in_another_world() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -259,7 +259,7 @@ async fn comms_reentry_actions(
 /// everyone. Chains 1297/1298 repair that only on a relog; 1300 and 1301
 /// repair it on walking back into the room.
 #[tokio::test]
-async fn chain_1300_repairs_both_2406_bits_on_region_re_entry() {
+async fn live_db_chain_1300_repairs_both_2406_bits_on_region_re_entry() {
     let pool = require_db_or_skip!();
     let actions = comms_reentry_actions(&pool, 1300, 2406).await;
     assert_eq!(actions.len(), 2, "got {actions:?}");
@@ -280,7 +280,7 @@ async fn chain_1300_repairs_both_2406_bits_on_region_re_entry() {
 }
 
 #[tokio::test]
-async fn chain_1301_repairs_the_delivery_bit_on_region_re_entry() {
+async fn live_db_chain_1301_repairs_the_delivery_bit_on_region_re_entry() {
     let pool = require_db_or_skip!();
     let actions = comms_reentry_actions(&pool, 1301, 2407).await;
     assert_eq!(actions.len(), 1, "got {actions:?}");
@@ -297,7 +297,7 @@ async fn chain_1301_repairs_the_delivery_bit_on_region_re_entry() {
 /// only by their step gates. If any gate drifted, a re-entry would re-run
 /// 1291's advance and clear the escort a second time.
 #[tokio::test]
-async fn the_comms_room_chains_never_claim_the_same_entry() {
+async fn live_db_the_comms_room_chains_never_claim_the_same_entry() {
     let pool = require_db_or_skip!();
     let mut engine = ChainEngine::new();
     for chain_id in [1291, 1300, 1301] {

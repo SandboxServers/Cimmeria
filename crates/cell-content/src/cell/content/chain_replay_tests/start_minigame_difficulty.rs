@@ -89,7 +89,7 @@ async fn cleanup_difficulty_chain(pool: &PgPool) {
 /// field falls back to the default 1) and fails again with the executor
 /// reverted to its hardcoded `difficulty: 1`.
 #[tokio::test]
-async fn authored_difficulty_round_trips_from_loader_to_base_message() {
+async fn live_db_authored_difficulty_round_trips_from_loader_to_base_message() {
     let pool = require_db_or_skip!();
 
     // Start from a clean slate in case a previous panicking run leaked.
@@ -129,7 +129,7 @@ async fn authored_difficulty_round_trips_from_loader_to_base_message() {
 /// up as a missing minigame plus a WARN rather than as a silently
 /// different difficulty tier.
 #[tokio::test]
-async fn out_of_range_difficulty_rejects_the_action_row() {
+async fn live_db_out_of_range_difficulty_rejects_the_action_row() {
     let pool = require_db_or_skip!();
 
     cleanup_difficulty_chain(&pool).await;

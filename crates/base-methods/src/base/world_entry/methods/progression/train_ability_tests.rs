@@ -52,7 +52,7 @@ async fn setup(pool: &sqlx::PgPool, id: i32, training_points: i32, abilities: &[
 }
 
 #[tokio::test]
-async fn replayed_purchase_debits_cost_once_and_adds_spend_once() {
+async fn live_db_replayed_purchase_debits_cost_once_and_adds_spend_once() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0301;
     setup(&pool, ID, 5, &[STARTER]).await;
@@ -79,7 +79,7 @@ async fn replayed_purchase_debits_cost_once_and_adds_spend_once() {
 }
 
 #[tokio::test]
-async fn purchase_short_of_points_leaves_all_four_fields_untouched() {
+async fn live_db_purchase_short_of_points_leaves_all_four_fields_untouched() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0302;
     setup(&pool, ID, 1, &[STARTER]).await;
@@ -97,7 +97,7 @@ async fn purchase_short_of_points_leaves_all_four_fields_untouched() {
 /// ability is already known, so buying it is refused, and it never enters
 /// `trained_abilities` or `tree_points_spent`.
 #[tokio::test]
-async fn purchase_of_a_starter_ability_is_refused_and_adds_no_spend() {
+async fn live_db_purchase_of_a_starter_ability_is_refused_and_adds_no_spend() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0303;
     setup(&pool, ID, 5, &[STARTER]).await;
@@ -162,7 +162,7 @@ async fn run_handler_as(
 }
 
 #[tokio::test]
-async fn handler_reports_both_counters_to_the_cell() {
+async fn live_db_handler_reports_both_counters_to_the_cell() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0304;
     setup(&pool, ID, 5, &[]).await;
@@ -190,7 +190,7 @@ async fn handler_reports_both_counters_to_the_cell() {
 }
 
 #[tokio::test]
-async fn handler_refuses_a_negative_cost_without_touching_the_row() {
+async fn live_db_handler_refuses_a_negative_cost_without_touching_the_row() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0305;
     setup(&pool, ID, 5, &[]).await;
@@ -207,7 +207,7 @@ async fn handler_refuses_a_negative_cost_without_touching_the_row() {
 /// A reused entity id: the session now plays another character. The base
 /// must not debit the validated character or report a grant for it.
 #[tokio::test]
-async fn handler_refuses_when_the_session_plays_another_character() {
+async fn live_db_handler_refuses_when_the_session_plays_another_character() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0306;
     setup(&pool, ID, 5, &[]).await;

@@ -192,7 +192,7 @@ async fn gate_travel_without_active_player_id_aborts_before_persist() {
 /// "lowest player_id for the account" would write the destination
 /// onto the wrong character's row, surfacing here as a column drift.
 #[tokio::test]
-async fn gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
+async fn live_db_gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
     use crate::test_support::require_db_or_skip;
 
     let pool = require_db_or_skip!();

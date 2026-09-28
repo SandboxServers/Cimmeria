@@ -57,7 +57,7 @@ async fn done(pool: &PgPool, s: &[Session; 3]) {
 /// the seller's cancel (the item stays in escrow for the sweep). Bug shape:
 /// without the `expires_at > now` check both go through on a closed auction.
 #[tokio::test]
-async fn bid_and_cancel_after_expiry_are_refused() {
+async fn live_db_bid_and_cancel_after_expiry_are_refused() {
     let pool = require_db_or_skip!();
     let (s, item, seq, h) = listed(&pool, 0x00, 0).await;
     h.bid(s[1], seq, 200).await;
@@ -93,7 +93,7 @@ async fn bid_and_cancel_after_expiry_are_refused() {
 /// D6: 5% over the standing bid, at least 1. 104 over 100 is refused,
 /// 105 accepted.
 #[tokio::test]
-async fn bids_below_the_five_percent_increment_are_refused() {
+async fn live_db_bids_below_the_five_percent_increment_are_refused() {
     let pool = require_db_or_skip!();
     let (s, _item, seq, h) = listed(&pool, 0x10, 0).await;
     h.bid(s[1], seq, 100).await;
@@ -108,7 +108,7 @@ async fn bids_below_the_five_percent_increment_are_refused() {
 /// D5: a seller with 20 active listings cannot open a 21st, and the item
 /// stays in the bag. Bug shape: without the cap the listing opens.
 #[tokio::test]
-async fn the_twenty_first_listing_is_refused() {
+async fn live_db_the_twenty_first_listing_is_refused() {
     let pool = require_db_or_skip!();
     let (s, _item, _seq, h) = listed(&pool, 0x20, 0).await;
     // One listed through the handler; fill the rest directly.
@@ -143,7 +143,7 @@ async fn the_twenty_first_listing_is_refused() {
 /// Bug shape: the branch left a buyout bid standing until expiry; a
 /// settlement off the mail writer leaves no escrow row on the buyer's mail.
 #[tokio::test]
-async fn a_buyout_settles_immediately() {
+async fn live_db_a_buyout_settles_immediately() {
     let pool = require_db_or_skip!();
     let (s, item, seq, h) = listed(&pool, 0x30, 1_000).await;
     h.bid(s[1], seq, 200).await;
@@ -186,7 +186,7 @@ async fn a_buyout_settles_immediately() {
 /// by mail and waits there. Bug shape: the pre-mail rule refused it with
 /// `BagFull` and left the auction open.
 #[tokio::test]
-async fn a_buyout_into_full_bags_settles_by_mail() {
+async fn live_db_a_buyout_into_full_bags_settles_by_mail() {
     let pool = require_db_or_skip!();
     let (s, item, seq, h) = listed(&pool, 0x40, 1_000).await;
     sqlx::query(

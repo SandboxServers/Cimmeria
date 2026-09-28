@@ -119,7 +119,7 @@ fn assert_badge_grant(a: &Action, what: &str) {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1271_region_entry_advances_to_the_kill_step() {
+async fn live_db_chain_1271_region_entry_advances_to_the_kill_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -151,7 +151,7 @@ async fn chain_1271_region_entry_advances_to_the_kill_step() {
 }
 
 #[tokio::test]
-async fn chain_1271_does_not_resolve_once_2404_is_active() {
+async fn live_db_chain_1271_does_not_resolve_once_2404_is_active() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -173,7 +173,7 @@ async fn chain_1271_does_not_resolve_once_2404_is_active() {
 /// 702's chain 1261 shares this volume. A player who holds 702 but never
 /// took 703 must not get 703's advance.
 #[tokio::test]
-async fn chain_1271_does_not_resolve_without_703() {
+async fn live_db_chain_1271_does_not_resolve_without_703() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -203,7 +203,7 @@ async fn chain_1271_does_not_resolve_without_703() {
 /// who gated 1271 on 702's step by mistake, would leave a player holding
 /// only 703 stuck on step 2403 forever.
 #[tokio::test]
-async fn chains_1261_and_1271_both_claim_one_interrogation_block_entry() {
+async fn live_db_chains_1261_and_1271_both_claim_one_interrogation_block_entry() {
     let pool = require_db_or_skip!();
     let actions = resolve_chains(
         &pool,
@@ -260,7 +260,7 @@ async fn chains_1261_and_1271_both_claim_one_interrogation_block_entry() {
 /// 703. This is what a player who took 703 without 702 (or who finished 702
 /// on an earlier visit) sees.
 #[tokio::test]
-async fn only_703_advances_when_the_player_holds_only_703() {
+async fn live_db_only_703_advances_when_the_player_holds_only_703() {
     let pool = require_db_or_skip!();
     let actions = resolve_chains(
         &pool,
@@ -296,7 +296,7 @@ async fn only_703_advances_when_the_player_holds_only_703() {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1272_romney_death_completes_703_and_grants_the_badge() {
+async fn live_db_chain_1272_romney_death_completes_703_and_grants_the_badge() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -339,7 +339,7 @@ async fn chain_1272_romney_death_completes_703_and_grants_the_badge() {
 /// nothing — Romney respawns on the ordinary spawner timer for other
 /// players, so every later death re-fires this trigger.
 #[tokio::test]
-async fn chain_1272_does_not_regrant_after_the_mission_is_done() {
+async fn live_db_chain_1272_does_not_regrant_after_the_mission_is_done() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -363,7 +363,7 @@ async fn chain_1272_does_not_regrant_after_the_mission_is_done() {
 
 /// A different NPC dying must not satisfy the tag filter.
 #[tokio::test]
-async fn chain_1272_does_not_resolve_for_another_tag() {
+async fn live_db_chain_1272_does_not_resolve_for_another_tag() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -386,7 +386,7 @@ async fn chain_1272_does_not_resolve_for_another_tag() {
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn chain_1273_off_path_death_advances_completes_and_grants() {
+async fn live_db_chain_1273_off_path_death_advances_completes_and_grants() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -427,7 +427,7 @@ async fn chain_1273_off_path_death_advances_completes_and_grants() {
 }
 
 #[tokio::test]
-async fn chain_1273_does_not_resolve_on_the_kill_step() {
+async fn live_db_chain_1273_does_not_resolve_on_the_kill_step() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -456,7 +456,7 @@ async fn chain_1273_does_not_resolve_on_the_kill_step() {
 /// `mission_status 703 eq active`), both would match the same snapshot and
 /// the player would get two badges and a doubled completion.
 #[tokio::test]
-async fn only_one_death_chain_claims_a_kill_on_the_expected_path() {
+async fn live_db_only_one_death_chain_claims_a_kill_on_the_expected_path() {
     let pool = require_db_or_skip!();
     let actions = resolve_chains(
         &pool,
@@ -499,7 +499,7 @@ async fn only_one_death_chain_claims_a_kill_on_the_expected_path() {
 }
 
 #[tokio::test]
-async fn only_one_death_chain_claims_a_kill_on_the_off_path() {
+async fn live_db_only_one_death_chain_claims_a_kill_on_the_off_path() {
     let pool = require_db_or_skip!();
     let actions = resolve_chains(
         &pool,
@@ -539,7 +539,7 @@ async fn only_one_death_chain_claims_a_kill_on_the_off_path() {
 /// persistent shared world: Romney is a normal spawner NPC and every
 /// player in the zone can kill him repeatedly.
 #[tokio::test]
-async fn neither_death_chain_fires_after_703_is_complete() {
+async fn live_db_neither_death_chain_fires_after_703_is_complete() {
     let pool = require_db_or_skip!();
     let actions = resolve_chains(
         &pool,

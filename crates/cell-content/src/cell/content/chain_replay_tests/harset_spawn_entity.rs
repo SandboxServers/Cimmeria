@@ -232,7 +232,7 @@ fn register(engine: &mut ChainEngine, chain: cimmeria_content_engine::chain::Cha
 /// own instance, and `entity_dead_tag` on the tag that entity actually
 /// carries resolves the objective completion.
 #[tokio::test]
-async fn mission_accept_spawns_a_tagged_npc_that_entity_dead_tag_can_complete_on() {
+async fn live_db_mission_accept_spawns_a_tagged_npc_that_entity_dead_tag_can_complete_on() {
     let pool = require_db_or_skip!();
     cleanup_sentinel_chains(&pool).await;
     let template_id = pick_template_id(&pool).await;
@@ -393,7 +393,7 @@ async fn mission_accept_spawns_a_tagged_npc_that_entity_dead_tag_can_complete_on
 /// resolve nothing. Without this, a kill chain that matched on tag
 /// presence rather than tag equality would look correct above.
 #[tokio::test]
-async fn entity_dead_tag_does_not_fire_for_a_different_tag() {
+async fn live_db_entity_dead_tag_does_not_fire_for_a_different_tag() {
     let pool = require_db_or_skip!();
     cleanup_sentinel_chains(&pool).await;
     let template_id = pick_template_id(&pool).await;
@@ -433,7 +433,7 @@ async fn entity_dead_tag_does_not_fire_for_a_different_tag() {
 /// old bare `SpaceManager::destroy_entity` still removes the entity — so
 /// the `LeftAoI` assertion, not the `get_entity` one, is the guard.
 #[tokio::test]
-async fn despawn_entity_chain_removes_the_spawned_npc_and_notifies_witnesses() {
+async fn live_db_despawn_entity_chain_removes_the_spawned_npc_and_notifies_witnesses() {
     let pool = require_db_or_skip!();
     cleanup_sentinel_chains(&pool).await;
     let template_id = pick_template_id(&pool).await;

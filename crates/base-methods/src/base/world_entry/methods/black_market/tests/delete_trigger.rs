@@ -42,7 +42,7 @@ async fn auction_count(pool: &PgPool, seq: i32) -> i64 {
 /// standing bidder gets their held cash back. Bug shapes: RESTRICT fails the
 /// delete; a cascade without the trigger keeps the bidder's 300.
 #[tokio::test]
-async fn deleting_a_seller_refunds_the_standing_bidder() {
+async fn live_db_deleting_a_seller_refunds_the_standing_bidder() {
     let pool = require_db_or_skip!();
     let seller: Session = (0x7000_AAA1, BASE, BASE + 1);
     let bidder: Session = (0x7000_AAA2, BASE + 2, BASE + 3);
@@ -82,7 +82,7 @@ async fn deleting_a_seller_refunds_the_standing_bidder() {
 /// reopens with no bid (no phantom bid left for the sweep), and a settled
 /// auction they won keeps its row with no buyer.
 #[tokio::test]
-async fn deleting_a_bidder_reopens_the_auction() {
+async fn live_db_deleting_a_bidder_reopens_the_auction() {
     let pool = require_db_or_skip!();
     let seller: Session = (0x7000_AAB1, BASE + 0x10, BASE + 0x11);
     let bidder: Session = (0x7000_AAB2, BASE + 0x12, BASE + 0x13);

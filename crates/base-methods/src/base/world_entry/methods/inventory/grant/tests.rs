@@ -124,7 +124,7 @@ mod handle_grant_item_tests {
     /// in the target container, with the requested type_id and stack size.
     /// Pins the basic INSERT contract before the concurrency test stresses it.
     #[tokio::test]
-    async fn grants_single_item_into_lowest_free_slot() {
+    async fn live_db_grants_single_item_into_lowest_free_slot() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -189,7 +189,7 @@ mod handle_grant_item_tests {
     /// no-lock implementation overwhelmingly likely to drop at least one
     /// row to the unique-slot index.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn concurrent_grants_to_same_container_get_distinct_slots() {
+    async fn live_db_concurrent_grants_to_same_container_get_distinct_slots() {
         use tokio::sync::Barrier;
 
         let pool = require_db_or_skip!();
@@ -273,7 +273,7 @@ mod handle_grant_item_tests {
     /// looted slappacks stop eating one bag slot per pickup —
     /// pre-fix every grant unconditionally reserved a fresh slot.
     #[tokio::test]
-    async fn stackable_item_grants_merge_into_one_row() {
+    async fn live_db_stackable_item_grants_merge_into_one_row() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 200;
         let player_id = TEST_BASE + 201;
@@ -351,7 +351,7 @@ mod handle_grant_item_tests {
     /// Pinning the all-or-nothing rule here means the simpler
     /// invariant — one grant = one row write — survives.
     #[tokio::test]
-    async fn full_stack_falls_back_to_new_slot() {
+    async fn live_db_full_stack_falls_back_to_new_slot() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 210;
         let player_id = TEST_BASE + 211;
@@ -427,7 +427,7 @@ mod handle_grant_item_tests {
     /// clause from the merge query doesn't silently start
     /// merging a slappack pickup into the wrong stack.
     #[tokio::test]
-    async fn different_type_ids_do_not_merge() {
+    async fn live_db_different_type_ids_do_not_merge() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 220;
         let player_id = TEST_BASE + 221;

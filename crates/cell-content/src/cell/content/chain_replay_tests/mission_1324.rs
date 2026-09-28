@@ -282,7 +282,7 @@ fn fresh_jaffa_in_command_center() -> ExecutionContext {
 /// opens dialog 4357 when the player clicks — `fire_player_loaded` runs
 /// on login, gate travel and the cross-world door alike.
 #[tokio::test]
-async fn entering_the_command_center_paints_mohkatans_offer_icon() {
+async fn live_db_entering_the_command_center_paints_mohkatans_offer_icon() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -321,7 +321,7 @@ async fn entering_the_command_center_paints_mohkatans_offer_icon() {
 /// leaves no trace in the chain-resolution layer, which is why the guard
 /// is here rather than in an executor test.
 #[tokio::test]
-async fn clicking_mohkatan_in_the_offer_state_must_resolve_no_chain() {
+async fn live_db_clicking_mohkatan_in_the_offer_state_must_resolve_no_chain() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -349,7 +349,7 @@ async fn clicking_mohkatan_in_the_offer_state_must_resolve_no_chain() {
 /// because the bind is what makes the NPC clickable at all, the bind is
 /// the whole access control.
 #[tokio::test]
-async fn a_human_is_never_offered_1324() {
+async fn live_db_a_human_is_never_offered_1324() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -372,7 +372,7 @@ async fn a_human_is_never_offered_1324() {
 /// `OnPlayerLoaded` with a `None` world_name matches every world, and a
 /// missing `world` condition would let a crafted context through.
 #[tokio::test]
-async fn the_offer_does_not_paint_in_harset_itself() {
+async fn live_db_the_offer_does_not_paint_in_harset_itself() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -393,7 +393,7 @@ async fn the_offer_does_not_paint_in_harset_itself() {
 /// `Condition::World` returns false for every operator when the world is
 /// unknown.
 #[tokio::test]
-async fn the_offer_fails_closed_without_a_world_context() {
+async fn live_db_the_offer_fails_closed_without_a_world_context() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -412,7 +412,7 @@ async fn the_offer_fails_closed_without_a_world_context() {
 /// never come back on a later Command Center entry — `mission_status
 /// 1324 eq not_active` is what retires it.
 #[tokio::test]
-async fn a_completed_1324_never_re_offers() {
+async fn live_db_a_completed_1324_never_re_offers() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -441,7 +441,7 @@ async fn a_completed_1324_never_re_offers() {
 /// `interactions/dispatch/interact.rs` handing a later state the wrong
 /// dialog.
 #[tokio::test]
-async fn accepting_1324_moves_the_icon_from_mohkatan_to_baal() {
+async fn live_db_accepting_1324_moves_the_icon_from_mohkatan_to_baal() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -466,7 +466,7 @@ async fn accepting_1324_moves_the_icon_from_mohkatan_to_baal() {
 /// OTHER three actions would still run — re-showing 4358 and re-shuffling
 /// the binds on every stray choice.
 #[tokio::test]
-async fn the_accept_chain_does_not_refire_once_1324_is_active() {
+async fn live_db_the_accept_chain_does_not_refire_once_1324_is_active() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -480,7 +480,7 @@ async fn the_accept_chain_does_not_refire_once_1324_is_active() {
 /// Negative: and not once it is completed either — the other non-
 /// `not_active` state the mission lifecycle can be in.
 #[tokio::test]
-async fn the_accept_chain_does_not_refire_once_1324_is_completed() {
+async fn live_db_the_accept_chain_does_not_refire_once_1324_is_completed() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -501,7 +501,7 @@ async fn the_accept_chain_does_not_refire_once_1324_is_completed() {
 /// `advance_step`, never `complete_objective 4543` — see the structural
 /// guard below for why.
 #[tokio::test]
-async fn the_baal_council_advances_1324_to_the_return_step() {
+async fn live_db_the_baal_council_advances_1324_to_the_return_step() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -540,7 +540,7 @@ async fn the_baal_council_advances_1324_to_the_return_step() {
 /// as `completed`. A gate written against the wrong one of those would
 /// pass a single-shape test and break on relog.
 #[tokio::test]
-async fn clicking_baal_again_after_the_council_resolves_nothing() {
+async fn live_db_clicking_baal_again_after_the_council_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -563,7 +563,7 @@ async fn clicking_baal_again_after_the_council_resolves_nothing() {
 /// condition is the only thing standing between a crafted interact and
 /// the chain.
 #[tokio::test]
-async fn clicking_baal_from_the_wrong_world_resolves_nothing() {
+async fn live_db_clicking_baal_from_the_wrong_world_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -579,7 +579,7 @@ async fn clicking_baal_from_the_wrong_world_resolves_nothing() {
 
 /// Negative (wrong archetype) on the council click.
 #[tokio::test]
-async fn a_human_cannot_trigger_the_baal_council() {
+async fn live_db_a_human_cannot_trigger_the_baal_council() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -612,7 +612,7 @@ async fn a_human_cannot_trigger_the_baal_council() {
 /// terminal step — the same verb on a mid-mission step would be the
 /// early-completion bug the `advance_step` guard covers.
 #[tokio::test]
-async fn returning_to_mohkatan_completes_1324() {
+async fn live_db_returning_to_mohkatan_completes_1324() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -650,7 +650,7 @@ async fn returning_to_mohkatan_completes_1324() {
 /// the offer chain is retired by `mission_status`. Both post-advance step
 /// shapes are covered for the same reason as the Ba'al guard.
 #[tokio::test]
-async fn clicking_mohkatan_after_completing_1324_resolves_nothing() {
+async fn live_db_clicking_mohkatan_after_completing_1324_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -681,7 +681,7 @@ async fn clicking_mohkatan_after_completing_1324_resolves_nothing() {
 /// who steps out of the Command Center and back in finds the NPC he is
 /// supposed to talk to unclickable, with no error anywhere.
 #[tokio::test]
-async fn relog_restores_exactly_the_icon_the_active_step_owns() {
+async fn live_db_relog_restores_exactly_the_icon_the_active_step_owns() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -742,7 +742,7 @@ async fn relog_restores_exactly_the_icon_the_active_step_owns() {
 /// whole file (6301-6500), not just H20/H22's chains, so a later packet
 /// in the same file inherits the guard.
 #[tokio::test]
-async fn no_harset_jaffa_chain_completes_an_objective() {
+async fn live_db_no_harset_jaffa_chain_completes_an_objective() {
     let pool = require_db_or_skip!();
     // `content_actions.chain_id` is `integer`, so the decode target is
     // `i32`. An `i64` here would compile and pass while the query
@@ -780,7 +780,7 @@ async fn no_harset_jaffa_chain_completes_an_objective() {
 /// never mutated globally" guardrail expressed as a test, and it is also
 /// what the `interact_tag_linter` allowlist entries for this file assume.
 #[tokio::test]
-async fn no_harset_jaffa_chain_sets_a_global_interaction_bit() {
+async fn live_db_no_harset_jaffa_chain_sets_a_global_interaction_bit() {
     let pool = require_db_or_skip!();
     let rows: Vec<(i32, Option<String>)> = sqlx::query_as(
         "SELECT chain_id, target_key FROM resources.content_actions \
@@ -811,7 +811,7 @@ async fn no_harset_jaffa_chain_sets_a_global_interaction_bit() {
 /// removes first makes the result independent of what any other packet
 /// hangs off the completion.
 #[tokio::test]
-async fn every_remove_dialog_set_precedes_its_chains_complete_mission() {
+async fn live_db_every_remove_dialog_set_precedes_its_chains_complete_mission() {
     let pool = require_db_or_skip!();
     let rows: Vec<(i32, i32, i32)> = sqlx::query_as(
         "SELECT c.chain_id, \
@@ -871,7 +871,7 @@ async fn every_remove_dialog_set_precedes_its_chains_complete_mission() {
 /// dialog behind it. dsm 120002 is deliberately one of those; its guard
 /// lives in [`super::mission_1326`].
 #[tokio::test]
-async fn every_bound_dialog_set_map_carries_its_bit_and_needed_dialog() {
+async fn live_db_every_bound_dialog_set_map_carries_its_bit_and_needed_dialog() {
     let pool = require_db_or_skip!();
 
     // (dsm_id, expected interaction_flags, must a click open a dialog

@@ -167,7 +167,7 @@ fn path_reaches(
 /// inner join live: a region with the wrong `type`, or with a `world_id` that
 /// has no world row, disappears here and nowhere else.
 #[tokio::test]
-async fn the_three_interior_regions_load_with_four_corners_each() {
+async fn live_db_the_three_interior_regions_load_with_four_corners_each() {
     let pool = require_db_or_skip!();
 
     let regions = load_regions_from_db(&pool)
@@ -215,7 +215,7 @@ async fn the_three_interior_regions_load_with_four_corners_each() {
 /// claim: these are edge triggers, and a box that swallowed the approach
 /// corridor would never fire one.
 #[tokio::test]
-async fn interior_region_boxes_contain_their_room_and_exclude_the_approach() {
+async fn live_db_interior_region_boxes_contain_their_room_and_exclude_the_approach() {
     let pool = require_db_or_skip!();
 
     let regions = load_regions_from_db(&pool)
@@ -271,7 +271,7 @@ async fn interior_region_boxes_contain_their_room_and_exclude_the_approach() {
 /// `region_contains_xz`, because the vertical discrimination is the whole point
 /// and `region_contains_xz` is Y-blind.
 #[tokio::test]
-async fn the_storage_region_matches_where_real_players_actually_stood() {
+async fn live_db_the_storage_region_matches_where_real_players_actually_stood() {
     let pool = require_db_or_skip!();
 
     let regions = load_regions_from_db(&pool)
@@ -333,7 +333,7 @@ async fn the_storage_region_matches_where_real_players_actually_stood() {
 /// makes this a guard on the seed: shrink or move set 2122 and the probes move
 /// with it.
 #[tokio::test]
-async fn the_storage_region_sits_on_the_shipped_world_70_navmesh() {
+async fn live_db_the_storage_region_sits_on_the_shipped_world_70_navmesh() {
     use cimmeria_common::Vector3;
     use cimmeria_entity::navigation::NavMesh;
 

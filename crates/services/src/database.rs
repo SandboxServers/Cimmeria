@@ -247,7 +247,7 @@ mod tests {
     /// Regression shape: drop the sub-select wrap AND the READ ONLY tx and a
     /// `DELETE`/`UPDATE` would execute against the live DB.
     #[tokio::test]
-    async fn read_only_query_rejects_write() {
+    async fn live_db_read_only_query_rejects_write() {
         let pool = require_db_or_skip!();
         // WHERE 1=0 so that even if the guard failed, no row would change —
         // the assertion is that the call itself is refused.
@@ -262,7 +262,7 @@ mod tests {
     /// READ ONLY transaction is the backstop for anything the sub-select wrap
     /// doesn't catch as a syntax error.
     #[tokio::test]
-    async fn read_only_query_rejects_cte_write() {
+    async fn live_db_read_only_query_rejects_cte_write() {
         let pool = require_db_or_skip!();
         let result = read_only_query(
             &pool,
@@ -280,7 +280,7 @@ mod tests {
     /// exactly `row_cap` rows and flags truncation. `generate_series` needs no
     /// seed data, so this guards the cap independently of the schema.
     #[tokio::test]
-    async fn read_only_query_enforces_row_cap() {
+    async fn live_db_read_only_query_enforces_row_cap() {
         let pool = require_db_or_skip!();
         let result = read_only_query(&pool, "SELECT generate_series(1, 600) AS n", 500)
             .await
@@ -295,7 +295,7 @@ mod tests {
     /// Control: a query under the cap returns all its rows and is not
     /// truncated — proves the cap test isn't passing vacuously.
     #[tokio::test]
-    async fn read_only_query_under_cap_is_not_truncated() {
+    async fn live_db_read_only_query_under_cap_is_not_truncated() {
         let pool = require_db_or_skip!();
         let result = read_only_query(&pool, "SELECT generate_series(1, 3) AS n", 500)
             .await

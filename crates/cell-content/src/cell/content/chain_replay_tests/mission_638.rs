@@ -140,7 +140,7 @@ async fn assert_region_enter_does_not_resolve(chain_id: i32, archetype: i32) {
 /// dialog 2300), not the Jaffa one. Pinned shape: chain 1011's
 /// archetype-neq-8 condition routes here.
 #[tokio::test]
-async fn chain_1011_routes_non_jaffa_to_human_dialog_set() {
+async fn live_db_chain_1011_routes_non_jaffa_to_human_dialog_set() {
     const ARCHETYPE_SOLDIER: i32 = 1;
     const HUMAN_FREE_PRISONER_DIALOG_SET_MAP: i32 = 2794;
     assert_region_enter_resolves_dialog_set(
@@ -156,7 +156,7 @@ async fn chain_1011_routes_non_jaffa_to_human_dialog_set() {
 /// the symbiote dialog), not the Human one. Pinned shape: chain 1012's
 /// archetype-eq-8 condition routes here.
 #[tokio::test]
-async fn chain_1012_routes_jaffa_to_jaffa_dialog_set() {
+async fn live_db_chain_1012_routes_jaffa_to_jaffa_dialog_set() {
     const ARCHETYPE_JAFFA: i32 = 8;
     const JAFFA_FREE_PRISONER_DIALOG_SET_MAP: i32 = 5866;
     assert_region_enter_resolves_dialog_set(
@@ -171,7 +171,7 @@ async fn chain_1012_routes_jaffa_to_jaffa_dialog_set() {
 /// player is Jaffa. Without the archetype condition both chains would
 /// fire and the prisoner would offer both dialog sets at once.
 #[tokio::test]
-async fn chain_1011_does_not_match_jaffa_archetype() {
+async fn live_db_chain_1011_does_not_match_jaffa_archetype() {
     const ARCHETYPE_JAFFA: i32 = 8;
     assert_region_enter_does_not_resolve(1011, ARCHETYPE_JAFFA).await;
 }
@@ -180,7 +180,7 @@ async fn chain_1011_does_not_match_jaffa_archetype() {
 /// player is non-Jaffa. Mirror of the above, on the other side of the
 /// archetype gate.
 #[tokio::test]
-async fn chain_1012_does_not_match_non_jaffa_archetype() {
+async fn live_db_chain_1012_does_not_match_non_jaffa_archetype() {
     const ARCHETYPE_SOLDIER: i32 = 1;
     assert_region_enter_does_not_resolve(1012, ARCHETYPE_SOLDIER).await;
 }
@@ -201,7 +201,7 @@ async fn chain_1012_does_not_match_non_jaffa_archetype() {
 /// exactly one of each, which fails on the pre-purge tree and passes
 /// once `space_castle_cellblock_chains.sql` is deleted.
 #[tokio::test]
-async fn jaffa_region2_entry_resolves_exactly_one_dialog_bind_and_accept() {
+async fn live_db_jaffa_region2_entry_resolves_exactly_one_dialog_bind_and_accept() {
     use cimmeria_content_engine::actions::Action;
 
     const ARCHETYPE_JAFFA: i32 = 8;
@@ -276,7 +276,7 @@ async fn jaffa_region2_entry_resolves_exactly_one_dialog_bind_and_accept() {
 /// of the bug was never double-firing — this test pins that it stays
 /// correct now that the duplicate file is gone.
 #[tokio::test]
-async fn human_region2_entry_resolves_only_human_dialog_bind() {
+async fn live_db_human_region2_entry_resolves_only_human_dialog_bind() {
     use cimmeria_content_engine::actions::Action;
 
     const ARCHETYPE_SOLDIER: i32 = 1;

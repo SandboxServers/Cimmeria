@@ -77,7 +77,7 @@ async fn grant_and_collect(
 /// own client and everyone nearby kept the introduction-time level.
 /// Reverting the `broadcast_to_witnesses` call leaves `broadcasts` empty.
 #[tokio::test]
-async fn level_up_is_fanned_out_to_witnesses_with_the_final_level() {
+async fn live_db_level_up_is_fanned_out_to_witnesses_with_the_final_level() {
     let pool = require_db_or_skip!();
     // Far past several boundaries: a multi-level catch-up grant must still
     // produce ONE broadcast, carrying the level that was persisted.
@@ -101,7 +101,7 @@ async fn level_up_is_fanned_out_to_witnesses_with_the_final_level() {
 /// No boundary crossed, nothing to tell anyone: an XP grant that does not
 /// change the level must not spam every witness with a no-op update.
 #[tokio::test]
-async fn xp_grant_without_a_level_up_sends_no_witness_broadcast() {
+async fn live_db_xp_grant_without_a_level_up_sends_no_witness_broadcast() {
     let pool = require_db_or_skip!();
     let (level, broadcasts) = grant_and_collect(&pool, 510, 50).await;
 
