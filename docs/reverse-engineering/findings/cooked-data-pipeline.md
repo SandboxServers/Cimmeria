@@ -101,7 +101,7 @@ LibCategory<LibCategoryKey<N,...>> struct layout:
 ```
 
 Note: offsets +0x3C/+0x40 store a vector of (category_id, element_key) pairs for in-flight requests.
-Each request pair is 8 bytes (two uint32s). Observed in `ServerSource_RequestElement` (`0x0043bdb0`).
+Each pair is 8 bytes. **Corrected 2026-09-28 (#840):** the vector does not hold outstanding requests. It holds `(element key, data)` pairs that arrived by `Event_Net_ProxyData` before the category's `onVersionInfo` (`+0x4C` still 0); `onVersionInfo` writes each one out through `0x0043bdb0` and clears the vector. See Finding 4a.
 
 ---
 
@@ -147,24 +147,43 @@ Client (ServerSource<N>)               Server (BaseApp)
         |      → return if != N (wrong cat)   |
         |   2. Read "RequiredUpdates" → this+0x48
         |   3. Read "InvalidateAll" bool:      |
-        |      - true:  flush cache at this+0x2C/0x30 (FUN_0047a690)
+        |      - true:  clear the element list at this+0x2C/0x30 and
+        |               delete every entry from the cache PAK (FUN_0047a690)
         |      - false: read "InvalidKeys" list, per-key invalidation
         |   4. Read "Version" → ServerSource_SetVersion(this, &version)
         |      → stores at this+0x24          |
         |      → writes to PAK MetaData entry  |
-        |   5. Iterate pending request vector (this+0x3C..0x40):
-        |      → ServerSource_RequestElement per entry
-        |         (fires Event_NetOut_elementDataRequest if not cached)
+        |   5. Write out every entry buffered in this+0x3C..0x40
+        |      (arrived before this reply) via FUN_0043bdb0, clear it
         |   6. Set this+0x4C = 1 (version_info_rcvd flag)
         |                                     |
-        |-- Event_NetOut_elementDataRequest(N, key) ->|
-        |<-- BASEMSG_RESOURCE_FRAGMENT x M ---|  (via Event_Net_ProxyData)
+        |<-- BASEMSG_RESOURCE_FRAGMENT x M ---|  (via Event_Net_ProxyData,
+        |                                     |   pushed by the server)
 ```
+
+Steps 3 and 5 were corrected on 2026-09-28 (#840) from a fresh headless decompile; see Finding 4a.
 
 The "Version" field from the server payload is stored at `ServerSource+0x24` and immediately persisted
 to the PAK archive's `MetaData` entry (4 bytes, little-endian uint32) via `ZipStorageBase_WriteMetaDataVersion`
 (`0x00479e10`). On the next session, if the PAK's `MetaData` matches the server version, no re-download
 is needed.
+
+---
+
+## Finding 4a — What the client does with pushed entries (#840)
+
+**Confidence**: HIGH for the handler bodies (headless decompile, 2026-09-28); MEDIUM for "nothing gates on `RequiredUpdates`" (no reader found in these handlers, none searched for program-wide).
+**Sources**: `0x00441630` (`onVersionInfo`), `0x0043dad0` (`Event_Net_ProxyData` handler, a bare label before this pass), `0x0043bdb0`, `0x0043a9d0`, `0x0047a690`, `0x0043b400` (`Event_Net_Disconnected`), `0x0044c560` / `0x00449d30` (`Event_Net_Connected` → `versionInfoRequest`), `0x0044c800` (the category-6 `ServerSource` constructor).
+
+- **When the request goes out.** `Event_Net_Connected` schedules `0x00449d30`, which sends `versionInfoRequest(CategoryId, Version = this+0x24)`. On the colo (SigNoz, 2026-09-28) all 21 requests arrive about 250 ms after the character list, at character select, before any `playCharacter`.
+- **InvalidateAll deletes the category's cache entries.** `FUN_0047a690` walks the archive's entries and removes them, then reopens the archive. Nothing is re-requested.
+- **The version is written before any entry arrives.** Step 4 above runs in the same call as step 3.
+- **Pushed entries are applied as they arrive.** The proxy-data handler `0x0043dad0` reads the category id and returns unless it is `N`. It then decrements `RequiredUpdates` (`+0x48`) if nonzero, reads the element key, and parses the data. If `+0x4C` (reply received) is set, it writes the entry at once through `0x0043bdb0`. Otherwise it buffers `(key, data)` in the vector at `+0x3C`, which step 5 writes out.
+- **`0x0043bdb0` is a write, not a request.** It calls `0x0043a9d0`, which serialises the element and writes the stream to the cache PAK as `_<key>` (`ZipStorageBase_WriteStreamToFile`). On success it emits an event carrying `(N, key, data)`, presumably the element-available notification. The `ServerSource_RequestElement` name from the V5 pass was wrong.
+- **`RequiredUpdates` is only a counter.** The constructor sets it to `LONG_MAX`, `onVersionInfo` overwrites it, and proxy data and `onCookedDataError` decrement it. No reader was found in these handlers.
+- **Disconnect resets the category.** `0x0043b400` sets `+0x4C = 0` and `RequiredUpdates = LONG_MAX`, and clears the buffered vector.
+
+What this means for the server: an `InvalidateAll` must be followed by every entry of the category, or the client keeps it empty. A server can push entries without being asked, and they are applied in arrival order. And since the version is stamped when the reply is read, a server that wants "complete" to be what the version means has to stamp it last (see [mission-pak-overrides.md § Why every mismatch is a full resync](../../architecture/mission-pak-overrides.md#why-every-mismatch-is-a-full-resync)).
 
 ---
 
@@ -307,7 +326,10 @@ The engine doc was corrected to 21 categories (issue #267).
 | `0x00479930` | `ZipStorageBase_WriteStreamToFile` | Writes ostream to named ZIP entry (ZipStorage.cpp) |
 | `0x00479e10` | `ZipStorageBase_WriteMetaDataVersion` | Writes 4-byte version stamp to PAK "MetaData" entry |
 | `0x00479e90` | `ServerSource_SetVersion` | Stores server version at `this+0x24` → calls WriteMetaDataVersion |
-| `0x0043bdb0` | `ServerSource_RequestElement` | Cache-miss check → fires Event_NetOut_elementDataRequest |
+| `0x0043bdb0` | `ServerSource_WriteElement` (was `ServerSource_RequestElement`) | Writes one element to the cache PAK via `0x0043a9d0`, then emits an element event. Corrected 2026-09-28 (Finding 4a) |
+| `0x0043dad0` | `ServerSource_onProxyData_Handler_cat6` | `Event_Net_ProxyData` handler: decrements `RequiredUpdates`, writes the entry or buffers it until `onVersionInfo` (Finding 4a) |
+| `0x0043b400` | `ServerSource_onNetDisconnected_cat6` | Clears `+0x4C`, resets `RequiredUpdates` to `LONG_MAX`, drops buffered entries |
+| `0x00449d30` | `ServerSource_SendVersionInfoRequest` | Sends `versionInfoRequest(CategoryId, Version)` after `Event_Net_Connected` |
 | `0x013a1620` | `CZipStorage_Dtor` | Destroys wstring at `+0xC`, CZipAutoBuffer at `+0x5C` |
 | `0x01ea56d8` | `g_pCacheLibrary` | Global: CacheLibrary singleton pointer |
 | `0x01ea56dc` | `g_CacheLibraryInitialized` | Global: initialized/shutdown state byte |
@@ -318,9 +340,9 @@ The engine doc was corrected to 21 categories (issue #267).
 
 1. **`FUN_0157ce00`** — the actual `CacheLibrary` body constructor. Not yet decompiled. Expected to initialize the internal red-black tree map.
 
-2. **`FUN_0047a690`** — called from `onVersionInfo` when `InvalidateAll=true`. Expected to flush all cached elements from the linked list at `this+0x2C`. Not yet decompiled.
+2. **`FUN_0047a690`** — **RESOLVED 2026-09-28 (#840)**: removes every entry from the category's cache archive and reopens it; see Finding 4a.
 
-3. **`FUN_0043a9d0`** — called from `ServerSource_RequestElement` as a cache-miss check. Returns bool (skip if already cached/in-flight). Not yet decompiled.
+3. **`FUN_0043a9d0`** — **RESOLVED 2026-09-28 (#840)**: writes the element stream to the cache PAK as `_<key>` and returns success; not a cache-miss check. See Finding 4a.
 
 4. **`FUN_004349b0`** — CME emit call used by `onCookedDataError` to fire `Event_Cache_ElementError`. Not yet confirmed as the generic emit path or a specific wrapper.
 
@@ -333,7 +355,7 @@ The engine doc was corrected to 21 categories (issue #267).
    the Rust map, and the engine doc's 21/22 rows were corrected. The observed "unreliable NPC behavior
    events" cause is the client never receiving behavior-event data on a category it listens to.
 
-7. **Net_ProxyData handler body** — the callback for `Event_Net_ProxyData` in the LibCategory constructor passes `&LAB_0043dad0` (a label, not a function symbol) as the method pointer. This means the fragment reassembly handler starts at `0x0043dad0`. Not yet decompiled.
+7. **Net_ProxyData handler body** — **RESOLVED 2026-09-28 (#840)**: decompiled headless (function created at the label); see Finding 4a.
 
 ---
 

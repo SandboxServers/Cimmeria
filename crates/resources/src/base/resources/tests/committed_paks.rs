@@ -21,12 +21,14 @@ fn shipped_sequences() -> super::super::CategoryData {
 }
 
 /// The on-disk PAK must stay the file clients already hold: same version, no
-/// Cimmeria entries. Additions belong in `sequence_overrides`, which delivers
-/// them per key.
+/// Cimmeria entries. Additions belong in `sequence_overrides`, whose metadata
+/// bump makes every client resync the category with them included.
 ///
 /// Editing the file's version instead is what broke clients on 2026-09-20: with
 /// no override list, a mismatch answered `invalidate_all = true` and pushed
 /// nothing, and the client emptied and persisted its whole sequence table.
+/// Since #840 a mismatch resyncs the whole category, so an edited PAK would
+/// reach clients, but only by editing the file every client already holds.
 #[test]
 fn on_disk_kismet_sequence_pak_is_the_client_shipped_file() {
     let shipped = shipped_sequences();
@@ -43,10 +45,9 @@ fn on_disk_kismet_sequence_pak_is_the_client_shipped_file() {
     }
 }
 
-/// Guard for the regression itself: category 1 must carry an override list, so
-/// `handle_version_info_request` takes the per-key branch
-/// (`invalidate_all = false`, `InvalidKeys = [...]`, pushes) rather than the
-/// destructive invalidate-all-and-push-nothing branch.
+/// Category 1 must carry its override list and bump, so a client holding the
+/// shipped table sees a mismatch and is resynced with the additions (#840).
+/// Before #840 the no-list branch pushed nothing and wiped the table.
 #[test]
 fn kismet_sequences_take_the_per_key_handshake() {
     let cache = ResourceCache::load_all(data_dir()).expect("committed PAKs load");

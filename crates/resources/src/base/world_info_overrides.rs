@@ -4,20 +4,21 @@
 //! [`cimmeria_wire::mercury::world_data::historical_cellblocks`]) are world
 //! ids the shipped catalogue has never had. The client's world table comes
 //! from this catalogue, so the server adds the seven entries in memory at
-//! startup and the cooked-data wire path (`versionInfoRequest` →
-//! `onVersionInfo(InvalidKeys=[1201..1207])` → `resourceFragment(_key, XML)`)
-//! pushes them. That is the path that already delivers new ids for dialogs
-//! (3996) and Kismet sequences (10187/10188).
+//! startup and bumps the category's metadata, so a client holding the shipped
+//! table is resynced with them (`versionInfoRequest` →
+//! `onVersionInfo(InvalidateAll)` → one `resourceFragment` per world → the
+//! version stamp, #840). New ids for dialogs (3996) and Kismet sequences
+//! (10187/10188) reach clients the same way.
 //!
 //! # Never edit the PAK on disk
 //!
 //! `data/cache/CookedWorldInfo.pak` stays byte-identical to the file clients
-//! ship with (`MetaData` 5959). The version bump lives only in memory, and
-//! it is only safe because this category now carries an override list: a
-//! category without one answers a version mismatch with
-//! `invalidate_all = true` and pushes nothing, and the client empties its
+//! ship with (`MetaData` 5959). The version bump lives only in memory. A
+//! build without #840 answers a mismatch on a category with no override list
+//! with `invalidate_all = true` and pushes nothing, and the client empties its
 //! whole table (the 2026-09-20 Kismet sequence wipe; see
-//! `super::sequence_overrides`).
+//! `super::sequence_overrides`), so a client that took this bump and then logs
+//! in to such a build loses its world table.
 //!
 //! The emitted XML reproduces the shipped entries byte for byte (QA-build
 //! shape: SOAP namespaces; attribute order `Flags`, `MinPerDay`,

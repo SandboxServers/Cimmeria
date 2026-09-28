@@ -71,9 +71,14 @@ pub fn build_resource_fragment(
 ///
 /// Tells the client about the current version of a resource category.
 ///
-/// `invalidate_all = true` makes the client drop and re-request the entire
-/// category. `invalidate_all = false` + a non-empty `invalid_keys` slice
-/// scopes the invalidation to just those element IDs — the client drops
+/// `invalidate_all = true` makes the client flush the entire category and
+/// persist it empty. It does not refetch the flushed entries (#754), so the
+/// caller must push every entry after it (`required_updates` = the entry
+/// count) or the client loses the category. The base's resync
+/// (`cooked_sync`, #840) is the only sender, and pushes every entry.
+///
+/// `invalidate_all = false` + a non-empty `invalid_keys` slice scopes the
+/// invalidation to just those element IDs — the client drops
 /// only those entries from its local cache and waits for the server to
 /// push replacements; it does NOT issue `elementDataRequest` for the
 /// invalidated keys. The caller is responsible for sending one

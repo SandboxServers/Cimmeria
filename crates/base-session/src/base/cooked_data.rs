@@ -9,8 +9,9 @@ use crate::mercury::{
     FRAG_MIDDLE,
 };
 
+use super::cooked_sync::{self, EnqueueOutcome, SyncJob, VersionReply};
 use super::helpers::{drain_acks_and_seq, get_active_entity_id, get_enc_version};
-use super::resources::{CategoryData, ResourceCache};
+use super::resources::ResourceCache;
 use super::ConnectedClientState;
 
 /// Maximum XML bytes per `BASEMSG_RESOURCE_FRAGMENT` packet.
@@ -29,13 +30,18 @@ use super::ConnectedClientState;
 /// The fragment-size guard test in `mercury::protocol::tests` pins this
 /// against `MercuryEncryption::decrypt(...)` for both first and non-first
 /// fragment shapes; bump in tandem if the wire-format overhead changes.
-const MAX_CHUNK: usize = 1390;
+pub(crate) const MAX_CHUNK: usize = 1390;
 
-/// Handle `versionInfoRequest` (0xC0).
+/// Handle `versionInfoRequest` (0xC0, character select only).
 ///
 /// Client payload: [categoryId: u32][version: u32]
-/// Response: onVersionInfo -- if we have data for this category, tell the client
-/// to invalidate and re-fetch; otherwise echo the client's version (cache OK).
+///
+/// Shaped by [`VersionReply::decide`]. A matching version, or a category
+/// the server does not serve, gets one `onVersionInfo` with no invalidation.
+/// A mismatch starts a full resync of the category on the session's resync
+/// task ([`cooked_sync`]): the replies and every entry go out from there,
+/// paced through the reliable window, so this returns at once and the
+/// receive loop never waits on a push.
 pub async fn handle_version_info_request(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -52,277 +58,80 @@ pub async fn handle_version_info_request(
     let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
     let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
-    // Three-way response shape, extended from the original C++ behaviour
-    // (Account.py:322-352, Def.py:293-319) to add per-key invalidation:
-    //
-    // 1. Server has no data for this category → echo the client's version,
-    //    invalidate_all=false, no keys (client keeps its local cache).
-    // 2. Versions match → invalidate_all=false, no keys (client is up to date).
-    // 3. Versions differ AND Cimmeria has scoped overrides for this category
-    //    → invalidate_all=false, InvalidKeys=<overridden ids>. The client
-    //    drops only those entries from its runtime cache and waits for the
-    //    server to push the replacements — it does NOT issue
-    //    elementDataRequest for InvalidKeys. The proactive push happens in
-    //    push_overridden_elements right after the onVersionInfo reply, with
-    //    RequiredUpdates set to the InvalidKeys count.
-    // 4. Versions differ AND no scoped overrides → invalidate_all=true
-    //    (legacy fallback for whole-PAK swaps, e.g. switching QA→Server build).
-    let (version, invalidate_all, invalid_keys): (u32, bool, Vec<u32>) = match resource_cache {
-        Some(cache) => match cache.category(category_id) {
-            Some(cat) => {
-                let server_version = cat.metadata;
-                if client_version == server_version {
-                    (server_version, false, Vec::new())
-                } else {
-                    let overrides = cache.overridden_elements(category_id);
-                    if !overrides.is_empty() {
-                        (server_version, false, overrides.to_vec())
-                    } else {
-                        (server_version, true, Vec::new())
-                    }
-                }
-            }
-            None => (client_version, false, Vec::new()),
-        },
-        None => (client_version, false, Vec::new()),
-    };
+    let reply = VersionReply::decide(resource_cache.as_deref(), category_id, client_version);
+    let account_id = connected
+        .lock()
+        .ok()
+        .and_then(|c| c.get(&addr).map(|s| s.account_id))
+        .unwrap_or(0);
 
     tracing::info!(
-        %addr, category_id, client_version, version, invalidate_all,
-        invalid_key_count = invalid_keys.len(),
-        invalid_keys = ?invalid_keys,
+        %addr,
+        account_id,
+        event = "cooked_data.version_reply",
+        outcome = reply.outcome(),
+        reason = reply.reason(),
+        category_id,
+        client_version,
+        server_version = ?reply.server_version(),
+        invalidate_all = matches!(reply, VersionReply::FullResync { .. }),
         "Responding to versionInfoRequest"
     );
+
+    let version = match reply {
+        VersionReply::NoServerData { client_version } => client_version,
+        VersionReply::UpToDate { version } => version,
+        VersionReply::FullResync {
+            client_version,
+            server_version,
+            ..
+        } => {
+            // `decide` only resyncs a category the cache serves.
+            let Some(cache) = resource_cache else {
+                return Ok(());
+            };
+            let job = SyncJob {
+                category_id,
+                client_version,
+                server_version,
+            };
+            let ctx = cooked_sync::context(transport, addr, key, connected, cache);
+            let outcome = cooked_sync::start_resync(ctx, job);
+            if outcome == EnqueueOutcome::AlreadyPending {
+                tracing::debug!(
+                    %addr,
+                    account_id,
+                    category_id,
+                    "versionInfoRequest for a category already being resynced: ignored"
+                );
+            }
+            return Ok(());
+        }
+    };
 
     let active_eid = get_active_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
     let enc_version = get_enc_version(connected, addr);
-    // RequiredUpdates tells the client how many resourceFragment packets
-    // are about to land — set to the InvalidKeys count when we're shipping
-    // overrides so the client doesn't try to lazy-fetch via elementDataRequest
-    // (which the runtime cache doesn't actually issue — it just drops the
-    // local entry on InvalidKeys and waits for our push). Without this,
-    // the client's `Cache.en-US/CookedDataMissions.pak` is left with the
-    // entries removed but never replaced — symptom: missions stop being
-    // granted on subsequent logins because the catalog row is gone.
-    let required_updates = invalid_keys.len() as u32;
     let pkt = build_version_info(
         &key,
         seq,
         &acks,
         category_id,
         version,
-        required_updates,
-        invalidate_all,
-        &invalid_keys,
+        0,
+        false,
+        &[],
         active_eid,
         enc_version,
     );
     transport.send_to(&pkt, addr).await?;
-    // versionInfo response is one-shot state — register for retransmit.
+    // versionInfo response is one-shot state â€” register for retransmit.
     super::helpers::shadow_register_reliable_send(
         connected,
         addr,
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
     );
-
-    // Push the patched XML proactively for each overridden element. The
-    // version-info reply already named these in InvalidKeys; the client
-    // drops them locally and expects N follow-up resourceFragment pushes.
-    if !invalid_keys.is_empty() {
-        if let Some(cache) = resource_cache {
-            push_overridden_elements(
-                transport,
-                addr,
-                key,
-                category_id,
-                &invalid_keys,
-                cache.as_ref(),
-                connected,
-            )
-            .await?;
-        }
-    }
-
-    Ok(())
-}
-
-/// Send `BASEMSG_RESOURCE_FRAGMENT` packets for the named overridden elements,
-/// in the order they appear in `element_ids`.
-///
-/// Mirrors the chunking + frag-flag logic of `handle_element_data_request`,
-/// but iterates a fixed list so we can ship just the overridden subset
-/// without the client having to ask. Used by the InvalidKeys handshake to
-/// keep the client's writable runtime cache (`Cache.en-US/`) consistent
-/// with the server's in-memory overrides.
-async fn push_overridden_elements(
-    transport: &Arc<dyn Transport>,
-    addr: SocketAddr,
-    key: [u8; 32],
-    category_id: u32,
-    element_ids: &[u32],
-    cache: &ResourceCache,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    for &element_id in element_ids {
-        let xml_data = match cache.get(category_id, element_id) {
-            Some(data) => data,
-            None => {
-                tracing::warn!(
-                    %addr, category_id, element_id,
-                    "push_overridden_elements: element missing from cache, skipping",
-                );
-                continue;
-            }
-        };
-
-        let data_id = {
-            let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-            if let Some(c) = clients.get_mut(&addr) {
-                let id = c.next_data_id;
-                c.next_data_id = c.next_data_id.wrapping_add(1);
-                id
-            } else {
-                return Ok(());
-            }
-        };
-
-        let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
-        let total_chunks = chunks.len();
-
-        tracing::info!(
-            %addr, category_id, element_id,
-            bytes = xml_data.len(),
-            total_chunks,
-            data_id,
-            "Pushing overridden element fragments"
-        );
-
-        let enc_version = get_enc_version(connected, addr);
-        for (i, chunk) in chunks.iter().enumerate() {
-            let frag_flags = match (i == 0, i == total_chunks - 1) {
-                (true, true) => FRAG_FIRST_AND_LAST,
-                (true, false) => FRAG_FIRST,
-                (false, true) => FRAG_LAST,
-                (false, false) => FRAG_MIDDLE,
-            };
-            let (mt, cat, elem) = if i == 0 {
-                (Some(0u8), Some(category_id), Some(element_id))
-            } else {
-                (None, None, None)
-            };
-            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-            let pkt = build_resource_fragment(
-                &key,
-                seq,
-                &acks,
-                data_id,
-                i as u8,
-                frag_flags,
-                mt,
-                cat,
-                elem,
-                chunk,
-                enc_version,
-            );
-            transport.send_to(&pkt, addr).await?;
-            super::helpers::shadow_register_reliable_send(
-                connected,
-                addr,
-                seq,
-                cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-            );
-        }
-    }
-
-    Ok(())
-}
-
-/// Proactively send all resources for a category as BASEMSG_RESOURCE_FRAGMENT packets.
-///
-/// Not currently used.  The C++ server only pushes resources for certain
-/// "categoryMaps" categories (12-20) when invalidateAll=true and the
-/// client version is stale.  Category 7 (char_creation) is NOT in that
-/// map — the client loads it from its local PAK.  Kept for future use.
-#[allow(dead_code)]
-pub(crate) async fn send_category_resources(
-    transport: &Arc<dyn Transport>,
-    addr: SocketAddr,
-    key: [u8; 32],
-    category_id: u32,
-    cat: &CategoryData,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Sort element IDs for deterministic ordering.
-    let mut element_ids: Vec<u32> = cat.elements.keys().copied().collect();
-    element_ids.sort();
-
-    for &element_id in &element_ids {
-        let xml_data = match cat.elements.get(&element_id) {
-            Some(data) => data,
-            None => continue,
-        };
-
-        // Allocate a data_id for this transfer.
-        let data_id = {
-            let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-            if let Some(c) = clients.get_mut(&addr) {
-                let id = c.next_data_id;
-                c.next_data_id = c.next_data_id.wrapping_add(1);
-                id
-            } else {
-                return Ok(());
-            }
-        };
-
-        let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
-        let total_chunks = chunks.len();
-
-        let enc_version = get_enc_version(connected, addr);
-        for (i, chunk) in chunks.iter().enumerate() {
-            let frag_flags = match (i == 0, i == total_chunks - 1) {
-                (true, true) => FRAG_FIRST_AND_LAST,
-                (true, false) => FRAG_FIRST,
-                (false, true) => FRAG_LAST,
-                (false, false) => FRAG_MIDDLE,
-            };
-
-            let (mt, cat_id, elem) = if i == 0 {
-                (Some(0u8), Some(category_id), Some(element_id))
-            } else {
-                (None, None, None)
-            };
-
-            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-            let pkt = build_resource_fragment(
-                &key,
-                seq,
-                &acks,
-                data_id,
-                i as u8,
-                frag_flags,
-                mt,
-                cat_id,
-                elem,
-                chunk,
-                enc_version,
-            );
-            transport.send_to(&pkt, addr).await?;
-            super::helpers::shadow_register_reliable_send(
-                connected,
-                addr,
-                seq,
-                cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-            );
-        }
-    }
-
-    tracing::debug!(
-        %addr, category_id, count = element_ids.len(),
-        "Proactively sent all resource fragments"
-    );
-
     Ok(())
 }
 
@@ -383,7 +192,7 @@ pub async fn handle_element_data_request(
     let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
     let total_chunks = chunks.len();
 
-    // INFO matches `push_overridden_elements`: every patched-XML push is
+    // INFO for an overridden element: every patched-XML push is
     // load-bearing for cache consistency, and the per-element byte count
     // is what surfaces a future PAK element crossing a chunk boundary
     // and adding fragments to the cold-cache login burst.

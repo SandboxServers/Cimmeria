@@ -61,18 +61,22 @@ PAK Files (data/cache/*.pak)  — 21 archives, pre-cooked, committed
         v
 crates/resources/src/base/resources/mod.rs  (CategoryData / ResourceCache)
         |
-        | plus Cimmeria-authored overrides:
-        |   crates/resources/src/base/dialog_overrides/mod.rs
-        |   crates/resources/src/base/item_overrides.rs
+        | plus Cimmeria-authored overrides (resources/apply_overrides.rs):
+        |   crates/resources/src/base/sequence_overrides.rs    (category 1)
+        |   crates/resources/src/base/mission_overrides.rs     (category 3)
+        |   crates/resources/src/base/item_overrides.rs        (category 4)
+        |   crates/resources/src/base/dialog_overrides/        (category 5)
+        |   crates/resources/src/base/world_info_overrides.rs  (category 12)
         v
-crates/base-session/src/base/cooked_data.rs
+crates/base-session/src/base/cooked_data.rs   (versionInfoRequest, elementDataRequest)
+crates/base-session/src/base/cooked_sync/     (decision; full-category resync, paced)
         |
         | BASEMSG_RESOURCE_FRAGMENT (0x36), fragmented at MAX_CHUNK
         v
 Game Client (CookedDataCache)
 ```
 
-Kismet sequences (category 1) use the same mechanism through `crates/resources/src/base/sequence_overrides.rs`. It matters more there than anywhere: a category with **no** override list answers a version mismatch with `invalidate_all = true` and pushes nothing, and the client, which never lazy-fetches, empties and persists its whole table. Never change a PAK's on-disk `MetaData` version to signal a change; add an override.
+Kismet sequences (category 1) use the same mechanism through `crates/resources/src/base/sequence_overrides.rs`. Before #840, a category with **no** override list answered a version mismatch with `invalidate_all = true` and pushed nothing, and the client, which does not refetch what it flushed, emptied and persisted its whole table (the 2026-09-20 Kismet wipe). Since #840 every mismatch is a full resync of the category: `InvalidateAll` with `RequiredUpdates = N`, every entry pushed through the reliable window, then the served version stamped, so the client ends up holding exactly the server's category. Keep the on-disk PAKs identical to the files clients ship with and put changes in overrides; their content-hash bump is what triggers the resync. Builds that predate #840 still wipe: see [A bumped category must keep its override list everywhere](../architecture/mission-pak-overrides.md#a-bumped-category-must-keep-its-override-list-everywhere).
 
 Cimmeria's database layer is **`sqlx` 0.8**, not SOCI, and there is no Boost.Python
 binding — the server is a single Rust process (`crates/server/`).

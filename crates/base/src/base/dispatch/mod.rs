@@ -78,10 +78,10 @@ pub(crate) mod sgw_player_base {
     /// miss request for a server resource. Same wire shape as the
     /// pre-world-entry 0xC1 cache flow (handled in `cooked_data.rs`),
     /// but routed through the SGWPlayer namespace while the entity is
-    /// in-world. Currently a documented no-op — the catalog and
-    /// per-key push happens in `cooked_data.rs::send_initial_caches`,
-    /// so in-world cache misses are diagnostic rather than a service
-    /// the server must fulfil. Demoted from the unhandled-WARN catch-all
+    /// in-world. Currently a documented no-op: a mismatched category is
+    /// resynced in full at character select (`cooked_sync`, #840), and
+    /// world entry waits for it, so in-world cache misses are diagnostic
+    /// rather than a service the server must fulfil. Demoted from the unhandled-WARN catch-all
     /// so the perfStats-style benign telemetry doesn't trip operator
     /// alerts. See per-method dispatch table in
     /// `docs/protocol/sgwplayer-base-method-dispatch-table.md`.

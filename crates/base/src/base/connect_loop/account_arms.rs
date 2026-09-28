@@ -3,9 +3,10 @@
 //!
 //! The branching here is "are we in-world yet" — Account methods (character
 //! select) live below the world-entry threshold; SGWPlayer base methods take
-//! over once the player is connected. `0xC0` (versionInfoRequest) and `0xC1`
-//! (elementDataRequest) are protocol-level cache messages and are handled in
-//! the encrypted dispatcher directly because they fire in both phases.
+//! over once the player is connected. At character select `0xC0`
+//! (versionInfoRequest) and `0xC1` (elementDataRequest) are the cache
+//! messages, handled in the encrypted dispatcher; in-world they are
+//! SGWPlayer `chatJoin` / `chatLeave` and arrive here.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -21,6 +22,7 @@ use crate::cell::messages::BaseToCellMsg;
 
 use super::super::character::{handle_delete_character, handle_request_character_visuals};
 use super::super::character_create::handle_create_character;
+use super::super::cooked_sync;
 use super::super::dispatch::{dispatch_sgw_player_base_method, sgw_player_base};
 use super::super::login::handle_log_off;
 use super::super::world_entry::{handle_on_client_ready, handle_play_character};
@@ -113,18 +115,33 @@ pub(super) async fn dispatch_base_method(
                 0
             };
             tracing::info!(%addr, player_id, "Client requests playCharacter");
-            handle_play_character(
-                transport,
-                addr,
-                key,
-                account_id,
-                player_id,
-                connected,
-                db_pool,
-                entity_manager,
-                cell_tx,
-            )
-            .await?;
+            if cooked_sync::is_syncing(connected, addr) {
+                hold_play_character(
+                    transport,
+                    addr,
+                    key,
+                    account_id,
+                    player_id,
+                    connected,
+                    db_pool,
+                    entity_manager,
+                    cell_tx,
+                )
+                .await?;
+            } else {
+                handle_play_character(
+                    transport,
+                    addr,
+                    key,
+                    account_id,
+                    player_id,
+                    connected,
+                    db_pool,
+                    entity_manager,
+                    cell_tx,
+                )
+                .await?;
+            }
         }
         0xC5 => {
             let player_id = if payload.len() >= 4 {
@@ -154,6 +171,75 @@ pub(super) async fn dispatch_base_method(
         _ => {
             tracing::trace!(%addr, msg_id = format_args!("{:#04x}", id), "Unhandled Account base method");
         }
+    }
+    Ok(())
+}
+
+/// Hold `playCharacter` until the session's cooked-data resync finishes.
+///
+/// The client empties a mismatched category the moment it reads the resync's
+/// opening `onVersionInfo`, and gets each entry back only as it is pushed.
+/// World entry needs some of them at once (`onClientMapLoad` names a world
+/// the client resolves from category 12), and an in-world cache miss is not
+/// served, so entering the world mid-push would leave the player with data
+/// that is simply missing. The resync task runs this once its last category
+/// is pushed; if the session disconnects first, it is dropped.
+async fn hold_play_character(
+    transport: &Arc<dyn Transport>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    account_id: u32,
+    player_id: i32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (transport_c, connected_c, db_c, em_c, cell_c) = (
+        Arc::clone(transport),
+        Arc::clone(connected),
+        db_pool.clone(),
+        Arc::clone(entity_manager),
+        cell_tx.clone(),
+    );
+    let action: cooked_sync::DeferredAction = Box::new(move || {
+        Box::pin(async move {
+            if let Err(e) = handle_play_character(
+                &transport_c,
+                addr,
+                key,
+                account_id,
+                player_id,
+                &connected_c,
+                &db_c,
+                &em_c,
+                &cell_c,
+            )
+            .await
+            {
+                tracing::warn!(
+                    %addr,
+                    account_id,
+                    player_id,
+                    reason = "play_character_failed",
+                    error = %e,
+                    "Held playCharacter failed after the cooked-data resync"
+                );
+            }
+        })
+    });
+    match cooked_sync::defer_until_synced(connected, addr, action) {
+        Ok(()) => {
+            tracing::info!(
+                %addr,
+                account_id,
+                player_id,
+                event = "cooked_data.world_entry_held",
+                "playCharacter held until the cooked-data resync finishes"
+            );
+        }
+        // The resync finished between the check and the hold: enter now.
+        Err(action) => action().await,
     }
     Ok(())
 }

@@ -28,6 +28,7 @@ pub mod cinematic_aoi_hold;
 pub mod console_authoring;
 pub mod contact_list;
 pub mod cooked_data;
+pub mod cooked_sync;
 pub mod crafting;
 pub mod deferred_aoi;
 pub mod deferred_aoi_lifecycle;
@@ -66,11 +67,6 @@ pub mod world_entry_appearance {
 /// table and the fragment builder. Test-only.
 #[cfg(test)]
 mod resource_fragment_tests;
-
-/// The category-12 version handshake on the wire, against the committed
-/// PAKs. Test-only.
-#[cfg(test)]
-mod version_info_tests;
 
 // Cooked-data delivery serves the resource cache (`cimmeria-resources`).
 use cimmeria_resources::base::resources;

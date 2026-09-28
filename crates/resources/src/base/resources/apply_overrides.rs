@@ -3,9 +3,10 @@
 //!
 //! Each `apply_*` patches or adds entries in one category, bumps that
 //! category's `MetaData` by a content-derived value, and returns the
-//! overridden element ids so `handle_version_info_request` can take the
-//! per-key `InvalidKeys` handshake for it. Split out of `resources/mod.rs`
-//! along that seam.
+//! overridden element ids. The bump is what makes a client holding the
+//! shipped category resync it in full (#840), additions included; the ids
+//! only pick the log level of an element push. Split out of
+//! `resources/mod.rs` along that seam.
 
 use std::collections::HashMap;
 
@@ -177,12 +178,10 @@ impl ResourceCache {
     /// Mutate the freshly-loaded `CookedDataMissions` category to include
     /// Cimmeria's added mission steps, bumping the category metadata so
     /// the client's version check sees a fresh value and triggers the
-    /// per-key invalidation handshake.
+    /// full-category resync (#840).
     ///
     /// Returns the overridden-elements map keyed by category id. An entry
-    /// with an empty vec is omitted; absence of a category means
-    /// `handle_version_info_request` falls through to the legacy
-    /// "echo or invalidate-all" path for that category.
+    /// with an empty vec is omitted.
     pub(super) fn apply_mission_overrides(
         categories: &mut HashMap<u32, CategoryData>,
     ) -> HashMap<u32, Vec<u32>> {
@@ -287,11 +286,12 @@ impl ResourceCache {
 
     /// Add Cimmeria's Kismet sequences to the freshly-loaded
     /// `CookedDataKismetSeqEvent` category and bump its metadata so a client's
-    /// next `versionInfoRequest` takes the per-key handshake.
+    /// next `versionInfoRequest` resyncs the category, additions included.
     ///
-    /// This is also what keeps category 1 off the destructive path: with no
-    /// override list, a version mismatch answers `invalidate_all = true` and
-    /// pushes nothing, and the client empties its whole sequence table.
+    /// Before #840 this was also what kept category 1 off the destructive
+    /// path: with no override list, a version mismatch answered
+    /// `invalidate_all = true` and pushed nothing, and the client emptied its
+    /// whole sequence table. Builds without #840 still do.
     pub(super) fn apply_sequence_overrides(
         categories: &mut HashMap<u32, CategoryData>,
     ) -> HashMap<u32, Vec<u32>> {
