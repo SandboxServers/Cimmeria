@@ -266,6 +266,8 @@ impl SpaceManager {
                 self.npc_detectors.forget(eid);
                 // A pet dies with its instance; drop it from the owner map.
                 self.pets.forget_pet(eid);
+                // A deployable dies with its instance too.
+                self.deployables.forget(eid);
             }
             self.npc_detectors.forget_world(&space.world_name);
 

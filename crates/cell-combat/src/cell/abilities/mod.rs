@@ -12,6 +12,8 @@
 //!   targeted path and ground-target AoE so cooldown/ammo consume happens
 //!   once per invocation but damage applies to each target in radius.
 //! - `death` — ordered wire protocol burst when a target dies.
+//! - `deployable` — deployable abilities (Phase 0): the ground-point
+//!   launch, the fire that places the object, and its pulse tick.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
 //! - `resolve` — per-weapon ability resolution (items_event_sets lookup).
@@ -22,6 +24,7 @@
 mod cone_aoe;
 mod damage_apply;
 mod death;
+mod deployable;
 mod dispatch;
 mod loot_drop;
 mod messaging;
@@ -40,6 +43,7 @@ pub use death::kill_npc_out_of_band;
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub use death::resolve_death_for_test;
+pub use deployable::{deployable_tick, deployable_tick_at};
 pub use dispatch::handle_use_ability_on_ground;
 pub use loot_drop::INT_NORMAL_LOOT;
 pub use messaging::{

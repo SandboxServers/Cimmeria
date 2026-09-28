@@ -180,6 +180,10 @@ impl SpaceManager {
         // despawns them on the next AoI tick (and `disconnect_entity` does it
         // at once through `pets::forget_owner`).
         self.pets.forget_pet(entity_id);
+        // Same for a deployable. Its owner leaving is the pulse tick's
+        // verdict, not this method's (no `tx` here either).
+        self.deployables.forget(entity_id);
+        self.deployables.clear_staged(entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 

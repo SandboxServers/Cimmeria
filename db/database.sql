@@ -211,6 +211,7 @@
 \ir resources/Effects/Tables/effects.sql
 \ir resources/Entities/Tables/blueprints.sql
 \ir resources/Entities/Tables/blueprints_components.sql
+\ir resources/Entities/Tables/deployables.sql
 \ir resources/Entities/Tables/entity_templates.sql
 \ir resources/Entities/Tables/monikers.sql
 \ir resources/Entities/Tables/pet_summons.sql
@@ -297,6 +298,7 @@
 \ir resources/Effects/Seed/effects.sql
 \ir resources/Entities/Seed/blueprints.sql
 \ir resources/Entities/Seed/blueprints_components.sql
+\ir resources/Entities/Seed/deployables.sql
 \ir resources/Entities/Seed/entity_templates.sql
 \ir resources/Entities/Seed/monikers.sql
 \ir resources/Entities/Seed/pet_summons.sql

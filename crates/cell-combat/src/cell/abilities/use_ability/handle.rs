@@ -101,7 +101,9 @@ pub async fn handle_use_ability(
     // never from the client's target, so the target is discarded here and
     // the #444 gate never sees the cast. See `owner_pet`.
     let owner_pet = super::owner_pet::player_owner_pet_ability(space_mgr, entity_id, ability_id);
-    let target_id = if summon.is_some() || owner_pet {
+    // A deployable aims at its staged ground point (`abilities::deployable`).
+    let deploy = super::super::deployable::player_deployable(space_mgr, entity_id, ability_id);
+    let target_id = if summon.is_some() || owner_pet || deploy.is_some() {
         0
     } else {
         target_id
@@ -306,7 +308,7 @@ pub async fn handle_use_ability(
                 return false;
             }
         }
-        send_not_known_feedback(entity_id, ability_id, tx).await;
+        super::not_known::send_not_known_feedback(entity_id, ability_id, tx).await;
         return false;
     }
 
@@ -333,6 +335,12 @@ pub async fn handle_use_ability(
     }
     if owner_pet
         && super::owner_pet::refuse_owner_pet_launch(entity_id, ability_id, tx, space_mgr).await
+    {
+        return false;
+    }
+    if deploy.is_some()
+        && super::super::deployable::refuse_unstaged_launch(entity_id, ability_id, tx, space_mgr)
+            .await
     {
         return false;
     }
@@ -652,42 +660,4 @@ pub async fn handle_use_ability(
     )
     .await;
     true
-}
-
-/// `CONDITION_FEEDBACK_EntityDoesNotHaveAbility`
-/// (`entities/defs/enumerations.xml`). Exact fit: the caster does not have
-/// the ability. The trainer uses the same code for a missing prerequisite
-/// (AT-04) and for a respec with nothing to reset (AT-08).
-const CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY: u16 = 167;
-
-/// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, 167)` to a player who
-/// pressed an ability they do not know. The action bar is client-side, so
-/// after a respec (AT-08) a button can still name a refunded ability; before
-/// this the press was refused silently.
-async fn send_not_known_feedback(
-    entity_id: u32,
-    ability_id: i32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-) {
-    let mut args = Vec::with_capacity(7);
-    args.push(0u8); // SystemID: ERRORCODE_SYSTEM_Ability
-    args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
-    args.extend_from_slice(&CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY.to_le_bytes());
-    if tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-            args,
-        })
-        .await
-        .is_err()
-    {
-        tracing::warn!(
-            target: "abilities",
-            event = "not_known_feedback_send_failed",
-            entity_id,
-            ability_id,
-            "useAbility: the not-known onErrorCode could not be queued (base channel closed)"
-        );
-    }
 }

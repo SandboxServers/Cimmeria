@@ -77,7 +77,7 @@ pub(super) fn ability_sequence_args(
 
 /// Which ability-phase sequence to play.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum AbilityPhase {
+pub(in crate::cell::abilities) enum AbilityPhase {
     /// Kismet event 1000, the warmup animation, sent at launch.
     Begin,
     /// Kismet event 1001, the fire animation, sent when the cast fires.
@@ -115,7 +115,7 @@ impl AbilityPhase {
 
 /// One ability-phase `onSequence` to send.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct PhaseSequence {
+pub(in crate::cell::abilities) struct PhaseSequence {
     pub phase: AbilityPhase,
     pub entity_id: u32,
     pub ability_id: i32,
@@ -180,7 +180,7 @@ pub(super) fn warn_unanimated_npc_attack(
 /// ability has no event set or the event set has no sequence for the phase.
 /// For [`AbilityPhase::End`] and an NPC caster, each of those, and a send
 /// that reached no witness, is a throttled WARN (see the module docs).
-pub(super) async fn play_ability_sequence(
+pub(in crate::cell::abilities) async fn play_ability_sequence(
     seq: PhaseSequence,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -239,6 +239,9 @@ pub(super) async fn play_ability_sequence(
         super::summon::phase_sequence_target(space_mgr, entity_id, ability_id, target_id);
     let target_id =
         super::owner_pet::phase_sequence_target(space_mgr, entity_id, ability_id, target_id);
+    let target_id = super::super::deployable::phase_sequence_target(
+        space_mgr, entity_id, ability_id, target_id,
+    );
     let args = ability_sequence_args(sequence_id, entity_id, target_id, instance_id);
     let witness_count = send_entity_method_to_self_and_witnesses(
         entity_id,

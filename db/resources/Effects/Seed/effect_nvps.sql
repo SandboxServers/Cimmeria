@@ -83,6 +83,14 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (355, 3230, 'Hea
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (356, 3350, 'HealPercentage', '10.00');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (357, 4968, 'SpeedPet', '100');
 
+-- Deployables Phase 0 (ids 380-389): 5066 "Damage", the pulse of 1012
+-- Deployable: Microwave Emitter. Its description is "Medium Radius AE /
+-- Secondary -100F": 100 Focus and no Health, written the way the "-100F
+-- -10H" rows above (641, 656) are. Its script (effects.sql) is the
+-- Focus-first RangedPhysicalDamage, as for 641, so a target's Focus goes
+-- first and the overflow bleeds into Health.
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (380, 5066, 'FocusDamage', '100');
+
 --
 -- TOC entry 3313 (class 0 OID 0)
 -- Dependencies: 305

@@ -17,6 +17,8 @@ use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntr
 
 use crate::otel;
 
+#[cfg(test)]
+mod deployables_target_tests;
 mod filters;
 #[cfg(test)]
 mod parity_tests;
@@ -398,6 +400,10 @@ mod tests {
             // registry scrub), `pets.command`, `pets.ai`, `pets.credit` and
             // `pets.buff` by prefix -- see `pets_target_tests`.
             "pets=debug",
+            // Deployables Phase 0: `deployables.lifecycle` (INFO spawn and
+            // despawn, DEBUG refusals) and `deployables.pulse` (DEBUG) by
+            // prefix -- see `deployables_target_tests`.
+            "deployables=debug",
             // `content` WARN rows (`set_aggression_tag_miss`) and INFO
             // rows would pass at the default `info`; named so the target
             // is explicit and a later global raise cannot drop it.

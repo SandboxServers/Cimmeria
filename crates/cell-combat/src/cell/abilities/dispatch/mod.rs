@@ -87,6 +87,15 @@ pub async fn handle_use_ability_on_ground(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> Vec<u32> {
+    // A deployable places an object at the point instead of hitting what is
+    // near it; its pulses do the damage later (deployables Phase 0).
+    if let Some(spec) = super::deployable::player_deployable(space_mgr, entity_id, ability_id) {
+        super::deployable::handle_deploy_on_ground(
+            entity_id, ability_id, ground, spec, tx, space_mgr,
+        )
+        .await;
+        return Vec::new();
+    }
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
     let radius = ability_radius(&ability_def, space_mgr);
     let radius_sq = radius * radius;

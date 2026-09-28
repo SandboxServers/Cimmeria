@@ -11,7 +11,7 @@ mod live_db {
     use crate::test_support::require_db_or_skip;
 
     /// `(sequence, table, id column, floor)`, all in `resources`. The floor
-    /// is the top of the highest reserved block (templates: social 390-399;
+    /// is the top of the highest reserved block (templates: deployables 400-409;
     /// spawns: social 490-499; item lists and list rows: the crafting
     /// blocks 310-329 and 3101-3299). Raise it with the footer when a block is reserved above it.
     const SEQUENCES: [(&str, &str, &str, i64); 4] = [
@@ -19,7 +19,7 @@ mod live_db {
             "entity_templates_template_id_seq",
             "entity_templates",
             "template_id",
-            399,
+            409,
         ),
         ("spawnlist_spawn_id_seq", "spawnlist", "spawn_id", 499),
         (

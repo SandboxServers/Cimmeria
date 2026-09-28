@@ -39,6 +39,9 @@
 //!   Market auctioneer (BM-07): template 305 is an auctioneer and nothing
 //!   else, the only `INT_AUCTION` template, and spawn 405 stands in the
 //!   stasis room clear of every other NPC.
+//! - [`live_db_deployables`]: live-DB guards for the deployables seed
+//!   (Phase 0): the 1012 row, template 400 and the cooked numbers of 5065
+//!   and 5066.
 //! - [`live_db_debug_banker`]: live-DB guards for the debug hub's Banker
 //!   (bank-vault BV-04): template 370 is a personal Banker and nothing else,
 //!   and spawn 470 stands in the stasis room clear of every other NPC.
@@ -65,6 +68,7 @@ mod live_db_debug_banker;
 mod live_db_debug_hub;
 mod live_db_debug_org_bankers;
 mod live_db_debug_registrars;
+mod live_db_deployables;
 mod live_db_loaders;
 mod live_db_mail_clerk;
 mod live_db_pet_roster;

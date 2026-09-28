@@ -14,6 +14,8 @@
 //!   resolution), run at once for a zero warmup or by the warmup tick.
 //! - `warmup` — the pending cast between `Ability_Begin` and the fire: the
 //!   launch side, the 100 ms tick, and the interrupt (AT-10).
+//! - `not_known` — the `onErrorCode` 167 answer to a press of an ability
+//!   the player does not know.
 //! - `summon` — the pet-summon diversions (pets PT-03): the launch refusals,
 //!   and the fire that spawns the pet instead of resolving a target.
 //! - `owner_pet` — owner abilities that act on the owner's pet (pets PT-08):
@@ -28,6 +30,7 @@ mod fire;
 mod fire_los;
 mod handle;
 mod kill_credit;
+mod not_known;
 mod owner_pet;
 mod sequence;
 mod summon;
@@ -46,6 +49,7 @@ pub use owner_pet::{is_owner_pet_ability, owner_pet_tick, owner_pet_tick_at};
 pub(super) use fire::fire_cast;
 pub use kill_credit::credit_ground_deaths;
 pub(crate) use kill_credit::credited_player;
+pub(super) use sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 #[cfg(test)]
 pub(crate) use warmup::resolve_warmups;
 pub(crate) use warmup::{attach_ground_point, interrupt_pending_cast, is_casting, InterruptReason};
