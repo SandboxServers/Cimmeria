@@ -1,0 +1,24 @@
+[package]
+name = "cimmeria-start32"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "sgw-start32: the 32-bit helper a 64-bit caller runs to start SGW.exe suspended, inject DLLs at the game's bitness, and resume it. Contract: cimmeria_client_launch::start32."
+
+# Built for i686-pc-windows-msvc and embedded in the 64-bit launcher. It links
+# only cimmeria-client-launch (thiserror + windows-sys), never the launcher's
+# dependencies. Kept out of the workspace-hack (.config/hakari.toml) for the
+# same reason as client-launch: an i686 build must not pull reqwest's aws-lc-rs.
+[[bin]]
+name = "sgw-start32"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+cimmeria-client-launch = { path = "../client-launch" }
+
+# The version resource (see build.rs). Only used for the i686 MSVC build, and
+# a build dependency, so nothing links it.
+[build-dependencies]
+winres = "0.1"

@@ -4,9 +4,10 @@
 //! that emit [`Event`]s back on an unbounded channel. The egui app
 //! polls the channel each frame via `events_rx.try_recv()`.
 
+mod launch_sgw;
 mod messages;
 
-pub use messages::{Command, Event, LaunchTelemetryConfig};
+pub use messages::{Command, Event, LaunchSgwRequest, LaunchTelemetryConfig};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,14 +20,12 @@ use tracing::error;
 use crate::client_paths::{cache_dir, firesky_root, wipe_dir_contents};
 use crate::config::LauncherConfig;
 use crate::install::{adopt_existing_install, install_all, InstallContext, Progress};
-use crate::launch::{
-    launch_atera_debug, launch_atera_debug_with_child, launch_atera_fix_aslr, launch_sgw,
-    launch_sgw_with_telemetry,
-};
+use crate::launch::{launch_atera_debug, launch_atera_debug_with_child, launch_atera_fix_aslr};
 use crate::logs::{blob_name_for, build_log_zip, compute_content_digest, upload_blob, LogError};
 use crate::manifest::{fetch_manifest, Manifest};
 use crate::state::UploadedLedger;
 use crate::telemetry::auth::DevSessionRequest;
+use crate::telemetry::process_watch::wait_for_exit;
 use crate::telemetry::runner::run_session;
 use crate::telemetry::Telemetry;
 
@@ -80,7 +79,7 @@ impl Worker {
                 }
             }
             Command::Install { config, manifest } => self.spawn_install(config, manifest),
-            Command::LaunchSgw(dir) => self.spawn_launch("SGW.exe", move || launch_sgw(&dir)),
+            Command::LaunchSgw(req) => self.spawn_launch_sgw(req),
             Command::LaunchAteraDebug(dir) => {
                 self.spawn_launch("AtreaGameDebug.bat", move || launch_atera_debug(&dir))
             }
@@ -90,9 +89,8 @@ impl Worker {
             Command::LaunchSgwWithClientTelemetry {
                 install_dir,
                 dll_path,
-            } => self.spawn_launch("SGW.exe (telemetry)", move || {
-                launch_sgw_with_telemetry(&install_dir, &dll_path)
-            }),
+                client_patches,
+            } => self.spawn_launch_with_client_telemetry(install_dir, dll_path, client_patches),
             Command::UploadLogs {
                 install_dir,
                 sas_url,
@@ -154,7 +152,10 @@ impl Worker {
                 }
             };
             let http_arc = Arc::new(http.clone());
-            match run_session(telemetry, http_arc, child, install_dir, cfg.state_dir).await {
+            // The Atera bat starts SGW.exe itself, so the client-patches
+            // DLL cannot go in and there is no patch log to summarise.
+            let exit = Box::pin(wait_for_exit(child));
+            match run_session(telemetry, http_arc, exit, install_dir, cfg.state_dir, None).await {
                 Ok(outcome) => {
                     let _ = events_tx.send(Event::TelemetrySessionComplete(outcome));
                 }
@@ -382,7 +383,7 @@ mod tests {
     /// regresses to never-emit, the test fails loudly instead of
     /// hanging the suite. Adjust upward only if a real platform-slow
     /// path appears.
-    const RECV_TIMEOUT: Duration = Duration::from_secs(1);
+    pub(super) const RECV_TIMEOUT: Duration = Duration::from_secs(1);
 
     fn fake_manifest() -> Manifest {
         Manifest {
@@ -396,7 +397,7 @@ mod tests {
         }
     }
 
-    fn make_worker() -> (Worker, Arc<Runtime>) {
+    pub(super) fn make_worker() -> (Worker, Arc<Runtime>) {
         let rt = Arc::new(Runtime::new().unwrap());
         let worker = Worker::new(rt.clone());
         (worker, rt)
@@ -407,7 +408,7 @@ mod tests {
     /// match. The skip-and-match shape exists because `spawn_wipe`
     /// emits `Wiped` *or* `WipeError` depending on the resolved path —
     /// rather than asserting "no other events," we say what we want.
-    async fn recv_matching<F: Fn(&Event) -> bool>(
+    pub(super) async fn recv_matching<F: Fn(&Event) -> bool>(
         rx: &mut mpsc::UnboundedReceiver<Event>,
         pred: F,
     ) -> Event {
@@ -419,39 +420,6 @@ mod tests {
             if pred(&ev) {
                 return ev;
             }
-        }
-    }
-
-    /// Client-telemetry launch dispatches through `spawn_launch` and
-    /// surfaces a `LaunchError` (NotFound) when neither the SGW.exe
-    /// nor the DLL exists — proves the Command variant is routed
-    /// and the error path is the same `LaunchError`-via-`Event`
-    /// shape as the other launch commands. Real injection isn't
-    /// testable from a unit test (would require spawning a Windows
-    /// process and a signed DLL), so we pin the wiring, not the
-    /// kernel call.
-    #[test]
-    fn launch_sgw_with_client_telemetry_routes_through_dispatch() {
-        let dir = tempfile::tempdir().unwrap();
-        let dll = tempfile::NamedTempFile::new().unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::LaunchSgwWithClientTelemetry {
-            install_dir: dir.path().to_path_buf(),
-            dll_path: dll.path().to_path_buf(),
-        });
-        let ev = rt.block_on(async {
-            recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::Launched(_, _) | Event::LaunchError(_))
-            })
-            .await
-        });
-        // No SGW.exe in the temp dir, so we expect LaunchError.
-        match ev {
-            Event::LaunchError(msg) => assert!(
-                msg.contains("SGW.exe") || msg.to_lowercase().contains("not found"),
-                "LaunchError should reference the missing SGW.exe, got: {msg}"
-            ),
-            other => panic!("expected LaunchError, got {other:?}"),
         }
     }
 

@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Launcher Guide
@@ -197,10 +197,18 @@ binaries directory (see [`crates/launcher/src/app/view.rs`](../../crates/launche
 
 | Button | Enabled when | What it runs |
 |--------|------------|--------------|
-| **Launch SGW.exe** | `SGW.exe` exists | `CreateProcess(<binaries>/SGW.exe)` with `cwd = <binaries>` |
+| **Launch SGW.exe** | `SGW.exe` exists | Starts `<binaries>/SGW.exe` (cwd = binaries dir) with the client patches loaded, unless you turned them off. With telemetry on, a telemetry session follows the game |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = binaries dir) |
 | **Launch + Telemetry** | Atera available **and** `telemetry.enabled` **and** launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
+
+Under the buttons, **Load client patches (restores the Black Market
+window)** controls `cimmeria-client-patches.dll`, which the launcher
+loads into the game on **Launch SGW.exe**. It is on by default and has
+nothing to do with the telemetry setting. Turn it off only to rule the
+patches out when something misbehaves; the Black Market window will not
+open without them. The status log says on every launch when the patches
+were not loaded, and why. Atera debug launches never load them.
 
 The Atera files are **not** shipped by the launcher or any of its
 patches. Developers and modders drop the Atera tarball into the install
@@ -579,6 +587,57 @@ on disk.
 - For Atera-debug launches: confirm `AteraLoader.exe` and
   `AtreaGameDebug.bat` are both in the install dir alongside SGW.exe.
   These files are not shipped by the launcher.
+
+### Windows Defender or SmartScreen blocks the launcher
+
+Launcher releases are not code-signed, so Windows may warn about the launcher or
+quarantine `sgw-start32.exe`. That small helper sits beside
+`sgw-launcher.exe` and loads the client patches into the game. It starts
+`SGW.exe` and writes into it, which is what antivirus heuristics look
+for in an unsigned program.
+
+- **SmartScreen ("Windows protected your PC")** on `sgw-launcher.exe`:
+  choose **More info → Run anyway**. Only do this for a launcher you
+  downloaded from the project's GitHub Releases page.
+- **Defender removed or blocked `sgw-start32.exe`**: the status log shows
+  `Client patches: not loaded (… sgw-start32.exe …)` and the game starts
+  without them. Restore it from **Windows Security → Virus & threat
+  protection → Protection history**, then add an exclusion for the
+  folder that holds the launcher (**Virus & threat protection settings →
+  Exclusions → Add an exclusion → Folder**). The helper keeps one fixed
+  name in that folder across launcher updates, so the exclusion keeps
+  working. The launcher never writes it to a temporary folder. From an
+  elevated PowerShell:
+
+  ```powershell
+  Add-MpPreference -ExclusionPath "C:\path\to\the\launcher\folder"
+  ```
+
+Code signing would remove the need for this; it is deferred for now.
+
+### The Black Market window does not open
+
+The Black Market window needs the client patches. Check the status log
+from the launch:
+
+- **`Client patches: off (launcher setting)`**: tick **Load client
+  patches** and launch again.
+- **`Client patches: unavailable: …`**: this launcher build has no DLL
+  bundled (a dev build) and there is no `cimmeria-client-patches.dll`
+  beside it. Use a released launcher.
+- **`Client patches: not loaded (… sgw-start32.exe …)`**: the launcher
+  could not run its 32-bit helper, `sgw-start32.exe`, which loads the
+  patches into the 32-bit game. A dev build has none unless it sits
+  beside the launcher; a released launcher carries it. If security
+  software removed it, see
+  [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
+- **`Client patches: not loaded (… remote_load_failed …)`**: the helper
+  ran but the DLL did not load into the game. Include the status log in
+  a bug report.
+- **No such line**: the patches were loaded. They write
+  `cimmeria-client-patches.log` next to `SGW.exe`; a line ending
+  `nothing installed` there means this `SGW.exe` is not the build the
+  patches know. Include that file in a bug report.
 
 ### SGW.exe launches but can't reach the server
 

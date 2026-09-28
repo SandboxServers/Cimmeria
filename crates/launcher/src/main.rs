@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod bundled;
+mod client_patches;
 mod client_paths;
 mod config;
 mod identity;
@@ -8,6 +10,12 @@ mod install;
 mod install_layout;
 mod logs;
 mod manifest;
+// The `pack-client-overlay` tool's logic; the launcher compiles it only to
+// run its tests next to the manifest types it shares.
+#[cfg(test)]
+mod overlay_pack;
+mod patch_dest;
+mod start32_helper;
 mod state;
 mod telemetry;
 mod unpack;

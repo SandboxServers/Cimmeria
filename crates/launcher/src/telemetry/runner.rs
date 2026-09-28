@@ -9,7 +9,6 @@
 //! worker.
 
 use std::path::{Path, PathBuf};
-use std::process::Child;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,7 +19,8 @@ use super::events::{
     parse_client_log_line, ClientLogEvent, DebugLogEvent, SessionMetaEvent, SessionMetaKind,
     TelemetryEvent,
 };
-use super::process_watch::{wait_for_exit, WatchError};
+use super::patch_log::PatchLogWatcher;
+use super::process_watch::{ExitWaiter, WatchError};
 use super::queue::DiskQueue;
 use super::tail::{TailedLine, Tailer};
 use super::{Telemetry, TelemetryError};
@@ -48,20 +48,22 @@ pub struct SessionOutcome {
 ///
 /// 1. Tail the sessions dir + sgwdebuglog* alongside the game.
 /// 2. Tick at `flush_interval_ms` cadence: parse new lines, enqueue,
-///    POST chunk.
+///    POST chunk. With `patch_log`, also record the client-patches
+///    DLL's boot summary once (see [`super::patch_log`]).
 /// 3. When the game exits: final tick, final flush, bundle upload.
 ///
-/// Drop-safety: `child` is `std::process::Child`, which does NOT
-/// kill the process on drop. If the launcher dies before this future
-/// resolves, the game keeps running and the bundle just doesn't
+/// Drop-safety: `exit` waits on the game without owning its lifetime
+/// (see [`super::process_watch`]). If the launcher dies before this
+/// future resolves, the game keeps running and the bundle just doesn't
 /// upload (the on-disk queue picks it up on the next launcher
 /// startup via `recover_pending_on_startup`).
 pub async fn run_session(
     telemetry: Arc<Telemetry>,
     http: Arc<reqwest::Client>,
-    child: Child,
+    exit: ExitWaiter,
     install_dir: PathBuf,
     state_dir: PathBuf,
+    mut patch_log: Option<PatchLogWatcher>,
 ) -> Result<SessionOutcome, RunnerError> {
     let flush_ms = {
         let s = telemetry.session.read().await;
@@ -82,7 +84,7 @@ pub async fn run_session(
         .await;
 
     let mut event_count: u64 = 0;
-    let waiter = tokio::spawn(wait_for_exit(child));
+    let waiter = tokio::spawn(exit);
     tokio::pin!(waiter);
 
     loop {
@@ -98,6 +100,8 @@ pub async fn run_session(
                 break;
             }
             _ = ticker.tick() => {
+                let patch_event = patch_log.as_mut().and_then(PatchLogWatcher::poll);
+                event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, patch_event).await);
                 event_count = event_count.saturating_add(
                     tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir).await,
                 );
@@ -105,6 +109,8 @@ pub async fn run_session(
         }
     }
 
+    let patch_event = patch_log.as_mut().and_then(PatchLogWatcher::finish);
+    event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, patch_event).await);
     event_count = event_count.saturating_add(
         tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir).await,
     );
@@ -132,6 +138,21 @@ pub async fn run_session(
         Err(e) => return Err(e.into()),
     };
     Ok(outcome)
+}
+
+/// Enqueue the client-patches boot summary, if this tick produced it.
+/// Returns the number of events enqueued (0 or 1).
+async fn enqueue_patch_event(telemetry: &Telemetry, event: Option<TelemetryEvent>) -> u64 {
+    let Some(event) = event else {
+        return 0;
+    };
+    match telemetry.enqueue(event).await {
+        Ok(()) => 1,
+        Err(e) => {
+            tracing::warn!(error = %e, "client-patches boot summary not queued");
+            0
+        }
+    }
 }
 
 /// One refresh + tick + parse + enqueue + flush cycle. Returns the

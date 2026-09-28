@@ -9,9 +9,10 @@ not depend on the telemetry opt-in. The decision record is
 
 **Status:** the Black Market **receive** path (build check, receive hooks,
 decode, main-thread delivery to Lua) and **send** path (native Lua
-functions for the cell methods 61–66). Nothing loads this DLL yet: the
-launcher's always-inject step is a later packet, and nothing here has run
-inside a live client. Both paths are verified statically and by host and
+functions for the cell methods 61–66). The launcher injects this DLL on
+every `SGW.exe` launch unless the player opts out
+([sgw-launcher.md](../../docs/client/sgw-launcher.md#client-patches-dll)),
+but nothing here has run inside a live client. Both paths are verified statically and by host and
 i686 unit tests only. The live checks still owed are listed at the end.
 
 ## Build, lint and test against the i686 target
@@ -246,6 +247,22 @@ at each launch, when the directory is writable. The log records:
 
 It stops after 2,000 lines.
 
+The launcher's telemetry session parses this file into one
+`client.patches.boot` event
+([`patch_log.rs`](../../crates/launcher/src/telemetry/patch_log.rs)), so
+these messages from `boot.rs` are a contract. Change them together with
+that parser and its tests:
+
+- `attached, version <v>, host <path>`;
+- `<site> at 0x<hex>: <result>`, where the result is `stock`,
+  `already hooked (jump to …), chaining`, `already hooked by a jump …`,
+  `expected <bytes>, found <bytes>` or `unreadable`;
+- `Black Market receive path installed…` when every hook went in;
+- a line ending `nothing installed` when the bootstrap stopped before
+  hooking;
+- a line containing `stopping, the Black Market stays off` when a hook
+  failed.
+
 ## Running beside the telemetry DLL, and beside the old hand patch
 
 Both DLLs hook `FEngineLoop::Tick` and the drop callee through MinHook. The
@@ -253,7 +270,8 @@ second DLL to hook chains onto the first, in either order. Before enabling a
 hook, the DLL re-reads the prologue after MinHook has copied it, and
 rebuilds the hook if the bytes changed in between. That narrows the race
 between two DLLs hooking the same site at the same moment. The launcher
-should still inject the two DLLs one after the other.
+injects the two DLLs one after the other, this one first, so it
+normally hooks the stock prologues and the telemetry DLL chains on top.
 
 The hand-applied x64dbg Black Market patch (a `Tick` cave plus a cave at
 `0x00c6fa8a`) should not be combined with this DLL. Both would open the

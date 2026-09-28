@@ -5,6 +5,14 @@ edition.workspace = true
 license.workspace = true
 description = "Stargate Worlds launcher — installs the game from a seed + patch manifest (zip, or the archived RAR + installer cabinets), launches SGW.exe or the Atera debug bat, and uploads debug logs to Azure Blob."
 
+# Release-side tool: packs crates/client-patches/overlay/ into a manifest
+# patch (BM-06). Its logic is src/overlay_pack.rs, whose tests run in the
+# launcher's own test binary, so this target has none of its own.
+[[bin]]
+name = "pack-client-overlay"
+path = "src/bin/pack-client-overlay.rs"
+test = false
+
 [dependencies]
 # Shared client launch primitives (suspended launch, DLL injection,
 # .rdata hostname patch) — extracted here so cimmeria-lab reuses them

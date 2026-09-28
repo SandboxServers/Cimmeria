@@ -53,6 +53,36 @@ pub struct LauncherConfig {
     pub manifest_url: String,
     #[serde(default)]
     pub telemetry: TelemetrySettings,
+    #[serde(default)]
+    pub client_patches: ClientPatchesSettings,
+}
+
+/// The always-injected `cimmeria-client-patches` DLL (Black Market
+/// plan D2). Independent of [`TelemetrySettings`]: gameplay must not
+/// depend on the telemetry opt-in.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ClientPatchesSettings {
+    /// Opt-out switch. False ⇒ `SGW.exe` launches without the DLL, and
+    /// features it restores (the Black Market window) stay off.
+    #[serde(default = "default_client_patches_enabled")]
+    pub enabled: bool,
+    /// Load this DLL instead of the one bundled with the launcher. For
+    /// testing a local build; unset for players.
+    #[serde(default)]
+    pub dll_override: Option<PathBuf>,
+}
+
+impl Default for ClientPatchesSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_client_patches_enabled(),
+            dll_override: None,
+        }
+    }
+}
+
+fn default_client_patches_enabled() -> bool {
+    true
 }
 
 /// User-controllable telemetry preferences. Lives in `LauncherConfig`
@@ -100,6 +130,7 @@ impl Default for LauncherConfig {
             server_host: DEFAULT_SERVER_HOST.to_string(),
             manifest_url: DEFAULT_MANIFEST_URL.to_string(),
             telemetry: TelemetrySettings::default(),
+            client_patches: ClientPatchesSettings::default(),
         }
     }
 }
@@ -174,6 +205,10 @@ mod tests {
                 enabled: false,
                 auth_url: "http://test/api".into(),
             },
+            client_patches: ClientPatchesSettings {
+                enabled: false,
+                dll_override: Some(PathBuf::from("D")),
+            },
         };
         cfg.save(&path).unwrap();
         let loaded = LauncherConfig::load(&path).unwrap();
@@ -181,6 +216,43 @@ mod tests {
         assert_eq!(loaded.server_host, "Y");
         assert_eq!(loaded.manifest_url, "Z");
         assert!(!loaded.telemetry.enabled, "opt-out must roundtrip");
+        assert_eq!(loaded.client_patches, cfg.client_patches);
+    }
+
+    /// A config written before the client-patches DLL existed loads
+    /// with the DLL on: always-inject is the default, and an upgrade
+    /// must not leave the Black Market silently off.
+    #[test]
+    fn load_legacy_config_without_client_patches_defaults_to_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version":1,"install_path":"X","server_host":"Y","manifest_url":"Z","telemetry":{"enabled":false}}"#,
+        )
+        .unwrap();
+        let cfg = LauncherConfig::load(&path).unwrap();
+        assert!(cfg.client_patches.enabled);
+        assert_eq!(cfg.client_patches.dll_override, None);
+        assert!(
+            !cfg.telemetry.enabled,
+            "the telemetry opt-out must not affect client patches"
+        );
+    }
+
+    /// The opt-out is independent of telemetry in the other direction too.
+    #[test]
+    fn client_patches_opt_out_is_independent_of_telemetry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version":1,"install_path":"X","server_host":"Y","manifest_url":"Z","client_patches":{"enabled":false}}"#,
+        )
+        .unwrap();
+        let cfg = LauncherConfig::load(&path).unwrap();
+        assert!(!cfg.client_patches.enabled);
+        assert!(cfg.telemetry.enabled);
     }
 
     // New field on the same schema_version: legacy config files written

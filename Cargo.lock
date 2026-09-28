@@ -1146,7 +1146,6 @@ dependencies = [
 name = "cimmeria-client-launch"
 version = "0.1.0"
 dependencies = [
- "cimmeria-workspace-hack",
  "tempfile",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
@@ -1495,6 +1494,14 @@ dependencies = [
  "cimmeria-workspace-hack",
  "regex",
  "walkdir",
+]
+
+[[package]]
+name = "cimmeria-start32"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-client-launch",
+ "winres",
 ]
 
 [[package]]

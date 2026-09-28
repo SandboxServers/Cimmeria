@@ -39,6 +39,7 @@ workspace-members = [
     "cimmeria-client-telemetry",
     "cimmeria-client-patches",
     "cimmeria-lab",
+    "cimmeria-start32",
 ]
 
 # Keep them out of the generated dependency lines too. cimmeria-patch-wire is here as well,
@@ -47,6 +48,12 @@ workspace-members = [
 # tokio, hyper and sqlx into it. It has no dependencies, so it has no features to unify.
 # cimmeria-client-hookgate is here for the same reason: both client DLLs link it. Its only
 # dependency (windows-sys) is for the i686 target, which is not one of the platforms above.
+# cimmeria-client-launch and cimmeria-start32 likewise: start32 is the 32-bit (i686)
+# sgw-start32 helper that injects DLLs into the 32-bit SGW.exe, built on client-launch, and
+# the workspace-hack would pull reqwest's aws-lc-rs (which needs NASM on i686) and the
+# server's whole dependency set into it. Their only dependencies are thiserror and
+# windows-sys (start32 also has winres at build time, kept out of the unified set by the
+# traversal exclude above).
 [final-excludes]
 workspace-members = [
     "cimmeria-app",
@@ -58,4 +65,6 @@ workspace-members = [
     "cimmeria-lab",
     "cimmeria-patch-wire",
     "cimmeria-client-hookgate",
+    "cimmeria-client-launch",
+    "cimmeria-start32",
 ]

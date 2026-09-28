@@ -31,6 +31,18 @@ coverage:
         threshold: 0%
         informational: true
 
+# Flags. launcher-build.yml uploads `launcher` coverage, but that workflow is
+# path-filtered: it runs only on commits that touch the launcher. Without
+# carryforward, every later commit's report on main has no `launcher` data at
+# all (the upload itself succeeds; checked on run 36279900778), so the
+# launcher component read as uncovered. Carryforward keeps the last upload
+# until the next launcher change.
+flags:
+  launcher:
+    carryforward: true
+    paths:
+      - "crates/launcher/**"
+
 # PR comment shape. The defaults are noisy on a workspace this size, so we
 # scope the comment to a header + the per-component diff and trim file lists.
 comment:

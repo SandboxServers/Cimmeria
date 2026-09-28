@@ -17,6 +17,13 @@
 //! Patches are applied in declared order. `after` is validated: every
 //! referenced patch id must have been declared earlier in the array.
 //!
+//! A patch may also carry `"root": "sgw_game"`: its zip entries are then
+//! relative to the client's `SGWGame/` directory instead of the install
+//! directory (the one holding `SGW.exe`, which in the stock client tree
+//! is `Working/Binaries/`, a sibling of `Working/SGWGame/`). The UI
+//! overlay of the client-patches DLL ships this way; see
+//! [`PatchRoot`]. Omitted, it is `install_dir`, the original behaviour.
+//!
 //! Signing model
 //! -------------
 //! `fetch_manifest` fetches both `<url>` and `<url>.sig`. The signature
@@ -161,7 +168,7 @@ pub struct SeedEntry {
     pub sha256: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PatchEntry {
     pub id: String,
     pub blob: String,
@@ -169,6 +176,41 @@ pub struct PatchEntry {
     pub sha256: String,
     #[serde(default)]
     pub after: Option<String>,
+    #[serde(default, skip_serializing_if = "PatchRoot::is_install_dir")]
+    pub root: PatchRoot,
+}
+
+/// Where a patch zip's entries are extracted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PatchRoot {
+    /// The install directory, the one holding `SGW.exe`.
+    #[default]
+    InstallDir,
+    /// The client's `SGWGame/` directory: `<install>/SGWGame` when the
+    /// install directory is the client root, else `<install>/../SGWGame`
+    /// (the stock tree, with `SGW.exe` in `Working/Binaries/`).
+    SgwGame,
+}
+
+impl PatchRoot {
+    pub fn is_install_dir(&self) -> bool {
+        *self == Self::InstallDir
+    }
+}
+
+impl PatchEntry {
+    /// The id recorded in `launcher-installed.json` once applied. A
+    /// `sgw_game` patch records `<id>@sgw_game`: a launcher older than
+    /// the `root` field ignores it and extracts into the install
+    /// directory, and the suffix makes a newer launcher apply it again,
+    /// in the right place, instead of trusting that record.
+    pub fn state_key(&self) -> String {
+        match self.root {
+            PatchRoot::InstallDir => self.id.clone(),
+            PatchRoot::SgwGame => format!("{}@sgw_game", self.id),
+        }
+    }
 }
 
 impl Manifest {
@@ -322,7 +364,42 @@ mod tests {
             size: 1,
             sha256: format!("h-{id}"),
             after: after.map(|s| s.to_string()),
+            root: PatchRoot::InstallDir,
         }
+    }
+
+    /// `root` is optional both ways: an old manifest parses as
+    /// `install_dir`, and an `install_dir` entry serializes without it,
+    /// so existing manifests round-trip byte-for-byte in shape.
+    #[test]
+    fn patch_root_defaults_to_install_dir_and_is_omitted() {
+        let p: PatchEntry =
+            serde_json::from_str(r#"{"id":"a","blob":"b","size":1,"sha256":"h"}"#).unwrap();
+        assert_eq!(p.root, PatchRoot::InstallDir);
+        assert!(!serde_json::to_string(&p).unwrap().contains("root"));
+    }
+
+    #[test]
+    fn patch_root_sgw_game_round_trips() {
+        let p: PatchEntry = serde_json::from_str(
+            r#"{"id":"bm-ui-overlay-0123456789ab","blob":"b","size":1,"sha256":"h","after":"a","root":"sgw_game"}"#,
+        )
+        .unwrap();
+        assert_eq!(p.root, PatchRoot::SgwGame);
+        assert!(serde_json::to_string(&p)
+            .unwrap()
+            .contains(r#""root":"sgw_game""#));
+    }
+
+    /// A launcher that predates `root` records the plain id after
+    /// extracting into the wrong place; the newer launcher must not
+    /// treat that record as "applied".
+    #[test]
+    fn state_key_distinguishes_sgw_game_patches() {
+        let mut p = patch("x", None);
+        assert_eq!(p.state_key(), "x");
+        p.root = PatchRoot::SgwGame;
+        assert_eq!(p.state_key(), "x@sgw_game");
     }
 
     #[test]

@@ -7,6 +7,23 @@ name: launcher-release
 #
 # Always builds whatever is at `main` HEAD — the triggering PR is just
 # the cut-point marker, mirroring the policy of `release-container.yml`.
+#
+# The launcher stays a 64-bit build, but SGW.exe is 32-bit, and injection
+# must run at the target's bitness (it hands a remote thread the injector's
+# own LoadLibraryW). So the launcher carries two i686 artifacts, built first
+# and embedded through crates/launcher/build.rs: cimmeria-client-patches.dll
+# and the sgw-start32.exe helper that injects it. The build runs in stages
+# from tools/launcher-release/build.sh, the same stages launcher-build.yml
+# dry-runs on every launcher PR, so this workflow's build is exercised before
+# a release needs it.
+#
+# Releases ship unsigned: code signing is deferred by the owner. The helper
+# keeps a stable name, a version resource and a place beside the launcher so
+# a Defender exclusion works; see docs/client/launcher-guide.md.
+#
+# The release also carries the client-patches UI overlay packed as a manifest
+# patch by `pack-client-overlay`, for the operator to add to the signed
+# content manifest; see docs/client/launcher-distribution-setup.md.
 
 on:
   workflow_dispatch:
@@ -60,11 +77,22 @@ jobs:
           ref: main
           persist-credentials: false
       - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
         with:
           shared-key: launcher-release
-      - name: cargo build --release
-        run: cargo build -p sgw-launcher --release
+      - name: build the i686 client-patches DLL and sgw-start32 helper
+        shell: bash
+        run: tools/launcher-release/build.sh i686
+
+      - name: build the 64-bit launcher, embedding both
+        shell: bash
+        run: tools/launcher-release/build.sh launcher
+
+      - name: verify the artifacts
+        shell: bash
+        run: tools/launcher-release/build.sh verify
       - name: stamp version
         id: stamp
         shell: bash
@@ -82,11 +110,21 @@ jobs:
           mkdir -p artifacts
           cp target/release/sgw-launcher.exe \
             "artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe"
+      # The overlay zip is served from this release's own immutable tag, so
+      # the entry's blob URL points here. With no overlay committed the tool
+      # prints "nothing to pack" and the release carries the launcher alone.
+      - name: pack client-patches overlay
+        shell: bash
+        env:
+          TAG: ${{ steps.stamp.outputs.tag }}
+        run: tools/launcher-release/build.sh overlay "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
       - name: upload build artifact (workflow run)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: sgw-launcher-${{ steps.stamp.outputs.tag }}
-          path: artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe
+          path: |
+            artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe
+            overlay-out/
           retention-days: 30
       - name: create GitHub release
         env:
@@ -103,7 +141,17 @@ jobs:
 
           Dispatched from PR #${TRIGGERING_PR}."
           fi
+          BODY="${BODY}
+
+          This build is unsigned. If Windows Defender or SmartScreen blocks it, see docs/client/launcher-guide.md."
+          shopt -s nullglob
+          overlay=(overlay-out/*.zip overlay-out/*.entry.json)
+          if [ ${#overlay[@]} -gt 0 ]; then
+            BODY="${BODY}
+
+          Includes the client-patches UI overlay patch. To publish it, add its \`.entry.json\` to the content manifest and re-sign (docs/client/launcher-distribution-setup.md)."
+          fi
           gh release create "${TAG}" \
             --title "Launcher ${TAG}" \
             --notes "${BODY}" \
-            "artifacts/sgw-launcher-${TAG}.exe"
+            "artifacts/sgw-launcher-${TAG}.exe" "${overlay[@]}"

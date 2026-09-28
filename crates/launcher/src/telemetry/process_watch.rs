@@ -1,16 +1,22 @@
 //! Wait for the launched game process to exit, off the async runtime.
 //!
-//! The launcher hands the [`std::process::Child`] from `launch.rs` to
-//! [`wait_for_exit`], which spawn_blocking-ly calls `child.wait()`.
-//! When the game exits the future resolves; the orchestrator then
-//! does its final flush + bundle upload.
+//! The launcher hands either the [`std::process::Child`] from a plain
+//! launch to [`wait_for_exit`], or the [`RunningProcess`] from an
+//! injected launch to [`wait_for_running_exit`]; each waits in
+//! `spawn_blocking`. When the game exits the future resolves; the
+//! orchestrator then does its final flush + bundle upload.
 //!
 //! Dropping the future does NOT kill the game — `std::process::Child`
-//! has no kill-on-drop semantic (that's the tokio variant) and we
-//! deliberately don't use a Job Object with KILL_ON_JOB_CLOSE.
-//! Closing the launcher window mid-session leaves the game alive.
+//! has no kill-on-drop semantic (that's the tokio variant),
+//! `RunningProcess` only closes its handle, and we deliberately don't
+//! use a Job Object with KILL_ON_JOB_CLOSE. Closing the launcher window
+//! mid-session leaves the game alive.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::process::Child;
+
+use cimmeria_client_launch::inject::RunningProcess;
 
 use thiserror::Error;
 
@@ -26,6 +32,22 @@ pub enum WatchError {
 pub struct ExitReport {
     pub pid: u32,
     pub exit_code: Option<i32>,
+}
+
+/// The game-exit future a telemetry session runs until, whichever way
+/// the game was launched.
+pub type ExitWaiter = Pin<Box<dyn Future<Output = Result<ExitReport, WatchError>> + Send>>;
+
+/// Wait on a game launched with DLLs injected.
+pub async fn wait_for_running_exit(process: RunningProcess) -> Result<ExitReport, WatchError> {
+    let pid = process.pid();
+    let exit_code = tokio::task::spawn_blocking(move || process.wait())
+        .await
+        .map_err(|_| WatchError::JoinPanic)??;
+    Ok(ExitReport {
+        pid,
+        exit_code: Some(exit_code),
+    })
 }
 
 pub async fn wait_for_exit(mut child: Child) -> Result<ExitReport, WatchError> {
