@@ -161,8 +161,8 @@ fn lookup_online_locks_and_resolves() {
 /// inactivity timeout, send error i.e. a crashed client, duplicate login,
 /// logoff): the session goes and its name stops resolving, while another
 /// player's listing is untouched.
-#[tokio::test]
-async fn destroy_client_entities_leaves_no_listing_for_any_reason() {
+#[test]
+fn destroy_client_entities_leaves_no_listing_for_any_reason() {
     for reason in [
         "client_disconnect",
         "inactivity_timeout",
@@ -189,8 +189,7 @@ async fn destroy_client_entities_leaves_no_listing_for_any_reason() {
                 as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
             &None,
             reason,
-        )
-        .await;
+        );
 
         assert_eq!(
             lookup_online(&connected, "Lomiada"),

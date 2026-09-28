@@ -492,9 +492,14 @@ destroyed the *new* player's cell entity.
 `BaseToCellMsg::DisconnectEntity` now carries a `reply_tx: oneshot::Sender<()>`
 that the cell fires once `handle_disconnect_entity` runs to completion (same
 shape as `CreateEntity`'s existing `reply_tx`). `destroy_client_entities`
-awaits it before returning the id to the free list. Either failure WARNs
-(no `target:` override) with `entity_id`, `account_id` and
-`disconnect_reason`:
+spawns a task that sends the message and awaits that reply before returning
+the id to the free list -- it does **not** await inline. The function is
+called from the base's single UDP receive loop (`client_disconnect`,
+`duplicate_login`) and the per-session tick-sync loop
+(`inactivity_timeout`), so waiting on a cell round trip there would pause
+packet intake for every connected player whenever the cell is busy or the
+shared Base→Cell channel is backpressured. Either failure WARNs (no
+`target:` override) with `entity_id`, `account_id` and `disconnect_reason`:
 
 | Level | Message | Meaning |
 |---|---|---|

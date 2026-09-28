@@ -427,8 +427,8 @@ fn staged_connected_session(
     (connected, entity_manager, entity_to_addr)
 }
 
-#[tokio::test]
-async fn destroy_client_entities_stamps_disconnect_reason_on_cleanup_log() {
+#[test]
+fn destroy_client_entities_stamps_disconnect_reason_on_cleanup_log() {
     use crate::test_support::LogCapture;
 
     let capture = LogCapture::install();
@@ -445,8 +445,7 @@ async fn destroy_client_entities_stamps_disconnect_reason_on_cleanup_log() {
             as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
         &None,
         "client_disconnect",
-    )
-    .await;
+    );
 
     let event = capture
         .find_message(Level::INFO, "Client entities cleaned up")
@@ -462,8 +461,8 @@ async fn destroy_client_entities_stamps_disconnect_reason_on_cleanup_log() {
 /// Pin the full set of documented `disconnect_reason` labels. A new
 /// disconnect site that invents a fresh label (or a refactor that
 /// drops one) will be caught by this list compared to grep/lint.
-#[tokio::test]
-async fn destroy_client_entities_accepts_all_documented_reasons() {
+#[test]
+fn destroy_client_entities_accepts_all_documented_reasons() {
     use crate::test_support::LogCapture;
 
     // Every label that appears at a documented call site of
@@ -493,8 +492,7 @@ async fn destroy_client_entities_accepts_all_documented_reasons() {
                 as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
             &None,
             reason,
-        )
-        .await;
+        );
 
         let event = capture
             .find_message(Level::INFO, "Client entities cleaned up")
@@ -510,8 +508,8 @@ async fn destroy_client_entities_accepts_all_documented_reasons() {
 /// Idempotent-cleanup short-circuit (no session at addr) must still
 /// log the `disconnect_reason` so the operator can see "we tried to
 /// clean up but it was already gone" without losing the reason.
-#[tokio::test]
-async fn destroy_client_entities_logs_reason_on_already_cleaned_short_circuit() {
+#[test]
+fn destroy_client_entities_logs_reason_on_already_cleaned_short_circuit() {
     use crate::test_support::LogCapture;
 
     let capture = LogCapture::install();
@@ -532,8 +530,7 @@ async fn destroy_client_entities_logs_reason_on_already_cleaned_short_circuit() 
             as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
         &None,
         "inactivity_timeout",
-    )
-    .await;
+    );
 
     let event = capture
         .find_message(Level::DEBUG, "already cleaned up")

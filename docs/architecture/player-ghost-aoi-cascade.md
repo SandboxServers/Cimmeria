@@ -437,7 +437,9 @@ ends of a failed introduction. The row is catalogued in
   `DisconnectEntity` reply (`reply_tx: oneshot::Sender<()>`, mirroring
   `CreateEntity`'s existing round trip) now gates the free: the id stays
   out of the free list until the cell confirms teardown, and both failure
-  shapes WARN instead of failing silently. See
+  shapes WARN instead of failing silently. The round trip runs on a task
+  `destroy_client_entities` spawns internally, not inline, so the base's
+  UDP receive loop and tick-sync loop never block waiting on the cell. See
   [negative-logging-convention.md](negative-logging-convention.md)
   § Disconnect-teardown `DisconnectEntity` seam. This does not by itself
   confirm or rule out the client-side `GameEntityManager` cache question

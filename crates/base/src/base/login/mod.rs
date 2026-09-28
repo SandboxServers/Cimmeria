@@ -135,8 +135,7 @@ pub(crate) async fn handle_login(
                 transport,
                 db_pool,
                 "duplicate_login",
-            )
-            .await;
+            );
         }
     }
 
@@ -423,8 +422,7 @@ pub(crate) async fn handle_log_off(
         // the world, so there is no offline presence to look up.
         &None,
         "logoff",
-    )
-    .await;
+    );
 
     // Discord auth-channel: clean logout carries the session length. The
     // lower-level teardown in `destroy_client_entities` also fires a

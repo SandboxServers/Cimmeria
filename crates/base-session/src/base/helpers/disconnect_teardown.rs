@@ -13,7 +13,13 @@
 //! The fix: the id is only returned to the free list after the cell's
 //! `DisconnectEntity` reply confirms teardown, and every way that
 //! confirmation can fail to arrive logs a `WARN` naming `entity_id`,
-//! `account_id` and `disconnect_reason`.
+//! `account_id` and `disconnect_reason`. The Base→Cell send and the wait
+//! for that reply run on a task `destroy_client_entities` spawns
+//! internally, not inline: the function is called from the base's single
+//! UDP receive loop and its per-session tick-sync loop, and awaiting a
+//! cell round trip there would pause packet intake for every connected
+//! player whenever the cell is busy or the shared Base→Cell channel is
+//! backpressured (review follow-up on the initial #999 fix).
 
 use super::*;
 use tracing::Level;
@@ -53,15 +59,84 @@ fn staged_player_session(
     (connected, entity_manager, entity_to_addr)
 }
 
+/// Give a task `destroy_client_entities` spawned internally a chance to run
+/// to completion on the current-thread test runtime. Each of these tasks
+/// does at most one more await (a channel send or an already-fired
+/// oneshot) before finishing, so a generous, fixed number of cooperative
+/// yields is deterministic here -- there is no condition to poll for
+/// because the test has no other way to observe "has the spawned task
+/// finished" than the side effect it is about to assert on.
+async fn let_spawned_task_settle() {
+    for _ in 0..64 {
+        tokio::task::yield_now().await;
+    }
+}
+
+/// The caller must never block on the cell. `destroy_client_entities` is
+/// called from the base's single UDP receive loop (`client_disconnect`,
+/// `duplicate_login`) and the per-session tick-sync loop
+/// (`inactivity_timeout`); if the Base→Cell send or the wait for its reply
+/// ran inline, a busy or backpressured cell would pause packet intake for
+/// every connected player.
+///
+/// Proven by never draining the cell channel at all: nobody ever receives
+/// the `DisconnectEntity`, let alone replies to it, so an inline wait would
+/// hang forever. The call must still return promptly, and the
+/// caller-visible cleanup (session removed from `connected`, the reverse
+/// mapping dropped) must already be done.
+///
+/// Revert shape: moving the `tx.send(...).await` / `reply_rx.await` back
+/// inline (ahead of the return) hangs this test.
+#[tokio::test]
+async fn destroy_client_entities_returns_promptly_without_a_cell_reply() {
+    const PLAYER_EID: u32 = 1;
+    let addr: SocketAddr = "127.0.0.1:55603".parse().unwrap();
+    let (connected, entity_manager, entity_to_addr) = staged_player_session(addr, 501, PLAYER_EID);
+
+    // Kept alive (so the send itself succeeds) but never drained or replied
+    // to: nothing on the other end ever completes the round trip.
+    let (cell_tx, _cell_rx) = tokio::sync::mpsc::channel(8);
+    let cell_tx = Some(cell_tx);
+
+    let start = std::time::Instant::now();
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &cell_tx,
+        &entity_to_addr,
+        &test_transport(),
+        &None,
+        "client_disconnect",
+    );
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "destroy_client_entities must return without waiting on the cell's \
+         DisconnectEntity reply -- took {elapsed:?} against a channel \
+         nobody will ever drain or reply on"
+    );
+    assert!(
+        connected.lock().unwrap().get(&addr).is_none(),
+        "the session must be removed from `connected` before returning"
+    );
+    assert!(
+        entity_to_addr.lock().unwrap().get(&PLAYER_EID).is_none(),
+        "the reverse mapping must be removed before returning"
+    );
+}
+
 /// The ordering race at the heart of #999: while the cell has not yet
 /// confirmed it tore the old entity down, a concurrent login must not be
 /// handed the same id.
 ///
-/// Drives `destroy_client_entities` on its own task against a controlled
-/// cell channel, intercepts its `DisconnectEntity` before replying (holding
-/// the id "mid-teardown"), and proves a concurrent
-/// `EntityManager::create_entity` call — standing in for a racing login —
-/// does not receive it. Only after the reply fires does the id recycle.
+/// Calls `destroy_client_entities` directly (it returns immediately -- the
+/// cell round trip runs on its own internally-spawned task), intercepts the
+/// `DisconnectEntity` before replying (holding the id "mid-teardown"), and
+/// proves a concurrent `EntityManager::create_entity` call — standing in
+/// for a racing login — does not receive it. Only after the reply fires
+/// does the id recycle.
 ///
 /// Revert shape: reverting to freeing the id up front (before the cell
 /// round trip) makes the concurrent `create_entity` call recycle
@@ -74,25 +149,17 @@ async fn player_entity_id_is_withheld_from_reuse_until_the_cell_confirms_teardow
 
     let (cell_tx, mut cell_rx) = tokio::sync::mpsc::channel(8);
     let cell_tx = Some(cell_tx);
-    let transport = test_transport();
 
-    let task_connected = Arc::clone(&connected);
-    let task_entity_manager = Arc::clone(&entity_manager);
-    let task_entity_to_addr = Arc::clone(&entity_to_addr);
-    let task_transport = Arc::clone(&transport);
-    let handle = tokio::spawn(async move {
-        destroy_client_entities(
-            &task_connected,
-            &task_entity_manager,
-            addr,
-            &cell_tx,
-            &task_entity_to_addr,
-            &task_transport,
-            &None,
-            "client_disconnect",
-        )
-        .await;
-    });
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &cell_tx,
+        &entity_to_addr,
+        &test_transport(),
+        &None,
+        "client_disconnect",
+    );
 
     // Intercept the DisconnectEntity and hold its reply -- simulating a
     // cell that has not yet finished tearing the old entity down.
@@ -118,12 +185,10 @@ async fn player_entity_id_is_withheld_from_reuse_until_the_cell_confirms_teardow
          whose cell-side teardown has not been confirmed yet"
     );
 
-    // Now let the cell confirm teardown.
+    // Now let the cell confirm teardown, and let the spawned task that is
+    // waiting on this exact reply run to completion.
     let _ = reply_tx.send(());
-    tokio::time::timeout(std::time::Duration::from_secs(5), handle)
-        .await
-        .expect("destroy_client_entities must not hang waiting on the ack")
-        .unwrap();
+    let_spawned_task_settle().await;
 
     // Once confirmed, the id returns to the free list and recycles as usual
     // (allocate_id is FIFO, and the concurrent id above was already handed
@@ -167,8 +232,9 @@ async fn disconnect_entity_send_failure_warns_and_withholds_the_id() {
         &test_transport(),
         &None,
         "client_disconnect",
-    )
-    .await;
+    );
+    // The send failure is discovered on the internally-spawned task.
+    let_spawned_task_settle().await;
 
     let event = capture
         .find_message(Level::WARN, "DisconnectEntity send failed")

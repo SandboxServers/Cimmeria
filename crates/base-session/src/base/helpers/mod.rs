@@ -414,7 +414,19 @@ pub(crate) fn get_active_entity_id(
 /// reuse permanently rather than reused unconfirmed: an unrecycled id costs
 /// nothing (the id space is an `i32` counter), a reused one racing a live
 /// cell can destroy another player's session.
-pub async fn destroy_client_entities(
+///
+/// The Base→Cell send and the wait for that reply run on a **spawned
+/// task**, not inline. This function is called from the base's single UDP
+/// receive loop (`client_disconnect`, `duplicate_login`) and from the
+/// per-session tick-sync loop (`inactivity_timeout`); awaiting a cell round
+/// trip — which itself does a DB write (`persist_last_position`) before
+/// replying — inline there would pause packet intake for every connected
+/// player whenever the cell is busy or the shared Base→Cell channel is
+/// backpressured. Everything that does not depend on the cell's reply (the
+/// session-map removal, the Account entity free, the reverse-index removal,
+/// the crafting-queue drop, the offline-presence fan-out, the Discord emit)
+/// still runs synchronously before this function returns.
+pub fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
     addr: SocketAddr,
@@ -505,58 +517,64 @@ pub async fn destroy_client_entities(
         // Notify CellService to disconnect and destroy the cell entity, and
         // hold `player_eid` out of `EntityManager`'s free list until the
         // cell confirms the teardown finished -- see the function doc and
-        // issue #999.
-        let teardown_confirmed = match cell_tx {
+        // issue #999. Spawned so the caller (the UDP receive loop, or the
+        // tick-sync loop) never blocks on the cell's reply.
+        match cell_tx {
             Some(tx) => {
-                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                match tx
-                    .send(BaseToCellMsg::DisconnectEntity {
-                        entity_id: player_eid,
-                        reply_tx,
-                    })
-                    .await
-                {
-                    Ok(()) => match reply_rx.await {
-                        Ok(()) => true,
-                        Err(_) => {
+                let tx = tx.clone();
+                let entity_manager = Arc::clone(entity_manager);
+                tokio::spawn(async move {
+                    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                    match tx
+                        .send(BaseToCellMsg::DisconnectEntity {
+                            entity_id: player_eid,
+                            reply_tx,
+                        })
+                        .await
+                    {
+                        Ok(()) => match reply_rx.await {
+                            Ok(()) => {
+                                entity_manager
+                                    .lock()
+                                    .unwrap()
+                                    .destroy_entity(EntityId(player_eid as i32));
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    entity_id = player_eid,
+                                    account_id,
+                                    disconnect_reason = reason,
+                                    "destroy_client_entities: cell dropped the \
+                                     DisconnectEntity reply without confirming \
+                                     teardown -- entity id withheld from reuse; \
+                                     the cell entity may be leaked in its space"
+                                );
+                            }
+                        },
+                        Err(e) => {
                             tracing::warn!(
                                 entity_id = player_eid,
                                 account_id,
                                 disconnect_reason = reason,
-                                "destroy_client_entities: cell dropped the \
-                                 DisconnectEntity reply without confirming \
-                                 teardown -- entity id withheld from reuse; \
-                                 the cell entity may be leaked in its space"
+                                error = %e,
+                                "destroy_client_entities: DisconnectEntity send \
+                                 failed -- cell may leak the player's entity in \
+                                 its space, and the id is withheld from reuse \
+                                 until it does"
                             );
-                            false
                         }
-                    },
-                    Err(e) => {
-                        tracing::warn!(
-                            entity_id = player_eid,
-                            account_id,
-                            disconnect_reason = reason,
-                            error = %e,
-                            "destroy_client_entities: DisconnectEntity send \
-                             failed -- cell may leak the player's entity in \
-                             its space, and the id is withheld from reuse \
-                             until it does"
-                        );
-                        false
                     }
-                }
+                });
             }
             // No cell configured (no-cell test harnesses and the account-only
             // "no character in world yet" teardown): nothing on the other
-            // side could be mid-teardown, so there is nothing to wait for.
-            None => true,
-        };
-
-        if teardown_confirmed {
-            entity_manager
-                .lock()
-                .unwrap()
-                .destroy_entity(EntityId(player_eid as i32));
+            // side could be mid-teardown, so free the id immediately.
+            None => {
+                entity_manager
+                    .lock()
+                    .unwrap()
+                    .destroy_entity(EntityId(player_eid as i32));
+            }
         }
     }
     tracing::info!(
