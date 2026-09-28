@@ -13,7 +13,7 @@ Where the Cimmeria server emulator stands today and what's ahead.
 >
 > **Re-verified 2026-09-25** against the code at `acbcc22e`, after about 160 PRs landed since the previous (2026-07-25) edition. Every row was re-read, and a feature counts as Confirmed Working only when there is a written record of an in-client test: the 2026-09-18 colo playtest, the 2026-09-25 NPC AI UAT, a PR or issue note, or a recorded confirmation. That stricter bar moved some rows down (vendors, spawn population, mission cash, mail sending, effect clear-flags) while the playtest moved others up (character creation, minigames, ring trips, damage, loot). The previous edition's headline also did not match its own table: it printed 443 / CW 159 / KM 128 against rows that summed to 444 / CW 164 / KM 124. The figures below are recomputed from the rows.
 >
-> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)). The headline and the Organizations, Groups and Chat rows then follow the organizations close-out (ORG-11, [ledger](analysis/organizations/README.md)), which recounted §21, §23 and §30. The headline, and the Inventory and Organizations rows, then follow the Bank and Vault campaign's org close-out (BV-10, [ledger](analysis/bank-vault/README.md)), which moved §23's treasury and vault rows from KM to NT. Other rows keep their 2026-09-25 prose.
+> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)). The headline and the Organizations, Groups and Chat rows then follow the organizations close-out (ORG-11, [ledger](analysis/organizations/README.md)), which recounted §21, §23 and §30. The headline, and the Inventory and Organizations rows, then follow the Bank and Vault campaign's org close-out (BV-10, [ledger](analysis/bank-vault/README.md)), which moved §23's treasury and vault rows from KM to NT. The headline, the Crafting row, the crafting content row and known issue, the critical path and the roadmap then follow the crafting close-out (CR-13, [ledger](analysis/crafting/README.md)), which moved all nine §19 rows to NT. Other rows keep their 2026-09-25 prose.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -32,17 +32,17 @@ Where the Cimmeria server emulator stands today and what's ahead.
 | Status | Features | Percentage |
 |--------|----------|-----------|
 | Confirmed Working (CW) | 167 | 34.4% |
-| Needs Test (NT) | 112 | 23.0% |
-| Implemented (IM) | 109 | 22.4% |
-| Known/Missing (KM) | 95 | 19.5% |
+| Needs Test (NT) | 121 | 24.9% |
+| Implemented (IM) | 101 | 20.8% |
+| Known/Missing (KM) | 94 | 19.3% |
 | Needed/Unknown (NU) | 3 | 0.6% |
 | **Total** | **486** | |
 
-**Code exists (CW + NT + IM)**: 386 features (79.4%)  
-**Missing (KM + NU)**: 100 features (20.6%)  
+**Code exists (CW + NT + IM)**: 389 features (80.0%)  
+**Missing (KM + NU)**: 97 features (20.0%)  
 **Tested end-to-end (CW)**: 167 features (34.4%)
 
-The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 110 on 2026-09-27, when the social-systems, pets, organizations and crafting campaigns merged. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
+The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 121 on 2026-09-27, when the social-systems, pets, organizations, bank and crafting campaigns merged. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
 
 ## System Status
 
@@ -83,7 +83,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
 | XP & leveling | IM | 12 (7 CW, 3 NT, 1 IM, 1 KM) | Kill-XP pipeline + level scaling CW. The ability-tree campaign (2026-09-27, [ledger](analysis/ability-trees/work-packets.md)) raised the cap to 50 and moved to 1 training point per level; both are NT until the owner's UAT. It also shipped the 439-node FINAL v2 trees, the archetype-wide spend gate, trainer authority, respec, and fire-after-warmup for charged abilities. Mission XP has a `GrantXP` action (#618) but `reward_xp` is 0 on all 1,041 missions and the formula needs a maintainer decision |
-| Crafting | IM | 9 (8 IM, 1 KM) | State, persistence, the login sync, discipline learning, ASP spend, craft, research, reverse engineering and alloying are ported (#427, crafting campaign CR-03 to CR-09); respec is still a stub. See the [crafting ledger](analysis/crafting/README.md) and gap-analysis §19 |
+| Crafting | NT | 9 (all NT) | **Crafting campaign, merged 2026-09-27, awaiting the owner's [CR-14 UAT](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist).** Learning disciplines with ASP (earned at 1 per level), craft, research, reverse engineering and alloying on a 3-second induction that consumes only when the bar ends, a free two-step respec (`.respeccraft`), crafting stations and Field Crafting Tools, Blueprint items and Racial Paradigm Guides, and the login sync that restores all of it. Components live in the crafting bag, which trades and mails. The debug hub has four stations and a supplies vendor; GMs have `.allcraft`, `.craftkit` and `.learnblueprint`. See the [crafting ledger](analysis/crafting/README.md) and gap-analysis §19 |
 | Stargate travel | IM | 10 (2 CW, 4 NT, 3 IM, 1 KM) | Gate passage CW. DHD interaction, gate cancel, address discovery and multi-player gate sync are NT (#662, #663, #682); stargate open/cross events are now emitted. Return-trip state is IM |
 | Chat | NT | 11 (8 NT, 3 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Say, emote and yell reach other players (#737), with a one-way Ignore filter. Tells (with AFK and DND replies) and `chatIgnore` (SS-C1). A flood limit and text rules on every line (SS-00), a channel allowlist, GM `.mute` / `.unmute`, and a feedback line for each unimplemented Communicator method (SS-C3). GM broadcast through `/gmshout` and `.announce` (SS-C2), which the client now displays because the channel ids match its own (SS-C4); no channel is registered at login, as in the legacy server. Squad chat (ORG-04) and team, command and officer chat (ORG-09) reach the right members. User channels and channel moderation are unported |
 | Trading | IM | 8 (all IM) | **Ported 2026-06** (#438): full propose → lock → confirm → atomic item+cash swap, with disconnect unwind and live-DB commit guards. Needs a two-client smoke to reach CW |
@@ -140,7 +140,7 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 | NPCs | 153 templates | Castle Cellblock and Castle populations | 2026-09-18 playtest and 2026-09-25 NPC AI UAT |
 | Dialog trees | 5,406 | Castle Cellblock and Castle | Dialog UI cleanup (buttons, barks) merged 2026-09-25, awaiting a client test |
 | Stargates | 29 | Castle ↔ neighbor smoke | Open/cross events emitted (#663); multi-player sync awaiting a two-observer test |
-| Crafting blueprints | 499 | 0 | Blueprint ids persist per player, but no crafting verb consumes them yet |
+| Crafting blueprints | 498 (40 alloys) | 0 in a client | Every verb works server-side against the whole catalog (78 disciplines); 193 Blueprint items teach their blueprints. The CR-14 UAT crafts from blueprints 25, 1 and 42 |
 | Loot tables | defined | mostly empty | Generation verified in the colo playtest; content sparse |
 
 ## Known Issues
@@ -184,9 +184,9 @@ The transport layer works; the remaining BigWorld gaps are narrower than they we
 
 The framework works (PR #420), but the clear-on-damage, clear-on-revive and clear-on-bandolier-swap flags are not implemented, and the long tail of the 3,216 effect rows still needs script coverage. `cell/effects/scripts.rs` has grown to 1,648 lines.
 
-### Crafting half-ported
+### Crafting awaits its first client run
 
-Phase 1 (#427) landed the state layer: disciplines, blueprints, applied-science points, and racial paradigm levels persist transactionally, and expertise can be granted. Every player-facing crafting verb still logs `UNIMPLEMENTED`.
+The crafting campaign restored the whole activity layer on the Phase 1 state (#427): every verb, respec, stations and tools, and the crafting items, each refusal with a visible line. None of it has been run in a client. Known gaps carried into the UAT: the station or tool gate is checked when a job is requested, not when it completes; a vendor purchase of several non-stacking components makes one stack; using a Blueprint item or a guide prints no line of its own. The list is in the [session resume](analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward).
 
 ### Seeded cinematic data never reaches the client
 
@@ -194,21 +194,21 @@ Phase 1 (#427) landed the state layer: disciplines, blueprints, applied-science 
 
 ### September landings await client verification
 
-93 rows are Needs Test: the NPC AI changes merged after the 2026-09-25 UAT, the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
+121 rows are Needs Test: the NPC AI changes merged after the 2026-09-25 UAT, the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), the organizations and bank rows, the nine crafting rows (the owner's [CR-14](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
 
 ## Critical Path for Playability
 
 Re-ranked 2026-09-25.
 
-1. **Client-test the September landings** — the 93 NT rows above; the cheapest way to move the headline
+1. **Client-test the September landings** — the 121 NT rows above; the cheapest way to move the headline
 2. **Effect-script content coverage** — the 3,216 effect rows need script authoring for the long tail, plus the missing clear-on flags
 3. **AoI entity-introduction drop** — needs an in-game look at the #747 hold, not more code
 4. **Mission rewards** — a reward formula for XP, and cash and item dispatch (#310)
-5. **Crafting Phase 2** — the crafting verbs on top of the Phase 1 state layer
+5. **Crafting UAT** — the crafting campaign is merged; the owner's CR-14 run moves its nine NT rows
 6. **Multi-zone end-to-end** — Harset's first playtest; content campaigns for the next zones
 7. **Two-client verification** — trading, player-to-player introduction, chat, mail, duels, squads, Teams and Commands between players
 
-Quality-of-life items (black market merge, remaining minigame ports, group loot and member info) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign), pets, squads, Teams and Commands (the organizations campaign), and the personal and organization vaults with the treasury (the Bank and Vault campaign) are restored server-side and waiting for the owner's in-game UAT.
+Quality-of-life items (black market merge, remaining minigame ports, group loot and member info) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign), pets, squads, Teams and Commands (the organizations campaign), the personal and organization vaults with the treasury (the Bank and Vault campaign), and crafting are restored server-side and waiting for the owner's in-game UAT.
 
 ## Roadmap
 
@@ -217,6 +217,7 @@ Quality-of-life items (black market merge, remaining minigame ports, group loot 
 - Client-test the NT rows, starting with the NPC AI post-UAT changes, gate travel with two observers, and vendors
 - The owner's bank UAT on the colo ([checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)): steps 1-14 for the personal bank after release 1, steps 15-25 for the organization vaults, the treasury and the Team expansion after release 2; then serving the Expand dialog, for both vaults, once #943's crashing field is known
 - The owner's organizations UAT on the colo after the release ([guide](guides/organizations-uat.md)), then the follow-ups in the [ledger](analysis/organizations/README.md#known-gaps-and-follow-ups)
+- The owner's crafting UAT on the colo after the release ([CR-14 checklist](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), then the carried gaps: re-check the station or tool gate when a job completes, and the vendor's stack size
 - Effect-script coverage for the most-played encounters
 - Observe the AoI first-login hold in game
 - Mission reward formula and cash/item dispatch
@@ -224,7 +225,6 @@ Quality-of-life items (black market merge, remaining minigame ports, group loot 
 
 ### Medium-term — restore retired subsystems
 
-- Crafting Phase 2 (the verbs, on top of the shipped state layer)
 - Merge `feat/571-black-market-phase1`
 - Spawn population control (SpawnRegion / SpawnSet, #62)
 

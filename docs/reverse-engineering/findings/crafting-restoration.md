@@ -11,27 +11,24 @@
 
 ## Completeness assessment
 
-Crafting is unusual among the "missing" systems: its **infrastructure is ~100% done**
-(state struct, DB persistence with 5 live-DB tests, world-entry blueprint sync, the
-`onUpdateDiscipline` emit, GM grants, blueprint/discipline/paradigm DB seed). What is
-missing is the **activity layer** — the six cell handlers that actually do work are
-parse-and-log stubs (~3% complete).
+> **Update (2026-09-27, crafting campaign close-out CR-13).** The activity layer this document planned is now built, server-side, by the crafting campaign ([ledger](../../analysis/crafting/README.md), CR-01 to CR-17). Nothing has been run in a client yet; the owner's CR-14 UAT is next. The table below replaces the 2026-06-20 assessment. That assessment also overstated the world-entry sync as 100% done: only the known-blueprints list (139) was sent at login, and disciplines (136), paradigm levels (138) and the ASP total were not (campaign audit C-60, C-05).
 
-| Subsystem | Client (SGW.exe) | Server (Python) | Rust server | Rust % |
-|---|---|---|---|---|
-| State struct + DB persistence | VCrafting client-side | `Crafter.__init__` | `crates/entity/src/crafting.rs` + `base::crafting::persistence` | 100% |
-| World-entry blueprint sync (`onUpdateKnownCrafts`, 139) | expects `ARRAY<INT32>` | `onClientReady` | `map_loaded.rs` step 23 | 100% |
-| `onUpdateDiscipline` emit (136) | INT32+INT32 | `gainExpertise` | byte-exact test in entity crate | 100% |
-| GM grant expertise / ASP | — | `commands/Crafting.py` | `base::crafting::handlers` | 100% |
-| `spendAppliedSciencePoints` (95) | INT32 disciplineId | full paradigm+prereq check | parse → `UNIMPLEMENTED` | 5% |
-| `craft` (96) | craftId + ARRAY + qty | full validate/consume/timer/grant | parse → `UNIMPLEMENTED` | 5% |
-| `research` (97) | itemId + kickers | researchable check + random +5 | `UNIMPLEMENTED` | 2% |
-| `reverseEngineer` (98) | itemId | blueprint lookup, bias, recover | `UNIMPLEMENTED` | 2% |
-| `alloying` (99) | craftId + tier item + elems | tier/quality validation | `UNIMPLEMENTED` | 2% |
-| 3s induction timer | TimerUpdate → `UEvent_UI_CraftInductionStart` | `Atrea.addTimer(3.0)` | absent | 0% |
-| `onUpdateCraftingOptions` (140) + entity gate | FIXED_DICT; `isCraftingAllowed` | `craftingEntityFlags` | absent | 0% |
+| Subsystem | Client (SGW.exe) | Server (Python) | Rust server (2026-09-27) |
+|---|---|---|---|
+| State struct + DB persistence | VCrafting client-side | `Crafter.__init__` | `crates/entity/src/crafting.rs` + `base::crafting::persistence`; unchanged since #427 apart from the respec's spent-ASP counter |
+| World-entry sync (136, 138, 139, ASP, 140) | expects each message | `onClientReady` | One reliable bundle after `onClientReady` (`base::crafting::sync`); before the campaign only 139 was sent |
+| `onUpdateDiscipline` emit (136) | INT32+INT32 | `gainExpertise` | Sent at login, on learning, on every expertise gain and by the GM grants |
+| GM grants | — | `commands/Crafting.py` | ASP and expertise (#427), `.allcraft`, `.craftkit`, `.learnblueprint` |
+| `spendAppliedSciencePoints` (95) | INT32 disciplineId | full paradigm+prereq check | Implemented: one locked, replay-safe transaction; every refusal a line |
+| `craft` (96) | craftId + ARRAY + qty | full validate/consume/timer/grant | Implemented: exact component-set match, consumed when the bar ends |
+| `research` (97) | itemId + kickers | researchable check + random +5 | Implemented: the client's kicker rules, server-side roll, teaches the item's blueprint |
+| `reverseEngineer` (98) | itemId | blueprint lookup, bias, recover | Implemented: recovery rises with expertise (campaign decision D-CR06), not the legacy bias |
+| `alloying` (99) | craftId + tier item + elems | tier/quality validation | Implemented: the client's counts by stack quantity (Normal 10, Good 5, Great 2, Fantastic 1) |
+| `respecCrafting` (100) with 112 and 137 | prompt Yes sends 100 | not implemented | Implemented: a player's `.respeccraft` opens the prompt, its Yes resets (CR-10) |
+| 3s induction timer | TimerUpdate type 16 → `UEvent_UI_CraftInductionStart` | `Atrea.addTimer(3.0)` | Per-player induction engine, one running and ten in all, absolute expiry on the server's single game clock |
+| `onUpdateCraftingOptions` (140) + entity gate | FIXED_DICT; `isCraftingAllowed` | `craftingEntityFlags` | Stations by `ENTITYFLAG_Craft_*` within 5 units, Field Crafting Tools in the crafting bag, sent at login and on change; the gate is enforced on the base |
 
-**Overall: ~28% restored** (infrastructure ~100%, activity layer ~3%).
+The rest of this document is the 2026-06-20 plan and its evidence. Where it and the campaign disagree, the campaign's [crafting-client-ui.md](crafting-client-ui.md) and [crafting-items.md](crafting-items.md) findings and the [crafting system reference](../../gameplay/crafting-system.md) win.
 
 ## Architecture
 
@@ -86,7 +83,7 @@ consumer — no client-side state machine.
 | 112 | `onCraftingRespecPrompt` | `INT32 CostToRespec` | HIGH (.def) |
 | 136 | `onUpdateDiscipline` | `INT32 disciplineSeqId` + `INT32 expertise` | HIGH (byte-exact test) |
 | 137 | `onDisciplineRespec` | (no args) | HIGH (RTTI `0x019c20c4`) |
-| 138 | `onUpdateRacialParadigmLevel` | **UNKNOWN** (see open Q) | MEDIUM (RTTI `0x00e45a60`) |
+| 138 | `onUpdateRacialParadigmLevel` | `INT32 aRacialParadigmId` + `INT8 aLevel` (resolved 2026-09-25, #728; see [crafting-wire-formats.md](crafting-wire-formats.md)) | HIGH (.def) |
 | 139 | `onUpdateKnownCrafts` | `ARRAY<INT32> craftList` | HIGH (emitted in `map_loaded.rs`) |
 | 140 | `onUpdateCraftingOptions` | `CraftingOptions` FIXED_DICT (4 × `CraftingInfo{items:ARRAY<INT32>, entities:ARRAY<INT32>}`) | HIGH (.def + Python `debugAllCraft`) |
 
@@ -108,10 +105,13 @@ consumer — no client-side state machine.
   expertise≥50 → `learnDiscipline(id, 1)` → consume ASP → `onUpdateDiscipline`.
 
 Server enforces a **crafting zone/entity gate** (`isCraftingAllowed` @ `0x00e465d0`,
-`craftingEntityFlags` CELL_PRIVATE INT32) — entirely absent in Rust; players can currently
-craft from anywhere once handlers exist.
+`craftingEntityFlags` CELL_PRIVATE INT32). **Update (2026-09-27):** Rust enforces it on the base
+(`base::crafting::gate`): a verb needs a station, a covering Field Crafting Tool, or the GM's
+"craft anywhere".
 
 ## Open questions
+
+> **Update (2026-09-27).** All five are answered: (1) method 138 is `INT32` + `INT8` (#728); (2) the client sends `respecCrafting` once, from the prompt's Yes ([crafting-client-ui.md §1](crafting-client-ui.md)); (3) the counts are the client's own, not `ALLOYING_ELEMENTARY_COUNTS` (§5 there); (4) the 140 pairs are (tool, machine) per craft type (§2 there, audit C-61); (5) Rust replaces the busy flag with the induction queue.
 
 1. **`onUpdateRacialParadigmLevel` (138) wire format** — RTTI `0x00e45a60`; the INT8-level
    inference comes from the Python `level` cap (5), not a decompiled emitter. → x64dbg D.2.

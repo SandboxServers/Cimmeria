@@ -93,14 +93,14 @@ Multi-step quest system with:
 
 ## Crafting
 
-- **Blueprints** — Recipes for creating items from components
-- **Disciplines** — Crafting specializations (79 total across 5 applied sciences)
-- **Racial Paradigms** — Race-specific crafting bonuses (6 types)
-- **Research** — Learn new recipes
-- **Reverse Engineer** — Deconstruct items for knowledge
-- **Naqahdah** — Primary crafting resource (from Stargate lore)
+- **Blueprints** — Recipes for creating items from components, learned from Blueprint items and research
+- **Disciplines** — Crafting specializations (78 across 4 applied sciences: Biomedical, Materials, Power Systems, Electronic), learned with applied-science points
+- **Racial Paradigms** — Five tech trees (Common, Human, Goa'uld, Asgard, Ancient) whose levels gate disciplines; raised by Racial Paradigm Guides
+- **Research** — Use up an item for a chance at expertise and the blueprint that makes it
+- **Reverse Engineer** — Break an item down into some of its components
+- **Alloying** — Combine a component with lower-tier elementary components into a higher-tier material
 
-**Data:** 499 blueprints with component requirements in the database. **Server:** Phase 1 only. The crafting state model and its persistence work (`sgw_player` columns plus the normalised `sgw_player_discipline_expertise` table), and GM expertise / applied-science grants push `onUpdateDiscipline` to the client. All six player-facing activities — craft, research, reverse engineer, alloy, spend applied-science points, respec — are stubs that decode their arguments and log `UNIMPLEMENTED`. Tracked in #567. See [crafting-system.md](gameplay/crafting-system.md).
+**Data:** 498 blueprints (40 alloys) with component requirements, 78 disciplines. **Server:** restored server-side by the crafting campaign (2026-09-27), not yet run in a client: learning disciplines with applied-science points (earned at one per level), craft, research, reverse engineering and alloying on a 3-second induction that consumes only when it completes, a free two-step respec, crafting stations and Field Crafting Tools, Blueprint items and Racial Paradigm Guides, and the login sync. The owner's CR-14 UAT is next. See [crafting-system.md](gameplay/crafting-system.md) and the [crafting ledger](analysis/crafting/README.md).
 
 ## Organizations (Guilds)
 

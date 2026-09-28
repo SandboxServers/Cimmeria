@@ -29,7 +29,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 |---|---|
 | [Pets](#pets) | [pets session resume, UAT checklist](../analysis/pets/handoffs/session-resume.md#uat-checklist-owner-colo-after-the-pt-13-release) |
 | [Organizations](#organizations) | [organizations-uat.md](organizations-uat.md) |
-| [Crafting](#crafting) | [crafting session resume](../analysis/crafting/handoffs/session-resume.md) (authoritative checklist lands with CR-13) |
+| [Crafting](#crafting) | [crafting session resume, CR-14 checklist](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist) |
 | [Bank and vault](#bank-and-vault) | [bank session resume, UAT checklist](../analysis/bank-vault/handoffs/session-resume.md#uat-checklist) |
 | [Mail, chat and duels](#mail-chat-and-duels) | [SS-UAT in work-packets.md](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) |
 | [Black market](#black-market) | [black-market plan](../analysis/black-market/README.md) (checklist lands with BM-07) |
@@ -78,8 +78,9 @@ Read these before you start. None of them needs a new report.
 | K13 | **Stale action-bar buttons after an ability respec.** The server keeps no hotbar, so a refunded ability's button stays; pressing it shows an error. | Expected. | [ability-trees session resume](../analysis/ability-trees/handoffs/session-resume.md#open-owner-decisions) |
 | K14 | **Two client-only mail and duel cosmetics.** The unit-frame PvP indicator does not refresh live during a duel, and after a refused mail send the Send button stays grey until you press New or Reply, which clears the typed text. Both need a client patch. | Expected. | [social session resume, Q-k](../analysis/social-systems/handoffs/session-resume.md#owner-questions) |
 | K15 | **Mixing servers can empty your world list.** A client that logged in to a server with the historical cellblocks, then to one without them, can lose its whole cached world table. | Ask the owner for the repair before you continue. | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#mixing-servers-during-the-uat), issue #840 |
-| K16 | **Crafting and the black market are not released to testers.** | Skip those sections. | [Crafting](#crafting), [Black market](#black-market) |
+| K16 | **The black market is not released to testers.** | Skip that section. | [Black market](#black-market) |
 | K17 | **All three Bankers are named "Storage Officer"**, and after a Team vault expansion, a Team vault window already open on another member keeps its old size until that member reopens it. | Tell the Bankers apart by their clothes ([Bank and vault](#bank-and-vault)). Reopen the window. | [bank session resume, Known gaps](../analysis/bank-vault/handoffs/session-resume.md#known-gaps-carried-forward) |
+| K18 | **Crafting gaps known at release.** Using a Blueprint item or a Racial Paradigm Guide prints no line (the item goes and the window changes). Buying several non-stacking components in one purchase shows one stack. A queued crafting job still finishes if you walk away from the station or give the tool away. `/showracialparadigmlevels` and the client's own `/respeccraft` do nothing useful. | Record them; not new bugs. Use `.respeccraft`. | [crafting session resume, known gaps](../analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward) |
 
 ## Common setup
 
@@ -111,7 +112,8 @@ The `.`-commands the campaigns rely on:
 | `.mute <name> <minutes>`, `.unmute <name>`, `.announce <text>` | Chat moderation and broadcast | Chat |
 | `.duel_status [name]`, `.duel_end <name>` | Inspect or end a duel | Duels |
 | `.aggro on` / `off` | Stop or restore idle NPCs noticing you (default on) | NPC AI |
-| `.allcraft`, `.craftkit <blueprint> [count]`, `.learnblueprint <id>` | Crafting grants | Crafting (after release) |
+| `.allcraft`, `.craftkit <blueprint> [count]`, `.learnblueprint <id>` | Crafting grants to the **selected** player (select yourself first) | Crafting |
+| `.respeccraft` | Open a free crafting respec; any player may use it | Crafting |
 | `.gotolocation <world> <x> <y> <z>`, `.gotoxyz`, `.goto <name>`, `.summon <name>` | Travel | Many |
 
 ### The stasis-room debug hub
@@ -132,8 +134,8 @@ The stasis room holds a row of NPCs, each for testing one system, a few seconds'
 | Storage Officer (Cellblock guard uniform) | Team Banker: opens your Team's vault; needs a Team | Ready (bank steps 15-25) |
 | Storage Officer (plain crew clothes) | Command Banker: opens your Command's vault; needs a Command | Ready (bank steps 15, 21) |
 | Sgt. Harriman | Gate Mail Clerk: sends you a test mail | Known broken (K2) |
-| Common Materials Components | Crafting supplies vendor (1 naquadah each) | Not ready for UAT (crafting) |
-| BioMedical / Electronics / Power Systems / Materials Crafting Station | Crafting stations; stand within 5 units and open J | Not ready for UAT (crafting) |
+| Common Materials Components | Crafting supplies vendor (1 naquadah each) | Ready |
+| BioMedical / Electronics / Power Systems / Materials Crafting Station | Crafting stations; stand within 5 units and open J | Ready |
 
 The crafting group stands along the wall on the opposite side from the main row.
 
@@ -169,9 +171,10 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 4. Jaffa run | New Jaffa (Shol'va) | Cellblock archetype rows (T05/T06, T11/T12, T18/T19 Jaffa), Castle M1 as Jaffa | 60 min |
 | 5. Castle | Tau'ri from session 3 | Castle B1-B20, NPC AI steps 10-15 | 60 min |
 | 6. Harset | Same, then an ordinary non-GM account | Harset C1, C4, C5, C6 | 45 min |
-| 7. Two players | Two accounts (a third for the duel spectator) | Organizations steps 1-12, bank steps 15-25 (org vaults, treasury, Team expansion), chat and duel steps 7-13, pets U11, NPC AI one-way visibility, Castle B20 | 120 min |
+| 7. Two players | Two accounts (a third for the duel spectator) | Organizations steps 1-12, bank steps 15-25 (org vaults, treasury, Team expansion), chat and duel steps 7-13, pets U11, crafting step 17, NPC AI one-way visibility, Castle B20 | 120 min |
 | 8. Goa'uld | New Goa'uld | Pets U2 at the trainer, U14-U16 | 20 min |
 | 9. Owner only | Patched client | Historical cellblocks, ring transport Phase 1 | as needed |
+| 10. Crafting | New character, GM | Crafting steps 1-16 and 18-21 at the crafting corner; step 17 fits session 7 | 75 min |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -270,33 +273,43 @@ Source: [organizations-uat.md](organizations-uat.md), [ORG-UAT in work-packets.m
 
 ## Crafting
 
-The Crafting (J) and Applied Science (Ctrl+J) windows: learning disciplines with applied-science points (ASP), craft, research, reverse engineering and alloying.
+The Crafting (J) and Applied Science (Ctrl+J) windows: learning disciplines with applied-science points (ASP), craft, research, reverse engineering and alloying, respec, stations and Field Crafting Tools, Blueprint items and Racial Paradigm Guides, and the crafting bag.
 
-**Status:** Not ready for UAT: not yet released. UAT starts after the CR-13 release. Merged so far: CR-01 to CR-09, CR-11, CR-12, CR-15, CR-16 and CR-17. The steps below are **provisional** (derived; confirm with the campaign owner), listed so you can see what is coming. The authoritative checklist will be written into the [crafting session resume](../analysis/crafting/handoffs/session-resume.md) by CR-13; the older CR-14 text in [work-packets.md](../analysis/crafting/work-packets.md#cr-14-owner-uat-colo-after-the-release) is outdated.
+**Status:** Ready once the crafting release deploys: all the code is merged (the crafting campaign, CR-01 to CR-17, with respec CR-10), and none of it has been run in a client. The canonical checklist is the [CR-14 checklist in the crafting session resume](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist); the step numbers below are its step numbers. The provisional CRP-1 to CRP-11 list that stood here is retired.
 
-**Coming, not in the table:** crafting respec with `.respeccraft` (pending CR-10, no PR yet).
-
-**Prerequisites (when released):** a GM character in the stasis room; the crafting corner (four stations and the Common Materials Components vendor) on the wall opposite the main hub row. Purchases of crafting supplies land in the crafting bag (bag 15).
+**Prerequisites:** a GM account and a **new character** in the stasis room. The crafting corner stands along the wall opposite the main hub row: the **Common Materials Components** vendor (1 naquadah per item) and four **Crafting Stations**. Any station allows all four verbs; you are "at" one within 5 units. `.allcraft`, `.craftkit` and `.learnblueprint` act on your **selected target**: select your own character first (click your portrait), and note it if the client will not let you. Step 17 needs a second player. Note the time you log in: your `player_id` is on your `login_sync` row in SigNoz.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
-| CRP-1 | Walk to the crafting corner; buy from Common Materials Components | Four stations and the vendor stand on the floor; supplies cost 1 naquadah each and land in the crafting bag. | Provisional |
-| CRP-2 | `.learnblueprint 25`, `.craftkit 25`, then `.allcraft` on your character | Each answers with one chat line. `.allcraft` sets every paradigm to 7 and every discipline to 100, grants every blueprint and lets you craft anywhere until logout. | Provisional |
-| CRP-3 | Open Ctrl+J on a new character; learn a discipline; relog | ASP count shows; disciplines, paradigm levels and ASP survive the relog. | Provisional |
-| CRP-4 | Gain a level (`/gmgivexp <amount>`) | ASP rises by 1 per level gained. | Provisional |
-| CRP-5 | Learn Materials Engineering (78) in Ctrl+J; click it again | ASP drops by 1; the second click says it is already known. | Provisional |
-| CRP-6 | At a station, craft with blueprint 412 (needs discipline 21), or blueprint 25 (discipline 78, 13 Steel Cores) | The induction bar shows, the components go, the product arrives, expertise rises by 1. Too few components: a line says why and nothing is used. | Provisional |
-| CRP-7 | Research item 5481 (Crafted Pistol of the Whale) with a kicker; reverse-engineer items | Research reports its result (success raises expertise by 5); reverse engineering completes every item queued and returns components. | Provisional |
-| CRP-8 | Alloy with blueprint 42 | The alloy product arrives. | Provisional |
-| CRP-9 | Use a "Blueprint: ..." item (for example 6483) and a Racial Paradigm Guide, from bag 1 or bag 15 | The blueprint is learned or the paradigm rises by 1. A second copy of a known blueprint is refused and not used. | Provisional |
-| CRP-10 | Kill the Crate and loot a crafting item; repeat with a full crafting bag | The item lands in bag 15. With the bag full, a line says so and the item stays on the corpse. | Provisional |
-| CRP-11 | Trade a crafting component from bag 15 to a second player; repeat with the recipient's crafting bag full | The component arrives in their crafting bag. With the bag full, the trade window closes for both players with a line naming whose bag is full. | Provisional. Merged in #953 after the coordinator's list; two players |
+| 1 | Log in with the new character; open Ctrl+J | ASP reads 1. The four root disciplines (Biomedical, Electronic, Power Systems, Materials Engineering) are learnable. | Every character starts at Common paradigm 5 |
+| 2 | `/gmgiveappliedsciencepoints 5` | "gmGiveAppliedSciencePoints: +5 (total 6)"; Ctrl+J reads 6 without a relog. | |
+| 3 | `/gmgivexp <amount>`, enough for at least one level | ASP rises by one per level gained, live. | |
+| 4 | Learn Materials Engineering, click it again; learn Biomedical Engineering | Expertise 1 and ASP down by 1; the second click says "You already know Materials Engineering."; Biomedical is learned for one more ASP. | |
+| 5 | Relog | Disciplines, expertise, ASP and blueprints are all still there. | |
+| 6 | With nothing in the crafting bag, open J away from the stations; walk to a station; walk away | The four pages are unavailable away from a station, enable at it, and disable again when you leave. | Needs a real client: the pages' look |
+| 7 | Buy an **MAS-5 Field Crafting Tool** (8406) and walk away; move it into your vault (`.bank`) and back | The tool lands in the crafting bag. Away from the stations craft, research and reverse engineering enable and alloy does not; with the tool in the vault they disable. | A tool counts only in the crafting bag and cannot go in the backpack |
+| 8 | Buy and use **Blueprint: Steel Plating (Materials Subcombine A)** (6483); buy and use a second | Blueprint 25 appears in J. The second: "You already know this blueprint. The item was not used." It stays. | Using a Blueprint item prints no line of its own (K18) |
+| 9 | Click **Regenerative Energetics** in Ctrl+J; buy and use **Racial Paradigm Guide: Goa'uld** (7808); click it again | Before: "Regenerative Energetics requires Goa'uld paradigm level 2; yours is 1." After: "Regenerative Energetics requires Biomedical Engineering at expertise 50; yours is 1." | The guide prints no line (K18); `/showracialparadigmlevels` is not implemented |
+| 10 | Buy 13 **Steel Core (Materials)** (5254) or `.craftkit 25`; at a station craft Steel Plating (blueprint 25); press Craft again during the bar if you have 13 more | The 3-second bar shows, the cores go, "You crafted Steel Plating (Materials Subcombine A) x1.", Materials Engineering expertise 1 → 2. A second craft during the bar is "queued behind 1 other crafting job(s)". | Buying several cores at once shows one stack (K18) |
+| 11 | Craft with only 12 Steel Cores | "You do not have enough components: 12 of 13 needed. Nothing was used." Nothing leaves your bags. | If the client will not send the request, note that |
+| 12 | Buy **Crafted Pistol of the Whale** (5481) and the **Materials Engineering Research Kicker** (5671); research the pistol with it at a station; try again with the **BioMedical** kicker (5668) | "Research succeeded: Biomedical Engineering expertise increased to 6. You learned 1 new blueprint." Pistol and kicker used, blueprint 1 in J. The second is refused: "Kickers cannot come from the same applied science as the item being researched. Nothing was used." | |
+| 13 | Buy 10 pistols; put all 10 on the reverse-engineering page and confirm | Ten inductions in turn, each "Reverse engineering complete: recovered N components."; components land in the crafting bag. | |
+| 14 | `.learnblueprint 42`; buy 1 **Cell (Bio-Medical)** (5192) and 5 **T1 Cell (Bio-Medical)** (5189); alloy blueprint 42 at a station; repeat with four T1 Cells | "Alloying complete: 2 x Blend (Bio-Medical Alloy)." and Biomedical expertise +1. With four: "The quantity of elementary components per item quality was not met: ... Nothing was used." | Five Good tier-1 Cells meet the Good count |
+| 15 | Start a craft and log out during the bar; log back in | Nothing consumed, no product. | |
+| 16 | Kill the **Crate** and loot it; fill the crafting bag with `.craftkit` kits, kill it again and loot its Cell | The Cell lands in the crafting bag. With the bag full: "Your crafting bag is full. The item was left on the corpse." and the Cell stays on the corpse. | The Crate respawns 30 s after death; a kit that does not fit is refused whole, so finish with `.craftkit 42 <count>` |
+| 17 | Two players: A trades B a component from the crafting bag; repeat with B's crafting bag full | It lands in B's crafting bag. Full: the trade closes for both, and each reads a "Trade cancelled: ..." line saying whose crafting bag has no room. Nothing moves. | Two players |
+| 18 | `.respeccraft`, answer Yes; `.respeccraft` again; learn a discipline, `.respeccraft`, wait over 60 s, answer Yes | The prompt costs 0. After Yes every discipline reads 0, the ASP spent learning them comes back, blueprints and paradigms stay. Again: "You have no crafting disciplines to unlearn. Nothing was changed." Late: "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." | `.respeccraft` works for any player; the client's own `/respeccraft` is not supported |
+| 19 | `.allcraft` | "allcraft [...]: N disciplines at 100, M blueprints, 5 paradigms at 7; craft anywhere is on until logout." Every page enables anywhere. | |
+| 20 | After step 19, buy another Crafted Pistol of the Whale (5481) and research it at a station | **After CR-18:** refused with a line; the pistol stays and nothing is used. | Needs CR-18 (D-CR29) in the build; before it, the pistol is used and the line says you learned nothing new |
+| 21 | Right-click a Crafting Station | Its crafting window opens. | **Provisional:** needs CR-19 (D-CR30); until then a click does nothing, which is not a new bug |
 
-**SigNoz:** the crafting queries are in the [telemetry contract](../analysis/crafting/work-packets.md#telemetry-contract) (merged in #877). Base filter: `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND player_id = <id>`, then `event = 'rejected'` for refusals, or find a `job_id` with `event = 'queued'` and filter on it.
+Mailing a component from the crafting bag is [Mail, chat and duels](#mail-chat-and-duels) step 3b.
 
-**Things only a human can check:** the induction bar; whether the crafting pages enable and disable as you walk to and from a station; whether the client shows any text for a refusal.
+**SigNoz:** start from `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND player_id = <id>`, then `event = 'rejected'` for any refusal (its `reason` says which rule), or find a job with `event = 'queued'` and filter on its `job_id` to see the whole craft, before and after. One query per step: [CR-14 query table](../analysis/crafting/handoffs/session-resume.md#signoz-queries).
 
-Source: the crafting coordinator's provisional list (2026-09-27), [crafting worknotes](../analysis/crafting/worknotes/), [debug-hub.md, Crafting corner](../content/debug-hub.md#crafting-corner).
+**Things only a human can check:** the induction bar and its countdown; whether the pages enable and disable at a station and with the tool; which window a station click opens (step 21); whether any text shows for "no ASP" beside the chat line; whether the reverse-engineering page keeps its slots on confirm.
+
+Source: the [CR-14 checklist](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist) and the [crafting ledger](../analysis/crafting/README.md). Change this section and the checklist together.
 
 ## Bank and vault
 
