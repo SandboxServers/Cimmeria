@@ -367,3 +367,56 @@ fn parse_step_status_accepts_all_three_states() {
     assert_eq!(parse_step_status("nonsense"), None);
     assert_eq!(parse_step_status(""), None);
 }
+
+/// #802: `content_triggers.once` survives assembly. It used to be read into
+/// `DbTriggerRow` and dropped by `convert_trigger`, so every chain loaded as
+/// re-firing. Two trigger rows, only the second flagged: the flag belongs to
+/// the materialization its row produced, not to the whole chain.
+#[test]
+fn build_chains_from_rows_keeps_each_trigger_rows_once_flag() {
+    let chain_rows = vec![DbChainRow {
+        chain_id: 1008,
+        description: Some("Region8 entry: NID guard aggro".to_string()),
+        scope_type: "mission".to_string(),
+        scope_id: None,
+        enabled: true,
+        priority: 0,
+    }];
+    let trigger = |key: &str, once: bool, sort_order: i32| DbTriggerRow {
+        chain_id: 1008,
+        event_type: "enter_region".to_string(),
+        event_key: Some(key.to_string()),
+        scope: "player".to_string(),
+        once,
+        sort_order,
+    };
+    let trigger_rows = vec![
+        trigger("Castle_CellBlock.Region7", false, 0),
+        trigger("Castle_CellBlock.Region8", true, 1),
+    ];
+
+    let chains = build_chains_from_rows(chain_rows, trigger_rows, vec![], vec![]);
+
+    assert_eq!(chains.len(), 2);
+    assert_eq!(
+        chains.iter().map(|c| c.once).collect::<Vec<_>>(),
+        vec![false, true],
+        "only the materialization from the once=true row is once"
+    );
+}
+
+/// A triggerless chain has no row to carry `once`, so it is never once.
+#[test]
+fn a_triggerless_chain_is_never_once() {
+    let chain_rows = vec![DbChainRow {
+        chain_id: 42,
+        description: None,
+        scope_type: "mission".to_string(),
+        scope_id: None,
+        enabled: true,
+        priority: 0,
+    }];
+    let chains = build_chains_from_rows(chain_rows, vec![], vec![], vec![]);
+    assert_eq!(chains.len(), 1);
+    assert!(!chains[0].once);
+}

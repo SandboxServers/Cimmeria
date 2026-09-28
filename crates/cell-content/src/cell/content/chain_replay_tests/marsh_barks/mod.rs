@@ -25,11 +25,10 @@
 //!   and resolves to an `Action::NpcBark` carrying the right `screen_id`.
 //!   A row that names the wrong screen still resolves, so the screen id
 //!   is asserted rather than the action kind.
-//! - The **negative** cases are the load-bearing half. The engine has no
-//!   fire-once primitive — `content_triggers.once` is read out of the DB
-//!   and never consulted again (`loader/mod.rs`, `engine_loader.rs`) —
-//!   so "at most once per mission run" rests entirely on each chain's
-//!   mission/step gate. Each chain therefore gets the adjacent
+//! - The **negative** cases are the load-bearing half. These rows are
+//!   `once = false`, and even `once = true` only holds for one space visit
+//!   (#802: the fired-once set dies with the cell entity), so "at most once
+//!   per mission run" rests entirely on each chain's mission/step gate. Each chain therefore gets the adjacent
 //!   wrong-state case its own gate is supposed to refuse: the phase not
 //!   yet reached, and the phase already passed.
 //!
@@ -192,8 +191,8 @@ fn assert_refused(resolved: &ResolvedActions, chain_id: i64, why: &str) {
         .collect();
     assert!(
         actions.is_empty(),
-        "chain {chain_id} must NOT resolve when {why} — the engine has no \
-         fire-once primitive, so this gate is the only thing stopping the \
+        "chain {chain_id} must NOT resolve when {why} — the chain is not \
+         fire-once, so this gate is the only thing stopping the \
          line repeating. Got {actions:?}",
     );
 }

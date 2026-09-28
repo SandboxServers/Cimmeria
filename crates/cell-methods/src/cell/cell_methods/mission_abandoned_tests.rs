@@ -93,6 +93,7 @@ fn make_engine() -> ChainEngine {
         }],
         action_delays: Vec::new(),
         priority: 0,
+        once: false,
     });
     engine
 }
@@ -195,6 +196,7 @@ async fn the_context_reflects_the_post_removal_state() {
         }],
         action_delays: Vec::new(),
         priority: 0,
+        once: false,
     });
     let (tx, _rx) = mpsc::channel::<CellToBaseMsg>(256);
 

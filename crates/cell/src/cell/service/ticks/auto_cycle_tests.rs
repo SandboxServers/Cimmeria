@@ -563,6 +563,7 @@ async fn auto_cycle_tick_credits_quest_kill_on_tagged_npc_death() {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
 
     // Sanity: counter unset before the kill so the post-tick

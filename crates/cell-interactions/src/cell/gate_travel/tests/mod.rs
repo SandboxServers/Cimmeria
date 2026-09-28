@@ -17,6 +17,7 @@ use super::*;
 
 mod address_book;
 mod arrival;
+mod dial_feedback;
 mod dial_timer;
 mod pets;
 mod sequences;
@@ -168,7 +169,12 @@ async fn dial_gate_to_unknown_address_is_noop() {
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     handle_dial_gate(1, 999, 0, &tx, &mut mgr, &engine()).await;
-    assert!(rx.try_recv().is_err());
+    // Only the refusal feedback (#727) goes out: no travel, no sequence.
+    let sent = dial_feedback::drain(&mut rx);
+    assert!(sent
+        .iter()
+        .all(|m| matches!(m, CellToBaseMsg::EntityMethodCall { .. })));
+    assert_eq!(dial_feedback::feedback_lines(&sent).len(), 1);
     assert!(
         mgr.gate_dial(1).is_none(),
         "no dial armed for a bad address"
@@ -244,7 +250,12 @@ async fn dial_gate_same_world_is_noop() {
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     handle_dial_gate(1, 1, 0, &tx, &mut mgr, &engine()).await;
-    assert!(rx.try_recv().is_err());
+    // Only the refusal feedback (#727) goes out: no travel, no sequence.
+    let sent = dial_feedback::drain(&mut rx);
+    assert!(sent
+        .iter()
+        .all(|m| matches!(m, CellToBaseMsg::EntityMethodCall { .. })));
+    assert_eq!(dial_feedback::feedback_lines(&sent).len(), 1);
     assert!(mgr.get_entity(1).is_some());
     assert!(mgr.gate_dial(1).is_none());
 }

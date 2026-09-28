@@ -180,6 +180,9 @@ impl SpaceManager {
         // despawns them on the next AoI tick (and `disconnect_entity` does it
         // at once through `pets::forget_owner`).
         self.pets.forget_pet(entity_id);
+        // #844: nobody keeps an entity that no longer exists selected. Every
+        // teardown path runs through here, and the id may be reused.
+        self.clear_targets_on(entity_id, "target_destroyed");
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 

@@ -148,6 +148,21 @@ A search of `crates/` for `onDHDReply` and `ON_DHD_REPLY` finds the constant, a 
 
 `onDisplayDHD` is a separate glyph-selection method and has a VGateTravel subscriber [SGW 0x00e2fd90]. Do not treat `onDHDReply` as a verified gate-state transition or assume it must be sent on every dial success or failure. Confirm the client handler's field consumption and visible feedback in a live session before specifying the missing send path. The companion [wire-format note](gate-travel-wire-formats.md#ondhdreply--dhd-feedback-declared) records the declared argument without claiming a verified byte layout.
 
+#### Dial-refusal feedback (#727, 2026-09-28)
+
+A refused dial is no longer silent. Every refusal in `handle_dial_gate` ([crates/cell-interactions/src/cell/gate_travel/mod.rs](../../../crates/cell-interactions/src/cell/gate_travel/mod.rs)), and the unrecoverable-arrival refusal in `perform_gate_travel`, sends the dialling player one `onPlayerCommunication("SYSTEM", 0, CHAN_feedback, text)` (client method 28) through `gate_travel::dial_feedback`:
+
+| Refusal | Text |
+|---|---|
+| Address not in the player's book, or no such gate | `Failed to dial: not a known stargate address` (plus the existing `onErrorCode` 180) |
+| No cell entity or space binding | `Failed to dial: you are not in a world yet, try again` |
+| Destination is the world the player is on | `Failed to dial: you are already on that world` |
+| Destination has no standable arrival | `Failed to dial: the destination gate cannot be reached right now` |
+
+The first row covers both "not held" and "does not exist" with byte-identical traffic, so the answer is not an existence oracle.
+
+**`onDHDReply` is still not emitted.** No live render check has been done, and nothing in this finding shows the text would appear on screen. The chat line is the 2009 server's intent (`SGWPlayer.onError`, `deprecated/python/cell/SGWPlayer.py:879-884`, with the `Failed to dial: …` wording) on the channel the client shows without a popup. The 2009 call itself used an empty speaker and `CHAN_server` (8), which opens the modal "Server Message" prompt. **Open:** send `onDHDReply("…")` with the DHD open in a live client, record where it renders here, and switch `dial_feedback` to it (or add it beside the chat line) if it renders in the DHD window.
+
 ---
 
 ## Ring Transporter Chain (Extended from gate-travel-wire-formats.md)

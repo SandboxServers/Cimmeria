@@ -85,6 +85,7 @@ fn duel_engine(pct: i32) -> ChainEngine {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
     engine.register_chain(Chain {
         action_delays: Vec::new(),
@@ -101,6 +102,7 @@ fn duel_engine(pct: i32) -> ChainEngine {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
     engine
 }
@@ -217,6 +219,7 @@ async fn one_hit_spanning_two_thresholds_fires_both_chains() {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
     let (tx, _rx) = mpsc::channel(32);
 

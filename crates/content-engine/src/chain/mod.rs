@@ -10,7 +10,7 @@
 //! definition/engine vs. tests, so the test body moved to [`tests`]
 //! unchanged, with no behavior change on this side.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace, warn};
@@ -64,6 +64,26 @@ pub struct Chain {
     /// Ordering priority. Higher values execute first when multiple chains
     /// match the same event.
     pub priority: i32,
+
+    /// "Fire once, then disarm" (`content_triggers.once`, #802).
+    ///
+    /// Once per `(entity the actions execute for, chain id)`, held in memory
+    /// on that cell entity (`CellEntity::fired_once_chains`) for its
+    /// lifetime: in practice once per player per space visit or login, the
+    /// lifetime of the 2009 per-player level script whose `once = True`
+    /// subscriptions this models. Not persisted.
+    ///
+    /// The chain disarms only when it actually fires — trigger matched,
+    /// every condition passed, actions handed to the executor. A matched
+    /// trigger whose conditions fail stays armed (unlike the 2009
+    /// `Event.fire`, which unsubscribed before running the callback).
+    ///
+    /// Enforced by the cell executor's once gate, not by `resolve_event`;
+    /// the engine only answers [`ChainEngine::is_once`]. It is not a
+    /// substitute for a mission gate when a chain must stay closed across
+    /// relogs.
+    #[serde(default)]
+    pub once: bool,
 }
 
 impl Chain {
@@ -96,6 +116,10 @@ impl Chain {
 pub struct ChainEngine {
     /// Chains grouped by their trigger type for efficient lookup.
     chains_by_trigger: HashMap<TriggerType, Vec<Chain>>,
+
+    /// Ids of chains registered with [`Chain::once`] set. Keyed by chain id
+    /// because resolved actions carry only the id.
+    once_chain_ids: HashSet<i64>,
 }
 
 impl ChainEngine {
@@ -103,6 +127,7 @@ impl ChainEngine {
     pub fn new() -> Self {
         Self {
             chains_by_trigger: HashMap::new(),
+            once_chain_ids: HashSet::new(),
         }
     }
 
@@ -120,10 +145,22 @@ impl ChainEngine {
             priority = chain.priority,
             "Registering chain"
         );
+        if chain.once {
+            self.once_chain_ids.insert(chain.id);
+        }
         let bucket = self.chains_by_trigger.entry(trigger_type).or_default();
         bucket.push(chain);
         // Re-sort by priority descending so higher-priority chains run first.
         bucket.sort_by_key(|c| std::cmp::Reverse(c.priority));
+    }
+
+    /// Is `chain_id` a fire-once chain ([`Chain::once`])?
+    ///
+    /// Keyed by id: a chain whose trigger rows disagree (one `once`, one
+    /// not) answers `true` for both materializations, because the executor
+    /// sees only the id. No seeded chain mixes them.
+    pub fn is_once(&self, chain_id: i64) -> bool {
+        self.once_chain_ids.contains(&chain_id)
     }
 
     /// Return the total number of registered chains (enabled and disabled).

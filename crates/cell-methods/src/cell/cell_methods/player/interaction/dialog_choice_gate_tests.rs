@@ -38,6 +38,7 @@ fn add_dialog_choice_chain(engine: &mut ChainEngine, chain_id: i64, dialog_id: i
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
 }
 

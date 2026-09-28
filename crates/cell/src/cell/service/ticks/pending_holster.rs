@@ -327,6 +327,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(64);

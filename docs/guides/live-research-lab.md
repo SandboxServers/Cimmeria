@@ -223,3 +223,10 @@ vars, and [reverse-engineering-with-claude.md](reverse-engineering-with-claude.m
 for where the lab sits in the RE workflow (the "ask the running game"
 path). Lab-account credentials live in
 `<install>/Binaries/sessions/lab-account.json`, gitignored.
+
+`lab_client_start` needs the i686 `sgw-start32.exe` helper beside
+`cimmeria-lab.exe` (or at `CIMMERIA_LAB_START32`). The supervisor is 64-bit
+and cannot inject into the 32-bit client itself; the helper starts
+`SGW.exe` suspended, injects the bridge DLL at the game's bitness and
+resumes it (#985). Build it with
+`cargo build -p cimmeria-start32 --target i686-pc-windows-msvc`.

@@ -109,7 +109,7 @@ fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<CellToBaseMsg> {
 /// The packet's reason for existing, end to end.
 ///
 /// Before the grant, `handle_dial_gate` refuses (H06's CAT-O-01 gate),
-/// tells the client with `onErrorCode` feedback 180
+/// tells the client with a feedback line and `onErrorCode` feedback 180
 /// (`CONDITION_FEEDBACK_EntityDoesNotHaveStargateAddress`) and arms
 /// nothing. After the content action runs, the same dial is accepted and
 /// the 4-second dial is armed. Without this action there is no path
@@ -136,8 +136,20 @@ async fn the_grant_is_what_turns_a_refused_harset_dial_into_an_accepted_one() {
         "the refusal must land before anything is armed",
     );
     let refusal = drain(&mut rx);
-    assert_eq!(refusal.len(), 1, "exactly the feedback; got {refusal:?}");
-    match &refusal[0] {
+    // #727: the text line (method 28) first, then the address-book
+    // `onErrorCode`.
+    assert_eq!(refusal.len(), 2, "exactly the feedback; got {refusal:?}");
+    assert!(
+        matches!(
+            &refusal[0],
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 28,
+                ..
+            }
+        ),
+        "the refusal's text line comes first; got {refusal:?}"
+    );
+    match &refusal[1] {
         CellToBaseMsg::EntityMethodCall {
             method_index, args, ..
         } => {

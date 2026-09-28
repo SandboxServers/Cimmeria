@@ -230,10 +230,19 @@ async fn dial_gate_to_an_unrecoverable_arrival_sends_no_transfer() {
     let dialed = handle_dial_gate(1, UNRECOVERABLE_GATE, 0, &tx, &mut mgr, &engine()).await;
 
     assert!(!dialed, "an unrecoverable arrival must refuse the dial");
+    let sent = super::dial_feedback::drain(&mut rx);
     assert!(
-        !saw_gate_travel(&mut rx),
+        !sent
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
         "no GateTravel may reach the base — an off-mesh arrival with no \
          recovery is the silent-freeze bug"
+    );
+    // #727: the refusal is visible to the player, not only to the log.
+    assert_eq!(
+        super::dial_feedback::feedback_lines(&sent),
+        vec![super::super::dial_feedback::DialRefusal::NoSafeArrival.text()],
+        "the refused transfer must send exactly one feedback line"
     );
     assert!(
         mgr.get_entity(1).is_some(),

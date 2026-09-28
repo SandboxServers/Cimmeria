@@ -71,6 +71,9 @@ pub struct SupervisorConfig {
     pub install_dir: Option<PathBuf>,
     /// Telemetry DLL (built with `--features lab-bridge`) to inject.
     pub dll_path: Option<PathBuf>,
+    /// The i686 `sgw-start32.exe` helper that does the injection (#985):
+    /// `CIMMERIA_LAB_START32`, else beside this executable.
+    pub helper_path: Option<PathBuf>,
     /// Bridge bind address written into the session file.
     pub bind: String,
     /// Bridge port.
@@ -94,9 +97,19 @@ impl SupervisorConfig {
                     .as_ref()
                     .map(|d| d.join("Binaries").join("cimmeria-client-telemetry.dll"))
             });
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(PathBuf::from));
+        let helper_path = process::resolve_helper(
+            std::env::var("CIMMERIA_LAB_START32")
+                .ok()
+                .map(PathBuf::from),
+            exe_dir.as_deref(),
+        );
         Self {
             install_dir,
             dll_path,
+            helper_path,
             bind: std::env::var("CIMMERIA_LAB_BRIDGE_BIND")
                 .unwrap_or_else(|_| DEFAULT_BRIDGE_BIND.to_string()),
             port: std::env::var("CIMMERIA_LAB_BRIDGE_PORT")
@@ -297,6 +310,11 @@ impl Supervisor {
             .dll_path
             .clone()
             .ok_or("no DLL path (set CIMMERIA_LAB_DLL)")?;
+        let helper = self
+            .config
+            .helper_path
+            .clone()
+            .ok_or("no sgw-start32.exe path (set CIMMERIA_LAB_START32)")?;
 
         let token = session_file::generate_token();
         let session = session_file::build_session(
@@ -309,7 +327,7 @@ impl Supervisor {
 
         // Native launch runs on a blocking thread.
         let (install2, dll2) = (install_dir.clone(), dll_path.clone());
-        let pid = tokio::task::spawn_blocking(move || process::launch(&install2, &dll2))
+        let pid = tokio::task::spawn_blocking(move || process::launch(&install2, &dll2, &helper))
             .await
             .map_err(|e| format!("launch task: {e}"))??;
 
@@ -613,6 +631,7 @@ mod tests {
         let c = SupervisorConfig {
             install_dir: None,
             dll_path: None,
+            helper_path: None,
             bind: "0.0.0.0".into(),
             port: 8770,
             upload_endpoint: "e".into(),

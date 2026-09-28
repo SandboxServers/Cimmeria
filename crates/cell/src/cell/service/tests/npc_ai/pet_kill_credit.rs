@@ -115,6 +115,7 @@ fn kill_count_engine() -> ChainEngine {
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
     engine
 }

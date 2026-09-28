@@ -124,6 +124,8 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
    DELETE FROM resources.content_conditions WHERE chain_id = 4001;
    DELETE FROM resources.content_actions    WHERE chain_id = 4001;
 
+   -- `once`: fire once per player per space visit, then disarm; see
+   -- content-engine.md §5. A consumable must keep firing, so false.
    INSERT INTO resources.content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
    VALUES (4001, 'item_use', '2893', 'player', false, 0);
 
