@@ -3,7 +3,7 @@
 > Type: how-to. Audience: any later session, the coordinator and the owner.
 > Updated: 2026-09-27 (CR-13 close-out). Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md), [worknotes](../worknotes/), [unified UAT guide, Crafting](../../../guides/unified-uat.md#crafting), [crafting system reference](../../../gameplay/crafting-system.md).
 
-## State: every packet merged except CR-10 (respec); CR-13 close-out written; CR-14 owner UAT after the release
+## State: every packet merged; CR-13 close-out in review; CR-14 owner UAT after the release
 
 | Packet | Status | PR | Notes |
 |---|---|---|---|
@@ -24,8 +24,8 @@
 | CR-11 | Integrated | #909 | Debug-hub stations, supplies vendor, `.craftkit`, `.learnblueprint` |
 | CR-16 | Integrated | #932 | Grants fall through storage to the first carried bag; refused loot stays on the corpse |
 | CR-17 | Integrated | #953 | Trade from the crafting bag (D-CR28); vendor buyback and sell lock order |
-| CR-10 | Review | branch `craft/cr10-respec` | Two-step respec (`.respeccraft`, then the prompt's Yes); refund bound to ASP spent. No PR opened yet |
-| CR-13 | Writing | branch `craft/cr13-close-out` | This close-out. Merges after CR-10; `/release` goes on the last merged PR |
+| CR-10 | Integrated | #979 | Two-step respec (`.respeccraft`, then the prompt's Yes); refund bound to the ASP spent |
+| CR-13 | Review | branch `craft/cr13-close-out` | This close-out; `/release` goes on it as the last merged PR |
 | CR-14 | BlockedDependency | | The owner's UAT, [below](#cr-14-owner-uat-checklist), after the release deploys |
 
 ## Owner decisions
@@ -53,7 +53,7 @@ Still open for the owner:
 |---|---|---|
 | Crafting transaction (`transaction/grant.rs`), item use (`item_use/transaction.rs`) | 1, 15 (and each product's bag) | #897, #902 |
 | `.allcraft`, `.learnblueprint` | key 0 only | #909 (the `.allcraft` fix rode with CR-11) |
-| Respec, spend, GM expertise grant | key 0 only | CR-10, not merged |
+| Respec, spend, GM expertise grant | key 0 only | #979 |
 | Mail send escrow (`mail/send/escrow.rs`) | 1, 15 | #912 (bag 15 added in #933) |
 | Mail take and pay (`mail/claim.rs`), system mail (`mail/system/write.rs`) | the item's bag | #926, #929 |
 | Trade swap (`trade/execute/swap.rs`) | 1, 15 | #953 |
@@ -64,7 +64,7 @@ Moves (`inventory/move_/`) and vendor purchase take key 0 with their own inline 
 
 ## CR-14 owner UAT checklist
 
-Run on the colo after the release deploys, as GM (access level 2 or higher), in the stasis-room debug hub of `Castle_CellBlock` (world 12), from a **new character**. At each oddity type `.bug <what you see>`. Steps 17 (trade) needs a second player; step 18 (respec) needs CR-10 in the release.
+Run on the colo after the release deploys, as GM (access level 2 or higher), in the stasis-room debug hub of `Castle_CellBlock` (world 12), from a **new character**. At each oddity type `.bug <what you see>`. Step 17 (trade) needs a second player.
 
 **Before you start.**
 
@@ -92,7 +92,7 @@ Run on the colo after the release deploys, as GM (access level 2 or higher), in 
 | 15 | Start a craft that takes components, and log out during the bar. Log back in | Nothing was consumed and no product arrived |
 | 16 | Kill the **Crate** and loot it. Then fill the crafting bag (100 slots) with `.craftkit` kits: `.craftkit 25 <count>` adds 13 items per count, `.craftkit 42 <count>` one per count, and a kit that does not fit is refused whole, so finish with small ones. Kill the Crate again (it respawns 30 s after death) and loot its Cell | First loot: the Cell (5192) lands in the crafting bag; sometimes a guide or Blueprint: Steel Plating drops too. With the bag full: "Your crafting bag is full. The item was left on the corpse." and the Cell is still on the corpse |
 | 17 | Two players, A and B. A offers a crafting component from the crafting bag in a trade; both lock and confirm. Repeat with B's crafting bag full | The component leaves A's crafting bag and lands in B's crafting bag. With B's bag full the trade closes for both: B reads "Trade cancelled: your crafting bag does not have room for the items you would receive.", A reads "Trade cancelled: your trade partner's crafting bag does not have room for your items." Nothing moves |
-| 18 | **Needs CR-10.** Type `.respeccraft` and answer Yes. Then type `.respeccraft` again. Then learn a discipline, type `.respeccraft`, wait more than 60 seconds and answer Yes | The prompt shows a cost of 0. After Yes every discipline reads expertise 0 in Ctrl+J, and the ASP you spent learning disciplines (two points in step 4) comes back; blueprints (25, 1, 42) and the Goa'uld paradigm stay. The second `.respeccraft` says "You have no crafting disciplines to unlearn. Nothing was changed." The late Yes says "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." |
+| 18 | Type `.respeccraft` and answer Yes. Then type `.respeccraft` again. Then learn a discipline, type `.respeccraft`, wait more than 60 seconds and answer Yes | The prompt shows a cost of 0. After Yes every discipline reads expertise 0 in Ctrl+J, and the ASP you spent learning disciplines (two points in step 4) comes back; blueprints (25, 1, 42) and the Goa'uld paradigm stay. The second `.respeccraft` says "You have no crafting disciplines to unlearn. Nothing was changed." The late Yes says "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." |
 | 19 | `.allcraft` with yourself selected | GM line "allcraft [...]: N disciplines at 100, M blueprints, 5 paradigms at 7; craft anywhere is on until logout." Every page enables anywhere, and every discipline shows 100 |
 
 Mailing a crafting component from the crafting bag is the social campaign's step 3b ([unified guide, Mail, chat and duels](../../../guides/unified-uat.md#mail-chat-and-duels)).
@@ -147,4 +147,4 @@ Metrics: `crafting_requests_total{verb, outcome}`, `crafting_jobs_total{verb, ou
 
 ## Housekeeping
 
-Campaign worktrees left: `cr10` (CR-10, open) and `cr13` (this close-out). Retire each with `bash tools/build-lane/rm-worktree.sh <name>` the day its PR merges; it drops the target dir, the `sgw_<name>` database and the `external` junction. Every other campaign worktree is retired.
+Campaign worktrees left: `cr10` (CR-10, merged as #979, to retire) and `cr13` (this close-out). Retire each with `bash tools/build-lane/rm-worktree.sh <name>` the day its PR merges; it drops the target dir, the `sgw_<name>` database and the `external` junction. Every other campaign worktree is retired.

@@ -53,7 +53,7 @@ Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` 
   - `rejected` (INFO, with an enumerated `reason`, the same value as the `CraftReject` variant);
   - `queued` / `induction_started` / `induction_expired` (`job_id`, `verb`, `queue_len`; `induction_started` also carries `timer_id` and `expires_at`, the only one of the three that has a deadline);
   - `completed` (`job_id`, `verb`, `blueprint_id` or `item_id`, the consumed inputs as `item_id:type_id:qty_before→qty_after`, the granted outputs as `type_id:bag:slot:qty_before→qty_after` so a stack merge is distinguishable from a new slot, a `result` for verbs that roll (`success | failure`), `expertise_before` / `expertise_after`, `asp_before` / `asp_after`, the RNG roll and chance where a roll was made);
-  - `queue_dropped` (`reason = logout | world_change | session_changed | stale_session | not_connected | respec`, `cause`, `jobs_dropped`, `job_ids`; `respec` once CR-10 merges), and `induction_start_skipped` (DEBUG: a job dropped between activation and its bar);
+  - `queue_dropped` (`reason = logout | world_change | session_changed | stale_session | not_connected | respec`, `cause`, `jobs_dropped`, `job_ids`), and `induction_start_skipped` (DEBUG: a job dropped between activation and its bar);
   - `options_changed` (the station entity ids and tool item ids per section);
   - `learned`, `respec_prompted`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values);
   - `login_sync` (what the login sent) and `login_sync_failed` (WARN, `reason = load | send`), `asp_granted`, `gm_allcraft`, `gm_craftkit` and `gm_learnblueprint` (GM grants and their refusals, before and after), `asp_earned` (level-up grant: `level_before` / `level_after`, `asp_before` / `asp_after`), `tool_table_loaded` (INFO, the Field Crafting Tool table read once per process);
@@ -265,7 +265,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-10
 
-**Status:** Review (branch `craft/cr10-respec`, rebased on `main` after CR-16; PR not yet opened). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** Integrated (#979). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:** `respec.rs`, per D-CR16 and D-CR23: a player-usable `.respeccraft` sends the prompt (cost 0, D-CR02), the pending window, then one transaction that clears disciplines and expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept. Then 137 and the ASP property. Nothing to reset gets feedback. Replay-safe.
 
@@ -338,7 +338,7 @@ Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes 
 
 ### CR-13
 
-**Status:** Writing (branch `craft/cr13-close-out`; merges after CR-10). **Scope title:** Close-out, UAT checklist and release.
+**Status:** Review (branch `craft/cr13-close-out`). **Scope title:** Close-out, UAT checklist and release.
 
 **Scope:** `docs/gameplay/crafting-system.md`, `docs/gap-analysis.md` §19, `docs/project-status.md`, the crafting findings (C-60), CAT-F paths (C-64); close or update #567, #723 and #465; write the CR-14 checklist into `handoffs/session-resume.md`; `/release` on the last merged PR.
 
