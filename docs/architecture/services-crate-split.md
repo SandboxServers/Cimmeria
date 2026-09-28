@@ -2,11 +2,13 @@
 title: "Splitting cimmeria-services into an acyclic crate graph"
 type: explanation
 audience: engineers
-last_updated: 2026-09-26
+last_updated: 2026-09-28
 ---
 
 # Splitting `cimmeria-services` into an acyclic crate graph
 
+> **Amended 2026-09-28 by [plugin-architecture.md](plugin-architecture.md)** (#962). The layer split below stays; features now leave the layers as plugins. A feature crate is a leaf that registers its cell-method handlers, hooks and per-entity state with core at startup, and only the composition root (`cimmeria-services`) depends on it. The rules in [§5](#5-risks-and-rules) still hold for the layer crates; the plugin rules (registration order, the method-index startup assertion, the extension map) are in that ADR. The "later options" in [§6](#6-expected-build-impact) are now its migration order.
+>
 > **Status:** Complete on `build/toolchain-overhaul` (2026-09-26). The final state:
 >
 > - **18 service crates and `cimmeria-test-support`.** The edge crates `cimmeria-auth`, `cimmeria-resources`, `cimmeria-wire`, `cimmeria-wire-log` and `cimmeria-minigame`; the cell track `cimmeria-cell-catalog`, `cimmeria-cell-cover`, `cimmeria-cell-world`, `cimmeria-cell-combat`, `cimmeria-cell-content`, `cimmeria-cell-interactions`, `cimmeria-cell-methods`, `cimmeria-cell-console` and `cimmeria-cell`; the base track `cimmeria-base-session`, `cimmeria-base-methods`, `cimmeria-base-world-entry` and `cimmeria-base`. The generated graph is in the [README](../../README.md#crate-dependency-graph).
