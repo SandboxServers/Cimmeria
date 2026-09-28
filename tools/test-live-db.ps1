@@ -56,7 +56,9 @@ $nextest = if ($llvmCov) { @('llvm-cov', '--no-report', 'nextest') } else { @('n
 $nextest += @('--profile=ci-live-db') + $packages + @('--lib')
 
 if ($buildOnly) {
-    & cargo @nextest --no-run @rest
+    # Under llvm-cov, --no-run is cargo-llvm-cov's own flag and clashes with
+    # --no-report; run no tests instead (see test-live-db.sh).
+    if ($llvmCov) { & cargo @nextest -E 'none()' --no-tests=pass @rest } else { & cargo @nextest --no-run @rest }
     exit $LASTEXITCODE
 }
 

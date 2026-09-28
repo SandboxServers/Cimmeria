@@ -76,6 +76,11 @@ fi
 nextest+=(--profile=ci-live-db "${packages[@]}" --lib)
 
 if [ $build_only -eq 1 ]; then
+  if [ $llvm_cov -eq 1 ]; then
+    # cargo-llvm-cov takes --no-run as its own (deprecated) flag and rejects it with
+    # --no-report, so build by running no tests: a filterset leaves the build unchanged.
+    exec "${nextest[@]}" -E 'none()' --no-tests=pass "$@"
+  fi
   exec "${nextest[@]}" --no-run "$@"
 fi
 
