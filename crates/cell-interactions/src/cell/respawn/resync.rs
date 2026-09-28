@@ -65,22 +65,35 @@ pub async fn send_active_slot_resend(
     );
 }
 
-/// Replay the remaining per-entity client caches after a
-/// `CREATE_BASE_PLAYER` re-issue (same-world respawn reanchor).
+/// What [`resync_after_pawn_recreate`] replays, in send order. Logged as
+/// the `replayed` field so SigNoz shows exactly what the new pawn got.
+pub(crate) const RESYNC_REPLAYED: &str = "level,state_field,stats,base_stats,archetype,\
+                                          ability_tree,known_abilities,active_slot,missions";
+
+/// Replay the per-entity client caches after a `CREATE_BASE_PLAYER`
+/// re-issue (same-world respawn reanchor).
 ///
-/// Order:
-/// 1. `onKnownAbilitiesUpdate` — hotbar.
-/// 2. `onActiveSlotUpdate` — bandolier slot.
-/// 3. Mission journal (`onMissionUpdate` / `onStepUpdate` /
-///    `onObjectiveUpdate` for every active, visible mission).
-/// 4. The full `state_field`, only when non-zero. The client initialises
-///    its cached copy to 0 on entity creation and applies updates as an
-///    XOR delta against it, so a preserved `BSF_AutoCycling` needs an
-///    explicit re-broadcast or the button highlight stays off until the
-///    next toggle. A zero field needs no packet.
+/// The client destroys its player entity and builds a new one, so this
+/// replays the login burst's player-state half
+/// (`wire::mercury::world_data::map_loaded`) from the live cell entity:
 ///
-/// Region hints and the inventory snapshot are not repeated here: the
-/// respawn handler already queues both right behind the reanchor.
+/// 1. `onLevelUpdate`.
+/// 2. `onStateFieldUpdate(state_field)`, always. The client's handler
+///    stores the value it is given and fires side effects for the bits
+///    that differ from its cached copy (0 on a new entity), so the full
+///    field is correct whatever the client held before.
+/// 3. `onStatUpdate` with every stat (HEALTH and FOCUS at max after the
+///    respawn reset), then `onStatBaseUpdate`.
+/// 4. `onArchetypeUpdate`.
+/// 5. `onAbilityTreeInfo`, from the same catalog the trainer reads.
+/// 6. `onKnownAbilitiesUpdate` (the hotbar), `onActiveSlotUpdate` (the
+///    bandolier slot) and the mission journal.
+///
+/// Without 1-5 the new pawn had no stats, no archetype and no tree, and
+/// the client sent no hotbar `useAbility` for the rest of the session
+/// (2026-09-28 colo playtest, 16:54-18:27). Region hints and the inventory
+/// snapshot are not repeated here: the respawn handler queues both right
+/// behind the reanchor.
 ///
 /// Every message targets the player's own entity and is queued on the
 /// same reliable channel *after* the reanchor, so it lands once the
@@ -91,7 +104,9 @@ pub(crate) async fn resync_after_pawn_recreate(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    let Some(state_field) = space_mgr.get_entity(entity_id).map(|e| e.state_field) else {
+    use crate::cell::client_methods::{being, combatant, player};
+
+    let Some(entity) = space_mgr.get_entity(entity_id) else {
         tracing::warn!(
             entity_id,
             reason = "entity_missing",
@@ -99,30 +114,54 @@ pub(crate) async fn resync_after_pawn_recreate(
         );
         return;
     };
+    let state_field = entity.state_field;
+    let level = entity.level;
+    let archetype_id = entity.archetype_id.unwrap_or(0);
+    let stats = entity.stats.serialize_all();
+    let base_stats = entity.stats.serialize_all_base();
+    let tree = crate::ability_tree::tree_info(
+        &space_mgr.ability_tree_catalog,
+        archetype_id,
+        entity.player_id.unwrap_or(0),
+    )
+    .serialize();
+
+    let player_state: [(u16, Vec<u8>); 6] = [
+        (
+            being::ON_LEVEL_UPDATE,
+            (level as i32).to_le_bytes().to_vec(),
+        ),
+        (
+            being::ON_STATE_FIELD_UPDATE,
+            state_field.to_le_bytes().to_vec(),
+        ),
+        (combatant::ON_STAT_UPDATE, stats),
+        (combatant::ON_STAT_BASE_UPDATE, base_stats),
+        (
+            combatant::ON_ARCHETYPE_UPDATE,
+            archetype_id.to_le_bytes().to_vec(),
+        ),
+        (player::ON_ABILITY_TREE_INFO, tree),
+    ];
+    for (method_index, args) in player_state {
+        crate::cell::abilities::send_entity_method(entity_id, method_index, args, tx, space_mgr)
+            .await;
+    }
 
     send_known_abilities_update(entity_id, tx, space_mgr).await;
     send_active_slot_resend(entity_id, tx, space_mgr).await;
     crate::cell::missions::resend_missions(entity_id, tx, space_mgr).await;
-
-    if state_field != 0 {
-        crate::cell::abilities::send_entity_method(
-            entity_id,
-            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-            state_field.to_le_bytes().to_vec(),
-            tx,
-            space_mgr,
-        )
-        .await;
-    }
 
     let id = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         account_id = id.account_id,
         player_id = id.player_id,
+        level,
+        archetype_id,
         state_field,
-        "Resynced client entity state after pawn recreate (hotbar, active slot, \
-         journal, state_field)"
+        replayed = RESYNC_REPLAYED,
+        "Resynced client entity state after pawn recreate"
     );
 }
 

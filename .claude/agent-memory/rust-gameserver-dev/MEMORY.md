@@ -19,21 +19,6 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [resuming-a-dead-workers-wip.md](resuming-a-dead-workers-wip.md) — a `wip(...) unverified` commit may not compile; its tests encode the starting design; port hunks by hand.
 - [crate-split-extraction-traps.md](crate-split-extraction-traps.md) — moving code out of services: `pub(crate)` turns dead, `unreachable_pub` hits pub fields.
 - [pre-split-branch-port-traps.md](pre-split-branch-port-traps.md) — porting a June branch onto the split: pull cell-visible types into wire (no sqlx there).
-- [build-environment](build-environment.md) — rust-lld override obsolete; worktrees need the `external/` junction.
-- [stale-branch-clippy-toolchain-drift](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable.
-- [lane-sh-masks-cargo-exit-code](lane-sh-masks-cargo-exit-code.md) — the old `%TEMP%` lane exited 0 on a failed cargo; the committed `lane.sh` passes it through.
-- [mutation-restore-mtime-trap](mutation-restore-mtime-trap.md) — restoring from a backup copy leaves an old mtime.
-- [dependency-dedupe-blockers](dependency-dedupe-blockers.md) — duplicate dep versions pinned upstream (sqlx, axum ws, reqwest, rmcp).
-- [services-split-extraction-traps](services-split-extraction-traps.md) — allowlist edges, unreachable_pub, phased privacy errors, guard blind spots.
-
-## Working environment
-
-- [concurrent-claude-sessions](concurrent-claude-sessions.md) — other sessions on the repo: work in `.claude/worktrees/<slug>/`, junction `external/`.
-- [stacked-branch-rebase-traps](stacked-branch-rebase-traps.md) — a handed-down base sha may not be an ancestor.
-- [rebase-keep-both-regex-drops-braces](rebase-keep-both-regex-drops-braces.md) — scripted "keep both" conflict fixes can drop a `}` mid-hunk.
-- [resuming-a-dead-workers-wip](resuming-a-dead-workers-wip.md) — a `wip(...) unverified` commit may not compile.
-- [crate-split-extraction-traps](crate-split-extraction-traps.md) — `pub(crate)` turns dead, `unreachable_pub` on pub fields, the live-DB crate list.
-- [pre-split-branch-port-traps](pre-split-branch-port-traps.md) — cell-visible types go in wire (no sqlx), an OTEL row per wire module, taken seed ids.
 
 ## Tooling quirks
 
@@ -94,32 +79,12 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Seeds and content chains
 
-- [entity-template-seed-authoring.md](entity-template-seed-authoring.md) — one ability per set; faction 10 is immutable; no components + no mesh = invisible.
-- [cover-seed-ids-and-orient-convention.md](cover-seed-ids-and-orient-convention.md) — cover set ids `world*100000+n`; cover `orient` is not entity yaw.
-- [seed-name-id-and-asset-naming.md](seed-name-id-and-asset-naming.md) — new `texts.sql` moniker ids never render; monikers name UE3 asset families.
-- [content-engine-condition-gotchas.md](content-engine-condition-gotchas.md) — a rejected condition row UNGATES its chain; world ids live in `resources.worlds`.
-- [cell-startup-caches-vs-base-roundtrip.md](cell-startup-caches-vs-base-roundtrip.md) — the cell has a DB pool and ~20 caches; no base round-trips mid-chain.
-- [content-chain-authoring-traps.md](content-chain-authoring-traps.md) — `display_dialog` needs an interact; nothing respawns; zero-baseline rule for interaction flags.
-- [content-chain-dispatch-traps.md](content-chain-dispatch-traps.md) — `dialog_choice` has no archetype; button-less dialogs still fire it; negatives pass vacuously.
-- [content-chain-condition-context-gaps.md](content-chain-condition-context-gaps.md) — `archetype neq` fails open on dialog chains; `delay_ms > 0` queues.
-- [player-loaded-edge-trigger-race.md](player-loaded-edge-trigger-race.md) — a gated `player_loaded` chain never fires for a player already inside; add a state-change trigger.
-- [edge-trigger-replay-and-abandon.md](edge-trigger-replay-and-abandon.md) — H52 `enter_region` replay and H54 `mission_abandoned` wiring.
-- [chain-replay-trigger-param-vacuity.md](chain-replay-trigger-param-vacuity.md) — a `TriggerEvent` missing its key param matches nothing.
-- [dialog-set-bind-routing-and-edges.md](dialog-set-bind-routing-and-edges.md) — `target_id` is a dialog_set_MAP id; a bind fans to every entity of the template.
-- [dialog-button-strip-and-seed-agreement.md](dialog-button-strip-and-seed-agreement.md) — linter floors block the packet that changes them; roster pins for patch tests.
-- [container-capacity-and-grant-targets.md](container-capacity-and-grant-targets.md) — raising a `bag_max_slots` arm opens loot/content grants into it (`container_sets[1]`.
-- [inventory-lock-keys-and-failure-injection.md](inventory-lock-keys-and-failure-injection.md) — inventory writers use different lock keys (grants merge stacks under `(player, container)`).
-- [org-cash-balance-and-overflow-traps.md](org-cash-balance-and-overflow-traps.md) — KEY SHARE does not freeze `naquadah` (use RETURNING).
-- [move-path-lock-layers-and-vault-verdict.md](move-path-lock-layers-and-vault-verdict.md) — moveItem has three lock layers (strip all in a concurrency revert proof).
-- [debug-hub-npc-authoring-traps.md](debug-hub-npc-authoring-traps.md) — Vendor interaction was never set (now derived at spawn).
-- [pet-template-seed-traps.md](pet-template-seed-traps.md) — NoPetLeveling freezes a pet at template level; summons need an event set.
-- [trainer-seed-and-gm-grant-traps.md](trainer-seed-and-gm-grant-traps.md) — trainer_abilities.sql is generated; capstones need .giveability; grants persist via base.
+- [seeds-and-content-chains-index](seeds-and-content-chains-index.md) — sub-index: template/cover/name seeds, chain conditions and edge triggers, dialog binds, inventory locks, pet and trainer seeds.
 
 ## Base sessions
 
 - [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path.
 - [connected-map-view-over-parallel-index.md](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map.
-
 - [trade-results-client-ignores-space-cash.md](trade-results-client-ignores-space-cash.md) — client trade window acts only on results 1/2; space/cash codes 3-6 show nothing, so send a feedback line.
 - [tell-channel-and-ignore-copies.md](tell-channel-and-ignore-copies.md) — client /tell is byte 10 (CHAN_TELL since SS-C4); the Ignore list has 3 copies synced by one resync.
 - [chat-channel-client-display.md](chat-channel-client-display.md) — server 8 opens a modal prompt, 9 is plain feedback, 7 shows nothing (nil ChannelMap).
@@ -227,6 +192,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [duel-end-paths-and-travel-scan](duel-end-paths-and-travel-scan.md) — SS-D3: travel sites need `duel::on_travel` (scan test).
 - [black-market-escrow-and-authority](black-market-escrow-and-authority.md) — listed items live in container 18 (exclude it from client reads).
 - [bm-settlement-mail-traps](bm-settlement-mail-traps.md) — BM-02b: status gate before any mail (writer mints every call).
+- [cell-systems-index](cell-systems-index.md) — sub-index: grants and loot, per-session state, abilities and effects, NPC AI, missions, pets, crafting, black market, duels, respawn and re-create.
 
 ## Observability
 
@@ -251,26 +217,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [interact-range-and-logcapture-traps.md](interact-range-and-logcapture-traps.md) — `get_entity` spans all spaces, so proximity gates need a space check; LogCapture cargo-test flake fixed in #891.
 - [test-session-packets-are-encrypted.md](test-session-packets-are-encrypted.md) — TestTransport packets are encrypted (zero key) and feedback lines need player_entity_id; decrypt before grepping text.
 - [wireclient-passive-session-dies.md](wireclient-passive-session-dies.md) — a listen-only `GameSession` is reaped at 60 s; send an unreliable AUTHENTICATE heartbeat, as `sparbot::run` does.
-- [interact-range-and-logcapture-traps.md](interact-range-and-logcapture-traps.md) — `get_entity` spans all spaces, so proximity gates need a space check.
-- [test-session-packets-are-encrypted.md](test-session-packets-are-encrypted.md) — TestTransport packets are encrypted (zero key) and feedback lines need player_entity_id.
-- [wireclient-passive-session-dies.md](wireclient-passive-session-dies.md) — a listen-only `GameSession` is reaped at 60 s.
 - [live-db-lock-race-tests.md](live-db-lock-race-tests.md) — a lock-race test must see the waiter blocked first.
-- [cargo-test-vs-nextest-flakiness](cargo-test-vs-nextest-flakiness.md) — `cargo test -p cimmeria-services` has order-dependent failures.
-- [db-test-revert-verification](db-test-revert-verification.md) — split DB code into a pure helper + shell; revert seed guards in place.
-- [bincode-persisted-cache-format](bincode-persisted-cache-format.md) — bincode 2 needs `config::legacy()`; the wrong config decodes silently.
-- [live-db-scratch-cluster](live-db-scratch-cluster.md) — `db.bat init` loads nothing; scratch Postgres recipe on :5544.
-- [chain-replay-executor-guards](chain-replay-executor-guards.md) — run `execute_actions`, not just `resolve_event`; `0x7000_5000` reserved.
-- [local-postgres-port](local-postgres-port.md) — probe port and DB name first; on a wrong one live-DB tests skip green.
-- [test-file-split-without-touching-mod-rs](test-file-split-without-touching-mod-rs.md) — `tests.rs` -> `tests/mod.rs` needs no parent edit.
-- [revert-test-restore-crlf-trap](revert-test-restore-crlf-trap.md) — restore with `git checkout HEAD -- <file>` between revert tests.
-- [revert-verification-checkout-wipes-uncommitted](revert-verification-checkout-wipes-uncommitted.md) — scope restores to one file; checkpoint per packet.
-- [revert-verification-loses-uncommitted-fmt](revert-verification-loses-uncommitted-fmt.md) — run `cargo fmt` before a WIP checkpoint.
-- [revert-proof-mutation-must-be-confirmed](revert-proof-mutation-must-be-confirmed.md) — a failed scripted mutation reports every guard "ok".
-- [vacuous-guard-and-sentinel-collision-review](vacuous-guard-and-sentinel-collision-review.md) — review checklist: vacuous guards, fixtures that fail two rules, `0x7000_xxxx` collisions.
-- [interact-range-and-logcapture-traps](interact-range-and-logcapture-traps.md) — `get_entity` spans all spaces, so proximity gates need a space check.
-- [test-session-packets-are-encrypted](test-session-packets-are-encrypted.md) — TestTransport packets are encrypted (zero key); decrypt before grepping.
-- [wireclient-passive-session-dies](wireclient-passive-session-dies.md) — a listen-only `GameSession` is reaped at 60 s.
-- [live-db-lock-race-tests](live-db-lock-race-tests.md) — a lock-race test must see the waiter blocked first.
+- [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race: hold `LOCK TABLE ..
 
 ## Campaign judgment
 
@@ -280,13 +228,3 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — the egui-only dependabot PR is a no-op; the eframe PR carries the breakage.
 - [training-points-cache-absolute-write.md](training-points-cache-absolute-write.md) — `handle_grant_xp` writes training_points absolutely from the session cache.
-
-## Testing patterns
-
-- [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race: hold `LOCK TABLE ..
-- [egui-eframe-split-version-bumps](egui-eframe-split-version-bumps.md) — the egui-only dependabot PR is a no-op; the eframe PR carries the breakage.
-- [training-points-cache-absolute-write](training-points-cache-absolute-write.md) — `handle_grant_xp` writes training_points absolutely from the session cache.
-
-## Testing patterns
-
-- [forced-db-race-share-lock](forced-db-race-share-lock.md) — deterministic type-5 live-DB race: hold `LOCK TABLE ...

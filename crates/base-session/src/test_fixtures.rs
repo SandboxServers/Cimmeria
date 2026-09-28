@@ -59,6 +59,7 @@ pub fn test_default_connected_client_state() -> ConnectedClientState {
         player_name: None,
         player_level: None,
         player_archetype: None,
+        player_class_id: None,
         player_alignment: None,
         world_name: None,
         player_xp: None,

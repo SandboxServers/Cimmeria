@@ -151,6 +151,61 @@ async fn destination_space_id_reaches_create_entity_and_pending_world_entry() {
     );
 }
 
+/// A GM travels as the class it logged in with. The world-entry info gate
+/// travel stores drives the next `CREATE_BASE_PLAYER`, so a hard-coded
+/// SGWPlayer (0x02) here demoted a GM on every gate trip and on every
+/// cross-world respawn (which comes through gate travel).
+#[tokio::test]
+async fn gate_travel_keeps_the_gm_login_class() {
+    let f = fixture(55739).await;
+    f.connected
+        .lock()
+        .unwrap()
+        .get_mut(&f.addr)
+        .unwrap()
+        .player_class_id = Some(crate::mercury::SGWGMPLAYER_CLASS_ID);
+    let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(8);
+
+    let connected = Arc::clone(&f.connected);
+    let entity_to_addr = Arc::clone(&f.entity_to_addr);
+    let transport = Arc::clone(&f.transport);
+    let handle = tokio::spawn(async move {
+        handle_gate_travel(
+            ENTITY_ID,
+            DEST_WORLD,
+            [0.0; 3],
+            [0.0; 3],
+            None,
+            Some(DEST_SPACE),
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &Some(cell_tx),
+            &None,
+        )
+        .await
+    });
+    expect_create_entity(&mut cell_rx, DEST_SPACE).await;
+    timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("gate travel must not hang")
+        .unwrap()
+        .expect("gate travel completes");
+
+    let map = f.connected.lock().unwrap();
+    let entry = map
+        .get(&f.addr)
+        .unwrap()
+        .pending_world_entry
+        .as_ref()
+        .expect("pending_world_entry must be populated");
+    assert_eq!(
+        entry.class_id,
+        crate::mercury::SGWGMPLAYER_CLASS_ID,
+        "a GM must arrive as SGWGmPlayer (0x03), the class it logged in with"
+    );
+}
+
 /// The space the *cell* actually resolved wins, not the one base asked for.
 /// When the requested instance died mid-flight the cell degrades to a fresh
 /// one and replies with it; building the world-entry packet from the

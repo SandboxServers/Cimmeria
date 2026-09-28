@@ -37,23 +37,21 @@
 //!    direction from `spawn_direction`. Clear `nav_path`,
 //!    `threat_list`, `last_aoe_deaths`, `last_movement_type`,
 //!    `ai_retry_at`, `respawn_at`. Transition `ai_state` to `Idle`.
-//! 7. Broadcast in load-bearing order:
-//!    `EntityMoved` → `INTERACTION_TYPE` → `ON_STATE_FIELD_UPDATE` →
-//!    `ON_STAT_UPDATE`. EntityMoved goes first so the client teleports
-//!    the corpse to spawn *before* the state-flip packets arrive —
-//!    otherwise the client would render an alive NPC at the death
-//!    position for ~100ms before the next AoI tick caught up.
-//!    Within the state packets, the death-path
-//!    `INTERACTION_TYPE`-before-state-field invariant is preserved
-//!    (see [`crate::cell::abilities::death`] module-level doc) — the
-//!    client locks in cursor / pose state on the state-field arrival,
-//!    so interaction-type must precede it.
+//! 7. Re-create the NPC on every witness's client: `LeftAoI`, then the
+//!    same introduction a new witness gets on AoI enter
+//!    ([`SpaceManager::introduction_events`]: `EnteredAoI` with the
+//!    createOnClient cascade, then the per-witness replays). The death
+//!    burst's `onSequence` Entity_Death leaves the client pawn in its
+//!    death pose, and no property delta undoes that; only a rebuilt pawn
+//!    stands up (2026-09-28 colo playtest: guards respawned lying on the
+//!    floor). The create carries the spawn position, the cleared state
+//!    field, full HEALTH/FOCUS and the restored interaction type, so no
+//!    separate delta is sent.
 //!
 //! The position snap goes through `space_mgr.update_entity_position`
-//! so the AoI grid + entity bookkeeping stay in sync; the inline
-//! `EntityMoved` fan-out then bypasses the AoI tick's 100ms cadence so
-//! witnesses see the position change in the same wire burst as the
-//! state changes.
+//! so the AoI grid + entity bookkeeping stay in sync before the
+//! re-create reads the entity. Witness sets are not touched: the NPC
+//! stays in view throughout.
 //!
 //! # Cadence
 //!
@@ -150,7 +148,7 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
         // Phase 2: mutate entity state (clear death flags, restore HP,
         // wipe combat state). Capture the wire payloads we'll send
         // afterwards.
-        let (state_field, stat_payload, interaction_flags) = {
+        let (state_field, interaction_flags, template_id) = {
             let entity = match space_mgr.get_entity_mut(entity_id) {
                 Some(e) => e,
                 None => continue,
@@ -236,11 +234,14 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             // last life.
             entity.abilities.clear_all_cooldowns();
 
-            let stat_payload = entity.stats.serialize_dirty();
+            // The re-create below carries HEALTH/FOCUS in its cascade, so
+            // the dirty HP/FOCUS need no separate `onStatUpdate`; clear
+            // them so the regen tick does not resend them.
             entity.stats.clear_dirty();
             let state_field = entity.state_field;
             let interaction_flags = entity.interaction_type_flags;
-            (state_field, stat_payload, interaction_flags)
+            let template_id = entity.template_id;
+            (state_field, interaction_flags, template_id)
         };
 
         // Phase 3a: close any open loot windows pointing at this
@@ -332,83 +333,76 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
         // An NPC authored in cover respawns holding its slot (NA22).
         crate::cell::cover::hold_spawn_cover(space_mgr, entity_id, "respawn");
 
-        // Phase 4: wire broadcasts. Position update FIRST so the
-        // EntityMoved fan-out reaches witnesses before the
-        // state-flip packets — otherwise the client sees the corpse
-        // become alive at the death position for ~100ms before the
-        // next AoI tick teleports it to spawn. Then load-bearing
-        // INTERACTION_TYPE → ON_STATE_FIELD_UPDATE order per the
-        // death-path symmetric invariant.
+        // Phase 4: rebuild the NPC on every witness's client. The death
+        // burst ends with `onSequence` Entity_Death, which puts the client
+        // pawn into its death pose; no property delta
+        // (`onStateFieldUpdate(0)`, `onStatUpdate`, `InteractionType`) takes
+        // it back out. The 2026-09-28 colo playtest showed exactly that:
+        // respawned guards lay on the floor, alive, and could not be
+        // auto-targeted. The player path solves the same problem by
+        // recreating the pawn (`cell::respawn::resync`); an NPC gets the
+        // AoI version of it: `LeftAoI`, then the full AoI-enter
+        // introduction a new witness gets.
+        //
+        // Leave-then-enter rather than a second CREATE_ENTITY on its own:
+        // the client's `EntityManager_EnterAoI` asserts
+        // `getEnterCount() > 0` for an entity it already holds
+        // (docs/drafts/spec/entity-property-sync.md, the deferred-enter
+        // countdown), so a create for a live id is not a path the client
+        // is known to handle. A leave destroys the client entity and the
+        // create builds a fresh one, standing. Every walk-away/walk-back
+        // already does exactly this.
+        //
+        // The re-create carries the spawn position and facing, the cleared
+        // state field, full HEALTH/FOCUS and the restored interaction type
+        // (plus each witness's merged dynamic interaction flags), so the
+        // separate EntityMoved / InteractionType / onStateFieldUpdate /
+        // onStatUpdate sends this tick used to make are gone. A base
+        // InteractionType sent after the create would also clobber the
+        // per-witness merged flags the create just set.
+        //
+        // Witness sets are unchanged: the NPC stays in view, so the next
+        // AoI tick sees no enter or leave for it.
         let witnesses = space_mgr.get_witnesses_of(entity_id);
-
-        // 4a: EntityMoved per witness — push the position update
-        // ahead of the state changes so the client teleports the
-        // corpse to spawn BEFORE rendering it as alive.
-        if let Some(pos) = spawn_pos {
-            for witness_id in &witnesses {
-                let _ = tx
-                    .send(CellToBaseMsg::EntityMoved {
-                        witness_id: *witness_id,
-                        entity_id,
-                        space_id,
-                        position: [pos.x, pos.y, pos.z],
-                        direction: [spawn_dir.x, spawn_dir.y, spawn_dir.z],
-                        velocity: [0.0; 3],
-                        npc_moved_since_last: None,
-                    })
-                    .await;
+        let mut recreated = 0usize;
+        'witnesses: for &witness_id in &witnesses {
+            let intro = space_mgr.introduction_events(witness_id, entity_id);
+            if intro.is_empty() {
+                continue;
             }
-        }
-
-        // 4b: INTERACTION_TYPE — restore pre-death flags. UINT64 LE,
-        // 8 bytes, just like the death-side payload. Use the
-        // witness-only helper (no warn on zero witnesses) so a
-        // server with no players online doesn't generate three
-        // warn-level logs per respawn cycle per NPC.
-        super::super::super::abilities::send_entity_method_to_witnesses(
-            entity_id,
-            crate::mercury::method_idx::INTERACTION_TYPE,
-            (interaction_flags as u64).to_le_bytes().to_vec(),
-            tx,
-            space_mgr,
-        )
-        .await;
-
-        // 4c: ON_STATE_FIELD_UPDATE — BSF_DEAD / BSF_MOVEMENT_LOCK
-        // cleared. UINT32 LE, 4 bytes, matches death-side layout.
-        super::super::super::abilities::send_entity_method_to_witnesses(
-            entity_id,
-            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-            state_field.to_le_bytes().to_vec(),
-            tx,
-            space_mgr,
-        )
-        .await;
-
-        // 4d: ON_STAT_UPDATE — HP / FOCUS restored. `serialize_dirty`
-        // always prefixes a UINT32 count; skip the send if no stats
-        // actually changed (defensive — should always have changed
-        // here since we just set HP=max from HP=0).
-        if stat_payload.len() > 4 {
-            super::super::super::abilities::send_entity_method_to_witnesses(
+            let leave = CellToBaseMsg::LeftAoI {
+                witness_id,
                 entity_id,
-                crate::mercury::method_idx::ON_STAT_UPDATE,
-                stat_payload,
-                tx,
-                space_mgr,
-            )
-            .await;
+            };
+            for msg in std::iter::once(leave).chain(intro) {
+                if let Err(e) = tx.send(msg).await {
+                    tracing::warn!(
+                        target: "spawner.npc_respawn",
+                        npc_id = entity_id,
+                        witness_id,
+                        reason = "cell_to_base_closed",
+                        "NPC respawn: re-create could not be enqueued ({e}); the \
+                         witness keeps the corpse pose until it leaves and re-enters view"
+                    );
+                    break 'witnesses;
+                }
+            }
+            recreated += 1;
         }
 
         tracing::info!(
             target: "spawner.npc_respawn",
+            event = "npc_respawn_recreate",
             npc_id = entity_id,
+            template_id,
             ?spawn_pos,
             respawn_secs,
             world_name = %world_name,
             state_field,
             interaction_flags,
-            "NPC respawned (Dead -> Idle, HP restored, position snapped, witnesses notified)"
+            witness_count = witnesses.len(),
+            recreated,
+            "NPC respawned (Dead -> Idle, HP restored, position snapped, re-created on witness clients)"
         );
         // `world_name` is bounded by the worlds.xml registry (~30
         // entries) — low-cardinality. Useful for "is the respawn

@@ -57,79 +57,66 @@ async fn ready_dead_npc_respawns_to_idle_at_spawn_position() {
     assert_eq!(npc.respawn_secs, Some(30));
 }
 
-/// Wire-order pin: respawn must emit EntityMoved BEFORE the
-/// state-flip packets so the client teleports the corpse to spawn
-/// before rendering it as alive. Within the state packets,
-/// INTERACTION_TYPE precedes ON_STATE_FIELD_UPDATE precedes
-/// ON_STAT_UPDATE (death-path-symmetric: the client locks in
-/// cursor + pose state on the state-field flip, so interaction-type
-/// must land first).
-///
-/// Regression shape: without the inline EntityMoved, the client
-/// would see the corpse become alive at the death position for
-/// ~100 ms before the next AoI tick fired EntityMoved with the
-/// new position. Visible teleport-after-revive glitch.
+/// Wire shape: the respawn re-creates the NPC on the witness (`LeftAoI`
+/// then `EnteredAoI`) instead of sending deltas to the dead-posed pawn,
+/// and the introduction is built after the position snap, so it carries
+/// the spawn position. The fan-out itself is pinned in
+/// `respawn_recreate`; this keeps the single-witness fixture honest.
 #[tokio::test]
-async fn respawn_emits_entity_moved_then_state_packets_in_load_bearing_order() {
+async fn respawn_recreates_the_npc_at_its_spawn_point() {
     let past = std::time::Instant::now() - std::time::Duration::from_millis(1);
     let mut mgr = make_mgr_with_dead_npc(Some(30), Some(past));
     let (tx, mut rx) = mpsc::channel(64);
 
     npc_respawn_tick(&tx, &mut mgr).await;
 
-    // Tag each emitted message by kind so the ordering assertion
-    // can see "EntityMoved before INTERACTION_TYPE" alongside the
-    // intra-state-packet ordering.
     let msgs = drain(&mut rx);
-    let tags: Vec<&str> = msgs
+    let ix_leave = msgs
+        .iter()
+        .position(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::LeftAoI {
+                    witness_id: 1,
+                    entity_id: 50
+                }
+            )
+        })
+        .expect("respawn must send LeftAoI to the witness");
+    let (ix_enter, position) = msgs
+        .iter()
+        .enumerate()
+        .find_map(|(i, m)| match m {
+            CellToBaseMsg::EnteredAoI {
+                witness_id: 1,
+                entity_id: 50,
+                position,
+                ..
+            } => Some((i, *position)),
+            _ => None,
+        })
+        .expect("respawn must re-introduce the NPC to the witness");
+    assert!(ix_leave < ix_enter, "LeftAoI must precede EnteredAoI");
+    assert_eq!(position, [10.0, 0.0, 0.0], "introduced at the spawn point");
+    let deltas: Vec<u16> = msgs
         .iter()
         .filter_map(|m| match m {
-            CellToBaseMsg::EntityMoved { entity_id: 50, .. } => Some("moved"),
             CellToBaseMsg::WitnessEntityMethod {
                 entity_id: 50,
                 method_index,
                 ..
-            }
-            | CellToBaseMsg::EntityMethodCall {
-                entity_id: 50,
-                method_index,
-                ..
-            } => match *method_index {
-                method_idx::INTERACTION_TYPE => Some("int"),
-                method_idx::ON_STATE_FIELD_UPDATE => Some("state"),
-                method_idx::ON_STAT_UPDATE => Some("stat"),
-                _ => None,
-            },
+            } => Some(*method_index),
             _ => None,
         })
+        .filter(|&i| {
+            i == method_idx::ON_STATE_FIELD_UPDATE
+                || i == method_idx::ON_STAT_UPDATE
+                || i == method_idx::INTERACTION_TYPE
+        })
         .collect();
-    let ix_moved = tags
-        .iter()
-        .position(|&t| t == "moved")
-        .expect("respawn must emit EntityMoved");
-    let ix_int = tags
-        .iter()
-        .position(|&t| t == "int")
-        .expect("respawn must emit INTERACTION_TYPE");
-    let ix_state = tags
-        .iter()
-        .position(|&t| t == "state")
-        .expect("respawn must emit ON_STATE_FIELD_UPDATE");
-    let ix_stat = tags
-        .iter()
-        .position(|&t| t == "stat")
-        .expect("respawn must emit ON_STAT_UPDATE for HP/FOCUS reset");
     assert!(
-            ix_moved < ix_int,
-            "EntityMoved must precede INTERACTION_TYPE (position teleports before alive-state arrives); got {tags:?}"
-        );
-    assert!(
-            ix_int < ix_state,
-            "INTERACTION_TYPE must precede ON_STATE_FIELD_UPDATE (death-path-symmetric ordering); got {tags:?}"
-        );
-    assert!(
-        ix_state < ix_stat,
-        "ON_STATE_FIELD_UPDATE must precede ON_STAT_UPDATE; got {tags:?}"
+        deltas.is_empty(),
+        "the re-create carries state/stats/interaction type; no separate delta: {deltas:?}"
     );
 }
 

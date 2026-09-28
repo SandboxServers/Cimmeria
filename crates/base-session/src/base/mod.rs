@@ -255,6 +255,14 @@ pub struct ConnectedClientState {
     pub player_name: Option<String>,
     pub player_level: Option<i32>,
     pub player_archetype: Option<i32>,
+    /// The entity class the client created the player with at world entry:
+    /// `SGWGmPlayer` (0x03) for a GM, `SGWPlayer` (0x02) otherwise
+    /// (`world_entry_db::class_id_for_access_level`). Every later
+    /// `CREATE_BASE_PLAYER` for this session (the same-world respawn
+    /// reanchor, gate travel) reuses it, so a GM is not demoted to
+    /// `SGWPlayer` and loses the GM console tail on a respawn. `None` before
+    /// the first `playCharacter`.
+    pub player_class_id: Option<u8>,
     /// `sgw_player.alignment` of the character being played (1 = Praxis,
     /// 2 = SGU). Cached for the player-ghost AoI cascade: another player's
     /// client needs it for `onAlignmentUpdate`, and only the owning client's

@@ -15,8 +15,11 @@
 //! the two client-cache replays it queues behind the reanchor:
 //!
 //! - [`region_registration`] — the world's client-hinted trigger volumes.
-//! - [`resync`] — the hotbar, the active bandolier slot, the mission journal
-//!   and the `state_field` preference bits.
+//! - [`resync`] — level, state field, the full stat set, archetype, ability
+//!   tree, the hotbar, the active bandolier slot and the mission journal.
+//!
+//! Nothing stat- or state-related is sent before the reanchor: the client
+//! destroys that pawn when the reanchor arrives.
 //!
 //! World entry (`InitPlayerState`) sends the same two, so it reaches them here
 //! too.
@@ -61,6 +64,9 @@ pub use resync::send_known_abilities_update;
 /// 3. `BeingAppearance` + `onEntityTint` (separate bundle) — replays the
 ///    cached appearance args from initial world entry so the new pawn
 ///    isn't blank.
+/// 4. The cell's own replay behind it ([`resync::resync_after_pawn_recreate`]):
+///    level, state field, every stat, archetype, ability tree, hotbar,
+///    active slot and missions — the player-state half of the login burst.
 ///
 /// AoI entities, kismet sequence state, and the level itself are
 /// untouched because we never send `RESET_ENTITIES`.
@@ -217,7 +223,7 @@ pub async fn handle_respawn(
     if let Some(f) = entity.stats.get_mut(FOCUS) {
         f.set_current(f.max);
     }
-    let stat_update = entity.stats.serialize_dirty();
+    // The post-reanchor resync sends every stat, so the dirty set is spent.
     entity.stats.clear_dirty();
 
     // Hard-reset state flags + their refcounts. A raw `state_field = 0`
@@ -272,31 +278,13 @@ pub async fn handle_respawn(
     // speed warning).
     space_mgr.note_authorized_teleport(entity_id);
 
-    // Push the refreshed HEALTH/FOCUS to the HUD via onStatUpdate.
-    if !stat_update.is_empty() {
-        crate::cell::abilities::send_entity_method(
-            entity_id,
-            crate::mercury::method_idx::ON_STAT_UPDATE,
-            stat_update,
-            tx,
-            space_mgr,
-        )
-        .await;
-    }
-
-    // Drop the combat bits on the owning client (lifts BSF_Dead /
-    // BSF_MovementLock / dead-cursor visuals). The value is the entity's
-    // post-reset field — 0, or just the preserved preference bits — and the
-    // client applies it as an XOR delta against its cached copy, so the
-    // dead bits clear either way while `BSF_AutoCycling` stays untouched.
-    crate::cell::abilities::send_entity_method(
-        entity_id,
-        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-        preference_bits.to_le_bytes().to_vec(),
-        tx,
-        space_mgr,
-    )
-    .await;
+    // No stat or state-field packet goes out here. The reanchor below makes
+    // the client destroy this pawn and build a new one, so anything sent now
+    // lands on the pawn about to go away (2026-09-28 colo playtest: the
+    // HEALTH/FOCUS update and the state-field clear arrived before the
+    // reanchor and the new pawn never got either). The full stat set and
+    // the state field are replayed after the reanchor, in
+    // `resync::resync_after_pawn_recreate`.
 
     // Re-anchor: CREATE_BASE_PLAYER + VIEWPORT + CREATE_CELL_PLAYER +
     // FORCED_POSITION + cached BeingAppearance/onEntityTint replay.

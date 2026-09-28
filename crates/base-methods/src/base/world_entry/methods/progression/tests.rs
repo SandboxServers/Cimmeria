@@ -69,6 +69,7 @@ pub(super) fn make_connected_state(active_player_id: Option<i32>) -> ConnectedCl
         player_name: None,
         player_level: Some(1),
         player_archetype: None,
+        player_class_id: None,
         player_alignment: None,
         world_name: None,
         player_xp: Some(0),

@@ -58,7 +58,7 @@ async fn handle_respawn_same_world_emits_in_place_burst_with_reanchor() {
         e.abilities
             .start_ability_cooldown(592, std::time::Duration::from_secs(60));
     }
-    let (tx, mut rx) = mpsc::channel(16);
+    let (tx, mut rx) = mpsc::channel(64);
     handle_respawn(1, -1, &tx, &mut mgr).await;
 
     // Cell entity SURVIVES.
@@ -122,9 +122,8 @@ async fn handle_respawn_same_world_emits_in_place_burst_with_reanchor() {
                 } else if method_index == crate::mercury::method_idx::ON_STAT_UPDATE
                     && stat_update_at.is_none()
                 {
-                    // serialize_dirty body must contain the refreshed HEALTH/FOCUS,
-                    // not a count-prefix-only empty body. The HUD refresh is the
-                    // practical reason this exists.
+                    // The full stat list, not a count-prefix-only empty body.
+                    // The HUD refresh is the practical reason this exists.
                     assert!(
                         args.len() > 4,
                         "onStatUpdate must carry the refreshed HEALTH/FOCUS payload"
@@ -186,16 +185,20 @@ async fn handle_respawn_same_world_emits_in_place_burst_with_reanchor() {
          that re-creates the pawn actor and clears ragdoll without RESET_ENTITIES",
     );
 
-    // Ordering: onEndAidWait → onStatUpdate → onStateFieldUpdate → ReanchorPlayer.
-    // ReanchorPlayer must be last so the pawn re-creation runs after the
-    // owning client has cleared dead state.
-    assert!(end_aid_idx < stat_idx);
-    assert!(stat_idx < state_idx);
+    // Ordering: onEndAidWait → ReanchorPlayer → onStateFieldUpdate →
+    // onStatUpdate. The reanchor makes the client destroy the dead pawn and
+    // build a new one; a stat or state packet sent before it lands on the
+    // pawn about to go away and the new one never gets it (2026-09-28 colo
+    // playtest). The replay after it follows the login burst's order.
+    assert!(end_aid_idx < reanchor_idx);
     assert!(
-        state_idx < reanchor_idx,
-        "onStateFieldUpdate(0) (msg #{state_idx}) must precede ReanchorPlayer \
-         (msg #{reanchor_idx}) so the dead/movement-lock state lifts before the pawn \
-         actor is re-created"
+        reanchor_idx < state_idx,
+        "onStateFieldUpdate(0) (msg #{state_idx}) must follow ReanchorPlayer \
+         (msg #{reanchor_idx}): it is for the re-created pawn"
+    );
+    assert!(
+        state_idx < stat_idx,
+        "onStatUpdate (msg #{stat_idx}) must follow the state field, as in the login burst"
     );
 
     assert_eq!(
@@ -228,7 +231,7 @@ async fn handle_respawn_cross_world_falls_back_to_gate_travel() {
         pos: [10.0, 20.0, 30.0],
     });
 
-    let (tx, mut rx) = mpsc::channel(16);
+    let (tx, mut rx) = mpsc::channel(64);
     handle_respawn(1, 7, &tx, &mut mgr).await;
 
     // Cross-world means destroy the cell entity (gate-travel will
@@ -301,7 +304,7 @@ async fn handle_respawn_same_world_dispatches_list_inventory_after_reanchor() {
         }
     }
 
-    let (tx, mut rx) = mpsc::channel(16);
+    let (tx, mut rx) = mpsc::channel(64);
     handle_respawn(1, -1, &tx, &mut mgr).await;
 
     let mut reanchor_at: Option<usize> = None;
@@ -385,7 +388,7 @@ async fn handle_respawn_same_world_clears_threatened_mobs() {
         e.threatened_mobs.insert(51);
     }
 
-    let (tx, _rx) = mpsc::channel(16);
+    let (tx, _rx) = mpsc::channel(64);
     handle_respawn(1, -1, &tx, &mut mgr).await;
 
     let entity = mgr

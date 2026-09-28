@@ -17,7 +17,9 @@ what is being spawned or loaded: `npcs.rs`, `regions.rs`, `respawners.rs`,
 builds the `(event_set_id, event_id) → sequence_id` lookup). Respawn is handled by a
 1 Hz `npc_respawn_tick` that reads `respawn_secs` (COALESCE of the spawn list and the
 entity template, minimum 3s) and promotes Dead NPCs back to Idle, restoring HP, focus,
-state flags, interaction type, and facing.
+state flags, interaction type, and facing. It then re-creates the NPC on every witness
+(`LeftAoI` plus the AoI-enter introduction) so the client rebuilds the pawn standing
+instead of leaving it in the death pose.
 
 Two of those file names invite a misreading ([#62](https://github.com/SandboxServers/Cimmeria/issues/62)).
 `regions.rs` loads GenericRegion trigger volumes (`resources.point_sets` of type

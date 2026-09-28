@@ -160,7 +160,7 @@ pub async fn handle_gate_travel(
         enc_version,
         account_id,
         account_name,
-        _access_level,
+        login_class_id,
         pending_acks_arc,
         next_seq,
         exit_name,
@@ -175,7 +175,7 @@ pub async fn handle_gate_travel(
             c.enc_version,
             c.account_id,
             c.account_name.clone(),
-            c.access_level,
+            c.player_class_id,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
             c.player_name.clone(),
@@ -394,7 +394,12 @@ pub async fn handle_gate_travel(
         pos: position,
         rot: rotation,
         world_name: target_world_name.to_string(),
-        class_id: SGWPLAYER_CLASS_ID, // See NOTE above -- SGWGmPlayer shifts method indices
+        // The class the client created the player with at login, so a GM
+        // arrives as SGWGmPlayer (0x03) — including a cross-world respawn,
+        // which comes through here. The old "SGWGmPlayer shifts method
+        // indices" reason for a hard-coded 0x02 was disproved
+        // (play_character.rs).
+        class_id: login_class_id.unwrap_or(SGWPLAYER_CLASS_ID),
         world_stargates,
     };
 
