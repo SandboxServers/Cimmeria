@@ -42,7 +42,10 @@ install (full hash comparison, 5,983 stock files) and building `cimmeria-patchse
     MOB_StraegisFighter, not StrAegis.upk.)
   - The historical CellBlock worlds are GM-only destinations; safe to lack unless a
     GM sends a player there.
-- Undecided as of 2026-09-27: `eula.lua` 19 s login delay, `prp_gen.fev/.fsb` sound
-  bank (unknown provenance; holds the ring-transport FMOD event).
+- Owner said yes 2026-09-28: `eula.lua` 19 s login delay (005-login-delay) and the
+  `prp_gen` sound bank (006-gate-sound-bank). The bank's "unknown provenance" was a
+  wrong guess: the known-good client's `Content\Audio\UI\prp_gen.fev` and
+  `prp_gen_gate.fsb` are byte-identical copies of the stock client's own
+  `Content\audio\genprp\` files, so the patch copies them locally and ships no CME bytes.
 
 Related: [[reference_client_rar_and_cache_tiers]].

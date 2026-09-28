@@ -1,0 +1,6 @@
+{
+  "id": "005-login-delay",
+  "ops": [
+    {"target": "Working/SGWGame/Content/UI/Startup/EULA/eula.lua", "sources": [{"path": "Working/SGWGame/Content/UI/Startup/EULA/eula.lua"}]}
+  ]
+}

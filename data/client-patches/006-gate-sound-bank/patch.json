@@ -1,0 +1,7 @@
+{
+  "id": "006-gate-sound-bank",
+  "ops": [
+    {"target": "Working/SGWGame/Content/Audio/UI/prp_gen.fev", "sources": [{"path": "Working/SGWGame/Content/audio/genprp/prp_gen.fev"}]},
+    {"target": "Working/SGWGame/Content/Audio/UI/prp_gen_gate.fsb", "sources": [{"path": "Working/SGWGame/Content/audio/genprp/prp_gen_gate.fsb"}]}
+  ]
+}
