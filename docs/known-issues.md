@@ -188,9 +188,13 @@ No longer stubbed:
   and AoI ignore enforcement landed separately.
 - **Black market**: 4 of 6 CellMethods implemented (`BMSearch`,
   `BMCreateAuction`, `BMPlaceBid`, `BMCancelAuction`), with immediate buyout
-  and an expiry sweep (the item moves from escrow to the buyer, or back to the
-  seller when unsold; the seller is mailed the cash), on `main` since BM-01 and
-  BM-02 (2026-09-27; `crates/base-methods/src/base/world_entry/methods/black_market/`). The watch
+  and an expiry sweep, on `main` since BM-01 and BM-02 (2026-09-27;
+  `crates/base-methods/src/base/world_entry/methods/black_market/`). Since
+  BM-02b every item and coin an auction moves arrives as system mail from
+  "Black Market" (the item to the buyer, or back to the seller; the cash to
+  the seller; an outbid or cancelled bid back to the bidder), to be taken
+  from the mailbox. An auction the sweep cannot settle is quarantined
+  (status 4) and needs an operator: there is no GM tool for it yet. The watch
   list (`BMStartWatchingItem` / `BMStopWatchingItem`) answers "unavailable" on
   purpose, and the client drops every `onBM*` reply until the client patch
   ships (#587).

@@ -1,9 +1,14 @@
-//! Expiry sweep — a periodic background task that settles auctions whose
+//! Expiry sweep: a periodic background task that settles auctions whose
 //! `expires_at` has passed, through [`super::settle::settle_locked`].
 //!
-//! Settlement runs in one transaction per auction so a crash mid-settlement
-//! can't double-deliver. Each settled auction is returned so the caller can
-//! push `onBMAuctionRemove` (and the item update) to the online parties.
+//! Each auction settles in its own transaction, in `expires_at` order, so
+//! one bad row cannot stop the pass (plan §5.2): a settlement that fails for
+//! good (the escrowed row is missing, or the mail writer refuses a payout)
+//! is rolled back and the auction set to `QUARANTINED` for an operator,
+//! with `bm.quarantined` and its `reason`; a database error leaves it
+//! `ACTIVE` for the next pass (`bm.settle_retry`). Each settled auction is
+//! returned so the caller can push `onBMAuctionRemove` and the new-mail
+//! notices to the online parties.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -14,8 +19,8 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::helpers::now_unix_secs;
-use super::send::{send_bm_auction_remove, send_item_placed, BmNet};
-use super::settle::{settle_locked, SettleCause};
+use super::send::{send_bm_auction_remove, BmNet};
+use super::settle::{settle_locked, SettleCause, SettleError};
 use super::telemetry::{count_bm_outcome, log_transition};
 use super::types::{auction_columns, auction_status, AuctionRow};
 use crate::base::ConnectedClientState;
@@ -25,69 +30,80 @@ pub use super::settle::SettledAuction;
 /// How often the expiry sweep runs.
 pub const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Settle every auction that is `ACTIVE` and past its `expires_at`. Returns the
-/// list of settled auctions. Idempotent: an already-settled auction (status not
-/// `ACTIVE`) is skipped because the status guard is part of the UPDATE.
+/// What one sweep pass did.
+#[derive(Debug, Default)]
+pub struct SweepReport {
+    pub settled: Vec<SettledAuction>,
+    /// Auctions set to `QUARANTINED` this pass, with the `reason`.
+    pub quarantined: Vec<(i32, &'static str)>,
+    /// Auctions left `ACTIVE` for the next pass, with the `reason`.
+    pub retried: Vec<(i32, &'static str)>,
+}
+
+/// How one due auction ended.
+enum Outcome {
+    Settled(Box<SettledAuction>),
+    /// No longer `ACTIVE` when locked: someone else settled it.
+    Skipped,
+    Quarantined(&'static str),
+    Retry(&'static str),
+}
+
+/// Settle every auction that is `ACTIVE` and past its `expires_at`. Only
+/// reading the due set can fail the pass; each auction's own failure is
+/// logged and reported instead.
 ///
-/// This is the unit of work the background loop runs; it is also called directly
-/// by the live-DB sweep test, so it carries no transport state.
-pub async fn settle_expired_once(pool: &PgPool) -> Result<Vec<SettledAuction>, sqlx::Error> {
+/// This is the unit of work the background loop runs; the live-DB sweep
+/// tests call it directly, so it carries no transport state.
+pub async fn settle_expired_once(pool: &PgPool) -> Result<SweepReport, sqlx::Error> {
     let now = now_unix_secs();
 
-    // Snapshot the due auctions up front. We re-lock each row inside its own
-    // transaction before mutating, so a row that another worker settles between
-    // the snapshot and the lock is harmlessly skipped by the status guard.
+    // Snapshot the due auctions up front. Each row is re-locked inside its
+    // own transaction before anything moves, so a row another worker settles
+    // between the snapshot and the lock is skipped.
     let due: Vec<AuctionRow> = sqlx::query_as(concat!(
         "SELECT ",
         auction_columns!(),
-        " FROM sgw_auction WHERE status = $1 AND expires_at <= $2"
+        " FROM sgw_auction WHERE status = $1 AND expires_at <= $2 \
+          ORDER BY expires_at, sequence_id"
     ))
     .bind(auction_status::ACTIVE)
     .bind(now)
     .fetch_all(pool)
     .await?;
 
-    let mut settled = Vec::new();
+    let mut report = SweepReport::default();
     for auction in due {
-        if let Some(s) = settle_one(pool, &auction).await? {
-            settled.push(s);
+        match settle_one(pool, &auction).await {
+            Outcome::Settled(s) => report.settled.push(*s),
+            Outcome::Skipped => {}
+            Outcome::Quarantined(reason) => report.quarantined.push((auction.sequence_id, reason)),
+            Outcome::Retry(reason) => report.retried.push((auction.sequence_id, reason)),
         }
     }
-    Ok(settled)
+    Ok(report)
 }
 
-/// Settle a single auction in its own transaction. Returns `Ok(None)` if the
-/// row was no longer `ACTIVE` when re-locked (someone else settled it).
-async fn settle_one(
-    pool: &PgPool,
-    auction: &AuctionRow,
-) -> Result<Option<SettledAuction>, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
-    // Re-lock and re-read the live row so concurrent sweeps don't double-settle
-    // and so the sold/unsold decision uses the post-lock current_bid /
-    // current_bidder (not the pre-lock snapshot which may be stale).
-    let locked: Option<AuctionRow> = sqlx::query_as(concat!(
-        "SELECT ",
-        auction_columns!(),
-        " FROM sgw_auction WHERE sequence_id = $1 FOR UPDATE"
-    ))
-    .bind(auction.sequence_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let live = match locked {
-        Some(row) if row.status == auction_status::ACTIVE => row,
-        _ => {
-            tx.rollback().await?;
-            return Ok(None);
+/// Settle one auction in its own transaction, and log what happened.
+async fn settle_one(pool: &PgPool, auction: &AuctionRow) -> Outcome {
+    let settled = match try_settle(pool, auction).await {
+        Ok(Some(settled)) => settled,
+        Ok(None) => return Outcome::Skipped,
+        Err(e) if e.is_permanent() => return quarantine(pool, auction, &e).await,
+        Err(e) => {
+            tracing::warn!(
+                event = "bm.settle_retry",
+                auction_id = auction.sequence_id,
+                seller_id = auction.seller_id,
+                bidder_id = auction.current_bidder,
+                reason = e.reason(),
+                error = %e,
+                "Black Market settlement failed; the auction stays active for the next sweep pass"
+            );
+            count_bm_outcome("settle", "retry");
+            return Outcome::Retry(e.reason());
         }
     };
-
-    let Some(settled) = settle_locked(&mut tx, &live, SettleCause::Expired).await? else {
-        tx.rollback().await?;
-        return Ok(None);
-    };
-    tx.commit().await?;
 
     let event = if settled.sold {
         "bm.sold"
@@ -102,8 +118,93 @@ async fn settle_one(
         Some(&settled.before),
         &settled.after,
     );
+    for payout in &settled.payouts {
+        payout.log(account_id, settled.seller_id);
+    }
     count_bm_outcome("settle", event.trim_start_matches("bm."));
-    Ok(Some(settled))
+    Outcome::Settled(Box::new(settled))
+}
+
+/// The settlement transaction. `Ok(None)` if the row was no longer
+/// `ACTIVE` when locked. Dropping `tx` on an error rolls everything back.
+async fn try_settle(
+    pool: &PgPool,
+    auction: &AuctionRow,
+) -> Result<Option<SettledAuction>, SettleError> {
+    let mut tx = pool.begin().await?;
+
+    // Re-lock and re-read the live row, so the sold/unsold decision uses the
+    // bid as it is now, not the snapshot's.
+    let locked: Option<AuctionRow> = sqlx::query_as(concat!(
+        "SELECT ",
+        auction_columns!(),
+        " FROM sgw_auction WHERE sequence_id = $1 FOR UPDATE"
+    ))
+    .bind(auction.sequence_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(live) = locked.filter(|row| row.status == auction_status::ACTIVE) else {
+        return Ok(None);
+    };
+
+    match settle_locked(&mut tx, &live, SettleCause::Expired).await {
+        Ok(settled) => {
+            tx.commit().await?;
+            Ok(Some(settled))
+        }
+        Err(SettleError::Gone) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Take a settlement that fails for good out of the sweep: `QUARANTINED`,
+/// in a transaction of its own after the failed one rolled back. The item
+/// stays in container 18 and any standing bid stays held until an operator
+/// resolves it.
+async fn quarantine(pool: &PgPool, auction: &AuctionRow, e: &SettleError) -> Outcome {
+    let reason = e.reason();
+    let marked =
+        sqlx::query("UPDATE sgw_auction SET status = $1 WHERE sequence_id = $2 AND status = $3")
+            .bind(auction_status::QUARANTINED)
+            .bind(auction.sequence_id)
+            .bind(auction_status::ACTIVE)
+            .execute(pool)
+            .await;
+    match marked {
+        Ok(r) if r.rows_affected() == 1 => {
+            let account_id = account_of(pool, auction.seller_id).await;
+            tracing::error!(
+                event = "bm.quarantined",
+                account_id,
+                player_id = auction.seller_id,
+                auction_id = auction.sequence_id,
+                seller_id = auction.seller_id,
+                bidder_id = auction.current_bidder,
+                held_cash = auction.escrowed_cash(),
+                item_id = auction.item_id,
+                item_def_id = auction.item_def_id,
+                reason,
+                error = %e,
+                "Black Market auction could not be settled and is quarantined for an operator"
+            );
+            count_bm_outcome("settle", "quarantined");
+            Outcome::Quarantined(reason)
+        }
+        Ok(_) => Outcome::Skipped,
+        Err(db) => {
+            tracing::warn!(
+                event = "bm.settle_retry",
+                auction_id = auction.sequence_id,
+                seller_id = auction.seller_id,
+                reason = "quarantine_failed",
+                settle_reason = reason,
+                error = %db,
+                "Black Market settlement failed and could not be quarantined; retried next pass"
+            );
+            count_bm_outcome("settle", "retry");
+            Outcome::Retry(reason)
+        }
+    }
 }
 
 /// The account a player belongs to, for a settlement row's `account_id`
@@ -118,23 +219,20 @@ async fn account_of(pool: &PgPool, player_id: i32) -> Option<u32> {
         .and_then(|a| u32::try_from(a).ok())
 }
 
-/// Push `onBMAuctionRemove` to the seller and buyer (when online) for each
-/// settled auction, and `onUpdateItem` to whoever got the item. The auction
-/// left the active set, so any client showing it must drop the row.
+/// Push `onBMAuctionRemove` to the seller and buyer (when online) for a
+/// settled auction, since it left the active set, and tell each online
+/// mail recipient their mail arrived.
 pub(super) async fn notify_settled(net: BmNet<'_>, pool: &PgPool, s: &SettledAuction) {
-    let recipient = s.buyer_id.unwrap_or(s.seller_id);
     let mut targets = vec![s.seller_id];
     targets.extend(s.buyer_id);
     for player_id in targets {
-        let Some(eid) = net.entity_of(player_id) else {
-            continue;
-        };
-        send_bm_auction_remove(net, eid, s.sequence_id).await;
-        if player_id == recipient {
-            if let Some(placed) = s.placed {
-                send_item_placed(net, pool, eid, player_id, placed.item_id).await;
-            }
+        if let Some(eid) = net.entity_of(player_id) {
+            send_bm_auction_remove(net, eid, s.sequence_id).await;
         }
+    }
+    let ctx = net.feedback();
+    for payout in &s.payouts {
+        payout.notify(pool, &ctx).await;
     }
 }
 
@@ -176,17 +274,28 @@ pub fn spawn_sweep(
 )]
 async fn run_sweep_pass(pool: &PgPool, net: BmNet<'_>) {
     match settle_expired_once(pool).await {
-        Ok(settled) if !settled.is_empty() => {
-            tracing::Span::current().record("settled", settled.len());
-            tracing::info!(
-                count = settled.len(),
-                "black_market: settled expired auctions"
-            );
-            for s in &settled {
+        Ok(report) => {
+            tracing::Span::current().record("settled", report.settled.len());
+            if !report.settled.is_empty()
+                || !report.quarantined.is_empty()
+                || !report.retried.is_empty()
+            {
+                tracing::info!(
+                    settled = report.settled.len(),
+                    quarantined = report.quarantined.len(),
+                    retried = report.retried.len(),
+                    "black_market: sweep pass done"
+                );
+            }
+            for s in &report.settled {
                 notify_settled(net, pool, s).await;
             }
         }
-        Ok(_) => {}
-        Err(e) => tracing::warn!("black_market: sweep failed: {e}"),
+        Err(e) => tracing::warn!(
+            event = "bm.sweep_failed",
+            reason = "due_query_failed",
+            error = %e,
+            "black_market: sweep pass could not read the due auctions"
+        ),
     }
 }

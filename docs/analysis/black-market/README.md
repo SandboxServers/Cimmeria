@@ -93,7 +93,7 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 | BM-00 | Live spike: checks V1–V5 from the evidence doc, run through the lab bridge (main-thread native calls, SEH-guarded) or non-freezing x64dbg reads | — | Updates the evidence doc; go/no-go for BM-03/04 |
 | BM-01 | Port `feat/571` onto the split crates. Tests green, no behavior change | — | PR |
 | BM-02 | Server contract fixes S1–S8, plus the shared codec crate | BM-01 | PR with byte-exact wire tests and live-DB search/paging guards. **Done** (PR #971): see [5.3](#53-bm-02-outcome) |
-| BM-02b | S9: move sweep and buyout payouts onto the social-systems mail API | BM-01, SS-M1 + SS-M2 merged | PR with live-DB guards for sold, unsold and cancelled settlement |
+| BM-02b | S9: move sweep and buyout payouts onto the social-systems mail API | BM-01, SS-M1 + SS-M2 merged | PR with live-DB guards for sold, unsold and cancelled settlement. **Done**: see [5.4](#54-bm-02b-outcome) |
 | BM-03 | Patch DLL skeleton: fingerprint gate, receive hooks, decode, main-thread delivery | BM-00, BM-02 codec | PR; off-target unit tests for the decoders |
 | BM-04 | Patch DLL send natives and `CimmeriaBM` registration | BM-03 | PR |
 | BM-05 | UI overlay: Lua store, read-binding replacements, U1–U12, error text | BM-03/04 surface | Overlay files + diff |
@@ -112,7 +112,7 @@ Owner rule (2026-09-26): a restored system must be debuggable from telemetry alo
 | BM-00 | Each live check records what it observed (addresses, bytes, return values) in the evidence doc. No product telemetry. |
 | BM-01 | The port keeps every log the branch had. Each BM dispatch entrypoint (cell 61–66 decode, the base create/bid/cancel/search handlers, each sweep pass) has an info span, and its player logs carry `account_id` + `player_id`. Every new log target has a pinned `OTEL_FILTER` row. |
 | BM-02 | Every state transition (listed, bid, outbid refund, cancelled, sold, expired) is a debug event `event = "bm.<transition>"`. Each carries `auction_id`, seller and bidder ids, the bid before and after, the escrowed cash before and after, and `item_def_id`. Every refusal logs an enumerated `reason=` that matches the `onBMError` id, with a `LogCapture` test per refusal seam. Search logs `client_key`, the filters, rows returned and `total_results`. A decode failure on 61–66 logs the payload length and the reason. Every `onBM*` send logs the method, the auction id or row count, and the payload size. A counter `bm.outcome{op, outcome}` uses enumerated labels only. A player who received `onBMOpen` but sent no 61–66 call in that session is logged once at logout as `bm.open_without_client_call`, the server-side sign that the client patch is missing. |
-| BM-02b | Each settlement logs the mail id it produced, the cash and item moved, and why (sold, expired, cancelled, buyout). |
+| BM-02b | Each settlement logs the mail id it produced, the cash and item moved, and why (sold, expired, cancelled, buyout). **Held**: INFO `bm.payout` per mail, with outbid refunds too (§5.4). |
 | BM-03 | The DLL writes a local log in a format the launcher's telemetry tailer can read. It records the fingerprint result per hook address, hook install success, each BM event decoded (method, size, outcome), decode errors with a reason, the Lua delivery outcome, and a count of events dropped because the overlay was missing. |
 | BM-04 | Each native send logs the method, sub-index and payload size, and every refusal (offline, bad arguments) with a reason. The server-side receive logs from BM-02 complete the round trip. |
 | BM-05 | Every overlay handler is `pcall`-guarded, and errors reach the client log that the launcher tails, tagged `[Cimmeria BM]`. |
@@ -131,11 +131,13 @@ BM-01 (#965) ported the branch without changing its behaviour. The review of #96
 | Search sizes its reply by row count, not serialized size, so a large result can exceed the packet limit | BM-02 | **Done.** At most 50 rows read, the reply cut to a 1,200-byte argument budget; `totalResults` stays the full count (S7) |
 | Cell methods 62-64 are forwarded without proof that the player is at an auctioneer (CWE-862) | BM-02 | **Done.** `black_market_access` (cell-world): a session recorded by `open_black_market`, the interaction target still that auctioneer, in range; refusal `NotAtAuctioneer`. Reviewed by the server-authority-enforcer |
 | `ON DELETE RESTRICT` on `sgw_auction.seller_id` / `current_bidder` blocks deleting a character forever once it has listed or won, because settled rows are never removed | BM-02 | **Done.** Decision D-BM09 |
-| One failing auction aborts the whole sweep pass (no `ORDER BY`, `?` on the first error); `return_item` uses `fetch_one` and fails on a missing `item_def_id` | BM-02b | Log and skip or quarantine the row when settlement moves onto `send_system_mail_tx` |
-| Settlement mail is inserted directly into `sgw_gate_mail`: no `expires_at` and no `sgw_gate_mail_item` escrow row | BM-02b | S9 |
+| One failing auction aborts the whole sweep pass (no `ORDER BY`, `?` on the first error); `return_item` uses `fetch_one` and fails on a missing `item_def_id` | BM-02b | **Done.** The due set is ordered (`expires_at, sequence_id`), each auction settles in its own transaction, and a failure that will recur is quarantined (status 4, `bm.quarantined`); `return_item` is gone |
+| Settlement mail is inserted directly into `sgw_gate_mail`: no `expires_at` and no `sgw_gate_mail_item` escrow row | BM-02b | **Done.** S9: every payout goes through `send_system_mail_tx`; `send_mail_to_player` is deleted |
 | The boot seed's reserved system seller (account 1, player 1) is inserted without checking what those ids hold | BM-07 | Content and seed packet |
 | `open_black_market` pins whatever NPC its chain names; nothing checks the NPC is an auctioneer (no auctioneer interaction type exists), so a chain bound to another NPC would make it a Black Market terminal | BM-07 | Found in the BM-02 authority review. Bind `open_black_market` only to the auctioneer template, or add an auctioneer marker the open checks |
-| A settlement whose escrow row is missing, or that fails, is skipped and retried by every sweep pass (`bm.escrow_missing` each time); there is no quarantine | BM-02b | With the log-and-skip change above |
+| A settlement whose escrow row is missing, or that fails, is skipped and retried by every sweep pass (`bm.escrow_missing` each time); there is no quarantine | BM-02b | **Done.** Quarantined once (`reason = escrow_missing`); a database error is still retried each pass (`bm.settle_retry`) |
+| Quarantined auctions have no GM tool: an operator must mail the container-18 row and any held bid by hand | Follow-up | Found in BM-02b. A `.bm` console command (resolve, or retry a quarantined auction) fits BM-07's `.`-console helper |
+| The D-BM09 delete trigger refunds standing bidders by a direct balance credit, not by mail | Follow-up | Found in BM-02b. A trigger cannot call the mail writer; move the refund into the character-delete path if it ever becomes Rust |
 | Bind-on-acquire items are listable, as they are tradeable and mailable: grants never set `bound` | Systemic | Found in the BM-02 authority review; not Black Market specific |
 
 ### 5.3 BM-02 outcome
@@ -146,6 +148,17 @@ BM-01 (#965) ported the branch without changing its behaviour. The review of #96
 - **Authority, expired window, paging, FK**: the §5.2 rows marked done.
 - **Telemetry**: the §5.1 BM-02 line, with `bm_outcome_total{op, outcome}` as the counter's exported name.
 - **Deferred**: the new §5.2 rows (BM-07, BM-02b, systemic).
+
+### 5.4 BM-02b outcome
+
+- **One mail writer (S9, D-BM10).** `payout_mail.rs` builds every Black Market mail and hands it to the mail module's `send_system_mail_tx` inside the caller's transaction. Sold (sweep or buyout): the container-18 row to the buyer as `ExistingInstance`, the winning bid minted to the seller. Expired unsold and cancelled: the row back to the seller. Outbid and a cancelled auction's standing bid: cash to the bidder. `send_mail_to_player`, `deliver_from_escrow` and every direct `sgw_gate_mail` insert are deleted. A boot-seed sale mails the buyer a minted instance and pays nobody.
+- **The module moved.** The mail writer lives in `cimmeria-base-methods`, which depends on `cimmeria-base-session`, so `base/black_market/` moved from base-session to `crates/base-methods/src/base/world_entry/methods/black_market/` (a pure move, its own commit).
+- **Exactly once.** Each settlement's first write is its conditional status change (`WHERE status = ACTIVE RETURNING`); a second settlement from a stale read is `SettleError::Gone` and writes nothing. Cancel does the same. Guarded live (`a_second_settlement_pays_nothing`).
+- **Poison rows.** Ordered due set, one transaction per auction, `QUARANTINED` (status 4) for a failure that will recur, retry for a database error, and the pass goes on. A missing escrow row is `bm.escrow_missing` and is never minted.
+- **Lock order** after the auction row: the seller's escrow advisory locks, the escrowed item row, every `sgw_player` row in ascending id (mail recipients included), then the writer.
+- **Telemetry**: the §5.1 BM-02b line; also `bm.quarantined`, `bm.settle_retry`, `bm.refund_skipped`, and `bm_outcome_total{op="payout"|"settle"}`.
+- **Tests**: live-DB guards for sold, unsold, phantom bidder, cancelled, outbid, buyout, a buyout into full bags, the double settlement and the poison rows, each asserting the mail, the `sgw_gate_mail_item` row and the cash.
+- **Deferred**: the two new §5.2 follow-up rows.
 
 ## 6. Decisions
 
@@ -161,6 +174,7 @@ All eight were answered in session on 2026-09-26, each as recommended.
 | D6 | Next-minimum-bid rule. The client only displays the server's `nextMinBidPrice`, so this is design, not recovery. | **5% of the current bid, at least +1.** |
 | D7 | Tech-competency column: add a native getter in the DLL, or leave it blank? | **Native getter.** One read, with the item-cache refcount handled. |
 | D8 | Buyout: settle immediately or at expiry? | **Immediately.** Landed in BM-02 through the sweep's settlement step (`settle.rs`); BM-02b moves that step onto the mail API. |
+| D-BM10 | Cancel and expiry: return the item straight to the seller's bags, or by mail like a sale? | **By mail.** Every item and coin an auction moves is system mail from "Black Market" through `send_system_mail_tx`: a full bag no longer refuses a cancel or pushes an expired item past the main bag's last slot, an offline seller loses nothing, and there is one writer for every payout. Outbid refunds and a cancelled auction's standing bid are mail too; only D-BM09's trigger still credits directly. Decided in BM-02b. |
 | D-BM09 | Character deletion: `sgw_auction`'s `RESTRICT` foreign keys block deleting any character that ever listed or won. What happens to its auctions? | **The listings go with the seller, and nobody else loses cash.** `seller_id` is `ON DELETE CASCADE` (the escrowed item is a container-18 row of the seller and cascades with the inventory), `current_bidder` is `ON DELETE SET NULL` (settled rows keep their history). A `BEFORE DELETE` trigger on `sgw_player`, `bm_player_before_delete()`, refunds the standing bidders of the seller's open auctions and reopens the open auctions the deleted character was winning. Decided in BM-02. |
 
 ## 7. Risks

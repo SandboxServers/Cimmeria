@@ -1,5 +1,5 @@
-//! `placeBid`: refund the prior bidder, hold the new bid, advance the
-//! auction, and settle it at once on a buyout (decision D8).
+//! `placeBid`: mail the outbid player their held bid, hold the new bid,
+//! advance the auction, and settle it at once on a buyout (decision D8).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -8,11 +8,12 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use super::escrow::{free_bag_slot, lock_for_delivery};
-use super::helpers::{adjust_player_cash, now_unix_secs, CashError};
+use super::escrow::{escrowed_item, lock_escrow};
+use super::helpers::{adjust_player_cash, lock_players, now_unix_secs, CashError};
+use super::payout_mail::{refund_standing_bid, Payout, PayoutReason};
 use super::player_name;
-use super::send::{send_bm_auction_update, send_bm_error, BmNet};
-use super::settle::{settle_locked, SettleCause, SettledAuction};
+use super::send::{send_bm_auction_remove, send_bm_auction_update, send_bm_error, BmNet};
+use super::settle::{settle_locked, SettleCause, SettleError, SettledAuction};
 use super::sweep::notify_settled;
 use super::telemetry::{
     count_bm_outcome, db, log_failure, log_outbid_refund, log_transition, Actor, Failure,
@@ -27,17 +28,17 @@ use crate::base::ConnectedClientState;
 pub(super) struct BidDone {
     pub before: AuctionRow,
     pub after: AuctionRow,
-    /// The outbid player and the held cash they got back.
-    pub refunded: Option<(i32, i32)>,
+    /// The mail that gave the outbid player their held cash back.
+    pub refunded: Option<Payout>,
     /// The bid was a buyout and settled the auction.
     pub settled: Option<SettledAuction>,
 }
 
 /// Handle a `BMPlaceBid` forwarded from the cell.
 ///
-/// All cash movement, the auction update and (on a buyout) the settlement
-/// happen in one transaction, so a crash can't strand the bidder's held
-/// funds or pay twice.
+/// All cash movement, the refund mail, the auction update and (on a
+/// buyout) the settlement happen in one transaction, so a crash can't
+/// strand the bidder's held funds or pay twice.
 #[tracing::instrument(
     name = "black_market.place_bid",
     level = "info",
@@ -77,8 +78,14 @@ pub async fn handle_place_bid(
         }
     };
 
-    if let Some((to, amount)) = done.refunded {
-        log_outbid_refund(&actor, &done.before, to, amount);
+    if let Some(p) = &done.refunded {
+        log_outbid_refund(
+            &actor,
+            &done.before,
+            p.mail.recipient_player_id,
+            done.before.current_bid,
+        );
+        p.log(actor.account_id, player_id);
     }
     log_transition(
         "bm.bid",
@@ -97,6 +104,13 @@ pub async fn handle_place_bid(
         buyout = done.settled.is_some(),
         "placeBid: bid accepted"
     );
+    let outbid_entity = done
+        .refunded
+        .as_ref()
+        .and_then(|p| net.entity_of(p.mail.recipient_player_id));
+    if let Some(p) = &done.refunded {
+        p.notify(pool, &net.feedback()).await;
+    }
 
     if let Some(settled) = &done.settled {
         log_transition(
@@ -106,8 +120,15 @@ pub async fn handle_place_bid(
             Some(&settled.before),
             &settled.after,
         );
+        for p in &settled.payouts {
+            p.log(actor.account_id, player_id);
+        }
         count_bm_outcome("bid", "buyout");
         notify_settled(net, pool, settled).await;
+        // The outbid player's My Bids row is gone too.
+        if let Some(eid) = outbid_entity {
+            send_bm_auction_remove(net, eid, sequence_id).await;
+        }
         return;
     }
     count_bm_outcome("bid", "ok");
@@ -115,19 +136,15 @@ pub async fn handle_place_bid(
     let name = player_name(pool, done.after.seller_id).await;
     send_bm_auction_update(net, entity_id, &done.after, &name, now).await;
     // The outbid player's My Bids row changes too.
-    if let Some(eid) = done
-        .refunded
-        .and_then(|(to, _)| (to != player_id).then_some(to))
-        .and_then(|to| net.entity_of(to))
-    {
+    if let Some(eid) = outbid_entity {
         send_bm_auction_update(net, eid, &done.after, &name, now).await;
     }
 }
 
-/// The bid transaction. Lock order: the auction row, then (on a buyout) the
-/// seller's escrow and the buyer's bags' advisory locks, then the two
-/// bidders' `sgw_player` rows in ascending `player_id`, then the escrowed
-/// item row inside the settlement.
+/// The bid transaction. Lock order: the auction row, then (on a buyout)
+/// the seller's escrow advisory locks and the escrowed item row, then the
+/// bidder's, the outbid player's and (on a buyout) the seller's
+/// `sgw_player` rows in ascending `player_id`, then the mail writer.
 pub(super) async fn place_bid(
     pool: &PgPool,
     actor: &Actor,
@@ -158,25 +175,25 @@ pub(super) async fn place_bid(
     }
     let buyout = is_buyout(&auction, bid_amount);
     if buyout {
-        // The buyer must have room before anything is charged.
-        lock_for_delivery(&mut tx, auction.seller_id, bidder)
+        // The item goes by mail, so the buyer needs no bag space; the
+        // escrow is locked here, before any player row, and a missing row
+        // (`bm.escrow_missing`) refuses the buyout before anything is charged.
+        lock_escrow(&mut tx, auction.seller_id)
             .await
-            .map_err(db("lock_delivery"))?;
-        if free_bag_slot(&mut tx, bidder)
+            .map_err(db("lock_escrow"))?;
+        escrowed_item(&mut tx, &auction)
             .await
-            .map_err(db("free_slot"))?
-            .is_none()
-        {
-            return Err(BMError::BagFull.into());
-        }
+            .map_err(db("escrow_row"))?
+            .ok_or(BMError::Internal)?;
     }
 
+    let self_raise = auction.current_bidder == Some(bidder);
     let mut players = vec![bidder];
-    players.extend(auction.current_bidder.filter(|&p| p != bidder));
-    players.sort_unstable();
-    sqlx::query("SELECT 1 FROM sgw_player WHERE player_id = ANY($1) ORDER BY player_id FOR UPDATE")
-        .bind(&players)
-        .execute(&mut *tx)
+    players.extend(auction.current_bidder);
+    if buyout {
+        players.push(auction.seller_id);
+    }
+    lock_players(&mut tx, &players)
         .await
         .map_err(db("lock_players"))?;
     let balance: i64 = sqlx::query_scalar::<_, i64>(
@@ -188,41 +205,32 @@ pub(super) async fn place_bid(
     .map_err(db("balance"))?
     .ok_or(BMError::NotEnoughFunds)?;
 
-    // Raising your own standing bid refunds it first, so it counts.
-    let effective = if auction.current_bidder == Some(bidder) {
-        balance + auction.escrowed_cash()
+    // Raising your own standing bid counts the held bid toward the new one.
+    let held = if self_raise {
+        auction.escrowed_cash()
     } else {
-        balance
+        0
     };
-    validate_bid(&auction, bidder, bid_amount, effective, now)?;
+    validate_bid(&auction, bidder, bid_amount, balance + held, now)?;
     let charge = if buyout {
         auction.buyout_price
     } else {
         bid_amount
     };
 
-    let mut refunded = None;
-    if let Some(prev) = auction.current_bidder.filter(|_| auction.current_bid > 0) {
-        match adjust_player_cash(&mut tx, prev, i64::from(auction.current_bid)).await {
-            Ok(_) => refunded = Some((prev, auction.current_bid)),
-            // The prior bidder's character is gone; their held cash went
-            // with it. The delete trigger normally clears such a bid.
-            Err(CashError::NoSuchPlayer) => tracing::warn!(
-                sequence_id,
-                prev_bidder = prev,
-                amount = auction.current_bid,
-                reason = "prior_bidder_missing",
-                "placeBid: prior bidder row missing, cannot refund"
-            ),
-            Err(e) => {
-                return Err(Failure::Db {
-                    stage: "refund",
-                    error: e.to_string(),
-                })
-            }
-        }
-    }
-    match adjust_player_cash(&mut tx, bidder, -i64::from(charge)).await {
+    // Someone else's held bid goes back to them by mail. A self-raise has
+    // nothing to mail: only the difference is charged below.
+    let refunded = if self_raise {
+        None
+    } else {
+        refund_standing_bid(&mut tx, &auction, PayoutReason::Outbid)
+            .await
+            .map_err(|e| Failure::Db {
+                stage: "refund",
+                error: format!("{} ({e})", e.reason()),
+            })?
+    };
+    match adjust_player_cash(&mut tx, bidder, held - i64::from(charge)).await {
         Ok(_) => {}
         Err(CashError::InsufficientFunds | CashError::NoSuchPlayer) => {
             return Err(BMError::NotEnoughFunds.into())
@@ -261,10 +269,18 @@ pub(super) async fn place_bid(
     let settled = if buyout {
         let s = settle_locked(&mut tx, &after, SettleCause::Buyout)
             .await
-            .map_err(db("settle"))?
-            // The row is locked and ACTIVE: the conditional write cannot
-            // miss short of a bug, and paying without it would be worse.
-            .ok_or(BMError::Internal)?;
+            .map_err(|e| match e {
+                // The row is locked and ACTIVE and its escrow was checked
+                // above: this cannot happen short of a bug, and paying
+                // without the status gate would be worse.
+                SettleError::Gone | SettleError::EscrowMissing => {
+                    Failure::Refused(BMError::Internal)
+                }
+                other => Failure::Db {
+                    stage: "settle",
+                    error: format!("{} ({other})", other.reason()),
+                },
+            })?;
         Some(s)
     } else {
         None

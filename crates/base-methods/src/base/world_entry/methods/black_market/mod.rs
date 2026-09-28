@@ -7,7 +7,8 @@
 //! `CellToBaseMsg::BlackMarket` (routed by `cimmeria-base-world-entry`'s
 //! `cell_dispatch`). The base side (here) owns all DB, escrow, cash and mail
 //! work and sends the `onBM*` (client indices 90–95) replies back to the
-//! player's own client. `cimmeria-base` spawns the boot seed and the expiry
+//! player's own client. Items and cash leave an auction only as system mail
+//! from "Black Market" (`payout_mail`). `cimmeria-base` spawns the boot seed and the expiry
 //! sweep at startup. The contract and its decisions are in
 //! `docs/analysis/black-market/README.md`.
 //!
@@ -19,9 +20,11 @@
 //! - [`validate`] — pure accept/reject rules, each refusal a `BMError`.
 //! - [`telemetry`] — the `bm.<transition>` events, refusal rows and the
 //!   `bm_outcome_total` counter.
-//! - [`helpers`] — the clock and `adjust_player_cash`.
-//! - [`escrow`]  — moving the listed row into container 18 and back out.
-//! - [`payout_mail`] — `send_mail_to_player` and the settlement mail texts.
+//! - [`helpers`] — the clock, `lock_players` and `adjust_player_cash`.
+//! - [`escrow`]  — moving the listed row into container 18, and the item a
+//!   settlement mails out of it.
+//! - [`payout_mail`] — every payout, return and refund as system mail
+//!   through the mail module's `send_system_mail_tx` (BM-02b).
 //! - [`send`]    — `onBM*` and item-update sends.
 //! - [`search`]  — the `BMSearch` handler and query.
 //! - [`create`] / [`bid`] / [`cancel`] — the create/bid/cancel state machine.

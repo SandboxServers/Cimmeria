@@ -12,8 +12,9 @@ use cimmeria_entity::inventory::{INV_AUCTION, INV_MAIN};
 use sqlx::PgPool;
 
 use super::{
-    cleanup, expire_now, insert_account_and_player, insert_item, item_state, last_auction_of,
-    naquadah_of, status_of, Harness, Session, ITEM_DEF_ID, TEST_BASE,
+    bm_mails, cleanup, expire_now, insert_account_and_player, insert_item, item_state,
+    last_auction_of, mail_escrow_of, naquadah_of, status_of, Harness, Session, ITEM_DEF_ID,
+    TEST_BASE,
 };
 use crate::base::world_entry::methods::black_market::types::{auction_status, MAX_ACTIVE_LISTINGS};
 use crate::test_support::require_db_or_skip;
@@ -137,9 +138,10 @@ async fn the_twenty_first_listing_is_refused() {
 }
 
 /// D8: a bid at or over the buyout price settles at once. The buyer pays
-/// the buyout price (not their higher bid), the prior bidder is refunded,
-/// the listed row moves to the buyer's bags, the seller is mailed the cash.
-/// Bug shape: the branch left a buyout bid standing until expiry.
+/// the buyout price (not their higher bid); the outbid bidder is mailed
+/// their held bid, the buyer the listed row itself, the seller the cash.
+/// Bug shape: the branch left a buyout bid standing until expiry; a
+/// settlement off the mail writer leaves no escrow row on the buyer's mail.
 #[tokio::test]
 async fn a_buyout_settles_immediately() {
     let pool = require_db_or_skip!();
@@ -154,29 +156,37 @@ async fn a_buyout_settles_immediately() {
         10_000 - 1_000,
         "charged the buyout"
     );
+    let won = bm_mails(&pool, s[2].2).await;
     assert_eq!(
-        naquadah_of(&pool, s[1].2).await,
-        10_000,
-        "outbid bidder refunded"
+        won.iter().map(|m| (m.1, m.2)).collect::<Vec<_>>(),
+        vec![(0, Some(item))]
     );
+    assert_eq!(item_state(&pool, item).await, None);
     assert_eq!(
-        item_state(&pool, item).await.map(|i| (i.0, i.1)),
-        Some((s[2].2, INV_MAIN))
+        mail_escrow_of(&pool, item).await,
+        Some((won[0].0, 77, 3, s[0].2)),
+        "the listed row, whole, on the buyer's mail"
     );
-    let paid: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sgw_gate_mail WHERE character_id = $1 AND cash = 1000",
-    )
-    .bind(s[0].2)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(paid, 1, "seller mailed the buyout");
+    let outbid = bm_mails(&pool, s[1].2).await;
+    assert_eq!(
+        outbid.iter().map(|m| (m.1, m.2)).collect::<Vec<_>>(),
+        vec![(200, None)],
+        "outbid bidder mailed the held 200"
+    );
+    let paid = bm_mails(&pool, s[0].2).await;
+    assert_eq!(
+        paid.iter().map(|m| (m.1, m.2)).collect::<Vec<_>>(),
+        vec![(1_000, None)],
+        "seller mailed the buyout"
+    );
     done(&pool, &s).await;
 }
 
-/// A buyout into full bags is refused before anything is charged.
+/// A buyout into full bags still settles (decision D-BM10): the item goes
+/// by mail and waits there. Bug shape: the pre-mail rule refused it with
+/// `BagFull` and left the auction open.
 #[tokio::test]
-async fn a_buyout_into_full_bags_is_refused() {
+async fn a_buyout_into_full_bags_settles_by_mail() {
     let pool = require_db_or_skip!();
     let (s, item, seq, h) = listed(&pool, 0x40, 1_000).await;
     sqlx::query(
@@ -193,11 +203,15 @@ async fn a_buyout_into_full_bags_is_refused() {
     .unwrap();
 
     h.bid(s[2], seq, 1_000).await;
-    assert_eq!(status_of(&pool, seq).await, auction_status::ACTIVE);
-    assert_eq!(naquadah_of(&pool, s[2].2).await, 10_000);
+    assert_eq!(status_of(&pool, seq).await, auction_status::SOLD);
+    assert_eq!(naquadah_of(&pool, s[2].2).await, 10_000 - 1_000);
     assert_eq!(
-        item_state(&pool, item).await.map(|i| i.1),
-        Some(INV_AUCTION)
+        bm_mails(&pool, s[2].2)
+            .await
+            .iter()
+            .map(|m| m.2)
+            .collect::<Vec<_>>(),
+        vec![Some(item)]
     );
     done(&pool, &s).await;
 }

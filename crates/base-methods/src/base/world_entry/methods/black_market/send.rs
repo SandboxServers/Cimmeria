@@ -1,5 +1,6 @@
 //! Server→client sends for the Black Market: the `onBM*` methods, and the
-//! inventory updates a listing, a return or a delivery owes the client.
+//! `onRemoveItem` a listing owes the seller's client. Settlements move items
+//! by mail, whose own notice tells the recipient (`payout_mail`).
 //!
 //! Every send logs one DEBUG `event = "bm.send"` row with the method, the
 //! auction id or row count, the payload size and whether it reached the
@@ -10,15 +11,14 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_entity::inventory::InvItem;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::cell::client_methods::black_market::{
     ON_BM_AUCTIONS, ON_BM_AUCTION_REMOVE, ON_BM_AUCTION_UPDATE, ON_BM_ERROR,
 };
-use sqlx::PgPool;
 
 use super::types::AuctionRow;
 use super::wire::{self, BMError};
+use crate::base::feedback::FeedbackCtx;
 use crate::base::helpers::{send_to_witness_reliable, WitnessSendOutcome};
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -32,6 +32,14 @@ pub struct BmNet<'a> {
 }
 
 impl BmNet<'_> {
+    /// The feedback context the mail notices go through.
+    pub fn feedback(&self) -> FeedbackCtx<'_> {
+        FeedbackCtx {
+            transport: self.transport,
+            connected: self.connected,
+        }
+    }
+
     /// The live entity of an online player, `None` when offline.
     pub fn entity_of(&self, player_id: i32) -> Option<u32> {
         let clients = self.connected.lock().unwrap_or_else(|p| p.into_inner());
@@ -142,92 +150,6 @@ pub async fn send_item_removed(net: BmNet<'_>, entity_id: u32, item_id: i32) {
         entity_id,
         method_idx::ON_REMOVE_ITEM,
         "onRemoveItem",
-        &args,
-        None,
-        Some(1),
-    )
-    .await;
-}
-
-#[derive(sqlx::FromRow)]
-struct ItemRow {
-    item_id: i32,
-    type_id: i32,
-    stack_size: i32,
-    slot_id: i32,
-    container_id: i32,
-    bound: bool,
-    durability: i32,
-    charges: i32,
-    ammo_type_ids: Vec<i32>,
-    cur_ammo_type_id: i32,
-}
-
-/// `onUpdateItem` for one returned or delivered item, read after the
-/// commit. Container 18 is never sent: the filter keeps a row that is back
-/// in escrow off the client.
-pub async fn send_item_placed(
-    net: BmNet<'_>,
-    pool: &PgPool,
-    entity_id: u32,
-    player_id: i32,
-    item_id: i32,
-) {
-    let row: Option<ItemRow> = match sqlx::query_as(
-        r#"SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
-                  inv.bound, inv.durability, inv.charges,
-                  COALESCE((
-                      SELECT array_agg(array_position(enum_range(NULL::resources."EAmmoType"), ammo) - 1 ORDER BY ord)
-                      FROM unnest(ri.ammo_types) WITH ORDINALITY AS ammo_values(ammo, ord)
-                  ), ARRAY[]::integer[]) AS ammo_type_ids,
-                  CASE WHEN ri.default_ammo_type IS NULL THEN 0
-                       ELSE array_position(enum_range(NULL::resources."EAmmoType"), ri.default_ammo_type) - 1
-                  END AS cur_ammo_type_id
-           FROM sgw_inventory inv
-           LEFT JOIN resources.items ri ON ri.item_id = inv.type_id
-           WHERE inv.character_id = $1 AND inv.item_id = $2 AND inv.container_id <> 18"#,
-    )
-    .bind(player_id)
-    .bind(item_id)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(row) => row,
-        Err(e) => {
-            tracing::warn!(
-                event = "bm.item_sync_failed",
-                entity_id,
-                player_id,
-                item_id,
-                reason = "inventory_read_failed",
-                error = %e,
-                "Black Market item update not sent; the client shows it after the next resync"
-            );
-            return;
-        }
-    };
-    let Some(row) = row else {
-        return;
-    };
-    let mut args = 1u32.to_le_bytes().to_vec();
-    InvItem {
-        id: row.item_id,
-        dbid: row.type_id,
-        stack_size: row.stack_size,
-        // The wire slot is 1-based.
-        slot_id: row.slot_id + 1,
-        container_id: row.container_id,
-        is_bound: row.bound,
-        durability: row.durability,
-        ammo_types: row.ammo_type_ids,
-        cur_ammo_type: row.cur_ammo_type_id,
-        charges: row.charges,
-    }
-    .serialize(&mut args);
-    net.send(
-        entity_id,
-        method_idx::ON_UPDATE_ITEM,
-        "onUpdateItem",
         &args,
         None,
         Some(1),

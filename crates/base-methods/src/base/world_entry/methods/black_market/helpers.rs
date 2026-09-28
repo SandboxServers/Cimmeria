@@ -1,6 +1,7 @@
 //! Reusable persistence helpers shared by the Black Market state machine and
-//! the expiry sweep: the clock and the cash adjustment. Item escrow is in
-//! [`super::escrow`], the mail payout writer in [`super::payout_mail`].
+//! the expiry sweep: the clock, the player-row lock and the cash
+//! adjustment. Item escrow is in [`super::escrow`], the mail payouts in
+//! [`super::payout_mail`].
 
 /// Current unix epoch seconds, saturating into `i32` (matches the schema's
 /// INTEGER time columns: `sent_time`, `created_at`, `expires_at`).
@@ -10,6 +11,22 @@ pub fn now_unix_secs() -> i32 {
         .unwrap_or_default()
         .as_secs()
         .min(i32::MAX as u64) as i32
+}
+
+/// Lock the `sgw_player` rows of `players` `FOR UPDATE`, in ascending
+/// `player_id` (the shared order), once each. A missing row is skipped.
+pub async fn lock_players(
+    conn: &mut sqlx::PgConnection,
+    players: &[i32],
+) -> Result<(), sqlx::Error> {
+    let mut ids = players.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    sqlx::query("SELECT 1 FROM sgw_player WHERE player_id = ANY($1) ORDER BY player_id FOR UPDATE")
+        .bind(&ids)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
 }
 
 /// Why a cash adjustment was refused.
