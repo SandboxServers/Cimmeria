@@ -11,8 +11,7 @@
 //! - [`dialog`]    — display, add/remove dialog set, add dialog
 //! - [`stats`]     — `Action::ChangeStat`
 //! - [`spawn`]     — `SpawnEntity` / `DespawnEntity` / `DestroyTaggedEntity`
-//!   (the last two share one `despawn_by_tag` routine and differ only in
-//!   the verb they log)
+//!   (the last two share `despawn_by_tag`)
 //! - [`world`]     — interaction-type/visibility/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
@@ -24,9 +23,7 @@
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
 //! SystemMessage, SendMessage, SetActiveSlot, TriggerChain, fallback) stay
-//! inline in the match below. `LaunchAbility`/`ApplyEffect` are also inline
-//! but forward to the parent's [`super::effect_apply`] entry point rather
-//! than a sibling module here.
+//! inline below; `LaunchAbility`/`ApplyEffect` forward to [`super::effect_apply`].
 
 use std::collections::HashMap;
 
