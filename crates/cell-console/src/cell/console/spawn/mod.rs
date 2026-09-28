@@ -28,6 +28,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 mod authoring;
+pub(super) use authoring::save_spawn;
 
 pub(super) async fn dispatch(
     name: &str,

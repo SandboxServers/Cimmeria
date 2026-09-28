@@ -2,10 +2,10 @@
 //! `.savespawn`, `.delspawn`, `.autosavespawn`.
 //!
 //! These are the commands that touch `resources.spawnlist`. They follow the
-//! project's record-then-confirm model (see [`crate::cell::console::seed`]):
-//! apply the effect in memory, write the live DB so it holds within the
-//! deploy, and record the canonical seed SQL for a developer to confirm +
-//! commit.
+//! project's queue-then-confirm model (see [`crate::cell::console::seed`]):
+//! apply the effect in memory, then queue the seed SQL and the structured row.
+//! Nothing reaches the database until the GM runs `.seedconfirm`, which writes
+//! the live DB and emits the rows to SigNoz for a developer to merge.
 //!
 //! The ephemeral lifecycle commands (`.spawn`, `.despawn`, `.respawnall`,
 //! `.spawnrandom`) live in the parent module and never write a spawnlist row.
@@ -16,16 +16,20 @@ use tokio::sync::mpsc;
 
 use crate::cell::console::{parse_bool, seed, send_gm_feedback};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
+use crate::cell::space_manager::{DespawnOutcome, SpaceManager, SpawnRowChange, SpawnRowOp};
 
 /// Seed file the spawn rows live in.
 const SPAWNLIST_SEED: &str = "db/resources/Worlds/Seed/spawnlist.sql";
 
-/// `.savespawn` — persist the targeted entity's current placement to
+/// `.savespawn` — queue the targeted entity's current placement for
 /// `resources.spawnlist`: `UPDATE` its existing row when it has a `spawn_id`,
 /// otherwise `INSERT` a new one (resolving `world_id` from the world name via
 /// subquery so the same statement is valid in the seed file and live).
-pub(super) async fn save_spawn(
+///
+/// Saving also makes the placement the NPC's home: its `spawn_position` and
+/// `spawn_direction` (which the leash, wander, stop and respawn paths return
+/// it to) become the saved values, so the running server agrees with the row.
+pub(crate) async fn save_spawn(
     caller_id: u32,
     target_id: Option<u32>,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -48,10 +52,15 @@ pub(super) async fn save_spawn(
         .await;
         return;
     };
+    if e.is_player {
+        send_gm_feedback(caller_id, "savespawn: target is a player.", tx).await;
+        return;
+    }
     let pos = e.position;
+    let direction = e.direction;
     // direction.y is yaw directly (see caller_placement's doc comment in the
     // parent module) -- not a facing vector to atan2.
-    let heading = e.direction.y;
+    let heading = direction.y;
     let tag = e.tag.clone();
     let spawn_id = e.spawn_id;
     let space_id = e.space_id.0 as u32;
@@ -63,6 +72,24 @@ pub(super) async fn save_spawn(
         send_gm_feedback(caller_id, "savespawn: cannot resolve world.", tx).await;
         return;
     };
+    // A new spawn whose INSERT was already confirmed has a live row but still
+    // no `spawn_id` in memory, so saving it again would insert a duplicate.
+    if spawn_id.is_none() && space_mgr.confirmed_new_spawns.contains(&target) {
+        send_gm_feedback(
+            caller_id,
+            &format!(
+                "savespawn [{target}]: already confirmed as a new spawn, so it can't be saved                  again until the server restarts. To re-place it: .despawn it, .spawn a new one,                  place and .savespawn that, then tell the developer merging your batch to drop                  the earlier row for entity {target}."
+            ),
+            tx,
+        )
+        .await;
+        return;
+    }
+    let world_id = space_mgr.world_id_for_world(&world_name);
+    if let Some(e) = space_mgr.get_entity_mut(target) {
+        e.spawn_position = Some(pos);
+        e.spawn_direction = Some(direction);
+    }
 
     // An already-seeded NPC updates its existing row in place; a command-spawned
     // one (no `spawn_id`) inserts a new row. Matches the legacy `saveSpawn`
@@ -90,7 +117,33 @@ pub(super) async fn save_spawn(
             world = seed::sql_str(Some(&world_name)),
         ),
     };
-    seed::record(caller_id, SPAWNLIST_SEED, "savespawn", &sql, tx, space_mgr).await;
+    let row = SpawnRowChange {
+        op: if spawn_id.is_some() {
+            SpawnRowOp::Update
+        } else {
+            SpawnRowOp::Insert
+        },
+        entity_id: target,
+        spawn_id,
+        world: world_name,
+        world_id,
+        template_id,
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        heading,
+        tag,
+    };
+    seed::record_spawn(
+        caller_id,
+        SPAWNLIST_SEED,
+        "savespawn",
+        &sql,
+        row,
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// `.delspawn` — remove the targeted entity in memory and record a `DELETE` of
@@ -120,9 +173,42 @@ pub(super) async fn del_spawn(
         return;
     };
 
+    let Some(template_id) = e.template_id else {
+        send_gm_feedback(caller_id, "delspawn: target has no template.", tx).await;
+        return;
+    };
+    let space_id = e.space_id.0 as u32;
+    let world = space_mgr
+        .spaces
+        .get(&space_id)
+        .map(|s| s.world_name.clone())
+        .unwrap_or_default();
+    let row = SpawnRowChange {
+        op: SpawnRowOp::Delete,
+        entity_id: target,
+        spawn_id: Some(spawn_id),
+        world_id: space_mgr.world_id_for_world(&world),
+        world,
+        template_id,
+        x: e.position.x,
+        y: e.position.y,
+        z: e.position.z,
+        heading: e.direction.y,
+        tag: e.tag.clone(),
+    };
+
     // Key on the exact `spawn_id` — unambiguous, never matches a sibling spawn.
     let sql = format!("DELETE FROM resources.spawnlist WHERE spawn_id = {spawn_id};");
-    seed::record(caller_id, SPAWNLIST_SEED, "delspawn", &sql, tx, space_mgr).await;
+    seed::record_spawn(
+        caller_id,
+        SPAWNLIST_SEED,
+        "delspawn",
+        &sql,
+        row,
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // Apply in memory: despawn the entity now. `despawn_npc` (not bare
     // `destroy_entity`) fans LeftAoI out to every current witness and scrubs
@@ -162,8 +248,12 @@ pub(super) async fn autosave(
     send_gm_feedback(
         caller_id,
         &format!(
-            "autosavespawn {} — newly placed spawns should be followed by .savespawn",
-            if on { "enabled" } else { "disabled" }
+            "autosavespawn {}",
+            if on {
+                "on -- .movehere, .lookat, .location and .rotation on an NPC now queue a .savespawn                  for you (still confirm with .seedconfirm)"
+            } else {
+                "off -- run .savespawn yourself after placing an NPC"
+            }
         ),
         tx,
     )

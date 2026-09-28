@@ -11,6 +11,7 @@ use cimmeria_entity::movement_validation::MovementValidator;
 use cimmeria_entity::navigation::NavMesh;
 use cimmeria_entity::space::Space;
 
+pub use authoring::{AuthoringChange, SpawnRowChange, SpawnRowOp};
 pub use client_move::ClientMoveOutcome;
 pub use crossing_hold_state::PendingCrossing;
 pub use deferred_content_actions::PendingContentAction;
@@ -22,6 +23,7 @@ pub use super::spawner::NavmeshMode;
 pub use queries::PlayerNameLookup;
 
 mod aoi;
+mod authoring;
 mod client_move;
 mod cover_hit;
 pub use cover_hit::{CoverStanding, PLAYER_COVER_MAX_DY};
@@ -370,13 +372,18 @@ pub struct SpaceManager {
     /// currently inside (drives `onEnterCoverSet` / `onLeaveCoverSet`
     /// fanout + content-engine `OnPlayerEnteredCover` triggers).
     pub cover_detection: super::cover::CoverDetectionTable,
-    /// Per-GM `.`-console authoring buffer: `entity_id → [(seed_file, sql)]`.
-    /// Spawn/patrol authoring commands push their generated seed SQL here;
-    /// `.seedconfirm` groups it per file and emits it, `.seedcancel` discards
-    /// it. Server-side, ephemeral (never persisted) — the durable artifact is
-    /// the per-session authoring log file and the committed seed. See
+    /// Per-GM `.`-console authoring buffer: `entity_id → [change]`.
+    /// Spawn/patrol authoring commands queue their generated seed SQL here
+    /// and touch no database; `.seedconfirm` writes the live DB and emits the
+    /// changes to telemetry, `.seedcancel` discards them. Server-side,
+    /// ephemeral (never persisted). See
     /// `cimmeria_cell_console::cell::console::seed`.
-    pub authoring_changes: HashMap<u32, Vec<(String, String)>>,
+    pub authoring_changes: HashMap<u32, Vec<AuthoringChange>>,
+    /// NPC entity ids whose new-spawn `INSERT` was confirmed this session.
+    /// Such an NPC now has a spawnlist row but still no `spawn_id` in memory,
+    /// so a second `.savespawn` would insert a duplicate row; it is refused
+    /// instead. Scrubbed when the entity is destroyed.
+    pub confirmed_new_spawns: HashSet<u32>,
     /// GMs (`entity_id`) who toggled `.autosavespawn` on. A session preference;
     /// informational hook for spawn-authoring. Never persisted.
     pub autosave_spawns: HashSet<u32>,
@@ -501,6 +508,7 @@ impl SpaceManager {
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),
+            confirmed_new_spawns: HashSet::new(),
             autosave_spawns: HashSet::new(),
             gm_aggro_off: HashSet::new(),
             patrol_authoring: HashMap::new(),

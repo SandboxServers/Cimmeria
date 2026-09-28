@@ -68,6 +68,8 @@ mod pt07_pet;
 #[cfg(test)]
 mod pt07_telemetry;
 #[cfg(test)]
+mod spawn_authoring;
+#[cfg(test)]
 mod ss_c2_announce;
 #[cfg(test)]
 mod ss_c3_mute;
@@ -394,11 +396,12 @@ async fn path_clear_records_single_statements() {
     handle_console_command(gm, ".path_clear 7", &tx, &mut mgr, &engine).await;
     let recorded = mgr.authoring_changes.get(&gm).cloned().unwrap_or_default();
     assert_eq!(recorded.len(), 2, "path_clear should record two statements");
-    for (_file, sql) in &recorded {
+    for c in &recorded {
         assert_eq!(
-            sql.matches(';').count(),
+            c.sql.matches(';').count(),
             1,
-            "each recorded statement must be single-statement: {sql}"
+            "each recorded statement must be single-statement: {}",
+            c.sql
         );
     }
 }
@@ -431,9 +434,9 @@ async fn delspawn_keys_on_spawn_id() {
     let recorded = mgr.authoring_changes.get(&gm).cloned().unwrap_or_default();
     assert_eq!(recorded.len(), 1, "delspawn records exactly one statement");
     assert!(
-        recorded[0].1.contains("spawn_id = 42"),
+        recorded[0].sql.contains("spawn_id = 42"),
         "delspawn must target the exact spawn_id: {}",
-        recorded[0].1
+        recorded[0].sql
     );
 }
 
@@ -588,7 +591,12 @@ fn destroy_entity_clears_gm_session_buffers() {
     let (mut mgr, gm, _npc) = setup();
     mgr.authoring_changes.insert(
         gm,
-        vec![("f.sql".into(), "INSERT INTO x VALUES (1);".into())],
+        vec![crate::cell::space_manager::AuthoringChange {
+            seed_file: "f.sql".into(),
+            label: "test".into(),
+            sql: "INSERT INTO x VALUES (1);".into(),
+            spawn: None,
+        }],
     );
     mgr.autosave_spawns.insert(gm);
 
@@ -611,7 +619,12 @@ async fn disconnect_entity_clears_gm_session_buffers() {
     let (mut mgr, gm, _npc) = setup();
     mgr.authoring_changes.insert(
         gm,
-        vec![("f.sql".into(), "INSERT INTO x VALUES (1);".into())],
+        vec![crate::cell::space_manager::AuthoringChange {
+            seed_file: "f.sql".into(),
+            label: "test".into(),
+            sql: "INSERT INTO x VALUES (1);".into(),
+            spawn: None,
+        }],
     );
     mgr.autosave_spawns.insert(gm);
 

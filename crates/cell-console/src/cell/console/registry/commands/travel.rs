@@ -55,4 +55,11 @@ pub(super) const SPECS: &[Spec] = &[
         Target::Spawnable,
         "Report (no args) or set (pitch yaw roll) the target's orientation",
     ),
+    spec(
+        "movehere",
+        0,
+        0,
+        Target::Mob,
+        "Move the selected NPC/object to where you stand, facing where you face",
+    ),
 ];
