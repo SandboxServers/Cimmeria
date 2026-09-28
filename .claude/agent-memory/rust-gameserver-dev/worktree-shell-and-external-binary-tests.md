@@ -69,6 +69,13 @@ as modified with no content diff: restore it with a per-file
 `git checkout -- <file>` once it has no real change, or edit through a
 Python script that reads bytes and writes back `\r\n`.
 
+Ammo AM-F (2026-09-28): `lane.sh --exclusive bash <script>` and
+`lane.sh ... bash -c "..."` are both refused ("runs bash inside a construct
+too complex to verify"), so the pre-PR suite cannot be one lane job. Run
+clippy, build, nextest and the doctest as four separate `lane.sh` calls;
+`tools/build-lane/live-db-test.sh live_db` (plain call) runs the whole
+live-DB tier on the worktree's own database.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch

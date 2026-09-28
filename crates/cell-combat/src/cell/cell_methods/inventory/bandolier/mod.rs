@@ -2,9 +2,12 @@
 //! - [`active_slot`]: dirty-ammo persistence flush + the active-slot swap
 //!   (holster choreography, per-weapon ability grant).
 //! - [`ammo_change`]: the per-slot ammo-type swap.
+//! - [`switch_return`]: unfired special rounds back to the bags on an
+//!   ammo-type swap (ammo campaign AM-02; created empty by AM-F).
 
 mod active_slot;
 mod ammo_change;
+mod switch_return;
 
 // Re-export discipline: keep the import paths the inventory `mod.rs`
 // re-exports and `dispatch.rs` reaches for identical after the split.

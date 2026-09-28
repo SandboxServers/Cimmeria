@@ -1489,6 +1489,7 @@ dependencies = [
  "cimmeria-admin-api",
  "cimmeria-common",
  "cimmeria-discord",
+ "cimmeria-entity",
  "cimmeria-lab-mcp",
  "cimmeria-observability",
  "cimmeria-services",

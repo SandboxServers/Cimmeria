@@ -11,6 +11,9 @@
 //! with clients uses typed mailboxes that serialize calls over Mercury.
 
 pub mod abilities;
+pub mod ammo_feature;
+pub mod ammo_telemetry;
+pub mod ammo_type;
 pub mod base_entity;
 pub mod cell_entity;
 pub mod crafting;

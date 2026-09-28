@@ -2,6 +2,10 @@
 //! tests that also need `SpaceManager`, combat or the GM spawn handler stay
 //! in `cimmeria-services` (`cell::spawner_tests`).
 //!
+//! - [`live_db_ammo_catalog`]: live-DB guards for the ammo campaign's
+//!   foundation seed (AM-F): the `EAmmoType` ordinals against `pg_enum`,
+//!   `ammo_item_types`, the Standard Pistol / SMG widening and the catalog
+//!   loader.
 //! - [`live_db_loaders`]: live-DB sanity guards for the spawner loader queries
 //!   themselves — column renames, type drift, JOIN breakage.
 //! - [`live_db_content_loaders`]: the same, for the mission / objective /
@@ -67,6 +71,7 @@
 
 mod live_db_ability_animation_links;
 mod live_db_ability_ranges;
+mod live_db_ammo_catalog;
 mod live_db_castle_loot;
 mod live_db_castle_population;
 mod live_db_castle_seed;

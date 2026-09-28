@@ -41,6 +41,7 @@
 //! | `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` **and** `cimmeria.deploy_env` on every span/log/metric resource. Typical values: `dev`, `staging`, `colo`. SigNoz dashboards split aggregates on this so colo production data isn't polluted by dev-laptop noise. The same resource also carries `host.name` (the OS hostname) and `service.version` (the build's commit, see `CIMMERIA_GIT_SHA`). |
 //! | `CIMMERIA_GIT_SHA` | unset | **Build time only**, read by `crates/server/build.rs`, never at runtime. Becomes the OTLP `service.version` resource attribute. The container build sets it from the `CIMMERIA_GIT_SHA` Docker build arg (`release-container.yml` passes `github.sha`); a source build falls back to `git rev-parse HEAD`, then `unknown`. |
 //! | `CIMMERIA_LAB_MCP_BIND` | unset | Bind address for the live-research-lab MCP endpoint (issue #687), e.g. `127.0.0.1:8451`. **No default** — the endpoint stays OFF unless this *and* `CIMMERIA_LAB_MCP_TOKEN` are both set. It runs on its OWN `TcpListener`, never on the admin API router (which defaults to loopback but still has no auth until JWT lands). Keep it off player-facing interfaces. |
+//! | `CIMMERIA_AMMO_FINITE_SPECIAL` | off | The `ammo.finite_special` feature flag (ammo campaign, [docs/analysis/ammo/](../../../docs/analysis/ammo/README.md)). `1`/`true`/`on`/`yes` makes reloads of special ammo draw rounds from the bags; `0`/`false`/`off`/`no` or unset keeps today's free reloads. An unrecognised value logs a WARN (`target: ammo`, `event=feature_flag_invalid`) and stays off. Read once at startup. |
 //! | `CIMMERIA_LAB_MCP_TOKEN` | unset | Shared bearer token for the lab MCP endpoint. Must be **≥32 bytes** or the endpoint logs an error and refuses to start. Every request must present `Authorization: Bearer <token>` (constant-time compared). |
 //!
 //! # Example
@@ -120,6 +121,9 @@ async fn main() {
     tracing::trace!(pid = std::process::id(), "Process spawned");
 
     let config = config_from_env();
+
+    // Ammo campaign feature flag, read once before any service starts.
+    cimmeria_entity::ammo_feature::init_finite_special_from_env();
 
     tracing::trace!(
         auth_host = %config.auth_host,

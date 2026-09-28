@@ -219,6 +219,13 @@ use crate::otel;
 /// `vault_open_rejected` (WARN), and the base's `move_rejected` /
 /// `grant_rejected` (WARN). It is `debug` because the session transitions
 /// are DEBUG and the owner debugs bank issues from SigNoz alone.
+///
+/// `ammo` (ammo campaign, `docs/analysis/ammo/`, telemetry contract in
+/// `work-packets.md`) is the special-ammo target on both halves: the
+/// startup flag and catalog rows (INFO, WARN), then the packets' reserve
+/// draws and returns, damage modifiers and loot drops (DEBUG) and their
+/// refusals (WARN). AM-F adds the row before any DEBUG emitter exists so no
+/// Wave-1 packet has to edit this file.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -291,6 +298,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 mail=debug,\
                 duel=debug,\
                 bank=debug,\
+                ammo=debug,\
                 console.feedback=debug,\
                 client.native=debug,\
                 launcher=debug,\

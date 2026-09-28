@@ -817,6 +817,10 @@ The object is an `SGWBeing` (class 0x01) with its owner's faction. Its lifetime 
 
 Tests: `range.rs` (`use_weapon_range_takes_the_weapons_reach` and three more), `use_ability/tests/weapon_range.rs` (a 40 m weapon: in range at 35 m, refused at 45 m; the minimum; no weapon; the warmup fire), `ticks/auto_cycle_range_tests.rs::auto_cycle_tick_uses_the_weapons_reach_for_a_weapon_range_ability`, and the live-DB `spawner/tests/live_db_weapon_ranges.rs`.
 
+### 31. Special ammo modifies the shot directly, from `resources.ammo_modifiers` (ammo campaign, forward pointer)
+
+**Decision (D-AM07, ammo campaign):** a shot fired with a special ammo type loaded applies that type's `resources.ammo_modifiers` row (damage and penetration multipliers, an optional damage-type override, an optional on-hit effect) on the server. There is no cast and no cooldown, and the toggle abilities (715 Hollow Point, 719 Armor Piercing, ...) are never launched; `toggle_ability_id` records only where the reconstructed numbers came from. AM-F (the campaign's foundation packet) created the empty table and its loader, `spawner::load_ammo_catalog` into `SpaceManager::ammo_catalog` (`AmmoCatalog::modifier(ammo_type)`); AM-04 adds the effect-side read in `cell/effects/ammo_damage.rs` and seeds the first rows. This entry is a pointer until AM-04 lands and replaces it with the real decision record. Plan and contract: [docs/analysis/ammo/work-packets.md](../analysis/ammo/work-packets.md).
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:
