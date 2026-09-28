@@ -6,7 +6,9 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::{serialize_on_player_communication, CHAT_LOG_TARGET, ON_PLAYER_COMMUNICATION};
+use super::{
+    serialize_on_player_communication, CHAN_SAY, CHAT_LOG_TARGET, ON_PLAYER_COMMUNICATION,
+};
 
 /// Broadcast a chat message to all witnesses of the sender entity.
 ///
@@ -47,11 +49,12 @@ pub(super) async fn broadcast_to_witnesses(
         .filter(|&wid| space_mgr.get_entity(wid).is_some_and(|e| e.is_player))
         .collect();
 
-    // No early return when nobody is in range: the speaker's own echo below
-    // must still go out. The client does not echo say (channel 0) locally, so
-    // a lone speaker would otherwise see nothing for their first line.
+    // No early return when nobody is in range: a lone emote/yell speaker
+    // still needs the echo below (the client does not show those locally).
+    // A lone `say` speaker gets nothing from here -- see the echo comment
+    // below -- which matches the legacy server exactly.
     if witnesses.is_empty() {
-        tracing::trace!(target: CHAT_LOG_TARGET, sender_id, "Chat: no witnesses; echo to the speaker only");
+        tracing::trace!(target: CHAT_LOG_TARGET, sender_id, channel, "Chat: no witnesses");
     }
 
     // D-SS15: a witness who ignores the speaker does not hear them. One
@@ -108,13 +111,35 @@ pub(super) async fn broadcast_to_witnesses(
             .await;
     }
 
-    // Also send to the sender themselves (client needs server echo for say channel,
-    // and sending for all spatial channels is harmless)
-    let _ = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id: sender_id,
-            method_index: ON_PLAYER_COMMUNICATION,
-            args,
-        })
-        .await;
+    // Echo to the sender themselves -- but NEVER for `say`. The original
+    // server comment (`deprecated/python/cell/SGWPlayer.py:1841-1843`,
+    // `processPlayerCommunication`) reads:
+    //
+    //   # The client only echoes back messages in CHAN_say for some reason
+    //   # For all other channels we need to notify the client as well
+    //   if channelId != Atrea.enums.CHAN_say:
+    //       self.client.onPlayerCommunication(speaker, speakerFlags, channelId, message)
+    //
+    // i.e. the 2009 client shows its OWN `say` line locally (natively, not
+    // through the ChatWindow.lua `MessageReceived` path -- grep of the
+    // client's ChatWindow.lua turns up no local-echo call from
+    // `onTextAccepted`/`processTextCommand`, so this is client-native
+    // behaviour, not scripted) and never needed a server round trip for it.
+    // `emote` and `yell` are NOT locally echoed, so the legacy server sent
+    // the echo for those two channels only.
+    //
+    // A prior pass here (SS-C1, `92cdeddaa`) inverted this on the belief
+    // "the client does not echo say locally" and sent the echo
+    // unconditionally, doubling the speaker's own `say` line in the
+    // Info tab (client-native echo + server echo). See
+    // `docs/reverse-engineering/findings/chat-speaker-echo.md`.
+    if channel != CHAN_SAY {
+        let _ = tx
+            .send(CellToBaseMsg::EntityMethodCall {
+                entity_id: sender_id,
+                method_index: ON_PLAYER_COMMUNICATION,
+                args,
+            })
+            .await;
+    }
 }

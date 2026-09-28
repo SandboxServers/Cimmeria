@@ -9,7 +9,7 @@ last_updated: 2026-09-28
 
 > **Last updated**: 2026-09-28
 > **Status**: Implemented server-side, not yet tested in a client. Heal items (the Health Slappack, the Health and Focus Heal Consumables) and the Mark III / V / VII / X stimpacks work from their seed data with no content chain. Stealth, Energy and Disguise boosts do nothing yet.
-> **Design and code**: [consumable-via-onitemuse-pattern.md](../content/consumable-via-onitemuse-pattern.md#native-consumables-items_event_sets-event-5) (which items, how a use is decided) and decision 27 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md#27-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger) (why the item is paid for first, how buffs stack).
+> **Design and code**: [consumable-via-onitemuse-pattern.md](../content/consumable-via-onitemuse-pattern.md#native-consumables-items_event_sets-event-5) (which items, how a use is decided) and decision 28 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md#28-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger) (why the item is paid for first, how buffs stack).
 
 What a player sees when they double-click a heal or buff item in their bags.
 

@@ -212,6 +212,9 @@ declarations but relocates them to the end of the attribute list (alphabetized):
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 ```
 
+`MinRange` / `MaxRange` are unsigned integers in UE3 units, 100 per BigWorld metre (2500 = 25 m).
+See [ability-resolution-pipeline.md § Range units](../reverse-engineering/findings/ability-resolution-pipeline.md#range-units-919-verified-2026-09-28).
+
 All other Server Build categories dropped SOAP namespaces entirely. This suggests the
 abilities cooker was updated at a different time or by a different process than the others.
 

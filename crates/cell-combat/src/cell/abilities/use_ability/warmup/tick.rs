@@ -175,13 +175,7 @@ async fn fire_time_refusal(
     }
 
     // Same range rule as the launch check in `handle_use_ability`.
-    let max_range = ability_def.map_or(30.0, |d| {
-        if d.max_range > 0 {
-            d.max_range as f32
-        } else {
-            30.0
-        }
-    });
+    let max_range = cimmeria_entity::abilities::ability_max_range(ability_def);
     if caster.position.distance_to(&target.position) > max_range {
         if caster.is_player {
             let mut err_args = Vec::with_capacity(7);

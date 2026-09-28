@@ -115,13 +115,7 @@ pub async fn handle_use_ability_on_ground(
     // handle_use_ability bails before the cooldown starts and the player
     // can spam-click. Falling back to target_id = 0 keeps the
     // cooldown/ammo charge in that case.
-    let max_range = ability_def.as_ref().map_or(30.0, |d| {
-        if d.max_range > 0 {
-            d.max_range as f32
-        } else {
-            30.0
-        }
-    });
+    let max_range = cimmeria_entity::abilities::ability_max_range(ability_def.as_ref());
 
     let primary_in_range = targets.first().is_some_and(|&(target_eid, _)| {
         match (

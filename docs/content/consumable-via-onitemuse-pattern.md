@@ -107,7 +107,7 @@ The effect is paid for before it lands. A double-click on the last unit sends tw
 
 The 2009 rows shipped no `script_name` and no NVPs for any of these, so each `script_name` and each `effect_nvps` row (ids 400-462) is a seed edit, and each magnitude is the number in the effect's own description ("Heals 500 health." gives `HealAmount` 500, "+7 Coordination" gives `Coordination` 7). `live_db_every_consumable_magnitude_is_its_effect_description` checks every one against its description. The stimpack NVP names are the stimpack's words: `Coordination`, `Engagement`, `Fortitude`, `Intellect` (the stat the server calls `INTELLIGENCE`), `Morale`, `Perception`.
 
-A second buff on the same attribute replaces the first, whatever its tier; buffs on different attributes never interact. The rule, and why the buff lives in its own ledger instead of the pulsing engine, is decision 27 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md#27-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger).
+A second buff on the same attribute replaces the first, whatever its tier; buffs on different attributes never interact. The rule, and why the buff lives in its own ledger instead of the pulsing engine, is decision 28 of [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md#28-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger).
 
 ### What is deliberately not wired
 

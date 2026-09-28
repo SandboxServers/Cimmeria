@@ -133,8 +133,14 @@ pub struct AbilityDef {
     pub warmup: f32,
     pub flags: u32,
     pub is_ranged: bool,
-    pub min_range: i32,
-    pub max_range: i32,
+    /// Minimum range in **metres** (`0.0` = none). The loader converts the
+    /// `resources.abilities` value, which is in UE3 units (100 per metre);
+    /// see [`super::range`] (#919).
+    pub min_range: f32,
+    /// Maximum range in **metres**; `0.0` is the "no ability-specific
+    /// range" sentinel, resolved by [`AbilityDef::max_range_or_default`].
+    /// Converted from UE3 units by the loader like `min_range`.
+    pub max_range: f32,
     pub target_type_id: i32,
     pub effect_ids: Vec<i32>,
     pub moniker_ids: Vec<i64>,

@@ -11,8 +11,8 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
-    serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE, AF_DO_NOT_ACTIVATE_AUTO_CYCLE,
-    TIMER_ABILITY_COOLDOWN,
+    ability_max_range, serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE,
+    AF_DO_NOT_ACTIVATE_AUTO_CYCLE, TIMER_ABILITY_COOLDOWN,
 };
 
 use super::super::super::combat;
@@ -277,14 +277,9 @@ pub async fn handle_use_ability(
                     );
                     return false;
                 }
-                // Range check
-                let max_range = ability_def.as_ref().map_or(30.0, |d| {
-                    if d.max_range > 0 {
-                        d.max_range as f32
-                    } else {
-                        30.0
-                    }
-                });
+                // Range check, in metres: the loader converted the
+                // ability's UE3-unit `max_range` (#919).
+                let max_range = ability_max_range(ability_def.as_ref());
                 let dist = entity.position.distance_to(&target.position);
                 if dist > max_range {
                     tracing::debug!(

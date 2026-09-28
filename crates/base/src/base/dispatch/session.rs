@@ -100,7 +100,18 @@ pub(super) async fn handle_log_off(
             // the receiver having been dropped — i.e. cell
             // service is shut down. That makes WARN safe at
             // any load (no spam during normal backpressure).
-            if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
+            // This path never returns `entity_id` to `EntityManager`'s free
+            // list (`handle_log_off` here has no `EntityManager` handle), so
+            // there is nothing to gate on the cell's teardown ack -- drop
+            // the receiver rather than await it.
+            let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+            if let Err(e) = tx
+                .send(BaseToCellMsg::DisconnectEntity {
+                    entity_id,
+                    reply_tx,
+                })
+                .await
+            {
                 tracing::warn!(
                     entity_id,
                     "logOff: DisconnectEntity send failed -- cell may leak player state: {e}"

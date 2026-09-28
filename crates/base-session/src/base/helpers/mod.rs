@@ -268,8 +268,13 @@ pub fn shadow_register_reliable_send(
 /// Returns an empty vec on any lock-acquisition failure or missing
 /// session — the next tick will try again.
 ///
+/// A capped entry that reached its cap unacked (the login reply and
+/// time-sync, #842) is dropped by the scan instead of resent; each one
+/// gets a single WARN here, `event = "reliable_resend_abandoned"`, with
+/// the session's `account_id` and the `seq`.
+///
 /// [`Channel`]: cimmeria_mercury::channel::Channel
-pub(crate) fn collect_pending_retransmits(
+pub fn collect_pending_retransmits(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> Vec<cimmeria_mercury::packet::Bytes> {
@@ -299,7 +304,22 @@ pub(crate) fn collect_pending_retransmits(
             cimmeria_observability::counter!("mercury_tx_hole_stalls_total");
         }
     }
-    channel.check_timeouts()
+    let retransmits = channel.check_timeouts();
+    for dropped in channel.take_abandoned() {
+        // One row per packet, once: the channel has stopped resending it.
+        // For the login handshake this is a client that ignored both the
+        // original and every resend of seq 1 or 2 (#842).
+        tracing::warn!(
+            %addr,
+            account_id = state.account_id,
+            seq = dropped.seq,
+            retransmit_count = dropped.retransmit_count,
+            event = "reliable_resend_abandoned",
+            reason = "retransmit_cap_reached",
+            "reliable packet reached its retransmit cap unacked; the channel stopped resending it"
+        );
+    }
+    retransmits
 }
 
 /// Drain pending ACKs and allocate the next sequence number, masked to
@@ -402,6 +422,30 @@ pub(crate) fn get_active_entity_id(
 /// also tells its contact-list watchers and organizations it went offline
 /// (`session_presence::spawn_offline`, on its own task; audit A-35, ORG-06),
 /// with `reason` as the `disconnect_reason`.
+///
+/// The player entity id is **not** returned to `EntityManager`'s free list
+/// until the cell confirms it has torn the mirrored cell entity down (its
+/// `DisconnectEntity` reply). Freeing it eagerly let a concurrent login
+/// recycle the id via `allocate_id`'s FIFO free list before the cell had
+/// even seen the disconnect, so the old session's `DisconnectEntity` — sent
+/// or still in flight — could land on and destroy the *new* player's cell
+/// entity (issue #999). When the cell send fails outright, or the cell
+/// drops the reply without confirming teardown, the id is withheld from
+/// reuse permanently rather than reused unconfirmed: an unrecycled id costs
+/// nothing (the id space is an `i32` counter), a reused one racing a live
+/// cell can destroy another player's session.
+///
+/// The Base→Cell send and the wait for that reply run on a **spawned
+/// task**, not inline. This function is called from the base's single UDP
+/// receive loop (`client_disconnect`, `duplicate_login`) and from the
+/// per-session tick-sync loop (`inactivity_timeout`); awaiting a cell round
+/// trip — which itself does a DB write (`persist_last_position`) before
+/// replying — inline there would pause packet intake for every connected
+/// player whenever the cell is busy or the shared Base→Cell channel is
+/// backpressured. Everything that does not depend on the cell's reply (the
+/// session-map removal, the Account entity free, the reverse-index removal,
+/// the crafting-queue drop, the offline-presence fan-out, the Discord emit)
+/// still runs synchronously before this function returns.
 pub fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
@@ -457,10 +501,14 @@ pub fn destroy_client_entities(
         )
     };
 
-    let mut mgr = entity_manager.lock().unwrap();
     if account_eid != 0 {
         tracing::debug!(%addr, account_entity_id = account_eid, "Destroying Account entity");
-        mgr.destroy_entity(EntityId(account_eid as i32));
+        // The Account entity has no cell-side mirror, so there is nothing to
+        // race: free it immediately.
+        entity_manager
+            .lock()
+            .unwrap()
+            .destroy_entity(EntityId(account_eid as i32));
     }
     if let Some(player_eid) = player_eid {
         tracing::debug!(%addr, player_entity_id = player_eid, "Destroying Player entity");
@@ -474,7 +522,6 @@ pub fn destroy_client_entities(
             session_secs,
             "player session ended"
         );
-        mgr.destroy_entity(EntityId(player_eid as i32));
 
         // Remove from entity->addr reverse index
         entity_to_addr.lock().unwrap().remove(&player_eid);
@@ -487,11 +534,67 @@ pub fn destroy_client_entities(
             reason,
         );
 
-        // Notify CellService to disconnect and destroy the cell entity
-        if let Some(tx) = cell_tx {
-            let _ = tx.try_send(BaseToCellMsg::DisconnectEntity {
-                entity_id: player_eid,
-            });
+        // Notify CellService to disconnect and destroy the cell entity, and
+        // hold `player_eid` out of `EntityManager`'s free list until the
+        // cell confirms the teardown finished -- see the function doc and
+        // issue #999. Spawned so the caller (the UDP receive loop, or the
+        // tick-sync loop) never blocks on the cell's reply.
+        match cell_tx {
+            Some(tx) => {
+                let tx = tx.clone();
+                let entity_manager = Arc::clone(entity_manager);
+                tokio::spawn(async move {
+                    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                    match tx
+                        .send(BaseToCellMsg::DisconnectEntity {
+                            entity_id: player_eid,
+                            reply_tx,
+                        })
+                        .await
+                    {
+                        Ok(()) => match reply_rx.await {
+                            Ok(()) => {
+                                entity_manager
+                                    .lock()
+                                    .unwrap()
+                                    .destroy_entity(EntityId(player_eid as i32));
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    entity_id = player_eid,
+                                    account_id,
+                                    disconnect_reason = reason,
+                                    "destroy_client_entities: cell dropped the \
+                                     DisconnectEntity reply without confirming \
+                                     teardown -- entity id withheld from reuse; \
+                                     the cell entity may be leaked in its space"
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!(
+                                entity_id = player_eid,
+                                account_id,
+                                disconnect_reason = reason,
+                                error = %e,
+                                "destroy_client_entities: DisconnectEntity send \
+                                 failed -- cell may leak the player's entity in \
+                                 its space, and the id is withheld from reuse \
+                                 until it does"
+                            );
+                        }
+                    }
+                });
+            }
+            // No cell configured (no-cell test harnesses and the account-only
+            // "no character in world yet" teardown): nothing on the other
+            // side could be mid-teardown, so free the id immediately.
+            None => {
+                entity_manager
+                    .lock()
+                    .unwrap()
+                    .destroy_entity(EntityId(player_eid as i32));
+            }
         }
     }
     tracing::info!(
@@ -905,3 +1008,6 @@ pub use witness_broadcast::broadcast_to_witnesses;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod disconnect_teardown;

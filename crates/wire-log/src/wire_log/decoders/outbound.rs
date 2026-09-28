@@ -22,6 +22,7 @@ pub(super) fn decode(method_index: u16, args: &[u8]) -> Option<Value> {
         19 => decode_on_state_field_update(args),
         // SGWCombatant interface
         20 => decode_on_stat_update(args),
+        21 => decode_on_stat_base_update(args),
         // SGWBeing own
         26 => decode_being_appearance(args),
         // SGWPlayer own
@@ -128,23 +129,41 @@ fn decode_on_state_field_update(args: &[u8]) -> Option<Value> {
     }))
 }
 
+/// How many `StatUpdate` entries a stat decoder samples per event.
+const STAT_SAMPLE_MAX: u32 = 8;
+
 /// Method 20: `onStatUpdate` — stat dirty-flush broadcasts.
-/// Wire: `StatUpdateList Stats` — `UINT32 count` then `count` repeats
-/// of `INT32 statId, INT32 value`. We decode the count + first few
-/// entries for visibility.
 fn decode_on_stat_update(args: &[u8]) -> Option<Value> {
+    decode_stat_update_list(args)
+}
+
+/// Method 21: `onStatBaseUpdate` — the same `StatUpdateList`, carrying base
+/// (unbuffed) values instead of the live ones.
+fn decode_on_stat_base_update(args: &[u8]) -> Option<Value> {
+    decode_stat_update_list(args)
+}
+
+/// `StatUpdateList` (`entities/defs/alias.xml`): `UINT32 count`, then
+/// `count` 16-byte `StatUpdate` entries of `INT32 StatId, INT32 Min,
+/// INT32 Current, INT32 Max` — the layout `StatList::serialize_entries`
+/// writes. Before #843 this walked 8-byte `(stat_id, value)` pairs, so every
+/// entry after the first was misaligned. Decodes the count and the first
+/// [`STAT_SAMPLE_MAX`] entries.
+fn decode_stat_update_list(args: &[u8]) -> Option<Value> {
     let mut c = Cursor::new(args);
     let count = c.u32_le()?;
     let mut sample = Vec::new();
-    for _ in 0..count.min(8) {
+    for _ in 0..count.min(STAT_SAMPLE_MAX) {
         let stat_id = c.i32_le()?;
-        let value = c.i32_le()?;
-        sample.push(json!({ "stat_id": stat_id, "value": value }));
+        let min = c.i32_le()?;
+        let cur = c.i32_le()?;
+        let max = c.i32_le()?;
+        sample.push(json!({ "stat_id": stat_id, "min": min, "cur": cur, "max": max }));
     }
     Some(json!({
         "count": count,
         "sample": sample,
-        "sample_truncated": count > 8,
+        "sample_truncated": count > STAT_SAMPLE_MAX,
     }))
 }
 
@@ -275,6 +294,68 @@ mod tests {
         assert_eq!(decoded["component_count"], 2);
         assert_eq!(decoded["components"][0], "Wep");
         assert_eq!(decoded["components"][1], "Armor");
+    }
+
+    /// A `StatList` with HEALTH and FOCUS dirty, serialized by the server's
+    /// own encoder.
+    fn two_stat_list() -> cimmeria_entity::stats::StatList {
+        use cimmeria_entity::stats::{StatList, FOCUS, HEALTH};
+        let mut stats = StatList::new();
+        stats.clear_dirty();
+        stats.get_mut(HEALTH).unwrap().update(0, 750, 1000);
+        stats.get_mut(FOCUS).unwrap().update(5, 40, 120);
+        stats.get_mut(HEALTH).unwrap().set_base(0, 900, 1200);
+        stats.get_mut(FOCUS).unwrap().set_base(10, 60, 150);
+        stats
+    }
+
+    fn assert_stat(entry: &Value, stat_id: i32, min: i32, cur: i32, max: i32) {
+        assert_eq!(
+            entry,
+            &json!({ "stat_id": stat_id, "min": min, "cur": cur, "max": max }),
+        );
+    }
+
+    /// #843: each `StatUpdate` is 16 bytes. The old 8-byte walk read
+    /// HEALTH's Min as its value and FOCUS's stat id from HEALTH's Current.
+    #[test]
+    fn on_stat_update_decodes_the_server_encoders_16_byte_entries() {
+        use cimmeria_entity::stats::{FOCUS, HEALTH};
+        let args = two_stat_list().serialize_dirty();
+        assert_eq!(args.len(), 4 + 2 * 16);
+        let decoded = decode(20, &args).unwrap();
+        assert_eq!(decoded["count"], 2);
+        assert_eq!(decoded["sample_truncated"], false);
+        let sample = decoded["sample"].as_array().unwrap();
+        assert_eq!(sample.len(), 2);
+        // `serialize_entries` sorts by stat id: HEALTH (7) before FOCUS (8).
+        assert_stat(&sample[0], HEALTH, 0, 750, 1000);
+        assert_stat(&sample[1], FOCUS, 5, 40, 120);
+    }
+
+    #[test]
+    fn on_stat_base_update_decodes_the_same_layout() {
+        use cimmeria_entity::stats::{FOCUS, HEALTH};
+        let args = two_stat_list().serialize_dirty_base();
+        let decoded = decode(21, &args).unwrap();
+        assert_eq!(decoded["count"], 2);
+        let sample = decoded["sample"].as_array().unwrap();
+        assert_stat(&sample[0], HEALTH, 0, 900, 1200);
+        assert_stat(&sample[1], FOCUS, 10, 60, 150);
+    }
+
+    /// A full stat list (every stat) samples the first eight and flags the
+    /// truncation; a list cut mid-entry does not decode.
+    #[test]
+    fn stat_update_list_truncates_the_sample_and_rejects_a_partial_entry() {
+        let full = cimmeria_entity::stats::StatList::new().serialize_all();
+        let decoded = decode(20, &full).unwrap();
+        assert!(decoded["count"].as_u64().unwrap() > 8);
+        assert_eq!(decoded["sample"].as_array().unwrap().len(), 8);
+        assert_eq!(decoded["sample_truncated"], true);
+
+        let args = two_stat_list().serialize_dirty();
+        assert!(decode(20, &args[..args.len() - 4]).is_none());
     }
 
     #[test]

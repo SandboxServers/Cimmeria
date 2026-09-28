@@ -2,12 +2,12 @@
 title: "Chat System"
 type: reference
 audience: engineers
-last_updated: 2026-09-27
+last_updated: 2026-09-28
 ---
 
 # Chat System
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Status**: Spatial chat (say / emote / yell) works. The social-systems campaign (merged 2026-09-27, not yet tested with two real clients; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers it) added a flood limit and text rules (SS-00), tells, `chatIgnore` and the one-way Ignore filter (SS-C1), GM broadcast (SS-C2), a channel allowlist, GM mutes and a feedback line for every Communicator method the server does not implement (SS-C3), and channel ids that match the client's own, with no channel registration at login (SS-C4). Squad chat (organizations ORG-04) and team, command and officer chat (ORG-09) work; the organization channels are not yet tested with two real clients. User channels, channel moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server.
 
 ## Overview
@@ -22,7 +22,7 @@ Six Communicator base methods do something — `chatJoin` (0xC0), `chatLeave` (0
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every player AoI witness of the speaker, except a witness who ignores the speaker. The speaker always gets their own echo, even with nobody in range (the client does not echo say locally) |
+| Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every player AoI witness of the speaker, except a witness who ignores the speaker. The speaker gets their own echo for `emote` and `yell` (even with nobody in range), but never for `say` — the client shows its own `say` line locally, so a server echo doubles it. See [chat-speaker-echo.md](../reverse-engineering/findings/chat-speaker-echo.md) |
 | Channel registration on login | DONE (none needed) | No `onChatJoined` at login: the client hardcodes every built-in channel (SS-C4, D-ORG14) — see [System Channels](#system-channels) |
 | DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |
@@ -280,4 +280,5 @@ Events, all on the `chat` target: `chat.tell_delivered` (INFO), `chat.tell_refus
 - [group-system.md](group-system.md) - Squad/team channels
 - [contact-list.md](contact-list.md) - The Ignore list that chat, mail and duels honour
 - [chat-wire-formats.md](../reverse-engineering/findings/chat-wire-formats.md) - Client evidence (SS-E1, ORG-E1 Q5)
+- [chat-speaker-echo.md](../reverse-engineering/findings/chat-speaker-echo.md) - Why `say` never echoes to the speaker but `emote`/`yell` do
 - [Social-systems ledger](../analysis/social-systems/README.md) - Decisions D-SS12 to D-SS17 and D-SS26, and the owner questions

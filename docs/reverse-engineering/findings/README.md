@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains <!-- gen:re-findings-count -->85<!-- /gen:re-findings-count --> per-system reverse engineering findings with evidence.
+This directory contains <!-- gen:re-findings-count -->86<!-- /gen:re-findings-count --> per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -91,6 +91,7 @@ This directory contains <!-- gen:re-findings-count -->85<!-- /gen:re-findings-co
 | `cooked-dialog-override-crash.md` | 2026-09-27 (colo incident) | Cooked-dialog override client crash on map load for dialog ids `100100`/`100101` — timeline reasoning rules out the authored `<Buttons>` markup, element-key type is `long` (32-bit) end-to-end, no prior Cimmeria override has used a top-level element key above 65535; root-cause mechanism unconfirmed pending a live Ghidra session | MEDIUM (ruled-out causes) / LOW (root cause) |
 | `trade-result-client-handling.md` | CR-17 (crafting) | Trade window result handling — `Trade.lua` `onTradeResult` closes the window only on `Completed`/`Cancelled`; codes 3-6 (`NoLocalSpace` .. `NoRemoteCash`) leave it open and locked, and `Trade.int` has no string for them. The server sends `Cancelled` plus a feedback line for every refusal. A native `Trade` member function subscribes to `Event_NetIn_TradeResults` (RTTI, 2026-09-27); its body is unresolved and not live-traced | HIGH (Lua, native subscriber exists) / MEDIUM (native behaviour) |
 | `bank-vault-client.md` | BV-E1 (bank-and-vault) | Bank/Vault client evidence — world-entry `onBagInfo` is sufficient for container 17 (no fresh send needed on `onVaultOpen`); `Events.InventoryUpdateContainerSize` is inferred (emit site untraced) to resize an open vault window; a Banker can offer a single-button "Expand vault" dialog through the existing `dialogButtonChoice`/content-engine path with no wire change (the button is not an authority check: the purchase handler must re-validate the session, proximity, cash and ceiling); `onVaultOpen`'s `Position` argument has no client consumer (server-authoritative proximity is load-bearing); `isBankingOverride` sweep reproduces the prior negative result | HIGH (Lua/doc evidence) / MEDIUM-LOW (native emit sites for Q2/Q4, explicitly open) |
+| `chat-speaker-echo.md` | 2026-09-28 (colo incident) | Spatial chat speaker-echo doubling — the legacy server's own comment (`SGWPlayer.py:1841-1843`) shows the 2009 client echoes its own `say` line locally but not `emote`/`yell`; Cimmeria had this inverted (SS-C1, `92cdeddaa`) and echoed `say` unconditionally, doubling the speaker's own line; corrected in `cell/console/chat/spatial.rs` | HIGH (legacy comment + SigNoz incident evidence) / UNRESOLVED (exact native client mechanism, no Ghidra session available) |
 
 ## Finding Format
 

@@ -2,6 +2,18 @@ use super::*;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::cell_entity::BandolierItem;
 
+/// Build a `DisconnectEntity` for a test that doesn't care about the
+/// teardown-confirmation reply (`BaseToCellMsg::DisconnectEntity`'s
+/// `reply_tx`, issue #999) — the receiver is dropped immediately, and
+/// `handle_base_message`'s `let _ = reply_tx.send(())` silently no-ops.
+pub(super) fn disconnect_entity_msg(entity_id: u32) -> BaseToCellMsg {
+    let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+    BaseToCellMsg::DisconnectEntity {
+        entity_id,
+        reply_tx,
+    }
+}
+
 mod ability_granted_burst;
 mod ability_granted_trainer_resend;
 mod bandolier_sync;

@@ -94,8 +94,17 @@ pub(super) async fn handle_base_message(
             lifecycle::handle_connect_entity(entity_id, tx, space_mgr).await;
         }
 
-        BaseToCellMsg::DisconnectEntity { entity_id } => {
+        BaseToCellMsg::DisconnectEntity {
+            entity_id,
+            reply_tx,
+        } => {
             lifecycle::handle_disconnect_entity(entity_id, tx, space_mgr).await;
+            // Defensible silent send: the base may have dropped the
+            // receiver already (a caller that never returns the id to a
+            // free list, e.g. `gate_travel::abandon_unspaced_session`, has
+            // nothing to gate on it) -- see the negative-logging
+            // convention's oneshot-reply exception.
+            let _ = reply_tx.send(());
         }
 
         BaseToCellMsg::EntityMove {

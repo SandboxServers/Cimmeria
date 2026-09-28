@@ -53,7 +53,10 @@ fn seq_mod_lt(a: u32, b: u32) -> bool {
 }
 
 /// Remove the entry for `seq` from `deque`, if there is one.
-fn take_entry(deque: &mut std::collections::VecDeque<TxEntry>, seq: u32) -> Option<TxEntry> {
+pub(super) fn take_entry(
+    deque: &mut std::collections::VecDeque<TxEntry>,
+    seq: u32,
+) -> Option<TxEntry> {
     let idx = deque.iter().position(|e| e.packet.sequence == seq)?;
     deque.remove(idx)
 }
@@ -159,7 +162,7 @@ impl Channel {
     }
 
     /// Open, move or close the transmit hole after an ACK footer.
-    fn refresh_tx_hole(&mut self) {
+    pub(super) fn refresh_tx_hole(&mut self) {
         let now = self.clock().now();
         let hole_seq = match (self.oldest_outstanding(), self.highest_acked) {
             (Some(oldest), Some(highest)) if seq_mod_lt(oldest, highest) => Some(oldest),

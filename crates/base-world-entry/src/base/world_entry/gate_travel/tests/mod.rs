@@ -26,6 +26,7 @@ mod crafting_options;
 mod crafting_queue;
 mod space_fallback;
 mod transfer;
+mod world_name;
 use crate::base::PendingClientReadyInfo;
 use crate::test_support::TestTransport;
 use cimmeria_mercury::encryption::MercuryEncryption;

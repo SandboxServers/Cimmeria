@@ -304,22 +304,13 @@ async fn audit_writer_loop(pool: sqlx::PgPool, mut rx: broadcast::Receiver<Login
     loop {
         match rx.recv().await {
             Ok(event) => {
-                if let Err(e) = sqlx::query(
-                    "INSERT INTO login_audit (event_time, account_name, account_id, ip_address, phase, outcome, shard, detail) \
-                     VALUES (TO_TIMESTAMP($1::DOUBLE PRECISION / 1000), $2, $3, $4::INET, $5, $6, $7, $8)"
-                )
-                .bind(event.timestamp_ms as f64)
-                .bind(&event.account_name)
-                .bind(event.account_id.map(|id| id as i32))
-                .bind(&event.ip_address)
-                .bind(&event.phase)
-                .bind(&event.outcome)
-                .bind(&event.shard)
-                .bind(&event.detail)
-                .execute(&pool)
-                .await
-                {
-                    tracing::warn!(error = %e, "Failed to write login audit event");
+                if let Err(e) = cimmeria_services::audit::persist_login_event(&pool, &event).await {
+                    tracing::warn!(
+                        error = %e,
+                        phase = %event.phase,
+                        outcome = %event.outcome,
+                        "Failed to write login audit event"
+                    );
                 }
             }
             Err(broadcast::error::RecvError::Lagged(n)) => {

@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Built 2026-09-28 (branch `feat/item-use-abilities`). Design record: decision 27 of `docs/architecture/abilities-and-effects-system.md`.
+Built 2026-09-28 (branch `feat/item-use-abilities`). Design record: decision 28 of `docs/architecture/abilities-and-effects-system.md`.
 
 - **Pay before apply.** A chain's `change_stat` + `remove_item` (and the naive "apply then send RemoveInventoryItem") double-heals on a fast double-click of the last unit: both `ItemUsed` pass the gate before either removal commits. The native path sends `CellToBaseMsg::ConsumeItemForUse`; the base's `remove_instance` (FOR UPDATE, optional `expected_type_id`) returns `bool` committed, and only then sends `BaseToCellMsg::ItemUseConsumed` **directly, not via the outbox** (a replayed outbox row would apply twice for one unit).
 - **Where it lives:** classify/refuse/apply in `cimmeria-cell-content` `content/consumable_use.rs` (a second private caller of `effect_apply`, same security properties); consume in `cimmeria-base-methods` `inventory/core/consume_for_use.rs` (dispatched from `base-world-entry` `inventory_dispatch`); ledger math on `CellEntity` in `cimmeria-entity` `cell_entity/stat_buff.rs`; `StatBuff` script + logged `SpaceManager` wrappers in `cimmeria-cell-world` `effects/stat_buff/`; tick/timers/death strip in `cimmeria-cell-combat` `effects/stat_buffs/`. The full round trip test is `cimmeria-services` `consumable_round_trip_tests.rs` (the only crate above both tracks).

@@ -123,6 +123,10 @@ async fn login_retry_on_an_established_channel_is_named_and_keeps_the_session() 
         .unwrap_or_else(|| panic!("no login-retry row; saw {:#?}", guard.all()));
     assert!(row.has_field("account_id", &ACCOUNT_ID.to_string()));
     assert!(
+        row.has_field("reply_outstanding", "false"),
+        "nothing is outstanding on this channel, so the reply counts as acked: {row:#?}"
+    );
+    assert!(
         guard
             .find_event(Level::WARN, "", REASON_DECRYPT_FAIL)
             .is_none(),
@@ -138,6 +142,38 @@ async fn login_retry_on_an_established_channel_is_named_and_keeps_the_session() 
     assert!(
         rig.connected.lock().unwrap().contains_key(&rig.addr),
         "a dropped retry must leave the session registered"
+    );
+}
+
+/// #842: a login retry while the reply (seq 1) is still unacked says so.
+/// That is the "reply lost, resend pending" case, told apart from the
+/// stuck client that acked the reply and retries anyway.
+#[tokio::test]
+async fn login_retry_while_the_reply_is_unacked_reports_it_outstanding() {
+    let rig = rig();
+    {
+        let map = rig.connected.lock().unwrap();
+        let state = &map[&rig.addr];
+        *state.channel.lock().unwrap() = crate::base::login::new_client_channel_with_handshake(
+            rig.addr,
+            &[0xA1u8; 48],
+            &[0xA2u8; 48],
+        );
+    }
+    let guard = LogCapture::install();
+
+    deliver(&rig, &plaintext_base_app_login(3)).await;
+
+    let row = guard
+        .find_event(
+            Level::WARN,
+            "retrying baseAppLogin",
+            REASON_LOGIN_RETRY_ON_CHANNEL,
+        )
+        .unwrap_or_else(|| panic!("no login-retry row; saw {:#?}", guard.all()));
+    assert!(
+        row.has_field("reply_outstanding", "true"),
+        "the reply is still in the TX window, so the row must say so: {row:#?}"
     );
 }
 

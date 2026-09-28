@@ -80,7 +80,18 @@ async fn abandon_unspaced_session(
         }
     }
     if let Some(tx) = cell_tx {
-        if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
+        // This path has no `EntityManager` handle (see the function doc: it
+        // deliberately leaks the account/player entity ids rather than
+        // freeing them), so there is no free-list return to gate on the
+        // cell's teardown ack -- drop the receiver rather than await it.
+        let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+        if let Err(e) = tx
+            .send(BaseToCellMsg::DisconnectEntity {
+                entity_id,
+                reply_tx,
+            })
+            .await
+        {
             tracing::error!(
                 entity_id, %addr,
                 "GateTravel: DisconnectEntity send failed while abandoning an \
@@ -484,6 +495,13 @@ pub async fn handle_gate_travel(
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
             c.pending_client_ready = None;
+            // The session's world is the destination from here on (#898):
+            // the admin `zone`, the next trip's Discord world-exit origin and
+            // the crafting world guard all read it, and before this it kept
+            // the session's first world. Set before the client can send
+            // `onClientReady` for the new world, which needs the
+            // ENABLE_ENTITIES this RESET_ENTITIES asks for.
+            c.world_name = Some(target_world_name.to_string());
             // Carry the cross-world ring transport id forward — consumed in
             // `world_entry_appearance::handle_client_ready` once the
             // destination world signals `onClientReady`. Stays None for

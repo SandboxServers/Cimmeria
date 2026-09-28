@@ -422,7 +422,7 @@ async fn live_db_seeded_harset_sets_never_select_their_melee_half_at_range() {
             def.name
         );
         assert_eq!(
-            def.max_range, 0,
+            def.max_range, 0.0,
             "ability {ability_id} ({}) must keep the `0` max_range sentinel — a non-zero \
              value here overrides the server default and, on a melee ability, would put \
              the swing back out at whatever number the seed carries",

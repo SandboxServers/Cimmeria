@@ -125,7 +125,9 @@ pub(super) async fn atomic_swap(
     let p1_new_slots = reserve_slots(&mut tx, p1.player_id, &p2_dest, &p1_items).await?;
 
     // Player rows last, ascending. SELECT FOR UPDATE serializes against
-    // vendor purchase / sell / loot / mission grant paths.
+    // vendor purchase / sell / loot / mission grant paths. Ascending (not
+    // p1 then p2) also matches gate mail without an item, which takes no
+    // advisory lock (#913, pinned by `trade::tests::lock_order_live_db`).
     let lo_balance = read_naquadah_for_update(&mut tx, lo.player_id, which_of(lo, p1)).await?;
     let hi_balance = read_naquadah_for_update(&mut tx, hi.player_id, which_of(hi, p1)).await?;
     let (p1_balance, p2_balance) = if std::ptr::eq(lo, p1) {

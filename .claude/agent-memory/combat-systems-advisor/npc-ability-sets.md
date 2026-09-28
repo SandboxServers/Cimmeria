@@ -45,6 +45,10 @@ Known-NULL (avoid): 594 Strike, 479 Staff Blast, 540 Staff Strike,
 
 ## 3. `max_range > 0` poisons the NPC walk-toward gate
 
+> Superseded 2026-09-28 by #919: the loader now converts the UE3-unit column to
+> metres, so 1482's 3000 is a 30 m gate, not "any distance". See [[ability-range-units]].
+> A `max_range` shorter than the NPC's intended reach still shortens the gate.
+
 `ability_ranges` (`crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:59-71`)
 returns the def's `max_range` verbatim when non-zero, and `fight.rs` uses it as
 the `in_range` gate. `max_range = 0` is the sentinel meaning "use
