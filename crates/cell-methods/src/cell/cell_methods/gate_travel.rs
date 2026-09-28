@@ -26,10 +26,12 @@ pub async fn dispatch(
                     source_address_id,
                     "onDialGate"
                 );
-                // The dial outcome is reported to the player by the primitive's
-                // own logs; the ordinary client has no dial-failure wire
-                // surface (`onErrorCode` is enum-coded with no dial arm), so
-                // there is nothing to forward here.
+                // Nothing to forward here: `handle_dial_gate` tells the
+                // player itself on every refusal (#727, `gate_travel::
+                // dial_feedback`) with a `CHAN_FEEDBACK` line. The client does
+                // have a dial-failure surface — `onDHDReply` (client method
+                // 100, WSTRING) — but where it renders is unverified, so the
+                // chat line is the one sent.
                 let _dialed = crate::cell::gate_travel::handle_dial_gate(
                     entity_id,
                     target_address_id,
