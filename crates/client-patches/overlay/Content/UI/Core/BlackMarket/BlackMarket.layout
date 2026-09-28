@@ -56,7 +56,7 @@
                 <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
             </Window>
         </Window>
-        <!--
+        <!-- Cimmeria: tab button 4 re-enabled (stock layout had it commented out) -->
         <Window Type="ImageButton_2" Name="BlackMarket_TabButton4" >
             <Property Name="NormalImage" Value="set:CoreWidgets_2 image:Tab_Idle" />
             <Property Name="HoverImage" Value="set:CoreWidgets_2 image:Tab_Idle"  />
@@ -70,8 +70,7 @@
                 <Property Name="HorzFormatting" Value="HorzCentred" />
                 <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
             </Window>
-        </Window>
-        -->        
+        </Window>        
         
         <!-- Window [ main container ] -->
         <Window Type="DefaultWindow" Name="BlackMarket_TabContainer" >
@@ -974,34 +973,42 @@
                         <!-- row 1 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-30},{0.125,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids1" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 2 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.125,0},{1,-30},{0.25,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids2" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 3 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.25,0},{1,-30},{0.375,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids3" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 4 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.375,0},{1,-30},{0.5,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids4" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 5 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.5,0},{1,-30},{0.625,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids5" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 6 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.625,0},{1,-30},{0.75,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids6" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 7 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.75,0},{1,-30},{0.875,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids7" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 8 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.875,0},{1,-30},{1.0,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids8" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
 
                         <!-- [ scrollbar ] -->
@@ -1142,34 +1149,42 @@
                         <!-- row 1 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-30},{0.125,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched1" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 2 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.125,0},{1,-30},{0.25,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched2" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 3 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.25,0},{1,-30},{0.375,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched3" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 4 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.375,0},{1,-30},{0.5,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched4" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 5 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.5,0},{1,-30},{0.625,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched5" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 6 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.625,0},{1,-30},{0.75,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched6" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 7 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.75,0},{1,-30},{0.875,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched7" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
                         <!-- row 8 [ container ] -->
                         <Window Type="DefaultWindow" >
                             <Property Name="UnifiedAreaRect" Value="{{0,0},{0.875,0},{1,-30},{1.0,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched8" Filename="BlackMarket_ItemRow.layout"/>
                         </Window>
 
                         <!-- [ scrollbar ] -->
@@ -1184,6 +1199,15 @@
                     </Window>
                 </Window>
 
+            </Window>
+            <!-- Cimmeria: status and error line, below the tab pages -->
+            <Window Type="StaticText_2" Name="BlackMarket_ErrorText">
+                <Property Name="Font" Value="Verdana_8pt" />
+                <Property Name="MousePassThroughEnabled" Value="True" />
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="HorzFormatting" Value="WordWrapLeftAligned" />
+                <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                <Property Name="UnifiedAreaRect" Value="{{0,10},{1,-33},{1,-10},{1,-3}}" />
             </Window>
         </Window>
         

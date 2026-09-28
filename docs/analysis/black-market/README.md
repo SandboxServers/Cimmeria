@@ -95,8 +95,8 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 | BM-02 | Server contract fixes S1–S8, plus the shared codec crate | BM-01 | PR with byte-exact wire tests and live-DB search/paging guards. **Done** (PR #971): see [5.3](#53-bm-02-outcome) |
 | BM-02b | S9: move sweep and buyout payouts onto the social-systems mail API | BM-01, SS-M1 + SS-M2 merged | PR with live-DB guards for sold, unsold and cancelled settlement. **Done**: see [5.4](#54-bm-02b-outcome) |
 | BM-03 | Patch DLL skeleton: fingerprint gate, receive hooks, decode, main-thread delivery | BM-00, BM-02 codec | PR; off-target unit tests for the decoders |
-| BM-04 | Patch DLL send natives and `CimmeriaBMNative` registration | BM-03 | PR. **Done** (statically verified only): see [5.4](#54-bm-04-outcome) |
-| BM-05 | UI overlay: Lua store, read-binding replacements, U1–U12, error text | BM-03/04 surface | Overlay files + diff |
+| BM-04 | Patch DLL send natives and `CimmeriaBMNative` registration | BM-03 | PR. **Done** (statically verified only): see [5.5](#55-bm-04-outcome) |
+| BM-05 | UI overlay: Lua store, read-binding replacements, U1–U12, error text | BM-03/04 surface | Overlay files + diff. **Done**: `crates/client-patches/overlay/` (patched `BlackMarket.lua` and `.layout`, `MANIFEST.txt`, and the diff summary in its README). U1–U12 are fixed, plus the status line the stock layout never defined. A Lua 5.1 logic UAT runs in CI (`overlay-lua`). Live rendering is still owed to the BM-07 UAT |
 | BM-06 | Launcher: always-inject the patch DLL (with an opt-out), manifest overlay entry, docs | BM-03 | PR; closes #587 |
 | BM-07 | Content and UAT: the auctioneer template, spawn and chains 5030/5031, seed listings, a UAT checklist, and a `.`-console helper to seed or expire listings. The branch's ids (template 168, spawn 238) now collide with the Castle rebuild. Use the Black Market seed block allocated by the social-systems coordinator: **templates 305–309, spawns 405–409**. Put the chains in `castle_cellblock_chains.sql` with scope `'space', 12` | BM-02 | PR + checklist |
 | BM-08 | Watch list (65/66/95), if D4 says yes | BM-05 | PR |
