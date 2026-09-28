@@ -1,11 +1,11 @@
 # Castle Population Ledger
 
 > Type: reference and how-to. Audience: content authors, UAT testers and the Castle coordinator.
-> Updated: 2026-09-28 (packet CP01, seed only). Companions: [Castle rebuild ledger](../castle-rebuild/README.md) (missions 701-708 and the story actors this pass works around), [unified UAT guide, Castle population](../../guides/unified-uat.md#castle-population).
+> Updated: 2026-09-28 (packet CP01, seed only; loot tables added the same day on the owner's D-CP09 answer). Companions: [Castle rebuild ledger](../castle-rebuild/README.md) (missions 701-708 and the story actors this pass works around), [unified UAT guide, Castle population](../../guides/unified-uat.md#castle-population).
 
 ## Purpose
 
-World 8 ("Castle") had about 40 spawn rows before this pass, most of them the story actors of missions 701-708 and a belt of level-1 NID guards on the outdoor field. The interior, from the Armory to the Throne Room, was nearly empty. This packet adds 24 friendly and 36 hostile spawns, 13 templates and 8 patrol loops so the zone reads as a prison in the middle of a breakout. It is seed only: no engine code changed.
+World 8 ("Castle") had about 40 spawn rows before this pass, most of them the story actors of missions 701-708 and a belt of level-1 NID guards on the outdoor field. The interior, from the Armory to the Throne Room, was nearly empty. This packet adds 24 friendly and 36 hostile spawns, 13 templates, 8 patrol loops and three loot tables so the zone reads as a prison in the middle of a breakout. It is seed only: no engine code changed.
 
 ## Story frame
 
@@ -26,6 +26,7 @@ Taken from the shipped dialogs; the placements do not contradict them.
 | `spawnlist` | 189-212 (friendly), 247-282 (hostile) | Both blocks were unused gaps below the Harset block (300-399). |
 | `point_sets` | 2086-2093 | Type `Patrol`, shape `Path`, never loaded as client regions. |
 | `point_set_points` | 2413-2430 | Waypoints of 2086-2093. |
+| `loot_tables` / `loot` | 4-6 / 24-33 | Castle hostile drops (D-CP09). |
 
 ## Decisions
 
@@ -39,7 +40,7 @@ Taken from the shipped dialogs; the placements do not contradict them.
 | D-CP06 | Friendlies stand at least 5 u outside every hostile's aggro radius. `Castle_Standoff_*` rows face hostile ground from behind cover. The caged prisoners are the one exemption. | Inside range, a friendly would stand idle next to a guard shooting the player. When NPC-vs-NPC combat exists, search for the `Castle_Standoff_` tag prefix and move those rows into range deliberately. |
 | D-CP07 | No hostile's aggro radius, plus 3 u for where a player stands, reaches a respawner, the ring pad or a mission actor the player talks to or uses. Patrols are checked along the whole loop. | A player who respawns or stops to talk must not be shot, and with a 120 s respawn a mistake here recurs every two minutes. |
 | D-CP08 | Hostiles respawn after 120 s; friendlies have no timer. | 120 s is the zone-wide Castle value (CA05). Faction-1 friendlies can never die. |
-| D-CP09 | New guards carry no loot table, like 146 and 148. | Not asked for. Loot table 2 ('Cellblock NID guard default': naquadah and a Health Slappack) is the obvious candidate if the owner wants one; see the open questions. |
+| D-CP09 | **Decided (owner, 2026-09-28).** Every Castle hostile template rolls a Castle loot table: 4 for rank-and-file guards, 5 for L4 guards and the named or officer mobs, 6 for the drones. No row is guaranteed, and only naquadah, the Health Slappack and three tier-1 crafting components drop. | Loot should be useful sometimes without power creep. Only items that do something on click may drop; see [Loot](#loot). |
 | D-CP10 | Ogilvie is named with moniker 7342 (`DN_NPC_MG_Ogilvie_Hebridan_PraxisContact` = 'Ogilvie'). | The Castle's own moniker 8895 (`DN_npc_int_Ogilvie_Castle`) ships an empty string and would render no name. |
 
 ## Templates
@@ -177,6 +178,27 @@ A two-point set is walked as a back-and-forth line. Guard pairs use parallel set
 
 "Wounded" (Armory, Checkpoint Alpha) is narrative only: there is no pose column and no per-spawn health, so the wounded marine is the unarmed template standing near the others, and the wounded Jaffa is a Jaffa at the back of the room.
 
+## Loot
+
+Owner decision (D-CP09): Castle hostiles drop something sometimes, useful but not power-creeping, and never guaranteed the way the Cellblock guards' table 2 is. Each row rolls on its own (`crates/cell-combat/src/cell/abilities/loot_drop.rs`); when every row misses, the corpse gets no loot cursor, which is the intended "nothing dropped".
+
+Only items that do something today may drop:
+
+- **Naquadah** (`design_id` NULL).
+- **2893 Health Slappack TC1**, +500 HP. It is the only consumable with a working use path: content chain 4001 on `item_use` 2893. An item whose "use" is an `items_event_sets` event-5 ability (Health Consumable TC5 6132, Focus Heal 6106, the Mark III stimpacks 6677-6682) does nothing when clicked, because the server does not execute those abilities, so none of them drops.
+- **Tier-1 crafting components**, the most-used base component of each science in `blueprints_components`: 5224 Integrated Circuit (Electronics, 85 blueprints), 5188 Protein Complex (Bio-Medical, 53) and 5257 Wave Guide (Power Systems, 42).
+- No grenades: the client item table has no grenade item.
+
+| Table | Templates | Rows (quantity @ chance) | Corpse drops nothing |
+|---|---|---|---|
+| 4 Castle NID guard | 146, 148, 181, 182, 184, 185 | naquadah 5-20 @ 0.50; slappack 1 @ 0.15; 5224 @ 0.08; 5188 @ 0.08 | 36 % |
+| 5 Castle NID veteran | 183, 186 (L4), 169 Romney, 170 Muelbach, 171 Bravo officers | naquadah 10-35 @ 0.60; slappack 1-2 @ 0.25; 5224 @ 0.12; 5188 @ 0.12 | 23 % |
+| 6 Castle PRU salvage | 145 | 5224 @ 0.30; 5257 @ 0.20 | 56 % |
+
+Loot ids 24-33; the `loot_tables` and `loot` sequences move to 6 and 33. Table 5's naquadah chance is 0.60 rather than the 0.65 first proposed: at 0.65 the empty rate is 20.3 %, the bottom edge of the 20-25 % target.
+
+The mission mobs on table 5 are safe to loot. Romney's badge (2135), the Control Crystal (2790) and Muelbach's item 2136 are `add_item` actions in the `entity_dead_tag` chains 1272/1273 and 1346-1349, not loot rows, and no chain reads a corpse's interaction flags, so a loot roll neither duplicates nor blocks them. A respawn clears the corpse's loot and the loot cursor (`ticks/npc_respawn`).
+
 ## Excluded, and TODO
 
 - **TODO (owner, in-client): the elevated cover cluster near (636, 34, 296).** `nav_inspect` puts walkable floor 10-21 m below that y, so the cover sits on a structure (a wall walk or battlement) nobody has identified. A guard perch there needs an in-client `.location` check first.
@@ -192,7 +214,8 @@ A two-point set is walked as a back-and-forth line. Guard pairs use parallel set
 | `every_castle_patrol_leg_is_routable` (same file) | No-DB, new | Every World 8 `Patrol` waypoint is on the mesh and every leg, including the one that closes the loop, routes all the way |
 | `castle_population_live_db_rows_are_world8_blocks_with_their_templates` (`crates/cell-catalog/src/cell/spawner/tests/live_db_castle_population.rs`) | Live-DB, new | 24 + 36 rows in World 8 on the assigned templates, unique tags, 120 s hostile respawn, patrols start on their spawn, all six guard templates placed |
 | `castle_population_live_db_friendlies_are_safe_and_named` | Live-DB, new | Faction 1, no hostile override, `name_id` resolves to a non-empty `resources.texts` string |
-| `castle_population_live_db_guard_templates_are_levels_2_to_4_and_old_ones_unchanged` | Live-DB, new | 181-186 levels, radii, SMG kit and cover; 145/146/148 level, faction, name, radii, respawn and loot unchanged |
+| `castle_population_live_db_guard_templates_are_levels_2_to_4_and_old_ones_unchanged` | Live-DB, new | 181-186 levels, radii, SMG kit and cover; 145/146/148 level, faction, name, radii and respawn unchanged (their loot table is the one deliberate change) |
+| `castle_live_db_hostile_loot_drops_sometimes_and_only_useful_items` (`live_db_castle_loot.rs`) | Live-DB, new | Every World 8 hostile template on its table 4-6; no row at probability 1; every item naquadah, a consumable with an `item_use` chain, or a component a blueprint consumes; PRU salvage is components only; each table's empty rate inside 30-40 %, 20-25 % and 50-60 % |
 | `castle_population_live_db_hostile_aggro_clears_respawners_ring_pad_and_actors` | Live-DB, new | D-CP07 for every World 8 hostile, patrol loops included |
 | `castle_population_live_db_friendlies_stand_outside_every_hostile_aggro_radius` | Live-DB, new | D-CP06 |
 
@@ -209,18 +232,23 @@ Each mutation was applied to the seed, the tests were rerun, and the seed was re
 | `Castle_Standoff_Courtyard_Soldier1` moved to (560, 24, 612) | `..._friendlies_stand_outside_...`: "is 7.5 u from hostile Castle_PRU4" |
 | Spawn 275 lifted 5 u to y 23.38 | `every_castle_spawn_is_on_the_mesh` names spawn 275 |
 | Waypoint 2424 moved into the Symbiote Chamber (386, 55.38, 940) | `every_castle_patrol_leg_is_routable`: both legs of set 2091 report `partial` |
+| Template 146's loot table set to NULL | `castle_live_db_hostile_loot_...`: "Castle hostile template 146 must roll loot table 4" |
+| Loot row 25 (slappack) at probability 1 | `castle_live_db_hostile_loot_...`: "loot row 25 (table 4) has probability 1" |
+| Loot row 26 dropping 6132 (TC5 health, event-5 use) | `castle_live_db_hostile_loot_...`: "drops item 6132, which is neither a consumable with a working use path nor a crafting component" |
+| Loot row 24 (naquadah) at 0.9 | `castle_live_db_hostile_loot_...`: "loot table 4 leaves 7.2 % of corpses empty; the band is 30-40 %" |
+| PRU row 33 turned into naquadah | `castle_live_db_hostile_loot_...`: "PRU salvage row 33 must be a crafting component" |
 
 Moving waypoint 2424 to the Throne Room floor did **not** fail the patrol test: that floor is on the same connected mesh, so the leg routes. The proof uses an isolated component instead.
 
 ## Open questions for the owner
 
-1. Should the new guards drop loot (table 2: naquadah 5-50 at 80 %, one Health Slappack)? The zone now has 36 more hostiles and no new heals.
+1. ~~Should the new guards drop loot?~~ Decided: D-CP09 and [Loot](#loot).
 2. Should the outdoor guards keep the 'Exterior NID Guard' name, or show 'NID Guard' like the pre-existing field guards (template 146)?
 3. The two TODO spots above need an in-client look before anything is placed there.
 
 ## UAT checklist
 
-Run on a build with this packet. A GM character can reach each zone with `.gotolocation Castle <x> <y> <z>` using the positions above. Use `.bug <note>` at any wrong spot. Canonical ids: CP1-CP16.
+Run on a build with this packet. A GM character can reach each zone with `.gotolocation Castle <x> <y> <z>` using the positions above. Use `.bug <note>` at any wrong spot. Canonical ids: CP1-CP18.
 
 | # | Do | Expect | Notes |
 |---|---|---|---|
@@ -240,5 +268,7 @@ Run on a build with this packet. A GM character can reach each zone with `.gotol
 | CP14 | Cross the west of the outdoor field | Three "Exterior NID Guard" by the rock (levels 4, 3, 2) and a drone circling it. | |
 | CP15 | Go to Muelbach's bunker | Two exterior guards on the approach; two guards in the room past Muelbach. | |
 | CP16 | Reach Checkpoint Alpha; die and respawn there | Three Praxis Jaffa facing the ramp you came up, one more at the back. Nothing shoots you on respawn. | |
+| CP17 | Kill about ten ordinary Castle guards and loot each corpse | Roughly a third leave no loot cursor. The rest hold naquadah (5-20), sometimes a Health Slappack TC1, occasionally an Integrated Circuit or a Protein Complex. Nothing is in every corpse. Use a looted slappack while hurt: +500 HP on the first click. | A GM can farm one post and wait 120 s for respawns |
+| CP18 | Kill a few drones, a level-4 guard and Romney, Muelbach or a Bravo officer | Drones drop only an Integrated Circuit or a Wave Guide, and about half drop nothing. The veterans drop more often (about three in four) and more naquadah. Killing Romney or a Bravo officer still grants the mission item exactly once, whatever the corpse holds. | Mission 703 / 708 must be on the right step for the grant |
 
 Things only a human can check: every placement looks sensible (nobody inside a wall, a locker or a table), the medic's female body and the soldiers' faces render, headings face where the notes say, and the level numbers show on the target frame.

@@ -51,11 +51,51 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (23, 3, 6483, 1, 0.2, 1);
 
+-- NEW CONTENT (Castle population, docs/analysis/castle-population/README.md,
+-- D-CP09): Castle hostiles drop something sometimes, never guaranteed. Each row
+-- rolls independently (cell-combat abilities/loot_drop.rs); if every row misses,
+-- the corpse gets no loot cursor, which is the intended "nothing dropped" outcome.
+--
+-- Only items that do something today:
+--   design_id NULL = naquadah (currency).
+--   2893 Health Slappack TC1: the only consumable with a working use path
+--        (content chain 4001, `item_use` 2893, +500 HP). Items whose "use" is an
+--        items_event_sets event-5 ability (TC5 health, focus heal, Mark III
+--        stimpacks) do nothing on click, so they are never dropped.
+--   5224 Integrated Circuit (Electronics), 5188 Protein Complex (Bio-Medical),
+--   5257 Wave Guide (Power Systems): tier-1 crafting components, the most-used
+--        base components of their applied sciences (85, 53 and 42 blueprints in
+--        blueprints_components). A guard carries electronics and a field medkit's
+--        worth of bio-medical stock; a drone salvages to electronics and power.
+-- There is no grenade item in the client item table, so no grenades.
+--
+-- Chance a corpse drops nothing (product of the misses):
+--   table 4 guard    0.50 * 0.85 * 0.92 * 0.92 = 36%
+--   table 5 veteran  0.40 * 0.75 * 0.88 * 0.88 = 23%
+--   table 6 PRU      0.70 * 0.80               = 56%
+-- Table 5's naquadah is 0.60, not 0.65: at 0.65 the empty rate is 20.3%, the
+-- bottom edge of the 20-25% target.
+-- Table 5 is on templates 169 (Romney), 170 (Muelbach) and 171 (the Bravo
+-- officers), whose deaths also drive missions 703 and 708. Those grants are
+-- `add_item` actions in the entity_dead_tag chains (1272/1273, 1346-1349), not
+-- loot rows, and no chain reads the corpse's interaction flags, so a loot roll
+-- neither duplicates nor blocks Romney's 2135, the Control Crystal (2790) or item 2136.
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (24, 4, NULL, 5, 0.5, 20);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (25, 4, 2893, 1, 0.15, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (26, 4, 5224, 1, 0.08, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (27, 4, 5188, 1, 0.08, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (28, 5, NULL, 10, 0.6, 35);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (29, 5, 2893, 1, 0.25, 2);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (30, 5, 5224, 1, 0.12, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (31, 5, 5188, 1, 0.12, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (32, 6, 5224, 1, 0.3, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (33, 6, 5257, 1, 0.2, 1);
+
 --
 -- TOC entry 3323 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: loot_loot_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_loot_id_seq', 23, true);
+SELECT pg_catalog.setval('loot_loot_id_seq', 33, true);
 

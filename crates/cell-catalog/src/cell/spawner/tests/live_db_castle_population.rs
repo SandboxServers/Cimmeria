@@ -18,6 +18,7 @@
 //! * a new guard template outside levels 2-4, or an edit that leaks into the
 //!   old level-1 templates 145/146/148 other Castle rows still use.
 //!
+//! Castle loot (tables 4-6) is guarded next door in `live_db_castle_loot.rs`.
 //! Navmesh placement is guarded without a database by
 //! `crates/entity/tests/castle_navmesh.rs`, which checks every World 8 spawn and
 //! every Castle patrol leg against `data/spaces/castle.nav`.
@@ -278,7 +279,7 @@ mod live_db {
 
     /// **Population guard**: the new guard templates are levels 2-4 with the
     /// ledger's radii and the SMG kit, and the old level-1 templates they were
-    /// cloned from are untouched.
+    /// cloned from are untouched apart from their loot table.
     ///
     /// `level` sets max HP (200 + 50 * level) and kill XP (10 * level) and nothing
     /// else, so a level typo is a silent balance change. The old templates are
@@ -332,7 +333,8 @@ mod live_db {
                 t.respawn_secs, None,
                 "template {id} template-level respawn changed"
             );
-            assert_eq!(t.loot_table_id, None, "template {id} loot table changed");
+            // loot_table_id is the one deliberate change (D-CP09), pinned by
+            // `live_db_castle_loot.rs`.
         }
     }
 
