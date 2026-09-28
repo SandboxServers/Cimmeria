@@ -1,7 +1,7 @@
 # Crafting and Applied Science Restoration
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and the owner.
-> Updated: 2026-09-26. Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [crafting restoration findings](../../reverse-engineering/findings/crafting-restoration.md), [gap analysis §19](../../gap-analysis.md), [documentation index](../../readme.md).
+> Updated: 2026-09-27 (CR-13 close-out). Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [crafting restoration findings](../../reverse-engineering/findings/crafting-restoration.md), [gap analysis §19](../../gap-analysis.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -78,6 +78,7 @@ These are PROPOSED coordinator defaults. Under the owner's autonomous-run author
 | D-CR25 | PROPOSED | A malformed crafting request (truncated arguments, forged array count) is dropped with a WARN at target `crafting` and no player feedback. Only a forged packet can produce one, so D-CR14 does not apply. | CR-01. |
 | D-CR26 | PROPOSED | CR-15 seeds only the 193 Blueprint items that CR-E2 resolved (`source/blueprint-items.csv`, confidence high, medium-high or medium). Item 8882 teaches both of its tied blueprints (367 and 369). The 96 unresolved rows are not seeded: 45 narrow only to a group, 48 name a product the 2009 content never shipped, and 3 match nothing. Research (D-CR04) and GM `.learnblueprint <id>` cover the blueprints no item teaches. The Racial Paradigm Guides are already seeded (items 7805-7809), so D-CR22 adds no items. | CR-E2 (#868). No guessing: an item mapped to the wrong blueprint teaches the player something the item does not say. |
 | D-CR27 | **APPROVED** (owner rule, 2026-09-26) | **Telemetry is a first-class deliverable.** "Player X did Y at time T and it failed" must be answerable from SigNoz alone: which path ran, why it was refused, the before and after values of everything transactional, and the correlating ids. Every packet follows the telemetry contract in [work-packets.md](work-packets.md#telemetry-contract) and carries a telemetry acceptance line. | Owner rule relayed by cimmeria-19; conventions in `docs/architecture/instrumentation-discipline.md`, `negative-logging-convention.md` and `observability.md`. |
+| D-CR28 | **APPROVED** (owner, 2026-09-27) | **Crafting components live in the crafting bag, and that bag trades and mails.** After CR-16 every grant puts a `{17,15}` component in bag 15, where its `container_sets` allow it, and it cannot sit in the main bag. So bag 15 must be a source for player trade **and** for mail attachments; components are not moved to bag 1 to make them tradeable. Trade shipped as CR-17 (#953: source bags 1 and 15, destination by the recipient's `container_sets`, a full crafting bag cancels the trade with a reason line). Mail escrow (`mail/send/escrow.rs`) was handed to the social-systems campaign (cimmeria-3d); it accepts bags 1 and 15 as of #933, and a mail take places the item by `container_sets`. | Owner answer to the CR-16 gap "crafting components cannot be traded or mailed" (`worknotes/cr-16.md`). |
 
 ## Coordinator launch prompt
 
@@ -95,7 +96,7 @@ You are the Claude Code coordinator for the crafting campaign. Implement [work-p
 
 Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#crafting).
 
-The owner runs [CR-14](work-packets.md#cr-14-owner-uat-colo-after-the-release) on the colo after the `/release` deploy, from the stasis-room debug hub, as GM, and uses `.bug <note>` at each oddity. Every step has a SigNoz query that shows what the server did (CR-14's query table), so an oddity can be diagnosed from telemetry without a repro.
+The owner runs CR-14 on the colo after the `/release` deploy, from the stasis-room debug hub, as GM, and uses `.bug <note>` at each oddity. The canonical checklist, written by CR-13 against the code as merged, is in the [session resume](handoffs/session-resume.md#cr-14-owner-uat-checklist). Every step has a SigNoz query that shows what the server did (its query table), so an oddity can be diagnosed from telemetry without a repro.
 
 ## Where confidence is low
 

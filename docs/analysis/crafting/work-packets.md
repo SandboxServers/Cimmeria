@@ -1,7 +1,7 @@
 # Crafting Work Packets
 
 > Type: how-to. Audience: the coordinator and packet workers.
-> Updated: 2026-09-26. Companions: [launch prompt and decisions](README.md), [audit](audit.md), [session resume](handoffs/session-resume.md), [testing playbook](../../../TESTING.md), [ability-tree ledger](../ability-trees/work-packets.md) (same dispatch rules).
+> Updated: 2026-09-27 (CR-13 close-out). Companions: [launch prompt and decisions](README.md), [audit](audit.md), [session resume](handoffs/session-resume.md), [testing playbook](../../../TESTING.md), [ability-tree ledger](../ability-trees/work-packets.md) (same dispatch rules).
 
 ## Dispatch rules
 
@@ -53,12 +53,12 @@ Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` 
   - `rejected` (INFO, with an enumerated `reason`, the same value as the `CraftReject` variant);
   - `queued` / `induction_started` / `induction_expired` (`job_id`, `verb`, `queue_len`; `induction_started` also carries `timer_id` and `expires_at`, the only one of the three that has a deadline);
   - `completed` (`job_id`, `verb`, `blueprint_id` or `item_id`, the consumed inputs as `item_id:type_id:qty_before→qty_after`, the granted outputs as `type_id:bag:slot:qty_before→qty_after` so a stack merge is distinguishable from a new slot, a `result` for verbs that roll (`success | failure`), `expertise_before` / `expertise_after`, `asp_before` / `asp_after`, the RNG roll and chance where a roll was made);
-  - `queue_dropped` (`reason = logout | world_change | session_changed | stale_session | not_connected`, `cause`, `jobs_dropped`, `job_ids`);
+  - `queue_dropped` (`reason = logout | world_change | session_changed | stale_session | not_connected | respec`, `cause`, `jobs_dropped`, `job_ids`; `respec` once CR-10 merges), and `induction_start_skipped` (DEBUG: a job dropped between activation and its bar);
   - `options_changed` (the station entity ids and tool item ids per section);
   - `learned`, `respec_prompted`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values);
-  - `login_sync` (what the login sent) and `login_sync_failed` (WARN, `reason = load | send`), `asp_granted`, `gm_allcraft` and `gm_craftkit` (GM grants, before and after), `asp_earned` (level-up grant: `level_before` / `level_after`, `asp_before` / `asp_after`);
-  - already on `main` from CR-01: `malformed`, `no_player`, `forward_failed` (WARN, cell side), `catalog_loaded`, `catalog_load_failed`;
-  - negative seams: `persist_failed` (WARN, `phase`, `reason`), `client_sync_failed` (WARN; DEBUG once the session has ended), `push_failed` (WARN, `what`), `lookup_failed` (WARN, `phase`), `feedback_send_failed` (WARN).
+  - `login_sync` (what the login sent) and `login_sync_failed` (WARN, `reason = load | send`), `asp_granted`, `gm_allcraft`, `gm_craftkit` and `gm_learnblueprint` (GM grants and their refusals, before and after), `asp_earned` (level-up grant: `level_before` / `level_after`, `asp_before` / `asp_after`), `tool_table_loaded` (INFO, the Field Crafting Tool table read once per process);
+  - already on `main` from CR-01: `malformed`, `no_player`, `forward_failed` (WARN, cell side), `catalog_loaded`, `catalog_load_failed`, and the catalog's data-quality WARNs `catalog_orphan_component` and `catalog_unknown_quality`;
+  - negative seams: `persist_failed` (WARN, `phase`, `reason`), `client_sync_failed` (WARN; DEBUG once the session has ended), `push_failed` (WARN, `what`), `lookup_failed` (WARN, `phase`), `feedback_send_failed` (WARN), `allcraft_send_failed` (WARN, cell side: the `.allcraft` forward to the base failed).
 
   This is the complete list of events under the `crafting` target. A packet that needs another adds it here, in the same PR, before using it. CR-16's grant-path events (`grant_container_chosen`, `loot_restored`) belong to the inventory grant path's own target, not `crafting`.
 - **Negative seams.** Every expectation seam logs its failure at the level the convention sets, and has a `LogCapture` test (TESTING.md type 12): a transaction with `rows_affected == 0`, a catalog or inventory lookup miss, a failed client send (`let _ = send` is not allowed), a rollback (`persist_failed` WARN with `phase` and the SQL error class). A DB write that changes fewer rows than it should logs the paired `rows_affected` and `expected` fields, and names its sub-step `phase`, as the convention requires.
@@ -215,7 +215,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-06
 
-**Status:** Review (#897). **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
+**Status:** Integrated (#897). **Scope title:** Induction engine and the consume-and-grant transaction. **Advisor:** items-systems-advisor, testing-validation-engineer, server-authority-enforcer.
 
 **Scope:**
 
@@ -232,7 +232,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-07
 
-**Status:** BlockedDependency (CR-04 for known blueprints, CR-05, CR-06). **Scope title:** `craft` (96). **Advisor:** items-systems-advisor, server-authority-enforcer.
+**Status:** Integrated (#905). **Scope title:** `craft` (96). **Advisor:** items-systems-advisor, server-authority-enforcer.
 
 **Scope:** `craft.rs`. Blueprint known, discipline known (D-CR15), not an alloy, `quantity` in 1..=100, the submitted ids pick the component set whose component types they cover, and the bags hold `quantity × component.quantity` of each. At completion: consume, grant `blueprint.quantity × quantity` of the product, +1 expertise, send 136. Blueprint 21 (no components) is rejected.
 
@@ -242,7 +242,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-08
 
-**Status:** BlockedDependency (CR-05, CR-06). **Scope title:** `research` (97) and `reverseEngineer` (98).
+**Status:** Integrated (#903). **Scope title:** `research` (97) and `reverseEngineer` (98).
 
 **Scope:**
 
@@ -255,7 +255,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-09
 
-**Status:** BlockedDependency (CR-04, CR-05, CR-06). **Scope title:** `alloying` (99). **Advisor:** items-systems-advisor.
+**Status:** Integrated (#904). **Scope title:** `alloying` (99). **Advisor:** items-systems-advisor.
 
 **Scope:** `alloy.rs`. An alloy blueprint known with its discipline; the current-tier item is the blueprint's component (C-53 and C-54 fixed); the elementary items are exactly one tier lower, and their summed stack quantity meets the client's count for one quality (Normal 10, Good 5, Great 2, Fantastic 1; D-CR11). At completion: consume, grant 2× product, +1 expertise.
 
@@ -265,7 +265,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-10
 
-**Status:** Ready (CR-04 integrated). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** Review (branch `craft/cr10-respec`, rebased on `main` after CR-16; PR not yet opened). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:** `respec.rs`, per D-CR16 and D-CR23: a player-usable `.respeccraft` sends the prompt (cost 0, D-CR02), the pending window, then one transaction that clears disciplines and expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept. Then 137 and the ASP property. Nothing to reset gets feedback. Replay-safe.
 
@@ -275,7 +275,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-11
 
-**Status:** BlockedDependency (#846 merged, CR-05, CR-15 for the item rows). **Scope title:** Crafting stations and supplies in the stasis-room debug hub. **Advisor:** items-systems-advisor.
+**Status:** Integrated (#909). **Scope title:** Crafting stations and supplies in the stasis-room debug hub. **Advisor:** items-systems-advisor.
 
 **Scope:**
 
@@ -290,7 +290,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-12
 
-**Status:** Ready (CR-03 integrated). **Scope title:** Earning ASP. **Advisor:** combat-systems-advisor (the `grant_xp` path).
+**Status:** Integrated (#900). **Scope title:** Earning ASP. **Advisor:** combat-systems-advisor (the `grant_xp` path).
 
 **Scope:** per D-CR01: `grant_xp` adds the levels gained to `applied_science_points` in the same statement that raises the level, and pushes the property; new characters start with 1.
 
@@ -300,7 +300,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-15
 
-**Status:** Ready (CR-E2, CR-03 integrated). **Scope title:** Blueprint items and Racial Paradigm Guides. **Advisor:** items-systems-advisor, server-authority-enforcer, database-persistence.
+**Status:** Integrated (#902). **Scope title:** Blueprint items and Racial Paradigm Guides. **Advisor:** items-systems-advisor, server-authority-enforcer, database-persistence.
 
 **Scope:**
 
@@ -314,7 +314,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-16
 
-**Status:** BlockedDependency (Bank BV-01, #872). **Scope title:** Grant into the first allowed player container. **Advisor:** items-systems-advisor. Tell cimmeria-97 when it starts.
+**Status:** Integrated (#932). **Scope title:** Grant into the first allowed player container. **Advisor:** items-systems-advisor. Tell cimmeria-97 when it starts.
 
 **Scope:** audit C-29. When an item's `container_sets` lists a storage container (17-20) first, the grant path falls through to the next listed player container (15, then 1) instead of refusing. The loot-into-bank refusal BV-01 adds stays for items that list only storage containers. Every caller benefits: loot, content `grant_item`, GM `gmGiveItem`, vendors, and CR-06's transaction if it reuses the grant path.
 
@@ -324,11 +324,21 @@ Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes 
 
 **Acceptance:** a live-DB test that a `{17,15}` component granted by loot, by the content engine and by a GM lands in bag 15; a test that a refused loot grant leaves the item on the corpse; a guard that fails when the fall-through is removed; the BV-01 refusal test still passes for a storage-only item.
 
+### CR-17
+
+**Status:** Integrated (#953). **Scope title:** Trade from the crafting bag (D-CR28). **Advisor:** server-authority-enforcer, items-systems-advisor.
+
+**Scope:** trade accepts offered items from the main bag (1) and the crafting bag (15) and places each received item in the recipient's bag by its `container_sets`; a full crafting bag cancels the trade for both players with a reason line and `onTradeResults(Cancelled)`, so the window closes. The trade swap takes the shared inventory lock order, which also fixed a vendor buyback and sell deadlock. Mail from bag 15 went to the social-systems campaign (#933).
+
+**Telemetry:** `trade.item_moved` carries `container_before` / `container_after`; `trade.refused reason=crafting_bag_full`.
+
+**Acceptance:** live-DB tests for a component traded from bag 15 into the partner's bag 15, a full crafting bag refused with nothing moved, and the buyback and sell lock-order guards (see `worknotes/cr-17.md`).
+
 ## Wave 3
 
 ### CR-13
 
-**Status:** BlockedDependency (every packet above that the owner has not deferred). **Scope title:** Close-out, UAT checklist and release.
+**Status:** Writing (branch `craft/cr13-close-out`; merges after CR-10). **Scope title:** Close-out, UAT checklist and release.
 
 **Scope:** `docs/gameplay/crafting-system.md`, `docs/gap-analysis.md` §19, `docs/project-status.md`, the crafting findings (C-60), CAT-F paths (C-64); close or update #567, #723 and #465; write the CR-14 checklist into `handoffs/session-resume.md`; `/release` on the last merged PR.
 
@@ -336,41 +346,8 @@ Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes 
 
 ### CR-14: owner UAT (colo, after the release)
 
-Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
+**Status:** BlockedDependency (the `/release` after CR-13).
 
-1. Log in with a new character. Open Ctrl+J: the ASP count shows, and the tree is drawn (green where learnable, per D-CR03).
-2. `/gmgiveappliedsciencepoints 5` (or the native GM console). The count updates without a relog.
-3. Learn Materials Engineering (78). Its expertise reads 1 and the ASP count drops by 1. Click it again: a message says it is already known.
-4. Relog. Disciplines, expertise, ASP and blueprints are all still there.
-5. Open J away from the stations: every tab says "Disabled". Walk to the Materials Crafting Station: the tabs enable. Walk away: they disable again.
-6. Buy an MAS-5 Field Crafting Tool and put it in the crafting bag: craft, research and reverse engineer enable anywhere for Materials; alloy stays disabled. Move the tool to the main bag: they disable.
-7. Buy and use "Blueprint: Steel Plating (Materials Subcombine A)" (item 6483): blueprint 25 appears in the J window. Use a second copy: a message says it is already known and the item stays.
-8. Buy and use a Racial Paradigm Guide: Human. `/showracialparadigmlevels` reports Human at 2.
-9. Buy 13× Steel Core (5254) from the supplies vendor, or `.craftkit 25`. At the Materials Crafting Station, craft Steel Plating (blueprint 25): the 3 s induction bar shows, the components go, the plating arrives, and Materials Engineering expertise rises by 1.
-10. Craft with too few components: a message explains why and nothing is consumed.
-11. Research Crafted Pistol of the Whale (5481) with one kicker: a message reports the result; on success expertise rises by 5.
-12. Put 10 items in reverse engineering and confirm: all 10 complete in turn, and components arrive.
-13. Alloy with blueprint 42 and 10 Normal tier-1 elementary components: 2× Blend (Bio-Medical Alloy) arrives.
-14. Log out during an induction and log back in: nothing was consumed.
-15. `.respeccraft`: the prompt shows a cost of 0; confirm; disciplines and expertise clear, ASP is refunded, and blueprints and paradigm levels stay.
-16. `.allcraft`: every tab enables anywhere, and every discipline shows 100.
-
-**SigNoz queries for the tester and the coordinator.** Logs view. Every row starts from the base expression `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND player_id = <the tester's character id>` (the Rust `target` is stored as `scope_name`) and adds the filter shown:
-
-| UAT step | Filter | What it shows |
-|---|---|---|
-| 1, 4 | `event = 'login_sync'` | What the login sent, and whether defaults were applied |
-| 2 | `event = 'asp_granted'` | The GM grant, with ASP before and after |
-| 3 | `event IN ('learned', 'rejected')` | ASP before and after, or the refusal `reason` and the values compared |
-| 5, 6 | `event = 'options_changed'` | The station and tool ids the client was given, and why |
-| 7, 8 | `event IN ('blueprint_learned', 'paradigm_raised', 'rejected')` | Item use results |
-| 9, 11, 13 | `job_id = <id>`, after finding the id with `event = 'queued'` | The whole life of one craft: queue, induction, completion or failure, items before and after |
-| 12 | `verb = 'reverse_engineer' AND event IN ('queued', 'completed')` over the step's time window | Ten `queued` rows and ten `completed` rows, one `job_id` each |
-| 10 | `event = 'rejected' AND reason = 'insufficient_components'` | The refusal and the counts compared |
-| 14 | `event = 'queue_dropped'` | Jobs dropped at logout, with nothing consumed |
-| 15 | `event IN ('respec_prompted', 'respec')` | The respec, and the ASP refunded |
-| 16 | `event = 'gm_allcraft'` | What `.allcraft` granted, before and after |
-| any (this player) | `severity_text = 'WARN'` | Anything that failed an expectation for this player: rollbacks, lookup misses, failed sends |
-| any (server-wide) | Drop `player_id` from the base: `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND severity_text = 'WARN'` | Warnings with no player: catalog load failures, requests dropped before the base (`no_player`, `malformed`) |
+Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity. The canonical checklist and its SigNoz query table are in the [session resume](handoffs/session-resume.md#cr-14-owner-uat-checklist), written by CR-13 against the code as merged; the tester-facing copy is the [Crafting section of the unified UAT guide](../../guides/unified-uat.md#crafting). The 16-step draft that stood here was replaced because parts of it no longer matched the code: `/showracialparadigmlevels` is not implemented, a Field Crafting Tool cannot sit in the main bag, alloy blueprint 42 takes five Good tier-1 Cells rather than ten Normal ones, the GM crafting commands need a selected player target, and the reverse-engineering query filtered on `verb = 'reverse_engineer'` where the code logs `reverseEngineer`.
 
 Metrics: `crafting_requests_total` and `crafting_jobs_total` by `verb` and `outcome`, and `crafting_rejections_total` by `reason`.
