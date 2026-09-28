@@ -980,6 +980,29 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (413, -336.72, 73.472, -217.15, 2.7937, 12, 313, 'CraftHub_Station_Materials', NULL);
 
 --
+-- Black Market campaign, BM-07: spawn 405, the debug hub's Black Market
+-- auctioneer (template 305). The campaign owns spawns 405-409; 406-409 stay
+-- reserved. Tag `BlackMarket_Auctioneer`, not `DebugHub_*`: the hub's staged
+-- dispatch test counts that prefix.
+--
+-- Placement. The A-B, B-C and D-A walls are full (the hub line, the Bankers
+-- and mail clerk, the crafting corner), so he stands on the C-D exit wall:
+-- 2.8 units in from it and 12.8 along it from corner D, beside
+-- the doorway rather than in it. That is 3.45 from the Command Banker (472),
+-- 5.6 from the Team Banker (471), 6.9 from the mail clerk (490) and 8.0 from
+-- the respawner, at the respawner's floor height (y 73.472). The heading faces
+-- the room centre (-333.03, -227.32), yaw = atan2(dx, dz). As for the other
+-- hub spawns there is no navmesh or occluder data for this room: the
+-- placement still needs an in-client check.
+--
+-- No in-world auctioneer is seeded. The cooked client carries no NPC
+-- placements (spawns were server data) and the reconstructed spawn list has
+-- no auctioneer anywhere; the Black Market's own trader, Machra, belongs to
+-- Tollana (world 19), which has no spawns here.
+--
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (405, -328.48, 73.472, -222.52, -2.3829, 12, 305, 'BlackMarket_Auctioneer', NULL);
+
+--
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
@@ -987,7 +1010,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 
 -- Past every seeded row and every reserved campaign spawn block (debug hub
--- 400-404, crafting 410-429, organizations 430-449, pets 450-469, bank
+-- 400-404, black market 405-409, crafting 410-429, organizations 430-449, pets 450-469, bank
 -- 470-489, social 490-499), so a row inserted without a spawn_id (the
 -- `.savespawn` seed SQL) never takes a used or reserved id. Raise the floor
 -- when a new block is reserved above 499; live_db_spawnlist_sequence.rs

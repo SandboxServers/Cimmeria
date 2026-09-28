@@ -1129,6 +1129,25 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (330, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_04}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Debug Hub - Team Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7447}', NULL, NULL, true, NULL, NULL, NULL);
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (331, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Ablative.AR_HM_AT3_AT300,AR_H_Ballistic00.AR_HM_BG3_BG300,NPC_Human.NPC_HM_Marsh_Head_BC,AR_H_Ablative.AR_HM_AL3_AL300AH300}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Debug Hub - Command Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7448}', NULL, NULL, true, NULL, NULL, NULL);
 
+-- Black Market campaign, BM-07: templates 305-309 are the campaign's placed
+-- NPCs (docs/analysis/black-market/README.md); 306-309 stay reserved.
+-- 305 'Black Market Auctioneer' in the stasis-room debug hub (spawn 405,
+--   docs/content/debug-hub.md). INT_Auction (4) is the whole role: it gives
+--   the client its auction cursor, and at spawn it makes the NPC an
+--   `NpcInteractionType::Auctioneer`, the one marker `open_black_market` and
+--   cell methods 62-64 accept. Clicking him fires chain 5030
+--   (castle_cellblock_chains.sql), which opens the Black Market. Nothing may
+--   answer the click first, so no trainer list, no vendor lists or bits, no
+--   dialog, no Banker or DHD bit. Faction 1 and no ability set, so he cannot
+--   fight or die (death would overwrite the interaction with Loot).
+--   Body: the old feat/571 auctioneer's (template 168 on that branch), Nerus's
+--   robes, a look a live client rendered at the auctioneer in 2026-06.
+-- moniker 7133 `DN_npc_MgVen_Machra_Tollana` ('Machra'), shipped in the
+--   client's TextStrings.pak: the Tollana Black Market trader of mission
+--   A01_Tollana_OPC_BlackMarket. No moniker says 'Auctioneer'; the `name`
+--   column, which the client never sees, does.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (305, NULL, 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Torso00_00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Legs_00,NPC_Human.NPC_HM_Nerus_Boots_BC,NPC_Human.NPC_HM_Nerus_Hands_BC,NPC_Human.NPC_HM_Nerus_Head_BC,NPC_Human.NPC_HM_Nerus_Legs_BC,NPC_Human.NPC_HM_Nerus_Robe_BC,NPC_Human.NPC_HM_Nerus_Torso_BC}', 0, 4, 570, 1, 0, 1, 7133, 'Black Market Auctioneer', NULL, NULL, 'Debug Hub - Black Market Auctioneer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
 --
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210
@@ -1136,7 +1155,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --
 
 -- Past every seeded row and every reserved campaign template block (Harset
--- 200-299, debug hub 300-304, crafting 310-329, organizations 330-349, pets
+-- 200-299, debug hub 300-304, black market 305-309, crafting 310-329, organizations 330-349, pets
 -- 350-369, bank 370-389, social 390-399), and never lowered, so a row
 -- inserted without a template_id never takes a seeded or reserved id. Raise
 -- the floor when a block is reserved above 399; live_db_seed_sequences.rs

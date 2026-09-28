@@ -32,7 +32,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Crafting](#crafting) | [crafting session resume, CR-14 checklist](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist) |
 | [Bank and vault](#bank-and-vault) | [bank session resume, UAT checklist](../analysis/bank-vault/handoffs/session-resume.md#uat-checklist) |
 | [Mail, chat and duels](#mail-chat-and-duels) | [SS-UAT in work-packets.md](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) |
-| [Black market](#black-market) | [black-market plan](../analysis/black-market/README.md) (checklist lands with BM-07) |
+| [Black market](#black-market) | [black-market uat.md](../analysis/black-market/uat.md) |
 | [NPC AI](#npc-ai) | [NPC AI session resume, owner checklist](../analysis/npc-ai-restoration/handoffs/session-resume.md#owner-uat-checklist-colo-after-the-next-release) |
 | [Ability trees](#ability-trees) | [AT-06 in work-packets.md](../analysis/ability-trees/work-packets.md#at-06-owner-uat-colo-after-the-release) |
 | [Dialog UI](#dialog-ui) | [DU-UAT in work-packets.md](../analysis/dialog-ui-redesign/work-packets.md#du-uat) |
@@ -78,7 +78,7 @@ Read these before you start. None of them needs a new report.
 | K13 | **Stale action-bar buttons after an ability respec.** The server keeps no hotbar, so a refunded ability's button stays; pressing it shows an error. | Expected. | [ability-trees session resume](../analysis/ability-trees/handoffs/session-resume.md#open-owner-decisions) |
 | K14 | **Two client-only mail and duel cosmetics.** The unit-frame PvP indicator does not refresh live during a duel, and after a refused mail send the Send button stays grey until you press New or Reply, which clears the typed text. Both need a client patch. | Expected. | [social session resume, Q-k](../analysis/social-systems/handoffs/session-resume.md#owner-questions) |
 | K15 | **Mixing servers can empty your world list.** A client that logged in to a server with the historical cellblocks, then to one without them, can lose its whole cached world table. | Ask the owner for the repair before you continue. | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#mixing-servers-during-the-uat), issue #840 |
-| K16 | **The black market is not released to testers.** | Skip that section. | [Black market](#black-market) |
+| K16 | **The black market window is not released to testers.** Its client patch does not ship yet. | Run only the steps marked `server` in that section (the auctioneer's chat line and the GM `.bm_*` tools). | [Black market](#black-market) |
 | K17 | **All three Bankers are named "Storage Officer"**, and after a Team vault expansion, a Team vault window already open on another member keeps its old size until that member reopens it. | Tell the Bankers apart by their clothes ([Bank and vault](#bank-and-vault)). Reopen the window. | [bank session resume, Known gaps](../analysis/bank-vault/handoffs/session-resume.md#known-gaps-carried-forward) |
 | K18 | **Crafting gaps known at release.** Using a Blueprint item or a Racial Paradigm Guide prints no line (the item goes and the window changes). Buying several non-stacking components in one purchase shows one stack. A queued crafting job still finishes if you walk away from the station or give the tool away. `/showracialparadigmlevels` and the client's own `/respeccraft` do nothing useful. | Record them; not new bugs. Use `.respeccraft`. | [crafting session resume, known gaps](../analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward) |
 
@@ -134,6 +134,7 @@ The stasis room holds a row of NPCs, each for testing one system, a few seconds'
 | Storage Officer (Cellblock guard uniform) | Team Banker: opens your Team's vault; needs a Team | Ready (bank steps 15-25) |
 | Storage Officer (plain crew clothes) | Command Banker: opens your Command's vault; needs a Command | Ready (bank steps 15, 21) |
 | Sgt. Harriman | Gate Mail Clerk: sends you a test mail | Known broken (K2) |
+| Machra | Black Market auctioneer, by the exit doorway: opens the auction house | Needs client patch for the window; the chat line works on any client |
 | Common Materials Components | Crafting supplies vendor (1 naquadah each) | Ready |
 | BioMedical / Electronics / Power Systems / Materials Crafting Station | Crafting stations; stand within 5 units and open J | Ready |
 
@@ -424,9 +425,27 @@ Source: [SS-UAT in work-packets.md](../analysis/social-systems/work-packets.md#s
 
 The auction house: search, bid, buyout, create and cancel listings.
 
-**Status:** Not ready for UAT. The checklist lands with packet BM-07. The only testable thing today, the window opening at the auctioneer, needs a client-patch DLL and a patched `BlackMarket.lua` that do not ship to testers, and the server's contract fixes (BM-02) need the client patch to be seen. No steps.
+**Status:** Needs client patch. The Black Market window, and with it every search, bid and listing, needs the client patch (the patch DLL and the `BlackMarket.lua` overlay, packets BM-03 to BM-06), which does not ship to testers yet (K16). Without it, only the steps marked `server` below can run.
 
-Source: [black-market plan](../analysis/black-market/README.md).
+**Prerequisites:** a GM character for the `.bm_*` commands, and a second character on a second client for the outbid step (U8). The auctioneer is Machra, by the exit doorway of the Cellblock stasis room. Give characters cash with `.givecash`.
+
+| Step | Do | You should see | Needs |
+|---|---|---|---|
+| U0 | `.bm_seed` | "Listed 8 Black Market auction(s) from the system seller: ids A to B." | server |
+| U1 | `.bm_list` | The newest auctions, each with its `#id`, seller, price and time left | server |
+| U2 | Right-click Machra | The chat line "The auctioneer opens the Black Market. (No window? ...)"; with the patch, the window opens | server (line), patch (window) |
+| U3-U5 | Search with no filter, then `pistol` with tech competency 10-20, then page through after `.bm_seed 40` | Seeded rows with names and icons; the filters narrow them; paging keeps the total | patch |
+| U6-U10 | Create a listing, bid, outbid from the second client, buy out the 40-naquadah pistol, cancel a listing | Items and cash move at once, each row updates | patch |
+| U11-U13 | `.bm_expire <id>` on a listing with a bid, and on one without; then open both mailboxes | The GM line says sold (to whom, for how much) or returned; the item, and the seller's cash, arrive by mail from "Black Market" | server (settlement and mail), patch (to list and bid) |
+| U14-U20 | Bid too low, bid without the cash, bid on your own listing, list a 21st item, list a bound item, bid after walking away, press Watch | The window shows the refusal and nothing changes | patch |
+| U21 | Without the patch, click Machra and log out | Only the chat line; the server records that the client never answered | server |
+| U22-U23 | `.bm_expire 999999`; `.bm_seed` on a non-GM character | "no auction has id 999999"; "is a GM command" | server |
+
+The full table, with the exact expected lines, the SigNoz query for every step and the error ids, is the canonical checklist: [uat.md](../analysis/black-market/uat.md).
+
+**SigNoz:** the saved Logs Explorer view **Black Market** (`service.name = 'cimmeria-server' AND (event LIKE 'bm.%' OR scope_name LIKE '%black_market%')`), narrowed per step with `event = '<bm.event>'` and `player_id = <P>`. The definition is [black-market.view.json](../operations/signoz/black-market.view.json).
+
+Source: [black-market uat.md](../analysis/black-market/uat.md) and the [black-market plan](../analysis/black-market/README.md). Change this section and uat.md together.
 
 ## NPC AI
 

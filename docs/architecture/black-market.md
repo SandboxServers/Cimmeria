@@ -124,6 +124,7 @@ things on every call:
 - **In range.** `interact_range`, the same rule the `interact` handler
   uses: the NPC exists, is in the player's space, and is within
   `MAX_INTERACT_DISTANCE` (5 units).
+- **An auctioneer.** The NPC is `NpcInteractionType::Auctioneer` (BM-07).
 
 A refusal is `onBMError(NotAtAuctioneer)`, logged with `access=<label>`
 naming which check failed. `BMSearch` is ungated on purpose: it is
@@ -131,10 +132,16 @@ read-only and every view is scoped server-side to the caller (§7), so it
 exposes nothing a gate would protect. The server-authority-enforcer
 reviewed the gate.
 
-One known limit: `open_black_market` does not check that the NPC it binds
-is an auctioneer, because no auctioneer interaction type exists to check
-against. A chain author must bind the action only to auctioneers until
-packet BM-07 adds the content and the check.
+**Who is an auctioneer (BM-07).** `NpcInteractionType::Auctioneer` is
+derived at spawn, and only there, from `INT_Auction` on the NPC's
+**template** (`static_interaction_for_flags`). A chain's
+`set_interaction_type` changes `interaction_type_flags`, the client's
+cursor, never the derived type, so no chain can promote an NPC. The open
+runs the same `auctioneer_check` (exists, same space, in range, an
+auctioneer) before it sends `onBMOpen`; a refusal sends nothing but a chat
+line and logs `bm.open_refused reason=not_at_auctioneer` with the `access`
+label. So a chain bound to the wrong NPC cannot make it a Black Market
+terminal. The server-authority-enforcer reviewed the check.
 
 ### 4. Lifecycle: four states, one terminal transition each
 
@@ -235,7 +242,8 @@ carries, under the seller's escrow lock:
   container-18 row is gone has nothing to mail: it is logged
   `bm.escrow_missing`, a cancel is refused (`Internal`) and the sweep
   quarantines the auction (§8).
-- **A boot-seed listing** (`item_id = 0`, or the system seller) never had
+- **A boot-seed listing** (`item_id = 0` alone; since BM-07 the seller is
+  not a test, so a real player 1's listing settles through escrow) never had
   an instance, so a sale mails the buyer a new one of the listed type
   (`SystemItem::Minted`) and pays nobody; an unsold one moves nothing.
 
@@ -373,6 +381,17 @@ ever be allocated to a real account. Two `const` assertions pin that
 invariant; raising `SYSTEM_SELLER_ID` into sequence range would let a
 freshly-created player become the implicit system seller.
 
+The sequences keep ids 1 free, but an import or an operator can still put
+a real account or character there, and `ON CONFLICT DO NOTHING` would
+hide it. So `ensure_system_seller` reads the rows back (BM-07): account 1
+must be the `Black Market` account, checked before player 1 is inserted so
+a squatter's account never gains the character, and player 1 must be its
+`Black Market` character. Otherwise the seed lists nothing and logs
+`bm.seed_refused` at ERROR with a `reason` (`account_missing`,
+`account_taken`, `player_missing`, `player_taken`) and what the ids hold.
+The account is created disabled, and an older boot's enabled one is
+switched off. The GM `.bm_seed` runs the same check.
+
 Seed listings have `item_id = 0`: they never had an inventory row, so
 they are the one case where settlement mints an item, a new instance of
 the listed type mailed to the buyer, and the one case with no seller to
@@ -404,14 +423,16 @@ with the character, like the rest of its inventory.
 
 ### 11. Player entry is a content chain, not a hardcoded interaction
 
-The auctioneer is reached through the ordinary content engine: one chain
-sets the `INT_Auction` interaction bit on `player_loaded` so the prompt
-survives relog, and another fires `open_black_market` on `interact_tag`.
-The branch seeded both (chains 5030/5031) with an auctioneer NPC
-(`BlackMarket_Auctioneer`) in Castle_CellBlock. BM-01 did not port those
-seed rows: the Castle rebuild has since reassigned the branch's template
-and spawn ids (168 / 238), so the NPC, its chains and their seed guards
-are re-seeded by packet BM-07. The action handler
+The auctioneer is reached through the ordinary content engine: chain
+5030 fires `open_black_market` on `interact_tag` for
+`BlackMarket_Auctioneer`, Machra (template 305, spawn 405) in the
+Castle_CellBlock stasis room (BM-07). The branch also had a `player_loaded`
+chain that set `INT_Auction` at runtime; BM-07 seeds the bit on the
+template instead, because the bit is now the authority marker and must
+come from the seed (§3). Chain 5031 is reserved for an in-world
+auctioneer. The branch's template and spawn ids (168 / 238) collided with
+the Castle rebuild, so BM-07 used the Black Market block (305-309,
+405-409). The action handler
 (`crates/cell-content/src/cell/content/executor/black_market.rs`)
 resolves the auctioneer entity id with the same precedence
 `dialog::display` uses — chain `params["target_entity_id"]`, then the
@@ -609,8 +630,6 @@ engine decoder work.
   one property (`watchedItems: PYTHON`, an itemDefId → subscriber
   registry) has no server-side equivalent yet; packet BM-08 picks it up
   once the core loop passes UAT.
-- **The auctioneer is not type-checked.** `open_black_market` trusts the
-  chain author to bind it only to an auctioneer (§3); BM-07.
 - **Bind-on-acquire items are listable**, the same way they are
   tradeable and mailable. Bound rows are refused; items that bind on
   acquire are not bound yet while they sit in a bag. This is a systemic

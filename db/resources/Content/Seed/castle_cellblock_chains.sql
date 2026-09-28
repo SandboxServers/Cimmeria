@@ -2943,3 +2943,23 @@ VALUES
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1142, 'complete_objective', 686, '2731', '{}', 0, 0);
+
+-- ── Black Market auctioneer (BM-07) ──────────────────────────────────────────
+-- Curated. The auctioneer (spawn 405, template 305, tag
+-- 'BlackMarket_Auctioneer') stands in the stasis-room debug hub. His
+-- template's INT_Auction bit is seeded, so no chain sets it: it reaches the
+-- client with the spawn and survives a restart. Chain 5030 opens the Black
+-- Market when a player clicks him. `open_black_market` itself refuses any NPC
+-- that is not a seeded auctioneer, and answers every click with a chat line
+-- (the stock client drops onBMOpen until the client patch ships). Chain 5031
+-- is reserved for a second, in-world auctioneer.
+
+-- Chain 5030: click the auctioneer -> open the Black Market.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (5030, 'Castle_CellBlock - click the Black Market auctioneer: open the Black Market', 'space', 12, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (5030, 'interact_tag', 'BlackMarket_Auctioneer', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (5030, 'open_black_market', NULL, NULL, '{}', 0, 0);

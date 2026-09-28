@@ -100,6 +100,11 @@ pub enum NpcInteractionType {
     /// Banker — opens the vault of `scope` (`onVaultOpen` for `Personal`).
     /// Derived at spawn from `INT_BANKER` plus `entity_templates.vault_scope`.
     Banker { scope: VaultScope },
+    /// Black Market auctioneer. Derived at spawn from `INT_AUCTION` on the
+    /// template, so only seed data makes one: the `open_black_market`
+    /// action and cell methods 62-64 refuse any other NPC (BM-07). The
+    /// window itself is opened by the auctioneer's `interact_tag` chain.
+    Auctioneer,
 }
 
 /// An item in a dead NPC's loot list, ready for display to players.

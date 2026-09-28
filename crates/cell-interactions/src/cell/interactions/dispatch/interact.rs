@@ -5,6 +5,8 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::cell_entity::NpcInteractionType;
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
+use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -238,6 +240,40 @@ pub async fn handle_interact(
                 space_mgr,
             )
             .await;
+            None
+        }
+        Some(NpcInteractionType::Auctioneer) => {
+            // The auctioneer's `interact_tag` chain opens the Black Market
+            // (`open_black_market`) and claims the click before this
+            // dispatch runs. Reaching here means no chain answered: none is
+            // bound to this auctioneer's tag, or its conditions failed.
+            let id = space_mgr.player_identity(entity_id);
+            tracing::warn!(
+                event = "bm.open_unwired",
+                reason = "auctioneer_without_chain",
+                entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
+                target_entity_id,
+                "interact: auctioneer clicked but no interact_tag chain opened the Black \
+                 Market -- bind an open_black_market chain to its tag"
+            );
+            let line = "The auctioneer is not trading right now.";
+            let sent = tx
+                .send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: ON_PLAYER_COMMUNICATION,
+                    args: serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, line),
+                })
+                .await;
+            if sent.is_err() {
+                tracing::warn!(
+                    event = "bm.feedback_send_failed",
+                    entity_id,
+                    reason = "base_channel_closed",
+                    "auctioneer feedback line not queued"
+                );
+            }
             None
         }
         Some(NpcInteractionType::Loot) => {

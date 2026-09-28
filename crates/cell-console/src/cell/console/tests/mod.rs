@@ -13,6 +13,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 #[cfg(test)]
+mod bm07_black_market;
+#[cfg(test)]
 mod bookmark;
 #[cfg(test)]
 mod bv02_bank;

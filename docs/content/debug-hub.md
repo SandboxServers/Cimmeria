@@ -7,14 +7,14 @@ last_updated: 2026-09-27
 
 # Stasis-Room Debug Hub
 
-Twelve NPCs in the Castle_CellBlock stasis room let a tester exercise one server
+Thirteen NPCs in the Castle_CellBlock stasis room let a tester exercise one server
 system each from a single spot. A second group along the opposite wall, four
 crafting stations and a crafting supplies vendor, covers crafting (see
 [Crafting corner](#crafting-corner)). The stasis room is where every new character
 wakes up, so the hub is reachable a few seconds after character creation, with
 no travel and no mission state.
 
-All twelve are ordinary seeded spawns. Every player sees them. This was an owner
+All thirteen are ordinary seeded spawns. Every player sees them. This was an owner
 decision (2026-09-26): `spawnlist` has no dev or enabled column, and the owner
 chose visible-to-all over gating. Compare Harset packet H13, which deleted the
 old debug NPCs (templates 23 and 25) from the Harset gate plaza because they
@@ -44,6 +44,7 @@ a new character appears.
 | 471 | 371 | `DebugHub_TeamBanker` | Storage Officer | (-327.65, 73.47, -228.09) | -1.4294 |
 | 472 | 372 | `DebugHub_CommandBanker` | Storage Officer | (-325.84, 73.47, -224.74) | -1.9148 |
 | 490 | 390 | `DebugHub_MailClerk` | Sgt. Harriman | (-324.11, 73.47, -227.84) | -1.5123 |
+| 405 | 305 | `BlackMarket_Auctioneer` | Machra | (-328.48, 73.47, -222.52) | -2.3829 |
 
 The pet trainer (pets campaign PT-07) takes the next slot on the line after the
 crate, about 2.1 units in from the room's B-C wall. Its ids come from the pets
@@ -80,6 +81,14 @@ and from the mail clerk, 3.8 from the Command Banker, 5.0 from the Command
 registrar and 6.6 from the respawner. The Command Banker is 3.55 from the mail
 clerk, 6.4 from the Storage Officer, 3.5 from the C-D exit wall and 9.0 from
 the respawner. Their ids come from the bank block.
+
+The Black Market auctioneer (BM-07) stands on the C-D exit wall, the only
+wall with room left: 2.8 units in from it and 12.8 along it from corner D,
+beside the doorway rather than in it. That is 3.45 units from the Command
+Banker, 5.6 from the Team Banker, 6.9 from the mail clerk and 8.0 from the
+respawner. His tag is `BlackMarket_Auctioneer`, not `DebugHub_*`, because the
+hub's staged dispatch test counts that prefix. His ids come from the Black
+Market block (templates 305-309, spawns 405-409).
 
 The names are monikers the client PAK already ships. A new `texts.sql` id
 cannot render, so the templates reuse existing ones. No shipped moniker says
@@ -415,6 +424,39 @@ and take the naquadah and the slappacks.
 - Deviation from plain intent: none. The cooldown is per character, not per
   account, because mail is per character.
 
+### Black Market auctioneer (template 305)
+
+Right-click Machra, by the exit doorway, to open the Black Market (the auction
+house). Every click gets a chat line: "The auctioneer opens the Black Market.
+(No window? The Black Market needs the Cimmeria client patch.)" With the client
+patch, the Black Market window opens; without it, the line is all you see.
+
+- Tests the auctioneer open path: chain 5030 (`interact_tag` on
+  `BlackMarket_Auctioneer`) runs `open_black_market`, which sends `onBMOpen`
+  (client method 90) and records the Black Market session that the trade
+  methods 62-64 are checked against.
+- The template carries `INT_Auction` (4), which gives the client its cursor
+  and, at spawn, makes the NPC an `NpcInteractionType::Auctioneer`. That is
+  the Black Market's authority marker (BM-07): `open_black_market` and the
+  trade methods refuse any NPC that is not one, so a chain bound to another
+  NPC opens nothing ("Nobody here runs the Black Market."). Only a seed row
+  can make an auctioneer; a chain's `set_interaction_type` changes the cursor,
+  not the role. Template 305 is the only template with the bit.
+- Nothing else on the template answers a click before the chain: no trainer
+  list, no vendor lists or bits, no dialog. He is faction 1 and cannot die; a
+  death would replace the role with a loot window until the server restarts.
+- The name is the client's moniker 7133, "Machra", the Tollana Black Market
+  trader; no shipped moniker says "Auctioneer". The body is the old
+  `feat/571` auctioneer's, Nerus's robes.
+- To fill the house or settle an auction without waiting, a GM types
+  `.bm_seed [count]`, `.bm_list` and `.bm_expire <auctionId>`
+  ([commands.md](../commands.md#command-families)). The UAT checklist is
+  [black-market/uat.md](../analysis/black-market/uat.md).
+- The ids come from the Black Market block (templates 305-309, spawns
+  405-409; 306-309 and 406-409 stay reserved), and chain 5031 is reserved for
+  an in-world auctioneer. None is seeded: the client carries no NPC
+  placements, and the reconstructed spawn list has no auctioneer anywhere.
+
 ### Team and Command registrars (templates 330 and 331)
 
 Right-click the Team registrar to found a Team, or the Command registrar to
@@ -453,7 +495,7 @@ opens with you as its leader, and a line says the organization was founded.
 | Duels | A duel needs a second player. Alone, run `sparbot`, a second account that accepts every challenge and forfeits after a set time ([wireclient.md](../architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing)). As a GM, `.duel_status [name]` shows a duel's stage and `.duel_end <name>` ends it. The duel checks are SS-UAT steps 11-13. |
 | Bank (partly) | The Banker (template 370) opens the personal vault, and the Team and Command Bankers (371 and 372) open the vaults of a character's Team and Command. A new character belongs to neither, so found one first (see [Team and Command Bankers](#team-and-command-bankers-templates-371-and-372)); withdraw permissions and the fan-out need a second character. There is no Squad vault Banker. The treasury needs no Banker: it is the cash control in the Team or Command vault window (BV-08). The Team vault purchase is the GM `.orgvaultexpand`, paid from the treasury, because the Banker's Expand dialog is quarantined (BV-09). The owner's checks are the bank UAT steps 15-25 ([session resume](../analysis/bank-vault/handoffs/session-resume.md#uat-checklist), [gap-analysis.md §23](../gap-analysis.md)). |
 | Guilds / organizations (partly) | The registrars (templates 330 and 331) found a Team or a Command. Inviting, ranks, texts and organization chat need a second player and later organizations packets ([docs/analysis/organizations/](../analysis/organizations/README.md), [gap-analysis.md §23](../gap-analysis.md)). |
-| Black market | Known missing on `main` ([gap-analysis.md §25](../gap-analysis.md)). |
+| Black market (partly) | The auctioneer (template 305) opens the Black Market, but the window, and every search, bid and listing, needs the client patch (packets BM-03 to BM-06). A GM fills the house and settles auctions with `.bm_seed`, `.bm_list` and `.bm_expire`. Outbid and two-party trades need a second player. Checklist: [black-market/uat.md](../analysis/black-market/uat.md). |
 | Crafting verbs | The [crafting corner](#crafting-corner) gives stations and supplies. Whether each verb works depends on the crafting campaign's progress ([gap-analysis.md §19](../gap-analysis.md)). |
 | Pets (partly) | The pet trainer (template 360) sells the summon abilities, but a pet needs a tester, not a hub NPC: summon with `.pet summon 2826` or the ability (`.giveability 1643`, `1644` or `1645` for the Jaffa, Lo'taur or Prime), then walk, fight and change stance. Every pets-campaign packet has merged; the owner's UAT checklist is in [the pets session resume](../analysis/pets/handoffs/session-resume.md) ([docs/analysis/pets/](../analysis/pets/README.md), [gap-analysis.md §28](../gap-analysis.md)). |
 | Player-to-player trade | Needs two players. An NPC cannot be a trade partner ([gap-analysis.md §22](../gap-analysis.md)). |
@@ -462,15 +504,17 @@ opens with you as its leader, and a line says the organization was founded.
 
 | What | Where |
 |---|---|
-| Templates 300-304, 330, 331, 360, 370-372, 390 | `db/resources/Entities/Seed/entity_templates.sql` |
-| Spawns 400-404, 430, 431, 450, 470-472, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
+| Templates 300-305, 330, 331, 360, 370-372, 390 | `db/resources/Entities/Seed/entity_templates.sql` |
+| Spawns 400-405, 430, 431, 450, 470-472, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
 | Trainer list 350 | `db/resources/Abilities/Seed/trainer_ability_lists.sql`, `trainer_abilities.sql` |
 | Chains 7001-7005, 7010-7011 | `db/resources/Content/Seed/debug_hub_chains.sql` |
+| Chain 5030 (the auctioneer) | `db/resources/Content/Seed/castle_cellblock_chains.sql` |
 | Dialogs 60100-60104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `QUARANTINED_DIALOG_OVERRIDES` (not served) |
 | The clerk's mail and cooldown | `mail/content.rs` in `crates/base-methods`; table `db/sgw/Players/Tables/sgw_player_content_cooldown.sql` |
 | Loot table 3 (loot rows 14-23) | `db/resources/Loot/Seed/` |
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
-| Vendor and Banker derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
+| Vendor, Banker and Auctioneer derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
+| The auctioneer check | `auctioneer_check` in `crates/cell-world/src/cell/black_market.rs` |
 | Crafting corner: templates 310-314, spawns 410-414, buy list 310 (rows 3101-3124) | `entity_templates.sql`, `spawnlist.sql`, `db/resources/Items/Seed/item_lists.sql` and `item_list_items.sql` |
 | Registrar recognition | `registrar_type` in `crates/cell-interactions/src/cell/interactions/org_registrar.rs` |
 
@@ -478,7 +522,8 @@ Every seed row is commented `NEW CONTENT (debug hub)`, except the pet
 trainer's, which are commented `Pets campaign, PT-07`, the Banker's,
 commented `Bank and Vault campaign, BV-04`, the Team and Command Bankers',
 commented `BV-10a`, and the mail clerk's,
-commented `Social-systems campaign, SS-U3`, and the registrars',
+commented `Social-systems campaign, SS-U3`, the auctioneer's, commented
+`Black Market campaign, BM-07`, and the registrars',
 commented `Organizations campaign, ORG-05`. The `trainer_abilities`
 rows carry no comment: that file is regenerated by
 `tools/ability_trees/generate_seed.py`, which keeps other lists' rows but not
@@ -500,7 +545,9 @@ hub, crafting)`.
 | `cell-content` `chain_replay_tests/debug_hub.rs` | Chains 7001-7005 resolve and execute: the `onDialogDisplay` speakers, the `StartMinigame` message, and both chat lines |
 | `cell-content` `chain_replay_tests/debug_hub_mail_clerk.rs` | Chain 7010 opens 60104 as the clerk; chain 7011 sends the base exactly one `ContentSystemMail` with the seeded contents and cooldown |
 | `base-methods` `mail/tests/content_live.rs` | One mail per press, refused with the wait inside 10 minutes; the window outlives the mail and ends on time; the claim rolls back with a refused mail; two simultaneous presses write one mail |
-| `cell-world` `tests/npc_spawn.rs` | Any `INT_Vendor*` bit derives `Vendor`; no other bit derives anything |
+| `cell-world` `tests/npc_spawn.rs` | Any `INT_Vendor*` bit derives `Vendor`, `INT_Auction` derives `Auctioneer` (below the Banker, above the vendor bits); no other bit derives anything |
+| `cell-catalog` `spawner/tests/live_db_debug_auctioneer.rs` | Template 305 is an auctioneer and nothing else: exactly `INT_Auction`, a shipped name, a body, no trainer or vendor list, not faction 10; it is the only `INT_Auction` template; spawn 405 is its one placement, tagged for chain 5030, inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
+| `cell-content` `chain_replay_tests/black_market_auctioneer.rs` | Spawned from its real row, the auctioneer is an `Auctioneer`; clicking it runs chain 5030, which sends `onBMOpen` naming him, the chat line and a session; the same chain at the dialog NPC opens nothing |
 | `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The quarantined overrides of 60100, 60101 and 60104 and the dialog seed agree screen for screen and button for button; `dialog_overrides/mod.rs` `quarantined_dialogs_are_not_served` fails if one is served again without lifting the quarantine |
 | `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001, 7004 and 7010 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
 | `cell-catalog` `spawner/tests/live_db_crafting_hub.rs` | Stations carry all four craft bits and no interaction bit, with the client's station monikers; the vendor sells only list 310; the crafting spawns stand inside Region1, on the floor, clear of the respawner and of every other spawn in the room; list 310 is exactly the supplies, each a real item at 1 naquadah and no item cost, and covers the UAT recipes |

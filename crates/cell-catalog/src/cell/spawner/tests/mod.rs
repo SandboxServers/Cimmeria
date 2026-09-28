@@ -33,6 +33,10 @@
 //! - [`live_db_pet_trainer`]: live-DB guards for the debug hub's pet trainer
 //!   (pets campaign PT-07): template 360, spawn 450 in the stasis room, and
 //!   trainer list 350 offering the Goa'uld pet summons.
+//! - [`live_db_debug_auctioneer`]: live-DB guards for the debug hub's Black
+//!   Market auctioneer (BM-07): template 305 is an auctioneer and nothing
+//!   else, the only `INT_AUCTION` template, and spawn 405 stands in the
+//!   stasis room clear of every other NPC.
 //! - [`live_db_debug_banker`]: live-DB guards for the debug hub's Banker
 //!   (bank-vault BV-04): template 370 is a personal Banker and nothing else,
 //!   and spawn 470 stands in the stasis room clear of every other NPC.
@@ -53,6 +57,7 @@ mod live_db_ability_animation_links;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;
+mod live_db_debug_auctioneer;
 mod live_db_debug_banker;
 mod live_db_debug_hub;
 mod live_db_debug_org_bankers;
