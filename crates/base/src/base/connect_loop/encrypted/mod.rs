@@ -22,6 +22,7 @@ use cimmeria_mercury::packet::{parse_incoming, ParsedPacket};
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::cooked_data::{handle_element_data_request, handle_version_info_request};
+use super::super::cooked_sync;
 use super::super::helpers::destroy_client_entities;
 use super::super::resources::ResourceCache;
 use super::super::world_entry::handle_enable_entities;
@@ -265,9 +266,9 @@ async fn dispatch_client_bundle(
 
         // Dispatch message.
         //
-        // The client cache methods are protocol-level messages that keep the
-        // same wire IDs both at character select and in-world:
+        // At character select the client cache methods come first:
         //   0xC0=versionInfoRequest, 0xC1=elementDataRequest
+        // In-world the same IDs are SGWPlayer.chatJoin / chatLeave.
         //
         // Account base methods start after those protocol IDs:
         //   0xC2=logOff, 0xC3=createCharacter, 0xC4=playCharacter,
@@ -466,11 +467,17 @@ async fn dispatch_client_bundle(
                 }
             }
 
-            // ── Protocol-level cooked-data messages ──
+            // ── Account-phase cooked-data messages ──
             //
-            // These are not part of the active entity's base-method namespace.
-            // The client sends them both before and after entering the world.
-            0xC0 => {
+            // 0xC0/0xC1 are the ClientCache methods only while the Account
+            // entity is active (character select). Once the player entity
+            // exists they are SGWPlayer.chatJoin / chatLeave (Communicator
+            // indices 0 and 1) and fall through to the base-method dispatch
+            // below. Routing them here in-world read a chatJoin's WSTRING
+            // (length, "ch...") as a category and version, and answered it
+            // with an InvalidateAll that emptied category 16 on every login
+            // (#840).
+            0xC0 if !cooked_sync::in_world(connected, addr) => {
                 handle_version_info_request(
                     transport,
                     addr,
@@ -481,7 +488,7 @@ async fn dispatch_client_bundle(
                 )
                 .await?;
             }
-            0xC1 => {
+            0xC1 if !cooked_sync::in_world(connected, addr) => {
                 handle_element_data_request(
                     transport,
                     addr,
@@ -516,6 +523,7 @@ async fn dispatch_client_bundle(
                     entity_manager,
                     cell_tx,
                     entity_to_addr,
+                    resource_cache,
                 )
                 .await?;
             }
@@ -650,6 +658,8 @@ fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
 
 mod decrypt_reject;
 
+#[cfg(test)]
+mod cache_routing_tests;
 #[cfg(test)]
 mod decrypt_reject_tests;
 #[cfg(test)]

@@ -18,7 +18,7 @@ So when you want to introduce a new client-visible step — for instance, "Equip
 1. **Rebuild `CookedDataMissions.pak`** with the new XML and ship it to every player. Operationally awful: every existing install needs the new artifact, and our PAKs are on the QA-build path documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md), which we don't want to fork.
 2. **Patch the entries in-memory on the server** and lean on the existing cooked-data wire path (`versionInfoRequest` → `onVersionInfo` → `resourceFragment`) to push the patched XML to the client at handshake time. This is what Cimmeria does.
 
-Option 2 works because the protocol has always supported per-key cache invalidation; we just hadn't been using it.
+Option 2 works because the server can bump a category's version and push entries the client never asked for; since #840 a bumped category is resynced in full.
 
 ## How the handshake works
 
@@ -27,38 +27,64 @@ The client owns two caches for cooked data:
 - **The bundled PAK** (`SourceCache.en-us/CookedDataMissions.pak`) — read-only, shipped with the client install.
 - **The runtime cache** (`Documents/My Games/Firesky/SGWGame/Cache.en-US/`) — writable, populated from server pushes and consulted before falling back to the bundled PAK.
 
-On every connection, the client asks the server for each category's current version. The server replies with an `onVersionInfo` message that carries an `InvalidKeys` array; for each named key the client drops its runtime-cache entry and waits for the server to push a `resourceFragment` replacement. Verified by Ghidra decomp of `ServerConnection::onVersionInfo` (`FUN_00449460`).
+On every connection, the client asks the server for each category's current version (at character select). Because the patched categories' versions are bumped by a content hash, a client holding the shipped category sees a mismatch, and the server resyncs the whole category: every entry, patched ones included, then the served version. The client does not fetch anything itself; it waits for the pushes.
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Server
-    Note over Server: PAK loaded at startup<br/>mission_overrides applied<br/>metadata bumped by content hash
-    Client->>Server: versionInfoRequest(category=3, client_version)
+    Note over Server: PAK loaded at startup<br/>overrides applied<br/>metadata bumped by content hash
+    Client->>Server: versionInfoRequest(category, client_version)
     alt client_version == server_version
-        Server-->>Client: onVersionInfo(version, invalidate_all=false, InvalidKeys=[], RequiredUpdates=0)
+        Server-->>Client: onVersionInfo(server_version, invalidate_all=false, RequiredUpdates=0)
         Note over Client: Cache hit; no further traffic
-    else client_version != server_version<br/>and category has scoped overrides
-        Server-->>Client: onVersionInfo(version, invalidate_all=false,<br/>InvalidKeys=[622, 641], RequiredUpdates=N)
-        Note over Client: Drop _622, _641 from runtime cache;<br/>do NOT issue elementDataRequest
-        Server-->>Client: resourceFragment(_622, patched XML)
-        Server-->>Client: resourceFragment(_641, patched XML)
-        Note over Client: Runtime cache repopulated;<br/>mission UI reads patched steps
-    else client_version != server_version<br/>and no scoped overrides
-        Server-->>Client: onVersionInfo(version, invalidate_all=true, InvalidKeys=[], RequiredUpdates=0)
-        Note over Client: Drop entire category and persist it empty;<br/>no lazy fetch follows (2026-09-20 Kismet wipe)
+    else client_version != server_version
+        Server-->>Client: onVersionInfo(!server_version, invalidate_all=true, RequiredUpdates=0)
+        Note over Client: Delete every entry of the category;<br/>stamp the placeholder version
+        Server-->>Client: resourceFragment x N (every entry, paced)
+        Note over Client: Each entry written as it arrives;<br/>a lookup of one not yet here sends elementDataRequest
+        Client->>Server: elementDataRequest(category, key)
+        Server-->>Client: resourceFragment (that entry, next, ahead of the stream)
+        Server-->>Client: onVersionInfo(server_version, invalidate_all=false, RequiredUpdates=0)
+        Note over Client: Holds exactly the server's category;<br/>next login matches
     end
 ```
 
-The three-way reply is what makes per-mission patching work without nuking the rest of the client's cooked-data cache. See `crates/base-session/src/base/cooked_data.rs:53-71` for the response-shape decision in code and `crates/wire/src/mercury/protocol/resources.rs:80-113` for the `build_version_info` encoder.
+`VersionReply::decide` (`crates/base-session/src/base/cooked_sync/decision.rs`) makes the decision and the per-session resync task (`crates/base-session/src/base/cooked_sync/task.rs`) sends the resync; `build_version_info` in `crates/wire/src/mercury/protocol/resources.rs` is the encoder.
 
-### Why the server pushes proactively
+### Why every mismatch is a full resync
 
-The first version of the fix only invalidated; it didn't push. Symptom in dev: the runtime cache had `MetaData` advanced and `_622` / `_641` deleted, but the client never issued `elementDataRequest` for them — it was waiting for the server to push, because that's how the BigWorld client cache reload path works for `InvalidKeys`. Result: missions stopped being granted on subsequent logins because the catalog row was gone.
+`versionInfoRequest` carries only a version, so the server cannot tell which entries the client holds. The client's `onVersionInfo` handler (`0x00441630`, re-decompiled 2026-09-28) deletes every entry of the category from its writable cache PAK when `InvalidateAll` is set, stamps `Version` into `MetaData` before any entry arrives, and never fetches what it dropped. So the only way to make the client hold exactly the server's category (nothing extra, nothing missing, nothing stale) is to delete everything and push everything (#840).
 
-`push_overridden_elements` (`crates/base-session/src/base/cooked_data.rs:133-199`) ships one `resourceFragment` per InvalidKey immediately after the `onVersionInfo` reply. `RequiredUpdates` on the version-info packet is set to the InvalidKeys count so the client knows how many fragments to expect.
+Before #840 a category with an override list got a per-key reply (just the overridden ids) and every other category got `invalidate_all = true` with nothing pushed. The second branch emptied every client's Kismet sequence table on 2026-09-20 (#754), and it emptied category 16 on every login, because in-world `chatJoin` (`0xC0`) was being read as a `versionInfoRequest` (see [Routing](#0xc00xc1-are-cache-messages-only-at-character-select)). The per-key reply also left anything else the client held from another build in place.
 
-The fix is **self-healing**: a client left in a previously-broken state (entries deleted, MetaData advanced past the patched value) will mismatch on its next handshake, get the same `InvalidKeys` set, and receive the proactive push. No manual cache delete required on the client side.
+Five details keep the resync safe:
+
+- **Placeholder version first, real version last.** The opening reply stamps the bitwise NOT of the served version, and the closing reply, queued behind every entry on the same reliable channel, stamps the real one. A client that disconnects part-way keeps the placeholder, sees a mismatch at its next login, and resyncs again.
+- **`RequiredUpdates = 0`, so misses are asked for.** Each per-category request function in the client sends `elementDataRequest` only while the category's `RequiredUpdates` (`ServerSource+0x48`) is 0 (`0x00cfe060`, `0x00d20150`, … one per category). The lookup does not block: it returns nothing and asks, and the entry is written when it arrives, so the next lookup hits.
+- **Misses jump the stream.** `elementDataRequest` (`0xC1` at character select, SGWPlayer `0xD5` in-world) is served from the server's category as the very next transfer on the session's task. Unknown categories and keys are refused, and a session is rate-limited: a bucket of 100, 50 a second, at most 256 waiting. Refusals log a throttled WARN.
+- **Paced through the reliable window.** The resync task never lets more than 24 reliable packets be outstanding on the session (`SYNC_IN_FLIGHT_BUDGET`, the 32-slot TX window minus 8 slots left for game traffic), waiting for acks before it sends more. It runs on its own task per session, so the receive loop and other players never wait on it.
+- **World entry waits only for the categories with no miss path.** The client has a request function for categories 1-11, 13, 14, 15 and 19 (the `Event_NetOut_elementDataRequest` constructor `0x00cfdeb0` has one caller per category) and none for 12, 16, 17, 18, 20 or 21. Those six are held (`HELD_CATEGORIES`): 12 because `onClientMapLoad` needs the world table at map load, and the other five because an entry they look up early could never be recovered. They total about 230 entries, under a second. The held categories stream first, then missions, dialogs and items, and TextStrings last; everything but the held set keeps streaming after world entry. The stock client shows nothing while Play waits, which is why the wait is kept this short.
+
+How long a resync takes. The client acks about every 100 ms while it receives (colo SigNoz, 2026-09-28), so a resync moves about 24 packets per 100 ms, roughly 240 packets or 330 KB a second:
+
+| Category | Entries | Packets | Streams in | Holds Play? |
+|---|---:|---:|---:|---|
+| Held set (12, 16, 17, 18, 20, 21) | ~225 | ~230 | < 1 s | **yes** |
+| Kismet sequences (1) | 1,975 | 1,977 | 8 s | no |
+| Missions (3) | 1,040 | 2,272 | 9 s | no |
+| Dialogs (5) | 5,405 | 5,938 | 25 s | no |
+| Items (4) | 6,059 | 6,679 | 28 s | no |
+| Text strings (10) | 29,126 | 29,128 | 2 min | no |
+| All 21 categories | 55,000+ | 57,700+ | 4 min | held set only |
+
+So the longest Play wait is the held set, under a second. An entry the player needs before its category has streamed is asked for and arrives next, one round trip plus at most a window's worth of packets already in flight (about 100-200 ms at the colo's ack cadence).
+
+A mismatch happens when a client first meets a build whose served version it does not hold: a changed override bumps its category's version, so every client resyncs that one category once. Moving between builds resyncs each differing category on every switch.
+
+### `0xC0`/`0xC1` are cache messages only at character select
+
+`versionInfoRequest` and `elementDataRequest` are `0xC0` and `0xC1` in the Account entity's method space. In-world the same ids are `SGWPlayer.chatJoin` and `chatLeave` (Communicator indices 0 and 1), and the ClientCache methods are `0xD4`/`0xD5`; in-world misses arrive as `0xD5`. The encrypted receive loop sends `0xC0`/`0xC1` to the cache handlers only while the session has no player entity. Before #840 it sent them there in both phases, so the client's login rejoin of its default user channels (`channel-chat`, `channel-roleplay`, `channel-alliance`) was read as a request for category 12 or 16 at version `0x00680063` (the UTF-16 "ch" after the string length), and category 16 got an `InvalidateAll` with nothing pushed on every login (colo SigNoz, 2026-09-28). That reply also went out as `0x80` addressed to the player entity, which in-world is SGWPlayer client method 0, not `onVersionInfo`.
 
 ## Where each piece lives
 
@@ -68,10 +94,11 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 | Apply patches at PAK load + bump metadata | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_mission_overrides` |
 | Content-derived `MetaData` bumps, one per category | `crates/resources/src/base/resources/metadata_bump.rs` | `compute_metadata_bump`, `compute_world_info_metadata_bump`, … |
 | Track which element IDs were patched | `crates/resources/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
-| Three-way `onVersionInfo` reply | `crates/base-session/src/base/cooked_data.rs:21-123` | `handle_version_info_request` |
-| Push patched XML after the reply | `crates/base-session/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
-| Wire encoder for `onVersionInfo` with `InvalidKeys` | `crates/wire/src/mercury/protocol/resources.rs:80-113` | `build_version_info` |
-| Wire-format guard | `crates/wire/src/mercury/protocol/tests.rs:159-171` | `version_info_per_key_invalidation_round_trips_through_encoder` |
+| `onVersionInfo` decision | `crates/base-session/src/base/cooked_sync/decision.rs`, `crates/base-session/src/base/cooked_data.rs` | `VersionReply::decide`, `handle_version_info_request` |
+| Full-category resync, misses, held set, stream order | `crates/base-session/src/base/cooked_sync/` | `start_resync`, `serve_miss`, `HELD_CATEGORIES`, `rank`, `defer_until_synced` |
+| Wire encoder for `onVersionInfo` | `crates/wire/src/mercury/protocol/resources.rs` | `build_version_info` |
+| Wire-format guard | `crates/wire/src/mercury/protocol/tests.rs` | `version_info_invalid_keys_payload_layout_is_byte_exact` |
+| Resync guards (convergence, pacing, disconnect, relog, telemetry) | `crates/base-session/src/base/cooked_sync/tests/` | `no_category_is_ever_invalidated_without_being_repopulated`, … |
 | Dialog full regeneration | `crates/resources/src/base/dialog_overrides/mod.rs` | `DialogOverride`, `DialogScreen`, `DialogButton`, `DIALOG_OVERRIDES`, `generate_dialog_xml` |
 | Dialog patch of a shipped entry | `crates/resources/src/base/dialog_overrides/patch.rs` | `DialogPatch`, `ButtonPlan`, `apply_dialog_patch`, `apply_dialog_patches` |
 | Per-zone dialog patch tables | `crates/resources/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES` |
@@ -145,7 +172,7 @@ Two design points worth calling out:
 - **`& 0xFFFF`** keeps the bump small. The QA-build `CookedDataMissions` MetaData is `7538`; bumping by up to 65535 still leaves the value far below the next category's range and well within `u32`.
 - **`| 0x1`** guarantees the bump is non-zero. A zero bump would leave `MetaData` unchanged across server starts — the client would never see a mismatch and the patched XML would never reach it. Belt-and-braces against a hash that happens to land on a multiple of 65536.
 
-Edit either an override's `mission_id` or `injected_steps_xml` and the hash changes, the bump changes, the client mismatches, and the per-key handshake fires. Same content across two starts → same bump → same MetaData → no churn.
+Edit either an override's `mission_id` or `injected_steps_xml` and the hash changes, the bump changes, the client mismatches, and the category is resynced. Same content across two starts → same bump → same MetaData → no churn.
 
 ## Dialog overrides
 
@@ -215,7 +242,7 @@ Field naming follows [docs/architecture/negative-logging-convention.md](negative
 
 4. Add the row to the zone's `patch_seed_agreement_<zone>.rs` guards, which check the plan against the seed and run it against the committed `data/cache/CookedDataDialogs.pak`. The patcher keeps the original entry when a plan cannot apply, so without that guard a typo'd dialog or screen id leaves no failing test.
 
-The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). The Castle table carries three `OnlyOn` rows (DU-02b: 2573, 5861 and 2576 keep one button, on their final screen, so the mission 701 briefings fire their chains when read to the end). A patch plan participates in the metadata bump, so editing one re-invalidates that entry on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
+The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). The Castle table carries three `OnlyOn` rows (DU-02b: 2573, 5861 and 2576 keep one button, on their final screen, so the mission 701 briefings fire their chains when read to the end). A patch plan participates in the metadata bump, so editing one resyncs the dialogs category on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
 
 ## World info overrides (category 12)
 
@@ -223,20 +250,20 @@ The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-on
 
 The historical CellBlock worlds (1201–1207, [Historical CellBlocks](../analysis/historical-cellblocks/README.md)) are the first new worlds. `WORLD_INFO_OVERRIDES` builds their seven entries from the wire crate's `HISTORICAL_CELLBLOCKS` table, so the ids, world names and client maps cannot drift from what `onClientMapLoad` sends. Every entry is a full regeneration, like a new Kismet sequence, so nothing can fail to apply.
 
-A client holding the shipped table gets `onVersionInfo(invalidate_all = false, RequiredUpdates = 7, InvalidKeys = [1201..1207])` and then seven single-fragment `resourceFragment` pushes. Every shipped world is served untouched. `base::version_info_tests` in `cimmeria-base-session` pins that exchange on the wire against the committed PAKs.
+A client holding the shipped table (`MetaData` 5959) is resynced: it receives all 98 world entries, the seven historical worlds among them, then the served version. Every shipped world is served untouched. `world_info_resync_converges_on_the_server_table` in `cimmeria-base-session` (`base::cooked_sync::tests::resync`) pins that exchange on the wire against the committed PAKs.
 
 The generator reproduces the shipped QA-build shape byte for byte: the five SOAP namespace declarations; attributes in the order `Flags`, `MinPerDay`, `MinToRealMin`, `ClientMap`, `World`, `WorldID`; and an explicit end tag. `generated_world_info_xml_matches_shipped_entries` checks it against the real `_12` (stock CellBlock) and `_1` (CombatSim, whose `ClientMap` differs from its `World`) entries.
 
 ### A bumped category must keep its override list everywhere
 
-Once a client takes a server's bumped version, it holds that version. If it then connects to a server whose category has **no** override list (an older build, or the colo before the change deploys), that server sees a version it does not hold and answers `invalidate_all = true` with nothing pushed. The client empties the whole category and persists the empty table, exactly as it did for Kismet sequences on 2026-09-20.
+Once a client takes a server's bumped version, it holds that version. If it then connects to a server whose category has **no** override list (an older build, or the colo before the change deploys), that server sees a version it does not hold. A server with #840 resyncs the whole category, so the client ends up with that server's table. A build from before #840 answers `invalidate_all = true` with nothing pushed, and the client empties the whole category and persists the empty table, exactly as it did for Kismet sequences on 2026-09-20. No change to the newer server can prevent that: the older build is the one doing the wiping.
 
 So:
 
-- Never remove an override list from a category once it has shipped. Changing its content is fine: the new bump takes the per-key path.
-- Expect this when one client moves between servers on different builds. For category 12, a GM who tested the historical worlds against a newer local server and then logs in to an older server loses the world table. The fix is to copy the client's pristine `SourceCache.en-us\CookedWorldInfo.pak` over `Documents\My Games\Firesky\SGWGame\Cache.en-US\CookedWorldInfo.pak` with SGW.exe closed; the next login to a server with the overrides pushes 1201–1207 again.
+- Never remove an override list from a category once it has shipped while servers older than #840 are still in use. Changing its content is fine: the new bump resyncs the category.
+- Expect this when one client moves between servers on different builds and one of them predates #840. For category 12, a GM who tested the historical worlds against a newer local server and then logs in to an older server loses the world table. The fix is to copy the client's pristine `SourceCache.en-us\CookedWorldInfo.pak` over `Documents\My Games\Firesky\SGWGame\Cache.en-US\CookedWorldInfo.pak` with SGW.exe closed; the next login to a server with the overrides pushes 1201–1207 again. A login to any server from #840 on repairs it without the copy.
 
-The server-side fix, answering a no-override mismatch by pushing the whole category instead of nothing, is not built.
+The server-side fix shipped in #840: every mismatch is now a full resync (see [Why every mismatch is a full resync](#why-every-mismatch-is-a-full-resync)). It protects every build from then on; builds that predate it still wipe. The repair above is also in [Troubleshooting](../troubleshooting.md#a-cooked-data-category-went-empty-after-logging-in-to-another-server).
 
 ## Adding a new override
 

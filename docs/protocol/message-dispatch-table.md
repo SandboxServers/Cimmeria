@@ -265,6 +265,8 @@ These are the entity method IDs used by the Cimmeria server, derived from `.def`
 | 0xC0 | 0 | versionInfoRequest | C->S |
 | 0xC1 | 1 | elementDataRequest | C->S |
 
+These two are the Account entity's methods 0 and 1, so they mean this only at character select. In-world, `0xC0`/`0xC1` are `SGWPlayer.chatJoin` / `chatLeave` ([sgwplayer-base-method-dispatch-table.md](sgwplayer-base-method-dispatch-table.md)); the base routes them by phase (#840).
+
 ### Account Entity — Base Methods (prefix 0xC0)
 
 | Wire ID | Method Index | Method Name | Direction |

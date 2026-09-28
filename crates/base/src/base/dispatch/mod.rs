@@ -74,17 +74,12 @@ pub(crate) mod sgw_player_base {
         cimmeria_wire::base::organization::ORGANIZATION_INVITE;
     pub(crate) const ORGANIZATION_RANK_CHANGE: u8 =
         cimmeria_wire::base::organization::ORGANIZATION_RANK_CHANGE;
-    /// SGWPlayer.elementDataRequest(UINT16 categoryId, UINT32 key) — cache
-    /// miss request for a server resource. Same wire shape as the
-    /// pre-world-entry 0xC1 cache flow (handled in `cooked_data.rs`),
-    /// but routed through the SGWPlayer namespace while the entity is
-    /// in-world. Currently a documented no-op — the catalog and
-    /// per-key push happens in `cooked_data.rs::send_initial_caches`,
-    /// so in-world cache misses are diagnostic rather than a service
-    /// the server must fulfil. Demoted from the unhandled-WARN catch-all
-    /// so the perfStats-style benign telemetry doesn't trip operator
-    /// alerts. See per-method dispatch table in
-    /// `docs/protocol/sgwplayer-base-method-dispatch-table.md`.
+    /// SGWPlayer.elementDataRequest(INT32 categoryId, INT32 key): an
+    /// in-world cache miss (`ClientCache.def`; the old table's UINT16
+    /// category was wrong, which is why logged keys looked shifted by 16
+    /// bits). Served since #840: `account_arms` routes it to
+    /// `cooked_data::handle_element_data_request` before this dispatch,
+    /// because serving needs the resource cache.
     pub(crate) const ELEMENT_DATA_REQUEST: u8 = 0xD5;
     /// SGWPlayer.logOff(INT8 Disconnect) — 0=return to char select, 1=full exit
     pub(crate) const LOG_OFF: u8 = 0xD6;
@@ -217,10 +212,6 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
         sgw_player_base::CANCEL_LOG_OFF => {
             session::handle_cancel_log_off(addr);
-        }
-
-        sgw_player_base::ELEMENT_DATA_REQUEST => {
-            diagnostics::handle_element_data_request(payload, addr);
         }
 
         sgw_player_base::PERF_STATS => {

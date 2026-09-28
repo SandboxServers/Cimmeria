@@ -39,7 +39,8 @@ pub use types::{ArchetypeStats, CharacterInfo, PlayerLoadData, WorldEntryInfo};
 pub use protocol::{
     build_char_create_failed, build_char_list, build_character_visuals, build_connect_reply,
     build_logged_off, build_on_character_list, build_ongoing_tick_sync, build_reset_entities,
-    build_resource_fragment, build_time_sync, build_version_info,
+    build_resource_fragment, build_time_sync, build_version_info, build_version_info_to_player,
+    SGW_PLAYER_ON_VERSION_INFO,
 };
 
 pub use aoi::{

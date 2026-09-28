@@ -9,15 +9,12 @@
 //!
 //! Rather than ship a modified PAK file (which would mean every player
 //! redownloads the artifact), we patch entries in-memory at server startup
-//! and use the protocol's existing per-key invalidation channel: the
-//! `onVersionInfo` packet carries an `InvalidKeys` ARRAY<u32>, which the
-//! client (`ServerConnection::onVersionInfo`) reads and uses to drop only
-//! the named entries from its local cache. The client does **not** then
-//! send `elementDataRequest` for the invalidated keys — it waits for the
-//! server to push them. Our `handle_version_info_request` does that push
-//! immediately after the `onVersionInfo` reply, with `RequiredUpdates`
-//! set to the InvalidKeys count so the client knows how many fragments
-//! to expect.
+//! and bump the category's metadata, so a client holding the shipped
+//! category sees a version mismatch and is resynced: `onVersionInfo` with
+//! `InvalidateAll`, one `resourceFragment` per entry (patched ones
+//! included), then the version stamp (the base's `cooked_sync`, #840).
+//! The client does **not** send `elementDataRequest` for what it dropped;
+//! it waits for the server's pushes.
 //!
 //! This module's job: produce the patched XML bytes for missions that
 //! Cimmeria adds steps to. The byte layout follows the QA-build conventions

@@ -95,10 +95,10 @@ pub struct CategoryData {
 /// Cimmeria-side overrides (see [`super::mission_overrides`]) are applied
 /// in-memory after the PAK load so the client picks up the modifications
 /// via the existing cooked-data wire path — no on-disk PAK edit, no
-/// client-artifact distribution. The set of overridden element IDs per
-/// category is tracked so `cimmeria_base_session::base::cooked_data::handle_version_info_request`
-/// can emit `invalidate_all = false` + per-key `InvalidKeys`, scoping the
-/// client-side cache invalidation to just the patched entries.
+/// client-artifact distribution. Each patched category's metadata is bumped,
+/// so a client holding the shipped category resyncs it in full
+/// (`cimmeria_base_session::base::cooked_sync`, #840). The overridden element
+/// IDs per category are tracked for the element-push log level.
 #[derive(Clone)]
 pub struct ResourceCache {
     categories: Arc<HashMap<u32, CategoryData>>,

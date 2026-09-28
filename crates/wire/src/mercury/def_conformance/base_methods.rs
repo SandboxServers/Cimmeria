@@ -17,7 +17,8 @@ const BASE_METHOD_BASE: u32 = 0xC0;
 /// G: Account ClientMethods, sent as `0x80 + idx`.
 const BASEMSG_FILES: &[&str] = &[
     "wire/src/mercury/mod.rs",
-    "base-session/src/base/version_info_tests.rs",
+    "base-session/src/base/cooked_sync/tests/mod.rs",
+    "base/src/base/connect_loop/encrypted/cache_routing_tests.rs",
 ];
 const ACCOUNT_METHOD_BASE: u32 = 0x80;
 

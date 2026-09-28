@@ -48,6 +48,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cell-entity-direction-semantics.md](cell-entity-direction-semantics.md) — `direction` is `[pitch, yaw, roll]` radians for all entities; `[i8; 3]` param zeroes facing.
 - [login-handshake-acks-and-pre-channel-sends.md](login-handshake-acks-and-pre-channel-sends.md) — seqs 1/2 in the TX window (#842); clients ack them in 3 of 5 captures; testing a pre-channel drop.
 - [game-clock-and-timer-expiry-tests.md](game-clock-and-timer-expiry-tests.md) — client clock is ticks / hertz; expiries = `game_time_secs() + d`.
+- [cooked-data-full-resync.md](cooked-data-full-resync.md) — #840: paced full resync (RequiredUpdates=0), misses jump the stream, Play held for 6 no-miss-path categories.
 
 ## Injected client DLLs
 
@@ -55,23 +56,6 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [client-patch-send-natives-traps.md](client-patch-send-natives-traps.md) — startEntityMessage sends even offline; microseh masks the ABI; no cpcall around C-function args.
 - [telemetry-anchor-audit-and-hookgate.md](telemetry-anchor-audit-and-hookgate.md) — telemetry anchors never ran and 5 were wrong (IAT hint/name RVAs, COL-shifted vtable.
 - [injector-bitness-and-start32-helper.md](injector-bitness-and-start32-helper.md) — x64 launcher injects via the i686 sgw-start32 helper; the WOW64 resolver fails on suspended targets.
-- [gm-tail-dispatch-doc-filename-trap](gm-tail-dispatch-doc-filename-trap.md) — client- vs cell-method dispatch tables are different files.
-- [method-idx-duplicate-table-drift](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative; `def_conformance` guards all index consts (#801).
-- [read-wstring-offset-semantic](read-wstring-offset-semantic.md) — `read_wstring` returns bytes consumed: `offset += n`, never `offset = n`.
-- [dialog-set-bind-carries-no-dialog-id](dialog-set-bind-carries-no-dialog-id.md) — a bind pushes only `InteractionType`; method 104 is never emitted.
-- [cooked-pak-and-dialog-override-traps](cooked-pak-and-dialog-override-traps.md) — `data/cache/*.pak` IS in git; fail-closed patcher vs seed linter diverge silently.
-- [cooked-override-client-cache-persistence](cooked-override-client-cache-persistence.md) — the client caches pushed overrides on disk; removed ids are never evicted.
-- [gm-feedback-cell-base](gm-feedback-cell-base.md) — four method-28 serializers.
-- [witness-entity-method-dual-fn](witness-entity-method-dual-fn.md) — two `witness_entity_method` fns.
-- [cell-entity-direction-semantics](cell-entity-direction-semantics.md) — `direction` is `[pitch, yaw, roll]` radians for all entities.
-- [game-clock-and-timer-expiry-tests](game-clock-and-timer-expiry-tests.md) — client clock is ticks / hertz; expiries = `game_time_secs() + d`.
-
-## Injected client DLLs
-
-- [injected-dll-unwind-and-lua-error-rules](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
-- [client-patch-send-natives-traps](client-patch-send-natives-traps.md) — startEntityMessage sends even offline.
-- [telemetry-anchor-audit-and-hookgate](telemetry-anchor-audit-and-hookgate.md) — anchors never ran and 5 were wrong; offline check recipe; hookgate lock.
-- [injector-bitness-and-start32-helper](injector-bitness-and-start32-helper.md) — x64 launcher injects via the i686 sgw-start32 helper.
 
 ## UE3 packages and navmesh
 
@@ -122,10 +106,6 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [crafting-verb-traps.md](crafting-verb-traps.md) — crafting verbs: component sets are subsets (match designs exactly); don't hold a craft to its named instances; `&Completion` across await is not Send.
 - [pet-owner-lifecycle-hooks.md](pet-owner-lifecycle-hooks.md) — PT-02: every GateTravel/TeleportPlayer site calls a pets hook (scan-guarded); owner gets no LeftAoI on travel.
 - [live-loot-containers-and-tag-state.md](live-loot-containers-and-tag-state.md) — open_loot rolls per player_id on a live chest; once flags in sgw_player.looted_containers; entity_tag_state reads live_tags.
-- [ability-launch-fire-split.md](ability-launch-fire-split.md) — AT-10: handle_use_ability is launch-only; damage may fire a tick later via fire.rs.
-- [npc-ai-tick-snapshot-and-hash-order.md](npc-ai-tick-snapshot-and-hash-order.md) — the AI tick's state snapshot goes stale inside a tick.
-- [crafting-verb-traps.md](crafting-verb-traps.md) — crafting verbs: component sets are subsets (match designs exactly).
-- [pet-owner-lifecycle-hooks.md](pet-owner-lifecycle-hooks.md) — PT-02: every GateTravel/TeleportPlayer site calls a pets hook (scan-guarded).
 - [crafting-induction-engine-seams.md](crafting-induction-engine-seams.md) — crafting engine: global registry + drop hooks.
 - [cimmeria-side-flag-bits-collide-with-client-enums.md](cimmeria-side-flag-bits-collide-with-client-enums.md) — check `enumerations.xml` before inventing a flag bit; AF_CHANNEL_ALLOWS_MOVEMENT was SpeedPet.
 - [crafting-verb-packet-traps.md](crafting-verb-packet-traps.md) — a new crafting verb breaks stub-pinning dispatch tests in base-world-entry.
@@ -134,64 +114,9 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [duel-end-paths-and-travel-scan.md](duel-end-paths-and-travel-scan.md) — SS-D3: travel sites need `duel::on_travel` (scan test).
 - [black-market-escrow-and-authority.md](black-market-escrow-and-authority.md) — listed items live in container 18 (exclude it from client reads); BM lock order.
 - [bm-settlement-mail-traps.md](bm-settlement-mail-traps.md) — BM-02b: status gate before any mail (writer mints every call); quarantine = status 4.
-- [crafting-verb-packet-traps.md](crafting-verb-packet-traps.md) — a new crafting verb breaks stub-pinning dispatch tests in base-world-entry; `handle_<verb>_in` test shape; alloy page's 10-slot cap.
-- [org-vault-storage-and-lock-order.md](org-vault-storage-and-lock-order.md) — org vault items are their own table; lock order advisory, KEY SHARE player, lock_org, rows; never resend the routed org.
-- [owner-pet-effects-and-passives.md](owner-pet-effects-and-passives.md) — self casts apply no effects; pulse_count=1 buffs never register; passives need 3 seams; [0,0] stat bounds.
 - [deployable-pulse-and-seed-traps.md](deployable-pulse-and-seed-traps.md) — `apply_damage_to_target` registers every pulsing effect of its def; DeploymentBar flag is not a spawn marker; templates 200-409 taken.
-- [duel-end-paths-and-travel-scan.md](duel-end-paths-and-travel-scan.md) — SS-D3: travel sites need `duel::on_travel` (scan test); clamp HEALTH first, end the duel last in a damage resolution.
-- [black-market-escrow-and-authority.md](black-market-escrow-and-authority.md) — listed items live in container 18 (exclude it from client reads); BM lock order; 62-64 gated on a cell session.
-- [bm-settlement-mail-traps.md](bm-settlement-mail-traps.md) — BM-02b: status gate before any mail (writer mints every call); quarantine = status 4; last_auction_of and unused-bind mutation traps.
-- [seeds-and-content-chains-index](seeds-and-content-chains-index.md) — sub-index: template/cover/name seeds, chain conditions and edge triggers, dialog binds, inventory locks, pet and trainer seeds.
 
-## Base sessions
-
-- [mail-expiry-and-notify-seams](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`.
-- [connected-map-view-over-parallel-index](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map.
-
-- [trade-results-client-ignores-space-cash](trade-results-client-ignores-space-cash.md) — client trade window acts only on results 1/2.
-- [tell-channel-and-ignore-copies](tell-channel-and-ignore-copies.md) — client /tell is byte 10 (CHAN_TELL since SS-C4).
-- [chat-channel-client-display](chat-channel-client-display.md) — 8 opens a modal, 9 is plain feedback, 7 shows nothing; onChatJoined makes user channels.
-
-## Cell systems
-
-- [grant-placement-and-loot-handback-traps](grant-placement-and-loot-handback-traps.md) — grants re-placed by container_sets on the base.
-- [grant-paths-pick-different-containers](grant-paths-pick-different-containers.md) — gmGiveItem uses bag 1; loot/content use the first `container_sets` entry.
-- [mail-placement-rule-and-fixture-types](mail-placement-rule-and-fixture-types.md) — send, take and pay-COD share `take::carried_bag`.
-- [per-session-player-state-lifecycle](per-session-player-state-lifecycle.md) — a CellEntity field dies on every space change/logout by construction.
-- [ability-event-sets-are-server-only](ability-event-sets-are-server-only.md) — ability event sets never reach the client (seed-only wiring).
-- [client-action-bar-is-client-side](client-action-bar-is-client-side.md) — hotbar bindings are a client Lua saved var.
-- [npc-range-gate-and-weapon-range-columns](npc-range-gate-and-weapon-range-columns.md) — four item range columns; range gated in two places; bogus melee `max_range`.
-- [npc-ai-fight-test-fixtures](npc-ai-fight-test-fixtures.md) — `make_ai_fixture` has no navmesh; assert the INFO log, not `nav_path`.
-- [npc-detector-telemetry-traps](npc-detector-telemetry-traps.md) — AI-path statics race across tests (use task_local).
-- [npc-class-filter-and-dead-target-traps](npc-class-filter-and-dead-target-traps.md) — `all_npc_entity_ids` is mob-only; HEALTH alone is not dead.
-- [ai-state-private-and-revert-proof-mtime](ai-state-private-and-revert-proof-mtime.md) — write `ai_state` via `npc_ai::set_ai_state`.
-- [no-movement-type-wire-and-nav-path-writers](no-movement-type-wire-and-nav-path-writers.md) — no movement-type wire exists; nav_path writes go through `movement_stop`.
-- [mission-persist-hydrate-roundtrip](mission-persist-hydrate-roundtrip.md) — one serializer, one hydrator; roster rebuilt from `mission_objectives`.
-- [stargate-address-book-three-legs](stargate-address-book-three-legs.md) — three copies (DB, cell, client); a grant needs client method 66.
-- [cell-mirrors-of-base-owned-counters](cell-mirrors-of-base-owned-counters.md) — base-owned counters must be messaged to the cell.
-- [stat-with-no-consumer-trap](stat-with-no-consumer-trap.md) — a stat in `StatList` may have no reader; the dirty-publish pattern.
-- [ring-transport-fsm](ring-transport-fsm.md) — `disconnect_entity` vs `destroy_entity`; `BSF_*` bits are ref-counted.
-- [cross-world-transfer-flow](cross-world-transfer-flow.md) — `handle_gate_travel` is the back half; fake default-instance mechanisms.
-- [session-scoped-cell-state-hooks](session-scoped-cell-state-hooks.md) — key by player_id, tear down on DisconnectEntity only, replay on InitPlayerState.
-- [revert-proof-commit-first](revert-proof-commit-first.md) — commit before a revert-proof run.
-- [destroy-entity-vs-despawn-npc](destroy-entity-vs-despawn-npc.md) — `destroy_entity` sends no LeftAoI; use `despawn_npc` for visible removals.
-- [effect-scripts-run-after-the-death-check](effect-scripts-run-after-the-death-check.md) — `abilities::death::resolve_death` is the only kill path.
 - [stored-target-lifetime-and-gm-view-check](stored-target-lifetime-and-gm-view-check.md) — #844 clears current_target_id; GM targets must be in view.
-- [kill-credit-seams-and-loot-ownership](kill-credit-seams-and-loot-ownership.md) — XP decided in `grant_kill_xp`, mission credit via `credited_player` (4 callers).
-- [throttle-key-hides-transitions](throttle-key-hides-transitions.md) — key throttles by `(entity_id, kind)`; `destroy_space` is a second teardown path.
-- [npc-caster-player-ordered-gates](npc-caster-player-ordered-gates.md) — an NPC casting on a player's order skips #444, fire_los and the warmup re-check.
-- [ability-launch-fire-split](ability-launch-fire-split.md) — AT-10: handle_use_ability is launch-only.
-- [npc-ai-tick-snapshot-and-hash-order](npc-ai-tick-snapshot-and-hash-order.md) — the AI tick's state snapshot goes stale inside a tick.
-- [crafting-verb-traps](crafting-verb-traps.md) — crafting verbs: component sets are subsets (match designs exactly).
-- [pet-owner-lifecycle-hooks](pet-owner-lifecycle-hooks.md) — PT-02: every GateTravel/TeleportPlayer site calls a pets hook (scan-guarded).
-- [crafting-induction-engine-seams](crafting-induction-engine-seams.md) — crafting engine: global registry + drop hooks.
-- [cimmeria-side-flag-bits-collide-with-client-enums](cimmeria-side-flag-bits-collide-with-client-enums.md) — check `enumerations.xml` before inventing a flag bit.
-- [crafting-verb-packet-traps](crafting-verb-packet-traps.md) — a new crafting verb breaks stub-pinning dispatch tests in base-world-entry.
-- [org-vault-storage-and-lock-order](org-vault-storage-and-lock-order.md) — org vault items are their own table.
-- [owner-pet-effects-and-passives](owner-pet-effects-and-passives.md) — self casts apply no effects; pulse_count=1 buffs never register.
-- [duel-end-paths-and-travel-scan](duel-end-paths-and-travel-scan.md) — SS-D3: travel sites need `duel::on_travel` (scan test).
-- [black-market-escrow-and-authority](black-market-escrow-and-authority.md) — listed items live in container 18 (exclude it from client reads).
-- [bm-settlement-mail-traps](bm-settlement-mail-traps.md) — BM-02b: status gate before any mail (writer mints every call).
 - [cell-systems-index](cell-systems-index.md) — sub-index: grants and loot, per-session state, abilities and effects, NPC AI, missions, pets, crafting, black market, duels, respawn and re-create.
 
 ## Observability

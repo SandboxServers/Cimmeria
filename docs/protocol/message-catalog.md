@@ -411,46 +411,68 @@ The cooked-data wire path is its own little protocol on top of Mercury. Three me
 
 ### `versionInfoRequest` (NetOut, BASEMSG 0xC0)
 
-The client sends one of these per resource category whenever it wants to confirm its cache is current.
+The client sends one of these per resource category when its connection comes up (`ServerSource<N>` subscribes to `Event_Net_Connected`, handler `0x0044c560` → emitter `0x00449d30`), which is at character select, just after the character list. The server only reads `0xC0` as this message while the Account entity is active: in-world, `0xC0` is `SGWPlayer.chatJoin` (see below).
 
 ```text
 [categoryId: u32][version: u32]
 ```
 
-`version` is the `MetaData` value from the client's local copy of the category. The server compares against the `MetaData` it loaded from disk (`crates/base-session/src/base/cooked_data.rs:21-71`).
+`version` is the `MetaData` value from the client's local copy of the category. The server compares it against the version it serves: the PAK's `MetaData`, plus the content-hash bump for a category with Cimmeria overrides (`crates/base-session/src/base/cooked_data.rs`, `crates/base-session/src/base/cooked_sync/decision.rs`).
 
 Implemented; see `handle_version_info_request`.
 
 ### `onVersionInfo` (NetIn, BASEMSG 0x80)
 
-The server's reply. Three response shapes — the third one is what enables per-mission patching.
-
-Wire format (encoder at `crates/wire/src/mercury/protocol/resources.rs:80-113`):
+The server's reply. Wire format (encoder `build_version_info` in `crates/wire/src/mercury/protocol/resources.rs`):
 
 ```text
 [accountEntityId: u32]
 [categoryId:      u32]
-[version:         u32]   — server's authoritative MetaData
-[requiredUpdates: u32]   — count of resourceFragment packets the server is about to push
-[invalidateAll:   u8]    — 1 = drop entire category; 0 = scoped invalidation
+[version:         u32]   — the client writes this into the cache PAK's MetaData on receipt
+[requiredUpdates: u32]   — count of entries the server is about to push
+[invalidateAll:   u8]    — 1 = delete every entry of the category; 0 = per-key
 [invalidKeys:     ARRAY<u32>]  — { count: u32, ids: [u32; count] }
 ```
 
-Three reply shapes:
+What the client does with it (`ServerSource<N>::onVersionInfo`, `0x00441630`, re-decompiled 2026-09-28 for #840): stores `RequiredUpdates`; if `InvalidateAll` is set, clears its element list and deletes every entry from the writable cache PAK (`FUN_0047a690`), otherwise drops each `InvalidKeys` entry; writes `Version` to `MetaData` (`ServerSource_SetVersion`, `0x00479e90`); writes out any entries that arrived before this reply; marks the category ready. It never requests an entry it dropped. Nothing but the entry pushes and `onCookedDataError` decrements `RequiredUpdates`, and no reader of it was found.
 
-| Server state | `invalidateAll` | `invalidKeys` | `requiredUpdates` | Client behaviour |
-|---|---|---|---|---|
-| No category data, or client version matches | `0` | `[]` | `0` | Keep local cache; no further traffic |
-| Versions differ, no scoped overrides | `1` | `[]` | `0` | Drop entire category; lazy-fetch via `elementDataRequest` |
-| Versions differ, server has scoped overrides | `0` | `[id, …]` | `N = invalidKeys.len()` | Drop only the named entries; **wait** for `N` `resourceFragment` pushes (does NOT issue `elementDataRequest`) |
+The server decides per request (`VersionReply::decide`, `crates/base-session/src/base/cooked_sync/decision.rs`):
 
-Verified by Ghidra decomp of `ServerConnection::onVersionInfo` (`FUN_00449460`): `InvalidKeys` is parsed as a `PropertyList<long>` and per-key invalidation runs through the cache element's destructor.
+| Server state | What the client receives |
+|---|---|
+| No category data | One reply echoing the client's version, `invalidateAll = 0`, no keys. |
+| Versions match | One reply with the served version, `invalidateAll = 0`, no keys. |
+| Versions differ (any category, with or without overrides) | A **full resync** on the session's resync task: (1) `onVersionInfo(invalidateAll = 1, requiredUpdates = 0, version = !served)`; (2) one `resourceFragment` transfer per entry of the server's category, in ascending key order; (3) `onVersionInfo(invalidateAll = 0, requiredUpdates = 0, no keys, version = served)`. |
+
+- **Placeholder version.** The opening reply stamps the bitwise NOT of the served version, because the client writes `Version` before any entry arrives. The closing reply is ordered behind every entry on the reliable channel, so the client takes the real version only once it holds the whole category. A client that disconnects part-way keeps the placeholder and resyncs at its next login.
+- **`RequiredUpdates = 0`.** The client asks for a missing entry only while the category's `RequiredUpdates` is 0: every per-category request function checks `this+0x48 == 0`, e.g. `0x00cfe060` for category 11 and `0x00d20150` for category 3. With `N` it would wait on every miss until the whole category had arrived. With 0 it asks, and the server serves the miss ahead of the stream (below). Pushes never take the counter below 0: the decrement is skipped at 0 (`0x0043db76 CMP EAX,ESI` / `JZ`), and the gate is an exact `== 0` (`0x00cfe07b CMP [ECX+0x48],EBX` / `JNZ`), so misses keep flowing through the whole stream. Details: [cooked-data-pipeline finding 4a](../reverse-engineering/findings/cooked-data-pipeline.md).
+- **Addressing.** Both replies go to the session's current entity. At character select that is the Account, as client method 0 (`0x80`). In-world it is the player, as SGWPlayer client method 96 (`0xBD`, sub-index 35; `build_version_info_to_player`). `0x80` addressed to the player would be SGWPlayer client method 0.
+- **Pacing and order.** Every packet goes through the session's reliable window: at most `SYNC_IN_FLIGHT_BUDGET` (24) reliable packets outstanding on the session, counting everything else in flight, which leaves 8 of the 32 TX-window slots for game traffic. Categories stream in rank order: the held ones first, then missions, dialogs and items, then the rest, with TextStrings (29,126 entries) last.
+- **World entry.** `playCharacter` waits only for the held categories: 12 (world info, needed by `onClientMapLoad`), 16, 17, 18, 20 and 21. The client has no miss path for any of them, and together they are about 230 entries, under a second. Everything else keeps streaming after world entry.
+
+**Misses.** `elementDataRequest` (`0xC1` at character select, SGWPlayer `0xD5` in-world; `[categoryId: i32][key: i32]`) is served from the server's category, PAK plus overrides. The entry goes out as the next transfer on the session's task, ahead of the background stream (`cooked_sync::serve_miss`). Rules:
+
+- An unknown category or key is refused. So is anything past a session's rate limit: a bucket of 100, refilled at 50 per second, with at most 256 misses waiting.
+- A repeat of an entry already waiting is dropped.
+- A refusal logs a WARN, throttled to one per reason per session every 5 s with the suppressed count, because the client asks again on every lookup.
+
+**Telemetry:**
+
+- `cooked_data.version_reply` on every request: `outcome`, `reason`, `category_id`, `client_version`, `server_version`.
+- `cooked_data.sync_start` / `cooked_data.sync_finish`: `outcome=complete` at INFO with `entry_count`, `bytes`, `packets` and `duration_ms`; `outcome=abandoned` at WARN with `reason`.
+- `cooked_data.miss_served` (INFO): `category_id`, `key`, `bytes`, `latency_ms`.
+- `cooked_data.miss_refused` (WARN): `reason`, `category_id`, `key`, `suppressed`.
+- `cooked_data.world_entry_held` / `world_entry_released`.
+
+Design: [mission-pak-overrides.md § How the handshake works](../architecture/mission-pak-overrides.md#how-the-handshake-works).
+
+Before #840 the server sent `invalidateAll = 1` with nothing pushed for any mismatched category without an override list, and the client emptied and persisted that category (the 2026-09-20 Kismet sequence wipe, #754). A build from before #840 still does, which is why a client moving between builds can lose a category (see [troubleshooting](../troubleshooting.md#a-cooked-data-category-went-empty-after-logging-in-to-another-server)).
+
+`InvalidKeys` is parsed as a `PropertyList<long>` (Ghidra decomp of `ServerConnection::onVersionInfo`, `FUN_00449460`). The server no longer sends per-key invalidations.
 
 ### `resourceFragment` (NetIn, BASEMSG 0x36)
 
-How the server ships XML payloads for a single category-element pair. Already documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md); the format itself didn't change. What changed is **when** the server emits it: in addition to the lazy `elementDataRequest` reply path, the server now proactively pushes one `resourceFragment` per `InvalidKeys` entry immediately after `onVersionInfo`, in the same order the keys appear in the array (`crates/base-session/src/base/cooked_data.rs:107-120, 133-199`).
-
-The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment streams to expect before the cache is considered fresh.
+How the server ships XML payloads for a single category-element pair. Already documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md). The server emits it in reply to `elementDataRequest` (`crates/base-session/src/base/cooked_data.rs`) and, for a resync, once per entry of the category between the two `onVersionInfo` replies (`crates/base-session/src/base/cooked_sync/task.rs`). The client's proxy-data handler (`0x0043dad0`) decrements `RequiredUpdates` (if nonzero) per completed entry and writes the entry to its cache at once if the category's `onVersionInfo` has arrived, or buffers it until then. `RequiredUpdates` is only a counter and a gate on miss requests; the resync sends 0.
 
 ---
 

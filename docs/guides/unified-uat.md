@@ -45,6 +45,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [GM console command parity](#gm-console-command-parity) | [legacy command parity README](../analysis/legacy-command-parity/README.md#validation-and-uat-gates) |
 | [Consumables](#consumables) | This section (not a campaign; the design is [consumables.md](../gameplay/consumables.md)) |
 | [Deployables](#deployables) | [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release) |
+| [Cooked-data resync](#cooked-data-resync) | This section (not a campaign; the design is [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#why-every-mismatch-is-a-full-resync), #840) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -80,7 +81,7 @@ Read these before you start. None of them needs a new report.
 | K12 | **The Lo'taur pet never attacks or heals**, and several pet-bar abilities (1652, 1654, 1653, 3326-3329) do nothing except say "Your pet can't use that ability yet." | Record it; known gap. | [pets README, Campaign outcome](../analysis/pets/README.md#campaign-outcome) |
 | K13 | **Stale action-bar buttons after an ability respec.** The server keeps no hotbar, so a refunded ability's button stays; pressing it shows an error. | Expected. | [ability-trees session resume](../analysis/ability-trees/handoffs/session-resume.md#open-owner-decisions) |
 | K14 | **Two client-only mail and duel cosmetics.** The unit-frame PvP indicator does not refresh live during a duel, and after a refused mail send the Send button stays grey until you press New or Reply, which clears the typed text. Both need a client patch. | Expected. | [social session resume, Q-k](../analysis/social-systems/handoffs/session-resume.md#owner-questions) |
-| K15 | **Mixing servers can empty your world list.** A client that logged in to a server with the historical cellblocks, then to one without them, can lose its whole cached world table. | Ask the owner for the repair before you continue. | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#mixing-servers-during-the-uat), issue #840 |
+| K15 | **Mixing servers can empty your world list** when the other server is older than #840. A client that logged in to a server with the historical cellblocks, then to an older one without them, can lose its whole cached world table. A current server resyncs it on the next login. | Log in to a current server once; if the table is still wrong, ask the owner for the repair. | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#mixing-servers-during-the-uat), issue #840 |
 | K16 | **The black market window is not released to testers.** Its client patch does not ship yet. | Run only the steps marked `server` in that section (the auctioneer's chat line and the GM `.bm_*` tools). | [Black market](#black-market) |
 | K17 | **All three Bankers are named "Storage Officer"**, and after a Team vault expansion, a Team vault window already open on another member keeps its old size until that member reopens it. | Tell the Bankers apart by their clothes ([Bank and vault](#bank-and-vault)). Reopen the window. | [bank session resume, Known gaps](../analysis/bank-vault/handoffs/session-resume.md#known-gaps-carried-forward) |
 | K18 | **Crafting gaps known at release.** Using a Blueprint item or a Racial Paradigm Guide prints no line (the item goes and the window changes). Buying several non-stacking components in one purchase shows one stack. A queued crafting job still finishes if you walk away from the station or give the tool away. `/showracialparadigmlevels` and the client's own `/respeccraft` do nothing useful. | Record them; not new bugs. Use `.respeccraft`. | [crafting session resume, known gaps](../analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward) |
@@ -845,6 +846,38 @@ A Scientist places a Microwave Emitter on the ground; for 30 s it drains Focus, 
 **Things only a human can check:** the object's look and whether it sits on the ground (DP-U2); whether the Focus and Health bars move on the mobs (DP-U3); what the chat lines look like (DP-U5).
 
 Source: [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release); background in [deployables.md](../gameplay/deployables.md).
+
+## Cooked-data resync
+
+When your client's cached copy of a game-data category (worlds, missions, dialogs, items and so on) differs from the server's, the server now replaces the whole category and then marks it current, instead of leaving it empty (#840). This section makes one category differ on purpose and checks the client ends up right.
+
+**Status:** Ready. Merged; nothing has been seen in a client yet.
+
+**Prerequisites:** SGW.exe closed. Your client's writable cache is `Documents\My Games\Firesky\SGWGame\Cache.en-US\`. The pristine copies shipped with the client are in `Working\SGWGame\SourceCache.en-us\` (on a stock install that folder is named `Working\SGWGame\Cache.en-US\`). Back up the writable folder first.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| CD1 | Copy the pristine `CookedWorldInfo.pak` over the one in the writable cache. Log in and press **Play** at once. | Character select looks normal; Play takes at most a second longer than usual. | The copy holds version 5959; the server serves a bumped version, so it resyncs category 12 (98 entries), which world entry waits for |
+| CD2 | Play a character. | You enter the world normally. With the historical-cellblock client files installed, `.gotolocation CellBlock43 -334.231 73.472 -228.026` loads CellBlock43. | The historical worlds (1201-1207) come only from the resync; skip the travel without those files |
+| CD3 | Log out to character select and play again. | No wait, normal entry. | SigNoz shows category 12 `up_to_date`: no second resync |
+| CD4 | Close the game. Copy the pristine `CookedDataDialogs.pak` over the writable one. Log in, press **Play** at once, and talk to an NPC with a dialog straight away. | No extra wait at Play. The dialog text shows, at worst a moment late. | Dialogs stream for about 25 s after you enter; a dialog you open first is asked for and sent next. SigNoz shows `cooked_data.miss_served` for it if it had not streamed yet |
+| CD5 | Repeat CD4's copy, log in, and close the game within 5 s of reaching character select. Log in again and play. | The second login resyncs the dialogs in full and play is normal. | The first push was abandoned part-way; the client kept a placeholder version, so it resyncs again |
+| CD6 | In the world, open the crafting window's Sciences list. | The sciences show. | Before #840 the client's login rejoin of its default chat channels was misread as a request that emptied the Sciences category on every login |
+
+**SigNoz** (base `service.name = 'cimmeria-server'`):
+
+| Question | Filter |
+|---|---|
+| What the server answered for each category (CD1, CD3) | `event = 'cooked_data.version_reply' AND account_id = <id>`: `outcome` is `up_to_date`, `full_resync` or `no_server_data`, with `category_id`, `client_version` and `server_version` |
+| Each resync and how long it took (CD1, CD4) | `event IN ('cooked_data.sync_start','cooked_data.sync_finish') AND account_id = <id>`: `sync_finish` has `outcome`, `entry_count`, `bytes`, `packets` and `duration_ms` |
+| The abandoned push (CD5) | `event = 'cooked_data.sync_finish' AND outcome = 'abandoned'`: WARN, `reason = 'session_gone'`, `entries_sent` |
+| Did world entry wait (CD1) | `event IN ('cooked_data.world_entry_held','cooked_data.world_entry_released') AND account_id = <id>` |
+| Misses served or refused (CD4) | `event IN ('cooked_data.miss_served','cooked_data.miss_refused') AND account_id = <id>`: `category_id`, `key`, `latency_ms`, or `reason` |
+| No in-world version requests (CD6) | `event = 'cooked_data.version_reply'` after `SGWPlayer.onClientReady` for your session: there should be none |
+
+**Things only a human can check:** that the worlds, dialogs and sciences are really there (CD2, CD4, CD6); that Play never waits noticeably (CD1, CD4).
+
+Source: this section; design in [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#how-the-handshake-works).
 
 ## Recording results
 

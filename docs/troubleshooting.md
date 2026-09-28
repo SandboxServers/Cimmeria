@@ -254,6 +254,16 @@ Full LAN-setup details in [`multiplayer.md`](multiplayer.md).
 
 ---
 
+### A cooked-data category went empty after logging in to another server
+
+**Symptom.** A client that played on one server logs in to another, and a whole kind of game data is gone: no Kismet sequences play (rings, doors, ability effects, VO), a world will not load, missions stop being granted, dialogs or item names are blank. It stays broken on every server afterwards.
+
+**Root cause.** The client keeps a writable cache of cooked data (`Documents\My Games\Firesky\SGWGame\Cache.en-US\*.pak`), and each file carries the version of the last server that updated it. When the version a client holds differs from the server's and the server has no per-key override list for that category, a server built before #840 answers `invalidate_all = true` and pushes nothing. The client empties that category and saves it empty. It happens when one client moves between servers on different builds: a newer server bumps a category (world info, category 12, for the historical CellBlock worlds), then an older server sees a version it does not know and wipes it. Servers from #840 on resync the whole category instead (logged as `event=cooked_data.sync_start` / `sync_finish` with the category, both versions and the entry count), so logging in to any current server repairs the category by itself. Only the older build can do the wiping, so no fix on the newer server prevents it.
+
+**Fix.** Close SGW.exe. Copy the pristine file for the emptied category from the client's `SourceCache.en-us\` folder over the one in `Documents\My Games\Firesky\SGWGame\Cache.en-US\` (for example `CookedWorldInfo.pak` for worlds, `CookedDataKismetSeqEvent.pak` for sequences). A login to a server from #840 on also repairs it, by resyncing the category. To avoid a repeat, keep a test client off servers older than #840 once it has played on a newer one. Background: [A bumped category must keep its override list everywhere](architecture/mission-pak-overrides.md#a-bumped-category-must-keep-its-override-list-everywhere).
+
+---
+
 ### AtreaRL won't launch / "DLL not found"
 
 **Symptom.** AtreaRL (the launcher) crashes or reports a missing DLL.

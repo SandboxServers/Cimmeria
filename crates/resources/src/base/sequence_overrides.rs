@@ -8,9 +8,10 @@
 //! a silent no-op.
 //!
 //! Same trick as [`super::dialog_overrides`]: add the entry in memory at server
-//! startup and let the cooked-data wire path (`versionInfoRequest` →
-//! `onVersionInfo(InvalidKeys=[...])` → `resourceFragment(_key, XML)`) push it.
-//! The new-key case is the proven one: dialog 3996 reaches clients this way.
+//! startup and bump the category's metadata, so a client holding the shipped
+//! table is resynced (`versionInfoRequest` → `onVersionInfo(InvalidateAll)` →
+//! one `resourceFragment` per entry → the version stamp, #840) and receives
+//! it. New keys have reached clients this way since dialog 3996.
 //!
 //! # Never edit the PAK's `MetaData` version on disk
 //!
@@ -20,8 +21,9 @@
 //! emptied its sequence table, persisted the empty table to
 //! `Cache.en-US/CookedDataKismetSeqEvent.pak`, and no Kismet sequence played
 //! afterwards (ring transports, ability effects, VO, doors). That happened on
-//! 2026-09-20. With an override list present, a mismatch takes the per-key path
-//! instead, which only touches the listed ids.
+//! 2026-09-20. Since #840 a mismatch resyncs the whole category, so the wipe
+//! cannot recur on a current build; the rule stands because the on-disk PAK is
+//! the file clients already hold, and additions belong in overrides.
 //!
 //! The emitted XML is byte-for-byte the shape of the entries already in this
 //! category (QA-build style: SOAP namespaces, `KismetScriptName` / `EventID` /

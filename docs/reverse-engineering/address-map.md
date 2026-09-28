@@ -709,7 +709,7 @@ on the client. The server's `resource.cpp` table starting at 0 is inconsistent w
 
 | Address | Name | Notes |
 |---------|------|-------|
-| `0x00441630` | `ServerSource_onVersionInfo_Handler_cat6` | Reads CategoryId/RequiredUpdates/InvalidateAll/Version; fires elementDataRequest per pending entry |
+| `0x00441630` | `ServerSource_onVersionInfo_Handler_cat6` | Reads CategoryId/RequiredUpdates/InvalidateAll/Version; InvalidateAll deletes the category's cache entries; writes out entries buffered before the reply (corrected 2026-09-28, cooked-data-pipeline Finding 4a) |
 | `0x00441aa0` | `ServerSource_onCookedDataError_Handler_cat6` | Reads categoryID/elementKey; decrements RequiredUpdates; fires Event_Cache_ElementError |
 
 ### ZipStorage / PAK Archive
@@ -720,7 +720,10 @@ on the client. The server's `resource.cpp` table starting at 0 is inconsistent w
 | `0x00479930` | `ZipStorageBase_WriteStreamToFile` | Writes ostream to named ZIP entry; source: ZipStorage.cpp |
 | `0x00479e10` | `ZipStorageBase_WriteMetaDataVersion` | Writes 4-byte version stamp to PAK "MetaData" ZIP entry |
 | `0x00479e90` | `ServerSource_SetVersion` | Stores server version at `this+0x24` → calls WriteMetaDataVersion |
-| `0x0043bdb0` | `ServerSource_RequestElement` | Cache-miss check → fires `Event_NetOut_elementDataRequest(cat, key)` |
+| `0x0043bdb0` | `ServerSource_WriteElement` (was `ServerSource_RequestElement`) | Writes one element to the cache PAK, then emits an element event; not a request (corrected 2026-09-28, Finding 4a) |
+| `0x0043dad0` | `ServerSource_onProxyData_Handler_cat6` | Pushed-entry handler: decrements RequiredUpdates, writes or buffers the entry (Finding 4a) |
+| `0x00cfdeb0` | `Event_NetOut_elementDataRequest_ctor` | Miss-request event; one caller per category with a miss path (none for 12, 16, 17, 18, 20, 21; Finding 4a) |
+| `0x00cfe060` | `CookedCategory11_RequestMissing` | Sends `elementDataRequest(11, key)` only while `RequiredUpdates == 0`; the per-category template (Finding 4a) |
 | `0x013a1620` | `CZipStorage_Dtor` | Destroys wstring at `+0xC`, CZipAutoBuffer at `+0x5C` |
 
 ### Category→PAK Mapping (confirmed from binary — all ServerSource, DEFLATE ZIP)
