@@ -85,7 +85,7 @@ flows: open, search, results, scrolling, paging both ways, row selection,
 bid, buyout, errors, create, cancel, the My Bids and Watched tabs, a missing
 DLL, refused and throwing sends, reply timeouts, guarded handlers, and
 reopening. It also checks that every `BMError` id in `error.rs` has text.
-Run against the stock files, all 20 scenarios fail.
+Run against the stock files, every scenario fails.
 
 ```sh
 lua5.1 crates/client-patches/overlay/test/run.lua          # Linux; CI runs this (test.yml, "overlay-lua")

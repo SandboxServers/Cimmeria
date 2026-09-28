@@ -436,6 +436,22 @@ scenario('missing CimmeriaBMNative: one clear line, no errors, every button answ
     eq(row(env, 'Search', 1).visible, false, 'no rows')
 end)
 
+scenario('CimmeriaBMNative registered after the file loaded is found at open and press time', function()
+    -- The DLL registers the table from its Tick detour, which can run after
+    -- the UI has loaded BlackMarket.lua.
+    local env = newClient({ native = false })
+    ok(logged(env, 'CimmeriaBMNative not present yet'), 'load noted the missing table')
+    env.CimmeriaBMNative = Stubs.newNative(env)
+    env.CimmeriaBM.onOpen(4242)
+    eq(status(env), 'Searching...', 'open searches once the table exists')
+    eq(lastCall(env).op, 'search', 'search sent')
+    env.CimmeriaBM.onAuctions(items(1, 2), 2, 0)
+    row(env, 'Search', 1):fire('EventMouseButtonDown')
+    click(env, 'BlackMarket_SearchBidButton')
+    eq(lastCall(env).op, 'bid', 'bid sent through the late table')
+    eq(row(env, 'Search', 1, 'TCText'):getText(), '', 'TC blank when techCompetency returns nil (D7 fallback)')
+end)
+
 scenario('a refused send says why and re-enables the button', function()
     local env = newClient()
     env.CimmeriaBMNative.reply.search = { nil, 'offline' }
