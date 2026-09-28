@@ -43,7 +43,7 @@ function Update-CimmeriaClient {
         Update-CimmeriaClient -ClientPath "F:\Stargate Worlds-QA"
 
     .EXAMPLE
-        Update-CimmeriaClient -ServerAddress "http://play.cimmeria.gg:8081" -NoLaunch
+        Update-CimmeriaClient -ServerAddress "http://play.cimmeria.app:8081" -NoLaunch
 
     .EXAMPLE
         Update-CimmeriaClient -Atrea

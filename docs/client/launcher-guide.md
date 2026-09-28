@@ -53,7 +53,7 @@ Azure Blob SAS for log uploads) see
 1. Run sgw-launcher.exe (single ~5 MB file).
 2. Window appears with three editable fields:
      - Install dir    (default: %LOCALAPPDATA%\Stargate Worlds)
-     - Server host    (default: play.cimmeria.gg) — gets patched into SGW.exe
+     - Server host    (default: play.cimmeria.app) — gets patched into SGW.exe
      - Manifest URL   (default: the GitHub Release `content-current` tag,
                       https://github.com/SandboxServers/Cimmeria/releases/
                       download/content-current/manifest.json)
