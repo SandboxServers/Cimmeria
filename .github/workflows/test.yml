@@ -5,11 +5,13 @@ on:
     branches: [main]
   pull_request:
 
-# Cancel superseded runs on the same branch — saves runner minutes when a
-# PR gets force-pushed during review.
+# Cancel superseded runs on the same PR branch — saves runner minutes when a
+# PR gets force-pushed during review. Runs on main are never cancelled: a
+# cancelled run doesn't save its rust-cache, and main's caches are the ones
+# every PR restores (see `save-if` on each rust-cache step).
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,11 +32,49 @@ env:
   RECAST_VERSION: "1.6.0"
 
 jobs:
+  # Decides whether the Rust jobs run. A PR whose every changed file is
+  # Markdown, agent config under .claude/, or an image under docs/ skips
+  # them; a skipped job reports as passed. docs/protocol/ always counts as
+  # code, because cimmeria-patch-wire's tests read the dispatch tables there.
+  # Pushes to main always run everything. Any doubt (API error, empty list,
+  # the API's 3000-file cap) runs everything.
+  changes:
+    name: detect code changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          code=true
+          if [ "$EVENT" = "pull_request" ] \
+            && files="$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')" \
+            && [ -n "$files" ] && [ "$(echo "$files" | wc -l)" -lt 3000 ]; then
+            nocode='\.md$|^\.claude/|^docs/.*\.(svg|png|jpe?g|gif)$'
+            if ! echo "$files" | grep -Ev "$nocode" | grep -q . \
+              && ! echo "$files" | grep -q '^docs/protocol/'; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = false ]; then
+            echo "::notice::Only docs and agent config changed; skipping the Rust jobs."
+          fi
+
   # cargo fmt is fast enough that we don't bother caching or installing
   # native deps. Fails the pipeline with a clear "run cargo fmt" message
   # instead of auto-fixing.
   fmt:
     name: cargo fmt --check
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -52,6 +92,8 @@ jobs:
   # and type_complexity live in clippy.toml at the repo root.
   clippy:
     name: cargo clippy -D warnings
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -72,14 +114,34 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: clippy
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo clippy
         run: |
           cargo clippy --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets -- -D warnings
 
-  # cargo build catches link-time errors that cargo check misses (build
-  # scripts, codegen output, dynamic-link issues).
-  build:
-    name: cargo build (workspace)
+  # One job builds the workspace and runs the tests. `cargo build
+  # --all-targets` catches link-time errors that cargo check misses (build
+  # scripts, codegen output, dynamic-link issues), and it compiles the test
+  # binaries in the `test` profile, so the nextest run that follows reuses
+  # them instead of compiling the workspace a second time on another runner.
+  #
+  # cargo nextest (no DB): live-DB tests use test_support::require_db_or_skip!
+  # and self-skip when DATABASE_URL is unset, so this covers the unit + non-DB
+  # integration tests across the whole workspace. The live-DB suite runs in
+  # the dedicated `test-live-db` job below.
+  #
+  # nextest emits JUnit XML at target/nextest/ci/junit.xml (configured in
+  # .config/nextest.toml); the upload step feeds it to Codecov Test
+  # Analytics for per-test history and flake detection.
+  #
+  # nextest cannot run doctests (upstream limitation: nextest-rs/nextest#16),
+  # so they run separately via `cargo test --doc` after the main pass. Only
+  # cimmeria-commands has runnable doctests today; the rest of the workspace
+  # uses ```text / ```ignore fences that don't compile.
+  build-and-test:
+    name: cargo build + nextest (workspace, no DB)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -99,10 +161,10 @@ jobs:
       # the workspace's dependency artifacts (docs/architecture/build-system.md
       # §6). Fail when a dependency change didn't regenerate it: fix with
       # `cargo hakari generate && cargo hakari manage-deps --yes`.
-      - name: install cargo-hakari
+      - name: install cargo-hakari + nextest
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-hakari
+          tool: cargo-hakari,nextest
       - name: workspace-hack is current
         run: |
           cargo hakari generate --diff
@@ -122,45 +184,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo build
         run: cargo build --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets
-
-  # cargo nextest (no DB). Live-DB tests in cimmeria-services use
-  # test_support::require_db_or_skip! and self-skip when DATABASE_URL is
-  # unset, so this job covers the unit + non-DB integration tests across
-  # the whole workspace (mercury, content-engine, services unit tests, etc.).
-  # The live-DB suite runs in the dedicated `test-live-db` job below.
-  #
-  # nextest emits JUnit XML at target/nextest/ci/junit.xml (configured in
-  # .config/nextest.toml); the upload step feeds it to Codecov Test
-  # Analytics for per-test history and flake detection.
-  #
-  # nextest cannot run doctests (upstream limitation: nextest-rs/nextest#16),
-  # so they run separately via `cargo test --doc` after the main pass. Only
-  # cimmeria-commands has runnable doctests today; the rest of the workspace
-  # uses ```text / ```ignore fences that don't compile.
-  test:
-    name: cargo nextest (workspace, no DB)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/rust-toolchain
-      - name: install clang + mold
-        run: sudo apt-get update && sudo apt-get install -y clang mold
-      - name: install nextest
-        uses: taiki-e/install-action@nextest
-      - name: hydrate external/recast
-        run: |
-          mkdir -p external
-          curl -sL --retry 3 \
-            -o /tmp/recast.zip \
-            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
-          unzip -q /tmp/recast.zip -d /tmp/recast_extract
-          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
-          test -f external/recast/Detour/Source/DetourAssert.cpp
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: test
       - name: cargo nextest run
         run: cargo nextest run --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
       - name: cargo test --doc (cimmeria-commands)
@@ -211,6 +237,8 @@ jobs:
   # constraint, not a bug in the handlers.
   test-live-db:
     name: cargo nextest -p cimmeria-services (live DB)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -253,6 +281,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-live-db
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo nextest run (live DB)
         run: bash tools/test-live-db.sh
       - name: upload test results to Codecov
@@ -284,6 +313,8 @@ jobs:
   # is still test/test-live-db turning green.
   coverage:
     name: cargo llvm-cov (workspace + live DB)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     services:
@@ -326,6 +357,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: install nextest

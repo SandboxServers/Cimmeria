@@ -132,6 +132,15 @@ Development builds run natively on Windows (PowerShell or Git Bash, driven by Cl
 - CI still builds on Linux runners, so the `x86_64-unknown-linux-gnu` linker settings in `.cargo/config.toml` stay.
 - The bootstrap module's WSL branches stay for contributors who run setup there.
 
+### 12. CI caches are saved from main only
+
+GitHub keeps 10 GB of Actions cache per repository and evicts the oldest entries above that. In September 2026 the repo held 12.85 GB: every PR saved five Rust caches of 350–480 MB (clippy, build, test, test-live-db, coverage), which only that PR could read. Main's caches were evicted before PRs could restore them, and 3 of 5 jobs in one sampled run logged `No cache found`. A cache miss turned a 3-minute build job into a 7.6-minute one.
+
+- Every `Swatinem/rust-cache` step in `test.yml`, `launcher-build.yml`, `client-patches-build.yml` and `client-telemetry-build.yml` sets `save-if: github.ref == 'refs/heads/main'`. PRs restore main's cache and never write their own. rust-cache doesn't cache workspace crates anyway, so a PR's own cache bought nothing that main's didn't.
+- Those workflows cancel superseded runs only on PRs. Runs on `main` finish, because a cancelled run doesn't save its cache.
+- `build-and-test` builds `--all-targets` and then runs nextest on the same artifacts. That's one workspace compile where there used to be two, on separate runners with separate caches.
+- A `changes` job skips the Rust jobs on PRs that change only Markdown, `.claude/` or images under `docs/`. Tests read `docs/protocol/`, so it always counts as code.
+
 ## Consequences
 
 - One toolchain, one set of artifacts, and CI clippy equals local clippy.

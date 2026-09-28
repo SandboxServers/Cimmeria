@@ -18,7 +18,7 @@ on:
 
 concurrency:
   group: client-telemetry-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -59,6 +59,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: client-telemetry-windows-i686
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo clippy
         run: cargo clippy -p cimmeria-client-telemetry --target i686-pc-windows-msvc --all-targets -- -D warnings
 
@@ -76,6 +77,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: client-telemetry-windows-i686
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: cargo build (cdylib)
         run: cargo build -p cimmeria-client-telemetry --target i686-pc-windows-msvc --all-targets
       - name: verify DLL was produced
@@ -102,6 +104,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: client-telemetry-windows-i686
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install nextest
         uses: taiki-e/install-action@nextest
       - name: cargo nextest run
