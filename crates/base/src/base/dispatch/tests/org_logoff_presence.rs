@@ -149,7 +149,8 @@ async fn live_db_full_exit_logoff_announces_offline_once() {
         &transport,
         &db_pool,
         "client_disconnect",
-    );
+    )
+    .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(
         typed.filter_to(stayer_addr).len(),

@@ -477,6 +477,49 @@ cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
 exact step, which nothing can inject; the commit classification itself is
 unit-tested (`persist::tests`).
 
+## Disconnect-teardown `DisconnectEntity` seam (issue #999)
+
+`destroy_client_entities` (`crates/base-session/src/base/helpers/mod.rs`) used
+to return the player's entity id to `EntityManager`'s free list *before*
+telling the cell to tear the mirrored cell entity down, over a bare
+`let _ = tx.try_send(BaseToCellMsg::DisconnectEntity { .. })`. A full or
+closed Base→Cell channel dropped the notice silently, and — independent of
+channel capacity — a concurrent login could recycle the freed id via
+`EntityManager::allocate_id`'s FIFO free list before the cell had even seen
+the disconnect, so the old session's `DisconnectEntity` landed on and
+destroyed the *new* player's cell entity.
+
+`BaseToCellMsg::DisconnectEntity` now carries a `reply_tx: oneshot::Sender<()>`
+that the cell fires once `handle_disconnect_entity` runs to completion (same
+shape as `CreateEntity`'s existing `reply_tx`). `destroy_client_entities`
+awaits it before returning the id to the free list. Either failure WARNs
+(no `target:` override) with `entity_id`, `account_id` and
+`disconnect_reason`:
+
+| Level | Message | Meaning |
+|---|---|---|
+| WARN | `destroy_client_entities: DisconnectEntity send failed` | The Base→Cell channel send itself failed (closed or, in practice, a receiver that has shut down) |
+| WARN | `destroy_client_entities: cell dropped the DisconnectEntity reply without confirming teardown` | The send succeeded but the oneshot reply was dropped without firing (the cell task ended mid-handler) |
+
+In both cases the id is **withheld from the free list permanently** rather
+than freed on a best-effort basis: an entity id is an `i32` counter with
+effectively unbounded headroom, so leaking one costs nothing, while reusing
+one whose teardown was never confirmed can hand a live cell entity's identity
+to a brand-new session. A caller that never returns the id to a free list in
+the first place (`gate_travel::abandon_unspaced_session`, the `SGWPlayer`
+`logOff` arm in `base/dispatch/session.rs` — neither holds an
+`EntityManager` handle) constructs the `reply_tx` and drops the receiver
+immediately; the cell's `let _ = reply_tx.send(())` is a defensible silent
+send in that case; nobody is waiting.
+
+The `LogCapture` guards are
+`base-session` `base/helpers/disconnect_teardown.rs`:
+`disconnect_entity_send_failure_warns_and_withholds_the_id` (the WARN and the
+withheld id) and `player_entity_id_is_withheld_from_reuse_until_the_cell_confirms_teardown`
+(the concurrency guard — drives `destroy_client_entities` on its own task,
+intercepts the `DisconnectEntity` before replying, and proves a concurrent
+`EntityManager::create_entity` call does not receive the id under teardown).
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

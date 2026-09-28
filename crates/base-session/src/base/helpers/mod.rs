@@ -402,7 +402,19 @@ pub(crate) fn get_active_entity_id(
 /// also tells its contact-list watchers and organizations it went offline
 /// (`session_presence::spawn_offline`, on its own task; audit A-35, ORG-06),
 /// with `reason` as the `disconnect_reason`.
-pub fn destroy_client_entities(
+///
+/// The player entity id is **not** returned to `EntityManager`'s free list
+/// until the cell confirms it has torn the mirrored cell entity down (its
+/// `DisconnectEntity` reply). Freeing it eagerly let a concurrent login
+/// recycle the id via `allocate_id`'s FIFO free list before the cell had
+/// even seen the disconnect, so the old session's `DisconnectEntity` — sent
+/// or still in flight — could land on and destroy the *new* player's cell
+/// entity (issue #999). When the cell send fails outright, or the cell
+/// drops the reply without confirming teardown, the id is withheld from
+/// reuse permanently rather than reused unconfirmed: an unrecycled id costs
+/// nothing (the id space is an `i32` counter), a reused one racing a live
+/// cell can destroy another player's session.
+pub async fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
     addr: SocketAddr,
@@ -457,10 +469,14 @@ pub fn destroy_client_entities(
         )
     };
 
-    let mut mgr = entity_manager.lock().unwrap();
     if account_eid != 0 {
         tracing::debug!(%addr, account_entity_id = account_eid, "Destroying Account entity");
-        mgr.destroy_entity(EntityId(account_eid as i32));
+        // The Account entity has no cell-side mirror, so there is nothing to
+        // race: free it immediately.
+        entity_manager
+            .lock()
+            .unwrap()
+            .destroy_entity(EntityId(account_eid as i32));
     }
     if let Some(player_eid) = player_eid {
         tracing::debug!(%addr, player_entity_id = player_eid, "Destroying Player entity");
@@ -474,7 +490,6 @@ pub fn destroy_client_entities(
             session_secs,
             "player session ended"
         );
-        mgr.destroy_entity(EntityId(player_eid as i32));
 
         // Remove from entity->addr reverse index
         entity_to_addr.lock().unwrap().remove(&player_eid);
@@ -487,11 +502,61 @@ pub fn destroy_client_entities(
             reason,
         );
 
-        // Notify CellService to disconnect and destroy the cell entity
-        if let Some(tx) = cell_tx {
-            let _ = tx.try_send(BaseToCellMsg::DisconnectEntity {
-                entity_id: player_eid,
-            });
+        // Notify CellService to disconnect and destroy the cell entity, and
+        // hold `player_eid` out of `EntityManager`'s free list until the
+        // cell confirms the teardown finished -- see the function doc and
+        // issue #999.
+        let teardown_confirmed = match cell_tx {
+            Some(tx) => {
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                match tx
+                    .send(BaseToCellMsg::DisconnectEntity {
+                        entity_id: player_eid,
+                        reply_tx,
+                    })
+                    .await
+                {
+                    Ok(()) => match reply_rx.await {
+                        Ok(()) => true,
+                        Err(_) => {
+                            tracing::warn!(
+                                entity_id = player_eid,
+                                account_id,
+                                disconnect_reason = reason,
+                                "destroy_client_entities: cell dropped the \
+                                 DisconnectEntity reply without confirming \
+                                 teardown -- entity id withheld from reuse; \
+                                 the cell entity may be leaked in its space"
+                            );
+                            false
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!(
+                            entity_id = player_eid,
+                            account_id,
+                            disconnect_reason = reason,
+                            error = %e,
+                            "destroy_client_entities: DisconnectEntity send \
+                             failed -- cell may leak the player's entity in \
+                             its space, and the id is withheld from reuse \
+                             until it does"
+                        );
+                        false
+                    }
+                }
+            }
+            // No cell configured (no-cell test harnesses and the account-only
+            // "no character in world yet" teardown): nothing on the other
+            // side could be mid-teardown, so there is nothing to wait for.
+            None => true,
+        };
+
+        if teardown_confirmed {
+            entity_manager
+                .lock()
+                .unwrap()
+                .destroy_entity(EntityId(player_eid as i32));
         }
     }
     tracing::info!(
@@ -905,3 +970,6 @@ pub use witness_broadcast::broadcast_to_witnesses;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod disconnect_teardown;

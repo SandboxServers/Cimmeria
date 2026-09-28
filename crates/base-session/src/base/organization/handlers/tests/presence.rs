@@ -46,7 +46,8 @@ async fn live_db_offline_fanout_on_every_disconnect_path() {
             &fx.transport,
             &fx.db_pool,
             reason,
-        );
+        )
+        .await;
         fx.wait_for_packets(1, n + 1).await;
         let bundles = fx.bundles_to(1);
         assert_eq!(bundles[n], vec![(37, offline.clone())], "reason {reason}");
@@ -96,7 +97,8 @@ async fn live_db_unlisted_session_is_not_announced_twice() {
         &fx.transport,
         &fx.db_pool,
         "client_disconnect",
-    );
+    )
+    .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(fx.typed.filter_to(fx.addr(1)).is_empty());
     fx.teardown().await;
@@ -163,7 +165,8 @@ async fn live_db_contact_list_watchers_hear_a_teardown() {
         &fx.transport,
         &fx.db_pool,
         "inactivity_timeout",
-    );
+    )
+    .await;
     fx.wait_for_packets(1, 1).await;
     assert_eq!(
         fx.calls_to(1),

@@ -11,7 +11,6 @@
 
 use super::*;
 
-use crate::cell::messages::BaseToCellMsg;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
@@ -61,7 +60,7 @@ async fn disconnect_entity_persists_the_live_position_before_teardown() {
 
     let (tx, mut rx) = mpsc::channel(32);
     handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 1 },
+        disconnect_entity_msg(1),
         &tx,
         &mut mgr,
         &ChainEngine::new(),
@@ -98,7 +97,7 @@ async fn disconnect_of_a_non_player_entity_persists_nothing() {
 
     let (tx, mut rx) = mpsc::channel(32);
     handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 7 },
+        disconnect_entity_msg(7),
         &tx,
         &mut mgr,
         &ChainEngine::new(),

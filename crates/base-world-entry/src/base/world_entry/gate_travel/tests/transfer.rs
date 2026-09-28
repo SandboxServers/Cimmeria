@@ -341,7 +341,7 @@ async fn aborted_transfer_ends_the_session_rather_than_stranding_an_unspaced_cli
 
     let mut told_cell = false;
     while let Ok(msg) = cell_rx.try_recv() {
-        if let BaseToCellMsg::DisconnectEntity { entity_id } = msg {
+        if let BaseToCellMsg::DisconnectEntity { entity_id, .. } = msg {
             assert_eq!(entity_id, ENTITY_ID);
             told_cell = true;
         }

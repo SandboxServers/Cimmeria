@@ -153,14 +153,7 @@ async fn disconnect_entity_cancels_in_flight_trade_with_surviving_partner() {
     let (tx, mut rx) = mpsc::channel(16);
     let engine = ChainEngine::new();
 
-    handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 1 },
-        &tx,
-        &mut mgr,
-        &engine,
-        &[],
-    )
-    .await;
+    handle_base_message(disconnect_entity_msg(1), &tx, &mut mgr, &engine, &[]).await;
 
     // Entity 2 (surviving partner) must have its trade state cleared.
     let survivor = mgr

@@ -524,6 +524,7 @@ async fn destroying_the_client_drops_its_crafting_queue() {
             as std::sync::Arc<dyn cimmeria_mercury::transport::Transport>),
         &None,
         "client_disconnect",
-    );
+    )
+    .await;
     assert_eq!(global.pending(HOOK_ENTITY), 0);
 }

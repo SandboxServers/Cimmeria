@@ -197,5 +197,6 @@ pub async fn run_tick_loop(
         &transport,
         &db_pool,
         disconnect_reason,
-    );
+    )
+    .await;
 }

@@ -383,7 +383,8 @@ async fn dispatch_client_bundle(
                     transport,
                     db_pool,
                     "client_disconnect",
-                );
+                )
+                .await;
             }
             // VIEWPORT_ACK (0x09)
             0x09 => {
