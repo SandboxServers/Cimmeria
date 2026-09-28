@@ -181,7 +181,14 @@ arrival (duplicate counts, for example) should send unreliably, as
 Harness peers anchor their receive side at seq 0, because every
 `Channel` starts `next_tx_seq` at 0. The wireclient `GameSession`
 re-anchors at 3, the first sequence after the phase-3 reply (1) and
-the time-sync bundle (2). Both starts are certain. An unanchored
+the time-sync bundle (2). It reads those two off the raw socket before
+its `LoopbackPeer` exists, then queues ACKs for both with
+`LoopbackPeer::queue_ack`, so its first send carries `acks [1, 2]`, as
+the SGW client's ack-only packet does in the captured logins. The server
+keeps both in the session channel's TX window until they are acked and
+resends a lost one on RTO (#842), so a session that never acked them
+would see both again about 1.5 s after login (acked and dropped there as
+duplicates). Both starts are certain. An unanchored
 `Channel` adopts the first reliable sequence it sees, which is how the
 client's `inSeqAt` starts. The server's client sessions use that mode
 too, because nothing guarantees a client starts at 0.
@@ -231,6 +238,38 @@ for the full investigation. This is a `Channel`-internal fix — no
 harness API changed, and `LoopbackPeer` was never affected (it drives
 `send_packet`, not `register_sent_packet`, so its own `next_tx_seq`
 allocation and TX-window insertion were always the same call).
+
+### Send path: the login handshake packets (#842)
+
+The base sends the login reply (seq 1) and the time-sync bundle (seq 2)
+with `FLAG_RELIABLE` before the session's `Channel` exists. They used to
+stay raw sends, outside the TX window, so a lost one was never resent: a
+lost reply hung the login, and a lost time-sync left a permanent gap at
+the head of the client's reliable stream. `handle_login` now builds the
+channel with `new_client_channel_with_handshake`
+(`crates/base/src/base/login/mod.rs`), which registers both datagrams,
+byte for byte, before the session goes live. The ordinary retransmit
+scan then covers them, as the legacy C++ server's channel resend timers
+did. No harness peer or wireclient session starts early enough to see
+this, so the guards live in
+`crates/base/src/base/login/tests/handshake_retransmit.rs`: they run the
+real base receive loop on a loopback socket, drop one of the two once,
+and check the client gets the byte-identical resend and that its
+`acks [2, 1]` retires both.
+
+Unlike every other reliable packet, the two are registered with
+`Channel::register_sent_packet_capped` (`channel/retransmit_cap.rs`),
+because two of five captured clients never ack them. A capped entry
+gets at most `cap` resends (`HANDSHAKE_RETRANSMIT_CAP` = 6 here). When
+it expires again after that, `check_timeouts` drops it from the window
+instead of resending it and records an `AbandonedPacket`. It does not
+count as an ACK (no RTT sample, `highest_acked` unchanged), but it frees
+the slot and moves the transmit hole off the dropped packet. The caller
+drains the records with `Channel::take_abandoned`; the base logs one
+`reliable_resend_abandoned` WARN per packet. Guards:
+`channel/tests/retransmit_cap.rs` (channel semantics) and
+`client_that_never_acks_stops_getting_handshake_resends_after_the_cap`
+(the base path).
 
 ### ACKs: one ACK retires one packet
 

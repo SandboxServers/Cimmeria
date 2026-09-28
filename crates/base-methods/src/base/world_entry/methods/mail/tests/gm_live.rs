@@ -17,7 +17,7 @@ fn actor(c: &Client) -> MailGmActor {
     }
 }
 
-fn send(
+pub(super) fn send(
     c: &Client,
     to: Option<&str>,
     cash: i64,
@@ -34,7 +34,7 @@ fn send(
     }
 }
 
-fn lines(received: Vec<Received>) -> Vec<String> {
+pub(super) fn lines(received: Vec<Received>) -> Vec<String> {
     received
         .into_iter()
         .filter_map(|r| match r {

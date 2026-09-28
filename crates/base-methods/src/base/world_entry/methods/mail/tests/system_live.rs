@@ -28,14 +28,19 @@ async fn mails(pool: &PgPool, character_id: i32) -> Vec<(Option<i32>, String, i6
 }
 
 /// An item type whose `max_stack_size` is `1` (`stackable = false`) or
-/// above 1.
+/// above 1, and that fits a carried bag: system mail refuses a type no take
+/// could place (#959), and the lowest ids include mission-only `{2}` types.
 async fn type_with_stack(pool: &PgPool, stackable: bool) -> (i32, i32) {
     let sql = if stackable {
         "SELECT item_id, max_stack_size FROM resources.items \
-         WHERE max_stack_size > 1 ORDER BY item_id LIMIT 1"
+         WHERE max_stack_size > 1 AND (COALESCE(cardinality(container_sets), 0) = 0 \
+               OR container_sets && ARRAY[1, 15]) \
+         ORDER BY item_id LIMIT 1"
     } else {
         "SELECT item_id, max_stack_size FROM resources.items \
-         WHERE max_stack_size = 1 ORDER BY item_id LIMIT 1"
+         WHERE max_stack_size = 1 AND (COALESCE(cardinality(container_sets), 0) = 0 \
+               OR container_sets && ARRAY[1, 15]) \
+         ORDER BY item_id LIMIT 1"
     };
     sqlx::query_as(sql).fetch_one(pool).await.unwrap()
 }

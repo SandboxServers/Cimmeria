@@ -54,8 +54,8 @@ fn make_auto_cycle_mgr() -> SpaceManager {
             warmup: 0.0,
             flags: 0,
             is_ranged: false,
-            min_range: 0,
-            max_range: 30,
+            min_range: 0.0,
+            max_range: 30.0,
             target_type_id: 0,
             effect_ids: vec![],
             moniker_ids: vec![],
@@ -221,6 +221,41 @@ async fn auto_cycle_tick_clears_loop_when_target_missing() {
     let p = mgr.get_entity(1).unwrap();
     assert!(!p.abilities.auto_cycle);
     assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+}
+
+/// **#906.** The live target is in another space (another instance) at
+/// the same coordinates: the loop stops like a gone target, and nothing
+/// is fired at it. Fails without the same-space filter: the target passes
+/// every other gate and `handle_use_ability` refuses each re-fire, so the
+/// loop stays armed and the player gets an `onErrorCode` every cooldown.
+#[tokio::test]
+async fn auto_cycle_tick_clears_loop_when_target_in_another_space() {
+    use crate::cell::combat::BSF_AUTO_CYCLING;
+    let mut mgr = make_auto_cycle_mgr();
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Elsewhere" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Elsewhere" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.spawn_npc(60, "Elsewhere", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(60).unwrap().faction = crate::cell::combat::HOSTILE_FACTION;
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.set_state_flag(BSF_AUTO_CYCLING);
+        p.current_target_id = Some(60);
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let p = mgr.get_entity(1).unwrap();
+    assert!(!p.abilities.auto_cycle, "the loop must stop");
+    assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+    assert!(!p.abilities.is_on_cooldown(7), "nothing was fired");
+    assert!(mgr.get_entity(60).unwrap().threat_list.is_empty());
 }
 
 /// Phase 2 live-target switch: player armed loop at NPC 50 then

@@ -12,6 +12,7 @@ pub(super) use crate::packet::Packet;
 
 mod channel_lifecycle;
 mod reassembly;
+mod retransmit_cap;
 mod rx_order;
 mod rx_stall;
 mod selective_ack;

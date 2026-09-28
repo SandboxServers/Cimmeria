@@ -103,17 +103,46 @@ impl LogCapture {
             }
         }
 
+        ensure_global_interest();
+
         let events = Arc::new(Mutex::new(Vec::new()));
         let layer = CaptureLayer {
             events: events.clone(),
         };
         let subscriber = Registry::default().with(layer);
         let default_guard = tracing::subscriber::set_default(subscriber);
+        // Belt and braces: re-evaluate every registered callsite now that
+        // this capture is a live dispatcher.
+        tracing::callsite::rebuild_interest_cache();
         LogCaptureGuard {
             capture: LogCapture { events },
             _default_guard: default_guard,
         }
     }
+}
+
+/// Install, once per process, a global default subscriber that is interested
+/// in every callsite and records nothing (#891).
+///
+/// `tracing` caches each callsite's interest globally, computed from the
+/// dispatchers alive when the callsite first registers. Under plain
+/// `cargo test` many tests share one process: a thread with no capture that
+/// registers a callsite while no capture is alive caches it as `never`, and
+/// if a `LogCapture` on another thread installed in the middle of that
+/// registration, its rebuild missed the callsite, so the capture never sees
+/// the event. (nextest runs each test in its own process, which hid it.)
+/// With an always-interested global dispatcher alive for the whole process,
+/// no callsite can be cached as `never` and the global max level stays at
+/// TRACE; each capture still sees only its own thread's events, because a
+/// thread's `set_default` subscriber takes precedence over the global one.
+///
+/// A test binary that sets its own global subscriber first keeps it; this
+/// then does nothing.
+fn ensure_global_interest() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let _ = tracing::subscriber::set_global_default(Registry::default());
+    });
 }
 
 /// RAII guard returned by [`LogCapture::install`]. Drop to restore the

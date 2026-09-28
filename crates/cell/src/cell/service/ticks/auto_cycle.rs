@@ -30,7 +30,7 @@ use crate::cell::space_manager::SpaceManager;
 ///   `handle_use_ability` every tick and trip its #444 "forged target"
 ///   WARN about ten times a second with the button still lit.
 /// - **No target / invalid target** → clear the loop. Invalid means
-///   despawned, dead, or surrendered — see
+///   despawned, in another space (#906), dead, or surrendered — see
 ///   [`crate::cell::combat::is_auto_cycle_target_valid`]. The death
 ///   sweep and the AI-side submit handler usually get there first; the
 ///   tick is the safety net for despawn / instance cleanup paths that
@@ -96,8 +96,14 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // which the `!target_alive_or_existed` branch below treats
             // as "clear the loop".
             let target_id = e.current_target_id.unwrap_or(0);
+            // A target in another space (#906) stops the loop like a gone
+            // one: `get_entity` searches every space, and
+            // `handle_use_ability` would refuse each re-fire.
             let target = if target_id > 0 {
-                space_mgr.get_entity(target_id as u32)
+                space_mgr.get_entity(target_id as u32).filter(|_| {
+                    space_mgr.get_entity_space_id(eid)
+                        == space_mgr.get_entity_space_id(target_id as u32)
+                })
             } else {
                 None
             };
@@ -176,13 +182,9 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // that's an error packet every ~600 ms while out of
             // range. Loop stays armed so walking back into range
             // resumes firing on the next tick.
-            let max_range = space_mgr.ability_defs.get(&ability_id).map_or(30.0, |d| {
-                if d.max_range > 0 {
-                    d.max_range as f32
-                } else {
-                    30.0
-                }
-            });
+            let max_range = cimmeria_entity::abilities::ability_max_range(
+                space_mgr.ability_defs.get(&ability_id),
+            );
             if let Some(t) = target {
                 if e.position.distance_to(&t.position) > max_range {
                     return None;

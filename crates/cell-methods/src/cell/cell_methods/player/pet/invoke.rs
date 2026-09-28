@@ -42,11 +42,6 @@ use cimmeria_cell_combat::cell::service::npc_ai::pet::{
 };
 use cimmeria_cell_world::cell::pets::order_refusal_code;
 
-/// The range `handle_use_ability` uses when an ability's `max_range` is the
-/// `0` "server default" sentinel. Kept equal to it so this pre-check never
-/// passes a cast the launch then refuses.
-const DEFAULT_ABILITY_RANGE: f32 = 30.0;
-
 /// Parsed CM 88 args (12 bytes, three LE INT32).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct InvokeArgs {
@@ -295,11 +290,10 @@ pub(crate) fn check_invoke(
         };
         return Err(Refusal::debug(reason, code, ability_id));
     }
-    let max_range = space_mgr
-        .ability_defs
-        .get(&ability_id)
-        .filter(|d| d.max_range > 0)
-        .map_or(DEFAULT_ABILITY_RANGE, |d| d.max_range as f32);
+    // The same resolution `handle_use_ability` makes, so this pre-check
+    // never passes a cast the launch then refuses. Metres (#919).
+    let max_range =
+        cimmeria_entity::abilities::ability_max_range(space_mgr.ability_defs.get(&ability_id));
     if entity.position.distance_to(&target.position) > max_range {
         return Err(Refusal::debug(
             "out_of_range",

@@ -285,13 +285,38 @@ source address end the session with one garbage datagram. The seam is
 
 | `reason` | Meaning | Fields |
 |---|---|---|
-| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len` |
+| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. `reply_outstanding = true` means the server has not seen the client ACK the reply (seq 1): it was probably lost, and a resend is pending. `false` means the client acked it and is retrying anyway. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len`, `reply_outstanding` |
 | `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `raw_len`, `error` |
 
 These rows carry `reason`, never `disconnect_reason`. That field is kept
 for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
+
+## Cross-space cast refusal (#906)
+
+`useAbility` resolves its target id with `SpaceManager::get_entity`, which searches every space. A player's cast at a target that is not in the caster's space is refused in `use_ability/fire_los.rs` (at launch, which is also the fire for a zero-warmup cast) with one row on target `abilities` at `debug!`: `event = "cast_refused"`, `reason = "target_other_space"`, `entity_id`, `account_id`, `player_id`, `ability_id`, `target_id`, `caster_space_id`, `target_space_id`, `error_code`. DEBUG, because only a forged or stale packet names such a target, and a WARN would let it flood the log. The refusal is not silent: the caster gets `onErrorCode(0, ability_id, 0)`. If that cannot be queued, a WARN `cast_refused_send_failed` with the same identity fields says so. The guard is `a_target_in_another_space_is_refused_at_launch` in `use_ability/tests/target_validity.rs`.
+
+## Abandoned reliable resends (#842)
+
+Every reliable packet the base sends resends until it is acked, except
+the two login handshake packets: the reply (seq 1) and the time-sync
+(seq 2) are capped at `HANDSHAKE_RETRANSMIT_CAP` (6) resends, because
+some clients never ack them. When a capped packet expires again at its
+cap, the channel drops it from the TX window and
+`collect_pending_retransmits` (`base-session` `base/helpers`) logs one
+`warn!` for it, never repeated:
+
+| `event` | `reason` | Fields |
+|---|---|---|
+| `reliable_resend_abandoned` | `retransmit_cap_reached` | `addr`, `account_id`, `seq`, `retransmit_count` |
+
+A row with `seq = 1` means the client never acked the login reply
+through seven sends. If the login also stalled, look for
+`login_retry_on_channel` rows from the same `addr`. A row with `seq = 2`
+on a session that played normally is a client that ignores the
+time-sync ACK, not a fault. `login/tests/handshake_retransmit.rs` pins the
+cap, the fields and the one-row-per-packet rule.
 
 ## Pet command seams (PT-04)
 
@@ -472,6 +497,54 @@ cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
 `LogCapture` guard: each needs a connection or channel to fail at one
 exact step, which nothing can inject; the commit classification itself is
 unit-tested (`persist::tests`).
+
+## Disconnect-teardown `DisconnectEntity` seam (issue #999)
+
+`destroy_client_entities` (`crates/base-session/src/base/helpers/mod.rs`) used
+to return the player's entity id to `EntityManager`'s free list *before*
+telling the cell to tear the mirrored cell entity down, over a bare
+`let _ = tx.try_send(BaseToCellMsg::DisconnectEntity { .. })`. A full or
+closed Base→Cell channel dropped the notice silently, and — independent of
+channel capacity — a concurrent login could recycle the freed id via
+`EntityManager::allocate_id`'s FIFO free list before the cell had even seen
+the disconnect, so the old session's `DisconnectEntity` landed on and
+destroyed the *new* player's cell entity.
+
+`BaseToCellMsg::DisconnectEntity` now carries a `reply_tx: oneshot::Sender<()>`
+that the cell fires once `handle_disconnect_entity` runs to completion (same
+shape as `CreateEntity`'s existing `reply_tx`). `destroy_client_entities`
+spawns a task that sends the message and awaits that reply before returning
+the id to the free list -- it does **not** await inline. The function is
+called from the base's single UDP receive loop (`client_disconnect`,
+`duplicate_login`) and the per-session tick-sync loop
+(`inactivity_timeout`), so waiting on a cell round trip there would pause
+packet intake for every connected player whenever the cell is busy or the
+shared Base→Cell channel is backpressured. Either failure WARNs (no
+`target:` override) with `entity_id`, `account_id` and `disconnect_reason`:
+
+| Level | Message | Meaning |
+|---|---|---|
+| WARN | `destroy_client_entities: DisconnectEntity send failed` | The Base→Cell channel send itself failed (closed or, in practice, a receiver that has shut down) |
+| WARN | `destroy_client_entities: cell dropped the DisconnectEntity reply without confirming teardown` | The send succeeded but the oneshot reply was dropped without firing (the cell task ended mid-handler) |
+
+In both cases the id is **withheld from the free list permanently** rather
+than freed on a best-effort basis: an entity id is an `i32` counter with
+effectively unbounded headroom, so leaking one costs nothing, while reusing
+one whose teardown was never confirmed can hand a live cell entity's identity
+to a brand-new session. A caller that never returns the id to a free list in
+the first place (`gate_travel::abandon_unspaced_session`, the `SGWPlayer`
+`logOff` arm in `base/dispatch/session.rs` — neither holds an
+`EntityManager` handle) constructs the `reply_tx` and drops the receiver
+immediately; the cell's `let _ = reply_tx.send(())` is a defensible silent
+send in that case; nobody is waiting.
+
+The `LogCapture` guards are
+`base-session` `base/helpers/disconnect_teardown.rs`:
+`disconnect_entity_send_failure_warns_and_withholds_the_id` (the WARN and the
+withheld id) and `player_entity_id_is_withheld_from_reuse_until_the_cell_confirms_teardown`
+(the concurrency guard — drives `destroy_client_entities` on its own task,
+intercepts the `DisconnectEntity` before replying, and proves a concurrent
+`EntityManager::create_entity` call does not receive the id under teardown).
 
 ## Related
 

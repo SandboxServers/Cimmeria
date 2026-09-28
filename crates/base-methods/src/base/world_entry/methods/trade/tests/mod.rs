@@ -13,6 +13,8 @@
 //!   negative cash).
 //! - [`container_whitelist`] — security-review regression guards for
 //!   the tradeable-container whitelist (`INV_MAIN` only).
+//! - [`lock_order_live_db`] — concurrency guard: the trade takes both
+//!   `sgw_player` rows in ascending order whichever player is `p1` (#913).
 //! - [`no_db`] — DB-less early-return tests for the no-pool branch.
 //! - [`slot_reservation`] — recipient-slot accounting regression guard
 //!   for the full-bag-swap scenario.
@@ -33,6 +35,7 @@ use crate::test_support::TestTransport;
 mod commit;
 mod container_whitelist;
 mod crafting_bag;
+mod lock_order_live_db;
 mod no_db;
 mod slot_reservation;
 

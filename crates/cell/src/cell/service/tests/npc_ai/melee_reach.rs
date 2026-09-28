@@ -82,11 +82,11 @@ fn seed_weapon_pair_defs(mgr: &mut crate::cell::space_manager::SpaceManager) {
                 warmup: 0.0,
                 flags: 0,
                 is_ranged,
-                min_range: 0,
+                min_range: 0.0,
                 // The seed sentinel. This is the whole point: without the
                 // `is_ranged` branch a `0` here resolves to 30.0 for a
                 // melee swing exactly as it does for a rifle shot.
-                max_range: 0,
+                max_range: 0.0,
                 target_type_id: 0,
                 effect_ids: vec![],
                 moniker_ids: vec![],

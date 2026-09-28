@@ -92,8 +92,9 @@ fn resolve_respawn_target_uses_in_place_for_other_worlds_without_respawners() {
 ///    reason (world scan skipping it) even if the explicit-id path still
 ///    returned zeros.
 /// 2. It reproduces the worst real shape of B1. `respawner_id > 0` is
-///    client-supplied and `resolve_respawn_target` never constrains it to
-///    the player's world (see
+///    client-supplied and `resolve_respawn_target` itself never constrains
+///    it to the player's world (the `callForAid` dispatch arm now refuses
+///    an unoffered id before this runs; see
 ///    `docs/security-audit/.../CAT-C-combat-abilities.md`), so pre-fix an
 ///    id pointing at another world's zero row returned
 ///    `("Castle", [0,0,0])` — a *cross-world* teleport to the origin,

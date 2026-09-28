@@ -167,7 +167,7 @@ fields are expected to be:
 | `name` | `player_name` from character DB query |
 | `archetype` | `player_archetype` mapped via `archetype_name()` (Soldier, Commando, Scientist, etc.) |
 | `level` | `player_level` from character DB query |
-| `zone` | `world_name` set during world entry |
+| `zone` | The session's current world: set at world entry and moved to the destination by each gate trip |
 | `ping` | Always `null` (not yet implemented) |
 | `status` | `"loading"` if pending world entry phase B, else `"in_world"` |
 | `session` | Socket address string |

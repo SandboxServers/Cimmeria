@@ -27,6 +27,8 @@
 //! - [`live_db_crafting_hub`]: live-DB guards for the hub's crafting corner
 //!   (stations 310-313, the supplies vendor 314, spawns 410-414, buy list
 //!   310): the craft flags, placement and the supplies list.
+//! - [`live_db_ability_ranges`]: live-DB guards that the loader converts the
+//!   seeded UE3-unit ability ranges to metres (#919).
 //! - [`live_db_ability_animation_links`]: live-DB guards that weapon-bound
 //!   damage abilities carry the weapon family's event set, so their hits
 //!   animate.
@@ -61,6 +63,7 @@
 //!   burst, and that an armed hostile fires its weapon's ranged attack.
 
 mod live_db_ability_animation_links;
+mod live_db_ability_ranges;
 mod live_db_castle_loot;
 mod live_db_castle_population;
 mod live_db_castle_seed;

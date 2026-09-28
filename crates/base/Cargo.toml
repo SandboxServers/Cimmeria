@@ -77,3 +77,6 @@ cimmeria-test-support = { workspace = true }
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # The recording meter (`testing::install`, `counter_total`).
 cimmeria-observability = { workspace = true, features = ["testing"] }
+# The drop-one-sequence `Transport` wrapper in the login handshake
+# retransmit tests (#842); the trait uses `#[async_trait]`.
+async-trait = { workspace = true }

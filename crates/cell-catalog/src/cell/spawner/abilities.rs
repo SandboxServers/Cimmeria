@@ -83,6 +83,10 @@ pub async fn load_event_set_sequences(
 }
 
 /// Load all ability definitions from `resources.abilities`.
+///
+/// `min_range` / `max_range` are stored in UE3 units (100 per metre, the
+/// client's cooked `MaxRange` values) and converted to metres here, once,
+/// so every server consumer compares them against metre positions (#919).
 pub async fn load_ability_defs(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::AbilityDef>, sqlx::Error> {
@@ -95,28 +99,10 @@ pub async fn load_ability_defs(
     .fetch_all(pool)
     .await?;
 
-    let mut defs = std::collections::HashMap::with_capacity(rows.len());
-    for r in rows {
-        defs.insert(
-            r.ability_id,
-            cimmeria_entity::abilities::AbilityDef {
-                ability_id: r.ability_id,
-                name: r.name,
-                cooldown: r.cooldown,
-                warmup: r.warmup,
-                flags: r.flags as u32,
-                is_ranged: r.is_ranged,
-                min_range: r.min_range,
-                max_range: r.max_range,
-                target_type_id: r.target_type_id,
-                effect_ids: r.effect_ids,
-                moniker_ids: vec![],
-                required_ammo: r.required_ammo,
-                event_set_id: r.event_set_id,
-                velocity: r.velocity,
-            },
-        );
-    }
+    let defs: std::collections::HashMap<_, _> = rows
+        .into_iter()
+        .map(|r| (r.ability_id, r.into_def()))
+        .collect();
 
     tracing::info!(count = defs.len(), "Loaded ability definitions");
     Ok(defs)
@@ -137,6 +123,31 @@ struct AbilityRow {
     required_ammo: i32,
     event_set_id: Option<i32>,
     velocity: f32,
+}
+
+impl AbilityRow {
+    /// Build the server's [`AbilityDef`](cimmeria_entity::abilities::AbilityDef).
+    /// The range columns are UE3 units (100 per metre, the client's cooked
+    /// `MaxRange`); `AbilityDef` holds metres (#919).
+    fn into_def(self) -> cimmeria_entity::abilities::AbilityDef {
+        use cimmeria_entity::abilities::ability_range_to_metres;
+        cimmeria_entity::abilities::AbilityDef {
+            ability_id: self.ability_id,
+            name: self.name,
+            cooldown: self.cooldown,
+            warmup: self.warmup,
+            flags: self.flags as u32,
+            is_ranged: self.is_ranged,
+            min_range: ability_range_to_metres(self.min_range),
+            max_range: ability_range_to_metres(self.max_range),
+            target_type_id: self.target_type_id,
+            effect_ids: self.effect_ids,
+            moniker_ids: vec![],
+            required_ammo: self.required_ammo,
+            event_set_id: self.event_set_id,
+            velocity: self.velocity,
+        }
+    }
 }
 
 /// Load `resources.trainer_abilities` keyed by `(list_id, archetype_id)`.
@@ -373,4 +384,44 @@ struct EffectNvpRow {
     effect_id: i32,
     name: String,
     value: String,
+}
+
+#[cfg(test)]
+mod range_unit_tests {
+    use super::AbilityRow;
+
+    fn row(min_range: i32, max_range: i32) -> AbilityRow {
+        AbilityRow {
+            ability_id: 1205,
+            name: "Turret Attack: Cone".into(),
+            cooldown: 0.0,
+            warmup: 0.0,
+            flags: 16,
+            is_ranged: true,
+            min_range,
+            max_range,
+            target_type_id: 2,
+            effect_ids: vec![],
+            required_ammo: 0,
+            event_set_id: None,
+            velocity: 100.0,
+        }
+    }
+
+    /// #919: the column is UE3 units, `AbilityDef` is metres. Without the
+    /// loader's division, 1205's seeded 300/3000 would reach the server as
+    /// a 3000 m reach with a 300 m dead zone.
+    #[test]
+    fn row_ranges_convert_from_ue3_units_to_metres() {
+        let def = row(300, 3000).into_def();
+        assert_eq!(def.min_range, 3.0, "min_range 300 UE3 units = 3 m");
+        assert_eq!(def.max_range, 30.0, "max_range 3000 UE3 units = 30 m");
+    }
+
+    #[test]
+    fn zero_range_stays_the_sentinel() {
+        let def = row(0, 0).into_def();
+        assert_eq!(def.min_range, 0.0);
+        assert_eq!(def.max_range, 0.0, "0 must still mean \"use the default\"");
+    }
 }

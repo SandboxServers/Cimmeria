@@ -166,6 +166,8 @@ The extra rays also absorb the occluder's own error: rays that graze within 0.1 
 
 **Auto-cycle.** When the loop's target goes behind a wall, the next loop shot is refused with error 39, once. The loop then stays armed and silent until the line clears (`AbilityManager::auto_cycle_los_notified`). It works like the out-of-range skip, so a player who steps out of cover resumes firing without pressing anything.
 
+**A target in another space (#906).** Before any ray, the target must be in the player's own space; an instance is its own space. The server looks entities up across every space, so without this a target id from another instance at nearby coordinates passed the range check and took the shot. The cast is refused with `onErrorCode(0, ability_id, 0)` (`CONDITION_FEEDBACK_InvalidEntity`, the code the pet bar sends for the same refusal) at no cost, and logs one `abilities` DEBUG row, `event=cast_refused reason=target_other_space`, with the caster's `account_id` and `player_id` and both space ids. It applies whatever the ability's target type and whether or not the world has an occluder. A warmup cast whose target changes space is interrupted at fire, as before, and an auto-cycle loop whose target is in another space stops like one whose target is gone.
+
 ## Damage Pipeline
 
 The damage calculation in `DamageCalc.calculateDamage()` follows this pipeline:

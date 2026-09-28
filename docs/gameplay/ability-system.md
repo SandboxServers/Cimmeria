@@ -27,7 +27,8 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Auto-cycle (auto-attack) | DONE | Re-fires ability on cooldown expiry |
 | Ability interruption | DONE | AT-10. Death, a bandolier slot change, moving 0.5 m, and fire-time target, range, line-of-sight and ammo checks. Refunds the cooldown |
 | Ammo consumption | DONE | `requiredAmmo`, `consumeAmmo()` |
-| Weapon range check | DONE | `UseWeaponRange` flag uses equipped weapon range |
+| Weapon range check | NOT DONE | The server ignores `UseWeaponRange` (flag 4). It uses the ability's own `max_range`, or 30 m when that is 0, which matches the 30 m most ranged weapons carry |
+| Range units | DONE | `resources.abilities` ranges are UE3 units (100 per metre); the loader converts them to metres (#919). See [the ADR, decision 27](../architecture/abilities-and-effects-system.md#27-ability-ranges-are-ue3-units-in-the-data-and-metres-on-abilitydef-919) |
 | Position/facing check | NOT IMPL (Rust) | Python validated the front/flank/rear mask. Rust `AbilityDef` has no `positions` field and `handle_use_ability` checks no facing |
 | Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |
 | AoE / cone targeting | DONE | `cell/abilities/cone_aoe/` — geometry, flag categories, and witness fan-out |

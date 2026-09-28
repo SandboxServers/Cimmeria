@@ -21,9 +21,14 @@
 mod defs;
 mod implemented;
 mod manager;
+mod range;
 mod wire;
 
 pub use defs::*;
 pub use implemented::{ability_is_unimplemented, effect_is_implemented};
 pub use manager::{AbilityManager, CooldownEntry};
+pub use range::{
+    ability_max_range, ability_range_to_metres, ABILITY_RANGE_UNITS_PER_METRE,
+    DEFAULT_ABILITY_MAX_RANGE,
+};
 pub use wire::{serialize_effect_results, serialize_timer_update, ClientEffectResult};

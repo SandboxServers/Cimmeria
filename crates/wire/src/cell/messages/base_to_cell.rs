@@ -60,7 +60,21 @@ pub enum BaseToCellMsg {
     ConnectEntity { entity_id: u32 },
 
     /// Remove client controller from an entity (player disconnected).
-    DisconnectEntity { entity_id: u32 },
+    ///
+    /// `reply_tx` fires once the cell has finished tearing the entity down
+    /// (`handle_disconnect_entity` runs to completion). The base must not
+    /// return `entity_id` to `EntityManager`'s free list before this fires —
+    /// otherwise a concurrent login can recycle the id and queue its own
+    /// `CreateEntity` while the old entity is still live, and the eventual
+    /// `handle_disconnect_entity` for the *old* session destroys the *new*
+    /// player's cell entity instead (issue #999). A caller with nowhere to
+    /// hold the id anyway (it never returns the id to a free list, e.g.
+    /// `gate_travel::abandon_unspaced_session`) may drop the receiver
+    /// without waiting on it.
+    DisconnectEntity {
+        entity_id: u32,
+        reply_tx: tokio::sync::oneshot::Sender<()>,
+    },
 
     /// Client position/movement update forwarded from `avatarUpdateExplicit`.
     EntityMove {

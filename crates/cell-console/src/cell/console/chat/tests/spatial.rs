@@ -48,14 +48,19 @@ async fn broadcast_say_to_witnesses() {
     )
     .await;
 
-    // Should get 2 messages: one for witness (entity 2) + one for sender (entity 1)
+    // `say` is echoed locally by the client (chat-speaker-echo.md), so the
+    // server must send exactly 1 message: the witness (entity 2), never the
+    // sender (entity 1). Sending both is the double-echo bug.
     let mut msgs = Vec::new();
     while let Ok(msg) = rx.try_recv() {
         msgs.push(msg);
     }
-    assert_eq!(msgs.len(), 2);
+    assert_eq!(
+        msgs.len(),
+        1,
+        "say must not echo back to the speaker: {msgs:?}"
+    );
 
-    // Check the first is to witness entity 2
     match &msgs[0] {
         CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -63,19 +68,6 @@ async fn broadcast_say_to_witnesses() {
             ..
         } => {
             assert_eq!(*entity_id, 2);
-            assert_eq!(*method_index, ON_PLAYER_COMMUNICATION);
-        }
-        _ => panic!("Expected EntityMethodCall"),
-    }
-
-    // Check the second is to sender entity 1
-    match &msgs[1] {
-        CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index,
-            ..
-        } => {
-            assert_eq!(*entity_id, 1);
             assert_eq!(*method_index, ON_PLAYER_COMMUNICATION);
         }
         _ => panic!("Expected EntityMethodCall"),
@@ -94,6 +86,11 @@ async fn broadcast_say_to_witnesses() {
 /// every NPC near a talking player. Reverting the `is_player` filter in
 /// `broadcast_to_witnesses` makes this test fail by emitting an
 /// `EntityMethodCall` addressed to the NPC.
+///
+/// Uses `CHAN_EMOTE`, not `CHAN_SAY`: this test is about the NPC filter, not
+/// the say/emote echo split (`say_does_not_echo_to_speaker_but_emote_and_yell_do`
+/// covers that), so it keeps the original "echo + one real witness = 2
+/// messages" shape.
 #[tokio::test]
 async fn broadcast_say_skips_npc_witnesses() {
     let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
@@ -129,7 +126,7 @@ async fn broadcast_say_skips_npc_witnesses() {
         1,
         "Alice",
         0,
-        CHAN_SAY,
+        CHAN_EMOTE,
         "Hello world",
         &tx,
         &mut mgr,
@@ -143,7 +140,8 @@ async fn broadcast_say_skips_npc_witnesses() {
     }
 
     // Exactly 2 messages: the real player witness (2) + the sender echo
-    // (1). The NPC (100008) must never appear as an `entity_id`.
+    // (1, expected for emote). The NPC (100008) must never appear as an
+    // `entity_id`.
     assert_eq!(
         msgs.len(),
         2,
@@ -197,8 +195,10 @@ async fn recipients_of_alice(
 }
 
 /// CAT-L-01 / D-SS15: Bob ignores Alice, so Bob gets none of her say, emote
-/// or yell; Carol still does, and Alice still gets her own echo. Fails when
-/// the ignore filter in `spatial::broadcast_to_witnesses` is removed.
+/// or yell; Carol still does. Alice gets her own echo for emote/yell (the
+/// client doesn't show those locally) but not for say (it does) -- see
+/// `say_does_not_echo_to_speaker_but_emote_and_yell_do`. Fails when the
+/// ignore filter in `spatial::broadcast_to_witnesses` is removed.
 #[tokio::test]
 async fn spatial_chat_skips_ignoring_witness() {
     let capture = crate::test_support::LogCapture::install();
@@ -207,12 +207,16 @@ async fn spatial_chat_skips_ignoring_witness() {
         .unwrap()
         .ignore_names
         .insert("Alice".to_string());
-    for channel in [CHAN_SAY, CHAN_EMOTE, CHAN_YELL] {
+    for (channel, expected) in [
+        (CHAN_SAY, vec![3]),
+        (CHAN_EMOTE, vec![1, 3]),
+        (CHAN_YELL, vec![1, 3]),
+    ] {
         assert_eq!(
             recipients_of_alice(&mut mgr, channel).await,
-            vec![1, 3],
+            expected,
             "channel {channel}: the ignoring witness (2) must be skipped, \
-             the other witness (3) and the speaker echo (1) kept"
+             the other witness (3) kept"
         );
     }
     let ev = capture
@@ -229,6 +233,10 @@ async fn spatial_chat_skips_ignoring_witness() {
 
 /// D-SS15 is one-directional: Alice ignoring Bob does not stop Bob hearing
 /// Alice. Guards against a symmetric filter (PR #585's shape).
+///
+/// Uses `CHAN_EMOTE`, not `CHAN_SAY`: this test is about Ignore
+/// directionality, not the say/emote echo split, so it keeps the speaker
+/// echo (1) in its expected set unconditionally.
 #[tokio::test]
 async fn spatial_chat_reaches_witness_the_speaker_ignores() {
     let mut mgr = three_player_space();
@@ -236,12 +244,18 @@ async fn spatial_chat_reaches_witness_the_speaker_ignores() {
         .unwrap()
         .ignore_names
         .insert("Bob".to_string());
-    assert_eq!(recipients_of_alice(&mut mgr, CHAN_SAY).await, vec![1, 2, 3]);
+    assert_eq!(
+        recipients_of_alice(&mut mgr, CHAN_EMOTE).await,
+        vec![1, 2, 3]
+    );
 }
 
 /// D-SS13 fold: an Ignore entry stored as "alice" (the contact-list window
 /// keeps whatever case was typed) still withholds Alice's lines. Fails when
 /// the spatial filter compares names exactly.
+///
+/// Uses `CHAN_EMOTE` for the same reason as
+/// `spatial_chat_reaches_witness_the_speaker_ignores` above.
 #[tokio::test]
 async fn spatial_chat_ignore_matches_case_insensitively() {
     let mut mgr = three_player_space();
@@ -249,15 +263,18 @@ async fn spatial_chat_ignore_matches_case_insensitively() {
         .unwrap()
         .ignore_names
         .insert("aLiCe".to_string());
-    assert_eq!(recipients_of_alice(&mut mgr, CHAN_SAY).await, vec![1, 3]);
+    assert_eq!(recipients_of_alice(&mut mgr, CHAN_EMOTE).await, vec![1, 3]);
 }
 
-/// A speaker with no player in range still gets their own echo: the client
-/// does not echo say locally, so without it the first line of a lone player
-/// shows nothing (the visible-feedback rule). Fails when the early return
-/// on an empty witness list is restored in `broadcast_to_witnesses`.
+/// A lone `emote`/`yell` speaker (nobody in range) still gets their own
+/// echo -- the client does not show those locally. A lone `say` speaker gets
+/// NOTHING from the server: the client already showed its own `say` line
+/// (chat-speaker-echo.md), and echoing it again is the double-line bug.
+/// Fails when the early return on an empty witness list is restored (the
+/// emote/yell case), or when `say` gains a speaker echo again (the say
+/// case).
 #[tokio::test]
-async fn lone_speaker_still_gets_own_echo() {
+async fn lone_speaker_gets_no_say_echo_but_does_get_emote_and_yell_echo() {
     let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
@@ -275,7 +292,44 @@ async fn lone_speaker_still_gets_own_echo() {
         .insert(cimmeria_common::EntityId(100009));
     assert_eq!(
         recipients_of_alice(&mut mgr, CHAN_SAY).await,
+        Vec::<u32>::new(),
+        "say: nothing -- the client already showed its own line"
+    );
+    assert_eq!(
+        recipients_of_alice(&mut mgr, CHAN_EMOTE).await,
         vec![1],
-        "exactly the speaker's own echo"
+        "emote: the speaker's own echo, since the client doesn't show it locally"
+    );
+    assert_eq!(
+        recipients_of_alice(&mut mgr, CHAN_YELL).await,
+        vec![1],
+        "yell: the speaker's own echo, since the client doesn't show it locally"
+    );
+}
+
+/// The direct regression guard for the speaker double-echo bug
+/// (chat-speaker-echo.md): a `say` line must reach the speaker's own client
+/// through the client's native local echo ONLY, never a second time from the
+/// server. `emote` and `yell` have no client-side echo, so the server must
+/// still send those to the speaker. Fails if the `CHAN_SAY` skip in
+/// `broadcast_to_witnesses` is removed (the say assertion) or if
+/// `emote`/`yell` stop being echoed (the other two).
+#[tokio::test]
+async fn say_does_not_echo_to_speaker_but_emote_and_yell_do() {
+    let mut mgr = three_player_space();
+    assert_eq!(
+        recipients_of_alice(&mut mgr, CHAN_SAY).await,
+        vec![2, 3],
+        "say: witnesses only -- no echo back to the speaker (1)"
+    );
+    assert_eq!(
+        recipients_of_alice(&mut mgr, CHAN_EMOTE).await,
+        vec![1, 2, 3],
+        "emote: witnesses AND the speaker's own echo"
+    );
+    assert_eq!(
+        recipients_of_alice(&mut mgr, CHAN_YELL).await,
+        vec![1, 2, 3],
+        "yell: witnesses AND the speaker's own echo"
     );
 }

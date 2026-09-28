@@ -14,7 +14,7 @@ use axum::{
 use quick_xml::{events::Event, Reader};
 use rand::RngExt;
 
-use crate::audit::emit_login_event;
+use crate::audit::{emit_login_event, LoginOutcome};
 use crate::credential_redaction::CredentialPrefix;
 
 use super::credentials::{
@@ -108,7 +108,7 @@ pub(super) async fn handle_user_auth(
         Ok(c) => c,
         Err(CredentialGateError::PlaintextRequiresTls) => {
             tracing::warn!(user = %req.account_name, "plaintext credential rejected over plain HTTP");
-            audit!("plaintext_requires_tls");
+            audit!(LoginOutcome::PlaintextRequiresTls);
             // Reuse the malformed-password code: the client must not learn that
             // a plaintext-over-TLS path exists.
             return login_error(2, "The specified password is invalid.");
@@ -128,7 +128,7 @@ pub(super) async fn handle_user_auth(
     }
     if !state.developer_mode && req.protocol_digest.to_uppercase() != PROTOCOL_DIGEST {
         tracing::warn!(got = %req.protocol_digest, expected = PROTOCOL_DIGEST, "Protocol digest mismatch");
-        audit!("protocol_mismatch");
+        audit!(LoginOutcome::ProtocolMismatch);
         return login_error(
             17,
             "Protocol version mismatch; your client version is not supported.",
@@ -143,7 +143,7 @@ pub(super) async fn handle_user_auth(
             Ok(acct) => (acct.account_id, acct.access_level),
             Err(AuthCredError::InvalidCredentials) => {
                 tracing::info!(user = %req.account_name, "Invalid credentials");
-                audit!("invalid_credentials");
+                audit!(LoginOutcome::InvalidCredentials);
                 cimmeria_discord::emit_player_auth_failed(
                     req.account_name.as_str(),
                     addr,
@@ -154,7 +154,7 @@ pub(super) async fn handle_user_auth(
             }
             Err(AuthCredError::AccountDisabled) => {
                 tracing::info!(user = %req.account_name, "Account disabled");
-                audit!("account_disabled");
+                audit!(LoginOutcome::AccountDisabled);
                 cimmeria_discord::emit_player_auth_failed(
                     req.account_name.as_str(),
                     addr,
@@ -164,7 +164,7 @@ pub(super) async fn handle_user_auth(
             }
             Err(AuthCredError::DbError(e)) => {
                 tracing::error!(user = %req.account_name, error = %e, "DB query failed");
-                audit!("db_error");
+                audit!(LoginOutcome::DbError);
                 cimmeria_discord::emit_db_error("auth_credential_check", e.to_string());
                 return login_error(10, "A request to the database server failed.");
             }
@@ -173,12 +173,12 @@ pub(super) async fn handle_user_auth(
         tracing::debug!(user = %req.account_name, "developer mode: accepting credentials (no DB)");
         (1, 99) // dev mode: max access level
     } else {
-        audit!("db_error");
+        audit!(LoginOutcome::DbError);
         return login_error(10, "A request to the database server failed.");
     };
 
     if state.shards.is_empty() {
-        audit!("no_shards", id = account_id);
+        audit!(LoginOutcome::NoShards, id = account_id);
         return login_error(7, "No shards are available to the authentication server.");
     }
 
@@ -201,7 +201,7 @@ pub(super) async fn handle_user_auth(
     tracing::Span::current().record("account_id", account_id);
     tracing::Span::current().record("result", "success");
     tracing::info!(user = %req.account_name, account_id, access_level, ip = %client_ip, "Phase 1 success");
-    audit!("success", id = account_id);
+    audit!(LoginOutcome::Success, id = account_id);
 
     let xml = login_success_xml(account_id, &state.shards);
     (
@@ -333,7 +333,7 @@ pub(super) async fn handle_server_selection(
             Some(session.account_id),
             &client_ip,
             "shard_selection",
-            "success",
+            LoginOutcome::Success,
             Some(&shard.name),
             None,
         );

@@ -14,12 +14,18 @@ mod region_scope;
 mod reload;
 mod reload_holster;
 
+/// Player 1 in one shared Castle_CellBlock space. Non-instanced on
+/// purpose: for an instanced world every `create_entity` / `spawn_npc`
+/// opens a fresh space, which put the player and each test's NPC in
+/// different instances (#906).
 pub(super) fn make_mgr_with_player() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
-    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
-        .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" /></Spaces>"#,
+    )
+    .unwrap();
     mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(1) {

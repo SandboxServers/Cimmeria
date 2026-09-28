@@ -233,7 +233,7 @@ async fn disconnect_carries_identity_resolved_before_teardown() {
     )
     .await;
     handle_base_message(
-        BaseToCellMsg::DisconnectEntity { entity_id: 7777 },
+        disconnect_entity_msg(7777),
         &tx,
         &mut mgr,
         &ChainEngine::new(),

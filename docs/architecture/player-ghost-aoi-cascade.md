@@ -424,6 +424,27 @@ ends of a failed introduction. The row is catalogued in
   still-open [invisible-entity-until-relog defect](../gap-analysis.md) —
   nothing re-sends it. This change narrows the window that produces bad
   introductions; it does not add a way to correct one.
+- **Fixed (2026-09-28, issue #999): a disconnect racing a login could hand
+  the old player's entity id to the new one before the cell tore the old
+  entity down.** `destroy_client_entities` returned the player entity id to
+  `EntityManager`'s free list before the Base→Cell `DisconnectEntity` (a
+  bare `let _ = tx.try_send(...)`) reached the cell, so a concurrent login
+  could recycle the id and queue its own `CreateEntity` while the old
+  entity's ghost was still live; the eventual `DisconnectEntity` for the old
+  session then destroyed the *new* player's cell entity, or — on a full or
+  closed channel — was dropped entirely and left the old ghost in
+  `space.players`, the spatial grid and every nearby witness set. A
+  `DisconnectEntity` reply (`reply_tx: oneshot::Sender<()>`, mirroring
+  `CreateEntity`'s existing round trip) now gates the free: the id stays
+  out of the free list until the cell confirms teardown, and both failure
+  shapes WARN instead of failing silently. The round trip runs on a task
+  `destroy_client_entities` spawns internally, not inline, so the base's
+  UDP receive loop and tick-sync loop never block waiting on the cell. See
+  [negative-logging-convention.md](negative-logging-convention.md)
+  § Disconnect-teardown `DisconnectEntity` seam. This does not by itself
+  confirm or rule out the client-side `GameEntityManager` cache question
+  from the issue (RE follow-up #1000: how the client's create handler
+  treats an id it still has cached from a `LEAVE_AOI`) — that remains open.
 
 ## Two-client UAT checklist
 
