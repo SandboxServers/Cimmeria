@@ -385,6 +385,7 @@ mod liveness_tests {
                     }],
                     action_delays: vec![],
                     priority: 0,
+                    once: false,
                 });
             }
         }

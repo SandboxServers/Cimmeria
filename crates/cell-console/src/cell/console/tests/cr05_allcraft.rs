@@ -23,6 +23,9 @@ fn with_player_target(caller_access_level: u32) -> (SpaceManager, u32) {
     let caller = mgr.get_entity_mut(gm).unwrap();
     caller.access_level = caller_access_level;
     caller.current_target_id = Some(TARGET as i32);
+    caller
+        .witnesses
+        .insert(cimmeria_common::EntityId(TARGET as i32));
     (mgr, gm)
 }
 

@@ -469,6 +469,7 @@ async fn a_restored_item_use_chain_owns_the_item_so_nothing_doubles() {
         ],
         action_delays: vec![],
         priority: 0,
+        once: false,
     });
     let sent = use_item(&mut mgr, &engine, SLAPPACK).await;
     assert!(
@@ -552,6 +553,7 @@ async fn a_chain_owned_unimplemented_consumable_gets_no_refusal() {
         actions: vec![],
         action_delays: vec![],
         priority: 0,
+        once: false,
     });
     let sent = use_item(&mut mgr, &engine, STEALTH_BOOST).await;
     assert!(method_calls(&sent).is_empty(), "{sent:?}");

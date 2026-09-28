@@ -10,6 +10,10 @@ async fn show_target_location_reports_subject_position() {
     mgr.create_entity(2, "Castle", [12.0, 3.0, -4.0], [0.0; 3])
         .unwrap();
     mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    mgr.get_entity_mut(1)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(2));
     let (tx, mut rx) = mpsc::channel(8);
 
     assert!(

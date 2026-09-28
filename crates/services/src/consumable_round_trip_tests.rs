@@ -414,6 +414,7 @@ async fn live_db_a_restored_slappack_chain_neither_double_heals_nor_double_consu
         ],
         action_delays: vec![],
         priority: 0,
+        once: false,
     });
     let base = Base::new(&pool);
 

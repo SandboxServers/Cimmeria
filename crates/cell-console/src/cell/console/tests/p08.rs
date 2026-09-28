@@ -356,8 +356,10 @@ async fn legacy_p08_despawn_notifies_every_witness_and_removes_the_entity() {
             _ => None,
         })
         .collect();
+    // The GM already sees the NPC from `setup` (its selection must be in
+    // view, #844), so it gets no fresh `EnteredAoI`.
     assert!(
-        entered.contains(&gm) && entered.contains(&witness),
+        (entered.contains(&gm) || mgr.target_in_view(gm, npc)) && entered.contains(&witness),
         "fixture precondition: both players must witness the NPC, got {entered:?}"
     );
 
@@ -470,6 +472,7 @@ async fn legacy_p08_despawn_registry_gate_rejects_a_player_target() {
     mgr.connect_entity(victim);
     if let Some(e) = mgr.get_entity_mut(gm) {
         e.current_target_id = Some(victim as i32);
+        e.witnesses.insert(cimmeria_common::EntityId(victim as i32));
     }
     let engine = ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(64);
@@ -526,7 +529,10 @@ async fn legacy_p08_despawn_primitive_refuses_a_player_without_the_registry_gate
 /// line instead of claiming a removal.
 #[tokio::test]
 async fn legacy_p08_despawn_primitive_reports_not_found() {
-    let (mut mgr, _gm, npc) = setup();
+    let (mut mgr, gm, npc) = setup();
+    // `setup` puts the GM's selection in its view (#844); this test wants an
+    // NPC nobody witnesses.
+    mgr.get_entity_mut(gm).unwrap().witnesses.clear();
     let (tx, mut rx) = mpsc::channel(64);
 
     assert_eq!(

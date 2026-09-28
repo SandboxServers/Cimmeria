@@ -619,6 +619,7 @@ async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() 
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
 
     let (tx, _rx) = mpsc::channel(64);

@@ -334,6 +334,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -376,6 +377,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let (tx, _rx) = mpsc::channel(16);
@@ -422,6 +424,7 @@ mod tests {
                 amount: 1,
             }],
             priority: 0,
+            once: false,
         });
 
         let logs = crate::test_support::LogCapture::install();

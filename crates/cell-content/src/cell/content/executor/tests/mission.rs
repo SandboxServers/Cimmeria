@@ -56,6 +56,7 @@ async fn complete_mission_action_against_failed_mission_does_not_fire_completion
             amount: 1,
         }],
         priority: 0,
+        once: false,
     });
 
     let (tx, _rx) = mpsc::channel(64);
@@ -223,6 +224,7 @@ async fn complete_mission_reports_only_objectives_a_chain_completes() {
             objective_id: 2725,
         }],
         priority: 0,
+        once: false,
     });
 
     let (tx, _rx) = mpsc::channel(64);

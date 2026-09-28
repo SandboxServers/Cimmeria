@@ -249,6 +249,10 @@ async fn pt07_pet_stance_send_failure_logs_warn_with_caller_identity() {
 async fn pt07_giveability_send_failure_logs_warn_with_caller_identity() {
     let (mut mgr, _npc) = world(2);
     mgr.get_entity_mut(CALLER).unwrap().current_target_id = Some(2);
+    mgr.get_entity_mut(CALLER)
+        .unwrap()
+        .witnesses
+        .insert(cimmeria_common::EntityId(2));
     let capture = LogCapture::install();
     handle_console_command(
         CALLER,

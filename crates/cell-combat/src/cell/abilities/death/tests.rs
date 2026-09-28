@@ -447,3 +447,53 @@ async fn channeller_death_cancels_active_channels() {
         "channel from dead invoker must be cancelled; got {active_after:?}"
     );
 }
+
+/// #844: the killer's stored target goes with the `onTargetUpdate(0)`
+/// reticle drop, and it goes AFTER the auto-cycle sweep that finds the
+/// killer's loop through that field. Another player who has the corpse
+/// selected (a looter) keeps it.
+///
+/// Fails without the `clear_target_of` call (killer still targets the
+/// corpse), and fails if the clear is moved above the auto-cycle sweep
+/// (killer's loop stays armed).
+#[tokio::test]
+async fn the_killers_stored_target_is_cleared_after_its_auto_cycle_stops() {
+    let mut mgr = make_mgr_with_player_and_npc();
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(3) {
+        p.is_player = true;
+        p.player_id = Some(300);
+    }
+    mgr.connect_entity(3);
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    mgr.get_entity_mut(3).unwrap().current_target_id = Some(2);
+    // An armed loop, as `arm_auto_cycle` leaves it once the button is on.
+    mgr.get_entity_mut(1).unwrap().abilities.auto_cycle = true;
+
+    let (tx, _rx) = mpsc::channel(64);
+    apply_death_transition(2, 1, DEAD_STATE, true, false, &tx, &mut mgr).await;
+
+    let killer = mgr.get_entity(1).unwrap();
+    assert_eq!(killer.current_target_id, None, "killer's target cleared");
+    assert!(
+        !killer.abilities.auto_cycle,
+        "the auto-cycle sweep must still find the killer's loop"
+    );
+    assert_eq!(
+        mgr.get_entity(3).unwrap().current_target_id,
+        Some(2),
+        "a bystander keeps the corpse selected (looting)"
+    );
+}
+
+/// A killer who has already switched to another target keeps it.
+#[tokio::test]
+async fn a_killer_who_switched_target_keeps_it() {
+    let mut mgr = make_mgr_with_player_and_npc();
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(77);
+
+    let (tx, _rx) = mpsc::channel(64);
+    apply_death_transition(2, 1, DEAD_STATE, true, false, &tx, &mut mgr).await;
+
+    assert_eq!(mgr.get_entity(1).unwrap().current_target_id, Some(77));
+}

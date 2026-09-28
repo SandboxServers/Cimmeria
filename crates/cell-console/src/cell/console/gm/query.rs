@@ -17,7 +17,8 @@ use crate::cell::space_manager::SpaceManager;
 use crate::mercury::read_wstring;
 
 /// The "subject" of a no-arg inspection command: the caller's current target if
-/// it's set and in the caller's space, else the caller themselves. Mirrors
+/// it's set, in the caller's space and in the caller's view (#844), else the
+/// caller themselves. Mirrors
 /// FanMMORPG's "target the entity, then inspect; default to self" pattern.
 fn subject_or_self(caller: u32, space_mgr: &SpaceManager) -> u32 {
     let caller_space = space_mgr.get_entity(caller).map(|e| e.space_id.0);
@@ -26,6 +27,7 @@ fn subject_or_self(caller: u32, space_mgr: &SpaceManager) -> u32 {
         .and_then(|e| e.current_target_id)
         .and_then(|id| u32::try_from(id).ok())
         .filter(|&id| space_mgr.get_entity(id).map(|e| e.space_id.0) == caller_space)
+        .filter(|&id| space_mgr.target_in_view(caller, id))
         .unwrap_or(caller)
 }
 

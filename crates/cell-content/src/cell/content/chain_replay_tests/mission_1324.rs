@@ -529,9 +529,9 @@ async fn live_db_the_baal_council_advances_1324_to_the_return_step() {
 }
 
 /// Negative (wrong step): Ba'al has nothing to say once the council is
-/// done. The step gate is also the one-shot guard — `content_triggers
-/// .once` is dead code, so a second click would otherwise replay the
-/// council and re-advance the step.
+/// done. The step gate is also the one-shot guard — the chain is not
+/// `once`, and `once` would not survive a relog anyway (#802), so a second
+/// click would otherwise replay the council and re-advance the step.
 ///
 /// Driven over both shapes step 3953 takes after the advance: `completed`
 /// in-session, and `not_active` after a relog — `advance_step` persists
