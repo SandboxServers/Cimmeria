@@ -18,7 +18,7 @@ use crate::test_support::require_db_or_skip;
 /// This is the auto-progression that takes the player straight from
 /// Aftermath into Secure the Armory without an NPC handoff.
 #[tokio::test]
-async fn chain_1105_auto_accepts_688_when_687_completes() {
+async fn live_db_chain_1105_auto_accepts_688_when_687_completes() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1105)
         .await
@@ -58,7 +58,7 @@ async fn chain_1105_auto_accepts_688_when_687_completes() {
 /// armory terminal. Mirrors chain 1097 (687 accept → highlight
 /// Cellblock_WoodenCrate).
 #[tokio::test]
-async fn chain_1106_highlights_armory_terminal_on_688_accept() {
+async fn live_db_chain_1106_highlights_armory_terminal_on_688_accept() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1106)
         .await
@@ -119,7 +119,7 @@ async fn chain_1106_highlights_armory_terminal_on_688_accept() {
 /// all-required-done auto-complete (only one required obj on step 2356)
 /// and end the mission before chain 1109 ever fires on the ring switch.
 #[tokio::test]
-async fn chain_1107_advances_to_step_80688_and_swaps_highlights() {
+async fn live_db_chain_1107_advances_to_step_80688_and_swaps_highlights() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1107)
         .await
@@ -207,7 +207,7 @@ async fn chain_1107_advances_to_step_80688_and_swaps_highlights() {
 /// the `step_status 2356 eq active` gate so a player who runs back to
 /// the terminal post-advance doesn't double-fire the highlight swap.
 #[tokio::test]
-async fn chain_1107_does_not_refire_when_already_on_step_80688() {
+async fn live_db_chain_1107_does_not_refire_when_already_on_step_80688() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1107)
         .await
@@ -255,7 +255,7 @@ async fn chain_1107_does_not_refire_when_already_on_step_80688() {
 /// Chain 1108: killing the optional armory guard increments the
 /// cosmetic counter while step 2356 is active.
 #[tokio::test]
-async fn chain_1108_increments_armory_kills_on_guard_death() {
+async fn live_db_chain_1108_increments_armory_kills_on_guard_death() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1108)
         .await
@@ -330,7 +330,7 @@ async fn chain_1108_increments_armory_kills_on_guard_death() {
 /// death event (respawned guard) must resolve nothing — re-running
 /// `complete_objective` would resend the checkmark and re-persist.
 #[tokio::test]
-async fn chain_1108_does_not_refire_once_objective_4647_completed() {
+async fn live_db_chain_1108_does_not_refire_once_objective_4647_completed() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1108)
         .await
@@ -389,7 +389,7 @@ async fn chain_1108_does_not_refire_once_objective_4647_completed() {
 /// animation or animate the wrong actor at the wrong location. See
 /// chain 1109's seed comment.
 #[tokio::test]
-async fn chain_1109_completes_688_and_cross_world_teleports() {
+async fn live_db_chain_1109_completes_688_and_cross_world_teleports() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1109)
         .await
@@ -473,7 +473,7 @@ async fn chain_1109_completes_688_and_cross_world_teleports() {
 /// runtime `required_mission_id=688` in `handle_interact`) must hold
 /// for the design intent to be met.
 #[tokio::test]
-async fn chain_1109_does_not_complete_when_still_on_step_2356() {
+async fn live_db_chain_1109_does_not_complete_when_still_on_step_2356() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1109)
         .await
@@ -520,7 +520,7 @@ async fn chain_1109_does_not_complete_when_still_on_step_2356() {
 /// These two chains pick which entity to highlight based on which
 /// step is currently active (2356 = terminal pending; 80688 = ring pending).
 #[tokio::test]
-async fn chain_1110_restores_terminal_highlight_when_step_2356_active() {
+async fn live_db_chain_1110_restores_terminal_highlight_when_step_2356_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1110)
         .await
@@ -567,7 +567,7 @@ async fn chain_1110_restores_terminal_highlight_when_step_2356_active() {
 }
 
 #[tokio::test]
-async fn chain_1111_restores_ring_highlight_when_step_80688_active() {
+async fn live_db_chain_1111_restores_ring_highlight_when_step_80688_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1111)
         .await
@@ -617,7 +617,7 @@ async fn chain_1111_restores_ring_highlight_when_step_80688_active() {
 /// chain 1105 on 687 complete) must display prompt blurb 2518 exactly
 /// once. Precedent: chain 1097's `mission_accepted` shape for 687.
 #[tokio::test]
-async fn chain_1154_displays_blurb_2518_when_mission_688_accepted() {
+async fn live_db_chain_1154_displays_blurb_2518_when_mission_688_accepted() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1154)
         .await
@@ -657,7 +657,7 @@ async fn chain_1154_displays_blurb_2518_when_mission_688_accepted() {
 /// mission id (e.g. 687, the mission that auto-accepts 688) must not
 /// also fire the 688 blurb.
 #[tokio::test]
-async fn chain_1154_does_not_fire_for_wrong_mission_id() {
+async fn live_db_chain_1154_does_not_fire_for_wrong_mission_id() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1154)
         .await

@@ -94,7 +94,7 @@ async fn assert_frost_dialog_resolves(
 /// accepted) — chain 1121 accepts 1360 exactly once. Pins T03's "1360
 /// active after loot" acceptance criterion at the chain-resolution level.
 #[tokio::test]
-async fn chain_1121_accepts_1360_on_first_frost_loot() {
+async fn live_db_chain_1121_accepts_1360_on_first_frost_loot() {
     assert_frost_dialog_resolves("active", "not_active", true).await;
 }
 
@@ -104,7 +104,7 @@ async fn chain_1121_accepts_1360_on_first_frost_loot() {
 /// `chain_1003_does_not_fire_after_advancing_to_80623` guard — both chains
 /// share the same step gate, so a second Frost dialog_open resolves neither.
 #[tokio::test]
-async fn chain_1121_does_not_refire_after_advancing_to_80623() {
+async fn live_db_chain_1121_does_not_refire_after_advancing_to_80623() {
     assert_frost_dialog_resolves("completed", "not_active", false).await;
 }
 
@@ -116,7 +116,7 @@ async fn chain_1121_does_not_refire_after_advancing_to_80623() {
 /// (content-chains.instructions.md "Mission grants must gate on
 /// not_active") is the first line of defense pinned here.
 #[tokio::test]
-async fn chain_1121_does_not_refire_once_1360_already_active() {
+async fn live_db_chain_1121_does_not_refire_once_1360_already_active() {
     assert_frost_dialog_resolves("active", "active", false).await;
 }
 
@@ -124,6 +124,6 @@ async fn chain_1121_does_not_refire_once_1360_already_active() {
 /// either — same offer-guard shape as the ACTIVE case above, covering the
 /// other non-`not_active` status the mission lifecycle can be in.
 #[tokio::test]
-async fn chain_1121_does_not_refire_once_1360_completed() {
+async fn live_db_chain_1121_does_not_refire_once_1360_completed() {
     assert_frost_dialog_resolves("active", "completed", false).await;
 }

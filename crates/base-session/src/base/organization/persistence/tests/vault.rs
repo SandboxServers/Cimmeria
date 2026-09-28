@@ -78,7 +78,7 @@ async fn empty_both(pool: &PgPool, org_id: i32) -> (bool, bool) {
 /// The predicate follows real vault rows and the treasury, in Rust and in
 /// SQL alike. Fails if either is the old always-`true` stub.
 #[tokio::test]
-async fn vault_predicate_follows_items_and_cash() {
+async fn live_db_vault_predicate_follows_items_and_cash() {
     let pool = require_db_or_skip!();
     let item = ITEM_BASE;
     clear(&pool, &[item]).await;
@@ -111,7 +111,7 @@ async fn vault_predicate_follows_items_and_cash() {
 /// is deleted. Fails with the stub predicate (the disband then hits the
 /// RESTRICT key, a database error, not `VaultNotEmpty`).
 #[tokio::test]
-async fn disband_is_refused_while_the_vault_holds_an_item() {
+async fn live_db_disband_is_refused_while_the_vault_holds_an_item() {
     let pool = require_db_or_skip!();
     let item = ITEM_BASE + 1;
     clear(&pool, &[item]).await;
@@ -140,7 +140,7 @@ async fn disband_is_refused_while_the_vault_holds_an_item() {
 /// still holds items fails, and the items survive. Fails if the key is
 /// `ON DELETE CASCADE`.
 #[tokio::test]
-async fn deleting_an_org_never_deletes_its_vault() {
+async fn live_db_deleting_an_org_never_deletes_its_vault() {
     let pool = require_db_or_skip!();
     let item = ITEM_BASE + 2;
     clear(&pool, &[item]).await;
@@ -177,7 +177,7 @@ async fn deleting_an_org_never_deletes_its_vault() {
 /// trigger then deletes the organization and the RESTRICT key fails the
 /// character delete).
 #[tokio::test]
-async fn last_member_delete_keeps_a_memberless_org_holding_its_vault() {
+async fn live_db_last_member_delete_keeps_a_memberless_org_holding_its_vault() {
     let pool = require_db_or_skip!();
     let item = ITEM_BASE + 3;
     clear(&pool, &[item]).await;
@@ -215,7 +215,7 @@ async fn last_member_delete_keeps_a_memberless_org_holding_its_vault() {
 /// 20, pinned through the composite key to the organization's type), and a
 /// bound item never enters a shared vault.
 #[tokio::test]
-async fn vault_rows_match_their_org_type_and_are_never_bound() {
+async fn live_db_vault_rows_match_their_org_type_and_are_never_bound() {
     let pool = require_db_or_skip!();
     let ids = [ITEM_BASE + 4, ITEM_BASE + 5, ITEM_BASE + 6];
     clear(&pool, &ids).await;

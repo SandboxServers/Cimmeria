@@ -100,7 +100,7 @@ async fn race(
 /// on key 0 rather than take the main-bag key and then wait for the row the
 /// purchase holds.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_use_waits_for_a_vendor_purchase_instead_of_deadlocking() {
+async fn live_db_a_use_waits_for_a_vendor_purchase_instead_of_deadlocking() {
     let pool = require_db_or_skip!();
     let slot = Slot::new(13);
     player(&pool, slot, &[], None).await;
@@ -143,7 +143,7 @@ async fn a_use_waits_for_a_vendor_purchase_instead_of_deadlocking() {
 /// 0). The use must still wait on the main-bag key rather than lock the item
 /// row and then wait for the player row the writer holds.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_use_waits_for_a_trade_instead_of_deadlocking() {
+async fn live_db_a_use_waits_for_a_trade_instead_of_deadlocking() {
     let pool = require_db_or_skip!();
     let slot = Slot::new(14);
     player(&pool, slot, &[], None).await;

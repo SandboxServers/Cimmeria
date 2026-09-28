@@ -10,6 +10,8 @@ CREATE TABLE resource_versions (
     new_keys integer[] NOT NULL,
     pending boolean DEFAULT false NOT NULL,
     invalidate_all boolean DEFAULT false NOT NULL,
-    snapshot character varying(100) DEFAULT (pg_current_snapshot())::character varying NOT NULL
+    -- Unbounded: pg_current_snapshot() lists every running transaction id on the
+    -- server, so it outgrew varchar(100) with a dozen concurrent writers.
+    snapshot text DEFAULT (pg_current_snapshot())::text NOT NULL
 );
 

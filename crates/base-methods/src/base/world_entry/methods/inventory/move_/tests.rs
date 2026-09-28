@@ -154,7 +154,7 @@ fn make_state(
 }
 
 #[tokio::test]
-async fn simple_move_relocates_full_stack_to_empty_slot() {
+async fn live_db_simple_move_relocates_full_stack_to_empty_slot() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -191,7 +191,7 @@ async fn simple_move_relocates_full_stack_to_empty_slot() {
 /// positions via the three-step park/move/move sequence guarded by the
 /// (player_id, 0) advisory lock and the unique-slot index.
 #[tokio::test]
-async fn swap_exchanges_two_items_full_stacks() {
+async fn live_db_swap_exchanges_two_items_full_stacks() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
@@ -223,7 +223,7 @@ async fn swap_exchanges_two_items_full_stacks() {
 /// index and surface as a user-visible error on what should be a
 /// silent "won't merge stacks" rejection.
 #[tokio::test]
-async fn split_rejected_when_target_occupied() {
+async fn live_db_split_rejected_when_target_occupied() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;
@@ -271,7 +271,7 @@ async fn split_rejected_when_target_occupied() {
 /// rows -> warn + abort) protects this path against concurrent
 /// modification eating the decrement silently.
 #[tokio::test]
-async fn split_into_empty_slot_creates_new_row_and_decrements_source() {
+async fn live_db_split_into_empty_slot_creates_new_row_and_decrements_source() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 300;
     let player_id = TEST_BASE + 301;
@@ -314,7 +314,7 @@ async fn split_into_empty_slot_creates_new_row_and_decrements_source() {
 /// without modifying any rows. Asserts via a sentinel sibling whose
 /// position must not change.
 #[tokio::test]
-async fn source_item_not_found_makes_no_changes() {
+async fn live_db_source_item_not_found_makes_no_changes() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 400;
     let player_id = TEST_BASE + 401;
@@ -427,7 +427,7 @@ fn make_state_with_connected(
 /// (which go through the bandolier branch) showed up but armor did
 /// not.
 #[tokio::test]
-async fn move_into_equipment_slot_refreshes_appearance() {
+async fn live_db_move_into_equipment_slot_refreshes_appearance() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 900;
     let player_id = TEST_BASE + 901;
@@ -482,7 +482,7 @@ async fn move_into_equipment_slot_refreshes_appearance() {
 /// must also refresh appearance. The witness model otherwise keeps
 /// rendering the previously-equipped piece until the player relogs.
 #[tokio::test]
-async fn move_out_of_equipment_slot_refreshes_appearance() {
+async fn live_db_move_out_of_equipment_slot_refreshes_appearance() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 1000;
     let player_id = TEST_BASE + 1001;
@@ -531,7 +531,7 @@ async fn move_out_of_equipment_slot_refreshes_appearance() {
 /// including the right-click auto-equip path that goes through
 /// this same handler.
 #[tokio::test]
-async fn negative_quantity_is_whole_stack_sentinel() {
+async fn live_db_negative_quantity_is_whole_stack_sentinel() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 1200;
     let player_id = TEST_BASE + 1201;
@@ -565,7 +565,7 @@ async fn negative_quantity_is_whole_stack_sentinel() {
 }
 
 #[tokio::test]
-async fn bag_to_bag_move_does_not_refresh_appearance() {
+async fn live_db_bag_to_bag_move_does_not_refresh_appearance() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 1100;
     let player_id = TEST_BASE + 1101;

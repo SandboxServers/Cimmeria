@@ -116,7 +116,7 @@ fn assert_engaged_by_chain(mgr: &SpaceManager, mob: u32) {
 /// Chain 1008 still owns the first guard: 5 u from a player it waits, and
 /// entering Region8 is what arms and engages it.
 #[tokio::test]
-async fn na13_chain_1008_still_owns_the_first_guard() {
+async fn live_db_na13_chain_1008_still_owns_the_first_guard() {
     let pool = require_db_or_skip!();
     let (mut mgr, guard) = fixture(&pool, GUARD_TAG).await;
 
@@ -150,7 +150,7 @@ async fn na13_chain_1008_still_owns_the_first_guard() {
 /// The PRU does not fire before the vial: 5 u from a player it waits, and
 /// the Ambernol vial interaction (chain 1032) is what arms and engages it.
 #[tokio::test]
-async fn na13_pru_waits_for_the_vial_interaction() {
+async fn live_db_na13_pru_waits_for_the_vial_interaction() {
     let pool = require_db_or_skip!();
     let (mut mgr, pru) = fixture(&pool, PRU_TAG).await;
 

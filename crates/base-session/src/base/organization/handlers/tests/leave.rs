@@ -35,7 +35,7 @@ fn assert_row(capture: &crate::test_support::LogCaptureGuard, outcome: &str, rea
 /// real Team of someone else's) is refused under the lock, changes nothing,
 /// and the caller gets a feedback line.
 #[tokio::test]
-async fn org_leave_rejects_non_member() {
+async fn live_db_org_leave_rejects_non_member() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 4, 3, &["Org06 Foreign"]).await;
     let team = fx.org(OrgType::Team, "Org06 Foreign", 0, &[1]).await;
@@ -59,7 +59,7 @@ async fn org_leave_rejects_non_member() {
 /// refused, the membership is unchanged, and the leader's client gets the
 /// true state again (a [35] push) and the reason.
 #[tokio::test]
-async fn leader_leave_is_rejected_while_members_remain() {
+async fn live_db_leader_leave_is_rejected_while_members_remain() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 5, 2, &["Org06 Leader"]).await;
     let team = fx.org(OrgType::Team, "Org06 Leader", 0, &[1]).await;
@@ -91,7 +91,7 @@ async fn leader_leave_is_rejected_while_members_remain() {
 /// `onOrganizationLeft(Requested)` and the online leader
 /// `onMemberLeftOrganization` with the leaver's entity id and name.
 #[tokio::test]
-async fn member_leave_removes_and_fans_out() {
+async fn live_db_member_leave_removes_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 6, 2, &["Org06 Leave"]).await;
     let team = fx.org(OrgType::Team, "Org06 Leave", 0, &[1]).await;
@@ -142,7 +142,7 @@ async fn member_leave_removes_and_fans_out() {
 /// The last member leaving disbands the organization: its rows are gone
 /// and the leaver is told.
 #[tokio::test]
-async fn last_member_leave_disbands() {
+async fn live_db_last_member_leave_disbands() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 7, 1, &["Org06 Solo"]).await;
     let team = fx.org(OrgType::Team, "Org06 Solo", 0, &[]).await;
@@ -169,7 +169,7 @@ async fn last_member_leave_disbands() {
 /// leave is refused, the organization and its member stay, and the member
 /// gets the state and the reason.
 #[tokio::test]
-async fn last_member_leave_refused_while_vault_not_empty() {
+async fn live_db_last_member_leave_refused_while_vault_not_empty() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 8, 1, &["Org06 Vault"]).await;
     let team = fx.org(OrgType::Team, "Org06 Vault", 0, &[]).await;

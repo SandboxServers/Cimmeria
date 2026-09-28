@@ -57,7 +57,7 @@ async fn settle_from(pool: &PgPool, stale: &AuctionRow) -> Result<(), SettleErro
 /// mails a new instance) pays its buyer twice. The player listing is
 /// covered too, although its escrowed row can only move once anyway.
 #[tokio::test]
-async fn a_second_settlement_pays_nothing() {
+async fn live_db_a_second_settlement_pays_nothing() {
     let pool = require_db_or_skip!();
     let (acc_seller, seller, acc_buyer, buyer) = (BASE, BASE + 1, BASE + 2, BASE + 3);
     let seed_seq = BASE + 0x50;
@@ -137,7 +137,7 @@ async fn a_second_settlement_pays_nothing() {
 /// Bug shape: the pre-BM-02b sweep propagated the first error with `?`, so
 /// the healthy auction (ordered after the poison) stayed ACTIVE forever.
 #[tokio::test]
-async fn a_poison_row_is_quarantined_and_the_pass_goes_on() {
+async fn live_db_a_poison_row_is_quarantined_and_the_pass_goes_on() {
     let pool = require_db_or_skip!();
     let (acc_seller, seller, acc_bidder, bidder) =
         (BASE + 0x10, BASE + 0x11, BASE + 0x12, BASE + 0x13);

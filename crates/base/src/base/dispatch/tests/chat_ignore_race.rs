@@ -21,7 +21,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// a `SHARE` lock on `sgw_contact_list_member` lets both adds read and count
 /// but blocks every insert, and is held until both are parked behind it.
 #[tokio::test]
-async fn concurrent_ignore_adds_respect_the_cap() {
+async fn live_db_concurrent_ignore_adds_respect_the_cap() {
     let pool = require_db_or_skip!();
     let owner = (TEST_BASE + 40, TEST_BASE + 41);
     let a = (TEST_BASE + 42, TEST_BASE + 43);
@@ -119,7 +119,7 @@ async fn concurrent_ignore_adds_respect_the_cap() {
 /// A duplicate in a different case is refused by the database check, not a
 /// snapshot: "ssc1pest" is on the list, "SsC1Pest" is the same entry.
 #[tokio::test]
-async fn chat_ignore_refuses_a_case_folded_duplicate() {
+async fn live_db_chat_ignore_refuses_a_case_folded_duplicate() {
     let capture = LogCapture::install();
     let pool = require_db_or_skip!();
     let owner = (TEST_BASE + 50, TEST_BASE + 51);

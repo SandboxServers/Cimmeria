@@ -24,7 +24,7 @@ const ITEMS: i32 = 0x7300_1640;
 /// the item is; nothing is debited and the item stays in its slot. Fails
 /// without the main-bag check (the item would be mailed out of the vault).
 #[tokio::test]
-async fn send_rejects_banked_item() {
+async fn live_db_send_rejects_banked_item() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE, BASE + 1, BASE + 2);
@@ -113,7 +113,7 @@ async fn send_rejects_banked_item() {
 /// `sgw_gate_mail_item` under the same instance id. Fails when the source
 /// allowlist is back to the backpack alone (`item_not_in_main_bag`).
 #[tokio::test]
-async fn send_escrows_a_crafting_component_from_bag_15() {
+async fn live_db_send_escrows_a_crafting_component_from_bag_15() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (0x7300_2450, 0x7300_2451, 0x7300_2452);
     let any = setup(

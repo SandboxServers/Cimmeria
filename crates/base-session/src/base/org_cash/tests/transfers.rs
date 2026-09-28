@@ -12,7 +12,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// wallet (`onCashChanged`) and a line. Fails if either `UPDATE` or the log
 /// insert is removed, or if the broadcast is dropped.
 #[tokio::test]
-async fn a_deposit_and_a_withdrawal_conserve_the_total_and_are_logged() {
+async fn live_db_a_deposit_and_a_withdrawal_conserve_the_total_and_are_logged() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 0, 2, 1000).await;
     let team = fx.org(OrgType::Team, 0, &[1]).await;
@@ -96,7 +96,7 @@ async fn a_deposit_and_a_withdrawal_conserve_the_total_and_are_logged() {
 /// Without `DepositCash` a deposit is refused the same way. Fails if either
 /// bit check is removed.
 #[tokio::test]
-async fn each_direction_needs_its_own_bit() {
+async fn live_db_each_direction_needs_its_own_bit() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 1, 2, 500).await;
     let command = fx.org(OrgType::Command, 0, &[1]).await;

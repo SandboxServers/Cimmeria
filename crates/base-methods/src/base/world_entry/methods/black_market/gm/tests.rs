@@ -88,7 +88,7 @@ async fn delete_auctions(pool: &PgPool, ids: &[i32]) {
 /// `.bm_seed 10` lists ten system-seller auctions that cycle through the
 /// UAT set, active and due in the future, and tells the GM their ids.
 #[tokio::test]
-async fn gm_seed_lists_the_uat_set_as_the_system_seller() {
+async fn live_db_gm_seed_lists_the_uat_set_as_the_system_seller() {
     let pool = require_db_or_skip!();
     let h = Harness::new(&pool, &[GM]);
     let before = system_listing_ids(&pool).await;
@@ -137,7 +137,7 @@ async fn gm_seed_lists_the_uat_set_as_the_system_seller() {
 /// GM why, and logs `bm.gm_rejected reason=account_taken` with the GM's ids.
 /// Fails if `.bm_seed` skips `ensure_system_seller`'s read-back.
 #[tokio::test]
-async fn gm_seed_refuses_when_the_reserved_ids_are_taken() {
+async fn live_db_gm_seed_refuses_when_the_reserved_ids_are_taken() {
     let pool = require_db_or_skip!();
     for sql in [
         "DELETE FROM sgw_auction WHERE seller_id = $1",
@@ -208,7 +208,7 @@ async fn listed(pool: &PgPool) -> (Harness, i32, i32) {
 /// told who bought it for how much. Fails if `.bm_expire` only makes the auction due and
 /// leaves it for the next sweep (the status would still be ACTIVE).
 #[tokio::test]
-async fn gm_expire_settles_a_bid_auction_as_sold_now() {
+async fn live_db_gm_expire_settles_a_bid_auction_as_sold_now() {
     let pool = require_db_or_skip!();
     let (h, seq, item) = listed(&pool).await;
     h.bid(BIDDER, seq, 250).await;
@@ -242,7 +242,7 @@ async fn gm_expire_settles_a_bid_auction_as_sold_now() {
 /// `.bm_expire` on an auction with no bid settles it as unsold: the item
 /// is mailed back to its seller and the GM is told so.
 #[tokio::test]
-async fn gm_expire_returns_an_unsold_item_to_its_seller() {
+async fn live_db_gm_expire_returns_an_unsold_item_to_its_seller() {
     let pool = require_db_or_skip!();
     let (h, seq, item) = listed(&pool).await;
 
@@ -269,7 +269,7 @@ async fn gm_expire_returns_an_unsold_item_to_its_seller() {
 /// auction, names why, and logs `bm.gm_rejected` with the reason. A
 /// settled auction stays settled: `expires_at` is untouched.
 #[tokio::test]
-async fn gm_expire_refuses_unknown_and_settled_auctions() {
+async fn live_db_gm_expire_refuses_unknown_and_settled_auctions() {
     let pool = require_db_or_skip!();
     let (h, seq, _item) = listed(&pool).await;
     h.cancel(SELLER, seq).await;
@@ -323,7 +323,7 @@ async fn gm_expire_refuses_unknown_and_settled_auctions() {
 /// `.bm_list` shows the newest active auctions, each with its id, then the
 /// total.
 #[tokio::test]
-async fn gm_list_shows_the_newest_auctions_with_their_ids() {
+async fn live_db_gm_list_shows_the_newest_auctions_with_their_ids() {
     let pool = require_db_or_skip!();
     let (h, seq, _item) = listed(&pool).await;
 

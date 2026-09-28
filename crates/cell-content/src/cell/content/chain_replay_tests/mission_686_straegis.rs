@@ -23,7 +23,7 @@ use crate::test_support::require_db_or_skip;
 /// regression that reordered the seed rows (e.g. showing the dialog
 /// before the despawn) would trip this.
 #[tokio::test]
-async fn chain_1161_resolves_straegis_scene_with_exact_delays() {
+async fn live_db_chain_1161_resolves_straegis_scene_with_exact_delays() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1161)
         .await
@@ -84,7 +84,7 @@ async fn chain_1161_resolves_straegis_scene_with_exact_delays() {
 /// this chain — pins the `mission_completed` event_key match against
 /// '686' specifically, not any mission.
 #[tokio::test]
-async fn chain_1161_does_not_resolve_on_other_mission_completion() {
+async fn live_db_chain_1161_does_not_resolve_on_other_mission_completion() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1161)
         .await
@@ -122,7 +122,7 @@ async fn chain_1161_does_not_resolve_on_other_mission_completion() {
 /// respawn him from `resources.spawnlist` at his Preparation-room
 /// position, undoing chain 1161's one-time despawn.
 #[tokio::test]
-async fn chain_1162_redespawns_marsh_when_686_done_and_687_not_started() {
+async fn live_db_chain_1162_redespawns_marsh_when_686_done_and_687_not_started() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1162)
         .await
@@ -177,7 +177,7 @@ async fn chain_1162_redespawns_marsh_when_686_done_and_687_not_started() {
 /// landed) owns what happens to him from that point on. Pins the
 /// `mission_687_status eq not_active` gate.
 #[tokio::test]
-async fn chain_1162_does_not_redespawn_marsh_once_687_accepted() {
+async fn live_db_chain_1162_does_not_redespawn_marsh_once_687_accepted() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1162)
         .await
@@ -224,7 +224,7 @@ async fn chain_1162_does_not_redespawn_marsh_once_687_accepted() {
 /// mid-Hallway05), a login must NOT despawn Marsh either — he hasn't
 /// been removed yet, so there's nothing to restore.
 #[tokio::test]
-async fn chain_1162_does_not_redespawn_marsh_before_686_completes() {
+async fn live_db_chain_1162_does_not_redespawn_marsh_before_686_completes() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1162)
         .await

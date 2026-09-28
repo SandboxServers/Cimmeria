@@ -291,7 +291,7 @@ pub(super) async fn insert_player(pool: &PgPool, account_id: i32, player_id: i32
 /// feedback line, and reloads the session and cell copies. `chatIgnore(name,
 /// 0)` takes it off again with CM 88.
 #[tokio::test]
-async fn chat_ignore_adds_to_own_ignore_list() {
+async fn live_db_chat_ignore_adds_to_own_ignore_list() {
     let pool = require_db_or_skip!();
     let owner = (TEST_BASE, TEST_BASE + 1);
     let target = (TEST_BASE + 2, TEST_BASE + 3);
@@ -346,7 +346,7 @@ async fn chat_ignore_adds_to_own_ignore_list() {
 /// self check in `dispatch::ignore` is removed (the name then lands on the
 /// list).
 #[tokio::test]
-async fn chat_ignore_rejects_self() {
+async fn live_db_chat_ignore_rejects_self() {
     let capture = LogCapture::install();
     let pool = require_db_or_skip!();
     let owner = (TEST_BASE + 10, TEST_BASE + 11);
@@ -366,7 +366,7 @@ async fn chat_ignore_rejects_self() {
 /// Unknown names, repeat adds and removes of absent names are refused with
 /// their own line; a full list refuses the next add (CAT-L-04's cap).
 #[tokio::test]
-async fn chat_ignore_refuses_unknown_duplicate_absent_and_full() {
+async fn live_db_chat_ignore_refuses_unknown_duplicate_absent_and_full() {
     let capture = LogCapture::install();
     let pool = require_db_or_skip!();
     let owner = (TEST_BASE + 20, TEST_BASE + 21);

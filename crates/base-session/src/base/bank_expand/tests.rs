@@ -229,7 +229,7 @@ pub(super) fn one(
 /// `expand` with the size and the cash before and after; the player
 /// receives the re-declared `onBagInfo`, the new balance and a chat line.
 #[tokio::test]
-async fn a_purchase_adds_ten_slots_charges_the_price_and_redeclares_the_vault() {
+async fn live_db_a_purchase_adds_ten_slots_charges_the_price_and_redeclares_the_vault() {
     let pool = require_db_or_skip!();
     let c = caller(0x00, 0x7000_BBE0);
     setup(&pool, c, 40, 250).await;
@@ -278,7 +278,7 @@ async fn a_purchase_adds_ten_slots_charges_the_price_and_redeclares_the_vault() 
 /// A GM `.bank` session buys too, with no Banker: `gm_override=true` and
 /// no `banker_id` or `distance` field.
 #[tokio::test]
-async fn a_gm_session_expands_without_a_banker() {
+async fn live_db_a_gm_session_expands_without_a_banker() {
     let pool = require_db_or_skip!();
     let c = caller(0x10, 0x7000_BBE1);
     setup(&pool, c, 60, 100).await;
@@ -313,7 +313,7 @@ async fn a_gm_session_expands_without_a_banker() {
 /// player is told. Fails if the `bank_slots = from_slots` guard is
 /// removed: both sends then buy (60 slots, 200 paid).
 #[tokio::test]
-async fn a_double_purchase_from_one_click_is_charged_once() {
+async fn live_db_a_double_purchase_from_one_click_is_charged_once() {
     let pool = require_db_or_skip!();
     let c = caller(0x20, 0x7000_BBE2);
     setup(&pool, c, 40, 1000).await;
@@ -373,7 +373,7 @@ async fn a_double_purchase_from_one_click_is_charged_once() {
 /// line naming the price. Fails if the cash guard is removed (the row goes
 /// to 50 slots and -1 naquadah).
 #[tokio::test]
-async fn insufficient_funds_change_nothing() {
+async fn live_db_insufficient_funds_change_nothing() {
     let pool = require_db_or_skip!();
     let c = caller(0x30, 0x7000_BBE3);
     setup(&pool, c, 40, 99).await;
@@ -408,7 +408,7 @@ async fn insufficient_funds_change_nothing() {
 /// the ceiling branch is removed from the classification (the refusal is
 /// then `price_missing`, the wrong line).
 #[tokio::test]
-async fn the_ceiling_is_100() {
+async fn live_db_the_ceiling_is_100() {
     let pool = require_db_or_skip!();
     let c = caller(0x40, 0x7000_BBE4);
     setup(&pool, c, 90, 1000).await;

@@ -92,7 +92,7 @@ async fn row_of(pool: &PgPool, player_id: i32) -> (Vec<i32>, String, f32) {
 /// dial is accepted. Deleting the `player_knows_stargate` call from
 /// `handle_dial_gate` fails phase 1 on all three counts.
 #[tokio::test]
-async fn a_dial_to_an_unheld_address_arms_nothing_and_leaves_the_row_untouched() {
+async fn live_db_a_dial_to_an_unheld_address_arms_nothing_and_leaves_the_row_untouched() {
     use crate::cell::gate_travel::handle_dial_gate;
     use crate::cell::messages::CellToBaseMsg;
     use crate::cell::space_manager::SpaceManager;

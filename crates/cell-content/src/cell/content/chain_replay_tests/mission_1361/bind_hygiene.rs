@@ -15,7 +15,7 @@ use super::*;
 /// clickable at all, and 6519 the only thing that makes Moh'katan
 /// clickable on the way back.
 #[tokio::test]
-async fn every_restore_chain_repaints_exactly_its_own_step() {
+async fn live_db_every_restore_chain_repaints_exactly_its_own_step() {
     let pool = require_db_or_skip!();
 
     // (chain, step, world, world_name, dsm, template slot)
@@ -68,7 +68,7 @@ async fn every_restore_chain_repaints_exactly_its_own_step() {
 /// a restore chain that fired in both worlds would paint an indicator on
 /// a template that isn't there.
 #[tokio::test]
-async fn cross_world_restore_chains_do_not_fire_in_the_wrong_world() {
+async fn live_db_cross_world_restore_chains_do_not_fire_in_the_wrong_world() {
     let pool = require_db_or_skip!();
 
     // Hansen (world 57) must not bind while the player is in world 68.
@@ -112,7 +112,7 @@ async fn cross_world_restore_chains_do_not_fire_in_the_wrong_world() {
 ///
 /// This test is the tripwire for that edit.
 #[tokio::test]
-async fn hansen_and_anat_have_no_interact_tag_chain() {
+async fn live_db_hansen_and_anat_have_no_interact_tag_chain() {
     let pool = require_db_or_skip!();
 
     for chain_id in [6517, 6524] {

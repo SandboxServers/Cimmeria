@@ -230,11 +230,18 @@ jobs:
   # name still says `-p cimmeria-services` so a required status check keyed
   # on it keeps matching; the split's final wave renames it.
   #
-  # The `ci-live-db` profile in .config/nextest.toml serialises every
-  # test (threads-required = "num-test-threads"). Some live-DB tests share
-  # sentinel id ranges in resources.* and collide under parallel
-  # execution against a single shared DB; that's a fixture-design
-  # constraint, not a bug in the handlers.
+  # The schema loads into `sgw` in the background while the test binaries
+  # compile (tools/live-db-schema-load.sh, then test-live-db.sh
+  # --build-only). tools/test-live-db.sh then clones `sgw` into sgw_0 ..
+  # sgw_<N-1> (N = the `live-db` test group's max-threads in
+  # .config/nextest.toml), and the `ci-live-db` profile runs the tests whose
+  # name contains `live_db` up to N at once, each on its group slot's own
+  # clone, and every other test in parallel. Some live-DB tests share
+  # sentinel id ranges in resources.* and would collide in one database;
+  # that's a fixture-design constraint, not a bug in the handlers. Guard
+  # tests in cimmeria-test-support fail when a test that reaches
+  # require_db_or_skip! lacks the `live_db` marker, or when test code reads
+  # DATABASE_URL around the slot resolver.
   test-live-db:
     name: cargo nextest -p cimmeria-services (live DB)
     needs: changes
@@ -262,6 +269,11 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
         run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+      - name: start schema + seeds load (background)
+        # Loads db/database.sql into `sgw`, the template of the per-slot
+        # clones, while the steps below compile. It outlives this step; the
+        # wait step below fails the job, printing psql's log, if it failed.
+        run: bash tools/live-db-schema-load.sh start
       - name: install nextest
         uses: taiki-e/install-action@nextest
       - name: hydrate external/recast
@@ -273,15 +285,14 @@ jobs:
           unzip -q /tmp/recast.zip -d /tmp/recast_extract
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
-      - name: load schema + seeds
-        env:
-          PGPASSWORD: w-testing
-        run: |
-          psql -h localhost -U w-testing -d sgw -v ON_ERROR_STOP=1 -f db/database.sql
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-live-db
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: build live-DB test binaries
+        run: bash tools/test-live-db.sh --build-only
+      - name: wait for schema + seeds load
+        run: bash tools/live-db-schema-load.sh wait 300
       - name: cargo nextest run (live DB)
         run: bash tools/test-live-db.sh
       - name: upload test results to Codecov
@@ -398,6 +409,9 @@ jobs:
           components: llvm-tools-preview
       - name: install clang + mold + psql
         run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+      - name: start schema + seeds load (background)
+        # As in test-live-db: `sgw` loads while the instrumented build runs.
+        run: bash tools/live-db-schema-load.sh start
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -405,11 +419,6 @@ jobs:
           unzip -q /tmp/recast.zip -d /tmp/recast_extract
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
-      - name: load schema + seeds
-        env:
-          PGPASSWORD: w-testing
-        run: |
-          psql -h localhost -U w-testing -d sgw -v ON_ERROR_STOP=1 -f db/database.sql
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: coverage-live-db
@@ -420,6 +429,10 @@ jobs:
           tool: cargo-llvm-cov,nextest
       - name: clean stale counter data
         run: cargo llvm-cov clean --workspace
+      - name: build live-DB test binaries (instrumented)
+        run: bash tools/test-live-db.sh --llvm-cov --build-only
+      - name: wait for schema + seeds load
+        run: bash tools/live-db-schema-load.sh wait 300
       - name: live-DB pass
         run: bash tools/test-live-db.sh --llvm-cov
       - name: render reports

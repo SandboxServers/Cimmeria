@@ -145,7 +145,7 @@ async fn assert_route_advances_without_completing(
 
 /// Executed guard for the guard-interrogation route (chain 1343).
 #[tokio::test]
-async fn guard_route_advances_without_completing_the_mission() {
+async fn live_db_guard_route_advances_without_completing_the_mission() {
     let pool = require_db_or_skip!();
     assert_route_advances_without_completing(&pool, 1343, 5003, 2794).await;
 }
@@ -155,7 +155,7 @@ async fn guard_route_advances_without_completing_the_mission() {
 /// objectives are optional, so either one alone would end the mission if
 /// 2796 stopped being required.
 #[tokio::test]
-async fn panel_route_advances_without_completing_the_mission() {
+async fn live_db_panel_route_advances_without_completing_the_mission() {
     let pool = require_db_or_skip!();
     assert_route_advances_without_completing(&pool, 1345, 5004, 2795).await;
 }
@@ -164,7 +164,7 @@ async fn panel_route_advances_without_completing_the_mission() {
 /// Both are needed simultaneously because the two routes are
 /// alternatives, not a sequence.
 #[tokio::test]
-async fn chain_1341_marks_guard_and_panel_on_708_accept() {
+async fn live_db_chain_1341_marks_guard_and_panel_on_708_accept() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1341).await;
 
@@ -199,7 +199,7 @@ async fn chain_1341_marks_guard_and_panel_on_708_accept() {
 /// 708's cues. The trigger key is the mission id, so this pins the
 /// `event_key = '708'` row.
 #[tokio::test]
-async fn chain_1341_does_not_fire_for_another_mission_accept() {
+async fn live_db_chain_1341_does_not_fire_for_another_mission_accept() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1341).await;
 
@@ -216,7 +216,7 @@ async fn chain_1341_does_not_fire_for_another_mission_accept() {
 /// else. The objective is NOT completed here — the player has to read
 /// the interrogation, and closing it fires chain 1343.
 #[tokio::test]
-async fn chain_1342_displays_5003_on_guard_interact_at_2415() {
+async fn live_db_chain_1342_displays_5003_on_guard_interact_at_2415() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1342).await;
 
@@ -247,7 +247,7 @@ async fn chain_1342_displays_5003_on_guard_interact_at_2415() {
 /// then fail its own step gate — a dead dialog loop rather than a hard
 /// break, but still wrong.
 #[tokio::test]
-async fn chain_1342_does_not_display_5003_after_2415() {
+async fn live_db_chain_1342_does_not_display_5003_after_2415() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1342).await;
 
@@ -273,7 +273,7 @@ async fn chain_1342_does_not_display_5003_after_2415() {
 /// `missions/progression.rs:155-157` — the client would never see the
 /// objective tick.
 #[tokio::test]
-async fn chain_1343_completes_2794_then_advances_to_2416() {
+async fn live_db_chain_1343_completes_2794_then_advances_to_2416() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1343).await;
 
@@ -350,7 +350,7 @@ async fn chain_1343_completes_2794_then_advances_to_2416() {
 /// without the gate a replayed choice would drag the mission back to
 /// 2416 from wherever it had reached.
 #[tokio::test]
-async fn chain_1343_does_not_fire_outside_step_2415() {
+async fn live_db_chain_1343_does_not_fire_outside_step_2415() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1343).await;
 
@@ -367,7 +367,7 @@ async fn chain_1343_does_not_fire_outside_step_2415() {
 /// completion chain 1322 — the two are separated only by their step and
 /// mission gates, so this pins that 1344 answers the 708 side.
 #[tokio::test]
-async fn chain_1344_displays_5004_on_panel_interact_at_2415() {
+async fn live_db_chain_1344_displays_5004_on_panel_interact_at_2415() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1344).await;
 
@@ -395,7 +395,7 @@ async fn chain_1344_displays_5004_on_panel_interact_at_2415() {
 /// Chain 1344 negative: the panel must not offer the 708 diagnostic
 /// while the player is still finishing mission 706 on step 2412.
 #[tokio::test]
-async fn chain_1344_does_not_fire_during_mission_706() {
+async fn live_db_chain_1344_does_not_fire_during_mission_706() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1344).await;
 
@@ -423,7 +423,7 @@ async fn chain_1344_does_not_fire_during_mission_706() {
 /// Chain 1345: the panel route's completion half. Mirror of 1343 with
 /// objective 2795.
 #[tokio::test]
-async fn chain_1345_completes_2795_then_advances_to_2416() {
+async fn live_db_chain_1345_completes_2795_then_advances_to_2416() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1345).await;
 
@@ -478,7 +478,7 @@ async fn chain_1345_completes_2795_then_advances_to_2416() {
 /// objectives and hit `advance_step` twice — the second advancing out of
 /// 2416 immediately and skipping the crystal entirely.
 #[tokio::test]
-async fn the_two_diagnosis_routes_never_answer_each_others_dialog() {
+async fn live_db_the_two_diagnosis_routes_never_answer_each_others_dialog() {
     let pool = require_db_or_skip!();
     let guard_chain = engine_for(&pool, 1343).await;
     let panel_chain = engine_for(&pool, 1345).await;

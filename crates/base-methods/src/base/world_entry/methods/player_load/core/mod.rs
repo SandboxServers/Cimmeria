@@ -164,7 +164,7 @@ mod tests {
     /// AND 2. Only the slot-2 item's visual must merge into
     /// `components`.
     #[tokio::test]
-    async fn equipped_item_at_inactive_bandolier_slot_is_excluded_from_visuals() {
+    async fn live_db_equipped_item_at_inactive_bandolier_slot_is_excluded_from_visuals() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -353,7 +353,7 @@ mod inventory_loader_tests {
     /// 1-indexed on the wire") and a regression flips item placement
     /// in every UI panel for every player. Pin it.
     #[tokio::test]
-    async fn query_inventory_items_wire_slot_is_one_based() {
+    async fn live_db_query_inventory_items_wire_slot_is_one_based() {
         let pool = require_db_or_skip!();
         let type_id = pick_main_bag_type_id(&pool).await;
         let account_id = TEST_BASE;
@@ -406,7 +406,7 @@ mod inventory_loader_tests {
     /// order would let any player_id match any account_id, which is
     /// a session-confusion vector.
     #[tokio::test]
-    async fn query_player_load_data_account_mismatch_returns_default() {
+    async fn live_db_query_player_load_data_account_mismatch_returns_default() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;
@@ -433,7 +433,7 @@ mod inventory_loader_tests {
     /// archetype (drives ability tree), and items[] (the inventory
     /// query joining on resources.items).
     #[tokio::test]
-    async fn query_player_load_data_round_trips_basic_fields() {
+    async fn live_db_query_player_load_data_round_trips_basic_fields() {
         let pool = require_db_or_skip!();
         let type_id = pick_main_bag_type_id(&pool).await;
         let account_id = TEST_BASE + 200;

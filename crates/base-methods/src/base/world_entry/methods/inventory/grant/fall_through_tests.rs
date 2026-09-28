@@ -97,7 +97,7 @@ pub(super) fn state() -> (
 /// whatever the caller asked for, and the choice is logged with the full
 /// identity.
 #[tokio::test]
-async fn bank_first_component_lands_in_the_crafting_bag_for_every_caller() {
+async fn live_db_bank_first_component_lands_in_the_crafting_bag_for_every_caller() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C400, 0x7000_C401, 0x7000_C4E0_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -163,7 +163,7 @@ async fn bank_first_component_lands_in_the_crafting_bag_for_every_caller() {
 /// A second grant of a stackable `{17,15}` component merges into the
 /// crafting-bag stack, and the event shows the stack before and after.
 #[tokio::test]
-async fn stack_merge_in_the_crafting_bag_logs_quantity_before_and_after() {
+async fn live_db_stack_merge_in_the_crafting_bag_logs_quantity_before_and_after() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C402, 0x7000_C403, 0x7000_C4E1_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -206,7 +206,7 @@ async fn stack_merge_in_the_crafting_bag_logs_quantity_before_and_after() {
 /// given into the main bag stays there, and loot's bandolier request is
 /// honoured.
 #[tokio::test]
-async fn allowed_requests_keep_their_container() {
+async fn live_db_allowed_requests_keep_their_container() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C404, 0x7000_C405, 0x7000_C4E2_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;

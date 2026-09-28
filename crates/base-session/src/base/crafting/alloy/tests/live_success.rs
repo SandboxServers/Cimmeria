@@ -25,7 +25,7 @@ fn accepted() -> u64 {
 /// item, each elementary component with its quality and tier, and the
 /// bucket met.
 #[tokio::test]
-async fn blueprint_42_alloys_ten_normal_elementaries_into_two_blends() {
+async fn live_db_blueprint_42_alloys_ten_normal_elementaries_into_two_blends() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     install_meter();
@@ -117,7 +117,7 @@ async fn blueprint_42_alloys_ten_normal_elementaries_into_two_blends() {
 /// Good's count met by stack quantity: stacks of 3 and 4 give 7, and the
 /// first 5 are used, instance by instance, leaving 2 on the second stack.
 #[tokio::test]
-async fn stack_quantities_count_and_only_the_bucket_count_is_used() {
+async fn live_db_stack_quantities_count_and_only_the_bucket_count_is_used() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 1).await;
@@ -144,7 +144,7 @@ async fn stack_quantities_count_and_only_the_bucket_count_is_used() {
 /// Two Great meet Great's count; the Normal beside them, below its own
 /// count, is neither refused nor used. One Fantastic is enough on its own.
 #[tokio::test]
-async fn an_unmet_second_quality_is_left_and_one_fantastic_is_enough() {
+async fn live_db_an_unmet_second_quality_is_left_and_one_fantastic_is_enough() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 2).await;
@@ -173,7 +173,7 @@ async fn an_unmet_second_quality_is_left_and_one_fantastic_is_enough() {
 /// An elementary component moved to the bank during the bar: the
 /// completion refuses, consumes nothing and says why.
 #[tokio::test]
-async fn an_elementary_moved_to_the_bank_mid_induction_consumes_nothing() {
+async fn live_db_an_elementary_moved_to_the_bank_mid_induction_consumes_nothing() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 3).await;
@@ -213,7 +213,7 @@ async fn an_elementary_moved_to_the_bank_mid_induction_consumes_nothing() {
 /// bank, or an elementary stack shrinks below what the rule counted. Each
 /// completion refuses and consumes nothing.
 #[tokio::test]
-async fn a_named_input_changed_mid_induction_consumes_nothing() {
+async fn live_db_a_named_input_changed_mid_induction_consumes_nothing() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 4).await;
@@ -264,7 +264,7 @@ async fn a_named_input_changed_mid_induction_consumes_nothing() {
 /// A respec (here: the discipline forgotten) during the bar refuses the
 /// queued alloy at completion; nothing is consumed and the player is told.
 #[tokio::test]
-async fn forgetting_the_discipline_during_the_bar_refuses_the_alloy() {
+async fn live_db_forgetting_the_discipline_during_the_bar_refuses_the_alloy() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 5).await;
@@ -320,7 +320,7 @@ async fn forgetting_the_discipline_during_the_bar_refuses_the_alloy() {
 /// and the second completes from the other stack of that design, because
 /// the component is consumed by design and not pinned to the named stack.
 #[tokio::test]
-async fn a_queued_alloy_whose_named_component_was_used_takes_another() {
+async fn live_db_a_queued_alloy_whose_named_component_was_used_takes_another() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 6).await;
@@ -346,7 +346,7 @@ async fn a_queued_alloy_whose_named_component_was_used_takes_another() {
 /// with a visible line and nothing consumed, although another unnamed Good
 /// stack would meet the count.
 #[tokio::test]
-async fn a_queued_alloy_whose_named_elementaries_were_used_is_refused() {
+async fn live_db_a_queued_alloy_whose_named_elementaries_were_used_is_refused() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 7).await;

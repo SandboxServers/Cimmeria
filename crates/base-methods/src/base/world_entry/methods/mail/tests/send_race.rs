@@ -22,7 +22,7 @@ const BASE: i32 = 0x7300_1200;
 /// (`pg_blocking_pids`), so an unrelated lock waiter elsewhere in the
 /// database cannot open the gate early.
 #[tokio::test]
-async fn concurrent_sends_respect_mailbox_cap() {
+async fn live_db_concurrent_sends_respect_mailbox_cap() {
     let pool = require_db_or_skip!();
     let (acct, a, b, rcpt) = (BASE, BASE + 1, BASE + 2, BASE + 3);
     cleanup(&pool, acct).await;

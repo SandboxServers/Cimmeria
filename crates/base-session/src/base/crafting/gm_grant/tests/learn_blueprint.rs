@@ -25,7 +25,7 @@ async fn set_known(pool: &PgPool, ids: Ids, blueprint_ids: &[i32]) {
 /// sends the target the full list in 139, logs `blueprint_learned` in the
 /// Blueprint item's shape with `source=gm`, and tells the GM.
 #[tokio::test]
-async fn learnblueprint_teaches_saves_and_pushes_the_list() {
+async fn live_db_learnblueprint_teaches_saves_and_pushes_the_list() {
     let pool = require_db_or_skip!();
     let ids = ids(4);
     let capture = LogCapture::install();
@@ -72,7 +72,7 @@ async fn learnblueprint_teaches_saves_and_pushes_the_list() {
 /// A known blueprint and an unknown id are refused: nothing saved, nothing
 /// sent to the target, one line each for the GM, the reason on the event.
 #[tokio::test]
-async fn learnblueprint_refusals_change_nothing() {
+async fn live_db_learnblueprint_refusals_change_nothing() {
     let pool = require_db_or_skip!();
     let ids = ids(5);
     let capture = LogCapture::install();
@@ -115,7 +115,7 @@ async fn learnblueprint_refusals_change_nothing() {
 
 /// A caller below GameMaster teaches nothing.
 #[tokio::test]
-async fn learnblueprint_from_a_non_gm_is_refused() {
+async fn live_db_learnblueprint_from_a_non_gm_is_refused() {
     let pool = require_db_or_skip!();
     let ids = ids(6);
     let capture = LogCapture::install();
@@ -143,7 +143,7 @@ async fn learnblueprint_from_a_non_gm_is_refused() {
 /// A player row that is not there is a WARN `persist_failed` naming the
 /// phase, with the paired `rows_affected` / `expected`.
 #[tokio::test]
-async fn learnblueprint_for_a_missing_player_logs_the_shortfall() {
+async fn live_db_learnblueprint_for_a_missing_player_logs_the_shortfall() {
     let pool = require_db_or_skip!();
     let ids = ids(7);
     let capture = LogCapture::install();
@@ -178,7 +178,7 @@ async fn learnblueprint_for_a_missing_player_logs_the_shortfall() {
 /// completion's +1 survives. Without the key it loads expertise 10, blocks
 /// only on the expertise row, and writes 10 back over the committed 11.
 #[tokio::test]
-async fn learnblueprint_waits_for_a_completion_and_keeps_its_expertise() {
+async fn live_db_learnblueprint_waits_for_a_completion_and_keeps_its_expertise() {
     let pool = require_db_or_skip!();
     // Slot 12 (`0x7000_CBB0`), past the vendor test's `0x7000_CBA0..CBA1`.
     let ids = ids(12);

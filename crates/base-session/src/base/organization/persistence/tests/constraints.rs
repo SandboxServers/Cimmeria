@@ -10,7 +10,7 @@ use crate::test_support::require_db_or_skip;
 /// Creation writes one rank row per rank the type uses, with the default
 /// masks, and the creator as its only member at `Leader`.
 #[tokio::test]
-async fn create_org_writes_every_rank_row() {
+async fn live_db_create_org_writes_every_rank_row() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 0, 1, &["Org02 Ranks Cmd", "Org02 Ranks Team"]).await;
     let leader = fx.player(0);
@@ -57,7 +57,7 @@ async fn create_org_writes_every_rank_row() {
 /// `UNIQUE (player_id, org_type)`. The same player in a Team and a Command
 /// at once is fine.
 #[tokio::test]
-async fn second_team_for_same_player_is_refused() {
+async fn live_db_second_team_for_same_player_is_refused() {
     let pool = require_db_or_skip!();
     let names = [
         "Org02 Uniq A",
@@ -114,7 +114,7 @@ async fn second_team_for_same_player_is_refused() {
 /// D-ORG10: names are unique per type on the case-folded key. The same
 /// name is free in the other type.
 #[tokio::test]
-async fn duplicate_name_key_is_refused() {
+async fn live_db_duplicate_name_key_is_refused() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 2, 3, &["Org02 Dup"]).await;
 
@@ -149,7 +149,7 @@ async fn duplicate_name_key_is_refused() {
 /// The member row's `org_type` copy cannot differ from its organization's:
 /// the composite foreign key refuses both an insert and an update.
 #[tokio::test]
-async fn member_org_type_cannot_drift() {
+async fn live_db_member_org_type_cannot_drift() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 3, 2, &["Org02 Drift"]).await;
     let cmd = create(&pool, OrgType::Command, "Org02 Drift", fx.player(0)).await;
@@ -186,7 +186,7 @@ async fn member_org_type_cannot_drift() {
 /// D-ORG05: Team and Command ids stay below the squad range. The CHECK
 /// refuses a hand-inserted id, and the sequence stops short of the range.
 #[tokio::test]
-async fn org_id_outside_base_range_is_refused() {
+async fn live_db_org_id_outside_base_range_is_refused() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 4, 1, &["Org02 Range Hi", "Org02 Range Lo"]).await;
 
@@ -221,7 +221,7 @@ async fn org_id_outside_base_range_is_refused() {
 /// The treasury can never go negative, and a rank mask stays inside the 26
 /// defined bits with the Leader row pinned to all of them.
 #[tokio::test]
-async fn cash_and_rank_masks_are_range_checked() {
+async fn live_db_cash_and_rank_masks_are_range_checked() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 5, 1, &["Org02 Checks"]).await;
     let org = create(&pool, OrgType::Command, "Org02 Checks", fx.player(0)).await;
@@ -259,7 +259,7 @@ async fn cash_and_rank_masks_are_range_checked() {
 /// A member's rank must be one of the organization's rank rows: rank 0 is
 /// refused in any type, and Team rank 5 (a Command-only rank) in a Team.
 #[tokio::test]
-async fn member_rank_must_have_a_rank_row() {
+async fn live_db_member_rank_must_have_a_rank_row() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 6, 2, &["Org02 RankFk"]).await;
     let team = create(&pool, OrgType::Team, "Org02 RankFk", fx.player(0)).await;
@@ -289,7 +289,7 @@ async fn member_rank_must_have_a_rank_row() {
 /// with no error from the member-delete trigger on the way (it sees the
 /// organization gone and stands down). Returns the members for fanout.
 #[tokio::test]
-async fn disband_cascades_ranks_and_members() {
+async fn live_db_disband_cascades_ranks_and_members() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 7, 3, &["Org02 Disband"]).await;
     let org = create(&pool, OrgType::Command, "Org02 Disband", fx.player(0)).await;
@@ -321,7 +321,7 @@ async fn disband_cascades_ranks_and_members() {
 /// One Leader per organization (a unique partial index), and a rank row
 /// that members hold cannot be deleted out from under them.
 #[tokio::test]
-async fn one_leader_and_held_ranks_are_enforced() {
+async fn live_db_one_leader_and_held_ranks_are_enforced() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 17, 2, &["Org02 OneLeader"]).await;
     let org = create(&pool, OrgType::Team, "Org02 OneLeader", fx.player(0)).await;

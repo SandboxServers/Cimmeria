@@ -43,7 +43,7 @@ const SCREEN_FUTURE_SELF: [i32; 3] = [96355, 96356, 96357];
 /// mission commands — never from mission restore. The assertion below is
 /// the seed-side half of that.
 #[tokio::test]
-async fn player_loaded_into_castle_cellblock_resolves_no_bark() {
+async fn live_db_player_loaded_into_castle_cellblock_resolves_no_bark() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -110,7 +110,7 @@ async fn player_loaded_into_castle_cellblock_resolves_no_bark() {
 /// 96355-96357 are the excluded "Future Self" content. If a later packet
 /// hangs either on an unrelated event, this fails.
 #[tokio::test]
-async fn no_chain_speaks_the_unauthored_cover_line() {
+async fn live_db_no_chain_speaks_the_unauthored_cover_line() {
     let pool = require_db_or_skip!();
     let rows: Vec<(i32, i32)> = sqlx::query_as(
         "SELECT chain_id, (params->>'screen_id')::int \
@@ -156,7 +156,7 @@ async fn no_chain_speaks_the_unauthored_cover_line() {
 /// invisible in play: the chain fires, the line does not. This is the
 /// only place a typo'd `screen_id` is caught before UAT.
 #[tokio::test]
-async fn every_seeded_bark_names_a_real_screen_and_a_named_speaker() {
+async fn live_db_every_seeded_bark_names_a_real_screen_and_a_named_speaker() {
     let pool = require_db_or_skip!();
     let rows: Vec<(i32, serde_json::Value)> = sqlx::query_as(
         "SELECT chain_id, params FROM resources.content_actions \

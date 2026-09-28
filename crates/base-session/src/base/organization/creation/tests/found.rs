@@ -12,7 +12,7 @@ use crate::test_support::require_db_or_skip;
 /// units, a bidi control, a character outside the name set. None of them
 /// reaches the database, so none draws an organization id.
 #[tokio::test]
-async fn create_rejects_invalid_names() {
+async fn live_db_create_rejects_invalid_names() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 0, &[0], &[]).await;
     let leader = fx.player(0);
@@ -51,7 +51,7 @@ async fn create_rejects_invalid_names() {
 /// creation has a price. The first founder pays; the second keeps every
 /// coin and joins nothing.
 #[tokio::test]
-async fn create_duplicate_name_costs_nothing() {
+async fn live_db_create_duplicate_name_costs_nothing() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 1, &[500, 500], &["Org05 Dup"]).await;
     let (first, second) = (fx.player(0), fx.player(1));
@@ -87,7 +87,7 @@ async fn create_duplicate_name_costs_nothing() {
 /// D-ORG18: one Team and one Command per player. A second Team is refused
 /// before an id is drawn; a Command beside the Team is allowed.
 #[tokio::test]
-async fn create_rejects_a_second_organization_of_the_type() {
+async fn live_db_create_rejects_a_second_organization_of_the_type() {
     let pool = require_db_or_skip!();
     let fx = setup(
         &pool,
@@ -136,7 +136,7 @@ async fn create_rejects_a_second_organization_of_the_type() {
 /// D-ORG15: a founder who cannot pay founds nothing, keeps their naquadah,
 /// and draws no organization id.
 #[tokio::test]
-async fn create_without_the_cost_founds_nothing() {
+async fn live_db_create_without_the_cost_founds_nothing() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 3, &[50], &["Org05 Poor"]).await;
     let leader = fx.player(0);
@@ -168,7 +168,7 @@ async fn create_without_the_cost_founds_nothing() {
 /// commits, the cost is gone, and nothing else moves. At D-ORG15's price
 /// (0) the character's naquadah is not touched at all.
 #[tokio::test]
-async fn create_debits_in_the_same_transaction_and_free_touches_nothing() {
+async fn live_db_create_debits_in_the_same_transaction_and_free_touches_nothing() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 4, &[250, 250], &["Org05 Paid", "Org05 Free"]).await;
     let (payer, free) = (fx.player(0), fx.player(1));

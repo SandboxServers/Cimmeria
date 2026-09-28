@@ -81,7 +81,7 @@ fn actions_of(resolved: &ResolvedActions, chain_id: i64) -> Vec<Action> {
 /// the basket relog-restore acceptance, which the header of
 /// `chain_replay_tests::mission_742` used to disclaim.
 #[tokio::test]
-async fn hydrated_step_2504_carries_the_objective_params_and_lights_chain_6104() {
+async fn live_db_hydrated_step_2504_carries_the_objective_params_and_lights_chain_6104() {
     use crate::cell::messages::SavedMission;
     use crate::cell::service::base_messages::player_init::mission_restore::build_restored_missions;
     use crate::cell::space_manager::SpaceManager;

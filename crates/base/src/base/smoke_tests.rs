@@ -66,7 +66,7 @@ const VENDOR_STORE_SMOKE_SQL: &str = include_str!("../../../../tools/vendor_stor
 /// consistent) but the smoke fails because the round-trip prices
 /// don't match.
 #[tokio::test]
-async fn vendor_store_smoke_passes_against_seed_data() {
+async fn live_db_vendor_store_smoke_passes_against_seed_data() {
     let pool = require_db_or_skip!();
     let sql = strip_psql_metacommands(VENDOR_STORE_SMOKE_SQL);
     sqlx::raw_sql(AssertSqlSafe(sql))
@@ -96,7 +96,7 @@ const INVENTORY_MOVE_SMOKE_SQL: &str = include_str!("../../../../tools/inventory
 /// - the unique-(container, slot) invariant via an explicit
 ///   GROUP BY HAVING duplicate-row check.
 #[tokio::test]
-async fn inventory_move_smoke_passes_against_seed_data() {
+async fn live_db_inventory_move_smoke_passes_against_seed_data() {
     let pool = require_db_or_skip!();
     let sql = strip_psql_metacommands(INVENTORY_MOVE_SMOKE_SQL);
     sqlx::raw_sql(AssertSqlSafe(sql))
@@ -122,7 +122,7 @@ const PROGRESSION_SMOKE_SQL: &str = include_str!("../../../../tools/progression_
 /// shape regardless of which player_id the buggy WHERE happens to
 /// resolve.
 #[tokio::test]
-async fn progression_smoke_passes_against_seed_data() {
+async fn live_db_progression_smoke_passes_against_seed_data() {
     let pool = require_db_or_skip!();
     let sql = strip_psql_metacommands(PROGRESSION_SMOKE_SQL);
     sqlx::raw_sql(AssertSqlSafe(sql))

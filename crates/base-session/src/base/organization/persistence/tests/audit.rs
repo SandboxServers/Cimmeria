@@ -51,7 +51,7 @@ fn export_log(
 /// identities right after its commit and stamps it, and a later sweep finds
 /// nothing left to log.
 #[tokio::test]
-async fn character_delete_exports_trigger_events_once() {
+async fn live_db_character_delete_exports_trigger_events_once() {
     let pool = require_db_or_skip!();
     let names = ["Org02 Audit Cmd", "Org02 Audit Team"];
     let fx = setup(&pool, 20, 2, &names).await;
@@ -127,7 +127,7 @@ async fn character_delete_exports_trigger_events_once() {
 /// trigger's row unstamped; the startup sweep logs it at INFO once and
 /// stamps it.
 #[tokio::test]
-async fn startup_sweep_exports_rows_a_bare_delete_left() {
+async fn live_db_startup_sweep_exports_rows_a_bare_delete_left() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 21, 2, &["Org02 Sweep"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));
@@ -199,7 +199,7 @@ async fn startup_sweep_exports_rows_a_bare_delete_left() {
 /// after committing, at INFO with `reason = member_removed`. A rollback
 /// leaves no row to export.
 #[tokio::test]
-async fn remove_member_rows_export_after_commit() {
+async fn live_db_remove_member_rows_export_after_commit() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 22, 2, &["Org02 InTx"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));
@@ -266,7 +266,7 @@ async fn remove_member_rows_export_after_commit() {
 /// holds its stamping `UPDATE` (`ROW EXCLUSIVE`); by then the event must
 /// already be in the log.
 #[tokio::test]
-async fn export_logs_before_the_stamp_can_commit() {
+async fn live_db_export_logs_before_the_stamp_can_commit() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 34, 2, &["Org02 Log First"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));

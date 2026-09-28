@@ -15,7 +15,7 @@ use super::*;
 /// "helpfully" adds the bind here would be a silent no-op, so the exact
 /// action count is what guards it.
 #[tokio::test]
-async fn chain_6515_advances_from_mohkatan_to_hansen() {
+async fn live_db_chain_6515_advances_from_mohkatan_to_hansen() {
     let pool = require_db_or_skip!();
     let ctx = with_tag(praxis_ctx(CMD_CENTER, "4040"), "CmdCenter_Mohkatan");
     let got = actions_of(&resolve_one(&pool, 6515, &ctx, TriggerType::InteractTag).await);
@@ -50,7 +50,7 @@ async fn chain_6515_advances_from_mohkatan_to_hansen() {
 /// anywhere in `resources.items` (decision H31-D1), so nothing is granted
 /// here and nothing is removed at step 4042.
 #[tokio::test]
-async fn chain_6518_advances_from_hansen_to_the_delivery() {
+async fn live_db_chain_6518_advances_from_hansen_to_the_delivery() {
     let pool = require_db_or_skip!();
     let ctx = with_dialog(praxis_ctx(HARSET, "4041"), 4459);
     let got = actions_of(&resolve_one(&pool, 6518, &ctx, TriggerType::DialogChoice).await);
@@ -77,7 +77,7 @@ async fn chain_6518_advances_from_hansen_to_the_delivery() {
 /// Step 4042: deliver the samples. Also hands off to Ba'al in-chain,
 /// which is legitimate here because Ba'al is in the same world.
 #[tokio::test]
-async fn chain_6520_delivers_and_hands_off_to_baal() {
+async fn live_db_chain_6520_delivers_and_hands_off_to_baal() {
     let pool = require_db_or_skip!();
     let ctx = with_tag(praxis_ctx(CMD_CENTER, "4042"), "CmdCenter_Mohkatan");
     let got = actions_of(&resolve_one(&pool, 6520, &ctx, TriggerType::InteractTag).await);
@@ -107,7 +107,7 @@ async fn chain_6520_delivers_and_hands_off_to_baal() {
 
 /// Step 4043: Ba'al, handing off to Anat.
 #[tokio::test]
-async fn chain_6522_advances_from_baal_to_anat() {
+async fn live_db_chain_6522_advances_from_baal_to_anat() {
     let pool = require_db_or_skip!();
     let ctx = with_tag(praxis_ctx(CMD_CENTER, "4043"), "CmdCenter_Baal");
     let got = actions_of(&resolve_one(&pool, 6522, &ctx, TriggerType::InteractTag).await);
@@ -137,7 +137,7 @@ async fn chain_6522_advances_from_baal_to_anat() {
 /// Step 4693: the player clicks "Flatter Anat." on dialog 4462, and Marsh
 /// lights up for the turn-in.
 #[tokio::test]
-async fn chain_6525_advances_from_anat_to_the_marsh_turn_in() {
+async fn live_db_chain_6525_advances_from_anat_to_the_marsh_turn_in() {
     let pool = require_db_or_skip!();
     let ctx = with_dialog(praxis_ctx(CMD_CENTER, "4693"), 4462);
     let got = actions_of(&resolve_one(&pool, 6525, &ctx, TriggerType::DialogChoice).await);
@@ -173,7 +173,7 @@ async fn chain_6525_advances_from_anat_to_the_marsh_turn_in() {
 /// objective would end the whole mission early, which is why no chain in
 /// this file emits one.
 #[tokio::test]
-async fn chain_6527_completes_the_praxis_at_marsh() {
+async fn live_db_chain_6527_completes_the_praxis_at_marsh() {
     let pool = require_db_or_skip!();
     let ctx = with_tag(praxis_ctx(CMD_CENTER, "4694"), "CmdCenter_Marsh");
     let got = actions_of(&resolve_one(&pool, 6527, &ctx, TriggerType::InteractTag).await);
@@ -201,7 +201,7 @@ async fn chain_6527_completes_the_praxis_at_marsh() {
 /// `step_status ... eq active` gate. Dropping one would let the player
 /// skip ahead by clicking the wrong NPC.
 #[tokio::test]
-async fn every_step_chain_is_silent_on_every_other_step() {
+async fn live_db_every_step_chain_is_silent_on_every_other_step() {
     let pool = require_db_or_skip!();
 
     // (chain, its own step, trigger, tag-or-dialog key, world)
@@ -265,7 +265,7 @@ async fn every_step_chain_is_silent_on_every_other_step() {
 /// Completed mission: no step chain re-fires. Covers the "already
 /// completed" adjacent-negative required by the packet's acceptance.
 #[tokio::test]
-async fn no_step_chain_fires_once_1361_is_completed() {
+async fn live_db_no_step_chain_fires_once_1361_is_completed() {
     let pool = require_db_or_skip!();
 
     for (chain_id, step, tag) in [
@@ -304,7 +304,7 @@ async fn no_step_chain_fires_once_1361_is_completed() {
 /// `world` condition is the only thing scoping these chains. It also
 /// fails **closed** on an unset `world_id`, which the last case pins.
 #[tokio::test]
-async fn step_chains_are_scoped_to_their_own_world() {
+async fn live_db_step_chains_are_scoped_to_their_own_world() {
     let pool = require_db_or_skip!();
 
     for (chain_id, step, tag) in [

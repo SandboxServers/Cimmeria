@@ -103,7 +103,7 @@ async fn ai_ticks(mgr: &mut SpaceManager, n: usize) {
 /// Relog with 622 completed: the zone load re-arms the guard HOSTILE and
 /// it engages the player standing next to it.
 #[tokio::test]
-async fn chain_1009_rearms_the_guard_on_relog_past_region8() {
+async fn live_db_chain_1009_rearms_the_guard_on_relog_past_region8() {
     let pool = require_db_or_skip!();
     let (mut mgr, guard) = relogged_past_region8(&pool, true).await;
     let engine = chain_1009(&pool).await;
@@ -137,7 +137,7 @@ async fn chain_1009_rearms_the_guard_on_relog_past_region8() {
 /// zone load must leave the guard NEUTRAL so Region8 (chain 1008) still owns
 /// the ambush.
 #[tokio::test]
-async fn chain_1009_leaves_the_trap_alone_before_622_completes() {
+async fn live_db_chain_1009_leaves_the_trap_alone_before_622_completes() {
     let pool = require_db_or_skip!();
     let (mut mgr, guard) = relogged_past_region8(&pool, false).await;
     let engine = chain_1009(&pool).await;

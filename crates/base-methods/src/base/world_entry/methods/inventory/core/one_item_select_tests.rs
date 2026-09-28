@@ -124,7 +124,7 @@ async fn insert_item(pool: &PgPool, player_id: i32, slot_id: i32) -> i32 {
 /// The owner check is in the query: another player's `item_id` reads no
 /// row, so nothing is sent. The player's own item sends exactly one packet.
 #[tokio::test]
-async fn one_item_send_is_owner_checked_in_sql() {
+async fn live_db_one_item_send_is_owner_checked_in_sql() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_B1E9;
     cleanup(&pool).await;
@@ -183,7 +183,7 @@ async fn one_item_send_is_owner_checked_in_sql() {
 /// shape: without the `container_id <> 18` filter the login sends it back
 /// into the player's bags.
 #[tokio::test]
-async fn listed_rows_in_container_18_are_never_read_for_the_client() {
+async fn live_db_listed_rows_in_container_18_are_never_read_for_the_client() {
     let pool = require_db_or_skip!();
     let entity_id: u32 = 0x7000_B1E9;
     cleanup(&pool).await;

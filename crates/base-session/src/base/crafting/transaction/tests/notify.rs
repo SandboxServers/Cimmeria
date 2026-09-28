@@ -42,7 +42,7 @@ impl Transport for FailFirstSend {
 /// it goes out. The client then gets the removal again and a full
 /// inventory, instead of keeping the drained stack on screen.
 #[tokio::test]
-async fn a_failed_removal_is_followed_by_one_recovery_pass() {
+async fn live_db_a_failed_removal_is_followed_by_one_recovery_pass() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let mut f = Fixture::new(&pool, 20).await;

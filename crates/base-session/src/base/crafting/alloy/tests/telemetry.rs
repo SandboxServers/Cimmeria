@@ -73,7 +73,7 @@ async fn no_database_is_a_lookup_warning_and_a_visible_line() {
 /// verb: an unlearned blueprint is refused by the alloy rules, not with
 /// "not available yet".
 #[tokio::test]
-async fn the_dispatcher_routes_alloying_to_the_alloy_verb() {
+async fn live_db_the_dispatcher_routes_alloying_to_the_alloy_verb() {
     let pool = require_db_or_skip!();
     let f = Fixture::new(&pool, 20).await;
     let capture = LogCapture::install();

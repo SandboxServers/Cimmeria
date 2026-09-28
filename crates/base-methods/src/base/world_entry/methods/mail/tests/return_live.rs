@@ -48,7 +48,7 @@ async fn sender_of(pool: &PgPool, mail_id: i32) -> (Option<i32>, String, i32) {
 /// item, marked returned, unread, "from" the returner. The returner's
 /// client drops the header. Fails if the return resolves the name.
 #[tokio::test]
-async fn return_uses_sender_id_not_name() {
+async fn live_db_return_uses_sender_id_not_name() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (returner, sender, other) = three_players(&pool, BASE, "Name").await;
@@ -129,7 +129,7 @@ async fn return_uses_sender_id_not_name() {
 /// `returned` gates are removed, the Rust check and the UPDATE's
 /// `AND NOT returned` (the mail bounces back); either alone refuses.
 #[tokio::test]
-async fn return_rejects_already_returned() {
+async fn live_db_return_rejects_already_returned() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (returner, sender, _) = three_players(&pool, BASE + 0x08, "Twice").await;
@@ -166,7 +166,7 @@ async fn return_rejects_already_returned() {
 /// destination for a NULL `sender_id` (for example the returner); the mail
 /// is then marked returned.
 #[tokio::test]
-async fn return_rejects_system_mail() {
+async fn live_db_return_rejects_system_mail() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (returner, _, _) = three_players(&pool, BASE + 0x10, "Sys").await;
@@ -194,7 +194,7 @@ async fn return_rejects_system_mail() {
 
 /// D-SS10: only non-archived mail can be returned. Refused `archived`.
 #[tokio::test]
-async fn return_rejects_archived() {
+async fn live_db_return_rejects_archived() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (returner, sender, _) = three_players(&pool, BASE + 0x18, "Arch").await;
@@ -220,7 +220,7 @@ async fn return_rejects_archived() {
 /// goes back in escrow for the sender to take. Fails when the return keeps
 /// `cash` for a COD (the sender could take their own price).
 #[tokio::test]
-async fn return_cancels_cod_and_zeroes_price() {
+async fn live_db_return_cancels_cod_and_zeroes_price() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (returner, sender, _) = three_players(&pool, BASE + 0x20, "Cod").await;
@@ -271,7 +271,7 @@ async fn return_cancels_cod_and_zeroes_price() {
 /// Rust check and the UPDATE's `AND NOT cod_paid`) are removed, or when the
 /// payment stops setting it.
 #[tokio::test]
-async fn return_rejects_paid_cod() {
+async fn live_db_return_rejects_paid_cod() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (buyer, seller, _) = three_players(&pool, BASE + 0x28, "Paid").await;
@@ -354,7 +354,7 @@ async fn return_rejects_paid_cod() {
 /// recipient can still return it to the seller, item and all. A paid COD
 /// archives normally. Fails when the archive's COD check is removed.
 #[tokio::test]
-async fn archive_refuses_unpaid_cod_so_it_can_still_be_returned() {
+async fn live_db_archive_refuses_unpaid_cod_so_it_can_still_be_returned() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (buyer, seller, _) = three_players(&pool, BASE + 0x30, "Arc").await;

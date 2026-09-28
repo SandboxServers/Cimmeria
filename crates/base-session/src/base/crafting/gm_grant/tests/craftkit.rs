@@ -25,7 +25,7 @@ fn kit(blueprint_id: i32, count: i32) -> GmCraftGrantKind {
 /// `onUpdateItem`, queues one cell event per item, and logs `gm_craftkit`
 /// with every granted stack as `type_id:bag:slot:before→after`.
 #[tokio::test]
-async fn craftkit_grants_set_one_into_the_crafting_bag() {
+async fn live_db_craftkit_grants_set_one_into_the_crafting_bag() {
     let pool = require_db_or_skip!();
     let ids = ids(0);
     let capture = LogCapture::install();
@@ -92,7 +92,7 @@ async fn craftkit_grants_set_one_into_the_crafting_bag() {
 /// crafting bag (10 x 13 cores in 100 slots) is refused by the transaction
 /// and rolls back whole.
 #[tokio::test]
-async fn craftkit_refusals_grant_nothing_and_answer_the_gm() {
+async fn live_db_craftkit_refusals_grant_nothing_and_answer_the_gm() {
     let pool = require_db_or_skip!();
     let ids = ids(1);
     let capture = LogCapture::install();
@@ -154,7 +154,7 @@ async fn craftkit_refusals_grant_nothing_and_answer_the_gm() {
 /// A caller below GameMaster writes nothing: WARN `reason=not_gm`, and the
 /// caller is told.
 #[tokio::test]
-async fn craftkit_from_a_non_gm_is_refused() {
+async fn live_db_craftkit_from_a_non_gm_is_refused() {
     let pool = require_db_or_skip!();
     let ids = ids(2);
     let capture = LogCapture::install();
@@ -206,7 +206,7 @@ async fn craftkit_without_a_database_warns_and_answers() {
 /// transaction's own `persist_failed` with the GM's identity next to the
 /// target's, and tells the GM.
 #[tokio::test]
-async fn a_rolled_back_kit_carries_the_gm_on_persist_failed() {
+async fn live_db_a_rolled_back_kit_carries_the_gm_on_persist_failed() {
     let pool = require_db_or_skip!();
     let ids = ids(3);
     let capture = LogCapture::install();
@@ -230,7 +230,7 @@ async fn a_rolled_back_kit_carries_the_gm_on_persist_failed() {
 /// A kit granted to a target whose client cannot be reached logs
 /// `client_sync_failed` with the GM's identity; the grant itself stands.
 #[tokio::test]
-async fn an_unsent_kit_update_carries_the_gm_on_client_sync_failed() {
+async fn live_db_an_unsent_kit_update_carries_the_gm_on_client_sync_failed() {
     let pool = require_db_or_skip!();
     let ids = ids(2);
     let capture = LogCapture::install();

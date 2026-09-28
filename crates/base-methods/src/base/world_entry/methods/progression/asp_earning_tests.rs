@@ -133,7 +133,7 @@ fn asp_earned_events(capture: &LogCaptureGuard) -> Vec<Captured> {
 /// grant from the statement leaves the points at 3; removing the push
 /// leaves the XP bundle as the only packet.
 #[tokio::test]
-async fn level_up_earns_one_asp_and_pushes_the_total() {
+async fn live_db_level_up_earns_one_asp_and_pushes_the_total() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = fixture(&pool, 0, 1, 1, 0, 3).await;
@@ -171,7 +171,7 @@ async fn level_up_earns_one_asp_and_pushes_the_total() {
 /// A catch-up grant across several levels earns one point for each, still in
 /// one write and with one push carrying the final total.
 #[tokio::test]
-async fn multi_level_grant_earns_one_asp_per_level() {
+async fn live_db_multi_level_grant_earns_one_asp_per_level() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = fixture(&pool, 10, 1, 1, 0, 1).await;
@@ -196,7 +196,7 @@ async fn multi_level_grant_earns_one_asp_per_level() {
 /// and pushes `i32::MAX`. Without the clamp Postgres raises "integer out of
 /// range", the whole write rolls back and the level is lost.
 #[tokio::test]
-async fn asp_saturates_at_i32_max() {
+async fn live_db_asp_saturates_at_i32_max() {
     let pool = require_db_or_skip!();
     let f = fixture(&pool, 60, 1, 1, 0, i32::MAX - 1).await;
 
@@ -214,7 +214,7 @@ async fn asp_saturates_at_i32_max() {
 
 /// XP that crosses no boundary earns nothing: no point, no event, no push.
 #[tokio::test]
-async fn xp_without_a_level_up_earns_no_asp() {
+async fn live_db_xp_without_a_level_up_earns_no_asp() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = fixture(&pool, 20, 1, 1, 0, 5).await;
@@ -231,7 +231,7 @@ async fn xp_without_a_level_up_earns_no_asp() {
 
 /// At the level cap XP still accrues but no level and so no point.
 #[tokio::test]
-async fn grant_at_the_cap_earns_no_asp() {
+async fn live_db_grant_at_the_cap_earns_no_asp() {
     let pool = require_db_or_skip!();
     let f = fixture(&pool, 30, 50, 50, 26_525_000, 50).await;
 
@@ -246,7 +246,7 @@ async fn grant_at_the_cap_earns_no_asp() {
 /// when the row already holds the level the cache computes, the write earns
 /// nothing, so a stale cache can never grant the same level's point twice.
 #[tokio::test]
-async fn levels_are_counted_against_the_persisted_level() {
+async fn live_db_levels_are_counted_against_the_persisted_level() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     // Row at level 2 with its 2 points; the cache still says level 1.
@@ -266,7 +266,7 @@ async fn levels_are_counted_against_the_persisted_level() {
 /// paired `rows_affected` / `expected`, the `phase` and the identity, and no
 /// `asp_earned`, no packet.
 #[tokio::test]
-async fn missing_row_is_a_persist_failed_warn_and_earns_nothing() {
+async fn live_db_missing_row_is_a_persist_failed_warn_and_earns_nothing() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = fixture(&pool, 50, 1, 1, 0, 1).await;
@@ -298,7 +298,7 @@ async fn missing_row_is_a_persist_failed_warn_and_earns_nothing() {
 /// unspent), so a seeded character is indistinguishable from one created
 /// through the client.
 #[tokio::test]
-async fn seeded_characters_hold_one_asp_per_level() {
+async fn live_db_seeded_characters_hold_one_asp_per_level() {
     let pool = require_db_or_skip!();
     let rows: Vec<(i32, i32, i32)> = sqlx::query_as(
         "SELECT player_id, level, applied_science_points FROM sgw_player \

@@ -153,7 +153,7 @@ fn ctx_planting(world: i32, tag: &str, objectives: &[(i32, &str)]) -> ExecutionC
 /// would silently grant one device for a three-device objective and
 /// strand the player on the third basket with an empty bag.
 #[tokio::test]
-async fn chain_6101_binds_petbe_and_grants_exactly_three_scarabs() {
+async fn live_db_chain_6101_binds_petbe_and_grants_exactly_three_scarabs() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6101).await;
 
@@ -204,7 +204,7 @@ async fn chain_6101_binds_petbe_and_grants_exactly_three_scarabs() {
 /// is not active. Guards the campaign rule that every grant chain gates
 /// on mission state rather than on the dead `content_triggers.once`.
 #[tokio::test]
-async fn chain_6101_does_not_resolve_when_742_is_not_active() {
+async fn live_db_chain_6101_does_not_resolve_when_742_is_not_active() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6101).await;
 
@@ -226,7 +226,7 @@ async fn chain_6101_does_not_resolve_when_742_is_not_active() {
 /// the grant's "Added" success port: a reader of the seed should see the
 /// same order the designer drew.
 #[tokio::test]
-async fn chain_6102_grants_the_disguise_then_unbinds_petbe_then_advances() {
+async fn live_db_chain_6102_grants_the_disguise_then_unbinds_petbe_then_advances() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6102).await;
 
@@ -276,7 +276,7 @@ async fn chain_6102_grants_the_disguise_then_unbinds_petbe_then_advances() {
 /// a second disguise is the `step_status 2502 eq active` condition that
 /// the chain's own `advance_step` closes.
 #[tokio::test]
-async fn chain_6102_cannot_grant_a_second_disguise_after_it_advances() {
+async fn live_db_chain_6102_cannot_grant_a_second_disguise_after_it_advances() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6102).await;
 
@@ -300,7 +300,7 @@ async fn chain_6102_cannot_grant_a_second_disguise_after_it_advances() {
 /// the Jaffa Disguise is worn for the rest of the sequence and the
 /// `.script` has no `Act_RemoveItems` for 2819 anywhere.
 #[tokio::test]
-async fn chain_6103_lights_all_three_baskets_and_never_consumes_the_disguise() {
+async fn live_db_chain_6103_lights_all_three_baskets_and_never_consumes_the_disguise() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6103).await;
 
@@ -356,7 +356,7 @@ async fn chain_6103_lights_all_three_baskets_and_never_consumes_the_disguise() {
 /// disguise a second time must resolve nothing, or the player gets a
 /// second blurb and the glows are re-painted on already-planted baskets.
 #[tokio::test]
-async fn chain_6103_does_not_refire_once_the_disguise_is_already_on() {
+async fn live_db_chain_6103_does_not_refire_once_the_disguise_is_already_on() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6103).await;
 
@@ -383,7 +383,7 @@ async fn chain_6103_does_not_refire_once_the_disguise_is_already_on() {
 /// gate was waiting to evaluate. The assertion below is a reversion
 /// guard: re-adding any clear here fails it.
 #[tokio::test]
-async fn each_basket_completes_its_own_objective_and_consumes_one_scarab() {
+async fn live_db_each_basket_completes_its_own_objective_and_consumes_one_scarab() {
     let pool = require_db_or_skip!();
 
     for (chain_id, (tag, own, other_a, other_b)) in (6104i32..).zip(BASKETS) {
@@ -452,7 +452,7 @@ async fn each_basket_completes_its_own_objective_and_consumes_one_scarab() {
 /// stay unplanted. Reverting that condition to the shared
 /// `step_status 2504 eq active` alone makes this test fail.
 #[tokio::test]
-async fn a_basket_whose_objective_is_already_complete_resolves_nothing() {
+async fn live_db_a_basket_whose_objective_is_already_complete_resolves_nothing() {
     let pool = require_db_or_skip!();
 
     for (chain_id, (tag, own, other_a, other_b)) in (6104i32..).zip(BASKETS) {
@@ -475,7 +475,7 @@ async fn a_basket_whose_objective_is_already_complete_resolves_nothing() {
 /// resolves its tag only inside the acting player's own space, and
 /// `Condition::World` fails closed on an unset `world_id`.
 #[tokio::test]
-async fn basket_chains_are_inert_outside_harset() {
+async fn live_db_basket_chains_are_inert_outside_harset() {
     let pool = require_db_or_skip!();
 
     for (chain_id, (tag, own, other_a, other_b)) in (6104i32..).zip(BASKETS) {
@@ -513,7 +513,7 @@ async fn basket_chains_are_inert_outside_harset() {
 /// Both chains are registered into one engine so the assertion runs
 /// through the same `register_chain` bucket sort production uses.
 #[tokio::test]
-async fn the_last_basket_advances_the_step_before_it_completes_the_objective() {
+async fn live_db_the_last_basket_advances_the_step_before_it_completes_the_objective() {
     let pool = require_db_or_skip!();
 
     for (offset, (tag, own, other_a, other_b)) in BASKETS.into_iter().enumerate() {
@@ -613,7 +613,7 @@ async fn the_last_basket_advances_the_step_before_it_completes_the_objective() {
 /// Adjacent negative for the final chains: a basket clicked while either
 /// of the other two is still pending must NOT advance the step.
 #[tokio::test]
-async fn a_basket_that_is_not_the_last_one_does_not_advance_the_step() {
+async fn live_db_a_basket_that_is_not_the_last_one_does_not_advance_the_step() {
     let pool = require_db_or_skip!();
 
     for (offset, (tag, own, other_a, other_b)) in BASKETS.into_iter().enumerate() {
@@ -643,7 +643,7 @@ async fn a_basket_that_is_not_the_last_one_does_not_advance_the_step() {
 
 /// Chain 6110 — `.script` node 33 -> 34 -> {40, 41, 42}.
 #[tokio::test]
-async fn chain_6110_anat_grants_the_map_and_opens_nerus() {
+async fn live_db_chain_6110_anat_grants_the_map_and_opens_nerus() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6110).await;
 
@@ -693,7 +693,7 @@ async fn chain_6110_anat_grants_the_map_and_opens_nerus() {
 /// `max_stack_size = 1`, so a duplicate would occupy a second inventory
 /// row and `RemoveInventoryItemByType` would only ever reclaim one.
 #[tokio::test]
-async fn chain_6110_cannot_grant_a_second_scarab_map() {
+async fn live_db_chain_6110_cannot_grant_a_second_scarab_map() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6110).await;
 
@@ -706,7 +706,7 @@ async fn chain_6110_cannot_grant_a_second_scarab_map() {
 /// outright, and `complete_mission_direct` force-completes step 2506's
 /// objective on the way through.
 #[tokio::test]
-async fn chain_6111_takes_the_map_and_completes_the_mission() {
+async fn live_db_chain_6111_takes_the_map_and_completes_the_mission() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6111).await;
 
@@ -748,7 +748,7 @@ async fn chain_6111_takes_the_map_and_completes_the_mission() {
 /// and therefore survive a relog today; the basket restores
 /// (6113-6115) do not — see the module docs and H50.
 #[tokio::test]
-async fn step_gated_restore_chains_rebind_exactly_their_own_step() {
+async fn live_db_step_gated_restore_chains_rebind_exactly_their_own_step() {
     let pool = require_db_or_skip!();
 
     // (chain, world, world name, active step, expected dsm, template)
@@ -816,7 +816,7 @@ async fn step_gated_restore_chains_rebind_exactly_their_own_step() {
 /// `load_single_chain_for_test` would return only the `player_loaded`
 /// one — silently dropping the `mission_completed` row from the guard.
 #[tokio::test]
-async fn chain_6118_offers_742_only_to_a_goauld_who_finished_1200() {
+async fn live_db_chain_6118_offers_742_only_to_a_goauld_who_finished_1200() {
     let pool = require_db_or_skip!();
 
     let expansions = load_chain_expansions_for_test(&pool, 6118)
@@ -935,7 +935,7 @@ async fn chain_6118_offers_742_only_to_a_goauld_who_finished_1200() {
 
 /// Chain 6119 accepts, then retires the offer topic.
 #[tokio::test]
-async fn chain_6119_accepts_742_and_retires_the_offer() {
+async fn live_db_chain_6119_accepts_742_and_retires_the_offer() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6119).await;
 
@@ -992,7 +992,7 @@ async fn chain_6119_accepts_742_and_retires_the_offer() {
 /// guarded where it is actually prevented, by the offer knockouts in
 /// `chain_6118_offers_742_only_to_a_goauld_who_finished_1200`.
 #[tokio::test]
-async fn at_most_one_dialog_set_ever_binds_to_anat_on_one_world_entry() {
+async fn live_db_at_most_one_dialog_set_ever_binds_to_anat_on_one_world_entry() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -1106,7 +1106,7 @@ async fn at_most_one_dialog_set_ever_binds_to_anat_on_one_world_entry() {
 /// lane may bind template 43 on that event, or `handle_interact` picks a
 /// winner by insertion order.
 #[tokio::test]
-async fn completing_1200_binds_only_the_742_offer_to_anat() {
+async fn live_db_completing_1200_binds_only_the_742_offer_to_anat() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -1161,7 +1161,7 @@ async fn completing_1200_binds_only_the_742_offer_to_anat() {
 /// the guard is that no chain in the Goa'uld range ever addresses 221 —
 /// neither as a bind slot nor as a spawn.
 #[tokio::test]
-async fn no_goauld_chain_addresses_the_hostile_petbe_template() {
+async fn live_db_no_goauld_chain_addresses_the_hostile_petbe_template() {
     use sqlx::Row;
 
     let pool = require_db_or_skip!();

@@ -89,7 +89,7 @@ fn options_packet(options: &CraftingOptions, seq: u32) -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn a_tool_entering_and_leaving_the_crafting_bag_updates_the_options() {
+async fn live_db_a_tool_entering_and_leaving_the_crafting_bag_updates_the_options() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     setup(&pool).await;

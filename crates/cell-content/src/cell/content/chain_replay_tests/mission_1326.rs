@@ -124,7 +124,7 @@ fn lantoc_presented(world_id: i32, step_3960: &str) -> ExecutionContext {
 /// Positive: with 1324 and 1325 behind them, a Jaffa entering the
 /// Command Center gets Moh'katan's 1326 "?" (dsm 5159) and nothing else.
 #[tokio::test]
-async fn entering_the_command_center_after_1325_paints_the_lantoc_offer() {
+async fn live_db_entering_the_command_center_after_1325_paints_the_lantoc_offer() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -144,7 +144,7 @@ async fn entering_the_command_center_after_1325_paints_the_lantoc_offer() {
 /// and opens dialog 4373 from the bind. Without that pin chain 6333's
 /// `display_dialog 4374` bails with a warn and the briefing never plays.
 #[tokio::test]
-async fn clicking_mohkatan_in_the_lantoc_offer_state_must_resolve_no_chain() {
+async fn live_db_clicking_mohkatan_in_the_lantoc_offer_state_must_resolve_no_chain() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -167,7 +167,7 @@ async fn clicking_mohkatan_in_the_lantoc_offer_state_must_resolve_no_chain() {
 /// which the client shows one and the other's button is rejected by the
 /// #479 open-dialog gate.
 #[tokio::test]
-async fn the_lantoc_offer_stays_dark_until_1325_is_finished() {
+async fn live_db_the_lantoc_offer_stays_dark_until_1325_is_finished() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -188,7 +188,7 @@ async fn the_lantoc_offer_stays_dark_until_1325_is_finished() {
 /// mission implies which — without it both would bind to slot 54 and
 /// `entries.first()` would pick by chain registration order.
 #[tokio::test]
-async fn the_lantoc_offer_stays_dark_if_1324_was_skipped() {
+async fn live_db_the_lantoc_offer_stays_dark_if_1324_was_skipped() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -208,7 +208,7 @@ async fn the_lantoc_offer_stays_dark_if_1324_was_skipped() {
 
 /// Negative (wrong archetype): Lan'toc is a Jaffa rite.
 #[tokio::test]
-async fn a_human_is_never_offered_lantoc() {
+async fn live_db_a_human_is_never_offered_lantoc() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -225,7 +225,7 @@ async fn a_human_is_never_offered_lantoc() {
 /// Negative (wrong world): the Command-Center-scoped offer must not
 /// paint on a Harset load.
 #[tokio::test]
-async fn the_lantoc_offer_does_not_paint_in_harset() {
+async fn live_db_the_lantoc_offer_does_not_paint_in_harset() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -250,7 +250,7 @@ async fn the_lantoc_offer_does_not_paint_in_harset() {
 /// adds one here it shows up as an extra label and this test fails,
 /// which is the point.
 #[tokio::test]
-async fn accepting_lantoc_briefs_the_player_and_retires_the_offer_icon() {
+async fn live_db_accepting_lantoc_briefs_the_player_and_retires_the_offer_icon() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -272,7 +272,7 @@ async fn accepting_lantoc_briefs_the_player_and_retires_the_offer_icon() {
 /// inert. Without `mission_status 1326 eq not_active` a replayed choice
 /// would re-show the briefing and re-remove the bind.
 #[tokio::test]
-async fn the_lantoc_accept_does_not_refire_once_1326_is_active() {
+async fn live_db_the_lantoc_accept_does_not_refire_once_1326_is_active() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -293,7 +293,7 @@ async fn the_lantoc_accept_does_not_refire_once_1326_is_active() {
 /// fans the merged flags to every entity of the bound template in the
 /// player's AoI, and both Lan'toc Jaffa are template 204.
 #[tokio::test]
-async fn arriving_in_harset_on_step_3960_paints_the_jaffa_zone_icon() {
+async fn live_db_arriving_in_harset_on_step_3960_paints_the_jaffa_zone_icon() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -312,7 +312,7 @@ async fn arriving_in_harset_on_step_3960_paints_the_jaffa_zone_icon() {
 /// id must resolve nothing — proving the `world eq 57` condition is
 /// present and not inherited from the trigger's name filter alone.
 #[tokio::test]
-async fn the_jaffa_zone_bind_is_gated_on_world_57() {
+async fn live_db_the_jaffa_zone_bind_is_gated_on_world_57() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -331,7 +331,7 @@ async fn the_jaffa_zone_bind_is_gated_on_world_57() {
 /// removed by 6337/6338 and the restore chain has to agree. Driven over
 /// both post-advance shapes of step 3960.
 #[tokio::test]
-async fn the_jaffa_zone_icon_is_not_repainted_after_the_rite() {
+async fn live_db_the_jaffa_zone_icon_is_not_repainted_after_the_rite() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -365,7 +365,7 @@ async fn the_jaffa_zone_icon_is_not_repainted_after_the_rite() {
 /// typo'd refuser tag makes the refusing Jaffa swear allegiance. Both
 /// tags are therefore asserted against the dialog they must open.
 #[tokio::test]
-async fn each_former_ra_jaffa_opens_its_own_outcome_dialog() {
+async fn live_db_each_former_ra_jaffa_opens_its_own_outcome_dialog() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -394,7 +394,7 @@ async fn each_former_ra_jaffa_opens_its_own_outcome_dialog() {
 
 /// Negative (wrong archetype) on both branches.
 #[tokio::test]
-async fn a_human_cannot_present_the_lantoc() {
+async fn live_db_a_human_cannot_present_the_lantoc() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -413,7 +413,7 @@ async fn a_human_cannot_present_the_lantoc() {
 /// Negative (wrong world) on both branches — `interact_tag` has no world
 /// filter of its own.
 #[tokio::test]
-async fn presenting_the_lantoc_from_the_wrong_world_resolves_nothing() {
+async fn live_db_presenting_the_lantoc_from_the_wrong_world_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -439,7 +439,7 @@ async fn presenting_the_lantoc_from_the_wrong_world_resolves_nothing() {
 /// 4603, so a mission-level gate would leave both Jaffa live all the way
 /// to the turn-in and let the player advance the step twice.
 #[tokio::test]
-async fn talking_to_the_other_jaffa_after_the_rite_resolves_nothing() {
+async fn live_db_talking_to_the_other_jaffa_after_the_rite_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -469,7 +469,7 @@ async fn talking_to_the_other_jaffa_after_the_rite_resolves_nothing() {
 /// would trip the label assert first, making the more specific check
 /// unreachable.
 #[tokio::test]
-async fn both_lantoc_outcomes_advance_the_step_exactly_once() {
+async fn live_db_both_lantoc_outcomes_advance_the_step_exactly_once() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -527,7 +527,7 @@ async fn both_lantoc_outcomes_advance_the_step_exactly_once() {
 /// Negative, both branches: a replayed choice after the step has already
 /// advanced resolves nothing, so the step cannot be advanced twice.
 #[tokio::test]
-async fn a_replayed_lantoc_outcome_cannot_advance_the_step_again() {
+async fn live_db_a_replayed_lantoc_outcome_cannot_advance_the_step_again() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -555,7 +555,7 @@ async fn a_replayed_lantoc_outcome_cannot_advance_the_step_again() {
 /// Moh'katan's turn-in "?" (dsm 5161), and this is also the relog
 /// restore for that state.
 #[tokio::test]
-async fn returning_to_the_command_center_paints_the_turn_in_icon() {
+async fn live_db_returning_to_the_command_center_paints_the_turn_in_icon() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -579,7 +579,7 @@ async fn returning_to_the_command_center_paints_the_turn_in_icon() {
 /// remove before complete (see [`super::mission_1324`] for why the order
 /// is load-bearing).
 #[tokio::test]
-async fn returning_to_mohkatan_completes_1326() {
+async fn live_db_returning_to_mohkatan_completes_1326() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -611,7 +611,7 @@ async fn returning_to_mohkatan_completes_1326() {
 /// this packet — the turn-in step gate has flipped and the offer chain
 /// is retired by `mission_status 1326 eq not_active`.
 #[tokio::test]
-async fn clicking_mohkatan_after_completing_1326_resolves_nothing() {
+async fn live_db_clicking_mohkatan_after_completing_1326_resolves_nothing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -655,7 +655,7 @@ async fn clicking_mohkatan_after_completing_1326_resolves_nothing() {
 /// `interaction_type = 0` and leave both Jaffa unclickable, with the
 /// chains still perfectly correct and the mission unplayable.
 #[tokio::test]
-async fn the_lantoc_jaffa_bind_is_interaction_only_and_carries_its_bit() {
+async fn live_db_the_lantoc_jaffa_bind_is_interaction_only_and_carries_its_bit() {
     let pool = require_db_or_skip!();
 
     let row: Option<(i32, Option<i32>, i64)> = sqlx::query_as(
@@ -703,7 +703,7 @@ async fn the_lantoc_jaffa_bind_is_interaction_only_and_carries_its_bit() {
 /// actions because the break is in the client's send decision, which no
 /// chain-replay context can model.
 #[tokio::test]
-async fn the_lantoc_outcome_dialogs_stay_button_less() {
+async fn live_db_the_lantoc_outcome_dialogs_stay_button_less() {
     let pool = require_db_or_skip!();
 
     for dialog_id in [4375, 4376] {
@@ -749,7 +749,7 @@ async fn the_lantoc_outcome_dialogs_stay_button_less() {
 /// flipped the status (`content/executor/mission.rs`), so the chain sees
 /// 1325 as `completed` and can carry 6331's exact condition set.
 #[tokio::test]
-async fn completing_1325_paints_the_lantoc_offer_without_a_world_hop() {
+async fn live_db_completing_1325_paints_the_lantoc_offer_without_a_world_hop() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -776,7 +776,7 @@ async fn completing_1325_paints_the_lantoc_offer_without_a_world_hop() {
 /// still paints it on the next Command Center entry. Fail-closed to the
 /// slower path, never to a wrong one.
 #[tokio::test]
-async fn the_lantoc_edge_closer_carries_the_same_gates_as_the_offer() {
+async fn live_db_the_lantoc_edge_closer_carries_the_same_gates_as_the_offer() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -828,7 +828,7 @@ async fn the_lantoc_edge_closer_carries_the_same_gates_as_the_offer() {
 /// NULL or mistyped key would turn this into a wildcard that binds the
 /// Lan'toc icon every time the player finishes anything at all.
 #[tokio::test]
-async fn completing_some_other_mission_does_not_paint_the_lantoc_offer() {
+async fn live_db_completing_some_other_mission_does_not_paint_the_lantoc_offer() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
@@ -861,7 +861,7 @@ async fn completing_some_other_mission_does_not_paint_the_lantoc_offer() {
 /// behaviour, so it catches a divergence even in a state no other test
 /// happens to exercise.
 #[tokio::test]
-async fn the_lantoc_offer_and_its_edge_closer_share_one_condition_set() {
+async fn live_db_the_lantoc_offer_and_its_edge_closer_share_one_condition_set() {
     let pool = require_db_or_skip!();
 
     // `sort_order` is deliberately not selected: it orders evaluation

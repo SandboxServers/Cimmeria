@@ -95,7 +95,7 @@ fn assert_close(actual: [f32; 3], expected: [f32; 3], what: &str) {
 /// existed this chain advanced the objective and played its sequence
 /// while the avatar stayed put.
 #[tokio::test]
-async fn chain_3007_move_entity_teleports_the_player_to_the_armory() {
+async fn live_db_chain_3007_move_entity_teleports_the_player_to_the_armory() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 3007)
         .await
@@ -166,7 +166,7 @@ async fn chain_3007_move_entity_teleports_the_player_to_the_armory() {
 /// than `dialog_choice`, so it also pins that the executor arm is
 /// reached from the interaction path.
 #[tokio::test]
-async fn chain_3028_move_entity_teleports_the_player_to_carters_lab() {
+async fn live_db_chain_3028_move_entity_teleports_the_player_to_carters_lab() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 3028)
         .await
@@ -229,7 +229,7 @@ async fn chain_3028_move_entity_teleports_the_player_to_carters_lab() {
 /// airman's waypoint, which is a far worse failure than the original
 /// no-op.
 #[tokio::test]
-async fn chain_3009_move_entity_repositions_the_tagged_airman_not_the_player() {
+async fn live_db_chain_3009_move_entity_repositions_the_tagged_airman_not_the_player() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 3009)
         .await

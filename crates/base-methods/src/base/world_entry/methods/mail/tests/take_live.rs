@@ -40,7 +40,7 @@ async fn two_players(pool: &PgPool, base: i32, tag: &str) -> (i32, i32) {
 /// also fails it: the second take credits 0 but answers `onCashChanged`
 /// and logs a second `mail.cash_taken`.
 #[tokio::test]
-async fn take_cash_twice_credits_once() {
+async fn live_db_take_cash_twice_credits_once() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE, "Cash").await;
@@ -113,7 +113,7 @@ async fn take_cash_twice_credits_once() {
 /// the SQL `(flags & MAIL_COD) = 0` predicate (the recipient is paid the
 /// price they owe); either alone refuses.
 #[tokio::test]
-async fn take_cash_rejects_cod_mail() {
+async fn live_db_take_cash_rejects_cod_mail() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x10, "Cod").await;
@@ -157,7 +157,7 @@ async fn take_cash_rejects_cod_mail() {
 /// overflow check is removed (the `UPDATE` errors and the take answers
 /// `db_error` instead of the refusal).
 #[tokio::test]
-async fn take_cash_refuses_balance_overflow() {
+async fn live_db_take_cash_refuses_balance_overflow() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x20, "Ovf").await;
@@ -188,7 +188,7 @@ async fn take_cash_refuses_balance_overflow() {
 /// Fails when the escrow `DELETE` is removed (the second take inserts a
 /// duplicate or errors).
 #[tokio::test]
-async fn take_item_twice_moves_once() {
+async fn live_db_take_item_twice_moves_once() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x30, "Twice").await;
@@ -284,7 +284,7 @@ async fn take_item_twice_moves_once() {
 /// slot 2, after the caller's items in 0 and 1). Fails if the handler honours
 /// the client's container or slot.
 #[tokio::test]
-async fn take_item_ignores_client_container_and_slot() {
+async fn live_db_take_item_ignores_client_container_and_slot() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE + 0x40, "Slot").await;
     let type_id = any_type_id(&pool).await;
@@ -329,7 +329,7 @@ async fn take_item_ignores_client_container_and_slot() {
 /// inventory gains nothing. Fails when `lock_mail` drops the
 /// `character_id` scope.
 #[tokio::test]
-async fn take_item_never_writes_outside_callers_inventory() {
+async fn live_db_take_item_never_writes_outside_callers_inventory() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x50, "Own").await;
@@ -395,7 +395,7 @@ async fn take_item_never_writes_outside_callers_inventory() {
 /// skipped (the insert lands in an occupied slot and the unique slot index
 /// errors, answered as `db_error`).
 #[tokio::test]
-async fn take_item_full_bags_keeps_escrow() {
+async fn live_db_take_item_full_bags_keeps_escrow() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x60, "Full").await;
@@ -451,7 +451,7 @@ async fn take_item_full_bags_keeps_escrow() {
 /// `sgw_inventory` under a third character, so the restore hits the
 /// inventory key. Fails when `answer_failure` stops logging the event.
 #[tokio::test]
-async fn take_item_db_failure_logs_op_failed_and_keeps_escrow() {
+async fn live_db_take_item_db_failure_logs_op_failed_and_keeps_escrow() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x70, "Fail").await;

@@ -330,7 +330,7 @@ mod free_recharge_tests {
     /// The synthetic resources.items row is what makes this branch
     /// reachable at all — the seeded set has nothing rechargeable.
     #[tokio::test]
-    async fn free_recharge_restores_charges_to_full() {
+    async fn live_db_free_recharge_restores_charges_to_full() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -369,7 +369,7 @@ mod free_recharge_tests {
     /// short-circuit at the bottom of the handler depends on the
     /// UPDATE returning `rows_affected = 0`.
     #[tokio::test]
-    async fn free_recharge_skips_already_full_items() {
+    async fn live_db_free_recharge_skips_already_full_items() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;

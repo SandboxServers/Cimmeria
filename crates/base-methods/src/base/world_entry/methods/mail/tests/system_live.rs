@@ -61,7 +61,7 @@ async fn setup(pool: &PgPool, acct: i32, players: &[(i32, &str)]) {
 /// label as `sender_name`, no COD flag; nobody is debited. The minted item
 /// lands in escrow with `grant_item`'s defaults and the system source id.
 #[tokio::test]
-async fn system_mail_cash_and_minted_item() {
+async fn live_db_system_mail_cash_and_minted_item() {
     let pool = require_db_or_skip!();
     let (acct, rcpt) = (0x7300_5100, 0x7300_5101);
     setup(&pool, acct, &[(rcpt, "SsuOneCashRcpt")]).await;
@@ -110,7 +110,7 @@ async fn system_mail_cash_and_minted_item() {
 /// missing recipient and out-of-range cash are refused, and nothing is
 /// written.
 #[tokio::test]
-async fn system_mail_refusals_write_nothing() {
+async fn live_db_system_mail_refusals_write_nothing() {
     let pool = require_db_or_skip!();
     let (acct, rcpt) = (0x7300_5110, 0x7300_5111);
     setup(&pool, acct, &[(rcpt, "SsuOneRefuseRcpt")]).await;
@@ -180,7 +180,7 @@ async fn system_mail_refusals_write_nothing() {
 /// escrow: same instance id, every per-instance column kept, the seller as
 /// `source_character_id`, gone from `sgw_inventory`.
 #[tokio::test]
-async fn system_mail_moves_server_held_instance() {
+async fn live_db_system_mail_moves_server_held_instance() {
     let pool = require_db_or_skip!();
     let (acct, seller, buyer) = (0x7300_5120, 0x7300_5121, 0x7300_5122);
     setup(
@@ -234,7 +234,7 @@ async fn system_mail_moves_server_held_instance() {
 /// `item_not_found`, a WARN `mail.system_refused` naming the container and
 /// owner, and nothing moves. Fails if `require_server_held` is removed.
 #[tokio::test]
-async fn system_mail_refuses_instance_in_player_inventory() {
+async fn live_db_system_mail_refuses_instance_in_player_inventory() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, owner, rcpt) = (0x7300_5130, 0x7300_5131, 0x7300_5132);
@@ -325,7 +325,7 @@ async fn system_mail_refuses_instance_in_player_inventory() {
 /// back by its caller leaves no mail and no escrow row, and the server-held
 /// item is back in its container.
 #[tokio::test]
-async fn system_mail_rolls_back_with_callers_transaction() {
+async fn live_db_system_mail_rolls_back_with_callers_transaction() {
     let pool = require_db_or_skip!();
     let (acct, seller, buyer) = (0x7300_5140, 0x7300_5141, 0x7300_5142);
     setup(
@@ -382,7 +382,7 @@ async fn system_mail_rolls_back_with_callers_transaction() {
 /// to the cap), and the send logs `mail.system_sent` with the open count
 /// and `over_cap`.
 #[tokio::test]
-async fn system_mail_ignores_mailbox_cap() {
+async fn live_db_system_mail_ignores_mailbox_cap() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, rcpt) = (0x7300_5150, 0x7300_5151);
@@ -412,7 +412,7 @@ async fn system_mail_ignores_mailbox_cap() {
 /// owner it moves. Nothing is written by either refusal. Fails if the owner
 /// check or the bound check is removed.
 #[tokio::test]
-async fn system_mail_existing_instance_owner_and_bound_rules() {
+async fn live_db_system_mail_existing_instance_owner_and_bound_rules() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, seller, other, buyer) = (0x7300_5158, 0x7300_5159, 0x7300_515A, 0x7300_515B);

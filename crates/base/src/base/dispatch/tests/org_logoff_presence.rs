@@ -44,7 +44,7 @@ async fn cleanup(pool: &PgPool) {
 }
 
 #[tokio::test]
-async fn full_exit_logoff_announces_offline_once() {
+async fn live_db_full_exit_logoff_announces_offline_once() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     sqlx::query(

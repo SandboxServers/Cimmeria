@@ -104,7 +104,7 @@ fn cover_entered_event(
 // ── Chain 1033: drone killed, cover pending ─────────────────────────────
 
 #[tokio::test]
-async fn chain_1033_completes_kill_objective_when_cover_pending() {
+async fn live_db_chain_1033_completes_kill_objective_when_cover_pending() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1033)
         .await
@@ -144,7 +144,7 @@ async fn chain_1033_completes_kill_objective_when_cover_pending() {
 }
 
 #[tokio::test]
-async fn chain_1033_does_not_fire_when_cover_already_taken() {
+async fn live_db_chain_1033_does_not_fire_when_cover_already_taken() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1033)
         .await
@@ -172,7 +172,7 @@ async fn chain_1033_does_not_fire_when_cover_already_taken() {
 }
 
 #[tokio::test]
-async fn chain_1033_does_not_fire_when_step_2144_inactive() {
+async fn live_db_chain_1033_does_not_fire_when_step_2144_inactive() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1033)
         .await
@@ -196,7 +196,7 @@ async fn chain_1033_does_not_fire_when_step_2144_inactive() {
 }
 
 #[tokio::test]
-async fn chain_1033_does_not_refire_once_kill_already_completed() {
+async fn live_db_chain_1033_does_not_refire_once_kill_already_completed() {
     // Self-completion guard (found in review): a second `entity_dead_tag`
     // event for the same tag (e.g. a respawn/relog edge) must not re-run
     // `CompleteObjective(2482)` once 2482 is already completed -- chain
@@ -233,7 +233,7 @@ async fn chain_1033_does_not_refire_once_kill_already_completed() {
 // ── Chain 1131: drone killed, cover already taken (second objective) ───
 
 #[tokio::test]
-async fn chain_1131_advances_step_when_kill_is_second() {
+async fn live_db_chain_1131_advances_step_when_kill_is_second() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1131)
         .await
@@ -273,7 +273,7 @@ async fn chain_1131_advances_step_when_kill_is_second() {
 }
 
 #[tokio::test]
-async fn chain_1131_does_not_fire_when_cover_still_pending() {
+async fn live_db_chain_1131_does_not_fire_when_cover_still_pending() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1131)
         .await
@@ -300,7 +300,7 @@ async fn chain_1131_does_not_fire_when_cover_still_pending() {
 // ── Chain 1132: cover taken, kill pending ───────────────────────────────
 
 #[tokio::test]
-async fn chain_1132_completes_cover_objective_when_kill_pending() {
+async fn live_db_chain_1132_completes_cover_objective_when_kill_pending() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1132)
         .await
@@ -349,7 +349,7 @@ async fn chain_1132_completes_cover_objective_when_kill_pending() {
 }
 
 #[tokio::test]
-async fn chain_1132_does_not_fire_when_kill_already_done() {
+async fn live_db_chain_1132_does_not_fire_when_kill_already_done() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1132)
         .await
@@ -374,7 +374,7 @@ async fn chain_1132_does_not_fire_when_kill_already_done() {
 }
 
 #[tokio::test]
-async fn chain_1132_does_not_refire_on_cover_reentry_once_already_completed() {
+async fn live_db_chain_1132_does_not_refire_on_cover_reentry_once_already_completed() {
     // Self-completion guard (found in review): `player_entered_cover` fires
     // on every proximity enter/leave edge (once=false), and
     // `Action::PlaySequence` sends unconditionally with no dedup. A player
@@ -412,7 +412,7 @@ async fn chain_1132_does_not_refire_on_cover_reentry_once_already_completed() {
 }
 
 #[tokio::test]
-async fn chain_1132_does_not_fire_for_a_different_cover_set() {
+async fn live_db_chain_1132_does_not_fire_for_a_different_cover_set() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1132)
         .await
@@ -441,7 +441,7 @@ async fn chain_1132_does_not_fire_for_a_different_cover_set() {
 // ── Chain 1133: cover taken, kill already done (second objective) ──────
 
 #[tokio::test]
-async fn chain_1133_advances_step_when_cover_is_second() {
+async fn live_db_chain_1133_advances_step_when_cover_is_second() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1133)
         .await
@@ -486,7 +486,7 @@ async fn chain_1133_advances_step_when_cover_is_second() {
 }
 
 #[tokio::test]
-async fn chain_1133_does_not_fire_when_kill_still_pending() {
+async fn live_db_chain_1133_does_not_fire_when_kill_still_pending() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1133)
         .await
@@ -517,7 +517,7 @@ async fn chain_1133_does_not_fire_when_kill_still_pending() {
 /// SECOND event (the kill) advances the step (chain 1131) — with chains
 /// 1033/1133 never firing in this ordering.
 #[tokio::test]
-async fn cover_then_kill_advances_only_on_the_second_event() {
+async fn live_db_cover_then_kill_advances_only_on_the_second_event() {
     let pool = require_db_or_skip!();
     let engine = load_all_four(&pool).await;
 
@@ -570,7 +570,7 @@ async fn cover_then_kill_advances_only_on_the_second_event() {
 
 /// Kill first, then cover — the mirror ordering.
 #[tokio::test]
-async fn kill_then_cover_advances_only_on_the_second_event() {
+async fn live_db_kill_then_cover_advances_only_on_the_second_event() {
     let pool = require_db_or_skip!();
     let engine = load_all_four(&pool).await;
 
@@ -634,7 +634,7 @@ async fn kill_then_cover_advances_only_on_the_second_event() {
 /// / `objective_status` rows would leave the chain resolving fine in every
 /// test above and strand the player on the marker in game.
 #[tokio::test]
-async fn cover_chains_stay_eligible_for_the_step_activation_replay() {
+async fn live_db_cover_chains_stay_eligible_for_the_step_activation_replay() {
     let pool = require_db_or_skip!();
     for id in [1132, 1133] {
         let chain = load_single_chain_for_test(&pool, id)
@@ -659,7 +659,7 @@ async fn cover_chains_stay_eligible_for_the_step_activation_replay() {
 /// the production containment test (`sets_near`) what a player standing at
 /// the desk is in: it must be the chains' key, and only in world 12.
 #[tokio::test]
-async fn cover_chain_key_is_the_set_a_player_at_the_desk_is_in() {
+async fn live_db_cover_chain_key_is_the_set_a_player_at_the_desk_is_in() {
     use crate::cell::cover::{
         load_cover_nodes, load_cover_sets, sets_near, Cover, COVER_PROXIMITY_RADIUS,
     };

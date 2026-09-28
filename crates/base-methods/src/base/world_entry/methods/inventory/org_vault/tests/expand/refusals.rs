@@ -9,7 +9,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// bank bit) is refused `not_leader`, with the org fields and the rank.
 /// Fails if the leader check is removed.
 #[tokio::test]
-async fn a_member_who_is_not_the_leader_is_refused() {
+async fn live_db_a_member_who_is_not_the_leader_is_refused() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 3, 2).await;
     let team = fx.org(OrgType::Team, 0, &[1], 500).await;
@@ -45,7 +45,7 @@ async fn a_member_who_is_not_the_leader_is_refused() {
 /// statement's `cash >= price` are removed (the `CHECK` then aborts it as
 /// `query_failed`).
 #[tokio::test]
-async fn a_short_treasury_buys_nothing() {
+async fn live_db_a_short_treasury_buys_nothing() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 4, 1).await;
     let team = fx.org(OrgType::Team, 0, &[], 99).await;
@@ -78,7 +78,7 @@ async fn a_short_treasury_buys_nothing() {
 /// `command_vault_fixed` under the lock, with the Command's fields, and the
 /// Command's treasury is untouched. Fails if the scope check is removed.
 #[tokio::test]
-async fn the_command_vault_is_refused() {
+async fn live_db_the_command_vault_is_refused() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 5, 1).await;
     let command = fx.org(OrgType::Command, 0, &[], 1000).await;
@@ -112,7 +112,7 @@ async fn the_command_vault_is_refused() {
 /// `query_failed` with the error; no database is `db_unavailable`. Each
 /// with a line.
 #[tokio::test]
-async fn no_team_and_database_failures_are_refused() {
+async fn live_db_no_team_and_database_failures_are_refused() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 6, 1).await;
     fx.online(0);
@@ -184,7 +184,7 @@ async fn no_team_and_database_failures_are_refused() {
 /// they are read before the lock (from the unlocked membership lookup,
 /// say).
 #[tokio::test]
-async fn a_leader_who_leaves_while_the_purchase_waits_buys_nothing() {
+async fn live_db_a_leader_who_leaves_while_the_purchase_waits_buys_nothing() {
     use std::time::{Duration, Instant};
 
     let pool = require_db_or_skip!();
@@ -262,7 +262,7 @@ async fn a_leader_who_leaves_while_the_purchase_waits_buys_nothing() {
 /// dropped send logs `bank_feedback_send_failed reason=no_client_address`.
 /// Fails if the replies are addressed by entity id.
 #[tokio::test]
-async fn a_recycled_entity_id_receives_nothing() {
+async fn live_db_a_recycled_entity_id_receives_nothing() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 8, 2).await;
     let team = fx.org(OrgType::Team, 0, &[], 500).await;

@@ -158,7 +158,7 @@ async fn make_state() -> (
 /// the WHERE clause matched on account_id, so a multi-character account
 /// would see grants leak to whichever character row sorted first.
 #[tokio::test]
-async fn credits_only_target_character_when_account_has_multiple() {
+async fn live_db_credits_only_target_character_when_account_has_multiple() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE;
     let player_a = TEST_PLAYER_BASE + 1;
@@ -213,7 +213,7 @@ async fn credits_only_target_character_when_account_has_multiple() {
 /// sibling). The wire-side `tracing::warn!` is the only signal the
 /// function emits on this path; we don't assert against it here.
 #[tokio::test]
-async fn does_not_credit_when_player_row_missing() {
+async fn live_db_does_not_credit_when_player_row_missing() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 100;
     let bystander = TEST_PLAYER_BASE + 101;
@@ -271,7 +271,7 @@ async fn does_not_credit_when_player_row_missing() {
 /// asserts DB state, not the wire), but a panic in that branch — or moving
 /// the feedback to a failure path — would surface here.
 #[tokio::test]
-async fn grant_cash_with_gm_feedback_commits_and_does_not_panic() {
+async fn live_db_grant_cash_with_gm_feedback_commits_and_does_not_panic() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 200;
     let player = TEST_PLAYER_BASE + 201;
@@ -319,7 +319,7 @@ async fn grant_cash_with_gm_feedback_commits_and_does_not_panic() {
 /// target gets exactly the `onCashChanged` wire push; the caller gets
 /// exactly the feedback line; neither crosses over.
 #[tokio::test]
-async fn legacy_p05_grant_cash_feedback_goes_to_caller_not_target() {
+async fn live_db_legacy_p05_grant_cash_feedback_goes_to_caller_not_target() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 300;
     let target_player = TEST_PLAYER_BASE + 301;
@@ -383,7 +383,7 @@ async fn legacy_p05_grant_cash_feedback_goes_to_caller_not_target() {
 /// the post-grant bundle a single packet and avoids the level-up Discord/
 /// contact-fanout side paths, which aren't this test's concern.
 #[tokio::test]
-async fn legacy_p05_grant_xp_feedback_goes_to_caller_not_target() {
+async fn live_db_legacy_p05_grant_xp_feedback_goes_to_caller_not_target() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 400;
     let target_player = TEST_PLAYER_BASE + 401;
@@ -499,7 +499,7 @@ async fn legacy_p05_grant_xp_with_no_db_pool_drops_grant_silently() {
 /// Must drop the grant, not apply an unpersisted mutation with a false
 /// success message.
 #[tokio::test]
-async fn legacy_p05_grant_xp_with_no_active_player_id_drops_grant_silently() {
+async fn live_db_legacy_p05_grant_xp_with_no_active_player_id_drops_grant_silently() {
     let pool = require_db_or_skip!();
     let db_pool = Some(Arc::new(pool));
 

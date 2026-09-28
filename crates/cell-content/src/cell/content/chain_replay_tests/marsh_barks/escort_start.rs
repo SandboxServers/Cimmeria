@@ -37,7 +37,7 @@ const PLAYER_ID: i32 = 42;
 /// Happy path: ringing up to the topside route while mission 680 is still
 /// on step 2344 speaks the departure line.
 #[tokio::test]
-async fn chain_1176_ring_ride_while_step_2344_active_barks_the_departure_line() {
+async fn live_db_chain_1176_ring_ride_while_step_2344_active_barks_the_departure_line() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_MOVE_OUT).await);
 
@@ -55,7 +55,7 @@ async fn chain_1176_ring_ride_while_step_2344_active_barks_the_departure_line() 
 /// active`: mission 680 stays active all the way to Region9, so a mission
 /// gate would still be open on that second ride.
 #[tokio::test]
-async fn chain_1176_does_not_re_bark_on_a_second_ring_ride() {
+async fn live_db_chain_1176_does_not_re_bark_on_a_second_ring_ride() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_MOVE_OUT).await);
 
@@ -80,7 +80,7 @@ async fn chain_1176_does_not_re_bark_on_a_second_ring_ride() {
 /// Adjacent wrong state — wrong ring. Ring 2 is the downstairs hop chain
 /// 1044 owns; only ring 3 is the topside arrival.
 #[tokio::test]
-async fn chain_1176_does_not_fire_on_the_other_ring_transport() {
+async fn live_db_chain_1176_does_not_fire_on_the_other_ring_transport() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_MOVE_OUT).await);
 
@@ -102,7 +102,7 @@ async fn chain_1176_does_not_fire_on_the_other_ring_transport() {
 /// cache going away (zero calls, `screen_not_cached`), and the seed row
 /// naming a screen whose text has changed (wrong bytes on the wire).
 #[tokio::test]
-async fn chain_1176_executes_the_seeded_line_onto_the_wire() {
+async fn live_db_chain_1176_executes_the_seeded_line_onto_the_wire() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_MOVE_OUT).await);
 

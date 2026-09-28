@@ -19,7 +19,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// CAT-M-10: CM 13 needs `MOTD`. A Member (2) of a Command lacks it; the
 /// MOTD is not written, nobody else hears anything, and the actor reads why.
 #[tokio::test]
-async fn motd_rejects_without_perm() {
+async fn live_db_motd_rejects_without_perm() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 0, 2, &["Org08 Motd Perm"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Motd Perm", 0, &[1]).await;
@@ -48,7 +48,7 @@ async fn motd_rejects_without_perm() {
 /// [45]; the same text again is `ok` / `unchanged` with no fanout, but the
 /// actor still gets the line.
 #[tokio::test]
-async fn motd_updates_and_fans_out() {
+async fn live_db_motd_updates_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 1, 3, &["Org08 Motd"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Motd", 0, &[1, 2]).await;
@@ -94,7 +94,7 @@ async fn motd_updates_and_fans_out() {
 /// CM 14 writes the actor's own note (`RosterNotes`: a Member has it, an
 /// Initiate does not) and sends [46] with the stored name to everyone.
 #[tokio::test]
-async fn note_updates_own_note_and_fans_out() {
+async fn live_db_note_updates_own_note_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 2, 3, &["Org08 Note"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Note", 0, &[1, 2]).await;
@@ -138,7 +138,7 @@ async fn note_updates_own_note_and_fans_out() {
 /// organization's members only. A character online and in another Command
 /// is `target_not_member`, and their note there is untouched.
 #[tokio::test]
-async fn officer_note_rejects_target_outside_org() {
+async fn live_db_officer_note_rejects_target_outside_org() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 3, 3, &["Org08 Home", "Org08 Away"]).await;
     let home = fx.org(OrgType::Command, "Org08 Home", 0, &[1]).await;
@@ -172,7 +172,7 @@ async fn officer_note_rejects_target_outside_org() {
 /// CAT-M-10, D-ORG09 (2): an Officer (6) cannot write on a Senior Officer
 /// (7) or on a peer, nor on themself.
 #[tokio::test]
-async fn officer_note_rejects_higher_rank_target() {
+async fn live_db_officer_note_rejects_higher_rank_target() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 4, 4, &["Org08 Officers"]).await;
     let cmd = fx
@@ -215,7 +215,7 @@ async fn officer_note_rejects_higher_rank_target() {
 /// Leader and an Officer, not a Member. The name is the stored one, not
 /// the case the client typed.
 #[tokio::test]
-async fn officer_note_fanout_filtered_by_permission() {
+async fn live_db_officer_note_fanout_filtered_by_permission() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 5, 3, &["Org08 Eyes Only"]).await;
     let cmd = fx
@@ -264,7 +264,7 @@ async fn officer_note_fanout_filtered_by_permission() {
 /// CAT-M-10, D-ORG10 / D-ORG23: bidi controls, zero-width and other format
 /// characters and over-cap text are rejected, never truncated or stored.
 #[tokio::test]
-async fn text_rejects_bidi_and_zero_width() {
+async fn live_db_text_rejects_bidi_and_zero_width() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 6, 2, &["Org08 Clean"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Clean", 0, &[1]).await;

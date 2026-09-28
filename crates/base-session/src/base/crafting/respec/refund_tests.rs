@@ -30,7 +30,7 @@ async fn gm_grant(pool: &PgPool, player_id: i32, discipline_id: i32) {
 /// The mint guard: disciplines that only a GM grant gave are cleared by the
 /// respec, and the ASP total does not move.
 #[tokio::test]
-async fn gm_granted_disciplines_refund_nothing() {
+async fn live_db_gm_granted_disciplines_refund_nothing() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 7, 2, &[], &[], &[5, 1, 1, 1, 1]).await;
@@ -62,7 +62,7 @@ async fn gm_granted_disciplines_refund_nothing() {
 /// respec refunds three. Learning again with GM grants only, a second
 /// respec refunds nothing: the first one's points are not paid twice.
 #[tokio::test]
-async fn respec_refunds_the_points_spent_and_only_once() {
+async fn live_db_respec_refunds_the_points_spent_and_only_once() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = player(&pool, 8, 3, &[], &[], &[5, 1, 1, 1, 1]).await;
     let catalog = shared_crafting_catalog(&pool).await.expect("catalog");

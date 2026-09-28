@@ -75,7 +75,7 @@ async fn resolve_expansion_as_if_enabled(
 /// (`build_chains_from_rows` clones both per trigger row), and an edit
 /// that split them would be a silent divergence.
 #[tokio::test]
-async fn chain_6511_offers_the_praxis_the_moment_the_letter_is_handed_over() {
+async fn live_db_chain_6511_offers_the_praxis_the_moment_the_letter_is_handed_over() {
     let pool = require_db_or_skip!();
 
     let expansions = load_chain_expansions_for_test(&pool, 6511)
@@ -152,7 +152,7 @@ async fn chain_6511_offers_the_praxis_the_moment_the_letter_is_handed_over() {
 /// completion, a player who already has 1361, a Jaffa or a Goa'uld, or a
 /// player standing in Harset. Each is asserted silent.
 #[tokio::test]
-async fn chain_6511_second_trigger_is_gated_as_tightly_as_the_first() {
+async fn live_db_chain_6511_second_trigger_is_gated_as_tightly_as_the_first() {
     let pool = require_db_or_skip!();
 
     // (label, completing mission, 1361 status, archetype, world)
@@ -239,7 +239,7 @@ async fn chain_6511_second_trigger_is_gated_as_tightly_as_the_first() {
 /// exact action lists. This test pins the other four: the chain that opens
 /// each same-world gate must carry the matching bind.
 #[tokio::test]
-async fn every_same_world_step_handoff_binds_in_chain() {
+async fn live_db_every_same_world_step_handoff_binds_in_chain() {
     let pool = require_db_or_skip!();
 
     // (handing chain, trigger, step it is fired on, key, dsm it must bind, slot)
@@ -317,7 +317,7 @@ async fn every_same_world_step_handoff_binds_in_chain() {
 /// or a trigger is rewritten, the chain stops firing here rather than
 /// quietly turning every negative in the file green.
 #[tokio::test]
-async fn every_keyed_trigger_matches_the_context_the_negatives_build() {
+async fn live_db_every_keyed_trigger_matches_the_context_the_negatives_build() {
     let pool = require_db_or_skip!();
 
     // (chain, trigger, step, the key its negatives build the context with)

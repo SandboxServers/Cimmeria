@@ -48,7 +48,7 @@ fn offers(rx: &mut mpsc::Receiver<BaseToCellMsg>) -> Vec<BankBaseToCell> {
 /// `expand_quote offered=true`. Nothing reaches the client yet: the cell
 /// shows the dialog.
 #[tokio::test]
-async fn below_the_ceiling_the_cell_is_sent_the_offer() {
+async fn live_db_below_the_ceiling_the_cell_is_sent_the_offer() {
     let pool = require_db_or_skip!();
     let c = caller(0x100 + 0x10, 0x7000_BBF0);
     setup(&pool, c, 70, 300).await;
@@ -90,7 +90,7 @@ async fn below_the_ceiling_the_cell_is_sent_the_offer() {
 /// quote then finds no price row for 110 and logs WARN `price_missing`
 /// instead, with no line).
 #[tokio::test]
-async fn at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
+async fn live_db_at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
     let pool = require_db_or_skip!();
     let c = caller(0x100 + 0x20, 0x7000_BBF1);
     setup(&pool, c, 100, 300).await;
@@ -119,7 +119,7 @@ async fn at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
 /// The failures: no pool, no row, no cell channel. Each is WARN
 /// `expand_quote offered=false` with its reason, and no offer is sent.
 #[tokio::test]
-async fn quote_failures_log_their_reason() {
+async fn live_db_quote_failures_log_their_reason() {
     let pool = require_db_or_skip!();
 
     let c = caller(0x100 + 0x30, 0x7000_BBF2);

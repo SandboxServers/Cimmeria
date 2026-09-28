@@ -21,7 +21,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// gets [34] byte for byte; the inviter gets a line; one `ok` row with
 /// both identities and the inviter's rank; the DEBUG `invite_created`.
 #[tokio::test]
-async fn invite_records_pending_and_sends_on_organization_invite() {
+async fn live_db_invite_records_pending_and_sends_on_organization_invite() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 0, 2, &["Org07 Invite"]).await;
     let cmd = fx.org(OrgType::Command, "Org07 Invite", 0, &[]).await;
@@ -72,7 +72,7 @@ async fn invite_records_pending_and_sends_on_organization_invite() {
 /// (here a real Team of someone else's) is refused under the lock; nothing
 /// is recorded or sent to the invitee.
 #[tokio::test]
-async fn org_invite_rejects_non_member_inviter() {
+async fn live_db_org_invite_rejects_non_member_inviter() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 1, 3, &["Org07 Foreign"]).await;
     let team = fx.org(OrgType::Team, "Org07 Foreign", 0, &[]).await;
@@ -98,7 +98,7 @@ async fn org_invite_rejects_non_member_inviter() {
 /// CAT-M-01: a member whose rank lacks `Invite` (a Team Member holds only
 /// roster notes and the vault bits, D-ORG08) is refused.
 #[tokio::test]
-async fn org_invite_rejects_without_invite_perm() {
+async fn live_db_org_invite_rejects_without_invite_perm() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 2, 3, &["Org07 NoPerm"]).await;
     let team = fx.org(OrgType::Team, "Org07 NoPerm", 0, &[1]).await;
@@ -130,7 +130,7 @@ async fn org_invite_rejects_without_invite_perm() {
 /// inviter's existing organization of that type. An inviter with none is
 /// refused, and no organization is created.
 #[tokio::test]
-async fn invite_by_type_never_creates_team_or_command() {
+async fn live_db_invite_by_type_never_creates_team_or_command() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 3, 2, &[]).await;
     fx.online(0);
@@ -162,7 +162,7 @@ async fn invite_by_type_never_creates_team_or_command() {
 
 /// Invite-by-type resolves the inviter's own organization of that type.
 #[tokio::test]
-async fn invite_by_type_finds_the_inviters_organization() {
+async fn live_db_invite_by_type_finds_the_inviters_organization() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 4, 2, &["Org07 ByType"]).await;
     let team = fx.org(OrgType::Team, "Org07 ByType", 0, &[]).await;
@@ -187,7 +187,7 @@ async fn invite_by_type_finds_the_inviters_organization() {
 /// D-ORG18: an invitee already in a Team is refused a second Team's
 /// invite, and one already in this Team is refused as a member.
 #[tokio::test]
-async fn invite_rejects_a_target_already_in_the_type() {
+async fn live_db_invite_rejects_a_target_already_in_the_type() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 5, 3, &["Org07 TeamA", "Org07 TeamB"]).await;
     let a = fx.org(OrgType::Team, "Org07 TeamA", 0, &[2]).await;
@@ -231,7 +231,7 @@ async fn invite_rejects_a_target_already_in_the_type() {
 /// inviter is never offered the invite; the inviter reads the same line a
 /// duel challenge gets.
 #[tokio::test]
-async fn invite_rejects_an_invitee_who_ignores_the_inviter() {
+async fn live_db_invite_rejects_an_invitee_who_ignores_the_inviter() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 6, 2, &["Org07 Ignored"]).await;
     let team = fx.org(OrgType::Team, "Org07 Ignored", 0, &[]).await;
@@ -259,7 +259,7 @@ async fn invite_rejects_an_invitee_who_ignores_the_inviter() {
 /// The inviter's rate limit is checked before any database work: five sent
 /// in the window, the sixth is refused.
 #[tokio::test]
-async fn invite_is_rate_limited_per_inviter() {
+async fn live_db_invite_is_rate_limited_per_inviter() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 7, 2, &["Org07 Rate"]).await;
     let team = fx.org(OrgType::Team, "Org07 Rate", 0, &[]).await;
@@ -294,7 +294,7 @@ async fn invite_is_rate_limited_per_inviter() {
 /// (`what = organization_invite`) with the reason; the invite is still
 /// recorded and the action still ends in its one row.
 #[tokio::test]
-async fn an_unsendable_invite_warns_with_reason() {
+async fn live_db_an_unsendable_invite_warns_with_reason() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 8, 2, &["Org07 Unsent"]).await;
     let team = fx.org(OrgType::Team, "Org07 Unsent", 0, &[]).await;

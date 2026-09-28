@@ -20,7 +20,7 @@ const TEST_BASE: i32 = 0x7000_0500;
 /// WHERE clause matching on account-wide criteria, so any character
 /// could delete any sibling's mail.
 #[tokio::test]
-async fn delete_only_affects_target_character_not_account_siblings() {
+async fn live_db_delete_only_affects_target_character_not_account_siblings() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let char_a = TEST_BASE + 1;
@@ -92,7 +92,7 @@ async fn delete_only_affects_target_character_not_account_siblings() {
 /// the Delete test, but verifies the flags column on B's mail stays at 0
 /// when A issues Archive on it.
 #[tokio::test]
-async fn archive_only_affects_target_character_not_account_siblings() {
+async fn live_db_archive_only_affects_target_character_not_account_siblings() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let char_a = TEST_BASE + 101;
@@ -158,7 +158,7 @@ async fn archive_only_affects_target_character_not_account_siblings() {
 /// a future regression to `flags = 1` (assignment instead of OR) would
 /// be caught when other flag bits are in play.
 #[tokio::test]
-async fn archive_is_idempotent_via_bitwise_or() {
+async fn live_db_archive_is_idempotent_via_bitwise_or() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let char_a = TEST_BASE + 201;
@@ -218,7 +218,7 @@ async fn archive_is_idempotent_via_bitwise_or() {
 /// the column round-trip + WHERE-clause scoping (recipient column is
 /// `character_id`, not `sender_id`).
 #[tokio::test]
-async fn mail_inserted_for_character_b_is_queryable_via_request_headers_select() {
+async fn live_db_mail_inserted_for_character_b_is_queryable_via_request_headers_select() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 300;
     let char_a = TEST_BASE + 301; // sender
@@ -290,7 +290,7 @@ async fn mail_inserted_for_character_b_is_queryable_via_request_headers_select()
 /// constant (e.g. `read_time = 1`) AND a regression that writes a
 /// far-future / past value via a unit confusion (millis vs seconds).
 #[tokio::test]
-async fn request_body_marks_unread_mail_as_read_via_read_time_update() {
+async fn live_db_request_body_marks_unread_mail_as_read_via_read_time_update() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 400;
     let char_a = TEST_BASE + 401;
@@ -345,7 +345,7 @@ async fn request_body_marks_unread_mail_as_read_via_read_time_update() {
 /// the *first* read timestamp. Without this guard the mail's "first
 /// read" UI label would silently re-anchor on every re-open.
 #[tokio::test]
-async fn request_body_does_not_overwrite_existing_read_time() {
+async fn live_db_request_body_does_not_overwrite_existing_read_time() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 500;
     let char_a = TEST_BASE + 501;
@@ -400,7 +400,7 @@ async fn request_body_does_not_overwrite_existing_read_time() {
 /// stays at 0. A regression that moved the UPDATE outside the
 /// `Some(row)` match arm would silently flip B's read indicator.
 #[tokio::test]
-async fn request_body_by_other_character_does_not_mark_target_mail_read() {
+async fn live_db_request_body_by_other_character_does_not_mark_target_mail_read() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 600;
     let char_a = TEST_BASE + 601;
@@ -445,7 +445,7 @@ async fn request_body_by_other_character_does_not_mark_target_mail_read() {
 /// (read_time bumps inside the [before, after] window) → Delete (row
 /// gone). Pins the cross-step state machine.
 #[tokio::test]
-async fn receive_lifecycle_request_headers_then_body_then_delete() {
+async fn live_db_receive_lifecycle_request_headers_then_body_then_delete() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 700;
     let char_a = TEST_BASE + 701; // sender

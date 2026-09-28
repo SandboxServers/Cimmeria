@@ -34,7 +34,7 @@ fn load_ctx(step_id: i32, archetype: i32) -> ExecutionContext {
 
 /// Chain 1361: both step-2415 affordances come back.
 #[tokio::test]
-async fn chain_1361_restores_both_diagnosis_cues_at_step_2415() {
+async fn live_db_chain_1361_restores_both_diagnosis_cues_at_step_2415() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1361).await;
 
@@ -63,7 +63,7 @@ async fn chain_1361_restores_both_diagnosis_cues_at_step_2415() {
 /// only. A Jaffa who relogs must not find Col. Marsh flagged, and vice
 /// versa — the same exclusivity the live chains 1350/1351 enforce.
 #[tokio::test]
-async fn the_report_cue_restores_for_the_players_own_faction_only() {
+async fn live_db_the_report_cue_restores_for_the_players_own_faction_only() {
     let pool = require_db_or_skip!();
     let marsh = engine_for(&pool, 1362).await;
     let mohkatan = engine_for(&pool, 1363).await;
@@ -102,7 +102,7 @@ async fn the_report_cue_restores_for_the_players_own_faction_only() {
 /// INT_Dhd survives, it is a template column) but un-hackable, and the
 /// player cannot repair it.
 #[tokio::test]
-async fn chain_1364_restores_the_dhd_livewire_cue_at_step_2418() {
+async fn live_db_chain_1364_restores_the_dhd_livewire_cue_at_step_2418() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1364).await;
 
@@ -119,7 +119,7 @@ async fn chain_1364_restores_the_dhd_livewire_cue_at_step_2418() {
 /// Inert until packet CA02 keeps NULL-dialog rows in the cache; the seed
 /// row still has to be correct before then.
 #[tokio::test]
-async fn chain_1365_restores_the_dial_topic_bind_at_step_4462() {
+async fn live_db_chain_1365_restores_the_dial_topic_bind_at_step_4462() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1365).await;
 
@@ -149,7 +149,7 @@ async fn chain_1365_restores_the_dial_topic_bind_at_step_4462() {
 /// on a step that never lit it (the player would see a "!" over an NPC
 /// with nothing to say), and firing a Castle chain on a Cellblock load.
 #[tokio::test]
-async fn every_restore_chain_is_gated_on_its_step_and_on_the_castle_world() {
+async fn live_db_every_restore_chain_is_gated_on_its_step_and_on_the_castle_world() {
     let pool = require_db_or_skip!();
 
     // (chain, the step it owns, the archetype it wants)

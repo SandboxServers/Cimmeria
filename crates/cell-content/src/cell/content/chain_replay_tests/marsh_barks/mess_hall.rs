@@ -16,7 +16,7 @@ use crate::test_support::require_db_or_skip;
 /// Happy path: walking into the Mess Hall with 681 accepted and the room
 /// not yet cleared speaks the long-table flank cue.
 #[tokio::test]
-async fn chain_1177_mess_hall_entry_barks_the_long_table_flank_cue() {
+async fn live_db_chain_1177_mess_hall_entry_barks_the_long_table_flank_cue() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_MESS_HALL).await);
 
@@ -36,7 +36,7 @@ async fn chain_1177_mess_hall_entry_barks_the_long_table_flank_cue() {
 /// player who somehow reaches Region3 before that must not hear a cue
 /// about an objective they do not have.
 #[tokio::test]
-async fn chain_1177_does_not_fire_before_mission_681_is_accepted() {
+async fn live_db_chain_1177_does_not_fire_before_mission_681_is_accepted() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_MESS_HALL).await);
 
@@ -65,7 +65,7 @@ async fn chain_1177_does_not_fire_before_mission_681_is_accepted() {
 /// region the player is standing in, which includes Region3. If this gate
 /// did not close, the player would hear the line twice on one crossing.
 #[tokio::test]
-async fn chain_1177_does_not_re_bark_once_the_mess_hall_is_cleared() {
+async fn live_db_chain_1177_does_not_re_bark_once_the_mess_hall_is_cleared() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_MESS_HALL).await);
 

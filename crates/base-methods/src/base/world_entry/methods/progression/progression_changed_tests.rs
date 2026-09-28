@@ -65,7 +65,7 @@ async fn grant(pool: &sqlx::PgPool, id: i32, xp: u64) -> ((i32, i32), Vec<(u32, 
 }
 
 #[tokio::test]
-async fn level_up_tells_the_cell_the_persisted_level_and_points() {
+async fn live_db_level_up_tells_the_cell_the_persisted_level_and_points() {
     let pool = require_db_or_skip!();
     let ((level, points), changes) = grant(&pool, 0x7030_0320, 1_000).await;
     assert!(
@@ -80,7 +80,7 @@ async fn level_up_tells_the_cell_the_persisted_level_and_points() {
 }
 
 #[tokio::test]
-async fn xp_without_a_level_up_sends_no_progression_change() {
+async fn live_db_xp_without_a_level_up_sends_no_progression_change() {
     let pool = require_db_or_skip!();
     let ((level, _), changes) = grant(&pool, 0x7030_0321, 50).await;
     assert_eq!(level, 1);

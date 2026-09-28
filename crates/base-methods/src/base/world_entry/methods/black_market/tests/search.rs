@@ -66,7 +66,7 @@ async fn page(pool: &PgPool, player: i32, opts: &BMSearchOptions) -> search::Sea
 /// the branch returned every listing (and a seller-name filter would trust
 /// the client).
 #[tokio::test]
-async fn my_auctions_is_scoped_to_the_caller() {
+async fn live_db_my_auctions_is_scoped_to_the_caller() {
     let pool = require_db_or_skip!();
     let (acc_a, acc_b) = (SEARCH_BASE, SEARCH_BASE + 1);
     let (a, b) = (SEARCH_BASE + 2, SEARCH_BASE + 3);
@@ -95,7 +95,7 @@ async fn my_auctions_is_scoped_to_the_caller() {
 /// S3: My Bids is every open auction the caller has bid on, still shown
 /// after they are outbid; someone else's bids are not.
 #[tokio::test]
-async fn my_bids_is_what_the_caller_bid_on() {
+async fn live_db_my_bids_is_what_the_caller_bid_on() {
     let pool = require_db_or_skip!();
     let (acc_s, acc_c, acc_d) = (SEARCH_BASE + 0x10, SEARCH_BASE + 0x11, SEARCH_BASE + 0x12);
     let (seller, c, d) = (SEARCH_BASE + 0x13, SEARCH_BASE + 0x14, SEARCH_BASE + 0x15);
@@ -131,7 +131,7 @@ async fn my_bids_is_what_the_caller_bid_on() {
 /// A cancelled row and a row past `expires_at` that the sweep has not
 /// reached are not offered.
 #[tokio::test]
-async fn closed_and_due_listings_are_not_offered() {
+async fn live_db_closed_and_due_listings_are_not_offered() {
     let pool = require_db_or_skip!();
     let (acc, seller) = (SEARCH_BASE + 0x20, SEARCH_BASE + 0x21);
     cleanup(&pool, &[acc], &[seller]).await;
@@ -152,7 +152,7 @@ async fn closed_and_due_listings_are_not_offered() {
 /// cursor pages both ways, and `total` stays the full match count. Bug
 /// shape: the branch read every row and reported the page size as total.
 #[tokio::test]
-async fn search_pages_with_a_cursor_and_keeps_the_full_total() {
+async fn live_db_search_pages_with_a_cursor_and_keeps_the_full_total() {
     let pool = require_db_or_skip!();
     let (acc, seller) = (SEARCH_BASE + 0x30, SEARCH_BASE + 0x31);
     cleanup(&pool, &[acc], &[seller]).await;
@@ -205,7 +205,7 @@ async fn search_pages_with_a_cursor_and_keeps_the_full_total() {
 /// `itemName` matches a substring of the item's name, case-insensitively;
 /// `minTC` / `maxTC` bound the tech competency.
 #[tokio::test]
-async fn item_name_and_tech_competency_filter() {
+async fn live_db_item_name_and_tech_competency_filter() {
     let pool = require_db_or_skip!();
     let (acc, seller) = (SEARCH_BASE + 0x40, SEARCH_BASE + 0x41);
     cleanup(&pool, &[acc], &[seller]).await;
@@ -251,7 +251,7 @@ async fn item_name_and_tech_competency_filter() {
 
 /// S2: a `clientKey` that names no view is refused, not served.
 #[tokio::test]
-async fn unknown_client_key_is_refused() {
+async fn live_db_unknown_client_key_is_refused() {
     let pool = require_db_or_skip!();
     let res = search::run_search(&pool, SEARCH_BASE + 0x50, &view(7), now_unix_secs())
         .await
@@ -262,7 +262,7 @@ async fn unknown_client_key_is_refused() {
 /// S8: an offline seller's name comes from the database, and the handler
 /// sends `onBMAuctions` with the search telemetry row.
 #[tokio::test]
-async fn offline_seller_names_come_from_the_db() {
+async fn live_db_offline_seller_names_come_from_the_db() {
     let pool = require_db_or_skip!();
     let (acc, seller) = (SEARCH_BASE + 0x60, SEARCH_BASE + 0x61);
     let (acc_c, caller) = (SEARCH_BASE + 0x62, SEARCH_BASE + 0x63);

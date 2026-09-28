@@ -66,7 +66,7 @@ async fn race(
 /// same-type vault stacks of 1: exactly one merge happens. The total stays
 /// 7 and the source row is gone. A duplicate would show as 12.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn two_concurrent_merges_of_one_stack_cannot_duplicate_it() {
+async fn live_db_two_concurrent_merges_of_one_stack_cannot_duplicate_it() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE_C, BASE_C + 1, 0x7000_B5EC);
     setup(&pool, account_id, player_id).await;
@@ -108,7 +108,7 @@ async fn two_concurrent_merges_of_one_stack_cannot_duplicate_it() {
 /// One carried stack of 10 split 6 into two empty vault slots at once: the
 /// second split finds only 4 left and is refused. The total stays 10.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn two_concurrent_splits_of_one_stack_cannot_duplicate_it() {
+async fn live_db_two_concurrent_splits_of_one_stack_cannot_duplicate_it() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE_C + 0x10, BASE_C + 0x11, 0x7000_B5ED);
     setup(&pool, account_id, player_id).await;

@@ -63,7 +63,7 @@ async fn payment_mails(pool: &PgPool, sender: i32) -> Vec<(i32, i64, Option<i32>
 /// payment debits 300 again). Dropping every COD gate while still zeroing
 /// fails it too, on the second payment mail (of 0).
 #[tokio::test]
-async fn pay_cod_twice_debits_once() {
+async fn live_db_pay_cod_twice_debits_once() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (payer, sender, mail_id, _) = cod_fixture(&pool, BASE, "Twice").await;
@@ -130,7 +130,7 @@ async fn pay_cod_twice_debits_once() {
 /// (the balance goes negative, or the schema check turns it into
 /// `db_error`).
 #[tokio::test]
-async fn pay_cod_rejects_insufficient_cash() {
+async fn live_db_pay_cod_rejects_insufficient_cash() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (payer, sender, mail_id, _) = cod_fixture(&pool, BASE + 0x08, "Poor").await;
@@ -164,7 +164,7 @@ async fn pay_cod_rejects_insufficient_cash() {
 /// debits and forwards the stored 450, not the 300 the header showed. A
 /// revert that debits a cached or constant price fails it.
 #[tokio::test]
-async fn pay_cod_amount_read_from_row() {
+async fn live_db_pay_cod_amount_read_from_row() {
     let pool = require_db_or_skip!();
     let (payer, sender, mail_id, _) = cod_fixture(&pool, BASE + 0x10, "Row").await;
     sqlx::query("UPDATE sgw_gate_mail SET cash = 450 WHERE mail_id = $1")
@@ -192,7 +192,7 @@ async fn pay_cod_amount_read_from_row() {
 /// payment change nothing. The item is taken by an ordinary take-item
 /// after the payment, and is refused before it (`cod_unpaid`).
 #[tokio::test]
-async fn paid_cod_credits_sender_once_by_mail_while_offline() {
+async fn live_db_paid_cod_credits_sender_once_by_mail_while_offline() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (payer, sender, mail_id, item_id) = cod_fixture(&pool, BASE + 0x18, "Off").await;
@@ -265,7 +265,7 @@ async fn paid_cod_credits_sender_once_by_mail_while_offline() {
 /// becomes an ordinary take. Fails when that branch is reverted to a plain
 /// refusal (the take after it is refused `cod_unpaid`).
 #[tokio::test]
-async fn pay_cod_with_deleted_sender_cancels_cod_and_frees_item() {
+async fn live_db_pay_cod_with_deleted_sender_cancels_cod_and_frees_item() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (payer, sender, mail_id, item_id) = cod_fixture(&pool, BASE + 0x20, "Gone").await;
@@ -320,7 +320,7 @@ async fn pay_cod_with_deleted_sender_cancels_cod_and_frees_item() {
 /// Pay and return are owner-scoped like the takes: another character naming
 /// the mail id is refused `not_found_for_owner`, and nothing moves.
 #[tokio::test]
-async fn pay_and_return_refuse_another_players_mail() {
+async fn live_db_pay_and_return_refuse_another_players_mail() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (payer, sender, mail_id, _) = cod_fixture(&pool, BASE + 0x30, "Owner").await;
@@ -347,7 +347,7 @@ async fn pay_and_return_refuse_another_players_mail() {
 /// `cod_without_item`, nothing debited (the send path never makes one; this
 /// pins the defence).
 #[tokio::test]
-async fn pay_cod_refuses_without_item() {
+async fn live_db_pay_cod_refuses_without_item() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (payer, _, mail_id, _) = cod_fixture(&pool, BASE + 0x28, "NoItem").await;

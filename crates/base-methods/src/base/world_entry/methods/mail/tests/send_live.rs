@@ -59,7 +59,7 @@ async fn rows_for(pool: &PgPool, character_id: i32) -> Vec<MailRow> {
 /// sender's id and the name stored on the sender's own row (never the
 /// session's), and answers `MAILRESULT_Sent` with no failures.
 #[tokio::test]
-async fn send_delivers_to_offline_recipient() {
+async fn live_db_send_delivers_to_offline_recipient() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (BASE, BASE + 1, BASE + 2);
     cleanup(&pool, acct).await;
@@ -107,7 +107,7 @@ async fn send_delivers_to_offline_recipient() {
 /// good one and lists the unknown one in `FailedRecipients` under
 /// `MAILRESULT_Sent`, with a feedback line saying why.
 #[tokio::test]
-async fn send_partial_failure_delivers_to_the_rest() {
+async fn live_db_send_partial_failure_delivers_to_the_rest() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (BASE + 10, BASE + 11, BASE + 12);
     cleanup(&pool, acct).await;
@@ -136,7 +136,7 @@ async fn send_partial_failure_delivers_to_the_rest() {
 /// CAT-G-01: a send whose only recipient does not exist is
 /// `MAILRESULT_NoRecipients`, lists the name, and inserts nothing.
 #[tokio::test]
-async fn send_rejects_unknown_recipient() {
+async fn live_db_send_rejects_unknown_recipient() {
     let pool = require_db_or_skip!();
     let (acct, sender) = (BASE + 20, BASE + 21);
     cleanup(&pool, acct).await;
@@ -171,7 +171,7 @@ async fn send_rejects_unknown_recipient() {
 /// matches, is refused when two do, and an exact match beats a fold.
 /// D-SS05: the same recipient typed twice gets one copy.
 #[tokio::test]
-async fn send_resolves_names_per_d_ss13_and_dedupes() {
+async fn live_db_send_resolves_names_per_d_ss13_and_dedupes() {
     let pool = require_db_or_skip!();
     let (acct, sender, solo, upper, lower) =
         (BASE + 30, BASE + 31, BASE + 32, BASE + 33, BASE + 34);
@@ -235,7 +235,7 @@ async fn send_resolves_names_per_d_ss13_and_dedupes() {
 
 /// D-SS05: ten distinct recipients all get the mail in one send.
 #[tokio::test]
-async fn send_delivers_to_ten_recipients() {
+async fn live_db_send_delivers_to_ten_recipients() {
     let pool = require_db_or_skip!();
     let acct = BASE + 40;
     let sender = BASE + 41;
@@ -269,7 +269,7 @@ async fn send_delivers_to_ten_recipients() {
 /// in `FailedRecipients` and gets nothing; archived mail does not count, so
 /// 99 open plus any number archived still receives.
 #[tokio::test]
-async fn send_refuses_full_mailbox() {
+async fn live_db_send_refuses_full_mailbox() {
     let pool = require_db_or_skip!();
     let (acct, sender, full, roomy) = (BASE + 60, BASE + 61, BASE + 62, BASE + 63);
     cleanup(&pool, acct).await;
@@ -328,7 +328,7 @@ async fn send_refuses_full_mailbox() {
 
 /// Schema backstop: `sgw_gate_mail.cash` may not go negative.
 #[tokio::test]
-async fn schema_rejects_negative_mail_cash() {
+async fn live_db_schema_rejects_negative_mail_cash() {
     let pool = require_db_or_skip!();
     let (acct, owner) = (BASE + 70, BASE + 71);
     cleanup(&pool, acct).await;
@@ -356,7 +356,7 @@ async fn schema_rejects_negative_mail_cash() {
 /// when the index is dropped from `db/sgw/_indexes.sql` or the query's
 /// expression stops matching it.
 #[tokio::test]
-async fn recipient_case_fold_uses_the_lower_name_index() {
+async fn live_db_recipient_case_fold_uses_the_lower_name_index() {
     let pool = require_db_or_skip!();
     let mut conn = pool.acquire().await.unwrap();
     sqlx::query("SET enable_seqscan = off")

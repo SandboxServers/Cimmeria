@@ -18,7 +18,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// CAT-M-05: the actor's rank must be strictly above the target's. An
 /// Officer (6) cannot kick another Officer, nor the Leader; both stay.
 #[tokio::test]
-async fn org_kick_rejects_equal_or_higher_rank() {
+async fn live_db_org_kick_rejects_equal_or_higher_rank() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 17, 3, &["Org07 Peers"]).await;
     let cmd = fx.org(OrgType::Command, "Org07 Peers", 0, &[1, 2]).await;
@@ -52,7 +52,7 @@ async fn org_kick_rejects_equal_or_higher_rank() {
 /// against a lower rank; a name that is not a member, and the actor's own
 /// name, are refused too.
 #[tokio::test]
-async fn org_kick_needs_eject_a_member_target_and_not_self() {
+async fn live_db_org_kick_needs_eject_a_member_target_and_not_self() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 18, 4, &["Org07 NoEject"]).await;
     let cmd = fx.org(OrgType::Command, "Org07 NoEject", 0, &[1, 2]).await;
@@ -92,7 +92,7 @@ async fn org_kick_needs_eject_a_member_target_and_not_self() {
 /// actor included, gets [39] `Kicked` with the kicked player's live entity
 /// id. The target is matched case-insensitively among members.
 #[tokio::test]
-async fn org_kick_removes_and_fans_out() {
+async fn live_db_org_kick_removes_and_fans_out() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 19, 3, &["Org07 Kick"]).await;
     let team = fx.org(OrgType::Team, "Org07 Kick", 0, &[1, 2]).await;
@@ -153,7 +153,7 @@ async fn org_kick_removes_and_fans_out() {
 /// An offline member can be kicked: the remaining members' [39] carries
 /// entity id 0, and nobody is told a membership ended on the cell.
 #[tokio::test]
-async fn org_kick_of_an_offline_member_uses_id_zero() {
+async fn live_db_org_kick_of_an_offline_member_uses_id_zero() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 20, 2, &["Org07 Offline Kick"]).await;
     let team = fx.org(OrgType::Team, "Org07 Offline Kick", 0, &[1]).await;

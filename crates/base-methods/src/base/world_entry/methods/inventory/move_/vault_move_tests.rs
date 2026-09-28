@@ -200,7 +200,7 @@ pub(super) fn rejected(
 /// its kind, both ends, the stacks and `bank_slots`. Fails with the session
 /// wiring reverted (the vault refuses every move, as in BV-01).
 #[tokio::test]
-async fn deposit_then_withdraw_round_trips_the_same_item() {
+async fn live_db_deposit_then_withdraw_round_trips_the_same_item() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE, BASE + 1, 0x7000_B5E0);
     setup(&pool, account_id, player_id).await;
@@ -270,7 +270,7 @@ async fn deposit_then_withdraw_round_trips_the_same_item() {
 /// item snaps back. Fails if the base honoured any session regardless of
 /// the verdict (the loot pin of CAT-D-02).
 #[tokio::test]
-async fn walking_away_after_opening_then_moving_is_rejected() {
+async fn live_db_walking_away_after_opening_then_moving_is_rejected() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x10, BASE + 0x11, 0x7000_B5E1);
     setup(&pool, account_id, player_id).await;
@@ -353,7 +353,7 @@ async fn walking_away_after_opening_then_moving_is_rejected() {
 
 /// The Banker despawned: `reason=banker_gone`, with its own line.
 #[tokio::test]
-async fn a_move_after_the_banker_left_is_rejected() {
+async fn live_db_a_move_after_the_banker_left_is_rejected() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x20, BASE + 0x21, 0x7000_B5E2);
     setup(&pool, account_id, player_id).await;
@@ -386,7 +386,7 @@ async fn a_move_after_the_banker_left_is_rejected() {
 /// No session: the no-session guard with its feedback line (the log shape
 /// is pinned in `allowlist_tests`).
 #[tokio::test]
-async fn a_move_with_no_session_tells_the_player() {
+async fn live_db_a_move_with_no_session_tells_the_player() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x30, BASE + 0x31, 0x7000_B5E3);
     setup(&pool, account_id, player_id).await;
@@ -427,7 +427,7 @@ async fn a_move_with_no_session_tells_the_player() {
 /// accepted, and after the row grows to 50, slot 40 is accepted. Fails
 /// with the bound removed (slot 40 lands) or read as a constant.
 #[tokio::test]
-async fn a_slot_at_or_above_bank_slots_is_rejected() {
+async fn live_db_a_slot_at_or_above_bank_slots_is_rejected() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x40, BASE + 0x41, 0x7000_B5E4);
     setup(&pool, account_id, player_id).await;
@@ -496,7 +496,7 @@ async fn a_slot_at_or_above_bank_slots_is_rejected() {
 /// refused with `mission_item_not_bankable`. Fails with the rule removed:
 /// `container_sets` alone admits it.
 #[tokio::test]
-async fn a_mission_item_is_rejected() {
+async fn live_db_a_mission_item_is_rejected() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x50, BASE + 0x51, 0x7000_B5E5);
     setup(&pool, account_id, player_id).await;
@@ -544,7 +544,7 @@ async fn a_mission_item_is_rejected() {
 /// A swap out of the vault puts the occupant into it, so a mission-item
 /// occupant refuses the swap: nothing moves.
 #[tokio::test]
-async fn a_swap_cannot_bring_a_mission_item_into_the_vault() {
+async fn live_db_a_swap_cannot_bring_a_mission_item_into_the_vault() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x60, BASE + 0x61, 0x7000_B5E6);
     setup(&pool, account_id, player_id).await;

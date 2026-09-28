@@ -157,7 +157,7 @@ async fn cleanup(pool: &PgPool, ids: &[i32]) {
 /// SQL wildcard and also match a decoy row with unrelated characters in
 /// its place. A literal search must match only the exact-substring row.
 #[tokio::test]
-async fn legacy_p01_search_percent_is_literal_not_wildcard() {
+async fn live_db_legacy_p01_search_percent_is_literal_not_wildcard() {
     let pool = require_db_or_skip!();
     let exact = TEST_BASE + 1;
     let decoy = TEST_BASE + 2;
@@ -184,7 +184,7 @@ async fn legacy_p01_search_percent_is_literal_not_wildcard() {
 
 /// Same as the `%` guard, for `_` (SQL "any single character").
 #[tokio::test]
-async fn legacy_p01_search_underscore_is_literal_not_wildcard() {
+async fn live_db_legacy_p01_search_underscore_is_literal_not_wildcard() {
     let pool = require_db_or_skip!();
     let exact = TEST_BASE + 3;
     let decoy = TEST_BASE + 4;
@@ -212,7 +212,7 @@ async fn legacy_p01_search_underscore_is_literal_not_wildcard() {
 /// A literal backslash in the query text must match a name containing a
 /// literal backslash (not be swallowed as an escape-sequence starter).
 #[tokio::test]
-async fn legacy_p01_search_backslash_is_literal() {
+async fn live_db_legacy_p01_search_backslash_is_literal() {
     let pool = require_db_or_skip!();
     let id = TEST_BASE + 5;
     insert_item(&pool, id, "legacyp01 path\\to\\item literal").await;
@@ -233,7 +233,7 @@ async fn legacy_p01_search_backslash_is_literal() {
 /// contract (`.searchitem zatnikatel staff` style two-token queries
 /// arrive here already space-joined by `console::query::search`).
 #[tokio::test]
-async fn legacy_p01_search_is_case_insensitive_and_multi_word() {
+async fn live_db_legacy_p01_search_is_case_insensitive_and_multi_word() {
     let pool = require_db_or_skip!();
     let id = TEST_BASE + 6;
     insert_item(&pool, id, "Legacyp01 Zatnikatel Staff Mk2").await;
@@ -256,7 +256,7 @@ async fn legacy_p01_search_is_case_insensitive_and_multi_word() {
 /// `truncated = true` — the GM must be able to tell "exactly 25 hits"
 /// from "more than 25 hits, refine your search".
 #[tokio::test]
-async fn legacy_p01_search_truncates_at_25_and_reports_exact_count_at_boundary() {
+async fn live_db_legacy_p01_search_truncates_at_25_and_reports_exact_count_at_boundary() {
     let pool = require_db_or_skip!();
     let ids: Vec<i32> = (0..26).map(|i| TEST_BASE + 100 + i).collect();
     for &id in &ids {
@@ -292,7 +292,7 @@ async fn legacy_p01_search_truncates_at_25_and_reports_exact_count_at_boundary()
 /// A query that matches nothing returns an empty, non-truncated result —
 /// the "empty" half of the "empty/error responses" acceptance criterion.
 #[tokio::test]
-async fn legacy_p01_search_no_matches_returns_empty_untruncated() {
+async fn live_db_legacy_p01_search_no_matches_returns_empty_untruncated() {
     let pool = require_db_or_skip!();
     let (_, hits, truncated) =
         run_console_search(&pool, 0, "zzz-legacyp01-no-such-item-exists-zzz")
@@ -306,7 +306,7 @@ async fn legacy_p01_search_no_matches_returns_empty_untruncated() {
 /// kinds, not just `searchitem` — sanity-check mission (kind 1) and
 /// template (kind 2) with the same literal-`%` shape as the item guard.
 #[tokio::test]
-async fn legacy_p01_search_literal_percent_applies_to_mission_and_template_kinds() {
+async fn live_db_legacy_p01_search_literal_percent_applies_to_mission_and_template_kinds() {
     let pool = require_db_or_skip!();
     let mission_exact = TEST_BASE + 7;
     let mission_decoy = TEST_BASE + 8;
@@ -342,7 +342,7 @@ async fn legacy_p01_search_literal_percent_applies_to_mission_and_template_kinds
 /// An unrecognized `kind` must short-circuit without ever running a
 /// query (mirrors the old caller-side `_ => return`).
 #[tokio::test]
-async fn legacy_p01_search_unknown_kind_returns_empty_label() {
+async fn live_db_legacy_p01_search_unknown_kind_returns_empty_label() {
     let pool = require_db_or_skip!();
     let (label, hits, truncated) = run_console_search(&pool, 99, "anything")
         .await

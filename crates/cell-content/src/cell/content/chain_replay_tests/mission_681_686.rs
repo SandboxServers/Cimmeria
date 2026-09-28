@@ -151,42 +151,42 @@ async fn assert_single_guard_does_not_fire_when_mission_not_active(chain_id: i64
 }
 
 #[tokio::test]
-async fn chain_1088_kills_hallway01_guard_completes_682_accepts_683() {
+async fn live_db_chain_1088_kills_hallway01_guard_completes_682_accepts_683() {
     assert_single_guard_completes_and_accepts(1088, "Hallway01_Guard", 682, 683).await;
 }
 
 #[tokio::test]
-async fn chain_1088_does_not_fire_when_682_not_active() {
+async fn live_db_chain_1088_does_not_fire_when_682_not_active() {
     assert_single_guard_does_not_fire_when_mission_not_active(1088, "Hallway01_Guard").await;
 }
 
 #[tokio::test]
-async fn chain_1089_kills_hallway02_guard_completes_683_accepts_684() {
+async fn live_db_chain_1089_kills_hallway02_guard_completes_683_accepts_684() {
     assert_single_guard_completes_and_accepts(1089, "Hallway02_Guard", 683, 684).await;
 }
 
 #[tokio::test]
-async fn chain_1089_does_not_fire_when_683_not_active() {
+async fn live_db_chain_1089_does_not_fire_when_683_not_active() {
     assert_single_guard_does_not_fire_when_mission_not_active(1089, "Hallway02_Guard").await;
 }
 
 #[tokio::test]
-async fn chain_1090_kills_hallway03_guard_completes_684_accepts_685() {
+async fn live_db_chain_1090_kills_hallway03_guard_completes_684_accepts_685() {
     assert_single_guard_completes_and_accepts(1090, "Hallway03_Guard", 684, 685).await;
 }
 
 #[tokio::test]
-async fn chain_1090_does_not_fire_when_684_not_active() {
+async fn live_db_chain_1090_does_not_fire_when_684_not_active() {
     assert_single_guard_does_not_fire_when_mission_not_active(1090, "Hallway03_Guard").await;
 }
 
 #[tokio::test]
-async fn chain_1091_kills_hallway04_guard_completes_685_accepts_686() {
+async fn live_db_chain_1091_kills_hallway04_guard_completes_685_accepts_686() {
     assert_single_guard_completes_and_accepts(1091, "Hallway04_Guard", 685, 686).await;
 }
 
 #[tokio::test]
-async fn chain_1091_does_not_fire_when_685_not_active() {
+async fn live_db_chain_1091_does_not_fire_when_685_not_active() {
     assert_single_guard_does_not_fire_when_mission_not_active(1091, "Hallway04_Guard").await;
 }
 
@@ -284,42 +284,42 @@ async fn assert_increment_chain_does_not_fire_when_mission_not_active(
 }
 
 #[tokio::test]
-async fn chain_1085_kills_messhall_guard1_increments_messhall_kills() {
+async fn live_db_chain_1085_kills_messhall_guard1_increments_messhall_kills() {
     assert_increment_chain_fires(1085, "MessHall_Guard1", 681, "messhall_kills").await;
 }
 
 #[tokio::test]
-async fn chain_1085_does_not_fire_when_681_not_active() {
+async fn live_db_chain_1085_does_not_fire_when_681_not_active() {
     assert_increment_chain_does_not_fire_when_mission_not_active(1085, "MessHall_Guard1").await;
 }
 
 #[tokio::test]
-async fn chain_1086_kills_messhall_guard2_increments_messhall_kills() {
+async fn live_db_chain_1086_kills_messhall_guard2_increments_messhall_kills() {
     assert_increment_chain_fires(1086, "MessHall_Guard2", 681, "messhall_kills").await;
 }
 
 #[tokio::test]
-async fn chain_1086_does_not_fire_when_681_not_active() {
+async fn live_db_chain_1086_does_not_fire_when_681_not_active() {
     assert_increment_chain_does_not_fire_when_mission_not_active(1086, "MessHall_Guard2").await;
 }
 
 #[tokio::test]
-async fn chain_1092_kills_hallway05_guard1_increments_hallway05_kills() {
+async fn live_db_chain_1092_kills_hallway05_guard1_increments_hallway05_kills() {
     assert_increment_chain_fires(1092, "Hallway05_Guard1", 686, "hallway05_kills").await;
 }
 
 #[tokio::test]
-async fn chain_1092_does_not_fire_when_686_not_active() {
+async fn live_db_chain_1092_does_not_fire_when_686_not_active() {
     assert_increment_chain_does_not_fire_when_mission_not_active(1092, "Hallway05_Guard1").await;
 }
 
 #[tokio::test]
-async fn chain_1093_kills_hallway05_guard2_increments_hallway05_kills() {
+async fn live_db_chain_1093_kills_hallway05_guard2_increments_hallway05_kills() {
     assert_increment_chain_fires(1093, "Hallway05_Guard2", 686, "hallway05_kills").await;
 }
 
 #[tokio::test]
-async fn chain_1093_does_not_fire_when_686_not_active() {
+async fn live_db_chain_1093_does_not_fire_when_686_not_active() {
     assert_increment_chain_does_not_fire_when_mission_not_active(1093, "Hallway05_Guard2").await;
 }
 
@@ -485,7 +485,7 @@ async fn assert_completion_chain_does_not_fire_on_first_kill(
 }
 
 #[tokio::test]
-async fn chain_1087_completes_681_and_accepts_682_on_second_messhall_kill() {
+async fn live_db_chain_1087_completes_681_and_accepts_682_on_second_messhall_kill() {
     assert_completion_chain_fires_on_threshold_kill(
         1087,
         2,
@@ -499,7 +499,7 @@ async fn chain_1087_completes_681_and_accepts_682_on_second_messhall_kill() {
 }
 
 #[tokio::test]
-async fn chain_1087_does_not_complete_681_on_first_messhall_kill() {
+async fn live_db_chain_1087_does_not_complete_681_on_first_messhall_kill() {
     assert_completion_chain_does_not_fire_on_first_kill(
         1087,
         "MessHall_Guard1",
@@ -510,7 +510,7 @@ async fn chain_1087_does_not_complete_681_on_first_messhall_kill() {
 }
 
 #[tokio::test]
-async fn chain_1094_completes_686_and_accepts_687_on_second_hallway05_kill() {
+async fn live_db_chain_1094_completes_686_and_accepts_687_on_second_hallway05_kill() {
     assert_completion_chain_fires_on_threshold_kill(
         1094,
         2,
@@ -524,7 +524,7 @@ async fn chain_1094_completes_686_and_accepts_687_on_second_hallway05_kill() {
 }
 
 #[tokio::test]
-async fn chain_1094_does_not_complete_686_on_first_hallway05_kill() {
+async fn live_db_chain_1094_does_not_complete_686_on_first_hallway05_kill() {
     assert_completion_chain_does_not_fire_on_first_kill(
         1094,
         "Hallway05_Guard1",
@@ -571,7 +571,8 @@ fn find_entity_death_expansion(
 /// nothing in `ChainEngine` depends on that — see
 /// `crates/cell-content/src/cell/content/engine_loader.rs`.)
 #[tokio::test]
-async fn hallway05_increment_resolves_before_completion_reset_regardless_of_registration_order() {
+async fn live_db_hallway05_increment_resolves_before_completion_reset_regardless_of_registration_order(
+) {
     let pool = require_db_or_skip!();
     let increment_chain = load_single_chain_for_test(&pool, 1093)
         .await
@@ -665,7 +666,7 @@ async fn hallway05_increment_resolves_before_completion_reset_regardless_of_regi
 /// chain that should have run first, leaving a stale non-zero count
 /// that bleeds into the next room's kill tracking.
 #[tokio::test]
-async fn equal_priority_control_reproduces_a51a10d_bug_shape_if_seed_priorities_regress() {
+async fn live_db_equal_priority_control_reproduces_a51a10d_bug_shape_if_seed_priorities_regress() {
     let pool = require_db_or_skip!();
     let mut increment_chain = load_single_chain_for_test(&pool, 1093)
         .await

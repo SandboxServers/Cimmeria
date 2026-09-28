@@ -16,7 +16,7 @@ use crate::test_support::require_db_or_skip;
 /// A missing organization, a non-member and a rank the type does not use
 /// are each a typed refusal, never `Ok`.
 #[tokio::test]
-async fn misses_are_typed_not_ok() {
+async fn live_db_misses_are_typed_not_ok() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 12, 2, &["Org02 Miss"]).await;
     let (p0, outsider) = (fx.player(0), fx.player(1));
@@ -130,7 +130,7 @@ async fn misses_are_typed_not_ok() {
 /// is never moved off it, its mask is never edited, and a Leader cannot be
 /// added to an organization that has members.
 #[tokio::test]
-async fn leader_rank_is_pinned() {
+async fn live_db_leader_rank_is_pinned() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 13, 2, &["Org02 Pin"]).await;
     let (leader, other) = (fx.player(0), fx.player(1));
@@ -168,7 +168,7 @@ async fn leader_rank_is_pinned() {
 /// Rank changes and permission edits land, return the old value, and
 /// show up in `member_access_locked` in the same transaction.
 #[tokio::test]
-async fn rank_and_permission_writes_round_trip() {
+async fn live_db_rank_and_permission_writes_round_trip() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 14, 2, &["Org02 Perms"]).await;
     let (leader, m) = (fx.player(0), fx.player(1));
@@ -211,7 +211,7 @@ async fn rank_and_permission_writes_round_trip() {
 /// Texts are validated before they are stored; the stored form is the
 /// validated one; a refused text writes nothing.
 #[tokio::test]
-async fn texts_are_validated_and_stored() {
+async fn live_db_texts_are_validated_and_stored() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 15, 1, &["Org02 Texts"]).await;
     let p = fx.player(0);
@@ -290,7 +290,7 @@ async fn texts_are_validated_and_stored() {
 /// `RosterInfo` fields; the rank table is lowest first. Also the advisory
 /// name check.
 #[tokio::test]
-async fn loads_return_what_the_login_push_needs() {
+async fn live_db_loads_return_what_the_login_push_needs() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 16, 2, &["Org02 Load Cmd", "Org02 Load Team"]).await;
     let (a, b) = (fx.player(0), fx.player(1));

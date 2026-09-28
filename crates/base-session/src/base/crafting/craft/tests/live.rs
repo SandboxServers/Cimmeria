@@ -58,7 +58,7 @@ const PLATING_NAME: &str = "Titanium Plating (Materials Subcombine B)";
 /// expertise goes 10 → 11, and the client gets `onRemoveItem`,
 /// `onUpdateItem`, the byte-exact 136 and the success line.
 #[tokio::test]
-async fn set_one_consumes_across_both_bags_and_grants_the_product() {
+async fn live_db_set_one_consumes_across_both_bags_and_grants_the_product() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 0).await;
@@ -132,7 +132,7 @@ async fn set_one_consumes_across_both_bags_and_grants_the_product() {
 /// design they also cover. Two platings; the expertise gain is one per
 /// craft, not per unit.
 #[tokio::test]
-async fn set_two_is_chosen_by_its_designs_and_runs_quantity_times() {
+async fn live_db_set_two_is_chosen_by_its_designs_and_runs_quantity_times() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 1).await;
@@ -165,7 +165,7 @@ async fn set_two_is_chosen_by_its_designs_and_runs_quantity_times() {
 /// still completes from the main bag, because the named instances only
 /// chose the set.
 #[tokio::test]
-async fn a_craft_behind_another_is_queued_and_told() {
+async fn live_db_a_craft_behind_another_is_queued_and_told() {
     let pool = require_db_or_skip!();
     let f = Fixture::new(&pool, 2).await;
     f.know(&[(DISCIPLINE, 10)], &[BLUEPRINT]).await;

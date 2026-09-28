@@ -308,7 +308,7 @@ async fn click(
 /// the click first (the real content engine is loaded), or if either half of
 /// the round trip drops the request.
 #[tokio::test]
-async fn debug_hub_org_bankers_open_the_members_vault_and_refuse_others() {
+async fn live_db_debug_hub_org_bankers_open_the_members_vault_and_refuse_others() {
     let pool = require_db_or_skip!();
     seed(&pool).await;
     let (mut mgr, hub) = stage(&pool).await;

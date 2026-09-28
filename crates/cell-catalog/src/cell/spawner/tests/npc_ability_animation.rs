@@ -90,7 +90,7 @@ const SCOPE_SQL: &str = "\
 /// with zero or two Ability_End rows (the loader's last-write-wins insert
 /// would pick one arbitrarily).
 #[tokio::test]
-async fn every_npc_combat_ability_resolves_one_ability_end_sequence() {
+async fn live_db_every_npc_combat_ability_resolves_one_ability_end_sequence() {
     let pool = require_db_or_skip!();
 
     let scope: Vec<(i32, String)> = sqlx::query_as(SCOPE_SQL)
@@ -176,7 +176,7 @@ async fn every_npc_combat_ability_resolves_one_ability_end_sequence() {
 /// burst, resolves event set 15 → Ability_End sequence 15
 /// (`KIS-abilities_human.KIS-SA_Burst_Source`) through the production loaders.
 #[tokio::test]
-async fn automatic_weapon_auto_attack_resolves_the_burst_ability_end() {
+async fn live_db_automatic_weapon_auto_attack_resolves_the_burst_ability_end() {
     let pool = require_db_or_skip!();
 
     let defs = load_ability_defs(&pool).await.expect("ability defs load");
@@ -208,7 +208,7 @@ async fn automatic_weapon_auto_attack_resolves_the_burst_ability_end() {
 /// Fails on the pre-NA43 seed: 148, 169 and 170 hold item 21 (SMG, ranged
 /// 559) with no ability set, so their effective set is `[592]`.
 #[tokio::test]
-async fn a_hostile_template_fires_its_weapons_ranged_auto_attack() {
+async fn live_db_a_hostile_template_fires_its_weapons_ranged_auto_attack() {
     let pool = require_db_or_skip!();
 
     let armed: Vec<(i32, String, i32)> = sqlx::query_as(
@@ -274,7 +274,7 @@ async fn a_hostile_template_fires_its_weapons_ranged_auto_attack() {
 /// when one of its effects stops loading, and when an entry names an ability
 /// the seed no longer has.
 #[tokio::test]
-async fn animation_allowlist_entries_deal_no_damage() {
+async fn live_db_animation_allowlist_entries_deal_no_damage() {
     let pool = require_db_or_skip!();
     let defs = load_ability_defs(&pool).await.expect("ability defs load");
     let effects = load_effect_defs(&pool).await.expect("effect defs load");

@@ -43,7 +43,7 @@ async fn insert_minimal_player(pool: &PgPool, account_id: i32, player_id: i32) {
 
 /// `load_contact_lists` returns empty vec for a player with no lists.
 #[tokio::test]
-async fn load_empty_returns_empty() {
+async fn live_db_load_empty_returns_empty() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -60,7 +60,7 @@ async fn load_empty_returns_empty() {
 
 /// `ensure_system_lists` creates Friends + Ignore on first call and is idempotent.
 #[tokio::test]
-async fn ensure_system_lists_creates_and_is_idempotent() {
+async fn live_db_ensure_system_lists_creates_and_is_idempotent() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 10;
     let player_id = TEST_BASE + 11;
@@ -92,7 +92,7 @@ async fn ensure_system_lists_creates_and_is_idempotent() {
 
 /// `create_list` inserts a new list and returns its id.
 #[tokio::test]
-async fn create_list_inserts_and_returns_id() {
+async fn live_db_create_list_inserts_and_returns_id() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 20;
     let player_id = TEST_BASE + 21;
@@ -115,7 +115,7 @@ async fn create_list_inserts_and_returns_id() {
 /// `delete_list` returns false when the list does not belong to the player
 /// (ownership rejection guard).
 #[tokio::test]
-async fn delete_list_rejects_wrong_owner() {
+async fn live_db_delete_list_rejects_wrong_owner() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 30;
     let player_id = TEST_BASE + 31;
@@ -154,7 +154,7 @@ async fn delete_list_rejects_wrong_owner() {
 /// `add_members` inserts names and ignores duplicates; `remove_members`
 /// deletes them and returns only the actually-removed names.
 #[tokio::test]
-async fn add_and_remove_members_round_trip() {
+async fn live_db_add_and_remove_members_round_trip() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 40;
     let player_id = TEST_BASE + 41;
@@ -200,7 +200,7 @@ async fn add_and_remove_members_round_trip() {
 /// `find_watchers` returns the player_ids of everyone who has a given name
 /// in any list, without duplicates.
 #[tokio::test]
-async fn find_watchers_returns_correct_player_ids() {
+async fn live_db_find_watchers_returns_correct_player_ids() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 50;
     let player_id = TEST_BASE + 51;
@@ -241,7 +241,7 @@ async fn find_watchers_returns_correct_player_ids() {
 /// no `sgw_contact_list` or `sgw_contact_list_member` rows may survive.
 /// This is invariant #4 (no orphaned social data after character deletion).
 #[tokio::test]
-async fn character_delete_cascades_to_lists_and_members() {
+async fn live_db_character_delete_cascades_to_lists_and_members() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 60;
     let player_id = TEST_BASE + 61;

@@ -23,7 +23,7 @@ use crate::test_support::require_db_or_skip;
 /// Happy path: each player gives one item + some cash. After the commit,
 /// item ownership is swapped and naquadah is debited/credited per-side.
 #[tokio::test]
-async fn commit_swaps_items_atomically() {
+async fn live_db_commit_swaps_items_atomically() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(0);
@@ -85,7 +85,7 @@ async fn commit_swaps_items_atomically() {
 /// Insufficient cash on one side rolls back the entire swap. No items
 /// move; no cash changes.
 #[tokio::test]
-async fn commit_rolls_back_on_insufficient_cash() {
+async fn live_db_commit_rolls_back_on_insufficient_cash() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(200);
@@ -138,7 +138,7 @@ async fn commit_rolls_back_on_insufficient_cash() {
 /// the item has been removed between proposal-update and commit) rolls
 /// back the whole swap.
 #[tokio::test]
-async fn commit_rolls_back_on_missing_item() {
+async fn live_db_commit_rolls_back_on_missing_item() {
     let pool = require_db_or_skip!();
     let (_weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(400);
@@ -188,7 +188,7 @@ async fn commit_rolls_back_on_missing_item() {
 /// Bound items must be rejected by the validation gauntlet — bound items
 /// are "soul-bound" and never tradeable. The whole swap rolls back.
 #[tokio::test]
-async fn commit_rolls_back_on_bound_item() {
+async fn live_db_commit_rolls_back_on_bound_item() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(600);
@@ -243,7 +243,7 @@ async fn commit_rolls_back_on_bound_item() {
 /// players could shuttle items through the buyback bag to skirt other
 /// item-state restrictions. The commit rolls back.
 #[tokio::test]
-async fn commit_rolls_back_on_buyback_bag_item() {
+async fn live_db_commit_rolls_back_on_buyback_bag_item() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(800);
@@ -299,7 +299,7 @@ async fn commit_rolls_back_on_buyback_bag_item() {
 /// move would silently move the item to a third character_id. Reject up
 /// front.
 #[tokio::test]
-async fn commit_rolls_back_on_duplicate_instance_in_proposal() {
+async fn live_db_commit_rolls_back_on_duplicate_instance_in_proposal() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(1000);
@@ -348,7 +348,7 @@ async fn commit_rolls_back_on_duplicate_instance_in_proposal() {
 /// Negative cash in either proposal is structurally invalid — reject
 /// before any DB work.
 #[tokio::test]
-async fn commit_rolls_back_on_negative_cash() {
+async fn live_db_commit_rolls_back_on_negative_cash() {
     let pool = require_db_or_skip!();
     let f = fixtures(1200);
     cleanup(

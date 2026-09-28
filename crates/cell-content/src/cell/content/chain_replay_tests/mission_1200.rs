@@ -116,7 +116,7 @@ fn ctx_world_entry(world: i32, world_name: &str) -> ExecutionContext {
 /// alone so `available_interactions[209]` cannot accumulate duplicates,
 /// and the Guard is in world 68 anyway.
 #[tokio::test]
-async fn chain_6121_accepts_1200_for_a_goauld_arriving_in_harset() {
+async fn live_db_chain_6121_accepts_1200_for_a_goauld_arriving_in_harset() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6121).await;
 
@@ -139,7 +139,7 @@ async fn chain_6121_accepts_1200_for_a_goauld_arriving_in_harset() {
 /// this gate every Jaffa, human and Asgard landing on Harset silently
 /// acquires a Goa'uld story mission.
 #[tokio::test]
-async fn chain_6121_resolves_nothing_for_a_non_goauld() {
+async fn live_db_chain_6121_resolves_nothing_for_a_non_goauld() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6121).await;
 
@@ -163,7 +163,7 @@ async fn chain_6121_resolves_nothing_for_a_non_goauld() {
 /// The other two arrival gates: an already-taken mission, and the wrong
 /// world. A missing `world_id` must also fail closed.
 #[tokio::test]
-async fn chain_6121_does_not_reaccept_or_fire_in_the_wrong_world() {
+async fn live_db_chain_6121_does_not_reaccept_or_fire_in_the_wrong_world() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6121).await;
 
@@ -197,7 +197,7 @@ async fn chain_6121_does_not_reaccept_or_fire_in_the_wrong_world() {
 /// Chain 6122: the Royal Guard is convinced. Both of step 3585's topics
 /// open here because the player is already standing in world 68.
 #[tokio::test]
-async fn chain_6122_advances_to_3585_and_opens_anat_and_baal() {
+async fn live_db_chain_6122_advances_to_3585_and_opens_anat_and_baal() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6122).await;
 
@@ -251,7 +251,7 @@ async fn chain_6122_advances_to_3585_and_opens_anat_and_baal() {
 }
 
 #[tokio::test]
-async fn chain_6122_does_not_refire_once_past_step_3584() {
+async fn live_db_chain_6122_does_not_refire_once_past_step_3584() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6122).await;
 
@@ -269,7 +269,7 @@ async fn chain_6122_does_not_refire_once_past_step_3584() {
 /// Chain 6123: flattering Anat completes the mission and retires both
 /// topics, including Ba'al's whether or not the player took it.
 #[tokio::test]
-async fn chain_6123_completes_1200_and_retires_both_topics() {
+async fn live_db_chain_6123_completes_1200_and_retires_both_topics() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6123).await;
 
@@ -307,7 +307,7 @@ async fn chain_6123_completes_1200_and_retires_both_topics() {
 /// exactly as one who did. Reverting that — adding an
 /// `objective_status 5399 eq completed` gate — fails here.
 #[tokio::test]
-async fn the_hidden_optional_never_blocks_completion() {
+async fn live_db_the_hidden_optional_never_blocks_completion() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6123).await;
 
@@ -339,7 +339,7 @@ async fn the_hidden_optional_never_blocks_completion() {
 /// dialogs — there is no 2009 subscription proving the client emits a
 /// choice for it. Flipping this row back to `dialog_choice` fails here.
 #[tokio::test]
-async fn chain_6124_completes_only_the_optional_objective() {
+async fn live_db_chain_6124_completes_only_the_optional_objective() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6124).await;
 
@@ -384,7 +384,7 @@ async fn chain_6124_completes_only_the_optional_objective() {
 /// him during step 3584 must do nothing at all — the advice is about
 /// Anat, and objective 5399 does not exist until 3585 is active.
 #[tokio::test]
-async fn chain_6124_is_inert_before_step_3585_and_after_it_is_taken() {
+async fn live_db_chain_6124_is_inert_before_step_3585_and_after_it_is_taken() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6124).await;
 
@@ -417,7 +417,7 @@ async fn chain_6124_is_inert_before_step_3585_and_after_it_is_taken() {
 /// exactly their own step on entry to the Command Center, and nothing on
 /// the other's step. 6125 is also the FIRST paint, not just a restore.
 #[tokio::test]
-async fn world_entry_chains_paint_exactly_the_active_step() {
+async fn live_db_world_entry_chains_paint_exactly_the_active_step() {
     let pool = require_db_or_skip!();
 
     // (chain, active step, other step, dsm, template)
@@ -498,7 +498,7 @@ async fn world_entry_chains_paint_exactly_the_active_step() {
 /// through the whole loop. The assertions below stay hand-seeded so they
 /// test this chain's gate in isolation.
 #[tokio::test]
-async fn chain_6127_restores_baals_advice_only_while_it_is_outstanding() {
+async fn live_db_chain_6127_restores_baals_advice_only_while_it_is_outstanding() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6127).await;
 
@@ -547,7 +547,7 @@ async fn chain_6127_restores_baals_advice_only_while_it_is_outstanding() {
 /// dialog) but it stops being benign the moment a second dsm shares the
 /// template — which is exactly what mission 742 does.
 #[tokio::test]
-async fn exactly_one_world_entry_chain_binds_anat_for_1200() {
+async fn live_db_exactly_one_world_entry_chain_binds_anat_for_1200() {
     let pool = require_db_or_skip!();
 
     let mut binders = Vec::new();

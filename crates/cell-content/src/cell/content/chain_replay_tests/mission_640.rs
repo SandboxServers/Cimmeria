@@ -27,7 +27,7 @@ use crate::test_support::require_db_or_skip;
 /// 2120 is active starts a Livewire minigame whose victory re-dispatches
 /// chain 1042.
 #[tokio::test]
-async fn chain_1041_starts_livewire_while_step_2120_active() {
+async fn live_db_chain_1041_starts_livewire_while_step_2120_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1041)
         .await
@@ -80,7 +80,7 @@ async fn chain_1041_starts_livewire_while_step_2120_active() {
 /// player already hacked the switch and is on step 2215), re-interacting
 /// with the switch must not start a second Livewire session.
 #[tokio::test]
-async fn chain_1041_does_not_fire_after_step_2120_completed() {
+async fn live_db_chain_1041_does_not_fire_after_step_2120_completed() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1041)
         .await
@@ -133,7 +133,7 @@ async fn chain_1041_does_not_fire_after_step_2120_completed() {
 /// action list directly off the loaded `Chain` rather than firing a
 /// synthetic event — same shape as `mission_641.rs`'s chain 1055 test.
 #[tokio::test]
-async fn chain_1042_livewire_victory_resolves_advance_and_icon_swap() {
+async fn live_db_chain_1042_livewire_victory_resolves_advance_and_icon_swap() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1042)
         .await
@@ -195,7 +195,7 @@ async fn chain_1042_livewire_victory_resolves_advance_and_icon_swap() {
 /// while step 2215 is active triggers the ring transporter to region 1
 /// and clears the quest-highlight bit.
 #[tokio::test]
-async fn chain_1043_triggers_transporter_region_1_while_step_2215_active() {
+async fn live_db_chain_1043_triggers_transporter_region_1_while_step_2215_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1043)
         .await
@@ -259,7 +259,7 @@ async fn chain_1043_triggers_transporter_region_1_while_step_2215_active() {
 /// trigger the transporter — that would skip the Livewire minigame
 /// entirely.
 #[tokio::test]
-async fn chain_1043_does_not_fire_before_step_2215_active() {
+async fn live_db_chain_1043_does_not_fire_before_step_2215_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1043)
         .await
@@ -303,7 +303,7 @@ async fn chain_1043_does_not_fire_before_step_2215_active() {
 /// active completes it and enables the Preparation_ColMarsh interaction
 /// bit.
 #[tokio::test]
-async fn chain_1044_completes_640_on_teleport_in_region_2_while_active() {
+async fn live_db_chain_1044_completes_640_on_teleport_in_region_2_while_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1044)
         .await
@@ -364,7 +364,7 @@ async fn chain_1044_completes_640_on_teleport_in_region_2_while_active() {
 /// player should never reach the ring room this way, but the gate must
 /// hold regardless.
 #[tokio::test]
-async fn chain_1044_does_not_fire_before_640_accepted() {
+async fn live_db_chain_1044_does_not_fire_before_640_accepted() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1044)
         .await
@@ -407,7 +407,7 @@ async fn chain_1044_does_not_fire_before_640_accepted() {
 /// again after 640 is already completed must not re-fire (no double
 /// completion, no re-enabling of an already-enabled Marsh bit).
 #[tokio::test]
-async fn chain_1044_does_not_fire_after_640_already_completed() {
+async fn live_db_chain_1044_does_not_fire_after_640_already_completed() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1044)
         .await
@@ -451,7 +451,7 @@ async fn chain_1044_does_not_fire_after_640_already_completed() {
 /// re-painted — interaction flags are not persisted on the entity across
 /// server restarts.
 #[tokio::test]
-async fn chain_1045_restores_livewire_bit_on_relog_while_step_2120_active() {
+async fn live_db_chain_1045_restores_livewire_bit_on_relog_while_step_2120_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1045)
         .await
@@ -504,7 +504,7 @@ async fn chain_1045_restores_livewire_bit_on_relog_while_step_2120_active() {
 /// 2120 (into 2215) must not have the stale Livewire bit re-painted on
 /// relog.
 #[tokio::test]
-async fn chain_1045_does_not_fire_once_step_2120_advanced_past() {
+async fn live_db_chain_1045_does_not_fire_once_step_2120_advanced_past() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1045)
         .await
@@ -552,7 +552,7 @@ async fn chain_1045_does_not_fire_once_step_2120_advanced_past() {
 /// 2215 active must have both the RingNetwork bit and the quest
 /// highlight bit re-painted.
 #[tokio::test]
-async fn chain_1046_restores_ringnetwork_and_highlight_on_relog_while_step_2215_active() {
+async fn live_db_chain_1046_restores_ringnetwork_and_highlight_on_relog_while_step_2215_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1046)
         .await
@@ -613,7 +613,7 @@ async fn chain_1046_restores_ringnetwork_and_highlight_on_relog_while_step_2215_
 /// switch yet) must not have the post-hack RingNetwork bits painted on
 /// relog.
 #[tokio::test]
-async fn chain_1046_does_not_fire_while_step_2120_still_active() {
+async fn live_db_chain_1046_does_not_fire_while_step_2120_still_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1046)
         .await
@@ -658,7 +658,7 @@ async fn chain_1046_does_not_fire_while_step_2120_still_active() {
 /// exactly once. Precedent: chain 1097's `mission_accepted` shape for
 /// 687.
 #[tokio::test]
-async fn chain_1151_displays_blurb_2305_when_mission_640_accepted() {
+async fn live_db_chain_1151_displays_blurb_2305_when_mission_640_accepted() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1151)
         .await
@@ -697,7 +697,7 @@ async fn chain_1151_displays_blurb_2305_when_mission_640_accepted() {
 /// Chain 1151 negative: a `mission_accepted` event for a different
 /// mission id must not also fire the 640 blurb.
 #[tokio::test]
-async fn chain_1151_does_not_fire_for_wrong_mission_id() {
+async fn live_db_chain_1151_does_not_fire_for_wrong_mission_id() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1151)
         .await

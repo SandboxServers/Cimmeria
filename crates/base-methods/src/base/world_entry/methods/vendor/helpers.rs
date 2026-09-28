@@ -427,7 +427,7 @@ mod sync_bandolier_tests {
     /// vacated entry" — which the cell-side then renders as no
     /// active weapon.
     #[tokio::test]
-    async fn vacated_active_slot_falls_back_to_min_remaining_slot() {
+    async fn live_db_vacated_active_slot_falls_back_to_min_remaining_slot() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -479,7 +479,7 @@ mod sync_bandolier_tests {
     /// The cell tx still receives SyncBandolierItems so the cell-side
     /// cache stays in sync after any inventory mutation.
     #[tokio::test]
-    async fn valid_active_slot_passes_through_unchanged() {
+    async fn live_db_valid_active_slot_passes_through_unchanged() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;
@@ -533,7 +533,7 @@ mod sync_bandolier_tests {
     /// SyncBandolierItems with an empty list — otherwise the cell-side
     /// cache holds stale weapon entries until the next non-empty change.
     #[tokio::test]
-    async fn empty_bandolier_preserves_slot_and_emits_empty_sync() {
+    async fn live_db_empty_bandolier_preserves_slot_and_emits_empty_sync() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 200;
         let player_id = TEST_BASE + 201;
@@ -592,7 +592,7 @@ mod sync_bandolier_tests {
     /// `empty_bandolier` phase; reverting to `let _ = tx.send(...)`
     /// makes the cell-cache desync diagnosable.
     #[tokio::test]
-    async fn empty_bandolier_warns_when_cell_to_base_channel_closed() {
+    async fn live_db_empty_bandolier_warns_when_cell_to_base_channel_closed() {
         use crate::test_support::LogCapture;
         use tracing::Level;
 
@@ -641,7 +641,7 @@ mod sync_bandolier_tests {
     /// send (the second site, with the populated bandolier_items
     /// payload). Receiver is dropped; assertion pins the phase field.
     #[tokio::test]
-    async fn non_empty_bandolier_warns_when_cell_to_base_channel_closed() {
+    async fn live_db_non_empty_bandolier_warns_when_cell_to_base_channel_closed() {
         use crate::test_support::LogCapture;
         use tracing::Level;
 

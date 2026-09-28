@@ -76,7 +76,8 @@ pub(super) async fn release_when_parked(
 pub(super) async fn wide_pool() -> PgPool {
     sqlx::postgres::PgPoolOptions::new()
         .max_connections(8)
-        .connect(&std::env::var("DATABASE_URL").expect("live-DB test"))
+        // The slot's database, the same one the gate's pool uses.
+        .connect(&crate::test_support::database_url().expect("live-DB test"))
         .await
         .expect("connect the race pool")
 }
@@ -109,7 +110,7 @@ fn take_item(mail_id: i32) -> MailOp {
 /// its id (a second restore would hit the `sgw_inventory` key) and by the
 /// escrow `DELETE`'s row count.
 #[tokio::test]
-async fn concurrent_take_cash_and_item_pays_out_once() {
+async fn live_db_concurrent_take_cash_and_item_pays_out_once() {
     let pool = require_db_or_skip!();
     cleanup(&pool, BASE).await;
     let (owner, sender) = (BASE + 1, BASE + 2);
@@ -162,7 +163,7 @@ async fn concurrent_take_cash_and_item_pays_out_once() {
 /// payer is never paid the price as cash; the item moves at most once (it
 /// moves only if the take runs after the payment).
 #[tokio::test]
-async fn concurrent_pay_cod_and_takes_never_pay_out_the_price() {
+async fn live_db_concurrent_pay_cod_and_takes_never_pay_out_the_price() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x08;
     cleanup(&pool, base).await;

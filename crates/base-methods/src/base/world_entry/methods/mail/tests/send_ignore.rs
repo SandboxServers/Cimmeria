@@ -17,7 +17,7 @@ const BASE: i32 = 0x7300_C400;
 /// messages.", and the second recipient still gets the mail. Fails when
 /// `send::recipients::ignoring_sender` is the empty-set stub again.
 #[tokio::test]
-async fn send_skips_recipient_who_ignores_the_sender() {
+async fn live_db_send_skips_recipient_who_ignores_the_sender() {
     let pool = require_db_or_skip!();
     let (acct, sender, ignorer, friend) = (BASE, BASE + 1, BASE + 2, BASE + 3);
     cleanup(&pool, acct).await;

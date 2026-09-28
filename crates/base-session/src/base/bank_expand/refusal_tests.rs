@@ -21,7 +21,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// verdict's own label, the size and the cash read for the log, and a line.
 /// Fails if the verdict check is removed (the purchase goes through).
 #[tokio::test]
-async fn a_closed_vault_verdict_buys_nothing() {
+async fn live_db_a_closed_vault_verdict_buys_nothing() {
     let pool = require_db_or_skip!();
     let cases = [
         (
@@ -68,7 +68,7 @@ async fn a_closed_vault_verdict_buys_nothing() {
 /// An open verdict with no offer on the session (the dialog was answered
 /// twice, or after a re-open): WARN `expand_rejected reason=no_offer`.
 #[tokio::test]
-async fn an_answer_without_an_offer_buys_nothing() {
+async fn live_db_an_answer_without_an_offer_buys_nothing() {
     let pool = require_db_or_skip!();
     let c = caller(0x70, 0x7000_BBE7);
     setup(&pool, c, 40, 500).await;
@@ -93,7 +93,7 @@ async fn an_answer_without_an_offer_buys_nothing() {
 
 /// A character id with no row: WARN `reason=player_row_missing`.
 #[tokio::test]
-async fn a_missing_player_row_is_refused() {
+async fn live_db_a_missing_player_row_is_refused() {
     let pool = require_db_or_skip!();
     let c = caller(0x80, 0x7000_BBE8);
     cleanup(&pool, c).await;
@@ -212,7 +212,7 @@ async fn price_missing_logs_its_reason_and_tells_the_player() {
 /// and the dropped sends log `bank_feedback_send_failed
 /// reason=no_client_address`.
 #[tokio::test]
-async fn a_player_with_no_client_address_logs_the_dropped_sends() {
+async fn live_db_a_player_with_no_client_address_logs_the_dropped_sends() {
     let pool = require_db_or_skip!();
     let c = caller(0xC0, 0x7000_BBEC);
     setup(&pool, c, 40, 100).await;
@@ -240,7 +240,7 @@ async fn a_player_with_no_client_address_logs_the_dropped_sends() {
 /// buyer's balance. Each dropped send logs `bank_feedback_send_failed
 /// reason=no_client_address`. Fails if the sends are addressed by entity id.
 #[tokio::test]
-async fn a_recycled_entity_id_receives_nothing() {
+async fn live_db_a_recycled_entity_id_receives_nothing() {
     let pool = require_db_or_skip!();
     let c = caller(0xD0, 0x7000_BBED);
     setup(&pool, c, 40, 300).await;
@@ -266,7 +266,7 @@ async fn a_recycled_entity_id_receives_nothing() {
 /// WARN `expand_rejected reason=price_changed`. The seed price stays 100;
 /// the offer claims 90.
 #[tokio::test]
-async fn a_price_the_player_was_not_shown_is_never_charged() {
+async fn live_db_a_price_the_player_was_not_shown_is_never_charged() {
     let pool = require_db_or_skip!();
     let c = caller(0xE0, 0x7000_BBEE);
     setup(&pool, c, 40, 300).await;

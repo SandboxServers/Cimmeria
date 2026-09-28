@@ -239,7 +239,7 @@ async fn seed(pool: &PgPool) {
 /// with the item names and the character's own `bank_slots`. A main-bag
 /// row never appears.
 #[tokio::test]
-async fn load_reads_only_container_17_by_name_or_id() {
+async fn live_db_load_reads_only_container_17_by_name_or_id() {
     let pool = require_db_or_skip!();
     seed(&pool).await;
 
@@ -277,7 +277,7 @@ async fn load_reads_only_container_17_by_name_or_id() {
 /// Success: INFO `gm_action result=ok` with the target, the count and the
 /// size, and the lines reach the GM's own client, one packet per line.
 #[tokio::test]
-async fn dump_logs_gm_action_ok_and_sends_every_line_to_the_gm() {
+async fn live_db_dump_logs_gm_action_ok_and_sends_every_line_to_the_gm() {
     let pool = require_db_or_skip!();
     seed(&pool).await;
 
@@ -323,7 +323,7 @@ async fn dump_logs_gm_action_ok_and_sends_every_line_to_the_gm() {
 /// A name nobody has, and an id nobody has: INFO `gm_action
 /// result=refused reason=target_not_found`, and a line saying why.
 #[tokio::test]
-async fn unknown_targets_are_refused_with_a_reason() {
+async fn live_db_unknown_targets_are_refused_with_a_reason() {
     let pool = require_db_or_skip!();
     seed(&pool).await;
 

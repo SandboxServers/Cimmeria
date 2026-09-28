@@ -109,7 +109,7 @@ fn sent_texts(transport: &TestTransport) -> Vec<String> {
 /// full: nothing is written (not in the vault, not in buyback), the refusal
 /// is logged with its reason and identity, and the GM is told why.
 #[tokio::test]
-async fn full_crafting_bag_refuses_instead_of_using_the_vault() {
+async fn live_db_full_crafting_bag_refuses_instead_of_using_the_vault() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C420, 0x7000_C421, 0x7000_C4E8_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -162,7 +162,7 @@ async fn full_crafting_bag_refuses_instead_of_using_the_vault() {
 /// the item back (it stays on the corpse, and the cell tells the looter),
 /// and nothing lands in the vault.
 #[tokio::test]
-async fn full_crafting_bag_hands_vault_requested_loot_back() {
+async fn live_db_full_crafting_bag_hands_vault_requested_loot_back() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C422, 0x7000_C423, 0x7000_C4E9_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -214,7 +214,7 @@ async fn full_crafting_bag_hands_vault_requested_loot_back() {
 /// for a plain grant and for loot; one that lists buyback before a carried
 /// bag falls through to the carried bag.
 #[tokio::test]
-async fn buyback_is_never_a_grant_target() {
+async fn live_db_buyback_is_never_a_grant_target() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C424, 0x7000_C425, 0x7000_C4EA_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -300,7 +300,7 @@ async fn buyback_is_never_a_grant_target() {
 /// told why, and it lands in no container: no new row anywhere, nothing in
 /// 16-20.
 #[tokio::test]
-async fn both_carried_bags_full_refuses_a_vault_first_grant() {
+async fn live_db_both_carried_bags_full_refuses_a_vault_first_grant() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C428, 0x7000_C429, 0x7000_C4EC_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
@@ -386,7 +386,7 @@ async fn both_carried_bags_full_refuses_a_vault_first_grant() {
 /// `loot::restore_tests::refused_grant_goes_back_on_the_emptied_corpse`);
 /// no row is written, nothing lands in 16-20.
 #[tokio::test]
-async fn both_carried_bags_full_hands_vault_first_loot_back() {
+async fn live_db_both_carried_bags_full_hands_vault_first_loot_back() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (0x7000_C42A, 0x7000_C42B, 0x7000_C4ED_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;

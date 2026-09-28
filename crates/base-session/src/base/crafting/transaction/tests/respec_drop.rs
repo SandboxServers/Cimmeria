@@ -39,7 +39,7 @@ impl InductionJob for PlanJob {
 /// is consumed or granted, the expertise stays cleared, and the queue drop
 /// is logged with `reason = respec`.
 #[tokio::test]
-async fn respec_drops_the_queue_so_nothing_completes() {
+async fn live_db_respec_drops_the_queue_so_nothing_completes() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let f = Fixture::new(&pool, 21).await;

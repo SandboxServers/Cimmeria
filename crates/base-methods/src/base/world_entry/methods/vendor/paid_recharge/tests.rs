@@ -195,7 +195,7 @@ fn make_state(
 /// in — the prior bug shape was an i32 overflow on
 /// `naquadah * (ri.charges - inv.charges)`.
 #[tokio::test]
-async fn paid_recharge_restores_charges_and_debits_balance() {
+async fn live_db_paid_recharge_restores_charges_and_debits_balance() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -238,7 +238,7 @@ async fn paid_recharge_restores_charges_and_debits_balance() {
 /// shape: cash UPDATE runs before the balance check, leaving a
 /// partial recharge when the rollback fails.
 #[tokio::test]
-async fn paid_recharge_rolls_back_when_player_cannot_afford() {
+async fn live_db_paid_recharge_rolls_back_when_player_cannot_afford() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
@@ -284,7 +284,7 @@ async fn paid_recharge_rolls_back_when_player_cannot_afford() {
 /// the early-bail branch in `load_vendor_template_lists` /
 /// `recharge_item_list = None`.
 #[tokio::test]
-async fn paid_recharge_no_op_when_vendor_has_no_recharge_list() {
+async fn live_db_paid_recharge_no_op_when_vendor_has_no_recharge_list() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;

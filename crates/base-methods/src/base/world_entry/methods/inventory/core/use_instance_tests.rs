@@ -176,7 +176,7 @@ fn make_state(
 /// firing. This test pins the fix at the routing layer; the actual heal
 /// is exercised by chain 4001 in the consumables chain replay tests.
 #[tokio::test]
-async fn slappack_use_fires_on_item_use_not_auto_equip() {
+async fn live_db_slappack_use_fires_on_item_use_not_auto_equip() {
     let pool = require_db_or_skip!();
     // Seed-shape pin: the bug shape only exists if the slappack is NOT
     // bandolier-eligible. If a future seed change adds 3 to its
@@ -242,7 +242,7 @@ async fn slappack_use_fires_on_item_use_not_auto_equip() {
 /// without this positive test, a future "always fire OnItemUse"
 /// over-correction would silently regress right-click-to-equip.
 #[tokio::test]
-async fn pistol_use_routes_to_auto_equip_not_on_item_use() {
+async fn live_db_pistol_use_routes_to_auto_equip_not_on_item_use() {
     let pool = require_db_or_skip!();
     // Seed-shape pin: the positive path only works if the pistol IS
     // bandolier-eligible. If a future seed change removes 3 from its
@@ -303,7 +303,7 @@ async fn pistol_use_routes_to_auto_equip_not_on_item_use() {
 /// pins the bandolier → main direction so a future "only main → bandolier
 /// auto-equips" regression has a guard catching it.
 #[tokio::test]
-async fn pistol_in_bandolier_use_routes_to_auto_unequip() {
+async fn live_db_pistol_in_bandolier_use_routes_to_auto_unequip() {
     let pool = require_db_or_skip!();
     assert_bandolier_eligibility(&pool, PISTOL_TYPE_ID, true).await;
 

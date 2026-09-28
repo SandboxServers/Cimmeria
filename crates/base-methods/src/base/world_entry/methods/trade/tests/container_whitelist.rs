@@ -30,7 +30,7 @@ use crate::test_support::require_db_or_skip;
 /// non-INV_BUYBACK rows because the item moves to player_b's INV_MAIN
 /// instead of staying put.
 #[tokio::test]
-async fn lock_items_rejects_non_inv_main_containers() {
+async fn live_db_lock_items_rejects_non_inv_main_containers() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
 
@@ -129,7 +129,7 @@ async fn lock_items_rejects_non_inv_main_containers() {
 /// cleanly. Without this, a fix that accidentally rejects *all*
 /// containers would still pass the negative test above.
 #[tokio::test]
-async fn lock_items_accepts_inv_main() {
+async fn live_db_lock_items_accepts_inv_main() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(1500);

@@ -68,7 +68,7 @@ fn expected_item_resync(
 /// sent it at once, so the stale position could land after the committed
 /// move's own update.
 #[tokio::test]
-async fn refusal_resync_waits_for_the_move_lock_and_sends_the_committed_state() {
+async fn live_db_refusal_resync_waits_for_the_move_lock_and_sends_the_committed_state() {
     use std::time::Duration;
 
     let pool = require_db_or_skip!();
@@ -153,7 +153,7 @@ async fn refusal_resync_waits_for_the_move_lock_and_sends_the_committed_state() 
 /// stack of 1 and sent it at once, so the grant's own `onUpdateItem` could
 /// be overtaken by a stale one and the client would show the old stack.
 #[tokio::test]
-async fn refusal_resync_waits_for_a_concurrent_stack_merge() {
+async fn live_db_refusal_resync_waits_for_a_concurrent_stack_merge() {
     use std::time::Duration;
 
     let pool = require_db_or_skip!();
@@ -235,7 +235,7 @@ async fn refusal_resync_waits_for_a_concurrent_stack_merge() {
 /// take per-container locks, not the move lock) would then be hidden on the
 /// client by the older snapshot.
 #[tokio::test]
-async fn refusal_resends_only_the_refused_item() {
+async fn live_db_refusal_resends_only_the_refused_item() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x60;
     let player_id = TEST_BASE + 0x61;
@@ -280,7 +280,7 @@ async fn refusal_resends_only_the_refused_item() {
 /// packet) sends nothing: there is no row to snap back, and the refusal is
 /// already logged.
 #[tokio::test]
-async fn refusal_of_an_unknown_item_sends_nothing() {
+async fn live_db_refusal_of_an_unknown_item_sends_nothing() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x70;
     let player_id = TEST_BASE + 0x71;

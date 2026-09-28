@@ -53,7 +53,7 @@ async fn wait_for_lock_waiter(pool: &PgPool) {
 /// first: then the completion gets its row, commits, and the purchase
 /// goes through after it. Both succeed; nothing deadlocks.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_purchase_waits_for_a_crafting_completion_instead_of_deadlocking() {
+async fn live_db_a_purchase_waits_for_a_crafting_completion_instead_of_deadlocking() {
     let pool = require_db_or_skip!();
     cleanup(&pool, ENTITY_ID, ACCOUNT_ID, PLAYER_ID).await;
     insert_account_and_player(&pool, ACCOUNT_ID, PLAYER_ID, 5_000).await;
@@ -121,7 +121,7 @@ async fn a_purchase_waits_for_a_crafting_completion_instead_of_deadlocking() {
 /// instead of taking its cost row and the player row first and then waiting
 /// for the main bag's key the use holds. Both succeed; nothing deadlocks.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_purchase_waits_for_a_crafting_item_use_instead_of_deadlocking() {
+async fn live_db_a_purchase_waits_for_a_crafting_item_use_instead_of_deadlocking() {
     use crate::base::crafting::item_use::transaction::take_item_use_locks;
 
     let pool = require_db_or_skip!();

@@ -82,7 +82,7 @@ fn actions_of(resolved: &ResolvedActions, chain_id: i64) -> Vec<&Action> {
 /// Chain 1321 happy path: entering the Throne Room on step 2411 must
 /// advance to 2412 and light the Access Panel, in that order.
 #[tokio::test]
-async fn chain_1321_advances_to_2412_and_lights_the_access_panel() {
+async fn live_db_chain_1321_advances_to_2412_and_lights_the_access_panel() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1321).await;
 
@@ -133,7 +133,7 @@ async fn chain_1321_advances_to_2412_and_lights_the_access_panel() {
 /// second region entry would reset the mission to step 2412 and re-arm
 /// objectives the player had already completed.
 #[tokio::test]
-async fn chain_1321_does_not_refire_once_past_step_2411() {
+async fn live_db_chain_1321_does_not_refire_once_past_step_2411() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1321).await;
 
@@ -169,7 +169,7 @@ async fn chain_1321_does_not_refire_once_past_step_2411() {
 /// (`executor/mission.rs:104-107`); doing it the other way round would
 /// run 708's setup while 706 was still the active mission.
 #[tokio::test]
-async fn chain_1322_completes_706_and_accepts_708_exactly_once() {
+async fn live_db_chain_1322_completes_706_and_accepts_708_exactly_once() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1322).await;
 
@@ -235,7 +235,7 @@ async fn chain_1322_completes_706_and_accepts_708_exactly_once() {
 /// Without the gate, a player who wandered into the Throne Room before
 /// reaching step 2412 could complete 706 early.
 #[tokio::test]
-async fn chain_1322_does_not_fire_before_step_2412() {
+async fn live_db_chain_1322_does_not_fire_before_step_2412() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1322).await;
 
@@ -266,7 +266,7 @@ async fn chain_1322_does_not_fire_before_step_2412() {
 /// the condition that keeps a second panel click from re-completing 706
 /// and re-accepting 708.
 #[tokio::test]
-async fn chain_1322_does_not_refire_once_708_is_active() {
+async fn live_db_chain_1322_does_not_refire_once_708_is_active() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1322).await;
 
@@ -297,7 +297,7 @@ async fn chain_1322_does_not_refire_once_708_is_active() {
 
 /// Chain 1323: relog on step 2412 repaints the panel glow.
 #[tokio::test]
-async fn chain_1323_restores_the_panel_glow_on_relog_at_step_2412() {
+async fn live_db_chain_1323_restores_the_panel_glow_on_relog_at_step_2412() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1323).await;
 
@@ -330,7 +330,7 @@ async fn chain_1323_restores_the_panel_glow_on_relog_at_step_2412() {
 /// the panel lit for them on login. Also covers the world-name key —
 /// loading into `Castle_CellBlock` must not fire a `Castle` chain.
 #[tokio::test]
-async fn chain_1323_does_not_restore_on_another_step_or_another_world() {
+async fn live_db_chain_1323_does_not_restore_on_another_step_or_another_world() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1323).await;
 
@@ -387,7 +387,7 @@ async fn chain_1323_does_not_restore_on_another_step_or_another_world() {
 /// dialog, leaving the player holding a dialog whose `dialog_choice`
 /// chain (1345) then advances 708 out of a step it had only just entered.
 #[tokio::test]
-async fn one_panel_click_never_resolves_both_706_and_708_chains() {
+async fn live_db_one_panel_click_never_resolves_both_706_and_708_chains() {
     let pool = require_db_or_skip!();
 
     let mut engine = ChainEngine::new();

@@ -37,7 +37,7 @@ fn load_mesh(file: &str) -> Option<NavMesh> {
 /// it stands on that world's mesh. Without the row, `.gotolocation <world>`
 /// refuses ("no known entry point") and a death there respawns in place.
 #[tokio::test]
-async fn room_respawners_exist_and_stand_on_their_worlds_mesh() {
+async fn live_db_room_respawners_exist_and_stand_on_their_worlds_mesh() {
     let pool = require_db_or_skip!();
     let rows = load_respawners(&pool).await.expect("load_respawners");
 
@@ -65,7 +65,7 @@ async fn room_respawners_exist_and_stand_on_their_worlds_mesh() {
 /// seeded and stand on `agnos.nav`, or gate travel into Agnos lands at the
 /// origin again.
 #[tokio::test]
-async fn agnos_gate_arrival_is_pinned_on_the_mesh() {
+async fn live_db_agnos_gate_arrival_is_pinned_on_the_mesh() {
     let pool = require_db_or_skip!();
     let gates = load_stargates(&pool).await.expect("load_stargates");
     let gate = gates.get(&15).expect("stargate 15 (Agnos) is seeded");

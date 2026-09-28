@@ -107,7 +107,7 @@ async fn insert_player(pool: &PgPool, account_id: i32, player_id: i32, name: &st
 /// `player_ignores` (the check mail send uses for an offline recipient)
 /// reads the flags-301 list only: the same name on Friends is not an ignore.
 #[tokio::test]
-async fn player_ignores_reads_only_the_ignore_list() {
+async fn live_db_player_ignores_reads_only_the_ignore_list() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE, TEST_BASE + 1);
     cleanup(&pool, account_id, player_id).await;
@@ -139,7 +139,7 @@ async fn player_ignores_reads_only_the_ignore_list() {
 /// `resolve_character` finds an offline character by exact name or a
 /// unique case-fold, and refuses a case-fold that matches two characters.
 #[tokio::test]
-async fn resolve_character_follows_d_ss13() {
+async fn live_db_resolve_character_follows_d_ss13() {
     let pool = require_db_or_skip!();
     let a = (TEST_BASE + 10, TEST_BASE + 11, "SsC1Resolve");
     let b = (TEST_BASE + 12, TEST_BASE + 13, "ssc1resolve");
@@ -179,7 +179,7 @@ async fn resolve_character_follows_d_ss13() {
 /// The resync writes the DB list to the base session and pushes the same set
 /// to the cell as `UpdateIgnoreList` for the given entity.
 #[tokio::test]
-async fn resync_ignore_cache_updates_session_and_cell() {
+async fn live_db_resync_ignore_cache_updates_session_and_cell() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE + 20, TEST_BASE + 21);
     cleanup(&pool, account_id, player_id).await;
@@ -263,7 +263,7 @@ async fn resync_ignore_cache_updates_session_and_cell() {
 /// edit of Friends does not. Fails when `resync_if_ignore_list` is removed
 /// from the member ops.
 #[tokio::test]
-async fn contact_list_ui_edit_of_ignore_list_resyncs_session_and_cell() {
+async fn live_db_contact_list_ui_edit_of_ignore_list_resyncs_session_and_cell() {
     use crate::base::contact_list::handlers::handle_add_members;
     use crate::test_support::TestTransport;
     use cimmeria_mercury::transport::Transport;
@@ -328,7 +328,7 @@ async fn contact_list_ui_edit_of_ignore_list_resyncs_session_and_cell() {
 /// a second batch adds nothing. Fails when `add_members_bounded` ignores the
 /// cap (the list ends at 103).
 #[tokio::test]
-async fn contact_list_ui_batch_cannot_push_the_ignore_list_past_the_cap() {
+async fn live_db_contact_list_ui_batch_cannot_push_the_ignore_list_past_the_cap() {
     use crate::base::contact_list::handlers::handle_add_members;
     use crate::test_support::TestTransport;
     use cimmeria_mercury::transport::Transport;
@@ -416,7 +416,7 @@ async fn contact_list_ui_batch_cannot_push_the_ignore_list_past_the_cap() {
 /// The resync's one-query snapshot: every stored name, and the ids of the
 /// characters they fold-match; a name with no character adds no id.
 #[tokio::test]
-async fn load_ignore_snapshot_reads_names_and_ids_together() {
+async fn live_db_load_ignore_snapshot_reads_names_and_ids_together() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = (TEST_BASE + 50, TEST_BASE + 51);
     let (other_account, other_id) = (TEST_BASE + 52, TEST_BASE + 53);

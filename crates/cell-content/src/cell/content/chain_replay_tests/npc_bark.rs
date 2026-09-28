@@ -162,7 +162,7 @@ fn read_wstring(args: &[u8], offset: usize) -> (String, usize) {
 /// say-chat broadcast path, which would send the line to that witness
 /// too.
 #[tokio::test]
-async fn npc_bark_row_speaks_the_seeded_line_to_the_firing_player_only() {
+async fn live_db_npc_bark_row_speaks_the_seeded_line_to_the_firing_player_only() {
     let pool = require_db_or_skip!();
 
     // Start from a clean slate in case a previous panicking run leaked.

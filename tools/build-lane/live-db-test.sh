@@ -8,7 +8,8 @@
 # Example:
 #   tools/build-lane/live-db-test.sh chain_replay_tests::mission_701
 #
-# Same command, profile and serialisation as CI; only the database is per worktree.
+# Same command and profile as CI, per-slot clones included; only the template database
+# (sgw_<worktree>) is per worktree.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FILTER="${1:?filter required}"; shift || true

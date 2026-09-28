@@ -28,7 +28,7 @@ use crate::cell::service::npc_ai::choose_npc_ability;
 /// deliberately narrow: it guards the one column the membership choice rests
 /// on, nothing more.
 #[tokio::test]
-async fn harset_ability_sets_resolve_to_abilities_that_can_animate() {
+async fn live_db_harset_ability_sets_resolve_to_abilities_that_can_animate() {
     let pool = require_db_or_skip!();
 
     for (set_id, expected) in HARSET_ABILITY_SETS {
@@ -90,7 +90,7 @@ async fn harset_ability_sets_resolve_to_abilities_that_can_animate() {
 /// fails, and each `sqlx` statement against `&PgPool` runs in its own
 /// implicit transaction, so the rejection poisons no later statement.
 #[tokio::test]
-async fn ability_set_primary_key_is_the_composite_pair() {
+async fn live_db_ability_set_primary_key_is_the_composite_pair() {
     let pool = require_db_or_skip!();
 
     let constraint: Option<String> = sqlx::query_scalar(
@@ -167,7 +167,7 @@ async fn ability_set_primary_key_is_the_composite_pair() {
 /// cannot leave a live spawn registered in the shared test DB (the same
 /// shape `chain_replay_tests/grant_xp.rs` uses for sentinel chains).
 #[tokio::test]
-async fn harset_templates_resolve_abilities_and_respawn_through_the_spawn_loader() {
+async fn live_db_harset_templates_resolve_abilities_and_respawn_through_the_spawn_loader() {
     let pool = require_db_or_skip!();
 
     // Defensive: a previous aborted run may have leaked the sentinel.
@@ -252,7 +252,7 @@ async fn harset_templates_resolve_abilities_and_respawn_through_the_spawn_loader
 /// child-before-parent (`ability_set_abilities`, then the template that
 /// references the set, then `ability_sets`) because both FKs are RESTRICT.
 #[tokio::test]
-async fn multi_ability_set_reaches_the_chooser_and_every_member_is_selectable() {
+async fn live_db_multi_ability_set_reaches_the_chooser_and_every_member_is_selectable() {
     let pool = require_db_or_skip!();
 
     clean_sentinel_ability_set(&pool).await;
@@ -390,7 +390,7 @@ async fn multi_ability_set_reaches_the_chooser_and_every_member_is_selectable() 
 /// `NPC_ATTACK_RANGE` (30) so the two gates disagree and the assertion can
 /// tell which one ran.
 #[tokio::test]
-async fn seeded_harset_sets_never_select_their_melee_half_at_range() {
+async fn live_db_seeded_harset_sets_never_select_their_melee_half_at_range() {
     use crate::cell::combat::{NPC_ATTACK_RANGE, NPC_MELEE_RANGE};
     use crate::cell::service::npc_ai::choose_npc_ability_within_reach;
     use crate::cell::spawner::load_ability_defs;

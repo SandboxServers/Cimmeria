@@ -97,7 +97,7 @@ fn actions_of(
 // ── Chain 1141: Mess Hall flank → objective 2725 ────────────────────────
 
 #[tokio::test]
-async fn chain_1141_completes_flank_objective_2725_and_nothing_else() {
+async fn live_db_chain_1141_completes_flank_objective_2725_and_nothing_else() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1141]).await;
 
@@ -130,7 +130,7 @@ async fn chain_1141_completes_flank_objective_2725_and_nothing_else() {
 }
 
 #[tokio::test]
-async fn chain_1141_does_not_fire_when_mission_681_not_active() {
+async fn live_db_chain_1141_does_not_fire_when_mission_681_not_active() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1141]).await;
 
@@ -151,7 +151,7 @@ async fn chain_1141_does_not_fire_when_mission_681_not_active() {
 }
 
 #[tokio::test]
-async fn chain_1141_does_not_refire_once_2725_already_completed() {
+async fn live_db_chain_1141_does_not_refire_once_2725_already_completed() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1141]).await;
 
@@ -171,7 +171,7 @@ async fn chain_1141_does_not_refire_once_2725_already_completed() {
 }
 
 #[tokio::test]
-async fn chain_1141_does_not_fire_for_a_non_guard_template() {
+async fn live_db_chain_1141_does_not_fire_for_a_non_guard_template() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1141]).await;
 
@@ -193,7 +193,7 @@ async fn chain_1141_does_not_fire_for_a_non_guard_template() {
 /// NPC-perspective `npc_flanked` event executes against the NPC with
 /// player id 0, so the flank chains must not resolve on it.
 #[tokio::test]
-async fn chain_1141_does_not_resolve_on_the_npc_perspective_flank_event() {
+async fn live_db_chain_1141_does_not_resolve_on_the_npc_perspective_flank_event() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1141, 1142]).await;
 
@@ -215,7 +215,7 @@ async fn chain_1141_does_not_resolve_on_the_npc_perspective_flank_event() {
 }
 
 #[tokio::test]
-async fn chain_1141_ignores_a_flank_while_only_mission_686_is_active() {
+async fn live_db_chain_1141_ignores_a_flank_while_only_mission_686_is_active() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1141]).await;
 
@@ -236,7 +236,7 @@ async fn chain_1141_ignores_a_flank_while_only_mission_686_is_active() {
 // ── Chain 1142: Hallway05 flank → objective 2731 ────────────────────────
 
 #[tokio::test]
-async fn chain_1142_completes_flank_objective_2731_and_nothing_else() {
+async fn live_db_chain_1142_completes_flank_objective_2731_and_nothing_else() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1142]).await;
 
@@ -269,7 +269,7 @@ async fn chain_1142_completes_flank_objective_2731_and_nothing_else() {
 }
 
 #[tokio::test]
-async fn chain_1142_does_not_fire_when_mission_686_not_active() {
+async fn live_db_chain_1142_does_not_fire_when_mission_686_not_active() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1142]).await;
 
@@ -290,7 +290,7 @@ async fn chain_1142_does_not_fire_when_mission_686_not_active() {
 }
 
 #[tokio::test]
-async fn chain_1142_does_not_refire_once_2731_already_completed() {
+async fn live_db_chain_1142_does_not_refire_once_2731_already_completed() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1142]).await;
 
@@ -315,7 +315,7 @@ async fn chain_1142_does_not_refire_once_2731_already_completed() {
 /// flank chain loaded alongside it never adds an objective action of its
 /// own to a death event.
 #[tokio::test]
-async fn kill_completes_681_with_or_without_the_flank_objective() {
+async fn live_db_kill_completes_681_with_or_without_the_flank_objective() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, &[1085, 1086, 1087, 1141]).await;
 

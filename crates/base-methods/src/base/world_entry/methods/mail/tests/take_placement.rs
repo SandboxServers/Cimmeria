@@ -62,7 +62,7 @@ async fn take(c: &Client, pool: &PgPool, mail_id: i32) {
 /// where the grant path puts it, not in the backpack. Fails when the take
 /// goes back to the old backpack insert (the row lands in container 1).
 #[tokio::test]
-async fn take_places_a_crafting_component_in_the_crafting_bag() {
+async fn live_db_take_places_a_crafting_component_in_the_crafting_bag() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE, "Comp").await;
     let type_id = component_type(&pool).await;
@@ -90,7 +90,7 @@ async fn take_places_a_crafting_component_in_the_crafting_bag() {
 /// into the empty backpack. Fails when the take goes back to the backpack
 /// (the item would land in bag 1).
 #[tokio::test]
-async fn take_refuses_a_full_crafting_bag_and_keeps_escrow() {
+async fn live_db_take_refuses_a_full_crafting_bag_and_keeps_escrow() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let base = BASE + 0x08;
@@ -146,7 +146,7 @@ async fn take_refuses_a_full_crafting_bag_and_keeps_escrow() {
 /// type, `{2}`) is refused `no_carried_bag` and stays in escrow, never
 /// forced into the backpack or a vault.
 #[tokio::test]
-async fn take_refuses_an_item_with_no_carried_bag() {
+async fn live_db_take_refuses_an_item_with_no_carried_bag() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let base = BASE + 0x10;

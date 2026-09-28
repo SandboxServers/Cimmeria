@@ -313,7 +313,7 @@ fn rejected(capture: &LogCaptureGuard, player_id: i32, verb: &str, reason: &str)
 /// 25 and 42 and the stored paradigm levels, and the client gets 112, then
 /// 137, 139 with the kept blueprints, and the new ASP total.
 #[tokio::test]
-async fn respec_refunds_clears_and_keeps_blueprints_and_paradigms() {
+async fn live_db_respec_refunds_clears_and_keeps_blueprints_and_paradigms() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -397,7 +397,7 @@ async fn respec_refunds_clears_and_keeps_blueprints_and_paradigms() {
 /// client would send it, wipes nothing. The player gets the "nothing
 /// waiting" line and the state is untouched.
 #[tokio::test]
-async fn a_single_respec_crafting_never_wipes() {
+async fn live_db_a_single_respec_crafting_never_wipes() {
     let pool = require_db_or_skip!();
     install_meter();
     let capture = LogCapture::install();
@@ -427,7 +427,7 @@ async fn a_single_respec_crafting_never_wipes() {
 /// Replay: a second `respecCrafting` after a done respec is refused and
 /// refunds nothing more.
 #[tokio::test]
-async fn replayed_respec_crafting_changes_nothing() {
+async fn live_db_replayed_respec_crafting_changes_nothing() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = player(&pool, 2, 0, &[(78, 60)], &[], &[5, 1, 1, 1, 1]).await;
     let session = OneSession::new(ENTITY, 55804);
@@ -456,7 +456,7 @@ async fn replayed_respec_crafting_changes_nothing() {
 /// A confirmation after the window is refused as expired and writes
 /// nothing.
 #[tokio::test]
-async fn an_expired_respec_is_refused() {
+async fn live_db_an_expired_respec_is_refused() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 3, 2, &[(78, 60)], &[], &[5, 1, 1, 1, 1]).await;
@@ -490,7 +490,7 @@ async fn an_expired_respec_is_refused() {
 /// Nothing learned: `.respeccraft` is refused with a line, sends no prompt
 /// and opens nothing, so a following Yes is refused too.
 #[tokio::test]
-async fn respec_with_nothing_learned_is_refused_at_the_prompt() {
+async fn live_db_respec_with_nothing_learned_is_refused_at_the_prompt() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 4, 1, &[], &[25], &[5, 1, 1, 1, 1]).await;
@@ -524,7 +524,7 @@ async fn respec_with_nothing_learned_is_refused_at_the_prompt() {
 /// between the prompt and the Yes leave nothing to respec, and nothing is
 /// refunded.
 #[tokio::test]
-async fn respec_rechecks_the_state_it_locked() {
+async fn live_db_respec_rechecks_the_state_it_locked() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 5, 1, &[(78, 60)], &[], &[5, 1, 1, 1, 1]).await;
@@ -560,7 +560,7 @@ async fn respec_rechecks_the_state_it_locked() {
 /// A respec for a character whose row is gone rolls back with the paired
 /// `rows_affected` / `expected` and the player still gets a line.
 #[tokio::test]
-async fn respec_for_a_missing_player_row_warns_with_rows_affected() {
+async fn live_db_respec_for_a_missing_player_row_warns_with_rows_affected() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let player_id = TEST_BASE + 31;
@@ -597,7 +597,7 @@ async fn respec_for_a_missing_player_row_warns_with_rows_affected() {
 /// transaction does before it locks item rows and then the player row),
 /// the respec waits, even though the player row itself is free.
 #[tokio::test]
-async fn respec_waits_for_the_player_wide_inventory_key() {
+async fn live_db_respec_waits_for_the_player_wide_inventory_key() {
     let pool = require_db_or_skip!();
     let (account_id, player_id) = player(&pool, 6, 0, &[(78, 60)], &[], &[5, 1, 1, 1, 1]).await;
 

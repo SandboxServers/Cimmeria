@@ -87,7 +87,7 @@ pub(super) fn inv_item(item: i32, type_id: i32, stack: i32, slot: i32, container
 /// actor's ids, and logs `org_move_accepted` with the org fields. Fails if
 /// a move copies without deleting, renumbers the item, or skips the log.
 #[tokio::test]
-async fn deposit_then_withdraw_round_trips_the_same_item_id() {
+async fn live_db_deposit_then_withdraw_round_trips_the_same_item_id() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 3, 1).await;
     let team = fx.org(0, 0, &[]).await;
@@ -158,7 +158,7 @@ async fn deposit_then_withdraw_round_trips_the_same_item_id() {
 /// stays in their bag and is resent. Fails if the move trusts the cell's
 /// session instead of re-reading membership.
 #[tokio::test]
-async fn a_non_member_is_refused_not_a_member() {
+async fn live_db_a_non_member_is_refused_not_a_member() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 4, 2).await;
     let team = fx.org(0, 1, &[]).await;
@@ -195,7 +195,7 @@ async fn a_non_member_is_refused_not_a_member() {
 /// stays in the vault and is resent from there. Fails if the move skips
 /// the WithdrawBank bit.
 #[tokio::test]
-async fn a_member_without_withdraw_bank_is_refused() {
+async fn live_db_a_member_without_withdraw_bank_is_refused() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 5, 2).await;
     let cmd = fx.org(1, 1, &[0]).await;
@@ -259,7 +259,7 @@ async fn a_member_without_withdraw_bank_is_refused() {
 /// take (`item_not_allowed_in_container`), a slot past the Team's size
 /// (`target_slot_beyond_vault_slots`), and a quantity above the stack.
 #[tokio::test]
-async fn deposits_obey_the_vault_entry_rules() {
+async fn live_db_deposits_obey_the_vault_entry_rules() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 6, 1).await;
     let team = fx.org(0, 0, &[]).await;
@@ -331,7 +331,7 @@ async fn deposits_obey_the_vault_entry_rules() {
 /// same), and an item in another org's vault (`item_not_in_vault`). Fails
 /// if the org path does not check the verdict's scope and org.
 #[tokio::test]
-async fn the_verdict_must_open_this_orgs_vault() {
+async fn live_db_the_verdict_must_open_this_orgs_vault() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 7, 2).await;
     let team = fx.org(0, 0, &[]).await;
@@ -409,7 +409,7 @@ async fn the_verdict_must_open_this_orgs_vault() {
 /// removed from the window (`onRemoveItem`), with a line. Fails if the
 /// personal path's silent "source item not found" swallows it.
 #[tokio::test]
-async fn a_stale_vault_item_is_refused_and_removed_from_the_window() {
+async fn live_db_a_stale_vault_item_is_refused_and_removed_from_the_window() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 8, 1).await;
     let team = fx.org(0, 0, &[]).await;
@@ -446,7 +446,7 @@ async fn a_stale_vault_item_is_refused_and_removed_from_the_window() {
 /// player-movable, a slot past the bag's size is invalid, and a split onto
 /// an occupied slot that cannot merge is refused.
 #[tokio::test]
-async fn withdrawals_land_only_in_carried_slots() {
+async fn live_db_withdrawals_land_only_in_carried_slots() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 12, 1).await;
     let team = fx.org(0, 0, &[]).await;

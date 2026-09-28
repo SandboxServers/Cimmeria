@@ -17,7 +17,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 ///
 /// Guard for audit A-35: before ORG-06 the teardown told nobody.
 #[tokio::test]
-async fn offline_fanout_on_every_disconnect_path() {
+async fn live_db_offline_fanout_on_every_disconnect_path() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 1, 2, &["Org06 Presence"]).await;
     let team = fx.org(OrgType::Team, "Org06 Presence", 0, &[1]).await;
@@ -74,7 +74,7 @@ async fn offline_fanout_on_every_disconnect_path() {
 /// unlisted it and announced) is not announced again when its disconnect
 /// reaps it.
 #[tokio::test]
-async fn unlisted_session_is_not_announced_twice() {
+async fn live_db_unlisted_session_is_not_announced_twice() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 2, 2, &["Org06 Unlisted"]).await;
     fx.org(OrgType::Team, "Org06 Unlisted", 0, &[1]).await;
@@ -106,7 +106,7 @@ async fn unlisted_session_is_not_announced_twice() {
 /// `org.send_failed` with the send's `reason`, and the presence row counts
 /// only the members actually reached.
 #[tokio::test]
-async fn presence_send_failure_warns_with_reason() {
+async fn live_db_presence_send_failure_warns_with_reason() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 3, 2, &["Org06 Send Fail"]).await;
     fx.org(OrgType::Team, "Org06 Send Fail", 0, &[1]).await;
@@ -139,7 +139,7 @@ async fn presence_send_failure_warns_with_reason() {
 /// `LoggedInStatus` with the offline value. Before ORG-06 only `logOff`
 /// told them.
 #[tokio::test]
-async fn contact_list_watchers_hear_a_teardown() {
+async fn live_db_contact_list_watchers_hear_a_teardown() {
     use crate::base::contact_list::persistence::{add_members, ensure_system_lists};
     use cimmeria_wire::base::contact_list::wire::{
         build_on_contact_list_event, DATA_OFFLINE, EVENT_LOGGED_IN_STATUS,

@@ -141,7 +141,7 @@ mod tests {
     /// `SGWGame/Content/XML/SystemOptions.xml`. A schema regression that
     /// drops the DEFAULT clauses or flips the polarity would fail this.
     #[tokio::test]
-    async fn fresh_player_row_has_xml_defaults() {
+    async fn live_db_fresh_player_row_has_xml_defaults() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
@@ -171,7 +171,7 @@ mod tests {
     /// implementation to the `tracing::info!("UNIMPLEMENTED")` stub
     /// fails this — the columns never change.
     #[tokio::test]
-    async fn persist_flips_columns_in_db() {
+    async fn live_db_persist_flips_columns_in_db() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 0x10;
         let player_id = TEST_BASE + 0x11;
@@ -221,7 +221,7 @@ mod tests {
     /// the explicit `rows_affected == 0` arm; that arm's `warn!`
     /// emission is what the capture pins.
     #[tokio::test]
-    async fn persist_no_row_is_silent_warn() {
+    async fn live_db_persist_no_row_is_silent_warn() {
         use crate::test_support::LogCapture;
         let pool = require_db_or_skip!();
         let pool_opt = Some(Arc::new(pool.clone()));

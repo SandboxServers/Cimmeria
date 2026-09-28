@@ -89,7 +89,7 @@ fn make_state_for_entity(
 /// directions exercise the same `pg_advisory_xact_lock(player_id, 1)`
 /// primitive.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn move_and_concurrent_grant_serialize_on_container_lock() {
+async fn live_db_move_and_concurrent_grant_serialize_on_container_lock() {
     use tokio::sync::Barrier;
 
     let pool = require_db_or_skip!();
@@ -211,7 +211,7 @@ async fn move_and_concurrent_grant_serialize_on_container_lock() {
 /// assertion would silently accept both moves rolling back (A still at
 /// 0, B still at 5).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn opposite_direction_concurrent_swaps_do_not_deadlock() {
+async fn live_db_opposite_direction_concurrent_swaps_do_not_deadlock() {
     use tokio::sync::Barrier;
 
     let pool = require_db_or_skip!();
@@ -327,7 +327,7 @@ async fn opposite_direction_concurrent_swaps_do_not_deadlock() {
 /// finishes with a follow-up sgw_inventory query, and the helpers panic
 /// loudly if any row pops up at the sentinel.
 #[tokio::test]
-async fn sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
+async fn live_db_sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 700;
     let player_id = TEST_BASE + 701;
@@ -479,7 +479,7 @@ async fn sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
 ///   leak past commit).
 /// - Naquadah dropped by exactly the resolved entry's price.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
+async fn live_db_vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
     use tokio::sync::Barrier;
 
     use super::super::super::vendor::handle_purchase_vendor_items;

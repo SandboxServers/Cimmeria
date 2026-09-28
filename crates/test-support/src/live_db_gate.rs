@@ -46,8 +46,11 @@ impl std::fmt::Display for SkipReason {
 /// Bounded to 4 connections — high enough for tests that exercise
 /// concurrent paths (drainer + caller in parallel), low enough that
 /// a careless test loop can't exhaust a hand-tuned local Postgres.
+///
+/// Inside nextest's `live-db` group this is the test slot's own database;
+/// see [`crate::database_url`].
 pub async fn test_pool() -> Result<PgPool, SkipReason> {
-    test_pool_from_url(std::env::var("DATABASE_URL").ok().as_deref()).await
+    test_pool_from_url(crate::database_url().as_deref()).await
 }
 
 /// [`test_pool`] with the URL passed in rather than read from the
@@ -95,7 +98,9 @@ pub fn pool_or_skip(result: Result<PgPool, SkipReason>, test: &str) -> Option<Pg
         }
         Err(reason @ SkipReason::ConnectFailed(_)) => panic!(
             "{test}: {reason}. DATABASE_URL is set, so the live-DB tests must run: \
-             fix the URL (the bundled Postgres listens on :5433) or unset it to skip them."
+             fix the URL (the bundled Postgres listens on :5433) or unset it to skip them. \
+             Under nextest's live-db group the target is the slot's clone (<db>_<slot>), \
+             which tools/test-live-db.sh creates."
         ),
     }
 }

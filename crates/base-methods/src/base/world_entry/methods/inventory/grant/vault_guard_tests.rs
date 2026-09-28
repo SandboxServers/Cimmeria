@@ -64,7 +64,7 @@ async fn insert_account_and_player(pool: &PgPool) {
 }
 
 #[tokio::test]
-async fn grant_into_vault_is_refused() {
+async fn live_db_grant_into_vault_is_refused() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     insert_account_and_player(&pool).await;

@@ -39,7 +39,7 @@ async fn mission_only_type(pool: &PgPool) -> i32 {
 /// nothing is debited, escrowed or mailed. Fails without the send's
 /// `carried_bag` gate (the item is escrowed and the mail sent).
 #[tokio::test]
-async fn send_refuses_an_item_no_take_could_place() {
+async fn live_db_send_refuses_an_item_no_take_could_place() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE, BASE + 1, BASE + 2);
@@ -94,7 +94,7 @@ async fn send_refuses_an_item_no_take_could_place() {
 /// `carried_bag` gate: the payer is charged 300 and the take then refuses
 /// the item for good.
 #[tokio::test]
-async fn pay_cod_refuses_an_item_no_take_could_place() {
+async fn live_db_pay_cod_refuses_an_item_no_take_could_place() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let base = BASE + 0x10;

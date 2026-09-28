@@ -107,7 +107,7 @@ fn granted(msgs: &[BaseToCellMsg]) -> Vec<(u32, i32)> {
 }
 
 #[tokio::test]
-async fn grant_persists_and_tells_the_cell_and_the_gm() {
+async fn live_db_grant_persists_and_tells_the_cell_and_the_gm() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0901;
     setup(&pool, ID, 3).await;
@@ -135,7 +135,7 @@ async fn grant_persists_and_tells_the_cell_and_the_gm() {
 /// cache refresh the first level-up after a GM grant writes the pre-grant
 /// value back and the granted points vanish.
 #[tokio::test]
-async fn a_later_level_up_keeps_the_granted_points() {
+async fn live_db_a_later_level_up_keeps_the_granted_points() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0902;
     setup(&pool, ID, 0).await;
@@ -172,7 +172,7 @@ async fn a_later_level_up_keeps_the_granted_points() {
 /// The unguarded add raises a Postgres `integer out of range` error, so the
 /// guard's job is to hold the row back cleanly (`Ok(None)`) instead.
 #[tokio::test]
-async fn grant_past_i32_max_is_held_back_and_changes_nothing() {
+async fn live_db_grant_past_i32_max_is_held_back_and_changes_nothing() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0903;
     setup(&pool, ID, i32::MAX - 2).await;
@@ -205,7 +205,7 @@ async fn grant_past_i32_max_is_held_back_and_changes_nothing() {
 }
 
 #[tokio::test]
-async fn non_positive_amount_is_refused_at_the_base_and_changes_nothing() {
+async fn live_db_non_positive_amount_is_refused_at_the_base_and_changes_nothing() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0904;
     setup(&pool, ID, 4).await;
@@ -228,7 +228,7 @@ async fn non_positive_amount_is_refused_at_the_base_and_changes_nothing() {
 /// The session moved on to another character between the cell's send and
 /// the base: the resolved character must not be credited.
 #[tokio::test]
-async fn grant_for_a_character_the_session_no_longer_plays_is_refused() {
+async fn live_db_grant_for_a_character_the_session_no_longer_plays_is_refused() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0905;
     setup(&pool, ID, 1).await;

@@ -10,7 +10,7 @@ use crate::test_support::require_db_or_skip;
 /// Replay: the same use twice teaches once and consumes once. The second is
 /// refused because the item is gone, and writes nothing.
 #[tokio::test]
-async fn replayed_use_teaches_once() {
+async fn live_db_replayed_use_teaches_once() {
     let pool = require_db_or_skip!();
     let slot = Slot::new(8);
     player(&pool, slot, &[], None).await;
@@ -49,7 +49,7 @@ async fn replayed_use_teaches_once() {
 /// Two uses of a one-item stack at once: one teaches and deletes the row,
 /// the other waits on the row lock, finds it gone and is refused.
 #[tokio::test]
-async fn concurrent_uses_of_one_item_teach_once() {
+async fn live_db_concurrent_uses_of_one_item_teach_once() {
     let pool = require_db_or_skip!();
     let slot = Slot::new(9);
     player(&pool, slot, &[], None).await;
@@ -89,7 +89,7 @@ async fn concurrent_uses_of_one_item_teach_once() {
 /// owner, so an item traded away after the caller's ownership check fares
 /// the same.
 #[tokio::test]
-async fn another_characters_item_is_refused() {
+async fn live_db_another_characters_item_is_refused() {
     let pool = require_db_or_skip!();
     let user = Slot::new(10);
     let owner = Slot::new(11);

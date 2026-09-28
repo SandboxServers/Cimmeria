@@ -35,7 +35,7 @@ const CHAIN_HALLWAY04_KILL: i32 = 1091;
 /// Reverting the seed to the old `686 not_active` gate fails this test:
 /// 1091 has made 686 active before the player reaches Region5.
 #[tokio::test]
-async fn chain_1178_barks_in_the_state_the_hallway04_kill_leaves_behind() {
+async fn live_db_chain_1178_barks_in_the_state_the_hallway04_kill_leaves_behind() {
     let pool = require_db_or_skip!();
     let kill_engine = engine_with(load(&pool, CHAIN_HALLWAY04_KILL).await);
     let bark_engine = engine_with(load(&pool, CHAIN_HALLWAY05).await);
@@ -91,7 +91,7 @@ async fn chain_1178_barks_in_the_state_the_hallway04_kill_leaves_behind() {
 /// Adjacent wrong state — phase not yet reached. Hallway04 is still being
 /// fought, so 686 has not been accepted.
 #[tokio::test]
-async fn chain_1178_does_not_fire_before_686_is_accepted() {
+async fn live_db_chain_1178_does_not_fire_before_686_is_accepted() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_HALLWAY05).await);
 
@@ -114,7 +114,7 @@ async fn chain_1178_does_not_fire_before_686_is_accepted() {
 /// and accepts 687 when the Hallway05 guards die, so walking back through
 /// the cleared room must stay silent.
 #[tokio::test]
-async fn chain_1178_does_not_re_bark_once_hallway05_is_cleared() {
+async fn live_db_chain_1178_does_not_re_bark_once_hallway05_is_cleared() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_HALLWAY05).await);
 
@@ -138,7 +138,7 @@ async fn chain_1178_does_not_re_bark_once_hallway05_is_cleared() {
 /// (686 already active) must still bark, and 1083 must not accept 686
 /// a second time.
 #[tokio::test]
-async fn chain_1178_does_not_depend_on_the_region5_fallback_accept() {
+async fn live_db_chain_1178_does_not_depend_on_the_region5_fallback_accept() {
     let pool = require_db_or_skip!();
     let engine = {
         let mut e = ChainEngine::new();

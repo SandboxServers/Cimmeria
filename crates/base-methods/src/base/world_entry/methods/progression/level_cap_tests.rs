@@ -213,7 +213,7 @@ async fn grant_persisted(
 }
 
 #[tokio::test]
-async fn handle_grant_xp_persists_20_to_21() {
+async fn live_db_handle_grant_xp_persists_20_to_21() {
     let pool = require_db_or_skip!();
     let (persisted, in_memory) = grant_persisted(&pool, 600, 20, 400_000, 20, 1).await;
     assert_eq!(persisted, (21, 400_001, 21));
@@ -221,7 +221,7 @@ async fn handle_grant_xp_persists_20_to_21() {
 }
 
 #[tokio::test]
-async fn handle_grant_xp_persists_49_to_50() {
+async fn live_db_handle_grant_xp_persists_49_to_50() {
     let pool = require_db_or_skip!();
     let (persisted, in_memory) = grant_persisted(&pool, 610, 49, 23_065_000, 49, 1).await;
     assert_eq!(persisted, (50, 23_065_001, 50));
@@ -229,7 +229,7 @@ async fn handle_grant_xp_persists_49_to_50() {
 }
 
 #[tokio::test]
-async fn handle_grant_xp_at_50_credits_xp_but_no_level_or_point() {
+async fn live_db_handle_grant_xp_at_50_credits_xp_but_no_level_or_point() {
     let pool = require_db_or_skip!();
     let (persisted, in_memory) = grant_persisted(&pool, 620, 50, 26_525_000, 50, 1_000_000).await;
     assert_eq!(persisted, (50, 27_525_000, 50));
@@ -261,7 +261,7 @@ async fn insert_at_level(
 /// `sgw_player.level_sanity` accepts 50 and rejects 51. Before AT-07 the
 /// CHECK was `level <= 20`, so the level-50 insert below fails against it.
 #[tokio::test]
-async fn level_sanity_accepts_50_and_rejects_51() {
+async fn live_db_level_sanity_accepts_50_and_rejects_51() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 630;
     cleanup(&pool, account_id).await;
@@ -285,7 +285,7 @@ async fn level_sanity_accepts_50_and_rejects_51() {
 /// session held the unclamped `u64`, so a later read of memory disagreed
 /// with the DB until relog.
 #[tokio::test]
-async fn handle_grant_xp_clamps_memory_to_the_persisted_i32_ceiling() {
+async fn live_db_handle_grant_xp_clamps_memory_to_the_persisted_i32_ceiling() {
     let pool = require_db_or_skip!();
     let near_cap = i32::MAX - 10;
     let (persisted, in_memory) = grant_persisted(&pool, 650, 50, near_cap, 50, 1_000).await;

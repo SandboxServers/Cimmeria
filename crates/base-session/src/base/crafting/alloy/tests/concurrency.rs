@@ -35,7 +35,7 @@ async fn saw_lock_waiter(pool: &PgPool) -> bool {
 /// refuses: nothing consumed, nothing granted. A check made before the
 /// transaction would read the committed (old) state, pass, and alloy.
 #[tokio::test]
-async fn a_respec_committing_during_the_completion_refuses_the_alloy() {
+async fn live_db_a_respec_committing_during_the_completion_refuses_the_alloy() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 21).await;

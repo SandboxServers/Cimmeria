@@ -78,7 +78,7 @@ fn find(rows: &[(i32, i32, i32, i32)], type_id: i32) -> (i32, i32, i32, i32) {
 /// the Blueprint item are used from there, and the cores are consumed by a
 /// crafting transaction for blueprint 25's product.
 #[tokio::test]
-async fn crafting_supplies_land_in_the_crafting_bag_and_are_usable() {
+async fn live_db_crafting_supplies_land_in_the_crafting_bag_and_are_usable() {
     let pool = require_db_or_skip!();
     cleanup(&pool, ACCOUNT_ID, ACCOUNT_ID, PLAYER_ID).await;
     insert_account_and_player(&pool, ACCOUNT_ID, PLAYER_ID, 100).await;

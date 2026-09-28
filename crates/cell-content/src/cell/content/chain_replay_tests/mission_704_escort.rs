@@ -133,7 +133,7 @@ fn comms_arrival_params() -> Vec<(&'static str, serde_json::Value)> {
 }
 
 #[tokio::test]
-async fn chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
+async fn live_db_chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -270,7 +270,7 @@ async fn chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
 }
 
 #[tokio::test]
-async fn chain_1291_does_not_resolve_once_the_terminal_step_is_active() {
+async fn live_db_chain_1291_does_not_resolve_once_the_terminal_step_is_active() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -291,7 +291,7 @@ async fn chain_1291_does_not_resolve_once_the_terminal_step_is_active() {
 }
 
 #[tokio::test]
-async fn chain_1291_does_not_resolve_without_704() {
+async fn live_db_chain_1291_does_not_resolve_without_704() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -319,7 +319,7 @@ async fn chain_1291_does_not_resolve_without_704() {
 /// before this chain the only recovery was a relog. Clicking Zuritska
 /// re-issues the follow; since NA42 that is a backstop, not the only repair.
 #[tokio::test]
-async fn chain_1302_interact_re_arms_the_escort_follow() {
+async fn live_db_chain_1302_interact_re_arms_the_escort_follow() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -354,7 +354,7 @@ async fn chain_1302_interact_re_arms_the_escort_follow() {
 /// Communications Room behind a player who is meant to be hacking the
 /// terminal, undoing chain 1291's clear.
 #[tokio::test]
-async fn chain_1302_does_not_resolve_once_the_escort_is_over() {
+async fn live_db_chain_1302_does_not_resolve_once_the_escort_is_over() {
     let pool = require_db_or_skip!();
     let actions = resolve_chain(
         &pool,
@@ -381,7 +381,7 @@ async fn chain_1302_does_not_resolve_once_the_escort_is_over() {
 /// one action list. Both firing on one click would open the rescue dialog
 /// again mid-escort.
 #[tokio::test]
-async fn chains_1262_and_1302_never_claim_the_same_click() {
+async fn live_db_chains_1262_and_1302_never_claim_the_same_click() {
     let pool = require_db_or_skip!();
     let mut engine = ChainEngine::new();
     for chain_id in [1262, 1302] {
@@ -449,7 +449,7 @@ async fn chains_1262_and_1302_never_claim_the_same_click() {
 /// It lives here rather than in CA05's own tests because the duplicated
 /// literal is *this* packet's, so the drift is this packet's to catch.
 #[tokio::test]
-async fn chain_1291_destination_matches_the_seeded_spawn_row() {
+async fn live_db_chain_1291_destination_matches_the_seeded_spawn_row() {
     let pool = require_db_or_skip!();
 
     let actions = resolve_chain(

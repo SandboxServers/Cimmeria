@@ -73,7 +73,7 @@ async fn assert_refused(
 
 /// The tier guard, live: one tier-2 item among ten valid Normals.
 #[tokio::test]
-async fn an_elementary_one_tier_too_high_is_refused() {
+async fn live_db_an_elementary_one_tier_too_high_is_refused() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 10).await;
@@ -103,7 +103,7 @@ const COUNT_LINE: &str = "The quantity of elementary components per item quality
 
 /// One short of each quality's count, and Poor, which has no count.
 #[tokio::test]
-async fn each_count_one_short_is_refused() {
+async fn live_db_each_count_one_short_is_refused() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 11).await;
@@ -131,7 +131,7 @@ async fn each_count_one_short_is_refused() {
 }
 
 #[tokio::test]
-async fn two_counts_met_at_once_are_refused() {
+async fn live_db_two_counts_met_at_once_are_refused() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 12).await;
@@ -160,7 +160,7 @@ async fn two_counts_met_at_once_are_refused() {
 /// The blueprint rules: a craft blueprint, an alloy blueprint not learned,
 /// and a learned alloy whose discipline is not known.
 #[tokio::test]
-async fn blueprint_rules_are_refused() {
+async fn live_db_blueprint_rules_are_refused() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 13).await;
@@ -215,7 +215,7 @@ async fn blueprint_rules_are_refused() {
 
 /// The current-tier slot must hold the blueprint's component, carried.
 #[tokio::test]
-async fn the_current_tier_item_must_be_the_carried_component() {
+async fn live_db_the_current_tier_item_must_be_the_carried_component() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 14).await;

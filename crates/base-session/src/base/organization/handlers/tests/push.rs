@@ -89,7 +89,7 @@ fn org_state_messages_follow_the_org_e1_order() {
 /// with the stored header, ranks and roster; 1 gets one [37] per shared
 /// organization carrying 0's entity id; 2 (offline) gets nothing.
 #[tokio::test]
-async fn login_push_for_a_two_org_player_is_byte_exact() {
+async fn live_db_login_push_for_a_two_org_player_is_byte_exact() {
     let pool = require_db_or_skip!();
     let fx = Fixture::new(&pool, 0, 3, &["Org06 Push Team", "Org06 Push Cmd"]).await;
     let team = fx.org(OrgType::Team, "Org06 Push Team", 0, &[1, 2]).await;

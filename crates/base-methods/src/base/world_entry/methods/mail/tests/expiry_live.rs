@@ -66,7 +66,7 @@ fn assert_ttl(row: &ExpiryRow, what: &str) {
 /// the GM's COD mail. Fails if any one writer leaves it NULL (that mail
 /// would never expire and the client's Expires column would lie).
 #[tokio::test]
-async fn every_writer_sets_expires_at() {
+async fn live_db_every_writer_sets_expires_at() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE, "Ttl").await;
     set_naquadah(&pool, owner, 1_000).await;
@@ -161,7 +161,7 @@ async fn every_writer_sets_expires_at() {
 /// `mail.expired path=deleted` names the mailbox and the sender. A mail not
 /// yet due is untouched by the same sweep.
 #[tokio::test]
-async fn expired_plain_mail_is_deleted() {
+async fn live_db_expired_plain_mail_is_deleted() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x08, "Plain").await;
@@ -201,7 +201,7 @@ async fn expired_plain_mail_is_deleted() {
 /// marked returned with a fresh 30-day expiry. Fails if the sweep returns
 /// the COD with its price, or deletes it.
 #[tokio::test]
-async fn expired_cod_returns_without_its_price() {
+async fn live_db_expired_cod_returns_without_its_price() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE + 0x10, "Cod").await;
     let type_id = any_type_id(&pool).await;
@@ -244,7 +244,7 @@ async fn expired_cod_returns_without_its_price() {
 /// D-SS04 path 1 for gift cash and an item: returned once with both, and
 /// nothing is credited to anyone by the sweep itself.
 #[tokio::test]
-async fn expired_gift_mail_returns_with_cash_and_item() {
+async fn live_db_expired_gift_mail_returns_with_cash_and_item() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE + 0x18, "Gift").await;
     let type_id = any_type_id(&pool).await;
@@ -276,7 +276,7 @@ async fn expired_gift_mail_returns_with_cash_and_item() {
 /// Fails if path 3 deletes (the escrow row would cascade away) or returns
 /// it again.
 #[tokio::test]
-async fn expired_returned_mail_is_quarantined_not_deleted() {
+async fn live_db_expired_returned_mail_is_quarantined_not_deleted() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (owner, sender) = two_players(&pool, BASE + 0x20, "Ret").await;
@@ -317,7 +317,7 @@ async fn expired_returned_mail_is_quarantined_not_deleted() {
 /// and the price): it is quarantined in the recipient's name with its
 /// escrow row. Fails if the sweep takes path 1 for it.
 #[tokio::test]
-async fn expired_paid_cod_is_quarantined_not_returned() {
+async fn live_db_expired_paid_cod_is_quarantined_not_returned() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE + 0x28, "Paid").await;
     let type_id = any_type_id(&pool).await;
@@ -342,7 +342,7 @@ async fn expired_paid_cod_is_quarantined_not_returned() {
 /// cash or an item, it is quarantined, never deleted with value on it;
 /// expired empty, it is deleted like any mail.
 #[tokio::test]
-async fn expired_system_mail_is_quarantined_only_with_value() {
+async fn live_db_expired_system_mail_is_quarantined_only_with_value() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x30;
     cleanup(&pool, base).await;
@@ -392,7 +392,7 @@ async fn expired_system_mail_is_quarantined_only_with_value() {
 /// the sweep skips an archived row even if one still carries a past expiry
 /// (two separate guards: revert either and one half fails).
 #[tokio::test]
-async fn archived_mail_never_expires() {
+async fn live_db_archived_mail_never_expires() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE + 0x38, "Arch").await;
     let o = Client::new(BASE as u32 + 0x42, owner, 55_202, "SsmFourExpOArch");
@@ -442,7 +442,7 @@ async fn archived_mail_never_expires() {
 /// on a mail row that exists. Fails if any path deletes a mail that still
 /// holds an item (the escrow row cascades with its mail).
 #[tokio::test]
-async fn no_orphaned_escrow_after_sweep() {
+async fn live_db_no_orphaned_escrow_after_sweep() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE + 0x40, "Orph").await;
     let type_id = any_type_id(&pool).await;
@@ -533,7 +533,7 @@ async fn no_orphaned_escrow_after_sweep() {
 /// expires is not quarantined out of their reach. Fails if `clear_cod`
 /// leaves `expires_at` as it was.
 #[tokio::test]
-async fn paid_cod_restarts_its_expiry() {
+async fn live_db_paid_cod_restarts_its_expiry() {
     let pool = require_db_or_skip!();
     let (owner, sender) = two_players(&pool, BASE + 0x48, "Rest").await;
     set_naquadah(&pool, owner, 500).await;
@@ -572,7 +572,7 @@ async fn paid_cod_restarts_its_expiry() {
 /// return it to (its sender's character is gone, `sender_id` NULL) is
 /// deleted when it expires, not quarantined empty for a GM.
 #[tokio::test]
-async fn expired_itemless_cod_with_no_sender_is_deleted() {
+async fn live_db_expired_itemless_cod_with_no_sender_is_deleted() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x50;
     cleanup(&pool, base).await;

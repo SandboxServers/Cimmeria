@@ -78,18 +78,30 @@ drop_db() {  # $1 = worktree name
     fi
   done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
   local q=(-h localhost -p "${PGPORT:-5433}" -U w-testing -d postgres -tAq -v ON_ERROR_STOP=1)
-  local exists
-  # psql.exe prints CRLF; an untrimmed \r makes every name "not exist".
-  exists="$(PGPASSWORD="${PGPASSWORD:-w-testing}" "$PSQL" "${q[@]}" -c "SELECT 1 FROM pg_database WHERE datname='$db'" 2>/dev/null | tr -d '\r')"
-  [ "$exists" = 1 ] || return 0
-  if [ $DRY -eq 1 ]; then echo "  would: drop database $db"; return 0; fi
-  PGPASSWORD="${PGPASSWORD:-w-testing}" "$PSQL" "${q[@]}" \
-    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$db' AND pid<>pg_backend_pid();" >/dev/null 2>&1
-  if PGPASSWORD="${PGPASSWORD:-w-testing}" "$PSQL" "${q[@]}" -c "DROP DATABASE \"$db\";" >/dev/null 2>&1; then
-    echo "  dropped database $db"
-  else
-    echo "  could not drop database $db" >&2
-  fi
+  local name
+  # The database itself and its live-DB slot clones (<db>_0 .. <db>_<N-1>, made by
+  # tools/test-live-db.sh). psql.exe prints CRLF; an untrimmed \r makes every name
+  # "not exist".
+  local taken=" "
+  while IFS= read -r other; do
+    other="$(basename "$other")"
+    [ "$other" = "$1" ] || taken+="$(db_name "$other") "
+  done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    # A worktree named foo_1 owns sgw_foo_1, which looks like a slot clone of sgw_foo.
+    case "$taken" in *" $name "*) echo "  kept database $name: another worktree maps to it"; continue ;; esac
+    if [ $DRY -eq 1 ]; then echo "  would: drop database $name"; continue; fi
+    PGPASSWORD="${PGPASSWORD:-w-testing}" "$PSQL" "${q[@]}" \
+      -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$name' AND pid<>pg_backend_pid();" >/dev/null 2>&1
+    if PGPASSWORD="${PGPASSWORD:-w-testing}" "$PSQL" "${q[@]}" -c "DROP DATABASE \"$name\";" >/dev/null 2>&1; then
+      echo "  dropped database $name"
+    else
+      echo "  could not drop database $name" >&2
+    fi
+  done < <(PGPASSWORD="${PGPASSWORD:-w-testing}" "$PSQL" "${q[@]}" \
+    -c "SELECT datname FROM pg_database WHERE datname='$db' OR datname ~ '^${db}_[0-9]+\$' ORDER BY datname" \
+    2>/dev/null | tr -d '\r')
 }
 
 # lane.sh writes "HH:MM:SS <worktree name> :: <command>" into each held slot, right after

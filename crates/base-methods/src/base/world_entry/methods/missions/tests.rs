@@ -49,7 +49,7 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
 
 /// Happy path: handle_mission_update INSERTs a row with all fields present.
 #[tokio::test]
-async fn inserts_new_mission_row_with_all_fields() {
+async fn live_db_inserts_new_mission_row_with_all_fields() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE;
     let player_id = TEST_PLAYER_BASE + 1;
@@ -121,7 +121,7 @@ async fn inserts_new_mission_row_with_all_fields() {
 /// on relog instead of advancing it. This test seeds a row with repeats=3,
 /// then runs an UPSERT with repeats=4 — the row must persist 4, not 3.
 #[tokio::test]
-async fn upsert_propagates_repeats_column_on_conflict() {
+async fn live_db_upsert_propagates_repeats_column_on_conflict() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 100;
     let player_id = TEST_PLAYER_BASE + 101;
@@ -161,7 +161,7 @@ async fn upsert_propagates_repeats_column_on_conflict() {
 /// because the `status` column is `integer` so legitimate writes can
 /// outpace the i8 wire/cell representation.
 #[tokio::test]
-async fn query_saved_missions_clamps_out_of_range_status_to_i8_max() {
+async fn live_db_query_saved_missions_clamps_out_of_range_status_to_i8_max() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 200;
     let player_id = TEST_PLAYER_BASE + 201;
@@ -197,7 +197,7 @@ async fn query_saved_missions_clamps_out_of_range_status_to_i8_max() {
 /// Companion: clamp on the negative side too. A status of -200 must
 /// clamp to i8::MIN (-128), not wrap to +56.
 #[tokio::test]
-async fn query_saved_missions_clamps_out_of_range_status_to_i8_min() {
+async fn live_db_query_saved_missions_clamps_out_of_range_status_to_i8_min() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 300;
     let player_id = TEST_PLAYER_BASE + 301;

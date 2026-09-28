@@ -1,6 +1,6 @@
 # Integration Test Infrastructure
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 > **Audience**: Engineers writing tests against PostgreSQL or any other
 > live external dependency
 > **Type**: Architecture decision + how-to
@@ -93,6 +93,44 @@ tests in one `--profile=ci-live-db` nextest invocation. A crate with a
 `live_db_wrapper_lists_every_test_support_crate` enforces it, because a
 crate left out would pass CI with every live-DB test skipped (#615).
 
+### Per-slot databases
+
+The live-DB tier runs its database tests in parallel, each against a
+database no other running test uses. It clones per slot, not per test
+(the `sqlx::test` cost above):
+
+1. The database `DATABASE_URL` names is the **template**: `sgw` in CI,
+   `sgw_<worktree>` from `tools/build-lane/live-db-test.sh`, loaded from
+   `db/database.sql`.
+2. `tools/test-live-db.sh` (or `.ps1`) reads N, the `live-db` test
+   group's `max-threads` in `.config/nextest.toml`, drops any old
+   `<db>_<k>` clones, and runs `CREATE DATABASE <db>_<k> TEMPLATE <db>`
+   for k = 0 .. N-1. Nothing may be connected to the template while it
+   is cloned; the script fails and says so if something is.
+3. The `ci-live-db` profile puts every test whose name contains
+   `live_db` in that group. nextest runs at most N of them at once and
+   gives each a `NEXTEST_TEST_GROUP_SLOT` no other running test in the
+   group holds.
+4. `test_support::database_url()` (in
+   `crates/test-support/src/live_db_slot.rs`) turns `.../<db>` into
+   `.../<db>_<slot>` once per test process and writes it back to
+   `DATABASE_URL`, so a second pool, a helper or a child process lands
+   on the same clone. The gate opens its pool through it. Outside the
+   group (`cargo test`, other profiles) the URL is used as given.
+
+Two guards in `cimmeria-test-support` keep this closed:
+`every_live_db_test_is_in_the_live_db_group` fails when a test that
+reaches the gate has no `live_db` in its name (it would run outside the
+group, against the template), and
+`database_url_is_only_resolved_by_the_gate` fails on test code that reads
+`DATABASE_URL` directly, hard-codes a `postgres://` server URL, or uses
+`sqlx::test`. `live_db_each_slot_talks_to_its_own_clone` checks the
+whole chain against a live run.
+
+Each clone starts from the seed, and the tests that run in one slot
+reuse its clone one after another, so a test must still clean up after
+itself and must not rely on rows another test left behind.
+
 Each test is responsible for its own data isolation: either work
 inside a transaction it rolls back at the end (works for tests that
 don't need to span their own commit boundary), or pick a sentinel
@@ -147,8 +185,10 @@ and the live-DB `outbox::tests::enqueue_*` cases).
 
 ## Test isolation
 
-Tests share one database. Strategies for keeping them from stepping
-on each other:
+Under `cargo test` the tests share one database. In the live-DB tier
+each running test has its slot's clone, but the next test in the same
+slot inherits whatever it left. Strategies for keeping them from
+stepping on each other:
 
 - **Transaction rollback** (preferred for read/write tests). Wrap the
   test body in `pool.begin()`, do all work against the `&mut Transaction`,
@@ -170,11 +210,10 @@ sentinel `entity_id`.
   use a Postgres service container in the workflow file (GitHub
   Actions / Azure Pipelines have first-class support for this without
   introducing testcontainers as a dependency).
-- If parallel-test contention becomes a real problem (today the
-  integration suite is small enough that serialising via the
-  `ci-live-db` nextest profile, or `cargo test ... -- --test-threads=1`,
-  on the integration target is acceptable), revisit `sqlx::test`'s
-  per-test-DB mode.
+- The per-slot clones (above) replaced one-at-a-time execution. If
+  tests that share a slot's clone start leaking state into each other,
+  the next step is a fresh clone per test (`sqlx::test`'s model), at the
+  cost of one `CREATE DATABASE` per test.
 
 ## Future work
 

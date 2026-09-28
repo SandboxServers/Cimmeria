@@ -110,7 +110,7 @@ async fn race_same_item(
 /// `ItemNotAvailable`, with nothing debited. Without the locks and the
 /// `stack_size > $1` guard both escrow two and the stack ends at -1.
 #[tokio::test]
-async fn concurrent_sends_move_item_once() {
+async fn live_db_concurrent_sends_move_item_once() {
     let pool = require_db_or_skip!();
     let (sender, rcpt, stack, codes) = race_same_item(&pool, 0, 3, 2).await;
     assert_eq!(
@@ -135,7 +135,7 @@ async fn concurrent_sends_move_item_once() {
 /// The second finds no row once the first has moved it (`item_not_owned`),
 /// so the row is in escrow once and the bag holds nothing.
 #[tokio::test]
-async fn concurrent_whole_stack_sends_move_item_once() {
+async fn live_db_concurrent_whole_stack_sends_move_item_once() {
     let pool = require_db_or_skip!();
     let (sender, rcpt, stack, codes) = race_same_item(&pool, 10, 3, 3).await;
     assert_eq!(

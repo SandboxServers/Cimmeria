@@ -121,7 +121,7 @@ pub(super) fn connected_client(entity_id: u32, port: u16) -> ClientState {
 /// Before the fix the move path checked only the target, so the row landed
 /// in (1, 5) and the player kept both the item and the sale price.
 #[tokio::test]
-async fn move_out_of_buyback_is_refused_and_no_row_changes() {
+async fn live_db_move_out_of_buyback_is_refused_and_no_row_changes() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -211,7 +211,7 @@ async fn move_out_of_buyback_is_refused_and_no_row_changes() {
 /// `reason=no_vault_session` (BV-03 guard: "a move with no session is
 /// rejected").
 #[tokio::test]
-async fn move_into_vault_without_a_session_is_refused() {
+async fn live_db_move_into_vault_without_a_session_is_refused() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x10;
     let player_id = TEST_BASE + 0x11;
@@ -280,7 +280,7 @@ async fn move_into_vault_without_a_session_is_refused() {
 /// Crafting depends on moves between the main bag (1) and the crafting bag
 /// (15) in both directions (D-BV04). The allowlist must keep both legal.
 #[tokio::test]
-async fn moves_between_main_and_crafting_succeed_both_ways() {
+async fn live_db_moves_between_main_and_crafting_succeed_both_ways() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x20;
     let player_id = TEST_BASE + 0x21;
@@ -340,7 +340,7 @@ async fn moves_between_main_and_crafting_succeed_both_ways() {
 /// buyback (16). Only seed data kept this refused before BV-01; the
 /// allowlist refuses it whatever the item's `container_sets` say.
 #[tokio::test]
-async fn move_into_buyback_logs_target_not_player_movable() {
+async fn live_db_move_into_buyback_logs_target_not_player_movable() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x80;
     let player_id = TEST_BASE + 0x81;
@@ -404,7 +404,7 @@ async fn move_into_buyback_logs_target_not_player_movable() {
 /// `move_rejected reason=no_vault_session vault_end=source`: a row
 /// already in the vault (17), moved out without a vault session.
 #[tokio::test]
-async fn move_out_of_vault_without_a_session_is_refused() {
+async fn live_db_move_out_of_vault_without_a_session_is_refused() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x90;
     let player_id = TEST_BASE + 0x91;

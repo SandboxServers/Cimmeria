@@ -46,7 +46,7 @@ async fn pair(pool: &PgPool, base: i32, tag: &str) -> (i32, i32) {
 /// return's `AND NOT cod_paid` together; both commit, and the seller gets
 /// the item back as well as the payment.
 #[tokio::test]
-async fn concurrent_pay_and_return_exactly_one_wins() {
+async fn live_db_concurrent_pay_and_return_exactly_one_wins() {
     let pool = require_db_or_skip!();
     let base = BASE;
     let (buyer, seller) = pair(&pool, base, "Pay").await;
@@ -102,7 +102,7 @@ async fn concurrent_pay_and_return_exactly_one_wins() {
 /// exists once: what the owner was credited plus what the returned mail
 /// still holds is exactly 500.
 #[tokio::test]
-async fn concurrent_take_cash_and_return_move_the_cash_once() {
+async fn live_db_concurrent_take_cash_and_return_move_the_cash_once() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x08;
     let (owner, sender) = pair(&pool, base, "Cash").await;

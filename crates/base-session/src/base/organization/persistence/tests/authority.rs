@@ -23,7 +23,7 @@ async fn add(pool: &PgPool, org_id: i32, player_id: i32, rank: OrgRank) {
 /// An access read in one transaction is refused in another
 /// (`StaleAccess`); a GM system access logs `org.gm_access` with the GM.
 #[tokio::test]
-async fn access_is_tied_to_its_transaction() {
+async fn live_db_access_is_tied_to_its_transaction() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 25, 2, &["Org02 Stale"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));
@@ -85,7 +85,7 @@ async fn access_is_tied_to_its_transaction() {
 /// The member BEFORE UPDATE trigger: identity columns never change, and
 /// the Leader rank moves only by the delete trigger's promotion.
 #[tokio::test]
-async fn member_identity_and_leader_rank_are_immutable_in_sql() {
+async fn live_db_member_identity_and_leader_rank_are_immutable_in_sql() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 26, 2, &["Org02 Immutable"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));
@@ -143,7 +143,7 @@ async fn member_identity_and_leader_rank_are_immutable_in_sql() {
 /// D-ORG07 in the database: a rank row must be one its type uses, and its
 /// org_type must be its organization's.
 #[tokio::test]
-async fn rank_rows_are_per_type_in_sql() {
+async fn live_db_rank_rows_are_per_type_in_sql() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 27, 1, &["Org02 RankType"]).await;
     let team = create(&pool, OrgType::Team, "Org02 RankType", fx.player(0))
@@ -177,7 +177,7 @@ async fn rank_rows_are_per_type_in_sql() {
 /// The Rust vault predicate and its SQL twin agree on an empty vault. Their
 /// agreement on items and cash is `vault::vault_predicate_follows_items_and_cash`.
 #[tokio::test]
-async fn vault_stubs_agree() {
+async fn live_db_vault_stubs_agree() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 28, 1, &["Org02 Vault Twins"]).await;
     let org = create(&pool, OrgType::Command, "Org02 Vault Twins", fx.player(0))
@@ -204,7 +204,7 @@ async fn vault_stubs_agree() {
 /// locks each character's organizations before the member rows cascade,
 /// so a kick holding the organization finishes instead of deadlocking.
 #[tokio::test]
-async fn account_delete_cascade_keeps_the_lock_order() {
+async fn live_db_account_delete_cascade_keeps_the_lock_order() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 29, 2, &["Org02 Account"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));
@@ -256,7 +256,7 @@ async fn account_delete_cascade_keeps_the_lock_order() {
 /// `account` BEFORE DELETE trigger locks every character first, then every
 /// organization in order, so both deletes finish.
 #[tokio::test]
-async fn account_delete_locks_all_its_characters_orgs_in_order() {
+async fn live_db_account_delete_locks_all_its_characters_orgs_in_order() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 32, 2, &["Org02 Acct Lo", "Org02 Acct Hi"]).await;
     let other = setup(&pool, 33, 1, &[]).await;
@@ -329,7 +329,7 @@ async fn account_delete_locks_all_its_characters_orgs_in_order() {
 /// checks membership before it touches the character's row, so it refuses
 /// at once instead of waiting on the row the delete holds.
 #[tokio::test]
-async fn duplicate_join_during_character_delete_does_not_deadlock() {
+async fn live_db_duplicate_join_during_character_delete_does_not_deadlock() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 30, 2, &["Org02 Join Race"]).await;
     let (p0, p1) = (fx.player(0), fx.player(1));
@@ -363,7 +363,7 @@ async fn duplicate_join_during_character_delete_does_not_deadlock() {
 /// another account owns locks nothing, not even the character's
 /// organizations, and deletes nothing.
 #[tokio::test]
-async fn foreign_account_delete_takes_no_locks() {
+async fn live_db_foreign_account_delete_takes_no_locks() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 31, 1, &["Org02 Foreign"]).await;
     let p0 = fx.player(0);

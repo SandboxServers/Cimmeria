@@ -15,7 +15,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// treasury would go negative, or the `CHECK` would turn the refusal into
 /// `query_failed`.
 #[tokio::test]
-async fn overdrawing_either_side_changes_nothing() {
+async fn live_db_overdrawing_either_side_changes_nothing() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 2, 1, 100).await;
     let team = fx.org(OrgType::Team, 0, &[]).await;
@@ -88,7 +88,7 @@ async fn overdrawing_either_side_changes_nothing() {
 /// raises "integer out of range" and the refusal becomes `query_failed`),
 /// or the treasury's `checked_add` and its SQL guard are.
 #[tokio::test]
-async fn overflow_on_either_side_is_refused() {
+async fn live_db_overflow_on_either_side_is_refused() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 3, 1, i32::MAX - 10).await;
     let team = fx.org(OrgType::Team, 0, &[]).await;
@@ -157,7 +157,7 @@ async fn overflow_on_either_side_is_refused() {
 /// outsider is not sent the treasury. Fails if the membership read is
 /// skipped (the outsider's deposit would land).
 #[tokio::test]
-async fn outsiders_missing_orgs_and_missing_characters_are_refused() {
+async fn live_db_outsiders_missing_orgs_and_missing_characters_are_refused() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 4, 3, 500).await;
     let team = fx.org(OrgType::Team, 0, &[]).await;
@@ -312,7 +312,7 @@ async fn infrastructure_refusals_are_logged() {
 /// Fails if the actor check is dropped and the result is addressed by the
 /// entity id.
 #[tokio::test]
-async fn a_recycled_entity_id_moves_and_receives_nothing() {
+async fn live_db_a_recycled_entity_id_moves_and_receives_nothing() {
     let pool = require_db_or_skip!();
     let fx = Fx::new(&pool, 6, 2, 500).await;
     let team = fx.org(OrgType::Team, 0, &[1]).await;

@@ -166,7 +166,7 @@ fn craft_anywhere_on(sessions: &Sessions) -> bool {
 /// paradigm at 7, leaves ASP alone, and turns on "craft anywhere"; a relog
 /// (a fresh load) sees it all.
 #[tokio::test]
-async fn allcraft_persists_the_full_crafting_state() {
+async fn live_db_allcraft_persists_the_full_crafting_state() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     cleanup(&pool).await;
@@ -241,7 +241,7 @@ async fn allcraft_persists_the_full_crafting_state() {
 /// A caller below GameMaster changes nothing in the database and turns
 /// nothing on.
 #[tokio::test]
-async fn allcraft_from_a_non_gm_writes_nothing() {
+async fn live_db_allcraft_from_a_non_gm_writes_nothing() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     insert_player(&pool).await;
@@ -263,7 +263,7 @@ async fn allcraft_from_a_non_gm_writes_nothing() {
 /// outside the lock sees the old ASP, and the save (which waits on the row
 /// anyway) writes that stale value back over the committed change.
 #[tokio::test]
-async fn allcraft_waits_for_a_concurrent_writer_and_keeps_its_change() {
+async fn live_db_allcraft_waits_for_a_concurrent_writer_and_keeps_its_change() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     insert_player(&pool).await;
@@ -301,7 +301,7 @@ async fn allcraft_waits_for_a_concurrent_writer_and_keeps_its_change() {
 /// A player row that is not there is a WARN `persist_failed` naming the
 /// phase, with the paired `rows_affected` / `expected`, and turns nothing on.
 #[tokio::test]
-async fn allcraft_for_a_missing_player_logs_the_shortfall() {
+async fn live_db_allcraft_for_a_missing_player_logs_the_shortfall() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     cleanup(&pool).await;
@@ -333,7 +333,7 @@ async fn allcraft_for_a_missing_player_logs_the_shortfall() {
 /// connection holding only that key makes the grant wait; without the key
 /// the grant commits straight through.
 #[tokio::test]
-async fn allcraft_waits_for_a_completion_holding_the_player_wide_key() {
+async fn live_db_allcraft_waits_for_a_completion_holding_the_player_wide_key() {
     let pool = require_db_or_skip!();
     cleanup(&pool).await;
     insert_player(&pool).await;

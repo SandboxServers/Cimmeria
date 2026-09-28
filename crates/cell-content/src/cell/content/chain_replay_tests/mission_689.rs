@@ -79,7 +79,7 @@ async fn assert_player_loaded_resolves(chain_id: i64, mission_689_status: &str, 
 /// Positive: mission 689 has never been accepted (`not_active`, the
 /// missing-key default per content-engine.md) → chain 1022 accepts it.
 #[tokio::test]
-async fn chain_1022_accepts_mission_689_when_not_active() {
+async fn live_db_chain_1022_accepts_mission_689_when_not_active() {
     assert_player_loaded_resolves(1022, "not_active", true).await;
 }
 
@@ -88,7 +88,7 @@ async fn chain_1022_accepts_mission_689_when_not_active() {
 /// guard would refuse it anyway (warn-logged), but the chain gate should
 /// stop it from even trying on every relog.
 #[tokio::test]
-async fn chain_1022_does_not_refire_once_active() {
+async fn live_db_chain_1022_does_not_refire_once_active() {
     assert_player_loaded_resolves(1022, "active", false).await;
 }
 
@@ -96,7 +96,7 @@ async fn chain_1022_does_not_refire_once_active() {
 /// — `num_repeats = 0` on the mission row already refuses a re-accept
 /// server-side, but the chain gate is the first line of defense.
 #[tokio::test]
-async fn chain_1022_does_not_refire_once_completed() {
+async fn live_db_chain_1022_does_not_refire_once_completed() {
     assert_player_loaded_resolves(1022, "completed", false).await;
 }
 
@@ -106,7 +106,7 @@ async fn chain_1022_does_not_refire_once_completed() {
 /// snapshot (mission_status defaults missing keys to `not_active`, which
 /// is `neq completed`).
 #[tokio::test]
-async fn chain_1023_launches_1597_when_not_active() {
+async fn live_db_chain_1023_launches_1597_when_not_active() {
     assert_player_loaded_resolves(1023, "not_active", true).await;
 }
 
@@ -115,7 +115,7 @@ async fn chain_1023_launches_1597_when_not_active() {
 /// re-applies the lock on every relog. This is the acceptance criterion
 /// "relog mid-lock must re-apply the lock."
 #[tokio::test]
-async fn chain_1023_launches_1597_when_active() {
+async fn live_db_chain_1023_launches_1597_when_active() {
     assert_player_loaded_resolves(1023, "active", true).await;
 }
 
@@ -123,7 +123,7 @@ async fn chain_1023_launches_1597_when_active() {
 /// ran), chain 1023 must NOT re-launch 1597. This is the acceptance
 /// criterion "relog after clearing must NOT re-apply it."
 #[tokio::test]
-async fn chain_1023_does_not_relaunch_once_completed() {
+async fn live_db_chain_1023_does_not_relaunch_once_completed() {
     assert_player_loaded_resolves(1023, "completed", false).await;
 }
 
@@ -186,7 +186,7 @@ async fn assert_item_use_3438_resolves(mission_689_status: &str, should_fire: bo
 /// Positive: using item 3438 (the worn Prison Boots) while mission 689 is
 /// active starts a Livewire session with `on_victory_chains: [1025]`.
 #[tokio::test]
-async fn chain_1024_starts_livewire_while_locked() {
+async fn live_db_chain_1024_starts_livewire_while_locked() {
     assert_item_use_3438_resolves("active", true).await;
 }
 
@@ -196,7 +196,7 @@ async fn chain_1024_starts_livewire_while_locked() {
 /// chain gate is defense-in-depth against a stale/duplicate item
 /// instance).
 #[tokio::test]
-async fn chain_1024_does_not_start_livewire_once_completed() {
+async fn live_db_chain_1024_does_not_start_livewire_once_completed() {
     assert_item_use_3438_resolves("completed", false).await;
 }
 
@@ -205,7 +205,7 @@ async fn chain_1024_does_not_start_livewire_once_completed() {
 /// victory) — load it directly and pin its two actions: launch ability
 /// 1598 (self), then complete mission 689 so chain 1023 stops re-locking.
 #[tokio::test]
-async fn chain_1025_launches_1598_and_completes_689() {
+async fn live_db_chain_1025_launches_1598_and_completes_689() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1025)
         .await

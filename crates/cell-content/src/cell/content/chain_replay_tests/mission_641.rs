@@ -18,7 +18,7 @@ use crate::test_support::require_db_or_skip;
 /// Test 1: with mission 641 not yet accepted, the chain matches
 /// (briefing is appropriate).
 #[tokio::test]
-async fn chain_1051_fires_when_mission_641_not_accepted() {
+async fn live_db_chain_1051_fires_when_mission_641_not_accepted() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1051)
         .await
@@ -79,7 +79,7 @@ async fn chain_1051_fires_when_mission_641_not_accepted() {
 /// prevents the briefing dialog from re-showing and triggering the
 /// re-accept loop. This is the bug-shape regression guard.
 #[tokio::test]
-async fn chain_1051_does_not_fire_when_mission_641_active() {
+async fn live_db_chain_1051_does_not_fire_when_mission_641_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1051)
         .await
@@ -140,7 +140,7 @@ async fn chain_1051_does_not_fire_when_mission_641_active() {
 /// via mission_overrides patch on `_641` in `CookedDataMissions.pak`
 /// and the per-key `InvalidKeys` channel.
 #[tokio::test]
-async fn chain_1055_grants_p90_to_backpack_and_advances_to_equip_step() {
+async fn live_db_chain_1055_grants_p90_to_backpack_and_advances_to_equip_step() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -209,7 +209,7 @@ async fn chain_1055_grants_p90_to_backpack_and_advances_to_equip_step() {
 /// chain to the first interact. Regression guard for duplicate-grant on
 /// re-interact.
 #[tokio::test]
-async fn chain_1055_does_not_re_fire_after_step_2121_advances() {
+async fn live_db_chain_1055_does_not_re_fire_after_step_2121_advances() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1055)
         .await
@@ -255,7 +255,7 @@ async fn chain_1055_does_not_re_fire_after_step_2121_advances() {
 /// advances to step 3563 ("Speak to Col. Marsh"), and sets Marsh's
 /// mission-available marker.
 #[tokio::test]
-async fn chain_1066_advances_to_marsh_step_and_sets_marker_on_equip() {
+async fn live_db_chain_1066_advances_to_marsh_step_and_sets_marker_on_equip() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -316,7 +316,7 @@ async fn chain_1066_advances_to_marsh_step_and_sets_marker_on_equip() {
 /// Chain 1066 must NOT fire when step 80641 isn't active — guards against
 /// an early-equip path skipping the locker pickup.
 #[tokio::test]
-async fn chain_1066_does_not_fire_without_step_80641_active() {
+async fn live_db_chain_1066_does_not_fire_without_step_80641_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1066)
         .await
@@ -367,7 +367,7 @@ async fn chain_1066_does_not_fire_without_step_80641_active() {
 /// which fails pre-purge and passes once
 /// `space_castle_cellblock_chains.sql` is deleted.
 #[tokio::test]
-async fn jaffa_marsh_interact_before_641_resolves_exactly_one_dialog_5022_and_zero_4001() {
+async fn live_db_jaffa_marsh_interact_before_641_resolves_exactly_one_dialog_5022_and_zero_4001() {
     use cimmeria_content_engine::actions::Action;
 
     const ARCHETYPE_JAFFA: i32 = 8;
@@ -439,7 +439,7 @@ async fn jaffa_marsh_interact_before_641_resolves_exactly_one_dialog_5022_and_ze
 /// chain covers both accept paths since both funnel through the same
 /// `accept_mission 641` action. Precedent: chain 1097's shape for 687.
 #[tokio::test]
-async fn chain_1152_displays_blurb_4000_when_mission_641_accepted() {
+async fn live_db_chain_1152_displays_blurb_4000_when_mission_641_accepted() {
     use cimmeria_content_engine::actions::Action;
 
     let pool = require_db_or_skip!();
@@ -480,7 +480,7 @@ async fn chain_1152_displays_blurb_4000_when_mission_641_accepted() {
 /// Chain 1152 negative: a `mission_accepted` event for a different
 /// mission id must not also fire the 641 blurb.
 #[tokio::test]
-async fn chain_1152_does_not_fire_for_wrong_mission_id() {
+async fn live_db_chain_1152_does_not_fire_for_wrong_mission_id() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1152)
         .await

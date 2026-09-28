@@ -215,7 +215,7 @@ async fn resolve(pool: &sqlx::PgPool, chain_id: i32, ctx: &ExecutionContext) -> 
 /// step id; without def-driven hydration the roster is whatever the row
 /// happened to contain.
 #[tokio::test]
-async fn objective_completed_on_the_current_step_survives_a_relog() {
+async fn live_db_objective_completed_on_the_current_step_survives_a_relog() {
     let pool = require_db_or_skip!();
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
@@ -286,7 +286,7 @@ async fn objective_completed_on_the_current_step_survives_a_relog() {
 ///
 /// This is the live half of the inversion of `mission_742.rs`'s H50 pin.
 #[tokio::test]
-async fn chain_6104_gate_tracks_the_objective_across_a_relog() {
+async fn live_db_chain_6104_gate_tracks_the_objective_across_a_relog() {
     let pool = require_db_or_skip!();
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
@@ -360,7 +360,7 @@ async fn chain_6104_gate_tracks_the_objective_across_a_relog() {
 /// `objective_status 688 2734 eq completed` matching, and it can only do
 /// that if `completed_objective_ids` round-trips.
 #[tokio::test]
-async fn objective_completed_on_a_prior_step_survives_a_relog() {
+async fn live_db_objective_completed_on_a_prior_step_survives_a_relog() {
     let pool = require_db_or_skip!();
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
@@ -431,7 +431,7 @@ async fn objective_completed_on_a_prior_step_survives_a_relog() {
 /// and `serialize_resend` both put it on the wire, and the journal
 /// renders a hidden objective differently.
 #[tokio::test]
-async fn optional_and_hidden_flags_survive_a_relog() {
+async fn live_db_optional_and_hidden_flags_survive_a_relog() {
     let pool = require_db_or_skip!();
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
@@ -509,7 +509,7 @@ async fn optional_and_hidden_flags_survive_a_relog() {
 /// objectives complete missions": completing the optional 5399 alone,
 /// after a relog, must leave 1200 active because 4140 is still open.
 #[tokio::test]
-async fn completing_only_the_optional_objective_does_not_complete_the_mission() {
+async fn live_db_completing_only_the_optional_objective_does_not_complete_the_mission() {
     let pool = require_db_or_skip!();
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
@@ -561,7 +561,7 @@ async fn completing_only_the_optional_objective_does_not_complete_the_mission() 
 /// harmless for the data but fatal for every guard above: a dead
 /// executor arm and a live one would produce the same DB traffic.
 #[tokio::test]
-async fn mission_update_is_emitted_on_a_real_completion_and_not_on_a_no_op() {
+async fn live_db_mission_update_is_emitted_on_a_real_completion_and_not_on_a_no_op() {
     let pool = require_db_or_skip!();
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
@@ -628,7 +628,7 @@ async fn mission_update_is_emitted_on_a_real_completion_and_not_on_a_no_op() {
 /// evaluator answered `not_active` for. Def-driven reconstruction turns
 /// that row back into the real roster on first login.
 #[tokio::test]
-async fn a_pre_h50_row_holding_the_step_id_self_heals_on_login() {
+async fn live_db_a_pre_h50_row_holding_the_step_id_self_heals_on_login() {
     let pool = require_db_or_skip!();
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
 

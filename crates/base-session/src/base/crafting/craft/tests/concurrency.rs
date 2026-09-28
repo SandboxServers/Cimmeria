@@ -31,7 +31,7 @@ async fn saw_lock_waiter(pool: &PgPool) -> bool {
 /// refuses: nothing consumed, nothing granted. A check made before the
 /// transaction would read the committed (old) state, pass, and craft.
 #[tokio::test]
-async fn a_respec_committing_during_the_completion_refuses_the_craft() {
+async fn live_db_a_respec_committing_during_the_completion_refuses_the_craft() {
     let pool = require_db_or_skip!();
     let f = Fixture::new(&pool, 24).await;
     f.know(&[(DISCIPLINE, 10)], &[BLUEPRINT]).await;

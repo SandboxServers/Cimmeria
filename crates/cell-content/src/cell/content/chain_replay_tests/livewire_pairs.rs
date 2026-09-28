@@ -225,7 +225,7 @@ async fn victory_actions(pool: &PgPool, chain_id: i32) -> Vec<Action> {
 /// Livewire with victory chain 1017, and does not once the player has
 /// advanced to 2116.
 #[tokio::test]
-async fn chain_1016_starts_livewire_and_reaches_base() {
+async fn live_db_chain_1016_starts_livewire_and_reaches_base() {
     assert_launcher_pair(
         1016,
         1017,
@@ -244,7 +244,7 @@ async fn chain_1016_starts_livewire_and_reaches_base() {
 /// that order, because the sequence is the door opening and the bit clear
 /// is what stops the player re-hacking an open door.
 #[tokio::test]
-async fn chain_1017_victory_advances_2116_plays_sequence_and_clears_bit() {
+async fn live_db_chain_1017_victory_advances_2116_plays_sequence_and_clears_bit() {
     let pool = require_db_or_skip!();
     let actions = victory_actions(&pool, 1017).await;
 
@@ -290,7 +290,7 @@ async fn chain_1017_victory_advances_2116_plays_sequence_and_clears_bit() {
 /// Livewire with victory chain 1042. `super::mission_640` pins the resolve
 /// halves; this adds the executor-arm half and the difficulty field.
 #[tokio::test]
-async fn chain_1041_starts_livewire_and_reaches_base() {
+async fn live_db_chain_1041_starts_livewire_and_reaches_base() {
     assert_launcher_pair(
         1041,
         1042,
@@ -310,7 +310,7 @@ async fn chain_1041_starts_livewire_and_reaches_base() {
 /// asserting the head here keeps the pair readable in one place without
 /// duplicating that module.
 #[tokio::test]
-async fn chain_1042_victory_advances_to_step_2215() {
+async fn live_db_chain_1042_victory_advances_to_step_2215() {
     let pool = require_db_or_skip!();
     let actions = victory_actions(&pool, 1042).await;
 
@@ -336,7 +336,7 @@ async fn chain_1042_victory_advances_to_step_2215() {
 /// later step: chain 1061 *completes* mission 641, so 3564 is the last
 /// step and there is no adjacent one to advance into.
 #[tokio::test]
-async fn chain_1060_starts_livewire_and_reaches_base() {
+async fn live_db_chain_1060_starts_livewire_and_reaches_base() {
     assert_launcher_pair(
         1060,
         1061,
@@ -351,7 +351,7 @@ async fn chain_1060_starts_livewire_and_reaches_base() {
 /// minigame starts (not on victory, unlike 1042) — the player has engaged
 /// with it, so the "hack me" icon comes off immediately.
 #[tokio::test]
-async fn chain_1060_clears_the_terminal_cue_on_launch() {
+async fn live_db_chain_1060_clears_the_terminal_cue_on_launch() {
     let pool = require_db_or_skip!();
     let actions = resolve_interact(
         &pool,
@@ -384,7 +384,7 @@ async fn chain_1060_clears_the_terminal_cue_on_launch() {
 /// before `accept_mission` is what keeps 680 from being accepted while 641
 /// is still the active mission.
 #[tokio::test]
-async fn chain_1061_victory_completes_641_and_accepts_680() {
+async fn live_db_chain_1061_victory_completes_641_and_accepts_680() {
     let pool = require_db_or_skip!();
     let actions = victory_actions(&pool, 1061).await;
 

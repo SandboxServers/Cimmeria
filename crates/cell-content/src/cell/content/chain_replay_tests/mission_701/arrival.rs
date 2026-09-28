@@ -15,7 +15,7 @@ use crate::test_support::require_db_or_skip;
 /// Chain 1201 — arriving in Castle with 701 never accepted binds the
 /// Gerschon offer topic to template 149.
 #[tokio::test]
-async fn chain_1201_binds_gerschon_topic_on_arrival() {
+async fn live_db_chain_1201_binds_gerschon_topic_on_arrival() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1201).await;
 
@@ -35,7 +35,7 @@ async fn chain_1201_binds_gerschon_topic_on_arrival() {
 /// not_active` gate, Gerschon would keep the "offer" indicator for the
 /// whole mission.
 #[tokio::test]
-async fn chain_1201_does_not_rebind_offer_once_701_is_active() {
+async fn live_db_chain_1201_does_not_rebind_offer_once_701_is_active() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1201).await;
 
@@ -52,7 +52,7 @@ async fn chain_1201_does_not_rebind_offer_once_701_is_active() {
 /// Chain 1202 — a non-Jaffa clicking Gerschon before 701 starts sees the
 /// Tau'ri offer dialog 2573.
 #[tokio::test]
-async fn chain_1202_shows_human_offer_dialog() {
+async fn live_db_chain_1202_shows_human_offer_dialog() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1202).await;
 
@@ -69,7 +69,7 @@ async fn chain_1202_shows_human_offer_dialog() {
 /// the `archetype neq 8` half of D-CA13; losing it would show Jaffa
 /// players a dialog written for humans ("Thank you, Sgt.").
 #[tokio::test]
-async fn chain_1202_does_not_fire_for_jaffa() {
+async fn live_db_chain_1202_does_not_fire_for_jaffa() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1202).await;
 
@@ -83,7 +83,7 @@ async fn chain_1202_does_not_fire_for_jaffa() {
 
 /// Chain 1203 — a Jaffa clicking Gerschon sees dialog 5861 instead.
 #[tokio::test]
-async fn chain_1203_shows_jaffa_offer_dialog() {
+async fn live_db_chain_1203_shows_jaffa_offer_dialog() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1203).await;
 
@@ -101,7 +101,7 @@ async fn chain_1203_shows_jaffa_offer_dialog() {
 /// two branches are mutually exclusive, so a player can never be offered
 /// 701 twice in one click.
 #[tokio::test]
-async fn chain_1203_does_not_fire_for_non_jaffa() {
+async fn live_db_chain_1203_does_not_fire_for_non_jaffa() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1203).await;
 
@@ -118,7 +118,7 @@ async fn chain_1203_does_not_fire_for_non_jaffa() {
 /// mission. This is the `step_status 2399 eq not_active` gate; the
 /// Jaffa branch shares it.
 #[tokio::test]
-async fn gerschon_offer_does_not_reappear_once_step_2399_is_active() {
+async fn live_db_gerschon_offer_does_not_reappear_once_step_2399_is_active() {
     let pool = require_db_or_skip!();
 
     for chain_id in [1202, 1203] {
@@ -140,7 +140,7 @@ async fn gerschon_offer_does_not_reappear_once_step_2399_is_active() {
 /// order. The order mirrors `Castle.py`'s dialogChoiceCb, where the bind
 /// on 48 is nested inside the successful unbind of 149.
 #[tokio::test]
-async fn chain_1204_human_accept_rebinds_topic_to_copplemann() {
+async fn live_db_chain_1204_human_accept_rebinds_topic_to_copplemann() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1204).await;
 
@@ -164,7 +164,7 @@ async fn chain_1204_human_accept_rebinds_topic_to_copplemann() {
 /// second `accept_mission`, but no second dialog-set churn either (which
 /// would re-add a duplicate bind and re-push the interaction flags).
 #[tokio::test]
-async fn chain_1204_does_not_re_accept_on_a_second_interaction() {
+async fn live_db_chain_1204_does_not_re_accept_on_a_second_interaction() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1204).await;
 
@@ -190,7 +190,7 @@ async fn chain_1204_does_not_re_accept_on_a_second_interaction() {
 /// `chain_handled_interact_pins_target_for_a_later_chain_dialog`. This
 /// test pins the seed side: the action must be resolved and ordered last.
 #[tokio::test]
-async fn chain_1205_jaffa_accept_adds_the_mohkatan_radio_call() {
+async fn live_db_chain_1205_jaffa_accept_adds_the_mohkatan_radio_call() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1205).await;
 
@@ -211,7 +211,7 @@ async fn chain_1205_jaffa_accept_adds_the_mohkatan_radio_call() {
 
 /// Chain 1205 negative — same no-re-accept guard as 1204.
 #[tokio::test]
-async fn chain_1205_does_not_re_accept_on_a_second_interaction() {
+async fn live_db_chain_1205_does_not_re_accept_on_a_second_interaction() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1205).await;
 
@@ -229,7 +229,7 @@ async fn chain_1205_does_not_re_accept_on_a_second_interaction() {
 /// choice on 2573 must not also fire the Jaffa chain and vice versa —
 /// otherwise a Human accept would trigger the Moh'katan radio call.
 #[tokio::test]
-async fn accept_chains_are_keyed_by_dialog_and_do_not_cross_fire() {
+async fn live_db_accept_chains_are_keyed_by_dialog_and_do_not_cross_fire() {
     let pool = require_db_or_skip!();
 
     let jaffa_chain = engine_for(&pool, 1205).await;
@@ -254,7 +254,7 @@ async fn accept_chains_are_keyed_by_dialog_and_do_not_cross_fire() {
 /// the mission is unstartable with no error anywhere — the exact silent
 /// failure the region-key linter exists to catch for regions.
 #[tokio::test]
-async fn gerschon_chains_are_keyed_to_the_spawnlist_tag() {
+async fn live_db_gerschon_chains_are_keyed_to_the_spawnlist_tag() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1202).await;
 
@@ -274,7 +274,7 @@ async fn gerschon_chains_are_keyed_to_the_spawnlist_tag() {
 /// Chain 1201 and the restore chains all key on world name `Castle`.
 /// A `player_loaded` for the Cellblock must not bind Castle's topics.
 #[tokio::test]
-async fn arrival_bind_is_scoped_to_the_castle_world() {
+async fn live_db_arrival_bind_is_scoped_to_the_castle_world() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1201).await;
 
@@ -295,7 +295,7 @@ async fn arrival_bind_is_scoped_to_the_castle_world() {
 /// the step helper writes the key `populate_mission_context` writes.
 /// If these drift the negative tests would pass for the wrong reason.
 #[tokio::test]
-async fn step_gate_key_matches_the_runtime_populator() {
+async fn live_db_step_gate_key_matches_the_runtime_populator() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1202).await;
 
@@ -331,7 +331,7 @@ async fn step_gate_key_matches_the_runtime_populator() {
 /// default (or to `neq`'s handling of a missing key) surfaces here rather
 /// than as "Jaffa players can't start 701".
 #[tokio::test]
-async fn player_without_an_archetype_gets_the_human_branch() {
+async fn live_db_player_without_an_archetype_gets_the_human_branch() {
     let pool = require_db_or_skip!();
 
     let mut ctx = ExecutionContext::new();
@@ -362,7 +362,7 @@ async fn player_without_an_archetype_gets_the_human_branch() {
 /// Turn-in choice must not accept 701 a third time via some other
 /// mission's dialog: chain 1204's trigger is dialog 2573 only.
 #[tokio::test]
-async fn accept_chain_ignores_unrelated_dialog_choices() {
+async fn live_db_accept_chain_ignores_unrelated_dialog_choices() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1204).await;
 

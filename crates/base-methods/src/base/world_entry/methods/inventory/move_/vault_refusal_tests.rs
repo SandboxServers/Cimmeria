@@ -17,7 +17,7 @@ const RBASE: i32 = 0x7000_B700;
 /// was dropped with a plain warning and the client kept the item drawn in
 /// the vault.
 #[tokio::test]
-async fn an_item_the_vault_does_not_take_is_refused_visibly() {
+async fn live_db_an_item_the_vault_does_not_take_is_refused_visibly() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (RBASE, RBASE + 1, 0x7000_B7E0);
     setup(&pool, account_id, player_id).await;
@@ -53,7 +53,7 @@ async fn an_item_the_vault_does_not_take_is_refused_visibly() {
 /// A split onto an occupied vault slot is refused visibly:
 /// `split_onto_occupied_slot`.
 #[tokio::test]
-async fn a_split_onto_an_occupied_vault_slot_is_refused_visibly() {
+async fn live_db_a_split_onto_an_occupied_vault_slot_is_refused_visibly() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (RBASE + 0x10, RBASE + 0x11, 0x7000_B7E1);
     setup(&pool, account_id, player_id).await;
@@ -89,7 +89,7 @@ async fn a_split_onto_an_occupied_vault_slot_is_refused_visibly() {
 /// `target_slot_beyond_bank_slots` (with the player's `bank_slots`), not
 /// dropped by the pre-transaction range check.
 #[tokio::test]
-async fn a_slot_past_the_ceiling_is_refused_visibly() {
+async fn live_db_a_slot_past_the_ceiling_is_refused_visibly() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (RBASE + 0x20, RBASE + 0x21, 0x7000_B7E2);
     setup(&pool, account_id, player_id).await;

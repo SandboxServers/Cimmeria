@@ -183,7 +183,7 @@ async fn assert_world_keyed_trigger(
 }
 
 #[tokio::test]
-async fn stargate_dialed_chain_matches_its_world_only() {
+async fn live_db_stargate_dialed_chain_matches_its_world_only() {
     let pool = require_db_or_skip!();
     assert_world_keyed_trigger(
         &pool,
@@ -196,7 +196,7 @@ async fn stargate_dialed_chain_matches_its_world_only() {
 }
 
 #[tokio::test]
-async fn stargate_crossed_chain_matches_its_world_only() {
+async fn live_db_stargate_crossed_chain_matches_its_world_only() {
     let pool = require_db_or_skip!();
     assert_world_keyed_trigger(
         &pool,
@@ -212,7 +212,7 @@ async fn stargate_crossed_chain_matches_its_world_only() {
 /// destination. Pin it so a future "reject NULL like the integer-keyed
 /// triggers do" change can't silently disable wildcard chains.
 #[tokio::test]
-async fn stargate_dialed_with_null_event_key_is_a_wildcard() {
+async fn live_db_stargate_dialed_with_null_event_key_is_a_wildcard() {
     let pool = require_db_or_skip!();
     let chain_id = WILDCARD_CHAIN_ID;
 

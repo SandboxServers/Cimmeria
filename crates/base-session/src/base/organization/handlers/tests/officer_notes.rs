@@ -23,7 +23,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// access did not change) gets only the [49]. Granting it back sends the
 /// text.
 #[tokio::test]
-async fn revoking_officer_notes_blanks_them_for_that_rank() {
+async fn live_db_revoking_officer_notes_blanks_them_for_that_rank() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 15, 3, &["Org08 Revoke"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Revoke", 0, &[1, 2]).await;
@@ -82,7 +82,7 @@ async fn revoking_officer_notes_blanks_them_for_that_rank() {
 /// `OfficerNotes` blanks the notes on their client, after the [40]; a move
 /// between two ranks that both hold it sends none.
 #[tokio::test]
-async fn rank_change_out_of_officer_notes_blanks_them() {
+async fn live_db_rank_change_out_of_officer_notes_blanks_them() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 16, 3, &["Org08 Demoted"]).await;
     let cmd = fx.org(OrgType::Command, "Org08 Demoted", 0, &[1, 2]).await;
@@ -130,7 +130,7 @@ async fn rank_change_out_of_officer_notes_blanks_them() {
 /// rank's online members the [49] and then the blank [47]s, exactly like a
 /// member's CM 16.
 #[tokio::test]
-async fn gm_set_perms_moving_officer_notes_sends_the_note_sync() {
+async fn live_db_gm_set_perms_moving_officer_notes_sends_the_note_sync() {
     use crate::base::organization::handlers::gm_set_perms;
 
     let pool = require_db_or_skip!();
@@ -182,7 +182,7 @@ async fn gm_set_perms_moving_officer_notes_sends_the_note_sync() {
 /// Negative seam: a member whose session cannot be reached during the sync
 /// is WARN `org.send_failed` with `what = officer_note_sync` and the reason.
 #[tokio::test]
-async fn an_unsendable_officer_note_sync_warns_with_reason() {
+async fn live_db_an_unsendable_officer_note_sync_warns_with_reason() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org08(&pool, 17, 3, &["Org08 Sync Fail"]).await;
     let cmd = fx
@@ -221,7 +221,7 @@ async fn an_unsendable_officer_note_sync_warns_with_reason() {
 /// shares CM 16's path. Each is started with the guard held and must not
 /// finish (nor write) until it is released.
 #[tokio::test]
-async fn edits_wait_for_the_org_order_guard() {
+async fn live_db_edits_wait_for_the_org_order_guard() {
     use std::time::Duration;
 
     use crate::base::organization::handlers::order::org_order_guard;

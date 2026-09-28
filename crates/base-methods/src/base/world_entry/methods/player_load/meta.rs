@@ -288,7 +288,7 @@ mod tests {
     /// substitutes the item's default_ammo_type. Locks the legacy
     /// Account.py-compat behavior in.
     #[tokio::test]
-    async fn bandolier_zero_cur_ammo_type_falls_back_to_default_ammo() {
+    async fn live_db_bandolier_zero_cur_ammo_type_falls_back_to_default_ammo() {
         let pool = require_db_or_skip!();
         let (weapon_type, expected_clip_size, expected_default_ammo_index) =
             pick_bandolier_weapon_with_stats(&pool).await;
@@ -338,7 +338,7 @@ mod tests {
     /// Empty-bandolier path: a player with no rows in container 3
     /// gets an empty Vec — must NOT error or return a sentinel item.
     #[tokio::test]
-    async fn bandolier_empty_returns_empty_vec() {
+    async fn live_db_bandolier_empty_returns_empty_vec() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;
@@ -374,7 +374,7 @@ mod tests {
     /// bytes unchanged, and an archetype with no rows gets an empty tree
     /// instead of the old hand-copied Rust fallback.
     #[tokio::test]
-    async fn player_ability_tree_matches_table_for_every_archetype() {
+    async fn live_db_player_ability_tree_matches_table_for_every_archetype() {
         let pool = require_db_or_skip!();
         let enum_size: i32 =
             sqlx::query_scalar("SELECT cardinality(enum_range(NULL::resources.\"EArchetype\"))")
@@ -422,7 +422,7 @@ mod tests {
     /// chardef, ability-tree seed rows) potentially stale. Failing CI
     /// loud forces the dev to revisit each one.
     #[tokio::test]
-    async fn archetype_count_matches_earchetype_enum_cardinality() {
+    async fn live_db_archetype_count_matches_earchetype_enum_cardinality() {
         let pool = require_db_or_skip!();
         let enum_size: i32 =
             sqlx::query_scalar("SELECT cardinality(enum_range(NULL::resources.\"EArchetype\"))")

@@ -45,7 +45,7 @@ fn engine() -> (Arc<CraftingSessions>, Arc<ManualScheduler>) {
 /// component is still whole and no product exists. The same flow without
 /// the logout does consume, so the first half is not vacuous.
 #[tokio::test]
-async fn logout_mid_induction_consumes_nothing() {
+async fn live_db_logout_mid_induction_consumes_nothing() {
     let pool = require_db_or_skip!();
     assert_seed_shape(&pool).await;
     let f = Fixture::new(&pool, 10).await;
@@ -126,7 +126,7 @@ async fn logout_mid_induction_consumes_nothing() {
 /// A burst past the limit gets a line per refused request, but only the
 /// first refusal resyncs the inventory.
 #[tokio::test]
-async fn refusals_past_the_limit_resync_the_inventory_once() {
+async fn live_db_refusals_past_the_limit_resync_the_inventory_once() {
     use crate::base::crafting::session::MAX_INDUCTIONS;
     use crate::base::crafting::test_packets::feedback_text;
     use crate::mercury::method_idx;

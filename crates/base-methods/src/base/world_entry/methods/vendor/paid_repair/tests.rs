@@ -144,7 +144,7 @@ fn make_state(
 /// formula in — the prior bug shape that motivated the GREATEST(...,1)
 /// floor was a 99-durability item costing 0 naquadah to repair.
 #[tokio::test]
-async fn paid_repair_restores_durability_and_debits_balance() {
+async fn live_db_paid_repair_restores_durability_and_debits_balance() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -190,7 +190,7 @@ async fn paid_repair_restores_durability_and_debits_balance() {
 /// floor's purpose without needing a synthetic 100-naquadah base.
 /// The point: very-near-full items always cost SOMETHING — never 0.
 #[tokio::test]
-async fn paid_repair_charges_at_least_one_for_near_full_items() {
+async fn live_db_paid_repair_charges_at_least_one_for_near_full_items() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
@@ -236,7 +236,7 @@ async fn paid_repair_charges_at_least_one_for_near_full_items() {
 /// pre-call value. Pre-fix bug shape: cash UPDATE runs before the
 /// balance check, leaving a partial repair when the rollback fails.
 #[tokio::test]
-async fn paid_repair_rolls_back_when_player_cannot_afford() {
+async fn live_db_paid_repair_rolls_back_when_player_cannot_afford() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;
@@ -280,7 +280,7 @@ async fn paid_repair_rolls_back_when_player_cannot_afford() {
 /// rows_by_id lookup misses and the tx is rolled back. Asserts via
 /// the no-DB-changes invariant: durability and balance both unchanged.
 #[tokio::test]
-async fn paid_repair_rejected_for_item_not_in_repair_list() {
+async fn live_db_paid_repair_rejected_for_item_not_in_repair_list() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 300;
     let player_id = TEST_BASE + 301;

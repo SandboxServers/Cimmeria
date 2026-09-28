@@ -121,7 +121,7 @@ fn assert_notified(got: &[Received], mail_id: i32, line: &str) {
 /// send path stops notifying, or notifies any session holding the player id
 /// rather than a listed one.
 #[tokio::test]
-async fn notification_reaches_only_the_online_recipient() {
+async fn live_db_notification_reaches_only_the_online_recipient() {
     let pool = require_db_or_skip!();
     cleanup(&pool, BASE).await;
     let (sender, online, offline, logged_off) = (BASE + 1, BASE + 2, BASE + 3, BASE + 4);
@@ -189,7 +189,7 @@ async fn notification_reaches_only_the_online_recipient() {
 /// (to the seller), an expiry return (to the sender, while the mailbox it
 /// left loses the header), server mail and a GM `.mail` (to the recipient).
 #[tokio::test]
-async fn every_delivery_path_notifies_the_online_recipient() {
+async fn live_db_every_delivery_path_notifies_the_online_recipient() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x20;
     cleanup(&pool, base).await;
@@ -357,7 +357,7 @@ async fn every_delivery_path_notifies_the_online_recipient() {
 /// why (security review of SS-M4, LOW): without it an item they could see
 /// vanishes unexplained.
 #[tokio::test]
-async fn quarantine_tells_the_online_owner() {
+async fn live_db_quarantine_tells_the_online_owner() {
     let pool = require_db_or_skip!();
     let base = BASE + 0x40;
     cleanup(&pool, base).await;

@@ -153,7 +153,7 @@ fn assert_close(actual: [f32; 3], expected: [f32; 3], what: &str) {
 /// is active (Preparation room, before ring travel) resolves exactly one
 /// `DisplayDialog(2309)`.
 #[tokio::test]
-async fn chain_1171_interact_marsh_while_step_2344_active_shows_dialog_2309() {
+async fn live_db_chain_1171_interact_marsh_while_step_2344_active_shows_dialog_2309() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1171)
         .await
@@ -195,7 +195,7 @@ async fn chain_1171_interact_marsh_while_step_2344_active_shows_dialog_2309() {
 /// topside), interacting with Marsh must not re-show the pre-departure
 /// dialog.
 #[tokio::test]
-async fn chain_1171_does_not_fire_once_step_2344_advanced_past() {
+async fn live_db_chain_1171_does_not_fire_once_step_2344_advanced_past() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1171)
         .await
@@ -242,7 +242,7 @@ async fn chain_1171_does_not_fire_once_step_2344_advanced_past() {
 /// the exact delay (found in review, 2026-09-18) guards against 5859
 /// popping up while the Matinee is still playing.
 #[tokio::test]
-async fn chain_1172_mission_686_complete_shows_post_death_dialog_5859() {
+async fn live_db_chain_1172_mission_686_complete_shows_post_death_dialog_5859() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1172)
         .await
@@ -286,7 +286,7 @@ async fn chain_1172_mission_686_complete_shows_post_death_dialog_5859() {
 /// Chain 1172 negative: a different mission completing must not show the
 /// post-death Marsh beat.
 #[tokio::test]
-async fn chain_1172_does_not_fire_on_a_different_mission_completion() {
+async fn live_db_chain_1172_does_not_fire_on_a_different_mission_completion() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1172)
         .await
@@ -326,7 +326,7 @@ async fn chain_1172_does_not_fire_on_a_different_mission_completion() {
 /// same connected navmesh component as the escort route, not the
 /// Preparation room. Self-skips without the navmesh fixture.
 #[tokio::test]
-async fn chain_1173_teleport_in_region_3_repositions_marsh_onto_the_topside_component() {
+async fn live_db_chain_1173_teleport_in_region_3_repositions_marsh_onto_the_topside_component() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1173)
         .await
@@ -461,7 +461,7 @@ async fn chain_1173_teleport_in_region_3_repositions_marsh_onto_the_topside_comp
 /// single-waypoint straight-line fallback `npc_ai::follow`'s own test pins
 /// as the no-navmesh failure shape.
 #[tokio::test]
-async fn chain_1174_teleport_in_starts_follow_and_routes_a_real_multi_waypoint_path() {
+async fn live_db_chain_1174_teleport_in_starts_follow_and_routes_a_real_multi_waypoint_path() {
     let pool = require_db_or_skip!();
     let chain_1173 = load_single_chain_for_test(&pool, 1173)
         .await
@@ -632,7 +632,7 @@ fn ring_3_pad_route_reaches_every_hallway_guard_spawn() {
 /// must clear Marsh's follow state — `follow_target_id` back to `None` and
 /// `ai_state` back to `Idle`.
 #[tokio::test]
-async fn chain_1175_mission_686_complete_clears_marsh_follow_target() {
+async fn live_db_chain_1175_mission_686_complete_clears_marsh_follow_target() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1175)
         .await

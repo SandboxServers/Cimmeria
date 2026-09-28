@@ -141,7 +141,7 @@ fn make_state(
 /// the buyback path reconstructs the sell price when the player
 /// changes their mind — it's load-bearing, not a side-channel.
 #[tokio::test]
-async fn full_stack_sell_credits_balance_and_moves_item_to_buyback() {
+async fn live_db_full_stack_sell_credits_balance_and_moves_item_to_buyback() {
     let pool = require_db_or_skip!();
     let entity_id: i32 = 0x7000_0801;
     let account_id = TEST_BASE;
@@ -192,7 +192,7 @@ async fn full_stack_sell_credits_balance_and_moves_item_to_buyback() {
 /// lookup misses → tx rolls back). Asserts via the no-DB-changes
 /// invariant: item still in original slot, balance unchanged.
 #[tokio::test]
-async fn sell_rejected_for_item_not_in_vendor_sell_list() {
+async fn live_db_sell_rejected_for_item_not_in_vendor_sell_list() {
     let pool = require_db_or_skip!();
     let entity_id: i32 = 0x7000_0802;
     let account_id = TEST_BASE + 100;
@@ -258,7 +258,7 @@ async fn sell_rejected_for_item_not_in_vendor_sell_list() {
 /// inventory move and let Postgres error on the cash UPDATE, leaving
 /// the item in INV_BUYBACK with no cash credit.
 #[tokio::test]
-async fn sell_rejected_when_balance_would_overflow_i32() {
+async fn live_db_sell_rejected_when_balance_would_overflow_i32() {
     let pool = require_db_or_skip!();
     let entity_id: i32 = 0x7000_0803;
     let account_id = TEST_BASE + 200;

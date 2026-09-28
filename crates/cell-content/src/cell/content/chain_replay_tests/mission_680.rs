@@ -28,7 +28,7 @@ use crate::test_support::require_db_or_skip;
 /// Chain 1071 positive: interacting with the Preparation ring switch
 /// while step 2344 is active triggers the ring transporter to region 2.
 #[tokio::test]
-async fn chain_1071_triggers_transporter_region_2_while_step_2344_active() {
+async fn live_db_chain_1071_triggers_transporter_region_2_while_step_2344_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1071)
         .await
@@ -74,7 +74,7 @@ async fn chain_1071_triggers_transporter_region_2_while_step_2344_active() {
 /// earlier 680 step), interacting with the switch must not trigger the
 /// transporter.
 #[tokio::test]
-async fn chain_1071_does_not_fire_before_step_2344_active() {
+async fn live_db_chain_1071_does_not_fire_before_step_2344_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1071)
         .await
@@ -118,7 +118,7 @@ async fn chain_1071_does_not_fire_before_step_2344_active() {
 /// advances the step) — the trigger's `region_id` match is what scopes
 /// it.
 #[tokio::test]
-async fn chain_1072_advances_to_step_2345_on_teleport_in_region_3() {
+async fn live_db_chain_1072_advances_to_step_2345_on_teleport_in_region_3() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1072)
         .await
@@ -181,7 +181,7 @@ async fn chain_1072_advances_to_step_2345_on_teleport_in_region_3() {
 /// 2345 — the trigger's `region_id` filter is what scopes this to the
 /// topside arrival.
 #[tokio::test]
-async fn chain_1072_does_not_fire_on_teleport_in_to_a_different_region() {
+async fn live_db_chain_1072_does_not_fire_on_teleport_in_to_a_different_region() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1072)
         .await
@@ -221,7 +221,7 @@ async fn chain_1072_does_not_fire_on_teleport_in_to_a_different_region() {
 /// *exit*) — pinned here exactly as shipped, per audit.md row 15 and
 /// the C02 packet instruction not to "fix" it toward the Python shape.
 #[tokio::test]
-async fn chain_1073_completes_680_and_accepts_681_on_region9_entry() {
+async fn live_db_chain_1073_completes_680_and_accepts_681_on_region9_entry() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1073)
         .await
@@ -305,7 +305,7 @@ async fn chain_1073_completes_680_and_accepts_681_on_region9_entry() {
 /// accepted (e.g. the player backtracks) must not re-complete 680 or
 /// re-accept 681.
 #[tokio::test]
-async fn chain_1073_does_not_fire_once_681_already_accepted() {
+async fn live_db_chain_1073_does_not_fire_once_681_already_accepted() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1073)
         .await
@@ -349,7 +349,7 @@ async fn chain_1073_does_not_fire_once_681_already_accepted() {
 /// 2344 still active must have both the RingNetwork bit and the quest
 /// highlight bit re-painted on the Preparation ring switch.
 #[tokio::test]
-async fn chain_1074_restores_ringswitch_bits_on_relog_while_step_2344_active() {
+async fn live_db_chain_1074_restores_ringswitch_bits_on_relog_while_step_2344_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1074)
         .await
@@ -410,7 +410,7 @@ async fn chain_1074_restores_ringswitch_bits_on_relog_while_step_2344_active() {
 /// 2344 (into 2345, topside) must not have the stale ring-switch bits
 /// re-painted on relog.
 #[tokio::test]
-async fn chain_1074_does_not_fire_once_step_2344_advanced_past() {
+async fn live_db_chain_1074_does_not_fire_once_step_2344_advanced_past() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1074)
         .await

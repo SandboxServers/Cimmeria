@@ -48,7 +48,7 @@ use crate::test_support::require_db_or_skip;
 /// this test to fail with the swap aborted — item_a stays on
 /// player_a, outgoing_b stays on player_b.
 #[tokio::test]
-async fn commit_succeeds_when_recipient_bag_full_but_trading_slot_away() {
+async fn live_db_commit_succeeds_when_recipient_bag_full_but_trading_slot_away() {
     let pool = require_db_or_skip!();
     let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(1600);

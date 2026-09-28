@@ -21,7 +21,7 @@ const ITEMS: i32 = 0x7300_1670;
 /// stack, both mailboxes and escrow are as they were, and the player is
 /// told the mail was not sent.
 #[tokio::test]
-async fn send_rolls_back_on_insert_failure() {
+async fn live_db_send_rolls_back_on_insert_failure() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
     let (acct, sender, rcpt) = (BASE, BASE + 1, BASE + 2);
@@ -61,7 +61,7 @@ async fn send_rolls_back_on_insert_failure() {
 /// sequence is pointed at an id an escrow row already holds). The
 /// decrement, the debit and the mail insert all roll back with it.
 #[tokio::test]
-async fn send_rolls_back_after_item_moved() {
+async fn live_db_send_rolls_back_after_item_moved() {
     const TAKEN_ID: i32 = 0x7300_17F0;
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
@@ -141,7 +141,7 @@ async fn send_rolls_back_after_item_moved() {
 /// nothing, the name is in `FailedRecipients` with the reason, and neither
 /// the cash nor the item leaves the sender.
 #[tokio::test]
-async fn attached_send_to_full_mailbox_moves_nothing() {
+async fn live_db_attached_send_to_full_mailbox_moves_nothing() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (BASE + 20, BASE + 21, BASE + 22);
     let type_id = setup(
@@ -191,7 +191,7 @@ async fn attached_send_to_full_mailbox_moves_nothing() {
 /// Fails when the Ignore check is skipped (the mail, the debit and the
 /// escrow row all happen).
 #[tokio::test]
-async fn attached_send_to_ignoring_recipient_moves_nothing() {
+async fn live_db_attached_send_to_ignoring_recipient_moves_nothing() {
     let pool = require_db_or_skip!();
     let (acct, sender, rcpt) = (BASE + 30, BASE + 31, BASE + 32);
     let type_id = setup(

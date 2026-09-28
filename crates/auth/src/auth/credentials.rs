@@ -508,7 +508,7 @@ mod tests {
     /// (algo 1, password intact) — the unpatched-client path must never
     /// migrate. Reverting the `(1, LegacySha1Hex)` arm trips this.
     #[tokio::test]
-    async fn legacy_hash_login_succeeds_without_migration() {
+    async fn live_db_legacy_hash_login_succeeds_without_migration() {
         let pool = require_db_or_skip!();
         let id = TEST_BASE + 1;
         let name = format!("cred-legacy-{id}");
@@ -536,7 +536,7 @@ mod tests {
     /// migrates: row flips to algo 2, password_hash_v2 populated, password
     /// NULLed. Reverting the `migrate_to_argon2id` call trips this.
     #[tokio::test]
-    async fn plaintext_login_migrates_legacy_account() {
+    async fn live_db_plaintext_login_migrates_legacy_account() {
         let pool = require_db_or_skip!();
         let id = TEST_BASE + 2;
         let name = format!("cred-migrate-{id}");
@@ -572,7 +572,7 @@ mod tests {
     /// argon2id account: correct plaintext succeeds; wrong plaintext yields
     /// InvalidCredentials.
     #[tokio::test]
-    async fn argon2_account_accepts_correct_rejects_wrong_plaintext() {
+    async fn live_db_argon2_account_accepts_correct_rejects_wrong_plaintext() {
         let pool = require_db_or_skip!();
         let id = TEST_BASE + 3;
         let name = format!("cred-argon-{id}");
@@ -599,7 +599,7 @@ mod tests {
     /// argon2id hash can't be verified from a client SHA-1 hash, so the
     /// unpatched client can no longer log into a migrated account.
     #[tokio::test]
-    async fn argon2_account_rejects_legacy_hash_shape() {
+    async fn live_db_argon2_account_rejects_legacy_hash_shape() {
         let pool = require_db_or_skip!();
         let id = TEST_BASE + 4;
         let name = format!("cred-argon-legacy-{id}");
@@ -620,7 +620,7 @@ mod tests {
     /// Missing account yields InvalidCredentials (not a distinct error) so
     /// account existence is never revealed.
     #[tokio::test]
-    async fn unknown_account_is_invalid_credentials() {
+    async fn live_db_unknown_account_is_invalid_credentials() {
         let pool = require_db_or_skip!();
         let id = TEST_BASE + 5;
         cleanup(&pool, id).await; // ensure absent
@@ -640,7 +640,7 @@ mod tests {
     /// NULL must fail closed (InvalidCredentials), never panic. Guards the
     /// `argon2_hash_missing` branch — a corrupt/half-migrated row.
     #[tokio::test]
-    async fn argon2_account_with_null_hash_is_invalid() {
+    async fn live_db_argon2_account_with_null_hash_is_invalid() {
         let pool = require_db_or_skip!();
         let id = TEST_BASE + 6;
         let name = format!("cred-argon-nullhash-{id}");
@@ -667,7 +667,7 @@ mod tests {
     /// An account with an unrecognised `password_algo` must fail closed, never
     /// authenticate. Guards the catch-all arm against a future/garbage algo.
     #[tokio::test]
-    async fn unknown_password_algo_is_invalid() {
+    async fn live_db_unknown_password_algo_is_invalid() {
         let pool = require_db_or_skip!();
         let id = TEST_BASE + 7;
         let name = format!("cred-badalgo-{id}");

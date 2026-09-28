@@ -62,7 +62,7 @@ async fn insert_minimal_player(pool: &PgPool, account_id: i32, player_id: i32) {
 /// SELECT), a column rename without updating both queries, or a
 /// transaction rollback that leaves the DB in a half-saved state.
 #[tokio::test]
-async fn round_trip_persists_all_fields() {
+async fn live_db_round_trip_persists_all_fields() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
@@ -122,7 +122,7 @@ async fn round_trip_persists_all_fields() {
 /// rows that the next load picks up, presenting the player with
 /// disciplines they don't actually know.
 #[tokio::test]
-async fn save_replaces_expertise_rows() {
+async fn live_db_save_replaces_expertise_rows() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 10;
     let player_id = TEST_BASE + 11;
@@ -168,7 +168,7 @@ async fn save_replaces_expertise_rows() {
 /// and break login for any account that didn't yet have crafting
 /// state seeded.
 #[tokio::test]
-async fn load_missing_player_returns_default() {
+async fn live_db_load_missing_player_returns_default() {
     let pool = require_db_or_skip!();
     let bogus_player_id = TEST_BASE + 999;
     // Don't insert anything — just try to load.
@@ -196,7 +196,7 @@ async fn load_missing_player_returns_default() {
 /// anyhow context), update the assertion but keep the regression
 /// guard's intent: a 0-row UPDATE must surface as a failure.
 #[tokio::test]
-async fn save_for_nonexistent_player_returns_error() {
+async fn live_db_save_for_nonexistent_player_returns_error() {
     let pool = require_db_or_skip!();
     let bogus_player_id = TEST_BASE + 1999;
 
@@ -259,7 +259,7 @@ async fn save_for_nonexistent_player_returns_error() {
 /// test must change *deliberately* — flip the expectation and
 /// document the new contract in the persistence module's docs.
 #[tokio::test]
-async fn load_with_stray_expertise_row_keeps_it() {
+async fn live_db_load_with_stray_expertise_row_keeps_it() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 2900;
     let player_id = TEST_BASE + 2901;

@@ -64,7 +64,7 @@ fn system_account_id_is_below_sequence_start() {
 /// clause dropped, the INSERT would fail on the second boot with a unique-
 /// violation and seeded auctions would have no FK-valid seller.
 #[tokio::test]
-async fn ensure_system_seller_is_idempotent_and_satisfies_fk() {
+async fn live_db_ensure_system_seller_is_idempotent_and_satisfies_fk() {
     let pool = require_db_or_skip!();
 
     // Two calls must both succeed (idempotent).
@@ -102,7 +102,7 @@ async fn ensure_system_seller_is_idempotent_and_satisfies_fk() {
 /// — reverting the fix causes this test to fail whenever any real player
 /// exists in the DB.
 #[tokio::test]
-async fn seed_auctions_use_system_seller() {
+async fn live_db_seed_auctions_use_system_seller() {
     let pool = require_db_or_skip!();
 
     // Clear any existing active auctions so the idempotency guard doesn't
@@ -191,7 +191,7 @@ fn uat_specs_cover_the_checklist() {
 /// far as its listing, and the pistols span five tech-competency tiers, so
 /// a search's TC bounds visibly narrow the list.
 #[tokio::test]
-async fn uat_specs_name_real_items_across_tech_tiers() {
+async fn live_db_uat_specs_name_real_items_across_tech_tiers() {
     let pool = require_db_or_skip!();
     let mut tiers = std::collections::BTreeSet::new();
     for s in uat_specs() {
@@ -346,7 +346,7 @@ async fn cleanup_squatters(pool: &PgPool) {
 /// CONFLICT DO NOTHING` and never looked back, so the seed listed three
 /// auctions whose sales pay account 1's owner.
 #[tokio::test]
-async fn seed_refuses_when_account_1_is_another_account() {
+async fn live_db_seed_refuses_when_account_1_is_another_account() {
     let pool = require_db_or_skip!();
     free_reserved_ids(&pool).await;
     insert_account(&pool, SYSTEM_ACCOUNT_ID, SQUATTER_NAME).await;
@@ -373,7 +373,7 @@ async fn seed_refuses_when_account_1_is_another_account() {
 /// Live-DB, BM-07: account 1 is the Black Market's but player 1 is another
 /// account's character. Refused as `player_taken`, nothing listed.
 #[tokio::test]
-async fn seed_refuses_when_player_1_is_another_character() {
+async fn live_db_seed_refuses_when_player_1_is_another_character() {
     let pool = require_db_or_skip!();
     free_reserved_ids(&pool).await;
     cleanup_squatters(&pool).await;
@@ -399,7 +399,7 @@ async fn seed_refuses_when_player_1_is_another_character() {
 /// so player 1 cannot be created (the name is unique). Refused as
 /// `player_missing`, nothing listed.
 #[tokio::test]
-async fn seed_refuses_when_the_name_is_taken_elsewhere() {
+async fn live_db_seed_refuses_when_the_name_is_taken_elsewhere() {
     let pool = require_db_or_skip!();
     free_reserved_ids(&pool).await;
     cleanup_squatters(&pool).await;
@@ -460,7 +460,7 @@ fn only_an_instance_free_listing_is_a_seed_listing() {
 /// `enabled`, so enabled) is switched off by the next check, and still
 /// passes it.
 #[tokio::test]
-async fn an_older_enabled_system_account_is_disabled() {
+async fn live_db_an_older_enabled_system_account_is_disabled() {
     let pool = require_db_or_skip!();
     free_reserved_ids(&pool).await;
     sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")

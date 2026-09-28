@@ -126,7 +126,7 @@ async fn execute(resolved: ResolvedActions, mgr: &mut SpaceManager) -> Vec<CellT
 /// Chain 7010: clicking the clerk opens 60104 with the clerk as speaker;
 /// another hub NPC's tag fires nothing.
 #[tokio::test]
-async fn mail_clerk_click_opens_dialog_60104_as_the_clerk() {
+async fn live_db_mail_clerk_click_opens_dialog_60104_as_the_clerk() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7010).await;
 
@@ -181,7 +181,7 @@ async fn mail_clerk_click_opens_dialog_60104_as_the_clerk() {
 /// player, with the seeded contents and a cooldown keyed on the chain; and
 /// the chain keys on dialog 60104 only.
 #[tokio::test]
-async fn mail_clerk_button_sends_exactly_one_mail() {
+async fn live_db_mail_clerk_button_sends_exactly_one_mail() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7011).await;
     let choose = |dialog_id: i32| {

@@ -138,7 +138,7 @@ fn rows(capture: &crate::test_support::LogCaptureGuard, event: &str) -> Vec<Capt
 /// and the actor; one `org.state_push` row names the new organization with
 /// the founder online.
 #[tokio::test]
-async fn create_pushes_the_new_organization_and_tells_the_cell() {
+async fn live_db_create_pushes_the_new_organization_and_tells_the_cell() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 6, &[0], &["Org05 Push"]).await;
     let player = fx.player(0);
@@ -226,7 +226,7 @@ async fn create_pushes_the_new_organization_and_tells_the_cell() {
 /// NAME_TAKEN)` and a line, the cell is told to charge the attempt, the row
 /// says `name_taken`, and the second player joins nothing.
 #[tokio::test]
-async fn create_duplicate_name_is_refused_visibly() {
+async fn live_db_create_duplicate_name_is_refused_visibly() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 7, &[0, 0], &["Org05 Taken"]).await;
     let (first, second) = (fx.player(0), fx.player(1));
@@ -266,7 +266,7 @@ async fn create_duplicate_name_is_refused_visibly() {
 /// already leads a Team gets a line and a `not_eligible` row, and the cell
 /// hears nothing.
 #[tokio::test]
-async fn registrar_open_checks_eligibility_per_type() {
+async fn live_db_registrar_open_checks_eligibility_per_type() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 8, &[0], &["Org05 Elig"]).await;
     let player = fx.player(0);
@@ -318,7 +318,7 @@ async fn registrar_open_checks_eligibility_per_type() {
 /// line and founds nothing; a GM founds and gets the push, and the cell is
 /// told nothing (there is no pending creation to settle).
 #[tokio::test]
-async fn gm_create_rechecks_the_access_level_on_the_base() {
+async fn live_db_gm_create_rechecks_the_access_level_on_the_base() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 9, &[0], &["Org05 Gm"]).await;
     let player = fx.player(0);
@@ -360,7 +360,7 @@ async fn gm_create_rechecks_the_access_level_on_the_base() {
 /// nobody: WARN `org.actor_mismatch`, a `rejected` row, no database write,
 /// and the cell is still told, so the offer is not left in flight.
 #[tokio::test]
-async fn create_for_a_recycled_entity_acts_for_nobody() {
+async fn live_db_create_for_a_recycled_entity_acts_for_nobody() {
     let pool = require_db_or_skip!();
     let fx = setup(&pool, 10, &[0], &["Org05 Stale"]).await;
     let player = fx.player(0);

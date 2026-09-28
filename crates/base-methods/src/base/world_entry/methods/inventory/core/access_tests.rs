@@ -177,7 +177,7 @@ async fn use_item(
 /// is written, `use_rejected reason=container_not_accessible` names the
 /// container, and the player is told.
 #[tokio::test]
-async fn using_an_item_in_buyback_is_refused() {
+async fn live_db_using_an_item_in_buyback_is_refused() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE, BASE + 1, 0x7000_B6E0);
     setup(&pool, account_id, player_id, entity_id).await;
@@ -211,7 +211,7 @@ async fn using_an_item_in_buyback_is_refused() {
 /// A banked item is usable only with a vault session: refused with none
 /// (no `ItemUsed`, `vault_reason=no_vault_session`), accepted with one.
 #[tokio::test]
-async fn using_a_banked_item_needs_a_vault_session() {
+async fn live_db_using_a_banked_item_needs_a_vault_session() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x10, BASE + 0x11, 0x7000_B6E1);
     setup(&pool, account_id, player_id, entity_id).await;
@@ -256,7 +256,7 @@ async fn using_a_banked_item_needs_a_vault_session() {
 /// `removeItem` of a banked item without a session keeps the row and logs
 /// `use_rejected op=remove`; with a session it deletes it.
 #[tokio::test]
-async fn removing_a_banked_item_needs_a_vault_session() {
+async fn live_db_removing_a_banked_item_needs_a_vault_session() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x20, BASE + 0x21, 0x7000_B6E2);
     setup(&pool, account_id, player_id, entity_id).await;
@@ -291,7 +291,7 @@ async fn removing_a_banked_item_needs_a_vault_session() {
 /// without a session, and with one the vault instance is taken while the
 /// buyback one stays. Before BV-03 the first call took the buyback row.
 #[tokio::test]
-async fn remove_by_type_never_searches_buyback_or_a_closed_vault() {
+async fn live_db_remove_by_type_never_searches_buyback_or_a_closed_vault() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x30, BASE + 0x31, 0x7000_B6E3);
     setup(&pool, account_id, player_id, entity_id).await;
@@ -316,7 +316,7 @@ async fn remove_by_type_never_searches_buyback_or_a_closed_vault() {
 /// room; after the vault grows to 50, slot 40 is the one reserved. Fails
 /// with the bound removed (slot 40 is handed out to a 40-slot player).
 #[tokio::test]
-async fn reserving_vault_slots_stops_at_bank_slots() {
+async fn live_db_reserving_vault_slots_stops_at_bank_slots() {
     let pool = require_db_or_skip!();
     let (account_id, player_id, entity_id) = (BASE + 0x40, BASE + 0x41, 0x7000_B6E4);
     setup(&pool, account_id, player_id, entity_id).await;

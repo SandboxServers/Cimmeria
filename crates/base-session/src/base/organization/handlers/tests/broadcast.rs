@@ -13,7 +13,7 @@ use crate::test_support::{require_db_or_skip, LogCapture};
 /// the Officer (D-ORG08 masks) get it. The DEBUG `org.broadcast` row counts
 /// the recipients.
 #[tokio::test]
-async fn broadcast_reaches_online_members_filtered_by_permission() {
+async fn live_db_broadcast_reaches_online_members_filtered_by_permission() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 26, 4, &["Org07 Broadcast"]).await;
     let cmd = fx
@@ -62,7 +62,7 @@ async fn broadcast_reaches_online_members_filtered_by_permission() {
 /// database the broadcast is WARN `org.broadcast_failed` (`no_db`) and sends
 /// nothing.
 #[tokio::test]
-async fn broadcast_failures_warn_with_reason() {
+async fn live_db_broadcast_failures_warn_with_reason() {
     let pool = require_db_or_skip!();
     let fx = Fixture::org07(&pool, 27, 2, &["Org07 Broadcast Fail"]).await;
     let team = fx.org(OrgType::Team, "Org07 Broadcast Fail", 0, &[1]).await;
