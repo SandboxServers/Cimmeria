@@ -4,10 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 
-use crate::mercury::{
-    build_resource_fragment, build_version_info, FRAG_FIRST, FRAG_FIRST_AND_LAST, FRAG_LAST,
-    FRAG_MIDDLE,
-};
+use crate::mercury::build_version_info;
 
 use super::cooked_sync::{self, EnqueueOutcome, SyncJob, VersionReply};
 use super::helpers::{drain_acks_and_seq, get_active_entity_id, get_enc_version};
@@ -135,10 +132,13 @@ pub async fn handle_version_info_request(
     Ok(())
 }
 
-/// Handle `elementDataRequest` (0xC1).
+/// Handle `elementDataRequest` (0xC1 at character select; in-world the same
+/// request arrives as SGWPlayer `0xD5` and takes the same path).
 ///
-/// Client payload: [categoryId: u32][key: u32]
-/// Response: fragment the XML data for the requested element.
+/// Client payload: [categoryId: u32][key: u32] (`ClientCache.def`: two
+/// INT32s). The entry goes out as a `resourceFragment` transfer on the
+/// session's resync task, ahead of any background stream
+/// ([`cooked_sync::serve_miss`]).
 pub async fn handle_element_data_request(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -148,114 +148,31 @@ pub async fn handle_element_data_request(
     resource_cache: &Option<Arc<ResourceCache>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if payload.len() < 8 {
-        tracing::warn!(%addr, "elementDataRequest: payload too short");
+        tracing::warn!(
+            %addr,
+            payload_len = payload.len(),
+            reason = "payload_too_short",
+            "elementDataRequest: payload too short"
+        );
         return Ok(());
     }
-
     let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
     let element_id = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
-
-    tracing::debug!(%addr, category_id, element_id, "elementDataRequest");
-
-    let cache = match resource_cache {
-        Some(c) => c,
-        None => {
-            tracing::warn!(%addr, "No resource cache loaded -- cannot serve element data");
-            return Ok(());
-        }
-    };
-
-    let xml_data = match cache.get(category_id, element_id) {
-        Some(data) => data,
-        None => {
-            tracing::warn!(%addr, category_id, element_id, "Element not found in resource cache");
-            return Ok(());
-        }
-    };
-
-    // Override status drives log level below: every patched-XML push is
-    // load-bearing for cache consistency, so it deserves INFO. Reads only.
-    let is_override = cache.overridden_elements(category_id).contains(&element_id);
-
-    // Allocate a data_id for this transfer
-    let data_id = {
-        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
-            let id = c.next_data_id;
-            c.next_data_id = c.next_data_id.wrapping_add(1);
-            id
-        } else {
-            return Ok(());
-        }
-    };
-
-    let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
-    let total_chunks = chunks.len();
-
-    // INFO for an overridden element: every patched-XML push is
-    // load-bearing for cache consistency, and the per-element byte count
-    // is what surfaces a future PAK element crossing a chunk boundary
-    // and adding fragments to the cold-cache login burst.
-    if is_override {
-        tracing::info!(
-            %addr, category_id, element_id,
-            bytes = xml_data.len(),
-            total_chunks,
-            data_id,
-            "Fragmenting overridden resource data"
-        );
-    } else {
-        tracing::debug!(
+    let Some(cache) = resource_cache else {
+        tracing::warn!(
             %addr,
+            category_id,
             element_id,
-            total_size = xml_data.len(),
-            total_chunks,
-            data_id,
-            "Fragmenting resource data"
+            reason = "no_resource_cache",
+            "elementDataRequest: no resource cache loaded"
         );
-    }
-
-    let enc_version = get_enc_version(connected, addr);
-    for (i, chunk) in chunks.iter().enumerate() {
-        let frag_flags = match (i == 0, i == total_chunks - 1) {
-            (true, true) => FRAG_FIRST_AND_LAST,
-            (true, false) => FRAG_FIRST,
-            (false, true) => FRAG_LAST,
-            (false, false) => FRAG_MIDDLE,
-        };
-
-        // First fragment includes msgType, categoryId, elementId
-        let (mt, cat, elem) = if i == 0 {
-            (Some(0u8), Some(category_id), Some(element_id))
-        } else {
-            (None, None, None)
-        };
-
-        let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-        let pkt = build_resource_fragment(
-            &key,
-            seq,
-            &acks,
-            data_id,
-            i as u8,
-            frag_flags,
-            mt,
-            cat,
-            elem,
-            chunk,
-            enc_version,
-        );
-        transport.send_to(&pkt, addr).await?;
-        super::helpers::shadow_register_reliable_send(
-            connected,
-            addr,
-            seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-        );
-    }
-
-    tracing::debug!(%addr, element_id, total_chunks, "Resource fragments sent");
-
+        return Ok(());
+    };
+    cooked_sync::serve_miss(
+        cooked_sync::context(transport, addr, key, connected, cache),
+        category_id,
+        element_id,
+    );
     Ok(())
 }
 

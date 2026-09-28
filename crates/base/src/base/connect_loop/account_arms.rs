@@ -22,9 +22,11 @@ use crate::cell::messages::BaseToCellMsg;
 
 use super::super::character::{handle_delete_character, handle_request_character_visuals};
 use super::super::character_create::handle_create_character;
+use super::super::cooked_data::handle_element_data_request;
 use super::super::cooked_sync;
 use super::super::dispatch::{dispatch_sgw_player_base_method, sgw_player_base};
 use super::super::login::handle_log_off;
+use super::super::resources::ResourceCache;
 use super::super::world_entry::{handle_on_client_ready, handle_play_character};
 use super::super::ConnectedClientState;
 
@@ -43,6 +45,7 @@ pub(super) async fn dispatch_base_method(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    resource_cache: &Option<Arc<ResourceCache>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (in_world, player_name) = {
         let clients = connected.lock().unwrap();
@@ -63,6 +66,19 @@ pub(super) async fn dispatch_base_method(
                     transport,
                     entity_to_addr,
                     db_pool,
+                )
+                .await?;
+            }
+            // An in-world cache miss: served from the resource cache, ahead
+            // of any background resync (#840).
+            sgw_player_base::ELEMENT_DATA_REQUEST => {
+                handle_element_data_request(
+                    transport,
+                    addr,
+                    key,
+                    payload,
+                    connected,
+                    resource_cache,
                 )
                 .await?;
             }
@@ -115,7 +131,7 @@ pub(super) async fn dispatch_base_method(
                 0
             };
             tracing::info!(%addr, player_id, "Client requests playCharacter");
-            if cooked_sync::is_syncing(connected, addr) {
+            if cooked_sync::holds_world_entry(connected, addr) {
                 hold_play_character(
                     transport,
                     addr,
@@ -175,15 +191,17 @@ pub(super) async fn dispatch_base_method(
     Ok(())
 }
 
-/// Hold `playCharacter` until the session's cooked-data resync finishes.
+/// Hold `playCharacter` until the session's held cooked-data categories are
+/// resynced.
 ///
 /// The client empties a mismatched category the moment it reads the resync's
-/// opening `onVersionInfo`, and gets each entry back only as it is pushed.
-/// World entry needs some of them at once (`onClientMapLoad` names a world
-/// the client resolves from category 12), and an in-world cache miss is not
-/// served, so entering the world mid-push would leave the player with data
-/// that is simply missing. The resync task runs this once its last category
-/// is pushed; if the session disconnects first, it is dropped.
+/// opening `onVersionInfo`, and gets each entry back as it is pushed or as it
+/// asks for it (`elementDataRequest`, served ahead of the stream). The held
+/// categories (`cooked_sync::HELD_CATEGORIES`: world info, which
+/// `onClientMapLoad` needs, and the others with no client miss path) cannot
+/// be asked for, so world entry waits for them. Everything else keeps
+/// streaming in the world. The resync task runs this once the last held
+/// category is pushed; if the session disconnects first, it is dropped.
 async fn hold_play_character(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -235,7 +253,7 @@ async fn hold_play_character(
                 account_id,
                 player_id,
                 event = "cooked_data.world_entry_held",
-                "playCharacter held until the cooked-data resync finishes"
+                "playCharacter held until the held cooked-data categories are resynced"
             );
         }
         // The resync finished between the check and the hold: enter now.

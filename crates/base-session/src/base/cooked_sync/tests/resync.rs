@@ -39,11 +39,11 @@ async fn assert_resync_converges(port: u16, category_id: u32, stale: BTreeMap<u3
         Some(&Sent::VersionInfo(VersionInfo {
             category: category_id,
             version: resync_pending_version(served),
-            required: server.len() as u32,
+            required: 0,
             invalidate_all: true,
             keys: vec![],
         })),
-        "category {category_id}: opens with InvalidateAll, RequiredUpdates = N and the placeholder"
+        "category {category_id}: opens with InvalidateAll, RequiredUpdates = 0 (so the client asks for misses) and the placeholder"
     );
     assert_eq!(
         sent.last(),

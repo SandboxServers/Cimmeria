@@ -243,3 +243,53 @@ async fn play_character_is_not_held_without_a_resync() {
     rig.deliver(0xC4, &71i32.to_le_bytes()).await;
     assert!(rig.world_entry_sent());
 }
+
+/// In-world `0xD5` (`SGWPlayer.elementDataRequest`, two INT32s) is served:
+/// the entry goes out as a `resourceFragment` transfer.
+#[tokio::test]
+async fn in_world_element_data_request_is_served() {
+    let mut rig = rig(47_506, true);
+    let key = *committed_cache()
+        .category(5)
+        .unwrap()
+        .elements
+        .keys()
+        .min()
+        .unwrap();
+    let mut payload = 5u32.to_le_bytes().to_vec();
+    payload.extend_from_slice(&key.to_le_bytes());
+    rig.deliver(0xD5, &payload).await;
+
+    let enc = rig.connected.lock().unwrap()[&rig.addr].enc.clone();
+    let served = async {
+        loop {
+            let hit = rig.sent.filter_to(rig.addr).iter().any(|pkt| {
+                let pt = enc.decrypt(pkt).unwrap();
+                // [flags][0x36][len] data_id(2) chunk(1) flags(1) type(1) cat(4) key(4)
+                pt[1] == 0x36
+                    && u32::from_le_bytes(pt[9..13].try_into().unwrap()) == 5
+                    && u32::from_le_bytes(pt[13..17].try_into().unwrap()) == key
+            });
+            if hit {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), served)
+        .await
+        .expect("the missed entry was never sent");
+}
+
+/// A resync of a category with a client miss path (missions) does not hold
+/// world entry: it keeps streaming in the world.
+#[tokio::test]
+async fn play_character_is_not_held_for_a_streaming_category() {
+    let mut rig = rig(47_507, false);
+    let served = committed_cache().category(3).unwrap().metadata;
+    rig.deliver(0xC0, &version_request(3, served.wrapping_add(1)))
+        .await;
+    assert!(cooked_sync::is_syncing(&rig.connected, rig.addr));
+    rig.deliver(0xC4, &71i32.to_le_bytes()).await;
+    assert!(rig.world_entry_sent(), "missions must not hold world entry");
+}

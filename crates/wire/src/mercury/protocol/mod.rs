@@ -11,6 +11,8 @@ mod session;
 mod length_framing_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod version_info_tests;
 
 // ── Re-exports ───────────────────────────────────────────────────────────────
 // Matches the public API that mercury/mod.rs imports from `protocol::*`.
@@ -24,7 +26,10 @@ pub use character::{
     build_char_create_failed, build_char_list, build_character_visuals, build_on_character_list,
 };
 
-pub use resources::{build_resource_fragment, build_version_info};
+pub use resources::{
+    build_resource_fragment, build_version_info, build_version_info_to_player,
+    SGW_PLAYER_ON_VERSION_INFO,
+};
 
 // ── Shared imports from parent (mercury) ─────────────────────────────────────
 // Used by submodules via `super::`.

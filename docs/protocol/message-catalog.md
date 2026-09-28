@@ -442,11 +442,29 @@ The server decides per request (`VersionReply::decide`, `crates/base-session/src
 |---|---|
 | No category data | One reply echoing the client's version, `invalidateAll = 0`, no keys. |
 | Versions match | One reply with the served version, `invalidateAll = 0`, no keys. |
-| Versions differ (any category, with or without overrides) | A **full resync** on the session's resync task: (1) `onVersionInfo(invalidateAll = 1, requiredUpdates = N, version = !served)`; (2) `N` `resourceFragment` transfers, one per entry of the server's category, in ascending key order; (3) `onVersionInfo(invalidateAll = 0, requiredUpdates = 0, no keys, version = served)`. |
+| Versions differ (any category, with or without overrides) | A **full resync** on the session's resync task: (1) `onVersionInfo(invalidateAll = 1, requiredUpdates = 0, version = !served)`; (2) one `resourceFragment` transfer per entry of the server's category, in ascending key order; (3) `onVersionInfo(invalidateAll = 0, requiredUpdates = 0, no keys, version = served)`. |
 
-The opening reply stamps a placeholder (the bitwise NOT of the served version) rather than the real version, because the client writes `Version` before any entry arrives. The closing reply is ordered behind every entry on the reliable channel, so the client only takes the real version once it holds the whole category; a client that disconnects part-way keeps the placeholder and resyncs at its next login.
+- **Placeholder version.** The opening reply stamps the bitwise NOT of the served version, because the client writes `Version` before any entry arrives. The closing reply is ordered behind every entry on the reliable channel, so the client takes the real version only once it holds the whole category. A client that disconnects part-way keeps the placeholder and resyncs at its next login.
+- **`RequiredUpdates = 0`.** The client asks for a missing entry only while the category's `RequiredUpdates` is 0: every per-category request function checks `this+0x48 == 0`, e.g. `0x00cfe060` for category 11 and `0x00d20150` for category 3. With `N` it would wait on every miss until the whole category had arrived. With 0 it asks, and the server serves the miss ahead of the stream (below).
+- **Addressing.** Both replies go to the session's current entity. At character select that is the Account, as client method 0 (`0x80`). In-world it is the player, as SGWPlayer client method 96 (`0xBD`, sub-index 35; `build_version_info_to_player`). `0x80` addressed to the player would be SGWPlayer client method 0.
+- **Pacing and order.** Every packet goes through the session's reliable window: at most `SYNC_IN_FLIGHT_BUDGET` (24) reliable packets outstanding on the session, counting everything else in flight, which leaves 8 of the 32 TX-window slots for game traffic. Categories stream in rank order: the held ones first, then missions, dialogs and items, then the rest, with TextStrings (29,126 entries) last.
+- **World entry.** `playCharacter` waits only for the held categories: 12 (world info, needed by `onClientMapLoad`), 16, 17, 18, 20 and 21. The client has no miss path for any of them, and together they are about 230 entries, under a second. Everything else keeps streaming after world entry.
 
-Every packet of a resync is paced through the session's reliable window: at most `SYNC_IN_FLIGHT_BUDGET` (24) reliable packets outstanding on the session, counting everything else it has in flight, which leaves 8 of the 32 TX-window slots for game traffic. `playCharacter` waits until the session's resyncs finish. Telemetry: every request logs `event=cooked_data.version_reply` (`outcome`, `reason`, `category_id`, `client_version`, `server_version`); every resync logs `event=cooked_data.sync_start` and `event=cooked_data.sync_finish` (`outcome=complete` at INFO with `entry_count`, `bytes`, `packets`, `duration_ms`; `outcome=abandoned` at WARN with `reason`); a held world entry logs `cooked_data.world_entry_held` and `cooked_data.world_entry_released`. Design: [mission-pak-overrides.md § How the handshake works](../architecture/mission-pak-overrides.md#how-the-handshake-works).
+**Misses.** `elementDataRequest` (`0xC1` at character select, SGWPlayer `0xD5` in-world; `[categoryId: i32][key: i32]`) is served from the server's category, PAK plus overrides. The entry goes out as the next transfer on the session's task, ahead of the background stream (`cooked_sync::serve_miss`). Rules:
+
+- An unknown category or key is refused. So is anything past a session's rate limit: a bucket of 100, refilled at 50 per second, with at most 256 misses waiting.
+- A repeat of an entry already waiting is dropped.
+- A refusal logs a WARN, throttled to one per reason per session every 5 s with the suppressed count, because the client asks again on every lookup.
+
+**Telemetry:**
+
+- `cooked_data.version_reply` on every request: `outcome`, `reason`, `category_id`, `client_version`, `server_version`.
+- `cooked_data.sync_start` / `cooked_data.sync_finish`: `outcome=complete` at INFO with `entry_count`, `bytes`, `packets` and `duration_ms`; `outcome=abandoned` at WARN with `reason`.
+- `cooked_data.miss_served` (INFO): `category_id`, `key`, `bytes`, `latency_ms`.
+- `cooked_data.miss_refused` (WARN): `reason`, `category_id`, `key`, `suppressed`.
+- `cooked_data.world_entry_held` / `world_entry_released`.
+
+Design: [mission-pak-overrides.md § How the handshake works](../architecture/mission-pak-overrides.md#how-the-handshake-works).
 
 Before #840 the server sent `invalidateAll = 1` with nothing pushed for any mismatched category without an override list, and the client emptied and persisted that category (the 2026-09-20 Kismet sequence wipe, #754). A build from before #840 still does, which is why a client moving between builds can lose a category (see [troubleshooting](../troubleshooting.md#a-cooked-data-category-went-empty-after-logging-in-to-another-server)).
 
@@ -454,9 +472,7 @@ Before #840 the server sent `invalidateAll = 1` with nothing pushed for any mism
 
 ### `resourceFragment` (NetIn, BASEMSG 0x36)
 
-How the server ships XML payloads for a single category-element pair. Already documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md). The server emits it in reply to `elementDataRequest` (`crates/base-session/src/base/cooked_data.rs`) and, for a resync, once per entry of the category between the two `onVersionInfo` replies (`crates/base-session/src/base/cooked_sync/task.rs`). The client's proxy-data handler (`0x0043dad0`) decrements `RequiredUpdates` per completed entry and writes the entry to its cache at once if the category's `onVersionInfo` has arrived, or buffers it until then.
-
-The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment streams to expect before the cache is considered fresh.
+How the server ships XML payloads for a single category-element pair. Already documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md). The server emits it in reply to `elementDataRequest` (`crates/base-session/src/base/cooked_data.rs`) and, for a resync, once per entry of the category between the two `onVersionInfo` replies (`crates/base-session/src/base/cooked_sync/task.rs`). The client's proxy-data handler (`0x0043dad0`) decrements `RequiredUpdates` (if nonzero) per completed entry and writes the entry to its cache at once if the category's `onVersionInfo` has arrived, or buffers it until then. `RequiredUpdates` is only a counter and a gate on miss requests; the resync sends 0.
 
 ---
 

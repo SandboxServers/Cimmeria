@@ -722,6 +722,8 @@ on the client. The server's `resource.cpp` table starting at 0 is inconsistent w
 | `0x00479e90` | `ServerSource_SetVersion` | Stores server version at `this+0x24` → calls WriteMetaDataVersion |
 | `0x0043bdb0` | `ServerSource_WriteElement` (was `ServerSource_RequestElement`) | Writes one element to the cache PAK, then emits an element event; not a request (corrected 2026-09-28, Finding 4a) |
 | `0x0043dad0` | `ServerSource_onProxyData_Handler_cat6` | Pushed-entry handler: decrements RequiredUpdates, writes or buffers the entry (Finding 4a) |
+| `0x00cfdeb0` | `Event_NetOut_elementDataRequest_ctor` | Miss-request event; one caller per category with a miss path (none for 12, 16, 17, 18, 20, 21; Finding 4a) |
+| `0x00cfe060` | `CookedCategory11_RequestMissing` | Sends `elementDataRequest(11, key)` only while `RequiredUpdates == 0`; the per-category template (Finding 4a) |
 | `0x013a1620` | `CZipStorage_Dtor` | Destroys wstring at `+0xC`, CZipAutoBuffer at `+0x5C` |
 
 ### Category→PAK Mapping (confirmed from binary — all ServerSource, DEFLATE ZIP)

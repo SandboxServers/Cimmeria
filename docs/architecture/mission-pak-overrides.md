@@ -39,10 +39,12 @@ sequenceDiagram
         Server-->>Client: onVersionInfo(server_version, invalidate_all=false, RequiredUpdates=0)
         Note over Client: Cache hit; no further traffic
     else client_version != server_version
-        Server-->>Client: onVersionInfo(!server_version, invalidate_all=true, RequiredUpdates=N)
+        Server-->>Client: onVersionInfo(!server_version, invalidate_all=true, RequiredUpdates=0)
         Note over Client: Delete every entry of the category;<br/>stamp the placeholder version
         Server-->>Client: resourceFragment x N (every entry, paced)
-        Note over Client: Each entry written as it arrives
+        Note over Client: Each entry written as it arrives;<br/>a lookup of one not yet here sends elementDataRequest
+        Client->>Server: elementDataRequest(category, key)
+        Server-->>Client: resourceFragment (that entry, next, ahead of the stream)
         Server-->>Client: onVersionInfo(server_version, invalidate_all=false, RequiredUpdates=0)
         Note over Client: Holds exactly the server's category;<br/>next login matches
     end
@@ -56,29 +58,33 @@ sequenceDiagram
 
 Before #840 a category with an override list got a per-key reply (just the overridden ids) and every other category got `invalidate_all = true` with nothing pushed. The second branch emptied every client's Kismet sequence table on 2026-09-20 (#754), and it emptied category 16 on every login, because in-world `chatJoin` (`0xC0`) was being read as a `versionInfoRequest` (see [Routing](#0xc00xc1-are-cache-messages-only-at-character-select)). The per-key reply also left anything else the client held from another build in place.
 
-Three details keep the resync safe:
+Five details keep the resync safe:
 
 - **Placeholder version first, real version last.** The opening reply stamps the bitwise NOT of the served version, and the closing reply, queued behind every entry on the same reliable channel, stamps the real one. A client that disconnects part-way keeps the placeholder, sees a mismatch at its next login, and resyncs again.
+- **`RequiredUpdates = 0`, so misses are asked for.** Each per-category request function in the client sends `elementDataRequest` only while the category's `RequiredUpdates` (`ServerSource+0x48`) is 0 (`0x00cfe060`, `0x00d20150`, … one per category). The lookup does not block: it returns nothing and asks, and the entry is written when it arrives, so the next lookup hits.
+- **Misses jump the stream.** `elementDataRequest` (`0xC1` at character select, SGWPlayer `0xD5` in-world) is served from the server's category as the very next transfer on the session's task. Unknown categories and keys are refused, and a session is rate-limited: a bucket of 100, 50 a second, at most 256 waiting. Refusals log a throttled WARN.
 - **Paced through the reliable window.** The resync task never lets more than 24 reliable packets be outstanding on the session (`SYNC_IN_FLIGHT_BUDGET`, the 32-slot TX window minus 8 slots left for game traffic), waiting for acks before it sends more. It runs on its own task per session, so the receive loop and other players never wait on it.
-- **World entry waits.** An entry the client looks up before it is re-pushed is missing, and in-world cache misses (`SGWPlayer.elementDataRequest`) are not served. `playCharacter` during a resync is held and runs once the last category finishes (`cooked_data.world_entry_held` / `world_entry_released`). The stock client shows nothing while it waits: the Play button just takes longer.
+- **World entry waits only for the categories with no miss path.** The client has a request function for categories 1-11, 13, 14, 15 and 19 (the `Event_NetOut_elementDataRequest` constructor `0x00cfdeb0` has one caller per category) and none for 12, 16, 17, 18, 20 or 21. Those six are held (`HELD_CATEGORIES`): 12 because `onClientMapLoad` needs the world table at map load, and the other five because an entry they look up early could never be recovered. They total about 230 entries, under a second. The held categories stream first, then missions, dialogs and items, and TextStrings last; everything but the held set keeps streaming after world entry. The stock client shows nothing while Play waits, which is why the wait is kept this short.
 
 How long a resync takes. The client acks about every 100 ms while it receives (colo SigNoz, 2026-09-28), so a resync moves about 24 packets per 100 ms, roughly 240 packets or 330 KB a second:
 
-| Category | Entries | Packets | Estimated time |
-|---|---:|---:|---:|
-| World info (12) | 98 | 100 | < 1 s |
-| Kismet sequences (1) | 1,975 | 1,977 | 8 s |
-| Missions (3) | 1,040 | 2,272 | 9 s |
-| Dialogs (5) | 5,405 | 5,938 | 25 s |
-| Items (4) | 6,059 | 6,679 | 28 s |
-| Text strings (10) | 29,126 | 29,128 | 2 min |
-| All 21 categories | 55,000+ | 57,700+ | 4 min |
+| Category | Entries | Packets | Streams in | Holds Play? |
+|---|---:|---:|---:|---|
+| Held set (12, 16, 17, 18, 20, 21) | ~225 | ~230 | < 1 s | **yes** |
+| Kismet sequences (1) | 1,975 | 1,977 | 8 s | no |
+| Missions (3) | 1,040 | 2,272 | 9 s | no |
+| Dialogs (5) | 5,405 | 5,938 | 25 s | no |
+| Items (4) | 6,059 | 6,679 | 28 s | no |
+| Text strings (10) | 29,126 | 29,128 | 2 min | no |
+| All 21 categories | 55,000+ | 57,700+ | 4 min | held set only |
+
+So the longest Play wait is the held set, under a second. An entry the player needs before its category has streamed is asked for and arrives next, one round trip plus at most a window's worth of packets already in flight (about 100-200 ms at the colo's ack cadence).
 
 A mismatch happens when a client first meets a build whose served version it does not hold: a changed override bumps its category's version, so every client resyncs that one category once. Moving between builds resyncs each differing category on every switch.
 
 ### `0xC0`/`0xC1` are cache messages only at character select
 
-`versionInfoRequest` and `elementDataRequest` are `0xC0` and `0xC1` in the Account entity's method space. In-world the same ids are `SGWPlayer.chatJoin` and `chatLeave` (Communicator indices 0 and 1). The encrypted receive loop sends `0xC0`/`0xC1` to the cache handlers only while the session has no player entity. Before #840 it sent them there in both phases, so the client's login rejoin of its default user channels (`channel-chat`, `channel-roleplay`, `channel-alliance`) was read as a request for category 12 or 16 at version `0x00680063` (the UTF-16 "ch" after the string length), and category 16 got an `InvalidateAll` with nothing pushed on every login (colo SigNoz, 2026-09-28).
+`versionInfoRequest` and `elementDataRequest` are `0xC0` and `0xC1` in the Account entity's method space. In-world the same ids are `SGWPlayer.chatJoin` and `chatLeave` (Communicator indices 0 and 1), and the ClientCache methods are `0xD4`/`0xD5`; in-world misses arrive as `0xD5`. The encrypted receive loop sends `0xC0`/`0xC1` to the cache handlers only while the session has no player entity. Before #840 it sent them there in both phases, so the client's login rejoin of its default user channels (`channel-chat`, `channel-roleplay`, `channel-alliance`) was read as a request for category 12 or 16 at version `0x00680063` (the UTF-16 "ch" after the string length), and category 16 got an `InvalidateAll` with nothing pushed on every login (colo SigNoz, 2026-09-28). That reply also went out as `0x80` addressed to the player entity, which in-world is SGWPlayer client method 0, not `onVersionInfo`.
 
 ## Where each piece lives
 
@@ -89,7 +95,7 @@ A mismatch happens when a client first meets a build whose served version it doe
 | Content-derived `MetaData` bumps, one per category | `crates/resources/src/base/resources/metadata_bump.rs` | `compute_metadata_bump`, `compute_world_info_metadata_bump`, … |
 | Track which element IDs were patched | `crates/resources/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
 | `onVersionInfo` decision | `crates/base-session/src/base/cooked_sync/decision.rs`, `crates/base-session/src/base/cooked_data.rs` | `VersionReply::decide`, `handle_version_info_request` |
-| Full-category resync, paced, with world entry held | `crates/base-session/src/base/cooked_sync/` | `start_resync`, `task::push_category`, `defer_until_synced` |
+| Full-category resync, misses, held set, stream order | `crates/base-session/src/base/cooked_sync/` | `start_resync`, `serve_miss`, `HELD_CATEGORIES`, `rank`, `defer_until_synced` |
 | Wire encoder for `onVersionInfo` | `crates/wire/src/mercury/protocol/resources.rs` | `build_version_info` |
 | Wire-format guard | `crates/wire/src/mercury/protocol/tests.rs` | `version_info_invalid_keys_payload_layout_is_byte_exact` |
 | Resync guards (convergence, pacing, disconnect, relog, telemetry) | `crates/base-session/src/base/cooked_sync/tests/` | `no_category_is_ever_invalidated_without_being_repopulated`, … |

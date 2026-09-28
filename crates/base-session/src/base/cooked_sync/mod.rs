@@ -17,11 +17,14 @@
 //!
 //! The push runs on its own task per session ([`task`]), paced so that the
 //! session never has more than [`SYNC_IN_FLIGHT_BUDGET`] reliable packets
-//! outstanding. World entry waits for it ([`defer_until_synced`]): an entry
-//! the client looks up before it has been re-pushed is simply missing, and
-//! an in-world cache miss (`SGWPlayer.elementDataRequest`) is not served.
+//! outstanding. An entry the client looks up before it has been re-pushed
+//! is requested with `elementDataRequest`, and [`serve_miss`] sends it next,
+//! ahead of the stream. World entry waits only for the categories the
+//! client has no miss path for ([`order::HELD_CATEGORIES`],
+//! [`defer_until_synced`]); the rest keep streaming in the world.
 
 mod decision;
+mod order;
 mod registry;
 mod task;
 
@@ -31,10 +34,14 @@ mod tests;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub use decision::{resync_pending_version, VersionReply};
-pub use registry::{defer_until_synced, is_syncing, DeferredAction, EnqueueOutcome, SyncJob};
+pub use order::{is_held, rank, HELD_CATEGORIES};
+pub use registry::{
+    defer_until_synced, holds_world_entry, is_syncing, DeferredAction, EnqueueOutcome, MissOutcome,
+    MissRefusal, SyncJob,
+};
 pub use task::SyncContext;
 
 pub(crate) use super::cooked_data::MAX_CHUNK;
@@ -58,6 +65,75 @@ const _: () = assert!(SYNC_RESERVED_SLOTS >= 8 && SYNC_IN_FLIGHT_BUDGET >= 16);
 /// How often a resync blocked on a full window looks again. The client acks
 /// every 60-100 ms while receiving, so this adds no measurable delay.
 pub const SYNC_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// Misses a session may have served per second, sustained.
+pub const MISS_RATE_PER_SEC: u32 = 50;
+/// Misses a session may have served at once before the rate applies.
+pub const MISS_BURST: u32 = 100;
+/// Misses a session may have waiting at once.
+pub const MISS_QUEUE_CAP: usize = 256;
+
+/// Serve one `elementDataRequest` (`0xC1` at character select, SGWPlayer
+/// `0xD5` in-world): the entry goes out next on the session's task, ahead
+/// of any background stream. Unknown categories and keys are refused, as
+/// is anything over the session's rate limit; refusals log a throttled WARN.
+pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
+    let now = Instant::now();
+    let addr = ctx.addr;
+    let account_id = ctx
+        .connected
+        .lock()
+        .ok()
+        .and_then(|c| c.get(&addr).map(|s| s.account_id))
+        .unwrap_or(0);
+    let Some(token) = registry::session_token(&ctx.connected, addr) else {
+        return MissOutcome::Refused {
+            why: MissRefusal::NoSession,
+            log: None,
+        };
+    };
+    let invalid = if ctx.cache.category(category_id).is_none() {
+        Some(MissRefusal::UnknownCategory)
+    } else if ctx.cache.get(category_id, key).is_none() {
+        Some(MissRefusal::UnknownKey)
+    } else {
+        None
+    };
+    let outcome = match invalid {
+        Some(why) => registry::refuse(addr, &token, why, now),
+        None => registry::queue_miss(&token, addr, category_id, key, now),
+    };
+    match outcome {
+        MissOutcome::Queued { start_task } => {
+            if start_task {
+                task::spawn(ctx, token);
+            }
+        }
+        MissOutcome::Duplicate => {
+            tracing::debug!(%addr, account_id, category_id, key, "cooked-data miss already queued");
+        }
+        MissOutcome::Refused { why, log } => {
+            cimmeria_observability::counter!(
+                "cooked_data_misses_total",
+                "outcome" => "refused",
+                "reason" => why.reason(),
+            );
+            if let Some(suppressed) = log {
+                tracing::warn!(
+                    %addr,
+                    account_id,
+                    event = "cooked_data.miss_refused",
+                    reason = why.reason(),
+                    category_id,
+                    key,
+                    suppressed,
+                    "Refused a cooked-data cache miss"
+                );
+            }
+        }
+    }
+    outcome
+}
 
 /// Queue `job` for the session at `ctx.addr`, spawning its resync task if
 /// none is running. Returns what happened to the job.

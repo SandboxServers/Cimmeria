@@ -91,13 +91,10 @@ Source: `entities/defs/interfaces/ClientCache.def`
 
 | Index | Wire | Method | Args |
 |-------|------|--------|------|
-| 20 | 0xD4 | versionInfoRequest | UINT32 versionSeed, STRING clientVersion, STRING language |
-| 21 | 0xD5 | elementDataRequest | UINT16 categoryId, UINT32 key |
+| 20 | 0xD4 | versionInfoRequest | INT32 CategoryId, INT32 Version |
+| 21 | 0xD5 | elementDataRequest | INT32 CategoryId, INT32 Key |
 
-**Note**: These are protocol-level messages that share wire IDs with the Account
-entity namespace (0xC0, 0xC1). However, in the SGWPlayer flattened index they
-appear at 20-21 (0xD4-0xD5). The connect loop handles 0xC0/0xC1 specially before
-checking the entity type, so both Account and SGWPlayer coexist correctly.
+**Note** (corrected 2026-09-28, #840): the arguments are `ClientCache.def`'s two INT32s. The old row's `UINT16 categoryId` explains why logged in-world keys looked shifted left by 16 bits (dialog 60100 logged as 3938713600). These are the same ClientCache methods the Account entity exposes as `0xC0`/`0xC1`, but in-world they are `0xD4`/`0xD5`, and `0xC0`/`0xC1` are `chatJoin`/`chatLeave`. The connect loop routes `0xC0`/`0xC1` to the cache handlers only while the session has no player entity. In-world `0xD5` is served like a pre-world `0xC1`: the entry goes out next as a `resourceFragment` transfer, ahead of any background resync (`account_arms.rs` → `cooked_data::handle_element_data_request` → `cooked_sync::serve_miss`). `0xD4` has not been seen from the client and is not handled.
 
 ---
 

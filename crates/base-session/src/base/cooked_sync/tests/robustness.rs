@@ -8,7 +8,6 @@ use super::super::{defer_until_synced, resync_pending_version, DeferredAction, V
 use super::{decode, rig, server_entries, server_version, ClientModel, Sent};
 use crate::test_support::{test_default_connected_client_state, LogCapture};
 
-const MISSIONS: u32 = 3;
 const WORLD_INFO: u32 = 12;
 
 fn flag_action(flag: &Arc<AtomicBool>) -> DeferredAction {
@@ -27,8 +26,8 @@ fn flag_action(flag: &Arc<AtomicBool>) -> DeferredAction {
 async fn disconnect_mid_push_abandons_and_the_next_login_resyncs() {
     let rig = rig(47_301);
     let capture = LogCapture::install();
-    let served = server_version(MISSIONS);
-    rig.request(MISSIONS, served.wrapping_add(1)).await;
+    let served = server_version(WORLD_INFO);
+    rig.request(WORLD_INFO, served.wrapping_add(1)).await;
     let entered = Arc::new(AtomicBool::new(false));
     assert!(defer_until_synced(&rig.connected, rig.addr, flag_action(&entered)).is_ok());
     rig.idle_turns(200).await;
@@ -57,14 +56,17 @@ async fn disconnect_mid_push_abandons_and_the_next_login_resyncs() {
         "the server's version must not be stamped on a partial push"
     );
 
-    let mut client =
-        ClientModel::holding(MISSIONS, served.wrapping_add(1), server_entries(MISSIONS));
+    let mut client = ClientModel::holding(
+        WORLD_INFO,
+        served.wrapping_add(1),
+        server_entries(WORLD_INFO),
+    );
     client.apply_all(&plaintexts);
-    let held = client.categories[&MISSIONS].version;
+    let held = client.categories[&WORLD_INFO].version;
     assert_eq!(held, resync_pending_version(served));
     let cache: Arc<ResourceCache> = rig.cache.clone();
     assert!(matches!(
-        VersionReply::decide(Some(&cache), MISSIONS, held),
+        VersionReply::decide(Some(&cache), WORLD_INFO, held),
         VersionReply::FullResync { .. }
     ));
 
@@ -78,7 +80,7 @@ async fn disconnect_mid_push_abandons_and_the_next_login_resyncs() {
         })
         .unwrap_or_else(|| panic!("no abandoned WARN; saw {:#?}", capture.all()));
     assert!(warn.has_field("reason", "session_gone"));
-    assert!(warn.has_field("category_id", &MISSIONS.to_string()));
+    assert!(warn.has_field("category_id", &WORLD_INFO.to_string()));
 }
 
 /// A relog from the same address mid-push: the old session's push stops,

@@ -523,6 +523,7 @@ async fn dispatch_client_bundle(
                     entity_manager,
                     cell_tx,
                     entity_to_addr,
+                    resource_cache,
                 )
                 .await?;
             }

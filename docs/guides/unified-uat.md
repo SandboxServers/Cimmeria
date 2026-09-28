@@ -857,11 +857,11 @@ When your client's cached copy of a game-data category (worlds, missions, dialog
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
-| CD1 | Copy the pristine `CookedWorldInfo.pak` over the one in the writable cache. Log in and wait at character select for 5 s. | Character select looks normal. | The copy holds version 5959; the server serves a bumped version, so it must resync category 12 (98 entries, under a second) |
+| CD1 | Copy the pristine `CookedWorldInfo.pak` over the one in the writable cache. Log in and press **Play** at once. | Character select looks normal; Play takes at most a second longer than usual. | The copy holds version 5959; the server serves a bumped version, so it resyncs category 12 (98 entries), which world entry waits for |
 | CD2 | Play a character. | You enter the world normally. With the historical-cellblock client files installed, `.gotolocation CellBlock43 -334.231 73.472 -228.026` loads CellBlock43. | The historical worlds (1201-1207) come only from the resync; skip the travel without those files |
 | CD3 | Log out to character select and play again. | No wait, normal entry. | SigNoz shows category 12 `up_to_date`: no second resync |
-| CD4 | Close the game. Copy the pristine `CookedDataDialogs.pak` over the writable one. Log in and press **Play** at once. | Play takes several seconds longer than usual (the dialogs resync is about 25 s; world entry waits for it), then you enter normally. Talk to an NPC with a dialog: the text shows. | The wait has no on-screen message; the stock client has none to show. Note how long it felt |
-| CD5 | Repeat CD4's copy, log in, and close the game within 5 s of reaching character select. Log in again and wait 30 s, then play. | The second login resyncs the dialogs in full and play is normal. | The first push was abandoned part-way; the client kept a placeholder version, so it resyncs again |
+| CD4 | Close the game. Copy the pristine `CookedDataDialogs.pak` over the writable one. Log in, press **Play** at once, and talk to an NPC with a dialog straight away. | No extra wait at Play. The dialog text shows, at worst a moment late. | Dialogs stream for about 25 s after you enter; a dialog you open first is asked for and sent next. SigNoz shows `cooked_data.miss_served` for it if it had not streamed yet |
+| CD5 | Repeat CD4's copy, log in, and close the game within 5 s of reaching character select. Log in again and play. | The second login resyncs the dialogs in full and play is normal. | The first push was abandoned part-way; the client kept a placeholder version, so it resyncs again |
 | CD6 | In the world, open the crafting window's Sciences list. | The sciences show. | Before #840 the client's login rejoin of its default chat channels was misread as a request that emptied the Sciences category on every login |
 
 **SigNoz** (base `service.name = 'cimmeria-server'`):
@@ -871,10 +871,11 @@ When your client's cached copy of a game-data category (worlds, missions, dialog
 | What the server answered for each category (CD1, CD3) | `event = 'cooked_data.version_reply' AND account_id = <id>`: `outcome` is `up_to_date`, `full_resync` or `no_server_data`, with `category_id`, `client_version` and `server_version` |
 | Each resync and how long it took (CD1, CD4) | `event IN ('cooked_data.sync_start','cooked_data.sync_finish') AND account_id = <id>`: `sync_finish` has `outcome`, `entry_count`, `bytes`, `packets` and `duration_ms` |
 | The abandoned push (CD5) | `event = 'cooked_data.sync_finish' AND outcome = 'abandoned'`: WARN, `reason = 'session_gone'`, `entries_sent` |
-| Did world entry wait (CD4) | `event IN ('cooked_data.world_entry_held','cooked_data.world_entry_released') AND account_id = <id>` |
-| No in-world cache requests (CD6) | `body CONTAINS 'versionInfoRequest'` after `SGWPlayer.onClientReady` for your session: there should be none |
+| Did world entry wait (CD1) | `event IN ('cooked_data.world_entry_held','cooked_data.world_entry_released') AND account_id = <id>` |
+| Misses served or refused (CD4) | `event IN ('cooked_data.miss_served','cooked_data.miss_refused') AND account_id = <id>`: `category_id`, `key`, `latency_ms`, or `reason` |
+| No in-world version requests (CD6) | `event = 'cooked_data.version_reply'` after `SGWPlayer.onClientReady` for your session: there should be none |
 
-**Things only a human can check:** that the worlds, dialogs and sciences are really there (CD2, CD4, CD6); how long the Play wait felt (CD4).
+**Things only a human can check:** that the worlds, dialogs and sciences are really there (CD2, CD4, CD6); that Play never waits noticeably (CD1, CD4).
 
 Source: this section; design in [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#how-the-handshake-works).
 

@@ -102,17 +102,16 @@ pub fn build_version_info(
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
-    let mut payload = Vec::with_capacity(32 + invalid_keys.len() * 4);
+    let args = version_info_args(
+        category_id,
+        version,
+        required_updates,
+        invalidate_all,
+        invalid_keys,
+    );
+    let mut payload = Vec::with_capacity(4 + args.len());
     payload.extend_from_slice(&account_entity_id.to_le_bytes());
-    payload.extend_from_slice(&category_id.to_le_bytes());
-    payload.extend_from_slice(&version.to_le_bytes());
-    payload.extend_from_slice(&required_updates.to_le_bytes());
-    payload.push(if invalidate_all { 1 } else { 0 });
-    // invalidKeys = ARRAY<u32> { count, entries... }
-    payload.extend_from_slice(&(invalid_keys.len() as u32).to_le_bytes());
-    for &k in invalid_keys {
-        payload.extend_from_slice(&k.to_le_bytes());
-    }
+    payload.extend_from_slice(&args);
 
     let mut body = Vec::with_capacity(4 + payload.len());
     body.push(BASEMSG_ON_VERSION_INFO);
@@ -122,4 +121,73 @@ pub fn build_version_info(
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key, enc_version)
+}
+
+/// `onVersionInfo`'s client-method index on SGWPlayer: the ClientCache
+/// interface's first client method, flattened after the other interfaces
+/// (`docs/protocol/client-method-dispatch-table.md`, indices 96-97).
+pub const SGW_PLAYER_ON_VERSION_INFO: u16 = 96;
+
+/// Build and encrypt `onVersionInfo` for a client that is in the world.
+///
+/// [`build_version_info`] encodes it as the Account entity's client method
+/// 0 (`0x80`), which is only right at character select. Once the player
+/// entity exists, `0x80` addressed to it is SGWPlayer's client method 0, a
+/// different method entirely. In-world the call must go to the player as
+/// SGWPlayer client method [`SGW_PLAYER_ON_VERSION_INFO`] (extended
+/// encoding: `0xBD`, sub-index 35). The arguments are the same.
+pub fn build_version_info_to_player(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    category_id: u32,
+    version: u32,
+    required_updates: u32,
+    invalidate_all: bool,
+    invalid_keys: &[u32],
+    player_entity_id: u32,
+    enc_version: EncryptionVersion,
+) -> Vec<u8> {
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
+    use cimmeria_mercury::packet::build_outgoing;
+
+    let args = version_info_args(
+        category_id,
+        version,
+        required_updates,
+        invalidate_all,
+        invalid_keys,
+    );
+    let mut body = Vec::with_capacity(8 + args.len());
+    super::super::append_entity_method(
+        &mut body,
+        SGW_PLAYER_ON_VERSION_INFO,
+        IDBASE_SGW_PLAYER,
+        player_entity_id,
+        &args,
+    );
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key, enc_version)
+}
+
+/// `CategoryId, Version, RequiredUpdates, InvalidateAll, InvalidKeys`.
+fn version_info_args(
+    category_id: u32,
+    version: u32,
+    required_updates: u32,
+    invalidate_all: bool,
+    invalid_keys: &[u32],
+) -> Vec<u8> {
+    let mut args = Vec::with_capacity(17 + invalid_keys.len() * 4);
+    args.extend_from_slice(&category_id.to_le_bytes());
+    args.extend_from_slice(&version.to_le_bytes());
+    args.extend_from_slice(&required_updates.to_le_bytes());
+    args.push(u8::from(invalidate_all));
+    // invalidKeys = ARRAY<u32> { count, entries... }
+    args.extend_from_slice(&(invalid_keys.len() as u32).to_le_bytes());
+    for &k in invalid_keys {
+        args.extend_from_slice(&k.to_le_bytes());
+    }
+    args
 }

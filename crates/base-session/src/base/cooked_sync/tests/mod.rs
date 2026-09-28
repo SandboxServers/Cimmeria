@@ -9,6 +9,8 @@
 //! holding.
 
 mod decision;
+mod misses;
+mod ordering;
 mod pacing;
 mod resync;
 mod robustness;
@@ -31,6 +33,10 @@ use crate::test_support::{test_default_connected_client_state, TestTransport};
 /// Wire ids (crate-private in `cimmeria-wire`).
 pub(super) const BASEMSG_ON_VERSION_INFO: u8 = 0x80;
 pub(super) const BASEMSG_RESOURCE_FRAGMENT: u8 = 0x36;
+/// Extended entity-method marker, and `onVersionInfo`'s sub-index on
+/// SGWPlayer (client method 96 minus idbase 61).
+const EXTENDED_ENTITY_METHOD: u8 = 0xBD;
+const PLAYER_ON_VERSION_INFO_SUB_INDEX: u8 = 35;
 /// The fixture session's key (`test_default_connected_client_state`).
 const KEY: [u8; 32] = [0u8; 32];
 
@@ -137,6 +143,21 @@ impl Rig {
         super::is_syncing(&self.connected, self.addr)
     }
 
+    /// The client asks for one entry (`elementDataRequest`).
+    pub(super) fn miss(&self, category_id: u32, key: u32) -> super::MissOutcome {
+        super::serve_miss(test_context(self), category_id, key)
+    }
+
+    /// Put the session in the world as player entity `eid`.
+    pub(super) fn enter_world(&self, eid: u32) {
+        self.connected
+            .lock()
+            .unwrap()
+            .get_mut(&self.addr)
+            .unwrap()
+            .player_entity_id = Some(eid);
+    }
+
     /// Run the simulated client until every queued resync has finished and
     /// everything is acked. Returns the most packets ever outstanding.
     pub(super) async fn pump_until_idle(&self) -> usize {
@@ -203,6 +224,17 @@ pub(super) struct VersionInfo {
     pub(super) keys: Vec<u32>,
 }
 
+fn version_info_args(a: &[u8]) -> VersionInfo {
+    let count = u32_at(a, 13) as usize;
+    VersionInfo {
+        category: u32_at(a, 0),
+        version: u32_at(a, 4),
+        required: u32_at(a, 8),
+        invalidate_all: a[12] != 0,
+        keys: (0..count).map(|i| u32_at(a, 17 + i * 4)).collect(),
+    }
+}
+
 /// One packet the server sent, decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Sent {
@@ -220,15 +252,11 @@ pub(super) fn decode(pt: &[u8]) -> Sent {
     let len = u16::from_le_bytes([pt[2], pt[3]]) as usize;
     let p = &pt[4..4 + len];
     match pt[1] {
-        BASEMSG_ON_VERSION_INFO => {
-            let count = u32_at(p, 17) as usize;
-            Sent::VersionInfo(VersionInfo {
-                category: u32_at(p, 4),
-                version: u32_at(p, 8),
-                required: u32_at(p, 12),
-                invalidate_all: p[16] != 0,
-                keys: (0..count).map(|i| u32_at(p, 21 + i * 4)).collect(),
-            })
+        // Account client method 0: [account id][args].
+        BASEMSG_ON_VERSION_INFO => Sent::VersionInfo(version_info_args(&p[4..])),
+        // SGWPlayer client method 96, in-world: [player id][96 - 61][args].
+        EXTENDED_ENTITY_METHOD if p[4] == PLAYER_ON_VERSION_INFO_SUB_INDEX => {
+            Sent::VersionInfo(version_info_args(&p[5..]))
         }
         BASEMSG_RESOURCE_FRAGMENT => {
             let data_id = u16::from_le_bytes([p[0], p[1]]);
