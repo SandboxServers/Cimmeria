@@ -180,7 +180,31 @@ is needed.
 - **The version is written before any entry arrives.** Step 4 above runs in the same call as step 3.
 - **Pushed entries are applied as they arrive.** The proxy-data handler `0x0043dad0` reads the category id and returns unless it is `N`. It then decrements `RequiredUpdates` (`+0x48`) if nonzero, reads the element key, and parses the data. If `+0x4C` (reply received) is set, it writes the entry at once through `0x0043bdb0`. Otherwise it buffers `(key, data)` in the vector at `+0x3C`, which step 5 writes out.
 - **`0x0043bdb0` is a write, not a request.** It calls `0x0043a9d0`, which serialises the element and writes the stream to the cache PAK as `_<key>` (`ZipStorageBase_WriteStreamToFile`). On success it emits an event carrying `(N, key, data)`, presumably the element-available notification. The `ServerSource_RequestElement` name from the V5 pass was wrong.
-- **`RequiredUpdates` gates miss requests.** The constructor sets it to `LONG_MAX`, `onVersionInfo` overwrites it, and proxy data and `onCookedDataError` decrement it (if nonzero). Its one reader found is the per-category miss request below: a request goes out only while it is 0.
+- **`RequiredUpdates` gates miss requests, and pushes never take it below 0.** It is a signed int at `+0x48`. The constructor sets it to `LONG_MAX`. `onVersionInfo` overwrites it unconditionally, so any reply resets it, and `invalidate_all = 0` resets it without a flush. Proxy data and `onCookedDataError` decrement it only when it is nonzero; at 0 it stays 0, with no wrap and no negative value:
+
+  ```text
+  0x0043db73  MOV EAX,dword ptr [EBP + 0x48]   ; proxy data (0x0043dad0), ESI = 0
+  0x0043db76  CMP EAX,ESI
+  0x0043db78  JZ  0x0043db80                   ; already 0: skip the decrement
+  0x0043db7a  ADD EAX,-0x1
+  0x0043db7d  MOV dword ptr [EBP + 0x48],EAX
+  0x00441be6  MOV EAX,dword ptr [EBP + 0x48]   ; onCookedDataError (0x00441aa0), EBX = 0
+  0x00441be9  CMP EAX,EBX
+  0x00441beb  JZ  0x00441bf3
+  0x00441bed  ADD EAX,-0x1
+  ```
+
+  The miss request tests for exactly 0, so any nonzero value blocks it, `LONG_MAX` included:
+
+  ```text
+  0x00cfe079  XOR EBX,EBX                      ; category 11 request (0x00cfe060)
+  0x00cfe07b  CMP dword ptr [ECX + 0x48],EBX
+  0x00cfe07e  JNZ 0x00cfe216                   ; nonzero: no elementDataRequest
+  0x00d2016b  CMP dword ptr [ECX + 0x48],EBX   ; category 3 (0x00d20150), same shape
+  0x00d2016e  JNZ 0x00d20306
+  ```
+
+  All 15 request functions decompile to `if (*(int *)(this + 0x48) == 0)`. A server that opens a resync with `RequiredUpdates = 0` therefore keeps misses flowing for the whole stream: every push leaves the counter at 0.
 - **The miss path.** Lookups go through one template instance per category, e.g. `0x00cfe5d0` → `0x00cfe060` for category 11. Each looks the key up (`0x00cfc1c0`). On a hit it delivers the element (`0x00cfadb0`). On a miss it calls the category's request function, which builds `Event_NetOut_elementDataRequest(CategoryId, Key)` (constructor `0x00cfdeb0`) **only if `this+0x48 == 0`**, and returns without blocking. The entry is written when it arrives and the next lookup hits. The constructor has one caller per category: 1 `0x00d147e0`, 2 `0x00d2cd00`, 3 `0x00d20150`, 4 `0x00d20320`, 5 `0x00d29790`, 6 `0x00d29960`, 7 `0x00d37720`, 8 `0x00d295c0`, 9 `0x00e0a810`, 10 `0x00cfe230`, 11 `0x00cfe060`, 13 `0x00e31480`, 14 `0x00e24430`, 15 `0x00e4b120`, 19 `0x00cfe400`, plus one unresolved call site at `0x00da6be0`. There is **none for 12, 16, 17, 18, 20 or 21**, so those categories cannot recover an entry that is missing when looked up. On the colo, in-world requests arrive as SGWPlayer `0xD5` with `[i32 category][i32 key]`, and the client repeats one on every lookup: dialog 60100 was asked for five times in two seconds (SigNoz, 2026-09-28).
 - **Disconnect resets the category.** `0x0043b400` sets `+0x4C = 0` and `RequiredUpdates = LONG_MAX`, and clears the buffered vector.
 

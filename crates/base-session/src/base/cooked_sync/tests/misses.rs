@@ -215,3 +215,52 @@ async fn a_served_miss_logs_its_latency() {
     assert!(served.has_field("key", &key.to_string()));
     assert!(served.fields.contains_key("latency_ms"));
 }
+
+/// The client keeps asking for misses throughout a stream. Pushes
+/// decrement `RequiredUpdates` only while it is nonzero (`0x0043db73`:
+/// `CMP EAX,ESI` / `JZ` over `ADD EAX,-1`), and the request functions send
+/// only while it is exactly 0 (`0x00cfe07b`: `CMP [ECX+0x48],EBX` / `JNZ`).
+/// The resync opens with 0, so after K background pushes the client still
+/// asks, and the miss is served before the stream would have reached it.
+#[tokio::test]
+async fn a_miss_after_k_background_pushes_is_still_requested_and_served() {
+    const K: usize = 100;
+    let rig = rig(47_609);
+    let served = server_version(TEXT_STRINGS);
+    rig.request(TEXT_STRINGS, served.wrapping_add(1)).await;
+
+    let mut client = ClientModel::holding(TEXT_STRINGS, served.wrapping_add(1), Default::default());
+    while client.writes.get(&TEXT_STRINGS).copied().unwrap_or(0) < K as u32 {
+        rig.idle_turns(20).await;
+        rig.ack_all();
+        client.apply_all(&rig.take_plaintexts());
+    }
+    assert!(
+        client.requests_misses(TEXT_STRINGS),
+        "after {K} pushes the client must still send elementDataRequest (RequiredUpdates = {})",
+        client.categories[&TEXT_STRINGS].required_updates
+    );
+
+    let last_key = *server_entries(TEXT_STRINGS).keys().next_back().unwrap();
+    assert!(!client.categories[&TEXT_STRINGS]
+        .entries
+        .contains_key(&last_key));
+    assert!(matches!(
+        rig.miss(TEXT_STRINGS, last_key),
+        MissOutcome::Queued { .. }
+    ));
+    for _ in 0..10 {
+        rig.idle_turns(20).await;
+        rig.ack_all();
+        client.apply_all(&rig.take_plaintexts());
+    }
+    assert_eq!(
+        client.categories[&TEXT_STRINGS].entries.get(&last_key),
+        server_entries(TEXT_STRINGS).get(&last_key),
+        "the missed entry arrives long before the stream reaches it"
+    );
+    assert!(
+        client.writes[&TEXT_STRINGS] < 1_000,
+        "the stream is still far from the end"
+    );
+}

@@ -313,6 +313,16 @@ impl ClientModel {
         m
     }
 
+    /// Whether the client would send `elementDataRequest` for `category`
+    /// now: every per-category request function tests
+    /// `*(int *)(this + 0x48) == 0` (`0x00cfe060`, `0x00d20150`, ...).
+    pub(super) fn requests_misses(&self, category: u32) -> bool {
+        self.categories
+            .get(&category)
+            // Before any onVersionInfo the constructor's LONG_MAX blocks them.
+            .is_some_and(|c| c.required_updates == 0)
+    }
+
     pub(super) fn apply_all(&mut self, plaintexts: &[Vec<u8>]) {
         for pt in plaintexts {
             self.apply(&decode(pt));
@@ -349,7 +359,12 @@ impl ClientModel {
                     let (category, element, xml) =
                         self.partial.remove(data_id).expect("transfer started");
                     let cat = self.categories.entry(category).or_default();
-                    cat.required_updates = cat.required_updates.saturating_sub(1);
+                    // `0x0043dad0`: `if (*(int *)(this + 0x48) != 0) { ... + -1; }`.
+                    // Guarded, so it stops at 0; it never wraps or goes
+                    // negative.
+                    if cat.required_updates != 0 {
+                        cat.required_updates -= 1;
+                    }
                     cat.entries.insert(element, xml);
                     *self.writes.entry(category).or_default() += 1;
                 }
