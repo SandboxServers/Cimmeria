@@ -8,7 +8,12 @@ use crate::cell::cell_methods::player::pet::{resolve_requested_stance, StanceSou
 use crate::cell::client_methods::pet::ON_PET_STANCE_UPDATE;
 
 fn current(mgr: &SpaceManager, pet: u32) -> PetStance {
-    mgr.get_entity(pet).unwrap().pet.as_deref().unwrap().stance
+    mgr.get_entity(pet)
+        .unwrap()
+        .extensions
+        .get::<PetState>()
+        .unwrap()
+        .stance
 }
 
 /// Exactly one `onPetStanceUpdate(stance)` on the pet, to the owner only.

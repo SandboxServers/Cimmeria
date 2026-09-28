@@ -5,6 +5,7 @@ use std::sync::Arc;
 use sqlx::PgPool;
 use tokio::sync::{mpsc, Notify};
 
+use cimmeria_cell_world::cell::plugin::TickStage;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use super::super::content;
@@ -145,11 +146,15 @@ pub(super) async fn run_cell_loop(
                     tx, &mut space_mgr, &engine,
                 ).await;
 
-                // Pets whose owner is gone, dead or in another space are
-                // despawned (issue #570, PT-01). The self-healing layer
-                // under every owner-teardown path; returns at once when no
-                // pet exists.
-                cimmeria_cell_world::cell::pets::pet_owner_sweep(tx, &mut space_mgr).await;
+                // Plugin hooks at this stage (#962): the owner-teardown
+                // sweeps. The pets plugin despawns pets whose owner is gone,
+                // dead or in another space here (issue #570, PT-01), the
+                // self-healing layer under every owner-teardown path.
+                space_mgr
+                    .plugins()
+                    .clone()
+                    .run_tick(TickStage::AfterRingTransport, tx, &mut space_mgr)
+                    .await;
 
                 // Deployables (Phase 0): remove any whose owner died, left
                 // or changed space, or whose lifetime ran out, then fire the
@@ -171,10 +176,15 @@ pub(super) async fn run_cell_loop(
                 // once when no entity has one.
                 crate::cell::effects::stat_buff_tick(tx, &mut space_mgr).await;
 
-                // A summoned pet's arrival VFX (PT-03), sent once its owner
-                // witnesses it. After the AoI tick, so it follows the pet's
-                // CREATE_ENTITY; returns at once when nothing is queued.
-                cimmeria_cell_world::cell::pets::pet_arrival_tick(tx, &mut space_mgr).await;
+                // Plugin hooks at this stage (#962): sends that must follow
+                // the AoI tick's CREATE_ENTITY. The pets plugin sends a
+                // summoned pet's arrival VFX (PT-03) once its owner
+                // witnesses it.
+                space_mgr
+                    .plugins()
+                    .clone()
+                    .run_tick(TickStage::AfterStatBuffs, tx, &mut space_mgr)
+                    .await;
 
                 // NPC movement runs every AoI tick (100ms) for smooth pathing
                 super::ticks::npc_movement_tick(&mut space_mgr);

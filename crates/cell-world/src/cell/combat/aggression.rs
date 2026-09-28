@@ -6,6 +6,7 @@
 //! has one, else `FACTION_REACTION_TABLE[player.faction][mob.faction]`. Only
 //! [`MobAggression::Hostile`] aggroes on sight.
 
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{CellEntity, MobAggression};
 
 use super::faction_reaction::reaction;
@@ -70,7 +71,7 @@ pub fn aggression_toward_players(npc: &CellEntity) -> MobAggression {
 /// already reads neutral; this also covers a content `set_aggression` aimed at
 /// a pet.
 pub fn is_hostile_to_players(npc: &CellEntity) -> bool {
-    npc.pet.is_none() && aggression_toward_players(npc).is_hostile()
+    !npc.extensions.contains::<PetState>() && aggression_toward_players(npc).is_hostile()
 }
 
 /// Whether the player `attacker` may damage `target`: THE player hostility
@@ -125,7 +126,7 @@ pub fn player_may_attack(
 /// A hostile-faction NPC that is not a pet; never a player, never a pet.
 pub fn player_may_attack_pve(_attacker: &CellEntity, target: &CellEntity) -> bool {
     !target.is_player
-        && target.pet.is_none()
+        && !target.extensions.contains::<PetState>()
         && target.faction == super::faction_reaction::HOSTILE_FACTION
 }
 

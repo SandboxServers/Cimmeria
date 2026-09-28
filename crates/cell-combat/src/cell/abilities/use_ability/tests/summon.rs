@@ -5,6 +5,7 @@
 //! 2904), a `pet_summons` row 2826 -> 350 (`max_active` 1), and a cached pet
 //! template 350. The owner is a connected player in a shared space.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use cimmeria_cell_world::cell::pets::drain_arrivals;
@@ -137,7 +138,7 @@ async fn summon_spawns_the_template_owned_by_the_caster_after_the_warmup() {
     assert_eq!(pets.len(), 1, "exactly one pet");
     let pet = mgr.get_entity(pets[0]).expect("pet entity exists");
     assert_eq!(pet.class_id, SGWPET_CLASS_ID);
-    let state = pet.pet.as_deref().expect("PetState");
+    let state = pet.extensions.get::<PetState>().expect("PetState");
     assert_eq!(state.owner_id, OWNER);
     assert_eq!(state.summon_ability_id, SUMMON);
     assert_eq!(

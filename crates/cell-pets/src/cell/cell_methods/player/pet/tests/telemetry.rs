@@ -8,6 +8,7 @@
 //! `account_id` and `player_id` of the owner (Rule 5). The table in
 //! `docs/analysis/pets/worknotes/pt-04.md` lists the same rows.
 
+use cimmeria_entity::cell_entity::PetState;
 use tracing::Level;
 
 use super::*;
@@ -45,13 +46,14 @@ async fn trigger(reason: &str) {
             const STRAY: u32 = 200_020;
             mgr.spawn_npc(STRAY, "Castle", [10.0, 0.0, 10.0], [0.0; 3])
                 .unwrap();
-            mgr.get_entity_mut(STRAY).unwrap().pet =
-                Some(Box::new(cimmeria_entity::cell_entity::PetState::new(
+            mgr.get_entity_mut(STRAY).unwrap().extensions.insert(
+                cimmeria_entity::cell_entity::PetState::new(
                     OWNER,
                     PET_FIXTURE_ABILITIES.to_vec(),
                     0b111,
                     0,
-                )));
+                ),
+            );
             let summoner = mgr.player_identity(OWNER);
             mgr.pets.register(OWNER, STRAY, summoner);
             (PET_CHANGE_STANCE, stance_args(STRAY, 2))
@@ -62,7 +64,12 @@ async fn trigger(reason: &str) {
         }
         "ability_not_in_list/unknown" => (PET_INVOKE_ABILITY, invoke_args(pet, 999_999, MOB)),
         "ability_toggled_off" => {
-            let state = mgr.get_entity_mut(pet).unwrap().pet.as_deref_mut().unwrap();
+            let state = mgr
+                .get_entity_mut(pet)
+                .unwrap()
+                .extensions
+                .get_mut::<PetState>()
+                .unwrap();
             state.toggled_off.push(PET_ABILITY);
             (PET_INVOKE_ABILITY, invoke_args(pet, PET_ABILITY, MOB))
         }

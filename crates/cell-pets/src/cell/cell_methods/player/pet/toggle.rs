@@ -11,6 +11,7 @@
 //! (PT-05). The owner's pet bar is re-sent after every toggle, and after a
 //! refused one, so the press always gets a visible reaction.
 
+use cimmeria_entity::cell_entity::PetState;
 use tokio::sync::mpsc;
 
 use super::{owned_pet_or_refuse, pet_template_id, refuse, send_to_owner, Caller};
@@ -94,7 +95,7 @@ pub(super) async fn handle(
 
     let in_list = space_mgr
         .get_entity(pet)
-        .and_then(|e| e.pet.as_deref())
+        .and_then(|e| e.extensions.get::<PetState>())
         .is_some_and(|s| s.ability_list.contains(&ability_id));
     if !in_list {
         refuse(
@@ -109,7 +110,7 @@ pub(super) async fn handle(
 
     if let Some(state) = space_mgr
         .get_entity_mut(pet)
-        .and_then(|e| e.pet.as_deref_mut())
+        .and_then(|e| e.extensions.get_mut::<PetState>())
     {
         set_toggled(&mut state.toggled_off, ability_id, on);
     }
@@ -149,7 +150,7 @@ async fn resend_ability_list(
 ) {
     let Some(list) = space_mgr
         .get_entity(pet)
-        .and_then(|e| e.pet.as_deref())
+        .and_then(|e| e.extensions.get::<PetState>())
         .map(|s| build_pet_ability_list(&s.ability_list))
     else {
         return;

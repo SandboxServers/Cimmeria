@@ -4,6 +4,7 @@
 use super::*;
 use crate::cell::combat::{generate_threat, AggroCause, BSF_DEAD};
 use crate::test_support::LogCapture;
+use cimmeria_entity::cell_entity::PetState;
 
 /// A pet in a fight against `MOB`, with its spawn point pinned at `spawn`.
 fn fighting_pet(owner: [f32; 3], pet_at: [f32; 3], mob_at: [f32; 3]) -> (SpaceManager, u32) {
@@ -141,7 +142,7 @@ async fn a_pet_left_behind_does_not_re_engage_while_its_teleport_waits() {
         .checked_sub(std::time::Duration::from_secs(1))
         .unwrap();
     let e = mgr.get_entity_mut(pet).unwrap();
-    e.pet.as_deref_mut().unwrap().last_teleport_at = Some(recent);
+    e.extensions.get_mut::<PetState>().unwrap().last_teleport_at = Some(recent);
     crate::cell::service::npc_ai::force_ai_state(e, AiState::Follow);
     e.follow_target_id = Some(OWNER);
 

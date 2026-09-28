@@ -476,6 +476,10 @@ pub struct SpaceManager {
     /// Black Market sessions (BM-02): the auctioneer each player was sent
     /// to, keyed by `player_id`; see `cell::black_market`.
     pub black_market: super::black_market::BlackMarketSessions,
+    /// The feature plugins' handlers and hooks (#962,
+    /// `docs/architecture/plugin-architecture.md`). Empty until the cell
+    /// service installs the plugin table; see `cell::plugin`.
+    pub(crate) plugins: super::plugin::CellPlugins,
 }
 
 impl SpaceManager {
@@ -544,6 +548,7 @@ impl SpaceManager {
             squads: super::squad::SquadRegistry::new(),
             org_creations: super::org_creation::PendingCreations::new(),
             black_market: super::black_market::BlackMarketSessions::new(),
+            plugins: super::plugin::CellPlugins::empty(),
         }
     }
 }

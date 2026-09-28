@@ -9,6 +9,7 @@
 //! ids are reused, and a player given a destroyed owner's id must not buff
 //! or kill that owner's pet.
 
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_wire::state_field::BSF_DEAD;
 
 use super::super::space_manager::SpaceManager;
@@ -101,7 +102,10 @@ impl SpaceManager {
                 continue;
             }
             // Listed but its entity is gone: the teardown gap. No pet.
-            let Some(entity) = self.get_entity(pet).filter(|e| e.pet.is_some()) else {
+            let Some(entity) = self
+                .get_entity(pet)
+                .filter(|e| e.extensions.contains::<PetState>())
+            else {
                 continue;
             };
             if owner_space.is_none() || self.get_entity_space_id(pet) != owner_space {

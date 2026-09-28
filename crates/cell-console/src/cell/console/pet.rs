@@ -307,7 +307,7 @@ async fn stance(
     };
     let Some(pet) = space_mgr
         .get_entity_mut(pet_id)
-        .and_then(|e| e.pet.as_deref_mut())
+        .and_then(|e| e.extensions.get_mut::<PetState>())
     else {
         let text = ".pet stance: your pet is gone";
         refuse(caller_id, "pet_gone", Some(pet_id), text, tx, space_mgr).await;
@@ -424,7 +424,7 @@ async fn info(
     };
     let Some((entity, pet)) = space_mgr
         .get_entity(pet_id)
-        .and_then(|e| e.pet.as_deref().map(|p| (e, p)))
+        .and_then(|e| e.extensions.get::<PetState>().map(|p| (e, p)))
     else {
         let text = format!(".pet info: pet {pet_id} is gone");
         refuse(caller_id, "pet_gone", Some(pet_id), &text, tx, space_mgr).await;
@@ -512,7 +512,10 @@ async fn list(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut 
         let Some(entity) = space_mgr.get_entity(pet_id) else {
             continue;
         };
-        let stance = entity.pet.as_deref().map_or("?", |p| p.stance.label());
+        let stance = entity
+            .extensions
+            .get::<PetState>()
+            .map_or("?", |p| p.stance.label());
         let distance = owner_distance(space_mgr, pet_id, owner)
             .map_or_else(|| "-".to_string(), |d| format!("{d:.1} u"));
         let line = format!(

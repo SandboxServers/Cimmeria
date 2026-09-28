@@ -14,7 +14,7 @@ pub async fn dispatch(
     match method_index {
         // PET_INVOKE_ABILITY / PET_ABILITY_TOGGLE / PET_CHANGE_STANCE (88..=90)
         // used to be stubbed here. They are routed by the outer dispatcher
-        // to `cell_methods::player::pet::dispatch` (pets PT-04). This module
+        // to the pets plugin (`cimmeria-cell-pets`, #962). This module
         // no longer handles them; `social_submodule_does_not_handle_pet_methods`
         // in `dispatch.rs` is the guard.
         ORG_CREATION => {

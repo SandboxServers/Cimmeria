@@ -19,6 +19,7 @@ pub mod org_creation;
 pub mod pets;
 pub mod playtest_friction;
 pub mod playtest_friction_watch;
+pub mod plugin;
 pub mod ring_transport;
 pub mod service;
 pub mod space_manager;
@@ -61,4 +62,7 @@ pub enum CellError {
 
     #[error("Network error: {0}")]
     Network(#[from] std::io::Error),
+
+    #[error("Plugin registration: {0}")]
+    Plugin(#[from] plugin::PluginError),
 }

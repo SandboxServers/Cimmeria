@@ -10,6 +10,7 @@
 //! `pets.lifecycle event=owner_teleported` row (from, to, distance,
 //! grounding). It is a same-space position write, not `onPlayerTeleport`.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
@@ -116,7 +117,10 @@ pub(super) async fn teleport_if_left_behind(
     };
     let distance = pet.position.distance_to(&owner.position);
     let dy = owner.position.y - pet.position.y;
-    let last = pet.pet.as_deref().and_then(|p| p.last_teleport_at);
+    let last = pet
+        .extensions
+        .get::<PetState>()
+        .and_then(|p| p.last_teleport_at);
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
     if let Some(last) =
         last.filter(|t| now.saturating_duration_since(*t) < PET_TELEPORT_MIN_INTERVAL)

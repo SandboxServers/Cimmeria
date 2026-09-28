@@ -24,6 +24,7 @@
 //!
 //! Log target `pets.buff`.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use cimmeria_entity::abilities::AF_TOGGLED;
@@ -68,7 +69,7 @@ fn target_is_pet(ctx: &EffectContext, script: &'static str) -> bool {
     if ctx
         .space_mgr
         .get_entity(ctx.target_id)
-        .is_some_and(|e| e.pet.is_some())
+        .is_some_and(|e| e.extensions.contains::<PetState>())
     {
         return true;
     }
@@ -200,7 +201,7 @@ impl EffectScript for PetDeathTimer {
         let Some(state) = ctx
             .space_mgr
             .get_entity_mut(pet)
-            .and_then(|e| e.pet.as_deref_mut())
+            .and_then(|e| e.extensions.get_mut::<PetState>())
         else {
             return;
         };

@@ -1,5 +1,6 @@
 //! Following the owner and the teleport back (D-PT07).
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -40,7 +41,12 @@ async fn pet_left_far_behind_teleports_beside_its_owner() {
         "pet must land beside the owner at (70, 0, 10), got {p:?}"
     );
     let e = mgr.get_entity(pet).unwrap();
-    assert!(e.pet.as_deref().unwrap().last_teleport_at.is_some());
+    assert!(e
+        .extensions
+        .get::<PetState>()
+        .unwrap()
+        .last_teleport_at
+        .is_some());
     assert!(e.nav_path.is_empty(), "the snap stops the pet");
     let row = pets_ai_row(&logs, "pet_teleported").expect("pet_teleported row");
     assert!(row.has_field("reason", "distance"), "{row:?}");
@@ -97,8 +103,8 @@ async fn teleport_is_rate_limited_to_once_per_five_seconds() {
     let recent = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_deref_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .last_teleport_at = Some(recent);
     let before = pos(&mgr, pet);
@@ -113,8 +119,8 @@ async fn teleport_is_rate_limited_to_once_per_five_seconds() {
     let old = Instant::now().checked_sub(Duration::from_secs(6)).unwrap();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_deref_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .last_teleport_at = Some(old);
     tick(&mut mgr).await;

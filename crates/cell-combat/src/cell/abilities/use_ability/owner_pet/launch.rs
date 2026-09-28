@@ -1,6 +1,7 @@
 //! The launch half of an owner-pet cast: refuse the press, with feedback and
 //! no cooldown, when there is no pet to act on (pets PT-08).
 
+use cimmeria_entity::cell_entity::PetState;
 use tokio::sync::mpsc;
 
 use cimmeria_cell_world::cell::pets::OwnerPetRefusal;
@@ -76,7 +77,7 @@ pub(super) fn resolve(
         && pets.iter().any(|&p| {
             space_mgr
                 .get_entity(p)
-                .and_then(|e| e.pet.as_deref())
+                .and_then(|e| e.extensions.get::<PetState>())
                 .is_some_and(|s| s.doomed_at.is_some())
         })
     {

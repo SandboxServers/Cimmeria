@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # ADR: feature plugins over `CellEntity` and `SpaceManager` (no ECS)
 
-> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets, in PR "refactor(962): pets plugin pilot". Amends [services-crate-split.md](services-crate-split.md).
+> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Amends [services-crate-split.md](services-crate-split.md).
 > **Type:** Architecture decision record
 > **Owner:** Server architecture
 > **Companion docs:** [services-crate-split.md](services-crate-split.md) (the layer split this builds on), [build-system.md](build-system.md) (the build lane and the rebuild measurements), [negative-logging-convention.md](negative-logging-convention.md) (the hook-miss logs), [scaling-analysis.md](scaling-analysis.md) (why the base/cell split buys us nothing), [../protocol/cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md) (the method indices plugins register against)
@@ -197,7 +197,7 @@ A leaf depends on core and on the systems it calls; only the composition root (a
 
 The estimates in #962 for the full migration: a crafting edit rebuilds about 53k lines instead of about 135k; mail about 45k, org about 42k, bank or chat about 33k. The envelope and the `entity-types` split add a 15-20% cut on the `wire` and `entity` long tail.
 
-**Pilot measurement.** Filled in by the pilot PR (§4.1).
+**Pilot measurement.** A pets edit went from 8 rebuilt crates to 7 in the workspace build, and from about 49k to about 14k production lines in the server build; see §4.1.
 
 ### 3.8 Migration order
 
@@ -217,7 +217,28 @@ Features move at their campaign's close-out, never while a campaign coordinator 
 
 The pilot PR implements only what pets needs: the `CellPlugin` trait, the builder and registry, cell-method registration with both startup checks, two tick hook points, one entity hook point, and `EntityExtensions`. The other hook points (AoI enter and leave, death, disconnect, space teardown) and the base side are specified here and built when a feature needs them; building them earlier would add code with no caller.
 
-The pilot measures the rebuild of a pets-only edit before and after, and records it in this section.
+What moved, and what did not:
+
+- **Moved to `cimmeria-cell-pets`:** the pet cell methods 88-90 (`cell::cell_methods::player::pet`, about 1.1k production lines and 1.9k test lines, from `cimmeria-cell-methods`), and `PetsPlugin`, which registers them, the owner sweep (`TickStage::AfterRingTransport`), the arrival VFX (`TickStage::AfterStatBuffs`) and the base-destroy despawn (`EntityHookPoint::BeforeBaseDestroy`).
+- **Now generic in core:** `CellEntity::pet` is gone; a pet's `PetState` lives in `CellEntity::extensions`. The cell loop and `flush_and_destroy` fire hook points and no longer name pets. The router asks the plugin registry after the GM gate.
+- **Stayed:** the pet world half in `cell-world` (registry, spawn, teardown, arrival queue, owner hooks), the pet AI and owner abilities in `cell-combat`, and the GM `.pet` console in `cell-console`. Lower crates call them. They move when those call sites go behind hooks.
+
+**Rebuild measurement** (2026-09-28, warm dev build through the build lane on the Dev Drive, two runs each). The edit adds one `pub const` to the pet stance handler (`player/pet/stance.rs`), before in `cell-methods` and after in `cell-pets`:
+
+| Command | Before: crates rebuilt | Before: time | After: crates rebuilt | After: time |
+|---|---|---|---|---|
+| `cargo build --workspace --all-targets` (CI exclusions) | 8: cell-methods, cell-console, cell, services, admin-api, wireclient, lab-mcp, server | 7.7 s, 7.9 s | 7: cell-pets, services, cell (test binary only), admin-api, wireclient, lab-mcp, server | 5.0 s, 5.1 s |
+| `cargo build -p cimmeria-server` | 7: cell-methods, cell-console, cell, services, admin-api, lab-mcp, server | 6.0 s, 5.3 s (comment-only edit) | 5: cell-pets, services, admin-api, lab-mcp, server | 4.7 s |
+
+In production lines, the server build rebuilds about 49k lines before (cell-methods 11.2k, cell-console 15.5k, cell 9.9k, services 2.1k, admin-api 4.5k, lab-mcp 1.2k, server 4.5k) and about 14k after (cell-pets 1.3k plus the same facade and binaries), a 72% cut. Wall time moves less (about -35% for the workspace build), because incremental compilation already makes a warm rebuild of an unchanged crate cheap. The line count is what grows with the codebase. `cimmeria-cell`'s test binary still rebuilds, because two of its tests (the base-destroy path and the router's plugin routing) install `PetsPlugin` as a dev-dependency. Moving those tests to the facade would remove it from the list.
+
+**Tests changed beyond import paths.** Each is listed so a reviewer can check that none weakens a guard:
+
+- About 65 test lines rewrote `entity.pet` to `entity.extensions.get::<PetState>()` (and `get_mut`, `contains`, `insert`, `remove`). Mechanical, with no assertion changed.
+- `cimmeria-cell-methods`: `pet_methods_route_to_pet_not_world` pinned the static arm that no longer exists. It became `plugin_owned_methods_are_not_routed_here`, which asserts the opposite for every plugin-owned index. The pet row left `each_outer_range_routes_to_a_handler`. The positive routing proof moved to `cimmeria-cell-pets` (`each_pet_cell_method_reaches_the_pet_command_parser`) and to `cimmeria-cell` (`plugin_routing_tests`, through `dispatch_cell_method`).
+- `cimmeria-cell`'s `destroy_entity_for_an_owner_despawns_the_pet` installs `PetsPlugin` on its fixture manager (one line), because the despawn is now the plugin's hook.
+
+New tests: the registry's startup checks and hook order (`cell-world` `cell::plugin::tests`), the extension map (`cimmeria-entity`), the plugin's registrations (`cell-pets` `plugin_tests`), the router with and without the plugin (the missing-registration negative log), and the facade's default table (`services::plugins`).
 
 ### 4.2 What gets better
 

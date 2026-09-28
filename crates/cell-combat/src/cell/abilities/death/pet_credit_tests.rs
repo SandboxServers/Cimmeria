@@ -13,6 +13,7 @@ use crate::cell::combat::HOSTILE_FACTION;
 use crate::cell::spawner::LootTableEntry;
 use crate::test_support::{add_pet_owner, seed_pet_template, PET_FIXTURE_TEMPLATE_ID};
 use cimmeria_entity::cell_entity::NpcInteractionType;
+use cimmeria_entity::cell_entity::PetState;
 
 use super::super::loot_drop::INT_NORMAL_LOOT;
 
@@ -98,8 +99,8 @@ async fn a_pet_kill_is_scaled_by_transfer_xp() {
     let (mut mgr, pet, mob) = world();
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .transfer_xp = 0.5;
     assert_eq!(kill(&mut mgr, mob, pet).await, vec![(OWNER, MOB_XP / 2)]);
@@ -195,8 +196,8 @@ fn kill_xp_payout_fails_closed_on_a_bad_scale() {
     ] {
         mgr.get_entity_mut(pet)
             .unwrap()
-            .pet
-            .as_mut()
+            .extensions
+            .get_mut::<PetState>()
             .unwrap()
             .transfer_xp = scale;
         assert_eq!(

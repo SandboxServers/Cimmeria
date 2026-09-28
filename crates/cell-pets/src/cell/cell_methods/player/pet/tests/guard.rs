@@ -7,6 +7,7 @@
 //! `owned_pet` call from `owned_pet_or_refuse` fails every test here
 //! (worknote PT-04, M1).
 
+use cimmeria_entity::cell_entity::PetState;
 use tracing::Level;
 
 use super::*;
@@ -110,7 +111,7 @@ async fn another_players_pet_is_refused_for_every_command() {
     }
 
     let other = mgr.get_entity(other_pet).unwrap();
-    let state = other.pet.as_deref().unwrap();
+    let state = other.extensions.get::<PetState>().unwrap();
     assert_eq!(state.stance, PetStance::Defensive, "stance unchanged");
     assert!(state.toggled_off.is_empty(), "nothing toggled off");
     assert!(
@@ -156,7 +157,7 @@ async fn an_npc_id_and_a_nonexistent_id_are_refused_as_not_a_pet() {
         }
     }
     let mob = mgr.get_entity(MOB).unwrap();
-    assert!(mob.pet.is_none());
+    assert!(!mob.extensions.contains::<PetState>());
     assert!(mob.threat_list.is_empty());
 }
 
@@ -225,7 +226,7 @@ async fn a_reused_owner_id_does_not_inherit_the_pet() {
         assert!(sent.witness_calls().is_empty(), "method {method}");
     }
     let target = mgr.get_entity(pet).unwrap();
-    let state = target.pet.as_deref().unwrap();
+    let state = target.extensions.get::<PetState>().unwrap();
     assert_eq!(state.stance, PetStance::Defensive, "stance unchanged");
     assert!(state.toggled_off.is_empty(), "nothing toggled off");
     assert!(!target.abilities.is_on_cooldown(PET_ABILITY), "no cast");
@@ -242,7 +243,13 @@ async fn a_dead_owner_is_refused() {
         sent.error_codes_to(OWNER),
         vec![(pet as i32, FEEDBACK_NOT_LIVING)]
     );
-    let state = mgr.get_entity(pet).unwrap().pet.as_deref().unwrap().stance;
+    let state = mgr
+        .get_entity(pet)
+        .unwrap()
+        .extensions
+        .get::<PetState>()
+        .unwrap()
+        .stance;
     assert_eq!(state, PetStance::Defensive, "stance unchanged");
 }
 
@@ -271,13 +278,14 @@ async fn a_pet_in_another_space_is_refused() {
     const STRAY: u32 = 200_020;
     mgr.spawn_npc(STRAY, "Castle", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
-    mgr.get_entity_mut(STRAY).unwrap().pet =
-        Some(Box::new(cimmeria_entity::cell_entity::PetState::new(
+    mgr.get_entity_mut(STRAY).unwrap().extensions.insert(
+        cimmeria_entity::cell_entity::PetState::new(
             OWNER,
             PET_FIXTURE_ABILITIES.to_vec(),
             0b111,
             0,
-        )));
+        ),
+    );
     let summoner = mgr.player_identity(OWNER);
     mgr.pets.register(OWNER, STRAY, summoner);
     let capture = LogCapture::install();
@@ -293,8 +301,8 @@ async fn a_pet_in_another_space_is_refused() {
     let stance_now = mgr
         .get_entity(STRAY)
         .unwrap()
-        .pet
-        .as_deref()
+        .extensions
+        .get::<PetState>()
         .unwrap()
         .stance;
     assert_eq!(stance_now, PetStance::Defensive);

@@ -30,6 +30,7 @@
 //! pet's bar and bind it into their `Unit.Pet` slots. The summon-time
 //! identity in [`PetRegistry`] decides (Copilot, #870).
 
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{CellEntity, PetStance};
 use cimmeria_wire::cell::client_methods::pet::{
     build_pet_ability_list, build_pet_stance_list, build_pet_stance_update, ON_PET_ABILITY_LIST,
@@ -58,7 +59,7 @@ pub fn pet_create_on_client_events(
     entity: &CellEntity,
     pets: &PetRegistry,
 ) -> Vec<CellToBaseMsg> {
-    let Some(pet) = entity.pet.as_deref() else {
+    let Some(pet) = entity.extensions.get::<PetState>() else {
         return Vec::new();
     };
     let witness_id = witness.entity_id.0 as u32;

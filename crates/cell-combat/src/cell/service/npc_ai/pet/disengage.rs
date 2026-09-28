@@ -26,6 +26,7 @@
 //!   whose drain takes the owner out of combat.
 
 use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::cell_entity::PetState;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -223,7 +224,7 @@ pub(in crate::cell::service::npc_ai) async fn rearm_after_fight(
     super::super::leash::drain_player_combat(npc_id, tx, space_mgr).await;
     let Some(owner_id) = space_mgr
         .get_entity(npc_id)
-        .and_then(|e| e.pet.as_deref())
+        .and_then(|e| e.extensions.get::<PetState>())
         .map(|p| p.owner_id)
     else {
         return;

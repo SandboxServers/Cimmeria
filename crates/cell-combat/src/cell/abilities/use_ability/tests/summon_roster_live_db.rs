@@ -9,6 +9,7 @@
 //! at the caster's level, with its kit on the pet bar and every stance
 //! offered, after playing the Goa'uld summon cast effect.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use cimmeria_cell_world::test_fixtures::add_pet_owner;
@@ -123,7 +124,7 @@ async fn each_roster_summon_spawns_its_pet_through_the_cast_path() {
             pet.level, OWNER_LEVEL,
             "{summon}: the owner's level (D-PT02)"
         );
-        let state = pet.pet.as_deref().expect("PetState");
+        let state = pet.extensions.get::<PetState>().expect("PetState");
         assert_eq!(state.owner_id, OWNER);
         assert_eq!(state.summon_ability_id, summon);
         assert_eq!(state.ability_list, kit, "{summon}: the pet bar is the kit");

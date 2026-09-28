@@ -10,6 +10,7 @@
 
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::cell_entity::PetStance;
+use cimmeria_entity::cell_entity::PetState;
 use tokio::sync::mpsc;
 
 use super::decode_feedback;
@@ -154,7 +155,7 @@ async fn pt07_pet_summon_by_ability_spawns_its_template_owned_by_the_gm() {
     let e = mgr.get_entity(pet_id).unwrap();
     assert_eq!(e.template_id, Some(PET_TEMPLATE));
     assert_eq!(e.class_id, SGWPET_CLASS_ID);
-    let state = e.pet.as_deref().expect("pet state");
+    let state = e.extensions.get::<PetState>().expect("pet state");
     assert_eq!(
         (state.owner_id, state.summon_ability_id),
         (GM, SUMMON_STRAEGIS)
@@ -172,7 +173,12 @@ async fn pt07_pet_summon_by_template_id_records_no_summon_ability() {
     let mut mgr = pet_world();
     pet(&mut mgr, GM, None, &["summon", "350"]).await;
     let pet_id = only_pet_of(&mgr, GM);
-    let state = mgr.get_entity(pet_id).unwrap().pet.as_deref().unwrap();
+    let state = mgr
+        .get_entity(pet_id)
+        .unwrap()
+        .extensions
+        .get::<PetState>()
+        .unwrap();
     assert_eq!(state.summon_ability_id, 0);
 }
 
@@ -238,8 +244,8 @@ async fn pt07_pet_stance_sets_it_and_tells_only_the_owner() {
     assert_eq!(
         mgr.get_entity(pet_id)
             .unwrap()
-            .pet
-            .as_deref()
+            .extensions
+            .get::<PetState>()
             .unwrap()
             .stance,
         PetStance::Aggressive
@@ -266,8 +272,8 @@ async fn pt07_pet_stance_refuses_values_outside_epetstance() {
     assert_eq!(
         mgr.get_entity(pet_id)
             .unwrap()
-            .pet
-            .as_deref()
+            .extensions
+            .get::<PetState>()
             .unwrap()
             .stance,
         PetStance::Defensive
@@ -296,8 +302,8 @@ async fn pt07_pet_dismiss_and_stance_never_touch_another_owners_pet() {
     assert_eq!(
         mgr.get_entity(theirs)
             .unwrap()
-            .pet
-            .as_deref()
+            .extensions
+            .get::<PetState>()
             .unwrap()
             .stance,
         PetStance::Defensive
@@ -336,7 +342,12 @@ async fn pt07_pet_verbs_refuse_a_pet_summoned_by_an_earlier_holder_of_the_id() {
         feedback(&dismiss),
         vec![".pet dismiss: you have no pet out"]
     );
-    let state = mgr.get_entity(stale).unwrap().pet.as_deref().unwrap();
+    let state = mgr
+        .get_entity(stale)
+        .unwrap()
+        .extensions
+        .get::<PetState>()
+        .unwrap();
     assert_eq!(state.stance, PetStance::Defensive, "stance untouched");
 }
 

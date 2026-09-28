@@ -10,6 +10,7 @@
 //! (`warmup_complete` when it fires, `warmup_interrupted` with `reason` when
 //! it does not), which is also what an operator would read.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use cimmeria_entity::cell_entity::AiState;
@@ -51,7 +52,10 @@ async fn warmup_cast_with(before_fire: impl FnOnce(&mut SpaceManager, u32)) -> W
         e.threat_list.is_empty() && e.ai_state() != AiState::Fighting,
         "a warming order does not engage yet"
     );
-    assert_eq!(e.pet.as_deref().unwrap().deferred_order, Some(MOB));
+    assert_eq!(
+        e.extensions.get::<PetState>().unwrap().deferred_order,
+        Some(MOB)
+    );
 
     before_fire(&mut mgr, pet);
     mgr.get_entity_mut(pet)
@@ -177,7 +181,11 @@ async fn a_fired_warmup_engages_the_ordered_target() {
     let e = mgr.get_entity(pet).unwrap();
     assert_eq!(e.ai_state(), AiState::Fighting, "the pet engages on fire");
     assert!(e.threat_list.contains_key(&MOB));
-    assert_eq!(e.pet.as_deref().unwrap().deferred_order, None, "taken");
+    assert_eq!(
+        e.extensions.get::<PetState>().unwrap().deferred_order,
+        None,
+        "taken"
+    );
     let mut mgr = mgr;
     assert_two_sided_engagement(&mut mgr, pet, MOB).await;
 }
@@ -204,7 +212,7 @@ async fn an_interrupted_warmup_leaves_the_pet_not_fighting() {
         "an interrupted cast never reaches the engagement"
     );
     assert_eq!(
-        e.pet.as_deref().unwrap().deferred_order,
+        e.extensions.get::<PetState>().unwrap().deferred_order,
         None,
         "the interrupt drops the order, so no later fire can engage it"
     );
@@ -262,8 +270,8 @@ async fn going_passive_mid_warmup_drops_the_order() {
     let deferred = |mgr: &SpaceManager| {
         mgr.get_entity(pet)
             .unwrap()
-            .pet
-            .as_deref()
+            .extensions
+            .get::<PetState>()
             .unwrap()
             .deferred_order
     };

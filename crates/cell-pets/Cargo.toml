@@ -1,0 +1,42 @@
+[package]
+name = "cimmeria-cell-pets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The pets feature as a cell plugin for the Cimmeria server emulator: the owner's pet commands (cell methods 88-90), the pet tick hooks and the base-destroy hook, registered with the cell at startup"
+
+# The pilot of docs/architecture/plugin-architecture.md (#962). A feature leaf:
+# it depends on the cell systems it calls, and only the composition root
+# (cimmeria-services, which lists PetsPlugin in the plugin table) and test code
+# depend on it. It must never become a dependency of a cell crate: that would
+# put it back under the long rebuild tail the plugin model removes.
+[dependencies]
+# SpaceManager, the plugin API (`cell::plugin`) and the pet world half
+# (`cell::pets`: the registry, teardown, arrival and owner hooks).
+cimmeria-cell-world = { workspace = true }
+# Ability use with kill credit, the BSF helpers and the pet AI's order entry
+# points (`service::npc_ai::pet`).
+cimmeria-cell-combat = { workspace = true }
+# `content::EngineEvents`, the content seam the ability launch takes.
+cimmeria-cell-content = { workspace = true }
+# The Base<->Cell message contract, the cell-method and client-method indices
+# and the chat serializer.
+cimmeria-wire = { workspace = true }
+# The chain engine every cell-method handler takes.
+cimmeria-content-engine = { workspace = true }
+cimmeria-entity = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`, the pet fixtures, the occluder
+# fixtures).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+cimmeria-cell-combat = { workspace = true, features = ["test-support"] }

@@ -1,7 +1,7 @@
 //! Per-pet runtime state (pets campaign PT-01, issue #570).
 //!
 //! A pet is an ordinary NPC `CellEntity` (wire class `SGWPet`, 0x05) that
-//! carries one extra box of state: who owns it, its stance, and the ability
+//! carries one extra value of state in its `extensions` map: who owns it, its stance, and the ability
 //! lists the owner's pet bar shows. Everything here is server-side runtime
 //! state: never persisted (D-PT01 blocks persistence), and only the ability
 //! and stance lists ever reach a client, through the owner-only
@@ -10,9 +10,10 @@
 //! Field meanings follow `entities/defs/SGWPet.def` (`ownerID`,
 //! `transferXP`, `toggledAbilities`, `lastTeleportTime`, `petStance`,
 //! `abilityToResolve`). The `.def` keeps them as properties on the pet; they
-//! live in one boxed struct here so an NPC that is not a pet pays one
-//! pointer, and `entity_struct.rs` (already over the file cap) grows by one
-//! line.
+//! live in one struct here, stored as `entity.extensions.get::<PetState>()`
+//! (#962), so an NPC that is not a pet pays nothing and `CellEntity` has no
+//! pet field. The type stays in this crate while combat and the wire read
+//! it; see `docs/architecture/plugin-architecture.md` §3.5.
 
 use std::time::Instant;
 
@@ -89,7 +90,7 @@ impl TryFrom<i8> for PetStance {
 /// `ENTITYFLAG_NoPassive` / `NoDefensive` / `NoAggressive` bits.
 pub const ALL_STANCES_MASK: u8 = 0b111;
 
-/// The pet half of a pet's `CellEntity` (`CellEntity::pet`).
+/// The pet half of a pet's `CellEntity`, in its `extensions` map.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PetState {
     /// Entity id of the owning player (`SGWPet.ownerID`). The ownership

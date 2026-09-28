@@ -18,6 +18,7 @@ use cimmeria_cell_world::cell::pets::{
     order_feedback_text, order_refusal_code, take_deferred_order,
 };
 use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use tokio::sync::mpsc;
 
@@ -46,7 +47,7 @@ pub(super) fn pet_fire_refusal(
     caster: &CellEntity,
     target: &CellEntity,
 ) -> Option<&'static str> {
-    let pet = caster.pet.as_deref()?;
+    let pet = caster.extensions.get::<PetState>()?;
     let kind = if pet.deferred_order.is_some() {
         PetEngagement::OwnerOrder
     } else {

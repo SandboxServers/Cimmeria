@@ -15,6 +15,7 @@
 //! 10 s timer and despawns it (D-PT08). A pet that died earlier, or was
 //! dismissed, is skipped.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -77,7 +78,7 @@ async fn carry_out_doom(
     };
     let already_dead = entity.state_field & BSF_DEAD != 0;
     let template_id = entity.template_id;
-    let Some(state) = entity.pet.as_deref_mut() else {
+    let Some(state) = entity.extensions.get_mut::<PetState>() else {
         return false;
     };
     state.doomed_at = None;

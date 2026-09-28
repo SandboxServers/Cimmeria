@@ -3,9 +3,10 @@
 //!
 //! This is the ownership source of truth (CAT-C-11 / #462). A client
 //! command that names a pet id is untrusted until [`PetRegistry::owned_pet`]
-//! says the caller owns it; `CellEntity::pet.owner_id` is a convenience copy
+//! says the caller owns it; `PetState::owner_id` (in the pet's `extensions`) is a convenience copy
 //! the spawn path writes in the same step.
 
+use cimmeria_entity::cell_entity::PetState;
 use std::collections::{HashMap, HashSet};
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
@@ -195,7 +196,10 @@ impl SpaceManager {
     /// log of the same seam.
     pub fn owned_pet(&self, caller: u32, claimed: u32) -> Result<u32, PetReject> {
         let result = self.pets.owned_pet(caller, claimed).and_then(|pet| {
-            if self.get_entity(pet).is_none_or(|e| e.pet.is_none()) {
+            if self
+                .get_entity(pet)
+                .is_none_or(|e| !e.extensions.contains::<PetState>())
+            {
                 Err(PetReject::PetGone)
             } else if !self
                 .pets

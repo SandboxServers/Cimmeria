@@ -76,12 +76,15 @@ async fn a_pet_in_another_space_is_refused() {
     const STRAY: u32 = 0x7000_0801;
     mgr.spawn_npc(STRAY, "Castle", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
-    mgr.get_entity_mut(STRAY).unwrap().pet = Some(Box::new(PetState::new(
-        OWNER,
-        PET_FIXTURE_ABILITIES.to_vec(),
-        0b111,
-        0,
-    )));
+    mgr.get_entity_mut(STRAY)
+        .unwrap()
+        .extensions
+        .insert(PetState::new(
+            OWNER,
+            PET_FIXTURE_ABILITIES.to_vec(),
+            0b111,
+            0,
+        ));
     let summoner = mgr.player_identity(OWNER);
     mgr.pets.register(OWNER, STRAY, summoner);
 

@@ -3,6 +3,7 @@
 //! fixtures have no navmesh, so nothing here asserts a route.
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{AiState, PetStance};
 use tokio::sync::mpsc;
 
@@ -117,8 +118,8 @@ fn mob_fights(mgr: &mut SpaceManager, mob: u32, victim: u32) {
 fn set_stance(mgr: &mut SpaceManager, pet: u32, stance: PetStance) {
     mgr.get_entity_mut(pet)
         .unwrap()
-        .pet
-        .as_deref_mut()
+        .extensions
+        .get_mut::<PetState>()
         .unwrap()
         .stance = stance;
 }

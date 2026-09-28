@@ -1,6 +1,7 @@
 //! The fire half of an owner-pet cast: run the ability's pet effects on the
 //! owner's pet (pets PT-08).
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -157,7 +158,7 @@ fn state_line(
     if dooms_pet(space_mgr, ability_id) {
         let secs = space_mgr
             .get_entity(pet)
-            .and_then(|e| e.pet.as_deref())
+            .and_then(|e| e.extensions.get::<PetState>())
             .and_then(|p| p.doomed_at)
             .map(|at| {
                 at.saturating_duration_since(Instant::now())

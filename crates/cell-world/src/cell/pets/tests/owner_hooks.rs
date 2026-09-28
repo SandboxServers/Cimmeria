@@ -1,6 +1,7 @@
 //! PT-02 owner lifecycle (A-31): the two choke points every owner path
 //! calls, and the pet corpse timer (D-PT08).
 
+use cimmeria_entity::cell_entity::PetState;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
@@ -113,7 +114,12 @@ async fn owner_teleport_moves_the_pet_beside_the_owner() {
     assert!(p.nav_path.is_empty(), "the pet is stopped");
     assert_eq!(p.velocity, [0.0; 3]);
     assert!((p.direction.y - yaw).abs() < 1e-6, "faces the owner's way");
-    assert!(p.pet.as_ref().unwrap().last_teleport_at.is_some());
+    assert!(p
+        .extensions
+        .get::<PetState>()
+        .unwrap()
+        .last_teleport_at
+        .is_some());
     assert_eq!(mgr.pets.pets_of(OWNER), vec![pet], "still owned");
 
     let moves = drain_entity_moved_for(&mut rx, pet);
@@ -266,8 +272,8 @@ async fn dead_pet_corpse_despawns_after_ten_seconds() {
     assert_eq!(
         mgr.get_entity(pet)
             .unwrap()
-            .pet
-            .as_ref()
+            .extensions
+            .get::<PetState>()
             .unwrap()
             .despawn_at,
         Some(t0 + PET_CORPSE_DESPAWN),
@@ -298,7 +304,7 @@ async fn living_pet_gets_no_corpse_timer() {
     pet_owner_sweep_at(t0, &tx, &mut mgr).await;
     pet_owner_sweep_at(t0 + Duration::from_secs(60), &tx, &mut mgr).await;
     let p = mgr.get_entity(pet).expect("still here");
-    assert_eq!(p.pet.as_ref().unwrap().despawn_at, None);
+    assert_eq!(p.extensions.get::<PetState>().unwrap().despawn_at, None);
 }
 
 // ---- wiring ---------------------------------------------------------------
