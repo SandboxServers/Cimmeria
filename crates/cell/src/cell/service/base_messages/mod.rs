@@ -493,7 +493,7 @@ pub(super) async fn handle_base_message(
             witness_id,
             entity_ids,
         } => {
-            request_entity_update::handle(witness_id, entity_ids, tx, space_mgr).await;
+            request_entity_update::handle(witness_id, entity_ids, space_mgr).await;
         }
 
         BaseToCellMsg::GmSpawnNpcReady {

@@ -1,42 +1,53 @@
-//! Handler for `BaseToCellMsg::RequestEntityUpdate` — re-emits CREATE_ENTITY
-//! + cascade to a player for entities they claim to be missing.
+//! Handler for `BaseToCellMsg::RequestEntityUpdate` -- the client's
+//! cache-stamp handshake (`requestEntityUpdate`, msg `0x07`).
 //!
-//! Wire-level context: the client sends `requestEntityUpdate` (msg `0x07`)
-//! when it suspects it is missing or has stale state for one or more entities.
-//! This is the canonical recovery path when a `createEntity` (`0x09`) for an
-//! NPC was dropped on the wire past the 20-retry lifetime cap — without the
-//! re-emit, the NPC stays permanently invisible on that client.
+//! **This is not a recovery request.** The client's `EntityManager::onEntityEnter`
+//! (`ghidra://SGW.exe@0x00dd24f0`) fires it once for *every* non-player entity
+//! entering its AoI, carrying `[u32 entityId][N × u32 cacheStamp]` with `N`
+//! always 0 on this client build -- BigWorld's cache-stamp versioning is
+//! never populated. See
+//! `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`
+//! for the full RE evidence (issues #838, #1000).
 //!
-//! Security: only entities currently in the witness's AoI are re-emitted.
-//! Out-of-AoI requests are dropped silently — the client must not be able to
-//! probe arbitrary entity ids.
+//! PR #390 originally treated this message as a recovery signal (an NPC's
+//! `createEntity` dropped on the wire past the 20-retry cap) and re-emitted a
+//! full `EnteredAoI` + cascade whenever the requested id was in the witness's
+//! AoI. That assumption doesn't survive the RE: the message fires identically
+//! on every routine entry, so re-creating on every request would double the
+//! `CREATE_ENTITY` + property cascade for the overwhelming majority of calls,
+//! which were never actually missing anything. The wire carries no field that
+//! distinguishes "just entered, this is the routine handshake" from
+//! "genuinely missing state" -- there is no signal here left to recover from.
+//!
+//! The cell's answer, therefore:
+//!
+//! - **id is in the witness's current AoI**: the base already sent this
+//!   witness a full `CREATE_ENTITY` + cascade for it. The client already has
+//!   it. Answer with **nothing**.
+//! - **id is NOT in the witness's current AoI**: refused, same as before this
+//!   fix -- a witness must not be able to pull another entity's state by
+//!   asserting an arbitrary id (`docs/architecture/negative-logging-convention.md`
+//!   Pattern C: logged, not silently dropped).
 //!
 //! A spammed request is truncated to [`MAX_REQUEST_ENTITIES`] to bound the
-//! per-call cost (witness-set lookup + entity copy + cell→base send per id).
+//! per-call cost (witness-set lookup per id).
 
 use cimmeria_common::EntityId;
-use tokio::sync::mpsc;
 
-use super::super::super::messages::{CellToBaseMsg, NpcAoIData};
 use super::super::super::space_manager::SpaceManager;
-use cimmeria_cell_world::cell::pets::pet_create_on_client_events;
 
 /// Cap on entity ids honoured per `RequestEntityUpdate` payload.
 ///
-/// Sized for realistic recovery bursts — even a 28-NPC Castle_CellBlock
-/// instance fits well inside this. Above the cap the surplus is dropped;
-/// the legitimate use case (recover from a small handful of dropped
-/// CREATE_ENTITYs) can retry next tick if it needs more.
+/// The corrected wire format (`[u32 entityId][N × u32 cacheStamp]`) yields
+/// exactly one entity id per real client message today, but the cap stays as
+/// a defensive bound against a future client build -- or a malicious one --
+/// that packs more.
 const MAX_REQUEST_ENTITIES: usize = 64;
 
-/// Re-emit `EnteredAoI` for each `entity_id` that's currently in
-/// `witness_id`'s witness set. Unknown / out-of-AoI ids are skipped.
-pub(super) async fn handle(
-    witness_id: u32,
-    mut entity_ids: Vec<u32>,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
-) {
+/// Acknowledge a `requestEntityUpdate` cache-stamp handshake for each
+/// `entity_id` the witness reports. Ids already in `witness_id`'s AoI get no
+/// reply (the client already has full state); ids outside it are refused.
+pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr: &SpaceManager) {
     let requested = entity_ids.len();
     let truncated = requested > MAX_REQUEST_ENTITIES;
     if truncated {
@@ -45,136 +56,62 @@ pub(super) async fn handle(
             requested,
             cap = MAX_REQUEST_ENTITIES,
             reason = "request_too_large",
-            "RequestEntityUpdate: payload exceeds cap — truncating"
+            "RequestEntityUpdate: payload exceeds cap -- truncating"
         );
         entity_ids.truncate(MAX_REQUEST_ENTITIES);
     }
 
-    // The witness must exist in some space and be a player — otherwise no
-    // AoI bookkeeping exists to authorise against.
+    let identity = space_mgr.player_identity(witness_id);
+
+    // The witness must exist in some space -- otherwise no AoI bookkeeping
+    // exists to authorise against.
     let Some(witness) = space_mgr.get_entity(witness_id) else {
         tracing::warn!(
             witness_id,
             requested,
+            account_id = identity.account_id,
+            player_id = identity.player_id,
             reason = "witness_not_in_space",
-            "RequestEntityUpdate: witness entity not found — dropping"
+            "RequestEntityUpdate: witness entity not found -- dropping"
         );
         return;
     };
-    let Some(space_id) = space_mgr.get_entity_space_id(witness_id) else {
-        tracing::warn!(
-            witness_id,
-            requested,
-            reason = "witness_no_space_id",
-            "RequestEntityUpdate: witness has no space_id — dropping"
-        );
-        return;
-    };
-    // Snapshot the witness set up front so the per-id loop only does
-    // cheap set lookups (and isn't surprised by mid-iteration AoI ticks).
-    let witnesses: std::collections::HashSet<EntityId> =
-        witness.witnesses.iter().copied().collect();
 
-    let mut emitted = 0usize;
-    // `skipped_unknown` = id is in the witness's recorded AoI but the entity
-    // is missing from any space (vanished between AoI tick and this handler).
-    // `skipped_not_in_aoi` = id is NOT in the witness's AoI at all — either
-    // raced an AoI-leave or the client is probing.
-    let mut skipped_unknown = 0usize;
-    let mut skipped_not_in_aoi = 0usize;
-
+    let mut known = 0usize;
+    let mut unknown = 0usize;
     for entity_id in entity_ids {
         let target_eid = EntityId(entity_id as i32);
-        if !witnesses.contains(&target_eid) {
-            skipped_not_in_aoi += 1;
-            continue;
-        }
-        let Some(other) = space_mgr.get_entity(entity_id) else {
-            skipped_unknown += 1;
-            continue;
-        };
-        let npc_data = if !other.is_player {
-            Some(NpcAoIData::from_entity(other))
+        if witness.witnesses.contains(&target_eid) {
+            // Normal case: the client already has this entity's full state
+            // from its original CREATE_ENTITY. Nothing to send.
+            known += 1;
         } else {
-            None
-        };
-        let msg = CellToBaseMsg::EnteredAoI {
-            witness_id,
-            entity_id,
-            space_id,
-            class_id: other.class_id,
-            position: [other.position.x, other.position.y, other.position.z],
-            direction: [other.direction.x, other.direction.y, other.direction.z],
-            level: other.level,
-            npc_data,
-            player_data: other
-                .is_player
-                .then(|| crate::cell::messages::PlayerAoIData::from_entity(other)),
-        };
-        if let Err(e) = tx.send(msg).await {
+            // The id is outside this witness's AoI. Refuse rather than leak
+            // another entity's state to a witness that hasn't earned
+            // visibility of it -- same anti-probe posture as before this fix.
+            unknown += 1;
             tracing::warn!(
                 witness_id,
                 entity_id,
-                "RequestEntityUpdate: EnteredAoI re-emit cell\u{2192}base send failed: {e}"
+                account_id = identity.account_id,
+                player_id = identity.player_id,
+                reason = "not_in_witness_aoi",
+                "RequestEntityUpdate: id outside witness's AoI -- refusing"
             );
-            // Bail — the channel is closed, no point processing further ids.
-            return;
         }
-        // A re-emitted pet needs its owner-only lists again, after the
-        // EnteredAoI (the same replay the AoI tick does, A-23). Only the
-        // summoner gets them, not a player holding a reused owner id.
-        for msg in pet_create_on_client_events(witness, other, &space_mgr.pets) {
-            if let Err(e) = tx.send(msg).await {
-                tracing::warn!(
-                    target: "pets.lifecycle",
-                    event = "pet_list_replay_failed",
-                    reason = "cell_to_base_closed",
-                    entity_id,
-                    witness_id,
-                    account_id = space_mgr.player_identity(witness_id).account_id,
-                    player_id = space_mgr.player_identity(witness_id).player_id,
-                    pet_id = entity_id,
-                    error = %e,
-                    "RequestEntityUpdate: pet list re-emit cell\u{2192}base send failed"
-                );
-                return;
-            }
-        }
-        // A re-emitted engaged duelist needs the PvP flag again (SS-D2):
-        // the re-create resets the client's copy to 0.
-        if let Some(msg) =
-            cimmeria_cell_world::cell::duel::pvp_flag_on_enter(&space_mgr.duels, witness_id, other)
-        {
-            if let Err(e) = tx.send(msg).await {
-                tracing::warn!(
-                    target: "duel",
-                    event = "duel.send_failed",
-                    reason = "cell_to_base_closed",
-                    entity_id,
-                    witness_id,
-                    account_id = space_mgr.player_identity(witness_id).account_id,
-                    player_id = space_mgr.player_identity(witness_id).player_id,
-                    target_player_id = other.player_id,
-                    duel_id = other
-                        .player_id
-                        .and_then(|p| space_mgr.duels.duel_of(p))
-                        .map(|d| d.duel_id),
-                    error = %e,
-                    "RequestEntityUpdate: PvP flag re-emit cell\u{2192}base send failed"
-                );
-                return;
-            }
-        }
-        emitted += 1;
     }
 
-    tracing::info!(
+    // This now fires once per non-player entity per AoI entry -- i.e.
+    // routinely, at AoI-tick volume -- so the common (`known`) outcome stays
+    // at debug. The `unknown` branch above already warns per occurrence.
+    tracing::debug!(
         witness_id,
         requested,
         truncated,
-        emitted,
-        skipped_not_in_aoi,
-        skipped_unknown,
-        "RequestEntityUpdate handled"
+        known,
+        unknown,
+        account_id = identity.account_id,
+        player_id = identity.player_id,
+        "RequestEntityUpdate acknowledged"
     );
 }

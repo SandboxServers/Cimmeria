@@ -17,9 +17,11 @@ use cimmeria_mercury::test_transport::TestTransport;
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
+use tracing::Level;
+
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
-use crate::test_support::test_default_connected_client_state;
+use crate::test_support::{test_default_connected_client_state, LogCapture};
 
 use super::handle_encrypted_datagram;
 
@@ -64,12 +66,28 @@ fn rig() -> Rig {
 
 /// One encrypted reliable client packet carrying a single
 /// `REQUEST_ENTITY_UPDATE` for `probe_id`.
+///
+/// Wire (corrected 2026-09-28, issue #838): `[u32 entityId][N × u32
+/// cacheStamp]`, N = 0 here -- exactly what the real client sends.
 fn reliable_probe(rig: &Rig, seq: u32, probe_id: u32) -> Vec<u8> {
-    let mut payload = 0u32.to_le_bytes().to_vec(); // header word
-    payload.extend_from_slice(&probe_id.to_le_bytes());
+    let payload = probe_id.to_le_bytes().to_vec();
     let mut body = vec![0x07];
     body.extend_from_slice(&(payload.len() as u16).to_le_bytes());
     body.extend_from_slice(&payload);
+    let flags = FLAG_ON_CHANNEL | FLAG_HAS_SEQUENCE | FLAG_RELIABLE;
+    let plain = build_outgoing(flags, &body, Some(seq), &[], None);
+    let enc = rig.connected.lock().unwrap()[&rig.addr].enc.clone();
+    enc.encrypt(&plain).unwrap()
+}
+
+/// A raw `REQUEST_ENTITY_UPDATE` body shorter than the 4-byte entity id --
+/// the byte-exact `payload_too_short` regression guard for issue #838's
+/// negative-log requirement.
+fn malformed_probe(rig: &Rig, seq: u32) -> Vec<u8> {
+    let payload: &[u8] = &[0xAB]; // 1 byte -- too short for a u32 entity id
+    let mut body = vec![0x07];
+    body.extend_from_slice(&(payload.len() as u16).to_le_bytes());
+    body.extend_from_slice(payload);
     let flags = FLAG_ON_CHANNEL | FLAG_HAS_SEQUENCE | FLAG_RELIABLE;
     let plain = build_outgoing(flags, &body, Some(seq), &[], None);
     let enc = rig.connected.lock().unwrap()[&rig.addr].enc.clone();
@@ -172,4 +190,30 @@ async fn a_client_whose_reliable_stream_starts_at_1234_is_dispatched_normally() 
     deliver(&rig, &reliable_probe(&rig, 1235, 301)).await;
     assert_eq!(dispatched(&mut rig), vec![301, 302]);
     assert_eq!(*rig.pending_acks.lock().unwrap(), vec![1234, 1236, 1235]);
+}
+
+/// #838 negative-log guard: a `REQUEST_ENTITY_UPDATE` body shorter than the
+/// 4-byte entity id must log a WARN with `reason = "payload_too_short"`, not
+/// a silent DEBUG. This must fail if the arm reverts to the pre-fix
+/// `tracing::debug!` no-op.
+#[tokio::test]
+async fn a_too_short_payload_logs_a_negative_event_not_a_silent_drop() {
+    let mut rig = rig();
+    let guard = LogCapture::install();
+
+    deliver(&rig, &malformed_probe(&rig, 0)).await;
+
+    let row = guard
+        .find_event(
+            Level::WARN,
+            "payload shorter than the 4-byte entity id",
+            "payload_too_short",
+        )
+        .unwrap_or_else(|| panic!("no payload_too_short row; saw {:#?}", guard.all()));
+    assert!(row.has_field("payload_len", "1"));
+
+    assert!(
+        dispatched(&mut rig).is_empty(),
+        "a malformed payload must not reach the cell"
+    );
 }

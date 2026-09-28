@@ -492,8 +492,16 @@ AoI entity creation (non-player entities entering a player's AoI) differs from `
 
 1. If `g_bEntityRpcDebug (DAT_01ef2224)` is set, log entity-ID and space-ID.
 2. Search the primary entity map at `GameEntityManager+0x18` for the leaving entity ID.
-3. *Path A — entity NOT in primary map*: execute the stream callback directly via `nSpaceId->vtable[2]()`.
-4. *Path B — entity IS in primary map*: read the stream byte-count, allocate a `0x20`-byte `MemoryOStream` via `scalable_malloc`, copy the stream data in, then queue it to the **deferred-leave slot at `GameEntityManager+0x3C`** via `LookupOrEmplaceSecondaryListenerSlot` + `FUN_0046eef0`. This is distinct from the deferred-enter slot at `+0x30` covered in §1.9.
+3. *Path A — entity IS in primary map (found)*: execute the stream callback directly via `nSpaceId->vtable[2]()`.
+4. *Path B — entity NOT in primary map (not found)*: read the stream byte-count, allocate a `0x20`-byte `MemoryOStream` via `scalable_malloc`, copy the stream data in, then queue it to the **deferred-leave slot at `GameEntityManager+0x3C`** via `LookupOrEmplaceSecondaryListenerSlot` + `FUN_0046eef0`. This is distinct from the deferred-enter slot at `+0x30` covered in §1.9.
+
+> [!IMPORTANT] **Correction (2026-09-28, issue #1000):** the Path A/B condition above was
+> previously inverted (an entity found in the primary map was mislabeled "Path A — NOT in
+> primary map"). A fresh decompile of `EntityManager_LeaveAoI @ 0x00dd29d0` confirms: the
+> map lookup's iterator-vs-end comparison branches to the **immediate dispatch** call when
+> the entity **is found**, and falls through to the **deferred-leave buffer** allocation only
+> when the entity is **not found**. Found → immediate; not found → deferred. See
+> `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`.
 
 There is no entity-table removal or CME `Event_EntityLeftAoI` emission at this call site — deferred leave delivery happens when the slot is flushed, and the entity reference is **not** explicitly freed here. (Audit B.2 / G4.)
 

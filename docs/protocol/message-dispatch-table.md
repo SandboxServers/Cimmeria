@@ -171,7 +171,7 @@ Table size: `0x0D` (13 entries, indices 0x00-0x0C). Defined in `ClientMessageLis
 | 0x04 | avatarUpdateWardImplicit | CONSTANT | 36 | Yes | Ward entity position (unused by SGW) |
 | 0x05 | avatarUpdateWardExplicit | CONSTANT | 40 | Yes | Ward entity position (unused by SGW) |
 | 0x06 | switchInterface | CONSTANT | 0 | No | Deprecated — not used |
-| 0x07 | requestEntityUpdate | WORD | — | Yes | Request entity data for entity entering AoI |
+| 0x07 | requestEntityUpdate | WORD | — | Yes | Cache-stamp handshake the client fires from `EntityManager::onEntityEnter` for every non-player entity entering AoI. Body is `[u32 entityId][N × u32 cacheStamp]`, N always 0 on this build (not `[u32 header][N × u32 entity_id]` as pre-#838 docs claimed — see `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`). Not a recovery request: the client does not wait for a reply before treating the entity as usable. |
 | 0x08 | enableEntities | CONSTANT | 8 | Yes | Notify server that client entity system is ready |
 | 0x09 | viewportAck | CONSTANT | 8 | No | Acknowledge viewport change |
 | 0x0A | vehicleAck | CONSTANT | 8 | No | Acknowledge vehicle update |
