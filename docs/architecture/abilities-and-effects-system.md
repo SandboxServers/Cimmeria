@@ -1,6 +1,6 @@
 # Abilities + Effects System
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Audience**: Engineers touching combat / abilities / effects on the cell
 > **Type**: ADR + reference
 > **Owner**: Combat systems
@@ -736,6 +736,32 @@ When the attacker and the target are an engaged duel's engaged entities and HEAL
 **Why:** The data is the client's own. The 2009 `CookedDataAbilities.pak` ships the same numbers (1652 Jaffa: Double Blast `MaxRange="3000"`), and the client uses them in UE3 world space: the ground-target reticule clamps against them from the pawn's UE3 location, next to AoE radii it converts to UE3 units (Medium = 1000). Every non-zero seeded range is a multiple of 100. Compared raw with metre positions, every ranged ability with a real range reached 1 to 100 km. Evidence and addresses: [ability-resolution-pipeline.md § Range units](../reverse-engineering/findings/ability-resolution-pipeline.md#range-units-919-verified-2026-09-28).
 
 **Consequences:** 1652 reaches 30 m, 1653 8 m, grenades 25 m, deployables 5 m; turret 1205's 300-unit minimum is 3 m. Weapon ranges (`resources.items.*_range`) are already metres and are not converted. The server still ignores `UseWeaponRange` (flag 4) and never checks `min_range` for a player's cast (python refuses inside it with `OutsideWeaponRange`); both are pre-existing gaps, not part of #919. Tests: `spawner::abilities::range_unit_tests`, `use_ability/tests/range_units.rs`, and the live-DB `spawner/tests/live_db_ability_ranges.rs` and `use_ability/tests/range_units_live_db.rs`.
+
+### 28. A deployable is a player ground cast with a `deployables` row: the object is an owned `SGWBeing` that pulses as its owner (deployables Phase 0)
+
+**Decision:** A player ability with a `resources.deployables` row (`SpaceManager::deployable_specs`) places a stationary object instead of hitting a target. It rides the cast of decision 21 with these diversions, in [`abilities/deployable/`](../../crates/cell-combat/src/cell/abilities/deployable/mod.rs):
+
+- **Ground point.** `useAbilityOnGroundTarget` diverts to `handle_deploy_on_ground` before any AoE collection. The client's point must be finite, within the ability's `max_range` of the caster, in line of sight of the caster's eye where the world has an occluder (an `Unknown` answer allows, as decision 20 does), and on the navmesh where the world enforces containment. A point over the mesh is moved onto the floor. A refusal sends `onErrorCode` (42, 39 or 0) and a `CHAN_FEEDBACK` line before anything is charged, and so does a press during the cooldown or another warmup (99), which the ordinary launch refuses silently. The validated point is staged on `SpaceManager::deployables`, and the cast launches with target 0.
+- **Launch.** `handle.rs` discards the client's target, as for a summon, so the #444 gate never sees the cast. A deployable launched with no staged point (a plain `useAbility`) is refused with feedback.
+- **Warmup.** The ability's own. Every decision-21 interrupt applies, and `interrupt_pending_cast` drops the staged point.
+- **Fire.** `fire::fire_cast` diverts to `fire_deploy` ahead of ammo and damage. It takes the staged point, re-checks the caster and the range, spawns the object (`SpaceManager::spawn_deployable`), plays `Ability_End` with TargetID = caster, and removes the owner's oldest object from that ability past `max_active`.
+- **Pulse.** `deployable_tick` runs every AoI tick, after the pet sweep. The world-side verdict ([`cell-world/src/cell/deployables/teardown.rs`](../../crates/cell-world/src/cell/deployables/teardown.rs)) removes an object whose owner is gone, has another identity, is in another space or is dead, and one whose last pulse ran. Otherwise, each due pulse calls `apply_damage_to_target` with the **owner** as the attacker on every target of `combat::area_candidates(owner)` in the object's space and radius that `combat::may_hit_in_area` admits.
+
+The object is an `SGWBeing` (class 0x01) with its owner's faction. Its lifetime is the lifetime effect's `pulse_count` x `pulse_duration`, and its radius is the pulse effect's `Radius` NVP, else its `tcm_param1` tier.
+
+**Why:**
+
+- No 2009 row names the template or says which effect rides on which (1012: 5065 "Pulser, Despawn Target on Finish" and 5066 "Damage"), so the binding is seed data keyed on the ability, like `pet_summons` (decision 23).
+- A being is in no AoE or cone candidate list and never gets a fight pass, so nothing can target or attack it without NPC-versus-NPC combat (#1009). A pet would bind into the owner's pet bar.
+- Using the owner as the attacker gives the owner the threat, the kill XP (`resolve_death`) and the mission credit (`credit_ground_deaths`) with no new credit seam. It also applies the owner's own hostility rule, so players, pets and friendly NPCs are never hit.
+- The pulse hands the damage pipeline the ability with **only** the pulse effect. `apply_damage_to_target` registers every pulsing effect of the ability it is given on its target, so the whole ability would put the 30-pulse lifetime effect on every mob hit.
+- One per-tick verdict covers every owner path (logout, travel, respawn, space transfer, death), as `pet_owner_sweep` does for pets. It runs before the pulse, so a departed owner's object never pulses again.
+
+**Consequences:** 5066 carries `EF_DontUseQR` and `EF_SequenceOnPulse`, and decision 10 still does not dispatch on flags: the pulse rolls QR and plays no per-pulse sequence. The pulse does not check line of sight from the object to its targets, as ground AoE does not. The engaged duel partner is hit, as by any of the owner's area abilities, and its damage clamps at 1 HP (decision 26).
+
+**Reversibility:** High. The diversions are one call each in `dispatch/mod.rs`, `handle.rs`, `fire.rs`, `sequence.rs` and `warmup/interrupt.rs`, and one tick in the message loop.
+
+**Code and tests:** [`abilities/deployable/`](../../crates/cell-combat/src/cell/abilities/deployable/mod.rs), [`cell-world/src/cell/deployables/`](../../crates/cell-world/src/cell/deployables/mod.rs), `spawner::load_deployables`. Tests are in `abilities/deployable/tests/` and `deployables/tests.rs`, and the seed guards in `spawner/tests/live_db_deployables.rs`; the revert proofs are in the [deployables ledger](../analysis/deployables/README.md#tests-and-revert-proofs). Gameplay: [deployables.md](../gameplay/deployables.md).
 
 ## Cross-cutting follow-ups
 

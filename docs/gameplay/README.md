@@ -277,6 +277,16 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ---
 
+## Deployables
+
+**Status**: IM — Phase 0 is implemented server-side, not yet client-tested: 1012 "Deployable: Microwave Emitter" places an owned object at a validated ground point that drains Focus, then Health, from hostile NPCs within 8 m every second for 30 s, as its owner. The mechanism is generic (`resources.deployables`); 1236, 1224 and 1253 are later phases.
+
+**Entity**: an `SGWBeing` spawned from templates 400-409 (no dedicated entity class)
+**Events**: `useAbilityOnGroundTarget` (NetOut); the ordinary AoI create and leave (NetIn)
+**RE doc**: [deployables.md](deployables.md)
+
+---
+
 ## Dueling
 
 **Status**: IM — 1v1 duels are implemented end to end on the server (SS-D1 to SS-D3), not yet client-tested: challenge, response, a 5-second countdown, the engaged duel (PvP flag, only the two duelists can harm each other) and every end path (forfeit, a non-lethal 1 HP clamp, death from anyone else, disconnect, travel, range). No rewards; squad duels refused. See [duel-system.md](duel-system.md).

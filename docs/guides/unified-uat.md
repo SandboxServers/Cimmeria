@@ -42,6 +42,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Historical cellblocks](#historical-cellblocks) | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#what-the-uat-must-settle) |
 | [Ring transport](#ring-transport) | [ring-transport README, Phase 1](../analysis/ring-transport-cellblock-castle/README.md#phase-1-status) |
 | [GM console command parity](#gm-console-command-parity) | [legacy command parity README](../analysis/legacy-command-parity/README.md#validation-and-uat-gates) |
+| [Deployables](#deployables) | [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -168,12 +169,12 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | Session | Character | Covers | Roughly |
 |---|---|---|---|
 | 1. Arrival | New Tau'ri (Soldier, Commando, Scientist or Archaeologist) | Character creation, the intro movie (K6), Cellblock M1 (T25, T01-T07, T26), then a detour to the debug hub | 45 min |
-| 2. Hub pass | Same character, GM | Ability trees (AT-06 steps 1-7) at the Archetype Skills Trainer, bank steps 1-10 and 13-14 at the Storage Officer, mail steps 1-6 with `.mail`, pets U1-U13 and U17-U20 with `.giveability` | 60-90 min |
+| 2. Hub pass | Same character, GM | Ability trees (AT-06 steps 1-7) at the Archetype Skills Trainer, bank steps 1-10 and 13-14 at the Storage Officer, mail steps 1-6 with `.mail`, pets U1-U13 and U17-U20 with `.giveability`, deployables DP-U1 to DP-U6 and DP-U8 with `.giveability 1012` | 60-90 min |
 | 3. Tutorial run | Same character | Cellblock M2-M5 (T08-T31), dialog UI rows, NPC AI steps 1-9 in the same rooms | 60 min |
 | 4. Jaffa run | New Jaffa (Shol'va) | Cellblock archetype rows (T05/T06, T11/T12, T18/T19 Jaffa), Castle M1 as Jaffa | 60 min |
 | 5. Castle | Tau'ri from session 3 | Castle B1-B20, NPC AI steps 10-15 | 60 min |
 | 6. Harset | Same, then an ordinary non-GM account | Harset C1, C4, C5, C6 | 45 min |
-| 7. Two players | Two accounts (a third for the duel spectator) | Organizations steps 1-12, bank steps 15-25 (org vaults, treasury, Team expansion), chat and duel steps 7-13, pets U11, crafting step 17, NPC AI one-way visibility, Castle B20 | 120 min |
+| 7. Two players | Two accounts (a third for the duel spectator) | Organizations steps 1-12, bank steps 15-25 (org vaults, treasury, Team expansion), chat and duel steps 7-13, pets U11, deployables DP-U7, crafting step 17, NPC AI one-way visibility, Castle B20 | 120 min |
 | 8. Goa'uld | New Goa'uld | Pets U2 at the trainer, U14-U16 | 20 min |
 | 9. Owner only | Patched client | Historical cellblocks, ring transport Phase 1 | as needed |
 | 10. Crafting | New character, GM | Crafting steps 1-16 and 18-21 at the crafting corner; step 17 fits session 7 | 75 min |
@@ -729,6 +730,38 @@ The legacy emulator's `.`-commands, restored on Cimmeria's dev console: search, 
 **Things only a human can check:** the selected player's UI after a grant (M1-3); what an observer sees (M1-3, M2-1); the load screen on a cross-world move (M4-1).
 
 Source: [legacy command parity README, Validation and UAT gates](../analysis/legacy-command-parity/README.md#validation-and-uat-gates), its [work packets](../analysis/legacy-command-parity/work-packets.md), and [commands.md, Command families](../commands.md#command-families).
+
+## Deployables
+
+A Scientist places a Microwave Emitter on the ground; for 30 s it drains Focus, then Health, from hostile NPCs within 8 m every second, as if the Scientist had hit them.
+
+**Status:** Ready. Phase 0 is merged; nothing has been seen in a client yet. The object's look has never been rendered.
+
+**Prerequisites:** a GM character with `.giveability 1012` (any archetype can then cast it), and hostile mobs to stand near it (Castle Cellblock guards, or `.spawn`). DP-U7 needs a second player.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| DP-U1 | Target the ground about 10 m away and cast 1012 | The cooldown and a 2 s warmup show at once. After 2 s an object appears at the point. | |
+| DP-U2 | Look at the object | A small deployable model standing on the ground, not floating or sunk, named "Deployable: Microwave Emitter". | Describe it: the body (`BS_DeployableLow` + `Dp_Standard100`) has never been rendered |
+| DP-U3 | Let hostile mobs stand within 8 m of it | Every second their Focus drops, then their Health; they turn on you even from 10 m away. A kill gives you XP and quest credit. | |
+| DP-U4 | Watch for 30 s | The object disappears 30 s after it appeared. | |
+| DP-U5 | Cast at a spot beyond range, behind a wall, and during the cooldown | Each press shows a chat line ("That spot is out of range.", "You cannot see that spot.", "That deployable is not ready yet.") and charges nothing. | The range is 500 units, so "beyond range" needs a long view; the wall check needs a world with an occluder (Castle Cellblock) |
+| DP-U6 | Place one, then die; place one, then log out; place one, then change zone | The object disappears each time. | |
+| DP-U7 | A second player stands inside the radius | They take no damage, and they see the object appear and disappear. | Two players |
+| DP-U8 | Try to attack the object (click it, cast at it) | It cannot be attacked. | |
+
+**SigNoz** (base `service.name = 'cimmeria-server'`):
+
+| Question | Filter |
+|---|---|
+| Everything one player's deployables did | `scope_name LIKE 'deployables.%' AND account_id = <N>` |
+| Why an object went, and its damage totals | `scope_name = 'deployables.lifecycle' AND event = 'despawned'` |
+| Why a press was refused (DP-U5) | `scope_name = 'deployables.lifecycle' AND event = 'deploy_refused'` |
+| Each pulse (DP-U3) | `scope_name = 'deployables.pulse' AND deployable_id = <id>` |
+
+**Things only a human can check:** the object's look and whether it sits on the ground (DP-U2); whether the Focus and Health bars move on the mobs (DP-U3); what the chat lines look like (DP-U5).
+
+Source: [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release); background in [deployables.md](../gameplay/deployables.md).
 
 ## Recording results
 

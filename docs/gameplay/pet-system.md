@@ -123,7 +123,7 @@ The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). Th
 | Owner abilities on the pet | DONE (PT-08) | Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration and the Repair Turret heals act on the owner's pet. See [Owner abilities on pets](#owner-abilities-on-pets-pt-08) |
 | GM tooling | DONE (PT-07) | `.pet`, `.giveability` and the debug-hub pet trainer. See [GM tooling](#gm-tooling-pt-07) |
 | Pet persistence | NOT PLANNED (PT-10) | Pets are per session (D-PT01): re-summoned after logout, death or any trip. `saveToDB` is defined, but no table or save logic exists |
-| Turrets | BLOCKED (PT-12) | The client ships no turret body or mesh, so the Scientist turret summons have no template to spawn |
+| Turrets | BLOCKED (PT-12) | The client ships no turret body or mesh, so the Scientist turret summons have no template to spawn. Lead: the deployables campaign found `BS_DeployableLow` / `BS_DeployableHigh` with `Dp_Offensive*` / `Dp_Defensive*` components in the client's `WP-Human.upk` ([deployables ledger](../analysis/deployables/README.md#evidence)); unverified as turrets |
 
 ## Owner commands (PT-04)
 
@@ -351,3 +351,4 @@ are Cimmeria templates 351-353 (PT-11), named with the surviving `DN_Pet_*_Tier_
 - [combat-system.md](combat-system.md) - Pet uses mob combat system
 - [ability-system.md](ability-system.md) - Pet abilities
 - [stat-system.md](stat-system.md) - Pet stats (inherited from SGWMob)
+- [deployables.md](deployables.md) - Placed objects (Scientist "Deployable:" abilities), built on the same summon pattern but spawned as an `SGWBeing`, not a pet
