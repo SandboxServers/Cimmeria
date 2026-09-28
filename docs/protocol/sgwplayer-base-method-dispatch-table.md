@@ -10,6 +10,10 @@ last_updated: 2026-05-27
 Client-to-server base method calls for the SGWPlayer entity type (in-world).
 Only methods with `<Exposed/>` in the .def file get a wire index.
 
+**Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): every `sgw_player_base` constant and
+the base-method constants in `cimmeria-wire::base` are checked against the
+flattened exposed BaseMethods.
+
 ## Wire Encoding
 
 Base methods use "proxy" encoding: `msg_id = index | 0xC0`

@@ -22,6 +22,9 @@ use cimmeria_mercury::packet::{FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE
 // ── Submodules ───────────────────────────────────────────────────────────────
 
 pub mod aoi;
+// Every hand-written method index, checked against entities/defs (#801).
+#[cfg(test)]
+pub(crate) mod def_conformance;
 pub mod game_clock;
 pub mod protocol;
 pub mod types;
@@ -201,6 +204,10 @@ pub const FRAG_FIRST_AND_LAST: u8 = 0x43;
 ///
 /// Both SGWPlayer and SGWMob share indices 0–26 since they have the same
 /// parent chain through SGWBeing with identical interface ordering.
+///
+/// Every const here is checked against `entities/defs/` by
+/// `mercury::def_conformance` (#801): a name must
+/// match the flattened def method at its value.
 pub mod method_idx {
     // SGWSpawnableEntity own (0–11)
     pub const ON_SEQUENCE: u16 = 1;

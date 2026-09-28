@@ -143,6 +143,10 @@ Entities can inherit from other entities. The `<Parent>` tag specifies the paren
 
 A child entity inherits all properties, methods, and interfaces from its parent. The child can add new properties and methods but cannot remove inherited ones. Interfaces from the parent are also inherited.
 
+`crates/wire/src/mercury/def_conformance/flatten.rs` is the executable statement
+of the flattening rule: it rebuilds each entity's method table from `<Parent>` and
+`<Implements>`, and a CI test checks every hand-written method index against it (#801).
+
 The Cimmeria entity hierarchy is:
 
 ```

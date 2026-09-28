@@ -213,8 +213,9 @@ Per the dispatch-table "How to add a handler" note and #518's established
 pattern:
 
 - Add the index constant + a match arm in
-  [`gm/mod.rs`](../../crates/cell-console/src/cell/console/gm/mod.rs), and pin
-  the offset in `tests::gm_indices_match_def_document_order`.
+  [`gm/mod.rs`](../../crates/cell-console/src/cell/console/gm/mod.rs).
+  `cimmeria-wire`'s `mercury::def_conformance` (#801) checks the index
+  against `SGWGmPlayer.def` automatically.
 - Put the handler in the right family submodule (`give`/`stats`/`missions`/
   `travel`/`world`, or a new `feedback`/`query`/`spawn` module).
 - **Do not re-check access level** — the `gm_gate` already authorized the caller

@@ -61,6 +61,14 @@ another agent's files. Give scratch scripts a packet-unique name
 (`pt01_*.py`), hard-code your own worktree in `ROOT`, and re-read a script
 before re-running it.
 
+More refusals seen 2026-09-28 (#800/#801 batch): any `sed` whose program
+contains backticks; `gh ... --jq '.a, (.b[].c)'` (parentheses in the jq
+program); a `for` loop that runs `sed -n ... $f`; and `cd dir; ...` compound
+lines. `sed -i` in Git Bash also rewrote CRLF files as LF, so the file shows
+as modified with no content diff: restore it with a per-file
+`git checkout -- <file>` once it has no real change, or edit through a
+Python script that reads bytes and writes back `\r\n`.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch

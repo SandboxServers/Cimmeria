@@ -1,21 +1,15 @@
 //! Pins the SGWPet wire constants against the entity definitions they come
 //! from, not against copies of the same literals.
 //!
-//! The client-method indices are derived by flattening `entities/defs/` the
-//! way BigWorld does (`entity_description.cpp:parseInterface()`, restated in
-//! this module's parent doc). For each entity in the parent chain, root to
-//! leaf, the entity's `<Implements>` interfaces come first, recursively and in
-//! document order, then its own `<ClientMethods>`. The flattener is checked
-//! against SGWMob's 27/28 and SGWBeing's 26 before it is trusted for SGWPet.
-//! The generic-property id and the flag bits are read from
+//! The client-method indices come from the shared BigWorld flattener,
+//! `mercury::def_conformance::flatten` (#801), which also checks every other
+//! method-index constant in the workspace. It is checked against SGWMob's
+//! 27/28 and SGWBeing's 26 before it is trusted for SGWPet. The
+//! generic-property id and the flag bits are read from
 //! `entities/defs/enumerations.xml`.
-//!
-//! This follows the pattern of `client_index_of` in
-//! `mercury/protocol/tests.rs`, which reads the same files. `cimmeria-defs`
-//! exposes per-type client methods, but it cannot look up interfaces or
-//! parents by name. It is also not a dependency of this crate.
 
 use super::pet::*;
+use crate::mercury::def_conformance::flatten::{flatten, Section};
 
 const ENTITIES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../entities");
 
@@ -33,37 +27,6 @@ fn strip_comments(text: &str) -> String {
     out
 }
 
-/// The body between `<section>` and `</section>`, if the section exists.
-fn section<'a>(def: &'a str, name: &str) -> Option<&'a str> {
-    let open = format!("<{name}>");
-    let start = def.find(&open)? + open.len();
-    let end = def[start..].find(&format!("</{name}>"))? + start;
-    Some(&def[start..end])
-}
-
-/// Names of the depth-1 elements in a section body, in document order: the
-/// method names of a `<ClientMethods>` block.
-fn child_element_names(body: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut depth = 0usize;
-    for tag in body.split('<').skip(1) {
-        let tag = tag.split('>').next().unwrap_or("").trim();
-        if let Some(_closing) = tag.strip_prefix('/') {
-            depth = depth.saturating_sub(1);
-        } else if let Some(name) = tag.strip_suffix('/') {
-            if depth == 0 {
-                names.push(name.trim().to_string());
-            }
-        } else {
-            if depth == 0 {
-                names.push(tag.to_string());
-            }
-            depth += 1;
-        }
-    }
-    names
-}
-
 /// Text of every `<tag>...</tag>` inside `body`, trimmed.
 fn tag_texts(body: &str, tag: &str) -> Vec<String> {
     let open = format!("<{tag}>");
@@ -79,33 +42,9 @@ fn read_def(path: &str) -> String {
     strip_comments(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("reading {path}: {e}")))
 }
 
-/// Client methods an interface contributes: its own `<Implements>` first,
-/// then its `<ClientMethods>`.
-fn interface_methods(name: &str, out: &mut Vec<String>) {
-    let def = read_def(&format!("{ENTITIES}/defs/interfaces/{name}.def"));
-    push_def_methods(&def, out);
-}
-
-fn push_def_methods(def: &str, out: &mut Vec<String>) {
-    if let Some(body) = section(def, "Implements") {
-        for iface in tag_texts(body, "Interface") {
-            interface_methods(&iface, out);
-        }
-    }
-    if let Some(body) = section(def, "ClientMethods") {
-        out.extend(child_element_names(body));
-    }
-}
-
 /// The flattened client-method table of entity `name`: index = position.
 pub(super) fn flattened_client_methods(name: &str) -> Vec<String> {
-    let def = read_def(&format!("{ENTITIES}/defs/{name}.def"));
-    let mut out = match tag_texts(&def, "Parent").first() {
-        Some(parent) => flattened_client_methods(parent),
-        None => Vec::new(),
-    };
-    push_def_methods(&def, &mut out);
-    out
+    flatten(name, Section::Client)
 }
 
 pub(super) fn index_of(table: &[String], method: &str) -> u16 {

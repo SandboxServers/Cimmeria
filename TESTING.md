@@ -48,9 +48,9 @@ This guide is the playbook for writing tests that survive review and catch real 
 - Assert the **exact byte string** the function emits, hand-written in the test as a `&[u8]` literal or a hex string. Don't assert "length is at least N" — that's trivially true.
 - For frame builders, assert the offset of structurally meaningful footer fields (e.g., the `seq_id` footer position), not just the total frame length. PR #142 review caught a "length tautology" of exactly this shape.
 - Round-trip both directions when the codec is symmetric (`build_x` then `parse_x` then assert equality of the input).
-- Confirm method indices against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def` before writing the test, not after.
+- Method indices are checked for you: `mercury::def_conformance` in `cimmeria-wire` (#801) derives every flat index from `entities/defs/` with BigWorld's flattening rule and fails on any hand-written index constant that disagrees, in `method_idx`, the `cell/client_methods` and `cell_methods` tables, the GM tail, the base-method constants and `BASEMSG_ON_*`. A new constant in one of those files is covered with no extra step. Confirm byte layout against `entities/defs/*.def` before writing the test, not after.
 
-**Examples**: `crates/mercury/src/packet/` (24 tests), `crates/base-methods/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/wire/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
+**Examples**: `crates/wire/src/mercury/def_conformance/` (method-index conformance against `entities/defs/`), `crates/mercury/src/packet/` (24 tests), `crates/base-methods/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/wire/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
 
 ### 3. Live-DB regression guards
 
