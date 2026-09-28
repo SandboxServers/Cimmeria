@@ -42,12 +42,12 @@ pub(super) async fn fail(
         .filter(|m| m.status == MISSION_ACTIVE)
     {
         m.fail();
-        true
+        Some(m.is_hidden)
     } else {
-        false
+        None
     };
 
-    if !failed {
+    let Some(is_hidden) = failed else {
         send_gm_feedback(
             caller_id,
             &format!("missionfail: target has no active mission {mission_id}"),
@@ -55,20 +55,30 @@ pub(super) async fn fail(
         )
         .await;
         return;
-    }
+    };
 
-    // Tell the client the mission moved to FAILED.
-    let mut update = Vec::with_capacity(9);
-    update.extend_from_slice(&mission_id.to_le_bytes());
-    update.push(MISSION_FAILED as u8);
-    update.extend_from_slice(&0i32.to_le_bytes());
-    let _ = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id: target,
-            method_index: ON_MISSION_UPDATE,
-            args: update,
-        })
-        .await;
+    // Tell the client the mission moved to FAILED -- unless it is hidden,
+    // which the client never listed (#715, reference `MissionManager.py:724`).
+    let player_id = space_mgr.get_entity(target).and_then(|e| e.player_id);
+    if !crate::cell::missions::suppress_hidden_mission_frames(
+        is_hidden,
+        target,
+        player_id,
+        mission_id,
+        "gm_missionfail",
+    ) {
+        let mut update = Vec::with_capacity(9);
+        update.extend_from_slice(&mission_id.to_le_bytes());
+        update.push(MISSION_FAILED as u8);
+        update.extend_from_slice(&0i32.to_le_bytes());
+        let _ = tx
+            .send(CellToBaseMsg::EntityMethodCall {
+                entity_id: target,
+                method_index: ON_MISSION_UPDATE,
+                args: update,
+            })
+            .await;
+    }
 
     tracing::info!(entity_id = target, mission_id, "GM .missionfail");
 

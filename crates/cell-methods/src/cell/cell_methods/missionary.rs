@@ -22,6 +22,25 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let mission_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, mission_id, "abandonMission");
+                // Reference parity (#715, `MissionManager.py:293`): a hidden
+                // mission cannot be abandoned by the player. The client never
+                // lists one, so a request for it is forged or stale, and
+                // dropping 689 would lift the Prison Boot lock gate.
+                let hidden = space_mgr
+                    .get_entity(entity_id)
+                    .and_then(|e| e.missions.get_mission(mission_id).map(|m| (e.player_id, m)))
+                    .filter(|(_, m)| m.is_hidden)
+                    .map(|(player_id, _)| player_id);
+                if let Some(player_id) = hidden {
+                    tracing::warn!(
+                        entity_id,
+                        player_id,
+                        mission_id,
+                        reason = "hidden_mission",
+                        "abandonMission refused: hidden missions cannot be abandoned by the client"
+                    );
+                    return true;
+                }
                 // H54: only on a real removal. A client can send
                 // `abandonMission` for anything; repainting an offer for a
                 // mission the player never held would be a free re-trigger.

@@ -33,7 +33,7 @@ In the **Cimmeria emulator**, mission lifecycle runs through the data-driven con
 | DB persistence | DONE | `sgw_mission` table with step/objective arrays |
 | Client sync (resend) | DONE | Full mission/step/objective resync on login |
 | Mission loot tables | PARTIAL | `currentMissionLoot` property exists |
-| Hidden missions | DONE | `isHidden` flag suppresses client notifications |
+| Hidden missions | DONE | `isHidden` suppresses every client mission frame; see [Hidden missions](#hidden-missions) |
 | Repeatable missions | DONE | `numRepeats`, `canRepeatOnFail` tracked |
 | Mission sharing | STUB | `shareMission`, `shareMissionOffer` defined, not functional |
 | Reward selection | PARTIAL | `displayRewards()` calls client but reward choice unhandled |
@@ -149,6 +149,22 @@ guard is the server-authoritative backstop. Repeatability fields ride
 the `MissionDefEntry` cache loaded at startup
 ([crates/cell-catalog/src/cell/spawner/missions.rs](../../crates/cell-catalog/src/cell/spawner/missions.rs));
 a mission without a def entry fails closed (treated as non-repeatable).
+
+## Hidden missions
+
+A mission whose def row has `is_hidden = true` is server-side bookkeeping. In the seed these are the Hallway0N controllers (682-686) and the Prison Boot gate (689). The client is never told about them, matching the reference `MissionManager.py`, which wraps every client call in `if not mission.mission.isHidden:` (#715):
+
+| Path | Hidden-mission behaviour |
+|------|--------------------------|
+| Accept, objective complete, step advance, complete (by objective or directly), abandon, GM `.missionfail` | State changes, the `MissionUpdate` persist and the content events (`mission_accepted`, `mission_completed`, ...) run as for any mission. No `onMissionUpdate`, `onStepUpdate` or `onObjectiveUpdate` is sent. |
+| Login and respawn resend | Skipped: `MissionManager::serialize_resend` iterates `active_missions()`, which filters hidden missions out. |
+| Client `abandonMission` (cell method 52) | Refused with a WARN (`reason=hidden_mission`). The client never lists a hidden mission, so the request is forged or stale; the mission stays and `mission_abandoned` does not fire. Chain and GM abandons still remove it. |
+
+Every send site goes through one predicate, `suppress_hidden_mission_frames` in [`cell/missions/mod.rs`](../../crates/cell-content/src/cell/missions/mod.rs). When it suppresses frames it logs one DEBUG event, `mission client frames suppressed`, with `mission_id`, `player_id`, `site` and `reason=hidden_mission`.
+
+`is_hidden` on an *objective* is a different flag: it rides the `onObjectiveUpdate` frame of a visible mission and is not affected by this gate.
+
+The reference is the previous emulator, not the 2009 server, so this is its intent rather than verified client behaviour. If in-game UAT shows the client needs one of these frames, revert that frame type (owner decision on #715).
 
 ## Mission Status Codes
 

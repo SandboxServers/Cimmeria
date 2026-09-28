@@ -134,12 +134,13 @@ Two things are explicitly unverified and this test is what resolves them:
 **Must NOT happen:**
 
 - Mission 689 appearing in the visible quest log.
+- Any mission feedback for 689 on the client: a "mission accepted" or "mission complete" toast or sound, a tracker entry, a journal flash or an objective popup, either on first load (accept) or on Livewire victory (complete). Since #715 the server sends no mission frames for a hidden mission; if one of these still appears, report it with the time, because it means the client needs one of those frames after all.
 - The Livewire minigame opening a second time after the gate has cleared (chain 1024 gates on `mission_status 689 neq completed`).
 - Mission 689 being re-accepted on a later login.
 
 **Relog check:** log out and back in *before* clearing the gate — ability 1597 must be re-launched (`chain 1023` fires on `active`). Log out and back in *after* clearing — 1597 must **not** be re-launched (`completed` stops it). These two are the whole point of the packet.
 
-**Server evidence:** `logs\content.log`, grep `Content: launched ability` (fields `ability_id=1597`, `chain_id=1023`, and `ability_id=1598`, `chain_id=1025`) and `Content: accepting mission` with `mission_id=689`, `chain_id=1022`.
+**Server evidence:** `logs\content.log`, grep `Content: launched ability` (fields `ability_id=1597`, `chain_id=1023`, and `ability_id=1598`, `chain_id=1025`) and `Content: accepting mission` with `mission_id=689`, `chain_id=1022`. The frame gate logs at DEBUG: in SigNoz, `body CONTAINS 'mission client frames suppressed'` with `mission_id=689` shows `site=accept` on load and `site=complete_mission_direct` on victory (#715).
 
 ### T01 / T02 — Zone entry, mission 622 and Stasis Sickness (C03)
 
@@ -630,7 +631,7 @@ Three of Col. Marsh's companion lines from dialog **5019** are now spoken as **c
 **Must NOT happen:**
 
 - **Each region transition accepting its mission more than once.** Before the C01 purge, the Region3-exit / Region4 / Region5 / Region6 triggers each resolved two to five accepts. Exactly one each.
-- Any controller mission (682-686) appearing in the visible quest log.
+- Any controller mission (682-686) appearing in the visible quest log, or producing a mission toast, sound, tracker entry or objective popup when it is accepted or completed (#715: the server sends no frames for hidden missions).
 - Killing both Hallway05 guards *without* flanking failing to complete 686. Flank objective **2731** never gates. See [T29](#t29--flank-objectives-2725-and-2731-c06).
 
 **Relog check:** relog between hallways; the next region transition must still accept exactly one mission.

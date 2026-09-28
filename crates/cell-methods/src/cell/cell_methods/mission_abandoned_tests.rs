@@ -166,6 +166,38 @@ async fn abandoning_a_mission_the_player_does_not_hold_fires_nothing() {
     );
 }
 
+/// #715, reference parity (`MissionManager.py:293`): the client cannot
+/// abandon a hidden mission. It never sees one, so the request is forged or
+/// stale, and removing mission 689 would lift the Prison Boot lock gate. The
+/// mission stays, no frame is sent, and `mission_abandoned` does not fire.
+#[tokio::test]
+async fn the_client_cannot_abandon_a_hidden_mission() {
+    let mut mgr = make_mgr();
+    if let Some(m) = mgr
+        .get_entity_mut(PLAYER_EID)
+        .and_then(|e| e.missions.get_mission_mut(MISSION))
+    {
+        m.is_hidden = true;
+    }
+    let engine = make_engine();
+    let (tx, mut rx) = mpsc::channel::<CellToBaseMsg>(256);
+
+    let handled = crate::cell::cell_methods::missionary::dispatch(
+        PLAYER_EID,
+        ABANDON_MISSION,
+        &MISSION.to_le_bytes(),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert!(handled, "index 52 is still consumed");
+    assert!(still_holds_mission(&mgr), "a hidden mission must survive");
+    assert_eq!(fired(&mgr), 0, "nothing was removed, so nothing may fire");
+    assert!(rx.try_recv().is_err(), "a refused abandon sends no frame");
+}
+
 // ── Ordering: the context is populated after the mutation ─────────────────
 
 /// The mirror image of the gate in [`make_engine`]: a chain gated on the

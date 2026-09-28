@@ -7,7 +7,9 @@ use cimmeria_entity::missions::{
     STATUS_ACTIVE, STATUS_COMPLETED,
 };
 
-use super::{ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE};
+use super::{
+    suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE,
+};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -114,6 +116,7 @@ pub async fn accept_mission(
         Some(e) => e,
         None => return false,
     };
+    let player_id = entity.player_id;
     let mut mission = MissionInstance::new(mission_id, step_id, objectives.clone());
     mission.repeats = prior_repeats;
     mission.is_hidden = is_hidden;
@@ -126,6 +129,12 @@ pub async fn accept_mission(
         prior_repeats,
         "Mission accepted"
     );
+
+    // Hidden missions are accepted (state above, persistence and the
+    // `mission_accepted` event in the caller) but never announced (#715).
+    if suppress_hidden_mission_frames(is_hidden, entity_id, player_id, mission_id, "accept") {
+        return true;
+    }
 
     // Send onMissionUpdate
     let mut args = Vec::with_capacity(9);
@@ -196,9 +205,22 @@ pub async fn abandon_mission(
     if let Some(pid) = entity.player_id {
         tracing::Span::current().record("player_id", pid);
     }
+    let player_id = entity.player_id;
 
-    if entity.missions.remove_mission(mission_id).is_some() {
+    if let Some(removed) = entity.missions.remove_mission(mission_id) {
         tracing::info!(entity_id, mission_id, "Mission abandoned");
+
+        // The client never saw a hidden mission, so there is no journal
+        // row to remove (#715). The removal itself still counts.
+        if suppress_hidden_mission_frames(
+            removed.is_hidden,
+            entity_id,
+            player_id,
+            mission_id,
+            "abandon",
+        ) {
+            return true;
+        }
 
         // Send onMissionUpdate with status=completed (removes from client log)
         let mut args = Vec::with_capacity(9);

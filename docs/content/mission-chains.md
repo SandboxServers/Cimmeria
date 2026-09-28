@@ -89,7 +89,7 @@ Sequential chain, each mission must complete before the next begins:
 
 #### Hallway Gauntlet (Hidden Background Missions)
 
-These 5 missions run in parallel with the main chain after the Mess Hall. All are `is_hidden=true` so the player never sees quest tracker entries. They are accepted by region triggers in the space script as the player moves through hallway areas.
+These 5 missions run in parallel with the main chain after the Mess Hall. All are `is_hidden=true` so the player never sees quest tracker entries: the server sends no mission frames for a hidden mission at all, while its state, persistence and chain events work normally (#715, see [Hidden missions](../gameplay/mission-system.md#hidden-missions)). They are accepted by region triggers in the space script as the player moves through hallway areas.
 
 ```
 682 "Hallway01 Controller"  ->  683 "Hallway02 Controller"
