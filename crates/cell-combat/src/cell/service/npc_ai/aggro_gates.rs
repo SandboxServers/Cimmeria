@@ -20,6 +20,10 @@
 //!    slot looks from the slot's peek point past the prop (NA23, D-NA12; see
 //!    `SpaceManager::npc_line_of_sight`).
 //!
+//! NPC candidates (NPC-vs-NPC, #1009) go through [`evaluate_npc_candidate`]
+//! instead: a HOSTILE NPC combatant, alive, not evading or unavailable, then
+//! the same room.
+//!
 //! Gates 6-8 are [`same_room`], which the NA14 assist fan-out
 //! (`super::assist`) reuses between a would-be assister and the neighbour
 //! that just engaged.
@@ -74,6 +78,45 @@ pub(in crate::cell) fn evaluate_candidate(
         return Err(AggroReject::GmIgnored);
     }
     same_room(space_mgr, npc, p, combat::aggro_radius(npc))
+}
+
+/// The NPC-vs-NPC half of the Idle scan (#1009): run the gates for NPC
+/// `cid` near `npc`.
+///
+/// `None` when `cid` is not a candidate at all: not an NPC combatant (a
+/// player, a pet, a being, the NPC itself) or not an NPC `npc` is HOSTILE to
+/// (`combat::npc_may_target_npc`, the reaction table read with the NPC as the
+/// viewer). Those log nothing: a guard's own post would otherwise log a row
+/// per neighbour per tick. `Some(Err)` is a hostile NPC refused, in this
+/// order: `dead`, `target_evading` (walking home, NA12), `target_unavailable`
+/// (surrendered, despawning, spawning, error), then the [`same_room`]
+/// geometry against the scanner's aggro radius. `Some(Ok)` carries the
+/// horizontal distance.
+pub(in crate::cell) fn evaluate_npc_candidate(
+    space_mgr: &SpaceManager,
+    npc: &CellEntity,
+    cid: u32,
+) -> Option<Result<f32, AggroReject>> {
+    use cimmeria_entity::cell_entity::AiState;
+    let c = space_mgr.get_entity(cid)?;
+    if !combat::npc_may_target_npc(npc, c) {
+        return None;
+    }
+    let zero_health = c
+        .stats
+        .get(cimmeria_entity::stats::HEALTH)
+        .is_some_and(|s| s.cur <= 0);
+    if combat::is_dead_state(c.state_field) || c.ai_state() == AiState::Dead || zero_health {
+        return Some(Err(AggroReject::Dead));
+    }
+    match c.ai_state() {
+        AiState::Leashing => return Some(Err(AggroReject::TargetEvading)),
+        AiState::Submit | AiState::Despawning | AiState::Spawning | AiState::Error => {
+            return Some(Err(AggroReject::TargetUnavailable))
+        }
+        _ => {}
+    }
+    Some(same_room(space_mgr, npc, c, combat::aggro_radius(npc)))
 }
 
 /// The geometric half of the gates, shared by the Idle scan and the NA14

@@ -74,6 +74,62 @@ pub fn is_hostile_to_players(npc: &CellEntity) -> bool {
     !npc.extensions.contains::<PetState>() && aggression_toward_players(npc).is_hostile()
 }
 
+/// Whether any faction regards NPCs of `faction` as a target: a row of the
+/// reaction table with at least one HOSTILE cell. A cheap precheck that keeps
+/// the NPC-target scan off NPCs that could never find anything (faction 1
+/// World Object, the friendly and neutral ambient rows, and so on).
+pub fn faction_has_npc_enemies(faction: u8) -> bool {
+    (0..super::faction_reaction::FACTION_COUNT as u8).any(|t| reaction(faction, t).is_hostile())
+}
+
+/// Effective aggression of NPC `viewer` toward NPC `target` (NPC-vs-NPC,
+/// #1009): the reaction table read with the NPC as the viewer,
+/// `REACTION[viewer.faction][target.faction]`.
+///
+/// The aggression override is player-facing (python `getAggressionLevel`),
+/// so it only ever **narrows** this: a non-HOSTILE override (a chain-disarmed
+/// guard, `set_aggression 0`) keeps the NPC out of NPC fights too, while a
+/// HOSTILE override does not turn it on every NPC in reach. An NPC armed
+/// against players by content fights the NPCs its faction already would.
+pub fn npc_aggression_toward(viewer: &CellEntity, target: &CellEntity) -> MobAggression {
+    match viewer.aggro.override_level {
+        Some(level) if !level.is_hostile() => level,
+        _ => reaction(viewer.faction, target.faction),
+    }
+}
+
+/// Whether `e` is an NPC that takes part in NPC-vs-NPC combat at all: an
+/// SGWMob (class 0x04) that is not a player and not a pet. Beings (props,
+/// Col Marsh) never enter combat (NA42), and pets fight on their owner's
+/// terms (pets PT-05), so neither is a viewer or a target here.
+pub fn is_npc_combatant(e: &CellEntity) -> bool {
+    !e.is_player
+        && e.class_id == crate::mercury::SGWMOB_CLASS_ID
+        && !e.extensions.contains::<PetState>()
+}
+
+/// Whether NPC `viewer` may take NPC `target` as a target: both are NPC
+/// combatants ([`is_npc_combatant`]), they are different entities, and the
+/// viewer's aggression toward the target is HOSTILE
+/// ([`npc_aggression_toward`]). Liveness, state and geometry are the scan's
+/// gates, not this rule's.
+pub fn npc_may_target_npc(viewer: &CellEntity, target: &CellEntity) -> bool {
+    viewer.entity_id != target.entity_id
+        && is_npc_combatant(viewer)
+        && is_npc_combatant(target)
+        && npc_aggression_toward(viewer, target).is_hostile()
+}
+
+/// Whether `npc` looks for NPC targets on its Idle scan: an NPC combatant
+/// whose faction has an enemy in the table and that no non-HOSTILE override
+/// has disarmed. The Idle admission test's NPC half, beside
+/// [`is_hostile_to_players`].
+pub fn seeks_npc_targets(npc: &CellEntity) -> bool {
+    is_npc_combatant(npc)
+        && !npc.aggro.override_level.is_some_and(|l| !l.is_hostile())
+        && faction_has_npc_enemies(npc.faction)
+}
+
 /// Whether the player `attacker` may damage `target`: THE player hostility
 /// rule, the one the #444 single-target gate (`handle_use_ability`, the
 /// warmup re-check) enforces, and the one a pet obeys on its owner's behalf
@@ -134,9 +190,13 @@ pub fn player_may_attack_pve(_attacker: &CellEntity, target: &CellEntity) -> boo
 /// `candidate`: the area-target filter both collectors share.
 ///
 /// A player caster obeys [`player_may_attack`], so a duel partner is a
-/// candidate and every other player is not. An NPC caster keeps the
-/// collectors' historical rule, a hostile-faction non-player, unchanged by
-/// duels (SS-D2 scope: NPC-vs-player behaviour does not move).
+/// candidate and every other player is not. A pet obeys its owner's no-duel
+/// rule, [`player_may_attack_pve`] (pets PT-05). Any other NPC caster hits the
+/// NPCs it would take as targets, [`npc_may_target_npc`] (NPC-vs-NPC, #1009):
+/// before #1009 it hit every hostile-faction (10) NPC, which made a NID
+/// guard's area ability land on its own post and never on the friendlies it
+/// was fighting. Players are never candidates of an NPC's area ability
+/// ([`area_candidates`]); that is unchanged.
 pub fn may_hit_in_area(
     attacker: &CellEntity,
     candidate: &CellEntity,
@@ -144,8 +204,10 @@ pub fn may_hit_in_area(
 ) -> bool {
     if attacker.is_player {
         player_may_attack(attacker, candidate, duels)
+    } else if attacker.extensions.contains::<PetState>() {
+        player_may_attack_pve(attacker, candidate)
     } else {
-        !candidate.is_player && candidate.faction == super::faction_reaction::HOSTILE_FACTION
+        npc_may_target_npc(attacker, candidate)
     }
 }
 
@@ -264,6 +326,105 @@ mod tests {
         assert_eq!(override_from_content_level(3), Some(MobAggression::Neutral));
         assert_eq!(override_from_content_level(6), None);
         assert_eq!(override_from_content_level(-1), None);
+    }
+
+    fn mob(id: i32, faction: u8) -> CellEntity {
+        let mut e = CellEntity::new(
+            cimmeria_common::EntityId(id),
+            cimmeria_common::SpaceId(1),
+            cimmeria_common::Vector3::zero(),
+        );
+        e.class_id = crate::mercury::SGWMOB_CLASS_ID;
+        e.faction = faction;
+        e
+    }
+
+    /// #1009: the table is read with the NPC as the viewer. Praxis (3) and
+    /// Straegis (10) are mutually HOSTILE; the old player-only reading never
+    /// looked at row 10 or at an NPC in row 3.
+    #[test]
+    fn npc_viewer_reads_its_own_row_of_the_table() {
+        let praxis = mob(1, 3);
+        let nid = mob(2, NPC_HOSTILE_FACTION);
+        assert_eq!(npc_aggression_toward(&praxis, &nid), MobAggression::Hostile);
+        assert_eq!(npc_aggression_toward(&nid, &praxis), MobAggression::Hostile);
+        assert!(npc_may_target_npc(&praxis, &nid));
+        assert!(npc_may_target_npc(&nid, &praxis));
+        // Same faction: row 10, column 10 is FRIENDLY.
+        let nid2 = mob(3, NPC_HOSTILE_FACTION);
+        assert!(!npc_may_target_npc(&nid, &nid2));
+        // Faction 1 (World Object) is FRIENDLY in every row: the Castle
+        // friendlies seeded before #1009 are never a target.
+        let world_object = mob(4, 1);
+        assert!(!npc_may_target_npc(&nid, &world_object));
+        assert!(!npc_may_target_npc(&world_object, &nid));
+        // Asymmetric rows are honoured as written: Jaffa_Beleth (17) is
+        // HOSTILE to Praxis (3), SUSPICIOUS toward Tollan_Ambient (37).
+        assert!(npc_may_target_npc(&mob(5, 17), &mob(6, 3)));
+        assert!(!npc_may_target_npc(&mob(5, 17), &mob(6, 37)));
+    }
+
+    /// A non-HOSTILE override disarms the NPC against NPCs too; a HOSTILE
+    /// override does not widen its NPC targets past its faction row.
+    #[test]
+    fn override_only_narrows_npc_hostility() {
+        let mut praxis = mob(1, 3);
+        let nid = mob(2, NPC_HOSTILE_FACTION);
+        praxis.aggro.override_level = Some(MobAggression::Neutral);
+        assert!(!npc_may_target_npc(&praxis, &nid));
+        assert!(!seeks_npc_targets(&praxis));
+        let mut friendly = mob(3, 1);
+        friendly.aggro.override_level = Some(MobAggression::Hostile);
+        assert!(!npc_may_target_npc(&friendly, &nid));
+        assert!(!seeks_npc_targets(&friendly), "row 1 has no enemy");
+        praxis.aggro.override_level = Some(MobAggression::Hostile);
+        assert!(npc_may_target_npc(&praxis, &nid));
+    }
+
+    /// Players, pets, beings and the entity itself are never NPC targets.
+    #[test]
+    fn only_npc_combatants_take_part() {
+        let nid = mob(1, NPC_HOSTILE_FACTION);
+        let mut player = mob(2, 3);
+        player.is_player = true;
+        assert!(!npc_may_target_npc(&nid, &player));
+        let mut pet = mob(3, 3);
+        pet.extensions.insert(PetState::new(99, vec![], 0b111, 0));
+        assert!(!npc_may_target_npc(&nid, &pet));
+        assert!(!npc_may_target_npc(&pet, &nid));
+        assert!(!seeks_npc_targets(&pet));
+        let mut being = mob(4, 3);
+        being.class_id = 0x01;
+        assert!(!npc_may_target_npc(&nid, &being));
+        assert!(!npc_may_target_npc(&nid, &nid));
+    }
+
+    #[test]
+    fn factions_with_npc_enemies() {
+        assert!(faction_has_npc_enemies(3));
+        assert!(faction_has_npc_enemies(NPC_HOSTILE_FACTION));
+        assert!(!faction_has_npc_enemies(1), "World Object");
+        assert!(!faction_has_npc_enemies(0), "Undefined");
+        assert!(!faction_has_npc_enemies(9), "Friendly_Ambient");
+        assert!(!faction_has_npc_enemies(200), "outside the table");
+    }
+
+    /// The area rule for an NPC caster follows the NPC target rule, not the
+    /// old "any faction-10 NPC" (which hit the caster's own post).
+    #[test]
+    fn npc_area_ability_hits_hostile_npcs_not_its_own_side() {
+        let duels = crate::cell::duel::DuelRegistry::default();
+        let nid = mob(1, NPC_HOSTILE_FACTION);
+        let nid2 = mob(2, NPC_HOSTILE_FACTION);
+        let praxis = mob(3, 3);
+        assert!(!may_hit_in_area(&nid, &nid2, &duels));
+        assert!(may_hit_in_area(&nid, &praxis, &duels));
+        assert!(may_hit_in_area(&praxis, &nid, &duels));
+        // A pet keeps its owner's rule: any hostile-faction NPC.
+        let mut pet = mob(4, 3);
+        pet.extensions.insert(PetState::new(99, vec![], 0b111, 0));
+        assert!(may_hit_in_area(&pet, &nid, &duels));
+        assert!(!may_hit_in_area(&pet, &praxis, &duels));
     }
 
     #[test]

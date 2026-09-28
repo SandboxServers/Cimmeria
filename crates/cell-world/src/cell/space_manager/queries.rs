@@ -311,6 +311,46 @@ impl SpaceManager {
             .collect()
     }
 
+    /// SGWMob NPCs (class 0x04, not players, not pets) within `radius`
+    /// world units of `entity_id`, horizontally, in its own space, excluding
+    /// itself. The NPC-vs-NPC target scan's candidate set (#1009).
+    ///
+    /// Spatially bounded: the space's `WorldGrid` (50 u cells) hands back
+    /// only the entities in the cells the query circle overlaps, and the
+    /// exact XZ distance is checked on those. The cost is the population of
+    /// at most a few cells around the NPC, never the whole space, so a
+    /// crowded world does not turn every NPC's scan into an O(n) sweep (and
+    /// the whole tick into O(n^2)). Pets are left out as in
+    /// [`Self::npc_ids_in_space_of`].
+    pub fn npc_ids_near(&self, entity_id: u32, radius: f32) -> Vec<u32> {
+        let Some(space) = self
+            .entity_space
+            .get(&entity_id)
+            .and_then(|sid| self.spaces.get(sid))
+        else {
+            return Vec::new();
+        };
+        let Some(origin) = space.entities.get(&entity_id).map(|e| e.position) else {
+            return Vec::new();
+        };
+        let r2 = radius * radius;
+        space
+            .space
+            .get_entities_in_range(&origin, radius)
+            .into_iter()
+            .filter_map(|eid| {
+                let id = eid.0 as u32;
+                let e = space.entities.get(&id)?;
+                let (dx, dz) = (e.position.x - origin.x, e.position.z - origin.z);
+                (id != entity_id
+                    && !e.is_player
+                    && e.class_id == crate::mercury::SGWMOB_CLASS_ID
+                    && dx * dx + dz * dz <= r2)
+                    .then_some(id)
+            })
+            .collect()
+    }
+
     /// Collect all player entity IDs (entries in each space's `players` set)
     /// across all spaces. Returned as a `Vec` so callers can iterate without
     /// holding a borrow on `SpaceManager`.

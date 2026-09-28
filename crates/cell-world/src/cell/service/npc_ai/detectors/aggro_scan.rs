@@ -7,6 +7,12 @@
 //! `post_reset_suppressed` for the NA12 window. `aggro_radius` is the NPC's
 //! radius in world units (NA02 logged `unbounded` before the gate existed).
 //!
+//! #1009 (NPC-vs-NPC) adds `event=npc_candidate_rejected` for a HOSTILE NPC
+//! the scan passed over, with both entities' ids and factions (reasons
+//! `dead`, `target_evading`, `target_unavailable`, `out_of_vertical_band`,
+//! `out_of_radius`, `no_los`). An NPC the scanner is not hostile to is not a
+//! candidate at all and logs nothing: that is every same-faction neighbour.
+//!
 //! NA14 adds `event=assist_rejected` for a same-faction neighbour the assist
 //! fan-out considered and passed over (reasons `dead`, `not_idle`,
 //! `not_hostile`, `post_reset_suppressed`, `gm_ignored`,
@@ -43,6 +49,13 @@ pub enum ScanReject {
     /// wandering (it is already fighting, walking home, investigating,
     /// following or dead), so it is not pulled.
     NotIdle,
+    /// NPC-vs-NPC only (#1009): the hostile NPC candidate is walking home
+    /// (Leashing). It evades (NA12, D-NA03): it takes no threat and could not
+    /// fight back, so it is not engaged.
+    TargetEvading,
+    /// NPC-vs-NPC only (#1009): the hostile NPC candidate is surrendered,
+    /// despawning, spawning or in the error state, and is not a fight.
+    TargetUnavailable,
 }
 
 impl ScanReject {
@@ -59,6 +72,8 @@ impl ScanReject {
             Self::NoLos => "no_los",
             Self::PostResetSuppressed => "post_reset_suppressed",
             Self::NotIdle => "not_idle",
+            Self::TargetEvading => "target_evading",
+            Self::TargetUnavailable => "target_unavailable",
         }
     }
 }
@@ -186,6 +201,65 @@ pub fn report_assist_rejects(
             assist_radius = crate::cell::combat::assist_radius(e),
             suppressed,
             "npc_ai.aggro_scan: neighbour not pulled into the fight (assist)"
+        );
+    }
+}
+
+/// Log the NPC-vs-NPC scan's rejects (#1009): `event=npc_candidate_rejected`,
+/// one row per `(npc, target, reason)` per [`REJECT_SAMPLE_INTERVAL`], with
+/// both entities' ids, factions and tags, so a friendly that stands idle next
+/// to a hostile can be explained from SigNoz alone. Only HOSTILE pairs reach
+/// here; the scan never considers an NPC its faction does not fight.
+pub fn report_npc_rejects(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    rejects: &[(u32, ScanReject)],
+    now: Instant,
+) {
+    if rejects.is_empty() {
+        return;
+    }
+    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
+        return;
+    };
+    let Some((npc_pos, npc_faction, radius)) = space_mgr
+        .get_entity(npc_id)
+        .map(|e| (e.position, e.faction, crate::cell::combat::aggro_radius(e)))
+    else {
+        return;
+    };
+    for &(target_id, reason) in rejects {
+        let Some(suppressed) = space_mgr.npc_detectors.pair_log.admit(
+            npc_id,
+            target_id,
+            reason.label(),
+            now,
+            REJECT_SAMPLE_INTERVAL,
+        ) else {
+            continue;
+        };
+        let Some(t) = space_mgr.get_entity(target_id) else {
+            continue;
+        };
+        tracing::debug!(
+            target: "npc_ai.aggro_scan",
+            event = "npc_candidate_rejected",
+            npc_id,
+            tag = %ident.tag,
+            template_id = ident.template_id,
+            world = %ident.world,
+            space_id = ident.space_id,
+            npc_faction,
+            reason = reason.label(),
+            target_id,
+            target_tag = t.tag.as_deref().unwrap_or(""),
+            target_faction = t.faction,
+            target_ai_state = t.ai_state().label(),
+            npc_to_target = t.position.distance_to(&npc_pos),
+            dy = t.position.y - npc_pos.y,
+            aggro_radius = radius,
+            suppressed,
+            "npc_ai.aggro_scan: hostile NPC rejected as an aggro candidate"
         );
     }
 }

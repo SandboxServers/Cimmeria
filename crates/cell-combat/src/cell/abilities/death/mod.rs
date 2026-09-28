@@ -258,9 +258,15 @@ pub(super) async fn apply_death_transition(
     }
 
     // 3. Target side: roll loot then push interaction flags. Player targets
-    //    don't loot or change interaction type.
+    //    don't loot or change interaction type. An NPC-only kill rolls no
+    //    loot (#1009): a friendly NPC that kills a guard must not leave a
+    //    lootable corpse for whoever walks by.
     if !target_is_player {
-        generate_loot_on_death(target_eid, space_mgr);
+        if npc_only_kill(space_mgr, attacker_id) {
+            log_npc_only_kill(space_mgr, target_eid, attacker_id);
+        } else {
+            generate_loot_on_death(target_eid, space_mgr);
+        }
 
         let interaction_flags = space_mgr
             .get_entity(target_eid)
@@ -442,12 +448,20 @@ pub(super) async fn resolve_death(
         side_effects::grant_kill_xp(target_eid, attacker_id, tx, space_mgr).await;
     }
 
+    if !target_is_player {
+        // NPC-vs-NPC (#1009): every NPC fighting the dead NPC lets go now and
+        // turns to its next target (or starts home), exactly as for a dead
+        // player, instead of waiting for its next fight pass to find a corpse.
+        crate::cell::service::npc_ai::purge_dead_target_from_threat(target_eid, tx, space_mgr)
+            .await;
+    }
+
     if target_is_player {
         side_effects::send_begin_aid_wait(target_eid, attacker_id, ability_id, tx, space_mgr).await;
         // Every NPC fighting the corpse lets go now, not on its next AI pass
         // (NA24, UAT-1 A). Last, so the drop's BSF_InCombat clear lands after
         // the dead-state broadcast above instead of racing it.
-        crate::cell::service::npc_ai::purge_dead_player_from_threat(target_eid, tx, space_mgr)
+        crate::cell::service::npc_ai::purge_dead_target_from_threat(target_eid, tx, space_mgr)
             .await;
         // SS-D3: a duelist killed by anyone else loses the duel (the
         // partner's damage never gets here: it is clamped at 1 HP, D-SS20).
@@ -520,8 +534,13 @@ pub async fn resolve_death_for_test(
     resolve_death(target_eid, attacker_id, None, false, false, tx, space_mgr).await
 }
 
+mod npc_only_kill;
 mod side_effects;
 
+use npc_only_kill::{log_npc_only_kill, npc_only_kill};
+
+#[cfg(test)]
+mod npc_only_kill_tests;
 #[cfg(test)]
 mod pet_credit_log_tests;
 #[cfg(test)]

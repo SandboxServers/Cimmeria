@@ -301,6 +301,10 @@ parameter on every caller. Keeping the bare function callable from
 NPC AI + tests, and wrapping it explicitly at player entry points,
 keeps both invariants visible at the call site.
 
+### NPC-vs-NPC kills pay nobody (#1009)
+
+Since NPCs fight each other ([npc-ai.md, NPC-vs-NPC combat](npc-ai.md#npc-vs-npc-combat-1009)), a plain NPC can land the killing blow on another NPC. Such a kill resolves through the same `resolve_death` (corpse, threat drain, respawn arming) and pays nothing: no `EntityDeath` (the NPC fight tick uses the bare entry point, and every other credit path resolves the killer through `credited_player`, `None` for a plain NPC), no XP (`grant_kill_xp` finds no player), and, new in #1009, no loot roll (`abilities::death::npc_only_kill`, logged as `loot.drop event=skipped reason=npc_only_kill`). Credit is the killing blow's: a player who wounded the mob first gets nothing, as when another player finishes it. A pet is not a plain NPC; its kills pay its owner. The single-target validation above needed no change for NPC attackers, and an NPC's area ability now hits the NPCs it would target rather than every faction-10 NPC ([abilities ADR decision 32](../architecture/abilities-and-effects-system.md#32-npc-vs-npc-an-npcs-area-ability-hits-the-npcs-it-would-target-and-an-npc-only-kill-pays-nobody-1009)).
+
 ### Every player-driven attack path routes through the wrapper
 
 Cell-method dispatch sites (`USE_ABILITY`, `INTERACT`, `SET_AUTO_CYCLE`'s

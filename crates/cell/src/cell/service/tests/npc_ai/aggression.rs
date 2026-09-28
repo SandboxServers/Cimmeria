@@ -213,3 +213,23 @@ async fn idle_auto_aggro_logs_the_proximity_cause() {
         "{transition:?}"
     );
 }
+
+/// **Guard (#1009, adjacent fix).** An Idle guard with a patrol route that
+/// aggroes a player who is *already* in combat with another mob stays
+/// Fighting. The scan used to report "engaged" only when the player had just
+/// entered combat, so here it said `false` and the dispatcher overwrote the
+/// fresh Fighting with Patrol: the guard walked off mid-aggro.
+#[tokio::test]
+async fn a_patroller_that_aggroes_a_player_already_in_combat_keeps_fighting() {
+    use cimmeria_common::Vector3;
+    let mut mgr = make_aggression_fixture(NPC, HOSTILE_FACTION, PLAYER, [5.0, 0.0, 0.0]);
+    mgr.get_entity_mut(NPC).unwrap().patrol_path =
+        vec![Vector3::new(10.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 10.0)];
+    // The player is already fighting some other mob.
+    let _ = crate::cell::combat::enter_player_combat(&mut mgr, PLAYER, 999_999);
+    tick(&mut mgr).await;
+    assert!(
+        engaged(&mgr),
+        "the guard must stay Fighting, not patrol off"
+    );
+}

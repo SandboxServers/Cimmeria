@@ -54,6 +54,15 @@ pub(in crate::cell) fn log_aggro_acquired(
         Some(t) if t.is_player => (t.player_id, t.account_id),
         _ => (None, None),
     };
+    // NPC-vs-NPC (#1009): who the NPC engaged, and both sides' factions, so
+    // a standoff can be read from this row alone.
+    let target_kind = match target {
+        Some(t) if t.is_player => "player",
+        Some(_) => "npc",
+        None => "gone",
+    };
+    let target_faction = target.map(|t| t.faction);
+    let target_tag = target.and_then(|t| t.tag.as_deref()).unwrap_or("");
     let npc_to_target = target.map(|t| t.position.distance_to(&npc.position));
     let dy = target.map(|t| t.position.y - npc.position.y);
     let has_los = los_label(space_mgr.line_of_sight(npc_id, target_id));
@@ -74,6 +83,10 @@ pub(in crate::cell) fn log_aggro_acquired(
         space_id = npc.space_id.0,
         from = from.label(),
         target_id,
+        target_kind,
+        target_tag,
+        npc_faction = npc.faction,
+        target_faction,
         player_id,
         account_id,
         npc_to_target,

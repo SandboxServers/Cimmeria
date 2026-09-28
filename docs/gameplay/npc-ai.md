@@ -160,7 +160,7 @@ In the seeds, faction 10 (`Straegis`: the NID guards and PRUs) reads HOSTILE, fa
 
 ### Proximity aggro scan
 
-`npc_ai_tick` admits an Idle NPC when it is hostile to players, has a patrol path, or has a wander radius. A hostile Idle NPC runs `npc_ai_idle_auto_aggro` every AI tick (about 2 s) over its AoI witnesses. A witness becomes a candidate only when every gate in `npc_ai/aggro_gates.rs` passes, in this order:
+`npc_ai_tick` admits an Idle NPC when it is hostile to players, fights NPCs ([NPC-vs-NPC combat](#npc-vs-npc-combat-1009)), has a patrol path, or has a wander radius. A hostile Idle NPC runs `npc_ai_idle_auto_aggro` every AI tick (about 2 s) over its AoI witnesses. A witness becomes a candidate only when every gate in `npc_ai/aggro_gates.rs` passes, in this order:
 
 | Gate | Reject reason |
 |---|---|
@@ -207,6 +207,27 @@ A joining NPC takes a 1.0 threat seed on the victim's target and enters Fighting
 - In Castle (world 8) the population guard templates 181-186 seed `assist_radius = 12` and `aggro_radius` 15 u (inside, 181-183) or 20 u (outside, 184-186). Each post keeps its members within 12 u of a neighbour and at least 12 u from any other group, so a shot guard rallies its own post only; the Interrogation Block pair is deliberately 5-6 u from Romney. See the [castle-population ledger](../analysis/castle-population/README.md#decisions) (D-CP04).
 
 Telemetry: the join is `npc_ai.aggro event=acquired cause=assist` (counter `npc_ai_aggro_total{cause="assist"}`), plus a DEBUG `npc_ai.aggro_scan event=assist_joined` that names the `victim_id`. A considered neighbour that was passed over logs `npc_ai.aggro_scan event=assist_rejected` with the `reason` above, sampled per assister and victim.
+
+### NPC-vs-NPC combat (#1009)
+
+NPCs fight each other when their factions say so. The 44 x 44 faction reaction table (above) always had NPC-versus-NPC rows; before #1009 nothing read it with an NPC as the viewer, so friendly NPCs (Op-CORE marines, Praxis Jaffa) could not hold a line against NID guards.
+
+**Who fights whom.** NPC `A` may take NPC `B` as a target when `REACTION[A.faction][B.faction]` is HOSTILE (`combat::npc_may_target_npc`). Both must be SGWMob NPCs: players, pets and beings (props, Col Marsh) never take part. The table is asymmetric and is read as written. In today's seeds that means faction 10 (`Straegis`, the NID guards) and faction 3 (`Praxis`) fight each other, and faction 1 (`World Object`, every friendly placed before #1009) is FRIENDLY in every row, so it never fights. The aggression override only narrows this: a non-HOSTILE override (a chain-disarmed guard, a surrendered NPC, `set_aggression 0`) keeps the NPC out of NPC fights too, and a HOSTILE override does not turn an NPC on NPCs its faction does not fight. A static-spawn survey at the time of #1009 found no hostile NPC pair within aggro range anywhere in the seed, so nothing changed until the Castle standoff was moved into range.
+
+**Admission and scan.** An Idle NPC whose faction has an NPC enemy (`combat::seeks_npc_targets`) is ticked, and its Idle scan (`npc_ai_idle_auto_aggro`) also looks at the NPCs around it:
+
+- **Spatially bounded.** Candidates come from the space's `WorldGrid` (`SpaceManager::npc_ids_near`, 50 u cells) within twice the NPC's aggro radius, never from a sweep of the space, so a crowded world does not make the tick O(n^2). The guard is `tests/npc_ai/npc_vs_npc_budget.rs::the_npc_scan_is_a_bounded_grid_query`.
+- **Only while watched.** The NPC scan runs only when some player has the scanning NPC in their AoI. An NPC fight nobody can see is not started, so a standoff in an empty zone costs nothing but its idle ticks; a fight already under way carries on without a witness until it ends.
+- **Gates** (`aggro_gates::evaluate_npc_candidate`), in order: a HOSTILE NPC combatant (anything else is not a candidate and logs nothing), alive (`dead`), not walking home (`target_evading`, the NA12 evade), not surrendered, despawning, spawning or in the error state (`target_unavailable`), then the same room as for players: `abs(dy) <= 4` u, inside the scanner's aggro radius, and line of sight (`out_of_vertical_band`, `out_of_radius`, `no_los`).
+- **Pick.** The closest survivor of the player scan and the NPC scan wins; a tie goes to the player. It gets the same 1.0 threat seed with `cause=proximity`. The NA12 post-reset window suppresses NPC targets too.
+
+**Fighting.** Nothing is special once the NPC is Fighting: threat, target selection, the three-bucket ability pick, cover, chase, the leash and the walk home are the ones used against players, keyed by entity id. A shot NPC takes threat on its NPC attacker through `combat::generate_threat` and fights back, and a threat table can hold players and NPCs together; the top threat wins. An NPC fight puts no player in combat. Same-room assist (NA14) stays player-only: an NPC-on-NPC engagement recruits nobody, so a standoff does not ripple.
+
+**Deaths.** An NPC that dies to anyone leaves every other NPC's threat list at the moment of death (`npc_ai::purge_dead_target_from_threat`, the NA24 purge extended from players to NPCs), and each NPC whose list runs dry starts home. Respawn and one-shot rules are unchanged. Credit stays with the killing blow: an NPC-only kill (the killer is a plain NPC, not a pet) rolls no loot, pays no XP and fires no `EntityDeath`, so no kill objective moves ([abilities ADR decision 32](../architecture/abilities-and-effects-system.md#32-npc-vs-npc-an-npcs-area-ability-hits-the-npcs-it-would-target-and-an-npc-only-kill-pays-nobody-1009)). A player's own kills pay as always.
+
+**Telemetry.** The acquisition is `npc_ai.aggro event=acquired` with `target_kind` (`player` or `npc`), `target_tag`, `npc_faction` and `target_faction`. A HOSTILE NPC the scan refused logs `npc_ai.aggro_scan event=npc_candidate_rejected` (DEBUG, sampled per pair and reason) with both ids and factions and the `reason` above. An NPC-only kill logs `loot.drop event=skipped reason=npc_only_kill` (INFO). See [negative-logging-convention.md](../architecture/negative-logging-convention.md#npc-vs-npc-target-refusals-and-npc-only-kills-1009).
+
+**Client.** No new wire: an NPC's shot at an NPC is the same `onEffectResults` (sent to the attacker's witnesses), `onStatUpdate` and death burst as a shot at a player or a pet's shot at a mob. Whether the client draws an NPC-sourced hit on a non-player target has not been seen in-client; it is a UAT item (`CP19` in the [unified UAT guide](../guides/unified-uat.md#castle-population)).
 
 ### Chain-armed spawns (D-NA01a)
 
@@ -381,6 +402,8 @@ These properties are defined in `SGWMob.def` but have no Python implementation:
 
 Tapping determines who receives loot drops and XP when the mob dies. Currently, loot generation on death runs without any tap check — all loot goes to whoever triggered the death event.
 
+Since NPC-vs-NPC combat (#1009) a kill whose killer is a plain NPC rolls no loot at all, and pays no XP or mission credit: see [NPC-vs-NPC combat](#npc-vs-npc-combat-1009).
+
 ---
 
 ## Mob Properties Reference
@@ -427,7 +450,7 @@ Implemented behaviour, decided in D-NA03 (corrected by D-NA10) of the [NPC AI re
 - Beyond the radius plus a 5 u hysteresis band, or more than 20 u above or below its spawn, the NPC always gives up (`trigger` `beyond_band` / `vertical_cap`).
 - Inside the band it keeps fighting a target it can already hit. It gives up only if it would have to chase further from home (`chase_outward`).
 - A target that dies, disconnects, or stays beyond the NPC's AoI radius for 5 s is dropped. When nobody is left, the NPC goes home (`target_lost`).
-- A player who dies leaves every NPC's threat list at the moment of death (`abilities::death::resolve_death` → `purge_dead_player_from_threat`), and a target carrying `BSF_DEAD` counts as dead whatever its HEALTH reads. A dead player cannot `useItem` (answered with `onErrorCode(0, 0, CONDITION_FEEDBACK_NotLiving)`, the legacy `@mustBeAlive` reply), so a medkit in the Defeat Window can no longer revive the killer's interest (NA24).
+- A player who dies leaves every NPC's threat list at the moment of death (`abilities::death::resolve_death` → `purge_dead_target_from_threat`), and a target carrying `BSF_DEAD` counts as dead whatever its HEALTH reads. A dead player cannot `useItem` (answered with `onErrorCode(0, 0, CONDITION_FEEDBACK_NotLiving)`, the legacy `@mustBeAlive` reply), so a medkit in the Defeat Window can no longer revive the killer's interest (NA24).
 
 The old metric was spawn-to-target in 3D. A player standing 49.9 u from the Cellblock Guard's spawn bounded every chase, and an aggressive NPC standing at its spawn leashed every 6 s against a player 60 u away (audit S3, S5).
 
@@ -670,6 +693,7 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | lookAt() rotation | DONE | Mob faces target during combat |
 | Leashing state | DONE | NA12: NPC-to-spawn leash radius with hysteresis and a per-template `leash_distance`, walk home with evade, heal / facing / cooldown reset on arrival, snap only as a fallback, player combat drained, 5 s re-aggro suppression. See [Leash and reset](#leash-and-reset-na12). |
 | Chase path robustness | DONE | NA15: stop distance, level-aware repath, hold then give up at a partial route, partial route home, off-mesh start and target recovery, degenerate repath clears the route. See [Chase and unreachable targets](#chase-and-unreachable-targets-na15). |
+| NPC-vs-NPC combat | DONE | #1009: an NPC engages NPCs its faction reaction reads HOSTILE (the table with the NPC as viewer), found by a grid-bounded scan while a player watches; normal threat, abilities, leash and death; NPC-only kills pay nothing. See [NPC-vs-NPC combat](#npc-vs-npc-combat-1009). |
 | Proactive aggro detection | DONE | NA13: hostile Idle NPCs (override, else faction reaction) scan witnesses every 2 s through the radius (18 u default, `entity_templates.aggro_radius`), vertical band (4 u), fail-closed LoS and GM-switch gates, and seed 1.0 threat on the closest. See [Proximity aggro scan](#proximity-aggro-scan). |
 | Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |
 | Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |

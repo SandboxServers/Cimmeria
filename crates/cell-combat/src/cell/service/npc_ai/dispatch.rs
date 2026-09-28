@@ -91,7 +91,8 @@ pub(in crate::cell::service) const ZERO_HEALTH_WARN_MIN_INTERVAL: Duration =
 /// NPC AI tick — drives Fighting, Leashing, and hostile Idle NPCs. An
 /// Idle NPC is admitted when it is hostile to players (NA13: its
 /// aggression override, else the faction reaction — see
-/// [`crate::cell::combat::is_hostile_to_players`]), has a patrol path, or
+/// [`crate::cell::combat::is_hostile_to_players`]), fights NPCs (#1009:
+/// [`crate::cell::combat::seeks_npc_targets`]), has a patrol path, or
 /// has a wander radius. Hostility is what makes both faction-10 mobs and
 /// the `set_aggression` content action trigger combat; see
 /// `cimmeria_cell_content::cell::content::executor::world::set_aggression`.
@@ -150,6 +151,20 @@ pub async fn npc_ai_tick(
     use tracing::Instrument;
 
     for (npc_id, ai_state, _, has_patrol, has_wander) in npc_snapshot {
+        // An Idle NPC that is ticked only to look for NPC targets (#1009)
+        // has nothing to do while no player watches it: its NPC scan is
+        // witness-gated. Skipping the whole turn keeps a zone full of such
+        // NPCs (a Praxis garrison nobody is near) as cheap as before #1009.
+        // It stays in `admitted`: it is not parked, and the next tick a
+        // player arrives it runs.
+        if ai_state == AiState::Idle
+            && space_mgr
+                .get_entity(npc_id)
+                .is_some_and(npc_seeks_only_npc_targets)
+            && space_mgr.get_witnesses_of(npc_id).is_empty()
+        {
+            continue;
+        }
         // `.instrument()` (not `.entered()`) — the handler bodies await,
         // so a thread-local guard would silently fall off across runtime
         // thread switches.
@@ -199,10 +214,13 @@ pub async fn npc_ai_tick(
                     // not freeze a hostile patroller or wanderer. Patrol
                     // beats wander because explicit waypoint authoring is
                     // more intentional than a wander radius.
-                    let hostile = space_mgr
-                        .get_entity(npc_id)
-                        .is_some_and(crate::cell::combat::is_hostile_to_players);
-                    let engaged = hostile && npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
+                    // An NPC that fights NPCs (#1009) scans too, for NPC
+                    // targets only when it is not hostile to players.
+                    let scans = space_mgr.get_entity(npc_id).is_some_and(|e| {
+                        crate::cell::combat::is_hostile_to_players(e)
+                            || crate::cell::combat::seeks_npc_targets(e)
+                    });
+                    let engaged = scans && npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
                     // Engaged means Fighting now; the next tick runs it.
                     if !engaged && has_patrol {
                         super::set_ai_state(
@@ -236,6 +254,19 @@ pub async fn npc_ai_tick(
         .instrument(ai_span)
         .await;
     }
+}
+
+/// Whether an Idle NPC is admitted to the AI tick *only* because it fights
+/// NPCs (#1009): not a pet, not hostile to players, no patrol route, no wander
+/// radius, and [`crate::cell::combat::seeks_npc_targets`]. Such an NPC's only
+/// Idle work is the witness-gated NPC scan.
+fn npc_seeks_only_npc_targets(e: &cimmeria_entity::cell_entity::CellEntity) -> bool {
+    !e.extensions
+        .contains::<cimmeria_entity::cell_entity::PetState>()
+        && !crate::cell::combat::is_hostile_to_players(e)
+        && e.patrol_path.is_empty()
+        && e.wander_radius <= 0.0
+        && crate::cell::combat::seeks_npc_targets(e)
 }
 
 /// Retry sweep — runs every AoI tick (100ms) from

@@ -63,6 +63,13 @@
 //! - [`follow_resume`] — NA42 on the real `castle_cellblock.nav`: a mob
 //!   escort hit mid-follow fights, leashes in place and resumes Follow with
 //!   its target kept; with its leader gone it clears the target and idles.
+//! - [`npc_vs_npc`]    — #1009 NPC-vs-NPC combat on a meshless space: hostile
+//!   NPCs in range engage each other, the witness gate, friendly rows never
+//!   engage, the refusal rows, the closer of a player and an NPC, a mixed
+//!   player/NPC threat table across an NPC death, and no credit for an
+//!   NPC-only kill through the tick.
+//! - [`npc_vs_npc_budget`] — #1009 CPU budget: the NPC scan is a bounded grid
+//!   query (CI guard) and the `#[ignore]`d 10 v 10 tick benchmark.
 //!
 //! Uses a non-instanced `Castle` fixture rather than the parent
 //! `make_test_space_mgr` (Castle_CellBlock, instanced) so the NPC and
@@ -92,6 +99,8 @@ mod leash_reset;
 mod leash_walk;
 mod melee_reach;
 mod no_route;
+mod npc_vs_npc;
+mod npc_vs_npc_budget;
 mod occluder_los;
 mod occluder_los_eye_heights;
 mod off_mesh_sentry;

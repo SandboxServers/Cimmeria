@@ -22,6 +22,7 @@ pub(in crate::cell) const IDLE_PARKED_MIN_DIST: f32 = 2.0;
 pub fn idle_is_ticked(npc: &CellEntity) -> bool {
     npc.extensions.contains::<PetState>()
         || crate::cell::combat::is_hostile_to_players(npc)
+        || crate::cell::combat::seeks_npc_targets(npc)
         || !npc.patrol_path.is_empty()
         || npc.wander_radius > 0.0
 }
