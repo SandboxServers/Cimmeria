@@ -61,6 +61,7 @@ mod mission_686_straegis;
 mod mission_687;
 mod mission_688;
 mod mission_689;
+mod mission_689_hidden_frames;
 mod mission_701;
 mod mission_702;
 mod mission_703;

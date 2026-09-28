@@ -28,6 +28,9 @@ mod cr05_allcraft;
 mod craft_grants;
 #[cfg(test)]
 mod gm_audit_identity;
+
+#[cfg(test)]
+mod hidden_missionfail;
 #[cfg(test)]
 mod na13_aggro;
 #[cfg(test)]

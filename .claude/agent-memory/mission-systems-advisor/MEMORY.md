@@ -11,3 +11,4 @@
 - [atrea-node-mapping.md](atrea-node-mapping.md) — Atrea `Event_*`/`Act_*` node → Cimmeria trigger/action mapping, with the nodes that have no port.
 - [dialog-chain-authoring-rules.md](dialog-chain-authoring-rules.md) — CRITICAL: non-interact chains can only display MONOLOGUE dialogs; `dialog_choice` gated on `open_dialog_id`; NULL-dialog_set binds are interaction-only flag carriers since #661 (were no-ops); buttons keyed by screen_id; tutorials are client-raised; speaker label is per dialog, not per screen.
 - [mission-1360-step-4038-unreachable.md](mission-1360-step-4038-unreachable.md) — Nothing advances Frost's Letter 4037→4038, so Harset chain 6501 can never fire; needs an owner decision.
+- [hidden-mission-frame-gate.md](hidden-mission-frame-gate.md) — #715: hidden missions (682-686, 689) send no client frames; new send sites must call `suppress_hidden_mission_frames`; client abandon refuses them.
