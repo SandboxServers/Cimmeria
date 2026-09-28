@@ -411,7 +411,7 @@ Source: [SS-UAT in work-packets.md](../analysis/social-systems/work-packets.md#s
 
 The auction house: search, bid, buyout, create and cancel listings.
 
-**Status:** Not ready for UAT. The checklist lands with packet BM-07. The only testable thing today, the window opening at the auctioneer, needs a client-patch DLL and a patched `BlackMarket.lua` that do not ship to testers, and the server port (BM-01) is still in review. No steps.
+**Status:** Not ready for UAT. The checklist lands with packet BM-07. The only testable thing today, the window opening at the auctioneer, needs a client-patch DLL and a patched `BlackMarket.lua` that do not ship to testers, and the server's contract fixes (BM-02) need the client patch to be seen. No steps.
 
 Source: [black-market plan](../analysis/black-market/README.md).
 
