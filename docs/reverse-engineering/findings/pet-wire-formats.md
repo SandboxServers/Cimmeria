@@ -2,7 +2,7 @@
 
 > **Date**: 2026-03-01
 > **Phase**: 4 — Secondary Systems RE
-> **Confidence**: HIGH (derived from `.def` files + `alias.xml` + universal RPC dispatcher architecture)
+> **Confidence**: HIGH (derived from `.def` files + `alias.xml` + universal RPC dispatcher architecture). Corrected 2026-09-27 (stance types, PT-E1) and 2026-09-28 (the player-method argument lists, #804): the first edition's INT32 stance fields and short argument lists were wrong.
 > **Sources**: `SGWPet.def`, `SGWPlayer.def`, `alias.xml`
 
 ---
@@ -45,9 +45,14 @@ Pet commands are sent as player cell methods, not pet entity methods:
 
 | Method | Args | Notes |
 |--------|------|-------|
-| `petInvokeAbility` | `INT32 abilityId`, `INT32 targetId` | Use pet ability |
-| `petAbilityToggle` | `INT32 abilityId`, `UINT8 toggle` | Toggle auto-cast |
-| `petChangeStance` | `INT32 stanceId` | Change pet stance |
+| `petInvokeAbility` | `INT32 aEntityId`, `INT32 aAbilityId`, `INT32 aTargetId` | Use pet ability |
+| `petAbilityToggle` | `INT32 aEntityId`, `INT32 aAbilityId`, `INT8 aToggle` | Toggle auto-cast |
+| `petChangeStance` | `INT32 aEntityId`, `INT8 aStance` | Change pet stance |
+
+> **Correction (2026-09-28, #804)**: previously listed without the leading `aEntityId` (the pet's
+> entity id) and with `UINT8 toggle` / `INT32 stanceId`. `SGWPlayer.def:827-845` declares the
+> lists above; the Rust parser (`cell_methods/player/social.rs`) and
+> [cell-method-dispatch-table.md](../../protocol/cell-method-dispatch-table.md) already follow it.
 
 ---
 

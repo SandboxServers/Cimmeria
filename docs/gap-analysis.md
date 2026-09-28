@@ -2,12 +2,12 @@
 title: "Gameplay Systems Gap Analysis"
 type: explanation
 audience: engineers
-last_updated: 2026-09-27
+last_updated: 2026-09-28
 ---
 
 # Gameplay Systems Gap Analysis
 
-> **Last updated**: 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; then the crafting close-out: §19, with the loot and trade rows that crafting changed in §14 and §22; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
+> **Last updated**: 2026-09-28 (#804: §10's clear-on-death row and path forward re-verified; no status changed). Before that 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; then the crafting close-out: §19, with the loot and trade rows that crafting changed in §14 and §22; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
 > **Purpose**: Map every gameplay system's Rust implementation against what's needed for a complete server
 > **Status**: Source of truth for project completion tracking
 > **Measured against**: `main`. Work living only on an unmerged feature branch is called out explicitly in the affected section and is **not** counted as implemented.
@@ -366,7 +366,7 @@ last_updated: 2026-09-27
 ### 10. Effects and Buffs --- IM
 
 - **Confidence**: HIGH for the framework, MEDIUM for content coverage (re-read 2026-09-25). Four rows were corrected after the code showed that the `EF_ClearOn*` / "permanent" machinery the old notes cite does not exist.
-- **Documentation**: [gameplay/effect-system.md](gameplay/effect-system.md) (**stale**: it lists the clear-on flags as DONE), [architecture/abilities-and-effects-system.md](architecture/abilities-and-effects-system.md)
+- **Documentation**: [gameplay/effect-system.md](gameplay/effect-system.md), [architecture/abilities-and-effects-system.md](architecture/abilities-and-effects-system.md)
 - **Rust code**: [`crates/cell-world/src/cell/effects/`](../crates/cell-world/src/cell/effects/) (the scripts) and [`crates/cell-combat/src/cell/effects/`](../crates/cell-combat/src/cell/effects/) (the pulsing): 3,742 lines across 9 files and **57 tests**:
   - `registry.rs` (63 lines);
   - `pulsing/{register,tick,channel_cancel,mod}.rs` (1,041 lines, plus a 649-line `tests.rs`);
@@ -382,7 +382,7 @@ last_updated: 2026-09-27
   - **#790**: Cover Stance buff and unbuff scripts.
   - ADR decision 18: surrendered NPCs are floored at 1 HP by pulses.
 - **Path forward**:
-  - Honour the effect-clear flags. The original vocabulary is `EEffectFlag`, but none of `EF_ClearOnDeath`, `EF_ClearOnDamage`, `EF_ClearOnRez` or `EF_RemoveOnBandolierSlotChange` has a Rust constant.
+  - Honour the rest of the effect-clear flags (`EEffectFlag`). `EF_ClearOnDeath` is `EF_CLEAR_ON_DEATH` (4) and only the timed stat-buff ledger honours it; pulsing `active_effects` ignore it. `EF_ClearOnDamage`, `EF_ClearOnRez` and `EF_RemoveOnBandolierSlotChange` have no Rust constant.
   - Send a wire packet for single-shot scriptless effects: `register_active_effect` returns early (pulsing/register.rs:50), so Stasis Sickness, the Prison Boot and similar effects are server no-ops.
   - Dispatch `effect_*` content triggers (#610; open PR #745).
   - Persist effects across logout.
@@ -396,8 +396,8 @@ last_updated: 2026-09-27
 | Effect removal | CW | -- | cell/effects/pulsing/tick.rs:141 | Expiry sweep, then the script's `on_remove` (Stun, AbsorbShield, RemoveCoverStance), then an `onTimerUpdate` clear carrying SecondaryId (#744). Note corrected 2026-09-25: there is no general "revert non-permanent stat changes" |
 | Stat change tracking | IM | -- | cell/effects/scripts.rs:390,454; cover_stance.rs | **Corrected 2026-09-25 (was CW).** No permanent/non-permanent distinction exists anywhere in `crates/` (a grep for "permanent" in cell/effects and entity finds nothing). Stat changes are reverted only by an individual script's `on_remove` (AbsorbShield, Stun, CoverStance). Direct HEALTH/FOCUS writes are one-way. Re-verified 2026-09-25 |
 | Shared QR per pulse | IM | -- | cell/effects/pulsing/tick.rs:325 | Pulses hold QR neutral; the cast's roll is authoritative |
-| Clear on death | IM | -- | cell/effects/pulsing/tick.rs:283; channel_cancel.rs | **Note corrected 2026-09-25.** There is no `EF_ClearOnDeath` constant or check. What exists: pulses on a dead target are skipped (the instances stay and age out), and a dying channeller's channels are cancelled (death/mod.rs:119) |
-| Clear on damage | KM | -- | -- | **Corrected 2026-09-25 (was IM).** No `EF_ClearOnDamage` constant, and no code removes an effect when damage is taken. The `EF_*` constants are only defs.rs:56-62. Re-verified 2026-09-25 |
+| Clear on death | IM | -- | cell/effects/stat_buffs/mod.rs; abilities/death/mod.rs; cell/effects/pulsing/tick.rs | **Corrected 2026-09-28 (#804).** `EF_ClearOnDeath` is `EF_CLEAR_ON_DEATH` (4, `entity/abilities/defs.rs`). `resolve_death` calls `clear_stat_buffs_on_death`, which ends the dead entity's timed stat buffs whose effect carries it (no stimpack row does). Pulsing `active_effects` ignore the flag: pulses on a dead target are skipped (the instances stay and age out), and a dying channeller's channels are cancelled |
+| Clear on damage | KM | -- | -- | **Corrected 2026-09-25 (was IM).** No `EF_ClearOnDamage` constant, and no code removes an effect when damage is taken. The `EF_*` constants are in `entity/abilities/defs.rs`; none is ClearOnDamage. Re-verified 2026-09-28 |
 | Clear on revive | KM | -- | -- | **Corrected 2026-09-25 (was IM).** No `EF_ClearOnRez`, and the respawn/revive paths never touch `active_effects` (the only writers are `cell/effects/pulsing/*`). Re-verified 2026-09-25 |
 | Clear on bandolier swap | KM | -- | -- | **Corrected 2026-09-25 (was IM).** No `EF_RemoveOnBandolierSlotChange`, and the bandolier handlers never touch `active_effects`. Re-verified 2026-09-25 |
 | Effect scripts (registry) | IM | -- | cell/effects/registry.rs:21-33 | 11 scripts, bound by 17/3,216 effect rows. The `effect_*` content triggers are inert (#610, open) |
