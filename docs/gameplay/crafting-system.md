@@ -2,12 +2,12 @@
 title: "Crafting System"
 type: reference
 audience: engineers
-last_updated: 2026-09-27
+last_updated: 2026-09-28
 ---
 
 # Crafting System
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Status**: Server-side complete, not yet run in a client. The crafting campaign ([ledger](../analysis/crafting/README.md), CR-01 to CR-17) restored learning disciplines with applied science points and earning them by levelling, the four verbs (craft, research, reverse engineering, alloying) on the induction engine, the free two-step respec, stations and Field Crafting Tools, Blueprint items and Racial Paradigm Guides, the crafting bag's trade and mail, and the login sync. Every row in gap-analysis §19 is NT until the owner's [CR-14 UAT](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 > **Companions**: [gap-analysis §19](../gap-analysis.md), [crafting wire formats](../reverse-engineering/findings/crafting-wire-formats.md), [crafting client UI](../reverse-engineering/findings/crafting-client-ui.md), [crafting items](../reverse-engineering/findings/crafting-items.md), [debug hub, crafting corner](../content/debug-hub.md#crafting-corner), [observability, `crafting` target](../architecture/observability.md), [commands](../commands.md#crafting).
 
@@ -259,7 +259,7 @@ Every crafting verb that takes time (craft, research, reverse engineer, alloy) r
 1. Take the player-wide inventory lock and the per-bag locks (main bag, crafting bag, and every product's bag). The player row is read, and locked only by a research that teaches a blueprint, after every inventory row: the vendor stack locks inventory rows before the player row, and vendor purchase takes the same player-wide lock first, so neither can deadlock with a completion.
 2. Lock each item instance the request named and check that it still belongs to the player, is of the design the verb named it for, and sits in the main bag (1) or the crafting bag (15).
 3. Take any exact consumption from its named instance only (reverse engineering consumes the one item it names). Then consume each component by design across those two bags, the crafting bag first. The client names only one instance per component type, so a requirement that spans several stacks is met by design, not by the named instance. A bank stack never counts.
-4. Place each product in the first main or crafting bag its `container_sets` list. The 752 crafting components list `{17,15}` (bank first) and land in the crafting bag. A product merges into one unbound stack with room for the whole quantity, or takes free slots, one per full stack.
+4. Place each product in the first main or crafting bag its `container_sets` list. The 752 crafting components list `{17,15}` (bank first) and land in the crafting bag. A non-bound product merges into one unbound stack with room for the whole quantity, or takes free slots, one per full stack; a BIND_ON_ACQUIRE product (`resources.items.flags & 4`, issue #914) never merges and always takes a fresh row per stack with `bound = true`, the same rule every other grant path applies.
 5. Teach the blueprints the plan names (research only): lock the player row, after every inventory row, and add each blueprint whose discipline the player knows.
 6. Add expertise to disciplines the player knows, capped at 100.
 

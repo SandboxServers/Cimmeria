@@ -4,6 +4,7 @@
 //! which differ only in the header: a COD mail has the GM as `sender_id`,
 //! `MAIL_COD` and the price in `cash`.
 
+use cimmeria_cell_catalog::crafting::ItemFlags;
 use sqlx::PgConnection;
 
 use super::super::expiry::expires_at;
@@ -42,13 +43,17 @@ pub(in super::super) struct Written {
 /// A minted item's escrow row, with `grant_item`'s instance defaults
 /// (`inventory/grant/grant_item.rs`): durability 100, the template's
 /// charges (also the loaded ammo), its default ammo type and ammo types,
-/// not bound, no flags. `$1` mail, `$2` type, `$3` quantity, `$4` the
-/// system source id, `$5` escrow time.
+/// no flags, and `bound` from the design's own BIND_ON_ACQUIRE flag
+/// (`resources.items.flags & 4`, SS-914) — the same rule every other grant
+/// path applies, so a bind-on-acquire item minted straight into mail
+/// (a GM COD, a server reward) arrives bound instead of freely mailable
+/// or tradeable once taken. `$1` mail, `$2` type, `$3` quantity, `$4` the
+/// system source id, `$5` escrow time, `$6` the BIND_ON_ACQUIRE bit.
 const MINT_ESCROW_SQL: &str = "INSERT INTO sgw_gate_mail_item \
      (mail_id, item_id, type_id, stack_size, charges, durability, flags, bound, \
       ammo, cur_ammo_type, ammo_type, ammo_types, source_character_id, escrowed_at) \
      SELECT $1, nextval('sgw_inventory_item_id_seq'), ri.item_id, $3, ri.charges, 100, 0, \
-            false, ri.charges, 0, \
+            (ri.flags & $6) <> 0, ri.charges, 0, \
             COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
             ri.ammo_types, $4, $5 \
      FROM resources.items ri WHERE ri.item_id = $2 \
@@ -114,6 +119,7 @@ pub(in super::super) async fn write_mail(
                 .bind(qty)
                 .bind(SYSTEM_SOURCE_CHARACTER_ID)
                 .bind(now)
+                .bind(ItemFlags::BIND_ON_ACQUIRE as i32)
                 .fetch_one(&mut *conn)
                 .await?;
             Some(SystemEscrow {

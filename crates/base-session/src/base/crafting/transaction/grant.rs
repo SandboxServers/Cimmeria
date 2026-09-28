@@ -4,6 +4,7 @@
 
 use std::collections::HashSet;
 
+use cimmeria_cell_catalog::crafting::ItemFlags;
 use cimmeria_cell_catalog::item_placement::{first_player_container, STORAGE_CONTAINERS};
 use cimmeria_resources::base::resources::{bag_max_slots, bag_min_slot};
 use sqlx::{Postgres, Transaction};
@@ -21,12 +22,18 @@ pub(super) struct Placement {
     pub quantity: i32,
     pub container_id: i32,
     pub max_stack: i32,
+    /// `resources.items.flags & BIND_ON_ACQUIRE` for this design (SS-914).
+    /// A bound product skips the merge fast path in [`place`] and is
+    /// always inserted as its own row with `bound = true`, the same rule
+    /// `inventory/grant/persist.rs` applies to every other grant.
+    pub is_bound: bool,
 }
 
 #[derive(sqlx::FromRow)]
 struct ItemRow {
     container_sets: Vec<i32>,
     max_stack_size: i32,
+    flags: i32,
 }
 
 /// Resolve every product's bag and stack size. A product with no carried
@@ -41,7 +48,7 @@ pub(super) async fn resolve(
             continue;
         }
         let row: Option<ItemRow> = sqlx::query_as(
-            "SELECT container_sets, max_stack_size FROM resources.items WHERE item_id = $1",
+            "SELECT container_sets, max_stack_size, flags FROM resources.items WHERE item_id = $1",
         )
         .bind(design_id)
         .fetch_optional(&mut **tx)
@@ -61,6 +68,7 @@ pub(super) async fn resolve(
             quantity,
             container_id,
             max_stack: row.max_stack_size.max(1),
+            is_bound: row.flags & (ItemFlags::BIND_ON_ACQUIRE as i32) != 0,
         });
     }
     Ok(placements)
@@ -97,10 +105,13 @@ struct MergeRow {
     stack_size: i32,
 }
 
-/// Grant one product. The whole quantity merges into one unbound stack
-/// with room for all of it (the grant path's all-or-nothing rule);
-/// otherwise it takes as many free slots as full stacks need. Too few free
-/// slots refuses the transaction.
+/// Grant one product. A non-bound product's whole quantity merges into one
+/// unbound stack with room for all of it (the grant path's all-or-nothing
+/// rule); a BIND_ON_ACQUIRE product (SS-914) never merges — like every
+/// other grant path, it always takes a fresh row per stack with
+/// `bound = true`. Either way, once merging is out of the question it takes
+/// as many free slots as full stacks need. Too few free slots refuses the
+/// transaction.
 pub(super) async fn place(
     tx: &mut Transaction<'_, Postgres>,
     ids: &JobIds,
@@ -108,7 +119,7 @@ pub(super) async fn place(
     applied: &mut CraftApplied,
 ) -> Result<(), CraftTxError> {
     let player_id = ids.player_id;
-    if p.max_stack > 1 {
+    if p.max_stack > 1 && !p.is_bound {
         let merge: Option<MergeRow> = sqlx::query_as(
             "SELECT item_id, slot_id, stack_size FROM sgw_inventory \
              WHERE character_id = $1 AND container_id = $2 AND type_id = $3 \
@@ -170,12 +181,13 @@ pub(super) async fn place(
         let count = remaining.min(p.max_stack);
         remaining -= count;
         // Same row shape as the generic grant: the item's own charges and
-        // ammo configuration.
+        // ammo configuration, and `bound` from the same BIND_ON_ACQUIRE
+        // flag `resolve` already read into `p.is_bound`.
         let item_id: i32 = sqlx::query_scalar(
             "INSERT INTO sgw_inventory \
                 (character_id, type_id, stack_size, slot_id, container_id, \
                  bound, durability, charges, ammo_type, ammo_types, ammo, flags) \
-             SELECT $1, ri.item_id, $2, $3, $4, false, 100, ri.charges, \
+             SELECT $1, ri.item_id, $2, $3, $4, $6, 100, ri.charges, \
                     COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
                     ri.ammo_types, ri.charges, 0 \
              FROM resources.items ri WHERE ri.item_id = $5 \
@@ -186,6 +198,7 @@ pub(super) async fn place(
         .bind(slot_id)
         .bind(p.container_id)
         .bind(p.design_id)
+        .bind(p.is_bound)
         .fetch_one(&mut **tx)
         .await
         .map_err(at("place"))?;

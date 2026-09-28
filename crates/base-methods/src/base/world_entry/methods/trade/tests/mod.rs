@@ -8,6 +8,9 @@
 //! Split into submodules by theme once the previous flat `tests.rs`
 //! crossed the 700-line hard cap (CLAUDE.md §"File organization"):
 //!
+//! - [`bind_on_acquire_live`] — issue #914: a BIND_ON_ACQUIRE item granted
+//!   through the real grant path lands bound and is refused by trade, end
+//!   to end (not a hand-set `bound = true` fixture row).
 //! - [`commit`] — core commit/rollback tests (happy path, insufficient
 //!   cash, missing item, bound item, buyback, duplicate instance,
 //!   negative cash).
@@ -32,6 +35,7 @@ use sqlx::PgPool;
 use crate::base::ConnectedClientState;
 use crate::test_support::TestTransport;
 
+mod bind_on_acquire_live;
 mod commit;
 mod container_whitelist;
 mod crafting_bag;

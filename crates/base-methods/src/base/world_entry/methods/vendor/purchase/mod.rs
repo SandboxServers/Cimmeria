@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_cell_catalog::crafting::ItemFlags;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -278,10 +279,15 @@ pub async fn handle_purchase_vendor_items(
     {
         granted.push((line.design_id, container_id, next_slot, line.grant_quantity));
 
+        // `bound` is derived from the design's own BIND_ON_ACQUIRE flag
+        // (`resources.items.flags & 4`, SS-914) rather than hardcoded
+        // `false`: a vendor-exclusive bind-on-acquire item must land bound
+        // just as a loot or mission grant does, or it can be mailed/traded
+        // straight back off the character that bought it.
         let result = sqlx::query(
             "INSERT INTO sgw_inventory \
              (character_id, type_id, stack_size, slot_id, container_id, bound, durability, charges) \
-             SELECT $1, ri.item_id, $2, $3, $4, false, 100, ri.charges \
+             SELECT $1, ri.item_id, $2, $3, $4, (ri.flags & $6) <> 0, 100, ri.charges \
              FROM resources.items ri WHERE ri.item_id = $5",
         )
         .bind(player_id)
@@ -289,6 +295,7 @@ pub async fn handle_purchase_vendor_items(
         .bind(next_slot)
         .bind(container_id)
         .bind(line.design_id)
+        .bind(ItemFlags::BIND_ON_ACQUIRE as i32)
         .execute(&mut *tx)
         .await;
 

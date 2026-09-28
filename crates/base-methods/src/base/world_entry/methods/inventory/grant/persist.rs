@@ -1,10 +1,12 @@
-//! The grant transaction: advisory lock → stack-merge fast path → fresh-slot
-//! reserve/INSERT → bandolier reconcile → outbox enqueue → commit.
+//! The grant transaction: advisory lock → BIND_ON_ACQUIRE check →
+//! stack-merge fast path → fresh-slot reserve/INSERT → bandolier reconcile
+//! → outbox enqueue → commit.
 //!
 //! It returns what committed, or why nothing did. A [`PersistOutcome::Refused`]
 //! is only ever built before the commit, so a caller may hand the item back
 //! (a loot pickup returns it to the corpse) without risking a duplicate.
 
+use cimmeria_cell_catalog::crafting::ItemFlags;
 use sqlx::PgPool;
 
 use super::super::super::vendor::serializers::reserve_free_inventory_slots;
@@ -80,6 +82,34 @@ pub(super) async fn persist_grant(
         return db_refused();
     }
 
+    // Whether this design is BIND_ON_ACQUIRE (`resources.items.flags & 4`,
+    // SS-914). A bound grant must never land in — or become — a stack
+    // another (unbound) acquisition could still reach, so it skips the
+    // merge fast path below entirely and is always inserted as its own
+    // row with `bound = true`. An unresolvable `item_id` defaults to
+    // `false` here; the INSERT…SELECT further down re-reads
+    // `resources.items` with the same `WHERE item_id = $item_id` and
+    // finds nothing either, so the grant is refused there regardless of
+    // this default.
+    let is_bound: bool =
+        match sqlx::query_scalar::<_, i32>("SELECT flags FROM resources.items WHERE item_id = $1")
+            .bind(item_id)
+            .fetch_optional(&mut *db_tx)
+            .await
+        {
+            Ok(Some(flags)) => flags & (ItemFlags::BIND_ON_ACQUIRE as i32) != 0,
+            Ok(None) => false,
+            Err(e) => {
+                let _ = db_tx.rollback().await;
+                tracing::error!(
+                    player_id,
+                    item_id,
+                    "GrantItem: item flags lookup failed: {e}"
+                );
+                return db_refused();
+            }
+        };
+
     // ── Stack-merge fast path ────────────────────────────────────────
     //
     // Before reserving a fresh slot, look for an existing
@@ -94,6 +124,13 @@ pub(super) async fn persist_grant(
     // Gating predicates the WHERE clause enforces:
     //   - `bound = false` — bound items are 1:1 with their owner
     //     (no merging across two bound rows of the same type).
+    //     A *bound* incoming grant never runs this query at all
+    //     (`is_bound` above short-circuits it to `None`): merging a
+    //     bound quantity into an unbound target row would silently
+    //     launder it back to unbound, and merging it into another
+    //     bound row would conflate two distinct soul-bound grants
+    //     into one stack. Consistent rule: bound items always take a
+    //     fresh row.
     //   - `ri.max_stack_size > 1` — non-stackable item defs stay
     //     on the one-row-per-pickup path even if a stale identical
     //     row exists.
@@ -123,37 +160,41 @@ pub(super) async fn persist_grant(
         slot_id: i32,
         stack_size: i32,
     }
-    let merge_candidate: Option<MergeCandidate> = match sqlx::query_as(
-        "SELECT inv.item_id, inv.slot_id, inv.stack_size \
-           FROM sgw_inventory inv \
-           JOIN resources.items ri ON inv.type_id = ri.item_id \
-          WHERE inv.character_id = $1 \
-            AND inv.container_id = $2 \
-            AND inv.type_id = $3 \
-            AND inv.bound = false \
-            AND ri.max_stack_size > 1 \
-            AND inv.stack_size + $4 <= ri.max_stack_size \
-          ORDER BY inv.slot_id \
-          LIMIT 1 \
-          FOR UPDATE",
-    )
-    .bind(player_id)
-    .bind(container_id)
-    .bind(item_id)
-    .bind(count)
-    .fetch_optional(&mut *db_tx)
-    .await
-    {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = db_tx.rollback().await;
-            tracing::error!(
-                player_id,
-                item_id,
-                container_id,
-                "GrantItem: merge candidate lookup failed: {e}"
-            );
-            return db_refused();
+    let merge_candidate: Option<MergeCandidate> = if is_bound {
+        None
+    } else {
+        match sqlx::query_as(
+            "SELECT inv.item_id, inv.slot_id, inv.stack_size \
+               FROM sgw_inventory inv \
+               JOIN resources.items ri ON inv.type_id = ri.item_id \
+              WHERE inv.character_id = $1 \
+                AND inv.container_id = $2 \
+                AND inv.type_id = $3 \
+                AND inv.bound = false \
+                AND ri.max_stack_size > 1 \
+                AND inv.stack_size + $4 <= ri.max_stack_size \
+              ORDER BY inv.slot_id \
+              LIMIT 1 \
+              FOR UPDATE",
+        )
+        .bind(player_id)
+        .bind(container_id)
+        .bind(item_id)
+        .bind(count)
+        .fetch_optional(&mut *db_tx)
+        .await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = db_tx.rollback().await;
+                tracing::error!(
+                    player_id,
+                    item_id,
+                    container_id,
+                    "GrantItem: merge candidate lookup failed: {e}"
+                );
+                return db_refused();
+            }
         }
     };
 
@@ -299,7 +340,7 @@ pub(super) async fn persist_grant(
             (character_id, type_id, stack_size, slot_id, container_id, \
              bound, durability, charges, \
              ammo_type, ammo_types, ammo, flags) \
-         SELECT $1, ri.item_id, $2, $3, $4, false, 100, $5, \
+         SELECT $1, ri.item_id, $2, $3, $4, $7, 100, $5, \
                 COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
                 ri.ammo_types, ri.charges, 0 \
          FROM resources.items ri WHERE ri.item_id = $6 \
@@ -311,6 +352,7 @@ pub(super) async fn persist_grant(
     .bind(container_id)
     .bind(default_charges)
     .bind(item_id)
+    .bind(is_bound)
     .fetch_one(&mut *db_tx)
     .await;
 

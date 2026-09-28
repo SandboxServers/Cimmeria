@@ -43,6 +43,8 @@ use sqlx::PgPool;
 use crate::base::ConnectedClientState;
 
 #[cfg(test)]
+mod bind_on_acquire_tests;
+#[cfg(test)]
 mod fall_through_tests;
 #[cfg(test)]
 mod full_bag_tests;

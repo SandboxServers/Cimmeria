@@ -2,12 +2,12 @@
 title: "Mail System"
 type: reference
 audience: engineers
-last_updated: 2026-09-27
+last_updated: 2026-09-28
 ---
 
 # Mail System
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Status**: Every player mail operation is implemented on the server (the social-systems campaign, merged 2026-09-27): the read side (headers / body / delete / archive), sending with text (SS-M1) and with cash, an item or COD attached, held in escrow (SS-M2), taking cash, taking the item, paying COD and return-to-sender (SS-M3), and new-mail notification and the 30-day expiry (SS-M4), plus server mail, GM tools (SS-U1) and the debug hub's Gate Mail Clerk (SS-U3). None of it has been run in the real client yet; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) steps 1-6 cover it.
 
 ## Overview
@@ -110,7 +110,7 @@ Every mail the server sends goes through one writer, `send_system_mail_tx` (in t
 
 It carries cash (0 to 2,147,483,647), no item, or one item:
 
-- **Minted:** a new instance of an item type, 1 up to the type's stack size, created in escrow with `grant_item`'s defaults (durability 100, the template's charges and ammo types, not bound). `source_character_id` is 0, meaning no character sent it.
+- **Minted:** a new instance of an item type, 1 up to the type's stack size, created in escrow with `grant_item`'s defaults (durability 100, the template's charges and ammo types, and `bound` set from the type's own BIND_ON_ACQUIRE flag, `resources.items.flags & 4`, issue #914). `source_character_id` is 0, meaning no character sent it.
 - **Existing instance:** a row the server already holds for a player, moved whole into escrow with every instance column kept. Server-held means the auction container (18), which no player move reaches. The caller names the owner it expects. A row in any other container, a row owned by someone else, or a bound row mailed to anyone but its owner is refused, and nothing is written.
 
 The GM tools use the same writer (see [commands](../commands.md)):
