@@ -28,7 +28,9 @@ impl CellEntity {
             movement_unrestricted: false,
             properties: HashMap::new(),
             witnesses: HashSet::new(),
-            aoi_radius: 100.0, // Default AoI radius (matches grid_vision_distance)
+            // NPC perception radius. A player's is raised to
+            // `PLAYER_AOI_RADIUS` (150 m) when its client connects.
+            aoi_radius: 100.0,
             is_player: false,
             use_cover: false,
             class_id: 0x02, // SGWPlayer by default

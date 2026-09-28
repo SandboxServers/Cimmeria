@@ -44,7 +44,8 @@ pub(super) async fn npc_ai_idle_auto_aggro(
     };
 
     // Witnesses-of-NPC = players currently rendering this NPC, i.e. players
-    // in the NPC's AoI. The gates below narrow that 100 u set to the room.
+    // whose view (`PLAYER_AOI_RADIUS`, 150 m) holds it. The gates below
+    // narrow that set to the NPC's aggro radius and its room.
     let witnesses = space_mgr.get_witnesses_of(npc_id);
     let witness_count = witnesses.len();
     let mut rejects: Vec<(u32, ScanReject)> = Vec::new();

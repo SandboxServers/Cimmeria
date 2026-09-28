@@ -359,17 +359,25 @@ Verified against `crates/entity/src/space.rs` and `crates/entity/src/world_grid.
 hysteresis to damp boundary flapping. Cimmeria's grid is *pulled* — it answers "who is near
 this point?" and nothing more. Witness bookkeeping, enter/leave decisions and AoI fan-out
 live one layer up in `crates/wire/src/mercury/aoi/` and `crates/services/src/cell/`, and
-AoI radius is a **per-entity** field (`aoi_radius`, defaulting to 100.0 in
-`crates/entity/src/cell_entity/construction.rs:30`) rather than a global chunk count.
+AoI radius is a **per-entity** field (`aoi_radius`) rather than a global chunk count. A
+player's is `PLAYER_AOI_RADIUS` = 150 m, set by `connect_entity`; an NPC keeps the
+`CellEntity::new` default of 100 m as its perception radius
+(`crates/entity/src/cell_entity/witness_aoi.rs`).
 
 Consequences worth knowing before changing anything here:
 
-- **There is no hysteresis.** An entity oscillating across an AoI boundary will generate
-  repeated enter/leave traffic. The C++ server damped this with `grid_hysteresis = 1`
-  chunk. If boundary flapping is ever observed in practice, this is the gap — but it should
-  be fixed at the witness layer, not by porting `visionExceptions_`.
-- **The default AoI radius is 100.0**, not the 150 m the old `grid_vision_distance = 3`
-  × 50 m produced. Anything that reasons about the old 150/200 m enter/leave pair is stale.
+- **Hysteresis lives at the witness layer.** `compute_player_aoi`
+  (`crates/cell-world/src/cell/space_manager/aoi.rs`) introduces an entity within the
+  player's `aoi_radius` (150 m) and removes it only past `aoi_leave_radius()`, which adds
+  `AOI_LEAVE_MARGIN` (25 m): 150 m to enter, 175 m to leave. Before 2026-09-28 there was a
+  single 100 m radius, and two players standing about 100 m apart were removed and
+  re-created every time one shifted a step. The C++ server damped the same boundary with
+  `grid_hysteresis = 1` chunk (150/200 m); the leave margin here is shorter because the
+  client culls small objects at about 160 m (`AutoCullDistanceMinimum = 16000` UE3 units,
+  `Engine/Config/GameplayEngine.ini`), so a character past that is sent but not drawn.
+- **Player view and NPC perception are separate.** A player sees 150 m, matching the old
+  `grid_vision_distance = 3` × 50 m. An NPC's `aoi_radius` stays 100 m: its target-loss
+  and leash logic read it, and widening the player's view does not change them.
 - **The grid does not know about witnesses**, so a witness-list leak cannot be diagnosed by
   inspecting grid state.
 
@@ -1014,8 +1022,8 @@ that earlier revisions of this table merged into one "Cimmeria" column.
 | **CellApp scaling** | Cell is a module in one process, not an app | One CellApp process owns all spaces | Multiple CellApps, each owning one or more cells |
 | **Base↔Cell transport** | `tokio::mpsc` channels in-process | Mercury/TCP between processes | Mercury between processes |
 | **Spatial index** | `WorldGrid` — bucket grid, pull-based `query_radius` | `WorldGrid` — chunk grid, push-based witness notify | `RangeList` + `EntityCache` with LOD priorities |
-| **AoI radius** | Per-entity `aoi_radius`, default 100.0 | Global `grid_vision_distance` = 3 chunks (150 m) | Per-entity, `defaultAoIRadius` |
-| **AoI hysteresis** | **None** | Grid-level `grid_hysteresis` (1 chunk = 50 m) | Entity-level AoI radius + hysteresis area |
+| **AoI radius** | Per-entity `aoi_radius`: 150 m for a player (`PLAYER_AOI_RADIUS`), 100 m NPC perception | Global `grid_vision_distance` = 3 chunks (150 m) | Per-entity, `defaultAoIRadius` |
+| **AoI hysteresis** | Witness-level `AOI_LEAVE_MARGIN` = 25 m (enter 150 m, leave 175 m) | Grid-level `grid_hysteresis` (1 chunk = 50 m) | Entity-level AoI radius + hysteresis area |
 | **Witness bookkeeping** | Service layer (`wire/src/mercury/aoi/`, `services/src/cell/`) | Inside the grid (`WorldGridMember<T>`) | `Witness` on `RealEntity` |
 | **Entity replication** | None — all entities local | None | Ghost entities on adjacent CellApps within `ghostDistance` |
 | **Cross-boundary interaction** | N/A (no boundaries) | N/A | Ghosts enable interaction; messages forwarded to real |

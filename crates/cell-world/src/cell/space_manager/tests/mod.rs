@@ -7,6 +7,7 @@ use super::*;
 mod aoi;
 mod aoi_npc_corpse;
 mod aoi_player_intro;
+mod aoi_view_radius;
 mod entity_lifecycle;
 mod historical_cellblocks;
 mod instances;

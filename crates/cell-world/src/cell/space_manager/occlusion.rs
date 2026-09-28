@@ -56,9 +56,12 @@ use super::SpaceManager;
 /// with no reference mesh, and every test entity without a body set).
 pub const DEFAULT_EYE_HEIGHT: f32 = 1.5;
 
-/// Pages within this distance (XZ, metres) of a player stay unpacked: the
-/// AoI radius (100 m, `CellEntity::aoi_radius`) plus a margin, so every NPC
-/// that can see a player has its pages resident.
+/// Pages within this distance (XZ, metres) of a player stay unpacked: an
+/// NPC's perception radius (its `CellEntity::aoi_radius`, the 100 m default)
+/// plus a margin, so every NPC that can see a player has its pages resident.
+/// A player's own, wider view radius (`PLAYER_AOI_RADIUS`) does not change
+/// this: being in a player's view is a distance test, not a line-of-sight
+/// probe.
 pub const RESIDENCY_RADIUS: f32 = 132.0;
 
 /// The eye height for `body_set` in `table` (body set to metres), or

@@ -474,7 +474,9 @@ How NPCs aggro, assist, move, take cover, leash home, face you and fire, in the 
 | 14 | Dial a gate | The dial opens almost at once, and the gate sequence plays before the load screen. | |
 | 15 | After the session, open the **Cimmeria — NPC AI health** dashboard | The dashboard fills in; `cimmeria.deploy_env = 'colo'` appears on rows; `stale_velocity`, `ground_deviation`, leash loop, `idle_parked` and `cleared_without_exit` all read about 0. | Coordinator step. If `deploy_env` still reads `dev`, the compose has not been re-applied |
 
-Open item from the ledger, worth a note if you see it: **one-way player visibility** (one player cannot see the other) in a two-client session. Capture it with `.bug` from both clients.
+Open item from the ledger, worth a note if you see it: **one-way player visibility** (one player cannot see the other) in a two-client session. Its leading cause, a lost server packet that wedged one client until relog, was fixed on 2026-09-28 (PR #998). If it happens again, capture it with `.bug` from both clients and check `scope_name = 'mercury.tx_hole'` for either player: a `tx_hole_stall` that never closes means that client is stuck behind a lost packet.
+
+Players see each other up to **150 m** apart. Once in view, a player stays visible until they are more than **175 m** away, and reappears only after coming back inside 150 m. `.location` on both clients gives the positions to check a distance.
 
 **SigNoz:** start from your `.bug` bookmark and follow the [telemetry runbook](../operations/npc-ai-telemetry-runbook.md): open the NPC's `entity_id` from `playtest.bookmark.entity`, then the **NPC AI — Timeline for one NPC** view with `AND npc_id = N`, or **NPC AI — What did the client see?** with `AND entity_id = N` for how it looked. A refused ability for line of sight is `scope_name = 'abilities' AND event = 'los_refused'`. Cover stance is `cover.stance event=granted`.
 

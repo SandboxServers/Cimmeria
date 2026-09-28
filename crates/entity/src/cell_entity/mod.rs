@@ -80,6 +80,7 @@ pub use pet::{PetBuff, PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;
 pub use vault_session::{ExpansionOffer, VaultCloseReason, VaultScope, VaultSession};
+pub use witness_aoi::{AOI_LEAVE_MARGIN, PLAYER_AOI_RADIUS};
 
 #[cfg(test)]
 mod tests;

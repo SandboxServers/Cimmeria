@@ -80,8 +80,11 @@ pub struct CellEntity {
     /// changes, updates are sent to all witnesses.
     pub witnesses: HashSet<EntityId>,
 
-    /// Area-of-interest radius in world units. Other entities within this
-    /// radius may become witnesses.
+    /// Area-of-interest radius in metres. For a player, how far it sees:
+    /// entities within this radius enter its AoI, and leave it past
+    /// [`Self::aoi_leave_radius`] (`PLAYER_AOI_RADIUS`, set on connect). For
+    /// an NPC, how far it perceives a target before dropping it (the 100 m
+    /// default).
     pub aoi_radius: f32,
 
     /// Whether this entity has a client controller (i.e., is a player).
