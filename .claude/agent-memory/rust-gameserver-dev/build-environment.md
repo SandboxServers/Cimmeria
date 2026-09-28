@@ -56,6 +56,16 @@ re-check after any validation run (a `cargo fmt --check` is enough to
 re-dirty it). `git add <dir>` won't catch it; `git add -A` or `git commit -a`
 would. Fixing it properly is one standalone commit on `main`.
 
+## Dev Drive full: move your own target dir to C:
+
+Seen 2026-09-28: every lane build died with `LLVM ERROR: IO failure on output
+stream: no space on device` because the shared Dev Drive (`B:\targets`) was at
+0 bytes free. `tools/build-lane/lane.sh` uses `$CIMMERIA_TARGET_ROOT/<worktree>`
+only when that directory already exists **or** `<worktree>/target` does not.
+So: delete *your own* `B:\targets\<worktree>` (never another worktree's) and
+`mkdir <worktree>/target`; the next lane call prints `target=<worktree>/target`
+and builds on C:. Expect a full rebuild (sccache helps).
+
 ## Cargo through the Bash tool looks hung when it isn't
 
 Cargo's progress goes to stderr, which the Bash tool captures block-buffered
