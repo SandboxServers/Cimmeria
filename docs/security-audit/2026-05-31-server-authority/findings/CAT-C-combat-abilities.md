@@ -668,6 +668,8 @@ class-specific regen mechanics.
 **Suggested remediation (one line)**
 Consult `combat-systems-advisor` on whether respawn should restore Focus by archetype-specific rules; in the interim, only restore Health and let the post-respawn regen tick refill focus naturally.
 
+**Resolution (2026-09-28)**: Accepted as designed. Since PR #1010 (#799), `callForAid` and `respawn` are refused unless the caller is dead (`BSF_DEAD`), so the mid-fight refill is no longer reachable. Decision (@Cadacious): keep the full Health **and** Focus refill on respawn. No code change.
+
 **Would benefit from x64dbg trace?**
 No.
 
