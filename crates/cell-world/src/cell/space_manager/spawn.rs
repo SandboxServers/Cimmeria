@@ -359,8 +359,19 @@ const INT_VENDOR_MASK: i64 = {
 };
 
 /// The static interaction a template's `interaction_type` bits give an NPC
-/// at spawn: `Banker { scope }` for `INT_BANKER`, else `Vendor` for any
-/// `INT_Vendor*` bit, otherwise none.
+/// at spawn: `Banker { scope }` for `INT_BANKER`, else `Auctioneer` for
+/// `INT_AUCTION`, else `Vendor` for any `INT_Vendor*` bit, otherwise none.
+///
+/// # Auctioneer (Black Market BM-07)
+///
+/// `INT_AUCTION` is the one marker the Black Market trusts: the
+/// `open_black_market` action and cell methods 62-64 refuse an NPC that is
+/// not `Auctioneer`. It is read from the template here, at spawn, and never
+/// from `interaction_type_flags` later, because a chain's
+/// `set_interaction_type` can set that bit on any NPC; this value only a
+/// seed row can set. It sits above the vendor bits for the same reason as
+/// the Banker: one explicit role against store tabs. No seeded template
+/// carries it with a banker or vendor bit.
 ///
 /// # Banker precedence (bank-vault BV-02, D-BV09)
 ///
@@ -386,11 +397,11 @@ const INT_VENDOR_MASK: i64 = {
 /// keep `static_interaction_sets` in step with the bits (template 25 lists
 /// 7505 with no vendor bit), so it is not a safe source here.
 ///
-/// Only Banker and Vendor are derived. A trainer is recognised by its
+/// Only Banker, Auctioneer and Vendor are derived. A trainer is recognised by its
 /// `trainer_ability_list_id` (`template_trainer_lists`), a dialog by its
 /// chains or dialog-set binds, and loot is set when the NPC dies. Only the
 /// death path overwrites the value, and the respawn tick does not restore
-/// it, so a template with a banker or vendor bit must not be killable
+/// it, so a template with a banker, auction or vendor bit must not be killable
 /// (faction 10).
 pub(crate) fn static_interaction_for_flags(
     interaction_type_flags: i64,
@@ -399,6 +410,9 @@ pub(crate) fn static_interaction_for_flags(
     use cimmeria_entity::cell_entity::NpcInteractionType;
     if interaction_type_flags & cimmeria_entity::interaction_flags::INT_BANKER != 0 {
         return Some(NpcInteractionType::Banker { scope: vault_scope });
+    }
+    if interaction_type_flags & cimmeria_entity::interaction_flags::INT_AUCTION != 0 {
+        return Some(NpcInteractionType::Auctioneer);
     }
     (interaction_type_flags & INT_VENDOR_MASK != 0).then_some(NpcInteractionType::Vendor)
 }

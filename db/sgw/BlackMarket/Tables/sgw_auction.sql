@@ -6,7 +6,10 @@
 -- BMAuctionRemove all key on it) and is the table's primary key.
 --
 -- status values (mirrors the issue / restoration findings):
---   0 = active, 1 = sold, 2 = cancelled, 3 = expired.
+--   0 = active, 1 = sold, 2 = cancelled, 3 = expired,
+--   4 = quarantined (the expiry sweep could not settle it: the escrowed
+--   item row is missing or the settlement mail was refused; left for an
+--   operator, with the item still in container 18).
 --
 -- auction_length is the UINT8 duration enum the client sends in BMCreateAuction
 -- (EBlackMarketTime: VeryShort/Short/Medium/Long/VeryLong); stored SMALLINT

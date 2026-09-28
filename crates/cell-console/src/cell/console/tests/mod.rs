@@ -13,6 +13,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 #[cfg(test)]
+mod bm07_black_market;
+#[cfg(test)]
 mod bookmark;
 #[cfg(test)]
 mod bv02_bank;
@@ -58,6 +60,7 @@ mod p46;
 mod p47;
 #[cfg(test)]
 mod pets;
+mod player_respeccraft;
 #[cfg(test)]
 mod pt07_giveability;
 #[cfg(test)]

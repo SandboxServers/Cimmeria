@@ -12,7 +12,10 @@
 //! - player trade (`trade`): the atomic swap of two players' offers;
 //! - mail, missions and progression (`mail`, `missions`, `progression`):
 //!   mail forwarding, `sgw_mission` persistence, cash and XP grants, level-ups
-//!   and ability training.
+//!   and ability training;
+//! - the Black Market (`black_market`): the auction house, its expiry sweep
+//!   and boot seed. It settles through the mail module's system-mail writer,
+//!   which is why it lives here and not in `cimmeria-base-session`.
 //!
 //! Split out of `cimmeria-services` (wave B2 of
 //! `docs/architecture/services-crate-split.md`). The module tree keeps its old

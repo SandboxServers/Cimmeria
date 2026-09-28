@@ -173,14 +173,14 @@ mod tests {
         let s = InstalledState {
             applied_patches: vec!["a".into(), "b".into()],
             seed_sha256: Some("h".into()),
-            patched_host: Some("play.cimmeria.gg".into()),
+            patched_host: Some("play.cimmeria.app".into()),
             seed_adopted: false,
         };
         s.save(dir.path()).unwrap();
         let loaded = InstalledState::load(dir.path());
         assert_eq!(loaded.applied_patches, vec!["a", "b"]);
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
-        assert_eq!(loaded.patched_host.as_deref(), Some("play.cimmeria.gg"));
+        assert_eq!(loaded.patched_host.as_deref(), Some("play.cimmeria.app"));
         assert!(!loaded.seed_adopted);
         assert!(loaded.has_applied("a"));
         assert!(!loaded.has_applied("c"));
@@ -212,7 +212,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             InstalledState::path(dir.path()),
-            r#"{"applied_patches":["a"],"seed_sha256":"h","patched_host":"play.cimmeria.gg"}"#,
+            r#"{"applied_patches":["a"],"seed_sha256":"h","patched_host":"play.cimmeria.app"}"#,
         )
         .unwrap();
         let loaded = InstalledState::load(dir.path());

@@ -24,7 +24,6 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 pub mod bank_dump;
 pub mod bank_expand;
-pub mod black_market;
 pub mod cinematic_aoi_hold;
 pub mod console_authoring;
 pub mod contact_list;
@@ -322,7 +321,8 @@ pub struct ConnectedClientState {
     pub channel: Mutex<Channel>,
 
     /// Crafting stations, tools and "craft anywhere" behind this session's
-    /// `onUpdateCraftingOptions`, and the options last sent.
+    /// `onUpdateCraftingOptions`, the options last sent, and an open
+    /// crafting respec.
     pub crafting_options: crafting::options::CraftingSessionOptions,
 }
 

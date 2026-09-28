@@ -178,6 +178,19 @@ jobs:
           flags: workspace
           fail_ci_if_error: false
 
+  # Logic UAT for the client UI overlay (BM-05): loads the patched
+  # BlackMarket.lua in stock Lua 5.1 against stubbed CEGUI windows and a
+  # stubbed client-patch DLL. Seconds to run; no Rust involved.
+  overlay-lua:
+    name: client UI overlay logic UAT (Lua 5.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: install lua5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: run the overlay logic UAT
+        run: lua5.1 crates/client-patches/overlay/test/run.lua
+
   # cargo nextest against a live Postgres. Schema is loaded from
   # db/database.sql (which `\ir`-includes everything in db/sgw and
   # db/resources, including seed data). The live-DB regression guards

@@ -51,6 +51,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Injected client DLLs
 
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
+- [client-patch-send-natives-traps.md](client-patch-send-natives-traps.md) — startEntityMessage sends even offline; microseh masks the ABI; no cpcall around C-function args; iced-x86 for SGW.exe.
 
 ## UE3 packages and navmesh
 
@@ -142,6 +143,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [owner-pet-effects-and-passives.md](owner-pet-effects-and-passives.md) — self casts apply no effects; pulse_count=1 buffs never register; passives need 3 seams; [0,0] stat bounds.
 - [duel-end-paths-and-travel-scan.md](duel-end-paths-and-travel-scan.md) — SS-D3: travel sites need `duel::on_travel` (scan test); clamp HEALTH first, end the duel last in a damage resolution.
 - [black-market-escrow-and-authority.md](black-market-escrow-and-authority.md) — listed items live in container 18 (exclude it from client reads); BM lock order; 62-64 gated on a cell session.
+- [bm-settlement-mail-traps.md](bm-settlement-mail-traps.md) — BM-02b: status gate before any mail (writer mints every call); quarantine = status 4; last_auction_of and unused-bind mutation traps.
 
 ## Observability
 

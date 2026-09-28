@@ -41,6 +41,9 @@ pub struct Compared {
     pub required_tier: Option<i32>,
     /// The quantity a craft asked for.
     pub quantity: Option<i32>,
+    /// The researched item's tech competency: an eligible discipline's
+    /// expertise must be below it.
+    pub tech_comp: Option<i32>,
 }
 
 impl CraftReject {
@@ -49,7 +52,10 @@ impl CraftReject {
         match *self {
             CraftReject::NotAvailableYet { .. }
             | CraftReject::Unavailable { .. }
-            | CraftReject::InductionFailed => Compared::default(),
+            | CraftReject::InductionFailed
+            | CraftReject::NothingToRespec
+            | CraftReject::NoPendingRespec
+            | CraftReject::RespecExpired { .. } => Compared::default(),
             CraftReject::QueueFull { limit } => Compared {
                 queue_limit: Some(limit),
                 ..Compared::default()
@@ -119,6 +125,19 @@ impl CraftReject {
                 item_id: Some(item_id),
                 type_id: Some(type_id),
                 applied_science_id: Some(applied_science_id),
+                ..Compared::default()
+            },
+            CraftReject::NoEligibleDiscipline {
+                item_id,
+                type_id,
+                applied_science_id,
+                tech_comp,
+                ..
+            } => Compared {
+                item_id: Some(item_id),
+                type_id: Some(type_id),
+                applied_science_id,
+                tech_comp: Some(tech_comp),
                 ..Compared::default()
             },
             CraftReject::NoStationOrTool { station_mask, .. } => Compared {

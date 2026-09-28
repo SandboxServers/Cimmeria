@@ -133,6 +133,7 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("castle_cellblock_chains.sql", 1032) // ArmYourself_AmbernolVial: INT_NormalLoot from vial template default
         | ("castle_cellblock_chains.sql", 1051) // Preparation_ColMarsh: dialog NPC template default
         | ("castle_cellblock_chains.sql", 1055) // Preparation_SMG1A: lootable body template default
+        | ("castle_cellblock_chains.sql", 5030) // BlackMarket_Auctioneer: template 305 default INT_Auction (BM-07); the bit is also the auctioneer marker, so it must stay seeded
         // TODO(#97): chain 1060 (Preparation_Terminal → Livewire) probably
         // wants `set_interaction_type INT_MinigameLivewire` on the terminal
         // when step 3564 advances — same shape as the chain 1034 fix for

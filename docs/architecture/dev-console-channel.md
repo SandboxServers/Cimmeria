@@ -58,6 +58,16 @@ your vault.") points the player at a Banker, because the bank campaign documents
 reason=not_gm` at WARN on the `bank` target, so a bank question is answerable
 from that one target.
 
+**Player commands.** A short list of `.`-lines is open to every player and is
+checked before the GM gate (`console::player_commands`): today only
+`.respeccraft`, which opens a crafting respec (the client sends
+`respecCrafting` only from a prompt the server has to open first; crafting
+campaign CR-10, D-CR23). A player command acts on the speaker only, never on
+a target, takes no privilege, and its line is consumed rather than broadcast.
+It is not in the GM `COMMANDS` registry and does not appear in `.help`. A new
+player command needs the same justification: something a player must be able
+to do that no client UI sends.
+
 ### 2. Registry-driven dispatch
 
 `cell::console::COMMANDS` is the registry: `name → (min/max arg count, required

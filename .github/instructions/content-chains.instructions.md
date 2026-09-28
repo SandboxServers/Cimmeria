@@ -34,10 +34,13 @@ Market / auction window for the triggering player (`onBMOpen`, client method
 resolved at execution time from the interact trigger's `target_entity_id`, so it
 **must** be fired from an `interact_tag` (or `interact_template`) chain on the
 auctioneer; firing it from a region/load trigger aborts with a `warn!` (no
-auctioneer to bind). Make the auctioneer clickable with a `set_interaction_type`
-(`INT_Auction`) on the same tag from a `player_loaded` chain (no clear, since the
-auctioneer is a permanent fixture). No seeded chain uses the verb yet: the
-auctioneer NPC and its chains are packet BM-07 of `docs/analysis/black-market/`.
+auctioneer to bind). The NPC must be a seeded auctioneer: its **template** carries
+`INT_Auction`, read at spawn. The action refuses any other NPC with a chat line
+and `bm.open_refused`, and a `set_interaction_type` cannot make one, so flag a
+chain that binds the verb to an NPC whose template lacks the bit. The template
+bit is also the cursor, so no `player_loaded` set chain is needed; add the chain
+to the `interact_tag_linter` allowlist with that reason (chain 5030 is the
+example).
 
 ## Set/clear pairing
 

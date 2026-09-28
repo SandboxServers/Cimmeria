@@ -9,7 +9,9 @@
 //! `docs/reverse-engineering/findings/black-market-client-window-patch.md`
 //! (the UI `lua_State` chain). The four hooked or called functions' first
 //! bytes were also read from the shipped `SGW.exe` when this crate was
-//! written; they are the expected prologues in [`crate::fingerprint`].
+//! written; they are the expected prologues in [`crate::fingerprint`], as
+//! are four small engine functions whose bytes pin the send side's data
+//! offsets.
 
 // ── functions ────────────────────────────────────────────────────────────
 
@@ -35,10 +37,37 @@ pub const GET_EXPOSED_CLIENT_METHOD_BY_INDEX: usize = 0x0159_0f30;
 pub const FENGINE_LOOP_TICK: usize = 0x0041_6ec0;
 
 /// `ServerConnection::startEntityMessage`: `__thiscall(conn, u8 idx, u32
-/// entityId) -> Bundle*`, `RET 8`. Not used yet: the send side will call
-/// it. Its prologue is checked now so a build that moved it is refused
-/// before anything is hooked.
+/// entityId) -> Bundle*`, `RET 8`. Called by the send natives with
+/// `idx = 0x3D` and `entityId = 0` (the local avatar). It ORs `0x80` into
+/// the message id, starts the message on the channel bundle, writes the
+/// 4-byte entity id, and returns the bundle. When the connection is offline
+/// (`[conn + 0x30c] == 0`) it logs an error and starts the message anyway,
+/// so the caller checks first. Its prologue sets up an MSVC C++ exception
+/// frame.
 pub const SERVER_CONNECTION_START_ENTITY_MESSAGE: usize = 0x00dd_6a60;
+
+/// `ServerConnection::startAvatarMessage` (`FUN_00dd8010`): `mov eax,
+/// [esp+4]; push 0; push eax; call startEntityMessage; ret 4`. Not called:
+/// fingerprinted because its bytes pin the engine's own use of
+/// [`SERVER_CONNECTION_START_ENTITY_MESSAGE`], `(conn, idx, 0)`, which the
+/// send natives copy.
+pub const SERVER_CONNECTION_START_AVATAR_MESSAGE: usize = 0x00dd_8010;
+
+/// `ServerConnection::isOnline` (`FUN_00dd6130`): `xor eax, eax; cmp
+/// [ecx+0x30c], eax; setne al; ret`. Not called: fingerprinted because its
+/// bytes pin [`CONN_ONLINE`], which the send natives read directly.
+pub const SERVER_CONNECTION_IS_ONLINE: usize = 0x00dd_6130;
+
+/// `GameEntityManager` getter (`FUN_00dd05a0`): `mov eax, [0x01ef244c];
+/// ret`. Not called: fingerprinted because its bytes pin
+/// [`GAME_ENTITY_MANAGER`].
+pub const GAME_ENTITY_MANAGER_GET: usize = 0x00dd_05a0;
+
+/// The engine's write-one-byte helper (`FUN_00c701a0`), which calls
+/// `bundle->vtable[0x10](1)` and stores the byte. Not called:
+/// fingerprinted because its bytes pin [`BUNDLE_RESERVE`], the vtable slot
+/// the send natives call.
+pub const BUNDLE_WRITE_U8: usize = 0x00c7_01a0;
 
 // ── the local player ─────────────────────────────────────────────────────
 
@@ -50,6 +79,14 @@ pub const GAME_ENTITY_MANAGER: usize = 0x01ef_244c;
 /// own sender compares it with `Entity + 0x0c` to decide whether it is
 /// sending as the local player.
 pub const GEM_LOCAL_PLAYER_ID: usize = 0x14;
+
+/// `GameEntityManager + 0x08`: the `ServerConnection*`. Null until the
+/// client has connected.
+pub const GEM_SERVER_CONNECTION: usize = 0x08;
+
+/// `ServerConnection + 0x30c`: non-zero while the connection is up. The
+/// engine's own sender (`FUN_00c6fc40`) refuses to send when it is 0.
+pub const CONN_ONLINE: usize = 0x30c;
 
 /// `Entity + 0x0c`: the entity id.
 pub const ENTITY_ID: usize = 0x0c;
@@ -81,6 +118,20 @@ pub const ISTREAM_RETRIEVE: usize = 0x04;
 
 /// `BinaryIStream` vtable `+0x08`: `int remainingLength()`, `__thiscall`.
 pub const ISTREAM_REMAINING_LENGTH: usize = 0x08;
+
+// ── Bundle (BinaryOStream) ───────────────────────────────────────────────
+
+/// Bundle vtable `+0x10`: `void* reserve(int n)`, `__thiscall`. Returns a
+/// writable pointer to the next `n` bytes of the message being built.
+pub const BUNDLE_RESERVE: usize = 0x10;
+
+/// The message id `startEntityMessage` is given for an extended entity
+/// method: `SGWPlayer`'s first extended index, `0x3D`. The engine ORs in
+/// `0x80`, so the wire id is `0xBD`, and the sub-index byte follows.
+pub const EXTENDED_METHOD_ID: u8 = 0x3D;
+
+/// The entity id `startEntityMessage` takes for the local avatar.
+pub const LOCAL_AVATAR: u32 = 0;
 
 // ── the UI Lua state ─────────────────────────────────────────────────────
 

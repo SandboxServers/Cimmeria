@@ -15,8 +15,10 @@
 use sqlx::{Postgres, Transaction};
 
 use super::failure::{at, CraftTxError};
-use super::plan::RequiredKnowledge;
+use super::plan::{RequiredKnowledge, ResearchedItem};
 use crate::base::crafting::feedback::CraftReject;
+use crate::base::crafting::persistence::load_crafting_state_locked;
+use crate::base::crafting::research::rule::check_eligible;
 
 pub(super) async fn check_knowledge(
     tx: &mut Transaction<'_, Postgres>,
@@ -50,5 +52,29 @@ pub(super) async fn check_knowledge(
         }
         .into());
     }
+    Ok(())
+}
+
+/// Refuse a research the player can no longer learn from
+/// ([`check_eligible`]): a discipline dropped, or an expertise that reached
+/// the item's tech competency, while the bar ran. The state is read with
+/// the player row `FOR UPDATE`, the lock every crafting write takes, so a
+/// change that committed first is seen and one that comes later waits for
+/// this commit.
+pub(super) async fn check_research(
+    tx: &mut Transaction<'_, Postgres>,
+    player_id: i32,
+    item: &ResearchedItem,
+) -> Result<(), CraftTxError> {
+    let Some(state) = load_crafting_state_locked(tx, player_id)
+        .await
+        .map_err(at("research_eligibility"))?
+    else {
+        return Err(CraftTxError::Invalid {
+            phase: "research_eligibility",
+            reason: "player_missing",
+        });
+    };
+    check_eligible(item, &state)?;
     Ok(())
 }

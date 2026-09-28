@@ -48,7 +48,7 @@ mod tests;
 pub use applied::{BlueprintsLearned, ConsumedStack, CraftApplied, ExpertiseChange, GrantedStack};
 pub use client_sync::resync_inventory;
 pub use failure::CraftTxError;
-pub use plan::{CraftTransaction, NamedItem, RequiredKnowledge};
+pub use plan::{CraftTransaction, NamedItem, RequiredKnowledge, ResearchedItem};
 
 use failure::{at, expect_rows, log_persist_failed};
 
@@ -92,9 +92,10 @@ async fn apply_in_tx(
     let player_id = ids.player_id;
     // Lock order: advisory locks first (the player-wide move lock, then
     // each bag), then inventory rows. The player row is read, and locked
-    // only by a plan that teaches blueprints, after every inventory row.
-    // See `grant::lock_containers`, `consume::check_player` and
-    // `learn::teach_blueprints`.
+    // only by a plan that teaches blueprints or researches an item, after
+    // every inventory row. See `grant::lock_containers`,
+    // `consume::check_player`, `learn::teach_blueprints` and
+    // `knowledge::check_research`.
     let placements = grant::resolve(tx, &plan.grant).await?;
     grant::lock_containers(tx, player_id, &placements).await?;
     consume::check_player(tx, player_id).await?;
@@ -117,6 +118,11 @@ async fn apply_in_tx(
     // FOR UPDATE once instead of upgrading a share lock.
     if let Some(required) = plan.required_knowledge {
         knowledge::check_knowledge(tx, player_id, required).await?;
+    }
+    // Before the expertise rows are locked and written: the rule reads
+    // the expertise the research would raise.
+    if let Some(item) = &plan.research {
+        knowledge::check_research(tx, player_id, item).await?;
     }
     for &(discipline_id, delta) in &plan.expertise {
         let before: Option<i32> = sqlx::query_scalar(

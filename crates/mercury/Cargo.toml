@@ -79,7 +79,7 @@ pcap-file = "2.0"
 # Ethernet + IPv4 + UDP frame parser used to extract Mercury UDP
 # payloads from pcap records. Cross-platform, no system libpcap
 # needed.
-etherparse = "0.20"
+etherparse = "0.21"
 # Self-dependency purely to enable `test-support` for the integration tests
 # under `tests/it/` (the `LossyTransport` round trips): they link the lib
 # target, and a feature can only be switched on through a dependency edge.

@@ -1,0 +1,26 @@
+{
+  "name": "Black Market",
+  "sourcePage": "logs",
+  "category": "black-market",
+  "tags": ["black-market", "bm-07"],
+  "compositeQuery": {
+    "queryType": "builder",
+    "panelType": "list",
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "source": "",
+          "stepInterval": 0,
+          "filter": {
+            "expression": "service.name = 'cimmeria-server' AND (event LIKE 'bm.%' OR scope_name LIKE '%black_market%')"
+          },
+          "having": { "expression": "" }
+        }
+      }
+    ]
+  },
+  "extraData": "{\"selectColumns\":[{\"name\":\"event\",\"signal\":\"logs\"},{\"name\":\"reason\",\"signal\":\"logs\"},{\"name\":\"role\",\"signal\":\"logs\"},{\"name\":\"mail_id\",\"signal\":\"logs\"},{\"name\":\"access\",\"signal\":\"logs\"},{\"name\":\"op\",\"signal\":\"logs\"},{\"name\":\"command\",\"signal\":\"logs\"},{\"name\":\"action\",\"signal\":\"logs\"},{\"name\":\"outcome\",\"signal\":\"logs\"},{\"name\":\"account_id\",\"signal\":\"logs\"},{\"name\":\"player_id\",\"signal\":\"logs\"},{\"name\":\"auction_id\",\"signal\":\"logs\"},{\"name\":\"seller_id\",\"signal\":\"logs\"},{\"name\":\"bidder_id\",\"signal\":\"logs\"},{\"name\":\"bid_before\",\"signal\":\"logs\"},{\"name\":\"bid_after\",\"signal\":\"logs\"},{\"name\":\"escrow_cash_before\",\"signal\":\"logs\"},{\"name\":\"escrow_cash_after\",\"signal\":\"logs\"},{\"name\":\"item_def_id\",\"signal\":\"logs\"},{\"name\":\"client_key\",\"signal\":\"logs\"},{\"name\":\"cursor\",\"signal\":\"logs\"},{\"name\":\"rows_returned\",\"signal\":\"logs\"},{\"name\":\"total_results\",\"signal\":\"logs\"},{\"name\":\"method\",\"signal\":\"logs\"},{\"name\":\"body\",\"signal\":\"logs\"}]}"
+}

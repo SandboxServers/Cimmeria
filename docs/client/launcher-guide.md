@@ -53,7 +53,7 @@ Azure Blob SAS for log uploads) see
 1. Run sgw-launcher.exe (single ~5 MB file).
 2. Window appears with three editable fields:
      - Install dir    (default: %LOCALAPPDATA%\Stargate Worlds)
-     - Server host    (default: play.cimmeria.gg) — gets patched into SGW.exe
+     - Server host    (default: play.cimmeria.app) — gets patched into SGW.exe
      - Manifest URL   (default: the GitHub Release `content-current` tag,
                       https://github.com/SandboxServers/Cimmeria/releases/
                       download/content-current/manifest.json)
@@ -63,8 +63,10 @@ Azure Blob SAS for log uploads) see
      b. If any declared patch is missing → button enabled
      c. If everything matches → "✔ Install is up to date"
 5. Click "Install / Update":
-     - Download seed.zip (resumable via HTTP Range) → verify sha256 → extract
-     - For each missing patch in declared order: download → verify → extract (overlay)
+     - Download the seed (resumable via HTTP Range) → verify sha256 → unpack.
+       The seed is a zip, or the archive.org client RAR, whose installer
+       cabinets are expanded straight into the installed layout
+     - For each missing patch in declared order: download → verify → unpack (overlay)
      - Byte-patch SGW.exe .rdata: replace "www.stargateworlds.com" with server host
 6. Click "Launch SGW.exe" (or "Launch Atera Debug" / "Launch + Telemetry" /
    "Fix ASLR" if those files are present in the install directory).
@@ -96,20 +98,33 @@ Pseudocode of [`crates/launcher/src/install.rs`](../../crates/launcher/src/insta
 2. If state.seed_sha256 != manifest.seed.sha256:
      - GET <manifest_base>/<manifest.seed.blob>, sending HTTP `Range: bytes=N-`
        when a .tmp file from a previous attempt exists.
-     - Stream the body into <install>/.tmp-seed-<sha-prefix>.zip.
-     - SHA-256 verify against manifest.seed.sha256 — bail on mismatch.
-     - Extract the zip into <install>/ (overwrites colliding files).
+     - Stream the body into <install>/.tmp-seed-<sha-prefix>.download.
+       A 416 reply for a full-length file means it is already downloaded.
+     - SHA-256 verify against manifest.seed.sha256. On mismatch, delete the
+       download and bail (a kept bad file would fail every retry).
+     - Unpack into <install>/ (overwrites colliding files), picking the
+       format from the file's magic bytes:
+         zip → extract directly.
+         RAR → extract into <install>/.tmp-unpack/. If that holds a MakeCAB
+               set (an .INF with a [cabinet list], e.g. Data\DATA.INF +
+               DATA1-4.CAB), expand the cabinets into <install>/ with
+               Windows' cabinet.dll; otherwise move the files across.
+               Then delete .tmp-unpack/.
+       Hashing and unpacking run on a blocking thread.
+     - Rename Working\SGWGame\Cache.en-US to SourceCache.en-us, unless a
+       SourceCache.en-us already exists (see "Install layout").
      - state.seed_sha256 = manifest.seed.sha256
      - state.applied_patches = []   ← reseeding invalidates patch history
      - Persist state.
 
 3. For each patch in manifest.patches (declared order):
      - Skip if patch.id is already in state.applied_patches.
-     - GET <manifest_base>/<patch.blob> → tmp → SHA-256 verify → extract overlay.
+     - GET <manifest_base>/<patch.blob> → tmp → SHA-256 verify → unpack overlay.
      - Append patch.id to state.applied_patches.
      - Persist state after every patch (survives mid-update crash).
 
-4. If patch_rdata::host_differs(data, server_host, state.patched_host):
+4. Find SGW.exe (see "Install layout" below). If
+   patch_rdata::host_differs(data, server_host, state.patched_host):
      - Locate the 22-byte host slot. If the exe was patched before, search
        for the *previously written* host (recorded in state.patched_host)
        as a padded 22-byte run; otherwise search for the original CME
@@ -124,19 +139,66 @@ re-patches an already-patched executable, because the launcher tracks which
 host it wrote last and searches for that slot.
 
 Hitting **Cancel** flips a `CancellationToken` that the download stream
-checks on every chunk. A cancelled install leaves the `.tmp-*.zip` file
-on disk, so re-clicking Install / Update picks up where it stopped via
+checks on every chunk, and the unpack steps check between files. A
+cancelled install leaves the `.tmp-*.download` file on disk, so
+re-clicking Install / Update picks up where it stopped via
 `Range: bytes=N-`.
+
+Installing from the archive.org client RAR needs roughly 14 GB free on
+the install drive at its peak: the 4.1 GB download, the 4.1 GB staged
+installer, and the expanded client.
+
+### Install layout
+
+A full install has the original installer's layout:
+
+```text
+<install>\Common\...
+<install>\Resources\...
+<install>\Working\Binaries\SGW.exe   (plus its DLLs, SGWDebugLog.log, sessions\)
+<install>\Working\SGWGame\...
+```
+
+[`crates/launcher/src/install_layout.rs`](../../crates/launcher/src/install_layout.rs)::`binaries_dir`
+finds the directory holding `SGW.exe`, and every launch, the hostname
+patch, adoption and the log upload go through it. It also accepts an
+install path that points straight at `Binaries` (holds `SGW.exe`) or at
+`Working`, so configs from before this layout keep working.
+
+The client reads cooked data (`Cooked*.pak`, `TextStrings.pak`, …) from
+two tiers, set in `Working\Engine\Config\GameplayEngine.ini`:
+
+| Tier | INI key | Where it is | Who writes it |
+|---|---|---|---|
+| Writable | `CachePath=..\SGWGame\Cache` | `Documents\My Games\Firesky\SGWGame\Cache.en-US` | The server's version push, on every connect |
+| Bundled, read-only | `SourceCachePath=..\SGWGame\SourceCache` | `<install>\Working\SGWGame\SourceCache.en-us` | Nothing at runtime |
+
+The 2009 cabinets put the bundled PAKs in
+`Working\SGWGame\Cache.en-US`, which is neither path. A stock install
+logs this once per cooked-data category in `SGWDebugLog.log`:
+
+```text
+WARN common - Non-existent source archive directory: <install>\Working\SGWGame\SourceCache.en-US
+```
+
+So after the seed is unpacked, the launcher renames that folder to
+`SourceCache.en-us`, which silences the warning. Testers had already
+done the same by hand, and their `SourceCache.en-us` PAKs are
+byte-identical to the cabinets' `Cache.en-US`. It is also why a PAK
+placed by hand in `SourceCache.en-us` stays put, while one placed in the
+Documents `Cache.en-US` is rewritten the next time the client connects.
+The launcher's **Reset client cache** button wipes only the Documents
+tier.
 
 ### The launch buttons
 
 Four buttons, each enabled only when the relevant files exist in the
-install directory (see [`crates/launcher/src/app/view.rs`](../../crates/launcher/src/app/view.rs)::`show_launch_panel`):
+binaries directory (see [`crates/launcher/src/app/view.rs`](../../crates/launcher/src/app/view.rs)::`show_launch_panel`):
 
 | Button | Enabled when | What it runs |
 |--------|------------|--------------|
-| **Launch SGW.exe** | `SGW.exe` exists | `CreateProcess(<install>/SGW.exe)` with `cwd = <install>` |
-| **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
+| **Launch SGW.exe** | `SGW.exe` exists | `CreateProcess(<binaries>/SGW.exe)` with `cwd = <binaries>` |
+| **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = binaries dir) |
 | **Launch + Telemetry** | Atera available **and** `telemetry.enabled` **and** launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
 
@@ -157,8 +219,12 @@ For what Atera actually does at runtime see
 
 The **Upload Debug Logs** button collects:
 
-- `<install>/Binaries/sgwdebuglog*` — BigWorld Mercury unicode log
-- `<install>/Binaries/sessions/**` — per-session logs
+- `<binaries>/sgwdebuglog*`, matched case-blind (the client writes
+  `SGWDebugLog.log`) — BigWorld Mercury unicode log
+- `<binaries>/sessions/**` — per-session logs
+
+The zip stores them under `Binaries/` whatever the directory is called
+on disk.
 
 Zips them in memory and PUTs the zip in a single HTTP request to the
 Azure storage account, named `logs/<hostname>-<utc>-<digest12>.zip`.
@@ -187,35 +253,38 @@ describes the manual procedure.
 
 ### Step 1 — Build the seed
 
-The seed is a single zip containing **the entire game installation as
-you want a fresh install to look**:
+The seed is the whole game as a fresh install should look. There are
+two ways to provide it.
 
-```text
-sgw-0.8348.1.4046.zip
-├── SGW.exe
-├── Binaries/
-│   └── (engine DLLs, paks, etc.)
-├── Content/
-│   └── (all .upk files, audio, etc.)
-└── (everything else from the install)
-```
+**Use the archive.org client RAR as-is (recommended).** The 2009 beta
+client, build 0.8348.1.4046, is archived at archive.org item
+`StargateWorlds_0.8348.1.4046`. It is a single stored RAR holding the
+original installer: `SetupQA.exe` plus a MakeCAB set, `Data\DATA.INF`
+and `Data\DATA1.CAB`..`DATA4.CAB` (5,983 files). The launcher expands
+the cabinets straight into the installed layout, so the installer never
+runs. Point the manifest's seed at the archive.org URL (an absolute
+`blob` URL is used as-is), and nothing has to be rehosted. archive.org
+serves `Range` requests, so the 4.1 GB download resumes.
 
-The launcher doesn't care about the internal structure — it just unpacks
-the zip into the install directory. By convention the seed contains the
-**unpatched** `SGW.exe` (still pointing at `www.stargateworlds.com`).
-The launcher's `.rdata` byte-patch runs at the end of `install_all`
-after all manifest patches have been applied, so the SGW.exe inside the
-seed should be the original CME one.
+| Field | Value |
+|---|---|
+| `blob` | `https://archive.org/download/StargateWorlds_0.8348.1.4046/Stargate%20Worlds%20%280.8348.1.4046%29%20%282009-06-30%29%20%28beta%29.rar` |
+| `size` | `4135724034` |
+| `sha256` | `7ba97ed2cb94f86edaba17a513824ae08d0f19920583d2a3da242faf1e034f07` |
 
-How you actually source the seed contents is out of scope for the
-launcher repo. Two reasonable options:
+archive.org publishes only MD5 and SHA-1 for the file
+(SHA-1 `1ad25c4dbd4b8717447b0de7145f5eb52d34ab06`); the SHA-256 above was
+computed from a copy whose SHA-1 matches.
 
-- Extract the official CME beta client from the archive.org RAR-of-CABs,
-  then zip the extracted directory.
-- Roll a curated fresh-install snapshot that bundles common content
-  fixes you don't want shipping as separate patches.
+**Or roll your own zip** containing the installed layout
+(`Common\`, `Resources\`, `Working\...`), for example a curated snapshot
+that bundles content fixes you don't want to ship as separate patches.
 
-Compute the seed zip's SHA-256 — it becomes `manifest.seed.sha256`.
+Either way the seed contains the **unpatched** `SGW.exe` (still pointing
+at `www.stargateworlds.com`). The launcher's `.rdata` byte-patch runs at
+the end of `install_all`, after all manifest patches have been applied.
+
+Compute the seed file's SHA-256 — it becomes `manifest.seed.sha256`.
 
 ### Step 2 — Build a patch zip
 

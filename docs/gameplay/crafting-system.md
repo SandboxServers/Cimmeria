@@ -8,7 +8,8 @@ last_updated: 2026-09-27
 # Crafting System
 
 > **Last updated**: 2026-09-27
-> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) research and reverse engineering (CR-08), alloying (CR-09) and crafting from a blueprint (CR-07). Respec is still a stub (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Status**: Server-side complete, not yet run in a client. The crafting campaign ([ledger](../analysis/crafting/README.md), CR-01 to CR-17) restored learning disciplines with applied science points and earning them by levelling, the four verbs (craft, research, reverse engineering, alloying) on the induction engine, the free two-step respec, stations and Field Crafting Tools, Blueprint items and Racial Paradigm Guides, the crafting bag's trade and mail, and the login sync. Every row in gap-analysis §19 is NT until the owner's [CR-14 UAT](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Companions**: [gap-analysis §19](../gap-analysis.md), [crafting wire formats](../reverse-engineering/findings/crafting-wire-formats.md), [crafting client UI](../reverse-engineering/findings/crafting-client-ui.md), [crafting items](../reverse-engineering/findings/crafting-items.md), [debug hub, crafting corner](../content/debug-hub.md#crafting-corner), [observability, `crafting` target](../architecture/observability.md), [commands](../commands.md#crafting).
 
 ## Overview
 
@@ -16,7 +17,7 @@ The crafting system enables players to create items through blueprints, research
 
 The Rust implementation lives in [`crates/base-session/src/base/crafting/`](../../crates/base-session/src/base/crafting/) (persistence, GM grants, the induction engine and the consume-and-grant transaction) and [`cell/cell_methods/player/crafting/`](../../crates/cell-methods/src/cell/cell_methods/player/crafting/) (cell methods 95–100: argument parsing and the forward to the base). The state model is `cimmeria_entity::crafting::CraftingState`.
 
-The sections below that describe `Crafter` behaviour document the **original server's design**, which Phase 2 is expected to reproduce. They are not descriptions of current runtime behaviour.
+The `Crafter` pseudo-code blocks under [Crafting Operations](#crafting-operations) document the **legacy Python server's design**. Each is followed by what Cimmeria does, which follows the client where the two disagree (D-CR11) and does not port the legacy defects listed in the campaign audit (C-50 to C-58).
 
 ## Implementation Status
 
@@ -38,9 +39,9 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Research | DONE | Item and kickers checked at the request, rolled and consumed when the bar ends; +5 expertise and the blueprint on a success. CR-08 |
 | Reverse engineering | DONE | Exactly the named item is consumed when the bar ends; recovery rises with expertise (D-CR06). CR-08 |
 | Alloying | DONE | `base/crafting/alloy/` (CR-09), see [Alloying](#alloying) |
-| Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
-| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) submit to it. See [Induction engine](#induction-engine) |
-| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) build one |
+| Crafting respec | DONE | `base/crafting/respec/` (CR-10), see [Respec](#respec) |
+| Timer-based induction | DONE | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) submit to it. See [Induction engine](#induction-engine) |
+| Consume-and-grant transaction | DONE | `base/crafting/transaction/`: one database transaction per completed induction. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) build one |
 | Busy state lock | REPLACED | The induction queue serializes a player's crafting; there is no separate busy flag |
 | Crafting stations | DONE | The cell tracks the nearest station per verb within `MAX_INTERACT_DISTANCE` (5 units, 3-D) and reports changes to the base once a second; the forward recomputes the mask per request. CR-05. The stasis-room debug hub seeds four, templates 310-313 ([debug-hub.md](../content/debug-hub.md#crafting-corner)), CR-11 |
 | Field Crafting Tools | DONE | A tool in the crafting bag (container 15) covers crafting, research and reverse engineering for its science up to its `tech_comp` (D-CR21). CR-05 |
@@ -52,6 +53,7 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Crafting supplies vendor | DONE | The debug hub's supplies vendor (template 314) sells the UAT components, kickers, a -5 and -50 Field Crafting Tool per science, the Racial Paradigm Guides and Blueprint item 6483 at 1 naquadah each. A purchase lands in the crafting bag, the first carried bag these `{17,15}` items list, where the crafting verbs, item use and the tool check all accept it. CR-11 |
 | Blueprint items | DONE | Using one of the 193 mapped "Blueprint: …" items teaches its blueprint(s) and consumes it (D-CR04, D-CR26). CR-15, see [Blueprint items and Racial Paradigm Guides](#blueprint-items-and-racial-paradigm-guides) |
 | Racial Paradigm Guides | DONE | Using a guide (items 7805-7809) raises its paradigm by 1, to at most 10, and consumes it (D-CR03). CR-15 |
+| Crafting bag | DONE | Every grant path puts the `{17,15}` components, guides and Blueprint items in the crafting bag (15), and the crafting verbs, item use and the tool check read it (CR-16). The bag trades (CR-17) and mails (the social campaign), D-CR28. See [The crafting bag](#the-crafting-bag) |
 
 ## Earning applied science points
 
@@ -79,6 +81,24 @@ The discipline trainer (Ctrl+J) sends `spendAppliedSciencePoints(disciplineId)` 
 A refusal is a `CHAN_FEEDBACK` text line and writes nothing. Each one is logged as a `crafting` `rejected` event whose `reason` (`unknown_discipline`, `already_known`, `no_asp`, `paradigm_too_low`, `prerequisite_missing`, `prerequisite_expertise`) and compared values say which check failed; a success is a `learned` event with the ASP before and after. The event catalog is the `crafting` row of [observability.md](../architecture/observability.md). A database failure is refused as "Learning disciplines is unavailable right now. Nothing was changed." On success the discipline is known at expertise 1 and one ASP is spent; no blueprint is granted (D-CR04, blueprints come from Blueprint items and research). The client then gets `onUpdateDiscipline(id, 1)` and the new ASP total. A repeated request finds the discipline known and changes nothing.
 
 The four root disciplines (21 Biomedical, 40 Electronic, 59 Power Systems, 78 Materials Engineering) need Common level 5, which every character now starts at. The test rows 1 and 2 ("Basketweaving") need Common 1 and are treated like any other discipline.
+
+## Respec
+
+A crafting respec is free and resets the player to no disciplines (decisions D-CR02, D-CR16, D-CR23). It takes two steps, because the client sends `respecCrafting` (cell method 100, no arguments) only from the Yes button of the `onCraftingRespecPrompt` dialog (client method 112), and no client UI opens that dialog (`Crafting.lua:181-191`; [crafting-client-ui.md](../reverse-engineering/findings/crafting-client-ui.md) Q1):
+
+1. The player types `.respeccraft` in chat. It is the one `.`-console line any player may use; the cell consumes it and forwards `CellToBaseMsg::RespecCraftOpen`. If the player knows any discipline, the base sends `onCraftingRespecPrompt(0)` and opens a respec on the session for 60 seconds. The client shows "This will unlearn all your crafting knowledge" with the cost, 0 naquadah.
+2. Yes sends `respecCrafting`. With a respec open for that character and inside the window, one transaction locks the `sgw_player` row `FOR UPDATE`, clears `discipline_ids`, deletes the expertise rows, and refunds the ASP the player spent learning disciplines since the last respec (`sgw_player.applied_science_points_spent`, raised by each spend and reset by the respec). A discipline a GM granted (`.learndiscipline`, `.allcraft`) cost nothing and refunds nothing. Blueprints and racial paradigm levels are kept: they come from items the player used, not from disciplines (D-CR02). The client then gets `onDisciplineRespec` (137, which zeroes every discipline's expertise on screen), `onUpdateKnownCrafts` (139, the unchanged list) and the new ASP total.
+
+Before the transaction the player's induction queue is dropped (`queue_dropped`, `reason = respec`), so a queued craft, research or alloy never completes for a discipline the respec clears. The transaction takes the player-wide inventory lock before the player row, the order every crafting write uses, so it waits for a completion already running. The open respec is taken by the first `respecCrafting`, so a second or replayed one changes nothing. Every refusal is a `CHAN_FEEDBACK` line and writes nothing:
+
+| Case | Refusal text | `reason` |
+|---|---|---|
+| `.respeccraft` or the Yes with nothing to clear | "You have no crafting disciplines to unlearn. Nothing was changed." | `nothing_to_respec` |
+| `respecCrafting` with no respec open (a replay, a second Yes, a forged packet) | "No crafting respec is waiting to be confirmed. Type .respeccraft to start one." | `no_pending_respec` |
+| Yes after the 60-second window | "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." | `respec_expired` |
+| No database, or the transaction failed | "Crafting respec is unavailable right now. Nothing was changed." | `unavailable` |
+
+Events: `respec_prompted` (the prompt) and `respec` (each cleared discipline as `discipline_id:expertise_before→0`, `asp_before` / `asp_after`, the kept blueprint count and paradigm levels), in the `crafting` row of [observability.md](../architecture/observability.md). Code: `crates/base-session/src/base/crafting/respec/`, `crates/cell-console/src/cell/console/player_commands.rs`.
 
 ## Stations, tools and crafting options
 
@@ -113,6 +133,16 @@ A refusal consumes nothing. An item that names a known and an unknown blueprint 
 
 Sources today are GM grants, the debug-hub loot crate (loot table 3 drops each guide and Blueprint: Steel Plating at a one-in-five chance) and the debug hub's crafting-supplies vendor (CR-11). Every grant path (loot, the content engine's `grant_item`, `gmGiveItem`, vendor purchases) lands these `{17,15}` items in the crafting bag, the first carried bag they list, instead of the bank (CR-16). A GM grant made before that change sits in the main bag, where it can still be used.
 
+## The crafting bag
+
+The crafting bag is container 15 (`INV_Crafting`, 100 slots). The 752 crafting components, the Racial Paradigm Guides and the Blueprint items list `container_sets = {17,15}`: the bank first, then the crafting bag, and never the main bag. Decision D-CR28 keeps them there and makes the bag usable everywhere a player moves items:
+
+- **Grants.** Loot, the content engine's `grant_item`, `gmGiveItem`, vendor purchases, `.craftkit` and crafting products all place an item in the first main or crafting bag its `container_sets` list (`cimmeria_cell_catalog::item_placement::first_player_container`), passing over storage containers. A full crafting bag refuses the grant rather than spilling into a vault, and a refused loot pickup goes back on the corpse with "Your crafting bag is full. The item was left on the corpse." (CR-16).
+- **Crafting.** The verbs consume from the main bag and the crafting bag, the crafting bag first; the bank never counts. A Field Crafting Tool counts only in the crafting bag (D-CR21).
+- **Trade.** A player can offer items from the main bag and the crafting bag; each received item lands in the recipient's bag by its `container_sets`. A crafting bag without room cancels the trade for both players, each with a line saying whose bag is full (CR-17, [trade-system.md](trade-system.md)).
+- **Mail.** An attachment can come from the main bag or the crafting bag, and taking it places the item by its `container_sets` (the social-systems campaign; [mail-system.md](mail-system.md)).
+- **Vaults.** Components can be deposited in the personal vault (container 17), which their `container_sets` allow.
+
 ## Crafting Operations
 
 ### Craft
@@ -141,9 +171,9 @@ Crafter.craft(blueprintId, itemIds, quantity)
 4. Its discipline is known (D-CR15).
 5. Every named instance is the player's and sits in the main bag (1) or the crafting bag (15).
 6. The set is the one whose designs are **exactly** the named designs. A set whose designs are only covered is not enough: many seed sets are subsets of a sibling (blueprint 412's set 1, 14 Steel Cores, is covered by set 2's Steel Core plus Titanium Cores), and the legacy "first covered set" rule would charge the wrong recipe. Where two sets have the same designs (blueprint 159 sets 1 and 2), the first the bags can pay for wins. A blueprint with no component set (21, Ambernol Vial) is never craftable.
-7. The two bags hold `quantity Ã— component.quantity` of each component, counted across stacks. The bank does not count.
+7. The two bags hold `quantity × component.quantity` of each component, counted across stacks. The bank does not count.
 
-A passing craft is queued on the [induction engine](#induction-engine) with the blueprint as the bar's `ID`. Nothing is consumed at the request. A craft that waits behind another gets "Crafting <product> x<n> is queued behind <k> other crafting job(s)." At the end of the bar one transaction consumes the set by design, grants `blueprint.quantity Ã— quantity` of the product, checks that the blueprint and its discipline are still known (reading the player row `FOR SHARE`, so a respec that commits during the bar, or while the transaction runs, refuses the craft and rolls it back), and adds 1 expertise to the discipline (136). The named instances only choose the set: the completion does not hold the craft to them, so a later queued craft whose named stack an earlier one drained still runs from the rest. The player then reads "You crafted <product> x<n>."
+A passing craft is queued on the [induction engine](#induction-engine) with the blueprint as the bar's `ID`. Nothing is consumed at the request. A craft that waits behind another gets "Crafting <product> x<n> is queued behind <k> other crafting job(s)." At the end of the bar one transaction consumes the set by design, grants `blueprint.quantity × quantity` of the product, checks that the blueprint and its discipline are still known (reading the player row `FOR SHARE`, so a respec that commits during the bar, or while the transaction runs, refuses the craft and rolls it back), and adds 1 expertise to the discipline (136). The named instances only choose the set: the completion does not hold the craft to them, so a later queued craft whose named stack an earlier one drained still runs from the rest. The player then reads "You crafted <product> x<n>."
 
 | Why | Line |
 |---|---|
@@ -157,7 +187,7 @@ A passing craft is queued on the [induction engine](#induction-engine) with the 
 | Too few in the two bags | You do not have enough components: <have> of <need> needed. Nothing was used. |
 | The server could not read what it needs | Crafting is unavailable right now. Nothing was changed. |
 
-The craft page keeps its slots on confirm (C-33), so a request-time refusal sends only the line; a refusal at completion also resyncs the inventory. Not ported from `Crafter.py`: consuming across the whole inventory and never checking `quantity â‰¥ 1` (C-56), gaining expertise without the discipline and after the grant (C-55), consuming at the start of the bar (C-58), and the first-covered-set choice.
+The craft page keeps its slots on confirm (C-33), so a request-time refusal sends only the line; a refusal at completion also resyncs the inventory. Not ported from `Crafter.py`: consuming across the whole inventory and never checking `quantity ≥ 1` (C-56), gaining expertise without the discipline and after the grant (C-55), consuming at the start of the bar (C-58), and the first-covered-set choice.
 
 ### Research
 
@@ -173,16 +203,17 @@ Uses up an item, and any kickers, for a chance at expertise in one of the item's
 | A kicker is not flagged `Kicker`, or has no applied science | That item is not a research kicker. Nothing was used. | `not_kicker` |
 | A kicker of the item's own applied science | Kickers cannot come from the same applied science as the item being researched. Nothing was used. | `kicker_same_science` |
 | A second kicker of one applied science | Only one kicker per applied science can be used. Nothing was used. | `kicker_duplicate_science` |
+| No eligible discipline: none of the item's disciplines is one the player knows with `0 < expertise < item tech competency` | None of your disciplines can learn from that item: research needs one of its disciplines at an expertise above 0 and below <tech competency>. Nothing was used. | `no_eligible_discipline` |
 
 The kicker rules are the client's (`ResearchPage.lua`: one kicker slot per science, never the item's own); the client sends the request even when its own checks fail, so the server repeats them.
 
 **When the bar ends** the job reads the player's crafting state and rolls:
 
-1. The eligible disciplines are the item's disciplines the player knows with `0 < expertise < item tech competency`. With none, nothing is rolled: the item and kickers are used and the line says the research taught nothing new.
+1. The eligible disciplines are the item's disciplines the player knows with `0 < expertise < item tech competency`, the same rule as at the request. With none (a discipline forgotten, or an expertise that reached the tech competency, during the bar) the research is refused with the `no_eligible_discipline` line above, nothing is rolled or used, and the inventory is resynced.
 2. One discipline is picked uniformly, then the chance is `100 − expertise + 5 × kickers` percent against a roll in `[0, 100)`.
-3. One transaction consumes exactly the named item and kickers. On a success it adds 5 expertise to the picked discipline and teaches every blueprint that makes the item whose discipline the player knows (checked again under the player row lock), then sends `onUpdateDiscipline` (136) and the whole known list, `onUpdateKnownCrafts` (139).
+3. One transaction checks the eligibility again, reading the crafting state with the player row locked `FOR UPDATE`, and refuses and rolls back the same way if it no longer holds. It consumes exactly the named item and kickers. On a success it adds 5 expertise to the picked discipline and teaches every blueprint that makes the item whose discipline the player knows (checked again under the player row lock), then sends `onUpdateDiscipline` (136) and the whole known list, `onUpdateKnownCrafts` (139).
 
-The player reads "Research succeeded: <discipline> expertise increased to <n>." (plus "You learned 1 new blueprint." when one was taught) or "Research complete, but no expertise was gained." The item and kickers are used whatever the roll, as in the original server.
+The player reads "Research succeeded: <discipline> expertise increased to <n>." (plus "You learned 1 new blueprint." when one was taught) or "Research complete, but no expertise was gained." Once the roll is made the item and kickers are used whatever it gives, as in the original server. The original server also used them when no discipline was eligible and nothing was rolled; Cimmeria refuses that research instead and uses nothing (owner decision D-CR29). `.allcraft` sets every discipline to 100, so after it only an item with a tech competency above 100 can be researched.
 
 ### Reverse Engineer
 
@@ -275,6 +306,26 @@ A valid alloy is queued as an induction, with the blueprint id on the bar. When 
 
 Every refusal is followed by a full inventory resync, because the alloy page empties its slots on confirm. A refusal when the bar ends (an input moved or used up in the meantime) uses the transaction's lines.
 
+## Commands
+
+Most crafting is driven by the J and Ctrl+J windows. The typed commands, with their full reference in [commands.md](../commands.md#crafting):
+
+| Command | Who | What it does |
+|---|---|---|
+| `.respeccraft` | Any player | Opens a free crafting respec: the client shows the prompt, and its Yes resets the player (see [Respec](#respec)). The one `.`-console line open to every player |
+| `/gmgiveappliedsciencepoints <points>` | GM, on self | Adds ASP and pushes the new total |
+| `/gmgiveexpertise <disciplineId> <amount>` | GM, on self | Raises a discipline's expertise, learning it first if needed, capped at 100 |
+| `.learndiscipline <disciplineId> [expertise]`, `.forgetdiscipline <disciplineId>` | GM, on the selected player | Learn or raise a discipline; "forget" sets its expertise to 0 |
+| `.allcraft` | GM, on the selected player | Every paradigm at 7, every discipline at 100, every blueprint (saved), and "craft anywhere" until logout (D-CR17) |
+| `.craftkit <blueprintId> [count]` | GM, on the selected player | Grants component set 1 of the blueprint, `count` (1-10) times over, into the bags the items allow; the whole kit or nothing |
+| `.learnblueprint <blueprintId>` | GM, on the selected player | Teaches one blueprint and pushes the known list |
+
+The `.`-commands marked "on the selected player" need a player selected as the target; they never fall back to the caller. `/gmgiveblueprint`, `/gmgiveracialparadigmlevels` and `/showracialparadigmlevels` are not implemented: use `.learnblueprint`, a Racial Paradigm Guide or `.allcraft`.
+
+## Telemetry
+
+Every crafting event logs under the `crafting` target with `account_id`, `player_id` and `entity_id` on the event, and every refusal carries an enumerated `reason`. The event catalog is the `crafting` rows of [observability.md](../architecture/observability.md); the plan it follows is the campaign's [telemetry contract](../analysis/crafting/work-packets.md#telemetry-contract). To follow one player's crafting in SigNoz, filter `scope_name = 'crafting' AND player_id = <id>`, then find a job with `event = 'queued'` and filter on its `job_id`. The CR-14 checklist has one query per step ([session resume](../analysis/crafting/handoffs/session-resume.md#signoz-queries)).
+
 ## Discipline System
 
 | Concept | Description |
@@ -296,14 +347,14 @@ Every refusal is followed by a full inventory resync, because the alloy page emp
 - **Recipes/Blueprints**: 498 in `db/resources/Entities/Seed/blueprints.sql`
 - **Blueprint items and guides**: `db/resources/Items/Seed/crafting_item_effects.sql` (generated, see [Blueprint items and Racial Paradigm Guides](#blueprint-items-and-racial-paradigm-guides))
 - **Disciplines**: Defined in resources
-- **Racial paradigms**: Faction-based, initialized at level 1
+- **Racial paradigms**: five (1 Common, 2 Human, 3 Goa'uld, 4 Asgard, 5 Ancient); every character starts at Common 5 and the others at 1 (`sgw_player.racial_paradigm_levels` default `{5,1,1,1,1}`), and a guide raises one by 1 to at most 10
 - **Constants**: `ALLOYING_ELEMENTARY_COUNTS` (quality-based count table)
 - **Item flags**: `researchable`, `reverseEngineerable`, `kicker`, `quality`, `tier`, `techCompetency`
 
 ## RE Priorities
 
 1. **Client crafting UI** - Decompile `onUpdateDiscipline`, `onUpdateCraftingOptions`, `onUpdateKnownCrafts` wire format
-2. **Crafting respec** - `RespecCraft` / `onCraftingRespecPrompt` / `onDisciplineRespec` protocol
+2. **Crafting respec** - what the client's `Event_SlashCmd_RespecCraft` (`/respeccraft`) sends, if anything. The server flow above does not depend on it
 3. **Tech competency** - How `techCompetency` affects crafting beyond research chance
 4. **Quality system** - Item quality tiers and their effect on alloying
 5. **Crafting busy state** - Why `beginBusy`/`endBusy` are commented out
@@ -359,7 +410,7 @@ fully editable in the seed if we ever want to tune the economy.
 
 ## Querying the data today
 
-The full crafting catalog is queryable now, even before the activity handlers land:
+The full crafting catalog is in the seed, and the server loads it once per process as `CraftingCatalog`:
 
 - Recipes: `db/resources/Entities/Seed/blueprints.sql` + `blueprints_components.sql`
 - Skills: `db/resources/Archetypes/Seed/disciplines.sql`
@@ -371,3 +422,7 @@ Totals: **498 blueprints** (40 alloy), **78 disciplines**, ~**5,958 items**.
 
 - [inventory-system.md](inventory-system.md) - Items consumed and produced by crafting
 - [stat-system.md](stat-system.md) - Intelligence stat may affect crafting
+- [trade-system.md](trade-system.md) - Trading from the crafting bag
+- [../analysis/crafting/README.md](../analysis/crafting/README.md) - The crafting campaign: decisions, packets and worknotes
+- [../guides/unified-uat.md#crafting](../guides/unified-uat.md#crafting) - The in-game test steps
+- [../content/debug-hub.md#crafting-corner](../content/debug-hub.md#crafting-corner) - The debug hub's stations and supplies vendor

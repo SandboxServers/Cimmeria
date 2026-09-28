@@ -39,3 +39,10 @@ windows-sys = { version = "0.61", features = [
 # MinHook relocates an existing `E9 rel32` at a target into its trampoline,
 # which a raw prologue overwrite would not.
 minhook-sys = "0.1"
+# The structured-exception guard around the send natives' engine calls
+# (`startEntityMessage` and the bundle's `reserve`): an access violation or
+# a C++ exception from the engine becomes an `engine_error` return instead
+# of a crash. The same crate and version as the telemetry DLL's lab bridge;
+# MSVC-only (its `cc` stub uses real `__try/__except`), which is the only
+# target this block builds for.
+microseh = "1.2"

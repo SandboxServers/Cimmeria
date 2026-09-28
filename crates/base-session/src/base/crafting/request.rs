@@ -10,8 +10,9 @@ use tokio::sync::mpsc;
 
 use super::alloy::{handle_alloy, AlloyRequest};
 use super::craft::handle_craft;
-use super::feedback::{reject, CraftReject};
+use super::feedback::reject;
 use super::research::handle_research;
+use super::respec::handle_respec_confirm;
 use super::reverse_engineer::handle_reverse_engineer;
 use super::spend::handle_spend;
 use super::sync::CraftClient;
@@ -46,9 +47,8 @@ impl CraftCtx<'_> {
 ///
 /// `Spend` is decided by [`super::spend`], `Craft` by [`super::craft`],
 /// `Research` by [`super::research`], `ReverseEngineer` by
-/// [`super::reverse_engineer`] and `Alloy` by [`super::alloy`]. Every other verb that passes the gate
-/// is answered with a "not available yet" line until it is implemented,
-/// so a press is never silent.
+/// [`super::reverse_engineer`], `Alloy` by [`super::alloy`] and `Respec` by
+/// [`super::respec`].
 #[tracing::instrument(
     name = "crafting.request",
     level = "info",
@@ -114,14 +114,6 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
             handle_alloy(entity_id, player_id, request, ctx).await;
             return;
         }
-        _ => {}
+        CraftVerb::Respec => handle_respec_confirm(entity_id, player_id, ctx).await,
     }
-    reject(
-        method,
-        entity_id,
-        player_id,
-        &CraftReject::not_available(&verb),
-        ctx.client(),
-    )
-    .await;
 }

@@ -19,6 +19,7 @@
 //!   the call raised one.
 
 use super::plan::{call_slots, LuaCall, LuaValue, TABLE};
+use crate::send::Native;
 
 /// `LUA_GLOBALSINDEX`: the stock Lua 5.1 value, which the client uses too.
 /// The client's tolua++ `tolua_beginmodule`/`tolua_module` (`0x00403bb0`,
@@ -29,6 +30,19 @@ use super::plan::{call_slots, LuaCall, LuaValue, TABLE};
 /// registry.
 pub const LUA_GLOBALSINDEX: i32 = -10002;
 
+/// `LUA_TNONE`: an index past the top of the stack, such as a missing
+/// argument.
+pub const LUA_TNONE: i32 = -1;
+
+/// `LUA_TNIL`.
+pub const LUA_TNIL: i32 = 0;
+
+/// `LUA_TBOOLEAN`.
+pub const LUA_TBOOLEAN: i32 = 1;
+
+/// `LUA_TNUMBER`.
+pub const LUA_TNUMBER: i32 = 3;
+
 /// `LUA_TSTRING`.
 pub const LUA_TSTRING: i32 = 4;
 
@@ -38,7 +52,8 @@ pub const LUA_TTABLE: i32 = 5;
 /// `LUA_TFUNCTION`.
 pub const LUA_TFUNCTION: i32 = 6;
 
-/// The Lua 5.1 C API calls delivery uses. Indices follow the C API.
+/// The Lua 5.1 C API calls the DLL uses: delivery, and the send natives
+/// with their registration ([`crate::send`]). Indices follow the C API.
 pub trait LuaStack {
     /// `lua_gettop`.
     fn top(&mut self) -> i32;
@@ -70,6 +85,22 @@ pub trait LuaStack {
     fn protected(&mut self, body: &mut dyn FnMut(&mut Self)) -> i32;
     /// The string at `index`, if it is one (`lua_tolstring` on a string).
     fn string_at(&mut self, index: i32) -> Option<String>;
+    /// `lua_pushnil`.
+    fn push_nil(&mut self);
+    /// `lua_pushboolean`.
+    fn push_boolean(&mut self, value: bool);
+    /// `lua_tonumber`: the number at `index`, 0 if it is not one.
+    fn to_number(&mut self, index: i32) -> f64;
+    /// `lua_toboolean`: Lua truthiness, so `false` only for `nil`,
+    /// `false` and a missing value.
+    fn to_boolean(&mut self, index: i32) -> bool;
+    /// `lua_pushvalue`: a copy of the value at `index`.
+    fn push_value(&mut self, index: i32);
+    /// `lua_rawset`: `t[key] = value`, where `t` is at `table` and the key
+    /// and value are the top two values; pops both, without metamethods.
+    fn raw_set(&mut self, table: i32);
+    /// `lua_pushcclosure` with no upvalues, for one of the send natives.
+    fn push_native(&mut self, native: Native);
 }
 
 /// How one call into the overlay went.

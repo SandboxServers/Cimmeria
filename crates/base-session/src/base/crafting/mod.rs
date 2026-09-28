@@ -5,8 +5,7 @@
 //! by this ledger"):
 //!
 //! - [`request`]: the entry point for `CellToBaseMsg::Crafting`. It logs the
-//!   request and routes each verb; a verb with no handler yet is answered
-//!   with a "not available yet" line.
+//!   request and routes each verb to its handler.
 //! - [`spend`]: `spendAppliedSciencePoints`, learning a discipline.
 //! - [`research`] and [`reverse_engineer`]: the `research` and
 //!   `reverseEngineer` inductions; [`induction_verb`] and [`item_lookup`]
@@ -45,6 +44,8 @@
 //! - [`item_use`]: using a Blueprint item or a Racial Paradigm Guide.
 //! - [`craft`]: `craft`, making a known blueprint's product from one of
 //!   its component sets.
+//! - [`respec`]: `.respeccraft` and `respecCrafting` (100), the two-step
+//!   crafting respec.
 
 pub mod allcraft;
 pub mod alloy;
@@ -61,6 +62,7 @@ pub mod options;
 pub mod persistence;
 pub mod request;
 pub mod research;
+pub mod respec;
 pub mod reverse_engineer;
 pub mod rng;
 pub mod session;
@@ -70,6 +72,8 @@ pub mod telemetry;
 pub mod tools;
 pub mod transaction;
 
+#[cfg(test)]
+mod lock_order_tests;
 #[cfg(test)]
 mod test_packets;
 #[cfg(test)]

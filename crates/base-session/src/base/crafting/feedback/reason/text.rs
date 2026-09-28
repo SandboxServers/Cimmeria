@@ -108,6 +108,10 @@ impl CraftReject {
             CraftReject::KickerDuplicateScience { .. } => {
                 "Only one kicker per applied science can be used. Nothing was used.".to_string()
             }
+            CraftReject::NoEligibleDiscipline { tech_comp, .. } => format!(
+                "None of your disciplines can learn from that item: research needs one of its \
+                 disciplines at an expertise above 0 and below {tech_comp}. Nothing was used."
+            ),
             CraftReject::NotReverseEngineerable { .. } => {
                 "That item cannot be reverse engineered. Nothing was used.".to_string()
             }
@@ -146,6 +150,17 @@ impl CraftReject {
                 needed, available, ..
             } => format!(
                 "You do not have enough components: {available} of {needed} needed. Nothing was used."
+            ),
+            CraftReject::NothingToRespec => {
+                "You have no crafting disciplines to unlearn. Nothing was changed.".to_string()
+            }
+            CraftReject::NoPendingRespec => {
+                "No crafting respec is waiting to be confirmed. Type .respeccraft to start one."
+                    .to_string()
+            }
+            CraftReject::RespecExpired { window_secs } => format!(
+                "The crafting respec was not confirmed within {window_secs} seconds. \
+                 Type .respeccraft to start again."
             ),
         }
     }

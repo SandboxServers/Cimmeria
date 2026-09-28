@@ -1,7 +1,7 @@
 # Crafting and Applied Science Restoration
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and the owner.
-> Updated: 2026-09-26. Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [crafting restoration findings](../../reverse-engineering/findings/crafting-restoration.md), [gap analysis §19](../../gap-analysis.md), [documentation index](../../readme.md).
+> Updated: 2026-09-27 (CR-13 close-out). Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [crafting restoration findings](../../reverse-engineering/findings/crafting-restoration.md), [gap analysis §19](../../gap-analysis.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -41,7 +41,7 @@ Against `main` @ `70795027`, the [audit](audit.md) has the evidence for each row
 
 ## Owner decisions
 
-Asked on 2026-09-26 with the coordinator's recommendation beside each. All six are answered.
+Asked on 2026-09-26 with the coordinator's recommendation beside each. All six are answered. D-CR29 and D-CR30 were asked at the close-out (CR-13) and answered on 2026-09-27.
 
 | ID | Status | Question | Owner answer |
 |---|---|---|---|
@@ -51,6 +51,8 @@ Asked on 2026-09-26 with the coordinator's recommendation beside each. All six a
 | D-CR04 | **APPROVED** (owner, 2026-09-26) | How are blueprints acquired? Python only granted them by GM command. | **Blueprint items and research.** Using a "Blueprint: …" item (289 in the seed) teaches its blueprint and consumes the item; crafting vendors sell them. A successful research of a researchable item also teaches the blueprint that makes it, when that blueprint's discipline is known. Learning a discipline grants no blueprints. |
 | D-CR05 | **APPROVED** (owner, 2026-09-26) | Stations, tools, or both? | **Both.** Four per-science Crafting Stations in the stasis-room debug hub, each allowing all four verbs, and the 48 Field Crafting Tools as portable tools (rule in D-CR21). Stations in playable worlds are a later content decision. |
 | D-CR06 | **APPROVED** (owner, 2026-09-26) | Reverse-engineer recovery (audit C-51, C-52). | Recovery rises with expertise: per component `floor(rand × min(1, max(exp, 1) / tc) × qty)`, where `tc` is the product's tech competency, with at least one unit of some component recovered. Reverse engineering needs no known discipline. |
+| D-CR29 | **APPROVED** (owner, 2026-09-27) | A research whose item has no eligible discipline (none known with `0 < expertise < tech competency`): consume the item and kickers and teach nothing, as the legacy server did, or refuse? | **Refuse it before anything is consumed**, with a visible line. This reverses the legacy behaviour CR-08 kept. **Implemented by CR-18** (branch `craft/cr18-research-refusal`, in review): refused at the request, before the roll at completion, and inside the completion transaction, with `reason=no_eligible_discipline`. |
+| D-CR30 | **APPROVED** (owner, 2026-09-27) | Stations have no interaction bit, so clicking one does nothing. Should a click do something? | **Right-clicking a crafting station opens its relevant crafting window.** The stations need interaction bits and the server must answer the click; whether that needs a client patch is still to be determined. Follow-up packet CR-19. |
 
 The 2009 def supports the item-driven design: `SGWPlayer.def:894-909` declares `gainRacialParadigmLevels`, `gainExpertise` and `gainAppliedSciencePoints`, each "with transaction", the shape of a reward granted by item use or a mission.
 
@@ -78,6 +80,7 @@ These are PROPOSED coordinator defaults. Under the owner's autonomous-run author
 | D-CR25 | PROPOSED | A malformed crafting request (truncated arguments, forged array count) is dropped with a WARN at target `crafting` and no player feedback. Only a forged packet can produce one, so D-CR14 does not apply. | CR-01. |
 | D-CR26 | PROPOSED | CR-15 seeds only the 193 Blueprint items that CR-E2 resolved (`source/blueprint-items.csv`, confidence high, medium-high or medium). Item 8882 teaches both of its tied blueprints (367 and 369). The 96 unresolved rows are not seeded: 45 narrow only to a group, 48 name a product the 2009 content never shipped, and 3 match nothing. Research (D-CR04) and GM `.learnblueprint <id>` cover the blueprints no item teaches. The Racial Paradigm Guides are already seeded (items 7805-7809), so D-CR22 adds no items. | CR-E2 (#868). No guessing: an item mapped to the wrong blueprint teaches the player something the item does not say. |
 | D-CR27 | **APPROVED** (owner rule, 2026-09-26) | **Telemetry is a first-class deliverable.** "Player X did Y at time T and it failed" must be answerable from SigNoz alone: which path ran, why it was refused, the before and after values of everything transactional, and the correlating ids. Every packet follows the telemetry contract in [work-packets.md](work-packets.md#telemetry-contract) and carries a telemetry acceptance line. | Owner rule relayed by cimmeria-19; conventions in `docs/architecture/instrumentation-discipline.md`, `negative-logging-convention.md` and `observability.md`. |
+| D-CR28 | **APPROVED** (owner, 2026-09-27) | **Crafting components live in the crafting bag, and that bag trades and mails.** After CR-16 every grant puts a `{17,15}` component in bag 15, where its `container_sets` allow it, and it cannot sit in the main bag. So bag 15 must be a source for player trade **and** for mail attachments; components are not moved to bag 1 to make them tradeable. Trade shipped as CR-17 (#953: source bags 1 and 15, destination by the recipient's `container_sets`, a full crafting bag cancels the trade with a reason line). Mail escrow (`mail/send/escrow.rs`) was handed to the social-systems campaign (cimmeria-3d); it accepts bags 1 and 15 as of #933, and a mail take places the item by `container_sets`. | Owner answer to the CR-16 gap "crafting components cannot be traded or mailed" (`worknotes/cr-16.md`). |
 
 ## Coordinator launch prompt
 
@@ -95,7 +98,7 @@ You are the Claude Code coordinator for the crafting campaign. Implement [work-p
 
 Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#crafting).
 
-The owner runs [CR-14](work-packets.md#cr-14-owner-uat-colo-after-the-release) on the colo after the `/release` deploy, from the stasis-room debug hub, as GM, and uses `.bug <note>` at each oddity. Every step has a SigNoz query that shows what the server did (CR-14's query table), so an oddity can be diagnosed from telemetry without a repro.
+The owner runs CR-14 on the colo after the `/release` deploy, from the stasis-room debug hub, as GM, and uses `.bug <note>` at each oddity. The canonical checklist, written by CR-13 against the code as merged, is in the [session resume](handoffs/session-resume.md#cr-14-owner-uat-checklist). Every step has a SigNoz query that shows what the server did (its query table), so an oddity can be diagnosed from telemetry without a repro.
 
 ## Where confidence is low
 

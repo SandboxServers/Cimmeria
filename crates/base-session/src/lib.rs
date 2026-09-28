@@ -14,7 +14,7 @@
 //!   GM feedback channel (`base::gm_feedback`) and cooked-data delivery
 //!   (`base::cooked_data`).
 //! - The session-scoped handlers with no world-entry dependency: contact
-//!   list, crafting, the Black Market (`base::black_market`), GM spawn,
+//!   list, crafting, GM spawn,
 //!   console authoring, and the chat-channel registration payloads
 //!   (`base::world_entry_chat`).
 //! - Two leaves of the world-entry tree the methods crate needs below it:

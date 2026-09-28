@@ -69,8 +69,8 @@ pub async fn run_session(
     };
     let mut ticker = interval(Duration::from_millis(flush_ms));
     let mut tailer = Tailer::new();
-    let sessions_dir = install_dir.join("Binaries").join("sessions");
-    let binaries_dir = install_dir.join("Binaries");
+    let binaries_dir = crate::install_layout::binaries_dir(&install_dir);
+    let sessions_dir = binaries_dir.join("sessions");
 
     let _ = telemetry
         .enqueue(TelemetryEvent::SessionMeta(SessionMetaEvent {

@@ -28,6 +28,21 @@ pub struct RequiredKnowledge {
     pub discipline_id: i32,
 }
 
+/// The item a research studies, with what the eligibility rule needs. The
+/// transaction refuses the research unless the player still has one of
+/// `discipline_ids` known with `0 < expertise < tech_comp`, read under the
+/// player row lock, so a discipline dropped or maxed during the bar uses
+/// nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResearchedItem {
+    pub item_id: i32,
+    pub type_id: i32,
+    pub applied_science_id: Option<i32>,
+    pub tech_comp: i32,
+    /// The item's disciplines, as the catalog lists them.
+    pub discipline_ids: Vec<i32>,
+}
+
 /// What one induction consumes and produces. The verb builds it from the
 /// catalog and the request; this module applies it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -58,6 +73,9 @@ pub struct CraftTransaction {
     /// Refuse the whole transaction unless the player still knows this
     /// blueprint and discipline.
     pub required_knowledge: Option<RequiredKnowledge>,
+    /// Refuse the whole transaction unless the player can still research
+    /// this item (see [`ResearchedItem`]).
+    pub research: Option<ResearchedItem>,
 }
 
 impl CraftTransaction {

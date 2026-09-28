@@ -59,6 +59,7 @@ mod cinematic_hold_gate;
 mod crafting_arm;
 mod crafting_gate;
 mod crafting_gm_grant;
+mod crafting_respec;
 mod fallible_handlers;
 mod gm_broadcast_arm;
 mod gm_grant_arms;

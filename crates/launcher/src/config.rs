@@ -14,7 +14,7 @@ pub const DEFAULT_MANIFEST_URL: &str =
 
 /// Default hostname patched into SGW.exe's `.rdata` (replaces
 /// `www.stargateworlds.com`).
-pub const DEFAULT_SERVER_HOST: &str = "play.cimmeria.gg";
+pub const DEFAULT_SERVER_HOST: &str = "play.cimmeria.app";
 
 /// SAS URL for log uploads (PUT-only, scoped to the `logs/` prefix), baked
 /// in at compile time from the `LAUNCHER_LOG_SAS_URL` env var. In release CI

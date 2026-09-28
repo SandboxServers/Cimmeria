@@ -14,6 +14,7 @@
 - [project_mail_handlers_unimplemented.md](project_mail_handlers_unimplemented.md) — Mail send/take/COD/return paths are stubs; future implementers inherit unvalidated wire surface
 - [project_trade_handlers_unimplemented.md](project_trade_handlers_unimplemented.md) — All four player-trade RPCs are stubs in social.rs; ordered invariant checklist for the next implementer
 - [project_black_market_bm02_review.md](project_black_market_bm02_review.md) — BM-02 auctioneer gate + container-18 escrow cleared; residual mint-on-missing-escrow, int4 refund overflow
+- [project_black_market_bm07_review.md](project_black_market_bm07_review.md) — BM-07 Auctioneer marker + seller read-back + .bm_* cleared; seed key and old account fixed in-PR, respawn residual
 - [project_black_market_unimplemented.md](project_black_market_unimplemented.md) — BM/Auction surface was stubbed (superseded 2026-09-27 by the BM-01 port); CAT-I invariants still open go to BM-02
 - [project_mission_dialog_audit_2026-05-31.md](project_mission_dialog_audit_2026-05-31.md) — CAT-J audit findings; mission/dialog/interaction trust posture as of 2026-05-31
 - [project_gm_commands_audit_2026-05-31.md](project_gm_commands_audit_2026-05-31.md) — CAT-N audit findings; GM/debug/cheat commands trust posture as of 2026-05-31
@@ -66,3 +67,4 @@
 - [project_bank_vault_bv07_review.md](project_bank_vault_bv07_review.md) — BV-07 org vaults: cleared authz shape; cross-org snap-back leak; KEY SHARE-before-advisory deadlock vs vendor/trade
 - [project_bank_vault_bv08_review.md](project_bank_vault_bv08_review.md) — BV-08 org treasury transfers: cleared KEY SHARE->lock_org->guarded UPDATE shape; kick-race + recycled-eid guards added before merge
 - [project_bank_vault_bv09_review.md](project_bank_vault_bv09_review.md) — BV-09 Team vault expansion from treasury: leader-under-lock cleared; leaver + recycled-eid guards added; other-member onBagInfo open
+- [exploit_refund_not_bound_to_payment.md](exploit_refund_not_bound_to_payment.md) — CR10 respec refunded ASP per discipline held, not per ASP paid; free grant paths minted ASP (fixed: spent counter)

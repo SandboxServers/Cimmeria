@@ -2,12 +2,17 @@
 //! for a chance at expertise and the blueprint that makes it.
 //!
 //! At the request the item and every kicker must still be the player's,
-//! in the main or crafting bag, and pass [`rule::check_request`]. The job
-//! then waits its induction. At completion it reads the player's crafting
-//! state, rolls ([`rule::roll`]) and runs one transaction that consumes
-//! exactly the named item and kickers, adds the expertise on a success,
-//! and teaches every blueprint that makes the item and whose discipline
-//! the player knows. The item and kickers are used whatever the roll.
+//! in the main or crafting bag, and pass [`rule::check_request`], and the
+//! player must have a discipline to research the item in
+//! ([`rule::check_eligible`]). The job then waits its induction. At
+//! completion it reads the player's crafting state, rolls
+//! ([`rule::roll`]) and runs one transaction that checks the eligibility
+//! again under the player row lock, consumes exactly the named item and
+//! kickers, adds the expertise on a success, and teaches every blueprint
+//! that makes the item and whose discipline the player knows. Once the
+//! roll is made the item and kickers are used whatever it gives; a
+//! research with no eligible discipline, at the request or at completion,
+//! uses nothing.
 //!
 //! Events: the engine's `queued` → `induction_started` → `completed`
 //! chain, with `eligible_disciplines`, `discipline_id`, `chance`, `roll`,
@@ -24,15 +29,22 @@ use std::sync::Arc;
 
 use cimmeria_cell_catalog::crafting::CraftingCatalog;
 
-use super::feedback::reject;
+use super::feedback::{reject, reject_at_completion, CraftReject};
 use super::induction_verb::{
     load_request_inputs, send_result_line, state_at_completion, submit_job,
 };
 use super::item_lookup::HeldInstance;
+use super::persistence::load_crafting_state;
 use super::request::CraftCtx;
 use super::session::{Completion, InductionJob, JobFuture, JobOutcome};
-use super::transaction::{apply_craft_transaction, CraftApplied, CraftTransaction, NamedItem};
-use rule::{blueprints_taught, check_request, roll, ResearchRoll, RESEARCH_EXPERTISE_GAIN};
+use super::telemetry::{account_id_of, sql_error_class};
+use super::transaction::{
+    apply_craft_transaction, resync_inventory, CraftApplied, CraftTransaction, NamedItem,
+};
+use rule::{
+    blueprints_taught, check_eligible, check_request, researched_item, roll, ResearchRoll,
+    RESEARCH_EXPERTISE_GAIN,
+};
 
 /// The cell method name: the `verb` of every event and metric.
 pub const VERB: &str = "research";
@@ -70,6 +82,33 @@ pub async fn research_job(
         reject(VERB, entity_id, player_id, &why, ctx.client()).await;
         return None;
     }
+    // `check_request` found the item in the catalog.
+    let attrs = inputs.catalog.item(item.type_id)?;
+    let state = match load_crafting_state(&inputs.pool, player_id).await {
+        Ok(state) => state,
+        Err(e) => {
+            tracing::warn!(
+                target: "crafting",
+                event = "lookup_failed",
+                verb = VERB,
+                phase = "crafting_state",
+                account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr),
+                player_id,
+                entity_id,
+                item_id,
+                error_class = sql_error_class(&e),
+                error = %e,
+                "crafting state unreadable at the research request; refused as unavailable"
+            );
+            let why = CraftReject::Unavailable { action: ACTION };
+            reject(VERB, entity_id, player_id, &why, ctx.client()).await;
+            return None;
+        }
+    };
+    if let Err(why) = check_eligible(&researched_item(item, attrs), &state) {
+        reject(VERB, entity_id, player_id, &why, ctx.client()).await;
+        return None;
+    }
     Some(ResearchJob {
         catalog: inputs.catalog.clone(),
         item: *item,
@@ -86,8 +125,13 @@ pub struct ResearchJob {
 
 impl ResearchJob {
     /// The transaction for `outcome`: the item and every kicker, exactly;
-    /// on a success the expertise and the blueprints to teach.
+    /// on a success the expertise and the blueprints to teach; and the
+    /// eligibility the transaction checks again under its lock.
     pub fn plan(&self, outcome: &ResearchRoll, teach: Vec<(i32, i32)>) -> CraftTransaction {
+        let research = self
+            .catalog
+            .item(self.item.type_id)
+            .map(|attrs| researched_item(&self.item, attrs));
         let inputs = std::iter::once(&self.item).chain(&self.kickers);
         let expertise = match (outcome.success, outcome.discipline_id) {
             (true, Some(d)) => vec![(d, RESEARCH_EXPERTISE_GAIN)],
@@ -101,6 +145,7 @@ impl ResearchJob {
             consume_named: inputs.map(|h| (h.item_id, 1)).collect(),
             expertise,
             learn_blueprints: if outcome.success { teach } else { Vec::new() },
+            research,
             ..CraftTransaction::default()
         }
     }
@@ -126,6 +171,17 @@ impl InductionJob for ResearchJob {
                 // not change while the process runs.
                 return JobOutcome::Failed;
             };
+            // A discipline dropped, or an expertise that reached the tech
+            // competency, since the request: refuse before rolling, as the
+            // request would have, and restore the slots the research page
+            // emptied.
+            if let Err(why) = check_eligible(&researched_item(&self.item, attrs), &state) {
+                reject_at_completion(&done.ids, &why, done.env.client()).await;
+                if let Some(pool) = done.env.db_pool.as_ref() {
+                    resync_inventory(done.env, pool, &done.ids).await;
+                }
+                return JobOutcome::Failed;
+            }
             let outcome = roll(attrs, &state, self.kickers.len(), done.rng);
             let teach = blueprints_taught(&self.catalog, &state, self.item.type_id);
             let plan = self.plan(&outcome, teach);
@@ -179,9 +235,9 @@ pub fn result_line(
     applied: &CraftApplied,
 ) -> String {
     let Some(discipline_id) = outcome.discipline_id else {
-        return "Research complete. You learned nothing new: none of your disciplines for \
-                this item is below its tech competency."
-            .to_string();
+        // Not reached from a completion: a research with no eligible
+        // discipline is refused before the roll.
+        return "Research complete, but no expertise was gained.".to_string();
     };
     if !outcome.success {
         return "Research complete, but no expertise was gained.".to_string();

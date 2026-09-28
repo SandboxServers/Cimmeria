@@ -134,7 +134,7 @@ ignore:
   # the same `DispatchCtx` fields. Same shape as `cell_dispatch/minigame.rs`
   # above: the decode lives in cimmeria-cell-methods'
   # `cell/cell_methods/black_market/` (unit tested), the handlers live in
-  # cimmeria-base-session's `base/black_market/{search,create,bid,cancel}`
+  # cimmeria-base-methods' `methods/black_market/{search,create,bid,cancel}`
   # (live-DB tested), and this file is the glue that wires the two. The
   # unit-test value of "the match arm forwards the variant it just matched"
   # is low; a real regression surfaces in the decode test or the handler's
@@ -150,7 +150,7 @@ ignore:
   # `_auction_update`) are byte-exact tested in `base/black_market/wire.rs`.
   # The unit-test value of "with empty fixtures the wrapper doesn't panic"
   # is low.
-  - "crates/base-session/src/base/black_market/send.rs"
+  - "crates/base-methods/src/base/world_entry/methods/black_market/send.rs"
 
 # Components let the PR comment break coverage out by subsystem. Mirrors
 # the crate dependency graph in README.md so reviewers can see "the

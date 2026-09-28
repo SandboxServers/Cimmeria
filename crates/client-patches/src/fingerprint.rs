@@ -82,7 +82,7 @@ pub const ENGINE_TICK: Site = Site {
 };
 
 /// `ServerConnection::startEntityMessage`: `mov eax, fs:[0]; push -1; push
-/// 0x01705538`. Not hooked; the send side will call it.
+/// 0x01705538`. Not hooked; the send natives call it.
 pub const START_ENTITY_MESSAGE: Site = Site {
     name: "ServerConnection::startEntityMessage",
     address: addresses::SERVER_CONNECTION_START_ENTITY_MESSAGE,
@@ -92,8 +92,66 @@ pub const START_ENTITY_MESSAGE: Site = Site {
     may_be_chained: false,
 };
 
-/// Every site the gate checks.
-pub const SITES: [Site; 4] = [DISPATCHER, DROP_CALLEE, ENGINE_TICK, START_ENTITY_MESSAGE];
+/// `ServerConnection::startAvatarMessage`: `mov eax, [esp+4]; push 0; push
+/// eax; call startEntityMessage; ret 4`. Neither hooked nor called: the
+/// whole body is checked, including the `rel32` to `startEntityMessage`, so
+/// the `(conn, idx, entityId = 0)` call the send natives copy is this
+/// build's.
+pub const START_AVATAR_MESSAGE: Site = Site {
+    name: "ServerConnection::startAvatarMessage",
+    address: addresses::SERVER_CONNECTION_START_AVATAR_MESSAGE,
+    expected: &[
+        0x8B, 0x44, 0x24, 0x04, 0x6A, 0x00, 0x50, 0xE8, 0x44, 0xEA, 0xFF, 0xFF, 0xC2, 0x04, 0x00,
+    ],
+    may_be_chained: false,
+};
+
+/// `ServerConnection::isOnline`: `xor eax, eax; cmp [ecx+0x30c], eax; setne
+/// al; ret`. Not called: pins the `+0x30c` online flag the send natives
+/// read.
+pub const IS_ONLINE: Site = Site {
+    name: "ServerConnection::isOnline",
+    address: addresses::SERVER_CONNECTION_IS_ONLINE,
+    expected: &[
+        0x33, 0xC0, 0x39, 0x81, 0x0C, 0x03, 0x00, 0x00, 0x0F, 0x95, 0xC0, 0xC3,
+    ],
+    may_be_chained: false,
+};
+
+/// The `GameEntityManager` getter: `mov eax, [0x01ef244c]; ret`. Not
+/// called: pins the singleton address the send and receive sides read.
+pub const GAME_ENTITY_MANAGER_GET: Site = Site {
+    name: "GameEntityManager getter",
+    address: addresses::GAME_ENTITY_MANAGER_GET,
+    expected: &[0xA1, 0x4C, 0x24, 0xEF, 0x01, 0xC3],
+    may_be_chained: false,
+};
+
+/// The engine's write-one-byte helper: `push esi; mov esi, ecx; mov eax,
+/// [esi]; mov edx, [eax+0x10]; push 1; call edx`. Not called: pins the
+/// bundle's `reserve` vtable slot the send natives call.
+pub const BUNDLE_WRITE_U8: Site = Site {
+    name: "Bundle write-u8 helper",
+    address: addresses::BUNDLE_WRITE_U8,
+    expected: &[
+        0x56, 0x8B, 0xF1, 0x8B, 0x06, 0x8B, 0x50, 0x10, 0x6A, 0x01, 0xFF, 0xD2,
+    ],
+    may_be_chained: false,
+};
+
+/// Every site the gate checks: the three hooked functions, the one the
+/// send natives call, and four whose bytes pin the send side's data
+/// offsets. Any of them failing installs nothing, receive included.
+pub const SITES: [Site; 8] = [
+    DISPATCHER,
+    DROP_CALLEE,
+    ENGINE_TICK,
+    START_ENTITY_MESSAGE,
+    START_AVATAR_MESSAGE,
+    IS_ONLINE,
+    GAME_ENTITY_MANAGER_GET,
+    BUNDLE_WRITE_U8,
+];
 
 /// What a site's first bytes turned out to be.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -361,12 +419,68 @@ mod tests {
             .put(DROP_CALLEE.address, &minhooked(&DROP_CALLEE, 0x7000_0000))
             .put(ENGINE_TICK.address, &[0xCC; 13]);
         let results = check_all(&mem, &[OWNER]);
-        assert_eq!(results.len(), 4);
+        assert_eq!(results.len(), SITES.len());
         assert_eq!(results[0].1, Prologue::Stock);
         assert!(matches!(results[1].1, Prologue::Chained { .. }));
         assert!(matches!(results[2].1, Prologue::Mismatch { .. }));
         assert_eq!(results[3].1, Prologue::Unreadable);
         assert!(!results.iter().all(|(_, p)| p.is_usable()));
+    }
+
+    /// The send side fails closed: with every other site stock, one moved
+    /// send-side site makes the whole gate refuse.
+    #[test]
+    fn a_moved_send_site_fails_the_gate() {
+        for moved in [
+            START_ENTITY_MESSAGE,
+            START_AVATAR_MESSAGE,
+            IS_ONLINE,
+            GAME_ENTITY_MANAGER_GET,
+            BUNDLE_WRITE_U8,
+        ] {
+            let mut mem = FakeMemory::default();
+            for site in SITES {
+                if site != moved {
+                    mem.put(site.address, site.expected);
+                }
+            }
+            let mut other_build = moved.expected.to_vec();
+            other_build[moved.expected.len() - 1] ^= 0xFF;
+            mem.put(moved.address, &other_build);
+            let results = check_all(&mem, &[]);
+            let failed: Vec<&str> = results
+                .iter()
+                .filter(|(_, p)| !p.is_usable())
+                .map(|(s, _)| s.name)
+                .collect();
+            assert_eq!(failed, [moved.name]);
+        }
+    }
+
+    /// The pinning sites encode the offsets the send side reads, so a typo
+    /// in either place shows up here.
+    #[test]
+    fn send_pins_agree_with_the_address_constants() {
+        let gem = (addresses::GAME_ENTITY_MANAGER as u32).to_le_bytes();
+        assert_eq!(GAME_ENTITY_MANAGER_GET.expected[1..5], gem);
+        let online = (addresses::CONN_ONLINE as u32).to_le_bytes();
+        assert_eq!(IS_ONLINE.expected[4..8], online);
+        assert_eq!(
+            BUNDLE_WRITE_U8.expected[7] as usize,
+            addresses::BUNDLE_RESERVE
+        );
+        // startAvatarMessage pushes 0 (the local avatar) and calls
+        // startEntityMessage: E8 rel32 from the end of the call.
+        assert_eq!(
+            START_AVATAR_MESSAGE.expected[5] as u32,
+            addresses::LOCAL_AVATAR
+        );
+        let rel = i32::from_le_bytes(START_AVATAR_MESSAGE.expected[8..12].try_into().unwrap());
+        let call_end = START_AVATAR_MESSAGE.address as i64 + 12;
+        assert_eq!(
+            (call_end + i64::from(rel)) as usize,
+            addresses::SERVER_CONNECTION_START_ENTITY_MESSAGE
+        );
     }
 
     #[test]

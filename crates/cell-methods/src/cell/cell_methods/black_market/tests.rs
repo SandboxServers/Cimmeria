@@ -38,6 +38,9 @@ fn make_mgr_at_auctioneer(pos: [f32; 3]) -> (SpaceManager, u32) {
     let mut mgr = make_mgr_with_player();
     let npc = mgr.allocate_npc_id();
     mgr.spawn_npc(npc, "Castle", pos, [0.0; 3]).unwrap();
+    // An auctioneer is what its template's `INT_AUCTION` bit makes at spawn.
+    mgr.get_entity_mut(npc).unwrap().interaction_type =
+        Some(cimmeria_entity::cell_entity::NpcInteractionType::Auctioneer);
     mgr.get_entity_mut(TEST_ENTITY)
         .unwrap()
         .last_interaction_target = Some(npc);

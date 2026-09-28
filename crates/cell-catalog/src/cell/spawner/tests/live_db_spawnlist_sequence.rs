@@ -8,7 +8,8 @@
 mod live_db {
     use crate::test_support::require_db_or_skip;
 
-    /// The highest reserved campaign spawn id: debug hub 400-404, crafting
+    /// The highest reserved campaign spawn id: debug hub 400-404, black
+    /// market 405-409, crafting
     /// 410-429, organizations 430-449, pets 450-469, bank 470-489, social
     /// 490-499. Raise it with the seed's `setval` when a block is added.
     const HIGHEST_RESERVED_SPAWN_ID: i64 = 499;

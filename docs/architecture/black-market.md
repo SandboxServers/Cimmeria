@@ -4,7 +4,7 @@
 > **Audience**: Engineers touching the auction house, escrow, or the client-side method-binding patch
 > **Type**: ADR + reference
 > **Owner**: Social systems
-> **Status**: Implemented on `main`, not player-visible. Phases 1–3 were written on `feat/571-black-market-phase1` (PR #586, issue #571) and ported onto the split crates by packet BM-01 of the [restoration plan](../analysis/black-market/README.md), with no behaviour change. The base side is `crates/base-session/src/base/black_market/`. Packet BM-02 fixed the contract mismatches the plan's client-IO pass found (S1–S8: `onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, duration and time-left enums, search paging, caller-scoped views, seller names), so the tables below now describe what the client expects. The client still drops methods 90–95 until the client patch ships (issue #587; packets BM-03 to BM-06). The server and the patch DLL share one codec crate, `cimmeria-patch-wire` (`crates/patch-wire`), which the server re-exports as `cimmeria_wire::black_market`.
+> **Status**: Implemented on `main`, not player-visible. Phases 1–3 were written on `feat/571-black-market-phase1` (PR #586, issue #571) and ported onto the split crates by packet BM-01 of the [restoration plan](../analysis/black-market/README.md), with no behaviour change. The base side is `crates/base-methods/src/base/world_entry/methods/black_market/`. Packet BM-02 fixed the contract mismatches the plan's client-IO pass found (S1–S8: `onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, duration and time-left enums, search paging, caller-scoped views, seller names), so the tables below now describe what the client expects. Packet BM-02b moved every settlement onto the mail module's system-mail writer: items and cash leave an auction only as mail from "Black Market" (§5, §8). The client still drops methods 90–95 until the client patch ships (issue #587; packets BM-03 to BM-06). The server and the patch DLL share one codec crate, `cimmeria-patch-wire` (`crates/patch-wire`), which the server re-exports as `cimmeria_wire::black_market`.
 > **Confidence**: High for the server state machine (code + tests); High for the wire contract (client IO decompiles, one shared codec); Low only for the duration table, which is design; High for the client-binding diagnosis (owner-confirmed live, 2026-06-21)
 
 ## Context
@@ -70,7 +70,7 @@ routing live in
 the base-side routing arms in
 `crates/base-world-entry/src/base/world_entry/cell_dispatch/black_market_dispatch.rs`.
 Every base-side file named below without a path is in
-`crates/base-session/src/base/black_market/`.
+`crates/base-methods/src/base/world_entry/methods/black_market/`.
 
 | Client method | Name | Args | Sent by |
 |---|---|---|---|
@@ -124,6 +124,7 @@ things on every call:
 - **In range.** `interact_range`, the same rule the `interact` handler
   uses: the NPC exists, is in the player's space, and is within
   `MAX_INTERACT_DISTANCE` (5 units).
+- **An auctioneer.** The NPC is `NpcInteractionType::Auctioneer` (BM-07).
 
 A refusal is `onBMError(NotAtAuctioneer)`, logged with `access=<label>`
 naming which check failed. `BMSearch` is ungated on purpose: it is
@@ -131,33 +132,44 @@ read-only and every view is scoped server-side to the caller (§7), so it
 exposes nothing a gate would protect. The server-authority-enforcer
 reviewed the gate.
 
-One known limit: `open_black_market` does not check that the NPC it binds
-is an auctioneer, because no auctioneer interaction type exists to check
-against. A chain author must bind the action only to auctioneers until
-packet BM-07 adds the content and the check.
+**Who is an auctioneer (BM-07).** `NpcInteractionType::Auctioneer` is
+derived at spawn, and only there, from `INT_Auction` on the NPC's
+**template** (`static_interaction_for_flags`). A chain's
+`set_interaction_type` changes `interaction_type_flags`, the client's
+cursor, never the derived type, so no chain can promote an NPC. The open
+runs the same `auctioneer_check` (exists, same space, in range, an
+auctioneer) before it sends `onBMOpen`; a refusal sends nothing but a chat
+line and logs `bm.open_refused reason=not_at_auctioneer` with the `access`
+label. So a chain bound to the wrong NPC cannot make it a Black Market
+terminal. The server-authority-enforcer reviewed the check.
 
 ### 4. Lifecycle: four states, one terminal transition each
 
 `sgw_auction.status` is the whole state machine: `0 = ACTIVE`,
-`1 = SOLD`, `2 = CANCELLED`, `3 = EXPIRED`. There is no intermediate
-"settling" state — every transition out of `ACTIVE` happens inside one
-transaction that also moves the item and the cash.
+`1 = SOLD`, `2 = CANCELLED`, `3 = EXPIRED`, `4 = QUARANTINED`. There is
+no intermediate "settling" state — every transition out of `ACTIVE`
+happens inside one transaction that also writes the mails that move the
+item and the cash. `QUARANTINED` is the one exception: the sweep sets it,
+in a transaction of its own, on an auction whose settlement failed for
+good (§8).
 
 ```text
                      createAuction
                           │  (item row moved into container 18)
                           ▼
    placeBid ────────►  ACTIVE  ────────► CANCELLED   (seller reclaim:
-   (refund prior,        │  │  │          row back to seller's bags,
-    hold new)            │  │  │          bidder refunded)
-                         │  │  │
-                         │  │  └───────► SOLD        (buyout bid, D8:
-                         │  │                         settled at once)
-                         │  └──────────► EXPIRED     (sweep, no bidder:
-                         │                            row back to seller)
-                         └─────────────► SOLD        (sweep, has bidder:
-                                                      cash mailed to seller,
-                                                      row moved to buyer)
+   (prior bid mailed     │  │  │ │        row mailed to seller,
+    back, hold new)      │  │  │ │        bid mailed to bidder)
+                         │  │  │ │
+                         │  │  │ └─────► SOLD        (buyout bid, D8:
+                         │  │  │                      settled at once)
+                         │  │  └───────► EXPIRED     (sweep, no bidder:
+                         │  │                         row mailed to seller)
+                         │  └──────────► SOLD        (sweep, has bidder:
+                         │                            cash mailed to seller,
+                         │                            row mailed to buyer)
+                         └─────────────► QUARANTINED (sweep could not
+                                                      settle; operator)
 ```
 
 Accept/reject decisions are factored out into pure predicates in
@@ -183,8 +195,8 @@ over the standing bid, and at least +1 (D6).
 **A buyout settles at once (D8).** A bid at or over a non-zero buyout
 price is charged the buyout price, not the bid, refunds the prior
 bidder, and settles in the same transaction through `settle.rs`, the
-same settlement the sweep uses. The buyer must have a free bag slot
-first, or the bid is refused with `BagFull` and nothing changes.
+same settlement the sweep uses. The item goes by mail, so the buyer needs
+no free bag slot (D-BM10).
 
 ### 5. Escrow is a container move, not a DELETE
 
@@ -196,8 +208,8 @@ records the listed row's `item_id` plus a snapshot (`item_def_id`,
 `list_into_escrow` in `escrow.rs`; it proves ownership and the listable
 bag under the seller's inventory locks, and fails closed on a miss.
 
-Why a move: packet BM-02b delivers settlements through the
-social-systems system-mail writer, and `send_system_mail_tx` with
+Why a move: every settlement mails the row through the social-systems
+system-mail writer (BM-02b), and `send_system_mail_tx` with
 `SystemItem::ExistingInstance` accepts only a container-18 row owned by
 `owner_player_id`. The DELETE-and-snapshot design this replaces could
 never feed that writer, and it lost data on the way back: a re-inserted
@@ -217,22 +229,27 @@ the row being gone:
 A new inventory path that reads or writes by `item_id` without a
 container allowlist would reopen the hole; see Consequences.
 
-Returning or delivering an item is `deliver_from_escrow`:
+Returning or delivering an item is a system mail (`payout_mail.rs`,
+decision D-BM10). `escrowed_item` (`escrow.rs`) names what the mail
+carries, under the seller's escrow lock:
 
-- **Cancel and expiry** move the row back into the seller's first free
-  slot in bag 1, then bag 15. Cancel refuses with `BagFull` when both are
-  full; the sweep cannot refuse, so it places the row past the main bag's
-  last slot and logs `bm.delivery_overflow`.
-- **A sale** moves the row into the buyer's bags. The seller's cash is
-  still mailed (`send_mail_to_player`); the buyer, and the seller of an
-  unsold item, get a notice mail.
+- **A player's listing** mails the container-18 row itself
+  (`SystemItem::ExistingInstance { item_id, owner_player_id: seller }`):
+  to the buyer on a sale, back to the seller on cancel or expiry. The
+  writer moves the whole row into `sgw_gate_mail_item`, and the recipient
+  takes it from the mailbox, so a full bag never blocks a settlement.
 - **A missing row is never minted.** A player's listing whose
-  container-18 row is gone is refused and logged `bm.escrow_missing`.
-  Only a boot-seed listing (`item_id = 0`, or the system seller) mints
-  its item from the snapshot, because it never had an instance.
+  container-18 row is gone has nothing to mail: it is logged
+  `bm.escrow_missing`, a cancel is refused (`Internal`) and the sweep
+  quarantines the auction (§8).
+- **A boot-seed listing** (`item_id = 0` alone; since BM-07 the seller is
+  not a test, so a real player 1's listing settles through escrow) never had
+  an instance, so a sale mails the buyer a new one of the listed type
+  (`SystemItem::Minted`) and pays nobody; an unsold one moves nothing.
 
 Cash escrow is symmetric: a bid **debits the bidder immediately** and the
-prior high bidder is credited back in the same transaction.
+prior high bidder is mailed their held bid in the same transaction (the
+seller's payout and a cancelled auction's refund are mail too).
 `adjust_player_cash` (`helpers.rs`) does the arithmetic in `bigint`
 inside the `UPDATE`, guarded by `naquadah + delta BETWEEN 0 AND
 2147483647`, so check and write are atomic — two concurrent bids cannot
@@ -243,10 +260,10 @@ follow-up existence probe, so callers get `InsufficientFunds`,
 `BalanceOverflow` or `NoSuchPlayer` correctly.
 
 One subtlety worth preserving: a bidder **raising their own** high bid is
-validated against the post-refund effective balance
-(`balance + auction.current_bid`), because the refund happens before the
-new debit. Validating on the pre-refund snapshot would wrongly reject a
-legitimate self-raise.
+validated against the effective balance (`balance + auction.current_bid`),
+because the held bid counts toward the new one. Nothing is mailed for a
+self-raise: only the difference is charged. Validating on the balance
+alone would wrongly reject a legitimate self-raise.
 
 ### 6. Row locks in one order, not optimistic retry
 
@@ -259,9 +276,11 @@ deadlock:
   serializes the listing-cap count, so two concurrent creates cannot both
   see 19 listings.
 - **Bid, cancel and settlement:** the `sgw_auction` row `FOR UPDATE`,
-  then the advisory locks (the seller's escrow and the recipient's bags,
-  in ascending `player_id`), then the `sgw_player` rows and the escrowed
-  item row.
+  then the seller's escrow advisory locks (`lock_escrow`), then the
+  escrowed item row, then every `sgw_player` row the transaction touches
+  in ascending `player_id` (each mail recipient included,
+  `lock_players`), and last the mail writer, whose own locks are then
+  re-locks of rows already held (caller rule 1 of the SS-U1 API).
 
 Every writer of a container-18 row holds the seller's escrow advisory
 lock before touching it, and no writer takes an advisory lock and then an
@@ -269,9 +288,12 @@ lock before touching it, and no writer takes an advisory lock and then an
 
 The sweep re-reads the locked row rather than trusting its own pre-lock
 snapshot, so the sold/unsold decision uses post-lock `current_bid` /
-`current_bidder`. The settlement status write is conditional
-(`… AND status = 0`), so a second worker — the sweep racing a buyout, or
-two sweep passes — finds nothing to update and cannot pay twice.
+`current_bidder`. The settlement status write comes first and is
+conditional (`… AND status = 0 RETURNING`), so a second worker — the
+sweep racing a buyout, or two sweep passes, even one holding a stale
+`ACTIVE` read — finds nothing to update (`SettleError::Gone`) and writes
+no mail. That gate is what makes settlement exactly-once: the mail writer
+mints cash on every call.
 
 ### 7. Search: caller-scoped views, one bounded page
 
@@ -312,20 +334,30 @@ anything already due from before the process started, then an interval
 ticker at `SWEEP_INTERVAL = 30s`.
 
 Settlement is per-auction, not per-batch, so a crash mid-sweep cannot
-double-deliver: each auction commits its own item movement, mail, and
-status flip together, through `settle_locked` in `settle.rs` — the
-function a buyout calls too. Cash payout reuses the existing
-`sgw_gate_mail` table (the same COD mechanism the original game used):
-sold auctions mail cash to the seller and a notice to the buyer, whose
-item has already moved into their bags; unsold auctions move the item
-back and mail the seller a notice. Every mail write goes through
-`payout_mail.rs` (`send_mail_to_player` and the subject/body texts), so
-packet BM-02b can move the payouts onto the social-systems mail API
-without touching the settlement logic. `settle_expired_once` carries no
-transport state so the live-DB test can drive it directly; the
-notification fan-out (`onBMAuctionRemove` to any online seller/buyer,
-`onUpdateItem` to whoever got the item) is layered on top by
-`run_sweep_pass`.
+double-deliver: each auction commits its status flip and its mails
+together, through `settle_locked` in `settle.rs` — the function a buyout
+calls too. Sold auctions mail the row to the buyer and the winning bid to
+the seller; unsold auctions mail the row back to the seller. Every mail
+goes through `payout_mail.rs`, which builds the `SystemMail` (sender
+"Black Market", the subject and body per outcome) for the mail module's
+`send_system_mail_tx`, the one writer of server-originated mail.
+
+**One bad auction cannot stop the pass (BM-02b).** The due set is read in
+`expires_at, sequence_id` order and each auction settles in its own
+transaction. A failure that will recur (`SettleError::is_permanent`: the
+escrowed row is missing, or the writer refuses a mail, such as a bound
+row won by someone else) rolls back, and a second transaction sets the
+auction `QUARANTINED` (status 4) with ERROR `bm.quarantined` and its
+`reason`. The item stays in container 18 and a standing bid stays held
+for an operator. A database error leaves the auction `ACTIVE` for the
+next pass (WARN `bm.settle_retry`). The pass then goes on, and
+`settle_expired_once` returns a `SweepReport` (settled, quarantined,
+retried).
+
+`settle_expired_once` carries no transport state so the live-DB test can
+drive it directly; the notification fan-out (`onBMAuctionRemove` to any
+online seller/buyer, and the mail module's new-mail notice to each online
+recipient) is layered on top by `run_sweep_pass`.
 
 ### 9. Boot-seed uses a reserved system seller
 
@@ -349,9 +381,21 @@ ever be allocated to a real account. Two `const` assertions pin that
 invariant; raising `SYSTEM_SELLER_ID` into sequence range would let a
 freshly-created player become the implicit system seller.
 
+The sequences keep ids 1 free, but an import or an operator can still put
+a real account or character there, and `ON CONFLICT DO NOTHING` would
+hide it. So `ensure_system_seller` reads the rows back (BM-07): account 1
+must be the `Black Market` account, checked before player 1 is inserted so
+a squatter's account never gains the character, and player 1 must be its
+`Black Market` character. Otherwise the seed lists nothing and logs
+`bm.seed_refused` at ERROR with a `reason` (`account_missing`,
+`account_taken`, `player_missing`, `player_taken`) and what the ids hold.
+The account is created disabled, and an older boot's enabled one is
+switched off. The GM `.bm_seed` runs the same check.
+
 Seed listings have `item_id = 0`: they never had an inventory row, so
-they are the one case where settlement mints an item from the auction's
-snapshot (§5).
+they are the one case where settlement mints an item, a new instance of
+the listed type mailed to the buyer, and the one case with no seller to
+pay (§5).
 
 ### 10. Persistence: two tables, `sequence_id` is the wire identity
 
@@ -379,14 +423,16 @@ with the character, like the rest of its inventory.
 
 ### 11. Player entry is a content chain, not a hardcoded interaction
 
-The auctioneer is reached through the ordinary content engine: one chain
-sets the `INT_Auction` interaction bit on `player_loaded` so the prompt
-survives relog, and another fires `open_black_market` on `interact_tag`.
-The branch seeded both (chains 5030/5031) with an auctioneer NPC
-(`BlackMarket_Auctioneer`) in Castle_CellBlock. BM-01 did not port those
-seed rows: the Castle rebuild has since reassigned the branch's template
-and spawn ids (168 / 238), so the NPC, its chains and their seed guards
-are re-seeded by packet BM-07. The action handler
+The auctioneer is reached through the ordinary content engine: chain
+5030 fires `open_black_market` on `interact_tag` for
+`BlackMarket_Auctioneer`, Machra (template 305, spawn 405) in the
+Castle_CellBlock stasis room (BM-07). The branch also had a `player_loaded`
+chain that set `INT_Auction` at runtime; BM-07 seeds the bit on the
+template instead, because the bit is now the authority marker and must
+come from the seed (§3). Chain 5031 is reserved for an in-world
+auctioneer. The branch's template and spawn ids (168 / 238) collided with
+the Castle rebuild, so BM-07 used the Black Market block (305-309,
+405-409). The action handler
 (`crates/cell-content/src/cell/content/executor/black_market.rs`)
 resolves the auctioneer entity id with the same precedence
 `dialog::display` uses — chain `params["target_entity_id"]`, then the
@@ -398,6 +444,12 @@ After it sends `onBMOpen` it records the session the §3 gate checks.
 
 The system is debuggable from SigNoz alone:
 
+- **Payouts** (BM-02b) are INFO `bm.payout`, one per mail after the
+  commit, with `reason` (`sold`, `buyout`, `expired`, `cancelled`,
+  `outbid`), `role`, `recipient_player_id`, `mail_id`, `cash` and the
+  item (`item_source`, `item_id`, `type_id`, `stack_size`), plus the
+  actor's ids; the writer's `mail.system_sent` follows each. The sweep
+  logs ERROR `bm.quarantined` and WARN `bm.settle_retry`.
 - **Transitions** are DEBUG events — `bm.listed`, `bm.bid`,
   `bm.outbid_refund`, `bm.cancelled`, `bm.sold`, `bm.expired` — carrying
   `auction_id`, the seller and bidder ids, the bid and the escrowed cash
@@ -473,6 +525,15 @@ a new `item_id` and without its ammo or any column the snapshot missed.
 It also could not feed the social-systems system-mail writer, which
 BM-02b needs, because that writer mails an existing container-18 row.
 
+**Returning cancelled and expired items straight to the bags.** This was
+BM-02's delivery, and D-BM10 replaced it with mail. A direct return needs
+a free slot: cancel refused on full bags, and the sweep, which cannot
+refuse, placed the row past the main bag's last slot. It also meant a
+second item-moving path beside the mail writer that every sale already
+uses. Mail has neither problem, works for an offline seller, and keeps
+one writer for everything an auction pays out; the cost is that the
+seller takes the item from the mailbox instead of finding it in the bag.
+
 **Settling a buyout at the next sweep.** Rejected by D8. The original
 game settled a buyout instantly, and a buyer who paid the buyout price
 should not wait up to 30 seconds and see the auction still listed. Once
@@ -523,21 +584,19 @@ in `validate_bid`, and the patch overlay maps each id to text — so a
 change to either is a change to the shared codec and the plan, not a
 local edit.
 
-### The sweep has no quarantine
+### Quarantined auctions need an operator
 
-`settle_expired_once` settles each due auction in its own transaction,
-but one auction whose settlement fails aborts the whole pass
-(`black_market: sweep failed`), and the next pass retries the same
-auction first. A permanently failing auction therefore stalls every
-settlement behind it. Packet BM-02b adds a quarantine alongside the move
-to the mail API.
+The sweep quarantines an auction it cannot settle (§8), but nothing
+resolves one yet: there is no GM command, so an operator mails the
+container-18 row and any held bid by hand and sets a final status. A
+database error is retried every pass without a limit; only a failure
+that will recur is quarantined.
 
-### Settlement still uses the branch's delivery paths
+### The character-delete trigger refunds directly
 
-Seller cash is mailed through `send_mail_to_player` (`payout_mail.rs`),
-and items move straight into the recipient's bags. Packet BM-02b moves
-both onto the social-systems mail API, with the item mailed from
-container 18.
+D-BM09's `bm_player_before_delete()` credits the standing bidders'
+balances in SQL. A trigger cannot call the mail writer, so those refunds
+are the one Black Market payout that is not mail.
 
 ### `sellerName` cannot be decoded by the client's engine — and that is probably why the feature was shelved
 
@@ -571,8 +630,6 @@ engine decoder work.
   one property (`watchedItems: PYTHON`, an itemDefId → subscriber
   registry) has no server-side equivalent yet; packet BM-08 picks it up
   once the core loop passes UAT.
-- **The auctioneer is not type-checked.** `open_black_market` trusts the
-  chain author to bind it only to an auctioneer (§3); BM-07.
 - **Bind-on-acquire items are listable**, the same way they are
   tradeable and mailable. Bound rows are refused; items that bind on
   acquire are not bound yet while they sit in a bag. This is a systemic
@@ -585,8 +642,9 @@ engine decoder work.
   waits on currency-flow instrumentation.
 - **A prior bidder whose row is gone cannot be refunded.** The D-BM09
   trigger refunds bidders before a deletion, so this should not happen;
-  if it does, `bid.rs` and `cancel.rs` log a loud `warn` and proceed
-  rather than blocking the new bid.
+  if it does, `payout_mail::refund_standing_bid` logs WARN
+  `bm.refund_skipped` and the bid or cancel proceeds rather than being
+  blocked.
 
 ## Consequences
 
@@ -614,18 +672,17 @@ engine decoder work.
   spoken for. Anything that enumerates players (rosters, leaderboards,
   GM listings) will see a "Black Market" player with no inventory, no
   missions, and no contact list.
-- **`sgw_gate_mail` is now written by a system path.** Auction mail has
-  `sender_id = NULL` and `sender_name = "Black Market"`; any mail code
-  that assumes a non-null sender must tolerate it.
+- **Auction mail is system mail.** It is written only by the mail
+  module's `send_system_mail_tx` (BM-02b), with `sender_id = NULL` and
+  `sender_name = "Black Market"`, so it is not returnable and follows the
+  mail module's expiry and quarantine rules.
 - **Reusable helpers landed**: `adjust_player_cash` (`helpers.rs`) is
   deliberately generic and the right building block for other systems
-  that move cash atomically (trade, guild bank). `send_mail_to_player`
-  (`payout_mail.rs`) is scheduled to be replaced by the social-systems
-  mail API (BM-02b), so new code should not call it.
+  that move cash atomically (trade, guild bank).
 - **Test coverage** is in
-  `crates/base-session/src/base/black_market/tests/`
-  (live-DB: create/bid/cancel, buyout, search, sweep, escrow and the
-  deletion trigger; sentinels in the `0x7000_Axxx` block) plus in-module
+  `crates/base-methods/src/base/world_entry/methods/black_market/tests/`
+  (live-DB: create/bid/cancel, buyout, search, sweep, escrow, settlement
+  mail (exactly once, quarantine) and the deletion trigger; sentinels in the `0x7000_Axxx` block) plus in-module
   unit tests for the pure validators, the auctioneer gate, the wire
   serializers (byte-exact layout guards) and the seed's system-seller
   invariants. The codec's own `.def`-order and round-trip tests live in

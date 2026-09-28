@@ -1,0 +1,1215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<GUILayout >
+    <!-- Window [ main container ] -->
+    <Window Type="Basic_Frame_2" Name="BlackMarketWin" >
+        <Property Name="DeafWhenHidden" Value="False" />
+        <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{0,640},{0,660}}" />
+        <Property Name="UnifiedMinSize" Value="{{0,640},{0,660}}" />
+        <Property Name="UnifiedMaxSize" Value="{{0,640},{0,660}}" />        
+        <Property Name="EscapeClose" Value="True" />
+        <Property Name="AutoAnchor" Value="True" />
+        <Property Name="TitlebarEnabled" Value="False" />
+        <Property Name="CloseButtonEnabled" Value="True" />
+        <Property Name="SizingEnabled" Value="False" />
+
+        <!-- tab buttons -->
+        <Window Type="ImageButton_2" Name="BlackMarket_TabButton1" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:Tab_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:Tab_Idle"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:Tab_Selected" />
+            <Property Name="UnifiedAreaRect" Value="{{0,30},{0,35},{0,140},{0,67}}" />
+            <!-- [ text area ] -->
+            <Window Type="StaticText_2">
+                <Property Name="MousePassThroughEnabled" Value="True" />
+                <Property Name="Text" Value="Search" />
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="HorzFormatting" Value="HorzCentred" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
+            </Window>
+        </Window>
+        <Window Type="ImageButton_2" Name="BlackMarket_TabButton2" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:Tab_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:Tab_Idle"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:Tab_Selected" />
+            <Property Name="UnifiedAreaRect" Value="{{0,140},{0,35},{0,270},{0,67}}" />
+            <!-- [ text area ] -->
+            <Window Type="StaticText_2">
+                <Property Name="Text" Value="My Auctions" />
+                <Property Name="MousePassThroughEnabled" Value="True" />                
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="HorzFormatting" Value="HorzCentred" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
+            </Window>
+        </Window>
+        <Window Type="ImageButton_2" Name="BlackMarket_TabButton3" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:Tab_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:Tab_Idle"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:Tab_Selected" />
+            <Property Name="UnifiedAreaRect" Value="{{0,270},{0,35},{0,390},{0,67}}" />
+            <!-- [ text area ] -->
+            <Window Type="StaticText_2">
+                <Property Name="Text" Value="My Bids" />
+                <Property Name="MousePassThroughEnabled" Value="True" />                
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="HorzFormatting" Value="HorzCentred" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
+            </Window>
+        </Window>
+        <!-- Cimmeria: tab button 4 re-enabled (stock layout had it commented out) -->
+        <Window Type="ImageButton_2" Name="BlackMarket_TabButton4" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:Tab_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:Tab_Idle"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:Tab_Selected" />
+            <Property Name="UnifiedAreaRect" Value="{{0,390},{0,35},{0,520},{0,67}}" />
+
+            <Window Type="StaticText_2">
+                <Property Name="Text" Value="Watched Items" />
+                <Property Name="MousePassThroughEnabled" Value="True" />
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="HorzFormatting" Value="HorzCentred" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
+            </Window>
+        </Window>        
+        
+        <!-- Window [ main container ] -->
+        <Window Type="DefaultWindow" Name="BlackMarket_TabContainer" >
+            <Property Name="DragMovingEnabled" Value="False" />
+            <Property Name="ZOrderChangeEnabled" Value="False" />
+            <Property Name="UnifiedAreaRect" Value="{{0,15},{0,65},{1,-15},{1,0}}" />
+
+            <!-- [ static background ] -->
+            <Window Type="StaticBackground">
+                <Property Name="ZOrderChangeEnabled" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,-80}}" />
+            </Window>
+            
+            <!-- browse auctions [ CONTAINER PAGE ] -->
+            <Window Type="DefaultWindow" Name="BlackMarket_Tab1" >
+                <Property Name="Visible" Value="True" />                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,-35}}" />
+
+                <!-- name [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,10},{0,0},{0,200},{0,55}}" />
+                    <!--[ 45h ]-->
+                    <!-- name [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="Item Name" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="ClippedByParent" Value="False" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="LeftAligned" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,8},{1,-5},{0,28}}" />
+                    </Window>
+                    <!-- name entry [ text container ] -->
+                    <Window Type="Editbox_2" Name="BlackMarket_SearchItemText" >
+                        <Property Name="Font" Value="Verdana_8pt" />
+                        <Property Name="MaxTextLength" Value="35" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-30},{1,0},{1,0}}" />
+                    </Window>
+                </Window>
+
+                <!-- quality [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,205},{0,0},{0,350},{0,55}}" />
+                    <!--[ 45h ]-->
+                    <!-- title [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="Quality" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="LeftAligned" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,8},{1,-5},{0,28}}" />
+                    </Window>
+                    <!-- quantity [ drop down list ] -->
+                    <Window Type="Combobox_2" Name="BlackMarket_SearchQualityCombo" >
+                        <Property Name="ReadOnly" Value="True" />
+                        <Property Name="AlwaysOnTop" Value="True" />
+                        <Property Name="SortList" Value="True" />
+                        <Property Name="ClippedByParent" Value="False" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-30},{1,0},{1,105}}" />
+                    </Window>
+                </Window>
+                <!-- tech competency [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,355},{0,0},{0,455},{0,65}}" />
+                    <!--[ 55h ]-->
+                    <!-- title [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="Tech Competency" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="LeftAligned" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,8},{1,-5},{0,28}}" />
+                    </Window>
+                    <!-- min entry [ text container ] -->
+                    <Window Type="Editbox_2" Name="BlackMarket_MinTC" >
+                        <Property Name="MaxTextLength" Value="3" />
+                        <Property Name="ValidationString" Value="[0-9]*" />
+                        <Property Name="Font" Value="Verdana_8pt" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-40},{0.5,-2},{1,-10}}" />
+                    </Window>
+                    <!-- max entry [ text container ] -->
+                    <Window Type="Editbox_2" Name="BlackMarket_MaxTC" >
+                        <Property Name="MaxTextLength" Value="3" />
+                        <Property Name="ValidationString" Value="[0-9]*" />                        
+                        <Property Name="Font" Value="Verdana_8pt" />
+                        <Property Name="UnifiedAreaRect" Value="{{0.5,2},{1,-40},{1,0},{1,-10}}" />
+                    </Window>
+                    <!-- min [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="MIN" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="HorzCentred" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-10},{0.5,-2},{1,0}}" />
+                    </Window>
+                    <!-- max [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="MAX" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="HorzCentred" />
+                        <Property Name="UnifiedAreaRect" Value="{{0.5,2},{1,-10},{1,0},{1,0}}" />
+                    </Window>
+                </Window>
+                <!-- search [ button ] -->
+                <Window Type="TextButton_2" Name="BlackMarket_SearchButton" >
+                    <Property Name="Text" Value="Search" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-130},{0,20},{1,-10},{0,60}}" />
+                    <!-- [ 35h ] -->
+                </Window>
+
+                <!-- custom search [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="Visible" Value="False" />
+                    <Property Name="UnifiedAreaRect" Value="{{0,0},{0,55},{0,360},{0,95}}" />
+                    <!--[ 360x40 ]-->
+
+                    <!-- prev search [ container ] -->
+                    <Window Type="IconImageButton_2" Name="" >
+                        <Property Name="Tooltip" Value="Previous Search" />
+                        <Property Name="Icon" Value="set:System_Icons image:Arrow_Left_Bev" />
+                        <Property Name="Background_Idle" Value="set:CoreWidgets_2 image:DiscBtn_Idle" />
+                        <Property Name="Background_Hover" Value="set:CoreWidgets_2 image:DiscBtn_Hover"  />
+                        <Property Name="Background_Pushed" Value="set:CoreWidgets_2 image:DiscBtn_Pushed" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{0,40},{0,40}}" />
+                    </Window>
+                    <!-- next search [ container ] -->
+                    <Window Type="IconImageButton_2" Name="" >
+                        <Property Name="Tooltip" Value="Next Search" />
+                        <Property Name="Icon" Value="set:System_Icons image:Arrow_Right_Bev" />
+                        <Property Name="Background_Idle" Value="set:CoreWidgets_2 image:DiscBtn_Idle" />
+                        <Property Name="Background_Hover" Value="set:CoreWidgets_2 image:DiscBtn_Hover"  />
+                        <Property Name="Background_Pushed" Value="set:CoreWidgets_2 image:DiscBtn_Pushed" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,40},{0,0},{0,80},{0,40}}" />
+                    </Window>
+
+                    <!-- custom search [ drop down list ] -->
+                    <Window Type="Combobox_2" Name="" >
+                        <Property Name="ReadOnly" Value="True" />
+                        <Property Name="AlwaysOnTop" Value="True" />
+                        <Property Name="SortList" Value="True" />
+                        <Property Name="ClippedByParent" Value="False" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,80},{0,5},{1,-80},{1,300}}" />
+                    </Window>
+
+                    <!-- save custom search [ button ] -->
+                    <Window Type="IconImageButton_2" Name="" >
+                        <Property Name="Tooltip" Value="Save Custom Search" />
+                        <Property Name="Background_Idle" Value="set:CoreWidgets_2 image:DiscBtn_Idle" />
+                        <Property Name="Background_Hover" Value="set:CoreWidgets_2 image:DiscBtn_Hover"  />
+                        <Property Name="Background_Pushed" Value="set:CoreWidgets_2 image:DiscBtn_Pushed" />
+                        <Property Name="UnifiedAreaRect" Value="{{1,-80},{0,0},{1,-40},{0,40}}" />
+                    </Window>
+                    <!-- delete custom search [ button ] -->
+                    <Window Type="IconImageButton_2" Name="" >
+                        <Property Name="Tooltip" Value="Delete Custom Search" />
+                        <Property Name="Background_Idle" Value="set:CoreWidgets_2 image:DiscBtn_Idle" />
+                        <Property Name="Background_Hover" Value="set:CoreWidgets_2 image:DiscBtn_Hover"  />
+                        <Property Name="Background_Pushed" Value="set:CoreWidgets_2 image:DiscBtn_Pushed" />
+                        <Property Name="UnifiedAreaRect" Value="{{1,-40},{0,0},{1,0},{0,40}}" />
+                    </Window>
+
+                </Window>
+
+                <!-- naquadah [ text container ] -->
+                <Window Type="StaticText_SingleRow_2" Name="BlackMarket_MyCashText">
+                    <Property Name="FrameEnabled" Value="True" />
+                    <Property Name="BackgroundEnabled" Value="True" />
+                    <Property Name="VertFormatting" Value="VertCentred" />
+                    <Property Name="HorzFormatting" Value="RightAligned" />
+                    <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-35},{0,100},{1,-5}}" />
+                    <!--[120]-->
+                </Window>              
+                <!-- bid [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,120},{1,-35},{0,260},{1,-5}}" />
+                    <!--[ 30h ]-->
+                    <!-- bid: [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="Bid" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="ClippedByParent" Value="False" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="RightAligned" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{0,7},{0,40},{0,23}}" />
+                    </Window>
+                    <!-- bid entry [ text container ] -->
+                    <Window Type="Editbox_2" Name="BlackMarket_NewBidText" >
+                        <Property Name="ValidationString" Value="[0-9]*" />
+                        <Property Name="MaxTextLength" Value="32" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,40},{0,0},{1,0},{0,30}}" />
+                    </Window>
+                </Window>
+                <!-- bid [ button ] -->
+                <Window Type="TextButton_2" Name="BlackMarket_SearchBidButton" >
+                    <Property Name="Text" Value="Bid" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-350},{1,-40},{1,-250},{1,0}}" />
+                    <!-- [ 35h ] -->
+                </Window>
+                <!-- buyout [ button ] -->
+                <Window Type="TextButton_2" Name="BlackMarket_SearchBuyoutButton" >
+                    <Property Name="Text" Value="Buyout" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-250},{1,-40},{1,-150},{1,0}}" />
+                    <!-- [ 35h ] -->
+                </Window>
+
+                <!-- prev page [ container ] -->
+                <Window Type="IconImageButton_2" Name="BlackMarket_PrevSearchPageButton" >
+                    <Property Name="Tooltip" Value="Previous Page" />
+                    <Property Name="Icon" Value="set:System_Icons image:Arrow_Left_Bev" />
+                    <Property Name="Background_Idle" Value="set:CoreWidgets_2 image:DiscBtn_Idle" />
+                    <Property Name="Background_Hover" Value="set:CoreWidgets_2 image:DiscBtn_Hover"  />
+                    <Property Name="Background_Pushed" Value="set:CoreWidgets_2 image:DiscBtn_Pushed" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-120},{1,-40},{1,-80},{1,0}}" />
+                </Window>
+
+                <Window Type="StaticText_2" Name="BlackMarket_SearchPageText">
+                    <Property Name="Font" Value="Verdana_8pt" />
+                    <Property Name="VertFormatting" Value="VertCentred" />
+                    <Property Name="HorzFormatting" Value="HorzCentred" />
+                    <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-80},{1,-40},{1,-40},{1,0}}" />
+                </Window>                
+                
+                <!-- next page [ container ] -->
+                <Window Type="IconImageButton_2" Name="BlackMarket_NextSearchPageButton" >
+                    <Property Name="Tooltip" Value="Next Page" />
+                    <Property Name="Icon" Value="set:System_Icons image:Arrow_Right_Bev" />
+                    <Property Name="Background_Idle" Value="set:CoreWidgets_2 image:DiscBtn_Idle" />
+                    <Property Name="Background_Hover" Value="set:CoreWidgets_2 image:DiscBtn_Hover"  />
+                    <Property Name="Background_Pushed" Value="set:CoreWidgets_2 image:DiscBtn_Pushed" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-40},{1,-40},{1,0},{1,0}}" />
+                </Window>
+                
+                <!-- content area [ static background ] -->
+                <Window Type="StaticBackground">
+                    <Property Name="UnifiedAreaRect" Value="{{0,10},{0,65},{1,-10},{1,-55}}" />
+                    <!-- sort [ container ] -->
+                    <Window Type="DefaultWindow" Name="">
+                        <Property Name="UnifiedAreaRect" Value="{{0,2},{0,2},{1,-2},{0,30}}" />
+
+                        <!-- item name [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Item Name" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-352},{1,0}}" />
+                        </Window>
+                        <!-- tech competency [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Tooltip" Value="Tech Competency Level" />
+                            <Property Name="Text" Value="TC" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-345},{0,0},{1,-320},{1,0}}" />
+                        </Window>
+                        <!-- time [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Time" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-313},{0,0},{1,-287},{1,0}}" />
+                        </Window>
+                        <!-- bid [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bid" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-280},{0,0},{1,-222},{1,0}}" />
+                        </Window>
+                        <!-- buyout [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Buyout" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-215},{0,0},{1,-152},{1,0}}" />
+                        </Window>
+                        <!-- seller [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Seller" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-145},{0,0},{1,-72},{1,0}}" />
+                        </Window>
+                        <!-- bids [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bids" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-65},{0,0},{1,-33},{1,0}}" />
+                        </Window>
+                        
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-352},{0,0},{1,-345},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-320},{0,0},{1,-313},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-287},{0,0},{1,-280},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-222},{0,0},{1,-215},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-152},{0,0},{1,-145},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-72},{0,0},{1,-65},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-33},{0,0},{1,-26},{1,-2}}" />
+                        </Window>
+
+                        <!-- [ line ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:LineBlue" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-2},{1,0},{1,0}}" />
+                        </Window>
+                    </Window>
+                    <!-- grid [ container ] -->
+                    <Window Type="DefaultWindow" >
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,35},{1,0},{1,-5}}" />
+                        <!-- row 1 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-30},{0.125,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search1" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 2 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.125,0},{1,-30},{0.25,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search2" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 3 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.25,0},{1,-30},{0.375,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search3" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 4 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.375,0},{1,-30},{0.5,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search4" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 5 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.5,0},{1,-30},{0.625,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search5" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 6 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.625,0},{1,-30},{0.75,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search6" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 7 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.75,0},{1,-30},{0.875,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search7" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 8 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.875,0},{1,-30},{1.0,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Search8" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+
+                        <!-- [ scrollbar ] -->
+                        <Window Type="VerticalScrollbar_2" Name="BlackMarket_SearchScroll">
+                            <Property Name="StepSize" Value="1" />
+                            <Property Name="PageSize" Value="6" />
+                            <Property Name="DocumentSize" Value="6" />
+                            <Property Name="AlwaysOnTop" Value="True" />
+                            <Property Name="ClippedByParent" Value="False" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-26},{0,-3},{1,-1},{1,3}}" />
+                        </Window>
+                    </Window>
+                </Window>
+
+            </Window>
+            <!-- my auctions [ CONTAINER PAGE ] -->
+            <Window Type="DragContainer" Name="BlackMarket_Tab2" >
+                <Property Name="DragDropTarget" Value="True" />
+                <Property Name="DraggingEnabled" Value="False" />
+                <Property Name="Visible" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,-35}}" />
+
+                <!-- item [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,10},{0,0},{0,80},{0,60}}" />
+                    <!-- [ 60h ] -->
+                    <!-- title [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="LeftAligned" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{0,20}}" />
+                    </Window>
+                    <!-- icon [ container ] -->
+                    <Window Type="BlkStaticBackground">
+                        <Property Name="UnifiedAreaRect" Value="{{0,10},{1,-40},{0,50},{1,0}}" />
+                        <!-- icon [ image container ] -->
+                        <Window Type="StaticImage_2" Name="BlackMarket_NewAuctionImage" >
+                            <Property Name="MousePassThroughEnabled" Value="True" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-16},{0.5,-16},{0.5,16},{0.5,16}}" />
+                        </Window>
+                        <!-- quantity [ text container ] -->
+                        <Window Type="StaticText_2" Name="BlackMarket_NewAuctionQtyText">
+                            <Property Name="Font" Value="Verdana_8pt" />
+                            <Property Name="MousePassThroughEnabled" Value="True" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="VertFormatting" Value="BottomAligned" />
+                            <Property Name="HorzFormatting" Value="RightAligned" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-2},{1,-2}}" />
+                        </Window>
+                    </Window>
+                </Window>
+                <!-- starting bid [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,70},{0,0},{0,170},{0,55}}" />
+                    <!--[ 45h ]-->
+                    <!-- starting bid: [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="Starting Bid" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="ClippedByParent" Value="False" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="LeftAligned" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,8},{1,-5},{0,28}}" />                        
+                    </Window>
+                    <!-- starting bid entry [ text container ] -->
+                    <Window Type="Editbox_2" Name="BlackMarket_NewAuctionBidText" >
+                        <Property Name="ValidationString" Value="[0-9]*" />
+                        <Property Name="MaxTextLength" Value="32" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-30},{1,0},{1,0}}" />
+                    </Window>
+                </Window>
+                <!-- buyout [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,175},{0,0},{0,275},{0,55}}" />
+                    <!--[ 45h ]-->
+                    <!-- buyout: [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="Buyout" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="ClippedByParent" Value="False" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="LeftAligned" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,8},{1,-5},{0,28}}" />
+                    </Window>
+                    <!-- buyout entry [ text container ] -->
+                    <Window Type="Editbox_2" Name="BlackMarket_NewAuctionBuyoutText" >
+                        <Property Name="ValidationString" Value="[0-9]*" />
+                        <Property Name="MaxTextLength" Value="32" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-30},{1,0},{1,0}}" />
+                    </Window>
+                </Window>
+                <!-- duration [ container ] -->
+                <Window Type="DefaultWindow">
+                    <Property Name="UnifiedAreaRect" Value="{{0,285},{0,0},{0,445},{0,60}}" />
+                    <!-- [ 160x70 ] -->
+                    <!-- title [ text area ] -->
+                    <Window Type="StaticText_2">
+                        <Property Name="Text" Value="Duration" />
+                        <Property Name="Font" Value="Verdana_6pt" />
+                        <Property Name="VertFormatting" Value="VertCentred" />
+                        <Property Name="HorzFormatting" Value="HorzCentred" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{0,20}}" />
+                    </Window>
+                    <!-- [ static background image ] -->
+                    <Window Type="StaticBackground">
+                        <Property Name="ZOrderChangeEnabled" Value="False" />
+                        <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-45},{1,0},{1,0}}" />
+
+                        <!-- [ highlight ] -->
+                        <Window Type="SolidHighlight" Name="BlackMarket_DurationShortHighlightImage">
+                            <Property Name="Alpha" Value="0.25" />
+                            <Property Name="ZOrderChangeEnabled" Value="False" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-62},{0,3},{0.5,-22},{1,-3}}" />
+                        </Window>
+                        
+                        <!-- short time [ button ] -->
+                        <Window Type="ImageButton_2" Name="BlackMarket_DurationShortImage" >
+                            <Property Name="Tooltip" Value="Short Auction Time" />
+                            <Property Name="NormalImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Low" />
+                            <Property Name="HoverImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Low"  />
+                            <Property Name="PushedImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Low" />
+                            <Property Name="DisabledImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Low" />
+                            <Property Name="IdleOverlay" Value="BFC3F3FF" />
+                            <Property Name="HoverOverlay" Value="FFC3F3FF" />
+                            <Property Name="PushedOverlay" Value="FFFFFFFF" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-54},{1,-35},{0.5,-30},{1,-15}}" />
+                        </Window>
+
+                        <!-- [ highlight ] -->
+                        <Window Type="SolidHighlight" Name="BlackMarket_DurationMediumHighlightImage">
+                            <Property Name="Alpha" Value="0.25" />
+                            <Property Name="ZOrderChangeEnabled" Value="False" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-20},{0,3},{0.5,20},{1,-3}}" />
+                        </Window>
+                        
+                        <!-- medium time [ button ] -->
+                        <Window Type="ImageButton_2" Name="BlackMarket_DurationMediumImage" >
+                            <Property Name="Tooltip" Value="Medium Auction Time" />
+                            <Property Name="NormalImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Med" />
+                            <Property Name="HoverImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Med"  />
+                            <Property Name="PushedImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Med" />
+                            <Property Name="DisabledImage" Value="set:CoreWidgets2_2 image:MeasurementBars_Med" />
+                            <Property Name="IdleOverlay" Value="BFC3F3FF" />
+                            <Property Name="HoverOverlay" Value="FFC3F3FF" />
+                            <Property Name="PushedOverlay" Value="FFFFFFFF" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-12},{1,-35},{0.5,12},{1,-15}}" />
+                        </Window>
+
+                        <!-- [ highlight ] -->
+                        <Window Type="SolidHighlight" Name="BlackMarket_DurationLongHighlightImage">
+                            <Property Name="Alpha" Value="0.25" />
+                            <Property Name="ZOrderChangeEnabled" Value="False" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,22},{0,3},{0.5,62},{1,-3}}" />
+                        </Window>
+                        
+                        <!-- long time [ button ] -->
+                        <Window Type="ImageButton_2" Name="BlackMarket_DurationLongImage" >
+                            <Property Name="Tooltip" Value="Long Auction Time" />
+                            <Property Name="NormalImage" Value="set:CoreWidgets2_2 image:MeasurementBars_High" />
+                            <Property Name="HoverImage" Value="set:CoreWidgets2_2 image:MeasurementBars_High"  />
+                            <Property Name="PushedImage" Value="set:CoreWidgets2_2 image:MeasurementBars_High" />
+                            <Property Name="DisabledImage" Value="set:CoreWidgets2_2 image:MeasurementBars_High" />
+                            <Property Name="IdleOverlay" Value="BFC3F3FF" />
+                            <Property Name="HoverOverlay" Value="FFC3F3FF" />
+                            <Property Name="PushedOverlay" Value="FFFFFFFF" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,30},{1,-35},{0.5,54},{1,-15}}" />
+                        </Window>
+                        <!-- short [ text area ] -->
+                        <Window Type="StaticText_2">
+                            <Property Name="Text" Value="SHORT" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-58},{1,-15},{0.5,-26},{1,-5}}" />
+                        </Window>
+                        <!-- medium [ text area ] -->
+                        <Window Type="StaticText_2">
+                            <Property Name="Text" Value="MEDIUM" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-30},{1,-15},{0.5,30},{1,-5}}" />
+                        </Window>
+                        <!-- long [ text area ] -->
+                        <Window Type="StaticText_2">
+                            <Property Name="Text" Value="LONG" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,30},{1,-15},{0.5,54},{1,-5}}" />
+                        </Window>
+                        
+                    </Window>                    
+                </Window>              
+                <!-- create auction [ button ] -->
+                <Window Type="TextButton_2" Name="BlackMarket_CreateButton" >
+                    <Property Name="Text" Value="Create" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-150},{0,20},{1,-10},{0,60}}" />                    
+                    <!-- [ 35h ] -->
+                </Window>
+
+                <!-- naquadah [ text container ] -->
+                <Window Type="StaticText_SingleRow_2">
+                    <Property Name="FrameEnabled" Value="True" />
+                    <Property Name="BackgroundEnabled" Value="True" />
+                    <Property Name="VertFormatting" Value="VertCentred" />
+                    <Property Name="HorzFormatting" Value="RightAligned" />
+                    <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-35},{0,100},{1,-5}}" />
+                    <!--[120]-->
+                </Window>
+                <!-- cancel auction [ button ] -->
+                <Window Type="TextButton_2" Name="BlackMarket_CancelButton" >
+                    <Property Name="Text" Value="Cancel Auction" />
+                    <Property Name="UnifiedAreaRect" Value="{{1,-150},{1,-40},{1,0},{1,0}}" />
+                    <!-- [ 35h ] -->
+                </Window>
+
+                <!-- content area [ static background ] -->
+                <Window Type="StaticBackground">
+                    <Property Name="ZOrderChangeEnabled" Value="False" />
+                    <Property Name="UnifiedAreaRect" Value="{{0,10},{0,65},{1,-10},{1,-55}}" />
+                    <!-- sort [ container ] -->
+                    <Window Type="DefaultWindow" Name="">
+                        <Property Name="UnifiedAreaRect" Value="{{0,2},{0,2},{1,-2},{0,30}}" />
+
+                        <!-- item name [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Item Name" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-352},{1,0}}" />
+                        </Window>
+                        <!-- tech competency [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Tooltip" Value="Tech Competency Level" />
+                            <Property Name="Text" Value="TC" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-345},{0,0},{1,-320},{1,0}}" />
+                        </Window>
+                        <!-- time [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Time" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-313},{0,0},{1,-287},{1,0}}" />
+                        </Window>
+                        <!-- bid [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bid" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-280},{0,0},{1,-222},{1,0}}" />
+                        </Window>
+                        <!-- buyout [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Buyout" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-215},{0,0},{1,-152},{1,0}}" />
+                        </Window>
+                        <!-- bidder [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Top Bidder" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-145},{0,0},{1,-72},{1,0}}" />
+                        </Window>
+                        <!-- bids [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bids" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-65},{0,0},{1,-33},{1,0}}" />
+                        </Window>
+
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-352},{0,0},{1,-345},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-320},{0,0},{1,-313},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-287},{0,0},{1,-280},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-222},{0,0},{1,-215},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-152},{0,0},{1,-145},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-72},{0,0},{1,-65},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-33},{0,0},{1,-26},{1,-2}}" />
+                        </Window>
+
+                        <!-- [ line ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:LineBlue" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-2},{1,0},{1,0}}" />
+                        </Window>
+                    </Window>
+                    <!-- grid [ container ] -->
+                    <Window Type="DefaultWindow" Name="">
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,35},{1,0},{1,-5}}" />
+                        <!-- row 1 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-30},{0.125,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction1" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- row 2 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.125,0},{1,-30},{0.25,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction2" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- row 3 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.25,0},{1,-30},{0.375,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction3" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- row 4 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.375,0},{1,-30},{0.5,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction4" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- row 5 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.5,0},{1,-30},{0.625,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction5" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- row 6 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.625,0},{1,-30},{0.75,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction6" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- row 7 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.75,0},{1,-30},{0.875,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction7" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- row 8 [ container ] -->
+                        <Window Type="DefaultWindow" Name="">
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.875,0},{1,-30},{1.0,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyAuction8" Filename="BlackMarket_YourAuctionRow.layout"/>
+                        </Window>
+                        <!-- [ scrollbar ] -->
+                        <Window Type="VerticalScrollbar_2" Name="BlackMarket_MyAuctionsScroll">
+                            <Property Name="StepSize" Value="1" />
+                            <Property Name="PageSize" Value="6" />
+                            <Property Name="DocumentSize" Value="6" />
+                            <Property Name="AlwaysOnTop" Value="True" />
+                            <Property Name="ClippedByParent" Value="False" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-26},{0,-3},{1,-1},{1,3}}" />
+                        </Window>
+                    </Window>
+                </Window>
+                
+            </Window>
+            <!-- my bids [ CONTAINER PAGE ] -->
+            <Window Type="DefaultWindow" Name="BlackMarket_Tab3" >
+                <Property Name="Visible" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,-35}}" />
+
+                <!-- content area [ static background ] -->
+                <Window Type="StaticBackground">
+                    <Property Name="UnifiedAreaRect" Value="{{0,10},{0,65},{1,-10},{1,-55}}" />
+                    <!-- sort [ container ] -->
+                    <Window Type="DefaultWindow" Name="">
+                        <Property Name="UnifiedAreaRect" Value="{{0,2},{0,2},{1,-2},{0,30}}" />
+
+                        <!-- item name [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Item Name" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-352},{1,0}}" />
+                        </Window>
+                        <!-- tech competency [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Tooltip" Value="Tech Competency Level" />
+                            <Property Name="Text" Value="TC" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-345},{0,0},{1,-320},{1,0}}" />
+                        </Window>
+                        <!-- time [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Time" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-313},{0,0},{1,-287},{1,0}}" />
+                        </Window>
+                        <!-- bid [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bid" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-280},{0,0},{1,-222},{1,0}}" />
+                        </Window>
+                        <!-- buyout [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Buyout" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-215},{0,0},{1,-152},{1,0}}" />
+                        </Window>
+                        <!-- seller [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Seller" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-145},{0,0},{1,-72},{1,0}}" />
+                        </Window>
+                        <!-- bids [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bids" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-65},{0,0},{1,-33},{1,0}}" />
+                        </Window>
+
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-352},{0,0},{1,-345},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-320},{0,0},{1,-313},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-287},{0,0},{1,-280},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-222},{0,0},{1,-215},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-152},{0,0},{1,-145},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-72},{0,0},{1,-65},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-33},{0,0},{1,-26},{1,-2}}" />
+                        </Window>
+
+                        <!-- [ line ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:LineBlue" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-2},{1,0},{1,0}}" />
+                        </Window>
+                    </Window>
+                    <!-- grid [ container ] -->
+                    <Window Type="DefaultWindow" >
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,35},{1,0},{1,-5}}" />
+                        <!-- row 1 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-30},{0.125,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids1" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 2 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.125,0},{1,-30},{0.25,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids2" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 3 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.25,0},{1,-30},{0.375,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids3" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 4 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.375,0},{1,-30},{0.5,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids4" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 5 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.5,0},{1,-30},{0.625,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids5" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 6 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.625,0},{1,-30},{0.75,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids6" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 7 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.75,0},{1,-30},{0.875,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids7" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 8 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.875,0},{1,-30},{1.0,0}}" />
+                            <LayoutImport Prefix="BlackMarket_MyBids8" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+
+                        <!-- [ scrollbar ] -->
+                        <Window Type="VerticalScrollbar_2" Name="BlackMarket_MyBidsScroll">
+                            <Property Name="StepSize" Value="1" />
+                            <Property Name="PageSize" Value="6" />
+                            <Property Name="DocumentSize" Value="6" />
+                            <Property Name="AlwaysOnTop" Value="True" />
+                            <Property Name="ClippedByParent" Value="False" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-26},{0,-3},{1,-1},{1,3}}" />
+                        </Window>
+                    </Window>
+                </Window>
+
+            </Window>
+            <!-- watched items [ CONTAINER PAGE ] -->
+            <Window Type="DefaultWindow" Name="BlackMarket_Tab4" >
+                <Property Name="Visible" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,-35}}" />
+
+                <!-- content area [ static background ] -->
+                <Window Type="StaticBackground">
+                    <Property Name="UnifiedAreaRect" Value="{{0,10},{0,65},{1,-10},{1,-55}}" />
+                    <!-- sort [ container ] -->
+                    <Window Type="DefaultWindow" Name="">
+                        <Property Name="UnifiedAreaRect" Value="{{0,2},{0,2},{1,-2},{0,30}}" />
+
+                        <!-- item name [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Item Name" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-352},{1,0}}" />
+                        </Window>
+                        <!-- tech competency [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Tooltip" Value="Tech Competency Level" />
+                            <Property Name="Text" Value="TC" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-345},{0,0},{1,-320},{1,0}}" />
+                        </Window>
+                        <!-- time [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Time" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-313},{0,0},{1,-287},{1,0}}" />
+                        </Window>
+                        <!-- bid [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bid" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-280},{0,0},{1,-222},{1,0}}" />
+                        </Window>
+                        <!-- buyout [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Buyout" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-215},{0,0},{1,-152},{1,0}}" />
+                        </Window>
+                        <!-- seller [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Seller" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-145},{0,0},{1,-72},{1,0}}" />
+                        </Window>
+                        <!-- bids [ text area ] -->
+                        <Window Type="StaticText_2" Name="">
+                            <Property Name="Text" Value="Bids" />
+                            <Property Name="Font" Value="Verdana_6pt" />
+                            <Property Name="VertFormatting" Value="VertCentred" />
+                            <Property Name="HorzFormatting" Value="HorzCentred" />
+                            <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-65},{0,0},{1,-33},{1,0}}" />
+                        </Window>
+
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-352},{0,0},{1,-345},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-320},{0,0},{1,-313},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-287},{0,0},{1,-280},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-222},{0,0},{1,-215},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-152},{0,0},{1,-145},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-72},{0,0},{1,-65},{1,-2}}" />
+                        </Window>
+                        <!-- [ splitter ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:GlowLine_Idle" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-33},{0,0},{1,-26},{1,-2}}" />
+                        </Window>
+
+                        <!-- [ line ] -->
+                        <Window Type="StaticImage_2">
+                            <Property Name="Image" Value="set:CoreWidgets_2 image:LineBlue" />
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-2},{1,0},{1,0}}" />
+                        </Window>
+                    </Window>
+                    <!-- grid [ container ] -->
+                    <Window Type="DefaultWindow" >
+                        <Property Name="UnifiedAreaRect" Value="{{0,5},{0,35},{1,0},{1,-5}}" />
+                        <!-- row 1 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,-30},{0.125,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched1" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 2 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.125,0},{1,-30},{0.25,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched2" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 3 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.25,0},{1,-30},{0.375,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched3" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 4 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.375,0},{1,-30},{0.5,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched4" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 5 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.5,0},{1,-30},{0.625,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched5" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 6 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.625,0},{1,-30},{0.75,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched6" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 7 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.75,0},{1,-30},{0.875,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched7" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+                        <!-- row 8 [ container ] -->
+                        <Window Type="DefaultWindow" >
+                            <Property Name="UnifiedAreaRect" Value="{{0,0},{0.875,0},{1,-30},{1.0,0}}" />
+                            <LayoutImport Prefix="BlackMarket_Watched8" Filename="BlackMarket_ItemRow.layout"/>
+                        </Window>
+
+                        <!-- [ scrollbar ] -->
+                        <Window Type="VerticalScrollbar_2" Name="BlackMarket_WatchedScroll">
+                            <Property Name="StepSize" Value="1" />
+                            <Property Name="PageSize" Value="6" />
+                            <Property Name="DocumentSize" Value="6" />
+                            <Property Name="AlwaysOnTop" Value="True" />
+                            <Property Name="ClippedByParent" Value="False" />
+                            <Property Name="UnifiedAreaRect" Value="{{1,-26},{0,-3},{1,-1},{1,3}}" />
+                        </Window>
+                    </Window>
+                </Window>
+
+            </Window>
+            <!-- Cimmeria: status and error line, below the tab pages -->
+            <Window Type="StaticText_2" Name="BlackMarket_ErrorText">
+                <Property Name="Font" Value="Verdana_8pt" />
+                <Property Name="MousePassThroughEnabled" Value="True" />
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="HorzFormatting" Value="WordWrapLeftAligned" />
+                <Property Name="TextColours" Value="tl:FFC3F3FF tr:FFC3F3FF bl:FFC3F3FF br:FFC3F3FF" />
+                <Property Name="UnifiedAreaRect" Value="{{0,10},{1,-33},{1,-10},{1,-3}}" />
+            </Window>
+        </Window>
+        
+    </Window>
+</GUILayout>

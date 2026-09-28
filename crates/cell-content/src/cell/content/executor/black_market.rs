@@ -10,11 +10,23 @@
 //! It also records the auctioneer in the player's Black Market session
 //! (`cell::black_market`, BM-02): cell methods 62-64 are honoured only for
 //! a player the server sent to an auctioneer this way.
+//!
+//! Before it sends anything it checks the NPC really is an auctioneer
+//! (BM-07, `auctioneer_check`): `NpcInteractionType::Auctioneer`, which only
+//! a template's seeded `INT_AUCTION` bit gives, in the same space and within
+//! interact distance. A chain bound to any other NPC opens nothing. Either
+//! way the player gets one chat line, so the click is never silent, even on
+//! a client without the patch that draws the window.
 
+use cimmeria_cell_world::cell::black_market::{
+    auctioneer_check, count_bm_outcome, BlackMarketReject,
+};
 use cimmeria_wire::black_market::serialize_on_bm_open;
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use tokio::sync::mpsc;
 
 use crate::cell::client_methods::black_market::ON_BM_OPEN;
+use crate::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -91,6 +103,25 @@ pub(super) async fn open(
     };
 
     span.record("auctioneer_entity_id", auctioneer_entity_id);
+
+    // BM-07 authority: only a seeded auctioneer, here and in reach, opens
+    // the Black Market. A negative id names no entity.
+    let checked = u32::try_from(auctioneer_entity_id)
+        .map_err(|_| BlackMarketReject::AuctioneerGone)
+        .and_then(|auctioneer| auctioneer_check(entity_id, auctioneer, space_mgr));
+    if let Err(reject) = checked {
+        refuse_open(
+            entity_id,
+            chain_id,
+            auctioneer_entity_id,
+            reject,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return;
+    }
+
     tracing::info!(
         entity_id,
         account_id = id.account_id,
@@ -123,9 +154,12 @@ pub(super) async fn open(
         return;
     }
 
+    count_bm_outcome("open", "ok");
+    send_feedback(entity_id, OPENED_LINE, tx).await;
+
     // The window is open: this auctioneer is now the one cell methods 62-64
-    // are checked against. A negative id names no entity, so it opens
-    // nothing to trade at.
+    // are checked against. `auctioneer_check` passed, so the id is a live
+    // entity's.
     if let (Some(player_id), Ok(auctioneer)) = (id.player_id, u32::try_from(auctioneer_entity_id)) {
         space_mgr.black_market.open(player_id, auctioneer);
         let opens = space_mgr.black_market.get(player_id).map_or(0, |s| s.opens);
@@ -141,10 +175,95 @@ pub(super) async fn open(
     }
 }
 
+/// The line a player gets on every open. A client without the patch drops
+/// `onBMOpen`, so the line is the only thing that player sees.
+pub(crate) const OPENED_LINE: &str =
+    "The auctioneer opens the Black Market. (No window? The Black Market needs the Cimmeria client patch.)";
+
+/// The line a refused open gives, by reason.
+fn refusal_line(reject: BlackMarketReject) -> &'static str {
+    match reject {
+        BlackMarketReject::OutOfRange { .. } => "You are too far from the auctioneer.",
+        BlackMarketReject::AuctioneerGone | BlackMarketReject::AuctioneerOtherSpace => {
+            "The auctioneer is no longer here."
+        }
+        _ => "Nobody here runs the Black Market.",
+    }
+}
+
+/// A refused open: nothing is sent but the player's chat line, no session
+/// is recorded. `bm.open_refused` carries `reason = not_at_auctioneer` (the
+/// `BMError` label the trade methods use for the same rule) and the exact
+/// check in `access`. `not_an_auctioneer` is WARN: a chain bound to the
+/// wrong NPC, an authoring bug. Walking away is INFO.
+async fn refuse_open(
+    entity_id: u32,
+    chain_id: i64,
+    auctioneer_entity_id: i32,
+    reject: BlackMarketReject,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(entity_id);
+    let dist = match reject {
+        BlackMarketReject::OutOfRange { dist } => Some(dist),
+        _ => None,
+    };
+    if reject == BlackMarketReject::NotAnAuctioneer {
+        tracing::warn!(
+            event = "bm.open_refused",
+            reason = "not_at_auctioneer",
+            access = reject.label(),
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            auctioneer_entity_id,
+            chain_id,
+            "OpenBlackMarket refused: the NPC is not an auctioneer (its template has no \r
+             INT_Auction bit) -- the chain is bound to the wrong NPC"
+        );
+    } else {
+        tracing::info!(
+            event = "bm.open_refused",
+            reason = "not_at_auctioneer",
+            access = reject.label(),
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            auctioneer_entity_id,
+            chain_id,
+            dist,
+            "OpenBlackMarket refused: the player is not at the auctioneer"
+        );
+    }
+    count_bm_outcome("open", "not_at_auctioneer");
+    send_feedback(entity_id, refusal_line(reject), tx).await;
+}
+
+/// One `SYSTEM` line on the feedback channel to the player's own client.
+async fn send_feedback(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
+    if let Err(e) = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_PLAYER_COMMUNICATION,
+            args: serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text),
+        })
+        .await
+    {
+        tracing::warn!(
+            event = "bm.feedback_send_failed",
+            entity_id,
+            reason = "base_channel_closed",
+            "Black Market feedback line not queued: {e}"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_support::{make_space_manager, LogCapture};
+    use cimmeria_entity::cell_entity::NpcInteractionType;
     use std::collections::HashMap;
     use tracing::Level;
 
@@ -152,75 +271,90 @@ mod tests {
         HashMap::new()
     }
 
-    /// Interacting with the auctioneer (interact_tag chain) stamps
-    /// `params["target_entity_id"]`; the `onBMOpen` wire `entityId` must
-    /// be that auctioneer id, not the player's.
-    #[tokio::test]
-    async fn open_uses_target_entity_id_from_chain_params() {
+    /// A player (entity 1, `player_id` 77) at the origin and an NPC at
+    /// `pos` with `interaction`, in the Agnos space. Returns the NPC's id.
+    fn player_and_npc(
+        pos: [f32; 3],
+        interaction: Option<NpcInteractionType>,
+    ) -> (SpaceManager, u32) {
         let mut mgr = make_space_manager();
         mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.get_entity_mut(1).unwrap().player_id = Some(77);
+        let npc = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc, "Agnos", pos, [0.0; 3]).unwrap();
+        mgr.get_entity_mut(npc).unwrap().interaction_type = interaction;
+        (mgr, npc)
+    }
 
-        const AUCTIONEER_ID: u32 = 0xA5C7;
+    /// An auctioneer 2 units from the player: what the hub's template 305
+    /// spawns as.
+    fn at_auctioneer() -> (SpaceManager, u32) {
+        player_and_npc([2.0, 0.0, 0.0], Some(NpcInteractionType::Auctioneer))
+    }
+
+    fn target(npc: u32) -> HashMap<String, serde_json::Value> {
         let mut params = empty_params();
-        params.insert(
-            "target_entity_id".into(),
-            serde_json::json!(AUCTIONEER_ID as u64),
-        );
+        params.insert("target_entity_id".into(), serde_json::json!(npc as u64));
+        params
+    }
 
+    fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<CellToBaseMsg> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    /// The `onBMOpen` calls among `msgs`: (recipient, wire `entityId`).
+    fn bm_opens(msgs: &[CellToBaseMsg]) -> Vec<(u32, i32)> {
+        msgs.iter()
+            .filter_map(|m| match m {
+                CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index,
+                    args,
+                } if *method_index == ON_BM_OPEN => Some((
+                    *entity_id,
+                    i32::from_le_bytes([args[0], args[1], args[2], args[3]]),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether `msgs` carries, to the player, the exact bytes a feedback
+    /// line of `text` serializes to.
+    fn has_line(msgs: &[CellToBaseMsg], text: &str) -> bool {
+        let want = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
+        msgs.iter().any(|m| {
+            matches!(m, CellToBaseMsg::EntityMethodCall { entity_id: 1, method_index, args }
+                if *method_index == ON_PLAYER_COMMUNICATION && *args == want)
+        })
+    }
+
+    /// Interacting with the auctioneer (interact_tag chain) stamps
+    /// `params["target_entity_id"]`; `onBMOpen` goes to the player's own
+    /// client and its wire `entityId` is that auctioneer, not the player.
+    /// The player also gets the open line.
+    #[tokio::test]
+    async fn open_uses_target_entity_id_from_chain_params() {
+        let (mut mgr, npc) = at_auctioneer();
         let (tx, mut rx) = mpsc::channel(4);
-        open(
-            /* entity_id */ 1, /* chain_id */ 7000, &params, &tx, &mut mgr,
-        )
-        .await;
+        open(1, 7000, &target(npc), &tx, &mut mgr).await;
 
-        let msg = rx.try_recv().expect("must emit onBMOpen");
-        match msg {
-            CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index,
-                args,
-            } => {
-                assert_eq!(
-                    method_index, ON_BM_OPEN,
-                    "must dispatch the onBMOpen client method (90)"
-                );
-                assert_eq!(
-                    entity_id, 1,
-                    "onBMOpen is delivered to the player's own client"
-                );
-                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(
-                    wire_entity_id as u32, AUCTIONEER_ID,
-                    "wire entityId must be the auctioneer, not the player"
-                );
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
+        let msgs = drain(&mut rx);
+        assert_eq!(bm_opens(&msgs), vec![(1, npc as i32)]);
+        assert!(has_line(&msgs, OPENED_LINE), "{msgs:?}");
     }
 
     /// Follow-up path: chain didn't stamp `target_entity_id`, so the
     /// handler falls back to the player's `last_interaction_target` pin.
     #[tokio::test]
     async fn open_falls_back_to_last_interaction_target() {
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        const AUCTIONEER_ID: u32 = 0xBEEF;
-        if let Some(p) = mgr.get_entity_mut(1) {
-            p.last_interaction_target = Some(AUCTIONEER_ID);
-        }
+        let (mut mgr, npc) = at_auctioneer();
+        mgr.get_entity_mut(1).unwrap().last_interaction_target = Some(npc);
 
-        let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        open(1, 7001, &params, &tx, &mut mgr).await;
+        open(1, 7001, &empty_params(), &tx, &mut mgr).await;
 
-        let msg = rx.try_recv().expect("must emit onBMOpen");
-        match msg {
-            CellToBaseMsg::EntityMethodCall { args, .. } => {
-                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(wire_entity_id as u32, AUCTIONEER_ID);
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
+        assert_eq!(bm_opens(&drain(&mut rx)), vec![(1, npc as i32)]);
     }
 
     /// With neither source available, the handler must abort with a WARN
@@ -230,13 +364,11 @@ mod tests {
     #[tokio::test]
     async fn open_aborts_with_warn_when_no_auctioneer_resolves() {
         let capture = LogCapture::install();
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let (mut mgr, _npc) = at_auctioneer();
         // last_interaction_target intentionally None.
 
-        let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        open(1, 9999, &params, &tx, &mut mgr).await;
+        open(1, 9999, &empty_params(), &tx, &mut mgr).await;
 
         assert!(
             rx.try_recv().is_err(),
@@ -255,17 +387,12 @@ mod tests {
     /// against. Without it every create, bid and cancel is refused.
     #[tokio::test]
     async fn open_records_the_auctioneer_in_the_session() {
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        mgr.get_entity_mut(1).unwrap().player_id = Some(77);
-        let mut params = empty_params();
-        params.insert("target_entity_id".into(), serde_json::json!(0xA5C7u64));
-
+        let (mut mgr, npc) = at_auctioneer();
         let (tx, _rx) = mpsc::channel(4);
-        open(1, 7002, &params, &tx, &mut mgr).await;
+        open(1, 7002, &target(npc), &tx, &mut mgr).await;
 
         let session = mgr.black_market.get(77).expect("session recorded");
-        assert_eq!(session.auctioneer_id, Some(0xA5C7));
+        assert_eq!(session.auctioneer_id, Some(npc));
         assert_eq!(session.opens, 1);
     }
 
@@ -273,16 +400,58 @@ mod tests {
     /// never saw a window, so there is nothing to trade at.
     #[tokio::test]
     async fn failed_open_records_no_session() {
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        mgr.get_entity_mut(1).unwrap().player_id = Some(78);
-        let mut params = empty_params();
-        params.insert("target_entity_id".into(), serde_json::json!(0xA5C7u64));
-
+        let (mut mgr, npc) = at_auctioneer();
         let (tx, rx) = mpsc::channel(4);
         drop(rx);
-        open(1, 7003, &params, &tx, &mut mgr).await;
+        open(1, 7003, &target(npc), &tx, &mut mgr).await;
 
-        assert!(mgr.black_market.get(78).is_none());
+        assert!(mgr.black_market.get(77).is_none());
+    }
+
+    /// BM-07 authority: a chain that runs `open_black_market` off any NPC
+    /// but an auctioneer (a vendor, a quest giver, an NPC with no static
+    /// type) opens nothing. No `onBMOpen`, no session, a WARN
+    /// `bm.open_refused reason=not_at_auctioneer access=not_an_auctioneer`
+    /// and a chat line. Fails if the open stops calling `auctioneer_check`.
+    #[tokio::test]
+    async fn open_at_an_npc_that_is_not_an_auctioneer_is_refused() {
+        for other in [
+            None,
+            Some(NpcInteractionType::Vendor),
+            Some(NpcInteractionType::Dialog { dialog_id: 5 }),
+        ] {
+            let capture = LogCapture::install();
+            let (mut mgr, npc) = player_and_npc([2.0, 0.0, 0.0], other.clone());
+            let (tx, mut rx) = mpsc::channel(4);
+            open(1, 7004, &target(npc), &tx, &mut mgr).await;
+
+            let msgs = drain(&mut rx);
+            assert!(bm_opens(&msgs).is_empty(), "{other:?}: {msgs:?}");
+            assert!(has_line(&msgs, "Nobody here runs the Black Market."));
+            assert!(mgr.black_market.get(77).is_none(), "{other:?}");
+            let row = capture
+                .find_event(Level::WARN, "OpenBlackMarket refused", "not_at_auctioneer")
+                .unwrap_or_else(|| panic!("{other:?}: WARN bm.open_refused"));
+            assert!(row.has_field("access", "not_an_auctioneer"));
+            assert!(row.has_field("event", "bm.open_refused"));
+        }
+    }
+
+    /// A player who walked away from the auctioneer before a follow-up
+    /// chain ran is refused at INFO with the distance, and told.
+    #[tokio::test]
+    async fn open_out_of_range_is_refused() {
+        let capture = LogCapture::install();
+        let (mut mgr, npc) = player_and_npc([40.0, 0.0, 0.0], Some(NpcInteractionType::Auctioneer));
+        let (tx, mut rx) = mpsc::channel(4);
+        open(1, 7005, &target(npc), &tx, &mut mgr).await;
+
+        let msgs = drain(&mut rx);
+        assert!(bm_opens(&msgs).is_empty());
+        assert!(has_line(&msgs, "You are too far from the auctioneer."));
+        let row = capture
+            .find_event(Level::INFO, "OpenBlackMarket refused", "not_at_auctioneer")
+            .expect("INFO bm.open_refused");
+        assert!(row.has_field("access", "auctioneer_out_of_range"));
     }
 }

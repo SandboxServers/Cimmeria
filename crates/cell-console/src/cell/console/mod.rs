@@ -20,9 +20,11 @@
 //! from its `CHAN_SAY` arm when (a) the text starts with `.` **and** (b) the
 //! sender's [`CellEntity::access_level`](cimmeria_entity::cell_entity::CellEntity::access_level)
 //! is `>= GameMaster`. A GM's `.`-text is consumed (never broadcast to other
-//! players). A non-GM's `.`-text that names a registered command is consumed
-//! too and answered "is a GM command" (pets campaign PT-07); any other
-//! non-GM `.`-text falls through to normal chat. Authorization is
+//! players). The few player commands (`player_commands`: `.respeccraft`)
+//! are consumed for GMs and players alike, before this gate. A non-GM's
+//! `.`-text that names a registered command is consumed too and answered
+//! "is a GM command" (pets campaign PT-07); any other non-GM `.`-text falls
+//! through to normal chat. Authorization is
 //! always on the server-side `access_level` (sourced from `account.accesslevel`
 //! at login, never a client-asserted byte) — the same trust model as
 //! [`crate::cell::dispatch::gm_gate`].
@@ -82,6 +84,7 @@
 
 mod aggro;
 mod bank;
+mod black_market;
 mod bookmark;
 // The chat interceptor that routes a GM's `.`-lines here, and the native
 // `gm*` cell methods (SGWGmPlayer, index 109+). Both call into the console,
@@ -105,6 +108,7 @@ mod parse;
 mod patrol;
 mod pet;
 mod placement;
+mod player_commands;
 mod query;
 mod registry;
 mod seed;
@@ -128,6 +132,7 @@ pub(crate) use gm::feedback::send_gm_feedback;
 pub use dispatch::handle_console_command;
 pub(crate) use dispatch::refuse_non_gm_command;
 pub(crate) use parse::{parse_bool, parse_f32, parse_i32};
+pub(crate) use player_commands::handle_player_command;
 pub(crate) use registry::{Spec, COMMANDS};
 
 // `exec` is only driven directly by the dispatch-coverage test and by the
