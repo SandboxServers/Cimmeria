@@ -48,6 +48,8 @@ pub enum UnpackError {
     UnknownFormat(PathBuf),
     #[error("Archive entry {0:?} would land outside the install directory")]
     UnsafePath(String),
+    #[error("Patch set error: {0}")]
+    Patchset(String),
     #[error("Cancelled")]
     Cancelled,
 }

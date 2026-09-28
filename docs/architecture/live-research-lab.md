@@ -109,7 +109,7 @@ Lives at `crates/client-telemetry/src/bridge/` (directory from day one: `mod.rs`
 
 ### 3.4 Lab supervisor (`crates/lab`, binary `cimmeria-lab`)
 
-A Windows-only stdio MCP server. It reuses the launcher's `launch`, `inject`, and `patch_rdata` modules, which move into a library target so both binaries share them. It owns the SGW.exe process handle for the whole session.
+A Windows-only stdio MCP server. It reuses the launcher's `launch` and `inject` modules, which move into a library target so both binaries share them. It owns the SGW.exe process handle for the whole session.
 
 | Tool | Purpose |
 |---|---|

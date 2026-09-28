@@ -33,6 +33,9 @@ pub struct LauncherApp {
     /// `TextEdit::singleline` takes `&mut String`, but the persisted
     /// config field is `PathBuf` — this is the sync target.
     install_path_text: String,
+    /// Editable `Name = URL` lines for the login servers; parsed into
+    /// `config.login_servers` on Save.
+    login_servers_text: String,
     config_path: PathBuf,
     worker: Worker,
     last_progress: Option<Progress>,
@@ -69,11 +72,13 @@ impl LauncherApp {
         };
         worker.fetch_manifest_now(config.manifest_url.clone());
         let install_path_text = config.install_path.to_string_lossy().into_owned();
+        let login_servers_text = crate::client_setup::login_servers::to_text(&config.login_servers);
         let identity =
             crate::identity::LauncherIdentity::load_or_mint(&crate::identity::identity_path()).ok();
         Self {
             config,
             install_path_text,
+            login_servers_text,
             config_path: cp,
             worker,
             last_progress: None,
@@ -166,6 +171,48 @@ impl LauncherApp {
         } else {
             self.installed = InstalledState::default();
             self.launch_opts = LaunchOptions::default();
+        }
+    }
+
+    /// Parse the login-server text, save the config, and apply the new
+    /// list to an existing install right away.
+    fn save_config(&mut self) {
+        self.sync_install_path_from_text();
+        match crate::client_setup::login_servers::parse(&self.login_servers_text) {
+            Ok(servers) => self.config.login_servers = servers,
+            Err(e) => {
+                self.push_status(format!("Not saved: login servers: {e}"));
+                return;
+            }
+        }
+        match self.config.save(&self.config_path) {
+            Ok(_) => {
+                self.push_status("Saved config.".into());
+                self.refresh_install_state();
+                if self.launch_opts.sgw_present {
+                    self.prepare_client_for_launch();
+                }
+            }
+            Err(e) => self.push_status(format!("Save failed: {e}")),
+        }
+    }
+
+    /// Write `LoginInternal.lua` and switch ASLR off before a launch. A
+    /// failure is reported but doesn't block the launch: the client still
+    /// starts, it just may not list the configured servers.
+    fn prepare_client_for_launch(&mut self) {
+        let result =
+            crate::client_setup::prepare(&self.config.install_path, &self.config.login_servers);
+        match result {
+            Ok(report) => {
+                if report.login_servers_written {
+                    self.push_status("Wrote the login server list (LoginInternal.lua).".into());
+                }
+                if report.aslr == crate::client_setup::AslrOutcome::Disabled {
+                    self.push_status("Switched ASLR off in SGW.exe.".into());
+                }
+            }
+            Err(e) => self.push_status(format!("Client setup failed: {e}")),
         }
     }
 }

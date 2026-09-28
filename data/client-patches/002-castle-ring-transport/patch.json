@@ -1,0 +1,18 @@
+{
+  "id": "002-castle-ring-transport",
+  "ops": [
+    {
+      "target": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffdfffc.umap",
+      "sources": [
+        {"path": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffdfffc.umap", "transform": "upk_normalize"},
+        {"path": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap", "transform": "upk_normalize"}
+      ]
+    },
+    {
+      "target": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap",
+      "sources": [
+        {"path": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap", "transform": "upk_normalize"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "id": "004-log-config",
+  "files": [
+    {"path": "Working/Binaries/SGWLogConfig.xml", "from": "SGWLogConfig.xml"}
+  ]
+}

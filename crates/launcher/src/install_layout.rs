@@ -41,6 +41,13 @@ pub fn binaries_dir(install_dir: &Path) -> PathBuf {
     working.join("Binaries")
 }
 
+/// The client's `SGWGame` directory, the sibling of the binaries directory
+/// (`<install>\Working\SGWGame`).
+pub fn sgwgame_dir(install_dir: &Path) -> PathBuf {
+    let bin = binaries_dir(install_dir);
+    bin.parent().unwrap_or(install_dir).join("SGWGame")
+}
+
 /// Path of `SGW.exe` for the install rooted at `install_dir`.
 pub fn sgw_exe(install_dir: &Path) -> PathBuf {
     binaries_dir(install_dir).join("SGW.exe")

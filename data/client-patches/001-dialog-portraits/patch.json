@@ -1,0 +1,10 @@
+{
+  "id": "001-dialog-portraits",
+  "ops": [
+    {"target": "Working/SGWGame/Content/UI/CEGUIData/schemes/TaharezLook.scheme", "sources": [{"path": "Working/SGWGame/Content/UI/CEGUIData/schemes/TaharezLook.scheme"}]},
+    {"target": "Working/SGWGame/Content/UI/Core/Dialog/Blurb.layout", "sources": [{"path": "Working/SGWGame/Content/UI/Core/Dialog/Blurb.layout"}]},
+    {"target": "Working/SGWGame/Content/UI/Core/Dialog/Blurb.lua", "sources": [{"path": "Working/SGWGame/Content/UI/Core/Dialog/Blurb.lua"}]},
+    {"target": "Working/SGWGame/Content/UI/Core/Dialog/Dialog.layout", "sources": [{"path": "Working/SGWGame/Content/UI/Core/Dialog/Dialog.layout"}]},
+    {"target": "Working/SGWGame/Content/UI/Core/Dialog/Dialog.lua", "sources": [{"path": "Working/SGWGame/Content/UI/Core/Dialog/Dialog.lua"}]}
+  ]
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SGWLogConfig.xml, written for Cimmeria. SGW.exe reads this file at
+  startup through log4cxx's DOMConfigurator. It sends every log event to
+  SGWDebugLog.log beside SGW.exe, which the launcher's "Upload Debug Logs"
+  button and its telemetry tail read. The line pattern is the one those
+  readers parse; keep it if you edit this file.
+-->
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+  <appender name="DebugLogFile" class="org.apache.log4j.FileAppender">
+    <param name="file" value="SGWDebugLog.log"/>
+    <param name="append" value="true"/>
+    <layout class="org.apache.log4j.PatternLayout">
+      <param name="ConversionPattern" value="%d %5p %c{1} - %m%n"/>
+    </layout>
+  </appender>
+  <root>
+    <priority value="all"/>
+    <appender-ref ref="DebugLogFile"/>
+  </root>
+</log4j:configuration>

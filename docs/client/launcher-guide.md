@@ -31,6 +31,8 @@ Azure Blob SAS for log uploads) see
   - [What it does (end-to-end)](#what-it-does-end-to-end)
   - [State files](#state-files)
   - [What "Install / Update" does internally](#what-install--update-does-internally)
+  - [How the client finds its server](#how-the-client-finds-its-server)
+  - [Install layout](#install-layout)
   - [The launch buttons](#the-launch-buttons)
   - [Uploading debug logs](#uploading-debug-logs)
 - [Part 2 — For operators (publishing patches)](#part-2--for-operators-publishing-patches)
@@ -53,7 +55,9 @@ Azure Blob SAS for log uploads) see
 1. Run sgw-launcher.exe (single ~5 MB file).
 2. Window appears with three editable fields:
      - Install dir    (default: %LOCALAPPDATA%\Stargate Worlds)
-     - Server host    (default: play.cimmeria.app) — gets patched into SGW.exe
+     - Login servers  (default: Cimmeria = http://play.cimmeria.app:8081),
+                      one `Name = URL` per line — written into the client's
+                      LoginInternal.lua, the list on the login screen
      - Manifest URL   (default: the GitHub Release `content-current` tag,
                       https://github.com/SandboxServers/Cimmeria/releases/
                       download/content-current/manifest.json)
@@ -66,8 +70,10 @@ Azure Blob SAS for log uploads) see
      - Download the seed (resumable via HTTP Range) → verify sha256 → unpack.
        The seed is a zip, or the archive.org client RAR, whose installer
        cabinets are expanded straight into the installed layout
-     - For each missing patch in declared order: download → verify → unpack (overlay)
-     - Byte-patch SGW.exe .rdata: replace "www.stargateworlds.com" with server host
+     - For each missing patch in declared order: download → verify → unpack
+       (overlay files, and/or deltas rebuilt from your own stock files)
+     - Client setup: write LoginInternal.lua, switch ASLR off in SGW.exe
+       (also done before every launch)
 6. Click "Launch SGW.exe" (or "Launch Atera Debug" / "Launch + Telemetry" /
    "Fix ASLR" if those files are present in the install directory).
 7. After playing, click "Upload Debug Logs" to zip+upload logs in one shot.
@@ -79,8 +85,8 @@ Four JSON files persist across runs:
 
 | File | Lives | Contents |
 |------|-------|----------|
-| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `server_host`, `manifest_url`, and a `telemetry` object (`enabled`, `auth_url`) |
-| `<install>/launcher-installed.json` | in the game dir | `seed_sha256`, `applied_patches: ["001-base", "002-mercury", …]`, `patched_host` |
+| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `login_servers` (`[{name, url}]`), `manifest_url`, and a `telemetry` object (`enabled`, `auth_url`). An old `server_host` field is ignored. |
+| `<install>/launcher-installed.json` | in the game dir | `seed_sha256`, `applied_patches: ["001-dialog-portraits", …]`, `seed_adopted`. An old `patched_host` field is ignored. |
 | `<exe>/uploaded.json` | next to `launcher.exe` | `[{sha256, blob_name, uploaded_at}, …]` — log-upload dedupe ledger |
 | `<exe>/telemetry-state.json` | next to `launcher.exe` | per-session telemetry runtime state, kept separate from the config so config rewrites don't churn it |
 
@@ -111,32 +117,48 @@ Pseudocode of [`crates/launcher/src/install.rs`](../../crates/launcher/src/insta
                Windows' cabinet.dll; otherwise move the files across.
                Then delete .tmp-unpack/.
        Hashing and unpacking run on a blocking thread.
-     - Rename Working\SGWGame\Cache.en-US to SourceCache.en-us, unless a
-       SourceCache.en-us already exists (see "Install layout").
      - state.seed_sha256 = manifest.seed.sha256
      - state.applied_patches = []   ← reseeding invalidates patch history
      - Persist state.
 
-3. For each patch in manifest.patches (declared order):
+3. Rename Working\SGWGame\Cache.en-US to SourceCache.en-us, unless a
+   SourceCache.en-us already exists (see "Install layout"). Runs every
+   time, so adopted installs get it too.
+
+4. For each patch in manifest.patches (declared order):
      - Skip if patch.id is already in state.applied_patches.
-     - GET <manifest_base>/<patch.blob> → tmp → SHA-256 verify → unpack overlay.
+     - GET <manifest_base>/<patch.blob> → tmp → SHA-256 verify → unpack.
+       A patch zip with a cimmeria-patch.json recipe is a patch set: see
+       "Patch sets" below.
      - Append patch.id to state.applied_patches.
      - Persist state after every patch (survives mid-update crash).
 
-4. Find SGW.exe (see "Install layout" below). If
-   patch_rdata::host_differs(data, server_host, state.patched_host):
-     - Locate the 22-byte host slot. If the exe was patched before, search
-       for the *previously written* host (recorded in state.patched_host)
-       as a padded 22-byte run; otherwise search for the original CME
-       literal "www.stargateworlds.com".
-     - Overwrite with server_host, zero-padded to the 22-byte slot.
-     - Record state.patched_host = server_host and persist.
+5. Client setup (crates/launcher/src/client_setup/), when SGW.exe exists:
+     - Write Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua
+       from the login-server list, if its content changed.
+     - Clear IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE in SGW.exe's PE
+       header (one byte, 0x186 in the 0.8348 build), if set.
 ```
 
-Note this is **not** a one-shot "patch only if the CME literal is present"
-check. Editing `server_host` in the config and re-running Install / Update
-re-patches an already-patched executable, because the launcher tracks which
-host it wrote last and searches for that slot.
+### How the client finds its server
+
+The client's login screen lists the servers `LoginMod.loadServerSystems()`
+defines in `LoginInternal.lua`. The stock file points at CME's dead QA and
+production login servers; the launcher replaces it with the configured
+list, CRLF and ASCII like the rest of the client's UI Lua, at the end of
+every install, on **Save**, and before every launch. Names and URLs may not
+contain quotes or backslashes, so a setting can't break out of the Lua
+string. A Cimmeria auth server listens on `http://<host>:8081`.
+
+Earlier launcher builds instead byte-patched `www.stargateworlds.com` in
+`SGW.exe`'s `.rdata`. That string is only the SOAP namespace
+`http://www.stargateworlds.com/xml/sgwlogin`, so the patch redirected
+nothing and would have broken the namespace the auth server expects. It is
+gone; no released launcher ever ran it.
+
+ASLR is switched off because the client-patches DLL and every RE address
+in `docs/` assume `SGW.exe` loads at `0x00400000`. The stock exe with that
+one byte cleared is byte-identical to a known-good QA client's.
 
 Hitting **Cancel** flips a `CancellationToken` that the download stream
 checks on every chunk, and the unpack steps check between files. A
@@ -288,16 +310,43 @@ computed from a copy whose SHA-1 matches.
 (`Common\`, `Resources\`, `Working\...`), for example a curated snapshot
 that bundles content fixes you don't want to ship as separate patches.
 
-Either way the seed contains the **unpatched** `SGW.exe` (still pointing
-at `www.stargateworlds.com`). The launcher's `.rdata` byte-patch runs at
-the end of `install_all`, after all manifest patches have been applied.
+Either way the seed contains the stock `SGW.exe` and stock
+`LoginInternal.lua`: the launcher's client setup (login servers, ASLR)
+runs at the end of `install_all`, after all manifest patches.
 
 Compute the seed file's SHA-256 — it becomes `manifest.seed.sha256`.
 
 ### Step 2 — Build a patch zip
 
-A patch zip contains **only the files that changed**, laid out exactly
-as they go into the install directory:
+There are two kinds of patch zip, and the launcher tells them apart by
+whether the zip carries a `cimmeria-patch.json` recipe.
+
+**Patch sets (for anything derived from CME files).** The project never
+hosts CME bytes. A change to a stock file (a UI Lua file, a map, a cooked
+PAK) ships as a bsdiff delta that the launcher applies to the player's own
+stock copy, so the zip holds only the bytes we authored. Specs and built
+zips live in [`data/client-patches/`](../../data/client-patches/README.md),
+built with the `cimmeria-patchset` tool:
+
+```bash
+cargo run -p cimmeria-patchset -- build data/client-patches/<id>/patch.json \
+  --stock <stock client, seed unpacked, SourceCache renamed> \
+  --patched <a client with the change> \
+  --out data/client-patches/<id>.zip \
+  --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/<id>.zip
+```
+
+It prints the manifest entry. Each recipe op pins the SHA-256 of every
+source and of the result; the launcher refuses a source that isn't stock,
+computes every op before writing anything, and skips ops whose target
+already has the result. Maps our `upk_patch` tool wrote are diffed against
+the stock map *normalized* (decompressed and rewritten by the same
+patcher), which is what keeps a 4 MB map's delta under 2 KB. Files that are
+entirely ours ship whole in the same zip (`"files"` in the spec).
+
+**Plain overlay zips (for content that is entirely ours).** A zip
+without a recipe contains **only the files that changed**, laid out
+exactly as they go into the install directory:
 
 ```text
 002-mercury-config.zip
@@ -457,11 +506,11 @@ $blob = "https://github.com/SandboxServers/Cimmeria/releases/download/$tag/002-m
 # (edit manifest.json by hand or via jq)
 
 # 4. Sign the manifest with the offline private key, producing
-#    manifest.json.sig — an Ed25519 signature over the exact manifest
-#    bytes, hex-encoded.
-#    !! NO SIGNING TOOL IS CHECKED IN. tools/sign-manifest.ps1 does not
-#    exist in this repo. Signing is currently a manual step you must
-#    perform with your own Ed25519 tooling. See the note below.
+#    manifest.json.sig (Ed25519 over the exact manifest bytes, hex), and
+#    check it against the public key in the LAUNCHER_MANIFEST_PUBKEY_HEX
+#    secret.
+cargo run -p cimmeria-patchset -- sign manifest.json --key <path to manifest-signing.key>
+cargo run -p cimmeria-patchset -- verify manifest.json --pubkey <public key hex>
 
 # 5. Create the immutable release first (asset must exist before the
 #    manifest references it).
@@ -478,16 +527,11 @@ gh release upload content-current --clobber `
 that fetches `manifest.json` between the two would see an entry
 referencing a blob that doesn't exist yet and fail with a 404.
 
-> **Gap: no signing tool is checked in.** Step 4 above and the setup
-> runbook both reference `tools/sign-manifest.ps1`, which does not exist
-> in this repo — nor does any other manifest-signing script. The
-> *verification* side is real and shipped
-> ([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`,
-> Ed25519 over the raw manifest body against the compile-time-embedded
-> `MANIFEST_SIGNING_PUBKEY`), but producing `manifest.json.sig` is
-> currently a bring-your-own-tooling step. Anyone running a content
-> publication today needs to sign with an external Ed25519 signer that
-> emits a 64-byte signature hex-encoded.
+The launcher verifies the signature against the compile-time-embedded
+`MANIFEST_SIGNING_PUBKEY`
+([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`).
+`cimmeria-patchset pubkey --key <file>` prints the public key for a key
+file, to check it matches the secret.
 
 Full operator setup (signing keypair generation, GitHub secrets,
 log-upload SAS) lives in
@@ -514,19 +558,13 @@ flips.
 
 ### Future automation
 
-There's no patch-prep tooling in the repo yet. Reasonable next steps
-when you actually need to ship patches regularly:
-
-- A `tools/patch-builder/` script that takes a directory of changed
-  files + a patch id, produces the zip, computes hash + size, updates a
-  local manifest working copy, and (optionally) uploads.
-- A GitHub Actions workflow that takes the same inputs and publishes to
-  Azure on `/release-patch` ChatOps — mirroring the existing
-  `/release-launcher` pattern from
-  [.github/workflows/launcher-release-on-comment.yml](../../.github/workflows/launcher-release-on-comment.yml).
-
-Neither exists yet. Both are straightforward to add once you've shipped
-the first patch by hand and know what feels right.
+`cimmeria-patchset` builds patch sets and signs manifests; publishing is
+still by hand. A reasonable next step once patches ship regularly is a
+GitHub Actions workflow that rebuilds the patch zips, checks they match
+the committed ones, and publishes on a `/release-patch` ChatOps comment,
+mirroring the `/release-launcher` pattern from
+[.github/workflows/launcher-release-on-comment.yml](../../.github/workflows/launcher-release-on-comment.yml).
+Signing stays offline.
 
 ---
 
@@ -641,13 +679,13 @@ from the launch:
 
 ### SGW.exe launches but can't reach the server
 
-- Verify the **Server host** field is set to your operator's emulator
-  hostname.
-- Click **Save** then **Install / Update** — the hostname patch only
-  fires during install / update, not on every launch.
-- Check the `.rdata` patch took effect: open `SGW.exe` in a hex editor
-  and search for `www.stargateworlds.com`. If still present, the
-  install didn't complete the post-install patch step.
+- Check the **Login servers** list: one `Name = http://host:8081` line
+  per server, with your operator's host. Click **Save**; the status log
+  says "Wrote the login server list" when the file changed.
+- Open `Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua` and
+  check it lists your server. The launcher rewrites it before every
+  launch, so edit the list in the launcher, not the file.
+- Pick the right server in the login screen's dropdown.
 
 ### "Log upload failed: 4xx/5xx"
 

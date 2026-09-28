@@ -82,14 +82,10 @@ This split gives both properties at once:
 ### Publishing a content drop
 
 ```powershell
-# 1. Build and sign the manifest.
-$priv = Get-Content -Raw .\secrets\manifest-signing.key  # 64 hex chars
+# 1. Build and sign the manifest (manifest.json -> manifest.json.sig).
 $tag  = "content-$(Get-Date -Format yyyy-MM-dd)-001"
-
-# Sign manifest.json, producing manifest.json.sig.
-# !! No signing script is checked into this repo — tools\sign-manifest.ps1
-#    does not exist. Use an external Ed25519 signer; see "Signing a
-#    manifest" below for the exact operation and output format.
+cargo run -p cimmeria-patchset -- sign manifest.json --key <path to manifest-signing.key>
+cargo run -p cimmeria-patchset -- verify manifest.json --pubkey <public key hex>
 
 # 2. Create the immutable per-publication release containing seed +
 #    patches. Mark as a pre-release so it doesn't show on the front
@@ -189,11 +185,8 @@ python -c "import sys;from cryptography.hazmat.primitives.asymmetric.ed25519 imp
 # Prints 64 hex chars — that's the public key.
 ```
 
-> **No in-repo helper exists for this.** Earlier revisions of this runbook
-> pointed at `cargo run -p sgw-launcher --example pubkey-from-priv`; there
-> is no `crates/launcher/examples/` directory and no `[[example]]` in
-> [`crates/launcher/Cargo.toml`](../../crates/launcher/Cargo.toml), so that
-> command fails. Use an external Ed25519 tool until a helper lands.
+Or, with the repo's own tool:
+`cargo run -p cimmeria-patchset -- pubkey --key manifest-signing.key`.
 
 Store the **private key** (`manifest-signing.key`) in a password
 manager, hardware token, or offline encrypted backup. **Never** commit
@@ -213,13 +206,13 @@ which the build picks up via `option_env!` in
 
 ### Signing a manifest
 
-> **`tools\sign-manifest.ps1` does not exist.** No manifest-signing script
-> is checked into this repo. Signing is currently a bring-your-own-tooling
-> step — you need an external Ed25519 signer. The *verification* side is
-> shipped and enforced
-> ([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`),
-> so an unsigned or wrongly-signed manifest is rejected outright with no
-> fallback.
+Sign with `cargo run -p cimmeria-patchset -- sign manifest.json --key
+<key file>`, which writes `manifest.json.sig`, and check it with
+`cimmeria-patchset verify manifest.json --pubkey <hex>` before
+uploading. The launcher enforces the signature
+([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`),
+so an unsigned or wrongly-signed manifest is rejected outright with no
+fallback. Sign on the machine that holds the key; never put the key in CI.
 
 The signing operation is:
 

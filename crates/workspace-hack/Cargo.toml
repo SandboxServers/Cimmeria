@@ -19,6 +19,7 @@ base64-2b5c6dc72f624058 = { package = "base64", version = "0.23" }
 base64-3c51e837cfc5589a = { package = "base64", version = "0.22" }
 byteorder = { version = "1" }
 crc32fast = { version = "1" }
+crossbeam-utils = { version = "0.8" }
 crypto-common = { version = "0.1", default-features = false, features = ["std"] }
 digest-93f6ce9d446188ac = { package = "digest", version = "0.10", features = ["std"] }
 digest-a6292c17cd707f01 = { package = "digest", version = "0.11", features = ["alloc", "mac", "oid"] }
@@ -37,7 +38,7 @@ indexmap = { version = "2", features = ["serde"] }
 log = { version = "0.4", default-features = false, features = ["std"] }
 md-5 = { version = "0.11" }
 memchr = { version = "2" }
-num-traits = { version = "0.2", default-features = false, features = ["libm", "std"] }
+num-traits = { version = "0.2", features = ["libm"] }
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
 rand-274715c4dabd11b0 = { package = "rand", version = "0.9" }
@@ -57,6 +58,7 @@ smallvec = { version = "1", default-features = false, features = ["const_new", "
 socket2 = { version = "0.6", default-features = false, features = ["all"] }
 sqlx-core = { version = "0.9", features = ["_rt-tokio", "any", "json", "migrate", "offline"] }
 sqlx-postgres = { version = "0.9", default-features = false, features = ["any", "migrate", "offline"] }
+subtle = { version = "2", default-features = false, features = ["const-generics"] }
 sync_wrapper = { version = "1", default-features = false, features = ["futures"] }
 thiserror = { version = "2" }
 time = { version = "0.3", default-features = false, features = ["formatting", "parsing"] }
@@ -73,6 +75,7 @@ base64-3c51e837cfc5589a = { package = "base64", version = "0.22" }
 byteorder = { version = "1" }
 cc = { version = "1", default-features = false, features = ["parallel"] }
 crc32fast = { version = "1" }
+crossbeam-utils = { version = "0.8" }
 crypto-common = { version = "0.1", default-features = false, features = ["std"] }
 digest-93f6ce9d446188ac = { package = "digest", version = "0.10", features = ["std"] }
 digest-a6292c17cd707f01 = { package = "digest", version = "0.11", features = ["alloc", "mac", "oid"] }
@@ -88,7 +91,7 @@ indexmap = { version = "2", features = ["serde"] }
 log = { version = "0.4", default-features = false, features = ["std"] }
 md-5 = { version = "0.11" }
 memchr = { version = "2" }
-num-traits = { version = "0.2", default-features = false, features = ["libm", "std"] }
+num-traits = { version = "0.2", features = ["libm"] }
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
 rand-93f6ce9d446188ac = { package = "rand", version = "0.10" }
