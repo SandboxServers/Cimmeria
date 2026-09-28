@@ -7,6 +7,7 @@
 
 use sqlx::PgPool;
 
+use super::claim::unix_now;
 use super::MailCtx;
 use crate::cell::mail;
 use crate::cell::mail::codes::flags::MAIL_ARCHIVE;
@@ -117,6 +118,7 @@ async fn read_headers(reader: Reader<'_>, select: Select) -> Result<Headers, sql
 }
 
 fn to_wire(reader: Reader<'_>, rows: &[MailRow]) -> Headers {
+    let now = unix_now();
     let headers = rows
         .iter()
         .map(|r| {
@@ -133,13 +135,26 @@ fn to_wire(reader: Reader<'_>, rows: &[MailRow]) -> Headers {
                 );
                 r.cash.clamp(i32::MIN as i64, i32::MAX as i64) as i32
             });
+            if r.sent_time > now {
+                tracing::warn!(
+                    target: "mail",
+                    entity_id = reader.entity_id,
+                    player_id = reader.player_id,
+                    account_id = reader.account_id,
+                    reason = "sent_time_in_future",
+                    mail_id = r.mail_id,
+                    now,
+                    db_sent_time = r.sent_time,
+                    "Mail header sent_time is after now; clamping age to 0"
+                );
+            }
             mail::MailHeader {
                 id: r.mail_id,
                 from_text: r.sender_name.clone(),
                 from_id: r.sender_id.unwrap_or(0),
                 subject_text: r.subject.clone(),
                 cash,
-                sent_time: r.sent_time as f32,
+                sent_time: sent_time_age_secs(now, r.sent_time),
                 read_time: r.read_time as f32,
                 flags: r.flags,
             }
@@ -161,6 +176,39 @@ fn to_wire(reader: Reader<'_>, rows: &[MailRow]) -> Headers {
         })
         .collect();
     (headers, attachments)
+}
+
+/// The wire `sentTime` field: seconds elapsed since `sent_time_unix`,
+/// clamped to 0 (a future `sent_time` is a clock-skew bug the caller
+/// should log, not a negative age).
+///
+/// **Not a Unix epoch value.** The client's mail-header constructor
+/// (`FUN_00eb5ab0`, `ghidra://SGW.exe@0x00eb5ab0`) rounds this field to a
+/// 64-bit integer (`Mercury__unknown_012379f6`, a misnamed shared
+/// float-to-int64 rounding helper — 60+ unrelated call sites, not
+/// `Mercury`-specific) and hands it to `FUN_00eb5a10`
+/// (`ghidra://SGW.exe@0x00eb5a10`), which is, byte for byte:
+///
+/// ```text
+/// GetTimeZoneInformation(&tz);
+/// GetSystemTime(&utcNow);
+/// SystemTimeToTzSpecificLocalTime(&tz, &utcNow, &localNow);
+/// SystemTimeToFileTime(&localNow, &fileTimeNow);
+/// fileTimeNow -= sentTimeField * 10_000_000;   // 100ns FILETIME ticks
+/// FileTimeToSystemTime(&fileTimeNow, &out);    // -> "Sent: <date>"
+/// ```
+///
+/// The identical rounded 64-bit value is also divided by 3600
+/// (`__aulldiv`, `ghidra://SGW.exe@0x01237e00`) for
+/// `ExpiresHours = 720 - hours` (`ghidra://SGW.exe@0x00eb5c12`..`0x00eb5c19`).
+/// Sending the raw Unix epoch here (as the code did before 2026-09-28)
+/// makes the client compute `localNow - epoch_seconds`, landing the
+/// display near Unix epoch 0 ("Sent: Dec 31 1969") and driving
+/// `ExpiresHours` deeply negative, which `GateMail.lua:138`
+/// (`ExpiresHours < 2`) renders as "Soon" regardless of how fresh the
+/// mail actually is.
+pub(super) fn sent_time_age_secs(now: i32, sent_time_unix: i32) -> f32 {
+    (now - sent_time_unix).max(0) as f32
 }
 
 /// `requestMailHeaders(bArchive)`: the caller's inbox (`bArchive` 0) or

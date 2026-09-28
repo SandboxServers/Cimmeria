@@ -102,13 +102,16 @@ pub(super) enum Received {
     /// An `onPlayerCommunication` feedback line.
     Feedback(String),
     /// `onMailHeaderInfo`: `ResetCategory`, `bArchive`, each header's
-    /// `(id, flags)`, each header's `cash` in the same order, and every
+    /// `(id, flags)`, each header's `cash` in the same order, the raw
+    /// `sentTime` float in the same order (SGW.exe's client-clock age, not
+    /// a Unix epoch — see [`mail::MailHeader::sent_time`]), and every
     /// `MessageAttachment` as `[id, itemId, stackSize, durability, charges]`.
     HeaderInfo {
         reset: u8,
         b_archive: u8,
         headers: Vec<(i32, i32)>,
         cash: Vec<i32>,
+        sent_time: Vec<f32>,
         attachments: Vec<[i32; 5]>,
     },
     /// `onCashChanged(total)`.
@@ -166,6 +169,7 @@ pub(super) fn decode(packet: &[u8], entity_id: u32) -> Received {
             let b_archive = r.u8();
             let n = r.u32();
             let mut cash = Vec::new();
+            let mut sent_time = Vec::new();
             let headers = (0..n)
                 .map(|_| {
                     let id = r.i32();
@@ -174,7 +178,7 @@ pub(super) fn decode(packet: &[u8], entity_id: u32) -> Received {
                     let _subject = r.wstring();
                     let _subject_id = r.i32();
                     cash.push(r.i32());
-                    let _sent = r.i32();
+                    sent_time.push(r.f32());
                     let _read = r.i32();
                     (id, r.i32())
                 })
@@ -189,6 +193,7 @@ pub(super) fn decode(packet: &[u8], entity_id: u32) -> Received {
                 b_archive,
                 headers,
                 cash,
+                sent_time,
                 attachments,
             }
         }
@@ -254,6 +259,9 @@ impl Reader<'_> {
     }
     fn i32(&mut self) -> i32 {
         i32::from_le_bytes(self.bytes())
+    }
+    fn f32(&mut self) -> f32 {
+        f32::from_le_bytes(self.bytes())
     }
     fn wstring(&mut self) -> String {
         let n = self.u32() as usize;

@@ -124,8 +124,8 @@ Handler: `onMailHeaderInfo` at `0x00e15450`
 | subjectText | wstring | Subject line |
 | subjectId | uint32 | Subject text ID (localization) |
 | cash | uint32 | Cash attached |
-| sentTime | int64 | Timestamp sent |
-| readTime | int64 | Timestamp read (0 = unread) |
+| sentTime | float | **Correction (2026-09-28, `mail-wire-formats.md` M-Q3, HIGH confidence, byte-exact `SGW.exe@0x00eb5bc6`-`0x00eb5c19`): seconds elapsed since the mail was sent (an age), not an int64 timestamp.** The client rounds this FLOAT to a 64-bit integer and subtracts it (as FILETIME ticks) from its own current wall-clock time; see `mail-wire-formats.md` for the full decompile. |
+| readTime | float | Timestamp read, unix epoch seconds (0 = unread) — unlike `sentTime`, this one really is an epoch value; see M-Q3 |
 | flags | uint32 | Mail flags bitmask |
 
 ### Mail object layout (constructor `0x00eb5ab0`, size `0xBC`)

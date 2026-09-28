@@ -33,7 +33,8 @@ pub use send_result::{serialize_send_mail_result, SEND_MAIL_RESULT_FLAGS_BEFORE_
 /// - MessageHeaders: ARRAY of MessageHeader FIXED_DICT
 ///   - count: u32 LE
 ///   - per header: id(i32), fromText(WSTRING), fromId(i32), subjectText(WSTRING),
-///     subjectId(i32), cash(i32), sentTime(f32), readTime(f32), flags(i32)
+///     subjectId(i32), cash(i32), sentTime(f32, **seconds-ago, not epoch** —
+///     see [`MailHeader::sent_time`]), readTime(f32, epoch seconds), flags(i32)
 /// - MessageAttachments: ARRAY of [`MailAttachment`] FIXED_DICT
 ///   (`alias.xml:103-111`), one per header that holds an escrowed item
 ///   - count: u32 LE
@@ -123,7 +124,29 @@ pub struct MailHeader {
     pub from_id: i32,
     pub subject_text: String,
     pub cash: i32,
+    /// **Seconds elapsed since the mail was sent (an age), not a Unix
+    /// epoch timestamp.** `FUN_00eb5ab0` (the client's header-record
+    /// constructor, `ghidra://SGW.exe@0x00eb5ab0`) rounds this field to a
+    /// 64-bit integer and feeds it straight to `FUN_00eb5a10`
+    /// (`ghidra://SGW.exe@0x00eb5a10`), which computes
+    /// `GetSystemTime()` (converted to local time) **minus**
+    /// `this_field * 10_000_000` (100ns FILETIME ticks) to get the
+    /// SYSTEMTIME it shows as "Sent: <date>", and divides the same
+    /// rounded value by 3600 for `ExpiresHours = 720 - hours`. Sending
+    /// the raw Unix epoch here (as the pre-2026-09-28 code did) makes the
+    /// client compute `now - epoch_seconds`, which lands near Unix epoch
+    /// 0 (displayed "Dec 31 1969") and drives `ExpiresHours` deeply
+    /// negative (displayed "Soon" — `GateMail.lua:138`,
+    /// `ExpiresHours < 2`). The caller must compute
+    /// `(unix_now() - sent_time_unix).max(0)` at serialize time, not
+    /// store this value.
     pub sent_time: f32,
+    /// Unix epoch seconds, unlike `sent_time` above. `FUN_00eb5ab0` only
+    /// ever compares this field against a small float threshold
+    /// (`ghidra://SGW.exe@0x00eb5bef`, `COMISS`/`JC`) to set the
+    /// client's `HasBeenRead` flag; it never reaches the date/age
+    /// arithmetic that makes `sent_time`'s units matter, so the raw
+    /// epoch value (0 = unread, non-zero = read) is correct as-is.
     pub read_time: f32,
     pub flags: i32,
 }

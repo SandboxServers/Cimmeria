@@ -312,7 +312,7 @@ Evidence: `ghidra://SGW.exe@0x00aa4690` (`mailSetItemAttachment` binding), `0x00
 (`mailSendMessage` binding) → `0x00ad8100` → `0x00e14910` (`ZipFileSystem__unknown_00e14910`,
 the full validator/RPC-builder).
 
-### M-Q3 — `ExpiresHours` source and TTL (CLOSED)
+### M-Q3 — `ExpiresHours` source and TTL (CLOSED, HIGH confidence — corrected 2026-09-28)
 
 The `onMailHeaderInfo` wire decoder (`Detail__unknown_00e15450`, see M-Q7 below) reads exactly 9
 fields per `MessageHeader` row — `id, fromText, fromId, subjectText, subjectId, cash, sentTime,
@@ -325,23 +325,90 @@ hours = __aulldiv(uVar1, uVar3, 3600, 0);   // /3600 = whole hours
 record->expiresHours = 0x2d0 - (int)hours;  // 0x2d0 = 720
 ```
 
-**`0x2d0` = 720 decimal = exactly 30 days.** This is a hardcoded client constant, matching
-D-SS04's proposed fallback exactly. Confidence is HIGH on the constant itself; MEDIUM on the exact
-time-base semantics of the division (the decompiler did not clearly show `sentTime` being passed
-into `Mercury__unknown_012379f6()`, so whether the subtrahend is "hours elapsed since sent" or
-some other time-since-epoch framing is not fully pinned down) — but either reading is consistent
-with a 720-hour/30-day TTL counting down from `sentTime`. The same constructor also derives
-`HasBeenRead` from comparing `readTime` against a small float constant, and decomposes a time
-value into a `SYSTEMTIME`-style calendar breakdown (`sentDayOfWeek/Month/Day/Year/Hour/Minute`,
-cached on the record) for the client's date display — confirming (again) that no additional wire
-fields are needed for the "Sent: <date>" display either; it is entirely reconstructed client-side
-from the wire `sentTime` float, as the existing research report already concluded.
+**`0x2d0` = 720 decimal = exactly 30 days.** This part was already correct. **The MEDIUM-confidence
+gap this session closed (owner playtest bug, 2026-09-28: a fresh mail's Read Message window showed
+"Sent: Wed Dec 31st, 1969 @ 7:0 pm" — Unix epoch 0 in US Eastern — and its inbox row showed
+"Expires: Soon"): `sentTime` is fed into `Mercury__unknown_012379f6()`, and the argument IS
+`sentTime`, byte-exact-confirmed by disassembling the constructor around the call
+(headless Ghidra, `SGW.exe@0x00eb5bc6`-`0x00eb5bd6`):**
+
+```asm
+00eb5bc1: MOV byte ptr [ESI+0x1c],0x4
+00eb5bc6: FLD float ptr [ESP + 0x3c]      ; loads param_7 (sentTime) onto ST0
+00eb5bd6: CALL 0x012379f6                 ; round(ST0) -> EAX:EDX (a 64-bit int)
+00eb5bdb: MOV EDI,EAX
+00eb5be3: PUSH EAX
+00eb5be4: MOV EBP,EDX
+00eb5be6: PUSH EBP
+00eb5be7: PUSH EDI
+00eb5be8: MOV ECX,ESI
+00eb5bea: CALL 0x00eb5a10                 ; FUN_00eb5a10(this, low, high, &this+0xa6)
+00eb5bef: MOVSS XMM0,dword ptr [ESP + 0x40]   ; reloads param_8 (readTime)
+00eb5bf5: COMISS XMM0,dword ptr [0x017f94b8]  ; readTime >= threshold -> HasBeenRead
+00eb5c05: PUSH EBX
+00eb5c06: PUSH 0xe10                      ; 3600
+00eb5c0b: PUSH EBP
+00eb5c0c: PUSH EDI
+00eb5c0d: CALL 0x01237e00                 ; __aulldiv(low, high, 3600, 0)
+00eb5c12: MOV ECX,0x2d0
+00eb5c17: SUB ECX,EAX
+00eb5c19: MOV dword ptr [ESI + 0xb8],ECX  ; expiresHours = 720 - hours
+```
+
+(Stack-offset tracing confirms `[ESP+0x3c]` at `0x00eb5bc6` is `param_7`, the constructor's 7th
+explicit argument. The call site in `Detail__unknown_00e15450` passes the decoded `"sentTime"`
+field as that argument (`piStack_1c0`); the decoded `"readTime"` field (`fStack_190`) is `param_8`,
+which reaches only the `COMISS`/`HasBeenRead` compare at `0x00eb5bef`, never the date/TTL math.
+`Mercury__unknown_012379f6` itself is a misnamed shared MSVC helper — `(unsigned __int64)(float)x`
+rounding via the x87 `ST0` register, called from 60+ unrelated sites across Mercury networking,
+GFxSprite and CEGUI, not a `Mercury`-specific "get current time" routine.)
+
+**`FUN_00eb5a10` (`ghidra://SGW.exe@0x00eb5a10`), decompiled in full, settles what the rounded
+64-bit value means:**
+
+```c
+void FUN_00eb5a10(uint param_1, int param_2, LPSYSTEMTIME param_3)
+{
+    GetTimeZoneInformation(&local_ac);
+    GetSystemTime(&_Stack_cc);                                   // client's own UTC "now"
+    SystemTimeToTzSpecificLocalTime(&local_ac, &_Stack_cc, &_Stack_bc);
+    SystemTimeToFileTime(&_Stack_bc, &_Stack_d4);                 // "now" as FILETIME (local)
+    lVar2 = __allmul(param_1, param_2, 10000000, 0);              // sentTime * 100ns ticks/sec
+    _Stack_d4 -= lVar2;                                           // "now" MINUS sentTime-as-ticks
+    FileTimeToSystemTime(&_Stack_d4, param_3);                    // -> "Sent: <date>"
+}
+```
+
+**`sentTime` is seconds elapsed since the mail was sent (an age), not a Unix epoch timestamp.**
+The client never reads a stored absolute send time from the wire at all: it takes its own current
+local wall-clock time and subtracts `sentTime` (converted to FILETIME's 100ns ticks). The pre-fix
+server code sent the raw Unix epoch (`sgw_gate_mail.sent_time`, ~1.7-1.8 billion in 2026) cast
+straight to `f32`. The client read that as an age of ~56 years, so `now - 56yr` landed the display
+within seconds of Unix epoch 0 (explaining "Dec 31 1969"), and the same value divided by 3600
+made `ExpiresHours = 720 - hours` underflow to a large negative number, which
+`Content/UI/Core/GateMail/GateMail.lua:138` (`elseif msgInfo.ExpiresHours < 2 then ... "Soon"`)
+renders as "Soon" regardless of how fresh the mail actually is — both symptoms from one root
+cause. `readTime` has no equivalent bug: `FUN_00eb5ab0` only ever compares it against a small
+float threshold to set `HasBeenRead`, so the raw epoch value (0 = unread, non-zero = read) was
+already correct and needed no change.
+
+**Fix:** the server must compute `sentTime = (unix_now() - sent_time_unix).max(0)` at the moment
+it serializes `onMailHeaderInfo`, not store or forward the raw epoch value. Implemented in
+`crates/base-methods/src/base/world_entry/methods/mail/headers.rs`
+(`sent_time_age_secs`, the single call site that builds every `mail::MailHeader` from
+`sgw_gate_mail`).
 
 **Recommendation for SS-M4: set `expires_at = sent_time + 30 days` exactly (D-SS04's fallback),
-not a different value.**
+not a different value.** This is unaffected by the above: `sgw_gate_mail.expires_at` is a
+server-side-only column driving the expiry sweep (`expiry/mod.rs`), never sent on the wire.
 
 Evidence: `ghidra://SGW.exe@0x00e15450` (wire decoder, field list), `0x00eb5ab0` (header-record
-constructor, the `0x2d0`/`0xe10` constants), string `"ExpiresHours"` at `0x0195ef84`.
+constructor, the `0x2d0`/`0xe10` constants and the `FLD`/`CALL` sequence at `0x00eb5bc6`-
+`0x00eb5c19`), `0x00eb5a10` (`GetSystemTime`/`FileTimeToSystemTime` date-decompose, full
+decompile above), `0x01237e00` (`__aulldiv`), string `"ExpiresHours"` at `0x0195ef84`,
+`Content/UI/Core/GateMail/GateMail.lua:138` (the "Soon" threshold), headless-Ghidra session
+2026-09-28 (`tools/re/ghidra-headless/`, see `docs/analysis/social-systems/worknotes/fix-mail-sent-time.md`
+for the full probe transcript).
 
 ### M-Q4 — `MessageAttachment.id` join and byte layout (CLOSED, with a correction)
 
