@@ -140,6 +140,7 @@ GitHub keeps 10 GB of Actions cache per repository and evicts the oldest entries
 - Those workflows cancel superseded runs only on PRs. Runs on `main` finish, because a cancelled run doesn't save its cache.
 - `build-and-test` builds `--all-targets` and then runs nextest on the same artifacts. That's one workspace compile where there used to be two, on separate runners with separate caches.
 - A `changes` job skips the Rust jobs on PRs that change only Markdown, `.claude/` or images under `docs/`. Tests read `docs/protocol/`, so it always counts as code.
+- Coverage is two jobs that run at the same time, `coverage-workspace` and `coverage-live-db`, instead of one 9.5-minute job that ran both passes back to back. Each uploads its own report and Codecov merges them (`after_n_builds: 2`). A third job would only repeat the instrumented compile, which is most of each job's time.
 
 ## Consequences
 
