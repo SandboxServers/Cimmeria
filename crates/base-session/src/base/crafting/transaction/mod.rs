@@ -92,9 +92,10 @@ async fn apply_in_tx(
     let player_id = ids.player_id;
     // Lock order: advisory locks first (the player-wide move lock, then
     // each bag), then inventory rows. The player row is read, and locked
-    // only by a plan that teaches blueprints, after every inventory row.
-    // See `grant::lock_containers`, `consume::check_player` and
-    // `learn::teach_blueprints`.
+    // only by a plan that teaches blueprints or researches an item, after
+    // every inventory row. See `grant::lock_containers`,
+    // `consume::check_player`, `learn::teach_blueprints` and
+    // `knowledge::check_research`.
     let placements = grant::resolve(tx, &plan.grant).await?;
     grant::lock_containers(tx, player_id, &placements).await?;
     consume::check_player(tx, player_id).await?;
