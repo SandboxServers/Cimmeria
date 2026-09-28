@@ -131,9 +131,9 @@ async fn aggro_column_checks_reject_bad_values() {
     cleanup(&pool).await;
 }
 
-/// D-NA01a seed pin: spawns 20 and 10 carry NEUTRAL, plus the stasis-room
-/// debug crate (404, which must never aggro a new character), and no other
-/// seeded spawn carries an override. The only seeded aggro radii are the Castle
+/// D-NA01a seed pin: spawns 20 and 10 carry NEUTRAL, and no other seeded
+/// spawn carries an override. (The stasis-room debug crate, 404, used to:
+/// it is an unkillable container now, Decision (@Cadacious, 2026-09-28).) The only seeded aggro radii are the Castle
 /// population's guard templates: 15 u inside (181-183), 20 u outside (184-186)
 /// (docs/analysis/castle-population/README.md, D-CP04).
 #[tokio::test]
@@ -147,12 +147,8 @@ async fn seed_overrides_only_the_chain_armed_spawns() {
     overridden.sort_by_key(|(id, _)| *id);
     assert_eq!(
         overridden,
-        vec![
-            (10, MobAggression::Neutral),
-            (20, MobAggression::Neutral),
-            (404, MobAggression::Neutral),
-        ],
-        "only ArmYourself_PrisonerRetrievalUnit (10), ArmYourself_NIDGuard (20) and DebugHub_LootCrate (404)"
+        vec![(10, MobAggression::Neutral), (20, MobAggression::Neutral),],
+        "only ArmYourself_PrisonerRetrievalUnit (10) and ArmYourself_NIDGuard (20)"
     );
     let radii: std::collections::BTreeSet<_> = spawns
         .iter()

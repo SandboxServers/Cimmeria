@@ -57,11 +57,6 @@ INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (5, 712);
 -- `event_set_id = 300`. Sorts below 712, so it is the set's primary pick.
 INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (5, 711);
 
--- NEW CONTENT (debug hub): 710 'Staff Melee AA' alone. Its effect 736 carries
--- no damage values, so a hit resolves to 0. Melee, so the stationary crate
--- holds fire until the player stands in melee reach.
-INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (6, 710);
-
 
 -- Pets campaign, set 350 (the Straegis pet, template 350). The Straegis mob kit
 -- in the seed is 1156 Disengage, 2847 Dissonance and 1240 Straegis Explode,

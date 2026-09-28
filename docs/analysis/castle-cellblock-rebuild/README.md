@@ -83,6 +83,15 @@ A collaborator supplied a deeper spec, `SGW_Castle_CellBlock_Dev_Master_v3.xlsx`
 
 Open question for the user: **does reusing Livewire (or another already-implemented SGW minigame) for the Prison Boot removal work for you, or do you want a different/simpler mechanism (e.g. a timed server-authoritative QTE) for this one-time tutorial beat?**
 
+## Decisions After The 2026-09-28 Playtest
+
+Decision (@Cadacious, 2026-09-28) rows, not owner decisions. Evidence: the 2026-09-28 colo playtest (build 5f9730c6, tester Lomiada, character `saeefff`).
+
+| ID | Decision | Implementation |
+|---|---|---|
+| D-CB15 | **An out-of-order hallway kill must not soft-lock the chain.** The second death sent `callForAid respawner_id=0`, the old resolver took the first Cellblock row (the Stasis Chamber), and the run back pulled `Hallway01_Guard` into the Mess Hall, where it died 4.5 s before `MessHall_Guard1`. 682 never completed; 683-686 and the Straegis scene never came. | Chains 1181-1190 on `mission_accepted` 681-686, gated on the new generic content condition `entity_tag_state` (a spawn tag alive or dead in the player's space). A controller whose guards are dead completes on accept and cascades; a single early kill in a two-guard room is counted. No mission is accepted twice (the offer guard). Respawner 0 now resolves to the respawner nearest the death position. Tests: `chain_replay_tests::mission_681_686_backstop`, `respawn_target::respawner_zero_resolves_to_the_respawner_nearest_the_death_position`. UAT: T15b, T15c. |
+| D-CB16 | **The weapon/armor crate opens a loot window** instead of granting straight to the backpack, once per character. | Chains 1098/1099 call `open_loot` on loot tables 10/11 (their former `add_item` lists at probability 1) with `once_per_character`; the step still advances on open. Chain 1191 answers every other press (reopen pending loot or "already taken"). UAT: T18/T19. |
+
 ## Where Confidence Is Low Or A Guess
 
 - Whether the duplicated 5xxx chains produce visible double dialogs in the client or whether the last `display_dialog` wins. The seed rows resolve; the UI outcome was not observed.

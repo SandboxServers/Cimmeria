@@ -294,6 +294,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         // warns would push this file past the 500-line soft cap.
         "npc_bark" => super::action_bark::convert_npc_bark(row),
         "send_system_mail" => super::action_mail::convert_send_system_mail(row),
+        "open_loot" => super::action_loot::convert_open_loot(row),
         "qr_combat_damage" => {
             let stat_id = params.get("stat_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let source_id = params

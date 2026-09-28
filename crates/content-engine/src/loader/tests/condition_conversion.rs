@@ -2,7 +2,7 @@
 
 use super::super::condition::convert_condition;
 use super::super::*;
-use crate::conditions::{ComparisonOp, Condition};
+use crate::conditions::{ComparisonOp, Condition, EntityTagStateValue};
 
 #[test]
 fn convert_counter_condition() {
@@ -106,4 +106,58 @@ fn convert_world_condition_keeps_ordered_operator_so_the_chain_stays_gated() {
             world_id: 57,
         }
     ));
+}
+
+// ── `entity_tag_state` (2026-09-28 Cellblock backstop) ──────────────────
+
+fn tag_state_row(tag: Option<&str>, operator: &str, value: Option<&str>) -> DbConditionRow {
+    DbConditionRow {
+        chain_id: 1180,
+        condition_type: "entity_tag_state".to_string(),
+        target_id: None,
+        target_key: tag.map(str::to_string),
+        operator: operator.to_string(),
+        value: value.map(str::to_string),
+        sort_order: 1,
+    }
+}
+
+#[test]
+fn convert_entity_tag_state_condition() {
+    let condition = convert_condition(&tag_state_row(Some("Hallway01_Guard"), "eq", Some("dead")))
+        .expect("`entity_tag_state` must have a loader arm");
+    match condition {
+        Condition::EntityTagState {
+            tag,
+            operator,
+            expected,
+        } => {
+            assert_eq!(tag, "Hallway01_Guard");
+            assert_eq!(operator, ComparisonOp::Eq);
+            assert_eq!(expected, EntityTagStateValue::Dead);
+        }
+        other => panic!("Expected EntityTagState, got {other:?}"),
+    }
+}
+
+/// A malformed row must still convert (a `None` drops the row and loads
+/// the chain ungated, and an ungated backstop completes its mission on
+/// every accept), and the condition it converts to must never match, even
+/// against a context where no tag is alive.
+#[test]
+fn a_malformed_entity_tag_state_row_converts_to_a_condition_that_never_matches() {
+    let nobody_alive = crate::context::ExecutionContext::new().with_live_tags(Vec::<String>::new());
+    for row in [
+        tag_state_row(None, "eq", Some("dead")),
+        tag_state_row(Some("Hallway01_Guard"), "eq", Some("gone")),
+        tag_state_row(Some("Hallway01_Guard"), "eq", None),
+        tag_state_row(Some("Hallway01_Guard"), "gte", Some("dead")),
+    ] {
+        let condition = convert_condition(&row)
+            .unwrap_or_else(|| panic!("malformed row must still convert: {row:?}"));
+        assert!(
+            !condition.evaluate(&nobody_alive),
+            "malformed row must fail closed: {row:?} -> {condition:?}"
+        );
+    }
 }

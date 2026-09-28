@@ -11,22 +11,19 @@
 //! - [`dialog`]    — display, add/remove dialog set, add dialog
 //! - [`stats`]     — `Action::ChangeStat`
 //! - [`spawn`]     — `SpawnEntity` / `DespawnEntity` / `DestroyTaggedEntity`
-//!   (the last two share one `despawn_by_tag` routine and differ only in
-//!   the verb they log)
+//!   (the last two share `despawn_by_tag`)
 //! - [`world`]     — interaction-type/visibility/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
-//! - [`stargate`]  — `GrantStargateAddress` (the address book: cell entity,
-//!   client method 66, and the base persistence request)
+//! - [`stargate`]  — `GrantStargateAddress` (cell, client method 66, the base)
 //! - [`mail`]      — `SendSystemMail`, forwarded to the base's mail writer
+//! - [`loot`]      — `OpenLoot`, a loot window on a live container
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
 //! - [`once_gate`] — `content_triggers.once`: fire once per entity, then disarm
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
 //! SystemMessage, SendMessage, SetActiveSlot, TriggerChain, fallback) stay
-//! inline in the match below. `LaunchAbility`/`ApplyEffect` are also inline
-//! but forward to the parent's [`super::effect_apply`] entry point rather
-//! than a sibling module here.
+//! inline below; `LaunchAbility`/`ApplyEffect` forward to [`super::effect_apply`].
 
 use std::collections::HashMap;
 
@@ -44,6 +41,7 @@ mod counter;
 mod deferred;
 mod dialog;
 mod inventory;
+mod loot;
 mod mail;
 mod mission;
 mod once_gate;
@@ -434,11 +432,8 @@ async fn execute_one(
             .await;
         }
         Action::SystemMessage { message_id } => {
-            // TODO: Wire format for system messages is unknown. The previous
-            // implementation incorrectly used onPlayerCommunication (method 28)
-            // which caused garbled chat spam ("[] says") and client freezes.
-            // Needs RE to find the correct client method for localized string
-            // ID display (possibly onErrorCode or a UI-specific method).
+            // TODO: wire format unknown. Method 28 with a string id garbled
+            // chat and froze clients; needs RE (onErrorCode or a UI method?).
             tracing::info!(
                 entity_id,
                 message_id,
@@ -556,6 +551,12 @@ async fn execute_one(
         }
         Action::OpenBlackMarket => {
             black_market::open(entity_id, chain_id, params, tx, space_mgr).await;
+        }
+        action @ Action::OpenLoot { .. } => {
+            loot::open_loot(
+                action, entity_id, player_id, chain_id, params, tx, space_mgr,
+            )
+            .await;
         }
         Action::GrantStargateAddress { stargate_id } => {
             stargate::grant_stargate_address(

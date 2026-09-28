@@ -262,6 +262,10 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // than a set/clear pair.
         | ("debug_hub_chains.sql", 7001) // DebugHub_DialogNpc: template 302 default INT_NonAStoryMissionAvaliable
         | ("debug_hub_chains.sql", 7004) // DebugHub_LivewireTerminal: template 303 default INT_MinigameLivewire
+        | ("debug_hub_chains.sql", 7020) // DebugHub_LootCrate: template 304 default INT_NormalLoot
+        | ("castle_702_704_chains.sql", 1274) // Castle_PreRomneyChest: template 410 default INT_NormalLoot
+        | ("castle_702_704_chains.sql", 1275) // Castle_PreRomneyChest: template 410 default INT_NormalLoot
+        | ("castle_702_704_chains.sql", 1276) // Castle_PreRomneyChest: template 410 default INT_NormalLoot
         | ("debug_hub_chains.sql", 7010) // DebugHub_MailClerk: template 390 default INT_NonAStoryMissionAvaliable (SS-U3)
         // space_castle_cellblock_chains.sql — baseline
         | ("space_castle_cellblock_chains.sql", 5014) // Preparation_ColMarsh: dialog NPC template default

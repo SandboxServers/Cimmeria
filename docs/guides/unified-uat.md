@@ -87,6 +87,7 @@ Read these before you start. None of them needs a new report.
 | K19 | **The Social button on the Access bar does nothing** on a client without the client-patches overlay: the shipped client left its handler empty. | Press **O** to open the Social window (contact lists). With the overlay installed, the button opens it too. | [client-patches overlay README](../../crates/client-patches/overlay/README.md#what-changed-in-accesslua) |
 | K20 | **Castle friendlies never fight.** NPCs cannot fight each other yet, so the Op-CORE marines and Praxis Jaffa placed in Castle stand out of the guards' range and never shoot. The marines in the Front Courtyard and the Jaffa at Checkpoint Alpha face the enemy from behind cover on purpose. | Nothing. Report a friendly standing inside a fight. | [castle-population ledger, D-CP06](../analysis/castle-population/README.md#decisions) |
 | K21 | **Stealth, Energy and Disguise boosts and the antidotes have no effect yet.** Using one shows "This item has no effect yet." and keeps the item: nothing on the server reads those stats or models those conditions. | Record it; not a new bug. | [consumables.md](../gameplay/consumables.md#items-that-do-nothing-yet) |
+| K22 | **Loot windows on live objects are new (2026-09-28).** The debug-hub crate, the Cellblock weapon crate and the Castle chest now open the corpse loot window without being killed. Nothing in the client's `Loot.lua` checks for a dead target, but nobody has seen it work in the client yet. | If right-clicking one opens nothing, note it (with `.bug crate`) and tell the owner: that is the client refusing a live loot source, not a server fault. | [loot-system.md](../gameplay/loot-system.md#live-containers) |
 
 ## Common setup
 
@@ -132,7 +133,7 @@ The stasis room holds a row of NPCs, each for testing one system, a few seconds'
 | Archetype Skills Trainer | Ability trainer with every tree node; respec | Ready |
 | Airman Lance | Dialog round trip (paging, a button, a button-less close) | Known broken (K2) |
 | Terminal | Livewire minigame round trip; win prints "Livewire round trip complete" | Ready |
-| Crate | A mob to kill for loot; always drops slappacks, a Processor, a Cell and naquadah; respawns 30 s after death | Ready |
+| Crate | Right-click opens a loot window (no kill): slappacks, a Processor, a Cell and naquadah, sometimes crafting knowledge items; Loot All puts them in your bags and the crate stays standing. Re-rolled every time you open it | Ready, but the loot window on a live object is not client-confirmed yet (K22) |
 | Goa'uld Advanced Skills | Pet trainer (Goa'uld pet summons) | Ready |
 | Organization Registrar (SGC uniform) | Found a Team | Ready |
 | Organization Registrar (armour) | Found a Command | Ready |
@@ -577,9 +578,11 @@ Relog checks are part of almost every scenario: the full guide says what must co
 | T32 | See [Dialog UI](#dialog-ui) | | |
 | T14 | Enter Region9, then the Mess Hall; kill both guards | 680 completes and 681 is accepted on entry; the second kill completes 681 and accepts 682. | Record whether 681 shows in the quest log |
 | T15 | Kill Hallway01-04 and both Hallway05 guards | Each hidden controller mission (682-686) completes on its guard and accepts the next, exactly once, with no mission toast, tracker entry or objective popup (#715). | |
+| T15b | With 681 active, kill Mess Hall guard 2, then pull and kill Hallway01's guard, then Mess Hall guard 1; carry on through the hallways | 681 completes, 682 is accepted **and completes at once**, 683 is accepted; the rest of the chain and the Straegis scene play as normal. No mission is accepted twice. | New 2026-09-28 (the playtest soft-lock). Log: `chain_id=1184` |
+| T15c | Die near the Mess Hall; let the Defeat Window time out | You come back at Level 7: Ring Transporters (the nearest respawner), not the Stasis Chamber. | New 2026-09-28. Log: `reason=respawner_id_zero` or `respawner_id_unset`, `respawner_id=5` |
 | T29 | Flank a Mess Hall or Hallway05 guard that holds cover (fire from long range, then circle wide) | Objective 2725 (or 2731) ticks; the mission still needs the kills. | May be unreachable: if guards never take cover, record "flank not exercisable" |
 | T16/T17 | Kill the last Hallway05 guard; do not move; time it; relog afterwards | t=0: Matinee 1751 plays and Marsh vanishes; ~10.1 s: dialog 2516; ~10.6 s: blurb 5859; 687 accepted. After the relog nothing replays and Marsh stays gone. | Camera-only scene (no creature). Report a broken camera explicitly |
-| T18/T19 | Search the wooden crate; kill the three barracks guards. Once per archetype | Tau'ri: dialog 3942 and six stealth-suit items; Jaffa: 3943, jacket and staff. The third kill completes 687 and accepts 688. | Both sets, or a re-grant, is a fail |
+| T18/T19 | Search the wooden crate; Loot All; right-click it again; kill the three barracks guards. Once per archetype | Tau'ri: dialog 3942 and a loot window with six stealth-suit items; Jaffa: 3943 and a window with the jacket and staff. The step advances when the window opens. The second click says it is empty. The third kill completes 687 and accepts 688. | Changed 2026-09-28: a loot window, not a straight grant. Both sets, or a second roll (also after a relog), is a fail |
 | T20 | Read the 688 prompt; use the terminal; use the Armory ring switch | Blurb 2518 once; the terminal advances to 80688 (688 must **not** complete here); the switch completes 688 and moves you to Castle. | No ring animation on this exit is deliberate |
 | T21/T22 | Arrive in Castle; open the quest log; find Sgt. Gerschon; check your appearance | You land on the ring platform near Gerschon; 1360 still active; Frost's Letter still in mission inventory; no appearance corruption. | |
 | T23 | Relog at every step boundary above | Each restore chain repaints what it should; no one-shot cinematic or blurb replays on login. | The full restore table is in the guide |
@@ -622,6 +625,8 @@ Castle, from the ring-platform arrival: respawn checkpoints, missions 701-708 (G
 | B19 | Win the DHD Livewire; open the DHD list; dial Harset | Harset appears in the list at once, without a relog; the gate opens about 4 s after dialling. | |
 | B19a | Relog; open the DHD | Harset is still listed. | Missing after relog = the address was not saved |
 | B20 | Two players on different steps of 701-708 | Neither disturbs the other's indicators, actors or steps; a second player on step 2417 can still click Marsh after the first reports in. | Two players |
+| B21 | With 703 active, find the chest in the guard post room before the Interrogation Block (350, 70.38, 997); right-click it; Loot All; right-click again; relog and right-click again. Once as a Jaffa, once as anyone else | A loot window: an SGHC 6 SMG (non-Jaffa) or a Serpent Staff (Jaffa), 2-3 Health Slappacks, two Focus Heals and 25-75 naquadah; the chest stays standing. Every later click, including after the relog or a death, says "You have already taken everything from this." Without 703 active a click says there is nothing for you. | New 2026-09-28 (D-CA21). A loot window on a live object is not client-confirmed yet (K22). Log: `event=loot.container_opened`, `container_key=Castle_PreRomneyChest` |
+| B22 | Kill the three guards of that post, the guard by the hall door and the north patrol pair; loot them | Naquadah about half the time and a Health Slappack about three kills in ten. | New 2026-09-28 (D-CA22): loot table 7 on these six spawns only |
 
 **SigNoz:** mission chain matches are `scope_name = 'content.resolve'`; a failed address grant logs `reason` starting `grant_address_`; a gate arrival refused off-mesh logs `arrival_unrecoverable_off_mesh`. Anchor each report on a `.bug` bookmark.
 

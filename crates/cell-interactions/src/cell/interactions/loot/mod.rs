@@ -11,11 +11,11 @@ mod restore;
 
 pub use restore::handle_loot_grant_refused;
 
-/// Send `onLootDisplay` (flat index 114) to the player with the NPC's loot.
-///
-/// Wire format per LootItemQuantity from alias.xml:
-///   `itemID:i32, quantity:i16, index:i32, typeID:i32`
-/// Outer: `entityId:i32, ARRAY<LootItemQuantity>, initial:i8`
+/// Send `onLootDisplay` (flat index 114) to the player with the loot on
+/// `npc_entity_id`: the corpse's shared list, or the player's own roll when it
+/// is a live container (`SpaceManager::loot_view`). The bytes come from
+/// `cimmeria_wire::cell::loot::serialize_on_loot_display`, which the content
+/// `open_loot` action shares.
 ///
 /// `initial = 1` for the first display (opens the window), `0` for subsequent
 /// refreshes after a lootItem (client refreshes contents; closes the window
@@ -29,33 +29,11 @@ pub(super) async fn send_loot_display(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    // Read loot items from the target entity
-    let loot_items: Vec<(Option<i32>, i32, i32)> = space_mgr
-        .get_entity(npc_entity_id as u32)
-        .map(|e| {
-            e.loot
-                .iter()
-                .map(|li| (li.design_id, li.quantity, li.index))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let count = loot_items.len() as u32;
-    // Per item: 4 (itemID) + 2 (quantity i16) + 4 (index) + 4 (typeID) = 14 bytes
-    let mut args = Vec::with_capacity(4 + 4 + loot_items.len() * 14 + 1);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes()); // EntityID
-    args.extend_from_slice(&count.to_le_bytes()); // ARRAY count
-
-    for (design_id, quantity, index) in &loot_items {
-        let item_id = design_id.unwrap_or(0); // 0 = naquadah (cash)
-        let type_id = if design_id.is_some() { 1i32 } else { 2i32 }; // LOOT_Item=1, LOOT_Cash=2
-        args.extend_from_slice(&item_id.to_le_bytes()); // itemID: INT32
-        args.extend_from_slice(&(*quantity as i16).to_le_bytes()); // quantity: INT16
-        args.extend_from_slice(&index.to_le_bytes()); // index: INT32
-        args.extend_from_slice(&type_id.to_le_bytes()); // typeID: INT32
-    }
-
-    args.push(initial);
+    let looter = space_mgr.get_entity(player_id).and_then(|e| e.player_id);
+    let loot_items = space_mgr.loot_view(npc_entity_id as u32, looter);
+    let count = loot_items.len();
+    let args =
+        cimmeria_wire::cell::loot::serialize_on_loot_display(npc_entity_id, &loot_items, initial);
 
     tracing::debug!(
         player_id,
@@ -172,26 +150,24 @@ pub async fn handle_loot_item(
     // template are captured with it, so a refused grant can check that it is
     // putting the item back on the same body.
     let (removed_item, source) = {
-        let target = match space_mgr.get_entity_mut(target_eid) {
-            Some(e) => e,
-            None => {
-                tracing::warn!(
-                    entity_id,
-                    target_eid,
-                    index,
-                    "lootItem: target entity not found"
-                );
-                return;
-            }
+        let Some(list) = space_mgr.loot_list_mut(target_eid, player_id) else {
+            tracing::warn!(
+                entity_id,
+                target_eid,
+                index,
+                "lootItem: target entity not found, or no loot rolled for this looter"
+            );
+            return;
         };
-
-        let pos = target.loot.iter().position(|li| li.index == index);
-        let item = match pos {
-            Some(i) => target.loot.remove(i),
+        let item = match list.iter().position(|li| li.index == index) {
+            Some(i) => list.remove(i),
             None => {
                 tracing::warn!(entity_id, target_eid, index, "lootItem: invalid index");
                 return;
             }
+        };
+        let Some(target) = space_mgr.get_entity(target_eid) else {
+            return;
         };
         let source = LootGrantSource {
             corpse_id: target_eid,
@@ -250,11 +226,22 @@ pub async fn handle_loot_item(
     }
 
     // Check if loot is now empty
-    let loot_empty = space_mgr
+    let loot_empty = space_mgr.loot_view(target_eid, Some(player_id)).is_empty();
+    let is_container = space_mgr
         .get_entity(target_eid)
-        .is_none_or(|e| e.loot.is_empty());
+        .is_some_and(|e| e.is_loot_container);
 
-    if loot_empty {
+    if loot_empty && is_container {
+        // A live container keeps its interaction flags: its cursor is the
+        // template's, not a death-time loot bit. Only this looter's roll is
+        // spent; other players' rolls stay where they are.
+        space_mgr.prune_container_loot(target_eid, player_id);
+        send_loot_display(entity_id, target_eid as i32, 0, tx, space_mgr).await;
+        if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+            player.looting_entity = None;
+        }
+        tracing::debug!(target_eid, player_id, "container loot taken -- roll spent");
+    } else if loot_empty {
         // Clear ONLY the loot bit; preserve other interaction flags (quest tags,
         // mission interactions, etc.) so the corpse retains any content state set
         // pre-death. Mirrors python `Lootable.py:204`:
@@ -297,6 +284,8 @@ pub async fn handle_loot_item(
     }
 }
 
+#[cfg(test)]
+mod container_tests;
 #[cfg(test)]
 mod restore_tests;
 #[cfg(test)]

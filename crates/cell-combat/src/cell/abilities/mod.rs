@@ -45,7 +45,7 @@ pub use death::kill_npc_out_of_band;
 pub use death::resolve_death_for_test;
 pub use deployable::{deployable_tick, deployable_tick_at};
 pub use dispatch::handle_use_ability_on_ground;
-pub use loot_drop::INT_NORMAL_LOOT;
+pub use loot_drop::{roll_loot_entries, INT_NORMAL_LOOT};
 pub use messaging::{
     broadcast_movement_type, request_appearance_refresh, send_entity_method,
     send_entity_method_to_self_and_witnesses, send_entity_method_to_witnesses,

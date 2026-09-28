@@ -238,7 +238,7 @@ pub async fn handle_on_client_ready(
         bandolier_items,
         system_options,
         state_field,
-        (known_stargates, tree_progress, level),
+        (known_stargates, tree_progress, level, looted_containers),
         body_set,
     ) = if let Some(pool) = db_pool {
         let row =
@@ -271,6 +271,7 @@ pub async fn handle_on_client_ready(
                         training_points: r.training_points,
                     },
                     r.level,
+                    r.looted_containers,
                 ),
                 r.bodyset,
             ),
@@ -290,7 +291,7 @@ pub async fn handle_on_client_ready(
                     0,
                     cimmeria_entity::cell_entity::SystemOptions::default(),
                     0,
-                    (Vec::new(), Default::default(), 1),
+                    (Vec::new(), Default::default(), 1, Vec::new()),
                     None,
                 )
             }
@@ -309,7 +310,7 @@ pub async fn handle_on_client_ready(
             Vec::new(),
             cimmeria_entity::cell_entity::SystemOptions::default(),
             0,
-            (Vec::new(), Default::default(), 1),
+            (Vec::new(), Default::default(), 1, Vec::new()),
             None,
         )
     };
@@ -359,6 +360,7 @@ pub async fn handle_on_client_ready(
                 level,
                 character_name: player_name.clone(),
                 body_set,
+                looted_containers,
             })
             .await
         {

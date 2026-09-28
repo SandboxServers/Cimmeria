@@ -18,5 +18,6 @@
 - [assist-aggro-na14.md](assist-aggro-na14.md) — NA14 assist hooks generate_threat; shot faction-10 NPCs now pull neighbours <10 u, so test bystanders need a NEUTRAL pin; template 24 tuned to 26 u
 - [cover-behaviour-na22.md](cover-behaviour-na22.md) — startup spawns precede cover/world ids (sweep in cover_loaded); guards authored at markers; LoS from a slot reads blocked
 - [cover-peek-los-na23.md](cover-peek-los-na23.md) — NA23: NPC at a slot looks from a peek point past its prop; over-prop peeks not walk-checked; mess tables stay blind
+- [respawner-zero-and-false-pull-reports.md](respawner-zero-and-false-pull-reports.md) — callForAid 0 used to land at the first unordered Castle row (now nearest-to-death); check the aggro `acquired` row before blaming assist; stuck warn false-fires on a fleeing target
 - [na36-extractor-mesh-actor-gap.md](na36-extractor-mesh-actor-gap.md) — NA36 widened the extractor to KActor/FracturedStaticMeshActor (always) + InterpActor (opt-in, off by default — doors); did NOT explain Harset's raised-platform telemetry gap or spawn 308
 - [castle-world8-layout-and-authoring.md](castle-world8-layout-and-authoring.md) — Castle floors/components/route (throne floor y 38.4, Alpha via NE ramp), Patrol point sets, empty Ogilvie moniker 8895, free id gaps

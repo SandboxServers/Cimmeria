@@ -70,6 +70,7 @@ pub mod cell {
         pub use names::cell_method_name;
     }
     pub mod kismet;
+    pub mod loot;
     pub mod mail;
     pub mod messages;
     pub mod player_journal;

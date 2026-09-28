@@ -638,6 +638,36 @@ Three of Col. Marsh's companion lines from dialog **5019** are now spoken as **c
 
 **Server evidence:** `logs\content.log`, `Content: accepting mission` — grep per mission id and confirm **one** line each for 682, 684, 686. `fire_exit_region: matched` for Region3; `fire_enter_region: matched` for Region4/5/6.
 
+#### T15b — A hallway guard killed out of order (backstop, 2026-09-28)
+
+Decision (@Cadacious, 2026-09-28). In the 2026-09-28 colo playtest a respawn sent the player back through Hallway01; its guard chased him into the Mess Hall and died **before** `MessHall_Guard1`. Chain 1088 only reacts to that death while 682 is active, so 682 never completed, 683-686 were never offered and the Straegis scene never played. Chains **1181-1190** now fire on `mission_accepted` for 681-686: a controller mission whose guards are already dead completes at once and accepts the next, and a single early kill in a two-guard room (Mess Hall, Hallway05) is counted.
+
+**Steps:**
+
+1. With 681 active, kill `MessHall_Guard2`, then pull and kill `Hallway01_Guard` (or GM `/gmkilltarget` it), then kill `MessHall_Guard1`.
+2. Carry on through Hallway02-05 as in T15.
+3. Optional harder run: kill every hallway guard before the Mess Hall, then the last Mess Hall guard.
+
+**Expected:**
+
+- Step 1: 681 completes, then 682 is accepted **and completes in the same moment**; 683 is accepted.
+- Step 2: the rest of the cascade and the Straegis scene (T16/T17) play as normal.
+- Step 3: one kill completes 681 through 686 and accepts 687; the Straegis scene plays.
+
+**Must NOT happen:** any mission accepted twice (the C01 purge invariant above), or a controller mission completing while its guard is still alive.
+
+**Server evidence:** `Content: accepting mission` then `Content: completing mission` with `chain_id=1184` (682), `1185`-`1187` (683-685), `1188` (686), or `Content: incremented counter` with `chain_id=1182`/`1183` (681) or `1189`/`1190` (686). A `fire_mission_accepted: matched` line precedes each.
+
+#### T15c — Respawn lands at the nearest respawner (2026-09-28)
+
+Decision (@Cadacious, 2026-09-28). The playtest's second death sent `callForAid` with respawner id **0**, which used to pick the first Cellblock respawner, the Stasis Chamber start room. Id 0, the auto-respawn and an unusable id now pick the respawner **nearest where you died**.
+
+**Steps:** die in or near the Mess Hall and wait out the Defeat Window timer (or press its default button).
+
+**Expected:** you come back up at **Level 7: Ring Transporters** (respawner 5, about 35 m from the Mess Hall), not in the Stasis Chamber.
+
+**Server evidence:** `logs\server.log` (target `player.respawn`), `Respawn: no usable respawner was named -- using the one nearest the death position` with `reason=respawner_id_zero` (or `respawner_id_unset` for the timer), `respawner_id=5` and `distance_m`.
+
 ### T29 — Flank objectives 2725 and 2731 (C06)
 
 > Requires C06 (PR #671). Skip this scenario if that PR is not merged into the build you are testing.
@@ -734,15 +764,17 @@ Run **once per archetype** — the reward branches on Jaffa vs everyone else.
 **Steps:**
 
 1. Right-click `Cellblock_WoodenCrate` (spawn 8) at `(-130.45, 24.67, -92.07)`.
-2. Check your backpack.
-3. Kill all three barracks guards: `Barracks_Guard1` `(-118.41, 24.67, -118.35)`, `Barracks_Guard2` `(-131.48, 24.67, -116.97)`, `Barracks_Guard3` `(-136.38, 24.67, -135.67)`.
+2. A **loot window** opens (Decision (@Cadacious, 2026-09-28): the crate is a loot window now, not an automatic grant). Press **Loot All**, then check your bags.
+3. Right-click the crate again.
+4. Kill all three barracks guards: `Barracks_Guard1` `(-118.41, 24.67, -118.35)`, `Barracks_Guard2` `(-131.48, 24.67, -116.97)`, `Barracks_Guard3` `(-136.38, 24.67, -135.67)`.
 
 **Expected:**
 
 - The crate is highlighted on mission accept.
-- **Tau'ri (and Goa'uld):** dialog **3942** "You search through the Crate and discover a stealth suit and a nasty-looking serrated knife.", and six items into the **backpack** — Covert Stealth Helmet (3347), Vest (3359), Pants (3372), Gloves (3387), Boots (3401) and a Combat Knife (3325).
-- **Jaffa:** dialog **3943** "…a staff weapon and a piece of plate armor for the chest.", and two items — Armored Prison Jacket (3482) and Serpent Staff (2797).
-- Step advances to **2355** "Eliminate the guards in the barracks."; the crate highlight clears.
+- **Tau'ri (and Goa'uld):** dialog **3942** "You search through the Crate and discover a stealth suit and a nasty-looking serrated knife.", and a loot window (loot table 10) with six items — Covert Stealth Helmet (3347), Vest (3359), Pants (3372), Gloves (3387), Boots (3401) and a Combat Knife (3325). Loot All puts them in your bags (each item's own bag, not always the backpack).
+- **Jaffa:** dialog **3943** "…a staff weapon and a piece of plate armor for the chest.", and a loot window (table 11) with two items — Armored Prison Jacket (3482) and Serpent Staff (2797).
+- Step advances to **2355** "Eliminate the guards in the barracks." as soon as the window opens (so the mission cannot stall on an unlooted window); the crate highlight clears.
+- The second right-click reopens anything you left in the window; once it is empty it says "You have already taken everything from this." The crate stays standing.
 - The **third** guard's death completes 687 and auto-accepts **688 "Secure the Armory"**.
 
 Goa'uld taking the Tau'ri branch is intentional — Cimmeria's chains gate on `archetype neq 8` where the 2009 Python used `archetype < 5` and gave Goa'uld nothing at all.
@@ -750,13 +782,13 @@ Goa'uld taking the Tau'ri branch is intentional — Cimmeria's chains gate on `a
 **Must NOT happen:**
 
 - Both reward sets being granted, or the wrong archetype's set.
-- The crate re-granting on a second click.
+- The crate re-granting on a second click, or after a relog or a death (the once-per-character flag is saved on the character).
 - 687 completing before all three guards are down.
 - Per-class variants (dialogs 2517 / 4408 / 4409) appearing. Those were never wired to this graph in any revision we have evidence of; GC2 is closed with no packet.
 
 **Relog check:** relog on step 2354 — the crate highlight must return (chain 1104).
 
-**Server evidence:** `logs\content.log`, `Content: displaying dialog` `dialog_id=3942` or `3943` (exactly one), `Content: granting item` ×6 or ×2, `Content: incremented counter` `counter_name=barracks_kills` ×3, `Content: completing mission` `mission_id=687 chain_id=1103`.
+**Server evidence:** `logs\content.log`, `Content: displaying dialog` `dialog_id=3942` or `3943` (exactly one), `event=loot.container_opened` with `container_key=Cellblock_WoodenCrate` and `loot_table_id=10` or `11`, `Player looted item` ×6 or ×2, `Content: incremented counter` `counter_name=barracks_kills` ×3, `Content: completing mission` `mission_id=687 chain_id=1103`. A second press logs `event=loot.container_refused` with `reason=already_looted`.
 
 ### T20 — Secure the Armory (688) and the third accept blurb (C07)
 

@@ -111,11 +111,39 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (46, 5, 6681, 1, 0.02, 1);
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (47, 5, 6682, 1, 0.02, 1);
 
+-- Table 7, Castle hall NID guard (Decision (@Cadacious, 2026-09-28)):
+-- naquadah 5-25 half the time, a Health Slappack three kills in ten.
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (48, 7, NULL, 5, 0.5, 25);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (49, 7, 2893, 1, 0.3, 1);
+
+-- Tables 8/9, the Castle pre-Romney chest (Decision (@Cadacious, 2026-09-28)):
+-- the archetype weapon, 2-3 Health Slappacks, two Focus Heals and 25-75
+-- naquadah. TODO(#1026): Hollow Point ammo joins both tables when #1026 lands.
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (50, 8, 3127, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (51, 8, 2893, 2, 1, 3);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (52, 8, 6106, 2, 1, 2);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (53, 8, NULL, 25, 1, 75);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (54, 9, 3472, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (55, 9, 2893, 2, 1, 3);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (56, 9, 6106, 2, 1, 2);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (57, 9, NULL, 25, 1, 75);
+
+-- Tables 10/11, the Cellblock weapon/armor crate: chain 1098's and 1099's former
+-- add_item lists, moved into a loot window (Decision (@Cadacious, 2026-09-28)).
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (58, 10, 3347, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (59, 10, 3359, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (60, 10, 3372, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (61, 10, 3387, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (62, 10, 3401, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (63, 10, 3325, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (64, 11, 3482, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (65, 11, 2797, 1, 1, 1);
+
 --
 -- TOC entry 3323 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: loot_loot_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_loot_id_seq', 47, true);
+SELECT pg_catalog.setval('loot_loot_id_seq', 65, true);
 

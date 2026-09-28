@@ -44,6 +44,14 @@ CREATE TABLE sgw_player (
     applied_science_points_spent integer DEFAULT 0 NOT NULL,
     blueprint_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
     known_respawners integer[] DEFAULT '{}'::integer[] NOT NULL,
+    -- The loot containers this character has opened under a
+    -- once-per-character `open_loot` (the Castle pre-Romney chest, the
+    -- Cellblock crate). One key per container, the chain's `container_key`
+    -- or the container's spawn tag. Carried into the cell by
+    -- InitPlayerState so a relog or respawn never re-rolls the chest;
+    -- appended idempotently by the base on `ContainerLooted`.
+    -- Decision (@Cadacious, 2026-09-28).
+    looted_containers character varying(64)[] DEFAULT '{}'::character varying[] NOT NULL,
     -- System options the client checkbox panel pushes via cell method
     -- `updateSystemOptions` (player method index 93). These are the only
     -- two options the SGWGame/Content/XML/SystemOptions.xml marks

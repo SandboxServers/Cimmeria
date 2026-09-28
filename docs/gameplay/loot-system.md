@@ -2,7 +2,7 @@
 title: "Loot System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-28
 ---
 
 # Loot System
@@ -40,7 +40,7 @@ CREATE TABLE loot (
 );
 ```
 
-`design_id = NULL` indicates a cash drop (naquadah currency) rather than an item drop. Entity templates reference their loot pool via `entity_templates.loot_table_id`.
+`design_id = NULL` indicates a cash drop (naquadah currency) rather than an item drop. Entity templates reference their loot pool via `entity_templates.loot_table_id`. A spawn can override its template's table with `spawnlist.loot_table_id` (NULL falls back to the template); the spawn loader COALESCEs the two. The Castle hall before the Interrogation Block uses it to roll table 7 on six spawns of templates shared with the rest of the Castle (Decision (@Cadacious, 2026-09-28)).
 
 ---
 
@@ -140,6 +140,25 @@ GROUP_LOOT_FreeForAll = 1
 ```
 
 The infrastructure for per-item eligibility is in place. The missing piece is population of `eligiblePlayerList` at loot generation time based on group membership and loot mode.
+
+## Live Containers
+
+Decision (@Cadacious, 2026-09-28). A chest or crate opens the corpse loot window **without being killed**. The content action `open_loot` ([content-engine.md](../content/content-engine.md)) does it from an `interact_tag` chain on the container:
+
+- It rolls the loot table with the same per-row algorithm as a corpse (`roll_loot_entries` in `crates/cell-combat/src/cell/abilities/loot_drop.rs`), **for the clicking player only**, and stores the roll on the container in `CellEntity::container_loot`, keyed by `player_id`. Two players never share or take each other's roll; a guessed index from another player finds nothing.
+- It sends the same `onLootDisplay` bytes the corpse window uses (`cimmeria_wire::cell::loot::serialize_on_loot_display`), and `lootItem` / Loot All take from the looter's roll through `SpaceManager::loot_list_mut`, with the same range re-check and the same refused-grant restore (the item goes back into the looter's roll, and the line says "left in the container").
+- The container keeps its template interaction flags (`INT_NormalLoot` for the loot cursor) and never dies. When a roll empties, only that looter's entry is removed.
+- `once_per_character` makes the roll happen once per character, ever: the container key (the chain's `container_key`, else the spawn tag) is added to `sgw_player.looted_containers` when the window opens with loot, carried into the cell by `InitPlayerState`, so a relog, a respawn or a new instance never re-rolls. Without it (the debug-hub crate) every open re-rolls and replaces the pending roll.
+- Loot left in the window stays pending for that character for as long as the container entity lives, because the client sends nothing when the window closes. The next press reopens it. A server restart, or a fresh per-player instance, loses it.
+- Every press that opens nothing sends one feedback line, with a `reason=` on `event=loot.container_refused`.
+
+| Container | Tag | Loot tables | Chains |
+|---|---|---|---|
+| Debug-hub crate (template 304) | `DebugHub_LootCrate` | 3, repeatable | 7020 |
+| Cellblock weapon/armor crate (template 13) | `Cellblock_WoodenCrate` | 10 (non-Jaffa), 11 (Jaffa), once per character | 1098, 1099, 1191 |
+| Castle pre-Romney chest (template 410) | `Castle_PreRomneyChest` | 8 (non-Jaffa), 9 (Jaffa), once per character, 703 active | 1274, 1275, 1276 |
+
+Not client-verified yet: `Loot.lua` has no dead-target check, but a loot window on a live entity has not been seen in the client ([unified UAT guide](../guides/unified-uat.md), K22).
 
 ---
 

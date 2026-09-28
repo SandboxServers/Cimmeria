@@ -285,6 +285,62 @@ fn world_fails_closed_when_context_has_no_world() {
 /// authored id. Against 68 alone, `Lt`/`Lte` answer `false` under a
 /// numeric fall-through too (`68 < 57` is false), so half the loop
 /// would be a tautology that passes with the bug present.
+fn tag_state(tag: &str, operator: ComparisonOp, expected: EntityTagStateValue) -> Condition {
+    Condition::EntityTagState {
+        tag: tag.to_string(),
+        operator,
+        expected,
+    }
+}
+
+/// `dead` holds exactly when no living entity carries the tag, and `alive`
+/// is its complement. Both halves asserted so neither arm is a tautology.
+#[test]
+fn entity_tag_state_reads_the_live_tag_set() {
+    let hallway01_alive = ExecutionContext::new().with_live_tags(["Hallway01_Guard"]);
+    let nobody_alive = ExecutionContext::new().with_live_tags(Vec::<String>::new());
+
+    let dead = tag_state(
+        "Hallway01_Guard",
+        ComparisonOp::Eq,
+        EntityTagStateValue::Dead,
+    );
+    assert!(!dead.evaluate(&hallway01_alive));
+    assert!(dead.evaluate(&nobody_alive));
+
+    let alive = tag_state(
+        "Hallway01_Guard",
+        ComparisonOp::Eq,
+        EntityTagStateValue::Alive,
+    );
+    assert!(alive.evaluate(&hallway01_alive));
+    assert!(!alive.evaluate(&nobody_alive));
+
+    let not_dead = tag_state(
+        "Hallway01_Guard",
+        ComparisonOp::Neq,
+        EntityTagStateValue::Dead,
+    );
+    assert!(not_dead.evaluate(&hallway01_alive));
+    assert!(!not_dead.evaluate(&nobody_alive));
+}
+
+/// An unpopulated context must not read every tag as dead: that would
+/// complete a kill mission for a kill nobody made. Fails closed for both
+/// operators and both states.
+#[test]
+fn entity_tag_state_fails_closed_without_a_live_tag_set() {
+    let ctx = ExecutionContext::new();
+    for op in [ComparisonOp::Eq, ComparisonOp::Neq] {
+        for expected in [EntityTagStateValue::Alive, EntityTagStateValue::Dead] {
+            assert!(
+                !tag_state("Hallway01_Guard", op.clone(), expected).evaluate(&ctx),
+                "{op:?} {expected:?} must fail closed on an unpopulated context"
+            );
+        }
+    }
+}
+
 #[test]
 fn world_ordered_operators_never_match() {
     for op in [

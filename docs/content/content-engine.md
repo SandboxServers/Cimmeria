@@ -205,8 +205,9 @@ Defined at [conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L
 | `StatBelowMax { stat_id }` | `stat_<id>_cur < stat_<id>_max`. **Fail-closed** on missing params ([conditions.rs:255-268](../../crates/content-engine/src/conditions.rs#L255-L268)) |
 | `CustomExpression { expression }` | bool-key lookup, escape hatch |
 | `World { op, world_id }` | `ctx.world_id == world_id` (`eq`/`neq` only; ordered operators never match). Reads the typed `ExecutionContext.world_id`, not a param key. **Fail-closed** when unset — unlike the mission conditions, which fall back to `not_active` and can fail *open* |
+| `EntityTagState { tag, op, expected }` | Is any **living** entity in the acting player's space carrying spawn tag `tag`? `expected` is `alive` or `dead`; `eq`/`neq` only. Reads the typed `ExecutionContext.live_tags` set, which `populate_world_context` fills from `SpaceManager::live_tags_in_space_of` (a corpse with `BSF_DEAD`, zero health, a despawned entity and a tag that never spawned all read as dead). **Fail-closed** when unset. The *state* counterpart of the `entity_dead_tag` event, for backstops that must see a kill made before the chain was live (the Cellblock controllers 1181-1190, Decision (@Cadacious, 2026-09-28)). Use it only for tags the space spawns at creation: a tag a content action spawns later reads as dead until then |
 
-**Only seven are authorable.** [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) has match arms for exactly `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`, `stat_below_max`, and `world` (`target_id` = `resources.worlds.world_id`, `operator` = `eq`/`neq`; `target_key` and `value` unused). The other seven variants (`PropertyEquals`, `PropertyInRange`, `HasItem`, `HasAbility`, `InRegion`, `FactionCheck`, `CustomExpression`) cannot be named by a `content_conditions` row at all — a seed row using them is dropped with a `warn!`. `HasItem` and `FactionCheck` are doubly dead: even reached from Rust, no populator writes the `item_<id>_count` / `faction_<name>` keys they read (§9).
+**Only eight are authorable.** [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) has match arms for exactly `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`, `stat_below_max`, `world` (`target_id` = `resources.worlds.world_id`, `operator` = `eq`/`neq`; `target_key` and `value` unused), and `entity_tag_state` (`target_key` = the spawn tag, `value` = `alive` or `dead`, `operator` = `eq`/`neq`; a malformed row still loads, as a condition that never matches, so it cannot publish its chain ungated). The other seven variants (`PropertyEquals`, `PropertyInRange`, `HasItem`, `HasAbility`, `InRegion`, `FactionCheck`, `CustomExpression`) cannot be named by a `content_conditions` row at all — a seed row using them is dropped with a `warn!`. `HasItem` and `FactionCheck` are doubly dead: even reached from Rust, no populator writes the `item_<id>_count` / `faction_<name>` keys they read (§9).
 
 ### Actions — *side effects*
 
@@ -256,6 +257,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `grant_stargate_address` | `GrantStargateAddress` | 1 |
 | `send_system_mail` | `SendSystemMail` | 1 |
 | `open_black_market` | `OpenBlackMarket` | 0 |
+| `open_loot` | `OpenLoot` | 8 |
 
 `open_black_market` sends `onBMOpen(auctioneerEntityId)` (client method 90)
 to open the client's Black Market window. It takes no params: the executor
@@ -414,6 +416,36 @@ globally unique). It is a startup cache for the same reason
 `spawn_entity` caches `entity_templates`: the executor has no DB pool at
 action time, and a cell→base round trip mid-chain would break the chain's
 ordered action list.
+
+##### `open_loot` params
+
+Opens the corpse loot window on a **live** container, without killing it
+(Decision (@Cadacious, 2026-09-28)). Fire it from an `interact_tag` chain on
+the container; the executor arm
+([`executor/loot.rs`](../../crates/cell-content/src/cell/content/executor/loot.rs))
+takes the container from the trigger's `target_entity_id` (else the player's
+interaction pin) and requires it in range and in the player's space.
+
+| Column | Meaning |
+|---|---|
+| `target_id` | The `loot_tables` id to roll. `NULL` never rolls: it reopens this player's pending roll, or says the container is empty. Use it for the fallback chain that answers presses outside the loot gate, so no press is silent |
+| `params.once_per_character` | Optional, default `false`. `true` rolls once per character, ever: the key goes into `sgw_player.looted_containers` (via `CellToBaseMsg::ContainerLooted`) when the window opens with loot, and survives relog and respawn |
+| `params.container_key` | Optional; defaults to the container's spawn tag. 1-64 printable ASCII characters. Name it explicitly when two tags should share one flag |
+
+The roll is per looter (stored on the container under the player's id), so
+two players never share or take each other's roll; without
+`once_per_character` every open re-rolls. Archetype splits and mission gates
+are ordinary chain conditions. How the window and `lootItem` behave is in
+[loot-system.md, Live containers](../gameplay/loot-system.md#live-containers).
+A bad param drops the row at load with `reason = "malformed_open_loot"`.
+
+| Event | Target | Level | When |
+|---|---|---|---|
+| `loot.container_opened` | `loot` | INFO | rolled and opened: `container_entity_id`, `container_key`, `loot_table_id`, `item_count`, `once_per_character` |
+| `loot.container_reopened` | `loot` | INFO | a pending roll reopened (`reason=pending_reopened`) |
+| `loot.container_refused` | `loot` | INFO | nothing rolled: `reason` = `no_container`, `out_of_range`, `no_container_key`, `nothing_pending`, `already_looted`, `unknown_loot_table` or `empty_roll`; the player gets a chat line |
+
+Each row carries `entity_id`, `account_id`, `player_id` and `chain_id`.
 
 ##### `send_system_mail` params
 

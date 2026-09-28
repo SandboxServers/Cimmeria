@@ -47,56 +47,20 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
         }
     };
 
-    // Roll each entry
+    let rolled = roll_loot_entries(&entries, target_eid, loot_table_id);
+
     let target = match space_mgr.get_entity_mut(target_eid) {
         Some(e) => e,
         None => return,
     };
-
-    for entry in &entries {
-        let roll: f32 = rand::random();
-        if roll <= entry.probability {
-            // Guard against malformed DB rows where min > max -- the
-            // subtraction would wrap as u32 and produce wildly out-of-range
-            // quantities. Log and fall back to min in that case.
-            let quantity = if entry.min_quantity == entry.max_quantity {
-                entry.min_quantity
-            } else if entry.min_quantity > entry.max_quantity {
-                tracing::warn!(
-                    target_eid,
-                    loot_table_id,
-                    design_id = ?entry.design_id,
-                    min = entry.min_quantity,
-                    max = entry.max_quantity,
-                    "loot entry has min_quantity > max_quantity; using min as fallback"
-                );
-                entry.min_quantity
-            } else {
-                let range = (entry.max_quantity - entry.min_quantity + 1) as u32;
-                entry.min_quantity + (rand::random::<u32>() % range) as i32
-            };
-
-            if quantity > 0 {
-                let index = target.next_loot_index;
-                target.next_loot_index += 1;
-
-                target.loot.push(cimmeria_entity::cell_entity::LootItem {
-                    design_id: entry.design_id,
-                    quantity,
-                    index,
-                });
-
-                let name = entry
-                    .design_id
-                    .map(|id| format!("item_{id}"))
-                    .unwrap_or_else(|| "naquadah".to_string());
-                tracing::debug!(
-                    target_eid, %name, quantity, index,
-                    probability = entry.probability,
-                    "Loot generated"
-                );
-            }
-        }
+    for (design_id, quantity) in rolled {
+        let index = target.next_loot_index;
+        target.next_loot_index += 1;
+        target.loot.push(cimmeria_entity::cell_entity::LootItem {
+            design_id,
+            quantity,
+            index,
+        });
     }
 
     if !target.loot.is_empty() {
@@ -111,6 +75,60 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
             "NPC has loot — set INT_NormalLoot interaction"
         );
     }
+}
+
+/// Roll every row of a loot table once, independently, the way
+/// `Lootable.randomizeLoot()` does: a row drops when a uniform roll is at or
+/// under its probability, with a uniform quantity in `min..=max`. Returns
+/// `(design_id, quantity)` pairs in row order; `design_id = None` is
+/// naquadah.
+///
+/// Shared by the on-death roll and the content `open_loot` action, so a
+/// corpse and a chest reading the same table produce the same distribution.
+/// `owner` and `loot_table_id` only label the logs.
+pub fn roll_loot_entries(
+    entries: &[crate::cell::spawner::LootTableEntry],
+    owner: u32,
+    loot_table_id: i32,
+) -> Vec<(Option<i32>, i32)> {
+    let mut out = Vec::new();
+    for entry in entries {
+        let roll: f32 = rand::random();
+        if roll > entry.probability {
+            continue;
+        }
+        // Guard against malformed DB rows where min > max -- the
+        // subtraction would wrap as u32 and produce wildly out-of-range
+        // quantities. Log and fall back to min in that case.
+        let quantity = if entry.min_quantity == entry.max_quantity {
+            entry.min_quantity
+        } else if entry.min_quantity > entry.max_quantity {
+            tracing::warn!(
+                owner,
+                loot_table_id,
+                design_id = ?entry.design_id,
+                min = entry.min_quantity,
+                max = entry.max_quantity,
+                "loot entry has min_quantity > max_quantity; using min as fallback"
+            );
+            entry.min_quantity
+        } else {
+            let range = (entry.max_quantity - entry.min_quantity + 1) as u32;
+            entry.min_quantity + (rand::random::<u32>() % range) as i32
+        };
+        if quantity > 0 {
+            tracing::debug!(
+                owner,
+                loot_table_id,
+                design_id = ?entry.design_id,
+                quantity,
+                probability = entry.probability,
+                "Loot generated"
+            );
+            out.push((entry.design_id, quantity));
+        }
+    }
+    out
 }
 
 /// Calculate XP reward for killing a mob of the given level.

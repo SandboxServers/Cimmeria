@@ -124,6 +124,40 @@ pub enum Condition {
         operator: ComparisonOp,
         world_id: i32,
     },
+
+    /// Is any entity carrying spawn tag `tag` still alive in the acting
+    /// player's space? `expected` is the state the author asks for; `Eq`
+    /// holds when the actual state matches it, `Neq` when it does not.
+    ///
+    /// "Dead" means *no living entity carries the tag*: a corpse
+    /// (`BSF_DEAD`), a despawned entity and a tag that never spawned in this
+    /// space all read as dead. Only use it for tags the space spawns at
+    /// creation (`resources.spawnlist`), not for one a content action spawns
+    /// later, which reads as dead until it appears.
+    ///
+    /// Exists for the backstop shape: a `mission_accepted` chain that
+    /// completes a kill mission at once when its target died before the
+    /// mission was offered. Without it, an out-of-order kill matches no
+    /// chain and the mission can never complete (2026-09-28 Cellblock
+    /// soft-lock, missions 682-686). `entity_dead_tag` is an *event*; this
+    /// is the matching *state* test.
+    ///
+    /// Reads the typed [`ExecutionContext::live_tags`] set and **fails
+    /// closed** for every operator when it is `None`, like
+    /// [`Condition::World`]: an unpopulated context must not read every
+    /// guard as dead and complete missions for kills nobody made.
+    EntityTagState {
+        tag: String,
+        operator: ComparisonOp,
+        expected: EntityTagStateValue,
+    },
+}
+
+/// The two states [`Condition::EntityTagState`] distinguishes.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum EntityTagStateValue {
+    Alive,
+    Dead,
 }
 
 /// Faction relationship levels.
@@ -336,6 +370,32 @@ impl Condition {
                     return false;
                 };
                 compare_world_id(actual, *world_id, operator)
+            }
+            Condition::EntityTagState {
+                tag,
+                operator,
+                expected,
+            } => {
+                let Some(live) = ctx.live_tags.as_ref() else {
+                    tracing::debug!(
+                        %tag,
+                        "Condition::EntityTagState evaluated against a context with no \
+                         live_tags — failing closed; the firing dispatcher did not populate it"
+                    );
+                    return false;
+                };
+                let actual = if live.contains(tag) {
+                    EntityTagStateValue::Alive
+                } else {
+                    EntityTagStateValue::Dead
+                };
+                match operator {
+                    ComparisonOp::Eq => actual == *expected,
+                    ComparisonOp::Neq => actual != *expected,
+                    // Ordered operators mean nothing on a two-state value; the
+                    // loader warns and keeps the row so the chain stays gated.
+                    _ => false,
+                }
             }
         }
     }

@@ -26,7 +26,7 @@ Taken from the shipped dialogs; the placements do not contradict them.
 | `spawnlist` | 189-212 (friendly), 247-282 (hostile) | Both blocks were unused gaps below the Harset block (300-399). |
 | `point_sets` | 2086-2093 | Type `Patrol`, shape `Path`, never loaded as client regions. |
 | `point_set_points` | 2413-2430 | Waypoints of 2086-2093. |
-| `loot_tables` / `loot` | 4-6 / 24-33 | Castle hostile drops (D-CP09). |
+| `loot_tables` / `loot` | 4-6 / 24-33 | Castle hostile drops (D-CP09). Table 7 (rows 48-49) overrides 4/5 on six hall spawns before the Interrogation Block: Decision (@Cadacious, 2026-09-28), [castle-rebuild D-CA22](../castle-rebuild/README.md#decisions-after-the-2026-09-28-playtest). |
 
 ## Decisions
 

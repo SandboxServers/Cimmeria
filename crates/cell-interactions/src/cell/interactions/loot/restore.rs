@@ -36,11 +36,13 @@ impl RestoreMiss {
     }
 }
 
-/// Put `item` back on the corpse `source` names. `Ok(true)` when the corpse
-/// had lost its loot bit (it was emptied) and got it back, so the caller
-/// must broadcast the interaction flags again.
+/// Put `item` back on the corpse `source` names, or into `player_id`'s own
+/// roll when `source` is a live container. `Ok(true)` when the corpse had lost
+/// its loot bit (it was emptied) and got it back, so the caller must
+/// broadcast the interaction flags again; a container never needs that.
 pub(super) fn put_back(
     space_mgr: &mut SpaceManager,
+    player_id: i32,
     source: LootGrantSource,
     item: LootItem,
 ) -> Result<bool, RestoreMiss> {
@@ -53,15 +55,24 @@ pub(super) fn put_back(
     {
         return Err(RestoreMiss::CorpseChanged);
     }
-    if corpse.loot.iter().any(|li| li.index == source.index) {
+    let is_container = corpse.is_loot_container;
+    let list = if is_container {
+        // The looter's roll may have been pruned when this was its last item.
+        corpse.container_loot.entry(player_id).or_default()
+    } else {
+        &mut corpse.loot
+    };
+    if list.iter().any(|li| li.index == source.index) {
         return Err(RestoreMiss::IndexTaken);
     }
-    let at = corpse
-        .loot
+    let at = list
         .iter()
         .position(|li| li.index > source.index)
-        .unwrap_or(corpse.loot.len());
-    corpse.loot.insert(at, item);
+        .unwrap_or(list.len());
+    list.insert(at, item);
+    if is_container {
+        return Ok(false);
+    }
     let reflagged = corpse.interaction_type_flags & crate::cell::abilities::INT_NORMAL_LOOT == 0;
     if reflagged {
         corpse.interaction_type_flags |= crate::cell::abilities::INT_NORMAL_LOOT;
@@ -70,18 +81,51 @@ pub(super) fn put_back(
     Ok(reflagged)
 }
 
+/// Where a refused item went back to, as the feedback line names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LootPlace {
+    Corpse,
+    Container,
+}
+
+fn place(space_mgr: &SpaceManager, source: u32) -> LootPlace {
+    if space_mgr
+        .get_entity(source)
+        .is_some_and(|e| e.is_loot_container)
+    {
+        LootPlace::Container
+    } else {
+        LootPlace::Corpse
+    }
+}
+
 /// The line the looter reads after a refused pickup whose item went back.
-fn restored_text(reason: GrantRefusal, container_id: i32) -> &'static str {
-    match reason {
-        GrantRefusal::ContainerFull if container_id == 15 => {
+fn restored_text(reason: GrantRefusal, container_id: i32, on: LootPlace) -> &'static str {
+    use LootPlace::{Container, Corpse};
+    match (reason, on) {
+        (GrantRefusal::ContainerFull, Corpse) if container_id == 15 => {
             "Your crafting bag is full. The item was left on the corpse."
         }
-        GrantRefusal::ContainerFull => "Your inventory is full. The item was left on the corpse.",
-        GrantRefusal::StorageOnly | GrantRefusal::NotGrantable => {
+        (GrantRefusal::ContainerFull, Container) if container_id == 15 => {
+            "Your crafting bag is full. The item was left in the container."
+        }
+        (GrantRefusal::ContainerFull, Corpse) => {
+            "Your inventory is full. The item was left on the corpse."
+        }
+        (GrantRefusal::ContainerFull, Container) => {
+            "Your inventory is full. The item was left in the container."
+        }
+        (GrantRefusal::StorageOnly | GrantRefusal::NotGrantable, Corpse) => {
             "That item cannot be carried. It was left on the corpse."
         }
-        GrantRefusal::NoDatabase | GrantRefusal::DatabaseError => {
+        (GrantRefusal::StorageOnly | GrantRefusal::NotGrantable, Container) => {
+            "That item cannot be carried. It was left in the container."
+        }
+        (GrantRefusal::NoDatabase | GrantRefusal::DatabaseError, Corpse) => {
             "That item could not be picked up right now. It was left on the corpse."
+        }
+        (GrantRefusal::NoDatabase | GrantRefusal::DatabaseError, Container) => {
+            "That item could not be picked up right now. It was left in the container."
         }
     }
 }
@@ -114,7 +158,8 @@ pub async fn handle_loot_grant_refused(
         quantity,
         index: source.index,
     };
-    match put_back(space_mgr, source, item) {
+    let on = place(space_mgr, source.corpse_id);
+    match put_back(space_mgr, player_id, source, item) {
         Ok(reflagged) => {
             tracing::info!(
                 target: "inventory",
@@ -149,7 +194,7 @@ pub async fn handle_loot_grant_refused(
                     entity_id,
                     player_id,
                     account_id,
-                    restored_text(reason, container_id),
+                    restored_text(reason, container_id, on),
                     tx,
                 )
                 .await;
@@ -193,7 +238,7 @@ pub(super) fn return_unsent(
 ) {
     let type_id = item.design_id;
     let qty = item.quantity;
-    let restored = put_back(space_mgr, source, item);
+    let restored = put_back(space_mgr, player_id, source, item);
     tracing::warn!(
         target: "inventory",
         event = "loot_grant_send_failed",

@@ -30,6 +30,7 @@
 
 mod black_market_auctioneer;
 mod castle_702_704_executor;
+mod castle_loot_containers;
 mod cellblock_dialog_closes;
 mod debug_hub;
 mod debug_hub_mail_clerk;
@@ -56,6 +57,7 @@ mod mission_640;
 mod mission_641;
 mod mission_680;
 mod mission_681_686;
+mod mission_681_686_backstop;
 mod mission_681_686_flank;
 mod mission_686_straegis;
 mod mission_687;

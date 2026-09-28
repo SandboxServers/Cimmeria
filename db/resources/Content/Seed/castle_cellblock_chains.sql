@@ -1850,6 +1850,213 @@ VALUES
   (1094, 'accept_mission',   687, NULL, '{}', 0, 1),
   (1094, 'reset_counter', NULL, 'hallway05_kills', '{}', 0, 2);
 
+-- ─────────────────────────────────────────────────────────────────────
+-- Chains 1181-1190: out-of-order-kill backstops for missions 681-686.
+--
+-- Decision (@Cadacious, 2026-09-28). 2026-09-28 colo playtest (build
+-- 5f9730c6): after a respawn in the Stasis Chamber the player ran back
+-- through Hallway01, its guard chased him into the Mess Hall and died
+-- 4.5 s before MessHall_Guard1. Chain 1088 completes 682 only on an
+-- `entity_dead_tag Hallway01_Guard` *event* while 682 is active, so the
+-- kill that happened while 681 was still active matched nothing, 682
+-- never completed, 683-686 were never offered and the Straegis scene
+-- (T16/T17) never played.
+--
+-- Each backstop fires on `mission_accepted` of a controller mission and
+-- tests the guards' *state* with `entity_tag_state` (no living entity in
+-- the player's space carries the tag). A controller whose guards are all
+-- dead completes at once and accepts the next mission, whose own backstop
+-- then runs, so the cascade reaches as far as the guards are dead. The
+-- two-guard rooms (681 Mess Hall, 686 Hallway05) also credit a single
+-- early kill to their counter, or the remaining kill would read the
+-- pre-increment counter as 0 and the completion chain (1087 / 1094)
+-- would never fire.
+--
+-- No mission can be accepted twice: `accept_mission` refuses an offer for
+-- an active or completed mission (the offer guard in
+-- `crate::cell::missions::accept_mission`), and every backstop is gated
+-- on its own mission being active.
+--
+-- Pinned end to end by `chain_replay_tests/mission_681_686_backstop.rs`.
+-- ─────────────────────────────────────────────────────────────────────
+
+-- ── 681 Mess Hall (2 guards) ──
+
+-- Chain 1181: 681 accepted with both Mess Hall guards dead → complete it.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1181, '681 - Accepted with both Mess Hall guards dead: complete 681, accept 682', 'mission', 681, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1181, 'mission_accepted', '681', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1181, 'mission_status',   681,  NULL,              'eq', 'active', 0),
+  (1181, 'entity_tag_state', NULL, 'MessHall_Guard1', 'eq', 'dead',   1),
+  (1181, 'entity_tag_state', NULL, 'MessHall_Guard2', 'eq', 'dead',   2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1181, 'complete_mission', 681, NULL, '{}', 0, 0),
+  (1181, 'accept_mission',   682, NULL, '{}', 0, 1),
+  (1181, 'reset_counter', NULL, 'messhall_kills', '{}', 0, 2);
+
+-- Chain 1182: 681 accepted with only MessHall_Guard1 dead → count it.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1182, '681 - Accepted with MessHall_Guard1 already dead: increment messhall_kills', 'mission', 681, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1182, 'mission_accepted', '681', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1182, 'mission_status',   681,  NULL,              'eq', 'active', 0),
+  (1182, 'entity_tag_state', NULL, 'MessHall_Guard1', 'eq', 'dead',   1),
+  (1182, 'entity_tag_state', NULL, 'MessHall_Guard2', 'eq', 'alive',  2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1182, 'increment_counter', NULL, 'messhall_kills', '{"amount": 1}', 0, 0);
+
+-- Chain 1183: 681 accepted with only MessHall_Guard2 dead → count it.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1183, '681 - Accepted with MessHall_Guard2 already dead: increment messhall_kills', 'mission', 681, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1183, 'mission_accepted', '681', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1183, 'mission_status',   681,  NULL,              'eq', 'active', 0),
+  (1183, 'entity_tag_state', NULL, 'MessHall_Guard1', 'eq', 'alive',  1),
+  (1183, 'entity_tag_state', NULL, 'MessHall_Guard2', 'eq', 'dead',   2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1183, 'increment_counter', NULL, 'messhall_kills', '{"amount": 1}', 0, 0);
+
+-- ── 682-685 Hallway01-04 (1 guard each) ──
+
+-- Chain 1184: 682 accepted with Hallway01_Guard dead → complete, accept 683.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1184, '682 - Accepted with Hallway01_Guard dead: complete 682, accept 683', 'mission', 682, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1184, 'mission_accepted', '682', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1184, 'mission_status',   682,  NULL,              'eq', 'active', 0),
+  (1184, 'entity_tag_state', NULL, 'Hallway01_Guard', 'eq', 'dead',   1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1184, 'complete_mission', 682, NULL, '{}', 0, 0),
+  (1184, 'accept_mission',   683, NULL, '{}', 0, 1);
+
+-- Chain 1185: 683 accepted with Hallway02_Guard dead → complete, accept 684.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1185, '683 - Accepted with Hallway02_Guard dead: complete 683, accept 684', 'mission', 683, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1185, 'mission_accepted', '683', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1185, 'mission_status',   683,  NULL,              'eq', 'active', 0),
+  (1185, 'entity_tag_state', NULL, 'Hallway02_Guard', 'eq', 'dead',   1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1185, 'complete_mission', 683, NULL, '{}', 0, 0),
+  (1185, 'accept_mission',   684, NULL, '{}', 0, 1);
+
+-- Chain 1186: 684 accepted with Hallway03_Guard dead → complete, accept 685.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1186, '684 - Accepted with Hallway03_Guard dead: complete 684, accept 685', 'mission', 684, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1186, 'mission_accepted', '684', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1186, 'mission_status',   684,  NULL,              'eq', 'active', 0),
+  (1186, 'entity_tag_state', NULL, 'Hallway03_Guard', 'eq', 'dead',   1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1186, 'complete_mission', 684, NULL, '{}', 0, 0),
+  (1186, 'accept_mission',   685, NULL, '{}', 0, 1);
+
+-- Chain 1187: 685 accepted with Hallway04_Guard dead → complete, accept 686.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1187, '685 - Accepted with Hallway04_Guard dead: complete 685, accept 686', 'mission', 685, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1187, 'mission_accepted', '685', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1187, 'mission_status',   685,  NULL,              'eq', 'active', 0),
+  (1187, 'entity_tag_state', NULL, 'Hallway04_Guard', 'eq', 'dead',   1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1187, 'complete_mission', 685, NULL, '{}', 0, 0),
+  (1187, 'accept_mission',   686, NULL, '{}', 0, 1);
+
+-- ── 686 Hallway05 (2 guards) ──
+
+-- Chain 1188: 686 accepted with both Hallway05 guards dead → complete it.
+-- `mission_completed 686` then plays the Straegis scene (chain 1161).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1188, '686 - Accepted with both Hallway05 guards dead: complete 686, accept 687', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1188, 'mission_accepted', '686', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1188, 'mission_status',   686,  NULL,               'eq', 'active', 0),
+  (1188, 'entity_tag_state', NULL, 'Hallway05_Guard1', 'eq', 'dead',   1),
+  (1188, 'entity_tag_state', NULL, 'Hallway05_Guard2', 'eq', 'dead',   2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1188, 'complete_mission', 686, NULL, '{}', 0, 0),
+  (1188, 'accept_mission',   687, NULL, '{}', 0, 1),
+  (1188, 'reset_counter', NULL, 'hallway05_kills', '{}', 0, 2);
+
+-- Chain 1189: 686 accepted with only Hallway05_Guard1 dead → count it.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1189, '686 - Accepted with Hallway05_Guard1 already dead: increment hallway05_kills', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1189, 'mission_accepted', '686', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1189, 'mission_status',   686,  NULL,               'eq', 'active', 0),
+  (1189, 'entity_tag_state', NULL, 'Hallway05_Guard1', 'eq', 'dead',   1),
+  (1189, 'entity_tag_state', NULL, 'Hallway05_Guard2', 'eq', 'alive',  2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1189, 'increment_counter', NULL, 'hallway05_kills', '{"amount": 1}', 0, 0);
+
+-- Chain 1190: 686 accepted with only Hallway05_Guard2 dead → count it.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1190, '686 - Accepted with Hallway05_Guard2 already dead: increment hallway05_kills', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1190, 'mission_accepted', '686', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1190, 'mission_status',   686,  NULL,               'eq', 'active', 0),
+  (1190, 'entity_tag_state', NULL, 'Hallway05_Guard1', 'eq', 'alive',  1),
+  (1190, 'entity_tag_state', NULL, 'Hallway05_Guard2', 'eq', 'dead',   2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1190, 'increment_counter', NULL, 'hallway05_kills', '{"amount": 1}', 0, 0);
+
 -- ============================================================
 -- MISSION 687 — Aftermath
 --
@@ -1891,11 +2098,16 @@ VALUES (1097, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
         '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
 
 -- Chain 1098: search crate (Tau'ri / non-Jaffa) → display dialog 3942,
--- grant 5-piece Covert Stealth set + Combat Knife to backpack, advance
--- to step 2355, clear crate highlight. Items go to container 1
--- (backpack) per Aftermath.py — the original `inventory.addItem(1, ...)`
--- path. Player learns to equip themselves rather than auto-equipping;
--- earlier items in the cellblock arc were auto-handled.
+-- open a loot window on loot table 10 (the 5-piece Covert Stealth set + the
+-- Combat Knife), advance to step 2355, clear crate highlight.
+--
+-- Decision (@Cadacious, 2026-09-28): the crate opens a real loot window
+-- (`open_loot`, once per character, key `Cellblock_WoodenCrate`) instead of
+-- granting straight to the backpack. The player takes the items with Loot
+-- All; anything left stays in the crate for that character. The step still
+-- advances on open, as before, so the mission cannot stall on an unlooted
+-- window. Items land in the bag each item's own container_sets names (the
+-- loot pickup path), not the backpack Aftermath.py used.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1098, '687 - Search crate (non-Jaffa): grant stealth set', 'mission', 687, true, 0);
 
@@ -1910,19 +2122,15 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1098, 'display_dialog', 3942, NULL,   '{}',                         0, 0),
-  (1098, 'add_item',       3347, NULL,   '{"qty": 1, "container": 1}', 0, 1),  -- Covert Stealth Helmet
-  (1098, 'add_item',       3359, NULL,   '{"qty": 1, "container": 1}', 0, 2),  -- Covert Stealth Vest
-  (1098, 'add_item',       3372, NULL,   '{"qty": 1, "container": 1}', 0, 3),  -- Covert Stealth Pants
-  (1098, 'add_item',       3387, NULL,   '{"qty": 1, "container": 1}', 0, 4),  -- Covert Stealth Gloves
-  (1098, 'add_item',       3401, NULL,   '{"qty": 1, "container": 1}', 0, 5),  -- Covert Stealth Boots
-  (1098, 'add_item',       3325, NULL,   '{"qty": 1, "container": 1}', 0, 6),  -- Combat Knife
-  (1098, 'advance_step',   687,  '2355', '{}',                         0, 7),
+  (1098, 'open_loot',      10,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1098, 'advance_step',   687,  '2355', '{}',                         0, 2),
   (1098, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
-   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 8);
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3);
 
--- Chain 1099: search crate (Jaffa) → display dialog 3943, grant
--- Armored Prison Jacket + Serpent Staff to backpack, advance step,
--- clear crate highlight. Same container-1 reasoning as 1098.
+-- Chain 1099: search crate (Jaffa) → display dialog 3943, open a loot
+-- window on loot table 11 (Armored Prison Jacket + Serpent Staff), advance
+-- step, clear crate highlight. Same loot-window decision as 1098.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1099, '687 - Search crate (Jaffa): grant prison jacket + serpent staff', 'mission', 687, true, 0);
 
@@ -1937,11 +2145,27 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1099, 'display_dialog', 3943, NULL,   '{}',                         0, 0),
-  (1099, 'add_item',       3482, NULL,   '{"qty": 1, "container": 1}', 0, 1),  -- Armored Prison Jacket
-  (1099, 'add_item',       2797, NULL,   '{"qty": 1, "container": 1}', 0, 2),  -- Serpent Staff
-  (1099, 'advance_step',   687,  '2355', '{}',                         0, 3),
+  (1099, 'open_loot',      11,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1099, 'advance_step',   687,  '2355', '{}',                         0, 2),
   (1099, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
-   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 4);
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3);
+
+-- Chain 1191: every other press on the crate (step 2354 not active: before
+-- 687, or after the first search) → reopen this character's pending loot, or
+-- say the crate is empty. Reopen-only (`target_id` NULL never rolls), so no
+-- press is silent and none re-rolls. Decision (@Cadacious, 2026-09-28).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1191, '687 - Crate pressed outside step 2354: reopen pending loot or say empty', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1191, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1191, 'step_status', 687, '2354', 'neq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1191, 'open_loot', NULL, NULL, '{"container_key": "Cellblock_WoodenCrate"}', 0, 0);
 
 -- ── Mission 687 step 2355 — Eliminate barracks guards (3 guards) ──
 --
