@@ -6,10 +6,13 @@ CREATE TABLE login_audit (
     ip_address    INET NOT NULL,
     phase         VARCHAR(20) NOT NULL
         CONSTRAINT phase_check CHECK (phase IN ('credential_check', 'shard_selection')),
+    -- Must list every cimmeria_auth::audit::LoginOutcome::as_str() value; the
+    -- live-DB test live_db_login_audit_accepts_every_outcome inserts each one.
     outcome       VARCHAR(30) NOT NULL
         CONSTRAINT outcome_check CHECK (outcome IN (
             'success', 'invalid_credentials', 'account_disabled',
-            'db_error', 'protocol_mismatch', 'no_shards'
+            'db_error', 'protocol_mismatch', 'no_shards',
+            'plaintext_requires_tls'
         )),
     shard         VARCHAR(64),
     detail        TEXT
