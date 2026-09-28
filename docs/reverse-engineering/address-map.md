@@ -1768,7 +1768,11 @@ See [`findings/stargate-dhd-state-machine.md`](findings/stargate-dhd-state-machi
 | `0x00e2fd10` | MemberCallback vfunc_3: VGateTravel × Cache_ElementReady<DBGateInfo> | Gate info cache warm |
 | `0x00e30090` | MemberCallback vfunc_3: VGateTravel × World_StargateEvent | Kismet-scripted gate event |
 | `0x00e30110` | MemberCallback vfunc_3: VGateTravel × World_DialStargateAddress | Kismet-scripted dial trigger |
-| `0x00cf5440` | MemberCallback vfunc_3: **VCommunicator** × onDHDReply | DHD NPC reply — NOT GateTravel |
+| `0x00cf51c0` | MemberCallback vfunc_3: **VCommunicator** × onSystemCommunication | Chat cluster, adjacent to onDHDReply (#1024) |
+| `0x00cf53c0` | MemberCallback vfunc_3: **VCommunicator** × onTellSent | Chat cluster, adjacent to onDHDReply (#1024) |
+| `0x00cf5440` | MemberCallback vfunc_3: **VCommunicator** × onDHDReply | Chat/comm cluster member (#1024, 2026-09-28) — NOT a DHD-window handler, NOT GateTravel |
+| `0x00e2fb50` | `Event_UI_DHDVisibility` TypedEmitInfo vfunc_0 | The DHD window's real show/hide event — separate chain from onDHDReply (#1024) |
+| `0x00ce3290` | `SGWScriptedWindow` × `Event_UI_DHDVisibility` GameEventHandler vfunc_0 | Calls `DHD.lua`'s `DHDMod.onDHDVisibility` |
 | `0x00df7900` | MemberCallback vfunc_3: **VGameProxyPlayer** × onRingTransporterList | Ring transporter destinations |
 
 ### Stargate dial/travel timing (NA35 session, 2026-09-25)

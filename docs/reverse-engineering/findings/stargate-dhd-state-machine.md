@@ -1,12 +1,12 @@
 # Stargate DHD State Machine
 
 > **Date**: 2026-05-13
-> **Last updated**: 2026-09-19 (static declaration and Rust call-site audit; no new binary or live-client verification)
+> **Last updated**: 2026-09-28 (#1024: `onDHDReply` render-target resolved by static RE — VCommunicator chat cluster, not the DHD window)
 > **Type**: Reference
 > **Audience**: Engineers implementing or investigating gate travel
-> **Phase**: V5 Documentation Campaign — W-content-mech Session 5
-> **Confidence**: HIGH for subscriber graph and event inventory; MEDIUM for state ordering and the declaration-derived `onDHDReply` payload; its binary payload and visible UI remain unverified
-> **Sources**: Ghidra decompilation of SGW.exe; `EmitNetOut_onDialGate` at `0x00e2e120`; MemberCallback RTTI; cross-reference to `gate-travel-wire-formats.md`
+> **Phase**: V5 Documentation Campaign — W-content-mech Session 5; #1024 follow-up
+> **Confidence**: HIGH for subscriber graph and event inventory; HIGH for `onDHDReply`'s render target (Communicator chat cluster, not the DHD window — static RE + uncooked Lua, no live packet capture); MEDIUM for state ordering
+> **Sources**: Ghidra decompilation of SGW.exe (GUI session and `tools/re/ghidra-headless/Probe.java` headless probes); `EmitNetOut_onDialGate` at `0x00e2e120`; MemberCallback RTTI; `entities/defs/interfaces/Communicator.def`; uncooked client Lua at `Content/UI/Core/DHD/DHD.lua`; cross-reference to `gate-travel-wire-formats.md`
 
 ---
 
@@ -134,21 +134,52 @@ Incremental address updates (any time):
 
 ### `onDHDReply` Declaration and Rust Audit
 
-**Static audit: 2026-09-19.** The declaration is known; the binary payload and live-client presentation remain unverified.
+**Static audit: 2026-09-19.** The declaration is known; the binary payload and live-client presentation were unverified.
+
+**Render target resolved: 2026-09-28 (#1024), by static RE.** `onDHDReply` does not render on the DHD window. It is bound to the same client-side `Communicator` class family that renders the player's chat/system-communication text, not to `GateTravel`'s DHD UI. See [Render-target resolution (#1024)](#ondhdreply-render-target-resolution-1024-2026-09-28) below for the full evidence chain. This is a static-RE conclusion (decompilation + uncooked Lua source), not a live packet-capture or visual observation in a running client.
 
 | Evidence | What it establishes | Limit |
 |---|---|---|
 | [SGWPlayer.def](../../../entities/defs/SGWPlayer.def), `ClientMethods/onDHDReply` [DEF SGWPlayer.def:onDHDReply] | One argument: `WSTRING aMessage`; comment: "Give the client feedback on attempted DHD use" | Declared intent and signature, not a verified client payload decoder |
 | [Canonical client dispatch table](../../protocol/client-method-dispatch-table.md), SGWPlayer row 100 | `onDHDReply` is client method **100**, with `WSTRING aMessage` | A method index does not establish when the server emits it |
-| MemberCallback RTTI [SGW 0x00cf5440] | Recorded `Event_NetIn_onDHDReply` subscriber is VCommunicator | Does not verify field decoding, a displayed text widget, or subscriber selection by entity ID |
+| MemberCallback RTTI [SGW 0x00cf5440] | Recorded `Event_NetIn_onDHDReply` subscriber is VCommunicator | RTTI accessor only — doesn't show field decoding or a widget by itself; see the render-target resolution below for the cluster evidence that does |
 | [Rust client-method constants](../../../crates/wire/src/cell/client_methods/player.rs), `ON_DHD_REPLY` | Constant exists with value 100 | No production send call uses it in the audited Rust tree |
 | [Wire-log decoder](../../../crates/wire-log/src/wire_log/decoders/generated.rs), `decode_100` | Reads one `wstring()` as `aMessage`; [name table](../../../crates/wire-log/src/wire_log/client_names.rs) names method 100 | Diagnostic decoding is not a production emitter or independent client confirmation |
 
-A search of `crates/` for `onDHDReply` and `ON_DHD_REPLY` finds the constant, a method-index comment in `mercury/mod.rs`, and the wire-log name/decoder. No production Rust emitter was found. The absence of a named call site is a static audit result, not a packet-capture observation. The declaration contains no NPC or gate entity-ID argument, and neither the declaration nor the recorded subscriber establishes that changing the RPC's entity ID would route it to VCommunicator.
+A search of `crates/` for `onDHDReply` and `ON_DHD_REPLY` finds the constant, a method-index comment in `mercury/mod.rs`, and the wire-log name/decoder. No production Rust emitter was found. The absence of a named call site is a static audit result, not a packet-capture observation. The declaration contains no NPC or gate entity-ID argument.
 
-`onDisplayDHD` is a separate glyph-selection method and has a VGateTravel subscriber [SGW 0x00e2fd90]. Do not treat `onDHDReply` as a verified gate-state transition or assume it must be sent on every dial success or failure. Confirm the client handler's field consumption and visible feedback in a live session before specifying the missing send path. The companion [wire-format note](gate-travel-wire-formats.md#ondhdreply--dhd-feedback-declared) records the declared argument without claiming a verified byte layout.
+`onDisplayDHD` is a separate glyph-selection method and has a VGateTravel subscriber [SGW 0x00e2fd90]. Do not treat `onDHDReply` as a verified gate-state transition or assume it must be sent on every dial success or failure. The companion [wire-format note](gate-travel-wire-formats.md#ondhdreply--dhd-feedback-declared) records the declared argument without claiming a verified byte layout.
 
-#### Dial-refusal feedback (#727, 2026-09-28)
+#### `onDHDReply` render-target resolution (#1024, 2026-09-28)
+
+**Question:** does `onDHDReply`'s text render inside the DHD window, in chat, or as a toast?
+
+**Answer: neither the DHD window nor a toast — it is bound to the client's `Communicator` chat/system-message component, the same class that renders `onPlayerCommunication`, `onSystemCommunication`, and `onTellSent`.**
+
+Evidence chain, most specific first:
+
+1. **The DHD CEGUI window has no text-display capability at all.** The uncooked client Lua at `Content/UI/Core/DHD/DHD.lua` (28 lines, read in full) does exactly two things: `DHDMod.onDHDVisibility` shows/hides `DHDWin` and calls `setDHDActive`/`DHD_Movie_Area:deactivate()`; `DHDMod.onCloseClicked` hides it. `DHD_Movie_Area` is bound via `setExternalWindowID(getExternalWindowIDForName("DHD"))` to an **external Scaleform movie** — the glyph-selection UI lives in `UI/Flash/DHD.upk` (compiled Flash/ActionScript, not Lua), confirmed present at `CookedPC/UI/Flash/DHD.upk` alongside the other minigame movies (`Hack.upk`, `Bypass.upk`, `Livewire.upk`, …). There is no CEGUI text widget, no event subscription, and no field in this window capable of consuming a `WSTRING` message. A recursive `grep -r DHDReply` across both the uncooked `Content/` Lua tree and the cooked `CookedPC/` tree (2026-09-28) finds zero hits outside `SGWPlayer.def` and the binary itself — no Lua anywhere references it.
+2. **The DHD window's actual show/hide path is a separate, unrelated event chain that never touches `onDHDReply`:** server `onDisplayDHD` (registration stub `register_NetIn_onDisplayDHD` at `0x00d7a3c0`) fans out to the internal `Event_UI_DHDVisibility`, whose `TypedEmitInfo__vfunc_0` sits at `0x00e2fb50`; the UI-side listener is `SGWScriptedWindow_X_UEvent_UI_DHDVisibility___GameEventHandler__vfunc_0` at `0x00ce3290`, which is what ultimately calls into `DHDMod.onDHDVisibility` above. `onDHDReply`'s registration stub (`register_NetIn_onDHDReply` at `0x00d82c60`, confirmed by headless-Ghidra decompile: `return "Event_NetIn_onDHDReply";`) is a completely separate compilation unit from this chain.
+3. **`onDHDReply`'s RTTI accessor sits inside a dense, uniformly-spaced (0x80 bytes) cluster of `VCommunicator` `MemberCallback::vfunc_3` accessors that is otherwise entirely chat/system-communication events**, confirmed by the V5 campaign's `worker-5c.checkpoint.json` rename log and re-verified 2026-09-28 by headless-Ghidra decompile of the neighboring accessors:
+
+   | Address | Event | Class |
+   |---|---|---|
+   | `0x00cf51c0` | `Event_NetIn_onSystemCommunication` | `Communicator` |
+   | `0x00cf5240` | `Event_NetIn_onChatJoined` | `Communicator` |
+   | `0x00cf52c0` | `Event_NetIn_onNickChanged` | `Communicator` |
+   | `0x00cf5340` | `Event_NetIn_onChatLeft` | `Communicator` |
+   | `0x00cf53c0` | `Event_NetIn_onTellSent` | `Communicator` |
+   | **`0x00cf5440`** | **`Event_NetIn_onDHDReply`** | **`Communicator`** |
+   | `0x00cf54c0` | `Event_UI_MinigameText` | `Communicator` |
+   | `0x00cf5540`–`0x00cf5ac0` | `SlashCmd_Tell`, `SlashCmd_Petition`, `SlashCmd_ChatJoin/Leave/SetAFKMessage/SetDNDMessage/Ignore/List/Mute/Unmute/Kick` | `Communicator` |
+
+   `0x00cf51c0` and `0x00cf53c0` were independently re-decompiled for this session and confirm the exact same `MemberCallback<NoSubject, Communicator, void(__thiscall Communicator::*)(EventType const*, void*), EventType>::RTTI_Type_Descriptor` shape as `onDHDReply`'s own accessor — same class, same calling convention, differing only in the bound event type. `onDHDReply` sits between `onTellSent` and the minigame text event, not adjacent to anything DHD- or GateTravel-related.
+4. **`Communicator` is the client's binary counterpart to a real, documented server interface** — [`entities/defs/interfaces/Communicator.def`](../../../entities/defs/interfaces/Communicator.def) declares exactly `onSystemCommunication`, `onPlayerCommunication`, `onLocalizedCommunication`, `onTellSent`, `onChatJoined`, `onChatLeft`, and `onNickChanged`: the chat system. `onDHDReply` is declared on `SGWPlayer.def` directly rather than on the `Communicator` interface (so it isn't in this list), but its native client-side subscriber is the same `Communicator` component — the developers wired one extra SGWPlayer-only feedback method into the class that already owns chat-text rendering, rather than adding it to the shared interface or to `GateTravel`.
+5. Could not find a static, compile-time-constant handler body for `onDHDReply` specifically: per [`cme-event-signal.md`'s `CmeMemberCallback` struct layout](cme-event-signal.md#cmemembercallback-struct-layout), the bound method pointer lives at `+0x8` of a **heap-allocated** MemberCallback instance, set at construction time — it is not baked into any vtable, so it cannot be read from `vfunc_3`/`vfunc_5` alone. Locating the exact `Communicator::onDHDReply(...)` handler body (as opposed to its registration/RTTI scaffolding) is left as future work; it does not change the conclusion above, since the architectural placement (point 3) and the interface identity (point 4) already establish which UI subsystem owns the text.
+
+**Conclusion for #1024:** `onDHDReply` is not a DHD-window message. It renders through the same native component that already renders `onPlayerCommunication` — i.e., functionally the same category of feedback [`dial_feedback`](../../../crates/cell-interactions/src/cell/gate_travel/dial_feedback.rs) already sends, with less certainty about its exact channel/styling (the `.def` gives it one bare `WSTRING`, no speaker or channel argument, unlike `onPlayerCommunication`'s four). Switching to it would trade a verified, byte-exact, already-tested format for an unverified one that appears to land in the same place. **Decision: keep the `onPlayerCommunication` chat line; `onDHDReply` is not used.**
+
+#### Dial-refusal feedback (#727, 2026-09-28; render-target resolved #1024, 2026-09-28)
 
 A refused dial is no longer silent. Every refusal in `handle_dial_gate` ([crates/cell-interactions/src/cell/gate_travel/mod.rs](../../../crates/cell-interactions/src/cell/gate_travel/mod.rs)), and the unrecoverable-arrival refusal in `perform_gate_travel`, sends the dialling player one `onPlayerCommunication("SYSTEM", 0, CHAN_feedback, text)` (client method 28) through `gate_travel::dial_feedback`:
 
@@ -161,7 +192,7 @@ A refused dial is no longer silent. Every refusal in `handle_dial_gate` ([crates
 
 The first row covers both "not held" and "does not exist" with byte-identical traffic, so the answer is not an existence oracle.
 
-**`onDHDReply` is still not emitted.** No live render check has been done, and nothing in this finding shows the text would appear on screen. The chat line is the 2009 server's intent (`SGWPlayer.onError`, `deprecated/python/cell/SGWPlayer.py:879-884`, with the `Failed to dial: …` wording) on the channel the client shows without a popup. The 2009 call itself used an empty speaker and `CHAN_server` (8), which opens the modal "Server Message" prompt. **Open:** send `onDHDReply("…")` with the DHD open in a live client, record where it renders here, and switch `dial_feedback` to it (or add it beside the chat line) if it renders in the DHD window.
+**`onDHDReply` is not emitted, and now stays that way.** #1024's static RE ([above](#ondhdreply-render-target-resolution-1024-2026-09-28)) found it does not render on the DHD UI — it is routed through the same `Communicator` chat component as the `onPlayerCommunication` line this module already sends. The chat line remains the 2009 server's intent (`SGWPlayer.onError`, `deprecated/python/cell/SGWPlayer.py:879-884`, with the `Failed to dial: …` wording) on the channel the client shows without a popup. The 2009 call itself used an empty speaker and `CHAN_server` (8), which opens the modal "Server Message" prompt. `onDHDReply` was ruled out, not merely left aside: it is unlikely to be additive (same rendering family as the line already sent) and its own payload is less specific (one bare `WSTRING`, no channel or speaker) than the already-verified `onPlayerCommunication` call this module makes today.
 
 ---
 
@@ -196,7 +227,7 @@ The first row covers both "not held" and "does not exist" with byte-identical tr
 
 ### 2. onDHDReply is VCommunicator, not VGateTravel
 
-The recorded MemberCallback RTTI identifies VCommunicator at `0x00cf5440`, separately from VGateTravel. The [static audit above](#ondhdreply-declaration-and-rust-audit) distinguishes that subscriber evidence from the declared `WSTRING aMessage` and the still-unverified payload decoding and UI behavior.
+The recorded MemberCallback RTTI identifies VCommunicator at `0x00cf5440`, separately from VGateTravel. **#1024 (2026-09-28) resolved what that means**: `0x00cf5440` sits inside a dense `VCommunicator` chat/system-communication accessor cluster (`onSystemCommunication`, `onChatJoined`, `onNickChanged`, `onChatLeft`, `onTellSent`, **`onDHDReply`**, `UI_MinigameText`, then the `SlashCmd_Chat*` family), and `Communicator` is the client counterpart of the documented [`Communicator.def`](../../../entities/defs/interfaces/Communicator.def) chat interface. `onDHDReply` renders through that chat component, not the DHD window — see [the render-target resolution](#ondhdreply-render-target-resolution-1024-2026-09-28) for the full evidence chain.
 
 ### 3. onDisplayDHD is VGateTravel
 
@@ -225,6 +256,13 @@ The client stores Stargate addresses as 6-element arrays of UINT8 glyphs. The re
 | `0x00d2d910` | Entity-type validator | Used by EmitNetOut_onDialGate to check address entity type |
 | `0x0069fba0` | `USeqEvent_Stargate__vfunc_0` | Kismet stub; returns 1 |
 | `0x006a0a40` | `USeqEvent_Stargate__vfunc_92` | Kismet activation: checks bit0 of `this+0xDC`, fires if gate ID matches |
+| `0x00cf51c0` | MemberCallback vfunc_3: **VCommunicator** × onSystemCommunication | Adjacent to onDHDReply in the chat cluster (#1024) |
+| `0x00cf53c0` | MemberCallback vfunc_3: **VCommunicator** × onTellSent | Adjacent to onDHDReply in the chat cluster (#1024) |
+| `0x00cf5440` | MemberCallback vfunc_3: **VCommunicator** × onDHDReply | Chat-cluster member, not a DHD-window handler (#1024) |
+| `0x00d82c60` | `register_NetIn_onDHDReply` | Returns `"Event_NetIn_onDHDReply"`; decompiled 2026-09-28 |
+| `0x00d7a3c0` | `register_NetIn_onDisplayDHD` | Feeds `Event_UI_DHDVisibility`, the DHD window's real show/hide chain — unrelated to onDHDReply (#1024) |
+| `0x00e2fb50` | `Event_UI_DHDVisibility` TypedEmitInfo vfunc_0 | Internal event that shows/hides the DHD window |
+| `0x00ce3290` | `SGWScriptedWindow` × `Event_UI_DHDVisibility` GameEventHandler vfunc_0 | Calls into `DHD.lua`'s `DHDMod.onDHDVisibility` |
 
 ---
 
@@ -232,7 +270,7 @@ The client stores Stargate addresses as 6-element arrays of UINT8 glyphs. The re
 
 1. **StargateTriggerFailed wire fields** — event is confirmed present (RTTI + registration stub) but no emitter was found. Likely: a failure reason code (INT8 or INT32) or possibly zero-argument. Needs server-side `.py` or a live packet capture.
 2. **Gate address struct layout** — the 6-glyph address is resolved from `this+0x18` (vector of pointers). The pointed-to struct layout is partially known: `FUN_00d2d8f0(ptr, index)` reads one UINT8 glyph. Full struct size unknown.
-3. **onDHDReply binary payload and UI** — the declaration is `WSTRING aMessage` at client method 100, but the client decoder and presentation path have not been confirmed from binary or live testing. No production Rust emitter was found in the static audit. Trace the complete client handler and verify visible feedback before implementing a send path.
+3. ~~**onDHDReply binary payload and UI**~~ — **Resolved 2026-09-28 (#1024) for the render target**: it is a `Communicator` chat-cluster event, not a DHD-window message; see the [render-target resolution](#ondhdreply-render-target-resolution-1024-2026-09-28). Still open: the exact `Communicator::onDHDReply(...)` handler body address (the bound method pointer lives in a heap instance, not a vtable — see point 5 of the resolution) and a live packet-capture/visual confirmation of the on-screen text. Neither is needed to answer #1024 (DHD window vs. not), but both would raise this from static-RE to observed-behavior confidence.
 4. **Pending address vector** (`this+0x28`/`0x2c`) — what populates the pending list vs active list (`this+0x18`/`0x1c`)? Hypothesis: pending = addresses player knows but the local gate can't dial yet (e.g., requires server-side gate to be active). Needs Ghidra cross-reference on `updateStargateAddress` handler.
 
 ---
