@@ -75,7 +75,7 @@ pub fn parse_incoming(raw: &[u8]) -> Result<ParsedPacket> {
     // the 28-bit valid range with locally-stamped seqs — any ack value
     // `>= NULL_SEQUENCE` is out of band (either a buggy peer or a
     // hostile one) and would corrupt server-side reliability state if
-    // forwarded into `Channel::process_acks`. Drop the entire packet at
+    // forwarded into `Channel::process_ack`. Drop the entire packet at
     // parse time, matching the seq_id rejection below.
     let mut acks = Vec::new();
     if flags & FLAG_HAS_ACKS != 0 {

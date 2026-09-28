@@ -288,7 +288,7 @@ fn register_sent_packet_overflow_routes_to_unsent_queue() {
     );
 }
 
-/// Sequence ack covering a queued entry's seq drains it from the queue,
+/// An ack naming a queued entry's seq drains it from the queue,
 /// even before it has been promoted into the TX window. Queued entries
 /// were sent on the wire when registered, so the peer can ack them
 /// while they're still queued.
@@ -312,21 +312,24 @@ fn acks_drain_queued_entries() {
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
     assert_eq!(ch.unsent_packets.len(), 8);
 
-    // ACK covers everything up through the queued seqs. The drain reaches
-    // into both deques, and after the TX window is empty the promote
-    // step has nothing left to do.
-    ch.process_acks(consts::TX_WINDOW_SIZE as u32 + 7).unwrap();
-    assert!(
-        ch.tx_window.is_empty(),
-        "tx_window fully drained by cumulative ack"
-    );
+    // Ack the queued seqs first, while they are still queued: each ACK
+    // retires its entry straight from the deferred queue.
+    let queued: Vec<u32> =
+        (consts::TX_WINDOW_SIZE as u32..consts::TX_WINDOW_SIZE as u32 + 8).collect();
+    assert_eq!(ch.process_ack_footer(&queued), 8);
     assert!(
         ch.unsent_packets.is_empty(),
-        "unsent_packets also drained by the same cumulative ack"
+        "acked queued entries leave the deferred queue directly"
     );
+    assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
+
+    // Then the window.
+    let window: Vec<u32> = (0..consts::TX_WINDOW_SIZE as u32).collect();
+    assert_eq!(ch.process_ack_footer(&window), consts::TX_WINDOW_SIZE);
+    assert!(ch.tx_window.is_empty(), "tx_window fully drained");
 }
 
-/// Cumulative ack against the TX window frees slots that are then
+/// Acks against the TX window free slots that are then
 /// filled by promoting the oldest queued entries. The total in-flight
 /// count drops by exactly the number of acked seqs.
 #[test]
@@ -347,9 +350,9 @@ fn acks_promote_queued_entries_into_freed_window() {
             .unwrap();
     }
 
-    // ACK covers the first 8 TX-window entries (seqs 0..8). 8 slots free,
+    // ACKs for the first 8 TX-window entries (seqs 0..8). 8 slots free,
     // all 8 queued entries promote in.
-    ch.process_acks(7).unwrap();
+    assert_eq!(ch.process_ack_footer(&[0, 1, 2, 3, 4, 5, 6, 7]), 8);
     assert_eq!(
         ch.tx_window.len(),
         consts::TX_WINDOW_SIZE,
@@ -443,7 +446,7 @@ fn promoted_entry_preserves_last_sent_for_retransmit_timing() {
     ch.unsent_packets[0].last_sent = backdated;
 
     // ACK frees a window slot, queued entry promotes.
-    ch.process_acks(0).unwrap();
+    assert!(ch.process_ack(0));
 
     // Find the promoted entry (will be at the tail of the window).
     let promoted = ch

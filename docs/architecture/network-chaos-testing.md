@@ -69,6 +69,18 @@ pre-#354, no test exercised any of them; we only caught it when a
 real player surfaced it. Going forward, every protocol-level
 regression must be reproducible offline.
 
+**Correction (2026-09-27).** The capture also shows the client acking
+every packet above the gap: #1149 about 100 ms after #1148 went
+missing, then #1150 to #1155 in one footer, and so on up to #1358.
+#1148 was never acked. The server's ACK path was a cumulative drain up
+to each ACK, so the ACK for #1149 retired #1148 and it was never resent.
+Retransmit and the deferred-send queue did not fix this session shape.
+`lomiada_single_packet_gap` passed only because its receiver never sends
+before the sender's RTO fires. `Channel::process_ack` now retires only
+the packet an ACK names, and `gap_acked_past_by_prompt_client` is the
+scenario with a receiver that acks as promptly as the real client. See
+[mercury-wire-format.md](../protocol/mercury-wire-format.md#sgw-client-and-rust-server).
+
 ### What the loopback harness (PR #370) already delivered
 
 Most of the issue's "L1 infrastructure" arrived ahead of this work

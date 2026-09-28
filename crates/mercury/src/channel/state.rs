@@ -57,3 +57,18 @@ pub struct RxEntry {
     /// When the packet was received.
     pub received_at: Instant,
 }
+
+/// A transmit hole: the oldest outstanding reliable packet, once the peer
+/// has acked a packet sent after it. The peer delivers nothing reliable
+/// past a gap, so while this is open it is holding every later reliable
+/// message. Tracked by [`super::Channel::process_ack_footer`], reported by
+/// [`super::Channel::check_tx_hole`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TxHole {
+    /// Sequence of the packet the peer is missing.
+    pub seq: u32,
+    /// When the hole was first seen.
+    pub since: Instant,
+    /// When the watchdog last warned about it, if it has.
+    pub warned_at: Option<Instant>,
+}

@@ -213,16 +213,16 @@ socket send completes. A second, genuinely concurrent task targeting the
 same witness — base's recv-loop, a `tokio::spawn`ed fan-out (contact-list
 presence, level-up), or cell's witness dispatch draining `cell_rx` — can
 reserve a later sequence and still win the race to register first.
-`process_acks`'s cumulative-ACK drain only inspects `tx_window`'s front
-and stops at the first not-yet-covered entry (see its doc comment); an
-out-of-order higher sequence parked at the front silently blocks the
+The ACK path was then a cumulative drain that only inspected
+`tx_window`'s front and stopped at the first not-yet-covered entry; an
+out-of-order higher sequence parked at the front silently blocked the
 drain of an already-acked lower sequence sitting behind it, and that
-entry never leaves the window.
+entry never left the window.
 
 `register_sent_packet` now inserts at the position that keeps both
 deques sorted by sequence (`channel_core::insert_tx_entry_sorted`,
-using the same 28-bit modular comparator `process_acks` drains with),
-so the invariant holds regardless of registration order. See
+using the 28-bit modular comparator `seq_mod_leq`), so the invariant
+holds regardless of registration order. See
 `crates/mercury/src/channel/tests/channel_lifecycle.rs`'s
 `register_sent_packet_tolerates_out_of_order_registration` and its two
 neighbors, and
@@ -231,6 +231,32 @@ for the full investigation. This is a `Channel`-internal fix — no
 harness API changed, and `LoopbackPeer` was never affected (it drives
 `send_packet`, not `register_sent_packet`, so its own `next_tx_seq`
 allocation and TX-window insertion were always the same call).
+
+### ACKs: one ACK retires one packet
+
+`Channel::process_ack` (`crates/mercury/src/channel/ack.rs`) retires
+exactly the packet an ACK names, and `process_ack_footer` applies a
+whole footer. It used to be a cumulative drain up to each ACK, which
+is wrong for the SGW client: `queueAckForPacket` acks packets it is
+buffering behind a gap, so the ACK of the packet after a lost one
+retired the lost one and it was never resent. The Lomiada capture shows
+the client doing exactly that, and
+[mercury-wire-format.md](../protocol/mercury-wire-format.md#sgw-client-and-rust-server)
+has the evidence. `LoopbackPeer`'s recv pump calls `process_ack_footer`,
+so both harness peers read ACKs the way the server does.
+
+The existing chaos scenarios could not catch the cumulative drain,
+because none of them let the receiver send before the sender's RTO
+fired: the lost packet was resent before any ACK past it arrived. The
+real client sends about six packets a second even when idle, each
+carrying the ACKs it owes. `chaos/gap_acked_past_by_prompt_client.rs`
+acks right after the gap, the way the client does, and fails on the
+cumulative drain.
+
+`LoopbackPeer::tick` also runs the transmit-hole watchdog
+(`Channel::check_tx_hole`) and returns its report in
+`TickActions::tx_hole`: the peer has acked a packet sent after one it
+never acked, for more than `consts::TX_HOLE_WARN_MS` (2 s).
 
 ### Encryption integration
 

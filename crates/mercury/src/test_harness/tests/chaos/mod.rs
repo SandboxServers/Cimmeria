@@ -17,6 +17,7 @@ mod asymmetric_ack_loss;
 mod burst_loss_mid_stream;
 mod defeat_burst_overflow;
 mod duplicate_flood;
+mod gap_acked_past_by_prompt_client;
 mod lomiada_single_packet_gap;
 mod reorder_within_rx_window;
 mod replay_lomiada;

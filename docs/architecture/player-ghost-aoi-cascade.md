@@ -376,8 +376,25 @@ ends of a failed introduction. The row is catalogued in
     an unchanged server. The server's own receive path also orders the
     client's reliable stream now, and drops retransmitted duplicates
     instead of dispatching them twice.
-  - The owner's report is therefore still unexplained. What remains to
-    test is server logic order: a reliable message about the peer
+  - **Leading explanation (2026-09-27): the server misread the client's
+    ACKs.** The client acks every reliable packet it receives, including
+    ones it buffers behind a gap. The server drained its send window
+    cumulatively up to each ACK, so one lost server-to-client reliable
+    packet was retired by the ACK of the packet after it and never
+    resent. From then on that client held every reliable message behind
+    the gap: no `CREATE_ENTITY`, no `LEAVE_AOI`, no cascade. Entities it
+    already had kept moving, because movement is unreliable, but nobody
+    new ever appeared, and a relog cleared it. That matches "can't
+    reliably see each other": it depends on one packet being lost, only
+    the client that lost it is affected, and it is likelier on a lossy
+    or transatlantic link. The Lomiada capture shows the client acking
+    #1149 to #1358 while #1148 never arrived. The wire tests could not
+    catch it because the wireclient never acks before the server's RTO.
+    `Channel::process_ack` now retires only the packet an ACK names, and
+    `mercury.tx_hole` reports a client stuck behind a missing packet. See
+    [mercury-wire-format.md](../protocol/mercury-wire-format.md#sgw-client-and-rust-server).
+  - Before that finding the report was unexplained. What remained to
+    test was server logic order: a reliable message about the peer
     reaching the witness from a different task than the one that sent
     the witness its create. The ordered harness can now surface that.
     Capture the owner's *next* session live and check it against the

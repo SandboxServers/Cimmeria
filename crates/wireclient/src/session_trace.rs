@@ -78,7 +78,7 @@ pub struct TraceEvent {
     /// Raw flag byte (`FLAG_HAS_REQUESTS | FLAG_ON_CHANNEL | …`).
     pub flags: u8,
 
-    /// Cumulative ACKs piggybacked on this packet.
+    /// ACKs piggybacked on this packet, one per acked sequence.
     #[serde(default)]
     pub acks: Vec<u32>,
 

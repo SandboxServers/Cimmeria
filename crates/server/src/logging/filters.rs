@@ -166,6 +166,14 @@ use crate::otel;
 /// only speaks when the client's packets arrive lost or reordered, so it is
 /// quiet on a healthy link and exactly the evidence a lossy one needs.
 ///
+/// `mercury.tx_hole` is the same gap seen from the sending side: the client
+/// has acked a reliable packet sent after one it never acked, so it is
+/// holding every reliable message behind the missing one (no entity
+/// creates, leaves or method calls reach it) until a resend lands. DEBUG
+/// `tx_hole_open` per loss, WARN `tx_hole_stall` past 2 s, INFO
+/// `tx_hole_closed` when a reported stall ends. `debug` so the per-loss rows
+/// reach SigNoz: they are the server-to-client loss rate per peer.
+///
 /// `org` and `squad` (organizations campaign, ORG-01) are the Team/Command
 /// and Squad targets. Both are `debug`: the per-call "no handler yet" rows
 /// and the later routing decisions are DEBUG, and the coordinator reads
@@ -239,6 +247,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 mercury.backpressure=info,\
                 mercury.lossy_transport=debug,\
                 mercury.rx_order=debug,\
+                mercury.tx_hole=debug,\
                 wire.in=info,wire.out=info,\
                 wire.out.avatar_update=debug,\
                 wire.out.forced_position=debug,\

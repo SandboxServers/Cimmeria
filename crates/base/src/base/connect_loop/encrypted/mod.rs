@@ -100,22 +100,30 @@ pub(crate) async fn handle_encrypted_datagram(
     );
 
     // Route the client's ACKs of OUR reliable packets to the per-session
-    // Channel's TX window. The Channel drains its window cumulatively
-    // up through each acked sequence and feeds RTT samples
-    // to the per-peer adaptive RTO (Karn's algorithm — only clean rounds
-    // contribute, retransmitted-packet samples are excluded internally).
+    // Channel's TX window. Each ACK retires exactly the packet it names:
+    // the client acks packets it is buffering behind a gap, so reading an
+    // ACK as cumulative would retire the packet it is still waiting for
+    // (see `cimmeria_mercury::channel` `ack` module doc). The Channel feeds
+    // clean-round RTT samples to the per-peer adaptive RTO (Karn's
+    // algorithm) and tracks the transmit hole the tick-side watchdog
+    // reports.
     if !pkt.acks.is_empty() {
         if let Ok(clients) = connected.lock() {
             if let Some(state) = clients.get(&addr) {
                 if let Ok(mut channel) = state.channel.lock() {
-                    for &ack_seq in &pkt.acks {
-                        if let Err(e) = channel.process_acks(ack_seq) {
-                            tracing::warn!(%addr, ack_seq, error = %e, "channel.process_acks failed");
-                        }
+                    let holes_before = channel.tx_holes;
+                    let retired = channel.process_ack_footer(&pkt.acks);
+                    if channel.tx_holes > holes_before {
+                        // The client acked a later reliable packet before an
+                        // earlier one: that one was lost (or reordered).
+                        // The rate per peer is the server->client loss rate
+                        // the retransmit scan has to cover.
+                        cimmeria_observability::counter!("mercury_tx_holes_total");
                     }
                     tracing::trace!(
                         %addr,
                         acks_consumed = pkt.acks.len(),
+                        retired,
                         tx_window_len = channel.tx_window.len(),
                         srtt_ms = ?channel.rto().srtt().map(|d| d.as_millis()),
                         rto_ms = channel.rto().current().as_millis(),

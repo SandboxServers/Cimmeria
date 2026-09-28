@@ -290,6 +290,15 @@ pub(crate) fn collect_pending_retransmits(
             cimmeria_observability::counter!("mercury_rx_stalls_total");
         }
     }
+    // Transmit-hole watchdog, the other direction: the client has acked
+    // reliable packets we sent after one it never acked, so it is holding
+    // everything behind that one (no entity creates, leaves or method
+    // calls reach it) until a resend lands. The WARN is logged inside.
+    if let Some(stall) = channel.check_tx_hole() {
+        if stall.first_warning {
+            cimmeria_observability::counter!("mercury_tx_hole_stalls_total");
+        }
+    }
     channel.check_timeouts()
 }
 

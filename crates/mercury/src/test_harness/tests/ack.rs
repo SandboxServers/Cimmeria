@@ -42,8 +42,8 @@ async fn n_packets_in_window_produce_one_aggregated_ack_packet() {
         "B's pending_acks must drain in one piggyback emit",
     );
 
-    // A's receive of the carrier triggers `process_acks(highest)` which
-    // is cumulative — drains all 5 from the tx_window in one pass.
+    // A's receive of the carrier runs `process_ack_footer` over all 5
+    // acks — each retires its packet, draining the tx_window in one pass.
     let _ = session.a.recv_n_bundles(1, Duration::from_secs(1)).await;
     let quiet = session.quiesce(Duration::from_millis(500)).await;
     assert!(quiet, "burst + single ack carrier must reach quiescence");
