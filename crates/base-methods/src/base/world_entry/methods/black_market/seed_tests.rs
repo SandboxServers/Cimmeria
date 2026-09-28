@@ -220,6 +220,31 @@ async fn live_db_uat_specs_name_real_items_across_tech_tiers() {
     );
 }
 
+/// Live-DB (#959): every boot and UAT seed type fits a carried bag. A seed
+/// listing settles by minting its type into a system mail, which refuses a
+/// type no take could place (`item_no_carried_bag`); such a listing would
+/// be quarantined at its first sweep instead of paying out.
+#[tokio::test]
+async fn live_db_seed_types_fit_a_carried_bag() {
+    let pool = require_db_or_skip!();
+    for s in seed_specs().iter().chain(uat_specs().iter()) {
+        let sets: Option<Vec<i32>> = sqlx::query_scalar(
+            "SELECT COALESCE(container_sets, '{}') FROM resources.items WHERE item_id = $1",
+        )
+        .bind(s.item_def_id)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        let sets =
+            sets.unwrap_or_else(|| panic!("item {} is not in resources.items", s.item_def_id));
+        assert!(
+            cimmeria_cell_catalog::item_placement::first_player_container(&sets).is_some(),
+            "seed item {} (container_sets {sets:?}) fits no carried bag",
+            s.item_def_id
+        );
+    }
+}
+
 // ── BM-07: the reserved system seller is checked ──────────────────────────
 
 /// The pure read-back: only account 1 = `Black Market` with player 1 =

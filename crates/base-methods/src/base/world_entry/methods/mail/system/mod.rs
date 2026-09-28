@@ -217,6 +217,11 @@ pub enum SystemMailError {
     ItemBound {
         owner: i32,
     },
+    /// The type fits no carried bag (`take::carried_bag` is `None`), so no
+    /// take could ever deliver it (#959).
+    ItemNoCarriedBag {
+        type_id: i32,
+    },
     /// No `sgw_player` row has that id.
     RecipientNotFound,
     Db(sqlx::Error),
@@ -236,6 +241,7 @@ impl SystemMailError {
             SystemMailError::ItemNotServerHeld { .. } => "item_not_server_held",
             SystemMailError::ItemOwnerMismatch { .. } => "item_owner_mismatch",
             SystemMailError::ItemBound { .. } => "item_bound",
+            SystemMailError::ItemNoCarriedBag { .. } => "item_no_carried_bag",
             SystemMailError::RecipientNotFound => "recipient_not_found",
             SystemMailError::Db(_) => "db_error",
         }
@@ -255,6 +261,10 @@ impl fmt::Display for SystemMailError {
             } => write!(
                 f,
                 "item is in container {container_id} of player {owner}, not server-held"
+            ),
+            SystemMailError::ItemNoCarriedBag { type_id } => write!(
+                f,
+                "item type {type_id} fits no backpack or crafting bag, so it could never be taken"
             ),
             SystemMailError::Db(e) => write!(f, "database error: {e}"),
             other => f.write_str(other.reason()),
@@ -388,8 +398,9 @@ fn log_refused(mail: &SystemMail, e: &SystemMailError) {
         } => (Some(item_id), Some(owner_player_id)),
         _ => (None, None),
     };
-    let type_id = match mail.item {
-        SystemItem::Minted { type_id, .. } => Some(type_id),
+    let type_id = match (mail.item, e) {
+        (SystemItem::Minted { type_id, .. }, _) => Some(type_id),
+        (_, SystemMailError::ItemNoCarriedBag { type_id }) => Some(*type_id),
         _ => None,
     };
     tracing::warn!(

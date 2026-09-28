@@ -484,6 +484,13 @@ pub async fn handle_gate_travel(
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
             c.pending_client_ready = None;
+            // The session's world is the destination from here on (#898):
+            // the admin `zone`, the next trip's Discord world-exit origin and
+            // the crafting world guard all read it, and before this it kept
+            // the session's first world. Set before the client can send
+            // `onClientReady` for the new world, which needs the
+            // ENABLE_ENTITIES this RESET_ENTITIES asks for.
+            c.world_name = Some(target_world_name.to_string());
             // Carry the cross-world ring transport id forward — consumed in
             // `world_entry_appearance::handle_client_ready` once the
             // destination world signals `onClientReady`. Stays None for

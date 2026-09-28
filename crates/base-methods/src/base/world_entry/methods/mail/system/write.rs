@@ -8,6 +8,7 @@ use sqlx::PgConnection;
 
 use super::super::expiry::expires_at;
 use super::super::send::escrow::{escrow_item, SourceItem};
+use super::super::take::carried_bag;
 use super::{
     SystemEscrow, SystemItem, SystemMailError, SERVER_HELD_CONTAINERS, SYSTEM_SOURCE_CHARACTER_ID,
 };
@@ -174,6 +175,7 @@ async fn prepare_item(
             if qty > max_stack_size {
                 return Err(SystemMailError::QuantityExceedsStack { max_stack_size });
             }
+            require_carried_bag(&mut *conn, type_id).await?;
             Ok(Prepared::Minted { type_id, qty })
         }
         SystemItem::ExistingInstance {
@@ -217,8 +219,25 @@ async fn prepare_item(
             if source.bound && recipient_player_id != owner {
                 return Err(SystemMailError::ItemBound { owner });
             }
+            // Only the Black Market mails an existing instance, and its
+            // listings come from a carried bag, so this should never fire;
+            // if a legacy row ever does, the sweep quarantines the auction
+            // (a permanent refusal) instead of escrowing an untakeable item.
+            require_carried_bag(&mut *conn, source.type_id).await?;
             Ok(Prepared::Existing { owner, source })
         }
+    }
+}
+
+/// Refuse a type the take could never place (#959): the rule
+/// `take::carried_bag` applies to the player send and the COD payment
+/// (ss-fix1), here for system mail and the GM's `.mail`. Such a type, e.g.
+/// the 801 mission-only `{2}` types, would sit in escrow until expiry
+/// quarantined it.
+async fn require_carried_bag(conn: &mut PgConnection, type_id: i32) -> Result<(), SystemMailError> {
+    match carried_bag(conn, type_id).await? {
+        Some(_) => Ok(()),
+        None => Err(SystemMailError::ItemNoCarriedBag { type_id }),
     }
 }
 

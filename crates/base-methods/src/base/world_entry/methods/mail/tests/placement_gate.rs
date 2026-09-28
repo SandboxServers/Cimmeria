@@ -7,8 +7,13 @@
 //! refused it for good, and a paid COD cannot be returned, so the payer
 //! lost the price and never got the item. The two-client wire test
 //! `two_client_mail_cod` hit exactly this with a `{2}` fixture.
-//! Sentinels: accounts and players `0x7300_2700` up, entities
-//! `0x7300_2740` up, items `0x7300_2780` up.
+//!
+//! #959 applies the same rule to system mail (`system/write.rs`
+//! `prepare_item`): the content action, the Black Market payouts and the
+//! GM's `.mail` refuse such a type with `item_no_carried_bag`.
+//!
+//! Sentinels: accounts and players `0x7300_2700` up (fixture bases
+//! `+0x00` to `+0x40`), entities `0x7300_2740` up, items `0x7300_2780` up.
 
 use std::time::Instant;
 
@@ -153,4 +158,151 @@ async fn live_db_pay_cod_refuses_an_item_no_take_could_place() {
     c.take();
 
     cleanup(&pool, base).await;
+}
+
+/// The `mail.system_refused` row for `reason = item_no_carried_bag`, naming
+/// `type_id`.
+fn assert_system_refused(capture: &crate::test_support::LogCaptureGuard, type_id: i32) {
+    assert!(
+        capture.all().iter().any(|e| e.level == tracing::Level::WARN
+            && e.has_field("event", "mail.system_refused")
+            && e.has_field("reason", "item_no_carried_bag")
+            && e.has_field("type_id", &type_id.to_string())),
+        "mail.system_refused reason=item_no_carried_bag type_id={type_id}"
+    );
+}
+
+/// #959: system mail minting a type no take could place (the content
+/// action `send_system_mail`, a Black Market seed listing) is refused
+/// `item_no_carried_bag` and writes no mail and no escrow row. Fails
+/// without `prepare_item`'s `carried_bag` gate: the mail is written with
+/// an attachment nobody can take.
+#[tokio::test]
+async fn live_db_system_mail_refuses_a_minted_type_no_take_could_place() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let base = BASE + 0x20;
+    cleanup(&pool, base).await;
+    let rcpt = base + 1;
+    insert_players(&pool, base, &[(rcpt, "SsFixSysRcpt")]).await;
+    let type_id = mission_only_type(&pool).await;
+
+    let result = send_system_mail(
+        &pool,
+        &SystemMail {
+            sender_name: "Gate Mail Clerk".into(),
+            recipient_player_id: rcpt,
+            subject: "A parcel".into(),
+            body: "For you.".into(),
+            cash: 25,
+            item: SystemItem::Minted { type_id, qty: 1 },
+        },
+    )
+    .await;
+
+    let mails = mail_count(&pool, rcpt).await;
+    let escrow = escrow_for(&pool, rcpt).await;
+    cleanup(&pool, base).await;
+    assert!(
+        matches!(result, Err(SystemMailError::ItemNoCarriedBag { type_id: t }) if t == type_id),
+        "{result:?}"
+    );
+    assert_eq!(mails, 0, "no mail written");
+    assert!(escrow.is_empty(), "no escrow row: {escrow:?}");
+    assert_system_refused(&capture, type_id);
+}
+
+/// The Black Market's shape: an existing instance from the auction
+/// container. Listings come from a carried bag, so a type that fits none
+/// should never be there; if a legacy row is, the payout is refused (the
+/// sweep then quarantines the auction as a permanent refusal) and the row
+/// stays in container 18. Fails without the gate: the row moves into an
+/// escrow no take can empty.
+#[tokio::test]
+async fn live_db_system_mail_refuses_an_auction_row_no_take_could_place() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let base = BASE + 0x30;
+    cleanup(&pool, base).await;
+    let seller = base + 1;
+    insert_players(&pool, base, &[(seller, "SsFixSysSeller")]).await;
+    let type_id = mission_only_type(&pool).await;
+    let item_id = ITEMS + 2;
+    let mut item = TestItem::main(item_id, seller, 0, 1);
+    item.container_id = cimmeria_entity::inventory::INV_AUCTION;
+    insert_item(&pool, item, type_id).await;
+
+    let result = send_system_mail(
+        &pool,
+        &SystemMail {
+            sender_name: "Black Market".into(),
+            recipient_player_id: seller,
+            subject: "Auction expired".into(),
+            body: "Your item is returned.".into(),
+            cash: 0,
+            item: SystemItem::ExistingInstance {
+                item_id,
+                owner_player_id: seller,
+            },
+        },
+    )
+    .await;
+
+    let mails = mail_count(&pool, seller).await;
+    let row = inventory_row(&pool, item_id).await;
+    cleanup(&pool, base).await;
+    assert!(
+        matches!(result, Err(SystemMailError::ItemNoCarriedBag { type_id: t }) if t == type_id),
+        "{result:?}"
+    );
+    assert_eq!(mails, 0, "no mail written");
+    assert_eq!(
+        row,
+        Some((seller, 1)),
+        "the row stays in the auction container"
+    );
+    assert_system_refused(&capture, type_id);
+}
+
+/// `.mail item <mission-only type>`: nothing is written and the GM is told
+/// why on the first press. Fails without the gate: the GM gets "Mail N
+/// sent" for an attachment nobody can take.
+#[tokio::test]
+async fn live_db_gm_mail_refuses_a_type_no_take_could_place() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let base = BASE + 0x40;
+    cleanup(&pool, base).await;
+    let gm = base + 1;
+    insert_players(&pool, base, &[(gm, "SsFixSysGm")]).await;
+    let type_id = mission_only_type(&pool).await;
+    let c = Client::new(ENTITIES + 2, gm, 55_702, "SsFixSysGm");
+
+    c.gm(
+        super::gm_live::send(&c, None, 0, Some((type_id, 1)), None),
+        &pool,
+    )
+    .await;
+
+    let mails = mail_count(&pool, gm).await;
+    let escrow = escrow_for(&pool, gm).await;
+    let lines = super::gm_live::lines(c.take());
+    cleanup(&pool, base).await;
+    assert_eq!(mails, 0, "no mail written");
+    assert!(escrow.is_empty(), "no escrow row: {escrow:?}");
+    assert_eq!(
+        lines,
+        vec![format!(
+            ".mail: not sent (item type {type_id} fits no backpack or crafting bag, \
+             so it could never be taken)."
+        )]
+    );
+    assert!(
+        capture
+            .all()
+            .iter()
+            .any(|e| e.has_field("event", "mail.gm_rejected")
+                && e.has_field("reason", "item_no_carried_bag")),
+        "mail.gm_rejected reason=item_no_carried_bag"
+    );
 }
