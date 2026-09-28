@@ -208,7 +208,7 @@ The kicker rules are the client's (`ResearchPage.lua`: one kicker slot per scien
 
 **When the bar ends** the job reads the player's crafting state and rolls:
 
-1. The eligible disciplines are the item's disciplines the player knows with `0 < expertise < item tech competency`. With none, nothing is rolled: the item and kickers are used and the line says the research taught nothing new.
+1. The eligible disciplines are the item's disciplines the player knows with `0 < expertise < item tech competency`. With none, nothing is rolled: the item and kickers are used and the line says the research taught nothing new. Owner decision D-CR29 (2026-09-27) changes this: such a research will be refused before anything is consumed (follow-up packet CR-18).
 2. One discipline is picked uniformly, then the chance is `100 − expertise + 5 × kickers` percent against a roll in `[0, 100)`.
 3. One transaction consumes exactly the named item and kickers. On a success it adds 5 expertise to the picked discipline and teaches every blueprint that makes the item whose discipline the player knows (checked again under the player row lock), then sends `onUpdateDiscipline` (136) and the whole known list, `onUpdateKnownCrafts` (139).
 

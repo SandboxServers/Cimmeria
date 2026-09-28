@@ -334,6 +334,26 @@ Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes 
 
 **Acceptance:** live-DB tests for a component traded from bag 15 into the partner's bag 15, a full crafting bag refused with nothing moved, and the buyback and sell lock-order guards (see `worknotes/cr-17.md`).
 
+### CR-18
+
+**Status:** Writing (in progress, branch `craft/cr18-research-refusal`). **Scope title:** Refuse a research with no eligible discipline (D-CR29). **Advisor:** server-authority-enforcer.
+
+**Scope:** research checks for an eligible discipline (one of the item's disciplines known with `0 < expertise < item tech competency`) at the request, and again at completion before the transaction consumes anything; with none, the request is refused with a visible line and the item and kickers stay. Today the item and kickers are consumed and the line says nothing was learned (CR-08, the legacy behaviour).
+
+**Telemetry:** `rejected` with a new enumerated `reason` (proposed `no_eligible_discipline`), with the item's disciplines and the expertise compared, counted on `crafting_rejections_total`; no `completed` row and nothing consumed. Add the reason to the `crafting` row of `observability.md`.
+
+**Acceptance:** a live-DB test that a research with no eligible discipline consumes nothing and sends the line, at the request and at completion (expertise raised during the bar); a guard that fails when the check is removed; the existing success and failure tests still pass.
+
+### CR-19
+
+**Status:** Writing (in progress, branch `craft/cr19-station-click`). **Scope title:** Right-clicking a crafting station opens its crafting window (D-CR30). **Advisor:** bigworld-engine-advisor, aoi-witness-broadcast.
+
+**Scope:** give the debug-hub stations (templates 310-313) interaction bits so the client sends a click, and answer the click on the server by opening the relevant crafting window. First establish, from the client, which interaction bit and which server reply open the window, and whether that is possible without a client patch; if it needs one, stop and report (repo rule: new client UI needs a maintainer decision). CR-11 found the `INT_Machine_*` bits reach no `handle_interact` arm today.
+
+**Telemetry:** an interaction event under `crafting` (proposed `station_opened`) with the full identity, the station's entity id and template id, and the window opened; a click on a station out of range is `rejected` with an enumerated `reason`. Add both to the `crafting` row of `observability.md`.
+
+**Acceptance:** a live-DB seed guard that the station templates carry the interaction bits; a dispatch test that a click reaches the station answer; a byte-exact test of the reply; the CR-11 station tests still pass.
+
 ## Wave 3
 
 ### CR-13

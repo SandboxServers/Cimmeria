@@ -174,7 +174,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 7. Two players | Two accounts (a third for the duel spectator) | Organizations steps 1-12, bank steps 15-25 (org vaults, treasury, Team expansion), chat and duel steps 7-13, pets U11, crafting step 17, NPC AI one-way visibility, Castle B20 | 120 min |
 | 8. Goa'uld | New Goa'uld | Pets U2 at the trainer, U14-U16 | 20 min |
 | 9. Owner only | Patched client | Historical cellblocks, ring transport Phase 1 | as needed |
-| 10. Crafting | New character, GM | Crafting steps 1-16, 18 and 19 at the crafting corner; step 17 fits session 7 | 75 min |
+| 10. Crafting | New character, GM | Crafting steps 1-16 and 18-21 at the crafting corner; step 17 fits session 7 | 75 min |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -300,12 +300,14 @@ The Crafting (J) and Applied Science (Ctrl+J) windows: learning disciplines with
 | 17 | Two players: A trades B a component from the crafting bag; repeat with B's crafting bag full | It lands in B's crafting bag. Full: the trade closes for both, and each reads a "Trade cancelled: ..." line saying whose crafting bag has no room. Nothing moves. | Two players |
 | 18 | `.respeccraft`, answer Yes; `.respeccraft` again; learn a discipline, `.respeccraft`, wait over 60 s, answer Yes | The prompt costs 0. After Yes every discipline reads 0, the ASP spent learning them comes back, blueprints and paradigms stay. Again: "You have no crafting disciplines to unlearn. Nothing was changed." Late: "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." | `.respeccraft` works for any player; the client's own `/respeccraft` is not supported |
 | 19 | `.allcraft` | "allcraft [...]: N disciplines at 100, M blueprints, 5 paradigms at 7; craft anywhere is on until logout." Every page enables anywhere. | |
+| 20 | After step 19, buy another Crafted Pistol of the Whale (5481) and research it at a station | **After CR-18:** refused with a line; the pistol stays and nothing is used. | Needs CR-18 (D-CR29) in the build; before it, the pistol is used and the line says you learned nothing new |
+| 21 | Right-click a Crafting Station | Its crafting window opens. | **Provisional:** needs CR-19 (D-CR30); until then a click does nothing, which is not a new bug |
 
 Mailing a component from the crafting bag is [Mail, chat and duels](#mail-chat-and-duels) step 3b.
 
 **SigNoz:** start from `service.name = 'cimmeria-server' AND scope_name = 'crafting' AND player_id = <id>`, then `event = 'rejected'` for any refusal (its `reason` says which rule), or find a job with `event = 'queued'` and filter on its `job_id` to see the whole craft, before and after. One query per step: [CR-14 query table](../analysis/crafting/handoffs/session-resume.md#signoz-queries).
 
-**Things only a human can check:** the induction bar and its countdown; whether the pages enable and disable at a station and with the tool; whether any text shows for "no ASP" beside the chat line; whether the reverse-engineering page keeps its slots on confirm.
+**Things only a human can check:** the induction bar and its countdown; whether the pages enable and disable at a station and with the tool; which window a station click opens (step 21); whether any text shows for "no ASP" beside the chat line; whether the reverse-engineering page keeps its slots on confirm.
 
 Source: the [CR-14 checklist](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist) and the [crafting ledger](../analysis/crafting/README.md). Change this section and the checklist together.
 
