@@ -16,8 +16,12 @@
 //!    props.
 //! 3. Every effect of the ability runs a script this path understands:
 //!    `HealHealth`, `HealFocus` (a pool heal) or `StatBuff` (a timed
-//!    attribute buff). The other ~150 bindings (scanners, detonators,
-//!    antidotes, disguises) have no script and keep their old behaviour.
+//!    attribute buff). The other ~100 bindings have no script. Mission
+//!    items (scanners, detonators, disguise pieces; `container_sets`
+//!    `{2}`) keep their old behaviour: a chain decides, or nothing happens.
+//!    A bag consumable (`{1,17}`: the Stealth, Energy and Disguise boosts
+//!    and the antidotes) with no chain is refused with "This item has no
+//!    effect yet." and kept, so the press is never silent.
 //! 4. No content chain triggers on `item_use` for it
 //!    (`ChainEngine::has_item_use_chain`). A hand-authored chain owns its
 //!    item outright: the Ambernol vial (item 19, chain 1034) keeps its
@@ -87,6 +91,7 @@ pub(super) const FEEDBACK_NOT_LIVING: u16 = 14;
 pub(super) const FULL_HEALTH_TEXT: &str = "You are already at full health.";
 pub(super) const FULL_FOCUS_TEXT: &str = "You are already at full focus.";
 pub(super) const DEAD_TEXT: &str = "You cannot use that while dead.";
+pub(super) const NOT_IMPLEMENTED_TEXT: &str = "This item has no effect yet.";
 
 /// What an item's event-5 ability does, when this path can apply it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,6 +163,9 @@ pub(super) enum Refusal {
     Dead,
     /// Every pool the item heals is full; carries the first one.
     AtMax(i32),
+    /// A bag consumable whose event-5 ability this path cannot apply yet
+    /// (the Stealth / Energy / Disguise boosts, the antidotes).
+    NotImplemented,
 }
 
 impl Refusal {
@@ -165,13 +173,19 @@ impl Refusal {
         match self {
             Self::Dead => "dead",
             Self::AtMax(_) => "already_at_max",
+            Self::NotImplemented => "consumable_not_implemented",
         }
     }
 
-    fn code(self) -> u16 {
+    /// The `onErrorCode` code. `None` for [`Self::NotImplemented`]: the
+    /// client enum has no "no effect" value, and a wrong condition code
+    /// would mislead anyone reading a capture (the code has no Lua
+    /// consumer anyway), so that refusal sends only the chat line.
+    fn code(self) -> Option<u16> {
         match self {
-            Self::Dead => FEEDBACK_NOT_LIVING,
-            Self::AtMax(_) => FEEDBACK_STAT_AT_MAX,
+            Self::Dead => Some(FEEDBACK_NOT_LIVING),
+            Self::AtMax(_) => Some(FEEDBACK_STAT_AT_MAX),
+            Self::NotImplemented => None,
         }
     }
 
@@ -180,8 +194,23 @@ impl Refusal {
             Self::Dead => DEAD_TEXT,
             Self::AtMax(FOCUS) => FULL_FOCUS_TEXT,
             Self::AtMax(_) => FULL_HEALTH_TEXT,
+            Self::NotImplemented => NOT_IMPLEMENTED_TEXT,
         }
     }
+}
+
+/// Whether a use of `type_id` that this path cannot apply must still be
+/// answered: the item is a bag consumable (its preferred container is the
+/// main bag, `container_sets` `{1,17}`), so the player expects it to do
+/// something, and no content chain owns it. A mission item (`{2}`) is left
+/// to its chains and stays silent, and the 597 filler never reaches here.
+fn is_unimplemented_bag_consumable(
+    type_id: i32,
+    engine: &ChainEngine,
+    space_mgr: &SpaceManager,
+) -> bool {
+    space_mgr.item_containers.get(&type_id) == Some(&cimmeria_entity::inventory::INV_MAIN)
+        && !engine.has_item_use_chain(type_id)
 }
 
 /// Whether `plan` would do nothing for `entity_id` right now. A missing
@@ -234,6 +263,26 @@ pub(super) async fn try_native_use(
             return false;
         }
         Classification::NotNative { ability_id, reason } => {
+            if is_unimplemented_bag_consumable(type_id, engine, space_mgr) {
+                let id = space_mgr.player_identity(entity_id);
+                tracing::warn!(
+                    event = "consumable_refused",
+                    decision_outcome = "refused",
+                    reason = Refusal::NotImplemented.reason(),
+                    cause = reason,
+                    entity_id,
+                    account_id = id.account_id,
+                    player_id,
+                    item_id = instance_id,
+                    instance_id,
+                    type_id,
+                    ability_id,
+                    "item use refused: a bag consumable whose effect is not implemented; \
+                     nothing consumed"
+                );
+                send_refusal(entity_id, id, ability_id, Refusal::NotImplemented, tx).await;
+                return true;
+            }
             tracing::debug!(
                 event = "consumable_skipped",
                 reason,
@@ -263,7 +312,7 @@ pub(super) async fn try_native_use(
     if let Some(refused) = refusal(&plan, entity_id, space_mgr) {
         let stat = match refused {
             Refusal::AtMax(stat) => Some(stat),
-            Refusal::Dead => None,
+            Refusal::Dead | Refusal::NotImplemented => None,
         };
         let (cur, max) = stat
             .and_then(|s| {
@@ -439,16 +488,17 @@ async fn send_refusal(
     refused: Refusal,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
-    let calls = [
-        (
+    let mut calls = Vec::with_capacity(2);
+    if let Some(code) = refused.code() {
+        calls.push((
             crate::mercury::method_idx::ON_ERROR_CODE,
-            error_code_args(ability_id, refused.code()),
-        ),
-        (
-            crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
-            serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, refused.text()),
-        ),
-    ];
+            error_code_args(ability_id, code),
+        ));
+    }
+    calls.push((
+        crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
+        serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, refused.text()),
+    ));
     for (method_index, args) in calls {
         if tx
             .send(CellToBaseMsg::EntityMethodCall {

@@ -83,7 +83,7 @@ Read these before you start. None of them needs a new report.
 | K17 | **All three Bankers are named "Storage Officer"**, and after a Team vault expansion, a Team vault window already open on another member keeps its old size until that member reopens it. | Tell the Bankers apart by their clothes ([Bank and vault](#bank-and-vault)). Reopen the window. | [bank session resume, Known gaps](../analysis/bank-vault/handoffs/session-resume.md#known-gaps-carried-forward) |
 | K18 | **Crafting gaps known at release.** Using a Blueprint item or a Racial Paradigm Guide prints no line (the item goes and the window changes). Buying several non-stacking components in one purchase shows one stack. A queued crafting job still finishes if you walk away from the station or give the tool away. `/showracialparadigmlevels` and the client's own `/respeccraft` do nothing useful. | Record them; not new bugs. Use `.respeccraft`. | [crafting session resume, known gaps](../analysis/crafting/handoffs/session-resume.md#known-gaps-carried-forward) |
 | K19 | **The Social button on the Access bar does nothing** on a client without the client-patches overlay: the shipped client left its handler empty. | Press **O** to open the Social window (contact lists). With the overlay installed, the button opens it too. | [client-patches overlay README](../../crates/client-patches/overlay/README.md#what-changed-in-accesslua) |
-| K20 | **Stealth, Energy and Disguise boosts do nothing, silently.** Using one keeps the item and shows no line: nothing on the server reads those stats yet. | Record it; not a new bug. | [consumables.md](../gameplay/consumables.md#items-that-do-nothing-yet) |
+| K21 | **Stealth, Energy and Disguise boosts and the antidotes have no effect yet.** Using one shows "This item has no effect yet." and keeps the item: nothing on the server reads those stats or models those conditions. | Record it; not a new bug. | [consumables.md](../gameplay/consumables.md#items-that-do-nothing-yet) |
 
 ## Common setup
 
@@ -736,7 +736,7 @@ Source: [legacy command parity README, Validation and UAT gates](../analysis/leg
 
 Heal items and stimpacks used from your bags: the Health Slappack, the Health and Focus Heal Consumables, and the Mark III / V / VII / X stimpacks.
 
-**Status:** Ready. Merged; nothing has been seen in a client yet. Known broken: K20.
+**Status:** Ready. Merged; nothing has been seen in a client yet. Known broken: K21.
 
 **Prerequisites:** a GM character (for `/gmgiveitem` and `/gmsethealth`). Anywhere; the Cellblock guards are handy for losing focus.
 
@@ -752,6 +752,7 @@ Heal items and stimpacks used from your bags: the Health Slappack, the Health an
 | I8 | `/gmgiveitem 6679 1` (Mark III Fortitude) and use it | Fortitude rises by 5, and the Coordination and Engagement buffs are still there. | Different attributes add up |
 | I9 | Die and respawn in the same zone; then relog | After the respawn the buffs are still on (the attributes stay raised). After the relog every attribute is back at its base and no buff icon shows. | The buff is not saved across a relog, zone change or gate trip (known limit). Note whether the icons survived the respawn |
 | I10 | `/gmgiveitem 1893 1` (Opheltes's Injection, a mission item) and use it with focus below full | Nothing heals; the item stays. | Mission items must never heal |
+| I10b | `/gmgiveitem 6206 1` (Stealth Boost Consumable) and use it | Chat shows "This item has no effect yet."; the item stays. | K21: expected |
 | I11 | Wait out a stimpack's full hour (optional, long) | When the hour ends the attribute drops back and the icon goes. | |
 
 **SigNoz** (base `service.name = 'cimmeria-server'`):
@@ -759,7 +760,7 @@ Heal items and stimpacks used from your bags: the Health Slappack, the Health an
 | Question | Filter |
 |---|---|
 | Every item use and refusal of a player | `event IN ('consumable_used','consumable_refused','consumable_skipped','consumable_apply_skipped') AND player_id = <id>` |
-| Why a use was refused (I3, I5) | `event = 'consumable_refused' AND player_id = <id>`: `reason` is `already_at_max` (with `stat_cur` and `stat_max`) or `dead` |
+| Why a use was refused (I3, I5, I10b) | `event = 'consumable_refused' AND player_id = <id>`: `reason` is `already_at_max` (with `stat_cur` and `stat_max`), `dead` or `consumable_not_implemented` |
 | Did the base take a unit (I4) | `event IN ('consumable_consumed','consumable_consume_refused') AND player_id = <id>` |
 | Stimpack buffs applied, replaced and expired (I6-I9, I11) | `scope_name = 'abilities' AND event IN ('stat_buff_applied','stat_buff_removed') AND player_id = <id>`; `stat_buff_removed` carries `reason` = `replaced`, `expired`, `removed` or `died` |
 

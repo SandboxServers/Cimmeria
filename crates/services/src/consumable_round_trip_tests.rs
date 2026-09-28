@@ -54,6 +54,13 @@ const STIM_ENGAGEMENT: i32 = 6678;
 /// Opheltes's Injection: a mission item whose only event-5 binding is the
 /// 597 Heal Focus filler.
 const QUEST_ITEM_ON_597: i32 = 1893;
+/// Subspace Tracking Device: bound to the 597 filler but a bag item
+/// (`container_sets` `{1,17}`), so the 597 path's silence is tested where
+/// the not-implemented refusal would otherwise apply.
+const BAG_ITEM_ON_597: i32 = 2042;
+/// Stealth Boost Consumable: a bag consumable whose effect 3221 has no
+/// script.
+const STEALTH_BOOST: i32 = 6206;
 
 async fn teardown(pool: &PgPool) {
     for sql in [
@@ -137,6 +144,7 @@ async fn stage(pool: &PgPool, health: i32) -> (SpaceManager, ChainEngine) {
     mgr.ability_defs = spawner::load_ability_defs(pool).await.unwrap();
     mgr.effect_defs = spawner::load_effect_defs(pool).await.unwrap();
     mgr.item_event_set_abilities = spawner::load_item_event_set_abilities(pool).await.unwrap();
+    mgr.item_containers = spawner::load_item_containers(pool).await.unwrap();
     mgr.create_entity(ENTITY, "W", [0.0; 3], [0.0; 3]).unwrap();
     let e = mgr.get_entity_mut(ENTITY).unwrap();
     e.is_player = true;
@@ -481,5 +489,45 @@ async fn live_db_an_item_bound_to_the_597_placeholder_does_not_heal_focus() {
         "no free focus heal from a quest item"
     );
     assert_eq!(stack_size(&pool, instance).await, Some(1));
+    teardown(&pool).await;
+}
+
+/// A real bag consumable whose effect is not implemented (the Stealth
+/// Boost) is refused with a line and kept; a 597-bound bag item stays
+/// silent and is kept too.
+#[tokio::test]
+async fn live_db_an_unimplemented_consumable_is_refused_and_a_597_bag_item_stays_silent() {
+    let pool = require_db_or_skip!();
+    seed(&pool).await;
+    let boost = stack(&pool, STEALTH_BOOST, 1, 0).await;
+    let filler = stack(&pool, BAG_ITEM_ON_597, 1, 1).await;
+    let (mut mgr, engine) = stage(&pool, 1200).await;
+    for (item, container) in [(STEALTH_BOOST, 1), (BAG_ITEM_ON_597, 1)] {
+        assert_eq!(
+            mgr.item_containers.get(&item),
+            Some(&container),
+            "seed drift: {item} is no longer a bag item"
+        );
+    }
+    assert_eq!(
+        mgr.item_event_set_abilities.get(&(BAG_ITEM_ON_597, 5)),
+        Some(&597),
+        "seed drift: {BAG_ITEM_ON_597} is no longer bound to 597"
+    );
+    let base = Base::new(&pool);
+
+    let out = use_item(&mut mgr, &engine, &base, boost, 1).await;
+    assert_eq!(out.consume_requests, 0, "{out:?}");
+    assert_eq!(stack_size(&pool, boost).await, Some(1), "the boost is kept");
+    assert!(saw_text(&out, "This item has no effect yet."), "{out:?}");
+
+    let out = use_item(&mut mgr, &engine, &base, filler, 1).await;
+    assert_eq!(out.consume_requests, 0);
+    assert!(
+        out.methods.is_empty(),
+        "the 597 path sends nothing: {out:?}"
+    );
+    assert_eq!(stack_size(&pool, filler).await, Some(1));
+    assert_eq!(stat(&mgr, FOCUS), 100, "no focus heal");
     teardown(&pool).await;
 }

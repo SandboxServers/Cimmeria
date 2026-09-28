@@ -19,7 +19,7 @@ Landed on branch `feat/item-use-abilities` (2026-09-28). Supersedes the "event 5
 
 **Lifecycle:** not persisted — lost on logout / gate travel / cross-world respawn (entity rebuilt; `InitPlayerState` also clears any ledger). Survives same-world death: stim rows carry `EF_Offline_Time_Counts` (2), not `EF_ClearOnDeath` (4); `resolve_death` strips only ClearOnDeath buffs.
 
-**Deliberately unwired:** Stealth (3221, 4067-4075), Energy (3227, 4076-4084), Disguise (3187, 4056-4064) boosts — `STEALTH_RATING`, `ENERGY_POOL` (always [0,0,0]), `DISGUISE_RATING` have no server reader except the GM `.stats` display. They stay silent on use (UAT K20). 6245-6252/6254/6256 have no event-5 row.
+**Deliberately unwired:** Stealth (3221, 4067-4075), Energy (3227, 4076-4084), Disguise (3187, 4056-4064) boosts — `STEALTH_RATING`, `ENERGY_POOL` (always [0,0,0]), `DISGUISE_RATING` have no server reader except the GM `.stats` display. A use of any non-native, chain-less bag consumable (preferred container 1, i.e. `{1,17}`: these boosts plus 13 antidotes) is refused with "This item has no effect yet." and kept (UAT K21, WARN `reason=consumable_not_implemented`); `{2}` mission items and the 597 filler (incl. 14 `{1,17}` items like 2042) stay silent. 6245-6256 are melee boots (`{1,12,17}`), not consumables; 6247/6251 do not exist.
 
 **Magnitudes** are new `effect_nvps` rows 400-462, each the number in the effect's `effect_desc` (checked by `live_db_every_consumable_magnitude_is_its_effect_description`). `HealAmount` (flat) is read before `HealPercentage` by the one `HealHealth` / `HealFocus` script (`effects/heal.rs`). Stim NVP names: Coordination, Engagement, Fortitude, Intellect (→ INTELLIGENCE), Morale, Perception.
 

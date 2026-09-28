@@ -20,7 +20,8 @@ use cimmeria_wire::cell::chat::CHAN_FEEDBACK;
 
 use super::consumable_use::{
     classify, error_code_args, Classification, ConsumablePlan, DEAD_TEXT, FEEDBACK_NOT_LIVING,
-    FEEDBACK_STAT_AT_MAX, FULL_FOCUS_TEXT, FULL_HEALTH_TEXT, PLACEHOLDER_ITEM_USE_ABILITY,
+    FEEDBACK_STAT_AT_MAX, FULL_FOCUS_TEXT, FULL_HEALTH_TEXT, NOT_IMPLEMENTED_TEXT,
+    PLACEHOLDER_ITEM_USE_ABILITY,
 };
 use super::{apply_consumed_item, fire_item_use};
 use crate::cell::messages::{CellToBaseMsg, ConsumeItemForUse, ItemUseConsumed};
@@ -42,6 +43,9 @@ const STIM_III: i32 = 6677;
 const STIM_V: i32 = 6697;
 const QUEST_ITEM: i32 = 1893;
 const SCANNER: i32 = 5672;
+/// Stealth Boost Consumable: a bag consumable (`{1,17}`) whose effect 3221
+/// has no script.
+const STEALTH_BOOST: i32 = 6206;
 
 fn ability(ability_id: i32, effect_ids: Vec<i32>) -> AbilityDef {
     AbilityDef {
@@ -153,7 +157,28 @@ fn mgr() -> SpaceManager {
             ability(2091, vec![2815]),
             vec![effect(2815, 2091, None, ("x", "1"), 0.0)],
         ),
+        (
+            STEALTH_BOOST,
+            ability(2269, vec![3221]),
+            vec![effect(3221, 2269, None, ("x", "1"), 0.0)],
+        ),
     ];
+    // Preferred containers, as `load_item_containers` derives them from
+    // `container_sets`: bag consumables `{1,17}` -> 1, mission items `{2}`
+    // -> 2. The 597 quest item is put in the bag on purpose, like the 14
+    // real 597-bound `{1,17}` items (2042, 2592, ...): the filler must stay
+    // silent there too.
+    for (item, container) in [
+        (SLAPPACK, 1),
+        (FOCUS_HEAL, 1),
+        (STIM_III, 1),
+        (STIM_V, 1),
+        (QUEST_ITEM, 1),
+        (SCANNER, 2),
+        (STEALTH_BOOST, 1),
+    ] {
+        mgr.item_containers.insert(item, container);
+    }
     for (item, def, effects) in defs {
         mgr.item_event_set_abilities
             .insert((item, EVENT_ITEM_USE_ABILITY), def.ability_id);
@@ -456,6 +481,80 @@ async fn a_restored_item_use_chain_owns_the_item_so_nothing_doubles() {
         .count();
     assert_eq!(removes, 1, "exactly one unit consumed");
     assert_eq!(pool(&mgr, HEALTH), 700, "exactly one +500 heal");
+}
+
+/// A bag consumable whose effect this path cannot apply is refused with a
+/// line and kept: no `ConsumeItemForUse`, no chain, no `onErrorCode`.
+#[tokio::test]
+async fn an_unimplemented_bag_consumable_is_refused_and_kept() {
+    let mut mgr = mgr();
+    let sent = use_item(&mut mgr, &ChainEngine::new(), STEALTH_BOOST).await;
+    assert!(consumes(&sent).is_empty(), "nothing consumed: {sent:?}");
+    assert_eq!(
+        method_calls(&sent),
+        vec![(
+            crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
+            &feedback_line(NOT_IMPLEMENTED_TEXT)
+        )],
+        "exactly the chat line"
+    );
+}
+
+#[tokio::test]
+async fn the_not_implemented_refusal_logs_its_reason() {
+    let capture = LogCapture::install();
+    let mut mgr = mgr();
+    let _ = use_item(&mut mgr, &ChainEngine::new(), STEALTH_BOOST).await;
+    let row = capture
+        .find_event(
+            Level::WARN,
+            "item use refused",
+            "consumable_not_implemented",
+        )
+        .expect("WARN reason=consumable_not_implemented");
+    assert_eq!(row.fields.get("type_id").map(String::as_str), Some("6206"));
+    assert_eq!(
+        row.fields.get("item_id").map(String::as_str),
+        Some(INSTANCE.to_string().as_str())
+    );
+}
+
+/// A mission item with an unwired binding stays silent: its chains decide.
+#[tokio::test]
+async fn an_unwired_mission_item_gets_no_refusal() {
+    let mut mgr = mgr();
+    let sent = use_item(&mut mgr, &ChainEngine::new(), SCANNER).await;
+    assert!(method_calls(&sent).is_empty(), "{sent:?}");
+}
+
+/// The 597 filler stays silent even for a bag item: no new refusal.
+#[tokio::test]
+async fn a_597_bound_bag_item_gets_no_refusal() {
+    let mut mgr = mgr();
+    assert_eq!(mgr.item_containers.get(&QUEST_ITEM), Some(&1));
+    let sent = use_item(&mut mgr, &ChainEngine::new(), QUEST_ITEM).await;
+    assert!(sent.is_empty(), "the 597 path must send nothing: {sent:?}");
+}
+
+/// A chain for an unimplemented bag consumable owns it: no refusal.
+#[tokio::test]
+async fn a_chain_owned_unimplemented_consumable_gets_no_refusal() {
+    let mut mgr = mgr();
+    let mut engine = ChainEngine::new();
+    engine.register_chain(Chain {
+        id: 9001,
+        name: "stealth boost chain".to_string(),
+        enabled: true,
+        trigger: Trigger::OnItemUse {
+            item_id: STEALTH_BOOST,
+        },
+        conditions: vec![],
+        actions: vec![],
+        action_delays: vec![],
+        priority: 0,
+    });
+    let sent = use_item(&mut mgr, &engine, STEALTH_BOOST).await;
+    assert!(method_calls(&sent).is_empty(), "{sent:?}");
 }
 
 // ── phase 2: after the base consumed ───────────────────────────────────

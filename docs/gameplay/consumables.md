@@ -50,11 +50,14 @@ The attributes are Coordination, Engagement, Fortitude, Intellect, Morale and Pe
 
 ## Items that do nothing yet
 
+Using one of these shows "This item has no effect yet." in chat, and the item is kept.
+
 | Items | Why |
 |---|---|
 | Stealth Boost Consumable (6206, 6762-6770) | Nothing on the server uses stealth rating yet. |
 | Energy Boost Consumable (6209, 6753-6761) | Nothing on the server uses the energy pool yet. |
 | Disguise Boost Consumable (8403, 6196, 6745-6752) | Nothing on the server uses disguise rating yet. |
+| Antidotes (6577, 6597-6599, 6656, 6657, 6659-6662, 6664-6666) | The effects that would remove a condition are not implemented. |
 
 Mission items keep working through their missions (the Ambernol vial, radios, scanners). Many mission items carry a leftover "Heal Focus" binding in the item data; it is ignored, so using a quest item never heals you.
 

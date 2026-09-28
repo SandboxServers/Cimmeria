@@ -74,6 +74,7 @@ async fn caches(pool: &sqlx::PgPool) -> SpaceManager {
     mgr.ability_defs = spawner::load_ability_defs(pool).await.unwrap();
     mgr.effect_defs = spawner::load_effect_defs(pool).await.unwrap();
     mgr.item_event_set_abilities = spawner::load_item_event_set_abilities(pool).await.unwrap();
+    mgr.item_containers = spawner::load_item_containers(pool).await.unwrap();
     mgr
 }
 
@@ -196,4 +197,56 @@ async fn live_db_every_consumable_magnitude_is_its_effect_description() {
         }
     }
     assert_eq!(checked, 11 + 10 + 42, "effects checked");
+}
+
+/// The bag consumables a use refuses as "no effect yet": every event-5
+/// binding that is neither native nor the 597 filler, on an item whose
+/// preferred container is the main bag. Today that is the Stealth, Energy
+/// and Disguise boosts and the antidotes, and no mission item.
+#[tokio::test]
+async fn live_db_the_unimplemented_bag_consumables_are_the_boosts_and_antidotes() {
+    let pool = require_db_or_skip!();
+    let mgr = caches(&pool).await;
+    let names: BTreeMap<i32, String> = sqlx::query_as::<_, (i32, String)>(
+        "SELECT item_id, COALESCE(name, '') FROM resources.items",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap()
+    .into_iter()
+    .collect();
+    let mut refused = BTreeSet::new();
+    for &(item, event) in mgr.item_event_set_abilities.keys() {
+        if event != 5
+            || mgr.item_containers.get(&item) != Some(&cimmeria_entity::inventory::INV_MAIN)
+        {
+            continue;
+        }
+        if matches!(classify(item, &mgr), Classification::NotNative { .. }) {
+            refused.insert(item);
+        }
+    }
+    assert!(!refused.is_empty());
+    for item in &refused {
+        let name = names.get(item).map(String::as_str).unwrap_or("");
+        assert!(
+            [
+                "Stealth Boost",
+                "Energy Boost",
+                "Disguise Boost",
+                "Antidote",
+                "NO ITEM NAME"
+            ]
+            .iter()
+            .any(|k| name.contains(k)),
+            "item {item} ({name}) would be refused as not implemented; is it a consumable?"
+        );
+    }
+    for boost in [6206, 6209, 8403, 6577, 6666] {
+        assert!(refused.contains(&boost), "{boost} must be refused");
+    }
+    assert!(
+        !refused.contains(&19),
+        "the Ambernol vial is a mission item"
+    );
 }

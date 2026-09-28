@@ -115,8 +115,13 @@ A second buff on the same attribute replaces the first, whatever its tier; buffs
 |---|---|
 | Stealth Boost (6206, 6762-6770; effects 3221, 4067-4075) and Energy Boost (6209, 6753-6761; 3227, 4076-4084) | Nothing on the server reads the stats they would move. `STEALTH_RATING` (46) and `ENERGY_POOL` (82) are read only by the GM `.stats` display, and `ENERGY_POOL` is `[0, 0, 0]` on every entity. A heal to an inert stat is a use that does nothing, so their `script_name` stays NULL until stealth or energy has a consumer. |
 | Disguise Boost (8403, 6196, 6745-6752; effects 3187, 4056-4064) | The same: `DISGUISE_RATING` (78) has no reader. |
-| 6245-6252, 6254, 6256 | No `items_event_sets` row at all: there is no data to act on. |
+| Antidotes (6577, 6597-6599, 6656, 6657, 6659-6662, 6664-6666) | Their effects ("50% chance to remove Health", ...) remove conditions this server does not model. |
+| 6245-6246, 6248-6250, 6252, 6254, 6256 | Not consumables: melee boots (`container_sets` `{1,12,17}`) with no event-5 row. 6247 and 6251 do not exist. |
 | Everything bound to 597 | The filler binding, rule 2 above. |
+
+### Refusing what is not wired
+
+A use of a bag consumable (its preferred container is the main bag: `container_sets` `{1,17}`) whose event-5 ability is not native, and that no chain owns, is refused so the press is never silent: the chat line "This item has no effect yet." (no `onErrorCode`: the client enum has no fitting code), a WARN `consumable_refused` with `reason = consumable_not_implemented`, and nothing consumed. Today that is the Stealth, Energy and Disguise boosts and the antidotes; `live_db_the_unimplemented_bag_consumables_are_the_boosts_and_antidotes` pins it. A mission item (`{2}`) with such a binding stays silent for its chains, and the 597 filler never reaches this check, even on the 14 bag items bound to it (2042, 2592, ...).
 
 ### Chain or native?
 
