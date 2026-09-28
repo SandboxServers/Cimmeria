@@ -30,7 +30,9 @@
 //! - [`create`] / [`bid`] / [`cancel`] — the create/bid/cancel state machine.
 //! - [`settle`]  — settling one auction (sweep and buyout).
 //! - [`sweep`]   — the periodic expiry-settlement background task.
-//! - [`seed`]    — the boot seed of system-seller listings.
+//! - [`seed`]    — the boot seed of system-seller listings, and the check
+//!   that the reserved system seller ids hold the system seller (BM-07).
+//! - [`gm`]      — the GM `.bm_seed` / `.bm_expire` / `.bm_list` tools (BM-07).
 
 use sqlx::PgPool;
 
@@ -38,6 +40,7 @@ pub mod bid;
 pub mod cancel;
 pub mod create;
 pub mod escrow;
+pub mod gm;
 pub mod helpers;
 pub mod payout_mail;
 pub mod search;

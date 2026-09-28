@@ -28,7 +28,6 @@ use cimmeria_entity::inventory::INV_AUCTION;
 use sqlx::PgConnection;
 
 use super::super::mail::SystemItem;
-use super::seed::SYSTEM_SELLER_ID;
 use super::types::{AuctionRow, LISTABLE_BAGS};
 use super::wire::BMError;
 use crate::base::crafting::inventory_locks::take_inventory_locks;
@@ -46,9 +45,13 @@ pub struct EscrowedItem {
     pub bound: bool,
 }
 
-/// Is `auction` a boot-seed listing, which never had an instance?
+/// Is `auction` a boot-seed listing, which never had an instance? Only a
+/// system listing has `item_id` 0: a player's listing always names its
+/// escrowed row. The seller is not a test (BM-07): on a database where
+/// player 1 is a real character, that player's listings must settle through
+/// escrow like anyone's, never mint.
 pub fn is_seed_listing(auction: &AuctionRow) -> bool {
-    auction.item_id == 0 || auction.seller_id == SYSTEM_SELLER_ID
+    auction.item_id == 0
 }
 
 /// Move `item_id` out of `seller_id`'s carried bags into their auction
