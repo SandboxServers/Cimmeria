@@ -72,7 +72,7 @@ Read these before you start. None of them needs a new report.
 | K7 | **Several tutorial effects are inert.** Prison Boot, Stasis Sickness and its cure send nothing to the client, so no icon or movement lock appears. | Record what you see; "I could walk" is not a failure. | [Cellblock guide, Known limitations](../analysis/castle-cellblock-rebuild/uat-guide.md#known-limitations--not-validated) |
 | K8 | **An objective checkbox may not tick** when a step completes it implicitly (Cellblock step 2144's second objective, mission 688's objective 2734). The step still advances. | Record it; not a new bug. | Issue #656 |
 | K9 | **System messages do not render** (for example message 5040 on entering Cellblock Region2). | Nothing. | Issue #268 |
-| K10 | **Col. Marsh's third bark does not fire** ("Flank their position while I draw their fire!" at Hallway05). | Record it as the known failure. | Open PR #826 |
+| K10 | **Col. Marsh's third bark is fixed but not yet re-tested.** "Flank their position while I draw their fire!" at Hallway05 did not fire in the 2026-09-26 playtest; #826 fixed it. | Re-test it (T32). On a build with #826, a missing line is a new failure: report it. | PR #826 (merged) |
 | K11 | **Marsh is left behind if you relog** after the ring hop and before mission 686 completes. | Record it; documented gap. | [Cellblock guide T28](../analysis/castle-cellblock-rebuild/uat-guide.md#t28--marsh-rides-the-rings-and-follows-you-topside-gc1b-1-gc1b-2) |
 | K12 | **The Lo'taur pet never attacks or heals**, and several pet-bar abilities (1652, 1654, 1653, 3326-3329) do nothing except say "Your pet can't use that ability yet." | Record it; known gap. | [pets README, Campaign outcome](../analysis/pets/README.md#campaign-outcome) |
 | K13 | **Stale action-bar buttons after an ability respec.** The server keeps no hotbar, so a refunded ability's button stays; pressing it shows an error. | Expected. | [ability-trees session resume](../analysis/ability-trees/handoffs/session-resume.md#open-owner-decisions) |
@@ -114,7 +114,7 @@ The `.`-commands the campaigns rely on:
 | `.aggro on` / `off` | Stop or restore idle NPCs noticing you (default on) | NPC AI |
 | `.allcraft`, `.craftkit <blueprint> [count]`, `.learnblueprint <id>` | Crafting grants to the **selected** player (select yourself first) | Crafting |
 | `.respeccraft` | Open a free crafting respec; any player may use it | Crafting |
-| `.gotolocation <world> <x> <y> <z>`, `.gotoxyz`, `.goto <name>`, `.summon <name>` | Travel | Many |
+| `.gotolocation <world> [<x> <y> <z>]`, `.gotospace <spaceId> [<x> <y> <z>]`, `.gotoxyz`, `.goto <name>`, `.summon <name>` | Travel. With no coordinates, `.gotolocation` and `.gotospace` land on the world's entry point and the reply names it (#993) | Many |
 
 ### The stasis-room debug hub
 
@@ -276,7 +276,7 @@ Source: [organizations-uat.md](organizations-uat.md), [ORG-UAT in work-packets.m
 
 The Crafting (J) and Applied Science (Ctrl+J) windows: learning disciplines with applied-science points (ASP), craft, research, reverse engineering and alloying, respec, stations and Field Crafting Tools, Blueprint items and Racial Paradigm Guides, and the crafting bag.
 
-**Status:** Ready once the crafting release deploys: all the code is merged (the crafting campaign, CR-01 to CR-17, with respec CR-10) except CR-18 (step 20) and CR-19 (step 21), and none of it has been run in a client. The canonical checklist is the [CR-14 checklist in the crafting session resume](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist); the step numbers below are its step numbers. The provisional CRP-1 to CRP-11 list that stood here is retired.
+**Status:** Ready once the crafting release deploys: all the code is merged (the crafting campaign, CR-01 to CR-18, with respec CR-10 and the research refusal CR-18) except CR-19 (step 21), and none of it has been run in a client. The canonical checklist is the [CR-14 checklist in the crafting session resume](../analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist); the step numbers below are its step numbers. The provisional CRP-1 to CRP-11 list that stood here is retired.
 
 **Prerequisites:** a GM account and a **new character** in the stasis room. The crafting corner stands along the wall opposite the main hub row: the **Common Materials Components** vendor (1 naquadah per item) and four **Crafting Stations**. Any station allows all four verbs; you are "at" one within 5 units. `.allcraft`, `.craftkit` and `.learnblueprint` act on your **selected target**: select your own character first (click your portrait), and note it if the client will not let you. Step 17 needs a second player. Note the time you log in: your `player_id` is on your `login_sync` row in SigNoz.
 
@@ -512,7 +512,7 @@ Source: [AT-06 in work-packets.md](../analysis/ability-trees/work-packets.md#at-
 
 Dialog buttons that do something on the first press: redundant buttons stripped, button-less closes that report, Col. Marsh's lines as chat barks, and the Castle dialogs' Accept, Decline and Take Missions.
 
-**Status:** Partly works. The 2026-09-26 colo playtest passed T30 rows 1-5, T31 and T32 lines 1-2 (recorded in open PR #826). T32 line 3 is known broken until #826 deploys (K10).
+**Status:** Partly works. The 2026-09-26 colo playtest passed T30 rows 1-5, T31 and T32 lines 1-2 (recorded in PR #826). #826 also fixed T32 line 3, which is owed a re-test (K10).
 
 **Prerequisites:** a Tau'ri and a Jaffa character running the Cellblock tutorial, then Castle mission 701. The Castle rows need a server restart before the run (patches apply once at load).
 
@@ -527,7 +527,7 @@ The DU-UAT rows live inside the Cellblock and Castle checklists; they are gather
 | T30.5 | Look at 2516 and 5859 | No buttons. | Passed 2026-09-26 |
 | T30.6 | Close dialog 2309 | No buttons; nothing else happens. | |
 | T31 | Watch the Straegis aftermath | 2516 appears, then 5859 replaces it after about half a second; no mission changes from closing either. | Passed 2026-09-26. You cannot read 2516 in time: known content timing |
-| T32 | Ride the rings, enter the Mess Hall, enter Hallway05 | Three chat lines from "Col. Marsh", no window, nothing interrupts you. | Lines 1-2 passed; line 3 known broken (K10) |
+| T32 | Ride the rings, enter the Mess Hall, enter Hallway05 | Three chat lines from "Col. Marsh", no window, nothing interrupts you. | Lines 1-2 passed 2026-09-26; line 3 fixed in #826, re-test it (K10) |
 | M1b-a | Server restarted. As a Human, talk to Gerschon | 2573 shows Next on screens 1-6 and Accept plus Decline only on screen 7; Accept starts 701. | Quirk, not a defect: the final screen shows Next and Previous instead of Done |
 | M1b-b | As a Jaffa, the same for 5861 | Accept and Decline only on screen 8; the Moh'katan radio call 5862 follows the accept. | |
 | M1b-c | Page 2576 to screen 5, press Take Missions | 701 completes; 702 and 703 arrive. | Done sits beside Take Missions and sends nothing |
@@ -546,7 +546,7 @@ The first zone: the stasis room, Prisoner 329, Col. Marsh's briefing and escort,
 
 **Status:** Partly works. The chains are merged; several effects are inert (K7) and some items are known gaps (K8, K9, K11). The 2026-09-26 dialog-UI playtest ran two Cellblock passes and recorded only the dialog rows (PR #826); the other scenarios have no recorded result.
 
-**Prerequisites:** two fresh characters, one **Jaffa** and one **non-Jaffa Tau'ri**. There is no mission reset: delete the character at character-select to start over. Useful GM commands: `/gmgotoxyz`, `/gmgotolocation Castle_CellBlock <x> <y> <z>`, `/gmmissionassign <id> 1`, `/gmmissionadvance <missionId> <stepId>`, `/gmkilltarget <entityId>`; to survive a fight, `/gmsethealthmax <n> 0` then `/gmsethealth <n> 0`.
+**Prerequisites:** two fresh characters, one **Jaffa** and one **non-Jaffa Tau'ri**. There is no mission reset: delete the character at character-select to start over. Useful GM commands: `/gmgotoxyz`, `/gmgotolocation Castle_CellBlock <x> <y> <z>` (`0 0 0` lands on the new-character start, #993), `/gmmissionassign <id> 1`, `/gmmissionadvance <missionId> <stepId>`, `/gmkilltarget <entityId>`; to survive a fight, `/gmsethealthmax <n> 0` then `/gmsethealth <n> 0`.
 
 Relog checks are part of almost every scenario: the full guide says what must come back after each relog.
 
@@ -663,15 +663,15 @@ Source: [zone operator guide, runbook C](../analysis/zone-restoration-operator-g
 
 Seven historical versions of the Castle Cellblock map (builds 43485 to 63682), each loadable as its own empty world, 1201-1207, for comparing against today's map.
 
-**Status:** Needs client patch. The server side is merged (#831). The seven map folders must be installed in your client; they do not ship to testers. The steps are **derived** from the README's "What the UAT must settle" (confirm with the campaign owner).
+**Status:** Owner UAT passed 2026-09-27: every world loads in a client with the patched files installed. Still needs client patch: the seven map folders do not ship to testers yet. The server side is merged (#831). A tester pass adds per-world detail to the README's table.
 
 **Prerequisites:** a GM account and a client with the historical-cellblocks patch installed. Read K15 first: mixing this server with one that lacks these worlds can empty your client's world table.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
-| HC-1 | `.gotolocation CellBlock43 -334.231 73.472 -228.026` | The world loads; record load success, streaming of sublevels, geometry and prop differences, collision, native cover-node behaviour, unexpected current content, and any package or namespace errors. | Derived. 43485 is uncooked and has no MapData; it is the likeliest to fail |
-| HC-2 | Repeat HC-1 for `CellBlock55`, `CellBlock57`, `CellBlock58`, `CellBlock60`, `CellBlock62` and `CellBlock63` | Same record per world. | Derived. The worlds are empty by design: no NPCs, missions or spawns |
-| HC-3 | `.gotolocation Castle_CellBlock -334.231 73.472 -228.026` | Back in the stock Cellblock, which behaves as before. | Derived |
+| HC-1 | `.gotolocation CellBlock43` (on a build without #993, add the coordinates `-334.231 73.472 -228.026`) | The world loads; record load success, streaming of sublevels, geometry and prop differences, collision, native cover-node behaviour, unexpected current content, and any package or namespace errors. | Passed (owner, 2026-09-27). 43485 is uncooked and has no MapData; it is the likeliest to differ |
+| HC-2 | Repeat HC-1 for `CellBlock55`, `CellBlock57`, `CellBlock58`, `CellBlock60`, `CellBlock62` and `CellBlock63` | Same record per world. | Passed (owner, 2026-09-27). The worlds are empty by design: no NPCs, missions or spawns |
+| HC-3 | `.gotolocation Castle_CellBlock` (coordinates as in HC-1 before #993) | Back in the stock Cellblock, which behaves as before. | Passed (owner, 2026-09-27) |
 
 Record each world in the README's table (Loads, Streams, Geometry / props, Collision, Cover nodes, Errors).
 
