@@ -245,5 +245,6 @@ mod shout;
 mod spawn;
 mod stats;
 mod travel;
+mod travel_entry_point;
 mod travel_pets;
 mod world;

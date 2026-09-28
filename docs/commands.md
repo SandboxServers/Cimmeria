@@ -242,7 +242,7 @@ Jump yourself or pull others to you.
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
 | `/gmgoto` | Teleport yourself to a target entity | ✅ Yes | `<entityId>` (numeric) | `/gmgoto 5310` |
-| `/gmgotolocation` | Teleport yourself to a named world + coordinates (full reload) | ✅ Yes | `<worldName> <x> <y> <z>` | `/gmgotolocation Abydos 100 5 200` |
+| `/gmgotolocation` | Teleport yourself to a named world + coordinates (full reload). Coordinates `0 0 0` mean the world's entry point (new-character start, else story ring pad, else stargate arrival, else first respawner) | ✅ Yes | `<worldName> <x> <y> <z>` | `/gmgotolocation Abydos 100 5 200`, `/gmgotolocation Harset 0 0 0` |
 | `/gmgotoxyz` | Teleport yourself to coordinates in your space | ✅ Yes | `<x> <y> <z>` (floats; must be finite) | `/gmgotoxyz 1200.5 64.0 -880.0` |
 | `/gmsummon` | Move a target entity to you | ✅ Yes | `<entityId>` (numeric; not yourself) | `/gmsummon 5310` |
 
@@ -588,7 +588,7 @@ restart, never written to the DB):**
 | Teams and Commands | `.org_list` | ✅ Yes (read only). Lists every Team and Command with its id, member count and leader, oldest first, at most 50 lines |
 | Teams and Commands | `.org_set_perms <orgId> <rank> <mask>` | ✅ Yes (saved). Sets a rank's permission mask (decimal or `0x` hex). Only the bits the type's rank editor shows take your value (12 for a Team, 14 for a Command); the others keep what is stored, and the reply names the bits it ignored. Refuses the Leader rank (it always holds every bit), ranks the type does not use, and an edit that changes nothing. Online members get the new rank table |
 | Organizations | `.org_create <team\|command> <name>` | ✅ Yes (saved) — founds a Team or Command that you lead, without the Organization Registrar. The name is every word after the type. The base re-checks your GM access and applies the same rules as the registrar: the name rules, one Team and one Command per character, and the creation cost (0 for now). You get the organization window and a confirmation line, or the reason it was refused |
-| Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
+| Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. Coordinates are optional on both: `.gotolocation <world>` and `.gotospace <spaceId>` land on the world's entry point — the new-character start for `Castle_CellBlock` / `SGC_W1`, else the story ring pad (Castle: the Armory drop zone mission 688's ring ceremony lands on), else the stargate arrival, else the world's first authored respawner — and the feedback line says which one it used. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
 
 A few commands (`.debug_controller`, the server/maint family) report
 an honest limitation in-game where the Rust server handles the concern

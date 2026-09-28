@@ -28,6 +28,10 @@ pub mod squad;
 /// `cimmeria-services` until wave C6 of the services crate split.
 #[cfg(test)]
 mod harset_placement_tests;
+/// Seed-vs-navmesh guard for the interior / story-room respawners placed
+/// from map data (rows 24-29). Test-only.
+#[cfg(test)]
+mod room_placement_tests;
 /// The spawner tests that need `SpaceManager`, cover or the aggression
 /// helpers. Test-only; in `cimmeria-services` until wave C6.
 #[cfg(test)]

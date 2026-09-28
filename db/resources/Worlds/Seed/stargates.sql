@@ -84,7 +84,16 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (8, 36, 31, 17, 4, 10, 13, 25, 'Dakara E1', 0, 'Dakara_E1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 61, 96.174003999999996, -15.164, 3.0720000000000001, 253.205994, 10013);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (38, 29, 27, 14, 8, 23, 15, 15, 'Agnos', 0, 'Agnos.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 10, 0, 0, 0, 0, 10002);
+-- Gate 15 (Agnos): the recovered row is all zeros, and the cooked Agnos map
+-- has no stargate prefab to recover it from, so gate travel and a
+-- no-coordinates `.gotolocation Agnos` landed at the world origin, ~34 m
+-- under the floor with nothing within 4 m. The arrival is pinned to the
+-- map's only authored arrival, its PlayerStart: UE3 Location converted with
+-- `ue3_to_bw` (BigWorld = (UE.y, UE.z, UE.x) / 100) to (20.640, 34.939,
+-- 15.890), yaw 0, on the Ancient platform deck (agnos.nav component 2513,
+-- 1,536 m^2). Evidence class: MAP ACTOR, provisional until a playtest
+-- (2026-09-27). The gate prop row itself stays unknown.
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (38, 29, 27, 14, 8, 23, 15, 15, 'Agnos', 0, 'Agnos.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 10, 0, 0, 0, 0, 10002, 20.640, 34.939, 15.890, 0);
 
 --
 -- TOC entry 3336 (class 0 OID 0)

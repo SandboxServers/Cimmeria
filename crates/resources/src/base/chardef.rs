@@ -252,9 +252,32 @@ pub fn chardef_lookup(
     }
 }
 
+/// Where a brand-new character is placed in `world`, if `world` is a
+/// character-creation starting world. Matched case-insensitively, the way
+/// the GM console's world names are.
+///
+/// Read off [`chardef_lookup`] rather than restated, so a starting position
+/// changed there changes here too.
+pub fn starting_position(world: &str) -> Option<[f32; 3]> {
+    (1..=23)
+        .filter_map(chardef_lookup)
+        .find(|entry| entry.4.eq_ignore_ascii_case(world))
+        .map(|entry| [entry.5, entry.6, entry.7])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn starting_position_names_both_starting_worlds_and_nothing_else() {
+        assert_eq!(
+            starting_position("Castle_CellBlock"),
+            Some([-334.231, 73.472, -228.026])
+        );
+        assert_eq!(starting_position("sgc_w1"), Some([201.5, 1.31, 49.724]));
+        assert_eq!(starting_position("Harset"), None);
+    }
 
     #[test]
     fn chardef_lookup_alignment_values() {

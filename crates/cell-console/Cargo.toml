@@ -37,6 +37,8 @@ cimmeria-cell-methods = { workspace = true }
 cimmeria-content-engine = { workspace = true }
 cimmeria-common = { workspace = true }
 cimmeria-entity = { workspace = true }
+# The new-character starting positions `.gotolocation <world>` lands on.
+cimmeria-resources = { workspace = true }
 # The GM-command and forced-mission-failure notifications.
 cimmeria-discord = { workspace = true }
 tokio = { workspace = true }

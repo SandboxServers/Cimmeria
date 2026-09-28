@@ -88,3 +88,32 @@ async fn gotolocation_moves_between_historical_worlds_and_back_to_stock() {
         &(archaeologist, "Castle_CellBlock".to_string(), None, UAT_POS)
     );
 }
+
+/// `.gotolocation CellBlockNN` with no coordinates: every historical world
+/// shares the stock Cellblock's new-character start (owner, 2026-09-27).
+/// Reverting the historical arm refuses each one with "no known entry point".
+#[tokio::test]
+async fn gotolocation_historical_cellblock_alone_lands_on_the_cellblock_start() {
+    for world in [
+        "CellBlock43",
+        "CellBlock55",
+        "CellBlock57",
+        "CellBlock58",
+        "CellBlock60",
+        "CellBlock62",
+        "CellBlock63",
+    ] {
+        let (mut mgr, gm) = setup_with_shipped_worlds();
+        let t = run("gotolocation", gm, &[&world.to_lowercase()], None, &mut mgr).await;
+        assert_eq!(
+            t.only_gate_travel(),
+            &(gm, world.to_string(), None, UAT_POS),
+            "{world}"
+        );
+        assert!(
+            t.mentions("[new-character start]"),
+            "{world}: {:?}",
+            t.feedback
+        );
+    }
+}
