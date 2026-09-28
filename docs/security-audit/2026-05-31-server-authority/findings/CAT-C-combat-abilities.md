@@ -15,11 +15,15 @@ That said, **CAT-C has multiple high-severity server-authority gaps** in
 the player-controlled paths that drive ability resolution:
 
 1. **No "is dead" guard on `respawn` or `callForAid`**. A live player can
-   send these messages and be teleported + healed to full.
+   send these messages and be teleported + healed to full. *Resolved
+   (#799): both dispatch arms now require server-side `BSF_DEAD`; see
+   CAT-C-01.*
 2. **`callForAid` accepts any `respawnerID` from the global table**, with
    no membership check against the player's current world or any
    access-list — turning the Defeat Window into an arbitrary teleporter
-   to any respawn point in the database.
+   to any respawn point in the database. *Resolved (#799): a positive id
+   must be one the Defeat Window offered (`spawner::offered_in_world`);
+   see CAT-C-02.*
 3. **No friendly-fire / faction / hostility check on single-target
    `useAbility`**. Players can damage other players, friendly NPCs
    (vendors, quest givers), and any in-range entity by id — PvP is
@@ -73,6 +77,15 @@ should follow.
 
 ### CAT-C-01 — `respawn` / `callForAid` heal a non-dead player to full
 
+**Status**: ✅ RESOLVED (#799) — the `CALL_FOR_AID` and `RESPAWN` arms in
+`crates/cell-methods/src/cell/cell_methods/player/combat/mod.rs` call
+`respawn_refusal` before `handle_respawn` (and before the respawn is
+journalled). A caller without `BSF_DEAD` is refused with a DEBUG
+`reason="respawn_not_dead"` row carrying `account_id` / `player_id`, and
+nothing is sent. The gate is in the arms, not in `handle_respawn`, so the
+GM `gmRespawn` on a living GM still works. Guards:
+`combat/tests/respawn_gate.rs`.
+
 **Severity**: High
 **Class**: Missing state precondition (server fails to gate on "actor is dead")
 **Wire surface**: `Event_NetOut_Respawn` (cell method 70), `Event_NetOut_callForAid` (cell method 67)
@@ -110,6 +123,16 @@ No — the wire format is documented, the handler code is the trust violation, n
 ---
 
 ### CAT-C-02 — `callForAid` accepts any `respawner_id` from the global table
+
+**Status**: ✅ RESOLVED (#799) — `spawner::offered_in_world` is now the
+single "offered respawner" predicate: `send_begin_aid_wait` builds the
+Defeat Window list from it, and the `CALL_FOR_AID` arm accepts a positive
+`respawner_id` only if it is in that set for the player's current world
+(ids `<= 0` are the server's world default). Anything else is refused with
+a DEBUG `reason="respawner_not_offered"` row, the player stays dead, and
+the cross-world `GateTravel` branch is never reached from the player path.
+A per-player known-respawner filter (#233) should narrow that one
+function. Guards: `combat/tests/respawn_gate.rs`.
 
 **Severity**: High
 **Class**: Missing access-list validation (arbitrary teleport)

@@ -18,6 +18,22 @@ pub struct RespawnerDef {
     pub pos: [f32; 3],
 }
 
+/// Respawners the Defeat Window offers a player in `world`: today every
+/// respawner registered for that world. A per-player known-respawner filter
+/// would narrow this one function, so the offer and the check narrow together.
+///
+/// Two callers must agree: `send_begin_aid_wait` builds the Defeat Window
+/// list from it, and the `callForAid` dispatch arm accepts a positive
+/// client-supplied `respawner_id` only if it is in this set. An id from
+/// another world is never offered, so the arm refuses it before
+/// `handle_respawn` can take its cross-world GateTravel branch.
+pub fn offered_in_world<'a>(
+    all: &'a [RespawnerDef],
+    world: &'a str,
+) -> impl Iterator<Item = &'a RespawnerDef> + 'a {
+    all.iter().filter(move |r| r.world_name == world)
+}
+
 /// Mirror of the SQL projection for `query_as`. The `pos` array on
 /// `RespawnerDef` doesn't have a direct column equivalent, so we map the
 /// three position columns onto separate fields here and assemble the array
@@ -62,4 +78,30 @@ pub async fn load_respawners(pool: &PgPool) -> Result<Vec<RespawnerDef>, sqlx::E
 
     tracing::info!(count = respawners.len(), "Loaded respawner definitions");
     Ok(respawners)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn def(respawner_id: i32, world_name: &str) -> RespawnerDef {
+        RespawnerDef {
+            respawner_id,
+            world_name: world_name.to_string(),
+            name: format!("r{respawner_id}"),
+            pos: [1.0, 2.0, 3.0],
+        }
+    }
+
+    /// The Defeat Window offer and the `callForAid` check both read this set,
+    /// so a respawner registered for another world must never be in it.
+    #[test]
+    fn offered_in_world_keeps_only_that_worlds_respawners() {
+        let all = [def(1, "Castle"), def(2, "Agnos"), def(3, "Castle")];
+        let ids: Vec<i32> = offered_in_world(&all, "Castle")
+            .map(|r| r.respawner_id)
+            .collect();
+        assert_eq!(ids, vec![1, 3]);
+        assert_eq!(offered_in_world(&all, "Harset").count(), 0);
+    }
 }

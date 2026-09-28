@@ -30,6 +30,15 @@ When an entity's health reaches zero:
 
 ## Respawn Flow
 
+### Server-side gates
+
+Both entry points are refused unless the server's own state allows them. The gates live in the dispatch arms (`respawn_refusal` in [`cell_methods/player/combat/mod.rs`](../../crates/cell-methods/src/cell/cell_methods/player/combat/mod.rs)), not in `handle_respawn`, because the GM `gmRespawn` drives the same fork on a living GM on purpose.
+
+- **The caller must be dead.** Both `callForAid` and `respawn` require the server-owned `BSF_Dead` bit, not HP (a corpse can hold positive HP). A living caller is refused with `reason=respawn_not_dead`. An unmodified client sends neither method outside the Defeat Window. When Release is clicked as the timer expires, the client sends both; the first revives the player and the second is refused instead of running a second reanchor.
+- **`callForAid` accepts only an offered respawner.** A positive `respawnerID` must be one the Defeat Window offered: a respawner registered for the player's current world, per `spawner::offered_in_world`, the same predicate `send_begin_aid_wait` builds the list from. Ids `<= 0` mean the server's world default (0 is the synthetic "Respawn Point" entry) and are always accepted. Any other id, such as another world's respawner, is refused with `reason=respawner_not_offered` and the player stays dead with the Defeat Window open.
+
+A refusal sends the client nothing. It logs one DEBUG row on target `player.respawn` with `reason`, `method`, `entity_id`, `account_id`, `player_id` and `respawner_id` (plus `state_field` or `world`). DEBUG, because the client controls the input.
+
 When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat/mod.rs::handle_respawn`](../../crates/cell-methods/src/cell/cell_methods/player/combat/mod.rs)) the path forks on whether the resolved respawn point is in the same world as where the player died:
 
 - **Same-world respawn (the common case)**: keep everything alive — cell entity, instance, AoI entities on the client, kismet state. Send a small in-place burst that re-creates only the local pawn actor on the client. **The instance — NPCs, kismet sequences (door states, completed encounters), regions — survives.** Dying in a room with an opened stasis door means coming back to that same opened door, not a freshly-spawned copy of the room.

@@ -416,16 +416,12 @@ pub(super) async fn send_begin_aid_wait(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    // Look up respawners for the player's current world
+    // The respawners offered in the player's current world. `callForAid`
+    // accepts only ids from this same predicate, so the two cannot drift.
     let world_name = space_mgr.get_entity_world_name(target_eid);
-    let matching_respawners: Vec<_> = if let Some(ref wn) = world_name {
-        space_mgr
-            .respawners
-            .iter()
-            .filter(|r| r.world_name == *wn)
-            .collect()
-    } else {
-        vec![]
+    let matching_respawners: Vec<_> = match world_name.as_deref() {
+        Some(wn) => crate::cell::spawner::offered_in_world(&space_mgr.respawners, wn).collect(),
+        None => vec![],
     };
 
     let (px, py, pz) = space_mgr

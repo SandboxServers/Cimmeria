@@ -8,6 +8,9 @@ use super::*;
 /// dispatcher (Harset H04).
 mod aoe_health_below;
 
+/// The dead gate and offered-respawner check on callForAid / respawn.
+mod respawn_gate;
+
 /// Build a SpaceManager with one player at id=1 in the
 /// Castle_CellBlock instanced space (every dispatch test sees a
 /// fresh world). Caller can override is_player and stats.
