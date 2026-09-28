@@ -5,7 +5,7 @@
 //! gameplay must not depend on the telemetry opt-in; see
 //! `docs/architecture/client-patches.md`.
 //!
-//! The first feature is the Black Market's **receive** side. The client
+//! The first feature is the Black Market. On the **receive** side, the client
 //! resolves the six `onBM*` client methods (90–95) to a
 //! `MethodDescription` and then drops them, because nothing was bound to
 //! them. This DLL:
@@ -23,7 +23,11 @@
 //!    `lua51.dll` C API, calling `CimmeriaBM.onOpen(...)` and its siblings
 //!    inside `lua_cpcall`.
 //!
-//! Sending (the cell methods 61–66) is not here yet.
+//! 4. **Sends** on the main thread ([`send`]): the same `Tick` detour
+//!    registers a global table `CimmeriaBMNative` in the UI Lua, whose
+//!    native functions (`search`, `create`, `bid`, `cancel`, `watch`)
+//!    encode the cell methods 61–66 with `cimmeria-patch-wire` and hand them
+//!    to `ServerConnection::startEntityMessage`.
 //!
 //! Every address is in [`addresses`], with its evidence. Everything that is
 //! not raw FFI (name matching, the local-player check, the queue, the Lua
@@ -42,6 +46,7 @@ pub mod log;
 pub mod memory;
 pub mod queue;
 pub mod receive;
+pub mod send;
 
 #[cfg(all(windows, target_arch = "x86"))]
 mod boot;

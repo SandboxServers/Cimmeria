@@ -29,6 +29,17 @@ pub struct Counters {
     /// Calls whose Lua handler raised an error, or that could not be set
     /// up: no stack space, or Lua ran out of memory building the arguments.
     pub handler_failed: AtomicU64,
+    /// Cell method messages the send natives handed to the engine.
+    pub sent: AtomicU64,
+    /// Send native calls refused: off the main thread, bad arguments,
+    /// offline, or an engine failure.
+    pub send_refused: AtomicU64,
+    /// `CimmeriaBMNative.techCompetency` calls, all answered `nil` (D7).
+    pub tech_competency_nil: AtomicU64,
+    /// Times `CimmeriaBMNative` was (re)assigned in the UI Lua.
+    pub natives_registered: AtomicU64,
+    /// Registration attempts a Lua error or a full stack stopped.
+    pub register_failed: AtomicU64,
 }
 
 impl Counters {
@@ -43,6 +54,11 @@ impl Counters {
             dropped_no_overlay: AtomicU64::new(0),
             dropped_no_handler: AtomicU64::new(0),
             handler_failed: AtomicU64::new(0),
+            sent: AtomicU64::new(0),
+            send_refused: AtomicU64::new(0),
+            tech_competency_nil: AtomicU64::new(0),
+            natives_registered: AtomicU64::new(0),
+            register_failed: AtomicU64::new(0),
         }
     }
 }

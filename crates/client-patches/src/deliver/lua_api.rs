@@ -19,8 +19,9 @@ use core::ffi::c_void;
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 
 use super::lua_stack::LuaStack;
+use crate::send::Native;
 
-type State = *mut c_void;
+pub(crate) type State = *mut c_void;
 
 type GetTop = unsafe extern "C-unwind" fn(State) -> i32;
 type SetTop = unsafe extern "C-unwind" fn(State, i32);
@@ -34,11 +35,20 @@ type RawGet = unsafe extern "C-unwind" fn(State, i32);
 type RawSetI = unsafe extern "C-unwind" fn(State, i32, i32);
 type PCall = unsafe extern "C-unwind" fn(State, i32, i32, i32) -> i32;
 type ToLString = unsafe extern "C-unwind" fn(State, i32, *mut u32) -> *const u16;
-/// The C function `lua_cpcall` runs.
-type CFunction = unsafe extern "C-unwind" fn(State) -> i32;
+/// A `lua_CFunction`: what `lua_cpcall` runs, and what the send natives
+/// are.
+pub(crate) type CFunction = unsafe extern "C-unwind" fn(State) -> i32;
 type CPCall = unsafe extern "C-unwind" fn(State, CFunction, *mut c_void) -> i32;
+type PushNil = unsafe extern "C-unwind" fn(State);
+type PushBoolean = unsafe extern "C-unwind" fn(State, i32);
+type ToNumber = unsafe extern "C-unwind" fn(State, i32) -> f64;
+type ToBoolean = unsafe extern "C-unwind" fn(State, i32) -> i32;
+type PushValue = unsafe extern "C-unwind" fn(State, i32);
+type RawSet = unsafe extern "C-unwind" fn(State, i32);
+type PushCClosure = unsafe extern "C-unwind" fn(State, CFunction, i32);
 
-/// The exports delivery calls, resolved once at start-up.
+/// The exports delivery and the send natives call, resolved once at
+/// start-up.
 pub(crate) struct LuaApi {
     gettop: GetTop,
     settop: SetTop,
@@ -53,13 +63,20 @@ pub(crate) struct LuaApi {
     pcall: PCall,
     tolstring: ToLString,
     cpcall: CPCall,
+    pushnil: PushNil,
+    pushboolean: PushBoolean,
+    tonumber: ToNumber,
+    toboolean: ToBoolean,
+    pushvalue: PushValue,
+    rawset: RawSet,
+    pushcclosure: PushCClosure,
 }
 
 /// The DLL, as `GetModuleHandleW` wants it.
 const MODULE: &str = "lua51.dll";
 
 /// `(C API name, mangled export name)`, in [`LuaApi`] field order.
-pub(crate) const EXPORTS: [(&str, &str); 13] = [
+pub(crate) const EXPORTS: [(&str, &str); 20] = [
     ("lua_gettop", "?lua_gettop@@YAHPAUlua_State@@@Z"),
     ("lua_settop", "?lua_settop@@YAXPAUlua_State@@H@Z"),
     ("lua_checkstack", "?lua_checkstack@@YAHPAUlua_State@@H@Z"),
@@ -76,6 +93,16 @@ pub(crate) const EXPORTS: [(&str, &str); 13] = [
         "?lua_tolstring@@YAPB_WPAUlua_State@@HPAI@Z",
     ),
     ("lua_cpcall", "?lua_cpcall@@YAHPAUlua_State@@P6AH0@ZPAX@Z"),
+    ("lua_pushnil", "?lua_pushnil@@YAXPAUlua_State@@@Z"),
+    ("lua_pushboolean", "?lua_pushboolean@@YAXPAUlua_State@@H@Z"),
+    ("lua_tonumber", "?lua_tonumber@@YANPAUlua_State@@H@Z"),
+    ("lua_toboolean", "?lua_toboolean@@YAHPAUlua_State@@H@Z"),
+    ("lua_pushvalue", "?lua_pushvalue@@YAXPAUlua_State@@H@Z"),
+    ("lua_rawset", "?lua_rawset@@YAXPAUlua_State@@H@Z"),
+    (
+        "lua_pushcclosure",
+        "?lua_pushcclosure@@YAXPAUlua_State@@P6AH0@ZH@Z",
+    ),
 ];
 
 /// Why the API could not be resolved.
@@ -127,12 +154,22 @@ impl LuaApi {
                 pcall: t::<usize, PCall>(found[10]),
                 tolstring: t::<usize, ToLString>(found[11]),
                 cpcall: t::<usize, CPCall>(found[12]),
+                pushnil: t::<usize, PushNil>(found[13]),
+                pushboolean: t::<usize, PushBoolean>(found[14]),
+                tonumber: t::<usize, ToNumber>(found[15]),
+                toboolean: t::<usize, ToBoolean>(found[16]),
+                pushvalue: t::<usize, PushValue>(found[17]),
+                rawset: t::<usize, RawSet>(found[18]),
+                pushcclosure: t::<usize, PushCClosure>(found[19]),
             })
         }
     }
 }
 
-/// Longest string [`FfiLua::string_at`] copies out, in characters.
+/// Longest string [`FfiLua::string_at`] copies out, in characters. Error
+/// messages are shortened for the log anyway, and a send native's string
+/// argument over the codec's 255-byte cap is refused whether or not it was
+/// cut here, since 1,024 characters are at least 1,024 bytes.
 const MAX_MESSAGE_CHARS: usize = 1024;
 
 /// UTF-16 with a terminating NUL. The string stops at an embedded NUL,
@@ -148,7 +185,7 @@ fn wide(s: &str) -> Vec<u16> {
 /// panic from unwinding into `lua_cpcall`, whose C++ `catch (...)` would
 /// swallow it. A Lua error unwinding through it is a foreign exception, not
 /// a panic, so it passes.
-struct AbortOnPanic;
+pub(crate) struct AbortOnPanic;
 
 impl Drop for AbortOnPanic {
     fn drop(&mut self) {
@@ -183,9 +220,12 @@ pub(crate) struct FfiLua<'a> {
     pub(crate) state: State,
 }
 
-// SAFETY for every method below: `state` is the live UI lua_State (checked
-// by `ui_lua_state` this frame), used on the main thread, and every string
-// passed is a NUL-terminated UTF-16 buffer that outlives the call.
+// SAFETY for every method below: `state` is either the live UI lua_State
+// (checked by `ui_lua_state` this frame, used on the main thread) or the
+// state Lua passed to a send native, which is valid for that call; indices
+// stay within the slots the caller checked or that `LUA_MINSTACK`
+// guarantees; and every string passed is a NUL-terminated UTF-16 buffer that
+// outlives the call.
 impl LuaStack for FfiLua<'_> {
     fn top(&mut self) -> i32 {
         unsafe { (self.api.gettop)(self.state) }
@@ -252,12 +292,40 @@ impl LuaStack for FfiLua<'_> {
         if p.is_null() {
             return None;
         }
-        // Only ever used for an error message, which the log shortens anyway.
         let len = (len as usize).min(MAX_MESSAGE_CHARS);
         // SAFETY: lua_tolstring returns at least `len` characters owned by
         // the value at `index`, which stays on the stack during this copy.
         let chars = unsafe { core::slice::from_raw_parts(p, len) };
         Some(String::from_utf16_lossy(chars))
+    }
+
+    fn push_nil(&mut self) {
+        unsafe { (self.api.pushnil)(self.state) }
+    }
+
+    fn push_boolean(&mut self, value: bool) {
+        unsafe { (self.api.pushboolean)(self.state, i32::from(value)) }
+    }
+
+    fn to_number(&mut self, index: i32) -> f64 {
+        unsafe { (self.api.tonumber)(self.state, index) }
+    }
+
+    fn to_boolean(&mut self, index: i32) -> bool {
+        unsafe { (self.api.toboolean)(self.state, index) != 0 }
+    }
+
+    fn push_value(&mut self, index: i32) {
+        unsafe { (self.api.pushvalue)(self.state, index) }
+    }
+
+    fn raw_set(&mut self, table: i32) {
+        unsafe { (self.api.rawset)(self.state, table) }
+    }
+
+    fn push_native(&mut self, native: Native) {
+        let function = crate::send::natives::function(native);
+        unsafe { (self.api.pushcclosure)(self.state, function, 0) }
     }
 }
 

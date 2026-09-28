@@ -90,12 +90,12 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 
 | ID | Packet | Depends on | Output |
 |---|---|---|---|
-| BM-00 | Live spike: checks V1–V5 from the evidence doc, run through the lab bridge (main-thread native calls, SEH-guarded) or non-freezing x64dbg reads | — | Updates the evidence doc; go/no-go for BM-03/04 |
+| BM-00 | Live spike: checks V1–V6 from the evidence doc, run through the lab bridge (main-thread native calls, SEH-guarded) or non-freezing x64dbg reads, then the BM-03/BM-04 DLL checks in [5.4](#54-bm-04-outcome) | — | Updates the evidence doc; go/no-go for BM-03/04 |
 | BM-01 | Port `feat/571` onto the split crates. Tests green, no behavior change | — | PR |
 | BM-02 | Server contract fixes S1–S8, plus the shared codec crate | BM-01 | PR with byte-exact wire tests and live-DB search/paging guards. **Done** (PR #971): see [5.3](#53-bm-02-outcome) |
 | BM-02b | S9: move sweep and buyout payouts onto the social-systems mail API | BM-01, SS-M1 + SS-M2 merged | PR with live-DB guards for sold, unsold and cancelled settlement. **Done**: see [5.4](#54-bm-02b-outcome) |
 | BM-03 | Patch DLL skeleton: fingerprint gate, receive hooks, decode, main-thread delivery | BM-00, BM-02 codec | PR; off-target unit tests for the decoders |
-| BM-04 | Patch DLL send natives and `CimmeriaBM` registration | BM-03 | PR |
+| BM-04 | Patch DLL send natives and `CimmeriaBMNative` registration | BM-03 | PR. **Done** (statically verified only): see [5.4](#54-bm-04-outcome) |
 | BM-05 | UI overlay: Lua store, read-binding replacements, U1–U12, error text | BM-03/04 surface | Overlay files + diff |
 | BM-06 | Launcher: always-inject the patch DLL (with an opt-out), manifest overlay entry, docs | BM-03 | PR; closes #587 |
 | BM-07 | Content and UAT: the auctioneer template, spawn and chains 5030/5031, seed listings, a UAT checklist, and a `.`-console helper to seed or expire listings. The branch's ids (template 168, spawn 238) now collide with the Castle rebuild. Use the Black Market seed block allocated by the social-systems coordinator: **templates 305–309, spawns 405–409**. Put the chains in `castle_cellblock_chains.sql` with scope `'space', 12` | BM-02 | PR + checklist |
@@ -160,6 +160,25 @@ BM-01 (#965) ported the branch without changing its behaviour. The review of #96
 - **Tests**: live-DB guards for sold, unsold, phantom bidder, cancelled, outbid, buyout, a buyout into full bags, the double settlement and the poison rows, each asserting the mail, the `sgw_gate_mail_item` row and the cash.
 - **Deferred**: the two new §5.2 follow-up rows.
 
+### 5.5 BM-04 outcome
+
+- **Contract** as agreed with BM-05: a global `CimmeriaBMNative` owned by the DLL, with `search(opts)`, `create(itemInstanceId, startingPrice, buyoutPrice, auctionLength)`, `bid`, `cancel`, `watch(itemDefId, enable)`, `techCompetency` and `version`. Each send returns `true` or `nil, reason` (`bad_args`, `offline`, `not_main_thread`, `engine_error`). Rules and defaults: [crates/client-patches/README.md](../../../crates/client-patches/README.md#the-send-contract-for-the-ui-overlay). Two choices the contract left open: `create`'s `buyoutPrice` may be `nil` (no buyout), and out-of-enum values are refused as `bad_args` (`clientKey` outside 0–2, `auctionLength` outside 1–5).
+- **Engine path**: `startEntityMessage(conn, 0x3D, 0)`, `reserve(1)` for the sub-index, `reserve(n)` for the payload, after checking `[[0x01ef244c]+8]` is non-null, `[conn+0x30c] != 0` and a local player id. `startEntityMessage` logs and carries on when offline, so the check is the DLL's. Engine calls run under `microseh`; the i686 tests raise an access violation and an MSVC C++ exception code through it.
+- **Fingerprint gate** extended with four pinning sites (`startAvatarMessage`, `isOnline`, the `GameEntityManager` getter, the byte-writer that calls `reserve`). Any mismatch installs nothing.
+- **D7**: `techCompetency` returns `nil`. The static read of the lookup is in the evidence doc §4; V6 is the live check.
+- **Telemetry**: the §5.1 BM-04 line, in the DLL's local log.
+- **Verified**: host and i686 unit tests (argument rules, byte-exact payloads against `cimmeria-patch-wire`, reason mapping, registration idempotency, the engine path against a fake connection and bundle). **Not verified live**: nothing has run in `SGW.exe`.
+
+Live checks owed to BM-00 for the send side, in order:
+
+1. The DLL's log shows every fingerprint site `stock` (or `chaining` for Tick and the drop callee) and `registered CimmeriaBMNative`.
+2. The lab bridge's Lua relay (or the overlay) sees `CimmeriaBMNative.version` equal to the DLL version, and again after a UI reload.
+3. `CimmeriaBMNative.cancel(1)` returns `true`; the server logs a cell 64 decode for the player (V4). The server then refuses it, which is expected without a listing.
+4. `search({})`, `search({clientKey = 1})`, `bid(seq, amount)`, `create(item, start, nil, 5)` and `watch(id, true)` each reach the server and decode with no trailing bytes. The server's refusals come back through `CimmeriaBM.onError`.
+5. At character select, `cancel(1)` returns `nil, "offline"` and the server logs nothing.
+6. `create(1, 2, 3, 0)` returns `nil, "bad_args"` and the log names `auctionLength`.
+7. V6: the tech-competency lookup chain in the evidence doc returns the value `getAuctionItemInfo` shows, without a crash, for a cached and an uncached item.
+
 ## 6. Decisions
 
 All eight were answered in session on 2026-09-26, each as recommended.
@@ -172,7 +191,7 @@ All eight were answered in session on 2026-09-26, each as recommended.
 | D4 | Watch list: build it, or refuse with visible feedback? | **Defer.** Refuse with a one-line message until the core loop has passed UAT. |
 | D5 | Listing fee and per-player listing cap (CAT-I-02)? No source shows the original had either. | **A cap of 20 active listings per player, no fee.** |
 | D6 | Next-minimum-bid rule. The client only displays the server's `nextMinBidPrice`, so this is design, not recovery. | **5% of the current bid, at least +1.** |
-| D7 | Tech-competency column: add a native getter in the DLL, or leave it blank? | **Native getter.** One read, with the item-cache refcount handled. |
+| D7 | Tech-competency column: add a native getter in the DLL, or leave it blank? | **Native getter.** One read, with the item-cache refcount handled. **BM-04 outcome:** not safe to ship unverified; `techCompetency` returns `nil` until live check V6 confirms the lookup chain ([5.4](#54-bm-04-outcome)). |
 | D8 | Buyout: settle immediately or at expiry? | **Immediately.** Landed in BM-02 through the sweep's settlement step (`settle.rs`); BM-02b moves that step onto the mail API. |
 | D-BM10 | Cancel and expiry: return the item straight to the seller's bags, or by mail like a sale? | **By mail.** Every item and coin an auction moves is system mail from "Black Market" through `send_system_mail_tx`: a full bag no longer refuses a cancel or pushes an expired item past the main bag's last slot, an offline seller loses nothing, and there is one writer for every payout. Outbid refunds and a cancelled auction's standing bid are mail too; only D-BM09's trigger still credits directly. Decided in BM-02b. |
 | D-BM09 | Character deletion: `sgw_auction`'s `RESTRICT` foreign keys block deleting any character that ever listed or won. What happens to its auctions? | **The listings go with the seller, and nobody else loses cash.** `seller_id` is `ON DELETE CASCADE` (the escrowed item is a container-18 row of the seller and cascades with the inventory), `current_bidder` is `ON DELETE SET NULL` (settled rows keep their history). A `BEFORE DELETE` trigger on `sgw_player`, `bm_player_before_delete()`, refunds the standing bidders of the seller's open auctions and reopens the open auctions the deleted character was winning. Decided in BM-02. |

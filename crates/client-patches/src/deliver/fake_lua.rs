@@ -12,13 +12,17 @@
 use std::collections::BTreeMap;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 
-use super::lua_stack::{LuaStack, LUA_GLOBALSINDEX};
+use super::lua_stack::{LuaStack, LUA_GLOBALSINDEX, LUA_TNONE};
+use crate::send::Native;
 
 /// A simulated Lua value.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) enum V {
+pub(crate) enum V {
     Nil,
+    Bool(bool),
     Num(i32),
+    /// A number that is not an integer, as a script can pass one.
+    Float(f64),
     Str(String),
     /// Index into [`FakeLua::tables`].
     Table(usize),
@@ -27,7 +31,7 @@ pub(super) enum V {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct Table {
+pub(crate) struct Table {
     fields: BTreeMap<String, V>,
     items: BTreeMap<i32, V>,
 }
@@ -38,24 +42,24 @@ struct LuaRaise;
 /// `LUA_ERRMEM`.
 const LUA_ERRMEM: i32 = 4;
 
-pub(super) struct FakeLua {
-    pub(super) stack: Vec<V>,
+pub(crate) struct FakeLua {
+    pub(crate) stack: Vec<V>,
     tables: Vec<Table>,
     /// Every handler call made through `pcall`: its name and arguments.
-    pub(super) calls: Vec<(String, Vec<V>)>,
+    pub(crate) calls: Vec<(String, Vec<V>)>,
     /// When set, every handler raises this value.
-    pub(super) raise: Option<V>,
+    pub(crate) raise: Option<V>,
     /// Free slots `check_stack` will grant beyond the current top.
-    pub(super) room: i32,
+    pub(crate) room: i32,
     /// How many more allocations succeed; `None` for no limit.
-    pub(super) alloc_budget: Option<usize>,
+    pub(crate) alloc_budget: Option<usize>,
     /// How many `protected` calls are running.
     protected_depth: u32,
 }
 
 impl FakeLua {
     /// An empty state: no `CimmeriaBM`.
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             stack: Vec::new(),
             tables: vec![Table::default()], // [0] is the globals table
@@ -68,7 +72,7 @@ impl FakeLua {
     }
 
     /// A state whose `CimmeriaBM` defines `handlers`.
-    pub(super) fn with_overlay(handlers: &[&str]) -> Self {
+    pub(crate) fn with_overlay(handlers: &[&str]) -> Self {
         let mut lua = Self::new();
         let id = lua.new_table();
         for h in handlers {
@@ -80,7 +84,45 @@ impl FakeLua {
         lua
     }
 
-    pub(super) fn set_global(&mut self, name: &str, value: V) {
+    /// Global `name`, if set.
+    pub(crate) fn global(&self, name: &str) -> Option<V> {
+        self.tables[0].fields.get(name).cloned()
+    }
+
+    /// Field `key` of the table `value`, if it is a table and has one.
+    pub(crate) fn field(&self, value: &V, key: &str) -> Option<V> {
+        let V::Table(id) = value else { return None };
+        self.tables[*id].fields.get(key).cloned()
+    }
+
+    /// Replace field `key` of the table `value`.
+    pub(crate) fn set_field_of(&mut self, value: &V, key: &str, field: V) {
+        let V::Table(id) = value else {
+            panic!("{value:?} is not a table")
+        };
+        self.tables[*id].fields.insert(key.to_string(), field);
+    }
+
+    /// A new table with these string fields, not yet on the stack.
+    pub(crate) fn table(&mut self, fields: &[(&str, V)]) -> V {
+        let id = self.new_table();
+        for (k, v) in fields {
+            self.tables[id].fields.insert((*k).to_string(), v.clone());
+        }
+        V::Table(id)
+    }
+
+    /// A state as a native function sees it when a script calls it: the
+    /// arguments are the whole stack, and the call runs under the script's
+    /// own protected call, so the Lua heap may be touched.
+    pub(crate) fn called_with(args: Vec<V>) -> Self {
+        let mut lua = Self::new();
+        lua.stack = args;
+        lua.protected_depth = 1;
+        lua
+    }
+
+    pub(crate) fn set_global(&mut self, name: &str, value: V) {
         self.tables[0].fields.insert(name.to_string(), value);
     }
 
@@ -128,9 +170,11 @@ impl FakeLua {
 
     /// A deterministic rendering: records as `{k=v,...}` with sorted keys,
     /// arrays as `[a,b]`.
-    pub(super) fn render(&self, value: &V) -> String {
+    pub(crate) fn render(&self, value: &V) -> String {
         match value {
             V::Nil => "nil".into(),
+            V::Bool(b) => b.to_string(),
+            V::Float(f) => f.to_string(),
             V::Num(n) => n.to_string(),
             V::Str(s) => format!("{s:?}"),
             V::Func(f) => format!("fn {f}"),
@@ -152,7 +196,7 @@ impl FakeLua {
     }
 
     /// Whether table `value` is an array with keys exactly `1..=n`.
-    pub(super) fn is_one_based_array(&self, value: &V, n: i32) -> bool {
+    pub(crate) fn is_one_based_array(&self, value: &V, n: i32) -> bool {
         let V::Table(id) = value else { return false };
         let keys: Vec<i32> = self.tables[*id].items.keys().copied().collect();
         keys == (1..=n).collect::<Vec<_>>()
@@ -179,9 +223,13 @@ impl LuaStack for FakeLua {
     }
 
     fn type_at(&mut self, index: i32) -> i32 {
+        if index > self.stack.len() as i32 {
+            return LUA_TNONE;
+        }
         match &self.stack[self.slot(index)] {
             V::Nil => 0,
-            V::Num(_) => 3,
+            V::Bool(_) => 1,
+            V::Num(_) | V::Float(_) => 3,
             V::Str(_) => 4,
             V::Table(_) => 5,
             V::Func(_) => 6,
@@ -272,5 +320,55 @@ impl LuaStack for FakeLua {
             V::Str(s) => Some(s.clone()),
             _ => None,
         }
+    }
+
+    fn push_nil(&mut self) {
+        self.stack.push(V::Nil);
+    }
+
+    fn push_boolean(&mut self, value: bool) {
+        self.stack.push(V::Bool(value));
+    }
+
+    fn to_number(&mut self, index: i32) -> f64 {
+        match &self.stack[self.slot(index)] {
+            V::Num(n) => f64::from(*n),
+            V::Float(f) => *f,
+            _ => 0.0,
+        }
+    }
+
+    fn to_boolean(&mut self, index: i32) -> bool {
+        if index > self.stack.len() as i32 {
+            return false;
+        }
+        !matches!(self.stack[self.slot(index)], V::Nil | V::Bool(false))
+    }
+
+    fn push_value(&mut self, index: i32) {
+        let value = self.stack[self.slot(index)].clone();
+        self.stack.push(value);
+    }
+
+    fn raw_set(&mut self, table: i32) {
+        self.allocates();
+        let id = self.table_id(table);
+        let value = self.pop();
+        let key = self.pop();
+        match key {
+            V::Str(k) => {
+                self.tables[id].fields.insert(k, value);
+            }
+            V::Num(n) => {
+                self.tables[id].items.insert(n, value);
+            }
+            other => panic!("unsupported key {other:?}"),
+        }
+    }
+
+    fn push_native(&mut self, native: Native) {
+        self.allocates();
+        self.stack
+            .push(V::Func(format!("native:{}", native.lua_name())));
     }
 }

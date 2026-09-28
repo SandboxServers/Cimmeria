@@ -18,7 +18,7 @@ pub(crate) mod lua_api;
 pub(crate) mod tick;
 
 #[cfg(test)]
-mod fake_lua;
+pub(crate) mod fake_lua;
 #[cfg(test)]
 mod tests;
 

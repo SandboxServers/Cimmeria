@@ -182,7 +182,9 @@ fn bootstrap() {
             }
         }
     }
-    log::line("Black Market receive path installed; calls go to the Lua table CimmeriaBM");
+    log::line(
+        "Black Market installed: received calls go to the Lua table CimmeriaBM, and          CimmeriaBMNative is registered for sending once the UI Lua is up",
+    );
 }
 
 /// The image ranges of the loaded [`HOOK_OWNER_MODULES`]: where an earlier
