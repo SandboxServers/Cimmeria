@@ -55,8 +55,9 @@ const CHAT_LOG_TARGET: &str = "cimmeria_cell_console::cell::console::chat";
 ///
 /// Reference: `python/cell/SGWPlayer.py:processPlayerCommunication()`
 /// - say/emote/yell: broadcast to witnesses
-/// - Client does NOT echo say (channel 0) — server must send it back
-/// - Client DOES echo emote/yell — but Python sends it anyway (no harm)
+/// - Client DOES echo say (channel 0) locally — the server must NOT send it
+///   back, or the speaker sees their own line twice (see `spatial.rs`)
+/// - Client does NOT echo emote/yell — the server sends those to the speaker
 /// `text_len` is recorded but the message body itself is intentionally
 /// excluded from the span — chat content is user-private and shouldn't
 /// land in the SigNoz log/trace store. Operators get "who sent how
