@@ -40,14 +40,15 @@ pub enum LogError {
 }
 
 fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
-    let binaries = install_dir.join("Binaries");
+    let binaries = crate::install_layout::binaries_dir(install_dir);
     let mut files = Vec::new();
 
     if let Ok(entries) = std::fs::read_dir(&binaries) {
         for e in entries.flatten() {
             let p = e.path();
             if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with("sgwdebuglog") && p.is_file() {
+                // The client writes `SGWDebugLog.log`; match case-blind.
+                if name.to_ascii_lowercase().starts_with("sgwdebuglog") && p.is_file() {
                     files.push(p);
                 }
             }
@@ -79,7 +80,7 @@ pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogE
     if files.is_empty() {
         return Ok(None);
     }
-    let binaries = install_dir.join("Binaries");
+    let binaries = crate::install_layout::binaries_dir(install_dir);
     let mut hasher = Sha256::new();
     for path in &files {
         let rel = rel_in_archive(path, &binaries);
@@ -105,7 +106,7 @@ pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
     if files.is_empty() {
         return Ok(None);
     }
-    let binaries = install_dir.join("Binaries");
+    let binaries = crate::install_layout::binaries_dir(install_dir);
     let mut buf: Vec<u8> = Vec::new();
     {
         let cursor = std::io::Cursor::new(&mut buf);
@@ -211,6 +212,20 @@ mod tests {
         setup_logs(dir.path());
         let files = collect_log_inputs(dir.path()).unwrap();
         assert_eq!(files.len(), 3);
+    }
+
+    // Bug shape: the client writes `SGWDebugLog.log`, and a case-sensitive
+    // prefix match skipped it, so "Upload Debug Logs" never sent the main
+    // log. Also checks the full-install layout (`Workinginaries`).
+    #[test]
+    fn collect_finds_the_clients_mixed_case_log_in_a_full_install() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("Working").join("binaries");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("SGW.exe"), b"").unwrap();
+        std::fs::write(bin.join("SGWDebugLog.log"), b"log").unwrap();
+        let files = collect_log_inputs(dir.path()).unwrap();
+        assert_eq!(files, vec![bin.join("SGWDebugLog.log")]);
     }
 
     #[test]

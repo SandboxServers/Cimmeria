@@ -65,7 +65,7 @@ impl LauncherApp {
         let launch_opts = if path_is_empty(&config.install_path) {
             LaunchOptions::default()
         } else {
-            LaunchOptions::detect(&config.install_path)
+            LaunchOptions::detect(&crate::install_layout::binaries_dir(&config.install_path))
         };
         worker.fetch_manifest_now(config.manifest_url.clone());
         let install_path_text = config.install_path.to_string_lossy().into_owned();
@@ -161,7 +161,7 @@ impl LauncherApp {
         if !path_is_empty(&self.config.install_path) {
             let path = self.config.install_path.as_path();
             self.installed = InstalledState::load(path);
-            self.launch_opts = LaunchOptions::detect(path);
+            self.launch_opts = LaunchOptions::detect(&crate::install_layout::binaries_dir(path));
         } else {
             self.installed = InstalledState::default();
             self.launch_opts = LaunchOptions::default();
@@ -200,7 +200,8 @@ fn build_telemetry_config(
 
 /// Whether to surface the "Adopt existing install" affordance.
 ///
-/// True iff `install_path` contains `SGW.exe` AND does NOT contain a
+/// True iff the install at `install_path` has `SGW.exe` (at the top, or in
+/// `Working\Binaries`; see [`crate::install_layout`]) AND does NOT contain a
 /// `launcher-installed.json` marker file. The first condition rules
 /// out empty directories (those should go through the normal Install
 /// path); the second condition rules out installs the launcher
@@ -208,7 +209,7 @@ fn build_telemetry_config(
 /// `show_install_panel` so the boolean decision is unit-testable
 /// without spinning up an egui frame.
 fn should_show_adopt_button(install_path: &Path) -> bool {
-    install_path.join("SGW.exe").is_file()
+    crate::install_layout::sgw_exe(install_path).is_file()
         && !crate::state::InstalledState::path(install_path).exists()
 }
 

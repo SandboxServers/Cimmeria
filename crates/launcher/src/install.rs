@@ -2,10 +2,12 @@
 //!
 //! Flow:
 //! 1. If `InstalledState.seed_sha256 != manifest.seed.sha256`: download the
-//!    seed zip (resumable via HTTP Range), verify sha256, extract into the
-//!    install dir, then reset the applied-patches list.
+//!    seed archive (resumable via HTTP Range), verify sha256, unpack it into
+//!    the install dir, then reset the applied-patches list. The seed may be a
+//!    zip, or a RAR holding the original installer's cabinet set; see
+//!    [`crate::unpack`].
 //! 2. For each patch in declared order: skip if already applied; else
-//!    download → verify → extract (overlay-style) → record in state.
+//!    download → verify → unpack (overlay-style) → record in state.
 //! 3. Patch SGW.exe `.rdata` hostname if it still contains the original CME
 //!    string. Idempotent.
 
@@ -18,9 +20,11 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::install_layout;
 use crate::manifest::{blob_url, Manifest, PatchEntry, SeedEntry};
 use crate::patch_rdata;
 use crate::state::{InstalledState, StateError};
+use crate::unpack::{self, UnpackError, UnpackSink};
 
 #[derive(Debug, Error)]
 pub enum InstallError {
@@ -28,8 +32,8 @@ pub enum InstallError {
     Http(#[from] reqwest::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Zip error: {0}")]
-    Zip(#[from] zip::result::ZipError),
+    #[error("Unpack error: {0}")]
+    Unpack(#[from] UnpackError),
     #[error("State error: {0}")]
     State(#[from] StateError),
     #[error("Hostname patch error: {0}")]
@@ -99,6 +103,9 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
     let seed_matches = state.seed_sha256.as_deref() == Some(ctx.manifest.seed.sha256.as_str());
     if !seed_matches {
         apply_seed(&ctx, &ctx.manifest.seed).await?;
+        if install_layout::place_bundled_cooked_data(ctx.install_dir)? {
+            info!("Moved the bundled cooked-data PAKs to Working\\SGWGame\\SourceCache.en-us");
+        }
         // Re-seeding invalidates the applied-patches list, but we keep
         // patched_host across re-seeds — the seed always contains an
         // unpatched SGW.exe, so we'll patch fresh below.
@@ -120,8 +127,8 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
         state.save(ctx.install_dir)?;
     }
 
-    let exe = ctx.install_dir.join("SGW.exe");
-    if exe.exists() {
+    let exe = install_layout::sgw_exe(ctx.install_dir);
+    if exe.is_file() {
         let data = std::fs::read(&exe)?;
         // Re-patch when:
         //   - the binary still has the original CME literal (fresh install
@@ -144,7 +151,9 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
 async fn apply_seed(ctx: &InstallContext<'_>, seed: &SeedEntry) -> Result<(), InstallError> {
     let url = blob_url(ctx.manifest_url, &seed.blob);
     let short_hash = safe_sha_prefix(&seed.sha256)?;
-    let tmp = ctx.install_dir.join(format!(".tmp-seed-{short_hash}.zip"));
+    let tmp = ctx
+        .install_dir
+        .join(format!(".tmp-seed-{short_hash}.download"));
     download_to_file(
         ctx.http,
         &url,
@@ -155,11 +164,8 @@ async fn apply_seed(ctx: &InstallContext<'_>, seed: &SeedEntry) -> Result<(), In
         &ctx.progress,
     )
     .await?;
-    verify_sha256(&tmp, &seed.sha256, "seed")?;
-    info!("Extracting seed into {}", ctx.install_dir.display());
-    extract_zip(&tmp, ctx.install_dir, &ctx.progress, "seed", &ctx.cancel)?;
-    let _ = std::fs::remove_file(&tmp);
-    Ok(())
+    info!("Unpacking seed into {}", ctx.install_dir.display());
+    verify_and_unpack(ctx, &tmp, &seed.sha256, "seed").await
 }
 
 async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(), InstallError> {
@@ -184,7 +190,7 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
     let safe_sha = safe_sha_prefix(&patch.sha256)?;
     let tmp = ctx
         .install_dir
-        .join(format!(".tmp-patch-{safe_id}-{safe_sha}.zip"));
+        .join(format!(".tmp-patch-{safe_id}-{safe_sha}.download"));
     let label = format!("patch {}", patch.id);
     download_to_file(
         ctx.http,
@@ -196,11 +202,45 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
         &ctx.progress,
     )
     .await?;
-    verify_sha256(&tmp, &patch.sha256, &label)?;
     info!("Applying {} into {}", label, ctx.install_dir.display());
-    extract_zip(&tmp, ctx.install_dir, &ctx.progress, &label, &ctx.cancel)?;
-    let _ = std::fs::remove_file(&tmp);
-    Ok(())
+    verify_and_unpack(ctx, &tmp, &patch.sha256, &label).await
+}
+
+/// Hash `tmp` against `sha256`, unpack it into the install dir, then delete
+/// it. Both steps are blocking file work over multi-gigabyte files, so they
+/// run on a blocking thread.
+///
+/// A download that fails its hash is deleted. Keeping it would make the next
+/// attempt resume from the bad bytes (or get HTTP 416 for a full-length
+/// file) and fail the same way forever.
+async fn verify_and_unpack(
+    ctx: &InstallContext<'_>,
+    tmp: &Path,
+    sha256: &str,
+    label: &str,
+) -> Result<(), InstallError> {
+    let tmp = tmp.to_path_buf();
+    let dest = ctx.install_dir.to_path_buf();
+    let expected = sha256.to_string();
+    let sink = UnpackSink {
+        progress: ctx.progress.clone(),
+        label: label.to_string(),
+        cancel: ctx.cancel.clone(),
+    };
+    let label = label.to_string();
+    tokio::task::spawn_blocking(move || {
+        if let Err(e) = verify_sha256(&tmp, &expected, &label) {
+            if matches!(e, InstallError::HashMismatch { .. }) {
+                let _ = std::fs::remove_file(&tmp);
+            }
+            return Err(e);
+        }
+        unpack::unpack(&tmp, &dest, &sink)?;
+        let _ = std::fs::remove_file(&tmp);
+        Ok(())
+    })
+    .await
+    .map_err(|e| InstallError::Io(std::io::Error::other(format!("unpack task failed: {e}"))))?
 }
 
 async fn download_to_file(
@@ -226,6 +266,12 @@ async fn download_to_file(
     let resp = req.send().await?;
 
     let status = resp.status();
+    // 416 on a Range request for a file we already hold in full: the
+    // previous run finished the download but stopped before verifying it.
+    // Hand it to the hash check, which deletes it if it is bad.
+    if status.as_u16() == 416 && existing_len > 0 && existing_len >= expected_size {
+        return Ok(());
+    }
     let resumed = status.as_u16() == 206;
     // 206 (Partial Content) is technically 2xx, so `error_for_status_ref`
     // wouldn't flag it — but we keep the explicit check to make the resume
@@ -321,54 +367,6 @@ fn hash_file(path: &Path) -> std::io::Result<String> {
         .collect())
 }
 
-fn extract_zip(
-    zip_path: &Path,
-    dest: &Path,
-    progress: &tokio::sync::mpsc::UnboundedSender<Progress>,
-    label: &str,
-    cancel: &CancellationToken,
-) -> Result<(), InstallError> {
-    let file = std::fs::File::open(zip_path)?;
-    let mut archive = zip::ZipArchive::new(file)?;
-    let total = archive.len();
-    for i in 0..total {
-        if cancel.is_cancelled() {
-            return Err(InstallError::Cancelled);
-        }
-        let mut entry = archive.by_index(i)?;
-        // SECURITY: `enclosed_name()` is the zip-slip gate. It rejects
-        // entries whose normalised path would escape the archive root —
-        // absolute paths, `..` traversal, and OS-specific weirdness like
-        // drive letters or NTFS reserved names all get filtered here.
-        // Do NOT replace with `entry.name()` or `entry.mangled_name()`:
-        // both will happily hand back paths like `../../etc/passwd`.
-        //
-        // Also clone to PathBuf so the borrow on `entry` ends before we
-        // use `entry.is_dir()` / `&mut entry` below.
-        let rel = match entry.enclosed_name() {
-            Some(p) => p.to_path_buf(),
-            None => continue,
-        };
-        let out = dest.join(&rel);
-        if entry.is_dir() {
-            std::fs::create_dir_all(&out)?;
-        } else {
-            if let Some(parent) = out.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let mut f = std::fs::File::create(&out)?;
-            std::io::copy(&mut entry, &mut f)?;
-        }
-        let _ = progress.send(Progress::Extracting {
-            label: label.to_string(),
-            current: i + 1,
-            total,
-            filename: out.display().to_string(),
-        });
-    }
-    Ok(())
-}
-
 /// Outcome of an "Adopt existing install" attempt — the launcher
 /// inspects the install directory and decides whether the user's
 /// pre-existing copy of the game looks plausible enough to mark as
@@ -417,7 +415,7 @@ pub fn adopt_existing_install(
     install_dir: &Path,
     manifest: &crate::manifest::Manifest,
 ) -> Result<InstalledState, AdoptError> {
-    let exe = install_dir.join("SGW.exe");
+    let exe = install_layout::sgw_exe(install_dir);
     // `is_file` rather than `exists` so a directory or junction named
     // SGW.exe doesn't fool us into adopting a non-install.
     if !exe.is_file() {
@@ -478,36 +476,6 @@ mod tests {
         assert!(matches!(err, InstallError::HashMismatch { .. }));
     }
 
-    #[test]
-    fn extract_zip_writes_expected_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let zip_path = dir.path().join("a.zip");
-        // Build a tiny zip on-the-fly.
-        {
-            use std::io::Write;
-            let f = std::fs::File::create(&zip_path).unwrap();
-            let mut zw = zip::ZipWriter::new(f);
-            let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default();
-            zw.start_file("hello.txt", opts).unwrap();
-            zw.write_all(b"hi").unwrap();
-            zw.start_file("nested/deep.txt", opts).unwrap();
-            zw.write_all(b"deep").unwrap();
-            zw.finish().unwrap();
-        }
-        let out = dir.path().join("out");
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        let cancel = CancellationToken::new();
-        extract_zip(&zip_path, &out, &tx, "test", &cancel).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(out.join("hello.txt")).unwrap(),
-            "hi"
-        );
-        assert_eq!(
-            std::fs::read_to_string(out.join("nested/deep.txt")).unwrap(),
-            "deep"
-        );
-    }
-
     // Regression guard for the non-panicking HTTP-status branch. An
     // earlier version called `error_for_status_ref().unwrap_err()` here,
     // which panicked on stray 1xx/3xx because that helper only returns
@@ -543,6 +511,91 @@ mod tests {
             }
             other => panic!("expected UnexpectedStatus, got {other:?}"),
         }
+    }
+
+    fn unpack_ctx_parts() -> (
+        tokio::sync::mpsc::UnboundedSender<Progress>,
+        tokio::sync::mpsc::UnboundedReceiver<Progress>,
+    ) {
+        tokio::sync::mpsc::unbounded_channel()
+    }
+
+    // Bug shape: a download that failed its hash was kept, so every retry
+    // resumed from the bad bytes (or got 416) and failed the same way until
+    // someone deleted the .tmp file by hand. It must be deleted.
+    #[tokio::test]
+    async fn hash_mismatch_deletes_the_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = dir.path().join(".tmp-seed-abc.download");
+        std::fs::write(&tmp, b"corrupt").unwrap();
+        let (tx, _rx) = unpack_ctx_parts();
+        let manifest = fake_manifest("00");
+        let http = reqwest::Client::new();
+        let ctx = InstallContext {
+            manifest_url: "https://example.invalid/manifest.json",
+            install_dir: dir.path(),
+            manifest: &manifest,
+            server_host: "play.cimmeria.app",
+            cancel: CancellationToken::new(),
+            progress: tx,
+            http: &http,
+        };
+        let err = verify_and_unpack(&ctx, &tmp, "00", "seed")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, InstallError::HashMismatch { .. }), "{err:?}");
+        assert!(!tmp.exists(), "a bad download must not be resumed");
+    }
+
+    // A full-length download left over from a run that stopped before
+    // verifying gets 416 for its Range request. That is "already
+    // downloaded", not an error; the hash check decides.
+    #[tokio::test]
+    async fn download_to_file_treats_416_on_a_complete_file_as_done() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/seed.rar"))
+            .respond_with(ResponseTemplate::new(416))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join(".tmp-seed.download");
+        std::fs::write(&dest, b"0123456789").unwrap();
+        let (tx, _rx) = unpack_ctx_parts();
+        let url = format!("{}/seed.rar", server.uri());
+        download_to_file(
+            &reqwest::Client::new(),
+            &url,
+            &dest,
+            CancellationToken::new(),
+            10,
+            "seed",
+            &tx,
+        )
+        .await
+        .expect("416 on a complete file is success");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"0123456789");
+
+        // A short partial file getting 416 is still an error.
+        std::fs::write(&dest, b"01234").unwrap();
+        let err = download_to_file(
+            &reqwest::Client::new(),
+            &url,
+            &dest,
+            CancellationToken::new(),
+            10,
+            "seed",
+            &tx,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            InstallError::UnexpectedStatus { status: 416, .. }
+        ));
     }
 
     #[test]

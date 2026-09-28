@@ -47,8 +47,7 @@ pub struct TelemetryBlock {
 }
 
 pub fn current_session_path(install_dir: &Path) -> PathBuf {
-    install_dir
-        .join("Binaries")
+    crate::install_layout::binaries_dir(install_dir)
         .join("sessions")
         .join("current-session.json")
 }

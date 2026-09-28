@@ -30,14 +30,19 @@ window with no webview dependency.
 | Function | Notes |
 |----------|-------|
 | **Fetch manifest** | Pulls `manifest.json` + `manifest.json.sig` from GitHub Releases (anonymous GET), and verifies the Ed25519 signature. |
-| **Seed install** | Downloads the seed zip (the whole client) once, verifies sha256, extracts to the install dir. |
-| **Patch install** | Walks declared patches in order; downloads + extracts each missing patch (overlay over existing files). |
+| **Seed install** | Downloads the seed (the whole client) once, verifies sha256, unpacks it into the install dir. The seed is a zip, or the archive.org client RAR, whose installer cabinets (`Data\DATA1-4.CAB`) are expanded straight into the installed layout. |
+| **Patch install** | Walks declared patches in order; downloads + unpacks each missing patch (overlay over existing files). |
 | **Hostname patch** | Rewrites the 22-byte host slot in `SGW.exe` `.rdata` to the configured emulator host — the original `www.stargateworlds.com` literal on a fresh install, or the previously-written host on a re-patch. |
 | **Launch SGW** | `CreateProcess(SGW.exe)`. |
 | **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (enabled only if Atera files were dropped into the install dir). |
 | **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, injects `cimmeria-client-telemetry.dll` into SGW.exe, tails the client logs, and uploads chunks/bundles. See `src/telemetry/`, `src/inject.rs`, and [operations/telemetry.md](../operations/telemetry.md). |
 | **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (enabled only if the Atera fix-ASLR bat is present). |
-| **Upload debug logs** | Zips `Binaries/sgwdebuglog*` + `Binaries/sessions/**` and PUTs once to the Azure log SAS URL. |
+| **Upload debug logs** | Zips `sgwdebuglog*` (case-blind) + `sessions/**` from the binaries directory and PUTs once to the Azure log SAS URL. |
+
+The launch buttons, the hostname patch, adoption and the log upload all
+find the game through `src/install_layout.rs`, which resolves the
+directory holding `SGW.exe`: `<install>\Working\Binaries` in a full
+install, or the install path itself when it points straight at it.
 
 ---
 
@@ -49,13 +54,13 @@ window with no webview dependency.
 2. Verify the Ed25519 signature against the embedded public key. On
    mismatch, refuse the manifest entirely — no unsigned fallback.
 3. Compare manifest.seed.sha256 vs installed.seed_sha256:
-     - Mismatch → download seed blob, verify sha256, extract zip into
+     - Mismatch → download seed blob, verify sha256, unpack into
        install_path, reset applied_patches to [] and patched_host to
        None.
      - Match    → skip seed.
 4. For each manifest.patches[*] not in installed.applied_patches, in
    order:
-     - Download patch blob → verify sha256 → extract zip (overlay).
+     - Download patch blob → verify sha256 → unpack (overlay).
      - Append id to installed.applied_patches and persist.
 5. Compare expected vs persisted patched_host (or detect the original
    CME literal still in the binary):
@@ -64,11 +69,38 @@ window with no webview dependency.
 ```
 
 Resumable downloads use HTTP `Range`: the launcher tracks `existing_len`
-on disk under the tmp path (`<install>/.tmp-seed-<sha-prefix>.zip` or
-`.tmp-patch-<id>-<sha-prefix>.zip` — sha included so a republished
+on disk under the tmp path (`<install>/.tmp-seed-<sha-prefix>.download` or
+`.tmp-patch-<id>-<sha-prefix>.download` — sha included so a republished
 patch with the same id but a new sha doesn't accidentally resume against
 stale bytes) and asks the server for `bytes=<existing>-` so a killed
-seed download picks up where it left off on next run.
+seed download picks up where it left off on next run. A `416` for a
+full-length file counts as downloaded, and a file that fails its hash is
+deleted, so a bad download can't wedge every later attempt.
+
+### Unpacking (`src/unpack/`)
+
+The archive format comes from the file's magic bytes, not its name:
+
+- **zip** — extracted directly (`enclosed_name` is the zip-slip gate).
+- **RAR** — extracted with the `unrar` crate (RARLAB's UnRAR library)
+  into `<install>/.tmp-unpack/`. Entry names are checked before writing.
+  If the staged tree holds a MakeCAB cabinet set — an `.INF` with a
+  `[cabinet list]` and `[file list]`, which is how the 2009 installer
+  (`SetupQA.exe` + `Data\DATA.INF` + `DATA1-4.CAB`) ships its payload —
+  the cabinets are expanded in order into the install dir. Otherwise the
+  staged files are moved across. The staging dir is removed afterwards.
+
+Cabinets are expanded with Windows' FDI API (`FDICreate`/`FDICopy` in
+`cabinet.dll`, `src/unpack/fdi.rs`), because the installer's cabinets
+are 1 GiB volumes with files continued across them, which pure-Rust cab
+readers don't follow. The expansion fails if fewer files come out than
+the INF lists. Hashing and unpacking run under `spawn_blocking`.
+
+After a seed, `install_layout::place_bundled_cooked_data` renames
+`Working\SGWGame\Cache.en-US` (where the cabinets put the bundled PAKs)
+to `SourceCache.en-us`, the read-only tier the client reads through
+`SourceCachePath`. See the cache-tier table in
+[launcher-guide.md](launcher-guide.md#install-layout).
 
 Concurrency: a process-wide file lock at `<exe dir>/launcher.lock`
 ensures only one launcher instance runs at a time, so two installs
@@ -179,8 +211,8 @@ Single-PUT upload to Azure Blob via a SAS URL baked into the .exe at
 build time (`LAUNCHER_LOG_SAS_URL` env, consumed by `option_env!`).
 
 ```text
-Inputs   <install>/Binaries/sgwdebuglog*   (BigWorld unicode log)
-         <install>/Binaries/sessions/**   (per-session logs)
+Inputs   <binaries>/sgwdebuglog*   (BigWorld unicode log, case-blind)
+         <binaries>/sessions/**   (per-session logs)
 Output   logs/<hostname>-<utc>-<digest12>.zip
 Method   single PUT, x-ms-blob-type: BlockBlob, content-type: application/zip
 Dedupe   sha256 of inputs (filename + bytes, sorted) → uploaded.json next to .exe
@@ -269,6 +301,14 @@ crates/launcher/
     ├── config.rs               # LauncherConfig (next to .exe)
     ├── manifest.rs             # Manifest schema + fetch + Ed25519 verify
     ├── install.rs              # seed + patches + .rdata patch orchestration
+    ├── install_layout.rs       # where SGW.exe lives (Working\Binaries)
+    ├── unpack/
+    │   ├── mod.rs              # format detection, staging, dispatch
+    │   ├── zip.rs              # zip extraction
+    │   ├── rar.rs              # RAR extraction (unrar)
+    │   ├── cab_set.rs          # MakeCAB installer INF + cabinet set
+    │   ├── fdi.rs              # cabinet.dll FDI binding (Windows)
+    │   └── test_fixtures.rs    # hand-built RAR + makecab test inputs
     ├── patch_rdata.rs          # SGW.exe hostname byte-patch
     ├── launch.rs               # SGW.exe + Atera bat detection & spawn
     ├── client_paths.rs         # install-dir path resolution
@@ -292,7 +332,8 @@ crates/launcher/
         └── messages.rs         # Command/Event channel types
 ```
 
-11 top-level files plus three module directories. `app/`, `worker/`, and
+12 top-level files plus four module directories. `unpack/` started as a
+directory (it has five siblings on one theme); `app/`, `worker/`, and
 `telemetry/` were each promoted from a flat file once they crossed the
 4-siblings-on-one-theme threshold in
 [CLAUDE.md's file organization rules](../../CLAUDE.md).
