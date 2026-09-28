@@ -64,15 +64,47 @@ pub fn nearest_valid_respawner(
     navmesh: Option<&NavMesh>,
     bounds: &SpaceBounds,
 ) -> Option<Vector3> {
+    nearest_valid_respawner_def(respawners, world_name, near, navmesh, bounds).map(pos_of)
+}
+
+/// [`nearest_valid_respawner`], returning the row rather than its position.
+///
+/// The respawn resolver needs the row: the chosen `respawner_id` and name go
+/// in its fallback log, so an operator can see *which* respawner a player was
+/// sent to without reconstructing it from coordinates. One search, two
+/// projections, so the ordering and the filters cannot drift apart.
+///
+/// Ties go to the earlier row, and `load_respawners` orders by
+/// `respawner_id`, so the tie-break is the same on every boot.
+pub fn nearest_valid_respawner_def<'a>(
+    respawners: &'a [RespawnerDef],
+    world_name: &str,
+    near: Vector3,
+    navmesh: Option<&NavMesh>,
+    bounds: &SpaceBounds,
+) -> Option<&'a RespawnerDef> {
     respawners
         .iter()
         .filter(|r| r.world_name == world_name)
         .filter(|r| !is_unauthored(r))
-        .map(|r| Vector3::new(r.pos[0], r.pos[1], r.pos[2]))
-        .filter(|p| {
-            position_within_bounds(*p, bounds) && navmesh.is_none_or(|nav| nav.is_point_valid(p))
+        .filter(|r| {
+            let p = pos_of(r);
+            position_within_bounds(p, bounds) && navmesh.is_none_or(|nav| nav.is_point_valid(&p))
         })
-        .min_by(|a, b| a.distance_to(&near).total_cmp(&b.distance_to(&near)))
+        // `Iterator::min_by` returns the *last* of several equal elements;
+        // fold by hand so the first row wins a tie.
+        .fold(None::<(&RespawnerDef, f32)>, |best, r| {
+            let d = pos_of(r).distance_to(&near);
+            match best {
+                Some((_, bd)) if bd <= d => best,
+                _ => Some((r, d)),
+            }
+        })
+        .map(|(r, _)| r)
+}
+
+fn pos_of(r: &RespawnerDef) -> Vector3 {
+    Vector3::new(r.pos[0], r.pos[1], r.pos[2])
 }
 
 #[cfg(test)]

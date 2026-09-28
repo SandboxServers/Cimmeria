@@ -21,6 +21,8 @@
 //! World entry (`InitPlayerState`) sends the same two, so it reaches them here
 //! too.
 
+use cimmeria_cell_catalog::cell::respawner_fallback::nearest_valid_respawner_def;
+use cimmeria_entity::movement_validation::SpaceBounds;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
 
@@ -445,11 +447,27 @@ fn is_unauthored(r: &RespawnerDef) -> bool {
     r.pos == [0.0, 0.0, 0.0]
 }
 
+/// The `reason` on the nearest-respawner log: why no named row was used.
+fn fallback_reason(respawner_id: i32) -> &'static str {
+    match respawner_id {
+        0 => "respawner_id_zero",
+        id if id < 0 => "respawner_id_unset",
+        _ => "respawner_unusable",
+    }
+}
+
 /// Resolve `(world, position)` for the respawn target.
 ///
 /// Priority:
 ///   1. Explicit `respawner_id` from the Defeat Window (must be > 0).
-///   2. First respawner registered for the player's current world.
+///   2. The respawner registered for the player's current world that is
+///      nearest the death position. Taken for id 0 (the Defeat Window's
+///      synthetic "Respawn Point" entry), the auto-respawn `-1`, and an id
+///      that matches no usable row. Decision (@Cadacious, 2026-09-28): it
+///      used to be the *first* row for the world, which in Castle_CellBlock
+///      was the Stasis Chamber start room, so a death in the Mess Hall sent
+///      the player back through Hallway01 and an out-of-order guard kill
+///      soft-locked the chain.
 ///   3. Castle default for `Castle_CellBlock` / unknown world.
 ///   4. In-place at the player's current position for any other world
 ///      (avoids silently teleporting players cross-world).
@@ -502,27 +520,62 @@ pub(super) fn resolve_respawn_target(
             None => tracing::warn!(
                 entity_id,
                 respawner_id,
-                "Respawner not found, falling back to world default"
+                reason = "respawner_not_found",
+                "Respawner not found, falling back to the nearest respawner"
             ),
         }
     }
 
     let world_name = space_mgr.get_entity_world_name(entity_id);
     if let Some(ref wn) = world_name {
-        let mut skipped = 0usize;
-        let usable = space_mgr.respawners.iter().find(|r| {
-            if r.world_name != *wn {
-                return false;
-            }
-            if is_unauthored(r) {
-                skipped += 1;
-                return false;
-            }
-            true
+        // The player has not moved since dying (a corpse accepts no
+        // movement), so its current position is the death position.
+        let nearest = space_mgr.get_entity(entity_id).and_then(|e| {
+            // No navmesh and the permissive AABB on purpose: a respawner row is
+            // a coordinate a human authored for exactly this use, and this path
+            // has never second-guessed one. The shared search still applies the
+            // all-zero placeholder guard and the finite-coordinate test.
+            nearest_valid_respawner_def(
+                &space_mgr.respawners,
+                wn,
+                e.position,
+                None,
+                &SpaceBounds::FALLBACK,
+            )
+            .map(|r| {
+                let p = e.position;
+                let (dx, dy, dz) = (r.pos[0] - p.x, r.pos[1] - p.y, r.pos[2] - p.z);
+                (r, (dx * dx + dy * dy + dz * dz).sqrt())
+            })
         });
-        if let Some(r) = usable {
+        if let Some((r, distance_m)) = nearest {
+            let id = space_mgr.player_identity(entity_id);
+            // Not a refusal: the Defeat Window's synthetic entry and the
+            // auto-respawn timer name no respawner, so choosing one is the
+            // normal path. INFO so SigNoz shows which row a death resolved to
+            // (2026-09-28 playtest: id 0 sent the player to the start room,
+            // far from the fight, and the run back broke the Cellblock chain).
+            tracing::info!(
+                target: "player.respawn",
+                entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
+                requested_respawner_id = respawner_id,
+                respawner_id = r.respawner_id,
+                respawner_name = %r.name,
+                world = %wn,
+                distance_m,
+                reason = fallback_reason(respawner_id),
+                "Respawn: no usable respawner was named -- using the one nearest \
+                 the death position"
+            );
             return (r.world_name.clone(), r.pos);
         }
+        let skipped = space_mgr
+            .respawners
+            .iter()
+            .filter(|r| r.world_name == *wn && is_unauthored(r))
+            .count();
         if skipped > 0 {
             // Negative-log seam, `reason` pinned by
             // `origin_respawner_warn_fires_once_on_the_world_scan_path`.

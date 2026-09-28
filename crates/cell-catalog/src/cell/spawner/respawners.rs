@@ -69,7 +69,8 @@ pub async fn load_respawners(pool: &PgPool) -> Result<Vec<RespawnerDef>, sqlx::E
         "SELECT r.respawner_id, w.world AS world_name, r.name, \
                 r.pos_x, r.pos_y, r.pos_z \
          FROM resources.respawners r \
-         JOIN resources.worlds w ON w.world_id = r.world_id",
+         JOIN resources.worlds w ON w.world_id = r.world_id \
+         ORDER BY r.respawner_id",
     )
     .fetch_all(pool)
     .await?;

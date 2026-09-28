@@ -365,3 +365,87 @@ fn origin_respawner_warn_fires_once_on_the_world_scan_path() {
         quiet.all()
     );
 }
+
+/// The 2026-09-28 colo playtest shape (build 5f9730c6): a second death near
+/// the Castle_CellBlock Mess Hall sent `callForAid respawner_id=0`, and the
+/// world scan took the *first* Cellblock row, the Stasis Chamber start room
+/// (id 8), not the Ring Transporters respawner (id 5) the first death had
+/// used. The run back went through Hallway01, whose guard died before
+/// MessHall_Guard1, and the Cellblock chain soft-locked.
+///
+/// Rows are pushed in the order the unordered `load_respawners` query
+/// returned them: [8, 5]. The old first-row scan resolves to 8; the
+/// nearest-to-death rule resolves to 5.
+///
+/// Decision (@Cadacious, 2026-09-28): id 0, and any id that is not usable for
+/// the world, resolves to the respawner nearest the death position.
+#[test]
+fn respawner_zero_resolves_to_the_respawner_nearest_the_death_position() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    mgr.get_entity_mut(1).unwrap().position = cimmeria_common::Vector3::new(-95.0, 34.6, -106.0);
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 8,
+        world_name: "Castle_CellBlock".to_string(),
+        name: "Stasis Chamber".to_string(),
+        pos: [-334.231, 73.472, -228.026],
+    });
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 5,
+        world_name: "Castle_CellBlock".to_string(),
+        name: "Level 7: Ring Transporters".to_string(),
+        pos: [-79.214, 45.176, -163.815],
+    });
+
+    let capture = LogCapture::install();
+    let (world, pos) = resolve_respawn_target(0, 1, &mgr);
+
+    assert_eq!(world, "Castle_CellBlock");
+    assert_eq!(
+        pos,
+        [-79.214, 45.176, -163.815],
+        "respawner 0 must resolve to the nearest respawner (5, Ring \
+         Transporters), not the first row for the world (8, Stasis Chamber)"
+    );
+
+    let hits: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.level == Level::INFO && c.has_field("reason", "respawner_id_zero"))
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "the fallback must log once with reason=respawner_id_zero; got {:#?}",
+        capture.all()
+    );
+    let ev = &hits[0];
+    assert!(ev.has_field("respawner_id", "5"), "chosen id: {ev:#?}");
+    assert!(
+        ev.has_field("requested_respawner_id", "0"),
+        "requested id: {ev:#?}"
+    );
+    assert!(ev.has_field("player_id", "100"), "player_id: {ev:#?}");
+    assert!(
+        ev.fields.contains_key("distance_m"),
+        "must carry the distance to the chosen respawner: {ev:#?}"
+    );
+}
+
+/// An explicit id the world has no row for takes the same nearest rule.
+#[test]
+fn an_unknown_respawner_id_also_resolves_to_the_nearest() {
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    for (id, pos) in [(8, [-334.0, 73.0, -228.0]), (5, [40.0, 1.0, 20.0])] {
+        mgr.respawners.push(RespawnerDef {
+            respawner_id: id,
+            world_name: "Castle_CellBlock".to_string(),
+            name: format!("r{id}"),
+            pos,
+        });
+    }
+    let (_, pos) = resolve_respawn_target(999, 1, &mgr);
+    assert_eq!(pos, [40.0, 1.0, 20.0]);
+}
