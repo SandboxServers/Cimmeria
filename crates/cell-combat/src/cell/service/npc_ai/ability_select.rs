@@ -15,9 +15,9 @@ use crate::cell::space_manager::SpaceManager;
 /// - **`is_ranged = false` → [`crate::cell::combat::NPC_MELEE_RANGE`].** A
 ///   swing has swing reach. This wins even over a non-zero `max_range`,
 ///   because 148 melee rows in `resources.abilities` carry a `max_range`
-///   between 100 and 2500 — plainly not the metres the fight tick measures
-///   in — and honouring those would reproduce the very defect this gate
-///   exists to remove, in a worse form.
+///   between 100 and 2500 UE3 units — 1 m to 25 m once the loader converts
+///   them (#919), still mostly far beyond a swing — and honouring those
+///   would reproduce the very defect this gate exists to remove.
 /// - **`is_ranged = true`** → the def's own `max_range` when non-zero, else
 ///   `npc_attack_range` (the `0` sentinel).
 ///
@@ -28,7 +28,7 @@ use crate::cell::space_manager::SpaceManager;
 fn effective_max_range(def: Option<&AbilityDef>, npc_attack_range: f32) -> f32 {
     match def {
         Some(d) if !d.is_ranged => crate::cell::combat::NPC_MELEE_RANGE,
-        Some(d) if d.max_range > 0 => d.max_range as f32,
+        Some(d) if d.max_range > 0.0 => d.max_range,
         _ => npc_attack_range,
     }
 }
@@ -181,13 +181,7 @@ pub(super) fn ability_ranges(
 ) -> (f32, f32) {
     let def = chosen_ability.and_then(|id| space_mgr.ability_defs.get(&id));
     let max_range = effective_max_range(def, npc_attack_range);
-    let min_range = def.map_or(0.0, |d| {
-        if d.min_range > 0 {
-            d.min_range as f32
-        } else {
-            0.0
-        }
-    });
+    let min_range = def.map_or(0.0, |d| d.min_range.max(0.0));
     (max_range, min_range)
 }
 

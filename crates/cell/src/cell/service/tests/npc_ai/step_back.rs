@@ -98,7 +98,7 @@ async fn a_melee_npc_never_steps_back() {
             name: "Staff Melee AA".to_string(),
             cooldown: 1.0,
             is_ranged: false,
-            max_range: 3,
+            max_range: 3.0,
             ..mgr.ability_defs[&NPC_DEFAULT_ABILITY].clone()
         },
     );

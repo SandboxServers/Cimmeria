@@ -1269,13 +1269,20 @@ See [`findings/ability-resolution-pipeline.md`](findings/ability-resolution-pipe
 | `0x00d2a000` | `AbilitySet_GetSlotByIndex` | Looks up AbilitySlot pointer by zero-based index; returns null if out of range |
 | `0x00d2ae40` | `AbilitySet_EmitUseAbilityOrGroundTarget` | Branch on targetType (slot+0x48): 3=TargetGround → reticle flow; else → Pattern B emit for `Event_NetOut_UseAbility` |
 | `0x00dea330` | `AbilitySet_ActivateGroundTargetReticle` | Asserts TCM_AERadius==2 AND TargetGround==3; shows AE reticle; subscribes to `Event_Player_GroundTargetingEnd` |
-| `0x00d29d40` | `AbilityInfo_GetAERadius` | Returns float at param_1+0xa0; asserts TCM==TCM_AERadius(2). Effective score 87. |
+| `0x00d29d40` | `AbilityInfo_GetAERadius` | Returns the int at param_1+0xa0 (UE3 units, from `0x00d29e90`); asserts TCM==TCM_AERadius(2). Effective score 87. |
+| `0x00d29e90` | `AbilityInfo_AERadiusFromTier` | TCM_Param1 tier string to UE3 units: Melee 250, Short 500, Medium 1000, Long 1500, Extreme 2000 (`AE_RADIUS_*` × 100) (#919) |
+| `0x00d29e00` | `AbilityInfo_GetMinRange` | Runtime +0x8c, or the weapon pair's min when flags&4 (`UseWeaponRange`) (#919) |
+| `0x00d29e30` | `AbilityInfo_GetMaxRange` | Runtime +0x90, or the weapon pair's max when flags&4 (#919) |
+| `0x00d29da0` | `AbilityInfo_GetEquippedWeaponRangePair` | Equipped weapon's `{min,max}` pointer: item +0x90 when ability +0x59 IsRanged, else +0x8c (#919) |
+| `0x00eadf00` | `USGWGroundTarget_SetRanges` | `SGWGroundTarget.cpp`; decal size = radius×2.0, stores maxRange +0x40 / minRange +0x44 (asserts `maxRange >= 0`) (#919) |
+| `0x00eae080` | `USGWGroundTarget_Tick` | Clamps the reticule to maxRange / outside minRange from the pawn's UE3 Location, traces to -262144: ability ranges are UE3 units (#919) |
 
 ### AbilityType Struct — PAK/Serialized Layout
 
 | Address | Function | Notes |
 |---------|----------|-------|
-| `0x015d51c0` | `AbilityType_DeserializePak` | Reads PAK stream into AbilityType. Key offsets: +0x34=WarmupSec, +0x38=CooldownSec, +0x44=TCM, +0x48/4C=TCM_Param1/2, +0x54/58=Flags, +0x60/64=Min/MaxRange. EffectIds at param_4+4 via FUN_015d3e60. |
+| `0x015d51c0` | `AbilityType_DeserializePak` | Actually the gSOAP *serializer* (writes attributes); MinRange/MaxRange formatted `%lu` via `0x00a414c0` (#919). Reader is `0x015e5840`. Key offsets: +0x34=WarmupSec, +0x38=CooldownSec, +0x44=TCM, +0x48/4C=TCM_Param1/2, +0x54/58=Flags, +0x60/64=Min/MaxRange. EffectIds at param_4+4 via FUN_015d3e60. |
+| `0x00d2a470` | `AbilityType_LoadCooked` | Parses `COOKED_ABILITY`; copies cooked +0x60/+0x64 raw to runtime +0x8c/+0x90 (MinRange/MaxRange, no unit conversion) (#919) |
 | `0x00adb670` | `AbilityType_GetLuaAbilityInfo` | Runtime Lua layout. Offsets differ from PAK: +0x50=warmUp, +0x54=coolDown, +0x60=icon, +0x94=TCM, +0x98=flags (bit0=weapon, bit1=deploy, bit16=pet). |
 
 ### ETargetCollectionMethod (TCM) and ETargetType Enum Values (confirmed from asserts)

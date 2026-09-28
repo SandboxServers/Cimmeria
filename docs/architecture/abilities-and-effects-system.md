@@ -729,6 +729,14 @@ When the attacker and the target are an engaged duel's engaged entities and HEAL
 
 **Code and tests:** `crates/cell-world/src/cell/duel/paths.rs`, the two seams above, `death/mod.rs`. `use_ability/tests/duel_nonlethal.rs` (`lethal_partner_hit_clamps_to_one_hp`, `lethal_partner_bleed_clamps_to_one_hp`, `no_loot_xp_or_corpse_after_a_clamped_end`, `third_party_kill_is_normal_death`); the proof is in the [SS-D3 worknote](../analysis/social-systems/worknotes/ss-d3.md).
 
+### 27. Ability ranges are UE3 units in the data and metres on `AbilityDef` (#919)
+
+**Decision:** `load_ability_defs` divides `resources.abilities.min_range` / `max_range` by `ABILITY_RANGE_UNITS_PER_METRE` (100) once, and `AbilityDef::min_range` / `max_range` are `f32` metres. Every consumer resolves the reach through `AbilityDef::max_range_or_default` / `ability_max_range` (`crates/entity/src/abilities/range.rs`), which maps the `0` sentinel to `DEFAULT_ABILITY_MAX_RANGE` (30 m): the launch check in `handle_use_ability`, the warmup fire-time re-check, the ground-target primary check, the auto-cycle skip, the pet-order pre-check (CM 88) and the NPC/pet AI's `ability_ranges`.
+
+**Why:** The data is the client's own. The 2009 `CookedDataAbilities.pak` ships the same numbers (1652 Jaffa: Double Blast `MaxRange="3000"`), and the client uses them in UE3 world space: the ground-target reticule clamps against them from the pawn's UE3 location, next to AoE radii it converts to UE3 units (Medium = 1000). Every non-zero seeded range is a multiple of 100. Compared raw with metre positions, every ranged ability with a real range reached 1 to 100 km. Evidence and addresses: [ability-resolution-pipeline.md § Range units](../reverse-engineering/findings/ability-resolution-pipeline.md#range-units-919-verified-2026-09-28).
+
+**Consequences:** 1652 reaches 30 m, 1653 8 m, grenades 25 m, deployables 5 m; turret 1205's 300-unit minimum is 3 m. Weapon ranges (`resources.items.*_range`) are already metres and are not converted. The server still ignores `UseWeaponRange` (flag 4) and never checks `min_range` for a player's cast (python refuses inside it with `OutsideWeaponRange`); both are pre-existing gaps, not part of #919. Tests: `spawner::abilities::range_unit_tests`, `use_ability/tests/range_units.rs`, and the live-DB `spawner/tests/live_db_ability_ranges.rs` and `use_ability/tests/range_units_live_db.rs`.
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:
