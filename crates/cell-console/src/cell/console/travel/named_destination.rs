@@ -1,5 +1,5 @@
 //! The three travel commands whose destination is resolved from a name:
-//! `.goto <player>`, `.summon <player>` and `.gotolocation <world> x y z`.
+//! `.goto <player>`, `.summon <player>` and `.gotolocation <world> [x y z]`.
 //!
 //! All three end in [`super::move_subject`], which picks between the
 //! same-space snap and P45's cross-space transfer. What differs is only how
@@ -9,13 +9,14 @@
 //! |---|---|---|
 //! | `.goto` | `target or player` | the named player's exact space + position |
 //! | `.summon` | the named player | the **caller's** space + position |
-//! | `.gotolocation` | `target or player` | the named world, explicit coordinates |
+//! | `.gotolocation` | `target or player` | the named world, explicit coordinates or its entry point |
 //!
 //! Legacy: `deprecated/python/cell/commands/Player.py:298-365`.
 
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
+use super::world_entry_point::{world_entry_point, EntrySource};
 use super::{move_subject, SpaceManager, TravelDestination};
 use crate::cell::console::parse_f32;
 use crate::cell::messages::CellToBaseMsg;
@@ -166,8 +167,10 @@ pub(super) async fn summon(
     .await;
 }
 
-/// `.gotolocation <worldName> <x> <y> <z>` — move the selected target (or the
-/// caller) to explicit coordinates in a named world.
+/// `.gotolocation <worldName> [<x> <y> <z>]` — move the selected target (or
+/// the caller) to explicit coordinates in a named world, or, with the world
+/// alone, to that world's entry point ([`super::world_entry_point`] —
+/// a deliberate deviation, legacy always required coordinates).
 ///
 /// Legacy `gotoLocation` (`Player.py:344-365`) validated the world against
 /// `world_info` and reported `"Unable to find world: %s"`; here that check is
@@ -190,17 +193,58 @@ pub(super) async fn goto_location(
     let Some(world_name) = args.first().copied() else {
         return;
     };
-    // `parse_f32` rejects NaN/inf up front; the transfer primitive re-checks
-    // finiteness for the callers that don't come through this layer.
-    let Some(x) = parse_f32(caller_id, args, 1, "x", tx).await else {
-        return;
+    // `<world>` alone means the world's entry point (see
+    // [`super::world_entry_point`]); otherwise all three coordinates.
+    let (position, entry_source) = match args.len() {
+        1 => {
+            // An unknown world has no entry point to look up; report it with
+            // the same legacy wording the coordinate form gets from the
+            // transfer primitive.
+            let Some(canonical) = space_mgr.canonical_world_name(world_name) else {
+                send_gm_feedback(
+                    caller_id,
+                    &format!("Unable to find world: {world_name}"),
+                    tx,
+                )
+                .await;
+                return;
+            };
+            let Some((position, source)) = world_entry_point(space_mgr, canonical) else {
+                send_gm_feedback(caller_id, &no_entry_point_line(canonical), tx).await;
+                return;
+            };
+            (position, Some(source))
+        }
+        4 => {
+            // `parse_f32` rejects NaN/inf up front; the transfer primitive
+            // re-checks finiteness for the callers that don't come through
+            // this layer.
+            let Some(x) = parse_f32(caller_id, args, 1, "x", tx).await else {
+                return;
+            };
+            let Some(y) = parse_f32(caller_id, args, 2, "y", tx).await else {
+                return;
+            };
+            let Some(z) = parse_f32(caller_id, args, 3, "z", tx).await else {
+                return;
+            };
+            ([x, y, z], None)
+        }
+        n => {
+            send_gm_feedback(
+                caller_id,
+                &format!(
+                    "gotolocation: expected <world> or <world> <x> <y> <z>; got {} \
+                     coordinate(s) -- nothing moved",
+                    n - 1
+                ),
+                tx,
+            )
+            .await;
+            return;
+        }
     };
-    let Some(y) = parse_f32(caller_id, args, 2, "y", tx).await else {
-        return;
-    };
-    let Some(z) = parse_f32(caller_id, args, 3, "z", tx).await else {
-        return;
-    };
+    let [x, y, z] = position;
 
     let subject = target.unwrap_or(caller_id);
     let Some(origin_space_id) = space_mgr.get_entity_space_id(subject) else {
@@ -236,16 +280,34 @@ pub(super) async fn goto_location(
             world_name,
             space_id: dest_space_id,
         },
-        [x, y, z],
+        position,
         // Legacy's `"Moving entity %s to %s (%f, %f, %f)"`. Deliberate
         // deviation: Rust's `{}` float formatting rather than C's `%f`, so
         // `10` renders as `10` and not `10.000000` — matching the `.gotoxyz`
-        // line the GM sees right next to it.
-        &format!("Moving entity {subject_name} to {world_name} ({x}, {y}, {z})"),
+        // line the GM sees right next to it. An entry-point move says which
+        // rule picked the spot.
+        &format!(
+            "Moving entity {subject_name} to {world_name} ({x}, {y}, {z}){}",
+            entry_suffix(entry_source)
+        ),
         tx,
         space_mgr,
     )
     .await;
+}
+
+/// ` [stargate arrival]`-style suffix for an entry-point move's feedback line;
+/// empty when the GM typed the coordinates.
+pub(crate) fn entry_suffix(source: Option<EntrySource>) -> String {
+    source.map_or_else(String::new, |s| format!(" [{}]", s.label()))
+}
+
+/// The refusal when a world has no entry point to go to.
+pub(crate) fn no_entry_point_line(world: &str) -> String {
+    format!(
+        "{world} has no known entry point (no starting position, usable stargate \
+         arrival or authored respawner) -- give coordinates: <x> <y> <z>"
+    )
 }
 
 /// Wording for P44's `Ambiguous` outcome.

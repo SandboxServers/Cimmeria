@@ -63,7 +63,8 @@ use crate::cell::space_transfer::{
     TransferOutcome, TransferRejected,
 };
 
-mod named_destination;
+pub(super) mod named_destination;
+pub(super) mod world_entry_point;
 
 /// `.gotoxyz <x> <y> <z>` — teleport the selected target (or the caller, if
 /// nothing is selected) to the given coordinates within its current space.
@@ -196,9 +197,10 @@ async fn snap_in_current_space(
     true
 }
 
-/// `.gotospace <spaceId> <x> <y> <z>` — teleport the selected target (or the
+/// `.gotospace <spaceId> [<x> <y> <z>]` — teleport the selected target (or the
 /// caller) to explicit coordinates in one exact **loaded space instance**,
-/// named by id.
+/// named by id; with the id alone, to that world's entry point
+/// ([`world_entry_point`]) inside the instance.
 ///
 /// **Deliberate deviation — legacy has no equivalent.** Every other travel
 /// command resolves its destination through the world-name table, which means
@@ -237,14 +239,32 @@ pub(super) async fn goto_space(
             return;
         }
     };
-    let Some(x) = super::parse_f32(caller_id, args, 1, "x", tx).await else {
+    if args.len() != 1 && args.len() != 4 {
+        send_gm_feedback(
+            caller_id,
+            &format!(
+                "gotospace: expected <spaceId> or <spaceId> <x> <y> <z>; got {} \
+                 coordinate(s) -- nothing moved",
+                args.len() - 1
+            ),
+            tx,
+        )
+        .await;
         return;
-    };
-    let Some(y) = super::parse_f32(caller_id, args, 2, "y", tx).await else {
-        return;
-    };
-    let Some(z) = super::parse_f32(caller_id, args, 3, "z", tx).await else {
-        return;
+    }
+    let typed = if args.len() == 4 {
+        let Some(x) = super::parse_f32(caller_id, args, 1, "x", tx).await else {
+            return;
+        };
+        let Some(y) = super::parse_f32(caller_id, args, 2, "y", tx).await else {
+            return;
+        };
+        let Some(z) = super::parse_f32(caller_id, args, 3, "z", tx).await else {
+            return;
+        };
+        Some([x, y, z])
+    } else {
+        None
     };
 
     // The world name is derived from the instance, never typed — so this
@@ -259,6 +279,25 @@ pub(super) async fn goto_space(
         return;
     };
 
+    // `<spaceId>` alone: the entry point of the instance's world, in this
+    // exact instance.
+    let (position, entry_source) = match typed {
+        Some(p) => (p, None),
+        None => match world_entry_point::world_entry_point(space_mgr, &world_name) {
+            Some((p, source)) => (p, Some(source)),
+            None => {
+                send_gm_feedback(
+                    caller_id,
+                    &named_destination::no_entry_point_line(&world_name),
+                    tx,
+                )
+                .await;
+                return;
+            }
+        },
+    };
+    let [x, y, z] = position;
+
     let subject = target.unwrap_or(caller_id);
     move_subject(
         "gotospace",
@@ -268,8 +307,11 @@ pub(super) async fn goto_space(
             world_name: &world_name,
             space_id,
         },
-        [x, y, z],
-        &format!("Moving entity {subject} to space {space_id} ({x}, {y}, {z})"),
+        position,
+        &format!(
+            "Moving entity {subject} to space {space_id} ({x}, {y}, {z}){}",
+            named_destination::entry_suffix(entry_source)
+        ),
         tx,
         space_mgr,
     )

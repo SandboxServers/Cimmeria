@@ -1033,6 +1033,7 @@ dependencies = [
  "cimmeria-content-engine",
  "cimmeria-discord",
  "cimmeria-entity",
+ "cimmeria-resources",
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",

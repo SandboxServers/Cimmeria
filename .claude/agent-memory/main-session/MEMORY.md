@@ -15,5 +15,6 @@ Project and reference facts that top-level sessions (not subagents) learned whil
 
 ## Reference
 
+- [reference_map_arrival_points.md](reference_map_arrival_points.md) — cooked maps: PlayerStart only in Agnos/Beta Site/Tollana, no stargate/teleporter actors; bad gate rows (Agnos fixed, Menfa_Light 192 m under mesh)
 - [reference_signoz_log_mining.md](reference_signoz_log_mining.md) — SigNoz MCP: condense oversized results, filters and keys that work, session anchors, what is normal
 - [reference_client_idle_send_cadence.md](reference_client_idle_send_cadence.md) — idle client sends ~6 pkt/s and perfStats every 15 s; NetInactivityTimeout=15 is client-side; read before touching inactivity timeouts

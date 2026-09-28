@@ -173,3 +173,52 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 --     the row is not inside the crate maze that fills the south half.
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (23, 70, 'Harset Storage Room Respawn', 50, 0, 44);
 
+-- ── Interior and story rooms (2026-09-27) ─────────────────────────────
+-- These worlds had no stargate, ring pad, spawn or respawner, so
+-- `.gotolocation <world>` had nowhere to put a GM and dying inside one
+-- respawned the player in place. Every cooked map below was searched for
+-- PlayerStart / SGWTeleporter / SGWStargate / RingTransporter actors and
+-- has none, so each row is PLACED FROM MAP DATA, provisional until a
+-- playtest (same method as the Harset rows above). Conversion
+-- BigWorld = (UE.y, UE.z, UE.x) / 100 (`ue3_to_bw`); floor heights from
+-- `obj_slab`. Each point passes `nav_inspect` at the default tolerances,
+-- as do 36 samples on rings 0.6 / 1.2 / 2.4 m around it, all in the same
+-- component. All six worlds are navmesh_mode 'advisory'.
+
+-- Row 24: world 20 Agnos_Library. MEDIUM. Main hall on the building's
+-- centre line just south of the central dome; floor y 0.32. Component 20
+-- of agnos_library.nav (7,606 m^2), which holds 230 of the map's 276 cover
+-- nodes; the mesh's largest component is the outside terrain sheet. The
+-- likely front entrance is the small south hall near (1.7, 0.2, -45),
+-- component 18, not directly joined to the main hall.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (24, 20, 'Agnos Library Hall Respawn', 1.7, 0.37, 45);
+
+-- Row 25: world 62 Dakara_E1_StoryRm. MEDIUM. Centre of the tent interior
+-- (x 57..84, z 17..43); floor y 0.00; component 3 of dakara_e1_storyrm.nav
+-- (381 m^2), about 5 m clear of the floor props (braziers, the skeletal
+-- meshes near (70..72.6, 24..25)).
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (25, 62, 'Dakara Story Room Respawn', 71, 0.05, 30);
+
+-- Row 26: world 80 Omega_Site_CmdCenter. HIGH. 3.9 m east of the ring pad
+-- a traveller from Omega Site arrives on (ring_transport_regions 17,
+-- `OmegaSiteCmdCenterRegion`, at (6.121, 35.23, 9.987)), outside its 2.53 m
+-- trigger cylinder so arriving does not stand the player in the pad.
+-- Component 11 of omega_site_cmdcenter.nav (9,144 m^2), same as the pad.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (26, 80, 'Omega Command Center Respawn', 10, 35.23, 9.987);
+
+-- Row 27: world 88 Tollana_Curia. The cooked map is a STUB: one flat
+-- 100 x 100 m terrain tile at y 0, no actors, no room geometry. The point
+-- is the centre of that tile (the mesh's only component) — standable, but
+-- a GM lands on an empty plain. Re-place it if the Curia is ever rebuilt.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (27, 88, 'Tollana Curia Respawn', 50, 0.05, 50);
+
+-- Row 28: world 50 Sewer_Falls. LOW-MEDIUM. 9 m inside the map's only
+-- doorway marker (`SGW_Weather:DoorwayPrecipitationPlanes` at
+-- (-429.12, 12.12, 190.16), beside `LUS-JunkyardHut00`); floor y 12.15;
+-- component 1 of sewer_falls.nav (77,937 m^2, the main area).
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (28, 50, 'Sewer Falls Respawn', -429.1, 12.2, 181);
+
+-- Row 29: world 2 SandBox. HIGH. SandBox plays the Harset_CmdCenter
+-- client map and sandbox.nav is byte-identical to harset_cmdcenter.nav, so
+-- this is row 21's Command Center door arrival, reused.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (29, 2, 'SandBox Respawn', 0, 0.355, -20);

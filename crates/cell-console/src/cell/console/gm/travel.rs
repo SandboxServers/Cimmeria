@@ -9,6 +9,8 @@ use tokio::sync::mpsc;
 
 use super::feedback::send_gm_feedback;
 use super::forward_to_base;
+use crate::cell::console::travel::named_destination::{entry_suffix, no_entry_point_line};
+use crate::cell::console::travel::world_entry_point::world_entry_point;
 use crate::cell::gate_travel::handle_dial_gate;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -174,12 +176,52 @@ pub(super) async fn handle_goto_location(
         return true;
     }
 
-    tracing::info!(entity_id, %world_name, ?position, "gmGotoLocation: cross-world teleport via GateTravel");
+    // `(0, 0, 0)` means "the world's entry point" — the same one
+    // `.gotolocation <world>` uses. The wire signature always carries three
+    // floats, so this sentinel is the only way to say "no coordinates" from
+    // `/gmgotolocation <world>` (typed as `<world> 0 0 0`, or zero-filled by
+    // the client). The origin is never a deliberate destination — the same
+    // reading `respawner_fallback::is_unauthored` gives it. Deliberate
+    // deviation: owner request 2026-09-27. An unknown world keeps the old
+    // path, where the base side refuses it.
+    let mut position = position;
+    let mut entry_source = None;
+    if position == [0.0; 3] {
+        if let Some(canonical) = space_mgr.canonical_world_name(&world_name) {
+            match world_entry_point(space_mgr, canonical) {
+                Some((entry, source)) => {
+                    position = entry;
+                    entry_source = Some(source);
+                }
+                None => {
+                    tracing::warn!(
+                        entity_id,
+                        %world_name,
+                        reason = "no_entry_point",
+                        "gmGotoLocation: origin requested and the world has no entry point"
+                    );
+                    send_gm_feedback(
+                        entity_id,
+                        &format!("gmGotoLocation: {}", no_entry_point_line(canonical)),
+                        tx,
+                    )
+                    .await;
+                    return true;
+                }
+            }
+        }
+    }
+
+    tracing::info!(entity_id, %world_name, ?position, entry_source = ?entry_source, "gmGotoLocation: cross-world teleport via GateTravel");
     // Feedback wording is captured before the move because `world_name` is moved
     // into the GateTravel message below.
     let feedback = format!(
-        "gmGotoLocation: teleporting to {} ({}, {}, {})",
-        world_name, position[0], position[1], position[2]
+        "gmGotoLocation: teleporting to {} ({}, {}, {}){}",
+        world_name,
+        position[0],
+        position[1],
+        position[2],
+        entry_suffix(entry_source)
     );
     // SS-D3: a gate travel ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
     // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.

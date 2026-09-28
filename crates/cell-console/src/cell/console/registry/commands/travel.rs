@@ -28,17 +28,17 @@ pub(super) const SPECS: &[Spec] = &[
     ),
     spec(
         "gotolocation",
-        4,
+        1,
         4,
         Target::None,
-        "Move the target (or yourself) to coordinates in a named world (worldName x y z)",
+        "Move the target (or yourself) to a named world: its entry point, or coordinates (worldName [x y z])",
     ),
     spec(
         "gotospace",
-        4,
+        1,
         4,
         Target::None,
-        "Move the target (or yourself) into an exact loaded space instance (spaceId x y z)",
+        "Move the target (or yourself) into an exact loaded space instance: its world's entry point, or coordinates (spaceId [x y z])",
     ),
     // ── J. placement (position / orientation) ──────────────────────────────
     spec(
