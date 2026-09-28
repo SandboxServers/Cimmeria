@@ -28,6 +28,7 @@ fn station_and_tool_fixture() -> CraftingSessionOptions {
         craft_anywhere: false,
         armed: false,
         last_sent: None,
+        pending_respec: None,
     }
 }
 

@@ -38,6 +38,10 @@ CREATE TABLE sgw_player (
     -- array the same levels (characters created before these defaults).
     racial_paradigm_levels integer[] DEFAULT '{5,1,1,1,1}'::integer[] NOT NULL,
     applied_science_points integer DEFAULT 0 NOT NULL,
+    -- Applied science points spent on learning disciplines since the last
+    -- crafting respec. The respec refunds exactly this and resets it, so a
+    -- discipline a GM granted for free refunds nothing.
+    applied_science_points_spent integer DEFAULT 0 NOT NULL,
     blueprint_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
     known_respawners integer[] DEFAULT '{}'::integer[] NOT NULL,
     -- System options the client checkbox panel pushes via cell method

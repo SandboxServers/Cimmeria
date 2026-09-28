@@ -179,6 +179,9 @@ pub async fn handle_cell_message(
         CellToBaseMsg::GmCraftGrant(grant) => {
             crate::base::crafting::gm_grant::handle_gm_craft_grant(grant, &craft_ctx(&ctx)).await
         }
+        CellToBaseMsg::RespecCraftOpen(open) => {
+            crate::base::crafting::respec::handle_respec_open(open, &craft_ctx(&ctx)).await
+        }
 
         CellToBaseMsg::ContactListCreate { .. }
         | CellToBaseMsg::ContactListDelete { .. }

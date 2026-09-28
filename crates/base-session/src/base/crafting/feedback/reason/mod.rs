@@ -199,6 +199,17 @@ pub enum CraftReject {
         needed: i32,
         available: i64,
     },
+    /// A respec with no discipline and no expertise to clear.
+    NothingToRespec,
+    /// `respecCrafting` (100) with no respec open for this player: the
+    /// client sends it only from the prompt's Yes, so this is a replay, a
+    /// second Yes, or a forged request.
+    NoPendingRespec,
+    /// `respecCrafting` (100) after the respec window closed.
+    RespecExpired {
+        /// How long the window stays open, for the text.
+        window_secs: u64,
+    },
 }
 
 impl CraftReject {
@@ -256,6 +267,9 @@ impl CraftReject {
             CraftReject::BadQuantity { .. } => "bad_quantity",
             CraftReject::NoComponentSet { .. } => "no_component_set",
             CraftReject::InsufficientComponents { .. } => "insufficient_components",
+            CraftReject::NothingToRespec => "nothing_to_respec",
+            CraftReject::NoPendingRespec => "no_pending_respec",
+            CraftReject::RespecExpired { .. } => "respec_expired",
         }
     }
 
@@ -349,6 +363,9 @@ impl CraftReject {
             | CraftReject::BadQuantity { .. }
             | CraftReject::NoComponentSet { .. }
             | CraftReject::InsufficientComponents { .. } => None,
+            CraftReject::NothingToRespec
+            | CraftReject::NoPendingRespec
+            | CraftReject::RespecExpired { .. } => None,
         }
     }
 }

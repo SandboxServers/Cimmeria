@@ -12,6 +12,10 @@
 //! - [`push_asp`]: `onEntityProperty(GENERICPROPERTY_AppliedSciencePoints,
 //!   total)`. Always the **total**, never the change; the client shows the value
 //!   as it arrives (`DisciplineTrainer.lua:49-54`).
+//! - [`push_respec_prompt`]: `onCraftingRespecPrompt` (112), the respec
+//!   confirmation dialog.
+//! - [`push_discipline_respec`]: `onDisciplineRespec` (137), which zeroes the
+//!   expertise of every discipline the client knows.
 //! - [`push_login_bundle`]: all of the above for a whole
 //!   [`CraftingState`], then `onUpdateCraftingOptions` (140), in one
 //!   reliable bundle. [`push_crafting_on_login`] loads the state and the
@@ -33,13 +37,14 @@ use cimmeria_entity::crafting::CraftingState;
 use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::cell::client_methods::player::{
-    ON_UPDATE_CRAFTING_OPTIONS, ON_UPDATE_DISCIPLINE, ON_UPDATE_KNOWN_CRAFTS,
-    ON_UPDATE_RACIAL_PARADIGM_LEVEL,
+    ON_CRAFTING_RESPEC_PROMPT, ON_DISCIPLINE_RESPEC, ON_UPDATE_CRAFTING_OPTIONS,
+    ON_UPDATE_DISCIPLINE, ON_UPDATE_KNOWN_CRAFTS, ON_UPDATE_RACIAL_PARADIGM_LEVEL,
 };
 use cimmeria_wire::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY;
 use cimmeria_wire::crafting::{
-    applied_science_points_property_args, crafting_options_args, known_crafts_args,
-    racial_paradigm_level_args, update_discipline_args, CraftingOptions,
+    applied_science_points_property_args, crafting_options_args, crafting_respec_prompt_args,
+    discipline_respec_args, known_crafts_args, racial_paradigm_level_args, update_discipline_args,
+    CraftingOptions,
 };
 use sqlx::PgPool;
 
@@ -374,6 +379,41 @@ pub async fn push_asp(entity_id: u32, player_id: i32, total: i32, client: CraftC
         "asp",
         ON_ENTITY_PROPERTY,
         &args,
+        client,
+    )
+    .await;
+}
+
+/// `onCraftingRespecPrompt(cost)` (112): the client stores the cost and
+/// shows the "unlearn all your crafting knowledge" dialog, whose Yes sends
+/// `respecCrafting` (100).
+pub async fn push_respec_prompt(
+    entity_id: u32,
+    player_id: i32,
+    cost: i32,
+    client: CraftClient<'_>,
+) {
+    let args = crafting_respec_prompt_args(cost);
+    push_one(
+        entity_id,
+        player_id,
+        "respec_prompt",
+        ON_CRAFTING_RESPEC_PROMPT,
+        &args,
+        client,
+    )
+    .await;
+}
+
+/// `onDisciplineRespec()` (137): the client zeroes the expertise of every
+/// discipline it knows. Blueprints and paradigm levels are untouched.
+pub async fn push_discipline_respec(entity_id: u32, player_id: i32, client: CraftClient<'_>) {
+    push_one(
+        entity_id,
+        player_id,
+        "discipline_respec",
+        ON_DISCIPLINE_RESPEC,
+        &discipline_respec_args(),
         client,
     )
     .await;

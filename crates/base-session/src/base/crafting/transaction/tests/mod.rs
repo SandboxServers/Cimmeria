@@ -21,6 +21,7 @@ mod induction;
 mod named;
 mod notify;
 mod refusals;
+mod respec_drop;
 
 /// Inside crafting's `0x7000_Cxxx` block, clear of the persistence
 /// (`0x7000_C000`..), GM-grant (`0x7000_CC00`..), login-sync, spend and
