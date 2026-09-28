@@ -370,11 +370,11 @@ pub async fn exec(
             travel::dispatch(name, caller_id, target_id, args, tx, space_mgr).await
         }
         // J. placement (position / orientation)
-        "location" | "rotation" => {
+        "location" | "rotation" | "movehere" => {
             placement::dispatch(
                 name,
                 caller_id,
-                target_id.expect("Target::Spawnable guarantees a resolved target"),
+                target_id.expect("Target::Spawnable / Target::Mob guarantee a resolved target"),
                 args,
                 tx,
                 space_mgr,

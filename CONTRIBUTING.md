@@ -67,6 +67,8 @@ For RE work, start with [`docs/guides/re-toolchain-setup.md`](docs/guides/re-too
 
 For playtest acceptance of a restored system, the UAT guides script each step with the SigNoz query that shows it; the first is [`docs/guides/organizations-uat.md`](docs/guides/organizations-uat.md) (Squads, Teams and Commands). [`docs/guides/unified-uat.md`](docs/guides/unified-uat.md) gathers every restored system's steps into one tester-facing guide.
 
+Content authors placing NPCs and objects in-game, and the developers who merge their work into the seeds, start with [`docs/guides/placing-npcs-and-objects.md`](docs/guides/placing-npcs-and-objects.md).
+
 For unattended AI-agent sessions that pick their own issues, the kickoff prompt and its worktree, build, and PR protocol live in [`docs/guides/autonomous-agent-kickoff.md`](docs/guides/autonomous-agent-kickoff.md).
 
 ## The development loop

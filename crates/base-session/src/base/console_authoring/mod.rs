@@ -7,11 +7,13 @@
 //! this handler runs it against the live pool and reports the row count back to
 //! the GM on the feedback channel.
 //!
-//! The write is intentionally **transient**: it lets the developer see the
-//! change hold across reconnects within the current deploy, but the next deploy
-//! rebuilds the DB from the `db/resources/` seeds and wipes it. The durable
-//! artifact is the seed SQL the cell records to the per-session authoring log
-//! and (later) Discord — see `cimmeria_cell_console::cell::console::seed`.
+//! The cell sends a statement only when the GM runs `.seedconfirm`; until
+//! then it sits in the cell's queue. The write is intentionally **transient**:
+//! it lets the author see the change hold across reconnects within the current
+//! deploy, but the next deploy rebuilds the DB from the `db/resources/` seeds
+//! and wipes it. The durable artifact is the seed SQL the cell emits to SigNoz
+//! and the per-session authoring log on confirm — see
+//! `cimmeria_cell_console::cell::console::seed`.
 //!
 //! **Trust model:** the `.`-channel is GM-gated server-side (the cell only
 //! forwards a command from an `access_level >= GameMaster` caller), and `sql`

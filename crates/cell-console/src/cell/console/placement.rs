@@ -1,5 +1,9 @@
 //! Selected-entity read/set position + orientation console commands
-//! (category J): `.location`, `.rotation` (P18).
+//! (category J): `.location`, `.rotation` (P18) and `.movehere`.
+//!
+//! `.movehere` is the authoring shortcut: stand where the NPC should stand,
+//! face where it should face, select it and run `.movehere`. It needs no
+//! coordinates and no radians.
 //!
 //! Distinct from [`super::travel`]'s `.gotoxyz`/`.goto`/`.summon`/
 //! `.gotolocation`: those move an entity to a *destination* (another player,
@@ -8,8 +12,17 @@
 //! it.
 //!
 //! `.lookat` (the third command P18's ledger entry originally listed) is
-//! already implemented in [`super::entity`] (P13/P14-era work) — heading-only
-//! "face the caller" rotation. Not this file's concern.
+//! implemented in [`super::entity`] — heading-only "face the caller" rotation.
+//! It ends in [`settle_npc`] like the commands here.
+//!
+//! ## Making a placement stick on an NPC
+//!
+//! An NPC returns to its *home* — `spawn_position` / `spawn_direction` — when
+//! it leashes, wanders, stops moving or respawns. A placement command that only
+//! wrote `position` / `direction` would be undone the next time any of those
+//! ran (a moved guard walks back; a turned guard turns back when it stops).
+//! [`settle_npc`] therefore makes the new placement the NPC's home, and queues
+//! a `.savespawn` when the GM has `.autosavespawn` on.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Entity.py:101-134`.
 //! Both legacy bodies have the same shape — `if z is not None: target.<field>
@@ -75,8 +88,124 @@ pub(super) async fn dispatch(
     match name {
         "location" => location(caller_id, target, args, tx, space_mgr).await,
         "rotation" => rotation(caller_id, target, args, tx, space_mgr).await,
+        "movehere" => move_here(caller_id, target, tx, space_mgr).await,
         _ => {}
     }
+}
+
+/// Make a GM placement of an NPC stick: its current position and facing become
+/// its home (see the module doc), any in-flight path is dropped so it doesn't
+/// walk off to a stale waypoint, and — with `.autosavespawn` on — the
+/// placement is queued as a `.savespawn`. A no-op for players.
+pub(super) async fn settle_npc(
+    caller_id: u32,
+    target: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(e) = space_mgr.get_entity_mut(target) else {
+        return;
+    };
+    if e.is_player {
+        return;
+    }
+    e.spawn_position = Some(e.position);
+    e.spawn_direction = Some(e.direction);
+    cimmeria_cell_combat::cell::service::npc_ai::stop_movement_on(e);
+    if space_mgr.autosave_spawns.contains(&caller_id) {
+        super::spawn::save_spawn(caller_id, Some(target), tx, space_mgr).await;
+    }
+}
+
+/// `.movehere` — put the selected NPC or object exactly where the caller
+/// stands, facing the way the caller faces.
+///
+/// NPCs only (`Target::Mob`): moving a player is `.summon`. The target must be
+/// in the caller's own space — a cross-space move is a transfer, not a
+/// placement. Witnesses see the new position and facing on the next AoI tick
+/// (`EntityMoved` carries both); [`settle_npc`] makes it the NPC's home.
+async fn move_here(
+    caller_id: u32,
+    target: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some((pos, yaw, caller_space)) = space_mgr.get_entity(caller_id).map(|c| {
+        (
+            [c.position.x, c.position.y, c.position.z],
+            c.direction.y,
+            c.space_id,
+        )
+    }) else {
+        return;
+    };
+    let Some(t) = space_mgr.get_entity(target) else {
+        send_gm_feedback(
+            caller_id,
+            &format!("movehere: entity {target} not found"),
+            tx,
+        )
+        .await;
+        return;
+    };
+    if t.is_player {
+        send_gm_feedback(
+            caller_id,
+            "movehere: target is a player -- use .summon to bring a player to you.",
+            tx,
+        )
+        .await;
+        return;
+    }
+    if t.space_id != caller_space {
+        send_gm_feedback(
+            caller_id,
+            &format!("movehere: entity {target} is not in your space."),
+            tx,
+        )
+        .await;
+        return;
+    }
+    if !pos.iter().all(|c| c.is_finite()) || !yaw.is_finite() {
+        send_gm_feedback(
+            caller_id,
+            "movehere: your position is not finite -- nothing moved.",
+            tx,
+        )
+        .await;
+        return;
+    }
+
+    space_mgr.update_position_preserving_facing(target, pos, [0.0; 3]);
+    if let Some(e) = space_mgr.get_entity_mut(target) {
+        e.direction = Vector3::new(0.0, yaw, 0.0);
+    }
+    tracing::info!(
+        caller_id,
+        target,
+        ?pos,
+        yaw_rad = yaw,
+        "GM .movehere: placed entity at caller"
+    );
+    settle_npc(caller_id, target, tx, space_mgr).await;
+
+    let save_hint = if space_mgr.autosave_spawns.contains(&caller_id) {
+        "queued for .seedconfirm"
+    } else {
+        ".savespawn to keep it"
+    };
+    send_gm_feedback(
+        caller_id,
+        &format!(
+            "movehere [{target}]: now at ({:.2}, {:.2}, {:.2}) facing {:.0} deg -- {save_hint}",
+            pos[0],
+            pos[1],
+            pos[2],
+            yaw.to_degrees()
+        ),
+        tx,
+    )
+    .await;
 }
 
 /// Result of the shared "zero args or a complete triple" argument gate.
@@ -183,6 +312,7 @@ async fn location(
         // nothing else, so the facing must survive the move.
         space_mgr.update_position_preserving_facing(target, position, [0.0; 3]);
         space_mgr.note_authorized_teleport(target);
+        settle_npc(caller_id, target, tx, space_mgr).await;
 
         if is_player {
             // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
@@ -282,6 +412,7 @@ async fn rotation(
         if let Some(e) = space_mgr.get_entity_mut(target) {
             e.direction = Vector3::new(pitch, yaw, roll);
         }
+        settle_npc(caller_id, target, tx, space_mgr).await;
     }
 
     let Some(d) = space_mgr.get_entity(target).map(|e| e.direction) else {

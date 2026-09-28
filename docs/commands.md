@@ -497,11 +497,13 @@ Some `.`-commands change **persistent game data** (spawns, patrol paths). These
 are the only commands in the console that touch the database, and how they
 persist is the most important thing to understand before you use them.
 
-> **⚠️ Live DB writes are TEMPORARY — you must commit the seed SQL to keep them.**
+> **⚠️ Nothing is saved until you `.seedconfirm`, and even then only until the next deploy.**
 >
-> When you run a persistence command, the server writes the change to the
-> **running database** immediately, so you see it work and it survives
-> reconnects and server restarts **within the current deploy**.
+> A persistence command changes the world in memory at once and **queues** its
+> SQL. It touches no database. `.seedconfirm` writes your queued changes to the
+> **running database**, so they survive reconnects and server restarts
+> **within the current deploy**, and sends them to SigNoz for a developer to
+> merge. `.seedcancel` throws the queue away and nothing is written.
 >
 > **The next deploy rebuilds the database from the seed files in
 > `db/resources/` and erases anything that isn't committed there.** A live DB
@@ -512,7 +514,7 @@ persist is the most important thing to understand before you use them.
 > (steps below). This is deliberate: the seed files are the single source of
 > truth, and we never hand-write `db/scripts/*.sql` migrations.
 
-**Exactly which commands write to the database, and the seed file each one
+**Exactly which commands queue a database change, and the seed file each one
 must be committed into:**
 
 | Command | DB operation | Table | Commit the SQL into |
@@ -532,30 +534,44 @@ restart, never written to the DB):**
   `.staticmesh`, `.bodyset`, `.eventset`, `.interactiontype`, `.lookat`,
   `.visible`, `.setcombatant`, `.unsetcombatant`, `.addcomponent`,
   `.delcomponent`, `.adddialog`, `.removedialog`, `.dynamicupdate`). To make an
-  edited entity stick, place/configure it, then `.savespawn` it.
+  edited entity stick, place/configure it, then `.savespawn` it. `.savespawn`
+  saves position, heading and tag only.
+- The placement commands `.movehere`, `.location` and `.rotation`. On an NPC,
+  they and `.lookat` also make the new spot and facing the NPC's home, so it
+  does not walk or turn back to where it spawned.
 - `.respawnall` — a live reset of every NPC in your space; no DB write.
-- `.autosavespawn` — a per-session preference toggle; no DB write.
+- `.autosavespawn 1|0` — a per-session toggle. While it is on, `.movehere`,
+  `.lookat`, `.location` and `.rotation` on an NPC queue a `.savespawn` for
+  you.
 
-**The record → confirm → commit workflow:**
+**The queue → confirm → merge workflow:**
 
 1. **Author in-game.** Run the persistence commands (`.savespawn`, `.path_add`,
-   …). Each one applies in memory, writes the live DB (you'll see e.g.
-   `savespawn: live DB write ok (1 row…)`), and **records** the exact SQL. The
-   raw SQL is **not** shown in-game — the client's chat can't be copy-pasted,
-   so it goes out-of-band instead.
-2. **It's logged on the server host.** Every recorded statement is appended as
-   it happens to a per-session file: **`logs/seed-authoring-<session>.sql`**
-   (override the directory with the `CIMMERIA_AUTHORING_LOG_DIR` env var). This
-   file is your durable copy even if you never confirm.
-3. **Confirm when satisfied.** Run **`.seedconfirm`** — it groups your pending
-   statements **per seed file** and emits each block to the server log (and, once
-   the colo Discord integration is enabled, to an authoring channel). Use
-   `.seedpending` to see what's buffered and `.seedcancel` to discard it.
-4. **Commit the SQL (required to survive a deploy).** Open the per-session log
-   (or the `.seedconfirm` output), copy each statement block into the
-   `db/resources/…` seed file named for it in the table above, and commit it to
-   git. **Until that commit lands, the change lives only in the running DB and
-   the next deploy will wipe it.**
+   …). Each one applies in memory and **queues** the exact SQL (`savespawn:
+   queued -- 3 pending`). Saving the same NPC again before you confirm replaces
+   its queued change instead of adding a second one. The raw SQL is **not**
+   shown in-game: the client's chat can't be copy-pasted, so it goes
+   out-of-band instead.
+2. **It's logged on the server host.** Every queued statement is appended as it
+   happens to a per-session file: **`logs/seed-authoring-<session>.sql`**
+   (override the directory with the `CIMMERIA_AUTHORING_LOG_DIR` env var).
+   Confirmed batches are marked `CONFIRMED batch <id>` in the same file.
+3. **Confirm when satisfied.** Run **`.seedconfirm`**. It writes each queued
+   change to the running database and emits the batch to SigNoz under the
+   `authoring` target, all stamped with one `batch` id that the confirm line
+   shows you (`Sent for merge as batch 1-1790...`): one `seed spawn confirmed`
+   event per spawn, with every column as its own field, and one `seed
+   authoring confirmed` event per seed file with the statements to append. Use
+   `.seedpending` to see what's queued and `.seedcancel` to discard it.
+4. **A developer merges the batch (required to survive a deploy).** Hand the
+   batch id to a developer. [Placing NPCs and objects](guides/placing-npcs-and-objects.md#for-developers-merging-a-batch)
+   says how to turn it into a seed commit. **Until that commit lands, the
+   change lives only in the running DB and the next deploy will wipe it.**
+
+A new NPC (one you `.spawn`ed) has no spawn id until the server restarts, so
+once its row is confirmed, `.savespawn` on it again is refused rather than
+inserting a duplicate row. Place it, save it as often as you like, and confirm
+once at the end.
 
 ### Command families
 
@@ -567,8 +583,9 @@ restart, never written to the DB):**
 | Net / AI debug | `.net_seq` `.net_seqto` `.net_seqfrom` `.net_timer` `.net_mapinfo` `.net_speak` `.net_dialog` `.net_challenge` `.debug_velocity` `.debug_controller` `.debug_follow` `.threaten` `.aggression` `.aggro` | ✅ Yes. `.aggro off` stops idle mobs noticing you, `.aggro on` restores it, and `.aggro` alone shows it. `.aggression <1-5|0|clear>` sets the selected mob's aggression override (1 hostile, 3 neutral; 0 means passive; `clear` goes back to its faction) |
 | Crafting | `.learndiscipline` `.forgetdiscipline` `.allcraft` `.craftkit` `.learnblueprint` | ✅ Yes. `.allcraft` on a targeted player sets every paradigm to 7, every discipline to 100 and grants every blueprint (saved), and lets that player craft anywhere until logout. `.craftkit <blueprintId> [count]` grants the target the items of the blueprint's component set 1, `count` (1-10, default 1) times over, into the bags the items allow (crafting components land in the crafting bag). `.learnblueprint <blueprintId>` teaches the target one blueprint. Both answer the GM with one line, refusals included |
 | Mission gaps | `.missionfail` `.missionrewards` | ✅ / 🚧 (preview) |
-| Spawn authoring | `.savespawn` `.delspawn` `.autosavespawn` `.respawnall` `.spawnrandom` | ✅ Yes — `.savespawn`/`.delspawn` **write the DB** (commit seed) |
-| Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **write the DB** (commit seed) |
+| Spawn authoring | `.spawn` `.despawn` `.savespawn` `.delspawn` `.autosavespawn` `.respawnall` `.spawnrandom` | ✅ Yes — `.savespawn`/`.delspawn` **queue a DB change** (`.seedconfirm` writes it; a developer merges the seed). Walkthrough: [Placing NPCs and objects](guides/placing-npcs-and-objects.md) |
+| Placement | `.movehere` `.location` `.rotation` `.lookat` | ✅ Yes — `.movehere` puts the selected NPC or object where you stand, facing the way you face. `.location` and `.rotation` with no arguments report the target's position and facing (in degrees too); with `x y z` or `pitch yaw roll` (radians) they set it. `.lookat` turns the target to face you. On an NPC each one also becomes its home. Pair with `.savespawn` |
+| Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **queue a DB change** (`.seedconfirm` writes it; commit the seed) |
 | Server / maint | `.save` `.reloadmap` `.reloadres` `.removerespawner` `.loglevel` `.logclient` | ❌ Differs (see `.help`) |
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
 | Broadcast | `.announce` | ✅ Yes. `.announce <text>` reaches every online player, `.announce space <text>` only your space instance. Same line as `/gmshout`: your name, the GM flag, the server channel |

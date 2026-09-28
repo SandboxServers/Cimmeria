@@ -4,28 +4,43 @@
 //! In this repo the seed files under `db/resources/` are the source of truth —
 //! the DB is rebuilt from them, and the standing rule is "edit the seed in
 //! `db/resources/`, never a `db/scripts/*.sql` migration." So an authoring
-//! command does three things, in order:
+//! command goes through two stages:
 //!
-//! 1. **Apply in memory** (the caller does this before calling here) so the GM
-//!    sees the effect immediately — a freshly-assigned patrol starts walking now.
-//! 2. **Write the live DB** via [`CellToBaseMsg::ExecuteAuthoringSql`] so the
-//!    change holds across reconnects within the current deploy. This is
-//!    transient: the next deploy rebuilds from seeds and wipes it.
-//! 3. **Record the seed SQL** as the durable artifact for a human to commit.
-//!    Each statement is appended to a per-session on-disk log immediately (so
-//!    nothing is lost even without confirmation) and buffered per-GM for
-//!    [`confirm`], which groups the statements per seed file.
+//! 1. **Queue** ([`record`] / [`record_spawn`]). The caller has already applied
+//!    the effect in memory, so the GM sees it immediately — a moved NPC stands
+//!    in its new spot, a freshly-assigned patrol starts walking. The generated
+//!    SQL is appended to a per-session on-disk log (so nothing is lost) and
+//!    buffered per-GM. **No database is touched yet**; `.seedcancel` drops the
+//!    buffer and nothing was written.
+//! 2. **Confirm** ([`confirm`], `.seedconfirm`). Each queued statement is sent
+//!    to the live DB via [`CellToBaseMsg::ExecuteAuthoringSql`] so the change
+//!    holds across reconnects within the current deploy (transient: the next
+//!    deploy rebuilds from seeds and wipes it), and emitted to telemetry as the
+//!    durable artifact a developer merges into the seed.
 //!
 //! **The raw SQL is never shown in-game** — the client's chat isn't
 //! copy-pasteable, so emitting it there is useless. It goes out-of-band: the
-//! per-session log file ([`session_log_path`]) and the server's tracing log
-//! today, and (once enabled on the colo) a Discord authoring channel. In-game
-//! feedback is status-only ("recorded — N pending", "confirmed: M statements").
+//! per-session log file ([`session_log_path`]) and the `authoring` tracing
+//! target, which the OTLP exporter ships to SigNoz. In-game feedback is
+//! status-only ("queued — N pending", "saved N change(s)").
+//!
+//! # What reaches SigNoz on confirm
+//!
+//! Every confirm stamps one `batch` id on all its events:
+//!
+//! - one `seed spawn confirmed` event per `.savespawn` / `.delspawn`, carrying
+//!   every spawnlist column as its own field (`op`, `spawn_id`, `world`,
+//!   `world_id`, `template_id`, `x`/`y`/`z`, `heading`, `tag`) plus the exact
+//!   `sql`, so the row can be rebuilt without parsing the statement;
+//! - one `seed authoring confirmed` event per seed file, whose body is the
+//!   statement block to append to that file.
+//!
+//! How a developer turns a batch into a seed commit is in
+//! `docs/guides/placing-npcs-and-objects.md`.
 //!
 //! # Future Discord hook
 //!
-//! [`confirm`] groups the buffer per seed file and emits each block to tracing
-//! today. The same per-file payload is exactly what a `cimmeria-discord`
+//! The per-file block [`confirm`] emits is exactly what a `cimmeria-discord`
 //! `EventKind` (e.g. `SeedAuthored`) would post once the colo integration is on
 //! — a sink swap inside [`confirm`], not a redesign. Discord is intentionally
 //! NOT wired here yet (it's off in the colo, and adding an event type is its own
@@ -40,15 +55,11 @@ use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{AuthoringChange, SpaceManager, SpawnRowChange, SpawnRowOp};
 
-/// Record one authored change: send the live DB write to the base, append the
-/// statement to the per-session on-disk log, and buffer it per-GM for
-/// [`confirm`]. `label` is a short human tag (e.g. `"savespawn"`); `seed_file`
-/// is the `db/resources/` path the statement should be committed into.
-///
-/// In-game feedback is a status line only — the SQL itself goes to the log file
-/// and (on confirm) tracing / Discord.
+/// Queue one authored change for [`confirm`]. `label` is a short human tag
+/// (e.g. `"path_add"`); `seed_file` is the `db/resources/` path the statement
+/// should be committed into. Touches no database.
 pub(crate) async fn record(
     caller_id: u32,
     seed_file: &str,
@@ -57,54 +68,96 @@ pub(crate) async fn record(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    // 2. Live DB write (transient — wiped on next deploy). A closed base
-    //    channel means the live write is lost; warn so the GM's "recorded"
-    //    feedback isn't silently overstating what happened (the seed log + buffer
-    //    below still capture the durable artifact).
-    if let Err(e) = tx
-        .send(CellToBaseMsg::ExecuteAuthoringSql {
-            entity_id: caller_id,
-            label: label.to_string(),
-            sql: sql.to_string(),
-        })
-        .await
-    {
-        tracing::warn!(
-            entity_id = caller_id,
-            label,
-            error = %e,
-            "authoring live-write enqueue failed (base channel closed); seed still recorded"
-        );
+    queue(
+        caller_id,
+        change(seed_file, label, sql, None),
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+/// [`record`] for a spawnlist change, carrying the structured row that
+/// [`confirm`] emits to telemetry.
+///
+/// A GM re-saving the same NPC before confirming replaces the queued change
+/// rather than adding a second one, so "move it, save, nudge it, save again"
+/// confirms exactly one row — and never a second `INSERT` for one NPC.
+pub(crate) async fn record_spawn(
+    caller_id: u32,
+    seed_file: &str,
+    label: &str,
+    sql: &str,
+    row: SpawnRowChange,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    queue(
+        caller_id,
+        change(seed_file, label, sql, Some(row)),
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+fn change(
+    seed_file: &str,
+    label: &str,
+    sql: &str,
+    spawn: Option<SpawnRowChange>,
+) -> AuthoringChange {
+    AuthoringChange {
+        seed_file: seed_file.to_string(),
+        label: label.to_string(),
+        sql: sql.to_string(),
+        spawn,
     }
+}
 
-    // 3a. Persist to the per-session on-disk log immediately.
-    append_session_log(format!("-- [{label}] -> {seed_file}\n{sql}\n")).await;
+async fn queue(
+    caller_id: u32,
+    change: AuthoringChange,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    append_session_log(format!(
+        "-- [{}] queued (not yet confirmed) -> {}\n{}\n",
+        change.label, change.seed_file, change.sql
+    ))
+    .await;
 
-    // 3b. Buffer per-GM for grouped confirmation.
-    space_mgr
-        .authoring_changes
-        .entry(caller_id)
-        .or_default()
-        .push((seed_file.to_string(), sql.to_string()));
+    let label = change.label.clone();
+    let buffer = space_mgr.authoring_changes.entry(caller_id).or_default();
+    let replaced = match change.spawn.as_ref().map(|s| s.entity_id) {
+        Some(entity_id) => {
+            let before = buffer.len();
+            buffer.retain(|c| c.spawn.as_ref().map(|s| s.entity_id) != Some(entity_id));
+            before != buffer.len()
+        }
+        None => false,
+    };
+    buffer.push(change);
+    let pending = buffer.len();
 
-    let pending = space_mgr
-        .authoring_changes
-        .get(&caller_id)
-        .map_or(0, Vec::len);
+    let note = if replaced {
+        " (replaced your earlier save of this entity)"
+    } else {
+        ""
+    };
     send_gm_feedback(
         caller_id,
         &format!(
-            "{label}: recorded ({pending} pending). .seedconfirm to emit, .seedcancel to discard."
+            "{label}: queued{note} -- {pending} pending. .seedconfirm to save, .seedcancel to discard."
         ),
         tx,
     )
     .await;
 }
 
-/// Flush the caller's buffered authoring statements: group them per seed file,
-/// emit each file's block to the server log (and the per-session on-disk log),
-/// then clear the buffer. The developer confirms here, so only reviewed sets
-/// reach the out-of-band sinks.
+/// `.seedconfirm` — write the caller's queued changes to the live DB, emit them
+/// to telemetry (see the module doc for the event shapes), then clear the
+/// buffer.
 pub(crate) async fn confirm(
     caller_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -119,50 +172,120 @@ pub(crate) async fn confirm(
         return;
     }
 
-    // Group by seed file, preserving first-seen file order and per-file
-    // statement order.
-    let mut files: Vec<String> = Vec::new();
-    let mut by_file: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-    for (file, sql) in &changes {
-        if !files.contains(file) {
-            files.push(file.clone());
+    let gm = space_mgr.player_identity(caller_id);
+    let batch = batch_id(caller_id);
+    let mut spawns = 0usize;
+    let mut live_failed = 0usize;
+
+    for c in &changes {
+        if let Err(e) = tx
+            .send(CellToBaseMsg::ExecuteAuthoringSql {
+                entity_id: caller_id,
+                label: c.label.clone(),
+                sql: c.sql.clone(),
+            })
+            .await
+        {
+            // The telemetry below still carries the change, so a developer can
+            // merge it; only the live preview is lost.
+            live_failed += 1;
+            tracing::warn!(
+                target: "authoring",
+                entity_id = caller_id,
+                account_id = gm.account_id,
+                player_id = gm.player_id,
+                batch = %batch,
+                label = %c.label,
+                error = %e,
+                "authoring live write not sent (base channel closed); change still emitted"
+            );
         }
-        by_file.entry(file.clone()).or_default().push(sql.clone());
+        if let Some(s) = &c.spawn {
+            spawns += 1;
+            if s.op == SpawnRowOp::Insert {
+                space_mgr.confirmed_new_spawns.insert(s.entity_id);
+            }
+            tracing::info!(
+                target: "authoring",
+                entity_id = caller_id,
+                account_id = gm.account_id,
+                player_id = gm.player_id,
+                batch = %batch,
+                seed_file = %c.seed_file,
+                label = %c.label,
+                op = s.op.as_str(),
+                npc_entity_id = s.entity_id,
+                spawn_id = s.spawn_id,
+                world = %s.world,
+                world_id = s.world_id,
+                template_id = s.template_id,
+                x = s.x,
+                y = s.y,
+                z = s.z,
+                heading = s.heading,
+                heading_deg = s.heading.to_degrees(),
+                tag = s.tag.as_deref(),
+                sql = %c.sql,
+                "seed spawn confirmed"
+            );
+        }
     }
 
+    // Group by seed file, preserving first-seen file order and per-file
+    // statement order.
+    let mut files: Vec<&str> = Vec::new();
+    for c in &changes {
+        if !files.contains(&c.seed_file.as_str()) {
+            files.push(&c.seed_file);
+        }
+    }
     for file in &files {
-        let stmts = &by_file[file];
+        let stmts: Vec<&str> = changes
+            .iter()
+            .filter(|c| c.seed_file == *file)
+            .map(|c| c.sql.as_str())
+            .collect();
         let block = stmts.join("\n");
-        // Out-of-band emission #1: server tracing log. Future Discord sink
-        // posts this same (file, block) payload.
         tracing::info!(
             target: "authoring",
             entity_id = caller_id,
+            account_id = gm.account_id,
+            player_id = gm.player_id,
+            batch = %batch,
             seed_file = %file,
             statements = stmts.len(),
             "seed authoring confirmed:\n{block}"
         );
-        // Out-of-band emission #2: per-session on-disk log, marked confirmed.
         append_session_log(format!(
-            "-- ===== CONFIRMED by entity {caller_id} -> commit into {file} =====\n{block}\n"
+            "-- ===== CONFIRMED batch {batch} by entity {caller_id} -> commit into {file} =====\n{block}\n"
         ))
         .await;
     }
 
+    let live = if live_failed == 0 {
+        "live on this server now".to_string()
+    } else {
+        format!("{live_failed} could NOT be written live (see server log)")
+    };
     send_gm_feedback(
         caller_id,
         &format!(
-            "seedconfirm: {} statement(s) across {} seed file(s) emitted to the server log + {}",
+            "seedconfirm: saved {} change(s), {spawns} of them spawn(s); {live}. \
+             Sent for merge as batch {batch}.",
             changes.len(),
-            files.len(),
-            session_log_path()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "(log unavailable)".to_string()),
         ),
         tx,
     )
     .await;
+}
+
+/// A short id shared by every event of one confirm, so a developer can pull a
+/// whole batch out of SigNoz with one `batch = …` filter.
+fn batch_id(caller_id: u32) -> String {
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    format!("{caller_id}-{ms}")
 }
 
 /// Report how many authoring statements are buffered for the caller, per file.
@@ -176,7 +299,7 @@ pub(crate) async fn pending(
         None => send_gm_feedback(caller_id, "seedpending: no pending changes.", tx).await,
         Some(changes) => {
             let mut counts: Vec<(String, usize)> = Vec::new();
-            for (file, _) in changes {
+            for file in changes.iter().map(|c| &c.seed_file) {
                 match counts.iter_mut().find(|(f, _)| f == file) {
                     Some((_, n)) => *n += 1,
                     None => counts.push((file.clone(), 1)),
@@ -245,7 +368,7 @@ fn session_log_path() -> Option<PathBuf> {
 }
 
 /// Append a block to the per-session authoring log, best-effort. Failures warn
-/// but never abort the command — the live DB write and tracing log still landed.
+/// but never abort the command — the queue and the SigNoz events still hold the change.
 ///
 /// The actual file I/O runs on a blocking thread (`spawn_blocking`) so a
 /// slow/stalled disk can't block the cell's async worker thread, even though
@@ -287,8 +410,9 @@ mod tests {
         assert_eq!(sql_str(Some("O'Neill")), "'O''Neill'");
     }
 
+    /// Queue-then-confirm: recording writes nothing live; confirming does.
     #[tokio::test]
-    async fn record_buffers_and_sends_live_write() {
+    async fn record_queues_and_confirm_sends_live_write() {
         let mut mgr = SpaceManager::new(1);
         let (tx, mut rx) = mpsc::channel(16);
         record(
@@ -300,19 +424,20 @@ mod tests {
             &mut mgr,
         )
         .await;
-        // Buffered for confirm.
         assert_eq!(mgr.authoring_changes.get(&7).map(Vec::len), Some(1));
-        // First message is the live-write request; a status feedback follows.
-        let mut saw_live = false;
-        while let Ok(msg) = rx.try_recv() {
-            if matches!(msg, CellToBaseMsg::ExecuteAuthoringSql { .. }) {
-                saw_live = true;
+        let live_writes = |rx: &mut mpsc::Receiver<CellToBaseMsg>| {
+            let mut n = 0;
+            while let Ok(msg) = rx.try_recv() {
+                if matches!(msg, CellToBaseMsg::ExecuteAuthoringSql { .. }) {
+                    n += 1;
+                }
             }
-        }
-        assert!(
-            saw_live,
-            "record must send ExecuteAuthoringSql for the live write"
-        );
+            n
+        };
+        assert_eq!(live_writes(&mut rx), 0, "record must not touch the DB");
+
+        confirm(7, &tx, &mut mgr).await;
+        assert_eq!(live_writes(&mut rx), 1, "confirm sends the live write");
     }
 
     #[tokio::test]

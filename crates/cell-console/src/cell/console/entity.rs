@@ -233,20 +233,45 @@ async fn look_at(
     let Some(caller_pos) = space_mgr.get_entity(caller_id).map(|e| e.position) else {
         return;
     };
+    let Some(yaw) = space_mgr
+        .get_entity(target)
+        .and_then(|e| yaw_towards(e.position, caller_pos))
+    else {
+        send_gm_feedback(
+            caller_id,
+            &format!("lookat [{target}]: you are standing on it -- step away and try again"),
+            tx,
+        )
+        .await;
+        return;
+    };
+    // `direction` is [pitch, yaw, roll] in radians, never a facing vector.
     if let Some(e) = space_mgr.get_entity_mut(target) {
-        let dx = caller_pos.x - e.position.x;
-        let dz = caller_pos.z - e.position.z;
-        let len = (dx * dx + dz * dz).sqrt();
-        if len > f32::EPSILON {
-            e.direction = cimmeria_common::Vector3::new(dx / len, 0.0, dz / len);
-        }
+        e.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
     }
+    super::placement::settle_npc(caller_id, target, tx, space_mgr).await;
     send_gm_feedback(
         caller_id,
-        &format!("lookat [{target}]: facing you (in-memory; shown on next AoI entry)"),
+        &format!(
+            "lookat [{target}]: now facing you ({:.0} deg)",
+            yaw.to_degrees()
+        ),
         tx,
     )
     .await;
+}
+
+/// Yaw (radians) that turns an entity at `from` to face `to`, on the ground
+/// plane. Same convention as the NPC movement tick, which faces a mover along
+/// its step with `dx.atan2(dz)`. `None` when the two points share an x/z spot
+/// and there is no direction to face.
+pub(super) fn yaw_towards(
+    from: cimmeria_common::Vector3,
+    to: cimmeria_common::Vector3,
+) -> Option<f32> {
+    let dx = to.x - from.x;
+    let dz = to.z - from.z;
+    (dx * dx + dz * dz > f32::EPSILON).then(|| dx.atan2(dz))
 }
 
 /// `.visible <1|0>` — show/hide the target. Hiding fans `EntityInvisible` to the

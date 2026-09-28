@@ -120,6 +120,7 @@ impl SpaceManager {
         // authoring SQL or the autosave-spawn flag.
         self.authoring_changes.remove(&entity_id);
         self.autosave_spawns.remove(&entity_id);
+        self.confirmed_new_spawns.remove(&entity_id);
         // A destroy (disconnect, cross-world teleport, GM despawn, death)
         // before a deferred content-engine action's delay elapses must drop
         // the action, not fire it later against a torn-down (and possibly
