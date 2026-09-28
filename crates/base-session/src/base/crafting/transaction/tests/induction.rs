@@ -58,6 +58,7 @@ async fn logout_mid_induction_consumes_nothing() {
         expertise: vec![],
         learn_blueprints: vec![],
         required_knowledge: None,
+        research: None,
     };
     let (sessions, scheduler) = engine();
 

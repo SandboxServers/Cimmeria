@@ -65,6 +65,7 @@ async fn respec_drops_the_queue_so_nothing_completes() {
         expertise: vec![(78, 1)],
         learn_blueprints: vec![],
         required_knowledge: None,
+        research: None,
     };
     let scheduler = Arc::new(ManualScheduler::default());
     let sessions = Arc::new(CraftingSessions::new(

@@ -224,6 +224,7 @@ pub fn plan_craft(
                     blueprint_id,
                     discipline_id,
                 }),
+            research: None,
         },
     })
 }
