@@ -53,12 +53,17 @@ fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
     }
 }
 
+/// One shared Castle_CellBlock space. Non-instanced on purpose: for an
+/// instanced world every `create_entity` opens a fresh space, which put
+/// each test's caster and target in different instances (#906).
 fn make_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
-    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
-        .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" /></Spaces>"#,
+    )
+    .unwrap();
     mgr
 }
 

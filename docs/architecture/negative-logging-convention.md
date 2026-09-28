@@ -293,6 +293,10 @@ for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
 
+## Cross-space cast refusal (#906)
+
+`useAbility` resolves its target id with `SpaceManager::get_entity`, which searches every space. A player's cast at a target that is not in the caster's space is refused in `use_ability/fire_los.rs` (at launch, which is also the fire for a zero-warmup cast) with one row on target `abilities` at `debug!`: `event = "cast_refused"`, `reason = "target_other_space"`, `entity_id`, `account_id`, `player_id`, `ability_id`, `target_id`, `caster_space_id`, `target_space_id`, `error_code`. DEBUG, because only a forged or stale packet names such a target, and a WARN would let it flood the log. The refusal is not silent: the caster gets `onErrorCode(0, ability_id, 0)`. If that cannot be queued, a WARN `cast_refused_send_failed` with the same identity fields says so. The guard is `a_target_in_another_space_is_refused_at_launch` in `use_ability/tests/target_validity.rs`.
+
 ## Pet command seams (PT-04)
 
 The owner's pet commands (cell methods 88-90, `cell_methods/player/pet/`) carry a client-supplied pet id. The ownership guard (CAT-C-11 / #462) resolves it through `SpaceManager::owned_pet`, which logs every mismatch once on target `pets.command` at `debug!` (`event = "ownership_rejected"`, `reason`, the caller as `caller_id` plus its `account_id` / `player_id`). DEBUG, because a client can name any id at will. The handler adds no second row, but the refusal is never silent: the caller also gets `onErrorCode`.

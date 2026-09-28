@@ -205,6 +205,16 @@ No.
 
 ### CAT-C-04 — `useAbility` target has no LOS / navmesh / AoI membership check
 
+**Status**: 🟡 PARTIAL. Line of sight: a player's targeted ability is refused at
+fire time when the world's collision occluder puts a wall between the eyes
+(NA31, `use_ability/fire_los.rs`, `onErrorCode` 39). Same space (#906): a
+player's cast at a target in another space or instance, which `get_entity`
+still finds and `distance_to` can put in range, is refused at launch in the
+same check (`onErrorCode` 0, `abilities` DEBUG `cast_refused
+reason=target_other_space`); the warmup fire and the auto-cycle tick already
+re-checked the space or now stop on it. Still open: AoI membership (the target
+need not be in the caster's witness list) and navmesh reachability.
+
 **Severity**: High
 **Class**: Missing visibility/reachability gate
 **Wire surface**: `Event_NetOut_UseAbility` (cell method 68)
