@@ -64,7 +64,7 @@ The plan is [docs/analysis/black-market/README.md](../../../docs/analysis/black-
 | Degrade | If `CimmeriaBMNative` is missing (the game was started without the launcher), the window still opens and shows "The Black Market needs the Cimmeria client patch", and so does any button that would have sent a request. |
 | Watch list | Deferred (D4). The Watched tab says "The watch list is not available yet." and sends nothing. `onWatchedItems` renders item definitions in the Watched rows, for BM-08. |
 | Open | Each open resets the store, shows Search Results and runs an opening search, because the DLL keeps no state. Inside the stock 4-second search delay it says "Press Search to list auctions." instead. |
-| Logging | Every UI and `CimmeriaBM` entry point is wrapped in a `pcall` guard. A failure logs `[Cimmeria BM] <handler> failed: <error>` through `Debug:log`, the client's own Lua logger, and through `CimmeriaBMNative.log` when the DLL provides one. Load, refused sends, error ids and timeouts are logged with the same tag. |
+| Logging | Every UI and `CimmeriaBM` entry point is wrapped in a `pcall` guard. A failure logs `[Cimmeria BM] <handler> failed: <error>` through `Debug:log`, the client's own Lua logger (falling back to `print`). Nothing is written to the DLL's log. Load, refused sends, error ids and timeouts are logged with the same tag. |
 
 ## What changed in `BlackMarket.layout`
 

@@ -66,11 +66,8 @@ BlackMarketMod.SEND_FAILURE_TEXT = {
 -- Logging, guards and status line
 --=============================================================================
 function BlackMarketMod.log( text )
+    -- The client's own Lua log, which the launcher tails (plan 5.1).
     local line = BlackMarketMod.LOG_TAG..tostring(text)
-    local native = BlackMarketMod.native()
-    if native and type(native.log) == 'function' then
-        pcall(native.log, line)
-    end
     local ok = pcall(function() Debug:log( line ) end)
     if not ok then
         pcall(print, line)
