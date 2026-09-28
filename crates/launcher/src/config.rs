@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::client_setup::LoginServer;
 use crate::state::atomic_write;
 
 /// Default manifest URL. Points at the GitHub Release that owns the
@@ -11,10 +12,6 @@ use crate::state::atomic_write;
 /// [`docs/client/launcher-distribution-setup.md`](../../docs/client/launcher-distribution-setup.md).
 pub const DEFAULT_MANIFEST_URL: &str =
     "https://github.com/SandboxServers/Cimmeria/releases/download/content-current/manifest.json";
-
-/// Default hostname patched into SGW.exe's `.rdata` (replaces
-/// `www.stargateworlds.com`).
-pub const DEFAULT_SERVER_HOST: &str = "play.cimmeria.app";
 
 /// SAS URL for log uploads (PUT-only, scoped to the `logs/` prefix), baked
 /// in at compile time from the `LAUNCHER_LOG_SAS_URL` env var. In release CI
@@ -49,7 +46,12 @@ pub struct LauncherConfig {
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     pub install_path: PathBuf,
-    pub server_host: String,
+    /// Login servers written into the client's `LoginInternal.lua`; see
+    /// [`crate::client_setup::login_servers`]. Replaces the old
+    /// `server_host`, which fed the retired `.rdata` patch and is ignored
+    /// when an old config still has it.
+    #[serde(default = "crate::client_setup::login_servers::default_servers")]
+    pub login_servers: Vec<LoginServer>,
     pub manifest_url: String,
     #[serde(default)]
     pub telemetry: TelemetrySettings,
@@ -127,7 +129,7 @@ impl Default for LauncherConfig {
         Self {
             schema_version: CONFIG_SCHEMA_VERSION,
             install_path: default_install_path(),
-            server_host: DEFAULT_SERVER_HOST.to_string(),
+            login_servers: crate::client_setup::login_servers::default_servers(),
             manifest_url: DEFAULT_MANIFEST_URL.to_string(),
             telemetry: TelemetrySettings::default(),
             client_patches: ClientPatchesSettings::default(),
@@ -199,7 +201,10 @@ mod tests {
         let cfg = LauncherConfig {
             schema_version: CONFIG_SCHEMA_VERSION,
             install_path: PathBuf::from("X"),
-            server_host: "Y".into(),
+            login_servers: vec![LoginServer {
+                name: "Y".into(),
+                url: "http://y:8081".into(),
+            }],
             manifest_url: "Z".into(),
             telemetry: TelemetrySettings {
                 enabled: false,
@@ -213,7 +218,7 @@ mod tests {
         cfg.save(&path).unwrap();
         let loaded = LauncherConfig::load(&path).unwrap();
         assert_eq!(loaded.install_path, PathBuf::from("X"));
-        assert_eq!(loaded.server_host, "Y");
+        assert_eq!(loaded.login_servers[0].name, "Y");
         assert_eq!(loaded.manifest_url, "Z");
         assert!(!loaded.telemetry.enabled, "opt-out must roundtrip");
         assert_eq!(loaded.client_patches, cfg.client_patches);
@@ -273,6 +278,24 @@ mod tests {
             cfg.telemetry.enabled,
             "legacy config must default telemetry.enabled to true so an upgrade \
              doesn't silently change behaviour"
+        );
+    }
+
+    // A config from a launcher that still had `server_host` loads, and gets
+    // the default login server list.
+    #[test]
+    fn load_config_with_the_retired_server_host_uses_default_login_servers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version":1,"install_path":"X","server_host":"Y","manifest_url":"Z"}"#,
+        )
+        .unwrap();
+        let cfg = LauncherConfig::load(&path).unwrap();
+        assert_eq!(
+            cfg.login_servers,
+            crate::client_setup::login_servers::default_servers()
         );
     }
 

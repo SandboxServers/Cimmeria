@@ -10,9 +10,12 @@
 //!    download → verify → unpack (overlay-style) → record in state. A
 //!    patch unpacks into the install dir, or into the client's
 //!    `SGWGame/` directory when its manifest entry says `"root":
-//!    "sgw_game"` (see [`crate::patch_dest`]).
-//! 3. Patch SGW.exe `.rdata` hostname if it still contains the original CME
-//!    string. Idempotent.
+//!    "sgw_game"` (see [`crate::patch_dest`]). A patch zip carrying a
+//!    `cimmeria-patch.json` recipe rebuilds files from the player's own
+//!    stock files by delta (`cimmeria-patchset`).
+//! 3. Client setup ([`crate::client_setup`]): write `LoginInternal.lua`
+//!    from the configured login servers and switch ASLR off in SGW.exe.
+//!    Idempotent; it also runs before every launch.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -26,7 +29,6 @@ use tracing::{info, warn};
 use crate::install_layout;
 use crate::manifest::{blob_url, Manifest, PatchEntry, SeedEntry};
 use crate::patch_dest::patch_dest;
-use crate::patch_rdata;
 use crate::state::{InstalledState, StateError};
 use crate::unpack::{self, UnpackError, UnpackSink};
 
@@ -40,8 +42,6 @@ pub enum InstallError {
     Unpack(#[from] UnpackError),
     #[error("State error: {0}")]
     State(#[from] StateError),
-    #[error("Hostname patch error: {0}")]
-    Patch(#[from] patch_rdata::PatchError),
     #[error("Hash mismatch for {what}: expected {expected}, got {actual}")]
     HashMismatch {
         what: String,
@@ -92,7 +92,7 @@ pub struct InstallContext<'a> {
     pub manifest_url: &'a str,
     pub install_dir: &'a Path,
     pub manifest: &'a Manifest,
-    pub server_host: &'a str,
+    pub login_servers: &'a [crate::client_setup::LoginServer],
     pub cancel: CancellationToken,
     pub progress: tokio::sync::mpsc::UnboundedSender<Progress>,
     /// Shared HTTP client owned by the worker — reused across the
@@ -109,19 +109,19 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
     let seed_matches = state.seed_sha256.as_deref() == Some(ctx.manifest.seed.sha256.as_str());
     if !seed_matches {
         apply_seed(&ctx, &ctx.manifest.seed).await?;
-        if install_layout::place_bundled_cooked_data(ctx.install_dir)? {
-            info!("Moved the bundled cooked-data PAKs to Working\\SGWGame\\SourceCache.en-us");
-        }
-        // Re-seeding invalidates the applied-patches list, but we keep
-        // patched_host across re-seeds — the seed always contains an
-        // unpatched SGW.exe, so we'll patch fresh below.
+        // Re-seeding invalidates the applied-patches list.
         state = InstalledState {
             seed_sha256: Some(ctx.manifest.seed.sha256.clone()),
             applied_patches: Vec::new(),
-            patched_host: None,
             seed_adopted: false,
         };
         state.save(ctx.install_dir)?;
+    }
+
+    // After a fresh seed, and for adopted installs that never had it: the
+    // patches below expect the bundled PAKs in SourceCache.en-us.
+    if install_layout::place_bundled_cooked_data(ctx.install_dir)? {
+        info!("Moved the bundled cooked-data PAKs to Working\\SGWGame\\SourceCache.en-us");
     }
 
     for patch in &ctx.manifest.patches {
@@ -134,20 +134,9 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
         state.save(ctx.install_dir)?;
     }
 
-    let exe = install_layout::sgw_exe(ctx.install_dir);
-    if exe.is_file() {
-        let data = std::fs::read(&exe)?;
-        // Re-patch when:
-        //   - the binary still has the original CME literal (fresh install
-        //     or re-seed), OR
-        //   - the previously-patched host no longer matches `server_host`
-        //     (user edited the config between installs).
-        if patch_rdata::host_differs(&data, ctx.server_host, state.patched_host.as_deref()) {
-            patch_rdata::patch_exe_any(&exe, ctx.server_host, state.patched_host.as_deref())?;
-            state.patched_host = Some(ctx.server_host.to_string());
-            state.save(ctx.install_dir)?;
-            info!("Patched SGW.exe hostname to '{}'", ctx.server_host);
-        }
+    if install_layout::sgw_exe(ctx.install_dir).is_file() {
+        let report = crate::client_setup::prepare(ctx.install_dir, ctx.login_servers)?;
+        info!(?report, "Client setup done");
     } else {
         warn!("SGW.exe missing after install — verify the seed manifest entry");
     }
@@ -421,7 +410,7 @@ pub enum AdoptError {
 /// (returns [`AdoptError::AlreadyManaged`]). The user must remove the
 /// state file by hand to re-adopt, which is the right behaviour because
 /// adopt-over-managed would silently discard the real `applied_patches`
-/// list and the recorded `patched_host`.
+/// list.
 pub fn adopt_existing_install(
     install_dir: &Path,
     manifest: &crate::manifest::Manifest,
@@ -438,7 +427,6 @@ pub fn adopt_existing_install(
     let state = InstalledState {
         seed_sha256: Some(manifest.seed.sha256.clone()),
         applied_patches: Vec::new(),
-        patched_host: None,
         seed_adopted: true,
     };
     state.save(install_dir)?;
@@ -546,7 +534,7 @@ mod tests {
             manifest_url: "https://example.invalid/manifest.json",
             install_dir: dir.path(),
             manifest: &manifest,
-            server_host: "play.cimmeria.app",
+            login_servers: &[],
             cancel: CancellationToken::new(),
             progress: tx,
             http: &http,
@@ -708,7 +696,7 @@ mod tests {
 
     // Adopt-over-managed: the second call refuses because overwriting
     // a real install's state would silently discard the applied-patches
-    // list and the recorded patched_host. User must delete the marker
+    // list. User must delete the marker
     // by hand to re-adopt.
     #[test]
     fn adopt_existing_install_rejects_already_managed_install() {

@@ -14,11 +14,13 @@ path = "src/bin/pack-client-overlay.rs"
 test = false
 
 [dependencies]
-# Shared client launch primitives (suspended launch, DLL injection,
-# .rdata hostname patch) — extracted here so cimmeria-lab reuses them
-# (issue #685). Re-exported at the launcher crate root as `launch` /
-# `inject` / `patch_rdata` so existing call sites are unchanged.
+# Shared client launch primitives (suspended launch, DLL injection) —
+# extracted here so cimmeria-lab reuses them (issue #685). Re-exported at
+# the launcher crate root as `launch`.
 cimmeria-client-launch = { path = "../client-launch" }
+# Patch zips that rebuild client files from the player's own stock files
+# by delta (src/unpack/zip.rs).
+cimmeria-patchset = { path = "../patchset" }
 
 # Native window + immediate-mode UI. Default-features off so we don't pull in
 # `persistence` (we manage our own JSON state file) or accesskit.

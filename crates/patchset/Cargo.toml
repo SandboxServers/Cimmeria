@@ -1,0 +1,33 @@
+[package]
+name = "cimmeria-patchset"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Client patch sets for the SGW launcher: binary deltas against the player's own stock client files (no CME bytes shipped), plus the build and manifest-signing tool."
+
+[lib]
+name = "cimmeria_patchset"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cimmeria-patchset"
+path = "src/bin/cimmeria-patchset.rs"
+
+[dependencies]
+# Rebuilds the uncompressed form of a stock .umap/.upk on the player's
+# machine, the source our patched maps are diffed against.
+cimmeria-upk = { path = "../upk" }
+# bsdiff 4.x deltas.
+qbsdiff = "1.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+zip = { workspace = true }
+# Manifest signing (the tool) and verification (tests). The launcher
+# verifies with its own copy of the public key.
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc"] }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+tempfile = "3"

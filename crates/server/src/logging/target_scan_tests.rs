@@ -84,6 +84,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "start32",
         "i686 launcher helper; runs beside SGW.exe, never inside the server; it prints one stdout line to the launcher and emits no tracing events",
     ),
+    (
+        "patchset",
+        "library linked into the launcher, plus an offline CLI; no tracing events reach the server",
+    ),
     ("lab", "the research-lab supervisor process"),
     ("supervisor", "the process supervisor"),
     ("navmesh-extractor", "offline build tool"),

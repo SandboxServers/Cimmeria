@@ -1,0 +1,4 @@
+# Patch inputs and built zips are hashed into the launcher manifest, so
+# git must store and check them out byte for byte (no CRLF conversion).
+* -text
+*.md text

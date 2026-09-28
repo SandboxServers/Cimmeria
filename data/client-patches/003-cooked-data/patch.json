@@ -1,0 +1,11 @@
+{
+  "id": "003-cooked-data",
+  "ops": [
+    {"target": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSeqEvent.pak", "sources": [{"path": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSeqEvent.pak"}]},
+    {"target": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSetEvent.pak", "sources": [{"path": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSetEvent.pak"}]},
+    {"target": "Working/SGWGame/SourceCache.en-us/CookedInteractionSet.pak", "sources": [{"path": "Working/SGWGame/SourceCache.en-us/CookedInteractionSet.pak"}]}
+  ],
+  "files": [
+    {"path": "Working/SGWGame/SourceCache.en-us/CookedBehaviorEvents.pak", "from": "../../cache/CookedBehaviorEvents.pak"}
+  ]
+}

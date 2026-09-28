@@ -265,7 +265,7 @@ impl Worker {
                 manifest_url: &config.manifest_url,
                 install_dir: &install_dir,
                 manifest: &manifest,
-                server_host: &config.server_host,
+                login_servers: &config.login_servers,
                 cancel,
                 progress: prog_tx,
                 http: &http,

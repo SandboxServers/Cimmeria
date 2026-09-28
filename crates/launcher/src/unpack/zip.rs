@@ -4,10 +4,34 @@ use std::path::Path;
 
 use super::{UnpackError, UnpackSink};
 
+fn patchset_err(e: cimmeria_patchset::PatchsetError) -> UnpackError {
+    UnpackError::Patchset(e.to_string())
+}
+
 /// Extract every entry of `zip_path` into `dest`, overwriting existing
 /// files. Entries whose names would escape `dest` are skipped by
 /// `enclosed_name`.
+///
+/// A zip carrying a `cimmeria-patch.json` recipe is a patch set: it is
+/// applied with `cimmeria-patchset`, which rebuilds files from the stock
+/// ones in `dest` and then writes the overlay entries.
 pub(super) fn extract(zip_path: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), UnpackError> {
+    if cimmeria_patchset::apply::has_recipe(zip_path).map_err(patchset_err)? {
+        sink.check_cancel()?;
+        let mut n = 0;
+        let report = cimmeria_patchset::apply(zip_path, dest, &mut |name| {
+            n += 1;
+            sink.report("patching", n, n, &dest.join(name));
+        })
+        .map_err(patchset_err)?;
+        tracing::info!(
+            rebuilt = report.rebuilt.len(),
+            already_current = report.already_current.len(),
+            overlay_files = report.overlay_files,
+            "applied patch set"
+        );
+        return Ok(());
+    }
     let file = std::fs::File::open(zip_path)?;
     let mut archive = ::zip::ZipArchive::new(file)?;
     let total = archive.len();

@@ -2358,7 +2358,7 @@ The client carries a Mercury-specific logger and a small set of `ServerConnectio
 | `ServerConnection::loggedOff` reason log | `ghidra://SGW.exe@0x019d0768` (string `"ServerConnection::loggedOff: The server has disconnected us. reason = %d\n"`) | Numeric disconnect reason logged on teardown |
 | `REASON_INACTIVITY` symbolic name | `ghidra://SGW.exe@0x019d11f0`[^net-inactivity-timeout] | The named-reason string emitted on the 15-second inactivity timeout (see §2.4 R10) |
 | Packet sniffer + AES key dump (community tooling) | `binaries/AtreaLoader.config.xml` `Sniffer=true` NVP[^atrea-loader-config] | Captures `.pcap` to `binaries/sessions/DATE.pcap` and dumps the AES session key to `binaries/sessions/DATE-keys.txt` — wire-capture verification path for Section 1 claims |
-| SGW launcher log (log4j) | `binaries/SGWLogConfig.xml` → `SGWDebugLog.log` | Java/log4j logger from `AtreaLoader.exe`; orthogonal to the binary's own `MercuryLogger` / `AnsiLogger` paths |
+| SGW debug log (log4cxx) | `binaries/SGWLogConfig.xml` → `SGWDebugLog.log` | Read by `SGW.exe` itself at startup through log4cxx's `DOMConfigurator` (the exe carries the `SGWLogConfig.xml` string and the log4cxx imports); without the file no appender is configured. Orthogonal to the binary's own `MercuryLogger` / `AnsiLogger` paths |
 
 > [!NOTE]
 > **New discovery — `MercuryLogger` at `ghidra://SGW.exe@0x0041C2E0`.**

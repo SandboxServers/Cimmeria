@@ -46,12 +46,6 @@ pub struct InstalledState {
     pub applied_patches: Vec<String>,
     #[serde(default)]
     pub seed_sha256: Option<String>,
-    /// Host that was last written into SGW.exe's `.rdata`. Lets the
-    /// installer detect a `server_host` config change and re-patch even
-    /// after the original CME literal has already been replaced. `None`
-    /// for installs predating this field (treated as "patched host unknown").
-    #[serde(default)]
-    pub patched_host: Option<String>,
     /// True when the seed entry was recorded by an "Adopt existing
     /// install" flow rather than a real seed download + extract. The
     /// hash on `seed_sha256` was copied from the manifest, NOT computed
@@ -173,14 +167,12 @@ mod tests {
         let s = InstalledState {
             applied_patches: vec!["a".into(), "b".into()],
             seed_sha256: Some("h".into()),
-            patched_host: Some("play.cimmeria.app".into()),
             seed_adopted: false,
         };
         s.save(dir.path()).unwrap();
         let loaded = InstalledState::load(dir.path());
         assert_eq!(loaded.applied_patches, vec!["a", "b"]);
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
-        assert_eq!(loaded.patched_host.as_deref(), Some("play.cimmeria.app"));
         assert!(!loaded.seed_adopted);
         assert!(loaded.has_applied("a"));
         assert!(!loaded.has_applied("c"));
@@ -195,7 +187,6 @@ mod tests {
         let s = InstalledState {
             applied_patches: vec![],
             seed_sha256: Some("manifest-seed-hash".into()),
-            patched_host: None,
             seed_adopted: true,
         };
         s.save(dir.path()).unwrap();
@@ -220,21 +211,19 @@ mod tests {
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
     }
 
-    // Forwards-compat: state files written before the patched_host field
-    // existed should deserialize with patched_host = None and otherwise
-    // load normally.
+    // State files from launchers that still did the `.rdata` hostname
+    // patch carry a `patched_host` field; it is ignored, and the rest loads.
     #[test]
-    fn installed_state_loads_legacy_without_patched_host() {
+    fn installed_state_ignores_the_retired_patched_host_field() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             InstalledState::path(dir.path()),
-            r#"{"applied_patches":["a"],"seed_sha256":"h"}"#,
+            r#"{"applied_patches":["a"],"seed_sha256":"h","patched_host":"x"}"#,
         )
         .unwrap();
         let loaded = InstalledState::load(dir.path());
         assert_eq!(loaded.applied_patches, vec!["a"]);
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
-        assert!(loaded.patched_host.is_none());
     }
 
     #[test]

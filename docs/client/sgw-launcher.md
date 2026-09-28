@@ -31,15 +31,15 @@ window with no webview dependency.
 |----------|-------|
 | **Fetch manifest** | Pulls `manifest.json` + `manifest.json.sig` from GitHub Releases (anonymous GET), and verifies the Ed25519 signature. |
 | **Seed install** | Downloads the seed (the whole client) once, verifies sha256, unpacks it into the install dir. The seed is a zip, or the archive.org client RAR, whose installer cabinets (`Data\DATA1-4.CAB`) are expanded straight into the installed layout. |
-| **Patch install** | Walks declared patches in order; downloads + unpacks each missing patch (overlay over existing files). |
-| **Hostname patch** | Rewrites the 22-byte host slot in `SGW.exe` `.rdata` to the configured emulator host — the original `www.stargateworlds.com` literal on a fresh install, or the previously-written host on a re-patch. |
+| **Patch install** | Walks declared patches in order; downloads + unpacks each missing patch: overlay files, and patch sets whose deltas rebuild files from the player's own stock copies (`cimmeria-patchset`). |
+| **Client setup** | Writes the configured login servers into `LoginInternal.lua` and switches ASLR off in `SGW.exe`, after every install and before every launch (`src/client_setup/`). |
 | **Launch SGW** | Starts `SGW.exe` suspended, injects `cimmeria-client-patches.dll` (unless the player turned it off), and resumes it. With telemetry on, a telemetry session follows the game. See [Client patches DLL](#client-patches-dll). |
 | **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (enabled only if Atera files were dropped into the install dir). |
 | **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, tails the client logs, and uploads chunks/bundles. It injects no DLL: the Atera bat starts `SGW.exe` itself. See `src/telemetry/` and [operations/telemetry.md](../operations/telemetry.md). |
 | **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (enabled only if the Atera fix-ASLR bat is present). |
 | **Upload debug logs** | Zips `sgwdebuglog*` (case-blind) + `sessions/**` from the binaries directory and PUTs once to the Azure log SAS URL. |
 
-The launch buttons, the hostname patch, adoption and the log upload all
+The launch buttons, client setup, adoption and the log upload all
 find the game through `src/install_layout.rs`, which resolves the
 directory holding `SGW.exe`: `<install>\Working\Binaries` in a full
 install, or the install path itself when it points straight at it.
@@ -55,20 +55,17 @@ install, or the install path itself when it points straight at it.
    mismatch, refuse the manifest entirely — no unsigned fallback.
 3. Compare manifest.seed.sha256 vs installed.seed_sha256:
      - Mismatch → download seed blob, verify sha256, unpack into
-       install_path, reset applied_patches to [] and patched_host to
-       None.
+       install_path, reset applied_patches to [].
      - Match    → skip seed.
-4. For each manifest.patches[*] not in installed.applied_patches, in
+4. Rename Working\SGWGame\Cache.en-US to SourceCache.en-us if needed.
+5. For each manifest.patches[*] not in installed.applied_patches, in
    order:
-     - Download patch blob → verify sha256 → unpack (overlay)
-       into the install dir, or into the client's SGWGame/ directory
-       for a "root": "sgw_game" patch.
+     - Download patch blob → verify sha256 → unpack (overlay, or a
+       patch set's deltas) into the install dir, or into the client's
+       SGWGame/ directory for a "root": "sgw_game" patch.
      - Append the id (<id>@sgw_game for a sgw_game patch) to
        installed.applied_patches and persist.
-5. Compare expected vs persisted patched_host (or detect the original
-   CME literal still in the binary):
-     - Differs → re-patch SGW.exe `.rdata`, atomically (.exe.patching
-       + rename), record the new host in installed.patched_host.
+6. Client setup: LoginInternal.lua and ASLR (see below).
 ```
 
 Resumable downloads use HTTP `Range`: the launcher tracks `existing_len`
@@ -99,7 +96,7 @@ are 1 GiB volumes with files continued across them, which pure-Rust cab
 readers don't follow. The expansion fails if fewer files come out than
 the INF lists. Hashing and unpacking run under `spawn_blocking`.
 
-After a seed, `install_layout::place_bundled_cooked_data` renames
+On every install, `install_layout::place_bundled_cooked_data` renames
 `Working\SGWGame\Cache.en-US` (where the cabinets put the bundled PAKs)
 to `SourceCache.en-us`, the read-only tier the client reads through
 `SourceCachePath`. See the cache-tier table in
@@ -115,7 +112,7 @@ State files:
   game directory, so it survives launcher reinstalls and travels with the
   game).
 - `<launcher.exe dir>/launcher-config.json` — schema version, install path,
-  server host, manifest URL, and telemetry preferences.
+  login servers, manifest URL, and telemetry preferences.
 - `<launcher.exe dir>/uploaded.json` — log-upload dedupe ledger.
 - `<launcher.exe dir>/telemetry-state.json` — per-session telemetry runtime
   state, kept out of the config file so config rewrites don't churn it
@@ -169,31 +166,43 @@ State files:
 
 ---
 
-## SGW.exe Hostname Patch
+## Client Setup (`src/client_setup/`)
 
-CME's SOAP login hostname is hardcoded in SGW.exe's `.rdata` section
-(Ghidra analysis confirms `www.stargateworlds.com`, 22 bytes). The
-launcher byte-searches for that literal and overwrites it with the
-configured `server_host`, zero-padded to 22 bytes. No PE checksum
-recalculation needed for `.rdata` edits.
+**Login servers.** The login screen's server list comes from
+`LoginMod.loadServerSystems()` in
+`Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua`. The stock
+file lists CME's dead QA and production login servers; the launcher
+rewrites it from the config's `login_servers` (`[{name, url}]`, default
+`Cimmeria = http://play.cimmeria.app:8081`), CRLF and ASCII, only when the
+content changes. Names and URLs with a quote or backslash are refused, so
+a setting can't break out of the Lua string.
 
-The replacement hostname must be ≤ 22 bytes. The patch is **not** a
-simple "skip if the CME literal is absent" no-op: the launcher records
-the host it last wrote in `launcher-installed.json`'s `patched_host`, and
-`host_differs` re-patches when the configured `server_host` no longer
-matches. On a re-patch it searches for the *previous* host as a padded
-22-byte run rather than the original literal, so changing `server_host`
-and re-running Install / Update correctly rewrites an already-patched
-executable.
+**ASLR.** `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` (0x0040) is cleared in
+`SGW.exe`'s optional header (one byte, 0x186 in the 0.8348 build), because
+the client-patches DLL and every RE address in `docs/` assume the image
+base `0x00400000`. The stock exe with that byte cleared is byte-identical
+to a known-good QA client's (`client_setup::aslr` has an opt-in test).
 
-See [`crates/launcher/src/patch_rdata.rs`](../../crates/launcher/src/patch_rdata.rs).
+**The retired `.rdata` hostname patch.** Earlier launcher builds
+overwrote `www.stargateworlds.com` in `SGW.exe`. Its only ASCII
+occurrence is inside the SOAP namespace
+`http://www.stargateworlds.com/xml/sgwlogin`, so the patch redirected
+nothing and would have broken the namespace the auth server's requests
+carry. No released launcher ran it; it was removed with its state field
+(`patched_host`, now ignored) and the `server_host` setting.
 
-**Why not hosts file?** Requires admin elevation and affects the whole
-system. Direct PE patching is scoped to the game directory.
+## Patch Sets (`cimmeria-patchset`)
 
-**Why not DLL injection (AtreaRL)?** Runtime injection requires ASLR
-disabled and uses hardcoded patch addresses. The static `.rdata` patch
-has no such constraints.
+A patch zip with a `cimmeria-patch.json` recipe rebuilds files from the
+player's own stock client instead of shipping them, so the project never
+hosts CME bytes. Each op names stock sources (with SHA-256), an optional
+transform, a bsdiff delta and the result's SHA-256. `upk_normalize`
+decompresses a stock package and writes it back through `cimmeria-upk`'s
+append-only patcher, the starting point of every map our `upk_patch`
+tool built, so a 4 MB map's delta is under 2 KB. The launcher computes all
+ops before writing any, writes targets other ops read last, and skips ops
+whose target already has the result. The shipped patches live in
+[`data/client-patches/`](../../data/client-patches/README.md).
 
 ---
 
@@ -213,9 +222,9 @@ The catalogue of what each bat does lives in
 [docs/technical/atrealoader-exe.md](../technical/atrealoader-exe.md)
 and [docs/technical/atrealoader-config.md](../technical/atrealoader-config.md).
 
-Atera debug requires ASLR disabled on SGW.exe. The launcher does not
-auto-run Fix ASLR — the user clicks the button once after a fresh
-install, then the debug bat works on subsequent launches.
+Atera debug requires ASLR disabled on SGW.exe. The launcher's client
+setup now clears it itself before every launch, so the **Fix ASLR**
+button is only needed for installs the launcher has never launched.
 
 ### Client patches DLL
 
@@ -423,7 +432,11 @@ crates/launcher/
     │   └── view.rs             # panel rendering
     ├── config.rs               # LauncherConfig (next to .exe)
     ├── manifest.rs             # Manifest schema + fetch + Ed25519 verify
-    ├── install.rs              # seed + patches + .rdata patch orchestration
+    ├── install.rs              # seed + patches + client setup orchestration
+    ├── client_setup/
+    │   ├── mod.rs              # prepare(): run both steps
+    │   ├── login_servers.rs    # LoginInternal.lua from the config
+    │   └── aslr.rs             # clear DYNAMIC_BASE in SGW.exe
     ├── install_layout.rs       # where SGW.exe lives (Working\Binaries)
     ├── unpack/
     │   ├── mod.rs              # format detection, staging, dispatch
@@ -432,8 +445,6 @@ crates/launcher/
     │   ├── cab_set.rs          # MakeCAB installer INF + cabinet set
     │   ├── fdi.rs              # cabinet.dll FDI binding (Windows)
     │   └── test_fixtures.rs    # hand-built RAR + makecab test inputs
-    ├── patch_rdata.rs          # SGW.exe hostname byte-patch
-    ├── launch.rs               # SGW.exe + Atera bat detection & spawn
     ├── patch_dest.rs           # where a patch extracts (install dir or SGWGame/)
     ├── bundled.rs              # writes the embedded i686 artifacts to disk
     ├── start32_helper.rs       # keeps sgw-start32.exe beside the launcher
@@ -466,8 +477,9 @@ crates/launcher/
         └── messages.rs         # Command/Event channel types
 ```
 
-12 top-level files plus four module directories. `unpack/` started as a
-directory (it has five siblings on one theme); `app/`, `worker/`, and
+Launch and injection (`launch`, `inject`) live in the shared
+`cimmeria-client-launch` crate, and patch sets in `cimmeria-patchset`.
+`unpack/` and `client_setup/` started as directories; `app/`, `worker/`, and
 `telemetry/` were each promoted from a flat file once they crossed the
 4-siblings-on-one-theme threshold in
 [CLAUDE.md's file organization rules](../../CLAUDE.md).

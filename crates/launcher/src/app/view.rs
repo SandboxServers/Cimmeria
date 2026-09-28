@@ -73,21 +73,18 @@ impl LauncherApp {
                 self.sync_install_path_from_text();
             }
             if ui.button("Save").clicked() {
-                self.sync_install_path_from_text();
-                match self.config.save(&self.config_path) {
-                    Ok(_) => {
-                        self.push_status("Saved config.".into());
-                        self.refresh_install_state();
-                    }
-                    Err(e) => self.push_status(format!("Save failed: {e}")),
-                }
+                self.save_config();
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Server host:");
-            ui.add(egui::TextEdit::singleline(&mut self.config.server_host).desired_width(240.0));
+            ui.label("Login servers:");
+            ui.add(
+                egui::TextEdit::multiline(&mut self.login_servers_text)
+                    .desired_rows(2)
+                    .desired_width(380.0),
+            );
             ui.label(
-                egui::RichText::new("(patched into SGW.exe .rdata, max 22 bytes)")
+                egui::RichText::new("(one `Name = http://host:8081` per line; Save to apply)")
                     .small()
                     .italics(),
             );
@@ -177,14 +174,7 @@ impl LauncherApp {
             .map(|p| p.id.clone())
             .collect();
 
-        // The hostname patch lives outside the seed/patch model: it's a
-        // post-install step that runs on `Install / Update`. If the user
-        // edits `server_host` after a complete install, neither seed nor
-        // patches change but we still want to surface the re-patch action.
-        let host_needs_repatch = !self.config.server_host.is_empty()
-            && self.installed.patched_host.as_deref() != Some(self.config.server_host.as_str());
-
-        if seed_ok && missing_patches.is_empty() && !host_needs_repatch {
+        if seed_ok && missing_patches.is_empty() {
             ui.colored_label(egui::Color32::LIGHT_GREEN, "✔ Install is up to date.");
             return;
         }
@@ -199,13 +189,6 @@ impl LauncherApp {
                 missing_patches.join(", ")
             ));
         }
-        if seed_ok && missing_patches.is_empty() && host_needs_repatch {
-            ui.label(format!(
-                "Server host changed to '{}' — SGW.exe needs re-patching.",
-                self.config.server_host
-            ));
-        }
-
         let installing = self.installing;
         // Probe writability of the install dir before we let the user
         // click Install / Update. Without this, picking `C:\Program Files\…`
@@ -298,6 +281,7 @@ impl LauncherApp {
             if ui
                 .add_enabled(opts.sgw_present, egui::Button::new("Launch SGW.exe"))
                 .clicked()
+                && self.prepare_client_for_launch()
             {
                 // Telemetry follows the game only when the player opted
                 // in and the identity loaded; the client patches are
@@ -320,6 +304,7 @@ impl LauncherApp {
                     egui::Button::new("Launch Atera Debug"),
                 )
                 .clicked()
+                && self.prepare_client_for_launch()
             {
                 self.worker.dispatch(Command::LaunchAteraDebug(dir.clone()));
             }
@@ -333,7 +318,8 @@ impl LauncherApp {
                 .add_enabled(telemetry_ready, egui::Button::new("Launch + Telemetry"))
                 .clicked()
             {
-                if let Some(id) = &self.identity {
+                let ready = self.prepare_client_for_launch();
+                if let (true, Some(id)) = (ready, &self.identity) {
                     self.worker
                         .dispatch(Command::LaunchAteraDebugWithTelemetry {
                             install_dir: dir.clone(),

@@ -37,6 +37,7 @@ members = [
     "crates/lab",
     "crates/client-launch",
     "crates/start32",
+    "crates/patchset",
     "crates/test-support",
     "crates/resources",
     "crates/auth",
