@@ -259,10 +259,20 @@ pub enum HelperError {
 /// Run the helper at `helper` for `request`, and return the target's pid.
 /// Blocks until the helper exits, which it does as soon as the target is
 /// resumed (or the request failed); it never waits on the target.
+///
+/// Reads only the helper's answer line, then waits for the helper to
+/// exit, rather than reading stdout to EOF (`Command::output`). EOF comes
+/// only when every copy of the pipe's write end is closed, and a target
+/// that ever held a copy (a console program given the helper's std
+/// handles, issue #1064) would keep `run` blocked for its whole life. The
+/// helper already starts its target with no std handles (see
+/// [`crate::process::create_process_suspended_with_args`]); this is the
+/// second guard.
 pub fn run(helper: &Path, request: &Request) -> Result<u32, HelperError> {
     let mut cmd = std::process::Command::new(helper);
     cmd.args(request.to_args())
         .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
     #[cfg(windows)]
     {
@@ -271,15 +281,38 @@ pub fn run(helper: &Path, request: &Request) -> Result<u32, HelperError> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let out = cmd.output()?;
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    let mut child = cmd.spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .expect("stdout was configured as a pipe");
+    let answer = read_answer_line(&mut std::io::BufReader::new(stdout));
+    // Wait even when the read failed, so the helper is always reaped.
+    let status = child.wait()?;
+    let stdout = answer?;
     match parse_outcome(&stdout) {
-        Some(Outcome::Started { pid }) if out.status.success() => Ok(pid),
+        Some(Outcome::Started { pid }) if status.success() => Ok(pid),
         Some(Outcome::Failed { kind, detail }) => Err(HelperError::Failed { kind, detail }),
         _ => Err(HelperError::Garbled {
-            code: out.status.code(),
+            code: status.code(),
             stdout,
         }),
+    }
+}
+
+/// The helper's answer: its first non-blank stdout line (the contract is
+/// exactly one line), or an empty string at EOF. Stops there, never
+/// reading on to EOF.
+fn read_answer_line(reader: &mut impl std::io::BufRead) -> std::io::Result<String> {
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        // Bytes, not `read_line`: a path in the detail need not be UTF-8.
+        let n = reader.read_until(b'\n', &mut line)?;
+        let text = String::from_utf8_lossy(&line);
+        if n == 0 || !text.trim().is_empty() {
+            return Ok(text.into_owned());
+        }
     }
 }
 
@@ -343,286 +376,4 @@ pub fn execute(request: &Request) -> Outcome {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn spawn_request() -> Request {
-        Request {
-            target: Target::Spawn {
-                exe: PathBuf::from(r"C:\Game Dir\SGW.exe"),
-                cwd: Some(PathBuf::from(r"C:\Game Dir")),
-                args: vec!["-log".into(), "a b".into()],
-            },
-            dlls: vec![
-                PathBuf::from(r"C:\p\patches.dll"),
-                PathBuf::from(r"C:\p\tel.dll"),
-            ],
-        }
-    }
-
-    #[test]
-    fn spawn_request_round_trips_through_the_command_line() {
-        let req = spawn_request();
-        assert_eq!(parse_args(req.to_args()).unwrap(), req);
-    }
-
-    #[test]
-    fn pid_request_round_trips() {
-        let req = Request {
-            target: Target::Pid(4242),
-            dlls: vec![PathBuf::from("x.dll")],
-        };
-        assert_eq!(parse_args(req.to_args()).unwrap(), req);
-    }
-
-    /// The DLL order is the injection order (patches before telemetry).
-    #[test]
-    fn dll_order_is_preserved() {
-        let parsed = parse_args(spawn_request().to_args()).unwrap();
-        assert_eq!(
-            parsed.dlls,
-            vec![
-                PathBuf::from(r"C:\p\patches.dll"),
-                PathBuf::from(r"C:\p\tel.dll")
-            ]
-        );
-    }
-
-    #[test]
-    fn usage_errors_are_reported() {
-        let parse = |a: &[&str]| parse_args(a.iter().map(OsString::from));
-        assert!(parse(&[]).is_err());
-        assert!(parse(&["spawn", "x.exe"]).is_err(), "no --dll");
-        assert!(parse(&["pid", "abc", "--dll", "d"]).is_err());
-        assert!(parse(&["pid", "1", "--cwd", "c", "--dll", "d"]).is_err());
-        assert!(parse(&["bogus", "x", "--dll", "d"]).is_err());
-        assert!(parse(&["spawn", "x.exe", "--dll"]).is_err());
-    }
-
-    #[test]
-    fn outcomes_round_trip_through_stdout() {
-        for o in [
-            Outcome::Started { pid: 1234 },
-            Outcome::Failed {
-                kind: ErrorKind::RemoteLoadFailed,
-                detail: "LoadLibraryW returned NULL".into(),
-            },
-            Outcome::Failed {
-                kind: ErrorKind::NotFound,
-                detail: String::new(),
-            },
-        ] {
-            assert_eq!(
-                parse_outcome(&o.format()),
-                Some(o.clone()),
-                "{}",
-                o.format()
-            );
-        }
-    }
-
-    /// A multi-line detail must not break the one-line contract.
-    #[test]
-    fn failure_detail_is_one_line() {
-        let o = Outcome::Failed {
-            kind: ErrorKind::Spawn,
-            detail: "line one\r\nline two".into(),
-        };
-        assert_eq!(o.format().lines().count(), 1);
-        assert!(matches!(
-            parse_outcome(&o.format()),
-            Some(Outcome::Failed {
-                kind: ErrorKind::Spawn,
-                ..
-            })
-        ));
-    }
-
-    #[test]
-    fn exit_codes() {
-        assert_eq!(Outcome::Started { pid: 1 }.exit_code(), 0);
-        assert_eq!(ErrorKind::Usage.exit_code(), 2);
-        assert_eq!(ErrorKind::Inject.exit_code(), 1);
-    }
-
-    #[test]
-    fn unknown_output_is_none() {
-        assert_eq!(parse_outcome(""), None);
-        assert_eq!(parse_outcome("hello"), None);
-        assert_eq!(parse_outcome("error kind=nonsense detail=x"), None);
-        assert_eq!(parse_outcome("ok pid=notanumber"), None);
-    }
-
-    /// The built i686 helper, from `CIMMERIA_TEST_START32`. Unset locally
-    /// skips these tests; unset in CI fails them, so the helper tests can
-    /// never pass vacuously there (the launcher workflow builds the helper
-    /// and sets it).
-    #[cfg(windows)]
-    fn helper() -> Option<PathBuf> {
-        match std::env::var_os("CIMMERIA_TEST_START32") {
-            Some(p) => Some(PathBuf::from(p)),
-            None if std::env::var_os("CI").is_some() => {
-                panic!("CIMMERIA_TEST_START32 must name the built i686 sgw-start32.exe in CI")
-            }
-            None => {
-                eprintln!("CIMMERIA_TEST_START32 unset; skipping the helper test");
-                None
-            }
-        }
-    }
-
-    /// A copy of a 32-bit system program renamed SGW.exe, and a 32-bit
-    /// system DLL, or `None` without WOW64.
-    #[cfg(windows)]
-    fn wow64(exe: &str) -> Option<(tempfile::TempDir, PathBuf, PathBuf)> {
-        let wow = PathBuf::from(std::env::var_os("SystemRoot")?).join("SysWOW64");
-        let dll = wow.join("version.dll");
-        if !wow.join(exe).is_file() || !dll.is_file() {
-            return None;
-        }
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("SGW.exe");
-        std::fs::copy(wow.join(exe), &target).unwrap();
-        Some((dir, target, dll))
-    }
-
-    /// The whole point: from THIS (x64) test build, the i686 helper
-    /// starts a real 32-bit process suspended, loads a real 32-bit DLL
-    /// into it, and resumes it. The caller then follows the pid and sees a
-    /// clean exit. A direct x64 injection of the same pair gets
-    /// `BitnessMismatch` (see `launch.rs`); through the helper it loads.
-    /// The `-n 3` arguments also pin argument passing (ping would exit
-    /// with a usage error without them).
-    #[cfg(windows)]
-    #[test]
-    fn helper_injects_a_dll_into_a_real_32_bit_process() {
-        let Some(helper) = helper() else { return };
-        let Some((_dir, exe, dll)) = wow64("PING.EXE") else {
-            eprintln!("no SysWOW64 PING.EXE/version.dll; skipping");
-            return;
-        };
-        let req = Request {
-            target: Target::Spawn {
-                exe,
-                cwd: None,
-                args: vec!["-n".into(), "3".into(), "127.0.0.1".into()],
-            },
-            dlls: vec![dll],
-        };
-        let pid = run(&helper, &req).expect("the helper must inject and resume");
-        let game = crate::process::RunningProcess::open(pid).expect("follow the pid");
-        assert_eq!(
-            game.wait().unwrap(),
-            0,
-            "the injected program should exit cleanly"
-        );
-    }
-
-    /// The helper starts for a standard user: a spawn that fails with
-    /// os error 740 (UAC installer detection) never gets to answer. It
-    /// answers a usage error with exit code 2.
-    #[cfg(windows)]
-    #[test]
-    fn helper_starts_without_elevation_and_reports_usage() {
-        let Some(helper) = helper() else { return };
-        let out = std::process::Command::new(&helper)
-            .output()
-            .expect("the helper must start without elevation (os error 740 = UAC)");
-        assert_eq!(out.status.code(), Some(2));
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(
-            matches!(
-                parse_outcome(&stdout),
-                Some(Outcome::Failed {
-                    kind: ErrorKind::Usage,
-                    ..
-                })
-            ),
-            "{stdout}"
-        );
-    }
-
-    /// The helper binary carries its asInvoker manifest.
-    #[cfg(windows)]
-    #[test]
-    fn helper_embeds_an_as_invoker_manifest() {
-        let Some(helper) = helper() else { return };
-        let bytes = std::fs::read(&helper).unwrap();
-        assert!(
-            bytes.windows(9).any(|w| w == b"asInvoker"),
-            "no asInvoker manifest in {}",
-            helper.display()
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn helper_reports_a_missing_dll_as_not_found() {
-        let Some(helper) = helper() else { return };
-        let Some((dir, exe, _)) = wow64("PING.EXE") else {
-            return;
-        };
-        let req = Request {
-            target: Target::Spawn {
-                exe,
-                cwd: None,
-                args: vec![],
-            },
-            dlls: vec![dir.path().join("missing.dll")],
-        };
-        match run(&helper, &req) {
-            Err(HelperError::Failed {
-                kind: ErrorKind::NotFound,
-                ..
-            }) => {}
-            other => panic!("expected not_found, got {other:?}"),
-        }
-    }
-
-    /// Proves the helper really runs `LoadLibraryW` inside the target and
-    /// checks its answer: a file that exists but is not a PE image makes
-    /// the remote load return NULL, reported as `remote_load_failed`. A
-    /// helper that skipped the injection would wrongly answer `ok`.
-    #[cfg(windows)]
-    #[test]
-    fn helper_reports_a_dll_that_fails_to_load() {
-        let Some(helper) = helper() else { return };
-        let Some((dir, exe, _)) = wow64("PING.EXE") else {
-            return;
-        };
-        let not_a_dll = dir.path().join("not-a-dll.dll");
-        std::fs::write(&not_a_dll, b"this is not a PE image").unwrap();
-        let req = Request {
-            target: Target::Spawn {
-                exe,
-                cwd: None,
-                args: vec![],
-            },
-            dlls: vec![not_a_dll],
-        };
-        match run(&helper, &req) {
-            Err(HelperError::Failed {
-                kind: ErrorKind::RemoteLoadFailed,
-                ..
-            }) => {}
-            other => panic!("expected remote_load_failed, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn every_kind_name_parses_back() {
-        for k in [
-            ErrorKind::Usage,
-            ErrorKind::NotFound,
-            ErrorKind::Spawn,
-            ErrorKind::OpenProcess,
-            ErrorKind::BitnessMismatch,
-            ErrorKind::RemoteLoadFailed,
-            ErrorKind::Inject,
-            ErrorKind::Resume,
-            ErrorKind::Unsupported,
-        ] {
-            assert_eq!(ErrorKind::from_name(k.name()), Some(k));
-        }
-    }
-}
+mod tests;

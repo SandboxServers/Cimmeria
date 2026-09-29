@@ -324,6 +324,11 @@ pub fn create_process_suspended(
 /// sets the target's working directory; pass `None` to inherit the
 /// caller's. SGW.exe is path-sensitive (it resolves `..\..\Game` from
 /// cwd), so the launcher always passes `Some(install_dir)`.
+///
+/// The target is created `DETACHED_PROCESS`, so a console-subsystem
+/// target gets no console and no std handles and never holds a copy of
+/// the caller's stdout pipe (issue #1064). A GUI target like SGW.exe is
+/// unaffected.
 #[cfg(windows)]
 pub fn create_process_suspended_with_args(
     exe_path: &Path,
@@ -333,8 +338,8 @@ pub fn create_process_suspended_with_args(
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Foundation::{FALSE, TRUE};
     use windows_sys::Win32::System::Threading::{
-        CreateProcessW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, PROCESS_INFORMATION,
-        STARTUPINFOW,
+        CreateProcessW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, DETACHED_PROCESS,
+        PROCESS_INFORMATION, STARTUPINFOW,
     };
 
     if !exe_path.exists() {
@@ -372,6 +377,17 @@ pub fn create_process_suspended_with_args(
     startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
 
+    // DETACHED_PROCESS: the target gets no console and no std handles.
+    // Without it, a console-subsystem target is handed copies of the
+    // caller's std handles even though bInheritHandles is FALSE (Windows
+    // duplicates them for console children), so the sgw-start32 helper's
+    // stdout pipe outlived the helper and its caller blocked until the
+    // target exited (issue #1064). SGW.exe is a GUI-subsystem program, and
+    // the flag only changes what a console child gets, so the game starts
+    // exactly as before, and any target can still AllocConsole its own.
+    // STARTF_USESTDHANDLES with null handles was the alternative, but it
+    // replaces the std handles of every target, GUI ones included.
+    //
     // SAFETY: All pointers either point to valid wide-string
     // buffers above or are NULL where the API allows it.
     let ok = unsafe {
@@ -381,7 +397,7 @@ pub fn create_process_suspended_with_args(
             std::ptr::null(),
             std::ptr::null(),
             FALSE,
-            CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+            CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS,
             std::ptr::null(),
             cwd_ptr,
             &startup,
