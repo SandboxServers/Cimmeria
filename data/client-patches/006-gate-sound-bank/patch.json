@@ -3,7 +3,7 @@
   "title": "Gate sound bank",
   "description": "Copies the client's own prp_gen gate sounds into Audio\\UI, where the game looks for them.",
   "ops": [
-    {"target": "Working/SGWGame/Content/Audio/UI/prp_gen.fev", "sources": [{"path": "Working/SGWGame/Content/audio/genprp/prp_gen.fev"}]},
-    {"target": "Working/SGWGame/Content/Audio/UI/prp_gen_gate.fsb", "sources": [{"path": "Working/SGWGame/Content/audio/genprp/prp_gen_gate.fsb"}]}
+    {"target": "Working/SGWGame/Content/audio/ui/prp_gen.fev", "sources": [{"path": "Working/SGWGame/Content/audio/genprp/prp_gen.fev"}]},
+    {"target": "Working/SGWGame/Content/audio/ui/prp_gen_gate.fsb", "sources": [{"path": "Working/SGWGame/Content/audio/genprp/prp_gen_gate.fsb"}]}
   ]
 }

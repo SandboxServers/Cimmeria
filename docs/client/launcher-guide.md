@@ -72,8 +72,9 @@ Azure Blob SAS for log uploads) see
        cabinets are expanded straight into the installed layout
      - For each missing patch in declared order: download → verify → unpack
        (overlay files, and/or deltas rebuilt from your own stock files)
-     - Client setup: write LoginInternal.lua, switch ASLR off in SGW.exe
-       (also done before every launch)
+     - Client setup: restore stock file names (EULA.lua), write
+       LoginInternal.lua, switch ASLR off in SGW.exe (also done before
+       every launch)
 6. Click "Launch SGW.exe" (or "Launch Atera Debug" / "Launch + Telemetry" /
    "Fix ASLR" if those files are present in the install directory).
    Telemetry is off unless you turn it on.
@@ -135,6 +136,8 @@ Pseudocode of [`crates/launcher/src/install.rs`](../../crates/launcher/src/insta
      - Persist state after every patch (survives mid-update crash).
 
 5. Client setup (crates/launcher/src/client_setup/), when SGW.exe exists:
+     - Rename any file a patch set writes back to its stock spelling if
+       only its case differs (eula.lua -> EULA.lua).
      - Write Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua
        from the login-server list, if its content changed.
      - Clear IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE in SGW.exe's PE
@@ -251,7 +254,8 @@ applies from your next launch.
 
 Stargate Worlds needs the stock 2009 client, and Cimmeria changes it.
 The **Changes to your client** section lists every change: the login
-servers and ASLR flag it sets before every launch, the folder it renames
+servers, ASLR flag and stock file names it sets before every launch, the
+folder it renames
 at install, each patch from the manifest and whether it is applied yet,
 what it adds to `SGW.exe` at launch, and what the server sends while you
 play. The same list applies whether the launcher downloaded the client
@@ -709,6 +713,25 @@ from the launch:
   `cimmeria-client-patches.log` next to `SGW.exe`; a line ending
   `nothing installed` there means this `SGW.exe` is not the build the
   patches know. Include that file in a bug report.
+
+### The game shows the gate backdrop but never the login screen
+
+The launcher released on 2026-09-29 (`launcher-20260929-f518b57`)
+renamed `Working\SGWGame\Content\UI\Startup\EULA\EULA.lua` to
+`eula.lua` while applying the `005-login-delay` patch. The game looks
+that file up case-sensitively, so the EULA screen never loads, and the
+login screen comes after it. The client log (and telemetry's
+`client.ui.cegui_log`) shows `SGWResourceProvider: 'EULA.lua' does not
+exist in group lua`.
+
+- **Fix**: update the launcher. Before every launch, and after every
+  **Install / Update**, it renames the file back; the status log says
+  "Renamed ... eula.lua back to its stock name EULA.lua".
+- **By hand**: rename `eula.lua` to `EULA.lua` in that folder. Keep the
+  file; it is the patched one.
+
+Patch sets now keep the on-disk name of every file they change, so a new
+install is not affected.
 
 ### SGW.exe launches but can't reach the server
 

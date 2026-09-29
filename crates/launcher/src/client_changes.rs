@@ -145,6 +145,14 @@ fn setup_changes() -> Vec<ClientChange> {
         },
         ClientChange {
             group: ChangeGroup::Setup,
+            title: "Stock file names".into(),
+            description: "Renames any file the patches below change back to its stock                 spelling if only its case differs, such as eula.lua back to EULA.lua. The                 game looks these names up case-sensitively, and a launcher released on                 2026-09-29 renamed EULA.lua, which left the game with no login screen."
+                .into(),
+            status: ChangeStatus::EveryLaunch,
+            patch_id: None,
+        },
+        ClientChange {
+            group: ChangeGroup::Setup,
             title: "Bundled data folder renamed".into(),
             description: "Renames Working\\SGWGame\\Cache.en-US to SourceCache.en-us, the \
                 read-only folder the client expects its shipped data in. The stock install \
@@ -449,6 +457,7 @@ mod tests {
         for t in [
             "Login servers",
             "ASLR off in SGW.exe",
+            "Stock file names",
             "Bundled data folder renamed",
         ] {
             assert!(titles.contains(&t), "missing {t}");

@@ -32,7 +32,7 @@ window with no webview dependency.
 | **Fetch manifest** | Pulls `manifest.json` + `manifest.json.sig` from GitHub Releases (anonymous GET), and verifies the Ed25519 signature. |
 | **Seed install** | Downloads the seed (the whole client) once, verifies sha256, unpacks it into the install dir. The seed is a zip, or the archive.org client RAR, whose installer cabinets (`Data\DATA1-4.CAB`) are expanded straight into the installed layout. |
 | **Patch install** | Walks declared patches in order; downloads + unpacks each missing patch: overlay files, and patch sets whose deltas rebuild files from the player's own stock copies (`cimmeria-patchset`). |
-| **Client setup** | Writes the configured login servers into `LoginInternal.lua` and switches ASLR off in `SGW.exe`, after every install and before every launch (`src/client_setup/`). |
+| **Client setup** | Restores the stock spelling of patched files (`EULA.lua`), writes the configured login servers into `LoginInternal.lua` and switches ASLR off in `SGW.exe`, after every install and before every launch (`src/client_setup/`). |
 | **Launch SGW** | Starts `SGW.exe` suspended, injects `cimmeria-client-patches.dll` (unless the player turned it off), and resumes it. With telemetry on, a telemetry session follows the game. See [Client patches DLL](#client-patches-dll). |
 | **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (enabled only if Atera files were dropped into the install dir). |
 | **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, tails the client logs, and uploads chunks/bundles. It injects no DLL: the Atera bat starts `SGW.exe` itself. See `src/telemetry/` and [operations/telemetry.md](../operations/telemetry.md). |
@@ -65,7 +65,7 @@ install, or the install path itself when it points straight at it.
        SGWGame/ directory for a "root": "sgw_game" patch.
      - Append the id (<id>@sgw_game for a sgw_game patch) to
        installed.applied_patches and persist.
-6. Client setup: LoginInternal.lua and ASLR (see below).
+6. Client setup: stock file names, LoginInternal.lua and ASLR (see below).
 ```
 
 Resumable downloads use HTTP `Range`: the launcher tracks `existing_len`
@@ -173,6 +173,19 @@ State files:
 
 ## Client Setup (`src/client_setup/`)
 
+**Stock file names.** The game looks some UI resources up
+case-sensitively, even on Windows: with `EULA.lua` spelled `eula.lua`
+its CEGUI resource provider reports `'EULA.lua' does not exist in group
+lua`, and the login screen never appears. `launcher-20260929-f518b57`
+did exactly that, because the published `005-login-delay` recipe spells
+the file `eula.lua` and `cimmeria-patchset` wrote rebuilt files through a
+rename under the recipe's spelling. `client_setup::stock_case` renames
+every file in its `PATCH_TARGETS` list (each path a patch set writes,
+spelled as the 2009 cabinets' `DATA.INF` spells it) back to that
+spelling when only the case differs, so installs made with that launcher
+repair themselves. A test keeps the list in step with every
+`data/client-patches/*/patch.json` op target.
+
 **Login servers.** The login screen's server list comes from
 `LoginMod.loadServerSystems()` in
 `Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua`. The stock
@@ -212,7 +225,7 @@ in four groups:
 
 | Group | Rows |
 |---|---|
-| Launcher setup | `LoginInternal.lua` login servers and ASLR off (both before every launch), `Cache.en-US` renamed to `SourceCache.en-us` (at install) |
+| Launcher setup | `LoginInternal.lua` login servers, ASLR off and stock file names (all before every launch), `Cache.en-US` renamed to `SourceCache.en-us` (at install) |
 | Patched files | One row per manifest patch, in manifest order, **applied** or **applied on the next Install / Update** from `launcher-installed.json` |
 | Added when the game starts | The client-patches DLL (on, or off when **Load client patches** is off) and telemetry (off unless the player opted in; when on, it loads `cimmeria-client-telemetry.dll` too) |
 | Sent by the server while you play | The server's cooked data in `Documents\My Games\Firesky\SGWGame\Cache.en-US` |
@@ -262,7 +275,11 @@ decompresses a stock package and writes it back through `cimmeria-upk`'s
 append-only patcher, the starting point of every map our `upk_patch`
 tool built, so a 4 MB map's delta is under 2 KB. The launcher computes all
 ops before writing any, writes targets other ops read last, and skips ops
-whose target already has the result. The shipped patches live in
+whose target already has the result. Every path is resolved against the
+install's own directory listing first, so a file that exists keeps its
+on-disk name whatever case the recipe uses, and `build` refuses a spec
+path spelled in another case than the stock tree (`CaseMismatch`). The
+shipped patches live in
 [`data/client-patches/`](../../data/client-patches/README.md).
 
 ---
@@ -497,7 +514,8 @@ crates/launcher/
     ├── manifest.rs             # Manifest schema + fetch + Ed25519 verify
     ├── install.rs              # seed + patches + client setup orchestration
     ├── client_setup/
-    │   ├── mod.rs              # prepare(): run both steps
+    │   ├── mod.rs              # prepare(): run the three steps
+    │   ├── stock_case.rs       # rename eula.lua etc. back to the stock case
     │   ├── login_servers.rs    # LoginInternal.lua from the config
     │   └── aslr.rs             # clear DYNAMIC_BASE in SGW.exe
     ├── install_layout.rs       # where SGW.exe lives (Working\Binaries)

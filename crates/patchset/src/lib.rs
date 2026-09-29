@@ -29,12 +29,14 @@
 
 pub mod apply;
 pub mod build;
+pub mod case_path;
 pub mod recipe;
 pub mod signing;
 pub mod transform;
 
 pub use apply::{apply, ApplyReport};
 pub use build::{build, Spec};
+pub use case_path::resolve_existing_case;
 pub use recipe::{Op, Recipe, Source, Transform, RECIPE_NAME};
 
 use thiserror::Error;
@@ -64,6 +66,10 @@ pub enum PatchsetError {
         expected: String,
         actual: String,
     },
+    #[error(
+        "{path} is spelled {on_disk} in the stock client; spec paths must use the stock          spelling, since the game looks some files up case-sensitively"
+    )]
+    CaseMismatch { path: String, on_disk: String },
     #[error("{path} is missing; this patch rebuilds it from the stock client")]
     SourceMissing { path: String },
     #[error("Rebuilt {path} has sha256 {actual}, expected {expected}")]

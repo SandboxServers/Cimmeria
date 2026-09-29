@@ -3,6 +3,7 @@
 use std::io::Read;
 use std::path::Path;
 
+use crate::case_path::resolve_existing_case;
 use crate::recipe::{safe_relative, Recipe, DELTA_DIR, RECIPE_NAME};
 use crate::{io_err, sha256_hex, transform, PatchsetError, Result};
 
@@ -31,6 +32,14 @@ pub fn has_recipe(zip_path: &Path) -> Result<bool> {
 /// Every op is computed before anything is written, so an op may use a file
 /// another op replaces as its source, and a failure (a source that isn't
 /// stock, a bad delta) leaves the install untouched. Overlay files go last.
+///
+/// Every path is resolved against the install's own spelling first
+/// ([`resolve_existing_case`]): a file that exists keeps its on-disk name
+/// whatever case the recipe spells it in, and only a new file takes the
+/// recipe's spelling. The published `005-login-delay` recipe names
+/// `eula.lua`; writing through the rename under that name turned the stock
+/// `EULA.lua` into `eula.lua`, which the game's UI loader cannot find, so
+/// the login screen never appeared.
 pub fn apply(
     zip_path: &Path,
     install_dir: &Path,
@@ -49,7 +58,7 @@ pub fn apply(
     let mut report = ApplyReport::default();
     let mut pending: Vec<(std::path::PathBuf, Vec<u8>, String)> = Vec::new();
     for op in &recipe.ops {
-        let target = install_dir.join(safe_relative(&op.target)?);
+        let target = resolve_existing_case(install_dir, &safe_relative(&op.target)?);
         if let Ok(current) = std::fs::read(&target) {
             if sha256_hex(&current) == op.result_sha256 {
                 report.already_current.push(op.target.clone());
@@ -58,7 +67,7 @@ pub fn apply(
         }
         let mut source_image = Vec::new();
         for s in &op.sources {
-            let path = install_dir.join(safe_relative(&s.path)?);
+            let path = resolve_existing_case(install_dir, &safe_relative(&s.path)?);
             if !path.is_file() {
                 return Err(PatchsetError::SourceMissing {
                     path: s.path.clone(),
@@ -122,7 +131,7 @@ pub fn apply(
         let rel = entry
             .enclosed_name()
             .ok_or_else(|| PatchsetError::UnsafePath(name.clone()))?;
-        let out = install_dir.join(rel);
+        let out = resolve_existing_case(install_dir, &rel);
         let mut bytes = Vec::new();
         entry.read_to_end(&mut bytes).map_err(io_err(&out))?;
         write_atomic(&out, &bytes)?;

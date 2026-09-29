@@ -225,6 +225,13 @@ fn setup_status_lines(
     match result {
         Ok(report) => {
             let mut lines = Vec::new();
+            for r in &report.restored_names {
+                lines.push(format!(
+                    "Renamed {} back to its stock name {} (the game can't find it otherwise).",
+                    r.from.display(),
+                    r.to.file_name().unwrap_or_default().to_string_lossy()
+                ));
+            }
             if report.login_servers_written {
                 lines.push("Wrote the login server list (LoginInternal.lua).".into());
             }
@@ -370,12 +377,35 @@ mod tests {
         assert!(lines[0].starts_with("Not launching") && lines[0].contains("locked"));
 
         let done: std::io::Result<SetupReport> = Ok(SetupReport {
+            restored_names: Vec::new(),
             login_servers_written: true,
             aslr: AslrOutcome::Disabled,
         });
         let (ok, lines) = setup_status_lines(&done);
         assert!(ok);
         assert_eq!(lines.len(), 2);
+    }
+
+    /// The EULA repair is visible in the status log, naming both spellings.
+    #[test]
+    fn a_restored_file_name_is_reported() {
+        let eula = std::path::Path::new("Working/SGWGame/Content/UI/Startup/EULA");
+        let done: std::io::Result<SetupReport> = Ok(SetupReport {
+            restored_names: vec![crate::client_setup::Restored {
+                from: eula.join("eula.lua"),
+                to: eula.join("EULA.lua"),
+            }],
+            login_servers_written: false,
+            aslr: AslrOutcome::AlreadyOff,
+        });
+        let (ok, lines) = setup_status_lines(&done);
+        assert!(ok);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains("eula.lua") && lines[0].contains("stock name EULA.lua"),
+            "{}",
+            lines[0]
+        );
     }
     use crate::client_paths::WipeReport;
     use crate::worker::Event;

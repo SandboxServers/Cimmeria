@@ -270,6 +270,117 @@ fn a_zip_without_a_recipe_is_a_plain_overlay() {
     assert_eq!(r.overlay_files, 1);
 }
 
+/// The file names in `dir`, exactly as the directory listing spells them.
+fn listed(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+// Bug shape (2026-09-29, launcher-20260929-f518b57): `005-login-delay`'s
+// recipe names `eula.lua`, the stock client ships `EULA.lua`, and the
+// write-temp-then-rename replaced the stock file under the recipe's
+// spelling. The game's UI loader then reported "'EULA.lua' does not exist
+// in group lua" and never showed the login screen. The patched file must
+// keep the install's own name. `exists()` can't see this on Windows, so
+// the assertions read the directory listing.
+#[test]
+fn a_target_spelled_in_another_case_keeps_the_stock_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let (stock, patched, install, spec_dir) = (
+        dir.path().join("stock"),
+        dir.path().join("patched"),
+        dir.path().join("install"),
+        dir.path().join("spec"),
+    );
+    let eula_dir = "Working/SGWGame/Content/UI/Startup/EULA";
+    let stock_bytes = b"function EULA.onLoad()\r\n  show()\r\nend\r\n".repeat(20);
+    let mut patched_bytes = stock_bytes.clone();
+    patched_bytes.extend_from_slice(b"-- Cimmeria: wait for the gate intro\r\n");
+    // Built the way the published zip was: from trees spelling it `eula.lua`.
+    write(&stock, &format!("{eula_dir}/eula.lua"), &stock_bytes);
+    write(&patched, &format!("{eula_dir}/eula.lua"), &patched_bytes);
+    // Applied to a stock install, which spells it `EULA.lua`.
+    write(&install, &format!("{eula_dir}/EULA.lua"), &stock_bytes);
+    write(&spec_dir, "SGWLogConfig.xml", b"<ours/>");
+    // The stock directory is `binaries`, the overlay entry says `Binaries`,
+    // and the player may already have the overlay file under another case.
+    write(&install, "Working/binaries/sgwlogconfig.xml", b"<old/>");
+    let spec = Spec {
+        id: "case".into(),
+        title: None,
+        description: None,
+        ops: vec![SpecOp {
+            target: format!("{eula_dir}/eula.lua"),
+            sources: vec![SpecSource {
+                path: format!("{eula_dir}/eula.lua"),
+                transform: Transform::None,
+            }],
+        }],
+        files: vec![SpecFile {
+            path: "Working/Binaries/SGWLogConfig.xml".into(),
+            from: "SGWLogConfig.xml".into(),
+        }],
+    };
+    let report = build::build(&spec, &spec_dir, &stock, &patched).unwrap();
+    let zip = dir.path().join("case.zip");
+    std::fs::write(&zip, &report.zip).unwrap();
+
+    let applied = apply(&zip, &install, &mut |_| {}).unwrap();
+    assert_eq!(applied.rebuilt.len(), 1);
+    assert_eq!(listed(&install.join(eula_dir)), ["EULA.lua"]);
+    assert_eq!(
+        std::fs::read(install.join(eula_dir).join("EULA.lua")).unwrap(),
+        patched_bytes
+    );
+    assert_eq!(listed(&install.join("Working")), ["SGWGame", "binaries"]);
+    assert_eq!(
+        listed(&install.join("Working/binaries")),
+        ["sgwlogconfig.xml"]
+    );
+    assert_eq!(
+        std::fs::read(install.join("Working/binaries/sgwlogconfig.xml")).unwrap(),
+        b"<ours/>"
+    );
+
+    // A second run finds the result under the stock name.
+    let again = apply(&zip, &install, &mut |_| {}).unwrap();
+    assert!(again.rebuilt.is_empty());
+    assert_eq!(again.already_current.len(), 1);
+}
+
+// The other half of the eula.lua bug: nothing stopped a spec spelled in
+// the wrong case from being built, because Windows reads `eula.lua` from a
+// stock `EULA.lua` without complaint. `build` now refuses it and names the
+// stock spelling.
+#[test]
+fn a_spec_path_in_another_case_than_the_stock_tree_is_refused() {
+    let f = fixture();
+    let mut spec = f.spec.clone();
+    spec.ops[0].target = "Working/SGWGame/UI/dialog.lua".into();
+    spec.ops[0].sources[0].path = "Working/SGWGame/UI/dialog.lua".into();
+    let err = build::build(&spec, &f.spec_dir, &f.stock, &f.patched).unwrap_err();
+    assert!(
+        matches!(&err, PatchsetError::CaseMismatch { path, on_disk }
+            if path == "Working/SGWGame/UI/dialog.lua"
+                && on_disk == "Working/SGWGame/UI/Dialog.lua"),
+        "{err:?}"
+    );
+
+    // Directories count too: the stock tree says `Binaries` here.
+    let mut spec = f.spec.clone();
+    spec.files[0].path = "Working/binaries/SGWLogConfig.xml".into();
+    let err = build::build(&spec, &f.spec_dir, &f.stock, &f.patched).unwrap_err();
+    assert!(
+        matches!(&err, PatchsetError::CaseMismatch { on_disk, .. }
+            if on_disk == "Working/Binaries/SGWLogConfig.xml"),
+        "{err:?}"
+    );
+}
+
 // Manual check against a real client: SGW_STOCK_CLIENT = a stock install
 // (the launcher's seed, SourceCache renamed), SGW_PATCHED_CLIENT = a client
 // with the ring-transport maps. Run with

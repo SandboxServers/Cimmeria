@@ -264,6 +264,16 @@ Full LAN-setup details in [`multiplayer.md`](multiplayer.md).
 
 ---
 
+### The game shows the gate backdrop but never the login screen
+
+**Symptom.** A client installed with the SGW launcher (`sgw-launcher.exe`) starts, shows the gate backdrop, and never shows the EULA or login screen. The client log has `SGWResourceProvider: 'EULA.lua' does not exist in group lua`.
+
+**Root cause.** The launcher released on 2026-09-29 (`launcher-20260929-f518b57`) renamed the stock `Working\SGWGame\Content\UI\Startup\EULA\EULA.lua` to `eula.lua` while applying the `005-login-delay` patch, and the game looks that file up case-sensitively.
+
+**Fix.** Update the launcher: it renames the file back before every launch. By hand, rename `eula.lua` to `EULA.lua` in that folder. Details: [launcher guide troubleshooting](client/launcher-guide.md#the-game-shows-the-gate-backdrop-but-never-the-login-screen).
+
+---
+
 ### AtreaRL won't launch / "DLL not found"
 
 **Symptom.** AtreaRL (the launcher) crashes or reports a missing DLL.

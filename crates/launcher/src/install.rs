@@ -13,8 +13,9 @@
 //!    "sgw_game"` (see [`crate::patch_dest`]). A patch zip carrying a
 //!    `cimmeria-patch.json` recipe rebuilds files from the player's own
 //!    stock files by delta (`cimmeria-patchset`).
-//! 3. Client setup ([`crate::client_setup`]): write `LoginInternal.lua`
-//!    from the configured login servers and switch ASLR off in SGW.exe.
+//! 3. Client setup ([`crate::client_setup`]): put back the stock spelling
+//!    of patched files (`EULA.lua`), write `LoginInternal.lua` from the
+//!    configured login servers and switch ASLR off in SGW.exe.
 //!    Idempotent; it also runs before every launch.
 
 use std::io::Read;
