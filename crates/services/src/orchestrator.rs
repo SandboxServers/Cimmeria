@@ -291,11 +291,12 @@ impl Orchestrator {
 
         // 5. Start minigame server
         let mg_registry = state.base.minigame_registry.clone();
+        let mg_host = state.config.minigame_host.clone();
         let mg_port = state.config.minigame_port;
         let mg_result_tx = state.cell.cell_to_base_tx();
         if let Some(result_tx) = mg_result_tx {
             tokio::spawn(async move {
-                crate::minigame::server::run("0.0.0.0", mg_port, mg_port, mg_registry, result_tx)
+                crate::minigame::server::run(&mg_host, mg_port, mg_port, mg_registry, result_tx)
                     .await;
             });
             tracing::info!(port = mg_port, "Minigame server started");

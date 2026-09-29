@@ -28,9 +28,8 @@ async fn phase1_and_phase2_never_log_full_credentials() {
     let capture = LogCapture::install();
 
     let base_config = ServerConfig {
-        auth_host: "127.0.0.1".to_string(),
         developer_mode: true,
-        ..ServerConfig::default()
+        ..ServerConfig::loopback()
     };
     let shards = vec![ShardInfo {
         name: "TestShard".to_string(),

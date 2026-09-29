@@ -90,9 +90,8 @@ async fn login_smoke_drives_phase1_and_phase2_through_real_http_stack() {
     // smoke runs without DATABASE_URL. The DB-credential path is
     // covered by the per-handler tests in handlers.rs.
     let base_config = ServerConfig {
-        auth_host: "127.0.0.1".to_string(),
         developer_mode: true,
-        ..ServerConfig::default()
+        ..ServerConfig::loopback()
     };
     let shards = vec![ShardInfo {
         name: "TestShard".to_string(),

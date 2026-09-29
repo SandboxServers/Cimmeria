@@ -361,6 +361,16 @@ tools/test-live-db.ps1
 
 ---
 
+### Windows Firewall asks to allow a test binary (`cimmeria_auth-<hash>.exe`, `it-<hash>.exe`)
+
+**Symptom.** Running the tests pops "Do you want to allow public and private networks to access this app?" for a test executable, again after every rebuild. Unanswered prompts pile up and dim the desktop.
+
+**Root cause.** A test started a listener on a non-loopback address such as `0.0.0.0`. Windows prompts per executable path, and cargo gives each rebuilt test binary a new hashed name, so the prompt comes back every time.
+
+**Fix.** Tests must bind `127.0.0.1`: build service configs from `ServerConfig::loopback()`, not `ServerConfig::default()` (the production defaults bind every interface), and bind hand-made sockets to `127.0.0.1:0`. The `loopback_bind_guard` tests in `cimmeria-test-support` catch the usual ways this creeps back; see [`TESTING.md`](../TESTING.md) → Test-DB hygiene.
+
+---
+
 ### `cargo nextest` not found
 
 **Symptom.** `cargo nextest run` reports "no such subcommand."

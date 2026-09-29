@@ -98,6 +98,11 @@ pub struct ServerConfig {
     /// Default: true in dev builds (from `BaseService.config:developer_mode`)
     pub developer_mode: bool,
 
+    /// Minigame SmartFoxServer TCP bind address.
+    /// Default: `0.0.0.0` (the SWF minigames connect from the player's
+    /// machine, so production listens on every interface).
+    pub minigame_host: String,
+
     /// Port the minigame SmartFoxServer TCP listener binds to.
     /// Default: 30000
     pub minigame_port: u16,
@@ -158,6 +163,7 @@ impl Default for ServerConfig {
                 "host=localhost port=5433 user=w-testing password=w-testing dbname=sgw".to_string(),
             protocol_digest: "58AFA196AD3AC4F65CADD99BFF23B799".to_string(),
             developer_mode: false,
+            minigame_host: "0.0.0.0".to_string(),
             minigame_port: 30000,
             // v1 is the only version unpatched clients understand; the default
             // stays v1 until the client patch lands. Operators opt into v2
@@ -166,6 +172,30 @@ impl Default for ServerConfig {
             // One hour. Only takes effect on v2 sessions; v1 sessions never
             // rotate regardless of this value.
             mercury_key_rotation_secs: 3600,
+        }
+    }
+}
+
+impl ServerConfig {
+    /// The defaults, with every listener bound to `127.0.0.1`.
+    ///
+    /// Tests that start a real listener build their config from this, not
+    /// from [`Default`]: the production defaults bind `0.0.0.0`, and on
+    /// Windows every program that listens on a non-loopback address raises
+    /// a Windows Firewall "allow access" prompt. A cargo test binary gets a
+    /// new hashed file name on every rebuild, so each rebuild prompts again.
+    /// The `loopback_bind_guard` in `cimmeria-test-support` keeps tests on
+    /// this constructor.
+    pub fn loopback() -> Self {
+        const LOOPBACK: &str = "127.0.0.1";
+        Self {
+            auth_host: LOOPBACK.to_string(),
+            base_host: LOOPBACK.to_string(),
+            base_external_host: LOOPBACK.to_string(),
+            cell_host: LOOPBACK.to_string(),
+            admin_bind: LOOPBACK.to_string(),
+            minigame_host: LOOPBACK.to_string(),
+            ..Self::default()
         }
     }
 }
@@ -232,6 +262,50 @@ mod tests {
             config.admin_bind, "127.0.0.1",
             "admin_bind must default to loopback while the admin API has no auth"
         );
+    }
+
+    /// Production listens on every interface: players connect from other
+    /// machines. `loopback()` must not leak into the real defaults.
+    #[test]
+    fn default_config_binds_game_listeners_to_all_interfaces() {
+        let config = ServerConfig::default();
+        for (name, host) in [
+            ("auth_host", &config.auth_host),
+            ("base_host", &config.base_host),
+            ("cell_host", &config.cell_host),
+            ("minigame_host", &config.minigame_host),
+        ] {
+            assert_eq!(host, "0.0.0.0", "{name} production default");
+        }
+    }
+
+    /// Every bind address in the test config must be loopback, or each
+    /// rebuilt test binary raises a Windows Firewall prompt. Adding a new
+    /// `*_host` / `*_bind` field means adding it here and to `loopback()`.
+    #[test]
+    fn loopback_config_binds_every_listener_to_loopback() {
+        let config = ServerConfig::loopback();
+        for (name, host) in [
+            ("auth_host", &config.auth_host),
+            ("base_host", &config.base_host),
+            ("base_external_host", &config.base_external_host),
+            ("cell_host", &config.cell_host),
+            ("admin_bind", &config.admin_bind),
+            ("minigame_host", &config.minigame_host),
+        ] {
+            let ip: std::net::IpAddr = host
+                .parse()
+                .unwrap_or_else(|e| panic!("{name} = {host:?} is not an IP: {e}"));
+            assert!(ip.is_loopback(), "{name} = {host} must be loopback");
+        }
+        // Only the hosts differ: ports and everything else stay the defaults.
+        let d = ServerConfig::default();
+        assert_eq!(
+            (config.auth_port, config.logon_port, config.base_port),
+            (d.auth_port, d.logon_port, d.base_port)
+        );
+        assert_eq!(config.minigame_port, d.minigame_port);
+        assert_eq!(config.developer_mode, d.developer_mode);
     }
 
     #[test]

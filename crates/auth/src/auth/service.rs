@@ -371,7 +371,7 @@ mod tests {
     async fn start_sets_running() {
         let config = ServerConfig {
             logon_port: 0, // OS-assigned port to avoid conflicts in tests
-            ..ServerConfig::default()
+            ..ServerConfig::loopback()
         };
         let mut svc = AuthService::new(&config);
         svc.start().await.unwrap();
@@ -391,9 +391,8 @@ mod tests {
             l.local_addr().unwrap().port()
         };
         let config = ServerConfig {
-            auth_host: "127.0.0.1".to_string(),
             logon_port: port,
-            ..ServerConfig::default()
+            ..ServerConfig::loopback()
         };
         let mut svc = AuthService::new(&config);
         svc.set_public_routes(Router::new().route(
