@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 9,600 |
-| Files with tests | 1,616 |
-| Gated in CI (every crate but CI's exclude list) | 8,345 |
+| Tests (`#[test]` / `#[tokio::test]`) | 9,606 |
+| Files with tests | 1,617 |
+| Gated in CI (every crate but CI's exclude list) | 8,351 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,519 |
 | Inventory threshold (5% of the tests) | 480 |
 
@@ -120,14 +120,14 @@ with no file in this directory yet.
 | `crates/wireclient` | `cimmeria-wireclient` | 61 | 16 | 0 | yes | [wireclient.md](wireclient.md) |
 | `crates/auth` | `cimmeria-auth` | 55 | 11 | 9 | yes | none |
 | `crates/cell-pets` | `cimmeria-cell-pets` | 53 | 7 | 0 | yes | none |
+| `crates/test-support` | `cimmeria-test-support` | 52 | 7 | 8 | yes | none |
 | `crates/cell-duel` | `cimmeria-cell-duel` | 50 | 11 | 0 | yes | none |
 | `crates/game` | `cimmeria-game` | 48 | 12 | 0 | yes | [game.md](game.md) |
-| `crates/test-support` | `cimmeria-test-support` | 48 | 6 | 8 | yes | none |
 | `crates/patch-wire` | `cimmeria-patch-wire` | 47 | 6 | 0 | yes | none |
 | `crates/services` | `cimmeria-services` | 45 | 13 | 20 | yes | [services.md](services.md) |
 | `crates/client-launch` | `cimmeria-client-launch` | 41 | 4 | 0 | yes | none |
+| `crates/common` | `cimmeria-common` | 38 | 4 | 0 | yes | [common.md](common.md) |
 | `crates/minigame` | `cimmeria-minigame` | 37 | 5 | 0 | yes | none |
-| `crates/common` | `cimmeria-common` | 36 | 4 | 0 | yes | [common.md](common.md) |
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/wire-log` | `cimmeria-wire-log` | 27 | 6 | 0 | yes | none |
