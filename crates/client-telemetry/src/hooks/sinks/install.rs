@@ -20,7 +20,7 @@ use crate::queue::Producer;
 
 /// One imported function: its IAT slot in `SGW.exe` and what it imports.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct SlotImport {
+pub(in crate::hooks) struct SlotImport {
     /// Address of the IAT slot.
     pub slot: usize,
     /// The DLL the import comes from.
@@ -32,7 +32,7 @@ pub(super) struct SlotImport {
 impl SlotImport {
     /// The address the loader bound this import to, from the module's export
     /// table. `None` when the module is not loaded or lacks the export.
-    fn resolved(&self) -> Option<usize> {
+    pub(in crate::hooks) fn resolved(&self) -> Option<usize> {
         use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
         let wide: Vec<u16> = self.module.encode_utf16().chain(Some(0)).collect();
         // SAFETY: NUL-terminated strings that outlive the calls; no reference
@@ -64,7 +64,7 @@ fn addr_value(address: usize) -> Value {
 /// MinHook is initialised; `address` is a fingerprinted function entry whose
 /// first five bytes are whole instructions; `detour` has the exact
 /// signature and calling convention of the target.
-pub(super) unsafe fn inline(
+pub(in crate::hooks) unsafe fn inline(
     producer: &Producer,
     name: &'static str,
     address: usize,
@@ -125,7 +125,7 @@ pub(super) unsafe fn inline(
 /// # Safety
 ///
 /// `detour` has the exact signature and calling convention of the import.
-pub(super) unsafe fn iat(
+pub(in crate::hooks) unsafe fn iat(
     producer: &Producer,
     name: &'static str,
     import: SlotImport,
@@ -181,6 +181,54 @@ pub(super) unsafe fn iat(
                 [
                     ("hook", Value::String(name.into())),
                     ("address", addr_value(import.slot)),
+                ],
+            );
+            caps::record(name, Outcome::Failed("protect_failed"));
+            false
+        }
+    }
+}
+
+/// Swap one vtable slot (the fingerprint gate has already checked it holds
+/// `slot.expected`). The original is published in `orig` before the swap: a
+/// call through the slot can land in the detour the moment it is written.
+/// Returns whether it is live.
+///
+/// # Safety
+///
+/// `detour` has the exact signature and calling convention of the method
+/// in that slot.
+pub(in crate::hooks) unsafe fn vtable(
+    producer: &Producer,
+    name: &'static str,
+    slot: crate::fingerprint::SlotSite,
+    detour: usize,
+    orig: &AtomicUsize,
+) -> bool {
+    orig.store(slot.expected as usize, Ordering::Release);
+    match crate::hooks::swap_vtable_slot(slot.address, detour) {
+        Ok(displaced) => {
+            orig.store(displaced, Ordering::Release);
+            crate::hooks::emit_info(
+                producer,
+                "client.hooks.vtable.installed",
+                [
+                    ("hook", Value::String(name.into())),
+                    ("address", addr_value(slot.address)),
+                    ("original", addr_value(displaced)),
+                ],
+            );
+            caps::record(name, Outcome::Installed);
+            true
+        }
+        Err(_) => {
+            orig.store(0, Ordering::Release);
+            crate::hooks::emit_warn(
+                producer,
+                "client.hooks.vtable.protect_failed",
+                [
+                    ("hook", Value::String(name.into())),
+                    ("address", addr_value(slot.address)),
                 ],
             );
             caps::record(name, Outcome::Failed("protect_failed"));

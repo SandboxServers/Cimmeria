@@ -70,6 +70,7 @@ mod sampling;
 // The engine layer's log sinks and OS-level seams (BigWorld messages, UE3
 // `GLog`, log4cxx, debug strings, exceptions). Own module tree, own
 // fingerprint sites.
+pub mod seams;
 pub mod sinks;
 mod vtable_hooks;
 
@@ -93,7 +94,9 @@ pub fn install_all(producer: Producer) {
     inline_hooks::install(producer.clone());
     iat_hooks::install(producer.clone());
     vtable_hooks::install(producer.clone());
-    sinks::install(producer);
+    sinks::install(producer.clone());
+    seams::install(producer.clone());
+    sinks::emit_capabilities(&producer);
 }
 
 /// Convenience: emit a one-shot info event with this target +

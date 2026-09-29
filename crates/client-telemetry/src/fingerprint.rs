@@ -155,8 +155,28 @@ pub const CHECK_FAILED: Site = code_site(
     ],
 );
 
+/// `UWorld::SpawnActor` (`client.engine.spawn_actor`): `sub esp, 0x20; push
+/// ebx; push ebp; push esi; push edi; mov edi, ecx; cmp [edi+0x54], 0`.
+pub const SPAWN_ACTOR: Site = code_site(
+    "UWorld::SpawnActor",
+    0x0087_6970,
+    &[
+        0x83, 0xEC, 0x20, 0x53, 0x55, 0x56, 0x57, 0x8B, 0xF9, 0x83, 0x7F, 0x54,
+    ],
+);
+
+/// `UWorld::DestroyActor` (`client.engine.destroy_actor`): `push -1; push
+/// 0x016b92b4; mov eax, fs:[0]`.
+pub const DESTROY_ACTOR: Site = code_site(
+    "UWorld::DestroyActor",
+    0x0087_5290,
+    &[
+        0x6A, 0xFF, 0x68, 0xB4, 0x92, 0x6B, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 15] = [
+pub const CODE_SITES: [Site; 17] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -172,6 +192,8 @@ pub const CODE_SITES: [Site; 15] = [
     REDIRECTOR_SERIALIZE,
     ERROR_SERIALIZE,
     CHECK_FAILED,
+    SPAWN_ACTOR,
+    DESTROY_ACTOR,
 ];
 
 const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {
@@ -218,11 +240,45 @@ pub const USEQUENCE_UPDATE_OP_SLOT: SlotSite = SlotSite {
     expected: 0x006c_61c0,
 };
 
+/// `USeqAct_Interp::Activated`, slot 85 of the class's vtable at
+/// `0x018ad494` (`client.engine.matinee`).
+pub const MATINEE_ACTIVATED_SLOT: SlotSite = SlotSite {
+    name: "USeqAct_Interp::Activated slot",
+    address: 0x018a_d5e8,
+    expected: 0x007b_06a0,
+};
+
+/// `USeqAct_Interp::DeActivated`, slot 86.
+pub const MATINEE_DEACTIVATED_SLOT: SlotSite = SlotSite {
+    name: "USeqAct_Interp::DeActivated slot",
+    address: 0x018a_d5ec,
+    expected: 0x007a_6730,
+};
+
+/// `FNxOutputStream::reportError`, slot 0 of the vtable at `0x01839d94`
+/// (`client.physx.error`).
+pub const PHYSX_REPORT_ERROR_SLOT: SlotSite = SlotSite {
+    name: "FNxOutputStream::reportError slot",
+    address: 0x0183_9d94,
+    expected: 0x0055_c5e0,
+};
+
+/// `FNxOutputStream::reportAssertViolation`, slot 1.
+pub const PHYSX_REPORT_ASSERT_SLOT: SlotSite = SlotSite {
+    name: "FNxOutputStream::reportAssertViolation slot",
+    address: 0x0183_9d98,
+    expected: 0x0055_c5d0,
+};
+
 /// Every vtable slot the gate checks.
-pub const SLOT_SITES: [SlotSite; 3] = [
+pub const SLOT_SITES: [SlotSite; 7] = [
     CEGUI_LOG_EVENT_SLOT,
     AACTOR_TICK_SLOT,
     USEQUENCE_UPDATE_OP_SLOT,
+    MATINEE_ACTIVATED_SLOT,
+    MATINEE_DEACTIVATED_SLOT,
+    PHYSX_REPORT_ERROR_SLOT,
+    PHYSX_REPORT_ASSERT_SLOT,
 ];
 
 /// What a vtable slot turned out to hold.

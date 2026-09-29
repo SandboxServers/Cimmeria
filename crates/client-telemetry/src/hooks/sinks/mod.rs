@@ -62,14 +62,15 @@ pub mod ue3_log;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod bw_message_detour;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-mod install;
+pub(in crate::hooks) mod install;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod log4cxx_detours;
 
 use crate::queue::Producer;
 
-/// Install every sink and emit the capabilities event. Called from
-/// `hooks::install_all`, after the older hooks and MinHook's init.
+/// Install every sink. Called from `hooks::install_all`, after the older hooks
+/// and MinHook's init; the capabilities event is emitted once, after the
+/// seams have installed too.
 pub fn install(_producer: Producer) {
     #[cfg(all(target_os = "windows", target_arch = "x86"))]
     unsafe {
@@ -93,14 +94,17 @@ unsafe fn install_inner(producer: &Producer) {
             caps::Outcome::Failed("AddVectoredExceptionHandler")
         },
     );
-
-    emit_capabilities(producer);
 }
 
 /// Emit `client.hooks.capabilities` from what has been recorded, and write
 /// the same to the local log.
+pub fn emit_capabilities(_producer: &Producer) {
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    emit_capabilities_x86(_producer);
+}
+
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-pub(crate) fn emit_capabilities(producer: &Producer) {
+fn emit_capabilities_x86(producer: &Producer) {
     let recorded = caps::snapshot();
     let fields = caps::fields(&recorded, crate::capture::current());
     let mut builder =
