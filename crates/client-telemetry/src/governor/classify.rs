@@ -211,6 +211,9 @@ pub const RULES: &[Rule] = &[
     per_entity(Exact("client.mercury.entity_method"), "msg_id"),
     per_entity(Exact("client.mercury.entity_property"), "msg_id"),
     per_entity(Exact("client.net.out"), "method"),
+    // SequenceManager drops: per Source entity and drop path, so one
+    // entity culled every shot cannot hide another's missing pawn.
+    per_entity(Exact("client.sequence.dropped"), "path"),
     // High-rate repetitive streams: summarized only.
     hot(Exact("client.engine.sequence_tick"), None),
     hot(Exact("client.engine.actor_tick"), Some("tick_type")),

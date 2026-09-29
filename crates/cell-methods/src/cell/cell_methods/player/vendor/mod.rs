@@ -61,11 +61,27 @@ pub async fn dispatch(
                 RECHARGE_ITEMS => "rechargeItems",
                 _ => unreachable!(),
             };
+            // The `vendor` target's `action` vocabulary (the base rows'
+            // `action` for the same request).
+            let action = match method_index {
+                PURCHASE_ITEMS => "buy",
+                SELL_ITEMS => "sell",
+                BUYBACK_ITEMS => "buyback",
+                REPAIR_ITEMS => "repair",
+                _ => "recharge",
+            };
+            let identity = space_mgr.player_identity(entity_id);
 
             let session = match vendor_context(entity_id, space_mgr) {
                 Some(s) => s,
                 None => {
                     tracing::warn!(
+                        target: "vendor",
+                        event = "refused",
+                        action,
+                        reason = "no_vendor_session",
+                        account_id = identity.account_id,
+                        player_id = identity.player_id,
                         entity_id,
                         op = op_name,
                         "vendor op: no active vendor context (player_id or vendor_entity unset)"
@@ -79,7 +95,14 @@ pub async fn dispatch(
                 Some(items) => items,
                 None => {
                     tracing::warn!(
+                        target: "vendor",
+                        event = "refused",
+                        action,
+                        reason = "malformed_args",
+                        account_id = identity.account_id,
+                        player_id = session.player_id,
                         entity_id,
+                        vendor_entity_id = session.vendor_entity_id,
                         op = op_name,
                         args_len = args.len(),
                         "vendor op: malformed item array in args"
@@ -96,7 +119,13 @@ pub async fn dispatch(
             // vendor that was actually opened so a client can't spoof it.
             let validated_template_id = match trailing_template_id {
                 Some(client_id) => {
-                    match validate_template_id(entity_id, op_name, &session, client_id) {
+                    match validate_template_id(
+                        entity_id,
+                        identity.account_id,
+                        action,
+                        &session,
+                        client_id,
+                    ) {
                         Some(server_id) => Some(server_id),
                         None => return true,
                     }
@@ -114,11 +143,7 @@ pub async fn dispatch(
                         items,
                     },
                     None => {
-                        tracing::warn!(
-                            entity_id,
-                            op = op_name,
-                            "vendor op: missing vendor_template_id"
-                        );
+                        log_missing_template(entity_id, identity, action, &session);
                         return true;
                     }
                 },
@@ -131,11 +156,7 @@ pub async fn dispatch(
                         items,
                     },
                     None => {
-                        tracing::warn!(
-                            entity_id,
-                            op = op_name,
-                            "vendor op: missing vendor_template_id"
-                        );
+                        log_missing_template(entity_id, identity, action, &session);
                         return true;
                     }
                 },
@@ -148,11 +169,7 @@ pub async fn dispatch(
                         items,
                     },
                     None => {
-                        tracing::warn!(
-                            entity_id,
-                            op = op_name,
-                            "vendor op: missing vendor_template_id"
-                        );
+                        log_missing_template(entity_id, identity, action, &session);
                         return true;
                     }
                 },
@@ -173,7 +190,14 @@ pub async fn dispatch(
 
             if let Err(e) = tx.send(msg).await {
                 tracing::warn!(
+                    target: "vendor",
+                    event = "failed",
+                    action,
+                    reason = "base_channel_closed",
+                    account_id = identity.account_id,
+                    player_id = session.player_id,
                     entity_id,
+                    vendor_entity_id = session.vendor_entity_id,
                     op = op_name,
                     "vendor op: cell->base channel closed: {e}"
                 );
@@ -183,4 +207,25 @@ pub async fn dispatch(
 
         _ => false,
     }
+}
+
+/// A purchase / sell / buyback arrived without the vendor template id the
+/// base needs to price it.
+fn log_missing_template(
+    entity_id: u32,
+    identity: cimmeria_entity::cell_entity::PlayerIdentity,
+    action: &'static str,
+    session: &session::VendorSession,
+) {
+    tracing::warn!(
+        target: "vendor",
+        event = "refused",
+        action,
+        reason = "missing_template_id",
+        account_id = identity.account_id,
+        player_id = session.player_id,
+        entity_id,
+        vendor_entity_id = session.vendor_entity_id,
+        "vendor op: missing vendor_template_id"
+    );
 }

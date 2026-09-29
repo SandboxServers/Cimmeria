@@ -294,3 +294,45 @@ async fn unsent_grant_stays_on_the_corpse() {
         Some("true")
     );
 }
+
+/// `Player looted item` carries a numeric `design_id` (absent for cash),
+/// never the Debug-formatted `"Some(5228)"` / `"None"` the 2026-09-29
+/// playtest rows had, plus the looter's `account_id` and `player_id`.
+/// Reverting to `design_id = ?removed_item.design_id` fails the first
+/// assertion; dropping the identity fails the next two.
+#[tokio::test]
+async fn looted_item_row_carries_numeric_design_id_and_identity() {
+    let (mut mgr, corpse) = looting_mgr(1);
+    mgr.get_entity_mut(corpse).unwrap().loot.push(LootItem {
+        design_id: None,
+        quantity: 25,
+        index: 2,
+    });
+    let (tx, mut rx) = mpsc::channel(64);
+    let capture = LogCapture::install();
+    let _ = take(&mut mgr, &tx, &mut rx).await;
+    handle_loot_item(LOOTER, 2, &tx, &mut mgr).await;
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.level == Level::INFO && c.message_contains("Player looted item"))
+        .collect();
+    assert_eq!(rows.len(), 2, "{rows:#?}");
+    let item = &rows[0];
+    assert!(
+        item.has_field("design_id", &DESIGN.to_string()),
+        "{item:#?}"
+    );
+    assert!(item.has_field("account_id", &ACCOUNT_ID.to_string()));
+    assert!(item.has_field("player_id", &PLAYER_ID.to_string()));
+    assert!(item.has_field("loot_kind", "item"));
+    assert!(item.has_field("corpse_template_id", &TEMPLATE.to_string()));
+    let cash = &rows[1];
+    assert!(
+        !cash.fields.contains_key("design_id"),
+        "cash has no design id, not a \"None\" string: {cash:#?}"
+    );
+    assert!(cash.has_field("loot_kind", "cash"));
+    assert!(cash.has_field("quantity", "25"));
+}

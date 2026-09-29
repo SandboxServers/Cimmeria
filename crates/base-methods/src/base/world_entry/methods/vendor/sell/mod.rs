@@ -13,6 +13,7 @@ use super::purchase_helpers::load_vendor_template_lists;
 use super::purchase_helpers::normalize_item_quantities;
 use super::serializers::reserve_free_inventory_slots;
 use super::store::handle_open_vendor_store;
+use super::telemetry::{VendorItem, VendorLog};
 use crate::base::inventory_locks::take_inventory_locks;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
@@ -25,6 +26,7 @@ use super::VENDOR_FILTER_BAGS;
 #[derive(sqlx::FromRow)]
 struct SellInventoryRow {
     item_id: i32,
+    type_id: i32,
     stack_size: i32,
     container_id: i32,
     unit_price: i32,
@@ -49,32 +51,42 @@ pub async fn handle_sell_vendor_items(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    let tel = VendorLog::new(
+        "sell",
+        entity_id,
+        player_id,
+        Some(vendor_entity_id),
+        Some(vendor_template_id),
+        connected,
+        entity_to_addr,
+    );
     let pool = match db_pool {
         Some(pool) => pool,
         None => {
-            tracing::debug!(entity_id, player_id, "SellVendorItems: no DB pool");
+            tel.failed("no_database", VendorItem::default(), &"no database pool");
             return;
         }
     };
 
     let items = normalize_item_quantities(items, false);
     if items.is_empty() {
-        tracing::debug!(entity_id, player_id, "SellVendorItems: empty item list");
+        tel.refused("empty_request", VendorItem::default());
         return;
     }
+    // The single item a one-line sale names, for the rows below.
+    let mut only = match items.as_slice() {
+        [(id, qty)] => VendorItem::row(*id).quantity(*qty),
+        _ => VendorItem::default(),
+    };
 
     let Some(template) =
         load_vendor_template_lists(pool, vendor_template_id, "SellVendorItems").await
     else {
+        tel.failed("template_lookup_failed", only, &"no vendor template lists");
         return;
     };
     let Some(sell_item_list) = template.sell_item_list else {
-        tracing::debug!(
-            entity_id,
-            player_id,
-            vendor_template_id,
-            "SellVendorItems: vendor has no sell list"
-        );
+        tel.refused("vendor_buys_nothing", only);
         return;
     };
 
@@ -82,7 +94,7 @@ pub async fn handle_sell_vendor_items(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(entity_id, player_id, "SellVendorItems: begin failed: {e}");
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -94,16 +106,13 @@ pub async fn handle_sell_vendor_items(
     // buyback holding that key waited for the same main-bag row.
     if let Err(e) = take_inventory_locks(&mut tx, player_id, &[INV_BUYBACK]).await {
         let _ = tx.rollback().await;
-        tracing::error!(
-            entity_id,
-            player_id,
-            "SellVendorItems: advisory lock failed: {e}"
-        );
+        tel.failed("inventory_lock_failed", only, &e);
         return;
     }
 
     let sell_rows = match sqlx::query_as::<_, SellInventoryRow>(
-        "SELECT inv.item_id, inv.stack_size, inv.container_id, ili.naquadah AS unit_price \
+        "SELECT inv.item_id, inv.type_id, inv.stack_size, inv.container_id, \
+                ili.naquadah AS unit_price \
          FROM sgw_inventory inv \
          JOIN resources.items ri ON ri.item_id = inv.type_id \
          JOIN resources.item_list_items ili \
@@ -126,12 +135,7 @@ pub async fn handle_sell_vendor_items(
         Ok(rows) => rows,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(
-                entity_id,
-                player_id,
-                vendor_template_id,
-                "SellVendorItems: inventory query failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -146,21 +150,12 @@ pub async fn handle_sell_vendor_items(
             Ok(Some(slots)) => slots.into_iter(),
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    requested_items = items.len(),
-                    "SellVendorItems: not enough buyback slots"
-                );
+                tel.refused("buyback_full", only);
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "SellVendorItems: buyback slot query failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         };
@@ -170,38 +165,31 @@ pub async fn handle_sell_vendor_items(
     let mut bandolier_changed = false;
 
     for (item_id, quantity) in &items {
+        let line = VendorItem::row(*item_id).quantity(*quantity);
         let Some(row) = rows_by_id.get(item_id) else {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "SellVendorItems: item not sellable to this vendor"
-            );
+            // Not in the player's carried bags, bound, not sellable, or not
+            // on this vendor's sell list: the query cannot tell which.
+            tel.refused("not_sellable", line);
             return;
         };
+        let line = VendorItem {
+            design_id: Some(row.type_id),
+            ..line
+        };
+        if items.len() == 1 {
+            only = line.price(i64::from(row.unit_price) * i64::from(*quantity));
+        }
 
         if *quantity > row.stack_size {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                quantity,
-                stack_size = row.stack_size,
-                "SellVendorItems: requested quantity exceeds stack"
-            );
+            tel.refused("quantity_exceeds_stack", line);
             return;
         }
 
         let Some(line_cash_gain) = row.unit_price.checked_mul(*quantity) else {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "SellVendorItems: line cash overflow"
-            );
+            tel.refused("price_overflow", line);
             return;
         };
 
@@ -209,19 +197,14 @@ pub async fn handle_sell_vendor_items(
             Some(total) => total,
             None => {
                 let _ = tx.rollback().await;
-                tracing::warn!(entity_id, player_id, "SellVendorItems: cash gain overflow");
+                tel.refused("price_overflow", line);
                 return;
             }
         };
 
         let Some(buyback_slot) = buyback_slots.next() else {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "SellVendorItems: buyback slot reservation exhausted"
-            );
+            tel.failed("buyback_slot_exhausted", line, &"slot reservation ran out");
             return;
         };
 
@@ -278,22 +261,12 @@ pub async fn handle_sell_vendor_items(
                 }
                 Ok(_) => {
                     let _ = tx.rollback().await;
-                    tracing::warn!(
-                        entity_id,
-                        player_id,
-                        item_id,
-                        "SellVendorItems: failed to copy item into buyback"
-                    );
+                    tel.failed("rows_affected_zero", line, &"buyback copy wrote no row");
                     return;
                 }
                 Err(e) => {
                     let _ = tx.rollback().await;
-                    tracing::error!(
-                        entity_id,
-                        player_id,
-                        item_id,
-                        "SellVendorItems: buyback insert failed: {e}"
-                    );
+                    tel.failed("db_error", line, &e);
                     return;
                 }
             }
@@ -310,22 +283,16 @@ pub async fn handle_sell_vendor_items(
             }
             Ok(_) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    item_id,
-                    "SellVendorItems: no rows changed"
+                tel.failed(
+                    "rows_affected_zero",
+                    line,
+                    &"inventory update changed no row",
                 );
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    item_id,
-                    "SellVendorItems: inventory update failed: {e}"
-                );
+                tel.failed("db_error", line, &e);
                 return;
             }
         }
@@ -347,28 +314,21 @@ pub async fn handle_sell_vendor_items(
             Ok(Some(b)) => b,
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(entity_id, player_id, "SellVendorItems: player not found");
+                tel.failed("player_missing", only, &"no sgw_player row");
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "SellVendorItems: balance read failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         };
 
         if current_balance.checked_add(total_cash_gain).is_none() {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                current_balance,
-                total_cash_gain,
-                "SellVendorItems: refusing sale — naquadah balance would overflow i32"
+            tel.refused(
+                "cash_overflow",
+                only.price(total_cash_gain).cash(current_balance),
             );
             return;
         }
@@ -385,16 +345,16 @@ pub async fn handle_sell_vendor_items(
             Ok(Some(total)) => Some(total),
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(entity_id, player_id, "SellVendorItems: player not found");
+                tel.failed(
+                    "player_missing",
+                    only,
+                    &"player row gone before the cash update",
+                );
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "SellVendorItems: cash update failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         }
@@ -417,21 +377,22 @@ pub async fn handle_sell_vendor_items(
             Ok(id) => outbox_pending.push((id, payload)),
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    item_id,
-                    "SellVendorItems: outbox enqueue failed, aborting: {e}"
-                );
+                tel.failed("outbox_enqueue_failed", VendorItem::row(*item_id), &e);
                 return;
             }
         }
     }
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(entity_id, player_id, "SellVendorItems: commit failed: {e}");
+        tel.failed("commit_failed", only, &e);
         return;
     }
+    tel.completed(
+        only.price(total_cash_gain),
+        items.len(),
+        new_cash_total.map(|t| i64::from(t) - i64::from(total_cash_gain)),
+        new_cash_total.map(i64::from),
+    );
 
     if let Some(total) = new_cash_total {
         send_cash_changed_to_client(entity_id, total, transport, connected, entity_to_addr).await;

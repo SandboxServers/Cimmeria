@@ -135,7 +135,11 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         drew_weapon,
         was_in_combat,
         is_player = entity_state.0,
-        player_id = ?entity_state.1,
+        // Numeric, never `?`: a Debug-formatted `Some(72)` lands in SigNoz
+        // as a *string* `player_id` beside every other row's number, so a
+        // `player_id = 72` filter silently misses these rows.
+        account_id = space_mgr.player_identity(entity_id).account_id,
+        player_id = entity_state.1,
         anim_path,
         "UpdateBandolierItem: equip-display decision"
     );
@@ -325,7 +329,11 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         drew_weapon,
         was_in_combat,
         is_player = entity_state.0,
-        player_id = ?entity_state.1,
+        // Numeric, never `?`: a Debug-formatted `Some(72)` lands in SigNoz
+        // as a *string* `player_id` beside every other row's number, so a
+        // `player_id = 72` filter silently misses these rows.
+        account_id = space_mgr.player_identity(entity_id).account_id,
+        player_id = entity_state.1,
         anim_path,
         "SyncBandolierItems: equip-display decision"
     );

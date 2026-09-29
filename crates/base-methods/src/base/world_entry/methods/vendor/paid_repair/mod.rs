@@ -11,6 +11,7 @@ use super::helpers::send_cash_changed_to_client;
 use super::purchase_helpers::load_vendor_template_lists;
 use super::serializers::StoreItemCostUpdate;
 use super::store::send_store_update_to_client;
+use super::telemetry::{VendorItem, VendorLog};
 use crate::base::ConnectedClientState;
 
 use super::VENDOR_FILTER_BAGS;
@@ -41,47 +42,51 @@ pub async fn handle_paid_repair_inventory_items(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    // The vendor's entity id is not on this path (the cell forwards only the
+    // template), so the rows carry `vendor_template_id` alone.
+    let tel = VendorLog::new(
+        "repair",
+        entity_id,
+        player_id,
+        None,
+        Some(vendor_template_id),
+        connected,
+        entity_to_addr,
+    );
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, "RepairInventoryItems: no DB pool");
+            tel.failed("no_database", VendorItem::default(), &"no database pool");
             return;
         }
     };
 
     let item_ids = normalize_item_ids(item_ids);
     if item_ids.is_empty() {
-        tracing::debug!(
-            entity_id,
-            player_id,
-            "RepairInventoryItems: empty item list"
-        );
+        tel.refused("empty_request", VendorItem::default());
         return;
     }
+    // The single item a one-item request names, for the rows below.
+    let only = match item_ids.as_slice() {
+        [id] => VendorItem::row(*id),
+        _ => VendorItem::default(),
+    };
 
     let Some(template) =
         load_vendor_template_lists(pool, vendor_template_id, "RepairInventoryItems").await
     else {
+        tel.failed("template_lookup_failed", only, &"no vendor template lists");
         return;
     };
     let Some(repair_item_list) = template.repair_item_list else {
-        tracing::warn!(
-            entity_id,
-            player_id,
-            vendor_template_id,
-            "RepairInventoryItems: vendor has no repair list — client request dropped"
-        );
+        tel.refused("vendor_does_not_repair", only);
         return;
     };
 
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(
-                entity_id,
-                player_id,
-                "RepairInventoryItems: begin failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -116,12 +121,7 @@ pub async fn handle_paid_repair_inventory_items(
         Ok(rows) => rows,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(
-                entity_id,
-                player_id,
-                vendor_template_id,
-                "RepairInventoryItems: repair query failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -132,12 +132,8 @@ pub async fn handle_paid_repair_inventory_items(
     for item_id in &item_ids {
         let Some(row) = rows_by_id.get(item_id) else {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "RepairInventoryItems: item is not repairable at this vendor"
-            );
+            // Not carried, a stack, already full, or not on this vendor's list.
+            tel.refused("not_repairable", VendorItem::row(*item_id));
             return;
         };
 
@@ -145,7 +141,7 @@ pub async fn handle_paid_repair_inventory_items(
             Some(total) => total,
             None => {
                 let _ = tx.rollback().await;
-                tracing::warn!(entity_id, player_id, "RepairInventoryItems: cost overflow");
+                tel.refused("price_overflow", only);
                 return;
             }
         };
@@ -160,34 +156,20 @@ pub async fn handle_paid_repair_inventory_items(
             Ok(balance) => balance,
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "RepairInventoryItems: balance query failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         };
 
     let Some(balance) = balance else {
         let _ = tx.rollback().await;
-        tracing::warn!(
-            entity_id,
-            player_id,
-            "RepairInventoryItems: player not found"
-        );
+        tel.failed("player_missing", only, &"no sgw_player row");
         return;
     };
 
     if balance < total_cost {
         let _ = tx.rollback().await;
-        tracing::warn!(
-            entity_id,
-            player_id,
-            balance,
-            total_cost,
-            "RepairInventoryItems: insufficient naquadah"
-        );
+        tel.refused("insufficient_cash", only.price(total_cost).cash(balance));
         return;
     }
 
@@ -203,20 +185,16 @@ pub async fn handle_paid_repair_inventory_items(
         Ok(Some(total)) => total,
         Ok(None) => {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                "RepairInventoryItems: player disappeared before cash update"
+            tel.failed(
+                "player_missing",
+                only,
+                &"player row gone before the cash update",
             );
             return;
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(
-                entity_id,
-                player_id,
-                "RepairInventoryItems: cash update failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -238,34 +216,30 @@ pub async fn handle_paid_repair_inventory_items(
         Ok(r) if r.rows_affected() == item_ids.len() as u64 => {}
         Ok(r) => {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                expected = item_ids.len(),
-                updated = r.rows_affected(),
-                "RepairInventoryItems: unexpected repair update count"
+            tel.failed(
+                "rows_affected_mismatch",
+                only,
+                &format!("expected {}, updated {}", item_ids.len(), r.rows_affected()),
             );
             return;
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(
-                entity_id,
-                player_id,
-                "RepairInventoryItems: update failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     }
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(
-            entity_id,
-            player_id,
-            "RepairInventoryItems: commit failed: {e}"
-        );
+        tel.failed("commit_failed", only, &e);
         return;
     }
+    tel.completed(
+        only.price(total_cost),
+        item_ids.len(),
+        Some(i64::from(balance)),
+        Some(i64::from(new_cash_total)),
+    );
 
     send_cash_changed_to_client(
         entity_id,

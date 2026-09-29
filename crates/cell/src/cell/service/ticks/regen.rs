@@ -70,6 +70,8 @@ pub(in crate::cell::service) async fn regen_tick(
         })
         .collect();
 
+    log_regen_transitions(space_mgr, &eligible, POOLS);
+
     for entity_id in eligible {
         let stat_payload = {
             let entity = match space_mgr.get_entity_mut(entity_id) {
@@ -104,6 +106,94 @@ pub(in crate::cell::service) async fn regen_tick(
                 space_mgr,
             )
             .await;
+        }
+    }
+}
+
+/// Per-player regen state behind the `regen_started` / `regen_stopped` rows,
+/// kept as an entity extension (`CellEntity::extensions`) so no field is
+/// added to `CellEntity` for telemetry.
+#[derive(Default)]
+struct RegenTelemetry {
+    active: bool,
+    /// 1 Hz ticks the current regen run has lasted.
+    ticks: u32,
+}
+
+/// Log a `vitals` row each time a player's out-of-combat regen starts or
+/// stops, with the regen per tick (the floored value the tick applies).
+/// Called before this tick's regen is applied, so the pools on a
+/// `regen_started` row are the ones regen starts from. Players only; one
+/// extension lookup per player per second, a row only on a transition.
+fn log_regen_transitions(space_mgr: &mut SpaceManager, eligible: &[u32], pools: &[(i32, i32)]) {
+    use crate::cell::combat::state::BSF_DEAD;
+    use crate::cell::combat::vitals::Vitals;
+
+    for entity_id in space_mgr.all_player_entity_ids() {
+        let Some(e) = space_mgr.get_entity_mut(entity_id) else {
+            continue;
+        };
+        let now = eligible.contains(&entity_id);
+        if e.extensions.get::<RegenTelemetry>().is_none() {
+            e.extensions.insert(RegenTelemetry::default());
+        }
+        let Some(state) = e.extensions.get_mut::<RegenTelemetry>() else {
+            continue;
+        };
+        let (was, ticks) = (state.active, state.ticks);
+        state.active = now;
+        state.ticks = if now { ticks.saturating_add(1) } else { 0 };
+        if was == now {
+            continue;
+        }
+        let v = Vitals::of(&e.stats);
+        let per_tick = |pool: i32| {
+            pools
+                .iter()
+                .find(|&&(p, _)| p == pool)
+                .map_or(0, |&(_, regen)| {
+                    e.stats.get(regen).map_or(0, |s| s.cur).max(1)
+                })
+        };
+        let id = e.identity();
+        if now {
+            tracing::debug!(
+                target: "vitals",
+                event = "regen_started",
+                account_id = id.account_id,
+                player_id = id.player_id,
+                entity_id,
+                health = v.health,
+                health_max = v.health_max,
+                focus = v.focus,
+                focus_max = v.focus_max,
+                health_regen_per_tick = per_tick(cimmeria_entity::stats::HEALTH),
+                focus_regen_per_tick = per_tick(cimmeria_entity::stats::FOCUS),
+                tick_secs = 1,
+                "vitals: out-of-combat regen started"
+            );
+        } else {
+            let reason = if e.state_field & BSF_DEAD != 0 {
+                "dead"
+            } else if !e.threatened_mobs.is_empty() {
+                "entered_combat"
+            } else {
+                "full"
+            };
+            tracing::debug!(
+                target: "vitals",
+                event = "regen_stopped",
+                account_id = id.account_id,
+                player_id = id.player_id,
+                entity_id,
+                reason,
+                regen_ticks = ticks,
+                health = v.health,
+                health_max = v.health_max,
+                focus = v.focus,
+                focus_max = v.focus_max,
+                "vitals: out-of-combat regen stopped"
+            );
         }
     }
 }
@@ -226,5 +316,58 @@ mod tests {
             rx.try_recv().is_err(),
             "full health player must not trigger onStatUpdate"
         );
+    }
+
+    /// One `regen_started` row when regen begins (with the per-tick amount
+    /// and the pools it starts from), nothing while it continues, one
+    /// `regen_stopped` row with the reason when combat interrupts it.
+    /// Removing `log_regen_transitions` fails the first assertion; dropping
+    /// the "only on a transition" check fails the second.
+    #[tokio::test]
+    async fn regen_start_and_stop_are_logged_once_each() {
+        use crate::test_support::LogCapture;
+        use cimmeria_entity::stats::HEALTH;
+        use tracing::Level;
+
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        let e = mgr.get_entity_mut(1).unwrap();
+        e.is_player = true;
+        e.player_id = Some(72);
+        e.account_id = Some(6);
+        e.stats.get_mut(HEALTH).unwrap().update(0, 50, 100);
+        mgr.connect_entity(1);
+        let (tx, _rx) = mpsc::channel(64);
+
+        let capture = LogCapture::install();
+        regen_tick(&tx, &mut mgr).await;
+        regen_tick(&tx, &mut mgr).await;
+        mgr.get_entity_mut(1).unwrap().threatened_mobs.insert(900);
+        regen_tick(&tx, &mut mgr).await;
+
+        let rows: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| c.level == Level::DEBUG && c.target == "vitals")
+            .collect();
+        assert_eq!(rows.len(), 2, "{rows:#?}");
+        let start = &rows[0];
+        assert!(start.has_field("event", "regen_started"), "{start:#?}");
+        assert!(start.has_field("player_id", "72"));
+        assert!(start.has_field("account_id", "6"));
+        assert!(start.has_field("health", "50"));
+        assert!(start.has_field("health_max", "100"));
+        assert!(start.has_field("health_regen_per_tick", "1"));
+        let stop = &rows[1];
+        assert!(stop.has_field("event", "regen_stopped"), "{stop:#?}");
+        assert!(stop.has_field("reason", "entered_combat"));
+        assert!(stop.has_field("regen_ticks", "2"));
+        assert!(stop.has_field("health", "52"));
     }
 }

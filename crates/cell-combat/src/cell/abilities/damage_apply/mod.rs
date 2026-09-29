@@ -9,7 +9,6 @@
 //! to be flushed after the damage commits), AoE secondary targets get
 //! `false` (the primary already flushed).
 
-use cimmeria_cell_world::cell::duel::DuelResources;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSICAL, RC_MISS};
@@ -26,6 +25,7 @@ use super::messaging::{
 };
 use super::rng::pseudo_random_seed;
 use ammo_splash::HitKind;
+use duel_gate::{clamp_source, player_hit_refusal};
 
 /// Resolve damage from `entity_id` to `target_eid` for ability `ability_id`.
 ///
@@ -271,6 +271,9 @@ async fn apply_hit(
     // rather than merely late. The content-layer drain runs at the
     // caller that owns the `ChainEngine`.
     combat::note_pre_damage_health(space_mgr, entity_id, target_eid);
+    // Player targets only: the pools before the hit, for the `vitals`
+    // `damage_taken` row logged once the hit (and any duel clamp) landed.
+    let vitals_before = combat::vitals::player_snapshot(space_mgr, target_eid);
 
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
@@ -336,6 +339,16 @@ async fn apply_hit(
         target_eid,
         clamp_source("ability", ability_id),
     );
+    if let Some(before) = vitals_before {
+        combat::vitals::log_damage_taken(
+            space_mgr,
+            target_eid,
+            entity_id,
+            ability_id,
+            qr_result.result_code,
+            before,
+        );
+    }
     let Some(target) = space_mgr.get_entity_mut(target_eid) else {
         // Cannot happen (the target was just written), but a held hit must
         // still end its duel.
@@ -639,36 +652,9 @@ async fn apply_hit(
     }
 }
 
-/// `Some(reason)` when `attacker` and `target` are two different players
-/// and the harm gate (`combat::player_may_attack`) no longer admits the
-/// hit, for instance because an earlier hit of the same ability ended their
-/// duel.
-fn player_hit_refusal(
-    space_mgr: &SpaceManager,
-    attacker: u32,
-    target: u32,
-) -> Option<&'static str> {
-    if attacker == target {
-        return None;
-    }
-    let (Some(a), Some(t)) = (space_mgr.get_entity(attacker), space_mgr.get_entity(target)) else {
-        return None;
-    };
-    (a.is_player && t.is_player && !combat::player_may_attack(a, t, space_mgr.resources.duels()))
-        .then_some("not_duel_opponent")
-}
-
-/// The `duel.lethal_clamped` source for a clamp in this function.
-fn clamp_source(path: &'static str, ability_id: i32) -> duel::ClampSource {
-    duel::ClampSource {
-        path,
-        ability_id: Some(ability_id),
-        effect_id: None,
-    }
-}
-
 mod ammo_splash;
 mod cover_roll;
+mod duel_gate;
 
 #[cfg(test)]
 mod aggro_cause_tests;
@@ -692,3 +678,5 @@ mod bleed_death_tests;
 mod cover_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod vitals_tests;

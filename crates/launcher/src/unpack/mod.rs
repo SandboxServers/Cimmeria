@@ -51,6 +51,19 @@ pub enum UnpackError {
     UnsafePath(String),
     #[error("Patch set error: {0}")]
     Patchset(String),
+    /// A patch set met a file whose hash is not the one its recipe
+    /// expects: a stock source (`source_mismatch`) or a rebuilt result
+    /// (`result_mismatch`). Kept structured, with the same message as
+    /// [`Self::Patchset`], so the install-result telemetry event can
+    /// carry the path and both hashes.
+    #[error("Patch set error: {message}")]
+    PatchsetHash {
+        kind: &'static str,
+        path: String,
+        expected: String,
+        actual: String,
+        message: String,
+    },
     #[error("Cancelled")]
     Cancelled,
 }

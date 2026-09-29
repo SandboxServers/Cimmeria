@@ -16,6 +16,7 @@
 //!   `entity_health_below` content trigger.
 //! - [`state`]: dead/alive flag bit-packing in `stateField`.
 //! - [`threat`]: NPC aggro state, threat list, leash/attack-range constants.
+//! - [`vitals`]: player health/focus telemetry (`target: "vitals"`).
 
 pub use cimmeria_cell_world::cell::combat::{aggression, faction_reaction, health_threshold};
 pub mod auto_cycle;
@@ -23,6 +24,7 @@ pub mod damage;
 pub mod damage_credit;
 pub mod state;
 pub mod threat;
+pub mod vitals;
 
 pub use aggression::{
     aggression_toward_players, aggro_radius, area_candidates, assist_radius, effective_aggression,

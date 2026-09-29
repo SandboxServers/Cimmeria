@@ -16,6 +16,7 @@ pub mod purchase_helpers;
 pub mod recharge;
 pub mod repair;
 pub mod sell;
+pub(crate) mod telemetry;
 
 #[cfg(test)]
 mod lock_order_tests;

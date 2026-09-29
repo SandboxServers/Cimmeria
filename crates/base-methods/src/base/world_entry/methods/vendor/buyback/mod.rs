@@ -12,6 +12,7 @@ use super::helpers::send_cash_changed_to_client;
 use super::purchase_helpers::normalize_item_quantities;
 use super::serializers::reserve_free_inventory_slots;
 use super::store::handle_open_vendor_store;
+use super::telemetry::{VendorItem, VendorLog};
 use crate::base::inventory_locks::take_inventory_locks;
 use crate::cell::messages::BaseToCellMsg;
 
@@ -50,29 +51,39 @@ pub async fn handle_buyback_vendor_items(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    let tel = VendorLog::new(
+        "buyback",
+        entity_id,
+        player_id,
+        Some(vendor_entity_id),
+        Some(vendor_template_id),
+        connected,
+        entity_to_addr,
+    );
     let pool = match db_pool {
         Some(pool) => pool,
         None => {
-            tracing::debug!(entity_id, player_id, "BuybackVendorItems: no DB pool");
+            tel.failed("no_database", VendorItem::default(), &"no database pool");
             return;
         }
     };
 
     let items = normalize_item_quantities(items, false);
     if items.is_empty() {
-        tracing::debug!(entity_id, player_id, "BuybackVendorItems: empty item list");
+        tel.refused("empty_request", VendorItem::default());
         return;
     }
+    // The single item a one-line buyback names, for the rows below.
+    let only = match items.as_slice() {
+        [(id, qty)] => VendorItem::row(*id).quantity(*qty),
+        _ => VendorItem::default(),
+    };
 
     let requested_item_ids: Vec<i32> = items.iter().map(|(item_id, _)| *item_id).collect();
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(
-                entity_id,
-                player_id,
-                "BuybackVendorItems: begin failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -88,11 +99,7 @@ pub async fn handle_buyback_vendor_items(
     // for the player row.
     if let Err(e) = take_inventory_locks(&mut tx, player_id, &[INV_MAIN, INV_BUYBACK]).await {
         let _ = tx.rollback().await;
-        tracing::error!(
-            entity_id,
-            player_id,
-            "BuybackVendorItems: advisory lock failed: {e}"
-        );
+        tel.failed("inventory_lock_failed", only, &e);
         return;
     }
 
@@ -114,11 +121,7 @@ pub async fn handle_buyback_vendor_items(
         Ok(rows) => rows,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(
-                entity_id,
-                player_id,
-                "BuybackVendorItems: buyback query failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -129,21 +132,12 @@ pub async fn handle_buyback_vendor_items(
             Ok(Some(slots)) => slots.into_iter(),
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    requested_items = items.len(),
-                    "BuybackVendorItems: not enough main inventory slots"
-                );
+                tel.refused("bags_full", only);
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "BuybackVendorItems: main slot query failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         };
@@ -157,18 +151,14 @@ pub async fn handle_buyback_vendor_items(
             Ok(balance) => balance,
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "BuybackVendorItems: balance query failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         };
 
     let Some(balance) = balance else {
         let _ = tx.rollback().await;
-        tracing::warn!(entity_id, player_id, "BuybackVendorItems: player not found");
+        tel.failed("player_missing", only, &"no sgw_player row");
         return;
     };
 
@@ -181,35 +171,27 @@ pub async fn handle_buyback_vendor_items(
     for (item_id, quantity) in &items {
         let Some(row) = rows_by_id.get(item_id) else {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "BuybackVendorItems: item is not in buyback"
+            tel.refused(
+                "not_in_buyback",
+                VendorItem::row(*item_id).quantity(*quantity),
             );
             return;
         };
 
         if *quantity > row.stack_size {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                quantity,
-                stack_size = row.stack_size,
-                "BuybackVendorItems: requested quantity exceeds stack"
+            tel.refused(
+                "quantity_exceeds_stack",
+                VendorItem::row(*item_id).quantity(*quantity),
             );
             return;
         }
 
         let Some(line_cash_cost) = row.unit_price.checked_mul(*quantity) else {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "BuybackVendorItems: line cash overflow"
+            tel.refused(
+                "price_overflow",
+                VendorItem::row(*item_id).quantity(*quantity),
             );
             return;
         };
@@ -218,11 +200,7 @@ pub async fn handle_buyback_vendor_items(
             Some(total) => total,
             None => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    "BuybackVendorItems: cash cost overflow"
-                );
+                tel.refused("price_overflow", only);
                 return;
             }
         };
@@ -230,12 +208,9 @@ pub async fn handle_buyback_vendor_items(
 
     if balance < total_cash_cost {
         let _ = tx.rollback().await;
-        tracing::warn!(
-            entity_id,
-            player_id,
-            balance,
-            total_cash_cost,
-            "BuybackVendorItems: insufficient naquadah"
+        tel.refused(
+            "insufficient_cash",
+            only.price(total_cash_cost).cash(balance),
         );
         return;
     }
@@ -253,20 +228,16 @@ pub async fn handle_buyback_vendor_items(
             Ok(Some(total)) => total,
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    "BuybackVendorItems: player disappeared before cash update"
+                tel.failed(
+                    "player_missing",
+                    only,
+                    &"player row gone before the cash update",
                 );
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "BuybackVendorItems: cash update failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         }
@@ -281,11 +252,10 @@ pub async fn handle_buyback_vendor_items(
         };
         let Some(main_slot) = main_slots.next() else {
             let _ = tx.rollback().await;
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "BuybackVendorItems: main slot reservation exhausted"
+            tel.failed(
+                "main_slot_exhausted",
+                VendorItem::row(*item_id),
+                &"slot reservation ran out",
             );
             return;
         };
@@ -363,22 +333,16 @@ pub async fn handle_buyback_vendor_items(
                 }
                 Ok(_) => {
                     let _ = tx.rollback().await;
-                    tracing::warn!(
-                        entity_id,
-                        player_id,
-                        item_id,
-                        "BuybackVendorItems: failed to copy item into main inventory"
+                    tel.failed(
+                        "rows_affected_zero",
+                        VendorItem::row(*item_id),
+                        &"main-inventory copy wrote no row",
                     );
                     return;
                 }
                 Err(e) => {
                     let _ = tx.rollback().await;
-                    tracing::error!(
-                        entity_id,
-                        player_id,
-                        item_id,
-                        "BuybackVendorItems: main inventory insert failed: {e}"
-                    );
+                    tel.failed("db_error", VendorItem::row(*item_id), &e);
                     return;
                 }
             }
@@ -388,35 +352,31 @@ pub async fn handle_buyback_vendor_items(
             Ok(r) if r.rows_affected() == 1 => {}
             Ok(_) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    item_id,
-                    "BuybackVendorItems: no rows changed"
+                tel.failed(
+                    "rows_affected_zero",
+                    VendorItem::row(*item_id),
+                    &"inventory update changed no row",
                 );
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    item_id,
-                    "BuybackVendorItems: inventory update failed: {e}"
-                );
+                tel.failed("db_error", VendorItem::row(*item_id), &e);
                 return;
             }
         }
     }
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(
-            entity_id,
-            player_id,
-            "BuybackVendorItems: commit failed: {e}"
-        );
+        tel.failed("commit_failed", only, &e);
         return;
     }
+    tel.completed(
+        only.price(total_cash_cost),
+        items.len(),
+        Some(i64::from(balance)),
+        Some(i64::from(new_cash_total)),
+    );
 
     if total_cash_cost > 0 {
         send_cash_changed_to_client(

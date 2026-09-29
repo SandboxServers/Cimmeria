@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::install_layout;
+use crate::install_report::{InstallReport, PatchOutcomeKind};
 use crate::manifest::{blob_url, Manifest, PatchEntry, SeedEntry};
 use crate::patch_dest::patch_dest;
 use crate::state::{InstalledState, StateError};
@@ -135,13 +136,26 @@ pub struct InstallContext<'a> {
     pub http: &'a reqwest::Client,
 }
 
-pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
+/// Install the seed and every patch, and report what happened to each
+/// patch (for the install-result telemetry event).
+pub async fn install_all(ctx: InstallContext<'_>) -> (Result<(), InstallError>, InstallReport) {
+    let mut report = InstallReport::default();
+    let result = install_all_into(ctx, &mut report).await;
+    report.finish(&result);
+    (result, report)
+}
+
+async fn install_all_into(
+    ctx: InstallContext<'_>,
+    report: &mut InstallReport,
+) -> Result<(), InstallError> {
     std::fs::create_dir_all(ctx.install_dir)?;
     let mut state = InstalledState::load(ctx.install_dir);
 
     let seed_matches = state.seed_sha256.as_deref() == Some(ctx.manifest.seed.sha256.as_str());
     if !seed_matches {
         apply_seed(&ctx, &ctx.manifest.seed).await?;
+        report.seed_applied = true;
         // Re-seeding invalidates the applied-patches list.
         state = InstalledState {
             seed_sha256: Some(ctx.manifest.seed.sha256.clone()),
@@ -163,13 +177,20 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
     let mut failures: Vec<PatchFailure> = Vec::new();
     for patch in &ctx.manifest.patches {
         if state.has_applied_patch(patch) {
+            report.push(&patch.id, PatchOutcomeKind::Already, None);
             continue;
         }
         if let Some(after) = blocked_by_failure(patch, &failures) {
             warn!(patch = %patch.id, after = %after, reason = "dependency_failed", "patch skipped");
+            let reason = format!("skipped, it builds on {after}, which did not apply");
+            report.push(
+                &patch.id,
+                PatchOutcomeKind::SkippedDependency,
+                Some(reason.clone()),
+            );
             failures.push(PatchFailure {
                 id: patch.id.clone(),
-                reason: format!("skipped, it builds on {after}, which did not apply"),
+                reason,
             });
             continue;
         }
@@ -177,10 +198,12 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
             Ok(()) => {
                 state.applied_patches.push(patch.state_key());
                 state.save(ctx.install_dir)?;
+                report.push(&patch.id, PatchOutcomeKind::Applied, None);
             }
             Err(InstallError::Cancelled) => return Err(InstallError::Cancelled),
             Err(e) => {
                 warn!(patch = %patch.id, error = %e, reason = "apply_failed", "patch not applied");
+                report.push_failure(&patch.id, &e);
                 failures.push(PatchFailure {
                     id: patch.id.clone(),
                     reason: e.to_string(),
@@ -497,323 +520,5 @@ pub fn adopt_existing_install(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(id: &str, after: Option<&str>) -> PatchEntry {
-        PatchEntry {
-            id: id.into(),
-            blob: "b".into(),
-            size: 1,
-            sha256: "ab".into(),
-            after: after.map(Into::into),
-            root: Default::default(),
-            title: None,
-            description: None,
-        }
-    }
-
-    fn failed(id: &str) -> PatchFailure {
-        PatchFailure {
-            id: id.into(),
-            reason: "r".into(),
-        }
-    }
-
-    /// An independent patch still applies after an earlier one failed:
-    /// the Black Market overlay (`after: null`) must not be lost to a
-    /// dialog-portrait delta that met a hand-edited file.
-    #[test]
-    fn an_independent_patch_is_not_blocked_by_an_earlier_failure() {
-        let overlay = entry("bm-ui-overlay", None);
-        assert_eq!(
-            blocked_by_failure(&overlay, &[failed("001-dialog-portraits")]),
-            None
-        );
-    }
-
-    #[test]
-    fn a_patch_built_on_a_failed_patch_is_skipped() {
-        let child = entry("002", Some("001"));
-        assert_eq!(
-            blocked_by_failure(&child, &[failed("001")]).as_deref(),
-            Some("001")
-        );
-        assert_eq!(blocked_by_failure(&child, &[failed("003")]), None);
-    }
-
-    #[test]
-    fn the_failure_message_names_every_failed_patch() {
-        let e = InstallError::PatchesFailed(vec![failed("001"), failed("004")]);
-        let msg = e.to_string();
-        assert!(msg.starts_with("2 patch(es) not applied"), "{msg}");
-        assert!(msg.contains("001: r") && msg.contains("004: r"), "{msg}");
-    }
-
-    #[test]
-    fn hashes_a_known_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("x");
-        std::fs::write(&p, b"hello world").unwrap();
-        assert_eq!(
-            hash_file(&p).unwrap(),
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-        );
-    }
-
-    #[test]
-    fn verify_sha256_succeeds_on_match() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("x");
-        std::fs::write(&p, b"hello world").unwrap();
-        verify_sha256(
-            &p,
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
-            "test",
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn verify_sha256_fails_on_mismatch() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("x");
-        std::fs::write(&p, b"hello world").unwrap();
-        let err = verify_sha256(&p, "deadbeef", "test").unwrap_err();
-        assert!(matches!(err, InstallError::HashMismatch { .. }));
-    }
-
-    // Regression guard for the non-panicking HTTP-status branch. An
-    // earlier version called `error_for_status_ref().unwrap_err()` here,
-    // which panicked on stray 1xx/3xx because that helper only returns
-    // `Err` for 4xx/5xx; the current code returns
-    // `InstallError::UnexpectedStatus` carrying the status + url.
-    #[tokio::test]
-    async fn download_to_file_returns_unexpected_status_on_non_2xx() {
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/seed.zip"))
-            .respond_with(ResponseTemplate::new(418))
-            .mount(&server)
-            .await;
-
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join(".tmp-test.zip");
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Progress>();
-        let url = format!("{}/seed.zip", server.uri());
-        // Test client allows http:// — production worker client is
-        // configured with https_only(true).
-        let http = reqwest::Client::new();
-        let err = download_to_file(&http, &url, &dest, CancellationToken::new(), 0, "seed", &tx)
-            .await
-            .expect_err("418 must surface as an error, not panic");
-
-        match err {
-            InstallError::UnexpectedStatus { status, url: u } => {
-                assert_eq!(status, 418);
-                assert!(u.ends_with("/seed.zip"));
-            }
-            other => panic!("expected UnexpectedStatus, got {other:?}"),
-        }
-    }
-
-    fn unpack_ctx_parts() -> (
-        tokio::sync::mpsc::UnboundedSender<Progress>,
-        tokio::sync::mpsc::UnboundedReceiver<Progress>,
-    ) {
-        tokio::sync::mpsc::unbounded_channel()
-    }
-
-    // Bug shape: a download that failed its hash was kept, so every retry
-    // resumed from the bad bytes (or got 416) and failed the same way until
-    // someone deleted the .tmp file by hand. It must be deleted.
-    #[tokio::test]
-    async fn hash_mismatch_deletes_the_download() {
-        let dir = tempfile::tempdir().unwrap();
-        let tmp = dir.path().join(".tmp-seed-abc.download");
-        std::fs::write(&tmp, b"corrupt").unwrap();
-        let (tx, _rx) = unpack_ctx_parts();
-        let manifest = fake_manifest("00");
-        let http = reqwest::Client::new();
-        let ctx = InstallContext {
-            manifest_url: "https://example.invalid/manifest.json",
-            install_dir: dir.path(),
-            manifest: &manifest,
-            login_servers: &[],
-            cancel: CancellationToken::new(),
-            progress: tx,
-            http: &http,
-        };
-        let err = verify_and_unpack(&ctx, &tmp, ctx.install_dir, "00", "seed")
-            .await
-            .unwrap_err();
-        assert!(matches!(err, InstallError::HashMismatch { .. }), "{err:?}");
-        assert!(!tmp.exists(), "a bad download must not be resumed");
-    }
-
-    // A full-length download left over from a run that stopped before
-    // verifying gets 416 for its Range request. That is "already
-    // downloaded", not an error; the hash check decides.
-    #[tokio::test]
-    async fn download_to_file_treats_416_on_a_complete_file_as_done() {
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/seed.rar"))
-            .respond_with(ResponseTemplate::new(416))
-            .mount(&server)
-            .await;
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join(".tmp-seed.download");
-        std::fs::write(&dest, b"0123456789").unwrap();
-        let (tx, _rx) = unpack_ctx_parts();
-        let url = format!("{}/seed.rar", server.uri());
-        download_to_file(
-            &reqwest::Client::new(),
-            &url,
-            &dest,
-            CancellationToken::new(),
-            10,
-            "seed",
-            &tx,
-        )
-        .await
-        .expect("416 on a complete file is success");
-        assert_eq!(std::fs::read(&dest).unwrap(), b"0123456789");
-
-        // A short partial file getting 416 is still an error.
-        std::fs::write(&dest, b"01234").unwrap();
-        let err = download_to_file(
-            &reqwest::Client::new(),
-            &url,
-            &dest,
-            CancellationToken::new(),
-            10,
-            "seed",
-            &tx,
-        )
-        .await
-        .unwrap_err();
-        assert!(matches!(
-            err,
-            InstallError::UnexpectedStatus { status: 416, .. }
-        ));
-    }
-
-    #[test]
-    fn safe_sha_prefix_accepts_lower_and_upper_hex() {
-        assert_eq!(safe_sha_prefix("abcdef0123456789").unwrap(), "abcdef012345");
-        assert_eq!(safe_sha_prefix("ABCDEF0123456789").unwrap(), "ABCDEF012345");
-    }
-
-    #[test]
-    fn safe_sha_prefix_rejects_path_traversal() {
-        // The bug shape: a malformed-but-still-signed manifest with a
-        // sha256 of "../foo" would, prior to validation, produce a tmp
-        // file path that escapes the install directory.
-        for bad in &[
-            "../foo",
-            "/etc/passwd",
-            "..\\evil",
-            "0123/4567",
-            "abc def",
-            "",
-            "abcg",
-        ] {
-            let err = safe_sha_prefix(bad).expect_err(&format!("expected reject for {bad:?}"));
-            assert!(matches!(err, InstallError::InvalidSha256(_)));
-        }
-    }
-
-    #[test]
-    fn safe_sha_prefix_short_input_passes() {
-        // Anything fewer than 12 chars still passes if every char is hex
-        // — the prefix is min(len, 12). A real sha256 is always 64 chars
-        // so this only matters for malformed manifests; reject those
-        // separately via the all-hex check rather than a length check.
-        assert_eq!(safe_sha_prefix("abc").unwrap(), "abc");
-    }
-
-    fn fake_manifest(seed_hash: &str) -> crate::manifest::Manifest {
-        crate::manifest::Manifest {
-            schema: 1,
-            min_launcher: None,
-            seed: crate::manifest::SeedEntry {
-                blob: "seed/x.zip".into(),
-                size: 1,
-                sha256: seed_hash.into(),
-            },
-            patches: vec![],
-        }
-    }
-
-    // Happy path: directory has SGW.exe, no prior launcher-installed.json
-    // → adopt writes the marker file with seed_adopted=true and copies
-    // the manifest seed hash. Subsequent Install/Update would then apply
-    // patches on top without re-downloading the seed.
-    #[test]
-    fn adopt_existing_install_writes_marker_when_sgw_exe_present() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), b"fake-game-binary").unwrap();
-        let manifest = fake_manifest("seed-hash-from-manifest");
-        let state = adopt_existing_install(dir.path(), &manifest).unwrap();
-        assert!(state.seed_adopted);
-        assert_eq!(
-            state.seed_sha256.as_deref(),
-            Some("seed-hash-from-manifest")
-        );
-        assert!(state.applied_patches.is_empty());
-        // Persistence path: load-back must produce the same shape so a
-        // restart of the launcher sees the adopted install.
-        let loaded = InstalledState::load(dir.path());
-        assert!(loaded.seed_adopted);
-        assert_eq!(
-            loaded.seed_sha256.as_deref(),
-            Some("seed-hash-from-manifest")
-        );
-    }
-
-    // Empty directory: NoGameExe rejects with a path-naming error so the
-    // UI can surface "this isn't a game install" instead of silently
-    // marking an empty directory as adopted.
-    #[test]
-    fn adopt_existing_install_rejects_empty_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let manifest = fake_manifest("h");
-        let err = adopt_existing_install(dir.path(), &manifest).unwrap_err();
-        match err {
-            AdoptError::NoGameExe(p) => assert_eq!(p, dir.path()),
-            other => panic!("expected NoGameExe, got {other:?}"),
-        }
-    }
-
-    // SGW.exe as a directory (or junction) must not trick adopt into
-    // marking a non-install as managed. is_file() is the gate.
-    #[test]
-    fn adopt_existing_install_rejects_when_sgw_exe_is_a_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join("SGW.exe")).unwrap();
-        let manifest = fake_manifest("h");
-        let err = adopt_existing_install(dir.path(), &manifest).unwrap_err();
-        assert!(matches!(err, AdoptError::NoGameExe(_)));
-    }
-
-    // Adopt-over-managed: the second call refuses because overwriting
-    // a real install's state would silently discard the applied-patches
-    // list. User must delete the marker
-    // by hand to re-adopt.
-    #[test]
-    fn adopt_existing_install_rejects_already_managed_install() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
-        let manifest = fake_manifest("h");
-        adopt_existing_install(dir.path(), &manifest).unwrap();
-        let err = adopt_existing_install(dir.path(), &manifest).unwrap_err();
-        assert!(matches!(err, AdoptError::AlreadyManaged(_)));
-    }
-}
+#[path = "install_tests.rs"]
+mod tests;

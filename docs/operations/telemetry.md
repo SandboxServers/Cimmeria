@@ -341,6 +341,17 @@ Useful first queries:
 - `service.name = 'cimmeria-client' AND client_target = 'client.hooks.fingerprint'`:
   `fingerprint_usable = false` means the DLL met an SGW.exe build it does
   not know and installed no hooks.
+- `service.name = 'cimmeria-client' AND client_target = 'client.launcher.install_result'`:
+  what the player's last Install / Update did to each patch
+  (`patch.<id>` = `applied`, `already`, `failed` or
+  `skipped_dependency`, with `patch.<id>.reason`, and for a failed hash
+  check the file and both sha256s). Written at install time, uploaded
+  with the next session.
+- `service.name = 'cimmeria-client' AND client_target = 'client.patches.counts'`:
+  the client-patches DLL's claimed / delivered / dropped counts and the
+  last reason per counter (`dropped_no_overlay.last_reason` names a
+  missing UI overlay). Counts are lower bounds; see
+  [dev-session-telemetry.md](../architecture/dev-session-telemetry.md#client-patches-counts-event).
 
 Retention is whatever the ClickHouse TTL says (see
 [signoz-deployment.md](signoz-deployment.md#retention)).

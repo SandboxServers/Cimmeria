@@ -102,7 +102,7 @@ A third, cheap: state is released on `destroy_entity`.
 
 | Field | Required? | Notes |
 |---|---|---|
-| `player_id` | when applicable | The affected player. No aliases (`pid`). |
+| `player_id` | when applicable | The affected player. No aliases (`pid`). Log it, and every other numeric id (`design_id`, `account_id`, `entity_id`), **as a number**: pass an `Option<i32>` as the value itself (`player_id = e.player_id`), which omits the field when `None`, never `?e.player_id` or `%`. SigNoz types an attribute by the values it receives, so one Debug-formatted `"Some(72)"` creates a second, string-typed `player_id` key that a `player_id = 72` filter silently misses (2026-09-29: the bandolier equip-display rows; `design_id: "Some(5224)"` on `Player looted item`). |
 | `entity_id` | when applicable | The affected entity. No aliases (`eid`). |
 | `mob_id` / `mission_id` / `chain_id` / `step_id` / `space_id` / `cell_id` / `world_name` | when applicable | Canonical names per the existing logging surface. |
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
