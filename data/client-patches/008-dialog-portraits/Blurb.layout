@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<GUILayout>
+    <!-- Blurb Window [ container ] -->
+    <Window Type="ComplexFrame_2" Name="BlurbWin" >
+        <Property Name="Visible" Value="False" />
+        <Property Name="TitlebarEnabled" Value="False" />
+        <Property Name="CloseButtonEnabled" Value="True" />
+        <Property Name="SizingEnabled" Value="False" />
+        <Property Name="UnifiedAreaRect" Value="{{0.5,-195},{0.5,-150},{0.5,195},{0.5,150}}" />
+        <!-- 390x300 -->
+
+        <!-- NPC portrait [ image container ] -->
+        <Window Type="DefaultWindow" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="ZOrderChangeEnabled" Value="False" />
+            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,5},{0,110},{0,118}}" />
+            
+            <!-- disk image | portrait [ container ] -->
+            <Window Type="StaticImage_2" >
+                <Property Name="Alpha" Value="0.75" />
+                <Property Name="Image" Value="set:CoreWidgets_2 image:Disk_Idle" />
+                <Property Name="ZOrderChangeEnabled" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0.5,-55},{0,0},{0.5,55},{0,110}}" />
+
+                <!-- portrait [ container ] -->
+                <Window Type="StaticImage_2" Name="Blurb_PortraitImage" >
+                    <Property Name="InheritsAlpha" Value="False" />
+                    <!--<Property Name="Image" Value="set:CoreWidgets_2 image:Red" />-->
+                    <Property Name="ZOrderChangeEnabled" Value="False" />
+                    <Property Name="UnifiedAreaRect" Value="{{0.5,-32},{0.5,-32},{0.5,32},{0.5,32}}" />
+                </Window>
+            </Window>
+            <!-- disk base image -->
+            <Window Type="StaticImage_2" >
+                <Property Name="InheritsAlpha" Value="False" />
+                <Property Name="Image" Value="set:CoreWidgets_2 image:DiskBase_SM" />
+                <Property Name="ZOrderChangeEnabled" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0.5,-40},{1,-35},{0.5,40},{1,0}}" />
+            </Window>
+        </Window>
+        <!-- NPC name [ text container ] -->
+        <Window Type="StaticText_2" Name="Blurb_NameText" >
+            <Property Name="Font" Value="Verdana_12pt" />
+            <Property Name="VertFormatting" Value="VertCentred" />
+            <Property Name="HorzFormatting" Value="WordWrapLeftAligned" />
+            <Property Name="UnifiedAreaRect" Value="{{0,110},{0,5},{1,0},{0,115}}" />
+        </Window>
+
+        <!-- blurb [ text container ] -->
+        <Window Type="StaticText_2" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Font" Value="Verdana_8pt" />
+            <Property Name="VertFormatting" Value="TopAligned" />
+            <Property Name="HorzFormatting" Value="WordWrapLeftAligned" />
+            <Property Name="TextColours" Value="tl:FFFF6600 tr:FFFF6600 bl:FFFF6600 br:FFFF6600" />
+            <Property Name="UnifiedAreaRect" Value="{{0,105},{0,75},{1,-15},{0,115}}" />
+        </Window>
+        <!-- blurb text area -->
+        <Window Type="StaticText_2" Name="Blurb_ScreenText" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="FrameEnabled" Value="True" />
+            <Property Name="BackgroundEnabled" Value="True" />
+            <Property Name="VertFormatting" Value="TopAligned" />
+            <Property Name="HorzFormatting" Value="WordWrapLeftAligned" />
+            <Property Name="VertScrollbar" Value="True" />
+            <Property Name="UnifiedAreaRect" Value="{{0,5},{0,120},{1,-5},{1,-55}}" />
+        </Window>
+        
+        <!-- More Info button -->
+        <Window Type="ImageButton_2" Name="Blurb_MoreInfoButton" >
+            <Property Name="Tooltip" Value="Display More Information" />
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:DiscMoreInfoBtn_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:DiscMoreInfoBtn_Hover"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:DiscMoreInfoBtn_Pushed" />
+            <Property Name="UnifiedAreaRect" Value="{{0.5,-20},{1,-53},{0.5,20},{1,-13}}" />
+        </Window>
+        <!-- Accept button -->
+        <Window Type="ImageButton_2" Name="Blurb_AcceptButton" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Hover"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Pushed" />
+            <Property Name="UnifiedAreaRect" Value="{{1,-85},{1,-53},{1,-45},{1,-13}}" />
+        </Window>
+        <!-- Decline button -->
+        <Window Type="ImageButton_2" Name="Blurb_DeclineButton" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:DiscNoBtn_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:DiscNoBtn_Hover"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:DiscNoBtn_Pushed" />
+            <Property Name="UnifiedAreaRect" Value="{{1,-45},{1,-53},{1,-5},{1,-13}}" />
+        </Window>
+        
+    </Window>
+
+</GUILayout>

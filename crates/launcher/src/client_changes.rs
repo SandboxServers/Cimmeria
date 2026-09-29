@@ -285,6 +285,13 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
             "Adds the ring rig on the Castle CellBlock Armory pad that mission 688 needs. \
              Changes one Castle CellBlock map file.",
         ),
+        "008-dialog-portraits" => (
+            "Dialog portraits",
+            "Shows the speaker's portrait in NPC dialog windows, which the stock UI \
+             never displays. Replaces TaharezLook.scheme and the Dialog and Blurb window \
+             layouts and scripts with whole files, so it applies whatever state those \
+             files are in. Supersedes 001.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };

@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<GUILayout>
+    <!-- Dialog Window [ container ] -->
+    <Window Type="ComplexFrame_2" Name="DialogWin" >
+        <Property Name="DeafWhenHidden" Value="False" />
+        <Property Name="Visible" Value="False" />
+        <Property Name="TitlebarEnabled" Value="False" />
+        <Property Name="CloseButtonEnabled" Value="True" />
+        <Property Name="SizingEnabled" Value="False" />
+        <Property Name="UnifiedAreaRect" Value="{{0.5,-195},{0.5,-200},{0.5,195},{0.5,200}}" />
+        <!-- 390x400 -->
+
+        <!-- NPC portrait [ image container ] -->
+        <Window Type="DefaultWindow" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="ZOrderChangeEnabled" Value="False" />
+            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,5},{0,110},{0,118}}" />
+            
+            <!-- disk image | portrait [ container ] -->
+            <Window Type="StaticImage_2" >
+                <Property Name="Alpha" Value="0.75" />
+                <Property Name="Image" Value="set:CoreWidgets_2 image:Disk_Idle" />
+                <Property Name="ZOrderChangeEnabled" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0.5,-55},{0,0},{0.5,55},{0,110}}" />
+
+                <!-- portrait [ container ] -->
+                <Window Type="StaticImage_2" Name="Dialog_PortraitImage" >
+                    <Property Name="InheritsAlpha" Value="False" />
+                    <!--<Property Name="Image" Value="set:CoreWidgets_2 image:Red" />-->
+                    <Property Name="ZOrderChangeEnabled" Value="False" />
+                    <Property Name="UnifiedAreaRect" Value="{{0.5,-32},{0.5,-32},{0.5,32},{0.5,32}}" />
+                </Window>
+            </Window>
+            <!-- disk base image -->
+            <Window Type="StaticImage_2" >
+                <Property Name="InheritsAlpha" Value="False" />
+                <Property Name="Image" Value="set:CoreWidgets_2 image:DiskBase_SM" />
+                <Property Name="ZOrderChangeEnabled" Value="False" />
+                <Property Name="UnifiedAreaRect" Value="{{0.5,-40},{1,-35},{0.5,40},{1,0}}" />
+            </Window>
+        </Window>
+        <!-- NPC name [ text container ] -->
+        <Window Type="StaticText_2" Name="Dialog_NameText">
+            <Property Name="Font" Value="Verdana_12pt" />
+            <Property Name="VertFormatting" Value="VertCentred" />
+            <Property Name="HorzFormatting" Value="WordWrapLeftAligned" />
+            <Property Name="UnifiedAreaRect" Value="{{0,110},{0,5},{1,0},{0,115}}" />
+        </Window>
+        
+        <!-- next | previous buttons -->
+        <Window Type="DefaultWindow" Name="Dialog_NextPrevWindow" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="ZOrderChangeEnabled" Value="False" />
+            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
+
+            <!-- previous button -->
+            <Window Type="ImageButton_2" Name="Dialog_PrevButton1" >
+                <Property Name="NormalImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Normal" />
+                <Property Name="HoverImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Hover"  />
+                <Property Name="PushedImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Pushed" />
+                <Property Name="DisabledImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Normal" />
+                <Property Name="UnifiedAreaRect" Value="{{1,-75},{1,-49},{1,-40},{1,-14}}" />
+            </Window>
+            <!-- next button -->
+            <Window Type="ImageButton_2" Name="Dialog_NextButton" >
+                <Property Name="NormalImage" Value="set:CoreWidgets_2 image:ArrowButton_Right_Normal" />
+                <Property Name="HoverImage" Value="set:CoreWidgets_2 image:ArrowButton_Right_Hover"  />
+                <Property Name="PushedImage" Value="set:CoreWidgets_2 image:ArrowButton_Right_Pushed" />
+                <Property Name="DisabledImage" Value="set:CoreWidgets_2 image:ArrowButton_Right_Normal" />
+                <Property Name="UnifiedAreaRect" Value="{{1,-45},{1,-49},{1,-10},{1,-14}}" />
+            </Window>
+
+        </Window>
+        <!-- previous | done buttons -->
+        <Window Type="DefaultWindow" Name="Dialog_PrevOnlyWindow" >
+            <Property Name="Visible" Value="False" />
+            <Property Name="ZOrderChangeEnabled" Value="False" />
+            <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
+
+            <!-- previous button -->
+            <Window Type="ImageButton_2" Name="Dialog_PrevButton2" >
+                <Property Name="NormalImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Normal" />
+                <Property Name="HoverImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Hover"  />
+                <Property Name="PushedImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Pushed" />
+                <Property Name="DisabledImage" Value="set:CoreWidgets_2 image:ArrowButton_Left_Normal" />
+                <Property Name="UnifiedAreaRect" Value="{{1,-75},{1,-49},{1,-40},{1,-14}}" />
+            </Window>
+            <!-- Done button -->
+            <Window Type="ImageButton_2" Name="Dialog_DoneButton" >
+                <Property Name="NormalImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Idle" />
+                <Property Name="HoverImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Hover"  />
+                <Property Name="PushedImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Pushed" />
+                <Property Name="UnifiedAreaRect" Value="{{1,-45},{1,-53},{1,-5},{1,-13}}" />
+            </Window>
+
+        </Window>
+        
+        <!-- dialog text area -->
+        <Window Type="StaticText_2" Name="Dialog_ScreenText" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="FrameEnabled" Value="True" />
+            <Property Name="BackgroundEnabled" Value="True" />
+            <Property Name="VertFormatting" Value="TopAligned" />
+            <Property Name="HorzFormatting" Value="WordWrapLeftAligned" />
+            <Property Name="VertScrollbar" Value="True" />
+            <Property Name="UnifiedAreaRect" Value="{{0,5},{0,120},{1,-5},{1,-150}}" />
+        </Window>
+
+        <!-- reply option buttons -->
+        <Window Type="TextButton_2" Name="Dialog_GenericButton1" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Text" Value="" />
+            <Property Name="UnifiedAreaRect" Value="{{0,5},{1,-150},{1,-5},{1,-115}}" />
+        </Window>
+        <Window Type="TextButton_2" Name="Dialog_GenericButton2" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Text" Value="" />
+            <Property Name="UnifiedAreaRect" Value="{{0,5},{1,-120},{1,-5},{1,-85}}" />
+        </Window>
+        <Window Type="TextButton_2" Name="Dialog_GenericButton3" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Text" Value="" />
+            <Property Name="UnifiedAreaRect" Value="{{0,5},{1,-90},{1,-5},{1,-55}}" />
+        </Window>
+
+        <!-- Accept button -->
+        <Window Type="ImageButton_2" Name="Dialog_AcceptButton" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Hover"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:DiscOkBtn_Pushed" />
+            <Property Name="UnifiedAreaRect" Value="{{0,5},{1,-53},{0,45},{1,-13}}" />
+        </Window>
+        <!-- Decline button -->
+        <Window Type="ImageButton_2" Name="Dialog_DeclineButton" >
+            <Property Name="NormalImage" Value="set:CoreWidgets_2 image:DiscNoBtn_Idle" />
+            <Property Name="HoverImage" Value="set:CoreWidgets_2 image:DiscNoBtn_Hover"  />
+            <Property Name="PushedImage" Value="set:CoreWidgets_2 image:DiscNoBtn_Pushed" />
+            <Property Name="UnifiedAreaRect" Value="{{0,45},{1,-53},{0,85},{1,-13}}" />
+        </Window>
+        
+    </Window>
+    <!---->
+</GUILayout>

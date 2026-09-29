@@ -57,6 +57,38 @@ pub enum InstallError {
     Cancelled,
     #[error(transparent)]
     PatchDest(#[from] crate::patch_dest::NoSgwGameDir),
+    /// Some patches failed; every other patch was still applied.
+    #[error("{}", patches_failed_message(.0))]
+    PatchesFailed(Vec<PatchFailure>),
+}
+
+/// One patch that did not apply, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchFailure {
+    pub id: String,
+    pub reason: String,
+}
+
+fn patches_failed_message(failures: &[PatchFailure]) -> String {
+    let list: Vec<String> = failures
+        .iter()
+        .map(|f| format!("{}: {}", f.id, f.reason))
+        .collect();
+    format!(
+        "{} patch(es) not applied, the others were: {}",
+        failures.len(),
+        list.join("; ")
+    )
+}
+
+/// A patch whose `after` names a patch that did not apply this run is
+/// skipped: it was built on top of that patch.
+fn blocked_by_failure(patch: &PatchEntry, failures: &[PatchFailure]) -> Option<String> {
+    let after = patch.after.as_deref()?;
+    failures
+        .iter()
+        .any(|f| f.id == after)
+        .then(|| after.to_string())
 }
 
 /// Returns the first 12 chars of `sha` after confirming the whole string
@@ -125,13 +157,36 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
         info!("Moved the bundled cooked-data PAKs to Working\\SGWGame\\SourceCache.en-us");
     }
 
+    // One patch that cannot apply (a hand-edited file an adopted install
+    // carries, say) must not cost the player every patch after it: apply
+    // the rest and report the failures together at the end.
+    let mut failures: Vec<PatchFailure> = Vec::new();
     for patch in &ctx.manifest.patches {
         if state.has_applied_patch(patch) {
             continue;
         }
-        apply_patch(&ctx, patch).await?;
-        state.applied_patches.push(patch.state_key());
-        state.save(ctx.install_dir)?;
+        if let Some(after) = blocked_by_failure(patch, &failures) {
+            warn!(patch = %patch.id, after = %after, reason = "dependency_failed", "patch skipped");
+            failures.push(PatchFailure {
+                id: patch.id.clone(),
+                reason: format!("skipped, it builds on {after}, which did not apply"),
+            });
+            continue;
+        }
+        match apply_patch(&ctx, patch).await {
+            Ok(()) => {
+                state.applied_patches.push(patch.state_key());
+                state.save(ctx.install_dir)?;
+            }
+            Err(InstallError::Cancelled) => return Err(InstallError::Cancelled),
+            Err(e) => {
+                warn!(patch = %patch.id, error = %e, reason = "apply_failed", "patch not applied");
+                failures.push(PatchFailure {
+                    id: patch.id.clone(),
+                    reason: e.to_string(),
+                });
+            }
+        }
     }
 
     if install_layout::sgw_exe(ctx.install_dir).is_file() {
@@ -141,6 +196,9 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
         warn!("SGW.exe missing after install — verify the seed manifest entry");
     }
 
+    if !failures.is_empty() {
+        return Err(InstallError::PatchesFailed(failures));
+    }
     Ok(())
 }
 
@@ -441,6 +499,56 @@ pub fn adopt_existing_install(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry(id: &str, after: Option<&str>) -> PatchEntry {
+        PatchEntry {
+            id: id.into(),
+            blob: "b".into(),
+            size: 1,
+            sha256: "ab".into(),
+            after: after.map(Into::into),
+            root: Default::default(),
+            title: None,
+            description: None,
+        }
+    }
+
+    fn failed(id: &str) -> PatchFailure {
+        PatchFailure {
+            id: id.into(),
+            reason: "r".into(),
+        }
+    }
+
+    /// An independent patch still applies after an earlier one failed:
+    /// the Black Market overlay (`after: null`) must not be lost to a
+    /// dialog-portrait delta that met a hand-edited file.
+    #[test]
+    fn an_independent_patch_is_not_blocked_by_an_earlier_failure() {
+        let overlay = entry("bm-ui-overlay", None);
+        assert_eq!(
+            blocked_by_failure(&overlay, &[failed("001-dialog-portraits")]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_patch_built_on_a_failed_patch_is_skipped() {
+        let child = entry("002", Some("001"));
+        assert_eq!(
+            blocked_by_failure(&child, &[failed("001")]).as_deref(),
+            Some("001")
+        );
+        assert_eq!(blocked_by_failure(&child, &[failed("003")]), None);
+    }
+
+    #[test]
+    fn the_failure_message_names_every_failed_patch() {
+        let e = InstallError::PatchesFailed(vec![failed("001"), failed("004")]);
+        let msg = e.to_string();
+        assert!(msg.starts_with("2 patch(es) not applied"), "{msg}");
+        assert!(msg.contains("001: r") && msg.contains("004: r"), "{msg}");
+    }
 
     #[test]
     fn hashes_a_known_file() {
