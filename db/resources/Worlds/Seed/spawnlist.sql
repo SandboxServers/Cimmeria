@@ -324,7 +324,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (158, -42.2970009, -193.567993, 400.56601, 0, 77, 1, 'Menfa_Dark_DHD', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (159, 102.723999, -193.828003, 486.110992, 0, 77, 3, 'Menfa_Dark_Ring_00040001', NULL);
+-- Ring pads never walk. This one sits 1.9 m off the shipped Menfa_Dark mesh,
+-- which made the NPC-AI spawn detector report it as unable to path on every
+-- boot. Marking it stationary silences that false alarm; the coordinates
+-- are unchanged.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (159, 102.723999, -193.828003, 486.110992, 0, 77, 3, 'Menfa_Dark_Ring_00040001', NULL, true);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (160, 25.1140003, 29.4500008, 425.727997, 0, 77, 3, 'Menfa_Dark_Ring_00040000', NULL);
 

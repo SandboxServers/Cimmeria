@@ -42,6 +42,7 @@
 //! | `CIMMERIA_GIT_SHA` | unset | **Build time only**, read by `crates/server/build.rs`, never at runtime. Becomes the OTLP `service.version` resource attribute. The container build sets it from the `CIMMERIA_GIT_SHA` Docker build arg (`release-container.yml` passes `github.sha`); a source build falls back to `git rev-parse HEAD`, then `unknown`. |
 //! | `CIMMERIA_LAB_MCP_BIND` | unset | Bind address for the live-research-lab MCP endpoint (issue #687), e.g. `127.0.0.1:8451`. **No default** — the endpoint stays OFF unless this *and* `CIMMERIA_LAB_MCP_TOKEN` are both set. It runs on its OWN `TcpListener`, never on the admin API router (which defaults to loopback but still has no auth until JWT lands). Keep it off player-facing interfaces. |
 //! | `CIMMERIA_AMMO_FINITE_SPECIAL` | off | The `ammo.finite_special` feature flag (ammo campaign, [docs/analysis/ammo/](../../../docs/analysis/ammo/README.md)). `1`/`true`/`on`/`yes` makes reloads of special ammo draw rounds from the bags; `0`/`false`/`off`/`no` or unset keeps today's free reloads. An unrecognised value logs a WARN (`target: ammo`, `event=feature_flag_invalid`) and stays off. Read once at startup. |
+//! | `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` | unset | Extra `Host` header values the lab MCP endpoint accepts, comma-separated (`10.0.0.5`, `lab.example:8444`), added to `localhost`, `127.0.0.1` and `::1`. The MCP transport's DNS-rebinding guard answers any other `Host` with 403, so a remote client needs the address it dials listed here. |
 //! | `CIMMERIA_LAB_MCP_TOKEN` | unset | Shared bearer token for the lab MCP endpoint. Must be **≥32 bytes** or the endpoint logs an error and refuses to start. Every request must present `Authorization: Bearer <token>` (constant-time compared). |
 //!
 //! # Example
@@ -61,6 +62,7 @@ use cimmeria_services::orchestrator::Orchestrator;
 
 mod logging;
 mod otel;
+mod startup_embed;
 
 #[tokio::main]
 async fn main() {
@@ -122,6 +124,20 @@ async fn main() {
 
     let config = config_from_env();
 
+    // `cimmeria_discord::init` ran before the subscriber existed, so its own
+    // "config file not found" line went nowhere. Restate the outcome here:
+    // a colo whose config mount went missing ran for weeks with Discord off
+    // and nothing in any log said so.
+    tracing::info!(
+        target: "cimmeria_discord",
+        event = "discord_config",
+        path = %discord_config_path,
+        file_present = std::path::Path::new(&discord_config_path).exists(),
+        enabled = discord_enabled,
+        "Discord notifications {}",
+        if discord_enabled { "enabled" } else { "disabled" }
+    );
+
     // Ammo campaign feature flag, read once before any service starts.
     cimmeria_entity::ammo_feature::init_finite_special_from_env();
 
@@ -145,10 +161,9 @@ async fn main() {
 
     let admin_port = config.admin_port;
     let admin_bind = config.admin_bind.clone();
-    // Capture ports for the Discord startup embed before `config` moves
+    // Capture the Discord startup embed's port lines before `config` moves
     // into the orchestrator.
-    let (auth_port_for_discord, base_port_for_discord, cell_port_for_discord) =
-        (config.auth_port, config.base_port, config.cell_port);
+    let startup_bind_lines = startup_embed::bind_lines(&config);
 
     tracing::trace!("Creating orchestrator");
     let mut orch = Orchestrator::new(config);
@@ -220,13 +235,8 @@ async fn main() {
 
     if discord_enabled {
         cimmeria_discord::emit_server_startup(
-            env!("CARGO_PKG_VERSION").to_string(),
-            vec![
-                format!("auth :{}", auth_port_for_discord),
-                format!("base :{}", base_port_for_discord),
-                format!("cell :{}", cell_port_for_discord),
-                format!("admin :{}", admin_port),
-            ],
+            startup_embed::version(env!("CARGO_PKG_VERSION"), otel::BUILD_SHA),
+            startup_bind_lines,
         );
     }
 

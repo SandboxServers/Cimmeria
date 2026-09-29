@@ -68,10 +68,14 @@ pub async fn spawn_if_configured(
             return None;
         }
     };
-    tracing::info!(addr = %cfg.bind, "lab MCP endpoint listening");
+    tracing::info!(
+        addr = %cfg.bind,
+        allowed_hosts = ?cfg.allowed_hosts,
+        "lab MCP endpoint listening"
+    );
 
     let state = LabState::new(orchestrator, log_buffer);
-    let router = build_router(state, &cfg.token);
+    let router = build_router(state, &cfg.token, &cfg.allowed_hosts);
 
     let handle = tokio::spawn(async move {
         // `into_make_service_with_connect_info` is required so the bearer
@@ -87,16 +91,19 @@ pub async fn spawn_if_configured(
 /// Build the axum router: the rmcp streamable-HTTP tool service at `/mcp`,
 /// fronted by the bearer-token middleware. Split out so the wiring is testable
 /// in isolation from `spawn_if_configured`.
-fn build_router(state: LabState, token: &str) -> axum::Router {
+fn build_router(state: LabState, token: &str, allowed_hosts: &[String]) -> axum::Router {
     use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
-    use rmcp::transport::streamable_http_server::StreamableHttpService;
+    use rmcp::transport::streamable_http_server::{
+        StreamableHttpServerConfig, StreamableHttpService,
+    };
 
     // One `LabTools` handler is built per MCP session; each gets its own clone
     // of the shared state handle.
     let service = StreamableHttpService::new(
         move || Ok(tools::LabTools::new(state.clone())),
         LocalSessionManager::default().into(),
-        Default::default(),
+        // rmcp rejects any `Host` outside this list (DNS-rebinding guard).
+        StreamableHttpServerConfig::default().with_allowed_hosts(allowed_hosts.iter().cloned()),
     );
 
     let token: Arc<str> = Arc::from(token);

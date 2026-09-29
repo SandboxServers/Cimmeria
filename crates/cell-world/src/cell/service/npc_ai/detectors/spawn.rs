@@ -6,6 +6,7 @@
 //! hovering more than half a unit over its floor passes the first and fails
 //! every path it ever asks for — and the leash returns it to that same
 //! point. Reported once per `spawn_id`, so respawns stay quiet.
+//! Stationary spawns are skipped: they never request a path.
 
 use super::{MoveSource, NpcIdent};
 use crate::cell::space_manager::SpaceManager;
@@ -20,6 +21,21 @@ pub fn check_spawn(space_mgr: &mut SpaceManager, npc_id: u32) {
     };
     let pos = e.position;
     let spawn_id = e.spawn_id;
+    // A stationary spawn never asks `find_path` for a route, so the start
+    // box cannot fail it. Its Y is usually a measured floor the navmesh only
+    // approximates (the Harset consoles), and warning on it put five
+    // false alarms on every boot into SigNoz and Discord.
+    if e.is_stationary {
+        tracing::debug!(
+            target: "spawner.npc_behaviour",
+            event = "spawn_off_mesh_skipped",
+            npc_id,
+            spawn_id,
+            reason = "stationary",
+            "spawner: start-box check skipped; stationary NPCs never path"
+        );
+        return;
+    }
     let Some(space_id) = space_mgr.get_entity_space_id(npc_id) else {
         return;
     };

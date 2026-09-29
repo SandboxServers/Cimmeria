@@ -67,7 +67,7 @@ Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.r
 | Variable | Default | Notes |
 |---|---|---|
 | `AUTH_HOST` | `0.0.0.0` | Auth bind address |
-| `AUTH_PORT` | `13001` | |
+| `AUTH_PORT` | `13001` | Read into the config but bound by no listener; client login uses `LOGON_PORT`. |
 | `LOGON_PORT` | `8081` | |
 | `BASE_HOST` | `0.0.0.0` | |
 | `BASE_EXTERNAL` | `127.0.0.1` | **Must override for non-localhost clients.** |
@@ -96,6 +96,8 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `CIMMERIA_TELEMETRY_HMAC_SECRET` | (unset) | Secret for the launcher dev-session token mint. Unset ⇒ the endpoint returns 500. See [telemetry.md](telemetry.md). |
 | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload URL handed back to the launcher. **Must** be overridden when the launcher and server are on different hosts. |
 | `CIMMERIA_TELEMETRY_KILL_SWITCH` | (unset) | Set to the literal `1` to pause telemetry ingest. |
+| `DISCORD_CONFIG_TOML` | (unset) | Read by the entrypoint, not the server: when set, its contents are written to `/opt/cimmeria/config/discord.toml` (mode 0440) before the server starts. [`docker/compose.discord.yml`](../../docker/compose.discord.yml) sets it. Unset leaves any existing file alone. |
+| `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` | (unset) | Extra `Host` header values the lab MCP endpoint accepts, comma-separated, on top of `localhost`, `127.0.0.1` and `::1`. [`docker/compose.lab.yml`](../../docker/compose.lab.yml) sets it to `CIMMERIA_WG_IP`. |
 
 > `DB_URL` must be in libpq key-value form, not URL DSN form. `crates/services/src/orchestrator_postgres.rs::ensure_postgresql_running` parses `host=` / `port=` tokens to decide whether to auto-start the bundled Postgres. A URL like `postgres://...` would silently fall back to `localhost:5433` and emit warnings, even though sqlx itself accepts either form.
 
@@ -146,7 +148,15 @@ Source: [`docker/Dockerfile`](../../docker/Dockerfile). Stage names are stable a
 
 `HEALTHCHECK` checks two things:
 1. `pg_isready` against the bundled Postgres.
-2. A TCP probe (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/$AUTH_PORT'`) confirming the auth listener is bound — this is the port the game client hits.
+2. A TCP probe (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/$LOGON_PORT'`) confirming the SOAP login listener is bound — this is the port the game client logs in through.
+
+It does not probe `AUTH_PORT` (13001): no listener binds that port, and probing it marked every container unhealthy. The CI smoke tests in `pr-container.yml` and `release-container.yml` probe the login port from inside the container for the same reason; a host-side probe of a published port always connects, because docker-proxy accepts the handshake itself.
+
+## Logs
+
+The server writes one file per subsystem to `/opt/cimmeria/logs/`, which is a symlink to the declared volume `/var/log/cimmeria`. At each start it moves the previous run's files into `logs/archive/<timestamp>/`. Mount a host directory there (`docker/compose.yml` uses `${CIMMERIA_LOG_DIR:-./logs}`) or the logs go with the container on the next update. The files are not rotated, so put that directory on a disk with room. The entrypoint hands the directory to the `cimmeria` user, so a root-owned bind mount works.
+
+The files keep every DEBUG and TRACE row, where SigNoz samples the noisiest targets, and the container's stdout carries Postgres's own log, which never reaches SigNoz.
 
 Admin API is ignored by the healthcheck on purpose; it isn't in the critical login path.
 

@@ -20,7 +20,13 @@
 #
 # CIMMERIA_WG_IP must be an address the colo host itself owns (Docker
 # cannot publish on an IP the host doesn't have) that the dev box can
-# reach over the VPN. Never 0.0.0.0 or the public address.
+# reach over the VPN. Never 0.0.0.0 or the public address. It does not
+# have to be a WireGuard interface: when the dev box's VPN lands on the
+# colo's LAN, the host's LAN address is the right value.
+#
+# The same address is added to the endpoint's `Host` allowlist. rmcp
+# only accepts loopback `Host` values by default, so a client reaching
+# http://$CIMMERIA_WG_IP:8444/mcp got `403 Host header is not allowed`.
 #
 # Generating the token. Never commit it: it goes only in the colo's
 # environment (or /opt/cimmeria/.env, chmod 0600) and in the dev box's
@@ -52,6 +58,7 @@ services:
       # host only via the WireGuard-scoped mapping below.
       CIMMERIA_LAB_MCP_BIND: "0.0.0.0:8444"
       CIMMERIA_LAB_MCP_TOKEN: "${CIMMERIA_LAB_MCP_TOKEN:?set a 32+ byte lab token}"
+      CIMMERIA_LAB_MCP_ALLOWED_HOSTS: "${CIMMERIA_WG_IP:?set to this box's WireGuard IP}"
     ports:
       # WireGuard address ONLY. Never "8444:8444" (that would bind all
       # interfaces, including the public one).
