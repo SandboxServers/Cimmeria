@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: reference
 > **Audience**: engineers writing or reviewing `cimmeria-client-telemetry` hooks (issue #417)
-> **Last updated**: 2026-06-04
+> **Last updated**: 2026-09-28 (CME subscribe correction; event-registry hook)
 > **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. HIGH for Tier-3 through Tier-7 anchors after the 2026-06-04 upfront Ghidra pass that resolved every anchor to a function entry or IAT slot. HIGH for `AActor::Tick` (slot 88 @ `0x005e4200`) and `USequence::UpdateOp` (slot 84 @ `0x006c61c0`) after the second-pass vtable walk. MEDIUM for the 2 remaining deferred vtable-swap targets (`UObject::ProcessEvent` — vtable identified, 5 slots ruled out, ~35 remain to scan; `PropertyNode<T>` get/set — RTTI + COL identified but heavy templated specialization needs per-T enumeration).
 >
 > **See also**: [`client-instrumentation-entry-points.md`](client-instrumentation-entry-points.md) — the resolved Phase 3-6 manifest with all addresses + IAT slots + recommended detour signatures. Read that doc first if you're implementing a Phase 3-6 hook; this doc is the per-tier anchor catalog the manifest derives from.
@@ -12,6 +12,8 @@ The injected client-side telemetry DLL (issue #417) hooks SGW.exe at the address
 Hook techniques: **CME subscribe** (register a fake-vtable subscriber via `CmeEventSignal_Subscribe`), **inline** (retour-rs at a known address), **vtable swap** (atomic store on a known vtable slot), **IAT** (rewrite import-table slot), **interpose** (CEGUI / log4cxx — install a subclass at runtime via the host framework's own registration API).
 
 ## CME EventSignal — the framework
+
+> **Correction (2026-09-28).** The subscribe recipe in this section does not work. `0x00a5c0f0` creates an event object from a `std::string` class name (it is the CME event-factory registry, not a signal lookup), and `0x00a5c150` is `count(name)` on that registry: it subscribes nothing. The DLL's CME subscriber install was removed, and `0x00a5c0f0` is now inline-hooked as `client.cme.event`, which names every event the client creates by name, each routed inbound entity method included. The real subscribe path goes through `FUN_00a37790` / `FUN_00a374a0` and is not yet verified. Evidence: [cme-event-signal.md § Correction](cme-event-signal.md#correction-2026-09-28-the-registry-is-an-event-factory-not-a-subscriber-api). The text below is kept as the original claim.
 
 The killer surface: an injected DLL can register subscribers to any of the client's typed event signals via the host's own pub-sub API. No patching required, no type gatekeeper on Subscribe.
 
@@ -74,8 +76,9 @@ The minimum hook set that turns "client froze somewhere during world entry" into
 | `ULevelStreaming::SetLevelStatus` | `0x01837518`, `0x01906e30` | Inline | `client.streaming.state_change` | CONFIRMED |
 | `FArchiveAsync::Serialize` (vtbl slot 1) | RTTI `0x01dafd0c` → vtable `0x01814198` → **entry `0x004c7ae0`** | Inline | `client.engine.async_archive_serialize` (sampled 1/1000) | ENABLED (PR #504) |
 | `UObject::StaticLoadObject(UClass*, UObject*, TCHAR*, TCHAR*, DWORD, UPackageMap*, UBOOL)` | "FailedLoadPackage" wstring xref @ `0x0180f104` → **entry `0x004a8e10`** | Inline | `client.engine.static_load_object` (sampled 1/10, captures `package_name` field) | ENABLED (PR #504) — initially mis-identified as `LoadPackageInternal`; decompile shows check macros `ObjectClass` + `InName` matching UE3 leaked-source `StaticLoadObject` exactly. 7 cdecl args. The "FailedLoadPackage" string is the error key StaticLoadObject reports when the inner LoadPackage fails. |
-| `Event_NetIn_onClientMapLoad` handler | TypedEmitInfo `0x01e4da90` | CME subscribe | `client.network.on_client_map_load` | CONFIRMED |
-| `Event_NetIn_onClientReady` handler | string `0x019c2828` ("onClientReady") | CME subscribe | `client.network.on_client_ready` | CONFIRMED (string at address is the bare `onClientReady` — the full `Event_NetIn_onClientReady` is the RTTI-derived signal name) |
+| `Event_NetIn_onClientMapLoad` handler | TypedEmitInfo `0x01e4da90` | ~~CME subscribe~~ | ~~`client.network.on_client_map_load`~~ | REMOVED 2026-09-28: the subscribe never worked (see the correction above). The event now appears as `client.cme.event` with `event=Event_NetIn_onClientMapLoad` when the client routes it. |
+| `Event_NetIn_onClientReady` handler | string `0x019c2828` ("onClientReady") | ~~CME subscribe~~ | ~~`client.network.on_client_ready`~~ | REMOVED 2026-09-28, as above. |
+| CME event-registry create (`0x00a5c0f0`) | `__thiscall(registry, const std::string&) -> event*`, `ret 4` | Inline | `client.cme.event` (`event`, `kind`; per-name throttle) | ENABLED 2026-09-28, fingerprinted; not yet seen live |
 | `recvfrom` / `WSARecv` | `ws2_32.dll` IAT | IAT | `client.os.udp_recv` (sampled) | DEFERRED — IAT walker work |
 | `Mercury::Nub::handleMessage` | ~~`0x01b18be0`~~ (that is the log string `"Mercury::Nub::handleMessage: received the wrong kind of message!\n"`); the function that logs it starts at `0x0157bd30` and pops 4 stack args (`ret 0x10`) | Inline | `client.mercury.dispatch` | WRONG — hook removed 2026-09-27, re-resolution is #989 |
 | log4cxx appender tee | `log4cxx.dll` (config @ `SGWLogConfig.xml`) | Interpose | `client.log.<level>` | DEFERRED — appender install path TBD |

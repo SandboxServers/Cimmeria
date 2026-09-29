@@ -3,7 +3,7 @@
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
 > **Last updated**: 2026-09-27
-> **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (the launcher never injected the DLL; see the fingerprint section). **22 hooks total** across 4 techniques: 2 CME subscribers (`onClientMapLoad`, `onClientReady`), 10 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger + AActor::Tick + USequence::UpdateOp). Every address was re-checked against the QA `SGW.exe` on 2026-09-27 and is fingerprinted. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
+> **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (the launcher never injected the DLL; see the fingerprint section). **21 hooks total** across 3 techniques: 11 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, CME event-registry lookup), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger, now with the line text + AActor::Tick + USequence::UpdateOp). The two CME subscribers (`onClientMapLoad`, `onClientReady`) were removed on 2026-09-28: the subscribe API they called is not one (see Hook taxonomy item 1). Every address was re-checked against the QA `SGW.exe` on 2026-09-27 and is fingerprinted. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
@@ -106,7 +106,7 @@ For instrumentation purposes (read-only telemetry) the "DLL never unloads" stanc
 
 Seven techniques, applied per-tier per the [hookpoints anchor doc](../reverse-engineering/findings/client-instrumentation-hookpoints.md):
 
-1. **CME EventSignal subscription** — zero-patch observation via the host's own pub-sub registration. `CmeEventSignal_Subscribe` at `0x00a5c150` does an unguarded `std::set` insert; we register fake-vtable subscribers and the host calls us. RTTI-driven auto-discovery for ~120 + ~150 distinct `Event_NetIn_*` / `Event_NetOut_*` handler classes (Phase 2).
+1. **CME EventSignal subscription** — **not built; the premise was wrong.** `0x00a5c150` is `count(name)` on the CME event-factory registry, not a subscribe, and `0x00a5c0f0` creates events from a `std::string` name rather than looking up a signal. The subscriber install was removed on 2026-09-28 ([cme-event-signal.md § Correction](../reverse-engineering/findings/cme-event-signal.md#correction-2026-09-28-the-registry-is-an-event-factory-not-a-subscriber-api)). Its replacement is an inline hook on `0x00a5c0f0` (`client.cme.event`, below), which names every event the client creates by name without subscribing to anything. A real subscriber path (`FUN_00a37790` / `FUN_00a374a0`) is unverified, and the lifetime rules in the previous section apply if it is ever used.
 2. **Inline (retour-rs)** — for non-event functions (frame tick, level streaming, async I/O).
 3. **Vtable swap** — for `UObject::ProcessEvent`, `AActor::Tick`, `CEGUI::Logger`. Single atomic store, re-entry-safe.
 4. **IAT patching** — for WinSock receive, file I/O, thread/library lifecycle. PE walk + `VirtualProtect` dance, re-scan on `LoadLibraryW` for late-binding modules.
@@ -146,6 +146,21 @@ If either side renames a field, the symmetric test fails loudly.
 SigNoz queries against this stream filter on `service_name="cimmeria-client"`. The replay layer in admin-api emits each `ClientNative` event with `service_name = "cimmeria-client"` as a structured tracing field; the OTLP exporter forwards it as a span attribute.
 
 **Caveat:** This is not the OpenTelemetry-spec `service.name` Resource attribute — that one is set once at server boot via `OTEL_SERVICE_NAME` and can't be overridden per-request. The tracing macro grammar in our version also doesn't accept dotted-string field keys (`"service.name"`), so we use the snake_case alias. Proper Resource-level override would require either a second `Resource` for the cimmeria-client events or a `tracing-attributes` shim that rewrites the field name on emit. Deferred — the data is the same; only the SigNoz query key differs.
+
+## Gameplay seams: what the client accepted and what its UI complained about
+
+Two events added on 2026-09-28 give an agent (or a person reading SigNoz) the client's side of a play session. Neither has been seen from the live client yet; the anchors and string layouts were checked against the QA binary only.
+
+| Target | Hook | Fields | Level | Volume control |
+|---|---|---|---|---|
+| `client.cme.event` | Inline, CME event-registry create `0x00a5c0f0` | `event` (class name, e.g. `Event_NetIn_onDialogDisplay`), `kind` (`net_in`, `net_out`, `net`, `action`, `ui`, `slash_cmd`, `cache`, `other`), `suppressed`, `truncated` | `info` for `net_in`, `debug` otherwise | Per-name token bucket: burst 8, then 4 per second; the next emitted event of that name carries the dropped count in `suppressed` |
+| `client.ui.cegui_log` | Vtable slot, `CEGUI::DefaultLogger::logEvent` | `level` (0-4), `level_name` (`errors` … `insane`), `message` (up to 512 characters), `suppressed`, `truncated` | `error` for Errors, `warn` for Warnings, `debug` otherwise | Errors and warnings are throttled per message text, the other levels per level |
+
+`client.cme.event` with `kind = net_in` is the positive half of the dispatch oracle: every inbound entity method the client routed shows up by name, and `client.dispatch.method_dropped` reports the ones it discarded. A server method that the server logged as sent and that appears in neither stream was lost below the dispatcher. The same hook also names input actions (`Event_Action_*`) and connection events, which the throttle keeps from drowning the rest.
+
+The CEGUI message is read as an MSVC `std::wstring`, the type this client's CEGUI `String` is, with the bounded reader in `crates/client-telemetry/src/msvc_string.rs`; the detour calls nothing on it. CEGUI exceptions, including the `ScriptException`s the tolua glue throws for a failed Lua binding call, are logged through this logger, so UI-script failures that never reach a `lua_pcall` caller should surface here.
+
+Under the `lab-bridge` feature both events are also pushed to the bridge's local ring, as kinds `cme.event` and `cegui.log`, so `client_events_read` returns them without a SigNoz round trip.
 
 ## The fingerprint gate, the local log and the hook ABI
 
@@ -213,7 +228,7 @@ To preserve "observe without changing behavior":
 | 0 | RE prep — anchor table, Unsubscribe decompile, ABI doc | LANDED |
 | 1 | Foundation — crate skeleton, DllMain bootstrap, injector + launch wiring, `ClientNative` variant on both sides, CI | LANDED |
 | 2a | Event queue (crossbeam-channel MPMC) + in-DLL uploader (ureq+rustls, gzipped NDJSON) + session.json loader + `client.dll.attached` first event | LANDED (PR #504) |
-| 2b/c/d | Tier-1 hooks — both CME EventSignal subscribes (`Event_NetIn_onClientReady`, `Event_NetIn_onClientMapLoad`) + `Mercury::Nub::handleMessage` inline hook via MinHook. Sampling counter for hot-path hooks. Phase-status update. | LANDED |
+| 2b/c/d | Tier-1 hooks — both CME EventSignal subscribes (`Event_NetIn_onClientReady`, `Event_NetIn_onClientMapLoad`) + `Mercury::Nub::handleMessage` inline hook via MinHook. Sampling counter for hot-path hooks. Phase-status update. | LANDED; both CME subscribes REMOVED 2026-09-28 (the subscribe API was misidentified) and replaced by `client.cme.event`; `handleMessage` removed 2026-09-27 (#989) |
 | 2-deferred | The remaining 4 tier-1 inline hooks (`FEngineLoop::Tick`, `UWorld::UpdateLevelStreaming`, `FArchiveAsync::Read*`, `LoadPackage`) — resolved + landed during the upfront Ghidra pass on 2026-06-04. | LANDED |
 | 3 | Game state + kismet + tick — state-flag dispatcher, anim notify A+B, cooked-data PAK load, APlayerController::execConsoleCommand (inline) + AActor::Tick, USequence::UpdateOp (vtable swap). **CME RTTI auto-discovery** (~270 events) and **UObject::ProcessEvent** vtable-swap deferred. | LANDED (manifest-driven 2026-06-05) — partial |
 | 4 | UI / Lua — CEGUI::DefaultLogger::logEvent (vtable swap) + lua_pcall, lua_call, lua_newstate (IAT swap). Console command already covered in Phase 3. | LANDED (manifest-driven 2026-06-05) |
