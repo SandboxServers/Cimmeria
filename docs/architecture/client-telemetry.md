@@ -2,8 +2,9 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-09-27
-> **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (the launcher never injected the DLL; see the fingerprint section). **37 hooks total** across 3 techniques: 27 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, CME event-registry lookup, and 11 entity-lifecycle, inbound-message and outgoing-RPC hooks added 2026-09-28, and 5 Mercury receive-path hooks added 2026-09-29), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger, now with the line text + AActor::Tick + USequence::UpdateOp). The two CME subscribers (`onClientMapLoad`, `onClientReady`) were removed on 2026-09-28: the subscribe API they called is not one (see Hook taxonomy item 1). Every address was re-checked against the QA `SGW.exe` on 2026-09-27 and is fingerprinted. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
+> **Last updated**: 2026-09-29
+> **Engine capture (2026-09-28)**: adds the engine layer on top of the hooks below: log sinks for BigWorld, UE3, log4cxx and the OS, plus subsystem seams (actors, Matinee, level streaming, Bink, FMOD, PhysX, file I/O, D3D9, frame health): 6 inline, 4 vtable and 15 IAT hooks, a vectored exception handler and 3 D3D9 COM patches. See [Engine layer: log sinks and subsystem seams](#engine-layer-log-sinks-and-subsystem-seams). Statically verified, not yet run in a live client.
+> **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (until 2026-09-29 the launcher never injected the DLL; it now does for players who opt in to telemetry, see [Who gets the DLL](#who-gets-the-dll) and the fingerprint section). **37 hooks total** across 3 techniques: 27 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, CME event-registry lookup, and 11 entity-lifecycle, inbound-message and outgoing-RPC hooks added 2026-09-28, and 5 Mercury receive-path hooks added 2026-09-29), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger, now with the line text + AActor::Tick + USequence::UpdateOp). The two CME subscribers (`onClientMapLoad`, `onClientReady`) were removed on 2026-09-28: the subscribe API they called is not one (see Hook taxonomy item 1). Every address was re-checked against the QA `SGW.exe` on 2026-09-27 and is fingerprinted. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
@@ -23,14 +24,28 @@ Same machine, same user, same launcher session. The launcher is already a truste
 
 **No longer strictly emit-only under `--features lab-bridge`.** The base DLL is emit-only: it reads SGW.exe memory and ships observations out; it takes no inbound commands. The **Live Research Lab** ([`live-research-lab.md`](live-research-lab.md)) adds an inbound command channel behind the off-by-default `lab-bridge` cargo feature — Lua eval, memory read/write, non-freezing hook install, and native calls on the client main thread. Activation is double-gated: the code exists only in a DLL built with that feature, and even then starts only when `current-session.json` carries a `lab` block that only the lab supervisor writes. A telemetry DLL handed to anyone else physically lacks the bridge, so the trust model above holds unchanged for every non-lab build. The lab's rulebook and the operating manual live in [`../guides/live-research-lab.md`](../guides/live-research-lab.md).
 
+## Who gets the DLL
+
+Owner decision, 2026-09-29: players get the DLL, but only when they opt in to telemetry in the launcher.
+
+- **Opt-in on.** **Launch SGW.exe** starts the telemetry session first: the dev-session handshake (at most 10 s) mints a player token and writes `current-session.json` next to `SGW.exe`, because the DLL reads its token and upload endpoint from that file as it boots. The game then starts through `sgw-start32` with the client-patches DLL and, after it, the telemetry DLL, the same order as the lab's `launch_request`. Both upload with the same player token.
+- **Opt-in off.** The launch is the non-telemetry launch: client patches only, no session, no telemetry DLL. The checkbox takes effect from the next launch.
+- **Never blocks play.** No session (server down, refused, timed out): the game starts without the DLL. DLL missing or refused: the game starts without it, and the status log and the launcher's `client.telemetry_dll.launch` event say why. A failed two-DLL injection is retried with the client patches alone, then plainly.
+
+**Only the player build ships.** The release build compiles the DLL with default features (`tools/launcher-release/build.sh i686`), never `lab-bridge`, and embeds it in the launcher, which writes it to `<launcher dir>/client-telemetry/<sha256 prefix>/` at launch (a dev launcher uses a `cimmeria-client-telemetry.dll` beside itself). A `lab-bridge` build logs `cimmeria_client_telemetry::LAB_BRIDGE_MARKER` at boot, so the text is in its image; three checks refuse an image containing it: the launcher's `build.rs` will not embed it, the release `verify` stage fails, and the launcher will not inject one it finds at launch. The `sgw-testhost` boot tests pin the check against real builds (the lab build carries the marker, the default build does not and opens no port even with a `lab` block in its session). Every `client.dll.attached` event carries `dll_flavor` (`player` or `lab-bridge`).
+
+**Known limit.** The DLL reads the session once, at boot, and never refreshes its token. Dev-session tokens live 8 hours, so a session longer than that stops uploading DLL events (the launcher's own uploads refresh and continue).
+
 ## Architecture
 
-```
-sgw-launcher (egui)
-   inject.rs:
-     - create_process_suspended(SGW.exe)
-     - inject_dll(process_handle, dll_path)
-     - SuspendedProcess::resume()
+```text
+sgw-launcher (egui, 64-bit) -- Launch SGW.exe, telemetry opted in
+   1. POST /auth/dev-session (no session_kind -> player token)
+      write <Binaries>/sessions/current-session.json
+   2. sgw-start32.exe (i686 helper, embedded in the launcher):
+     - spawn SGW.exe suspended
+     - inject cimmeria-client-patches.dll, then cimmeria-client-telemetry.dll
+     - resume
         |
         v   CreateProcess(SUSPENDED) -> VirtualAllocEx -> WriteProcessMemory
             -> CreateRemoteThread(LoadLibraryW) -> ResumeThread
@@ -144,11 +159,58 @@ If either side renames a field, the symmetric test fails loudly.
 
 ## Service name routing
 
-Since 2026-09-29 the server runs a fourth OTLP log provider whose resource is `service.name = cimmeria-client` with `cimmeria.source = client` (`otel::client_resource`), and the log routing sends the ingest's `client.native` replays there and nowhere else (`otel::is_client_target`). Query `service.name = 'cimmeria-client'`; the DLL's event name is the `client_target` attribute and the log body. Each row also carries the session's `session_id`, `install_id`, `cimmeria.session_kind` (`lab` or `player`) and `lab`, plus `account_id`, `player_id`, `method_index`, `level_name`, `dll_version` and `fingerprint_usable` when the event's `fields` has them. The attribute table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
+Since 2026-09-29 the server runs a fourth OTLP log provider whose resource is `service.name = cimmeria-client` with `cimmeria.source = client` (`otel::client_resource`), and the log routing sends the ingest's `client.native` replays there and nowhere else (`otel::is_client_target`). Query `service.name = 'cimmeria-client'`; the DLL's event name is the `client_target` attribute and the log body. Each row also carries the session's `session_id`, `install_id`, `cimmeria.session_kind` (`lab` or `player`) and `lab`, plus `account_id`, `player_id`, `method_index`, `level_name`, `dll_version`, `fingerprint_usable`, and on a governor rollup `rollup_target` and `rollup_count`, when the event's `fields` has them. The attribute table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
 
 This replaces the old `service_name = "cimmeria-client"` event field, which was a stand-in for a real resource and left the rows inside `cimmeria-server`.
 
-**Production gap.** The normal **Launch SGW.exe** path injects only `cimmeria-client-patches`; the telemetry DLL is injected by the lab supervisor and by the unexposed `LaunchSgwWithClientTelemetry` worker command, and is not packaged with launcher releases. Until an owner decision puts it in front of players, `cimmeria-client` rows from players come from the launcher's tailed logs, and DLL rows come from lab sessions.
+Player DLL rows carry `cimmeria.session_kind = player`, lab rows `lab`; see [Who gets the DLL](#who-gets-the-dll).
+
+## Volume control: the governor
+
+Added 2026-09-29. One lab client produced about 333,000 `client.native` rows an hour, and 86% of them were `client.engine.sequence_tick`. The hooks' own samplers (1 in 10, 1 in 1000) were not enough, and a burst of a hot stream could fill the 4096-slot upload ring and push out an entity-lifecycle event. The governor (`crates/client-telemetry/src/governor/`) sits between the hooks and that ring. `queue::governed_channel` builds it, and every `Producer::try_emit` passes through `Governor::admit` before it takes a slot.
+
+**Classification is one table.** `governor/classify.rs` decides a class for every event in three steps, and the first step that applies wins:
+
+1. Level `warn` or `error`: **must-keep**.
+2. Fields that report a failure (`ok: false`, `success: false`, `failed: true`, a non-null `error`, or `outcome`/`result` in `NON_HAPPY_OUTCOMES`): **must-keep**.
+3. The first matching row of `RULES`. If no row matches, the event is **budgeted**.
+
+| Class | Targets (rows in `RULES`) | What happens |
+|---|---|---|
+| Must-keep | `client.entity.*` (create, enter, entered_world, leave, destroyed, appearance_request, queue_replay); `client.mercury.error`, `.fragment*`, `.bundle*`, `.request_misparse`, `.unpack_fault`, `client.dispatch.method_dropped`; `client.hooks.*`; `client.dll.*`, `client.session.*`, `client.cme.catalog*`; `client.lua.error`, `client.os.exception`, `client.ue3.assert*`/`fatal*`, `client.physx.error*`/`assert*`, `client.io.open_failed`, `client.engine.load_failed`/`hitch`/`level_stream_slow`; `client.telemetry.*` | Forwarded untouched: never throttled, collapsed or summarized |
+| Per-entity | `client.cme.event` (key `name`), `client.mercury.entity_method` and `entity_property` (key `msg_id`), `client.net.out` (key `method`) | The first 16 per (target, `entity_id`, key) are forwarded, and the rest go into the rollup. The table resets at every scene change, so each world entry gets a fresh 16. An event without `entity_id` is budgeted |
+| Hot | `client.engine.sequence_tick`, `actor_tick`, `tick`, `bink_tick`, `async_archive_serialize`, `static_load_object` (key `package_name`), `update_level_streaming`; `client.frame_tick`; `client.lua.pcall`, `client.lua.call`; `client.os.get_foreground_window` | Never forwarded one by one; always summarized |
+| Budgeted | everything else (`client.ui.cegui_log`, `client.mercury.packet_in`, `client.streaming.update`, ...) | Forwarded while the target is under its budget (burst 20, then 2 per second); the rest go into the rollup |
+
+Per-entity and budgeted events also **collapse**. An event identical to the previous event *on the same target* (same level, same fields) is held as a repeat. When a different event arrives on that target, or when the window closes, one repeat event goes out. It has the same target, level and fields, plus `repeat_count` (the repeats held, not counting the first event, which was forwarded), `repeat_first_ts_ms` and `repeat_last_ts_ms`. Must-keep events are never collapsed.
+
+**Rollups.** Every 10 seconds, at every scene change (a `client.streaming.update` event whose `level_name` differs from the last one seen; `client.ui.cegui_log` reuses the field name for its log severity, so only the targets in `governor::SCENE_TARGETS` count), and at shutdown, each target with absorbed events emits one `client.telemetry.rollup` event per reason it was absorbed for (`client.cme.event` with and without an `entity_id` gives a `per_entity_overflow` and an `over_budget` rollup):
+
+| Field | Meaning |
+|---|---|
+| `rollup_target` | The target summarized |
+| `reason` | `hot_stream`, `over_budget` or `per_entity_overflow` |
+| `trigger` | `window`, `scene_change` or `shutdown` |
+| `count`, `rate_per_sec` | Exact count and count per second over the window |
+| `window_start_ms`, `window_end_ms`, `window_ms`, `first_ts_ms`, `last_ts_ms` | When |
+| `key_field`, `distinct_keys`, `distinct_keys_capped`, `top_keys`, `other_key_events`, `last_key` | Exact top 10 values of the key field, and the keyed events outside the top 10. Up to 256 distinct keys are tracked; `distinct_keys_capped` says there were more |
+| `numeric` | `{field: {n, min, max, sum}}` for up to 16 numeric fields |
+| `last_fields` | The last absorbed event's fields, as an exemplar (for a load freeze: what was loading last) |
+
+**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. If either has grown since the last report, the health event is `warn`. `uncollapsed_events_total` counts events that arrived while the collapse table was full and so were not checked for repeats.
+
+**Shutdown flush: not wired yet.** The shutdown rollups and health event run only when the uploader's stop callback returns `true`. The DLL passes `|| false` today (`boot.rs`, pending the Phase 7 stop flag), so when `SGW.exe` exits, the last window's rollups and held repeats are lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, not for the tail of a session.
+
+**Measured effect.** Replayed through the governor on the uploader's 2 s cadence, the hour measured above (333,263 events) comes out as 4,134 rows, a 98.8% cut. All 855 must-keep events come through unchanged (`governor/tests/volume.rs`).
+
+**What stays local, and full volume on purpose.** The lab bridge's ring is fed by `hooks::emit` before the producer, so `client_events_read` still sees the stream as the hooks raised it. The governor reads two capture switches from the same places as the engine-sink switches: the `capture` block of `current-session.json` and `CIMMERIA_CLIENT_CAPTURE`. Either source can turn a switch on.
+
+- `raw` forwards everything. Nothing is collapsed or summarized, but health events are still sent. Use it for a lab session that needs full volume on purpose.
+- `firehose` keeps the governor on with 16 times the budget and 4 times the per-entity K. Hot streams are still summarized.
+
+The local log records the mode at boot (`telemetry governor: governed`).
+
+**Server-side guard.** The ingest keeps per-session counters and a budget of 30,000 events per session per minute (`admin-api` `routes/telemetry/session_budget.rs`). A governed client sends fewer than 100 events a minute. Over the budget, only warn/error rows and the must-keep families above are replayed. The rest are counted, and every chunk that suppressed something logs a `launcher.ingest` warn with `reason = session_over_budget` and the session's totals. See [telemetry.md](../operations/telemetry.md#volume-control-and-the-runaway-guard).
 
 ## Gameplay seams: what the client accepted and what its UI complained about
 
@@ -216,6 +278,58 @@ The client's Mercury logger is a one-byte stub in this build (`0x0081c2e0` is `r
 **Reading a partial bundle.** `client.mercury.fragment` `completed` with `count_matches = true` and `assembled_bytes` equal to what the server sent says reassembly was whole; then `client.mercury.bundle` `end` says what the message loop did with it. `exit = corrupted_header` with `fault = header_does_not_fit_packet` and an `abort_offset` a few bytes before a `boundaries` entry is the fragment-boundary header split; `exit = clean_end` with `dispatched` equal to `messages` and `unconsumed_bytes = 0` clears the Mercury layer and moves the search to the entity layer (`client.mercury.entity_method` `path = queued`). A `fragment` event with `outcome = mangled_footers` or `bundle_missing` is a fragment the client dropped after ACKing it.
 
 **Cost and safety.** The packet filter reads each datagram once (one `ReadProcessMemory` of at most 2048 bytes); a fragment adds two group reads; the message loop adds three small reads per message on the game thread. Every read is checked, every list walk is bounded (128 nodes), every detour forwards its arguments and result untouched inside `catch_unwind`, and the bundle trace is cleared by a drop guard so a C++ exception through the message loop leaves nothing stale. `queueAckForPacket`'s four stack words are forwarded blindly (`ret 0x10`): the hook reads only the channel (`this`), so an argument-order surprise there cannot corrupt the call.
+
+## Engine layer: log sinks and subsystem seams
+
+The client already logs through five paths and swallows failures at a dozen seams, and none of it reached SigNoz. `src/hooks/sinks/` hooks the five logging paths; `src/hooks/seams/` hooks the seams where a failure is silent. The game layer (CME events, Mercury, entities, Lua, the UI) is separate: the tables above and `client.cme.event`. Recovered addresses, layouts and evidence: [`client-engine-sinks-and-seams.md`](../reverse-engineering/findings/client-engine-sinks-and-seams.md). **None of these has been seen from a live client yet**; the second table says what each one needs to be confirmed.
+
+### Log sinks
+
+| Target | Hook | Fields | Level | Volume control |
+|---|---|---|---|---|
+| `client.bw.message` | inline, `DebugMsgHelper::message` `0x00a36460` | `message`, `priority`, `priority_name` (`TRACE`..`HACK`), `component_priority`, `fmt_addr`, `filtered` (the client's own threshold would have dropped it), `suppressed`, `truncated` | by priority: `debug` (trace, debug), `info`, `warn` (warning, hack), `error` | per (format string address, priority) |
+| `client.ue3.log` | inline, `FOutputDeviceRedirector::Serialize` `0x004ce0b0` (`GLog`) | `category` (the `FName`), `event`, `message`, `suppressed_category`, `suppressed`, `truncated` | by category (`Error` `error`, `*Warning` `warn`, `Dev*` `debug`, else `info`) | per category; warnings per message shape. Low volume: `debugf`/`warnf` are compiled out of this build |
+| `client.ue3.fatal_error` | inline, `FOutputDeviceWindowsError::Serialize` `0x004ce3a0` (`GError`) | `category`, `event`, `message`, `fatal` | `error` | none; also written synchronously to the local log, because the process ends |
+| `client.ue3.assert` | inline, the `check()` reporter `0x00486000` | `expr`, `file`, `line` | `error` | per source line. A failed `check` is reported and survived |
+| `client.log4cxx.event` | IAT `Logger::forcedLog` (narrow `0x017f0160`, wide `0x017f0188`) | `logger`, `level`, `level_int`, `message`, `file`, `line`, `method`, `wide` | by level | per (logger, level, message shape): the lock trace collapses to one bucket |
+| `client.os.debug_string` | IAT `OutputDebugStringA` `0x017ef32c` / `W` `0x017ef230` | `message`, `api` | `info` | per message shape; skips what a known sink already reported |
+| `client.os.exception` | vectored exception handler | `code`, `code_name`, `address`, `module`, `rva`, `access`, `target`, `noncontinuable`, `thread_id` | `error` | per (code, site). Not C++ throws, not debugger plumbing, never stack overflow |
+| `client.hooks.capabilities` | once, after every install | `hook.<name>` = `installed` / `failed: <why>` / `skipped: <why>`, `installed`, `attempted`, `capture.unfilter`, `capture.firehose`, `capture.raw` | `warn` if any hook failed, else `info` | once |
+
+### Subsystem seams
+
+| Target | Hook | Fields | Level | Needs live confirmation |
+|---|---|---|---|---|
+| `client.engine.spawn_actor` | inline, `UWorld::SpawnActor` `0x00876970` | `class`, `actor`, `location`, `ok`, `no_collision_fail`, `no_fail` | `debug`; `warn` when it returns `NULL` | class names resolve through the recovered `UObject` layout |
+| `client.engine.destroy_actor` | inline, `UWorld::DestroyActor` `0x00875290` | `class`, `actor`, `destroyed`, `net_force` | `debug` | same |
+| `client.engine.matinee` | vtable `USeqAct_Interp` slots 85, 86 | `event` (`activated`/`deactivated`), `sequence`, `inputs`, `position`, `length`, `cut_short` | `info` | that slot 86 is `DeActivated`; the offsets |
+| `client.engine.level_visible`, `client.engine.level_stream_slow` | inside the `UpdateLevelStreamingInner` hook | `package`, `elapsed_ms`, `visible` | `info`, `warn` (a step over 30 ms; 10 ms under `firehose`) | the `bIsVisible` bit and the package walk |
+| `client.engine.load_failed` | inside the `StaticLoadObject` hook | `name`, `filename`, `flags` | `warn` | how often optional lookups fail this way |
+| `client.media.bink_open`, `client.media.bink_close` | IAT `_BinkOpen@8` `0x017effa4`, `_BinkClose@4` `0x017effa8` | `ok`, `flags`, `width`, `height`, `frames`, `fps`, `plausible`; `frame_num`, `completed` | `info`; `warn` when the open returns `NULL` | the Bink header layout (SDK layout, not this build's) |
+| `client.audio.event` | IAT `Event::start` `0x017f00a4` / `stop` `0x017f0080` | `action`, `name`, `result`, `immediate` | `debug`; `warn` on a non-zero `FMOD_RESULT` | the `getInfo` name lookup |
+| `client.physx.error`, `client.physx.assert` | vtable `FNxOutputStream` slots 0, 1 (`0x01839d94`) | `code`, `code_name`, `message`, `file`, `line` | by code; `error` for asserts | that the SDK reports through this stream |
+| `client.io.open_failed` | IAT `CreateFileW` `0x017ef2a8` / `A` `0x017ef2a4` | `path`, `error`, `error_name`, `write`, `disposition` | `debug` for not-found, else `warn` | volume of not-found probes |
+| `client.gfx.device_created`, `client.gfx.device_reset`, `client.gfx.device_state` | IAT `Direct3DCreate9` `0x017effd8`, then the COM vtables | `hresult`, `hresult_name`, the requested mode, `elapsed_ms`, `lost`, `needs_reset` | `info`; `warn` on a failure | whether the hook lands before the game creates its device |
+| `client.engine.hitch` | inside the `FEngineLoop::Tick` hook | `gap_ms`, `frame`, `working_set_mb` | `warn` (a tick-to-tick gap of 200 ms; 100 ms under `firehose`) | the threshold against real frame times |
+| `client.engine.memory` | inside the `FEngineLoop::Tick` hook | `working_set_mb`, `peak_working_set_mb`, `private_mb`, `avail_virtual_mb`, `total_virtual_mb`, `machine_load_percent` | `info`; `warn` under 256 MB of free address space | every 30 s |
+
+### Capture switches
+
+Off by default. Read once at boot, from the optional top-level `capture` block of `current-session.json` (written by the launcher or the lab supervisor) and from the `CIMMERIA_CLIENT_CAPTURE` environment variable (a comma-separated list); either can turn a switch on.
+
+| Switch | Effect |
+|---|---|
+| `unfilter` | lifts the client's own thresholds so they and its own outputs see more: the BigWorld filter threshold (`impl[0x3c]`) is set very low, the four log4cxx `is*Enabled` checks answer `true`, the UE3 suppress flag (`0x1000`) is cleared on the categories that are logged. It changes what the client itself writes to `SGWDebugLog.log` and `OutputDebugString`: a lab and debug switch. |
+| `firehose` | raises every sink's rate limit from burst 8 / 4 per second to burst 64 / 64 per second, and lowers the hitch and slow-step thresholds. The limit still exists. It also widens the [telemetry governor](#volume-control-the-governor) (16 times the budget, 4 times the per-entity K). |
+| `raw` | turns the telemetry governor off for the upload path: every event is forwarded as raised (health events still go out). The sinks' own rate limits still apply. |
+
+```json
+{ "install_id": "...", "telemetry": { "...": "..." }, "capture": { "unfilter": true, "firehose": false, "raw": false } }
+```
+
+### Budget
+
+Every sink and seam limits per distinct message with the shared token bucket ([`name_throttle.rs`](../../crates/client-telemetry/src/hooks/name_throttle.rs)): burst 8, then 4 a second, the swallowed count riding the next event that gets through as `suppressed`. The bucket key is chosen per stream so a hot message cannot hide a rare one (the format string's address for BigWorld; the message with digits collapsed for log4cxx and debug strings, so the client's 65 000-line lock trace is one bucket; the class name for actors; the path for file failures). Hooks on a hot path (the tick, streaming, spawn) do a clock read, a compare and at most one bucket lookup when nothing is reportable.
 
 ## The fingerprint gate, the local log and the hook ABI
 
@@ -289,6 +403,7 @@ To preserve "observe without changing behavior":
 | 4 | UI / Lua — CEGUI::DefaultLogger::logEvent (vtable swap) + lua_pcall, lua_call, lua_newstate (IAT swap). Console command already covered in Phase 3. | LANDED (manifest-driven 2026-06-05) |
 | 5 | Subsystem correlators — Bink tick (inline, in Phase-3 commit) + CreateThread, LoadLibraryW/A, GetForegroundWindow (IAT swap). **FMOD** runtime vtable traversal and **PropertyNode<T>** per-T enumeration deferred. | LANDED (manifest-driven 2026-06-05) — partial |
 | 6 | Crash + on-disk artifact shipping (SetUnhandledExceptionFilter IAT, MiniDumpWriteDump call, log/dump file tailers). IAT slots known; not yet implemented. | DEFERRED |
+| 7 | Engine capture: the log sinks (`hooks/sinks/`) and the subsystem seams (`hooks/seams/`), the `capture` switches and the `client.hooks.capabilities` event. Adds 6 inline sites (17 total) and 4 vtable slots (7 total) to the fingerprint gate. | LANDED 2026-09-28 (static evidence; live confirmation pending) |
 
 ## CI
 
@@ -307,6 +422,7 @@ To preserve "observe without changing behavior":
 
 - [`docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`](../reverse-engineering/findings/client-instrumentation-hookpoints.md) — per-anchor hook table
 - [`docs/reverse-engineering/findings/client-instrumentation-entry-points.md`](../reverse-engineering/findings/client-instrumentation-entry-points.md) — **resolved Phase 3-6 entry points** (companion to hookpoints — all addresses + IAT slots + signatures pre-resolved so Phase 3-6 implementation skips the RE round-trip)
+- [`docs/reverse-engineering/findings/client-engine-sinks-and-seams.md`](../reverse-engineering/findings/client-engine-sinks-and-seams.md) — the engine-layer log sinks and subsystem seams: addresses, layouts, evidence, what is not yet confirmed
 - [`docs/reverse-engineering/findings/cme-event-signal.md`](../reverse-engineering/findings/cme-event-signal.md) — full CME EventSignal emit pipeline
 - [`docs/architecture/client-patches.md`](client-patches.md) — the always-injected gameplay-patch DLL. It hooks `FEngineLoop::Tick` and the drop-oracle function (`0x01590f30`) too; both DLLs chain through MinHook, so neither may unhook while the other is loaded
 - [`docs/architecture/observability.md`](observability.md) — the broader OTLP / SigNoz pipeline this plugs into

@@ -318,6 +318,7 @@ mod tests {
                 flush_interval_ms: 0,
             },
             lab,
+            capture: None,
         }
     }
 

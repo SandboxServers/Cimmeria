@@ -22,12 +22,28 @@ fn main() {
             }
         }
     }
-    // The launcher stays 64-bit, but both of these are 32-bit: the DLL is
+    // The launcher stays 64-bit, but all of these are 32-bit: the DLLs are
     // injected into the 32-bit SGW.exe, and the helper does the injection
     // at that bitness. See src/bundled.rs for how they reach the disk.
-    embed("CIMMERIA_CLIENT_PATCHES_DLL", "cimmeria-client-patches.dll");
-    embed("CIMMERIA_START32_EXE", "sgw-start32.exe");
+    embed(
+        "CIMMERIA_CLIENT_PATCHES_DLL",
+        "cimmeria-client-patches.dll",
+        None,
+    );
+    embed("CIMMERIA_START32_EXE", "sgw-start32.exe", None);
+    // Injected only when the player opted in to telemetry. It must be the
+    // player build: a lab-bridge build opens an inbound TCP listener.
+    embed(
+        "CIMMERIA_CLIENT_TELEMETRY_DLL",
+        "cimmeria-client-telemetry.dll",
+        Some(LAB_BRIDGE_MARKER),
+    );
 }
+
+/// Text only a `lab-bridge` build of the telemetry DLL carries
+/// (`cimmeria_client_telemetry::LAB_BRIDGE_MARKER`; the launcher's
+/// `client_telemetry_dll` tests pin that the copies agree).
+const LAB_BRIDGE_MARKER: &str = "cimmeria-client-telemetry build flavour: lab-bridge";
 
 /// Bundle an i686 artifact into the launcher.
 ///
@@ -35,7 +51,8 @@ fn main() {
 /// launcher `include_bytes!`s the copy written here and writes it to disk
 /// at launch. Without the variable (every dev and CI build) the copy is
 /// empty, and the launcher looks for the file beside itself instead.
-fn embed(var: &str, file_name: &str) {
+/// An image containing `forbidden` fails the build.
+fn embed(var: &str, file_name: &str, forbidden: Option<&str>) {
     println!("cargo:rerun-if-env-changed={var}");
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join(file_name);
     let bytes = match std::env::var(var) {
@@ -49,6 +66,13 @@ fn embed(var: &str, file_name: &str) {
                 bytes.starts_with(b"MZ"),
                 "{var}={path}: not a PE image (no MZ header)"
             );
+            if let Some(text) = forbidden {
+                assert!(
+                    !bytes.windows(text.len()).any(|w| w == text.as_bytes()),
+                    "{var}={path}: {file_name} is a lab-bridge build ({text:?}); \
+                     players get the build without the feature"
+                );
+            }
             bytes
         }
         _ => Vec::new(),

@@ -67,19 +67,16 @@ pub fn build_map_loaded_body(
     body
 }
 
-/// Calculate how many Mercury fragment packets a body of `body_len` bytes requires.
-pub fn fragment_count(body_len: usize) -> u32 {
-    use cimmeria_mercury::packet::FRAGMENT_BODY_SIZE;
-    if body_len <= FRAGMENT_BODY_SIZE {
-        1
-    } else {
-        body_len.div_ceil(FRAGMENT_BODY_SIZE) as u32
-    }
+/// Calculate how many Mercury fragment packets `body` requires. Depends on the
+/// body's content, not just its length: a cut that would split a message
+/// header moves back to the message start (`cimmeria_mercury::packet::plan_fragments`).
+pub fn fragment_count(body: &[u8]) -> u32 {
+    cimmeria_mercury::packet::fragment_count(body) as u32
 }
 
 /// Fragment and encrypt a pre-built body into Mercury packets.
 ///
-/// The caller must have already reserved `fragment_count(body.len())` sequence
+/// The caller must have already reserved `fragment_count(body)` sequence
 /// numbers starting at `base_seq` to avoid races with tick-sync.
 pub fn fragment_map_loaded(
     key: &[u8; 32],

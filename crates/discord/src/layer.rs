@@ -37,6 +37,15 @@ use crate::sender::SenderHandle;
 /// Construct with a `SenderHandle` (which carries its own config snapshot)
 /// and install via `tracing_subscriber::Registry::with(layer)`. Cloning is
 /// cheap; the layer holds `Arc`s.
+/// Targets the telemetry ingest re-emits client-side rows under
+/// (`crates/admin-api/src/routes/telemetry/replay.rs`).
+pub const CLIENT_REPLAY_TARGETS: &[&str] = &[
+    "client.native",
+    "launcher.client_log",
+    "launcher.debug_log",
+    "launcher.session_meta",
+];
+
 pub struct DiscordLayer {
     sender: SenderHandle,
     /// Held separately so we can re-check toggles at layer time. The
@@ -90,6 +99,17 @@ impl<S: Subscriber> Layer<S> for DiscordLayer {
         // and SigNoz; it just never posts to Discord. The `movement.validation`
         // target covers both `speed_warning` and `validation_reject`.
         if metadata.target() == "movement.validation" {
+            return;
+        }
+
+        // Client telemetry replayed by the upload ingest (the game DLL's
+        // events and the launcher's tailed client logs) is the client's
+        // own warn/error stream, one row per client event. It belongs in
+        // SigNoz, never in the server's errors channel: a lab client
+        // running a repro campaign posted hundreds of them (2026-09-29).
+        // The server's own ingest records (`launcher.ingest`,
+        // `launcher.bundle`) still post.
+        if CLIENT_REPLAY_TARGETS.contains(&metadata.target()) {
             return;
         }
 
@@ -305,6 +325,39 @@ mod tests {
         assert!(
             calls.lock().await.is_empty(),
             "movement.validation warns must never post to Discord (calibration noise)"
+        );
+    }
+
+    /// Client telemetry replayed by the ingest never posts, at any level;
+    /// the server's own ingest records still do. Reverting the target
+    /// filter trips this.
+    #[tokio::test(flavor = "current_thread")]
+    async fn client_telemetry_replays_are_filtered() {
+        let mock = MockSender::new();
+        let calls = mock.calls_handle();
+        let cfg = errors_only_config(true, true);
+        let (handle, _task) = spawn(mock, cfg.clone());
+
+        let subscriber = tracing_subscriber::registry().with(DiscordLayer::new(handle, cfg));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        tracing::error!(target: "client.native", client_target = "client.mercury.error", "client.mercury.error");
+        tracing::warn!(target: "client.native", client_target = "client.ui.cegui_log", "client.ui.cegui_log");
+        tracing::error!(target: "launcher.client_log", "client log line");
+        tracing::error!(target: "launcher.debug_log", "debug log line");
+        tracing::warn!(target: "launcher.session_meta", "session meta");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            calls.lock().await.is_empty(),
+            "client telemetry replays must never post to Discord"
+        );
+
+        tracing::error!(target: "launcher.ingest", reason = "session_over_budget", "ingest refused");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            calls.lock().await.len(),
+            1,
+            "the server's own ingest errors still post"
         );
     }
 

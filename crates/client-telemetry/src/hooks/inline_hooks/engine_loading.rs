@@ -116,6 +116,18 @@ pub(super) unsafe fn install_static_load_object(producer: &Producer) {
     );
 }
 
+/// Whether the `UWorld::UpdateLevelStreamingInner` hook is live.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(in crate::hooks) fn level_streaming_installed() -> bool {
+    UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE.get().is_some()
+}
+
+/// Whether the `UObject::StaticLoadObject` hook is live.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(in crate::hooks) fn static_load_object_installed() -> bool {
+    STATIC_LOAD_OBJECT_TRAMPOLINE.get().is_some()
+}
+
 /// Detour for `FArchiveAsync::Serialize(void* V, INT Length)` —
 /// vtable slot 1.
 ///
@@ -180,10 +192,24 @@ unsafe extern "thiscall-unwind" fn update_level_streaming_inner_detour(
         }
     });
 
+    // Note the level's visibility and the time, so the step's outcome (the
+    // level became visible; the step blew its budget) can be reported.
+    let step = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::hooks::seams::level_streaming::begin(streaming_level as *const c_void)
+    }))
+    .ok()
+    .flatten();
+
     if let Some(t) = UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE.get() {
         let original: unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, *mut c_void) =
             unsafe { std::mem::transmute(*t) };
         original(this, streaming_level, delta_position);
+    }
+
+    if let Some(step) = step {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::hooks::seams::level_streaming::end(streaming_level as *const c_void, step);
+        }));
     }
 }
 
@@ -246,7 +272,7 @@ unsafe extern "C-unwind" fn static_load_object_detour(
             *mut c_void,
             i32,
         ) -> *mut c_void = unsafe { std::mem::transmute(*t) };
-        original(
+        let result = original(
             object_class,
             in_outer,
             in_name,
@@ -254,7 +280,15 @@ unsafe extern "C-unwind" fn static_load_object_detour(
             load_flags,
             sandbox,
             allow_reconciliation,
-        )
+        );
+        // A NULL return is an object the engine could not load: report it,
+        // unsampled (see `seams::load_failures`).
+        if result.is_null() {
+            let _ = std::panic::catch_unwind(|| {
+                crate::hooks::seams::load_failures::observe_failure(in_name, filename, load_flags);
+            });
+        }
+        result
     } else {
         // Trampoline missing — return null. The caller will treat
         // it as "object not found" and likely log + recover. Better

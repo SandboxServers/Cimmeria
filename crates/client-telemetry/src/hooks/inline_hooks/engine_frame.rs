@@ -70,6 +70,13 @@ pub(super) unsafe fn install_engine_tick(producer: &Producer) {
     );
 }
 
+/// Whether the `FEngineLoop::Tick` hook is live. `seams::frame_health` runs
+/// inside it, so its capability is this one's.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(in crate::hooks) fn tick_installed() -> bool {
+    TICK_TRAMPOLINE.get().is_some()
+}
+
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) unsafe fn install_bink_tick(producer: &Producer) {
     super::install_one(
@@ -94,6 +101,9 @@ pub(super) unsafe fn install_bink_tick(producer: &Producer) {
 #[allow(improper_ctypes_definitions)]
 unsafe extern "thiscall-unwind" fn engine_tick_detour(this: *mut c_void) {
     let _ = std::panic::catch_unwind(|| {
+        // Frame-gap (hitch) and memory sampling run on every tick; the
+        // sampled `client.engine.tick` below is only a heartbeat.
+        crate::hooks::seams::frame_health::on_tick();
         if TICK_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
                 p.try_emit(crate::events::ClientNativeEvent::builder(

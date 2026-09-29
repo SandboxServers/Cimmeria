@@ -234,9 +234,16 @@ open without them. The status log says on every launch when the patches
 were not loaded, and why. Atera debug launches never load them.
 
 Beside it, **Send telemetry (opt-in)** is off until you turn it on. On,
-the launcher uploads the client's log files while you play, with this
-install's random id, so crashes and bugs can be traced. The launcher
-also asks once, at the top of the window; either answer is remembered.
+the launcher uploads the client's log files while you play, and loads a
+small telemetry module (`cimmeria-client-telemetry.dll`) into the game
+after the client patches, which records in-game events such as the game
+messages the client handles and interface errors. Both go to the
+Cimmeria server with this install's random id, so crashes and bugs can
+be traced. The module changes nothing in the game. If the launcher
+cannot reach the telemetry server, or the module is missing, the status
+log says so and the game starts without it. The launcher also asks once,
+at the top of the window; either answer is remembered, and a change
+applies from your next launch.
 
 ### What the launcher changes in your client
 

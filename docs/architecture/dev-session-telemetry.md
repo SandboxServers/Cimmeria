@@ -104,11 +104,19 @@ bridge still starts, because `telemetry.enabled` stays true) and
 Two buttons run a session. **Launch + Telemetry** (the Atera debug
 path) is traced below. **Launch SGW.exe** runs one too when
 the player opted in (`telemetry.opted_in`, off by default) and the
-identity loaded
-(`worker/launch_sgw.rs`): the game starts first, with the
-client-patches DLL injected, and the session follows it, so a failed
-auth handshake never delays play. That session also records the
-`client.patches.boot` event described after this sequence.
+identity loaded (`worker/launch_sgw.rs`, `worker/launch_telemetry.rs`).
+Since 2026-09-29 that session starts *before* the game: the injected
+`cimmeria-client-telemetry` DLL reads its token and upload endpoint
+from `current-session.json` as it boots, so the file must exist first.
+The handshake gets at most 10 s; a failed or slow one is reported and
+the game starts without the telemetry DLL, so it delays play by no more
+than that. The game then starts with the client-patches DLL and the
+telemetry DLL, in that order, and the session follows it. The launcher
+sends no `session_kind`, so both the launcher's uploads and the DLL's
+carry `cimmeria.session_kind = player`. That session also records the
+`client.patches.boot` and `client.telemetry_dll.launch` events described
+after this sequence. Without the opt-in, **Launch SGW.exe** starts no
+session and injects the client patches only.
 
 ```text
 1. User clicks "Launch + Telemetry" in the launcher UI
@@ -158,12 +166,27 @@ The level is `info` when the DLL was injected and installed its hooks,
 repro. The log lines this parses are listed in the client-patches
 [README](../../crates/client-patches/README.md#log).
 
+### Telemetry DLL launch event
+
+The same session records one `client_native` event with target
+`client.telemetry_dll.launch`, before the runner starts, saying whether
+the telemetry DLL went in: `outcome` is `injected` (with `dll_path`),
+`unavailable` (with `reason`: not bundled, or a `lab-bridge` build
+refused) or `inject_failed` (the game was started without it). The
+level is `info` for `injected`, `warn` otherwise. An opted-in session
+with no `client.dll.attached` row from the DLL can be told apart from
+one whose DLL never went in.
+
 ## Failure modes
 
 | Scenario | Behavior |
 |---|---|
 | `/auth/dev-session` returns 503 (kill switch) | Launcher logs warn, falls back to `launch_atera_debug` (no telemetry). Game launches. |
 | `/auth/dev-session` network failure | Same as kill switch — game launches without telemetry. |
+| **Launch SGW.exe**: handshake fails or takes over 10 s | Session error in the status log; the game launches with the client patches only, no telemetry DLL. |
+| **Launch SGW.exe**: telemetry DLL missing or a `lab-bridge` build | Status line `In-game telemetry: unavailable: …`; the game launches without it; the session still runs (`client.telemetry_dll.launch`, `outcome = unavailable`). |
+| **Launch SGW.exe**: injecting both DLLs fails | Retried with the client patches alone, then plainly; `outcome = inject_failed`. |
+| DLL session outlives its 8 h token | The DLL never refreshes: its uploads stop being accepted. The launcher's own uploads refresh and continue. |
 | Chunk POST 401 | `ChunkError::TokenRejected` → next tick fires `refresh_if_due`. |
 | Chunk POST 503 | `ChunkError::KillSwitch { retry_after_secs }` honored. Events stay on disk. |
 | Launcher killed mid-session | Game keeps running (no Job Object). Events stay in `telemetry-queue.jsonl`. Next launch drains them via `recover_pending_on_startup`. |

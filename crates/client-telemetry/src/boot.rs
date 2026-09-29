@@ -219,7 +219,9 @@ fn bootstrap_phase2() {
 
     // The local log goes next to the host executable, before anything
     // can fail, so "loaded but silent" is visible without SigNoz.
-    crate::log::init(host_exe.parent());
+    let instance =
+        crate::session::sanitize_instance(std::env::var_os(crate::session::INSTANCE_ENV));
+    crate::log::init_as(host_exe.parent(), instance.as_deref());
     crate::log::line(format_args!(
         "attached, version {}, host {}, dll {}",
         env!("CARGO_PKG_VERSION"),
@@ -229,6 +231,9 @@ fn bootstrap_phase2() {
             .and_then(|d| d.dll_path.as_deref())
             .map_or_else(|| "?".into(), |p| p.display().to_string())
     ));
+    // Which build this is, as a literal the packaging checks read back
+    // out of the image: a player must never get the lab-bridge build.
+    crate::log::line(crate::BUILD_MARKER);
 
     // Step 2: load `current-session.json`. Errors here include
     // file-missing (launcher didn't write it — likely user
@@ -236,9 +241,11 @@ fn bootstrap_phase2() {
     // launcher), parse errors, and the explicit
     // `telemetry.enabled = false` kill-switch case. All map to
     // "park, do nothing."
-    let session = match crate::session::session_path_for_host(&host_exe)
-        .and_then(|p| crate::session::load_session(&p))
-    {
+    let session_path = crate::session::resolve_session_path(
+        &host_exe,
+        std::env::var_os(crate::session::SESSION_FILE_ENV),
+    );
+    let session = match session_path.and_then(|p| crate::session::load_session(&p)) {
         Ok(s) => s,
         Err(e) => {
             crate::log::line(format_args!(
@@ -252,14 +259,42 @@ fn bootstrap_phase2() {
         session.session_id, session.telemetry.upload_endpoint
     ));
 
-    // Step 3 + 4: queue + global producer.
-    let (producer, consumer) = crate::queue::channel();
+    // Capture switches for the engine-layer log sinks and the governor:
+    // the session's `capture` block and `CIMMERIA_CLIENT_CAPTURE` each can
+    // turn them on.
+    let capture = session
+        .capture
+        .unwrap_or_default()
+        .merged(crate::capture::CaptureConfig::from_env());
+    crate::capture::init(capture);
+    crate::log::line(format_args!(
+        "capture switches: unfilter={} firehose={} raw={}",
+        capture.unfilter, capture.firehose, capture.raw
+    ));
+
+    // Step 3 + 4: queue + global producer, with the telemetry governor
+    // between the hooks and the ring (`raw` / `firehose` capture switches).
+    let governor = crate::governor::GovernorConfig::from_capture(capture);
+    crate::log::line(format_args!("telemetry governor: {}", governor.mode()));
+    let (producer, consumer) = crate::queue::governed_channel(governor);
     if PRODUCER.set(producer.clone()).is_err() {
         // Double-init shouldn't happen (the bootstrap-thread
         // guard above is single-shot), but if it does, leave the
         // first producer in place and quietly bail.
         return;
     }
+
+    // Capture switches for the engine-layer log sinks: the session's
+    // `capture` block and `CIMMERIA_CLIENT_CAPTURE` each can turn them on.
+    let capture = session
+        .capture
+        .unwrap_or_default()
+        .merged(crate::capture::CaptureConfig::from_env());
+    crate::capture::init(capture);
+    crate::log::line(format_args!(
+        "capture switches: unfilter={} firehose={}",
+        capture.unfilter, capture.firehose
+    ));
 
     // Step 5: first event — `client.dll.attached`. Carries the
     // identity fields the server-side replay uses to pivot
@@ -286,6 +321,12 @@ fn bootstrap_phase2() {
     builder = builder.field(
         "dll_version",
         serde_json::Value::String(env!("CARGO_PKG_VERSION").to_string()),
+    );
+    // `player` or `lab-bridge`: which build a session ran, since only
+    // the player build may reach a player's machine.
+    builder = builder.field(
+        "dll_flavor",
+        serde_json::Value::String(crate::BUILD_FLAVOR.to_string()),
     );
     let _ = producer.try_emit(builder);
 
@@ -342,7 +383,10 @@ fn bootstrap_phase2() {
             // UE3's unhandled-exception filter. Evidence lands in the
             // session dir (parent of current-session.json) next to the
             // marker the supervisor reads for `lab_crash_report`.
-            if let Ok(session_file) = crate::session::session_path_for_host(&host_exe) {
+            if let Ok(session_file) = crate::session::resolve_session_path(
+                &host_exe,
+                std::env::var_os(crate::session::SESSION_FILE_ENV),
+            ) {
                 if let Some(dir) = session_file.parent() {
                     crate::bridge::crash::install(dir.to_path_buf());
                 }

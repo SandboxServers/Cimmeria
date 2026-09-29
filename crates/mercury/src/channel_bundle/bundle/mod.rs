@@ -190,8 +190,15 @@ impl ChannelBundle {
                 1
             }
         } else {
-            self.body.len().div_ceil(FRAGMENT_BODY_SIZE)
+            crate::packet::fragment_count(&self.body)
         }
+    }
+
+    /// How [`Self::finalize`] will cut the body into packets: one range per
+    /// packet, plus the number of cuts moved off a message header. For
+    /// flush-shape telemetry.
+    pub fn fragment_plan(&self) -> crate::packet::FragmentPlan {
+        crate::packet::plan_fragments(&self.body)
     }
 
     /// Finalize the bundle into one or more encrypted Mercury packets.

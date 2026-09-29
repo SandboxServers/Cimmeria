@@ -101,8 +101,9 @@ let exit_code = game.wait()?;
 `sgw-launcher` embeds the helper and keeps it at one stable path,
 `<launcher dir>/sgw-start32.exe`, never `%TEMP%`
 (`crates/launcher/src/start32_helper.rs`), so an antivirus exclusion for
-the launcher's folder survives updates. The telemetry launch and
-`cimmeria-lab` can call the same helper with their own DLL lists; a
+the launcher's folder survives updates. An opted-in player launch passes
+both DLLs (patches, then telemetry), and `cimmeria-lab` calls the same
+helper with its own DLL list; a
 caller that ships separately should likewise keep it beside itself under
 that name.
 

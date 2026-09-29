@@ -6,6 +6,7 @@ mod client_changes;
 mod client_patches;
 mod client_paths;
 mod client_setup;
+mod client_telemetry_dll;
 mod config;
 mod identity;
 mod install;

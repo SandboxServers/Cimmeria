@@ -32,11 +32,17 @@
 //! when the drop counter advances.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 
 use crate::events::{ClientNativeEvent, EventBuilder};
+use crate::governor::{ExternalDrops, Governor, GovernorConfig};
+
+/// The governor both ends share: producers admit through it, the uploader
+/// ticks it. `None` on a plain [`channel`].
+type SharedGovernor = Option<Arc<Mutex<Governor>>>;
 
 /// Capacity of the event ring. Chosen for one second of frame-tick
 /// telemetry at 60 Hz plus headroom for bursty network events; the
@@ -53,12 +59,14 @@ pub struct Producer {
     sender: Sender<ClientNativeEvent>,
     seq: std::sync::Arc<AtomicU64>,
     dropped: std::sync::Arc<AtomicU64>,
+    governor: SharedGovernor,
 }
 
 /// Consumer handle. Owned by the single uploader thread.
 pub struct Consumer {
     receiver: Receiver<ClientNativeEvent>,
     dropped: std::sync::Arc<AtomicU64>,
+    governor: SharedGovernor,
 }
 
 /// Construct a fresh (producer, consumer) pair. Capacity is
@@ -66,16 +74,34 @@ pub struct Consumer {
 /// drop counter) is allocated here and shared via Arc with every
 /// producer clone.
 pub fn channel() -> (Producer, Consumer) {
+    build(None)
+}
+
+/// A (producer, consumer) pair with a [`Governor`] between the hooks and
+/// the ring: what the DLL runs. Hot streams, over-budget and repeated
+/// events never take a ring slot, so a flood of them cannot crowd out a
+/// must-keep event.
+pub fn governed_channel(cfg: GovernorConfig) -> (Producer, Consumer) {
+    build(Some(cfg))
+}
+
+fn build(cfg: Option<GovernorConfig>) -> (Producer, Consumer) {
     let (sender, receiver) = bounded::<ClientNativeEvent>(RING_CAPACITY);
     let seq = std::sync::Arc::new(AtomicU64::new(0));
     let dropped = std::sync::Arc::new(AtomicU64::new(0));
+    let governor = cfg.map(|c| Arc::new(Mutex::new(Governor::new(c, seq.clone()))));
     (
         Producer {
             sender,
             seq,
             dropped: dropped.clone(),
+            governor: governor.clone(),
         },
-        Consumer { receiver, dropped },
+        Consumer {
+            receiver,
+            dropped,
+            governor,
+        },
     )
 }
 
@@ -84,6 +110,10 @@ impl Producer {
     /// it. On full, increments the drop counter and returns
     /// `false` — never blocks. Returns `true` when the event made
     /// it into the ring.
+    ///
+    /// On a governed channel the event is admitted through the governor
+    /// first; an event it absorbs (rolled up, held as a repeat) counts as
+    /// accepted.
     pub fn try_emit(&self, builder: EventBuilder) -> bool {
         let event = ClientNativeEvent {
             ts_ms: now_ms(),
@@ -92,6 +122,24 @@ impl Producer {
             level: builder.level,
             fields: builder.fields,
         };
+        let Some(governor) = &self.governor else {
+            return self.send(event);
+        };
+        let mut out = Vec::new();
+        governor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .admit(event, &mut out);
+        // Sent after the lock is released: the ring never waits on it. Every
+        // output is sent even if an earlier one was refused.
+        let mut all_sent = true;
+        for ev in out {
+            all_sent &= self.send(ev);
+        }
+        all_sent
+    }
+
+    fn send(&self, event: ClientNativeEvent) -> bool {
         match self.sender.try_send(event) {
             Ok(()) => true,
             Err(TrySendError::Full(_)) => {
@@ -146,6 +194,39 @@ impl Consumer {
     /// Read the running drop counter without resetting it.
     pub fn dropped_total(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Give the governor its cadence: append due rollups, repeat events
+    /// and the health event to `batch`. `upload_dropped` is the uploader's
+    /// running count of events it discarded. No-op on a plain channel.
+    pub fn governor_tick(&self, upload_dropped: u64, batch: &mut Vec<ClientNativeEvent>) {
+        self.with_governor(upload_dropped, batch, |g, now, drops, out| {
+            g.tick(now, drops, out)
+        });
+    }
+
+    /// Close the governor's window and report health, for shutdown.
+    pub fn governor_finish(&self, upload_dropped: u64, batch: &mut Vec<ClientNativeEvent>) {
+        self.with_governor(upload_dropped, batch, |g, now, drops, out| {
+            g.finish(now, drops, out)
+        });
+    }
+
+    fn with_governor(
+        &self,
+        upload_dropped: u64,
+        batch: &mut Vec<ClientNativeEvent>,
+        f: impl FnOnce(&mut Governor, i64, ExternalDrops, &mut Vec<ClientNativeEvent>),
+    ) {
+        let Some(governor) = &self.governor else {
+            return;
+        };
+        let drops = ExternalDrops {
+            ring_dropped: self.dropped_total(),
+            upload_dropped,
+        };
+        let mut g = governor.lock().unwrap_or_else(PoisonError::into_inner);
+        f(&mut g, now_ms(), drops, batch);
     }
 }
 

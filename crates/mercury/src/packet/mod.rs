@@ -28,8 +28,12 @@
 //!   [`crate::channel::Channel`] and [`crate::codec`]
 
 mod build;
+mod fragmenting;
 mod legacy;
 mod parse;
+
+#[cfg(test)]
+mod fragmenting_wire_tests;
 
 #[cfg(test)]
 mod parse_proptest;
@@ -47,6 +51,9 @@ pub use build::{
     build_fragmented_bundle, build_outgoing, build_outgoing_fragmented, FRAGMENT_BODY_SIZE,
 };
 pub use bytes::Bytes;
+pub use fragmenting::{
+    fragment_count, plan_fragments, server_message_framing, FragmentPlan, ServerMessageFraming,
+};
 pub use legacy::{Packet, PacketFlags};
 pub use parse::parse_incoming;
 

@@ -85,7 +85,7 @@ pub async fn handle_map_loaded(
     // entity was still in its creation transaction during bundle processing.
     let map_body = build_map_loaded_body(entry_info.player_entity_id, &player_data, &entry_info);
 
-    let map_frags = fragment_count(map_body.len());
+    let map_frags = fragment_count(&map_body);
     // Reserve 1 seq for the standalone enter-world packet + N seqs for map fragments.
     let total_seqs = 1 + map_frags;
 

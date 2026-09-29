@@ -74,8 +74,10 @@
 //! On finalize, the body is handed to
 //! [`crate::packet::build_fragmented_bundle`] which produces 1 packet for
 //! bodies ≤ [`crate::packet::FRAGMENT_BODY_SIZE`] (1300 bytes) and
-//! `ceil(body / 1300)` fragments otherwise. ACKs ride only the first
-//! fragment.
+//! several fragments otherwise, cut on message boundaries so that no message
+//! header straddles two packets (the client abandons the rest of a bundle
+//! whose header does; see [`crate::packet::plan_fragments`]). ACKs ride only
+//! the first fragment.
 //!
 //! # Module layout
 //!

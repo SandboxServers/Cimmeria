@@ -209,6 +209,7 @@ per-session is a record attribute instead:
 | `client_target` | The DLL's event name (`client.lua.pcall`); also the log body |
 | `client_level` | The DLL's level string, kept when it is not one the server knows |
 | `account_id`, `player_id`, `method_index`, `level_name`, `dll_version`, `fingerprint_usable` | Lifted from the DLL's `fields` bag when the event carries them; absent otherwise, never `0` |
+| `rollup_target`, `rollup_count` | On a `client.telemetry.rollup` row: the target the governor summarized and how many events the row stands for (`count`, lifted only alongside `rollup_target`). `sum(rollup_count)` by `rollup_target` recovers totals |
 | `fields` | The DLL's whole `fields` bag as JSON |
 
 `OTEL_FILTER` stays hand-written, because it is also the span filter and

@@ -87,52 +87,17 @@ enum Framing {
     Word,
 }
 
-/// Direct Rust port of `SERVER_MSG_FORMAT` in `tools/pcap_dissect.py`.
-/// Keep the two in sync — see that file's header for the RE provenance of
-/// each entry.
+/// Static-range framing, from the table `cimmeria_mercury` owns (it also
+/// drives the fragmenter's header guard). Entity-method ids `0x80..=0xFE`
+/// are handled separately below, so they map to `None` here.
 fn static_framing(msg_id: u8) -> Option<Framing> {
-    use Framing::{Constant, Word};
-    Some(match msg_id {
-        0x00 => Word,         // authenticate
-        0x01 => Constant(4),  // bandwidthNotification
-        0x02 => Constant(1),  // updateFrequencyNotification
-        0x03 => Constant(4),  // setGameTime
-        0x04 => Constant(1),  // resetEntities
-        0x05 => Word,         // createBasePlayer
-        0x06 => Word,         // createCellPlayer
-        0x07 => Word,         // spaceData
-        0x08 => Constant(13), // spaceViewportInfo
-        0x09 => Word,         // createEntity
-        0x0A => Word,         // updateEntity
-        0x0B => Constant(5),  // entityInvisible
-        0x0C => Word,         // leaveAoI
-        0x0D => Constant(8),  // tickSync
-        0x0E => Constant(1),  // setSpaceViewport
-        0x0F => Constant(4),  // setVehicle
-        // avatarUpdate family (0x10..=0x2F) — sizes from the +0x04
-        // fixed-length InterfaceElement field.
-        0x10 | 0x14 | 0x18 | 0x20 | 0x24 | 0x28 => Constant(25),
-        0x11 | 0x15 | 0x19 | 0x21 | 0x25 | 0x29 => Constant(24),
-        0x12 | 0x16 | 0x1A | 0x22 | 0x26 | 0x2A => Constant(23),
-        0x13 | 0x17 | 0x1B | 0x23 | 0x27 | 0x2B => Constant(22),
-        0x1C => Constant(13),
-        0x1D => Constant(12),
-        0x1E => Constant(11),
-        0x1F => Constant(10),
-        0x2C => Constant(13),
-        0x2D => Constant(12),
-        0x2E => Constant(11),
-        0x2F => Constant(10),
-        0x30 => Constant(41), // detailedPosition
-        0x31 => Constant(49), // forcedPosition
-        0x32 => Constant(5),  // controlEntity
-        0x33 => Word,         // voiceData
-        0x34 => Word,         // restoreClient
-        0x35 => Word,         // restoreBaseApp
-        0x36 => Word,         // resourceFragment
-        0x37 => Constant(1),  // loggedOff
-        0xFF => Word,         // connectReply / BASEMSG_REPLY_MESSAGE
-        _ => return None,
+    use cimmeria_mercury::packet::{server_message_framing, ServerMessageFraming};
+    if (0x80..=0xFE).contains(&msg_id) {
+        return None;
+    }
+    server_message_framing(msg_id).map(|f| match f {
+        ServerMessageFraming::Constant(n) => Framing::Constant(n),
+        ServerMessageFraming::Word => Framing::Word,
     })
 }
 

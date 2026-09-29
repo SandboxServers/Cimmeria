@@ -109,9 +109,31 @@ impl Install {
         std::fs::write(dir.join("current-session.json"), session.to_string()).expect("session");
     }
 
+    /// Write a named lab instance's session file, where the lab supervisor
+    /// puts it: `sessions/instances/<name>/current-session.json`. Returns
+    /// the path (what `CIMMERIA_LAB_SESSION_FILE` must point at).
+    pub fn write_instance_session(&self, name: &str, session: &serde_json::Value) -> PathBuf {
+        let dir = self.path().join("sessions").join("instances").join(name);
+        std::fs::create_dir_all(&dir).expect("instance dir");
+        let path = dir.join("current-session.json");
+        std::fs::write(&path, session.to_string()).expect("instance session");
+        path
+    }
+
     /// Start the host through `sgw-start32` with `dlls` injected in order,
     /// exactly as the launcher does, and return the running process.
     pub fn launch(&self, dlls: &[PathBuf], run_ms: u64) -> Launched {
+        self.launch_with_env(dlls, run_ms, &[])
+    }
+
+    /// [`launch`](Self::launch) with extra environment for the host (and so
+    /// the DLLs): how the lab starts a second client.
+    pub fn launch_with_env(
+        &self,
+        dlls: &[PathBuf],
+        run_ms: u64,
+        envs: &[(String, String)],
+    ) -> Launched {
         let request = Request {
             target: Target::Spawn {
                 exe: self.path().join("sgw-testhost.exe"),
@@ -121,7 +143,8 @@ impl Install {
             dlls: dlls.to_vec(),
         };
         let helper = self.stage.dir.join(start32::HELPER_EXE_NAME);
-        let pid = start32::run(&helper, &request).expect("sgw-start32 started the host");
+        let pid =
+            start32::run_with_env(&helper, &request, envs).expect("sgw-start32 started the host");
         let process = RunningProcess::open(pid).expect("open the host by pid");
         Launched { pid, process }
     }
