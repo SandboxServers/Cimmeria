@@ -330,6 +330,7 @@
 \ir resources/Items/Seed/ammo_weapon_widening.sql
 \ir resources/Loot/Seed/loot.sql
 \ir resources/Loot/Seed/loot_tables.sql
+\ir resources/Loot/Seed/ammo_loot.sql
 \ir resources/Missions/Seed/mission_objectives.sql
 \ir resources/Missions/Seed/mission_reward_groups.sql
 \ir resources/Missions/Seed/mission_rewards.sql

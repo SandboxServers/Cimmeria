@@ -186,6 +186,15 @@ mod live_db {
             "item {UNWIRED_CONSUMABLE} (Stealth Boost) now reads as working; if it \
              really gained a use path, pick another unwired consumable here"
         );
+        // Special-ammo reserve items (ammo campaign AM-05) drop from the gun
+        // carriers' tables; their rows are pinned in `live_db_ammo_loot`.
+        let ammo: HashSet<i32> =
+            sqlx::query_scalar("SELECT item_id FROM resources.ammo_item_types")
+                .fetch_all(&pool)
+                .await
+                .expect("ammo_item_types query must succeed")
+                .into_iter()
+                .collect();
         let components: HashSet<i32> =
             sqlx::query_scalar("SELECT DISTINCT item_id FROM resources.blueprints_components")
                 .fetch_all(&pool)
@@ -220,6 +229,10 @@ mod live_db {
                 );
                 continue;
             };
+            if ammo.contains(&item) {
+                assert!(*table != 6, "PRU salvage row {loot_id} must not be ammo");
+                continue;
+            }
             let consumable = uses.is_consumable(item);
             let is_component = !consumable && components.contains(&item);
             if consumable {
@@ -324,7 +337,9 @@ mod live_db {
         }
 
         let rows: Vec<(Option<i32>, i32, i32, f32)> = sqlx::query_as(
-            "SELECT design_id, min_quantity, max_quantity, probability::real              FROM resources.loot WHERE loot_table_id = 7 ORDER BY loot_id",
+            "SELECT design_id, min_quantity, max_quantity, probability::real              FROM resources.loot WHERE loot_table_id = 7 \
+             AND NOT EXISTS (SELECT 1 FROM resources.ammo_item_types a WHERE a.item_id = loot.design_id) \
+             ORDER BY loot_id",
         )
         .fetch_all(&pool)
         .await
@@ -332,7 +347,8 @@ mod live_db {
         assert_eq!(
             rows,
             vec![(None, 5, 25, 0.5), (Some(2893), 1, 1, 0.3)],
-            "table 7 is naquadah 5-25 at 0.5 and a Health Slappack at 0.3"
+            "table 7 is naquadah 5-25 at 0.5 and a Health Slappack at 0.3 (its Hollow \
+             Point row is AM-05's, pinned in live_db_ammo_loot)"
         );
     }
 }

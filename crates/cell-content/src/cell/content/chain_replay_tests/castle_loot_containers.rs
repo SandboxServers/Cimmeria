@@ -88,12 +88,17 @@ async fn live_db_castle_chest_tables_hold_the_decided_rewards() {
     for (table, weapon) in [(8, 3127), (9, 3472)] {
         let rows: Vec<(Option<i32>, i32, i32, f32)> = sqlx::query_as(
             "SELECT design_id, min_quantity, max_quantity, probability::real \
-             FROM resources.loot WHERE loot_table_id = $1 ORDER BY loot_id",
+             FROM resources.loot WHERE loot_table_id = $1 \
+             AND NOT EXISTS (SELECT 1 FROM resources.ammo_item_types a \
+                             WHERE a.item_id = loot.design_id) \
+             ORDER BY loot_id",
         )
         .bind(table)
         .fetch_all(&pool)
         .await
         .expect("loot rows");
+        // The Hollow Point row is AM-05's (#1026), pinned by cell-catalog's
+        // `live_db_ammo_loot`.
         assert_eq!(
             rows,
             vec![
