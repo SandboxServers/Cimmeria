@@ -256,9 +256,12 @@ fn violations() -> Vec<String> {
         if TEST_FIXTURE_TARGETS.iter().any(|(t, _)| *t == target) {
             continue;
         }
+        // Client targets reach SigNoz through the `cimmeria-client` sink
+        // (`otel_client`), so they must reach none of the bridge indexes.
         let excluded = OTLP_EXCLUDED_TARGETS
             .iter()
-            .any(|(t, _)| target == *t || target.starts_with(&format!("{t}.")));
+            .any(|(t, _)| target == *t || target.starts_with(&format!("{t}.")))
+            || crate::otel_client::is_client_target(&target);
         let sinks = sinks_for(&dispatch, &hits, &target, level);
         let n = OTLP_LOG_SINKS
             .iter()

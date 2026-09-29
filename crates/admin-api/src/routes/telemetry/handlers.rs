@@ -15,7 +15,7 @@ use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TEL
 
 use super::dto::{BundleResponse, ChunkResponse, ClientNativeEvent, IngestError, TelemetryEvent};
 use super::{
-    MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES, MAX_CHUNK_BYTES,
+    client_sink, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES, MAX_CHUNK_BYTES,
     MAX_CHUNK_DECOMPRESSED_BYTES,
 };
 
@@ -60,6 +60,7 @@ pub(super) async fn upload_chunk(
             line: idx as u64 + 1,
             err: e.to_string(),
         })?;
+        client_sink::export(&claims, &ev);
         replay_event(&claims, ev);
         accepted += 1;
     }

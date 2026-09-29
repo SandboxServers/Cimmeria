@@ -61,6 +61,7 @@ use cimmeria_services::orchestrator::Orchestrator;
 
 mod logging;
 mod otel;
+mod otel_client;
 
 #[tokio::main]
 async fn main() {

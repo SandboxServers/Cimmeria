@@ -36,7 +36,11 @@
 //!   `IntoResponse` plumbing.
 //! - [`handlers`] — the two axum handlers plus the unzip / verify /
 //!   replay helpers they call.
+//! - [`client_sink`] — the structured `cimmeria-client` export the server
+//!   installs when OTLP is on: typed attributes per DLL field, and the
+//!   player's identity on every record of the session.
 
+pub mod client_sink;
 mod dto;
 mod handlers;
 

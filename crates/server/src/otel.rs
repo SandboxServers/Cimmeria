@@ -270,6 +270,14 @@ pub fn init() -> Option<(OtelLayers, OtelGuard)> {
     // them explicitly.
     let trace_resource = Resource::builder()
         .with_service_name(TRACE_SERVICE_NAME)
+        .with_attributes(identity.clone())
+        .build();
+    // Client-originated telemetry (the in-game DLL and the client logs the
+    // launcher uploads) gets its own service, fed record by record through
+    // the admin API's client sink rather than a tracing bridge, so the
+    // DLL's fields arrive as typed attributes. See `otel_client`.
+    let client_resource = Resource::builder()
+        .with_service_name(crate::otel_client::CLIENT_SERVICE_NAME)
         .with_attributes(identity)
         .build();
     // OTEL_RESOURCE_ATTRIBUTES is parsed by `opentelemetry_sdk` itself
@@ -343,6 +351,10 @@ pub fn init() -> Option<(OtelLayers, OtelGuard)> {
     let network_logger_provider =
         log_provider(&protocol, &endpoint, network_resource, "Network log")?;
     let trace_logger_provider = log_provider(&protocol, &endpoint, trace_resource, "Trace log")?;
+    let client_logger_provider = log_provider(&protocol, &endpoint, client_resource, "Client log")?;
+    cimmeria_admin_api::routes::telemetry::client_sink::install(Box::new(
+        crate::otel_client::ClientSink::new(client_logger_provider.clone()),
+    ));
 
     let log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
     let network_log_layer = OpenTelemetryTracingBridge::new(&network_logger_provider);
@@ -413,6 +425,7 @@ pub fn init() -> Option<(OtelLayers, OtelGuard)> {
             logger_provider,
             network_logger_provider,
             trace_logger_provider,
+            client_logger_provider,
             meter_provider,
         },
     ))
@@ -469,6 +482,8 @@ pub struct OtelGuard {
     network_logger_provider: SdkLoggerProvider,
     /// Third logger provider, for the `cimmeria-trace` index.
     trace_logger_provider: SdkLoggerProvider,
+    /// Fourth, for the `cimmeria-client` index (`otel_client`).
+    client_logger_provider: SdkLoggerProvider,
     /// `None` when the metric exporter failed to construct — traces +
     /// logs still flush on shutdown, metrics path was never wired so
     /// nothing to drain.
@@ -503,6 +518,9 @@ impl Drop for OtelGuard {
         }
         if let Err(e) = self.trace_logger_provider.shutdown() {
             eprintln!("[otel] Trace logger shutdown flush failed: {e}");
+        }
+        if let Err(e) = self.client_logger_provider.shutdown() {
+            eprintln!("[otel] Client logger shutdown flush failed: {e}");
         }
     }
 }

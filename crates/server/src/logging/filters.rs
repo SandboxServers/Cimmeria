@@ -1,5 +1,5 @@
 //! Filter directives for every log sink, and the routing of OTLP log records
-//! between the three SigNoz services.
+//! between the SigNoz services.
 //!
 //! # The parity guarantee (NA25)
 //!
@@ -11,6 +11,7 @@
 //! | ERROR, WARN | `cimmeria-server` | [`OTEL_FILTER`] |
 //! | INFO, DEBUG | `cimmeria-server`, or `cimmeria-network` for [`otel::is_network_noise_target`] scopes | [`OTEL_FILTER`] |
 //! | TRACE | `cimmeria-trace` | [`otel_trace_directives`] |
+//! | any, replayed client uploads ([`crate::otel_client::is_client_target`]) | `cimmeria-client`, through the admin API's client sink, not a tracing bridge | none; the three bridges above skip these targets |
 //!
 //! Deliberate exceptions, each pinned by `parity_tests`:
 //!
@@ -576,19 +577,24 @@ pub(crate) fn otel_trace_directives_for(file_layers: &[FileLayer]) -> String {
 pub(crate) fn routes_to_server(meta: &Metadata<'_>) -> bool {
     let level = *meta.level();
     // `Level` orders by verbosity: `<= DEBUG` is DEBUG or more severe.
-    level <= Level::DEBUG && (!otel::is_network_noise_target(meta.target()) || level <= Level::WARN)
+    level <= Level::DEBUG
+        && (!otel::is_network_noise_target(meta.target()) || level <= Level::WARN)
+        && !crate::otel_client::is_client_target(meta.target())
 }
 
 /// `cimmeria-network`: INFO and DEBUG from network-noise scopes.
 pub(crate) fn routes_to_network(meta: &Metadata<'_>) -> bool {
     let level = *meta.level();
-    level <= Level::DEBUG && level > Level::WARN && otel::is_network_noise_target(meta.target())
+    level <= Level::DEBUG
+        && level > Level::WARN
+        && otel::is_network_noise_target(meta.target())
+        && !crate::otel_client::is_client_target(meta.target())
 }
 
 /// `cimmeria-trace`: TRACE only, from every scope. The other two indexes
 /// reject TRACE, so no record is indexed twice.
 pub(crate) fn routes_to_trace(meta: &Metadata<'_>) -> bool {
-    *meta.level() == Level::TRACE
+    *meta.level() == Level::TRACE && !crate::otel_client::is_client_target(meta.target())
 }
 
 /// Filter for the `cimmeria-server` log layer.

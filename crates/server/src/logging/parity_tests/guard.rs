@@ -81,7 +81,10 @@ fn server_log_targets_reach_an_otlp_index() {
     ];
     let mut violations = Vec::new();
     for target in named.chain(generic) {
-        let excluded = OTLP_EXCLUDED_TARGETS.iter().any(|(t, _)| *t == target);
+        // Client targets reach SigNoz through the `cimmeria-client` sink,
+        // not a tracing bridge, so they must reach none of these indexes.
+        let excluded = OTLP_EXCLUDED_TARGETS.iter().any(|(t, _)| *t == target)
+            || crate::otel_client::is_client_target(target);
         for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
             let sinks = sinks_for(&dispatch, &hits, target, lvl);
             if !sinks.contains(SERVER_LOG) {
