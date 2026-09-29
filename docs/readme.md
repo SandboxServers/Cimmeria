@@ -39,7 +39,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | <!-- gen:docs-md-count -->628<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->8,705<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,452<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->8,121<!-- /gen:tests-ci-gated --> gated in CI) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->8,713<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,454<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->8,129<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->1,512<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
