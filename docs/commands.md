@@ -254,7 +254,7 @@ XP, money, items, abilities, and more.
 |---|---|---|---|---|
 | `/gmgiveability` | Give a specific ability | ❌ Not yet | `<abilityId>` | `/gmgiveability` |
 | `/gmgiveallabilities` | Give every ability | ❌ Not yet | none | `/gmgiveallabilities` |
-| `/gmgiveammo` | Give ammunition | ❌ Not yet | `<ammoId> <quantity>` | `/gmgiveammo` |
+| `/gmgiveammo` | Give special-ammo rounds | ✅ Yes, as `.giveammo` | `<ammo type> <rounds>` | `.giveammo hollowpoint 500` |
 | `/gmgiveappliedsciencepoints` | Give yourself applied-science points | ✅ Yes | `<points>` (positive int) | `/gmgiveappliedsciencepoints 25` |
 | `/gmgiveblueprint` | Give a crafting blueprint | ❌ Not yet | `<blueprintId>` | `/gmgiveblueprint` |
 | `/gmgivecash` | Give yourself naquadah (currency) | ✅ Yes | `<amount>` (positive int) | `/gmgivecash 10000` |
@@ -297,7 +297,7 @@ Set health/focus, target, and debug toggles.
 | `/gmsethidegm` | Toggle GM visibility | ❌ Not yet | `<on>` (0/1) | `/gmsethidegm` |
 | `/gmsetignorefocus` | Ignore focus costs | ❌ Not yet | `<on>` (0/1) | `/gmsetignorefocus` |
 | `/gmsetignorehealth` | Ignore health damage | ❌ Not yet | `<on>` (0/1) | `/gmsetignorehealth` |
-| `/gmsetinfiniteammo` | Toggle infinite ammo | ❌ Not yet | `<on>` (0/1) | `/gmsetinfiniteammo` |
+| `/gmsetinfiniteammo` | Special-ammo reloads take nothing from your bags | ✅ Yes, as `.infiniteammo` | `[on\|off]` | `.infiniteammo on` |
 | `/gmsetinvulnerable` | Toggle invulnerability | ❌ Not yet | `<on>` (0/1) | `/gmsetinvulnerable` |
 | `/gmsetlevel` | Set a character's level | ❌ Not yet | `<level>` | `/gmsetlevel` |
 | `/gmsetmobabilityset` | Set an NPC's ability set | ❌ Not yet | `<setId>` | `/gmsetmobabilityset` |
@@ -590,6 +590,7 @@ once at the end.
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
 | Broadcast | `.announce` | ✅ Yes. `.announce <text>` reaches every online player, `.announce space <text>` only your space instance. Same line as `/gmshout`: your name, the GM flag, the server channel |
 | Chat mutes | `.mute` `.unmute` | ✅ Yes (server side). `.mute <name> <minutes> [reason]` (1 to 10080) stops an online player's chat and tells; they are told for how long, and each refused line says how much is left. `.unmute <name>` lifts it. A mute holds across relog and ends at a server restart. A GM cannot be muted |
+| Ammo | `.giveammo` `.infiniteammo` (aliases `.gmgiveammo` `.gmsetinfiniteammo`) | ✅ Yes — `.giveammo <type> <rounds>` gives the selected player (else you) rounds of a special ammo type as bag stacks, filled to the 500-round cap. The type can be its number (`3`), its name in any case (`Bullet_Hollow_Point`, `hollowpoint`), `hp`/`ap`, or the ammo item id (`9001`); `emp` is ambiguous, so write `bullet_emp` or `dart_emp`. Default ammo is refused, since it is free. Counts above 5000 are cut to 5000, and rounds that do not fit in the bags are reported, never lost. `.infiniteammo on\|off` makes special-ammo reloads take nothing from the bags; the clip still empties and still needs a reload. It lasts until the server restarts, and `.infiniteammo` alone shows it. The native `/gmgiveammo` and `/gmsetinfiniteammo` do nothing: the client never sends them to the server, so use the `.` commands |
 | Grants | `.givecash` `.givexp` `.giveability` | ✅ Yes — `.giveability <abilityId>` gives the selected player (else you) the ability and **saves it to the character**: it survives relog and a trainer respec, costs no points, and refreshes the ability window at once. Pets UAT uses it for Summon Straegis (`.giveability 2826`) |
 | Pets | `.pet summon <templateId\|abilityId>` `.pet dismiss` `.pet stance <0-2>` `.pet info` `.pet list` | ✅ Yes (server side) — `summon` spawns a pet beside you at once, with no warmup, replacing your current pet; an id with a `pet_summons` row (2826) is the summon ability, anything else a template id (350). `stance` is 0 passive, 1 defensive, 2 aggressive. `info` shows the selected pet, else yours: owner, stance, abilities, toggled-off abilities, AI state, distance to its owner, last teleport. `list` shows every pet in your space with its owner. Nothing is saved: pets are per session |
 | Playtest bookmark | `.bug <note>` | ✅ Yes. Snapshots you, your target and every entity within 60 units into SigNoz with your note, so a tester's "this looks wrong" can be found later; see the [telemetry runbook](operations/npc-ai-telemetry-runbook.md#start-from-a-bug-bookmark) |
@@ -619,8 +620,8 @@ design and the per-command status.
 ## At a glance
 
 - **266 commands** total -- **105** for everyone, **161** Game-Master only.
-- **65** fully work on our server, **23** are handled by the game itself, **23** partly work or work only server-side so far, and **155** aren't wired up on our server yet.
-- **45** have an automated test guarding the server behavior.
+- **67** fully work on our server, **23** are handled by the game itself, **23** partly work or work only server-side so far, and **153** aren't wired up on our server yet.
+- **47** have an automated test guarding the server behavior.
 
 > The server side is tested where marked, but a full live-client pass (typing each one in the real game and watching the result) is still pending. Treat ✅ as "the server does the right thing when the command arrives."
 >

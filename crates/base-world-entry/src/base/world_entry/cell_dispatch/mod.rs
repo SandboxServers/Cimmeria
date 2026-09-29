@@ -180,6 +180,16 @@ pub async fn handle_cell_message(
         CellToBaseMsg::GmCraftGrant(grant) => {
             crate::base::crafting::gm_grant::handle_gm_craft_grant(grant, &craft_ctx(&ctx)).await
         }
+        CellToBaseMsg::GmGiveAmmo(give) => {
+            super::methods::inventory::ammo_gm_give::handle_gm_give_ammo(
+                give,
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
         CellToBaseMsg::RespecCraftOpen(open) => {
             crate::base::crafting::respec::handle_respec_open(open, &craft_ctx(&ctx)).await
         }

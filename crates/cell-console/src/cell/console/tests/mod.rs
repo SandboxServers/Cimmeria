@@ -12,6 +12,7 @@ use super::*;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+mod am06_ammo;
 #[cfg(test)]
 mod bm07_black_market;
 #[cfg(test)]

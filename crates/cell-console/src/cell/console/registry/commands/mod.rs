@@ -20,6 +20,7 @@
 
 use super::{spec, Spec, Target};
 
+mod ammo;
 mod bank;
 mod black_market;
 mod entity_authoring;
@@ -47,6 +48,7 @@ const GROUPS: &[&[Spec]] = &[
     entity_authoring::SPECS,
     net_debug::SPECS,
     progression::SPECS,
+    ammo::SPECS,
     travel::SPECS,
     maintenance::SPECS,
     spawn::SPECS,

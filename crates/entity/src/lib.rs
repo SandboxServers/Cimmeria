@@ -12,6 +12,7 @@
 
 pub mod abilities;
 pub mod ammo_feature;
+pub mod ammo_infinite;
 pub mod ammo_telemetry;
 pub mod ammo_type;
 pub mod base_entity;

@@ -585,6 +585,9 @@ pub enum CellToBaseMsg {
     /// `.craftkit` or `.learnblueprint` for a player; see [`GmCraftGrant`].
     GmCraftGrant(GmCraftGrant),
 
+    /// `.giveammo` for a player (ammo AM-06); see [`super::GmGiveAmmo`].
+    GmGiveAmmo(super::GmGiveAmmo),
+
     /// A player's `.respeccraft`; see [`RespecCraftOpen`].
     RespecCraftOpen(RespecCraftOpen),
 

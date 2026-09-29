@@ -59,6 +59,24 @@ pub mod reasons {
     pub const ITEM_NOT_IN_BANDOLIER: &str = "item_not_in_bandolier";
     /// AM-03: `ammo_type <= 0`.
     pub const NON_POSITIVE_AMMO_TYPE: &str = "non_positive_ammo_type";
+    /// AM-06: `.giveammo`'s type names no `EAmmoType`, or names several.
+    pub const UNKNOWN_AMMO_TYPE: &str = "unknown_ammo_type";
+    /// AM-06: the type is default ammo (free, no reserve item to grant).
+    pub const NOT_SPECIAL_AMMO: &str = "not_special_ammo";
+    /// AM-06: a special type with no `ammo_item_types` row.
+    pub const NO_RESERVE_ITEM: &str = "no_reserve_item";
+    /// AM-06: the quantity is missing, not a number, or `<= 0`.
+    pub const BAD_QUANTITY: &str = "bad_quantity";
+    /// AM-06: an argument other than the quantity is malformed.
+    pub const BAD_ARGS: &str = "bad_args";
+    /// AM-06: the recipient has no character id.
+    pub const NOT_A_PLAYER: &str = "not_a_player";
+    /// AM-06: the recipient's session no longer plays that character.
+    pub const SESSION_MISMATCH: &str = "session_mismatch";
+    /// AM-06: nothing fit in the carried bags.
+    pub const BAGS_FULL: &str = "bags_full";
+    /// AM-06: no database, or the write failed and rolled back.
+    pub const DB_ERROR: &str = "db_error";
 }
 
 #[cfg(test)]
@@ -86,6 +104,15 @@ mod tests {
             reasons::AMBIGUOUS_SLOT,
             reasons::ITEM_NOT_IN_BANDOLIER,
             reasons::NON_POSITIVE_AMMO_TYPE,
+            reasons::UNKNOWN_AMMO_TYPE,
+            reasons::NOT_SPECIAL_AMMO,
+            reasons::NO_RESERVE_ITEM,
+            reasons::BAD_QUANTITY,
+            reasons::BAD_ARGS,
+            reasons::NOT_A_PLAYER,
+            reasons::SESSION_MISMATCH,
+            reasons::BAGS_FULL,
+            reasons::DB_ERROR,
         ];
         let mut seen = std::collections::HashSet::new();
         for name in all {

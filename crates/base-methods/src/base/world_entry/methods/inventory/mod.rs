@@ -1,4 +1,5 @@
 pub mod ammo;
+pub mod ammo_gm_give;
 pub mod ammo_reserve;
 pub mod appearance;
 pub mod core;
