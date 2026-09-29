@@ -19,11 +19,27 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | Id | What it changes | Files | Zip |
 |---|---|---|---|
 | `001-dialog-portraits` | Speaker portraits in NPC dialog windows (`TaharezLook.scheme`, `Dialog.layout/.lua`, `Blurb.layout/.lua`) | 5 deltas | 4.7 KB |
-| `002-castle-ring-transport` | The ring station on the CellBlock stasis-hall pad and the ring rig on the Armory pad (mission 688), built by `upk_patch` | 2 map deltas against the normalized stock maps | 4.4 KB |
+| `002-castle-ring-transport` | **Retired, superseded by 007 (see below).** The ring station on the CellBlock stasis-hall pad and the ring rig on the Armory pad (mission 688), built by `upk_patch` | 2 map deltas against the normalized stock maps | 4.4 KB |
 | `003-cooked-data` | The merged Kismet sequence, Kismet set-event and interaction-set PAKs the server loads from `data/cache/`, plus its `CookedBehaviorEvents.pak` | 3 deltas + 1 file | 86 KB |
 | `004-log-config` | `SGWLogConfig.xml`, so `SGW.exe` writes `SGWDebugLog.log` (log upload and telemetry read it) | 1 file, ours | 1 KB |
 | `005-login-delay` | `eula.lua` waits 19 s before showing the login screen, so the gate-dialing animation finishes first | 1 delta | 1.5 KB |
 | `006-gate-sound-bank` | Copies the stock `audio/genprp/prp_gen.fev` and `prp_gen_gate.fsb` into `Audio/UI/`, where the known-good client has them (byte-identical); the sources are the player's own stock files | 2 near-empty deltas | 1.5 KB |
+| `007-castle-armory-ring` | The ring rig on the CellBlock Armory pad (mission 688). This is 002's Armory op with the same source, delta and result, so installs that applied 002 skip it | 1 map delta against the normalized stock map | 2.6 KB |
+
+`002-castle-ring-transport` was **removed from the signed content
+manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
+The maintainer decided to keep the Armory ring rig and drop the
+stasis-hall ring station, so 007 repeats only 002's Armory op. 002's
+spec and zip stay here unchanged (append-only, below).
+
+Installs that applied 002 while it was in the manifest keep its
+stasis-hall map (`Castle_CellBlock-fffdfffc.umap`, with the ring
+station) until the launcher can restore a stock file from the player's
+own seed. That restore is follow-up work and has not been built. A delta
+can't do the restore: 002 wrote that map uncompressed, and the stock map
+is LZO-compressed. A delta from 002's map back to the stock bytes is
+389 KB, and 383 KB of that is stock map bytes stored verbatim, which the
+no-CME-bytes rule forbids. Fresh installs never get the station.
 
 Applied to the stock client, the rebuilt files are byte-identical to a
 known-good QA client's.

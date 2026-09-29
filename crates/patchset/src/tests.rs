@@ -7,13 +7,13 @@ use crate::build::{SpecFile, SpecOp, SpecSource};
 use crate::recipe::Transform;
 use crate::{apply, build, PatchsetError, Spec};
 
-fn write(root: &Path, rel: &str, bytes: &[u8]) {
+pub(crate) fn write(root: &Path, rel: &str, bytes: &[u8]) {
     let p = root.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(p, bytes).unwrap();
 }
 
-fn noisy(seed: u32, len: usize) -> Vec<u8> {
+pub(crate) fn noisy(seed: u32, len: usize) -> Vec<u8> {
     let mut x = seed | 1;
     (0..len)
         .map(|_| {

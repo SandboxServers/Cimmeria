@@ -1,0 +1,13 @@
+{
+  "id": "007-castle-armory-ring",
+  "title": "Castle Armory ring transport",
+  "description": "Adds the ring rig on the Castle CellBlock Armory pad that mission 688 needs. Changes one Castle CellBlock map file.",
+  "ops": [
+    {
+      "target": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap",
+      "sources": [
+        {"path": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap", "transform": "upk_normalize"}
+      ]
+    }
+  ]
+}

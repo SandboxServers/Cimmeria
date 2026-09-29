@@ -280,6 +280,11 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
             "Copies the client's own prp_gen gate sounds into Audio\\UI, where the game \
              looks for them.",
         ),
+        "007-castle-armory-ring" => (
+            "Castle Armory ring transport",
+            "Adds the ring rig on the Castle CellBlock Armory pad that mission 688 needs. \
+             Changes one Castle CellBlock map file.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };
