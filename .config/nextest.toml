@@ -25,8 +25,13 @@
 # (TESTING.md, "Live-DB tests"), not by core count.
 live-db = { max-threads = 8 }
 
+# A hung test is killed and named instead of holding the job until GitHub
+# kills it at 6 h (#1033: a live-DB cleanup guard deadlocked its runtime and
+# held three CI runs for up to 3.5 h). SLOW is reported each 60 s, and a
+# test still running at 5 min is terminated and fails.
 [profile.ci]
 fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [profile.ci.junit]
 path = "junit.xml"
@@ -34,6 +39,7 @@ report-name = "cimmeria"
 
 [profile.ci-live-db]
 fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [profile.ci-live-db.junit]
 path = "junit.xml"
