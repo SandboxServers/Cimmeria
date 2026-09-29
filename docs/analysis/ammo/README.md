@@ -1,11 +1,13 @@
 # Ammo Restoration
 
 > Type: how-to. Audience: the Claude Code coordinator and implementing engineers.
-> Updated: 2026-09-28. Tracking issue: [#1026](https://github.com/SandboxServers/Cimmeria/issues/1026). Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [documentation index](../../readme.md).
+> Updated: 2026-09-28 (AM-12 close-out: every packet Done, the flag on by default). Tracking issue: [#1026](https://github.com/SandboxServers/Cimmeria/issues/1026). Companions: [audit](audit.md), [work packets](work-packets.md), [session resume and UAT checklist](handoffs/session-resume.md), [AM-12 worknote](worknotes/AM-12.md), [unified UAT guide § Special ammo](../../guides/unified-uat.md#special-ammo), [documentation index](../../readme.md).
 
 ## Purpose
 
-Ammo today is clip-only: a bandolier slot holds `clip_size` rounds, reload refills it to full from nothing, and the selected `cur_ammo_type` is persisted but never read by the damage path. Of the weapons in `db/resources/Items/Seed/items.sql`, 595 allow only `Bullet_Default` and 19 only `Dart_Default` — the client's ammo-type picker (`Bandolier.lua`, `getAmmoTypes`) never has a second option to show. This campaign restores **special ammo as a finite, lootable resource**, while default ammo (`Bullet_Default` / `Dart_Default`) keeps today's free reloads.
+**Outcome (2026-09-28).** The campaign is complete and `ammo.finite_special` is **on by default** (D-AM11). Special ammo is a finite bag resource: 15 stackable items (9000-9014), reloads that draw rounds from them, switches that return them, a modifier and an on-hit effect per type on every player weapon shot, support darts that heal or cleanse allies, NPC and chest drops, and the `.giveammo` / `.infiniteammo` GM tools. What it looks like in game is [weapon-ammo-reload.md](../../gameplay/weapon-ammo-reload.md); the damage side is [ADR § 31](../../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07). It awaits the owner's UAT ([session resume](handoffs/session-resume.md#uat-checklist)). The rollback lever is `CIMMERIA_AMMO_FINITE_SPECIAL=0` on the server; it does not withdraw the pushed item definitions.
+
+The rest of this section is the campaign's starting point. Before the campaign, ammo was clip-only: a bandolier slot holds `clip_size` rounds, reload refills it to full from nothing, and the selected `cur_ammo_type` is persisted but never read by the damage path. Of the weapons in `db/resources/Items/Seed/items.sql`, 595 allow only `Bullet_Default` and 19 only `Dart_Default` — the client's ammo-type picker (`Bandolier.lua`, `getAmmoTypes`) never has a second option to show. This campaign restores **special ammo as a finite, lootable resource**, while default ammo (`Bullet_Default` / `Dart_Default`) keeps today's free reloads.
 
 Out of scope for this campaign:
 
@@ -26,7 +28,8 @@ Out of scope for this campaign:
 | D-AM07 | **The server applies the ammo modifier directly (option a).** Any shot fired with a special type loaded applies that type's `ammo_modifiers` row (damage, penetration, damage type, on-hit effect) on the server. There is no cast and no cooldown, and toggle abilities 715/719/… are not launched: they stay as seeded, and `toggle_ability_id` records only where the numbers came from. Answers open question 1. |
 | D-AM08 | **Dagger ammo types go in a later wave**, not permanently out of scope. After Wave 2, a packet designs `Dagger_*` coatings (Metallic/Poison/Electrical/Disease/Plasma) as ammo-like items for melee daggers. It is RECONSTRUCTION with no toggle-ability evidence, and it is not scheduled until Wave 2 closes. Answers open question 2. |
 | D-AM09 | **`/gmsetinfiniteammo` only frees the reserve.** Reloads of special ammo draw nothing from the bags, but the clip still empties and still needs a reload, so testers exercise the normal reload path. It is backed by `bInfiniteAmmo`. Answers open question 3. |
-| D-AM10 | **Standard Pistol (27 ids) and Standard SMG (25 ids) accept all five bullet special types**, per [audit.md § 6](audit.md#6-weapon-families-considered-for-widening). AM-F widens exactly these. Answers open question 4. |
+| D-AM10 | **Standard Pistol (27 ids) and Standard SMG (25 ids) accept all five bullet special types**, per [audit.md § 6](audit.md#6-weapon-families-considered-for-widening). AM-F widens exactly these. Answers open question 4. **Amended 2026-09-28:** the High Capacity SMG family (27 ids) joins them, so the Castle chest's Hollow Point fits the SGHC 6 SMG the same chest gives ([AM-F worknote](worknotes/AM-F.md#d-am10-amendment-2026-09-28), [#1052](https://github.com/SandboxServers/Cimmeria/pull/1052)). |
+| D-AM11 | **`ammo.finite_special` ships on.** The flag's default in `crates/entity/src/ammo_feature.rs` is `true`; `CIMMERIA_AMMO_FINITE_SPECIAL=0` (or `false`, `off`, `no`) on the server turns it off and is the campaign's rollback lever. The flag gates the reserve draw and switch return (AM-02), the `ammo_modifiers` row on every shot (AM-04, AM-08 to AM-11c) and the support-dart ally path (AM-11d); it never gates the AM-03 whitelist, the loot rows, the GM commands or the pushed item definitions, so rolling back leaves the ammo items in bags as inert stacks. An unrecognised value turns the flag **off** with a WARN (a typo while reaching for the lever must not leave it on). Recorded by AM-12. |
 
 ## Open questions
 
@@ -47,21 +50,28 @@ Out of scope for this campaign:
 
 ## Packet status
 
-| Packet | Status | Owner (advisor) | Depends on |
+Every packet is merged on `main`. AM-09, AM-10, AM-11a and AM-11c landed together through the Wave-2 integration branch.
+
+| Packet | Status | PR | Worknote |
 |---|---|---|---|
-| AM-F | Ready | `items-systems-advisor` design, `rust-gameserver-dev` writer, `database-persistence` schema review | Plan (this PR) |
-| AM-01 | **Done** (PR [#1040](https://github.com/SandboxServers/Cimmeria/pull/1040)) | `game-archaeology-specialist` | none — ran ahead of AM-F, findings folded into this ledger |
-| AM-02 Reserve | BlockedDependency (AM-F) | `rust-gameserver-dev`, review `items-systems-advisor` + `server-authority-enforcer` | AM-F |
-| AM-03 Validation | BlockedDependency (AM-F) | `rust-gameserver-dev`, review `items-systems-advisor` | AM-F |
-| AM-04 Damage framework | BlockedDependency (AM-F) | `rust-gameserver-dev`, review `combat-systems-advisor` | AM-F |
-| AM-05 Loot and crates | BlockedDependency (AM-F) | `rust-gameserver-dev`, review `items-systems-advisor` | AM-F |
-| AM-06 GM tooling | BlockedDependency (AM-F) | `rust-gameserver-dev`, review `server-authority-enforcer` | AM-F |
-| AM-07 Client push | BlockedDependency (AM-F) | `rust-gameserver-dev` | AM-F only — no longer gated on AM-01, which is done; runs a spike-first internal order |
-| AM-08 Incendiary | BlockedDependency (AM-04) | `rust-gameserver-dev`, review `combat-systems-advisor` | AM-04 |
-| AM-09 EMP | BlockedDependency (AM-04) | `rust-gameserver-dev`, review `combat-systems-advisor` | AM-04 |
-| AM-10 Explosive | BlockedDependency (AM-04) | `rust-gameserver-dev`, review `combat-systems-advisor` | AM-04 |
-| AM-11a/b/c Darts | BlockedDependency (AM-04) | `rust-gameserver-dev`, review `combat-systems-advisor` | AM-04 |
-| AM-12 Close-out | BlockedDependency (all above) | coordinator + `documentation-writer` | Every packet above |
+| AM-00 Plan | **Done** | [#1041](https://github.com/SandboxServers/Cimmeria/pull/1041) | this ledger |
+| AM-01 RE | **Done** | [#1040](https://github.com/SandboxServers/Cimmeria/pull/1040) | [ammo-system.md](../../reverse-engineering/findings/ammo-system.md) |
+| AM-F Foundation | **Done** | [#1042](https://github.com/SandboxServers/Cimmeria/pull/1042) | [AM-F](worknotes/AM-F.md) |
+| AM-02 Reserve | **Done** | [#1056](https://github.com/SandboxServers/Cimmeria/pull/1056) | [AM-02](worknotes/AM-02.md) |
+| AM-03 Validation | **Done** | [#1051](https://github.com/SandboxServers/Cimmeria/pull/1051) | [AM-03](worknotes/AM-03.md) |
+| AM-04 Damage framework | **Done** | [#1047](https://github.com/SandboxServers/Cimmeria/pull/1047) | [AM-04](worknotes/AM-04.md) |
+| AM-05 Loot and crates | **Done** | [#1050](https://github.com/SandboxServers/Cimmeria/pull/1050) | [AM-05](worknotes/AM-05.md) |
+| AM-06 GM tooling | **Done** | [#1048](https://github.com/SandboxServers/Cimmeria/pull/1048) | [AM-06](worknotes/AM-06.md) |
+| AM-07 Client push | **Done** (code; the in-client spike is UAT step AMMO-01) | [#1044](https://github.com/SandboxServers/Cimmeria/pull/1044) | [AM-07](worknotes/AM-07.md) |
+| D-AM10 amendment: High Capacity SMG widening | **Done** | [#1052](https://github.com/SandboxServers/Cimmeria/pull/1052) | [AM-F § D-AM10 amendment](worknotes/AM-F.md#d-am10-amendment-2026-09-28) |
+| AM-08 Incendiary | **Done** | [#1053](https://github.com/SandboxServers/Cimmeria/pull/1053) | [AM-08](worknotes/AM-08.md) |
+| AM-09 EMP | **Done** | [#1063](https://github.com/SandboxServers/Cimmeria/pull/1063) (Wave-2 integration) | [AM-09](worknotes/AM-09.md) |
+| AM-10 Explosive | **Done** | [#1063](https://github.com/SandboxServers/Cimmeria/pull/1063) (Wave-2 integration) | [AM-10](worknotes/AM-10.md) |
+| AM-11a Crowd-control darts, dart widening, dart crate rows | **Done** | [#1063](https://github.com/SandboxServers/Cimmeria/pull/1063) (Wave-2 integration) | [AM-11a](worknotes/AM-11a.md) |
+| AM-11b Tech-disable darts | **Done** | [#1054](https://github.com/SandboxServers/Cimmeria/pull/1054) | [AM-11b](worknotes/AM-11b.md) |
+| AM-11c Support darts | **Done** | [#1063](https://github.com/SandboxServers/Cimmeria/pull/1063) (Wave-2 integration) | [AM-11c](worknotes/AM-11c.md) |
+| AM-11d Support darts target allies | **Done** | [#1069](https://github.com/SandboxServers/Cimmeria/pull/1069) | [AM-11d](worknotes/AM-11d.md) |
+| AM-12 Close-out | **Done** (owner UAT pending) | [#1072](https://github.com/SandboxServers/Cimmeria/pull/1072) | [AM-12](worknotes/AM-12.md) |
 
 Full scope, contract and test-type table: [work-packets.md](work-packets.md).
 
@@ -75,24 +85,37 @@ The full design, file-ownership matrix and dependency graph are in [work-packets
 - **Wave 3 is the close-out**, which flips `ammo.finite_special` on, runs the unified UAT, and updates the status docs once.
 - Maximum useful parallelism is **6 agents in Wave 1** (AM-02 through AM-07), dropping to **6 in Wave 2** (AM-08, AM-09, AM-10, AM-11a, AM-11b, AM-11c), 1 in AM-F and 1 in AM-12. Critical path: AM-F → AM-04 → (AM-08..AM-11c, longest of which gates AM-12) → AM-12 — four packets deep.
 
-## UAT checklist outline
+## UAT checklist
 
-Steps land in [handoffs/session-resume.md](handoffs/session-resume.md#uat-checklist) as packets ship real behavior; this is the outline AM-12 fills in with SigNoz queries, matching the acceptance criteria in #1026:
+The checklist is [handoffs/session-resume.md § UAT checklist](handoffs/session-resume.md#uat-checklist), steps AMMO-01 to AMMO-24 with a SigNoz query each; the [unified UAT guide § Special ammo](../../guides/unified-uat.md#special-ammo) mirrors it with the same step ids. Because the flag ships on, the first three steps are the risks of that choice: the new item definitions render (AMMO-01), unknown effect ids do not crash a client (AMMO-02), and a Stim dart heals an ally and is refused at an enemy (AMMO-03). The outline this ledger started with (picker, reserve draw, default regression, round-trip arithmetic, Hollow Point and Armor Piercing damage, loot, debug crate, chest, GM tools) is covered by AMMO-04 to AMMO-23.
 
-1. Bandolier picker shows a special type only when the weapon's `ammo_types` allows it; `requestAmmoChange` to a disallowed type is refused.
-2. Reload with a special type selected draws from the bag stack, not from nothing; an empty stack refuses the reload with visible feedback and leaves the clip as it was.
-3. Default-ammo reload is unchanged (regression).
-4. Partial reload and ammo-switch round-trip the exact round count (D-AM05 arithmetic, both directions).
-5. Hollow Point and Armor Piercing visibly change damage and penetration through their toggle ability's effect.
-6. NPC loot and the corpse window drop and stack special ammo.
-7. The debug-hub crate (table 3) hands out a full stack of every bullet special plus a pistol and an SMG that list all five (D-AM06).
-8. The Castle pre-Romney chest includes Hollow Point.
-9. `/gmgiveammo` and `/gmsetinfiniteammo` work for testers.
+## Known issues and follow-ups
 
-## Known issues
+Open at close-out. Each is either tracked by an issue or needs a packet or an owner decision; none blocks the UAT. The UAT-facing subset is K23 in the [unified UAT guide](../../guides/unified-uat.md#current-known-issues).
 
-- The damage path (`RangedPhysicalDamage`/`MeleeDamage` effect scripts, `crates/cell-world/src/cell/effects/scripts.rs`) reads only static `FocusDamage`/`HealthDamage` params from the ability/effect definition today — it has no notion of the attacker's active ammo type. AM-04 adds the read; see [audit.md § Damage path](audit.md#3-the-damage-path-ignores-ammo-type).
-- `requestAmmoChange`'s cache-miss fall-open (#448 / PR #602, open) is a pre-existing hazard this campaign's AM-03 packet absorbs rather than leaving as a parallel, uncoordinated fix. See [work-packets.md § AM-03](work-packets.md#am-03-validation).
-- Client Lua (`Bandolier.lua`, `getAmmoTypes`) is cited from the issue and from `docs/gameplay/weapon-ammo-reload.md`'s existing line references; this worktree has no local client copy to re-verify against (`game/sgw/` is a placeholder — see CLAUDE.md repo invariants). AM-01's Ghidra trace independently corroborates the mechanism (the `SGWPlayer+0x8c → +0x24` container cache) without needing the Lua source, so this is now cross-confirmed rather than a single-source citation.
-- `getAmmoTypes`/`getCurrentAmmoType`'s exact lookup key (container id vs. item id vs. both) is ambiguous in AM-01's decompile — only one of two converted Lua arguments visibly reaches the native call, which may be a real one-argument signature or a decompiler artifact. Not load-bearing for this plan (the server already knows the answer server-side via `InvItem.ammoTypes`), but worth a disassembly-level or x64dbg trace if a future packet needs the exact client-side semantics.
-- `Event_NetOut_GiveAmmo`'s exact wire byte layout (arg types/order for `ammoId`/`quantity`) is unrecovered, and `ammoId` is only MEDIUM-HIGH confidence to be an `EAmmoType` rather than an item id (inferred from naming convention against `GiveItem`'s `designId`, not a confirmed byte read). AM-06 does not depend on this — it builds the GM tool as a `.`-console command instead (open question 5 above).
+**Tracked by an issue**
+
+- **[#1045](https://github.com/SandboxServers/Cimmeria/issues/1045): `GrantItem` writes over-cap stacks.** A loot or `/gmgiveitem` grant above an item's `max_stack_size` that does not merge lands as one row over the cap (a 600-round grant makes one 600-round stack). Every ammo loot row is at or below 500, and `.giveammo` goes through `AmmoReserve::return_rounds`, which never exceeds the cap, so the ammo campaign never triggers it by itself.
+- **[#1049](https://github.com/SandboxServers/Cimmeria/issues/1049): the `Stun` script leaks `BSF_MOVEMENT_LOCK`, and NPC AI ignores that flag.** A pulsing or refreshed stun runs `on_apply` again but `on_remove` once, so the refcount never clears; and the NPC movement tick never reads the flag anyway. That is why Tranquilizer is a speed slow (`MovementSlow`) and why EMP rounds and darts disable nothing.
+- **[#534](https://github.com/SandboxServers/Cimmeria/issues/534): `requestAmmoChange` carries the weapon's instance id.** AM-03 keys the slot on it from the decompile (`FUN_00e1ee10` sends `item+0x0C`). It needs an in-game confirmation, which UAT step AMMO-11 gives: every pick on the three widened guns and the dartgun is accepted.
+
+**Known limits of the shipped design**
+
+- **Penetration is inert.** `MITIGATION` is capped at 0 in `StatList::new`, so the armour term is 0 and `penetration_mult` changes nothing: Armor Piercing is a plain 10 % damage cut, Hollow Point a 25 % raise, EMP and Explosive a 10 % raise. Populating mitigation is the enemy-combat blocker (`MITIGATION 0/0`), not an ammo packet.
+- **EMP has no interrupt.** EMP rounds drain a living target's Focus or damage a machine's Health (AM-09), and EMP darts drain Focus (AM-11b); neither cancels a cast, a channel or a warmup, because an effect script in `cimmeria-cell-world` cannot reach the pending-cast table in `cimmeria-cell-combat`. The grenade's 20 s machine disorient is also not modelled. The mechanical-target rule is five body-set prefixes chosen by name (`MECHANICAL_BODY_SETS`); the client's own "Mechanical Type Check" (effects 4203 / 4204, 4217) is unrecovered.
+- **Support darts reach other players and the shooter only.** A friendly NPC, a vendor or an ally's pet stays refused (#444). Healing them is an owner decision (AM-11d, "Changes from the brief" 1). A heal on a player fighting a mob gives the shooter no threat, by the brief's rule.
+- **No floating heal numbers.** An ally shot sends no `onEffectResults` (an effect result from one player to another outside a duel is untested against the client), so a support heal shows only as the bars moving.
+- **Nanites has no effect.** No ability, effect, moniker or FX exists for it anywhere; a Nanites dart fires as a plain dart (AM-11c).
+- **The dagger wave is not scheduled** (D-AM08). `Dagger_*` coatings for melee daggers are a later RECONSTRUCTION packet with no toggle-ability evidence. `AmmoType_Icons` already has the six dagger images.
+- **Unknown effect ids reach clients on the pulsing on-hit effects.** Effects 9110 (Incendiary burn), 9140-9142 (Poison, Disease, Tranquilizer) and 9151 (Radioactive) are not in the client's cooked data, yet `register_active_effect` sends `onTimerUpdate` with their ids to the target (and every witness of an NPC target), and again with a zero duration when they end. What the client does with an unknown effect id is unverified; an unknown cooked id crashed clients before (#938). UAT step AMMO-02 checks it first. If a client faults, the fix is in the shared pulsing layer (a per-effect "server-only, no timer" switch) or reusing cooked effect ids (for example 5164 / 5167 "Add DOT BC"). The single-shot on-hit effects (9120, 9130, 9150, 9160-9163) send no per-effect message.
+- **The new-item-id push is unproven in a client.** AM-07 pushes 15 wholly new cooked item entries (9000-9014) through the #840 full resync; PR #405 proved the path only for ids the PAK already ships. UAT step AMMO-01 is the spike. If it fails, AM-07's worknote has the contingency (repurpose 15 unused shipped ids through `ammo_item_types`; no other packet changes).
+- **Smaller limits**, each in its packet's worknote: the Incendiary burn and the dart DoTs write pools directly, so shields and resistances do not reduce them (AM-08, AM-11a, AM-11b); the Focus-pierce bleed of `RangedPhysicalDamage` is not scaled by the modifier (AM-04); penetration does not reduce cover (AM-04); a cleansed effect's buff icon stays until its own timer ends (AM-11c); `MovementSlow`'s restore can overshoot if something else lowered the speed meanwhile (AM-11a); support rows use `damage_mult = 0.0001` until the CHECK allows 0 (AM-11c); the Castle chest's Jaffa weapon (Serpent Staff) takes no bullets, so a Jaffa uses its Hollow Point in a Standard Pistol or SMG (AM-05).
+
+**Follow-ups and open evidence**
+
+- **Provenance confidence.** `Dart_Tranquilizer` cites 998 (Disorient, LOW confidence), `Dart_Radioactive` cites 1227 (Contagion, no text), and `Dart_Coagulant` the mission copy 3427; every multiplier and on-hit number is RECONSTRUCTION (AM-11a's mapping table).
+- **`Suppression` may grow a movement-speed half** (its doc comment says so). If it does, Poison and Disease darts would start slowing and should move to a script of their own (AM-11a).
+- **GM tool polish** (AM-06): no `.help` argument rows for `.giveammo` / `.infiniteammo`, and a player who receives rounds from a GM gets no line of their own (the bag update shows them).
+- **Unrecovered client details** (AM-01): `getAmmoTypes` / `getCurrentAmmoType`'s exact lookup key, and `Event_NetOut_GiveAmmo`'s byte layout (the native `/gmgiveammo` has no server receiver; the `.`-console command stands in).
+- **Telemetry guard exemptions.** Every `ammo` catalog event has a `LogCapture` guard on `main` except the ones [AM-12's worknote](worknotes/AM-12.md#telemetry-guard-audit) lists with the reason.
+- **Client-side stale swap.** A bandolier slot swap (F1-F4) right around an ammo pick can look stale for a moment; that is the slot swap's own confirmed client-side suppression, not the picker ([ammo-system.md § Q5](../../reverse-engineering/findings/ammo-system.md#q5--client-side-gates-on-reload-or-ammo-picking)).

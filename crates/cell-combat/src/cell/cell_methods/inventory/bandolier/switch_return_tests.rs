@@ -224,3 +224,42 @@ async fn refused_return_restores_the_clip() {
         "The ammo switch failed. Try again."
     ));
 }
+
+/// Type 12 guard (AM-12 close-out): a special switch logs
+/// `ammo_switch_return_requested` (DEBUG), a bags-full answer logs
+/// `ammo_switch_refused` (INFO, `reason=bags_full`, with the remainder), and
+/// a default clip switched to a special type logs
+/// `ammo_switch_default_emptied` (DEBUG), all on target `ammo`.
+#[tokio::test]
+async fn switch_return_logs_request_refusal_and_default_emptied() {
+    use crate::test_support::LogCapture;
+    let logs = LogCapture::install();
+    let row = |event: &str| {
+        logs.all()
+            .into_iter()
+            .find(|c| c.target == "ammo" && c.has_field("event", event))
+            .unwrap_or_else(|| panic!("no {event} row: {:#?}", logs.all()))
+    };
+
+    let mut special = mgr(BULLET_HOLLOW_POINT, 20);
+    let (tx, mut rx) = mpsc::channel(32);
+    begin_switch_return_with(ENTITY, SLOT, BULLET_ARMOR_PIERCING, true, &tx, &mut special).await;
+    drain(&mut rx);
+    let requested = row("ammo_switch_return_requested");
+    assert_eq!(requested.level, tracing::Level::DEBUG);
+    assert!(requested.has_field("player_id", &PLAYER.to_string()));
+
+    handle_switch_returned(returned(13, 7, Ok(())), &tx, &mut special).await;
+    drain(&mut rx);
+    let refused = row("ammo_switch_refused");
+    assert_eq!(refused.level, tracing::Level::INFO);
+    assert!(refused.has_field("reason", "bags_full"));
+    assert!(refused.has_field("remainder", "7"));
+
+    let mut default = mgr(BULLET_DEFAULT, 30);
+    begin_switch_return_with(ENTITY, SLOT, BULLET_HOLLOW_POINT, true, &tx, &mut default).await;
+    assert_eq!(
+        row("ammo_switch_default_emptied").level,
+        tracing::Level::DEBUG
+    );
+}

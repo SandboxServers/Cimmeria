@@ -2,12 +2,12 @@
 title: "Combat System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-28
 ---
 
 # Combat System
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-09-28
 > **Status**: ~70% implemented
 
 ## Overview
@@ -138,6 +138,33 @@ if required_ammo > 0 && entity.is_player && active_ammo() < required_ammo:
 If the check passes, the server decrements via `set_slot_ammo(active_slot, ammo - required_ammo)`, which mirrors the new value to `Stat[AMMO_SLOT_1+slot]` and emits `onStatUpdate` (method 20) so the bandolier UI refreshes the meter and count. NPCs (`is_player == false`) skip the gate entirely — they currently fire without consuming ammo.
 
 Full server-authoritative ammo model, reload flow, persistence cadence, and client UI subscription chain: [weapon-ammo-reload.md](weapon-ammo-reload.md).
+
+## Special ammo in the damage pipeline
+
+When you fire a weapon shot (`required_ammo > 0`) as a player with a special ammo type loaded, the server applies that type's `resources.ammo_modifiers` row to the shot (D-AM07, [ammo campaign](../analysis/ammo/README.md)). There is no cast and no cooldown; the toggle abilities (715, 719, ...) are never launched and only record where the numbers came from. The row applies in the damage pipeline, `damage_apply::apply_damage_to_target`, not in an effect script, so it reaches every shot. NPCs always fire unmodified. It needs the `ammo.finite_special` flag, which is on by default (D-AM11); `CIMMERIA_AMMO_FINITE_SPECIAL=0` turns every row off.
+
+- `damage_mult` scales the pre-armour damage (Health and Focus parts).
+- `penetration_mult` divides the armour term `af * max(mitigation - penetration, 0) / 100`. **It is inert today:** `MITIGATION` is capped at 0 in the default stats, so the armour term is 0 in live play.
+- `damage_type` replaces the shot's damage type; `on_hit_effect_id` runs an effect on the target on any non-miss.
+
+| Ammo | Row (damage / penetration) | On hit |
+|---|---|---|
+| Hollow Point | 1.25 / 0.5 | none |
+| Armor Piercing | 0.9 / 2.0 (a plain 10% cut while mitigation is 0) | none |
+| Incendiary | 1.0 / 1.0, `DT_Energy` | 9110 burn: 4 pulses 1 s apart, 15 Focus and 3 Health each |
+| EMP | 1.1 / 0.75 | 9120 `EmpDisrupt`: a living target loses 10 Focus, a mechanical one 5 Health. No interrupt, no disable |
+| Explosive | 1.1 / 0.5 | 9130 splash: every other hostile within 5 m of the target, with line of sight from it, takes half the shot. Splash targets never splash (no chaining) |
+| Poison / Disease dart | 1.0 / 1.0 | `Suppression` DoT: 4 Health x 5 over 8 s / 2 Health x 10 over 18 s |
+| Tranquilizer dart | 1.0 / 1.0 | `MovementSlow`: 60% movement speed for 6 s |
+| EMP dart | 1.1 / 0.75 | 50 Focus, once |
+| Radioactive dart | 1.0 / 1.0 | `RadiationDamage` DoT: 3 Health x 5, 2 s apart |
+| Stim / Adrenaline dart | support | +10% Focus / +10% Health |
+| Antidote / Coagulant dart | support | `RemoveEffects`: one each of Poison, Disease, Contagion, Wound, Burning / one Wound |
+| Nanites dart | no row | fires as a plain dart |
+
+**Support darts target allies.** A row marked `beneficial` (Stim, Antidote, Coagulant, Adrenaline) turns the shot into a support shot (AM-11d): it lands on another player you may not attack, or on yourself, runs only the heal or cleanse, and starts no threat, no combat state and no duel or PvP state. At a hostile NPC or a duel opponent it is refused before the dart or the cooldown is spent, with the line "Support rounds only affect allies." A friendly NPC or a pet stays refused by #444, as below. The heal shows as the ally's bars moving; there is no floating heal number.
+
+All numbers are RECONSTRUCTION unless the ADR says otherwise. Detail, evidence, stacking and telemetry: [abilities-and-effects-system.md § 31](../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
 
 ## Fire-Time Line of Sight
 

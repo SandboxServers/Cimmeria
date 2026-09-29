@@ -1,11 +1,23 @@
-//! The `ammo.finite_special` feature flag (ammo campaign AM-F, issue #1026).
+//! The `ammo.finite_special` feature flag (ammo campaign, issue #1026).
 //!
-//! Off by default. While off, a reload of a special ammo type refills for
-//! free exactly as on `main` before the campaign; the flag gates only the
-//! reserve **draw** (AM-02), never the `requestAmmoChange` whitelist
-//! (AM-03), which is a security fix that ships regardless. AM-12 turns it
-//! on after every packet through AM-11c has merged and the debug-hub UAT
-//! (D-AM06) has passed.
+//! **On by default** since the campaign's close-out (AM-12, decision D-AM11,
+//! @Cadacious 2026-09-28). `CIMMERIA_AMMO_FINITE_SPECIAL=0` on the server
+//! turns it off; that is the campaign's rollback lever.
+//!
+//! The flag gates every player-visible half of special ammo together:
+//!
+//! - the reserve **draw** and the switch return (AM-02): a special reload
+//!   takes rounds from the bags, and switching type returns unfired rounds;
+//! - the `ammo_modifiers` row on every shot (AM-04 and the family packets
+//!   AM-08 to AM-11c): damage and penetration multipliers, damage type and
+//!   on-hit effect;
+//! - the support-dart ally path (AM-11d).
+//!
+//! It never gates the `requestAmmoChange` whitelist (AM-03), which is a
+//! security fix that ships regardless, the loot rows (AM-05), the GM
+//! commands (AM-06), or the pushed item definitions 9000-9014 (AM-07). With
+//! the flag off, special rounds stay in the bags as ordinary items, reloads
+//! refill for free, and every shot fires unmodified.
 //!
 //! The repo had no feature-flag surface before this, so the flag is one
 //! process-wide switch: [`FINITE_SPECIAL_ENV`] read once at server startup
@@ -14,9 +26,11 @@
 //!
 //! **Testing.** Read the flag once, at the dispatch entrypoint, and pass the
 //! `bool` into the logic you test, so a unit test never touches the global.
-//! A test that must drive the whole handler with the flag on may call
+//! A test that must drive the whole handler with a given value calls
 //! [`set_finite_special`], but only under nextest (one process per test);
-//! under `cargo test` the tests of one crate share the switch.
+//! under `cargo test` the tests of one crate share the switch. The switch
+//! starts on, so a test that needs the pre-campaign behaviour says so with
+//! `set_finite_special(false)`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -27,12 +41,18 @@ pub const FINITE_SPECIAL_FLAG: &str = "ammo.finite_special";
 /// `yes`) or off (`0`, `false`, `off`, `no`), case-insensitively.
 pub const FINITE_SPECIAL_ENV: &str = "CIMMERIA_AMMO_FINITE_SPECIAL";
 
-/// The value when the variable is unset or unparseable. AM-12 flips it.
-pub const FINITE_SPECIAL_DEFAULT: bool = false;
+/// The value when the variable is unset: on (AM-12, D-AM11).
+pub const FINITE_SPECIAL_DEFAULT: bool = true;
+
+/// The value when the variable is set but unparseable: off. Whoever sets the
+/// variable is most likely reaching for the rollback lever, so a typo
+/// (`CIMMERIA_AMMO_FINITE_SPECIAL=of`) must not leave the feature on.
+pub const FINITE_SPECIAL_ON_INVALID: bool = false;
 
 static FINITE_SPECIAL: AtomicBool = AtomicBool::new(FINITE_SPECIAL_DEFAULT);
 
-/// Whether reloads of special ammo draw from the bags.
+/// Whether special ammo is finite and modifies the shot (see the module
+/// docs for everything the flag gates).
 pub fn finite_special() -> bool {
     FINITE_SPECIAL.load(Ordering::Relaxed)
 }
@@ -53,15 +73,16 @@ pub fn parse_flag(value: &str) -> Option<bool> {
     }
 }
 
-/// The flag value for an optional raw environment value: unset gives the
-/// default; an unparseable value gives the default too (the safe side, off)
-/// and is reported through the second field so the caller can warn.
+/// The flag value for an optional raw environment value: unset gives
+/// [`FINITE_SPECIAL_DEFAULT`] (on); an unparseable value gives
+/// [`FINITE_SPECIAL_ON_INVALID`] (off, the rollback side) and is reported
+/// through the second field so the caller can warn.
 pub fn resolve_flag(raw: Option<&str>) -> (bool, bool) {
     match raw {
         None => (FINITE_SPECIAL_DEFAULT, false),
         Some(v) => match parse_flag(v) {
             Some(on) => (on, false),
-            None => (FINITE_SPECIAL_DEFAULT, true),
+            None => (FINITE_SPECIAL_ON_INVALID, true),
         },
     }
 }
@@ -79,7 +100,7 @@ pub fn init_finite_special_from_env() -> bool {
             flag = FINITE_SPECIAL_FLAG,
             value = raw.as_deref().unwrap_or(""),
             on,
-            "unrecognised {FINITE_SPECIAL_ENV} value; using the default"
+            "unrecognised {FINITE_SPECIAL_ENV} value; the flag is off"
         );
     }
     tracing::info!(
@@ -96,9 +117,22 @@ pub fn init_finite_special_from_env() -> bool {
 mod tests {
     use super::*;
 
+    /// D-AM11 (AM-12): the flag ships on when the variable is unset, and the
+    /// process-wide switch starts at that default. Setting the default back
+    /// to `false` fails this test.
     #[test]
-    fn default_is_off() {
-        assert_eq!(resolve_flag(None), (false, false));
+    fn default_is_on() {
+        assert_eq!(
+            resolve_flag(None),
+            (true, false),
+            "D-AM11: ammo.finite_special ships on"
+        );
+    }
+
+    /// The rollback lever: `CIMMERIA_AMMO_FINITE_SPECIAL=0` turns it off.
+    #[test]
+    fn zero_is_the_rollback_lever() {
+        assert_eq!(resolve_flag(Some("0")), (false, false));
     }
 
     #[test]
@@ -113,9 +147,11 @@ mod tests {
         }
     }
 
+    /// A typo in the variable turns the flag off (the rollback side), not on,
+    /// and is flagged for the WARN.
     #[test]
     fn unparseable_value_falls_back_to_off_and_is_flagged() {
-        for v in ["", "2", "enable", "tru"] {
+        for v in ["", "2", "enable", "of"] {
             assert_eq!(parse_flag(v), None, "{v:?}");
             assert_eq!(resolve_flag(Some(v)), (false, true), "{v:?}");
         }

@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # Gameplay Systems Gap Analysis
 
-> **Last updated**: 2026-09-28 (#804: §10's clear-on-death row and path forward re-verified; no status changed). Before that 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; then the crafting close-out: §19, with the loot and trade rows that crafting changed in §14 and §22; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
+> **Last updated**: 2026-09-28 (ammo close-out, AM-12: §9, §12 and §14 gain the special-ammo rows; see "Since 2026-09-25"). Before that 2026-09-28 (#804: §10's clear-on-death row and path forward re-verified; no status changed). Before that 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; then the crafting close-out: §19, with the loot and trade rows that crafting changed in §14 and §22; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
 > **Purpose**: Map every gameplay system's Rust implementation against what's needed for a complete server
 > **Status**: Source of truth for project completion tracking
 > **Measured against**: `main`. Work living only on an unmerged feature branch is called out explicitly in the affected section and is **not** counted as implemented.
@@ -325,6 +325,7 @@ last_updated: 2026-09-28
   - **#677**: attackers re-face their target.
   - **#635-#637**: `.combatinfo`, `.stats` and `.listabilities`.
   - Harset H04 (`560a8bd5`, via #662/#682): `entity_health_below` fires from every damage path.
+  - **Ammo campaign (#1026, 2026-09-28)**, [ledger](analysis/ammo/README.md): the loaded special ammo type's `ammo_modifiers` row modifies every player weapon shot in `damage_apply` (#1047), with an on-hit effect per family: Incendiary burn (#1053), EMP drain (#1063), Explosive 5 m splash with line of sight (#1063), crowd-control, tech and support darts (#1054, #1063). Support darts heal or cleanse allies and the shooter and are refused at hostiles (#1069). On by default since AM-12 (`ammo.finite_special`, D-AM11).
 - **Path forward**:
   - Enforce LOS on player `useAbility`.
   - Add a min-range check.
@@ -335,6 +336,7 @@ last_updated: 2026-09-28
   - Fix the combat animation (the shoot animation does not play, UAT-1 finding 10).
   - Model deploy abilities.
   - Delete or re-home the dead `crates/game/src/combat/`.
+  - Special ammo's limits ([ammo ledger, known issues](analysis/ammo/README.md#known-issues-and-follow-ups)): populate `MITIGATION` so `penetration_mult` does something, an EMP interrupt, support darts on friendly NPCs and pets, and client-safe effect ids for the pulsing on-hit effects.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -356,6 +358,8 @@ last_updated: 2026-09-28
 | Position/facing checks | KM | -- | -- | **Corrected 2026-09-25 (was IM).** `use_ability/handle.rs` has no front/flank/rear or facing test, and neither does any file under `cell/abilities/` or `cell/combat/`. "Flank" exists only as the cover mission trigger `player_flanked_npc` (#671). Re-verified 2026-09-25 |
 | Weapon range checks | IM | -- | cell/abilities/use_ability/handle.rs:239 | Only max range is enforced (default 30 u, error code 42). **No min-range check** on the player path. Re-verified 2026-09-25 |
 | Ammo consumption | CW | -- | cell/abilities/use_ability/handle.rs:366 | Decrements under the bandolier discipline |
+| Special ammo modifiers and on-hit effects | IM | -- | cell/abilities/damage_apply/, cell/effects/ammo_*.rs | **New 2026-09-28 (ammo campaign, [ledger](analysis/ammo/README.md)).** Every player weapon shot applies the loaded type's `ammo_modifiers` row: damage and penetration multipliers, damage type, on-hit effect (Hollow Point, Armor Piercing, Incendiary burn, EMP drain, Explosive splash, seven dart effects). IM, not NT: `MITIGATION` is capped at 0, so penetration does nothing; EMP has no interrupt; Nanites has no effect; the pulsing on-hit effects send effect ids the client does not know. Unit, pipeline and live-DB seed tests; not client-exercised |
+| Support-dart ally shots | NT | -- | cell/abilities/use_ability/support_shot.rs | **New 2026-09-28 (AM-11d, #1069).** A Stim, Adrenaline, Antidote or Coagulant dart heals or cleanses another player or the shooter with no damage, threat or combat state, and is refused at a hostile with "Support rounds only affect allies." Friendly NPCs and pets stay refused. No floating heal number. Whether the client emits a shot at a friend is statically traced, not seen (UAT AMMO-03) |
 | Auto-reload | CW | -- | cell/abilities/use_ability/auto_reload.rs | PR #394. Open verify-only issue #720 (reload timer type 2 against the binary's types 12/13) |
 | Damage application | CW | -- | cell/abilities/damage_apply/mod.rs, death/mod.rs | **Promoted 2026-09-25 (was IM).** In-client record, [2026-09-18 playtest](analysis/playtests/2026-09-18-colo-castle/README.md): 26 lootable kills, 47 kill-XP grants, 19 player deaths to NPCs with 120 s respawns. [UAT-1 (2026-09-25)](analysis/npc-ai-restoration/worknotes/uat-1.md): a guard killed the player. The 2026-09-19/21 bleed-to-0 defects (NPC and player) are fixed by #747 with regression guards |
 | LOS checks | IM | -- | cell/space_manager/spatial.rs:22,41,125; cover_sight.rs:113 | NPC side: navmesh ray, a stationary-relaxed policy (#786), a cover peek point (#793), per-world collision-geometry occluders (#797), and LoS gates on aggro and assist (#787/#789). UAT-1 found guards shooting through walls (fixed by #793, not re-UAT'd). **Player `useAbility` still has no LOS check**: no LoS call exists under `cell/abilities/`. Re-verified 2026-09-25 |
@@ -435,6 +439,7 @@ last_updated: 2026-09-28
 - **Recent PRs**: #405 (server-side stacking + Slappack PAK override), #399 (Slappack stacks to 10), #214 (bandolier + content + UI sync), #250 (equip-from-inventory pattern), #409 (full inventory re-init bundle on respawn); since 2026-07-25: #756 (reanchor also replays hotbar, active slot, journal and `state_field` after the inventory snapshot), #791 (`useItem` refused while dead with `onErrorCode(NotLiving)`), #731 (`OnItemUse` / `remove_item` pairing lint for consumable chains), #743 (bandolier guards exercise production helpers), #697 (bandolier ammo doc correction), #609 (store methods moved to 109/110 — see §15; voids pre-2026-07-26 buyback testing); the Bank and Vault campaign's personal bank, 2026-09-27: #872 (one capacity table, `bank_slots`, the player-movable allowlist, closes #798), #921 (Banker open path and GM `.bank`), #927 (the `move_/` split) and #935 (vault moves, use and removal), #931 (debug-hub Banker and `.bankdump`), #947 (vault expansion); its organization vaults: #948 and #949 (Team and Command vault storage, open and moves), #960 (debug-hub Team and Command Bankers), #963 (org treasury), #966 (Team vault expansion)
 - **Personal bank and organization vaults**: server-side done, the Bank and Vault campaign complete ([ledger](analysis/bank-vault/README.md)). The personal bank shipped in release 1 and the organization vaults in release 2; both await the owner's UAT on the colo ([UAT checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist), steps 1-14 and 15-25). A Banker click or GM `.bank` opens container 17 with a vault session; every move into or out of it re-checks the session and the Banker's range; the vault starts at 40 slots and grows to 100 in +10 steps. The Team (19) and Command (20) vaults open at their own Bankers, take moves under the organization lock with the `DepositBank` and `WithdrawBank` bits, and fan every move out to the other online members; the Team vault grows from 40 to 100, paid from the treasury by its leader. Players cannot buy a step of either yet: the Expand dialog is quarantined after the #943 dialog-override crash, so only GM `.bankexpand` and `.orgvaultexpand` buy (the player-facing button is pending #967, the #943 quarantine). BV-03 also turned stack merging back on for every container (D-BV25). Mechanics: [inventory-system.md § The personal bank](gameplay/inventory-system.md#the-personal-bank-vault) and [§ Opening a Team or Command vault](gameplay/inventory-system.md#opening-a-team-or-command-vault); the treasury is §23.
 - **In-client evidence**: 2026-09-18 colo playtest ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) rows 00:03:14, 00:09:21, 00:24:38, 00:37:25) — item grant, equip-from-inventory (mission 622 completed on `item_equipped 55`), SMG grant + equip, Slappack use + consume, full inventory resync on reanchor.
+- **Special ammo**: the ammo campaign ([ledger](analysis/ammo/README.md), PRs #1040 to #1069) made special ammo a finite bag resource; §9 has its damage rows and §14 its drops. The GM tools are `.giveammo` and `.infiniteammo`. Over-cap loot and GM `GrantItem` stacks are #1045.
 - **Path forward**: Durability wear (nothing lowers `durability`; only vendor repair raises it); bind-on-pickup / bind-on-equip triggers (the `bound` flag is honored but only ever set by character-creation seed rows); client smoke of the vendor → buyback loop after #609; the bank's UAT (personal and organization vaults), serving the Expand dialog once #943's crashing field is known, and the vault mail aliases (bank D-BV29).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
@@ -444,6 +449,8 @@ last_updated: 2026-09-28
 | Item stacking (server-side) | CW | -- | PR #405 | PR landed full server-side stack semantics |
 | Equipment slots | NT | -- | base/world_entry/methods/inventory/ | Head through Artifact2. Weapon-slot equips are recorded in the 2026-09-18 playtest; no written record of armor-slot equips |
 | Bandolier (4 weapon sets) | CW | -- | entity/cell_entity/bandolier.rs | Slot type_id/item_id discipline; #743 guards now call production helpers |
+| Special ammo reserve | NT | -- | base-methods/.../inventory/ammo_reserve/, cell-combat/.../reload_reserve.rs | **New 2026-09-28 (ammo campaign AM-02, #1056, [ledger](analysis/ammo/README.md)).** Special ammo is stackable bag items 9000-9014 (one per type, 500 rounds). A special reload draws `clip_size - current` rounds before the warmup (a short stack loads what is there, an empty one is refused with a line); switching type returns the unfired rounds, and a full bag keeps them loaded as the old type. Default ammo stays free. On by default (`ammo.finite_special`, D-AM11). Live-DB, concurrency and unit tested; the 15 item definitions reach the client through a cooked-data push that is not yet seen in a client for a wholly new id (AM-07) |
+| Ammo-type validation (`requestAmmoChange`) | NT | -- | cell-combat/.../bandolier/ammo_change.rs | **New 2026-09-28 (AM-03, #1051).** The slot is found by the weapon's instance id (#534), the type is checked against the weapon's `ammo_types`, a missing `WeaponDef` fails closed (#602), and every refusal sends a line. Standard Pistol, Standard SMG and High Capacity SMG take the five bullet specials, 19 dart guns the ten dart specials |
 | Buyback bag | NT | Vendors | base/world_entry/methods/vendor/buyback | **Demoted 2026-09-25 (CW → NT).** 12-slot bag, filled only by vendor sells. PR #609 found the store payload had been emitted on the Missionary indices 80/81 instead of 109/110, so "the vendor UI could never have worked" and earlier manual vendor testing "is void". No vendor client test since #609. Re-verified 2026-09-25 |
 | Cash (naquadah) | CW | -- | base/world_entry/methods/inventory/ | addCash/removeCash; `onCashChanged` pushed by `GrantCash` (base/world_entry/methods/progression/mod.rs:427) |
 | Equip-from-inventory pattern | CW | -- | docs/content/equip-from-inventory-pattern.md | Mission 622/641 worked examples (PR #250); 622 completed on equip in the 2026-09-18 playtest |
@@ -492,6 +499,7 @@ last_updated: 2026-09-28
 | Loot generation algorithm | CW | -- | cell/abilities/loot_drop.rs | **Promoted 2026-09-25 (NT → CW).** Per-item probability roll observed in-client: 26/26 at p = 1, 17/26 at p = 0.8 across 26 kills; tester received and used the drops (2026-09-18 playtest, appendix-session-timeline.md:121, :144; README.md:85). Re-verified 2026-09-25 |
 | Item drops | CW | -- | cell/abilities/loot_drop.rs | Drops + transfer to inventory |
 | Cash drops | NT | -- | cell/interactions/loot/mod.rs | LOOT_Cash → `CellToBaseMsg::GrantCash`. Naquadah was rolled in the 2026-09-18 playtest, but no written record that it reached the wallet |
+| Special ammo drops | NT | -- | db/resources/Loot/Seed/ammo_loot.sql, ammo_dart_loot.sql | **New 2026-09-28 (AM-05, #1050, [ledger](analysis/ammo/README.md)).** Castle NID guards drop Hollow Point (5-10 %) and veterans Armor Piercing (3 %); the Castle pre-Romney chest gives 50-75 Hollow Point, which fits the SGHC 6 SMG it also gives (#1052); the debug-hub crate gives a full stack of every special and weapons that take them. A looted stack logs `ammo_loot_dropped` (AM-12). Seed-guarded; not seen in a client |
 | Loot bag take-all | CW | -- | cell/interactions/loot/ | Castle Cellblock smoke verified. Since the crafting campaign (CR-16, #932) a refused item grant (a full bag, an item no carried bag takes) goes back on the corpse with a line naming why, instead of being lost; not yet seen in a client |
 | Per-player eligibility | KM | Groups | -- | No eligibility list anywhere in `crates/` (re-checked 2026-09-25). Looting is gated on distance only (PR #446) |
 | Group loot modes | KM | Groups | -- | No RoundRobin/FreeForAll logic in `crates/` |
@@ -1278,12 +1286,12 @@ Recomputed 2026-09-27 directly from the feature rows above, by script: every mat
 | 6 | World Entry and Spaces | 12 | 7 | 4 | 1 | 0 | 0 |
 | 7 | Movement and Navigation | 11 | 1 | 3 | 7 | 0 | 0 |
 | 8 | Entity Lifecycle | 10 | 6 | 2 | 1 | 1 | 0 |
-| 9 | Combat and Abilities | 24 | 6 | 0 | 14 | 4 | 0 |
+| 9 | Combat and Abilities | 26 | 6 | 1 | 15 | 4 | 0 |
 | 10 | Effects and Buffs | 13 | 3 | 0 | 5 | 5 | 0 |
 | 11 | Stats | 8 | 5 | 0 | 0 | 2 | 1 |
-| 12 | Inventory and Items | 13 | 8 | 3 | 1 | 1 | 0 |
+| 12 | Inventory and Items | 15 | 8 | 5 | 1 | 1 | 0 |
 | 13 | Missions | 12 | 7 | 0 | 3 | 2 | 0 |
-| 14 | Loot | 9 | 4 | 1 | 0 | 4 | 0 |
+| 14 | Loot | 10 | 4 | 2 | 0 | 4 | 0 |
 | 15 | Stores / Vendors | 8 | 1 | 6 | 1 | 0 | 0 |
 | 16 | NPC AI and Behavior | 26 | 8 | 6 | 9 | 3 | 0 |
 | 17 | Spawn System | 23 | 7 | 0 | 1 | 14 | 1 |
@@ -1315,24 +1323,24 @@ Recomputed 2026-09-27 directly from the feature rows above, by script: every mat
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **<!-- gen:gap-count total -->486<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->121<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->101<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->94<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
+| | **TOTALS** | **<!-- gen:gap-count total -->491<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->125<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->102<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->94<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
 
 ### Summary Percentages
 
-The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` after every merge; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->486<!-- /gen:gap-count --> features.
+The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` after every merge; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->491<!-- /gen:gap-count --> features.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
-| Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->34.4%<!-- /gen:gap-pct --> |
-| Needs Test (NT) | <!-- gen:gap-count NT -->121<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->24.9%<!-- /gen:gap-pct --> |
-| Implemented (IM) | <!-- gen:gap-count IM -->101<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->20.8%<!-- /gen:gap-pct --> |
-| Known/Missing (KM) | <!-- gen:gap-count KM -->94<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->19.3%<!-- /gen:gap-pct --> |
+| Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->34.0%<!-- /gen:gap-pct --> |
+| Needs Test (NT) | <!-- gen:gap-count NT -->125<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->25.5%<!-- /gen:gap-pct --> |
+| Implemented (IM) | <!-- gen:gap-count IM -->102<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->20.8%<!-- /gen:gap-pct --> |
+| Known/Missing (KM) | <!-- gen:gap-count KM -->94<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->19.1%<!-- /gen:gap-pct --> |
 | Needed/Unknown (NU) | <!-- gen:gap-count NU -->3<!-- /gen:gap-count --> | <!-- gen:gap-pct NU -->0.6%<!-- /gen:gap-pct --> |
 
-**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->389<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->80.0%<!-- /gen:gap-pct -->)
-**Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->97<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->20.0%<!-- /gen:gap-pct -->)
+**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->394<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->80.2%<!-- /gen:gap-pct -->)
+**Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->97<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->19.8%<!-- /gen:gap-pct -->)
 
-**Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->34.4%<!-- /gen:gap-pct -->).
+**Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->34.0%<!-- /gen:gap-pct -->).
 
 ### Since 2026-09-25
 
@@ -1343,13 +1351,15 @@ The TOTALS line above and every number in this section are generated from the ma
 | 2026-09-27 (organizations close-out) | 167 | 110 | 109 | 97 | 3 | 486 |
 | 2026-09-27 (bank close-out) | 167 | 112 | 109 | 95 | 3 | 486 |
 | 2026-09-27 (crafting close-out) | 167 | 121 | 101 | 94 | 3 | 486 |
-| **Delta** (2026-09-25 to now) | **-2** | **+63** | **+3** | **-48** | **-1** | **+15** |
+| 2026-09-28 (ammo close-out) | 167 | 125 | 102 | 94 | 3 | 491 |
+| **Delta** (2026-09-25 to now) | **-2** | **+67** | **+4** | **-48** | **-1** | **+20** |
 
 - **Social systems (mail, chat, 1v1 duels).** The social-systems campaign ([ledger](analysis/social-systems/README.md), PRs #873 to #937) moved Chat to 7 NT / 1 IM / 3 KM (tells, Ignore, flood limit, GM broadcast, GM mute), Mail to 15 NT / 2 KM with four new rows (server-generated mail, GM mail tools, quarantined-mail recovery, vault and organization aliases), and Dueling to 5 IM / 1 KM. Rate Limiting's chat row also covers the mail and duel buckets. Every one of these rows waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
 - **Other campaigns.** Crafting (CR-07 to CR-09), pets, organizations (ORG-03, ORG-04) and the ability-tree campaign changed feature rows in their sections. Four of those sections had been edited without their matrix row: World Entry (10 → 12 rows), XP and Leveling (11 → 12 rows, two CW rows now NT until the ability-tree UAT), Organizations (15 → 17 rows, 3 NT) and Anti-Cheat (7 → 8 rows). The close-out recount brought those matrix rows back in line with their tables.
 - **Organizations (Squads, Teams, Commands).** The organizations campaign ([ledger](analysis/organizations/README.md), PRs #861 to #954) moved §23 from 3 NT / 14 KM to 16 NT / 1 IM / 4 KM, with four new rows (kick, login restore and presence, disband, GM commands); the four KM rows left are the Bank campaign's cash and vault, and the two strike-team responses, which are refused because no strike-team feature exists. §30 now counts the squad as the group (3 NT / 1 IM / 3 KM), and §21's pre-defined channels row is NT now that team, command and officer lines are delivered (ORG-09). Every one of these rows waits on the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo).
 - **Bank and vault.** The Bank and Vault campaign ([ledger](analysis/bank-vault/README.md), PRs #860 to #966) moved §23's two Bank rows, the treasury and the organization vault, from KM to NT (§23: 18 NT / 1 IM / 2 KM). The personal bank changed no row count: §12's bag row already counted the bank. Every one of these rows waits on the owner's bank UAT ([checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)).
 - **Crafting.** The crafting campaign ([ledger](analysis/crafting/README.md), PRs #851 to #979) moved every §19 row to NT: the eight IM rows (craft, research, reverse engineering, alloy, learning, expertise, paradigms, blueprints) and respec (KM). It also changed rows without moving their status: §14's loot take-all and table content (a refused pickup stays on the corpse; the debug crate drops guides and a Blueprint item, CR-16) and §22's item swap (trade from the crafting bag, CR-17). Every §19 row waits on the owner's [CR-14 UAT](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist).
+- **Ammo.** The ammo campaign ([ledger](analysis/ammo/README.md), PRs #1040 to #1069, close-out AM-12) added five rows, all new features rather than moves: §9 `Special ammo modifiers and on-hit effects` (IM: penetration is inert while `MITIGATION` is 0, and EMP has no interrupt) and `Support-dart ally shots` (NT); §12 `Special ammo reserve` and `Ammo-type validation` (NT); §14 `Special ammo drops` (NT). No existing row changed status. The feature ships on (`ammo.finite_special`, D-AM11) and awaits the owner's UAT ([unified UAT guide § Special ammo](guides/unified-uat.md#special-ammo)).
 
 ### What moved since 2026-07-25
 

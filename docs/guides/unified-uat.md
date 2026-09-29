@@ -46,6 +46,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Consumables](#consumables) | This section (not a campaign; the design is [consumables.md](../gameplay/consumables.md)) |
 | [Deployables](#deployables) | [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release) |
 | [Cooked-data resync](#cooked-data-resync) | This section (not a campaign; the design is [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#why-every-mismatch-is-a-full-resync), #840) |
+| [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -89,6 +90,7 @@ Read these before you start. None of them needs a new report.
 | K20 | **Castle friendlies fight, but only the standoff (NPC-vs-NPC, #1009).** The courtyard marines and the three Jaffa at the foot of the Alpha ramp now fight nearby guards (CP13, CP19). Every other Castle friendly still never fights and stands out of the guards' range. A kill a friendly lands pays nobody: no loot cursor, no XP, no kill credit, even if you did most of the damage (credit is the last shot's; open question for the owner). Whether the client draws an NPC's hit on another NPC has not been seen yet. | Report a friendly other than the standoff standing idle inside a fight, and whether NPC-on-NPC hits show hit effects and health-bar drops. | [castle-population ledger, D-CP11](../analysis/castle-population/README.md#decisions) |
 | K21 | **Stealth, Energy and Disguise boosts and the antidotes have no effect yet.** Using one shows "This item has no effect yet." and keeps the item: nothing on the server reads those stats or models those conditions. | Record it; not a new bug. | [consumables.md](../gameplay/consumables.md#items-that-do-nothing-yet) |
 | K22 | **Loot windows on live objects are new (2026-09-28).** The debug-hub crate, the Cellblock weapon crate and the Castle chest now open the corpse loot window without being killed. Nothing in the client's `Loot.lua` checks for a dead target, but nobody has seen it work in the client yet. | If right-clicking one opens nothing, note it (with `.bug crate`) and tell the owner: that is the client refusing a live loot source, not a server fault. | [loot-system.md](../gameplay/loot-system.md#live-containers) |
+| K23 | **Special ammo limits known at release (2026-09-28).** Penetration does nothing yet, so Armor Piercing is just a 10 % damage cut and Hollow Point a 25 % raise. EMP rounds and darts drain but interrupt nothing. Support darts reach other players and yourself, never a friendly NPC or a pet. A heal shows as the bar moving, with no floating number. Nanites darts fire as plain darts. A loot or `/gmgiveitem` grant above 500 rounds can make one stack over the cap (#1045; `.giveammo` never does). | Record them; not new bugs. If a client crashes after a burn, poison, disease, tranquilizer or radioactive hit, that is new: note the time and the ammo type (AMMO-02). | [ammo ledger, Known issues and follow-ups](../analysis/ammo/README.md#known-issues-and-follow-ups) |
 
 ## Common setup
 
@@ -122,6 +124,8 @@ The `.`-commands the campaigns rely on:
 | `.aggro on` / `off` | Stop or restore idle NPCs noticing you (default on) | NPC AI |
 | `.allcraft`, `.craftkit <blueprint> [count]`, `.learnblueprint <id>` | Crafting grants to the **selected** player (select yourself first) | Crafting |
 | `.respeccraft` | Open a free crafting respec; any player may use it | Crafting |
+| `.giveammo <type> <rounds>` (alias `.gmgiveammo`) | Give special ammo rounds to the selected player (or you), in stacks of at most 500; the type is a name (`hp`, `ap`, `hollowpoint`, `bullet_emp`, `stim`) or its number | Special ammo |
+| `.infiniteammo [on\|off]` (alias `.gmsetinfiniteammo`) | Special-ammo reloads take nothing from the bags; the clip still empties | Special ammo |
 | `.gotolocation <world> [<x> <y> <z>]`, `.gotospace <spaceId> [<x> <y> <z>]`, `.gotoxyz`, `.goto <name>`, `.summon <name>` | Travel. With no coordinates, `.gotolocation` and `.gotospace` land on the world's entry point and the reply names it (#993) | Many |
 
 ### The stasis-room debug hub
@@ -134,7 +138,7 @@ The stasis room holds a row of NPCs, each for testing one system, a few seconds'
 | Archetype Skills Trainer | Ability trainer with every tree node; respec | Ready |
 | Airman Lance | Dialog round trip (paging, a button, a button-less close) | Known broken (K2) |
 | Terminal | Livewire minigame round trip; win prints "Livewire round trip complete" | Ready |
-| Crate | Right-click opens a loot window (no kill): slappacks, a Processor, a Cell and naquadah, sometimes crafting knowledge items; Loot All puts them in your bags and the crate stays standing. Re-rolled every time you open it | Ready, but the loot window on a live object is not client-confirmed yet (K22) |
+| Crate | Right-click opens a loot window (no kill): slappacks, a Processor, a Cell and naquadah, sometimes crafting knowledge items, and since the ammo campaign a 500-round stack of every special ammo type (5 bullet, 10 dart) with an SI 3 9mm Pistol, an MPX 77 SMG and a CO2 Pistol Dartgun that take them (about 18 bag slots). Loot All puts them in your bags and the crate stays standing. Re-rolled every time you open it | Ready, but the loot window on a live object is not client-confirmed yet (K22) |
 | Goa'uld Advanced Skills | Pet trainer (Goa'uld pet summons) | Ready |
 | Organization Registrar (SGC uniform) | Found a Team | Ready |
 | Organization Registrar (armour) | Found a Command | Ready |
@@ -184,6 +188,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 8. Goa'uld | New Goa'uld | Pets U2 at the trainer, U14-U16 | 20 min |
 | 9. Owner only | Patched client | Historical cellblocks, ring transport Phase 1 | as needed |
 | 10. Crafting | New character, GM | Crafting steps 1-16 and 18-21 at the crafting corner; step 17 fits session 7 | 75 min |
+| 11. Special ammo | GM, plus a second character for AMMO-02, AMMO-03 and AMMO-18 | AMMO-01 to AMMO-03 first (the risks of the flag being on), then the debug-hub crate (AMMO-19), reloads, picker and damage (AMMO-04 to AMMO-17) in Castle Cellblock, loot in Castle (AMMO-20, AMMO-21), GM commands (AMMO-22, AMMO-23) | 90 min |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -882,6 +887,64 @@ When your client's cached copy of a game-data category (worlds, missions, dialog
 **Things only a human can check:** that the worlds, dialogs and sciences are really there (CD2, CD4, CD6); that Play never waits noticeably (CD1, CD4).
 
 Source: this section; design in [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#how-the-handshake-works).
+
+## Special ammo
+
+Special ammo is a finite bag resource: Hollow Point, Armor Piercing, Incendiary, EMP and Explosive rounds and ten dart types are stackable items, a reload of a special type takes rounds from your bags, and each type changes the shot (damage, penetration, an on-hit effect). Default ammo stays free.
+
+**Status:** Ready. Merged 2026-09-28 (the ammo campaign, #1026) and **on by default**; nothing has been seen in a client yet. Known broken: K23.
+
+**Rollback:** if AMMO-01 to AMMO-03 fail badly, the operator sets `CIMMERIA_AMMO_FINITE_SPECIAL=0` on the server and restarts it. Reloads go back to free and shots to unmodified. It does not remove the ammo items from bags: they keep their icons and names as inert stacks.
+
+**Prerequisites:** a GM character with about 20 free bag slots; a second character (a second client) for AMMO-02, AMMO-03 and AMMO-18. Hostile NPCs: the Castle Cellblock guards, a Prisoner Retrieval Unit drone in Castle, or `.spawn`. Get everything from the stasis-room debug-hub crate (AMMO-19) or with `.giveammo`. Load a special type through the weapon's ammo-type picker on the weapon bar, then reload.
+
+**Run AMMO-01 to AMMO-03 first.** They are the three risks of shipping the flag on; stop and report if one fails.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| AMMO-01 | `.giveammo hp 50`; open two more new stacks from the debug-hub crate (one bullet, one dart); relog | Each stack has its own ammo icon (not the missing-icon square), its name ("Hollow Point Rounds") and a tooltip starting "Special ammunition." After the relog they are unchanged | **Risk check.** The first in-client proof that a wholly new item id (9000-9014) can be pushed |
+| AMMO-02 | With a second client watching, hit a hostile NPC with Incendiary rounds, then a Poison dart and a Radioactive dart (optionally Disease and Tranquilizer) | Neither client crashes or freezes. Note what the target frame and buff bar show for each effect | **Risk check.** These effect ids are not in the client's data (#938 crash class). A crash: pull the rollback lever, report the time and ammo type |
+| AMMO-03 | Load Stim darts. The ally lowers their Focus (takes a few NPC shots). Target the ally and press the dartgun's ability; then target a hostile NPC and press it | The ally's Focus rises by 10 % on both clients, no damage number, one dart spent, no combat. At the NPC: nothing happens, no dart spent, chat shows "Support rounds only affect allies." | **Risk check.** If nothing at all reaches the server when you aim at the ally, the client will not shoot a friend: report it |
+| AMMO-04 | Load Hollow Point in the pistol and reload | The default clip empties on the switch; the reload fills the clip and the Hollow Point stack drops by exactly the clip size | |
+| AMMO-05 | Fire a few shots, count them, reload | The stack drops by exactly the shots fired | Partial reload |
+| AMMO-06 | Delete your Armor Piercing stacks, `.giveammo ap 5`, load Armor Piercing, reload | The clip shows 5 and the stack is gone | Short stack |
+| AMMO-07 | Fire the 5, reload | "You have no Armor Piercing rounds left." on the first press; clip stays 0; no reload animation | Empty stack |
+| AMMO-08 | Load and reload Hollow Point, fire a few, `.giveammo ap 50`, switch to Armor Piercing | The Hollow Point stack grows by exactly what was in the clip; the clip is empty; a reload draws Armor Piercing | Switch return |
+| AMMO-09 | Load Hollow Point, delete your other Hollow Point stacks, fill every free main-bag and crafting-bag slot, switch to Armor Piercing; then free a slot and switch again | "Your bags are full: N Hollow Point rounds stay loaded. Make room and switch again." The weapon keeps Hollow Point. The second switch works | Bags full |
+| AMMO-10 | Switch back to default ammo, fire, reload | Free refill; no bag stack changes | Regression |
+| AMMO-11 | Open the ammo picker on the SI 3 9mm Pistol, the MPX 77 SMG, an SGHC 6 SMG (`/gmgiveitem 3127 1`) and the CO2 Pistol Dartgun | The three guns offer Hollow Point, Armor Piercing, Incendiary, EMP and Explosive; the dartgun the ten dart types. Each pick is accepted | A bandolier slot swap (F1-F4) right around a pick can look stale for a moment (client quirk) |
+| AMMO-12 | Shoot the same kind of NPC with default, Hollow Point and Armor Piercing rounds, a few shots each | Hollow Point about 1.25 times default damage, Armor Piercing about 0.9 times | Penetration does nothing yet (K23) |
+| AMMO-13 | Hit an NPC once with Incendiary | The shot, then three small Focus-and-Health ticks about a second apart; a second hit refreshes the burn | |
+| AMMO-14 | Shoot a Prisoner Retrieval Unit drone, then a guard, with EMP rounds | The drone loses 5 extra Health per hit, no Focus; the guard 10 extra Focus, no extra Health | No interrupt (K23) |
+| AMMO-15 | Shoot one NPC of a close group with Explosive rounds | Neighbours within about 5 m show their own smaller damage number; one behind a wall, one further away, you and friendly NPCs take nothing; no chain | |
+| AMMO-16 | Dartgun: Poison, Disease and Tranquilizer darts at NPCs | Poison: 4 Health on the hit and every 2 s for 8 s. Disease: 2 Health every 2 s for 18 s. Tranquilizer: the NPC moves at about 60 % speed for about 6 s | |
+| AMMO-17 | EMP and Radioactive darts at an NPC | EMP: 50 extra Focus on the hit. Radioactive: 3 Health on the hit and every 2 s for 8 s | |
+| AMMO-18 | Adrenaline on a hurt ally; duel the ally, hit them with Disease, `.duel_end <name>`, then Antidote them within 18 s; Coagulant on an ally; Nanites at an NPC; Stim on yourself (target your own portrait) | Adrenaline: Health +10 %. Antidote: the Disease ticks stop. Coagulant: nothing visible. Nanites: a plain dart. Stim on yourself: Focus +10 % | Coagulant has nothing to cleanse yet; Nanites has no effect (K23). If you cannot target yourself, note it |
+| AMMO-19 | Right-click the debug-hub crate, Loot All | 500 each of the 5 bullet and 10 dart types, the SI 3 9mm Pistol, the MPX 77 SMG and the CO2 Pistol Dartgun, in your bags | About 18 free slots needed; the rest stay in the crate |
+| AMMO-20 | Kill and loot Castle NID guards and veterans | About 1 guard in 20 (1 in 10 in the hall) drops 10-25 Hollow Point; about 1 veteran in 16 drops 15-30 Hollow Point, more rarely 10-20 Armor Piercing. It merges into your stack | |
+| AMMO-21 | With mission 703 active, open the Castle pre-Romney chest as a non-Jaffa character; equip the SGHC 6 SMG it gives | 50-75 Hollow Point; the SMG's picker offers Hollow Point and a reload draws from those rounds | A Jaffa gets a Serpent Staff, which takes no bullets |
+| AMMO-22 | `.giveammo hollowpoint 700`; `.giveammo emp 10`; `.giveammo bullet_emp 10`; `.giveammo 1 10`; select another player and `.giveammo stim 20`; try `.giveammo` as a non-GM | 500 + 200 in two stacks; "emp" refused as ambiguous; bullet_emp works; `1` refused as free default ammo; the other player gets the darts; non-GM: "is a GM command" | |
+| AMMO-23 | `.infiniteammo on`, load Hollow Point, empty the clip, reload; then `.infiniteammo off` and reload again | While on, the clip refills and the bag stack does not change (the clip still empties as you fire). After off, the reload draws again | |
+| AMMO-24 | Operator, local server only: restart with `CIMMERIA_AMMO_FINITE_SPECIAL=0`, then unset it and restart | While off: free special reloads, default-sized damage, a Stim dart at an ally refused like any weapon; stacks keep their icons. Unset: everything back | Optional; the rollback lever |
+
+**SigNoz** (base `service.name = 'cimmeria-server'`; every ammo row is `scope_name = 'ammo'`, add `AND player_id = <id>`):
+
+| Question | Filter |
+|---|---|
+| The new items reached the client (AMMO-01) | `event = 'cooked_data.version_reply' AND category_id = 4`: `full_resync` on the first login after the deploy, `up_to_date` after the relog; the grant is `event = 'gm_give_ammo'` with `item_id` and `returned` |
+| Which on-hit effect each shot ran (AMMO-02, AMMO-12 to AMMO-17) | `event = 'ammo_damage_applied'`: `damage_mult`, `penetration_mult`, `on_hit_effect_id` (9110 Incendiary, 9120 EMP, 9130 Explosive, 9140-9142 Poison / Disease / Tranquilizer, 9150-9151 EMP / Radioactive darts) |
+| A support dart landed or was refused (AMMO-03, AMMO-18) | `event IN ('ammo_support_applied','ammo_support_refused')`: before and after Focus and Health; `reason = 'hostile_target'` and `stage` on a refusal |
+| A reload drew rounds, or was refused (AMMO-04 to AMMO-07, AMMO-10, AMMO-23) | `event IN ('reload_draw_requested','reload_draw','reload_drawn_loaded','reload_refused','reload_refused_feedback')`: `requested`, `drawn`, `clip_before` / `clip_after`, `stack_before` / `stack_after`, `reason = 'stack_empty'` |
+| A type switch returned rounds or was refused (AMMO-08, AMMO-09) | `event IN ('ammo_switch_return_requested','ammo_switch_return','ammo_switch_refused','ammo_switch_default_emptied')`: `returned`, `remainder`, `reason = 'bags_full'` |
+| A picker choice was refused (AMMO-11) | `event = 'ammo_type_change_rejected'`: `reason`; an accepted pick is `scope_name = 'bandolier' AND event = 'ammo_type_change'` |
+| EMP rounds and Explosive splash (AMMO-14, AMMO-15) | `event = 'ammo_emp_disrupt'` (`mechanical`, `focus_drained`, `health_damage`); `event = 'ammo_splash'` (`splash_count`, `targets`, `los_blocked`) |
+| The effect ticks (AMMO-13, AMMO-16 to AMMO-18) | `scope_name = 'abilities' AND event IN ('ranged_energy_damage','suppression_pulse','movement_slow_applied','movement_slow_expired','radiation_pulse','heal_focus','heal_health','effect_removed_by_cleanse')` |
+| Ammo looted (AMMO-19 to AMMO-21) | `event = 'ammo_loot_dropped'`: `quantity`, `loot_table_id` (3 crate, 4 / 5 / 7 Castle NID, 8 / 9 chest), `corpse_template_id` |
+| GM commands and the flag (AMMO-22 to AMMO-24) | `event IN ('gm_give_ammo','gm_infinite_ammo_toggled')`; at startup `event = 'feature_flag'` with `on` |
+
+**Things only a human can check:** the icons, names and tooltips (AMMO-01); that no client crashes and what the buff bar shows (AMMO-02); the bars moving and the chat lines (AMMO-03, AMMO-07, AMMO-09, AMMO-18); damage numbers on the target and its neighbours (AMMO-12, AMMO-15); the Tranquilizer slow (AMMO-16).
+
+Source: [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist); background in [weapon-ammo-reload.md](../gameplay/weapon-ammo-reload.md) and [the ammo ledger](../analysis/ammo/README.md).
 
 ## Recording results
 

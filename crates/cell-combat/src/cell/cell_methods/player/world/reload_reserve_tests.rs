@@ -322,3 +322,52 @@ fn ammo_name_drops_the_family_prefix() {
         "Armor Piercing"
     );
 }
+
+/// Type 12 guard (AM-12 close-out): the cell half of a special reload logs
+/// `reload_draw_requested` and `reload_drawn_loaded` at DEBUG, and an empty
+/// stack logs `reload_refused_feedback` at INFO with `reason=stack_empty`,
+/// all on target `ammo` with the player correlator. Renaming an event or
+/// changing its level fails this test.
+#[tokio::test]
+async fn reload_draw_logs_request_load_and_refusal() {
+    use crate::test_support::LogCapture;
+    let logs = LogCapture::install();
+    let row = |event: &str| {
+        logs.all()
+            .into_iter()
+            .find(|c| c.target == "ammo" && c.has_field("event", event))
+            .unwrap_or_else(|| panic!("no {event} row: {:#?}", logs.all()))
+    };
+
+    let player_id = 9110;
+    let mut first = mgr(player_id, BULLET_HOLLOW_POINT, 18);
+    let (tx, mut rx) = mpsc::channel(64);
+    handle_reload_with(ENTITY, true, &tx, &mut first).await;
+    drain(&mut rx);
+    let requested = row("reload_draw_requested");
+    assert_eq!(requested.level, tracing::Level::DEBUG);
+    assert!(requested.has_field("player_id", &player_id.to_string()));
+    assert!(requested.has_field("clip_before", "18"));
+
+    handle_reserve_answer(drawn_answer(player_id, 12, Ok(())), &tx, &mut first).await;
+    drain(&mut rx);
+    let loaded = row("reload_drawn_loaded");
+    assert_eq!(loaded.level, tracing::Level::DEBUG);
+    assert!(loaded.has_field("drawn", "12"));
+    assert!(loaded.has_field("clip_after", "30"));
+
+    let player_id = 9111;
+    let mut second = mgr(player_id, BULLET_HOLLOW_POINT, 18);
+    handle_reload_with(ENTITY, true, &tx, &mut second).await;
+    drain(&mut rx);
+    handle_reserve_answer(
+        drawn_answer(player_id, 0, Err(ReserveRefusal::StackEmpty)),
+        &tx,
+        &mut second,
+    )
+    .await;
+    let refused = row("reload_refused_feedback");
+    assert_eq!(refused.level, tracing::Level::INFO);
+    assert!(refused.has_field("reason", "stack_empty"));
+    assert!(refused.has_field("player_id", &player_id.to_string()));
+}

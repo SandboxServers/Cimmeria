@@ -136,6 +136,10 @@ fn assert_slot_untouched(mgr: &SpaceManager, slot: i32) {
 /// slot) refreshes the client's indicator with `onEntityProperty`.
 #[tokio::test]
 async fn request_ammo_change_updates_slot_and_sends_property() {
+    // AM-03's mutation alone: with `ammo.finite_special` on (the default
+    // since AM-12) a default clip switched to a special type is emptied
+    // first, which `switch_return_tests` in `cimmeria-cell-combat` pins.
+    cimmeria_entity::ammo_feature::set_finite_special(false);
     let mut mgr = player_with_weapon();
     let msgs = send(&mut mgr, &request(INSTANCE, 3)).await;
 
@@ -181,6 +185,8 @@ async fn request_ammo_change_updates_slot_and_sends_property() {
 /// slot. Matching on the design id again would refuse this as ambiguous.
 #[tokio::test]
 async fn request_ammo_change_keys_the_slot_on_the_instance_id() {
+    // As above: pin the pre-reserve switch so the message shape is AM-03's.
+    cimmeria_entity::ammo_feature::set_finite_special(false);
     let mut mgr = player_with_weapon();
     mgr.get_entity_mut(ENTITY)
         .unwrap()

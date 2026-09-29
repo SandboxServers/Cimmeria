@@ -77,59 +77,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Cell systems
 
-- [per-shot-damage-seam-is-damage-apply.md](per-shot-damage-seam-is-damage-apply.md) — per-shot modifiers hook damage_apply, not effect scripts; MITIGATION cap 0 makes armour inert.
-
-- [grantitem-overcap-and-process-wide-gm-switches.md](grantitem-overcap-and-process-wide-gm-switches.md) — GrantItem over-cap row (#1045), use return_rounds; player_id-keyed GM switches in cimmeria-entity.
-- [grant-placement-and-loot-handback-traps.md](grant-placement-and-loot-handback-traps.md) — grants re-placed by container_sets on the base.
-- [grant-paths-pick-different-containers.md](grant-paths-pick-different-containers.md) — gmGiveItem grants to bag 1; loot and content grant_item use the first `container_sets` entry.
-- [mail-placement-rule-and-fixture-types.md](mail-placement-rule-and-fixture-types.md) — send, take and pay-COD share `take::carried_bag`.
-- [per-session-player-state-lifecycle.md](per-session-player-state-lifecycle.md) — a CellEntity field dies on every space change/logout by construction.
-- [ability-event-sets-are-server-only.md](ability-event-sets-are-server-only.md) — ability event sets never reach the client (seed-only wiring); most mob kits deal 0 damage.
-- [client-action-bar-is-client-side.md](client-action-bar-is-client-side.md) — hotbar bindings are a client Lua saved var; server "hotbar" = `onKnownAbilitiesUpdate`.
-- [npc-range-gate-and-weapon-range-columns.md](npc-range-gate-and-weapon-range-columns.md) — four item range columns; range gated in two places; bogus melee `max_range`.
-- [npc-ai-fight-test-fixtures.md](npc-ai-fight-test-fixtures.md) — `make_ai_fixture` has no navmesh; assert the INFO log, not `nav_path`.
-- [npc-detector-telemetry-traps.md](npc-detector-telemetry-traps.md) — AI-path statics race across tests (use task_local); release detector state on destroy.
-- [npc-class-filter-and-dead-target-traps.md](npc-class-filter-and-dead-target-traps.md) — `all_npc_entity_ids` is mob-only; HEALTH alone is not dead.
-- [ai-state-private-and-revert-proof-mtime.md](ai-state-private-and-revert-proof-mtime.md) — write `ai_state` via `npc_ai::set_ai_state`; revert proofs must `touch` restored files.
-- [no-movement-type-wire-and-nav-path-writers.md](no-movement-type-wire-and-nav-path-writers.md) — no movement-type wire exists; nav_path writes go through `movement_stop`.
-- [mission-persist-hydrate-roundtrip.md](mission-persist-hydrate-roundtrip.md) — one serializer, one hydrator; roster rebuilt from `mission_objectives`.
-- [stargate-address-book-three-legs.md](stargate-address-book-three-legs.md) — three copies (DB, cell, client); a grant needs client method 66.
-- [cell-mirrors-of-base-owned-counters.md](cell-mirrors-of-base-owned-counters.md) — base-owned counters must be messaged to the cell.
-- [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat in `StatList` may have no reader; the dirty-publish pattern.
-- [ring-transport-fsm.md](ring-transport-fsm.md) — `disconnect_entity` vs `destroy_entity`; `BSF_*` bits are ref-counted.
-- [cross-world-transfer-flow.md](cross-world-transfer-flow.md) — `handle_gate_travel` is the back half; fake default-instance mechanisms.
-- [session-scoped-cell-state-hooks.md](session-scoped-cell-state-hooks.md) — per-session cell state: key by player_id, tear down on DisconnectEntity only.
-- [revert-proof-commit-first.md](revert-proof-commit-first.md) — commit before a revert-proof run; git checkout -- <dir> also wipes uncommitted work.
-- [destroy-entity-vs-despawn-npc.md](destroy-entity-vs-despawn-npc.md) — `destroy_entity` sends no LeftAoI; use `despawn_npc` for visible removals.
-- [effect-scripts-run-after-the-death-check.md](effect-scripts-run-after-the-death-check.md) — `abilities::death::resolve_death` is the only kill path.
-- [kill-credit-seams-and-loot-ownership.md](kill-credit-seams-and-loot-ownership.md) — XP decided in `grant_kill_xp`, mission credit via `credited_player` (4 callers).
-- [throttle-key-hides-transitions.md](throttle-key-hides-transitions.md) — key throttles by `(entity_id, kind)`; `destroy_space` is a second teardown path.
-- [npc-caster-player-ordered-gates.md](npc-caster-player-ordered-gates.md) — an NPC casting on a player's order skips #444, fire_los and the warmup re-check; add them.
-- [native-consumable-round-trip.md](native-consumable-round-trip.md) — item heals/stims: consume-first cell->base->cell round trip (not outbox); stat-buff ledger across 4 crates; flush only expired stats.
-- [ammo-reserve-round-trip.md](ammo-reserve-round-trip.md) — AM-02: base loop is sequential, so flush then trust the weapon row; load rounds at draw commit, not in the tick.
-- [ability-launch-fire-split.md](ability-launch-fire-split.md) — AT-10: handle_use_ability is launch-only; damage may fire a tick later via fire.rs; ground-AoE tests need class_id 0x04.
-- [npc-ai-tick-snapshot-and-hash-order.md](npc-ai-tick-snapshot-and-hash-order.md) — the AI tick's state snapshot goes stale inside a tick; NPCs visit in HashMap order, so multi-NPC tests flake under nextest.
-- [crafting-verb-traps.md](crafting-verb-traps.md) — crafting verbs: component sets are subsets (match designs exactly); don't hold a craft to its named instances; `&Completion` across await is not Send.
-- [pet-owner-lifecycle-hooks.md](pet-owner-lifecycle-hooks.md) — PT-02: every GateTravel/TeleportPlayer site calls a pets hook (scan-guarded); owner gets no LeftAoI on travel.
-- [live-loot-containers-and-tag-state.md](live-loot-containers-and-tag-state.md) — open_loot rolls per player_id on a live chest; once flags in sgw_player.looted_containers; entity_tag_state reads live_tags.
-- [crafting-induction-engine-seams.md](crafting-induction-engine-seams.md) — crafting engine: global registry + drop hooks.
-- [cimmeria-side-flag-bits-collide-with-client-enums.md](cimmeria-side-flag-bits-collide-with-client-enums.md) — check `enumerations.xml` before inventing a flag bit; AF_CHANNEL_ALLOWS_MOVEMENT was SpeedPet.
-- [crafting-verb-packet-traps.md](crafting-verb-packet-traps.md) — a new crafting verb breaks stub-pinning dispatch tests in base-world-entry.
-- [org-vault-storage-and-lock-order.md](org-vault-storage-and-lock-order.md) — org vault items are their own table; lock order advisory, KEY SHARE player, lock_org, rows.
-- [owner-pet-effects-and-passives.md](owner-pet-effects-and-passives.md) — self casts apply no effects; pulse_count=1 buffs never register; passives need 3 seams.
-- [duel-end-paths-and-travel-scan.md](duel-end-paths-and-travel-scan.md) — SS-D3: travel sites need `duel::on_travel` (scan test).
-- [black-market-escrow-and-authority.md](black-market-escrow-and-authority.md) — listed items live in container 18 (exclude it from client reads); BM lock order.
-- [bm-settlement-mail-traps.md](bm-settlement-mail-traps.md) — BM-02b: status gate before any mail (writer mints every call); quarantine = status 4.
-- [deployable-pulse-and-seed-traps.md](deployable-pulse-and-seed-traps.md) — `apply_damage_to_target` registers every pulsing effect of its def; DeploymentBar flag is not a spawn marker; templates 200-409 taken.
-- [support-shot-inverse-gate.md](support-shot-inverse-gate.md) — client useAbility has no friend/foe check; beneficial ammo's inverse #444 gate lives at launch, warmup and fire.
-- [ammo-on-hit-effect-needs-a-script.md](ammo-on-hit-effect-needs-a-script.md) — ammo on-hit effects need a script_name or the hit pulse never fires; no Radioactive dart toggle exists.
-- [effect-category-and-friendly-target-gaps.md](effect-category-and-friendly-target-gaps.md) — cleanses key on an `EffectCategory` NVP; no ally targeting (#444); new effect ids must not reach the client.
-- [pulsing-script-reapply-and-npc-cc.md](pulsing-script-reapply-and-npc-cc.md) — a pulsing script's on_apply runs per pulse/refresh, on_remove once: guard stateful scripts; NPCs ignore BSF_MOVEMENT_LOCK (#1049).
-
-- [mechanical-target-signal-is-body-set](mechanical-target-signal-is-body-set.md) — no mechanical flag exists; use `ammo_emp::is_mechanical` (body_set prefixes); EMP split from grenade 2864.
-- [on-hit-fanout-and-recursive-async-send](on-hit-fanout-and-recursive-async-send.md) — scripts can't damage secondaries (no wire/death); fan out in damage_apply; box recursion as a named dyn Send.
-- [stored-target-lifetime-and-gm-view-check](stored-target-lifetime-and-gm-view-check.md) — #844 clears current_target_id; GM targets must be in view.
-- [cell-systems-index](cell-systems-index.md) — sub-index: grants and loot, per-session state, abilities and effects, NPC AI, missions, pets, crafting, black market, duels, respawn and re-create.
+- [cell-systems-index](cell-systems-index.md) — sub-index: grants and loot, per-session state, abilities and effects, NPC AI, missions, pets, crafting, black market, duels, respawn, and the ammo campaign (#1026) notes.
 
 ## Observability
 
@@ -139,23 +87,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Testing patterns
 
-- [cargo-test-vs-nextest-flakiness.md](cargo-test-vs-nextest-flakiness.md) — `cargo test -p cimmeria-services` has order-dependent failures; validate with nextest.
-- [db-test-revert-verification.md](db-test-revert-verification.md) — split DB code into a pure helper + shell; revert seed guards in place.
-- [bincode-persisted-cache-format.md](bincode-persisted-cache-format.md) — bincode 2 needs `config::legacy()`; the wrong config decodes silently.
-- [live-db-scratch-cluster.md](live-db-scratch-cluster.md) — `db.bat init` loads nothing; scratch Postgres recipe on :5544.
-- [chain-replay-executor-guards.md](chain-replay-executor-guards.md) — run `execute_actions`, not just `resolve_event`; `0x7000_5000` reserved.
-- [local-postgres-port.md](local-postgres-port.md) — probe port and DB name first; on a wrong one live-DB tests skip green.
-- [test-file-split-without-touching-mod-rs.md](test-file-split-without-touching-mod-rs.md) — `tests.rs` -> `tests/mod.rs` needs no parent edit.
-- [revert-test-restore-crlf-trap.md](revert-test-restore-crlf-trap.md) — restore with `git checkout HEAD -- <file>` between revert tests.
-- [revert-verification-checkout-wipes-uncommitted.md](revert-verification-checkout-wipes-uncommitted.md) — scope restores to one file; checkpoint per packet.
-- [revert-verification-loses-uncommitted-fmt.md](revert-verification-loses-uncommitted-fmt.md) — run `cargo fmt` before a WIP checkpoint.
-- [revert-proof-mutation-must-be-confirmed.md](revert-proof-mutation-must-be-confirmed.md) — a failed scripted mutation reports every guard "ok"; confirm it applied, never split on `=>`.
-- [vacuous-guard-and-sentinel-collision-review.md](vacuous-guard-and-sentinel-collision-review.md) — review checklist: vacuous guards, fixtures that fail two rules, `0x7000_xxxx` collisions.
-- [interact-range-and-logcapture-traps.md](interact-range-and-logcapture-traps.md) — `get_entity` spans all spaces, so proximity gates need a space check; LogCapture cargo-test flake fixed in #891.
-- [test-session-packets-are-encrypted.md](test-session-packets-are-encrypted.md) — TestTransport packets are encrypted (zero key) and feedback lines need player_entity_id; decrypt before grepping text.
-- [wireclient-passive-session-dies.md](wireclient-passive-session-dies.md) — a listen-only `GameSession` is reaped at 60 s; send an unreliable AUTHENTICATE heartbeat, as `sparbot::run` does.
-- [live-db-lock-race-tests.md](live-db-lock-race-tests.md) — a lock-race test must see the waiter blocked first.
-- [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race with no code hook: hold `LOCK TABLE ... IN SHARE MODE`, release once `pg_stat_activity` shows N lock waiters
+- [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
 
 ## Campaign judgment
 
