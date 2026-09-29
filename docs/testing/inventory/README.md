@@ -35,7 +35,7 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 8,784 |
+| Tests (`#[test]` / `#[tokio::test]`) | 8,785 |
 | Files with tests | 1,465 |
 | Gated in CI (every crate but CI's exclude list) | 8,200 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,516 |
@@ -105,7 +105,7 @@ with no file in this directory yet.
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 191 | 48 | 108 | yes | none |
 | `crates/base` | `cimmeria-base` | 176 | 30 | 10 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 160 | 43 | 30 | yes | none |
-| `crates/client-telemetry` | `cimmeria-client-telemetry` | 158 | 35 | 0 | no | none |
+| `crates/client-telemetry` | `cimmeria-client-telemetry` | 159 | 35 | 0 | no | none |
 | `crates/resources` | `cimmeria-resources` | 137 | 20 | 0 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 92 | 14 | 0 | no | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
