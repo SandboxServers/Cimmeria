@@ -276,9 +276,15 @@ server-authority guard against forged `useAbility` packets that would
 otherwise grief vendors, quest NPCs, party members, or other players
 (#444 / CAT-C-03). The check is scoped to player attackers because NPC AI
 fight calls the same entry point to attack a *player*, which is
-legitimate. Single-target abilities resolve as damage unconditionally
-today; supportive single-target abilities (heal/buff an ally) will need
-the inverse gate once an offensive/supportive ability field exists.
+legitimate. Single-target abilities resolve as damage unconditionally,
+with one exception: a weapon shot with beneficial ammo loaded (a support
+dart, `ammo_modifiers.beneficial`, AM-11d) reverses the gate. It lands on
+an ally player or the shooter, runs only the ammo's heal or cleanse with no
+damage, threat or combat state, and is refused with a feedback line at a
+hostile target. Supportive single-target *abilities* (heal/buff an ally)
+still need the inverse gate once an offensive/supportive ability field
+exists. See [abilities-and-effects-system.md
+§ 31](../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
 
 `handle_use_ability_with_kill_credit` wraps `handle_use_ability` with
 an alive→dead transition detector that fires the content-engine

@@ -146,6 +146,12 @@ pub async fn handle_use_ability(
     // A player pressed a server-known ability they do not know: answered
     // with `onErrorCode` below, once the entity borrow ends.
     let mut not_known = false;
+    // Beneficial ammo (AM-11d): a support shot may land on an ally or the
+    // shooter and never on a hostile target. `None` for every other cast,
+    // whose targeting is exactly the #444 rule below.
+    let support = super::support_shot::beneficial_shot(space_mgr, entity_id, ability_def.as_ref());
+    let mut support_ally = false;
+    let mut support_hostile = false;
     'validate: {
         let entity = match space_mgr.get_entity(entity_id) {
             Some(e) => e,
@@ -258,15 +264,30 @@ pub async fn handle_use_ability(
                 // PLAYER, which is legitimate — the AI already picks valid
                 // targets server-side.
                 //
-                // TODO: supportive single-target abilities (heal/buff an
-                // ally) will need the inverse gate (require friendly/self
-                // target) once an offensive/supportive ability flag exists
-                // — `AbilityDef` has no such field today, and
-                // `target_type_id` only encodes self/target/ground. The rule
+                // Beneficial ammo has the inverse gate (AM-11d, below).
+                // TODO: supportive single-target *abilities* (heal/buff an
+                // ally) will need it too once an offensive/supportive
+                // ability flag exists — `AbilityDef` has no such field
+                // today, and `target_type_id` only encodes
+                // self/target/ground. The rule
                 // itself is `combat::player_may_attack`: a hostile NPC, or
                 // the attacker's engaged duel partner (SS-D2); pets obey the
                 // same function.
+                //
+                // A support shot (AM-11d) reverses the rule: an ally or the
+                // shooter is admitted, and a hostile target is refused with
+                // feedback once the borrow ends. Anything else (a vendor)
+                // still falls to the #444 refusal.
+                let support_target = support.map(|_| {
+                    super::support_shot::classify(entity, target, space_mgr.resources.duels())
+                });
+                if support_target == Some(super::support_shot::SupportTarget::Hostile) {
+                    support_hostile = true;
+                    break 'validate;
+                }
+                support_ally = support_target == Some(super::support_shot::SupportTarget::Ally);
                 if entity.is_player
+                    && !support_ally
                     && !combat::player_may_attack(entity, target, space_mgr.resources.duels())
                 {
                     tracing::warn!(
@@ -292,6 +313,28 @@ pub async fn handle_use_ability(
                 );
             }
         }
+    }
+
+    if support_hostile {
+        if let Some(shot) = support.as_ref() {
+            super::support_shot::refuse(
+                entity_id,
+                target_id as u32,
+                ability_id,
+                shot,
+                "launch",
+                super::support_shot::REASON_HOSTILE_TARGET,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        // A loop re-firing support rounds at a hostile would only repeat
+        // the refusal every cooldown.
+        if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
+            send_state_field(entity_id, new_state, tx, space_mgr).await;
+        }
+        return false;
     }
 
     if not_known {
@@ -573,7 +616,9 @@ pub async fn handle_use_ability(
     // Classification was captured before the mutable borrow ended.
     // Run the actual state mutation + broadcast now that the cooldown
     // timer send is past.
-    if is_player && auto_cycle_armed && (has_deactivate_flag || !never_arms) {
+    // A support shot at an ally never arms the loop: auto-cycle is an
+    // attack loop, and its tick stops on any player it may not attack.
+    if is_player && auto_cycle_armed && !support_ally && (has_deactivate_flag || !never_arms) {
         if has_deactivate_flag {
             if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
                 tracing::info!(

@@ -67,6 +67,7 @@ pub fn incendiary_modifier() -> AmmoModifier {
         damage_type: Some(i32::from(DT_ENERGY)),
         on_hit_effect_id: Some(INCENDIARY_BURN_EFFECT),
         toggle_ability_id: INCENDIARY_TOGGLE_ABILITY,
+        beneficial: false,
     }
 }
 

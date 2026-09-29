@@ -50,6 +50,7 @@ fn explosive_row() -> AmmoModifier {
         damage_type: Some(i32::from(DT_PHYSICAL)),
         on_hit_effect_id: Some(SPLASH_EFFECT),
         toggle_ability_id: 1446,
+        beneficial: false,
     }
 }
 

@@ -26,16 +26,12 @@
 //! `onTimerUpdate` (an unknown cooked id crashed it before, #938). That is
 //! why Adrenaline is a heal and not a `StatBuff`, which would send one.
 //!
-//! **Targeting is unchanged.** A player can shoot only what
-//! `combat::player_may_attack` admits: a hostile NPC, or an engaged duel
-//! opponent. `use_ability`'s #444 gate refuses an ally or a self-target, and
-//! `damage_apply` refuses any other player at apply time. So today a
-//! beneficial dart lands only on a hostile target, and it helps that target.
-//! A Stim dart restores a hostile NPC's Focus. It does no damage and breaks
-//! no hostility rule. A friendly-target path is a follow-up (see
-//! `docs/analysis/ammo/worknotes/AM-11c.md`). It needs a
-//! supportive-ability marker, the inverse of the #444 gate for it, and a
-//! damage-free resolve branch.
+//! **Targeting (AM-11d).** Every row here is `beneficial = true`, so a
+//! shot with one loaded lands on an ally player or the shooter and is
+//! refused at a hostile target (`cimmeria-cell-combat`'s
+//! `use_ability::support_shot`). It runs only the on-hit effect below, with
+//! no damage, threat or combat state. `damage_apply` never runs a
+//! beneficial row's on-hit effect, so these scripts only ever see an ally.
 //!
 //! # Effect categories
 //!

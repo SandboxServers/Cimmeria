@@ -24,6 +24,9 @@
 //! - `owner_pet` — owner abilities that act on the owner's pet (pets PT-08):
 //!   the same launch/fire diversions, and the tick that expires pet buffs
 //!   and carries out To The Death.
+//! - `support_shot` — beneficial ammo (AM-11d): the ally/self admission and
+//!   hostile refusal at launch and fire, and the damage-free resolve that
+//!   runs only the ammo's on-hit effect.
 //! - `sequence` — the Ability_Begin / Ability_End / Ability_Interrupt
 //!   `onSequence`: shared packing, owner + witnesses routing, and the NPC
 //!   attack-animation WARNs (NA43).
@@ -38,6 +41,7 @@ mod not_known;
 mod owner_pet;
 mod sequence;
 mod summon;
+mod support_shot;
 mod warmup;
 mod weapon_redirect;
 

@@ -169,6 +169,7 @@ mod tests {
                 damage_type: Some(i32::from(DT_PHYSICAL)),
                 on_hit_effect_id: Some(9130),
                 toggle_ability_id: 1446,
+                beneficial: false,
             })
         );
         let effects = crate::cell::spawner::load_effect_defs(&pool)

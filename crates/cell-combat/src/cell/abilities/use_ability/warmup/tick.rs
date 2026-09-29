@@ -160,7 +160,12 @@ async fn fire_time_refusal(
     // The launch's #444 target-validity rule, again (`player_may_attack`: a
     // hostile NPC or the engaged duel partner). Content can turn an NPC
     // friendly, and a duel can end, during the warmup.
-    if caster.is_player && !combat::player_may_attack(caster, target, space_mgr.resources.duels()) {
+    // A support shot at an ally (beneficial ammo, AM-11d) is the one
+    // exception; `fire_support` re-classifies the target when it fires.
+    if caster.is_player
+        && !super::super::support_shot::is_support_ally(space_mgr, caster, target, ability_def)
+        && !combat::player_may_attack(caster, target, space_mgr.resources.duels())
+    {
         return Some(InterruptReason::TargetLost);
     }
     // A pet casts on its owner's order (`petInvokeAbility`, pets PT-04),
