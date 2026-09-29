@@ -203,19 +203,17 @@ pub fn chdir_to_repo_root_for_entities_xml() {
 }
 
 fn base_config(db_url: &str, base_port: u16) -> ServerConfig {
+    // `loopback()`, not `default()`: the production defaults bind 0.0.0.0,
+    // including the minigame listener `start_all` spawns.
     ServerConfig {
-        auth_host: "127.0.0.1".to_string(),
         logon_port: ephemeral_port(),
-        base_host: "127.0.0.1".to_string(),
-        base_external_host: "127.0.0.1".to_string(),
         base_port,
-        cell_host: "127.0.0.1".to_string(),
         cell_port: ephemeral_port(),
         admin_port: ephemeral_port(),
         minigame_port: ephemeral_port(),
         db_connection_string: db_url.to_string(),
         developer_mode: false,
-        ..ServerConfig::default()
+        ..ServerConfig::loopback()
     }
 }
 

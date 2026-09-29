@@ -83,13 +83,12 @@ async fn tls_listener_serves_phase1_login_over_https() {
             let http_port = ephemeral_port();
             let tls_port = ephemeral_port();
             let config = ServerConfig {
-                auth_host: "127.0.0.1".to_string(),
                 logon_port: http_port,
                 auth_tls_port: tls_port,
                 auth_tls_cert_path: Some(cert_path.clone()),
                 auth_tls_key_path: Some(key_path.clone()),
                 developer_mode: true,
-                ..ServerConfig::default()
+                ..ServerConfig::loopback()
             };
             let mut auth = AuthService::new(&config);
             auth.register_shard(ShardInfo {

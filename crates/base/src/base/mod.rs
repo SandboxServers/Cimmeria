@@ -50,7 +50,7 @@ mod tests {
     async fn start_sets_running() {
         let config = ServerConfig {
             base_port: 0,
-            ..ServerConfig::default()
+            ..ServerConfig::loopback()
         };
         let mut svc = BaseService::new(&config);
         svc.start().await.unwrap();

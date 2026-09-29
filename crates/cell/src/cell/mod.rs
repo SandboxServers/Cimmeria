@@ -46,7 +46,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_sets_running() {
-        let config = ServerConfig::default();
+        let config = ServerConfig::loopback();
         let mut svc = CellService::new(&config);
         svc.start().await.unwrap();
         assert!(svc.is_running);

@@ -43,6 +43,10 @@ mod live_db_slot;
 #[cfg(test)]
 mod live_db_group;
 mod log_capture;
+// Tests bind 127.0.0.1, never 0.0.0.0 (Windows Firewall prompts per rebuilt
+// test binary).
+#[cfg(test)]
+mod loopback_bind_guard;
 // The workspace registry of sentinel ids: no value in two files (#800).
 #[cfg(test)]
 mod sentinel_lint;

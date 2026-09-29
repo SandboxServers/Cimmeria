@@ -17,6 +17,7 @@
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
 //! | `CELL_PORT` | `50000` | CellApp port |
+//! | `MINIGAME_HOST` | `0.0.0.0` | Minigame SmartFoxServer TCP bind address |
 //! | `ADMIN_PORT` | `8443` | Admin REST API port |
 //! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. The container image sets `0.0.0.0` because a published port cannot reach an in-container loopback bind; there the `-p` publish is the exposure control. Launcher telemetry (`/api/auth/dev-session`, `/api/telemetry/*`) is served here and on `LOGON_PORT`; remote launchers use `LOGON_PORT`, so this bind can stay narrow. |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string |
@@ -387,6 +388,9 @@ fn config_from_env() -> ServerConfig {
         if let Ok(p) = v.parse() {
             cfg.base_port = p;
         }
+    }
+    if let Ok(v) = std::env::var("MINIGAME_HOST") {
+        cfg.minigame_host = v;
     }
     if let Ok(v) = std::env::var("CELL_PORT") {
         if let Ok(p) = v.parse() {

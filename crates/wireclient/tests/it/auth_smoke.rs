@@ -28,9 +28,8 @@ fn ephemeral_port() -> u16 {
 async fn start_auth() -> (AuthService, u16) {
     const MAX_ATTEMPTS: usize = 5;
     let base_config = ServerConfig {
-        auth_host: "127.0.0.1".to_string(),
         developer_mode: true,
-        ..ServerConfig::default()
+        ..ServerConfig::loopback()
     };
     for _ in 0..MAX_ATTEMPTS {
         let port = ephemeral_port();
