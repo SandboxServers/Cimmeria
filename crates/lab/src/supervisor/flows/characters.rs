@@ -323,10 +323,7 @@ impl Supervisor {
         let mut protect = protect;
         // The lab account's own character is always protected.
         if let Some(c) = self
-            .config
-            .install_dir
-            .as_ref()
-            .and_then(|d| crate::supervisor::session_file::read_lab_account(d).ok())
+            .lab_account()
             .map(|a| a.character)
             .filter(|c| !c.is_empty())
         {

@@ -118,6 +118,7 @@ mod win {
         dll_path: &Path,
         helper: &Path,
         patches_dll: Option<&Path>,
+        envs: &[(String, String)],
     ) -> Result<u32, String> {
         let (dir, exe) = checked_sgw_exe(install_dir).map_err(|e| format!("launch: {e}"))?;
         if !dll_path.is_file() {
@@ -140,8 +141,12 @@ mod win {
                 helper.display()
             ));
         }
-        let pid = start32::run(helper, &launch_request(&dir, &exe, dll_path, patches_dll))
-            .map_err(|e| format!("launch+inject via {HELPER_EXE_NAME}: {e}"))?;
+        let pid = start32::run_with_env(
+            helper,
+            &launch_request(&dir, &exe, dll_path, patches_dll),
+            envs,
+        )
+        .map_err(|e| format!("launch+inject via {HELPER_EXE_NAME}: {e}"))?;
         // The helper exits as soon as the game is resumed. Opening the pid
         // confirms it names a process this supervisor can follow before the
         // pid is recorded; liveness after that is `is_alive`.
@@ -264,6 +269,7 @@ pub fn launch(
     _dll_path: &Path,
     _helper: &Path,
     _patches_dll: Option<&Path>,
+    _envs: &[(String, String)],
 ) -> Result<u32, String> {
     Err("process launch is Windows-only".to_string())
 }
@@ -363,7 +369,14 @@ mod tests {
         std::fs::write(dir.path().join("SGW.exe"), b"MZ").unwrap();
         let dll = dir.path().join("bridge.dll");
         std::fs::write(&dll, b"MZ").unwrap();
-        let err = launch(dir.path(), &dll, &dir.path().join("sgw-start32.exe"), None).unwrap_err();
+        let err = launch(
+            dir.path(),
+            &dll,
+            &dir.path().join("sgw-start32.exe"),
+            None,
+            &[],
+        )
+        .unwrap_err();
         assert!(err.contains("sgw-start32.exe not found"), "{err}");
         assert!(err.contains("CIMMERIA_LAB_START32"), "{err}");
     }
@@ -408,7 +421,7 @@ mod tests {
         std::fs::create_dir(dir.path().join("en-US")).unwrap();
         std::fs::copy(&mui, dir.path().join("en-US").join("SGW.exe.mui")).unwrap();
 
-        let pid = launch(dir.path(), &dll, &helper, None).expect("launch through the helper");
+        let pid = launch(dir.path(), &dll, &helper, None, &[]).expect("launch through the helper");
         let alive = is_alive(pid);
         terminate(pid);
         assert!(alive, "the injected program is still running after launch");

@@ -35,9 +35,26 @@ static FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
 /// Start the log. `dir` is where the file goes; `None`, or a directory
 /// that cannot be written, leaves only the debugger output.
 pub fn init(dir: Option<&std::path::Path>) {
+    init_as(dir, None);
+}
+
+/// [`init`] for a named lab instance: two clients on one machine would
+/// otherwise both `File::create` the same log and overwrite each other's
+/// lines, so an instance writes `cimmeria-client-telemetry-<instance>.log` instead. `None` is the
+/// default file name.
+pub fn init_as(dir: Option<&std::path::Path>, instance: Option<&str>) {
     let _ = STARTED.set(Instant::now());
-    let file = dir.and_then(|d| std::fs::File::create(d.join(FILE_NAME)).ok());
+    let file = dir.and_then(|d| std::fs::File::create(d.join(file_name(instance))).ok());
     *FILE.lock().unwrap_or_else(PoisonError::into_inner) = file;
+}
+
+/// The log's file name: [`FILE_NAME`], or with `-<instance>` before the
+/// extension for a named lab instance.
+pub fn file_name(instance: Option<&str>) -> String {
+    match instance {
+        Some(i) => format!("{}-{i}.log", FILE_NAME.trim_end_matches(".log")),
+        None => FILE_NAME.to_string(),
+    }
 }
 
 /// Write one line.
@@ -80,6 +97,15 @@ pub fn format_line(elapsed_ms: u128, message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn instance_log_gets_its_own_file_name() {
+        assert_eq!(file_name(None), FILE_NAME);
+        assert_eq!(
+            file_name(Some("p2")),
+            format!("{}-p2.log", FILE_NAME.trim_end_matches(".log"))
+        );
+    }
 
     #[test]
     fn line_has_prefix_elapsed_and_crlf() {

@@ -25,12 +25,14 @@ pub mod entity_table;
 pub mod flows;
 pub mod heartbeat;
 pub mod input;
+pub mod instance;
 pub mod keys;
 pub mod process;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
 pub mod telemetry_session;
+mod watchdog;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -45,7 +47,7 @@ use crate::timeline::client_events::HeartbeatSample;
 use crate::timeline::clock::ClockOffset;
 
 use flows::login::LoginRequest;
-use heartbeat::{HeartbeatState, HeartbeatWatchdog, BUSY_GRACE_MS};
+use heartbeat::{HeartbeatState, HeartbeatWatchdog};
 use recovery::{CommandJournal, PersistentHooks, RecoveryTracker};
 use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
 
@@ -87,6 +89,9 @@ pub struct SupervisorConfig {
     pub bind: String,
     /// Bridge port.
     pub port: u16,
+    /// The named lab instance this supervisor drives (`CIMMERIA_LAB_INSTANCE`),
+    /// or `None` for the default, single-client layout ([`instance`]).
+    pub instance: Option<String>,
     /// Where each launch mints its telemetry token, and an optional
     /// upload endpoint override ([`telemetry_session`]).
     pub telemetry: telemetry_session::TelemetryConfig,
@@ -130,6 +135,9 @@ impl SupervisorConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_BRIDGE_PORT),
+            // A bad name is reported by `main` before this runs; here it
+            // must not silently become the default instance.
+            instance: instance::from_env().ok().flatten(),
             telemetry: telemetry_session::TelemetryConfig::from_env(),
         }
     }
@@ -337,9 +345,14 @@ impl Supervisor {
 
         let token = session_file::generate_token();
         let telemetry = telemetry_session::grant_for_launch(&self.config.telemetry).await;
-        let session =
+        let inst = self.config.instance.as_deref();
+        let mut session =
             session_file::build_session(&token, &self.config.bind, self.config.port, &telemetry);
-        session_file::write_session(&install_dir, &session)?;
+        if let Some(name) = inst {
+            session.tags.push(format!("instance:{name}"));
+        }
+        session_file::write_session_at(&instance::session_path(&install_dir, inst), &session)?;
+        let envs = instance::launch_env(&install_dir, inst);
 
         // Native launch runs on a blocking thread. SGW.exe lives in
         // `<install>/Binaries`, next to the `sessions/` dir the session file
@@ -347,10 +360,13 @@ impl Supervisor {
         let (bin2, dll2) = (install_dir.join("Binaries"), dll_path.clone());
         let patches = self.config.patches_dll.clone();
         let pid = tokio::task::spawn_blocking(move || {
-            process::launch(&bin2, &dll2, &helper, patches.as_deref())
+            process::launch(&bin2, &dll2, &helper, patches.as_deref(), &envs)
         })
         .await
         .map_err(|e| format!("launch task: {e}"))??;
+        if let Err(e) = instance::write_entry(&install_dir, inst, pid, self.config.port) {
+            tracing::warn!(error = %e, "could not record this client for its peers");
+        }
 
         // Point the bridge at the fresh per-launch token.
         let addr = format!("{}:{}", self.config.connect_host(), self.config.port);
@@ -380,14 +396,25 @@ impl Supervisor {
                 }
             }
         }
-        // Two clients on one machine misbehave, and a client the lab did not
-        // start (the launcher, a player) is not the lab's to stop.
-        let others = process::running_sgw_pids();
-        if !others.is_empty() {
-            return Err(format!(
-                "SGW.exe is already running (pid {others:?}) outside the lab; close it before                  starting a lab client"
-            ));
-        }
+        // A client the lab did not start (the launcher, a player) is not
+        // the lab's to stop or to share a machine with. Another lab
+        // instance's client is fine, up to the cap ([`instance::check_launch`]).
+        let running = process::running_sgw_pids();
+        let peers: Vec<_> = self
+            .config
+            .install_dir
+            .as_deref()
+            .map(|d| instance::read_peers(d, self.config.instance.as_deref()))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| process::is_alive(p.pid))
+            .collect();
+        instance::check_launch(
+            &running,
+            &peers,
+            self.config.port,
+            instance::max_clients_from_env(),
+        )?;
         let pid = self.launch_client(server_override).await?;
         self.spawn_watchdog(pid);
         let telemetry = self.state.lock().await.telemetry.clone();
@@ -408,6 +435,9 @@ impl Supervisor {
         match pid {
             Some(pid) => {
                 let _ = tokio::task::spawn_blocking(move || process::terminate(pid)).await;
+                if let Some(d) = self.config.install_dir.as_deref() {
+                    instance::remove_entry(d, self.config.instance.as_deref());
+                }
                 Ok(json!({ "stopped": true, "pid": pid }))
             }
             None => Ok(json!({ "stopped": false, "reason": "no client running" })),
@@ -489,10 +519,7 @@ impl Supervisor {
             return;
         }
         let character = self
-            .config
-            .install_dir
-            .as_ref()
-            .and_then(|d| session_file::read_lab_account(d).ok())
+            .lab_account()
             .map(|a| a.character)
             .filter(|c| !c.is_empty());
         if let Some(name) = character {
@@ -503,6 +530,15 @@ impl Supervisor {
                 tracing::warn!(error = %e.summary(), "post-crash play failed");
             }
         }
+    }
+
+    /// This instance's credentials (`lab-account.json`, or
+    /// `lab-account.<instance>.json` for a named instance), if the file
+    /// exists and parses.
+    pub(crate) fn lab_account(&self) -> Option<session_file::LabAccount> {
+        let dir = self.config.install_dir.as_deref()?;
+        let path = instance::account_path(dir, self.config.instance.as_deref());
+        session_file::read_lab_account_at(&path).ok()
     }
 
     /// `lab_screenshot` — capture the client window as PNG bytes +
@@ -537,7 +573,7 @@ impl Supervisor {
             .install_dir
             .clone()
             .ok_or("CIMMERIA_LAB_INSTALL_DIR is unset")?;
-        let dir = session_file::sessions_dir(&install_dir);
+        let dir = instance::instance_dir(&install_dir, self.config.instance.as_deref());
         let st = self.state.lock().await;
         Ok(crash_report::build_report(&st.journal, &dir, JOURNAL_CAP))
     }
@@ -559,92 +595,6 @@ impl Supervisor {
     pub async fn set_offset(&self, offset: ClockOffset) {
         let mut st = self.state.lock().await;
         st.clock_offset = Some(offset);
-    }
-
-    /// Spawn the background heartbeat watchdog for `pid`. It exits once
-    /// the current launch's pid changes (a restart), or after it handles
-    /// this launch's death.
-    fn spawn_watchdog(&self, pid: u32) {
-        let this = self.clone();
-        tokio::spawn(async move { this.watchdog_loop(pid).await });
-    }
-
-    async fn watchdog_loop(&self, my_pid: u32) {
-        let mut fails = 0u32;
-        loop {
-            tokio::time::sleep(WATCHDOG_POLL).await;
-
-            // Stop if this launch has been superseded.
-            {
-                let st = self.state.lock().await;
-                if st.pid != Some(my_pid) {
-                    return;
-                }
-            }
-
-            match self.bridge.heartbeat().await {
-                Ok(count) => {
-                    fails = 0;
-                    let stale = {
-                        let mut st = self.state.lock().await;
-                        let ts = now_ms();
-                        st.record_heartbeat(count, ts);
-                        st.watchdog.observe(count, ts)
-                    };
-                    if stale == HeartbeatState::Stale {
-                        tracing::warn!(pid = my_pid, "heartbeat stale; terminating hung client");
-                        self.handle_death(my_pid).await;
-                        return;
-                    }
-                }
-                Err(_) => {
-                    fails = heartbeat::next_fail_count(
-                        fails,
-                        self.bridge.ms_since_last_ok(),
-                        BUSY_GRACE_MS,
-                    );
-                    if !process::is_alive(my_pid) || fails >= MAX_HEARTBEAT_FAILS {
-                        tracing::warn!(pid = my_pid, fails, "client dead/unreachable");
-                        self.handle_death(my_pid).await;
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    /// A death/hang was detected: terminate (in case it's hung),
-    /// quarantine the in-flight command, record the crash, and — if
-    /// under the recovery cap — relaunch and log back in.
-    async fn handle_death(&self, dead_pid: u32) {
-        let _ = tokio::task::spawn_blocking(move || process::terminate(dead_pid)).await;
-
-        let may_relaunch = {
-            let mut st = self.state.lock().await;
-            st.journal.quarantine_in_flight();
-            st.recovery.record_crash(now_ms());
-            st.login = LoginState::Crashed;
-            st.pid = None;
-            st.recovery.should_relaunch(now_ms())
-        };
-
-        if !may_relaunch {
-            tracing::error!("recovery cap reached (3 crashes / 10 min); not relaunching");
-            return;
-        }
-
-        match self.launch_client(None).await {
-            Ok(new_pid) => {
-                tracing::info!(new_pid, "relaunched after crash; logging back in");
-                self.spawn_watchdog(new_pid);
-                self.relogin_after_crash().await;
-                // Restore probes: re-apply persistent hooks (never writes
-                // or native calls — the quarantined in-flight command stays
-                // quarantined). ADR §6 "Restore probes".
-                self.reapply_persistent_hooks().await;
-            }
-            Err(e) => tracing::error!(error = %e, "relaunch after crash failed"),
-        }
     }
 }
 
@@ -670,6 +620,7 @@ mod tests {
             helper_path: None,
             bind: "0.0.0.0".into(),
             port: 8770,
+            instance: None,
             telemetry: Default::default(),
         };
         assert_eq!(c.connect_host(), "127.0.0.1");
