@@ -207,6 +207,16 @@ outright (same mechanism as the recursion guard) so it never floods the errors
 channel; the data still flows to logs and SigNoz. Pinned by
 `movement_validation_target_filtered`.
 
+**Client telemetry replays are filtered from the harvest.** The upload ingest
+re-emits each client-side row (the game DLL's events and the launcher's tailed
+client logs) as a server log record under `client.native`,
+`launcher.client_log`, `launcher.debug_log` or `launcher.session_meta`. Those are
+the client's own warn/error stream, so `DiscordLayer::on_event` drops them
+(`CLIENT_REPLAY_TARGETS`); a lab client in a repro campaign posted hundreds to
+the errors channel on 2026-09-29. They still reach SigNoz. The server's own
+ingest records (`launcher.ingest`, `launcher.bundle`) still post. Pinned by
+`client_telemetry_replays_are_filtered`.
+
 **Cell-side name cache.** The cell service has no character/GM display name of
 its own — names live in the base `ConnectedClientState`. `GmCommand` and the
 cell-side gameplay events (`MissionAccepted/Completed/Failed`, `PlayerDeath`,
