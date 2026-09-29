@@ -19,10 +19,15 @@
 //! - [`entity_table`] — the client's BigWorld entity maps.
 //! - [`screenshot`] — GDI window capture → PNG.
 //! - [`crash_report`] — assemble `lab_crash_report`.
+//! - [`events`] — the seq-numbered client-event history with named
+//!   cursors (`client_wait_event`, `client_events_read`).
+//! - [`combat`] — hotbar, ability use, combat log, defeat and respawn.
 
+pub mod combat;
 pub mod crash_report;
 pub mod display;
 pub mod entity_table;
+pub mod events;
 pub mod flows;
 pub mod heartbeat;
 pub mod input;
@@ -67,7 +72,7 @@ const JOURNAL_CAP: usize = 64;
 /// plugs in later — see `timeline::client_events`).
 const HEARTBEAT_RING_CAP: usize = 256;
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -236,6 +241,8 @@ pub struct Supervisor {
     bridge: Arc<BridgeClient>,
     config: SupervisorConfig,
     state: Arc<Mutex<SupervisorState>>,
+    /// Client-event history (the bridge ring's only drainer).
+    events: Arc<events::store::EventStore>,
 }
 
 impl Supervisor {
@@ -245,6 +252,7 @@ impl Supervisor {
             bridge,
             config,
             state: Arc::new(Mutex::new(SupervisorState::new())),
+            events: Arc::new(events::store::EventStore::default()),
         }
     }
 

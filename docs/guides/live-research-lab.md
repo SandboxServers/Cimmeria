@@ -210,6 +210,11 @@ Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
 | `lab_play_character` / `lab_finish_dialog` / `lab_logout` | Enter the world (cutscene skipped), finish the open dialog with the green checkmark, `/logout` back to character select. |
 | `client_ui_state` | One read: visible top-level windows, open dialog (title, text, buttons), prompts, mission tracker, chat tail. |
 | `client_wait_for` | Poll a Lua boolean expression until it holds or times out (`met: false` on timeout). |
+| `client_wait_event` | Wait for a client event matching a predicate (kind, name, entity id, text, fields; globs) or a window becoming visible, through a named persistent cursor. `arm: true` marks now. A timeout is `met: false`. See [Abilities, combat and event waits](#abilities-combat-and-event-waits). |
+| `client_hotbar` | The action bar: each button's action (ability or item id, name, quantity), cooldown, and both key bindings with the lab key that presses them. |
+| `client_use_ability` | Fire an ability by id or name like a player (bound key, button click, or the Ability window), then report what came back: sent, cast started, effect applied, refused, feedback text, cooldown. |
+| `client_combat_log` | The floating-combat-text feed (every `UnitCombat` event: ability, hit type, source, target, stat changes) with a read cursor and a dealt/taken summary. |
+| `client_die_and_respawn` | Optional GM setup, wait for the defeat window, read its respawners, click Release (or let it time out), verify alive, position and world. |
 | `client_entity_table` | Walk the client's BigWorld entity maps: per entity id, vtable, enter count, rendered, `isReady()`; limbo and pending enter counts. |
 | `lab_screenshot_region` / `lab_pixel_probe` | Crop of the capture as an image; count pixels in an RGB box (a nameplate colour, a HUD element). |
 | `lab_screenshot` | Window capture by PID → MCP image. |
@@ -351,6 +356,34 @@ These tools were written and tested against a simulated client only (the lab loc
 7. The camera chain `[[[[g_pGLevel + 0x50] + 0x3C]] + 0x35C]`: is that actor the player controller (its yaw follows mouse-look) or the pawn? `client_camera` reports it as `camera_before` / `camera_after`.
 8. `client_move_to` a few metres across the stasis room: the character walks with `W`, turns toward the point, stops inside the radius, and `W` is released. Then a point behind a wall to see the unstick sequence and the `leg_0` failure.
 9. Movement keys: `A`/`D` strafe (per `SGWInput.ini`) rather than turn.
+
+## Abilities, combat and event waits
+
+These tools drive combat the way a player does and say how they did it. Every result carries a `native_level`: `N1` real input (a key press or a click through the lab's hooked input), `N2` a slash command, `N3` a call into the stock UI's own Lua (what a button handler runs, minus the input), `G` GM setup typed into chat, `X` a server shortcut. A step driven at N3 or below is not a native pass for a UAT row.
+
+**`client_hotbar`** reads `ActionButtonMod.buttons` (ids 1 to 100, windows `ActionButtons_<id>Button`), `getActionInfo` for each bound action, and `getBindingKey('ActionButton<id>', 1|2)`. The hotbar lives only in the client's Lua profile; the server keeps no copy.
+
+**`client_use_ability {ability_id | name}`** resolves the ability against the hotbar and the Ability window's training trees, then fires it:
+
+1. On the hotbar: presses the button's bound key (the binding's virtual-key code mapped to a lab key), or clicks the button when the key is one the lab cannot post (`press: key | click` forces one). N1.
+2. Not on the hotbar, `place: true`: puts it on the first visible empty button with the calls the drop handler makes (`getUnusedAction`, `ActionProfileMod.setButtonCurrentAction`, `setActionToAbility`), reported as N3 because a CEGUI drag cannot be started from posted mouse moves yet, then presses it (N1). The placement stays in the player's profile.
+3. Not on the hotbar (default `fallback: window`): opens the Ability window with its bound key (N3 `AbilityMod.onToggleAbilityWin` when unbound), selects the tree tab, clicks `Ability_Button<i>` (N1), and closes the window again. An ability outside the trees (a GM `.giveability` grant) has no window button: use `place: true` or `fallback: lua`.
+4. `fallback: lua`: `useAbility(id, Unit.Target)`, N3.
+
+No slash command for abilities is known, so there is no N2 path. The result is read from the events that follow the press, for up to `observe_ms` (default 2500): `net.out useAbility*` (sent), `onTimerUpdate` (cooldown or warmup timer), `onSequence` (cast started), `onEffectResults` or a combat-text record (effect applied), `onErrorCode` (refused), and feedback chat lines. `result.verdict` is one of `effect_applied`, `refused`, `cast_started`, `refused_with_feedback`, `sent_no_reply`, `refused_client_side`, `nothing_observed`. CME events carry names, not payloads, so a timer or effect from another source inside the window counts too; the combat records name the ability. The hotbar button's cooldown after the press is included.
+
+**`client_combat_log`** wraps `SCTMod.onUnitCombat`, the stock handler for `Events.UnitCombat`. The wrapper records the raw event (ability id and name, `HitType`, source and target unit names and whether each is the player, mortal, every stat change with value and result code) into a ring in `_G.CimmeriaLab`, then calls the original, so the SCT verbosity option cannot hide anything and the player sees no change. It re-subscribes `SCTWin`'s `Events.UnitCombat` to the same stock name after wrapping, in case the event system caches the resolved function; it never touches `SCTWin`'s `Events.PreRender` subscription, which the world tools own (a window holds one subscription per event). A second wrapper on `ChatMod.onMessageReceived` feeds `chat.line` events the same way. Capture starts at the first pump in the world (any `client_combat_log`, `client_wait_event` or `client_use_ability` call); an interface reload is noticed (the ring's epoch changes) and the wrappers are reinstalled.
+
+**`client_die_and_respawn`** is for the defeat and respawn rows. Getting killed is setup: `setup_health: n` types `/gmsethealth n 0` (G). That GM command only writes the stat; it does not run the death sequence, so the flow waits for the defeat window (`PlayerDefeatWin`, opened by the server's `onBeginAidWait`), which only a real lethal hit opens. It then reads the respawners and countdown, clicks `PlayerDefeat_Release` (N1; `respawn: auto` lets the countdown release, `none` stops at the window; picking a non-default `respawner` selects its list row through the list's own call, N3), and verifies the window closed, health above zero, and the position and world before, at death and after.
+
+**Events and cursors.** The bridge ring behind `events_read` is drain-and-clear, so two readers would steal from each other. The supervisor is its only drainer: each pull lands in a bounded store (8192 events) with a seq that never repeats in one lab process. Readers keep cursors instead of consuming:
+
+- `client_wait_event` starts after `since_seq`, else its named cursor (default `wait`), else the newest event (a fresh cursor never matches stale history). A met wait moves the cursor to its last match, so the next wait sees only later events, including ones that arrived between the two calls. A timeout leaves the cursor, so a later wait with another predicate still sees what this one scanned past. The safe pattern is arm, act, wait: `client_wait_event {arm: true}`, press or click, then `client_wait_event {name: "*onEffectResults"}`.
+- `client_combat_log` has its own cursor (`combat_log`) and returns `next_since_seq`.
+- `client_events_read` keeps a cursor too (`events_read`), so it still returns each event once, now with its seq.
+- A reader whose cursor fell behind the oldest kept event gets `gap: true`. Events the bridge ring dropped while full are counted as `dropped`, and `cme.event` names past the throttle (8 burst, then 4 per second) carry a `suppressed` count.
+
+Event kinds: `cme.event` (field `event`, e.g. `Event_NetIn_onEffectResults`; `kind` `net_in`, `action`, ...), `net.out` (`method`, `entity_id`), `entity.*`, `cegui.log` (`message`), `lua.error`, `lua.print`, `hook.hit` from the bridge; `combat.hit` and `chat.line` (`text`, `channel`, `channel_name`, `speaker`) from the Lua rings. Predicates are case-insensitive globs: `name` matches `event`, `method`, `name`, `ability_name` or `channel_name`; `text` is a substring (or a glob with `*`/`?`) of `text`, `message` or `line`; `fields` compares field by field.
 
 ## Trust, audit, and the colo
 

@@ -28,6 +28,7 @@ use crate::supervisor::Supervisor;
 use crate::timeline::{Timeline, TimelineArgs};
 
 mod client_state;
+mod combat;
 mod flows;
 mod world;
 
@@ -250,7 +251,8 @@ impl LabServer {
             tool_router: Self::tool_router()
                 + Self::flows_router()
                 + Self::client_state_router()
-                + Self::world_router(),
+                + Self::world_router()
+                + Self::combat_router(),
         }
     }
 
@@ -356,17 +358,13 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Drain the client's local event ring: hook hits, Lua prints, and Mercury dispatch events (the same events also upload to SigNoz). Returns the events plus a dropped-since-last-read count."
+        description = "Read the client's new local events since this tool's last read: CME events, net.out, entity lifecycle, CEGUI log, Lua prints and errors, hook hits (the same events also upload to SigNoz). Each event is returned once here, with its store seq; the lab keeps the history, so client_wait_event cursors lose nothing to this read. Returns the events, a dropped-upstream count and a gap flag."
     )]
     async fn client_events_read(
         &self,
         Parameters(args): Parameters<EventsReadArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let params = match args.max {
-            Some(max) => json!({ "max": max }),
-            None => json!({}),
-        };
-        self.proxy("events_read", params).await
+        self.wrap(self.supervisor.events_read(args.max).await)
     }
 
     #[tool(
