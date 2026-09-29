@@ -36,7 +36,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::game_clock;
 
-use super::super::messaging::send_entity_method;
+use super::super::timer_update::send_timer_update;
 use super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 
 pub use interrupt::interrupt_unlearned_cast;
@@ -206,6 +206,6 @@ pub(super) async fn begin_warmup(
             // Absolute, on the client's game clock, like the cooldown timer.
             game_clock::game_time_secs() + warmup_secs,
         );
-        send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await; // 12 = onTimerUpdate
+        send_timer_update(entity_id, timer_args, tx, space_mgr).await;
     }
 }

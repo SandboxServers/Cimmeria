@@ -461,7 +461,7 @@ discard the update.
 >
 > | Emit path | `Type` | `SourceID` passed | Routing | Client outcome |
 > |---|---|---|---|---|
-> | `cell/abilities/use_ability/handle.rs` `handle_use_ability` | `TIMER_ABILITY_COOLDOWN` (2) | the ability user's `entity_id` | `send_entity_method` — player to own client, NPC to AoI witnesses | player-self: passes; NPC: discarded on the witness client by design (the cooldown bar is local-player-only) |
+> | `cell/abilities/use_ability/handle.rs` `handle_use_ability` | `TIMER_ABILITY_COOLDOWN` (2) | the ability user's `entity_id` | `send_timer_update` — the player's own client; nothing for an NPC (since 2026-09-29) | player-self: passes. Before 2026-09-29 an NPC's timer went to its AoI witnesses, whose client has no `onTimerUpdate` binding for `SGWMob` and dropped it at the dispatcher (see [client handler bindings](../../protocol/client-method-dispatch-table.md#client-handler-bindings)) |
 > | `cell/cell_methods/player/world/reload.rs` `handle_reload` | `TIMER_ABILITY_COOLDOWN` (2) | the reloading player's `entity_id` | direct `EntityMethodCall` to the player's own base | passes |
 > | `cell/console/net.rs` `.net_timer` (GM command) | caller-supplied | the caller's entity ID | direct to caller | passes |
 >

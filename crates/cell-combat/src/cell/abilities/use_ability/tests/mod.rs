@@ -21,6 +21,7 @@ mod fire_los;
 mod gating;
 mod holster_queue;
 mod min_range;
+mod npc_timer_routing;
 mod pet_kill_credit;
 mod range_units;
 mod range_units_live_db;

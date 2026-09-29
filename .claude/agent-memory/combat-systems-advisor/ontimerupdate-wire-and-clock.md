@@ -1,6 +1,6 @@
 ---
 name: ontimerupdate-wire-and-clock
-description: onTimerUpdate (client method 12) canonical 21-byte layout, the client game clock (ticks / hertz), absolute BigWorldTimeComplete semantics, and every emit path in the Rust tree
+description: onTimerUpdate (client method 12) canonical 21-byte layout, owner-only routing (client binds it on SGWPlayer only), the client game clock (ticks / hertz), absolute BigWorldTimeComplete semantics, and every emit path in the Rust tree
 metadata:
   type: project
 ---
@@ -74,6 +74,9 @@ heartbeat send `game_ticks()`, and every timer start sends
 
 ## Every emit path in the Rust tree (as of CR-02, 2026-09-26)
 
+All of these now route through `send_timer_update` (except reload/console/duel/crafting, which
+send straight to a player).
+
 | Site | Type | `BigWorldTimeComplete` sent |
 |---|---|---|
 | `cell-combat/.../use_ability/handle.rs` | 2 | `game_time_secs() + cooldown + warmup` |
@@ -88,6 +91,19 @@ Client behaviour worth knowing: `CooldownManager` (`FUN_00c6d1c0`) clamps
 `complete - clock` to 0, and the `EffectSet` handler (`0x00e09160`) creates a new
 effect entry only when `clock < complete`, so a past expiry draws no icon at all.
 Type 8 (category cooldown, one per `monikerId`) is still never sent.
+
+## Routing: owner's client only (2026-09-29)
+
+The client binds `onTimerUpdate` under `"SGWPlayer"` only (bind sweep `0x00db3390`, sole caller
+of `FUN_00c6f1e0`; dispatcher `0x00c6f8f0` walks the entity's class chain by clientIndex). An
+`SGWMob`/`SGWPet` timer sent to witnesses is dropped whole (drop oracle `0x01590f30`); colo
+showed 191 drops/session, one per NPC shot. Harmless to the bundle (onSequence still plays) but
+pure waste. Every cell emit now goes through `abilities::send_timer_update` (player -> own
+client, NPC -> nothing, DEBUG `reason=not_player`); `send_entity_method` and
+`send_entity_method_to_witnesses` refuse method 12 for a non-player at WARN
+`reason=no_client_binding`. Full per-class binding table:
+`docs/protocol/client-method-dispatch-table.md#client-handler-bindings` (also lists methods bound
+nowhere: 5, 6, 18 onTopSpeedUpdate, 90-95, 116 onPlayerTeleport, 118, 119, 134).
 
 ## Wire-log decoders
 

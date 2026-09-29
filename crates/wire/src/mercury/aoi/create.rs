@@ -128,6 +128,21 @@ pub fn build_create_entity_cascade(
     encrypt_packet(&plaintext, key, version)
 }
 
+/// `true` when `class_id` (the client's clientIndex) derives from `SGWBeing`,
+/// so the client dispatches `SGWBeing`-bound methods such as
+/// `onBeingNameIDUpdate` for it.
+///
+/// Evidence: the client's only NetIn bind sweep (`0x00db3390`, 162 calls to
+/// `FUN_00c6f1e0(class, method, event)`) binds `onBeingNameIDUpdate` under
+/// `"SGWBeing"`, and `Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`) walks
+/// the receiving entity's class chain looking the method up under each
+/// class's clientIndex. The chains that reach `SGWBeing` (1) are `SGWBeing`,
+/// `SGWPlayer` (2), `SGWGmPlayer` (3), `SGWMob` (4) and `SGWPet` (5).
+/// `SGWSpawnableEntity` (0) and `SGWDuelMarker` (6) never do.
+pub(crate) fn class_binds_being_methods(class_id: u8) -> bool {
+    matches!(class_id, 0x01..=0x05)
+}
+
 /// Compose the wire body for the phase-2 `createOnClient()` property
 /// cascade WITHOUT packet framing or encryption.
 ///
@@ -206,8 +221,12 @@ pub fn compose_create_entity_cascade_body(
         );
     }
 
-    // 5. onBeingNameIDUpdate(nameId)
-    if let Some(d) = npc_data {
+    // 5. onBeingNameIDUpdate(nameId) — only for an SGWBeing-derived class.
+    // Python sent it for every spawnable entity, but the client binds it on
+    // SGWBeing alone, so a plain SGWSpawnableEntity (class 0: props,
+    // corpses) or SGWDuelMarker dropped it (colo 2026-09-29: 7
+    // `client.dispatch.method_dropped` rows, method 11, type_id 0).
+    if let Some(d) = npc_data.filter(|_| class_binds_being_methods(class_id)) {
         if let Some(name_id) = d.name_id {
             if name_id != 0 {
                 append_entity_method(
@@ -521,5 +540,68 @@ mod appearance_cascade_tests {
                 .is_none(),
             "a static-mesh NPC must not trip the appearance-missing warn"
         );
+    }
+}
+
+#[cfg(test)]
+mod being_name_id_tests {
+    use super::*;
+
+    fn with_name_id() -> NpcAoIData {
+        NpcAoIData {
+            static_mesh: Some("CA-Props.CA-GuardCorpse02".to_string()),
+            body_set: Some("GLB_Components.WorldObject_Small".to_string()),
+            name_id: Some(4711),
+            ..NpcAoIData::default()
+        }
+    }
+
+    /// The `onBeingNameIDUpdate` message: direct msg id `0x80 + 11`, the
+    /// entity id, then the INT32 name id (NPC idbase 62 > 11, so direct).
+    fn name_id_message(entity_id: u32) -> Vec<u8> {
+        // 0x8B = 0x80 | 11; u16 LE payload length 8 (entity id + INT32).
+        let mut m = vec![0x8B, 0x08, 0x00];
+        m.extend_from_slice(&entity_id.to_le_bytes());
+        m.extend_from_slice(&4711i32.to_le_bytes());
+        m
+    }
+
+    fn contains(hay: &[u8], needle: &[u8]) -> bool {
+        hay.windows(needle.len()).any(|w| w == needle)
+    }
+
+    /// A class-0 prop with a name id gets no `onBeingNameIDUpdate`: the
+    /// client has no handler for it on `SGWSpawnableEntity`. Reverting the
+    /// class gate puts the message back and fails this.
+    #[test]
+    fn a_spawnable_entity_prop_gets_no_being_name_id() {
+        let body = compose_create_entity_cascade_body(100179, 0x00, 1, Some(&with_name_id()));
+        assert!(!contains(&body, &name_id_message(100179)));
+    }
+
+    /// An SGWMob with the same data still gets it, byte for byte.
+    #[test]
+    fn a_mob_still_gets_its_being_name_id() {
+        let msg = name_id_message(100010);
+        let body = compose_create_entity_cascade_body(
+            100010,
+            crate::mercury::SGWMOB_CLASS_ID,
+            1,
+            Some(&with_name_id()),
+        );
+        assert!(
+            contains(&body, &msg),
+            "the mob cascade carries onBeingNameIDUpdate"
+        );
+    }
+
+    #[test]
+    fn only_sgwbeing_descendants_bind_being_methods() {
+        for id in 0x01..=0x05 {
+            assert!(class_binds_being_methods(id), "class {id}");
+        }
+        for id in [0x00, 0x06, 0x07] {
+            assert!(!class_binds_being_methods(id), "class {id}");
+        }
     }
 }

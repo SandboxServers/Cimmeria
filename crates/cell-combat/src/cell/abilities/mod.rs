@@ -15,6 +15,7 @@
 //! - `deployable` — deployable abilities (Phase 0): the ground-point
 //!   launch, the fire that places the object, and its pulse tick.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
+//! - `timer_update` — `onTimerUpdate` goes to the owning player's client only.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
 //! - `resolve` — per-weapon ability resolution (items_event_sets lookup).
 //! - `rng` — deterministic pseudo-random for combat rolls.
@@ -32,6 +33,7 @@ mod messaging;
 mod movement_type_log_tests;
 mod resolve;
 mod rng;
+mod timer_update;
 mod use_ability;
 
 #[cfg(test)]
@@ -57,6 +59,7 @@ pub use messaging::{
 pub use resolve::{
     ability_for_active_weapon, ability_for_item, is_ability_granted_by_active_weapon,
 };
+pub use timer_update::{send_timer_update, TimerRoute};
 pub use use_ability::{
     credit_ground_deaths, fire_line_of_sight, interrupt_unlearned_cast, warmup_tick, FireLos,
 };
