@@ -153,8 +153,9 @@ impl LauncherApp {
     pub(super) fn on_update_event(&mut self, ev: &UpdateEvent, ctx: &egui::Context) {
         self.update.apply(ev);
         if let UpdateEvent::Restarting { .. } = ev {
-            // The new launcher is already running and waiting for our
-            // lock; closing the window ends this process and releases it.
+            // Backstop only: the handoff has already released the lock
+            // and exited the process from the worker (a close here waits
+            // for a frame, which is what left 676f314 holding the lock).
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }

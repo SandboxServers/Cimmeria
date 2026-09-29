@@ -26,7 +26,9 @@ pub enum UpdateEvent {
         message: String,
         page_url: String,
     },
-    /// The new launcher is running; this one should close now.
+    /// The new launcher is running; this one should close now. In
+    /// production the handoff exits the process before this is sent, so
+    /// the UI's close on it is only a backstop.
     Restarting {
         tag: String,
     },
@@ -92,8 +94,14 @@ impl Worker {
             let ev = match std::env::current_exe() {
                 Err(e) => failed(&release, &self_update::ApplyError::NoExePath(e)),
                 Ok(exe) => {
-                    match self_update::apply(&http, &endpoints, &build, &release, &exe, &prog_tx)
-                        .await
+                    // On success the handoff releases launcher.lock and
+                    // exits the process from this task; it does not wait
+                    // for an egui frame (see self_update::handoff).
+                    let mut hooks = self_update::handoff::ProcessHooks;
+                    match self_update::apply(
+                        &http, &endpoints, &build, &release, &exe, &prog_tx, &mut hooks,
+                    )
+                    .await
                     {
                         Ok(()) => UpdateEvent::Restarting {
                             tag: release.tag.clone(),

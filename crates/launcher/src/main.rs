@@ -11,6 +11,7 @@ mod config;
 mod identity;
 mod install;
 mod install_layout;
+mod instance_lock;
 mod logs;
 mod manifest;
 mod overlay_meta;
@@ -81,26 +82,46 @@ fn main() -> eframe::Result<()> {
     // contention), whose semantics differ.
     //
     // A launcher started by a self-update waits for the one that started it
-    // to exit and let go of the lock; a normal second start fails at once.
-    let relaunched = std::env::var_os(self_update::swap::RELAUNCH_ENV).is_some();
-    let lock_wait = if relaunched {
-        std::time::Duration::from_secs(30)
-    } else {
-        std::time::Duration::ZERO
-    };
-    if !self_update::swap::acquire_lock(
+    // to exit and let go of the lock, and ends it if it hangs on (only if
+    // it is this exe); a normal second start fails at once.
+    use self_update::handoff::{self, StartupLock};
+    let relaunch = handoff::RelaunchInfo::from_env();
+    let current_exe = std::env::current_exe().ok();
+    let outcome = handoff::acquire_startup_lock(
+        relaunch.as_ref(),
         || FileExt::try_lock(&lock_file).is_ok(),
-        lock_wait,
-        std::time::Duration::from_millis(250),
-    ) {
-        let msg = format!(
-            "Another Stargate Worlds Launcher instance appears to be running \
-             (lock held at {}). Close the other instance and retry.",
-            lock_path.display()
-        );
-        fatal_startup_error("Stargate Worlds Launcher", &msg);
-        std::process::exit(3);
+        |info| match &current_exe {
+            Some(exe) => self_update::old_process::kill_old_launcher(info, exe),
+            None => handoff::KillOutcome::NotKilled {
+                reason: "no_exe_path",
+            },
+        },
+        &handoff::LockWait::PRODUCTION,
+    );
+    match outcome {
+        StartupLock::Acquired { .. } => {}
+        StartupLock::HeldByAnotherInstance => {
+            let msg = format!(
+                "Another Stargate Worlds Launcher instance appears to be running \
+                 (lock held at {}). Close the other instance and retry.",
+                lock_path.display()
+            );
+            fatal_startup_error("Stargate Worlds Launcher", &msg);
+            std::process::exit(3);
+        }
+        StartupLock::UpdateHandoffStuck { .. } => {
+            let msg = format!(
+                "The launcher was updated, but the previous launcher window is still \
+                 open (lock held at {}). Close it, then start the launcher again.",
+                lock_path.display()
+            );
+            fatal_startup_error("Stargate Worlds Launcher", &msg);
+            std::process::exit(3);
+        }
     }
+    // Park the handle where the self-update handoff can release it
+    // without waiting for the window to close.
+    instance_lock::hold(lock_file);
     // Delete the previous exe a self-update left as `<exe>.old`.
     self_update::spawn_startup_cleanup();
 
@@ -140,10 +161,9 @@ fn main() -> eframe::Result<()> {
     );
 
     drop(runtime);
-    // Keep `lock_file` alive until here so the OS-level lock survives the
-    // entire run. Dropping it explicitly is documentation; the Drop impl
-    // would release the lock when the binding goes out of scope anyway.
-    drop(lock_file);
+    // The lock survives the entire run; release it on the way out (process
+    // exit would too).
+    instance_lock::release();
     result
 }
 

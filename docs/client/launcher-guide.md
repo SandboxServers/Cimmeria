@@ -328,8 +328,9 @@ and a link to the release notes. One click:
 3. Renames the running launcher to `<its name>.old`, puts the new one at
    the old name, and starts it with the same arguments. If the new one
    cannot be put in place or will not start, the old one is renamed back.
-4. Closes the old window. The new launcher's status log says
-   `Launcher updated from … to …`, and it deletes the `.old` file.
+4. Closes the old launcher as soon as the new one has started, without
+   waiting for you to touch its window. The new launcher's status log
+   says `Launcher updated from … to …`, and it deletes the `.old` file.
 
 The launcher keeps its file name, whatever you renamed it to, and the
 settings files beside it (`launcher-config.json` and the rest) are left
@@ -805,6 +806,24 @@ launcher back. The message says why:
 
 The link under the message opens the release page, where you can
 download the new exe by hand and replace yours with it.
+
+### "Another Stargate Worlds Launcher instance appears to be running" right after an update
+
+Updating **from** `launcher-20260929-676f314` can show this box once. That
+launcher did not close its window by itself after starting the new one,
+so the new launcher found it still running. The update itself worked:
+click **OK** and start the launcher again. It shows the new version and
+deletes the leftover `.old` file. Updates from later launchers close the
+old launcher straight away, and a new launcher started by an update ends
+a previous launcher that stays open too long instead of showing this
+box.
+
+If you see **"The launcher was updated, but the previous launcher window
+is still open"**, close the old launcher window (or end
+`sgw-launcher…exe` in Task Manager), then start the launcher again.
+
+Outside an update, this box means what it says: a launcher is already
+open. Switch to it, or close it and retry.
 
 ### Antivirus or SmartScreen after a launcher update
 
