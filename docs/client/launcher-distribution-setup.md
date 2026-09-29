@@ -2,7 +2,7 @@
 title: "Launcher Distribution Setup"
 type: how-to
 audience: operators
-last_updated: 2026-09-27
+last_updated: 2026-09-29
 ---
 
 # Launcher Distribution Setup
@@ -78,6 +78,32 @@ This split gives both properties at once:
 - The seed and patches are **immutable** so existing installs can
   resume partial downloads safely — the bytes at a given URL never
   change once published.
+
+### Launcher releases and self-update
+
+Launcher releases are a third tag family, `launcher-YYYYMMDD-<sha7>`,
+built and published by `launcher-release.yml` (manually, or with
+`/release-launcher` on a merged PR). Each release carries:
+
+| Asset | Purpose |
+|---|---|
+| `sgw-launcher-<tag>.exe` | the launcher |
+| `sgw-launcher-<tag>.exe.sha256` | its SHA-256 in `sha256sum` format (`<hex>  <file name>`). Launchers from the self-update release on verify their download against it, and never offer a release without it. |
+| overlay `.zip` + `.entry.json` | only when there is a client-patches UI overlay (below) |
+
+Players' launchers find new releases through the GitHub API by the
+`launcher-` prefix, skipping drafts and prereleases, so neither server
+releases nor `content-current` get in the way. To hold a launcher
+release back from automatic updates, mark it as a prerelease (or delete
+its `.sha256`); to withdraw one, delete the release.
+
+To make players update, set the manifest's optional `min_launcher` to the
+release's tag and re-sign the manifest; see
+[launcher-guide.md](launcher-guide.md#minimum-launcher-version-min_launcher).
+Publish the launcher release before the manifest that requires it.
+
+Launchers up to `launcher-20260929-f518b57` have no updater; those
+players download the first self-updating release by hand once.
 
 ### Publishing a content drop
 

@@ -244,7 +244,7 @@ async fn verify_and_unpack(
     .map_err(|e| InstallError::Io(std::io::Error::other(format!("unpack task failed: {e}"))))?
 }
 
-async fn download_to_file(
+pub(crate) async fn download_to_file(
     http: &reqwest::Client,
     url: &str,
     dest: &Path,
@@ -348,7 +348,7 @@ fn verify_sha256(path: &Path, expected: &str, what: &str) -> Result<(), InstallE
     Ok(())
 }
 
-fn hash_file(path: &Path) -> std::io::Result<String> {
+pub(crate) fn hash_file(path: &Path) -> std::io::Result<String> {
     let mut f = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 1024 * 64];
@@ -635,6 +635,7 @@ mod tests {
     fn fake_manifest(seed_hash: &str) -> crate::manifest::Manifest {
         crate::manifest::Manifest {
             schema: 1,
+            min_launcher: None,
             seed: crate::manifest::SeedEntry {
                 blob: "seed/x.zip".into(),
                 size: 1,

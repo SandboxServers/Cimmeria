@@ -19,6 +19,7 @@ mod overlay_meta;
 #[cfg(test)]
 mod overlay_pack;
 mod patch_dest;
+mod self_update;
 mod start32_helper;
 mod state;
 mod telemetry;
@@ -78,7 +79,20 @@ fn main() -> eframe::Result<()> {
     // resolves to fs4's trait method (`Result<(), TryLockError>`, `is_err()` =
     // contended) rather than std's inherent `File::try_lock` (`Ok(false)` on
     // contention), whose semantics differ.
-    if FileExt::try_lock(&lock_file).is_err() {
+    //
+    // A launcher started by a self-update waits for the one that started it
+    // to exit and let go of the lock; a normal second start fails at once.
+    let relaunched = std::env::var_os(self_update::swap::RELAUNCH_ENV).is_some();
+    let lock_wait = if relaunched {
+        std::time::Duration::from_secs(30)
+    } else {
+        std::time::Duration::ZERO
+    };
+    if !self_update::swap::acquire_lock(
+        || FileExt::try_lock(&lock_file).is_ok(),
+        lock_wait,
+        std::time::Duration::from_millis(250),
+    ) {
         let msg = format!(
             "Another Stargate Worlds Launcher instance appears to be running \
              (lock held at {}). Close the other instance and retry.",
@@ -87,6 +101,8 @@ fn main() -> eframe::Result<()> {
         fatal_startup_error("Stargate Worlds Launcher", &msg);
         std::process::exit(3);
     }
+    // Delete the previous exe a self-update left as `<exe>.old`.
+    self_update::spawn_startup_cleanup();
 
     let runtime = Arc::new(Runtime::new().expect("failed to create tokio runtime"));
     let runtime_for_app = runtime.clone();

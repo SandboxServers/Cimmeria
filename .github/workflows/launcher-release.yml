@@ -84,34 +84,57 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
         with:
           shared-key: launcher-release
-      - name: build the i686 client-patches and client-telemetry DLLs and sgw-start32 helper
-        shell: bash
-        run: tools/launcher-release/build.sh i686
-
-      - name: build the 64-bit launcher, embedding them
-        shell: bash
-        run: tools/launcher-release/build.sh launcher
-
-      - name: verify the artifacts
-        shell: bash
-        run: tools/launcher-release/build.sh verify
+      # Stamped BEFORE the build: the launcher embeds the tag and the build
+      # time (CIMMERIA_LAUNCHER_TAG / CIMMERIA_LAUNCHER_BUILD_EPOCH, read by
+      # src/self_update/build_info.rs) to decide whether a later release is
+      # newer. Same-day releases are ordered by this job's start time
+      # against a release's published_at, which is sound because the
+      # `launcher-release` concurrency group runs one release at a time; see
+      # src/self_update/version.rs. Builds without the stamp (PR, local) are
+      # development builds and never update themselves.
       - name: stamp version
         id: stamp
         shell: bash
         run: |
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          DATE=$(date -u +%Y%m%d)
+          EPOCH=$(date -u +%s)
+          DATE=$(date -u -d "@${EPOCH}" +%Y%m%d)
           TAG="launcher-${DATE}-${SHORT_SHA}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "epoch=${EPOCH}" >> "$GITHUB_OUTPUT"
+      - name: build the i686 client-patches and client-telemetry DLLs and sgw-start32 helper
+        shell: bash
+        run: tools/launcher-release/build.sh i686
+
+      - name: build the 64-bit launcher, embedding them
+        shell: bash
+        env:
+          CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ steps.stamp.outputs.epoch }}
+        run: tools/launcher-release/build.sh launcher
+
+      - name: verify the artifacts
+        shell: bash
+        env:
+          CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
+        run: tools/launcher-release/build.sh verify
+      # The .sha256 (sha256sum format, `<hex>  <file name>`) is what the
+      # launcher's self-update verifies its download against; a release
+      # without one is never offered as an update.
       - name: stage artifact
         shell: bash
+        env:
+          TAG: ${{ steps.stamp.outputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          cp target/release/sgw-launcher.exe \
-            "artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe"
+          EXE="sgw-launcher-${TAG}.exe"
+          cp target/release/sgw-launcher.exe "artifacts/${EXE}"
+          HASH=$(sha256sum "artifacts/${EXE}" | cut -d' ' -f1)
+          printf '%s  %s\n' "${HASH}" "${EXE}" > "artifacts/${EXE}.sha256"
+          cat "artifacts/${EXE}.sha256"
       # The overlay zip is served from this release's own immutable tag, so
       # the entry's blob URL points here. With no overlay committed the tool
       # prints "nothing to pack" and the release carries the launcher alone.
@@ -126,6 +149,7 @@ jobs:
           name: sgw-launcher-${{ steps.stamp.outputs.tag }}
           path: |
             artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe
+            artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe.sha256
             overlay-out/
           retention-days: 30
       - name: create GitHub release
@@ -156,4 +180,5 @@ jobs:
           gh release create "${TAG}" \
             --title "Launcher ${TAG}" \
             --notes "${BODY}" \
-            "artifacts/sgw-launcher-${TAG}.exe" "${overlay[@]}"
+            "artifacts/sgw-launcher-${TAG}.exe" "artifacts/sgw-launcher-${TAG}.exe.sha256" \
+            "${overlay[@]}"

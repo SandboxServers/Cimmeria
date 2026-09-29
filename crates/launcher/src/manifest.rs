@@ -156,6 +156,13 @@ pub enum ManifestError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub schema: u32,
+    /// Oldest launcher release (a `launcher-YYYYMMDD-<sha>` tag) this
+    /// manifest supports. Optional, so no schema bump: an older launcher
+    /// ignores it, and a newer one that is older than the minimum turns off
+    /// Install / Update and Launch and makes the update banner mandatory.
+    /// See [`crate::self_update::version::check_min_launcher`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_launcher: Option<String>,
     pub seed: SeedEntry,
     #[serde(default)]
     pub patches: Vec<PatchEntry>,
@@ -436,6 +443,7 @@ mod tests {
     fn validates_simple_chain() {
         let m = Manifest {
             schema: 1,
+            min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", None), patch("b", Some("a"))],
         };
@@ -446,6 +454,7 @@ mod tests {
     fn rejects_forward_after_ref() {
         let m = Manifest {
             schema: 1,
+            min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", Some("b")), patch("b", None)],
         };
@@ -456,6 +465,7 @@ mod tests {
     fn rejects_unknown_after_ref() {
         let m = Manifest {
             schema: 1,
+            min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", Some("zzz"))],
         };
@@ -466,6 +476,7 @@ mod tests {
     fn rejects_duplicate_ids() {
         let m = Manifest {
             schema: 1,
+            min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", None), patch("a", Some("a"))],
         };
@@ -476,6 +487,7 @@ mod tests {
     fn rejects_unsupported_schema() {
         let m = Manifest {
             schema: 99,
+            min_launcher: None,
             seed: seed(),
             patches: vec![],
         };

@@ -7,8 +7,10 @@
 mod launch_sgw;
 mod launch_telemetry;
 mod messages;
+mod self_update;
 
 pub use messages::{Command, Event, LaunchSgwRequest, LaunchTelemetryConfig};
+pub use self_update::UpdateEvent;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -59,6 +61,9 @@ pub struct Worker {
     /// http on this machine, which `http` refuses. Its address policy
     /// is [`crate::telemetry::endpoint`].
     telemetry_http: reqwest::Client,
+    /// The self-updater's client (GitHub hosts only), endpoints and build
+    /// identity.
+    updater: self_update::Updater,
 }
 
 impl Worker {
@@ -75,6 +80,7 @@ impl Worker {
             current_install_cancel: None,
             http,
             telemetry_http: crate::telemetry::endpoint::client(),
+            updater: self_update::Updater::production(),
         }
     }
 
@@ -108,6 +114,8 @@ impl Worker {
                 install_dir,
                 telemetry,
             } => self.spawn_launch_with_telemetry(install_dir, telemetry),
+            Command::CheckForUpdate => self.spawn_update_check(),
+            Command::ApplyUpdate(release) => self.spawn_update_apply(release),
         }
     }
 
@@ -393,6 +401,7 @@ mod tests {
     fn fake_manifest() -> Manifest {
         Manifest {
             schema: 1,
+            min_launcher: None,
             seed: SeedEntry {
                 blob: "seed/x.zip".into(),
                 size: 1,

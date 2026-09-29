@@ -9,7 +9,10 @@
 #   i686             build the 32-bit artifacts: cimmeria-client-patches.dll,
 #                    the player build of cimmeria-client-telemetry.dll (no
 #                    lab-bridge feature) and the sgw-start32.exe helper
-#   launcher         build the 64-bit launcher, embedding the i686 artifacts
+#   launcher         build the 64-bit launcher, embedding the i686 artifacts;
+#                    a release exports CIMMERIA_LAUNCHER_TAG and
+#                    CIMMERIA_LAUNCHER_BUILD_EPOCH first (the self-update
+#                    identity); without them it is a development build
 #   verify           check the artifacts: bitness, the helper's manifest and
 #                    version resource, the telemetry DLL is not a lab-bridge
 #                    build, all embedded in the launcher
@@ -115,6 +118,14 @@ stage_verify() {
   contains "$LAUNCHER" "$DLL" || die "the launcher does not embed $DLL"
   contains "$LAUNCHER" "$TELEMETRY_DLL" || die "the launcher does not embed $TELEMETRY_DLL"
   contains "$LAUNCHER" "$HELPER" || die "the launcher does not embed $HELPER"
+  # A release build must carry its tag, or it is a development build that
+  # never updates itself.
+  if [ -n "${CIMMERIA_LAUNCHER_TAG:-}" ]; then
+    python -c "import sys; sys.exit(0 if open(sys.argv[1],'rb').read().find(sys.argv[2].encode()) >= 0 else 1)" \
+      "$(winpath "$LAUNCHER")" "$CIMMERIA_LAUNCHER_TAG" \
+      || die "the launcher does not embed its release tag $CIMMERIA_LAUNCHER_TAG"
+    echo "launcher embeds release tag $CIMMERIA_LAUNCHER_TAG"
+  fi
   echo "verified: 32-bit DLLs (player telemetry build) + helper, all embedded in the 64-bit launcher"
 }
 
@@ -132,5 +143,5 @@ case "${1:-}" in
   verify) stage_verify ;;
   overlay) shift; stage_overlay "$@" ;;
   paths) printf '%s\n' "DLL=$DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "HELPER=$HELPER" "LAUNCHER=$LAUNCHER" ;;
-  *) sed -n '2,20p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,23p' "$0" >&2; exit 2 ;;
 esac

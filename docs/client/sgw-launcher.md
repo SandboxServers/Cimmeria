@@ -2,7 +2,7 @@
 title: "SGW Launcher"
 type: explanation
 audience: engineers
-last_updated: 2026-09-27
+last_updated: 2026-09-29
 ---
 
 # SGW Launcher
@@ -38,6 +38,7 @@ window with no webview dependency.
 | **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, tails the client logs, and uploads chunks/bundles. It injects no DLL: the Atera bat starts `SGW.exe` itself. See `src/telemetry/` and [operations/telemetry.md](../operations/telemetry.md). |
 | **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (enabled only if the Atera fix-ASLR bat is present). |
 | **Upload debug logs** | Zips `sgwdebuglog*` (case-blind) + `sessions/**` from the binaries directory and PUTs once to the Azure log SAS URL. |
+| **Self-update** | Checks GitHub Releases for a newer `launcher-*` release at startup and, on one click, downloads it, verifies it against the release's `.sha256`, swaps it in for the running exe and relaunches. See [Self-update](#self-update-srcself_update). |
 
 The launch buttons, client setup, adoption and the log upload all
 find the game through `src/install_layout.rs`, which resolves the
@@ -447,6 +448,106 @@ See [docs/client/launcher-distribution-setup.md](launcher-distribution-setup.md)
 for the operator side: GitHub Releases publish flow for content,
 Ed25519 manifest signing setup, and the Azure Blob SAS for log uploads.
 
+## Self-update (`src/self_update/`)
+
+The launcher replaces itself with a newer launcher release. Maintainer
+decisions of 2026-09-29: discovery and trust through GitHub Releases, a
+one-click prompt, and an optional `min_launcher` gate in the manifest.
+Player-facing behaviour: [launcher-guide.md](launcher-guide.md#launcher-updates).
+
+**Identity.** The release workflow stamps the tag
+(`launcher-YYYYMMDD-<sha7>`) and the job's start time (Unix seconds)
+before it builds, and passes them to the launcher build as
+`CIMMERIA_LAUNCHER_TAG` and `CIMMERIA_LAUNCHER_BUILD_EPOCH`
+(`option_env!`, `build_info.rs`). A build missing either, or with a
+malformed value, is a development build: it makes no request and offers
+nothing. `build.sh verify` fails a release build that does not embed its
+tag.
+
+**Discovery.** One unauthenticated `GET
+api.github.com/repos/SandboxServers/Cimmeria/releases?per_page=100` per
+start (and per **Check for updates**), with a `sgw-launcher/<tag>`
+User-Agent. `/releases/latest` is not enough: server releases (`v2026-…`)
+and the `content-current` prerelease share the repository. Candidates are
+non-draft, non-prerelease `launcher-*` releases that carry both
+`sgw-launcher-<tag>.exe` and `sgw-launcher-<tag>.exe.sha256`; the newest
+by `published_at` wins. 403 with `x-ratelimit-remaining: 0` and 429 are
+reported as rate limiting, connection failures as offline; both are one
+status-log line.
+
+**Ordering (never downgrade).** A release is newer than the running
+build when the tags differ, the release's tag date is not earlier, and
+it was published after the running build's stamped start time. The last
+rule orders two releases cut on one day. It is sound because the
+`launcher-release` concurrency group runs one release job at a time and
+each job publishes at its end: every later release is published after
+this build started, every earlier one before. The rule and its tests
+are in `version.rs`.
+
+**`min_launcher`.** An optional top-level manifest field, a launcher tag
+(no schema bump). A different day decides by date; the same day by the
+required release's `published_at`, looked up in the last release list,
+and the player is let through when it is not known. Malformed values are
+ignored with a WARN; development builds are exempt. When it blocks,
+Install / Update and every launch button are off and the banner is
+mandatory.
+
+**Download and verify.** The download goes to
+`.sgw-launcher-update-<tag>.exe.part` beside the running exe, through
+the install pipeline's Range-resuming downloader. It must match the size
+the release lists and the SHA-256 in the `.sha256` asset (sha256sum
+format; a file name in it must be the exe's) before anything else
+happens; a mismatch deletes it. The updater's HTTP client is https-only
+and follows redirects only to `github.com`,
+`objects.githubusercontent.com` and
+`release-assets.githubusercontent.com`; asset URLs are checked against
+the same list before the first request. A directory the launcher cannot
+write (a `Program Files` install) stops the update before any download,
+and the banner links the release page.
+
+**Swap.** Windows lets a running image be renamed but not replaced:
+
+1. delete a leftover `<exe>.old`;
+2. rename the running `<exe>` to `<exe>.old`;
+3. rename the verified download to `<exe>`; if that fails, rename
+   `<exe>.old` back;
+4. start `<exe>` with the same arguments and `SGW_LAUNCHER_UPDATED_FROM`
+   set; if it will not start, delete it and rename `<exe>.old` back;
+5. close the window, which releases `launcher.lock`.
+
+Every path comes from `std::env::current_exe`, so a renamed launcher
+stays renamed. The relaunched process sees `SGW_LAUNCHER_UPDATED_FROM`,
+waits up to 30 s for the lock instead of failing with "another
+instance", and deletes `<exe>.old` in the background, retrying while the
+old process exits (the next start retries if it stays locked).
+
+**Telemetry.** Every step logs on target `launcher.update` with an
+`event` field: `update_check` (`outcome` = `dev_build`, `no_release`,
+`up_to_date`, `available`), `update_check_failed`, `release_skipped`
+(DEBUG), `update_download_started`, `update_verified`, `update_swapped`,
+`update_relaunched`, `update_rollback`, `update_failed`,
+`update_started_new`, `update_old_removed`, `update_old_remove_failed`.
+Refusals and failures carry `reason` (`rate_limited`, `offline`,
+`http_status`, `parse_failed`, `dir_not_writable`, `untrusted_url`,
+`bad_checksum_file`, `http_failed`, `io_failed`, `size_mismatch`,
+`sha256_mismatch`, `stale_old_locked`, `move_aside_failed`,
+`install_failed_rolled_back`, `rollback_failed`, `relaunch_failed`,
+`still_locked`).
+
+**Tests.** `self_update/` pins the ordering (same-day, same tag, no
+downgrade, dev builds), the release filter over a realistic releases
+fixture (`testdata/releases.json`), size and SHA-256 mismatches deleting
+the download, the host allow-list and redirects, the swap and its
+rollbacks in a temp directory, `.old` cleanup (including a locked file),
+the relaunch lock wait, rate limiting and offline against a loopback
+stub, and `min_launcher` parsing and gating. `app/update_banner.rs` pins
+the banner state machine.
+
+Not done: a code-signed exe (deferred with the rest of launcher signing)
+and a signed update manifest (trust is HTTPS plus GitHub, as for a manual
+download). Only the first 100 releases are scanned, so a launcher release
+buried under more than 100 newer server releases is not seen.
+
 ---
 
 ## Build
@@ -494,7 +595,7 @@ Three GitHub Actions workflows mirror the server's pattern:
 | Workflow | File | Trigger |
 |---|---|---|
 | **launcher** | [`.github/workflows/launcher-build.yml`](../../.github/workflows/launcher-build.yml) | Path-filtered fmt/clippy/build/test/coverage (five jobs; the `coverage` job runs `cargo llvm-cov`) on PRs touching `crates/launcher/**`, `crates/client-launch/**`, `crates/client-patches/overlay/**` or `.github/workflows/launcher-*.yml`. Clippy covers `cimmeria-client-launch` and `cimmeria-start32` too. The test job builds the i686 `sgw-start32` helper and runs the x64 tests with `CIMMERIA_TEST_START32` set, so the helper injects a real DLL into a real 32-bit process. A `release-dry-run` job runs the release build stages (`tools/launcher-release/build.sh`) without signing or publishing, because the release workflow itself only runs on a release. |
-| **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds the i686 client-patches DLL and `sgw-start32` helper, then the 64-bit launcher embedding both with `LAUNCHER_LOG_SAS_URL` injected from secrets, verifies them, packs the UI overlay, and creates a GitHub Release tagged `launcher-<date>-<sha7>` with the exe and, when there is an overlay, its patch zip and `.entry.json`. |
+| **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds the i686 client-patches DLL and `sgw-start32` helper, then the 64-bit launcher embedding both with `LAUNCHER_LOG_SAS_URL` injected from secrets, verifies them, packs the UI overlay, and creates a GitHub Release tagged `launcher-<date>-<sha7>` with the exe, its `.sha256` (what self-update verifies against) and, when there is an overlay, its patch zip and `.entry.json`. The tag and the build time are stamped before the build and embedded in the launcher (`CIMMERIA_LAUNCHER_TAG`, `CIMMERIA_LAUNCHER_BUILD_EPOCH`). |
 | **launcher-release-on-comment** | [`.github/workflows/launcher-release-on-comment.yml`](../../.github/workflows/launcher-release-on-comment.yml) | Mirror of `release-on-comment.yml` but matches `/release-launcher` on a merged PR. Validates commenter has write access, dispatches `launcher-release.yml`. |
 
 Two repo secrets feed the release build: `LAUNCHER_LOG_SAS_URL` (log
@@ -527,6 +628,7 @@ crates/launcher/
     │   ├── mod.rs              # eframe::App — state machine
     │   ├── view.rs             # panel rendering
     │   ├── telemetry_panel.rs  # telemetry opt-in prompt + checkbox
+    │   ├── update_banner.rs    # self-update banner + min_launcher gate
     │   └── client_changes_panel.rs  # "Changes to your client" list
     ├── client_changes.rs       # every deviation from the stock client
     ├── config.rs               # LauncherConfig (next to .exe)
@@ -561,6 +663,15 @@ crates/launcher/
     ├── identity.rs             # stable per-install identity
     ├── logs.rs                 # log collection + zip + Azure PUT
     ├── state.rs                # InstalledState + UploadedLedger
+    ├── self_update/
+    │   ├── mod.rs              # check() + apply() orchestration, startup cleanup
+    │   ├── build_info.rs       # embedded release tag + build time
+    │   ├── releases.rs         # GitHub Releases lookup, host allow-list
+    │   ├── version.rs          # ordering rule + min_launcher gate
+    │   ├── download.rs         # download beside the exe, size + SHA-256
+    │   ├── swap.rs             # rename-aside swap, rollback, relaunch, lock wait
+    │   ├── *_tests.rs          # loopback-stub and temp-dir tests
+    │   └── testdata/releases.json  # releases-list fixture
     ├── telemetry/
     │   ├── mod.rs
     │   ├── auth.rs             # dev-session token mint / refresh
@@ -579,6 +690,7 @@ crates/launcher/
         ├── launch_sgw.rs       # SGW.exe launch, DLL attempts and fallbacks
         ├── launch_sgw_tests.rs # its tests (exact helper command lines)
         ├── launch_telemetry.rs # opted-in session: start before the game, follow it
+        ├── self_update.rs      # update check / apply tasks -> UpdateEvent
         └── messages.rs         # Command/Event channel types
 ```
 

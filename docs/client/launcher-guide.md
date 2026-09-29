@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-09-27
+last_updated: 2026-09-29
 ---
 
 # Launcher Guide
@@ -35,11 +35,13 @@ Azure Blob SAS for log uploads) see
   - [Install layout](#install-layout)
   - [The launch buttons](#the-launch-buttons)
   - [Uploading debug logs](#uploading-debug-logs)
+  - [Launcher updates](#launcher-updates)
 - [Part 2 — For operators (publishing patches)](#part-2--for-operators-publishing-patches)
   - [Step 1 — Build the seed](#step-1--build-the-seed)
   - [Step 2 — Build a patch zip](#step-2--build-a-patch-zip)
   - [Step 3 — Write the manifest](#step-3--write-the-manifest)
     - [Schema versioning policy](#schema-versioning-policy)
+    - [Minimum launcher version (`min_launcher`)](#minimum-launcher-version-min_launcher)
   - [Step 4 — Sign + publish to GitHub Releases](#step-4--sign--publish-to-github-releases)
   - [Append-only invariants](#append-only-invariants)
   - [Future automation](#future-automation)
@@ -307,6 +309,54 @@ If the launcher you're running has no upload SAS baked in (i.e. it was
 built from a PR or a local dev build), the button is disabled with a
 friendly note. Only the official release pipeline injects the SAS.
 
+### Launcher updates
+
+The launcher updates itself. At startup it asks GitHub once, in the
+background, whether a newer launcher release exists; the window opens
+straight away. Under the title, a small line shows the running version
+(`Launcher launcher-YYYYMMDD-<sha>`) and a **Check for updates** button.
+
+When a newer release exists, a banner at the top of the window reads
+**Launcher update available (launcher-…)** with an **Update now** button
+and a link to the release notes. One click:
+
+1. Downloads the new launcher into the launcher's own folder, with a
+   progress bar in the banner.
+2. Checks the download against the size and the SHA-256 published in
+   the same GitHub release. A download that does not match is deleted
+   and nothing else changes.
+3. Renames the running launcher to `<its name>.old`, puts the new one at
+   the old name, and starts it with the same arguments. If the new one
+   cannot be put in place or will not start, the old one is renamed back.
+4. Closes the old window. The new launcher's status log says
+   `Launcher updated from … to …`, and it deletes the `.old` file.
+
+The launcher keeps its file name, whatever you renamed it to, and the
+settings files beside it (`launcher-config.json` and the rest) are left
+alone. **Update now** is off while an install is running. Updating closes
+the launcher, so if a game launched with telemetry is still running, that
+telemetry session ends; update between sessions.
+
+A launcher you built yourself (or from a pull request) never updates: the
+version line reads `development build — updates disabled`.
+
+The check is one request to the GitHub API, which allows 60 anonymous
+requests an hour per address. When you are offline or over that limit,
+the status log says `Could not check for launcher updates: …` and the
+launcher carries on; the next start checks again.
+
+> **Launcher `launcher-20260929-f518b57` and older have no updater.**
+> Download the newest `sgw-launcher-launcher-….exe` from the
+> [releases page](https://github.com/SandboxServers/Cimmeria/releases)
+> by hand once. It updates itself from then on.
+
+**Required updates.** The server's operator can require a minimum
+launcher version (the manifest's
+[`min_launcher`](#minimum-launcher-version-min_launcher)). When yours is
+older, a red line under the title says so, **Install / Update** and the
+launch buttons are off, and the banner offers the update. When the update
+check could not run, it links to the releases page instead.
+
 ---
 
 ## Part 2 — For operators (publishing patches)
@@ -499,6 +549,27 @@ For changes that don't fit the additive-optional shape, prefer the
 new-launcher path over a schema bump — e.g. adding a new manifest URL
 prefix and pointing new launcher releases at it, while keeping the old
 URL serving the old schema for existing installs.
+
+#### Minimum launcher version (`min_launcher`)
+
+An optional top-level field, so no schema bump (a launcher older than
+the field ignores it):
+
+```json
+{ "schema": 1, "min_launcher": "launcher-20261002-bbbbbbb", "seed": { … }, "patches": [ … ] }
+```
+
+A launcher release older than this tag turns off **Install / Update** and
+the launch buttons and shows a mandatory update banner. Order: a
+different day decides by the tag's date. On the same day, the required
+release is newer when it was published after the running launcher was
+built; the launcher looks the tag up in the release list it just
+fetched, and lets the player through when it could not fetch it. A value
+that is not a launcher tag is ignored, with a WARN in the launcher's log.
+Development builds are never gated.
+
+Publish the launcher release first, then the manifest that requires it.
+The field is signed with the rest of the manifest.
 
 ### Step 4 — Sign + publish to GitHub Releases
 
@@ -696,6 +767,44 @@ not appear after a fresh install.
   If you already answered **Yes** after an older launcher's install,
   your `SGW*.ini` files recorded that install's dates instead, so the
   first launch after the reinstall asks once more.
+
+### "Launcher update failed: …"
+
+The update stopped before it changed anything, or it put the old
+launcher back. The message says why:
+
+- **`… is not writable …`**: the launcher is in a folder you cannot write
+  to without admin rights, such as `C:\Program Files`. Move the launcher
+  (and the files beside it) to a folder of your own, such as
+  `%LOCALAPPDATA%\Stargate Worlds Launcher`, or download the new version
+  from the linked release page.
+- **`… does not match the release's SHA-256 …`** or **`… bytes, the
+  release lists …`**: the download was damaged or cut short, and it was
+  deleted. Click **Try again**.
+- **`… untrusted address …`** or **`… does not trust …`**: the download
+  was sent somewhere other than GitHub, so it was refused. Download by
+  hand from the release page.
+- **`… could not remove the previous update's leftover …`**: an old
+  `<launcher>.exe.old` is locked, usually by antivirus scanning it. Wait
+  a minute, or delete the `.old` file by hand, then try again.
+- **`the new launcher would not start …`**: the old launcher was put
+  back. Antivirus usually quarantined the new one; see the next entry.
+
+The link under the message opens the release page, where you can
+download the new exe by hand and replace yours with it.
+
+### Antivirus or SmartScreen after a launcher update
+
+Every launcher release is a new unsigned exe. Windows may warn about it
+the first time the updated launcher runs, and Defender may scan or
+quarantine it. If no launcher window comes back after **Update now**,
+look in **Windows Security → Virus & threat protection → Protection
+history**, restore the file, and add the folder exclusion described in
+[Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
+If the launcher's own name is missing from its folder, rename
+`<launcher>.exe.old` back to it. A leftover `.old` file next to a
+working launcher is safe to delete; the launcher also deletes it at its
+next start.
 
 ### Windows Defender or SmartScreen blocks the launcher
 
