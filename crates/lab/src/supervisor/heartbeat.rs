@@ -86,9 +86,37 @@ impl HeartbeatWatchdog {
     }
 }
 
+/// A failed heartbeat poll is forgiven when another bridge call succeeded
+/// within this window: the heartbeat was queued behind probe traffic (an
+/// agent walking memory with hundreds of reads), and the client is alive.
+pub const BUSY_GRACE_MS: i64 = 5_000;
+
+/// The consecutive-failure count after a failed heartbeat poll, given how
+/// long ago any bridge call last succeeded. A busy bridge resets the count
+/// instead of counting toward a kill.
+pub fn next_fail_count(fails: u32, ms_since_last_ok: Option<i64>, grace_ms: i64) -> u32 {
+    match ms_since_last_ok {
+        Some(ms) if ms < grace_ms => 0,
+        _ => fails + 1,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Live regression (2026-09-29): hundreds of mem_reads starved the
+    /// heartbeat, five misses in a row killed a healthy client. A miss
+    /// while other calls are completing must not count.
+    #[test]
+    fn heartbeat_misses_behind_busy_traffic_do_not_count() {
+        assert_eq!(next_fail_count(4, Some(200), BUSY_GRACE_MS), 0);
+        assert_eq!(
+            next_fail_count(4, Some(BUSY_GRACE_MS + 1), BUSY_GRACE_MS),
+            5
+        );
+        assert_eq!(next_fail_count(0, None, BUSY_GRACE_MS), 1);
+    }
 
     fn wd() -> HeartbeatWatchdog {
         HeartbeatWatchdog::new(Duration::from_secs(5))

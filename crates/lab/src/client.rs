@@ -36,6 +36,10 @@ struct ConnState {
 pub struct BridgeClient {
     state: Mutex<ConnState>,
     next_id: AtomicI64,
+    /// Wall-clock ms of the last successful bridge response (any method).
+    /// The watchdog reads it: a heartbeat that fails while other calls are
+    /// completing is starved behind probe traffic, not a dead client.
+    last_ok_ms: AtomicI64,
 }
 
 impl BridgeClient {
@@ -47,6 +51,7 @@ impl BridgeClient {
                 stream: None,
             }),
             next_id: AtomicI64::new(1),
+            last_ok_ms: AtomicI64::new(0),
         }
     }
 
@@ -68,7 +73,10 @@ impl BridgeClient {
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
         let mut guard = self.state.lock().await;
         match self.call_inner(&mut guard, method, params).await {
-            Ok(v) => Ok(v),
+            Ok(v) => {
+                self.last_ok_ms.store(now_ms(), Ordering::Relaxed);
+                Ok(v)
+            }
             Err(e) => {
                 // Force a fresh connect + re-auth next time.
                 guard.stream = None;
@@ -113,6 +121,15 @@ impl BridgeClient {
             .ok_or_else(|| anyhow!("bridge response had neither result nor error"))
     }
 
+    /// Milliseconds since the last successful bridge response, or `None`
+    /// if there has not been one.
+    pub fn ms_since_last_ok(&self) -> Option<i64> {
+        match self.last_ok_ms.load(Ordering::Relaxed) {
+            0 => None,
+            t => Some(now_ms() - t),
+        }
+    }
+
     /// Read the bridge's Tick-drain heartbeat counter. Used by the
     /// watchdog: a value that stops advancing (or a call that fails)
     /// means the client's main thread is wedged.
@@ -123,6 +140,13 @@ impl BridgeClient {
             .and_then(Value::as_u64)
             .ok_or_else(|| anyhow!("heartbeat result missing tick_count: {result}"))
     }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 async fn connect_and_auth(addr: &str, token: &str) -> Result<TcpStream> {
