@@ -19,12 +19,18 @@
 #
 # # What this overlay does
 #
-# Mounts a server-side `/opt/cimmeria/config/discord.toml` into the
-# cimmeria container via Docker Compose's `configs:` mechanism (same
-# pattern the SigNoz services use). cimmeria-discord's `init()`
-# resolves that path at startup and the notifications crate posts to
-# the configured webhooks. No environment variables involved in the
-# container — the rendered TOML carries the real URLs.
+# Passes the Discord TOML to the container in `DISCORD_CONFIG_TOML`.
+# docker/entrypoint.sh writes it to `/opt/cimmeria/config/discord.toml`
+# (owner cimmeria, mode 0440) before the server starts, and
+# cimmeria-discord's `init()` reads that path.
+#
+# Why an environment variable and not compose `configs:`: compose copies
+# a `configs: content:` file into the container only when compose itself
+# creates it. Watchtower recreates the container from its runtime config
+# on every image update, the file is not part of that, and the server
+# came back with Discord silently disabled. The environment is part of
+# it. The trade-off: the webhook URLs are visible to anyone who can run
+# `docker inspect`, who could read the mounted file anyway.
 #
 # # Adding more channels
 #
@@ -44,43 +50,30 @@
 
 services:
   cimmeria:
-    configs:
-      - source: discord-config
-        target: /opt/cimmeria/config/discord.toml
-        # Server runs as the `cimmeria` user (UID/GID 1001) per the
-        # Dockerfile. 0440 + matching owner means only cimmeria + root
-        # can read the file; the file contains webhook auth tokens, so
-        # the world-readable default would be a credential leak on a
-        # shared host.
-        uid: "1001"
-        gid: "1001"
-        mode: 0440
+    environment:
+      # See "Why an environment variable" above. Do not introduce ${VAR}
+      # references inside this block: Compose interpolates `${VAR}` at
+      # `compose up` time and would either substitute from the host
+      # environment (leaking it into the TOML) or fail on unset
+      # variables. Sentinels are the only safe templating mechanism here
+      # because Compose passes them through untouched.
+      DISCORD_CONFIG_TOML: |
+        [discord]
+        enabled = true
+        username = "Cimmeria (colo)"
 
-configs:
-  discord-config:
-    # NOTE: do not introduce ${VAR} references inside this content
-    # block — Docker Compose interprets `${VAR}` at `compose up` time
-    # and would either substitute from the host environment (leaking
-    # the colo host's env into the rendered TOML) or fail outright on
-    # unset variables. Sentinels are the only safe templating mechanism
-    # here because Compose passes them through untouched.
-    content: |
-      [discord]
-      enabled = true
-      username = "Cimmeria (colo)"
+        [discord.channels.lifecycle]
+        url = "__DISCORD_LIFECYCLE_WEBHOOK__"
+        rate_limit_per_min = 30
 
-      [discord.channels.lifecycle]
-      url = "__DISCORD_LIFECYCLE_WEBHOOK__"
-      rate_limit_per_min = 30
+        [discord.channels.errors]
+        url = "__DISCORD_ERRORS_WEBHOOK__"
+        rate_limit_per_min = 60
 
-      [discord.channels.errors]
-      url = "__DISCORD_ERRORS_WEBHOOK__"
-      rate_limit_per_min = 60
-
-      [discord.events]
-      # Defaults match crates/discord/src/config.rs `EventToggles::default()`.
-      # Override here when the colo's signal preferences diverge from
-      # the local-dev defaults — e.g. turn `warning` on for the colo so
-      # ops sees non-fatal regressions even when the day-to-day dev
-      # noise is muted.
-      warning = true
+        [discord.events]
+        # Defaults match crates/discord/src/config.rs `EventToggles::default()`.
+        # Override here when the colo's signal preferences diverge from
+        # the local-dev defaults — e.g. turn `warning` on for the colo so
+        # ops sees non-fatal regressions even when the day-to-day dev
+        # noise is muted.
+        warning = true

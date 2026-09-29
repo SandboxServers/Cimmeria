@@ -240,6 +240,35 @@ fn a_hovering_spawn_is_spawn_off_mesh_once() {
     assert!(found[0].has_field("gate", "start_box"));
 }
 
+/// The same hovering spawn marked stationary never paths, so the start box
+/// cannot fail it: no WARN. Revert-proof: dropping the `is_stationary` skip
+/// in `check_spawn` brings the row back.
+#[test]
+fn a_hovering_stationary_spawn_is_not_spawn_off_mesh() {
+    let (mut mgr, _) = cellblock_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle_CellBlock",
+        [MESSHALL[0], MESSHALL[1] + 2.0, MESSHALL[2]],
+        None,
+        AiState::Idle,
+    );
+    let e = mgr.get_entity_mut(NPC).unwrap();
+    e.spawn_id = Some(29);
+    e.is_stationary = true;
+    let logs = LogCapture::install();
+    crate::cell::service::npc_ai::detectors::spawn::check_spawn(&mut mgr, NPC);
+    assert!(
+        rows(&logs, "spawner.npc_behaviour", "spawn_off_mesh").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+    assert_eq!(
+        rows(&logs, "spawner.npc_behaviour", "spawn_off_mesh_skipped").len(),
+        1
+    );
+}
+
 /// An NPC that never gets a route at all (meshless space, no stale path)
 /// is stuck too: `no_path` counts without a path. Revert-proof: requiring
 /// a non-empty path for `no_path` again leaves no row.

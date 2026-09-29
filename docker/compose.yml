@@ -93,6 +93,18 @@ services:
     # attaches the same anon volume to the new container before
     # removing the old one (so Docker refuses the volume removal).
     # The entrypoint-level reseed sidesteps that mechanic entirely.
+    volumes:
+      # Server logs (logs/*.log, plus logs/archive/<timestamp>/ per restart).
+      # A host bind mount survives watchtower swaps; without it every
+      # update deleted the previous run's logs. Point CIMMERIA_LOG_DIR at
+      # a roomy disk: the files have no rotation of their own.
+      - "${CIMMERIA_LOG_DIR:-./logs}:/var/log/cimmeria"
+    logging:
+      # Container stdout (server console + postgres) is otherwise unbounded.
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 

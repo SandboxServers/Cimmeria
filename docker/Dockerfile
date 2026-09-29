@@ -209,10 +209,13 @@ COPY --chown=cimmeria:cimmeria data/spaces /opt/cimmeria/data/spaces
 # the binary, so it doesn't ship in the runtime image.
 COPY --chown=cimmeria:cimmeria entities/spaces.xml      /opt/cimmeria/entities/spaces.xml
 COPY --chown=cimmeria:cimmeria entities/cell_spaces.xml /opt/cimmeria/entities/cell_spaces.xml
-# The server creates `logs/` relative to its CWD (/opt/cimmeria) at
-# startup; /var/log/cimmeria is reserved for future file-logging when
-# we wire it up. Both need to be writable as the cimmeria user.
-RUN chown -R cimmeria:cimmeria /opt/cimmeria /var/log/cimmeria
+# The server writes `logs/*.log` relative to its CWD (/opt/cimmeria) and
+# archives the previous run's files into `logs/archive/` at startup. Point
+# that directory at the declared /var/log/cimmeria volume so the logs land
+# where an operator can mount them: inside the container layer they were
+# deleted on every watchtower swap. Both need to be writable as cimmeria.
+RUN ln -s /var/log/cimmeria /opt/cimmeria/logs \
+ && chown -R cimmeria:cimmeria /opt/cimmeria /var/log/cimmeria
 
 # Pre-loaded pgdata in the canonical location, plus an immutable fallback
 # that entrypoint.sh restores into bind-mounted empty volumes (Docker
@@ -289,12 +292,14 @@ EXPOSE 13001 32832/udp 50000/udp 8081 8443 30000
 
 VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 
-# Liveness probe: postgres accepts connections AND the auth TCP listener
-# (the port game clients connect to) is bound. Bash's /dev/tcp gives us a
-# zero-dep TCP probe without pulling in netcat/curl just for this.
+# Liveness probe: postgres accepts connections AND the SOAP login listener
+# (LOGON_PORT, the port game clients log in through) is bound. Not
+# AUTH_PORT: nothing binds 13001, so probing it marked every container
+# unhealthy. Bash's /dev/tcp gives us a zero-dep TCP probe without pulling
+# in netcat/curl just for this.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD pg_isready -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null \
-        && bash -c "exec 3<>/dev/tcp/127.0.0.1/${AUTH_PORT}" \
+        && bash -c "exec 3<>/dev/tcp/127.0.0.1/${LOGON_PORT}" \
         || exit 1
 
 ENTRYPOINT ["/usr/local/bin/cimmeria-entrypoint"]

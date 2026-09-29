@@ -128,7 +128,7 @@ Credentials live in `<install>/Binaries/sessions/lab-account.json`, gitignored, 
 
 In-process, started from `crates/server/src/main.rs` beside the admin API but on its **own listener**. MCP over streamable HTTP (the `rmcp` crate).
 
-**Fail-closed startup.** It starts only when both `CIMMERIA_LAB_MCP_BIND` and `CIMMERIA_LAB_MCP_TOKEN` are set. There is no default bind address, and a token shorter than 32 bytes is refused. On the colo the container binds inside its namespace and compose publishes the port on the WireGuard address only (`"<wg-ip>:8444:8444"`), never in the public `ports:` list.
+**Fail-closed startup.** It starts only when both `CIMMERIA_LAB_MCP_BIND` and `CIMMERIA_LAB_MCP_TOKEN` are set. There is no default bind address, and a token shorter than 32 bytes is refused. On the colo the container binds inside its namespace and compose publishes the port on the WireGuard address only (`"<wg-ip>:8444:8444"`), never in the public `ports:` list. The same address goes in `CIMMERIA_LAB_MCP_ALLOWED_HOSTS`, because the MCP transport's DNS-rebinding guard accepts only loopback `Host` headers unless told otherwise.
 
 **Audit.** Every tool call emits one `info` event on target `lab.tool_call` with tool name, arguments, caller address, and outcome. That reaches SigNoz through the existing exporter, which is the whole audit trail per the owner's decision.
 

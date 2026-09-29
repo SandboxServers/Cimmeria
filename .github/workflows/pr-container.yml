@@ -116,12 +116,15 @@ jobs:
             -p 50000:50000/udp \
             -p 8443:8443 \
             "$IMAGE"
-          # ~120 s budget for cold pgdata boot + s6 service init + auth
-          # listener bind.
+          # ~120 s budget for cold pgdata boot + s6 service init + login
+          # listener bind. Probed from INSIDE the container: a host-side
+          # probe of a published port always connects (docker-proxy accepts
+          # the TCP handshake itself), which is how a probe of 13001, a port
+          # nothing binds, passed anyway.
           ok=0
           for i in $(seq 1 60); do
             if docker exec smoke pg_isready -h 127.0.0.1 -U w-testing -d sgw >/dev/null 2>&1 \
-               && timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/13001" 2>/dev/null; then
+               && docker exec smoke timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/8081" 2>/dev/null; then
               echo "smoke ok at iteration $i"
               ok=1
               break

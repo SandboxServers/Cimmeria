@@ -10,6 +10,15 @@
 pub const ENV_BIND: &str = "CIMMERIA_LAB_MCP_BIND";
 /// Shared-bearer-token environment variable.
 pub const ENV_TOKEN: &str = "CIMMERIA_LAB_MCP_TOKEN";
+/// Extra `Host` header values the endpoint accepts, comma-separated
+/// (`10.0.0.5`, `lab.example:8444`). Optional.
+pub const ENV_ALLOWED_HOSTS: &str = "CIMMERIA_LAB_MCP_ALLOWED_HOSTS";
+
+/// The `Host` values rmcp accepts by default. Its DNS-rebinding guard rejects
+/// every other `Host`, so a client reaching the endpoint by the box's LAN or
+/// VPN address gets `403 Host header is not allowed` until that address is
+/// listed in [`ENV_ALLOWED_HOSTS`].
+pub const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 
 /// Minimum accepted token length in bytes. A shorter token is refused rather
 /// than started, so a weak/placeholder secret can never expose the endpoint.
@@ -22,6 +31,9 @@ pub struct LabMcpConfig {
     pub bind: String,
     /// The shared bearer token clients must present.
     pub token: String,
+    /// Every `Host` value the endpoint accepts: [`LOOPBACK_HOSTS`] plus
+    /// [`ENV_ALLOWED_HOSTS`].
+    pub allowed_hosts: Vec<String>,
 }
 
 /// Outcome of evaluating the environment. The endpoint starts only for
@@ -60,13 +72,36 @@ pub fn evaluate(bind: Option<String>, token: Option<String>) -> LabMcpStartup {
         ));
     }
 
-    LabMcpStartup::Enabled(LabMcpConfig { bind, token })
+    LabMcpStartup::Enabled(LabMcpConfig {
+        bind,
+        token,
+        allowed_hosts: allowed_hosts(None),
+    })
+}
+
+/// [`LOOPBACK_HOSTS`] followed by each non-empty, trimmed entry of the
+/// comma-separated `extra` list. The loopback names are always kept, so
+/// setting the variable can widen the allowlist but never narrow it.
+pub fn allowed_hosts(extra: Option<&str>) -> Vec<String> {
+    let mut hosts: Vec<String> = LOOPBACK_HOSTS.iter().map(|h| h.to_string()).collect();
+    for h in extra.unwrap_or("").split(',').map(str::trim) {
+        if !h.is_empty() && !hosts.iter().any(|k| k == h) {
+            hosts.push(h.to_string());
+        }
+    }
+    hosts
 }
 
 /// Read `CIMMERIA_LAB_MCP_BIND` / `CIMMERIA_LAB_MCP_TOKEN` and apply the
 /// fail-closed rules via [`evaluate`].
 pub fn from_env() -> LabMcpStartup {
-    evaluate(std::env::var(ENV_BIND).ok(), std::env::var(ENV_TOKEN).ok())
+    match evaluate(std::env::var(ENV_BIND).ok(), std::env::var(ENV_TOKEN).ok()) {
+        LabMcpStartup::Enabled(mut cfg) => {
+            cfg.allowed_hosts = allowed_hosts(std::env::var(ENV_ALLOWED_HOSTS).ok().as_deref());
+            LabMcpStartup::Enabled(cfg)
+        }
+        other => other,
+    }
 }
 
 #[cfg(test)]
@@ -131,5 +166,28 @@ mod tests {
             }
             other => panic!("expected Enabled, got {other:?}"),
         }
+    }
+
+    /// Unset → loopback only, which is rmcp's own default.
+    #[test]
+    fn allowed_hosts_default_to_loopback() {
+        assert_eq!(allowed_hosts(None), ["localhost", "127.0.0.1", "::1"]);
+    }
+
+    /// Regression guard for the colo: the endpoint was reachable on its LAN
+    /// address but answered every request `403 Host header is not allowed`,
+    /// because nothing could add that address to rmcp's loopback allowlist.
+    #[test]
+    fn allowed_hosts_add_trimmed_entries_and_keep_loopback() {
+        assert_eq!(
+            allowed_hosts(Some(" 10.0.0.5 , lab.example:8444,,127.0.0.1")),
+            [
+                "localhost",
+                "127.0.0.1",
+                "::1",
+                "10.0.0.5",
+                "lab.example:8444"
+            ]
+        );
     }
 }

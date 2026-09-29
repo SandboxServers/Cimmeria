@@ -75,6 +75,22 @@ chown -R postgres:postgres "${PGDATA}"
 # cross-stage COPY doesn't always preserve directory mode.
 chmod 700 "${PGDATA}"
 
+# /opt/cimmeria/logs -> /var/log/cimmeria. A host bind mount there arrives
+# owned by root, and the server (uid cimmeria) could not write its logs.
+chown cimmeria:cimmeria /var/log/cimmeria
+
+# Discord config from the environment (docker/compose.discord.yml). The
+# environment survives watchtower's recreate; a compose `configs:` copy
+# does not. Unset means "leave config/discord.toml alone", so a
+# bind-mounted file keeps working.
+if [ -n "${DISCORD_CONFIG_TOML:-}" ]; then
+    mkdir -p /opt/cimmeria/config
+    printf '%s\n' "${DISCORD_CONFIG_TOML}" > /opt/cimmeria/config/discord.toml
+    chown cimmeria:cimmeria /opt/cimmeria/config/discord.toml
+    chmod 0440 /opt/cimmeria/config/discord.toml
+    echo "[cimmeria-entrypoint] wrote config/discord.toml from DISCORD_CONFIG_TOML"
+fi
+
 # Hand control to s6-overlay v3, which brings up postgres and the
 # server in dependency order and reaps zombies.
 exec /init "$@"
