@@ -45,6 +45,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "RemoveEffects" => Some(&super::ammo_dart_support::RemoveEffects),
         // EMP rounds' on-hit effect 9120 (ammo campaign AM-09).
         "EmpDisrupt" => Some(&super::ammo_emp::EmpDisrupt),
+        // Dart_Tranquilizer's on-hit slow (ammo campaign AM-11a).
+        "MovementSlow" => Some(&super::ammo_dart_cc::MovementSlow),
         _ => None,
     }
 }
