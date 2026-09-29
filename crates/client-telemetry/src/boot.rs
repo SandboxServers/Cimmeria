@@ -292,9 +292,21 @@ fn bootstrap_phase2() {
     std::thread::Builder::new()
         .name("cimmeria-uploader".into())
         .spawn(move || {
-            crate::uploader::run_uploader(consumer, cfg, || false);
+            // SAFETY: no preconditions.
+            let tid = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
+            crate::crash::FLUSH.set_uploader_thread(tid);
+            crate::uploader::run_uploader_with(consumer, cfg, || false, &crate::crash::FLUSH);
         })
         .ok();
+
+    // Crash evidence (dump + sidecar) goes into `Binaries/sessions/`,
+    // which the launcher's end-of-session bundle ships. The hooks that
+    // use it go in with the rest, behind the fingerprint gate.
+    if let Ok(session_file) = crate::session::session_path_for_host(&host_exe) {
+        if let Some(dir) = session_file.parent() {
+            crate::crash::configure(dir.to_path_buf(), &session.session_id, producer.clone());
+        }
+    }
 
     // Step 6.5: the fingerprint gate, then the hooks. Each hook clones
     // the producer handle (Arc-backed inside crossbeam-channel) so the

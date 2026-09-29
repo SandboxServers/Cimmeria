@@ -52,7 +52,12 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 
 use crate::events::{ClientNativeEvent, TelemetryEvent};
+use crate::flush::FlushSignal;
 use crate::queue::Consumer;
+
+/// How soon the loop wakes (and retries a failed POST) while an
+/// urgent flush is pending. Short, because the waiter is time-boxed.
+pub const URGENT_RETRY: Duration = Duration::from_millis(50);
 
 /// Uploader runtime configuration. Built from
 /// `current-session.json`'s `telemetry` block by the bootstrap
@@ -126,7 +131,21 @@ pub enum UploaderExit {
 pub fn run_uploader(
     consumer: Consumer,
     cfg: UploaderConfig,
+    should_stop: impl FnMut() -> bool,
+) -> UploaderExit {
+    run_uploader_with(consumer, cfg, should_stop, &FlushSignal::new())
+}
+
+/// [`run_uploader`] that also serves urgent flushes: while
+/// `signal` has a flush pending (a crash filter or exit hook is
+/// waiting on it) the loop ships immediately instead of on cadence,
+/// and retries a failed POST after [`URGENT_RETRY`] rather than a full
+/// interval. Every successful POST is recorded in `signal`.
+pub fn run_uploader_with(
+    consumer: Consumer,
+    cfg: UploaderConfig,
     mut should_stop: impl FnMut() -> bool,
+    signal: &FlushSignal,
 ) -> UploaderExit {
     let client = build_agent();
     let mut batch: Vec<ClientNativeEvent> = Vec::with_capacity(cfg.max_batch);
@@ -151,13 +170,21 @@ pub fn run_uploader(
         //    older than `flush_interval`.
         //  - non-empty batch: wait at most `flush_interval -
         //    last_flush.elapsed()`, floored at 1 ms, so we ship
-        //    pending events on cadence even if the queue went quiet.
-        let recv_timeout = if batch.is_empty() {
+        //    pending events on cadence even if the queue went quiet,
+        //    and at most `URGENT_RETRY`: a crash filter queues its
+        //    event *then* requests the flush, so the event can wake
+        //    us before the request lands; a full-interval wait here
+        //    would sit on it past the filter's time box.
+        //  - a flush pending: `URGENT_RETRY`, which is also how soon
+        //    a failed urgent POST is retried.
+        let recv_timeout = if signal.pending() {
+            URGENT_RETRY
+        } else if batch.is_empty() {
             cfg.flush_interval
         } else {
             cfg.flush_interval
                 .saturating_sub(last_flush.elapsed())
-                .max(Duration::from_millis(1))
+                .clamp(Duration::from_millis(1), URGENT_RETRY)
         };
         match recv_timeout_raw(&consumer, recv_timeout) {
             Ok(ev) => batch.push(ev),
@@ -178,10 +205,15 @@ pub fn run_uploader(
         // Ship when either the batch hit a meaningful size OR the
         // flush interval elapsed since the last successful POST.
         let should_flush = !batch.is_empty()
-            && (batch.len() >= cfg.max_batch || last_flush.elapsed() >= cfg.flush_interval);
+            && (batch.len() >= cfg.max_batch
+                || last_flush.elapsed() >= cfg.flush_interval
+                || signal.pending());
         if should_flush {
             match post_batch(&client, &cfg, &batch) {
                 Ok(()) => {
+                    if let Some(max_seq) = batch.iter().map(|e| e.seq).max() {
+                        signal.mark_delivered(max_seq);
+                    }
                     batch.clear();
                 }
                 Err(_) => {

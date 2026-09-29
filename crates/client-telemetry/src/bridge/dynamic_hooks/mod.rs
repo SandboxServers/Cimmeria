@@ -327,8 +327,10 @@ mod tests {
     /// registry rollback means no ghost entry is left behind.
     #[test]
     fn install_offtarget_rolls_back_and_echoes_id() {
-        // Use a distinctive address unlikely to collide with another test.
-        let r = dispatch_install(json!(1), &json!({ "addr": "0x00abc100", "conv": "cdecl" }));
+        // An address in the first 64 KiB, which Windows never maps, so the
+        // i686 run (where the patch is real) fails and rolls back too. The
+        // old 0x00abc100 was mapped in some i686 test binaries' layouts.
+        let r = dispatch_install(json!(1), &json!({ "addr": "0x0000abc0", "conv": "cdecl" }));
         assert_eq!(r.id, json!(1));
         // Off-target: patch stub errors, entry rolled back → list has it
         // gone. (On the i686 DLL this path installs for real.)
@@ -337,7 +339,7 @@ mod tests {
         // Can't assert a hard count under parallel tests, but the address
         // we just tried must not be present after rollback.
         let _ = hooks;
-        assert!(!registry().lock().unwrap().contains_addr(0x00abc100));
+        assert!(!registry().lock().unwrap().contains_addr(0x0000_abc0));
     }
 
     #[test]

@@ -17,7 +17,7 @@
 use std::fmt::Display;
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Mutex, OnceLock, PoisonError, TryLockError};
 use std::time::Instant;
 
 /// Lines written before the log goes quiet.
@@ -45,8 +45,20 @@ pub fn line(message: impl Display) {
     if LINES.fetch_add(1, Ordering::Relaxed) >= MAX_LINES {
         return;
     }
+    write(&message.to_string(), true);
+}
+
+/// Write one line from a crash filter or exit hook: ignores
+/// [`MAX_LINES`] (a noisy session must not hide its own crash), and
+/// skips the file instead of waiting when another thread, or the
+/// faulting one, holds the file lock. The debugger copy always goes out.
+pub fn line_nonblocking(message: impl Display) {
+    write(&message.to_string(), false);
+}
+
+fn write(message: &str, block: bool) {
     let elapsed_ms = STARTED.get().map_or(0, |s| s.elapsed().as_millis());
-    let text = format_line(elapsed_ms, &message.to_string());
+    let text = format_line(elapsed_ms, message);
 
     #[cfg(windows)]
     {
@@ -58,7 +70,15 @@ pub fn line(message: impl Display) {
         }
     }
 
-    let mut file = FILE.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut file = if block {
+        FILE.lock().unwrap_or_else(PoisonError::into_inner)
+    } else {
+        match FILE.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::Poisoned(p)) => p.into_inner(),
+            Err(TryLockError::WouldBlock) => return,
+        }
+    };
     if let Some(f) = file.as_mut() {
         // Best effort: a full disk must not take the game down.
         let _ = f.write_all(text.as_bytes());

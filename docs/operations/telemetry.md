@@ -213,12 +213,51 @@ Every event ends up in one place: SigNoz / ClickHouse, indexed by:
   - `launcher.session_meta` — session boundaries and rotation events
   - `launcher.bundle` — per-bundle metadata and per-line replay from
     end-of-session zips
+  - `launcher.bundle.crash_dump` — one row per minidump found in a
+    bundle (see [Crashes and exits](#crashes-and-exits))
+  - `client.native` — events from the telemetry DLL inside `SGW.exe`;
+    the DLL's own event name is the `client_target` field
   - `launcher.ingest` — server-side accept/reject counters
 - `session_id` — the launcher session UUID minted by dev-session
 - `install_id` — stable per-install identifier
 
 Retention is whatever the ClickHouse TTL says (see
 [signoz-deployment.md](signoz-deployment.md#retention)).
+
+### Crashes and exits
+
+The telemetry DLL reports how each session ended. With the server's
+OTLP export on, query `service.name = cimmeria-client` and filter on
+`client_target` (every field below is its own attribute); the same
+events are also replayed under `target = client.native`, with the
+fields as one JSON string:
+
+| `client_target` | Level | Meaning |
+|---|---|---|
+| `client.crash` | ERROR | The client crashed. `fault` is `module+offset` (for example `SGW.exe+0x00016ec5`), plus `exception_code`, `exception_name`, `access` / `access_address` for access violations, `thread_id`, `source` (`game_minidump`: the game's own crash handler ran; `unhandled_filter`: nothing handled the fault), and `dump_file`. `last_seq` is the producer's sequence number at the crash: the session's events below it are what led up to it. |
+| `client.crash.dump` | INFO / WARN | Whether `dump_file` was written, its size (`dump_bytes`), or why not (`reason`, `os_error`). |
+| `client.exit` | INFO, WARN after a crash | The process is leaving: `path` is `crt_exit` (a normal quit) or `exit_process` (UE3's forced exit), with `exit_code` and `after_crash`. |
+| `client.crash.installed` | INFO | Crash capture is live (`iat_hooks` of 4 swapped, and the filter it chains to). |
+
+A session with `client.dll.attached` but neither `client.crash` nor
+`client.exit` vanished: the process was killed, or it died in a way
+no filter saw (a stack overflow can be one).
+
+The minidump itself stays on the player's machine at
+`Binaries/sessions/crash-<session_id>-<ts_ms>.dmp`, with a
+`.jsonl` sidecar holding the same fields as `client.crash` (not
+`.json`, which the launcher never uploads). The
+launcher's end-of-session bundle ships the whole `sessions/` folder,
+so both reach the server when the player quits through the launcher.
+The server does not store the dump: it logs one
+`launcher.bundle.crash_dump` row (WARN) with `path`, `dump_bytes`,
+`minidump_valid`, `exception_code`, `exception_address` and
+`thread_id` read from the dump's exception stream, and replays the
+sidecar as a `launcher.client_log` line. To analyse the dump, ask the
+player for the file, then read it as
+[docs/client/crash-dumps.md](../client/crash-dumps.md) describes.
+The game's own, possibly full-memory, dump under
+`Binaries/CrashDumps/` is not shipped.
 
 ## Player opt-in
 

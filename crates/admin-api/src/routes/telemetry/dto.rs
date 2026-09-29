@@ -90,6 +90,9 @@ pub(super) struct BundleResponse {
     pub files: u64,
     /// Number of lines replayed through tracing across all files.
     pub lines: u64,
+    /// Minidumps found in the zip (each logged as a
+    /// `launcher.bundle.crash_dump` row).
+    pub crash_dumps: u64,
 }
 
 #[derive(Debug, thiserror::Error)]

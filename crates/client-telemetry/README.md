@@ -49,6 +49,11 @@ exercise the gated code and will give you a false green.
 - `cme.rs` — CME `EventSignal` subscription + the `FakeVtable` static-subscriber shim.
 - `hooks/` — the hook techniques (CME subscribers, inline JMP, IAT replace, vtable swap).
 - `queue.rs` / `uploader.rs` — the bounded event queue + batched uploader (host-testable).
+- `flush.rs` — the urgent-flush handshake a crash or exit uses to get its
+  events shipped before the process goes.
+- `crash/` — Phase 6 crash and exit capture: the chained top-level filter,
+  the `MiniDumpWriteDump` / `SetUnhandledExceptionFilter` / `exit` /
+  `ExitProcess` IAT detours, and the sessions-dir minidump.
 - `events.rs` — the typed event taxonomy shipped to the server.
 
 See [`docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`](../../docs/reverse-engineering/findings/client-instrumentation-hookpoints.md)

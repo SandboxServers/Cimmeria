@@ -11,7 +11,7 @@
 //! | Path | Body | Purpose |
 //! |---|---|---|
 //! | `POST /api/telemetry/upload-chunk`  | gzip(NDJSON) | Streaming launcher events (one event per line). At-least-once delivery — the launcher retries on failure but the server does NOT dedupe by `(session_id, seq)`, so a duplicate retry appears as duplicate rows in SigNoz. |
-//! | `POST /api/telemetry/upload-bundle` | multipart    | End-of-session zip of raw `Binaries/sgwdebuglog*` + `Binaries/sessions/**`. Unzipped server-side on a blocking thread; each log line emits a tracing event. |
+//! | `POST /api/telemetry/upload-bundle` | multipart    | End-of-session zip of raw `Binaries/sgwdebuglog*` + `Binaries/sessions/**`. Unzipped server-side on a blocking thread; each log line emits a tracing event, and each minidump (`*.dmp`, the telemetry DLL's crash dump) one `launcher.bundle.crash_dump` row. |
 //!
 //! # Auth
 //!
@@ -39,8 +39,10 @@
 //! - [`client_sink`] — the structured `cimmeria-client` export the server
 //!   installs when OTLP is on: typed attributes per DLL field, and the
 //!   player's identity on every record of the session.
+//! - [`crash_dump`] — reads a bundled minidump's exception stream.
 
 pub mod client_sink;
+mod crash_dump;
 mod dto;
 mod handlers;
 

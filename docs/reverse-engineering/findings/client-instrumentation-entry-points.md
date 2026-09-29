@@ -203,8 +203,16 @@ This is more work than a simple IAT walk and warrants its own PR.
 
 | API | IAT slot | DLL | Use |
 |---|---|---|---|
-| `SetUnhandledExceptionFilter` | **`0x0196BAB2`** | KERNEL32 | IAT-replace to install our filter; save the original so we can chain after writing the minidump. |
-| `MiniDumpWriteDump` | **`0x01987B76`** | DBGHELP | Called by our crash filter to write the minidump. No hook on this one — we call through it. |
+| `SetUnhandledExceptionFilter` | **`0x017EF108`** | KERNEL32 | IAT-replace to install our filter; save the original so we can chain after writing the minidump. |
+| `MiniDumpWriteDump` | **`0x017F0058`** | DBGHELP | The game's crash handler calls it (CME writer `0x00a55a70`, thunk `0x012f5906`); the DLL hooks it to see the game's own crashes. |
+
+> **Corrected 2026-09-28.** The slots first recorded here, `0x0196BAB2`
+> and `0x01987B76`, were the slots' on-disk contents (hint/name RVAs)
+> read as addresses, the same error the Phase 4-5 IAT anchors had.
+> The values above are the IAT entries from `SGW.exe`'s import
+> directory. What was actually built differs from this plan: see
+> [client-telemetry.md § Crash and exit
+> capture](../../architecture/client-telemetry.md#crash-and-exit-capture-phase-6).
 
 **Implementation discipline**: the crash filter runs *during* a process crash. **Must be allocation-free, no panics, no Rust runtime assumptions** — the heap may be corrupt, thread-locals may be invalid, the loader lock may be held. Use only stack buffers + raw syscalls. Save the minidump filename to a pre-allocated buffer, write the dump, then call the saved original `SetUnhandledExceptionFilter` callback for the normal crash report flow.
 
@@ -243,8 +251,8 @@ This is more work than a simple IAT walk and warrants its own PR.
 | 5 | 6 | `LoadLibraryW` | IAT `0x0196B5BC` | IAT |
 | 5 | 6 | `LoadLibraryA` | IAT `0x0196B5AC` | IAT |
 | 5 | 6 | `GetForegroundWindow` | IAT `0x0196AF20` | IAT |
-| 6 | 7 | `SetUnhandledExceptionFilter` | IAT `0x0196BAB2` | IAT replace |
-| 6 | 7 | `MiniDumpWriteDump` | IAT `0x01987B76` | Direct call (no hook) |
+| 6 | 7 | `SetUnhandledExceptionFilter` | IAT `0x017EF108` | IAT replace |
+| 6 | 7 | `MiniDumpWriteDump` | IAT `0x017F0058` | IAT replace (the game's crash handler) |
 
 **Total**: 21 hook surfaces across Phases 3-6.
 **Resolved upfront** (after the 2026-06-04 + second-pass Ghidra work): **19** (17 from the first pass + AActor::Tick + USequence::UpdateOp from the second pass).

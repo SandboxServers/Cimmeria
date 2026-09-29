@@ -13,6 +13,7 @@ use cimmeria_services::orchestrator::Orchestrator;
 
 use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
 
+use super::crash_dump::{is_crash_dump, log_crash_dump, MinidumpSummary};
 use super::dto::{BundleResponse, ChunkResponse, ClientNativeEvent, IngestError, TelemetryEvent};
 use super::{
     client_sink, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES, MAX_CHUNK_BYTES,
@@ -91,6 +92,7 @@ pub(super) async fn upload_bundle(
     let mut metadata_seen = false;
     let mut files = 0u64;
     let mut lines = 0u64;
+    let mut crash_dumps = 0u64;
 
     while let Some(field) = multipart
         .next_field()
@@ -142,14 +144,15 @@ pub(super) async fn upload_bundle(
                 // which would stall the tokio scheduler if run
                 // directly. Move to a blocking worker thread.
                 let claims_clone = claims.clone();
-                let (f, l) =
+                let replay =
                     tokio::task::spawn_blocking(move || unpack_and_replay(&claims_clone, &bytes))
                         .await
                         .map_err(|e| {
                             IngestError::Multipart(format!("bundle unpack join failed: {e}"))
                         })??;
-                files += f;
-                lines += l;
+                files += replay.files;
+                lines += replay.lines;
+                crash_dumps += replay.crash_dumps.len() as u64;
             }
             other => {
                 tracing::debug!(
@@ -170,15 +173,34 @@ pub(super) async fn upload_bundle(
         );
     }
 
-    Ok(Json(BundleResponse { files, lines }))
+    Ok(Json(BundleResponse {
+        files,
+        lines,
+        crash_dumps,
+    }))
 }
 
-fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64), IngestError> {
+/// What one bundle zip replayed.
+#[derive(Debug, Default)]
+pub(super) struct BundleReplay {
+    /// Text entries replayed line by line.
+    pub(super) files: u64,
+    pub(super) lines: u64,
+    /// Minidumps found (path + what they hold), each logged as one
+    /// `launcher.bundle.crash_dump` row.
+    pub(super) crash_dumps: Vec<(String, MinidumpSummary)>,
+}
+
+pub(super) fn unpack_and_replay(
+    claims: &TokenClaims,
+    zip_bytes: &[u8],
+) -> Result<BundleReplay, IngestError> {
     let cursor = std::io::Cursor::new(zip_bytes);
     let mut zip = zip::ZipArchive::new(cursor).map_err(|e| IngestError::Zip(e.to_string()))?;
 
     let mut files = 0u64;
     let mut lines = 0u64;
+    let mut crash_dumps = Vec::new();
 
     for i in 0..zip.len() {
         let mut entry = zip
@@ -202,6 +224,29 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
                 cap = MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES,
                 "refusing bundle entry: declared size exceeds cap"
             );
+            continue;
+        }
+
+        if is_crash_dump(&path) {
+            // Binary: summarise it instead of replaying lines. Bounded
+            // like the text read below.
+            let mut dump = Vec::new();
+            let read = (&mut entry as &mut dyn std::io::Read)
+                .take(MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES)
+                .read_to_end(&mut dump);
+            if let Err(e) = read {
+                tracing::warn!(
+                    target: "launcher.bundle.crash_dump",
+                    session_id = %claims.sid,
+                    path = %path,
+                    reason = "read_failed",
+                    error = %e,
+                    "crash dump in bundle could not be read"
+                );
+                continue;
+            }
+            let summary = log_crash_dump(claims, &path, &dump);
+            crash_dumps.push((path, summary));
             continue;
         }
 
@@ -251,7 +296,11 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
         }
     }
 
-    Ok((files, lines))
+    Ok(BundleReplay {
+        files,
+        lines,
+        crash_dumps,
+    })
 }
 
 pub(super) fn verify_bearer(headers: &HeaderMap) -> Result<TokenClaims, IngestError> {

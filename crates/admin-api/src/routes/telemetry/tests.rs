@@ -243,3 +243,56 @@ fn verify_bearer_rejects_a_token_without_the_telemetry_write_scope() {
         }
     }
 }
+
+/// **A bundle carrying the DLL's crash dump is accepted**: the dump is
+/// summarised (its exception code and address read back) instead of
+/// being dropped as non-UTF-8, and the text entries beside it still
+/// replay. Reverting the `.dmp` branch in `unpack_and_replay` leaves
+/// `crash_dumps` empty.
+#[test]
+fn bundle_with_a_crash_dump_is_summarised_and_logs_still_replay() {
+    use super::crash_dump::tests::synthetic_minidump;
+    use super::handlers::unpack_and_replay;
+    use zip::write::SimpleFileOptions;
+
+    let claims = TokenClaims {
+        iss: "cimmeria-server".into(),
+        sub: "install-1".into(),
+        sid: "session-1".into(),
+        iat: 0,
+        exp: i64::MAX,
+        scope: vec!["telemetry.write".into()],
+    };
+    let mut buf = Vec::new();
+    {
+        let mut zw = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+        let opts =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        zw.start_file("Binaries/sessions/2026-09-28_10-00.log", opts)
+            .unwrap();
+        zw.write_all(b"line one\nline two\n").unwrap();
+        zw.start_file("Binaries/sessions/crash-sess-1700000000000.dmp", opts)
+            .unwrap();
+        zw.write_all(&synthetic_minidump(0xC000_0005, 0x0041_6EC5, 77))
+            .unwrap();
+        zw.start_file("Binaries/sessions/crash-sess-1700000000000.jsonl", opts)
+            .unwrap();
+        zw.write_all(b"{\"event\":\"client.crash\"}\r\n").unwrap();
+        zw.finish().unwrap();
+    }
+
+    let replay = unpack_and_replay(&claims, &buf).expect("bundle accepted");
+    assert_eq!(
+        replay.files, 2,
+        "the log and the JSON sidecar replay as text"
+    );
+    assert_eq!(replay.lines, 3);
+    assert_eq!(replay.crash_dumps.len(), 1);
+    let (path, summary) = &replay.crash_dumps[0];
+    assert_eq!(path, "Binaries/sessions/crash-sess-1700000000000.dmp");
+    assert!(summary.valid);
+    let exc = summary.exception.expect("exception stream read");
+    assert_eq!(exc.code, 0xC000_0005);
+    assert_eq!(exc.address, 0x0041_6EC5);
+    assert_eq!(exc.thread_id, 77);
+}

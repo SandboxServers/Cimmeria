@@ -39,8 +39,10 @@
 // unit tests; only the Windows cdylib actually executes them inside
 // SGW.exe.
 pub mod cme;
+pub mod crash;
 pub mod events;
 pub mod fingerprint;
+pub mod flush;
 pub mod hooks;
 pub mod identity;
 pub mod log;

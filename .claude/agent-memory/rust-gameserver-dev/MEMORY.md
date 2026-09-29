@@ -57,6 +57,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
 - [client-patch-send-natives-traps.md](client-patch-send-natives-traps.md) — startEntityMessage sends even offline; microseh masks the ABI; no cpcall around C-function args.
 - [telemetry-anchor-audit-and-hookgate.md](telemetry-anchor-audit-and-hookgate.md) — telemetry anchors never ran and 5 were wrong (IAT hint/name RVAs, COL-shifted vtable.
+- [sgw-crash-path-and-dll-crash-hooks.md](sgw-crash-path-and-dll-crash-hooks.md) — UE3 __except catches main-thread faults; MiniDumpWriteDump IAT 0x017F0058 is the crash choke point.
 - [injector-bitness-and-start32-helper.md](injector-bitness-and-start32-helper.md) — x64 launcher injects via the i686 sgw-start32 helper; the WOW64 resolver fails on suspended targets.
 
 ## UE3 packages and navmesh

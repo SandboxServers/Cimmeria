@@ -3,7 +3,7 @@
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
 > **Last updated**: 2026-09-27
-> **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (the launcher never injected the DLL; see the fingerprint section). **25 hooks total** across 4 techniques: 2 CME subscribers (`onClientMapLoad`, `onClientReady`), 13 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, `Mercury_Nub_handleMessage`, `ServerConnection_forcedPosition`, `ServerConnection_createBasePlayer`), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger + AActor::Tick + USequence::UpdateOp). Every address was re-checked against the QA `SGW.exe` (2026-09-27, and again 2026-09-28 for the three new/re-added inline hooks) and is fingerprinted. **`Mercury::Nub::handleMessage` re-resolved and re-added 2026-09-28 (#989)** as `Mercury_Nub_handleMessage` (`0x0157bd30`). **The cooked-data PAK load is still not re-added**: its would-be anchor (`0x00420074`) turned out to be a real function entry after all, but the one-time startup constructor for all ~20 cooked-data categories, not a per-load runtime event — see [`client-instrumentation-hookpoints.md`](../reverse-engineering/findings/client-instrumentation-hookpoints.md) and the [seam survey](../reverse-engineering/findings/client-telemetry-seam-survey.md) for the corrected finding and the real (harder) replacement signal. The DLL also emits `client.session.identity` (player entity id, the client↔server join key) — no hook, a defensive read through `GameEntityManager`, fired from the existing `onClientReady` subscriber. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter, and the further seams ranked in the seam survey (Mercury send-path visibility, AoI enter/leave, `connect`/`WSAConnect` for the server-address join-key field, account name — the last found to be genuinely unrecoverable from client memory by any wire-documented path).
+> **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (the launcher never injected the DLL; see the fingerprint section). **25 hooks total** across 4 techniques: 2 CME subscribers (`onClientMapLoad`, `onClientReady`), 13 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, `Mercury_Nub_handleMessage`, `ServerConnection_forcedPosition`, `ServerConnection_createBasePlayer`), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger + AActor::Tick + USequence::UpdateOp). Every address was re-checked against the QA `SGW.exe` (2026-09-27, and again 2026-09-28 for the three new/re-added inline hooks) and is fingerprinted. **`Mercury::Nub::handleMessage` re-resolved and re-added 2026-09-28 (#989)** as `Mercury_Nub_handleMessage` (`0x0157bd30`). **The cooked-data PAK load is still not re-added**: its would-be anchor (`0x00420074`) turned out to be a real function entry after all, but the one-time startup constructor for all ~20 cooked-data categories, not a per-load runtime event — see [`client-instrumentation-hookpoints.md`](../reverse-engineering/findings/client-instrumentation-hookpoints.md) and the [seam survey](../reverse-engineering/findings/client-telemetry-seam-survey.md) for the corrected finding and the real (harder) replacement signal. The DLL also emits `client.session.identity` (player entity id, the client↔server join key) — no hook, a defensive read through `GameEntityManager`, fired from the existing `onClientReady` subscriber. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, and the further seams ranked in the seam survey (Mercury send-path visibility, AoI enter/leave, `connect`/`WSAConnect` for the server-address join-key field, account name — the last found to be genuinely unrecoverable from client memory by any wire-documented path). **Phase 6** (crash and exit capture) is implemented but has not yet seen a real crash; see [Crash and exit capture](#crash-and-exit-capture-phase-6).
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
@@ -196,6 +196,79 @@ Three rules now keep that from recurring:
   `catch_unwind`, so a Rust panic cannot unwind into the game. The CME
   callbacks stay plain `thiscall`: they call nothing in the game.
 
+## Crash and exit capture (Phase 6)
+
+The code is `src/crash/`. It tells SigNoz whether a session ended in
+a crash, a quit or neither, and leaves a small minidump for the
+launcher's bundle to ship. The operator's view is in
+[telemetry.md § Crashes and exits](../operations/telemetry.md#crashes-and-exits).
+
+**How the QA `SGW.exe` handles a crash** (read from the binary):
+
+- UE3 runs `GuardedMain` (`0x00416010`) inside `__try/__except` in
+  `WinMain`, and the filter calls `CreateMiniDump` (`0x0041ddb0`); four
+  more engine thread bodies call it the same way. So a fault on the main
+  or an engine thread is handled by that frame and never reaches a
+  top-level filter. `CreateMiniDump` ends in CME's dump writer
+  (`0x00a55a70`), the only caller of `MiniDumpWriteDump`, through the
+  thunk at `0x012f5906` (`jmp [0x017f0058]`). It passes the live
+  exception pointers and a dump type of 0 (normal) or 2 (full memory).
+- `SGW.exe` calls `SetUnhandledExceptionFilter` only from CRT code: at
+  start-up (`__CxxSetUnhandledExceptionFilter`, whose filter turns an
+  uncaught C++ exception into `terminate()`) and in
+  `__report_gsfailure`, which clears the filter before calling
+  `UnhandledExceptionFilter` itself.
+- A normal quit returns from `WinMain` into the CRT, which calls `exit`
+  through `SGW.exe`'s IAT. UE3's forced `appRequestExit` and a second
+  quit request call `ExitProcess` through the IAT.
+
+**What is hooked.** Four IAT slots. Each is swapped only if it holds
+exactly the address its import resolves to, the same per-slot check
+the other IAT hooks make, and only after the fingerprint gate passed:
+
+| Slot | Import | Detour |
+|---|---|---|
+| `0x017F0058` | `dbghelp!MiniDumpWriteDump` | Records the crash from the game's exception pointers, then calls the original with the game's arguments, so the game still writes its own dump. |
+| `0x017EF108` | `KERNEL32!SetUnhandledExceptionFilter` | Keeps our filter on top: the game's filter becomes the one ours chains to, and the call returns what the real API would have returned to the game. |
+| `0x017EF9A8` | `MSVCR80!exit` | `client.exit` (`crt_exit`), then the original. |
+| `0x017EF238` | `KERNEL32!ExitProcess` | `client.exit` (`exit_process`), then the original. |
+
+The pre-2026-09-28 slot addresses in the entry-points finding
+(`0x0196BAB2`, `0x01987B76`) were hint/name RVAs, the same mistake as
+the Phase 4-5 slots (see the fingerprint section).
+
+**Chaining.** At install the DLL calls the real
+`SetUnhandledExceptionFilter` with its own filter and keeps the
+displaced one as `next`. Our filter records the crash and then returns
+whatever `next` returns, or `EXCEPTION_CONTINUE_SEARCH` when there is
+none; it never decides to handle an exception itself. The detours do
+the same for the game's crash handler: record, then call the original.
+No vectored handler: it sees every first-chance exception, and UE3 and
+`lua51.dll` use C++ exceptions for errors they catch, so it cannot tell
+a crash from a caught error.
+
+**On a crash**, once per process: a local log line that does not wait
+on the log's lock, the JSON sidecar, `client.crash` queued with an
+urgent-flush request, the minidump (`MiniDumpNormal |
+MiniDumpWithUnloadedModules | MiniDumpWithThreadInfo`, falling back to
+`MiniDumpNormal`), `client.crash.dump`, and then a wait of at most 3 s
+for the uploader thread to ship both. The event goes out before the
+dump is written, so a dump write that hangs cannot also lose the event.
+The crashing thread does no network I/O: the uploader thread, which is
+healthy, does the POST (`src/flush.rs`). A crash on the uploader thread
+itself does not wait. A second fault, including one in this code,
+passes straight through. An exit waits at most 2 s for `client.exit`.
+
+**Limits.** Nothing here can be verified without a real crash in the
+client; the dump writer is tested against the test process. A stack
+overflow may leave no stack for any filter. The queue and the event
+builder allocate, so a crash inside the heap can fault again in the
+capture code; that second fault is passed on and the game's own
+handling still runs. In a Live Research Lab session the lab bridge's
+crash tier (`bridge::crash`) replaces the top-level filter after this
+installs and terminates on a fault; the `MiniDumpWriteDump` detour
+still sees the game's own crash path.
+
 ## What we DON'T hook
 
 To preserve "observe without changing behavior":
@@ -218,7 +291,7 @@ To preserve "observe without changing behavior":
 | 3 | Game state + kismet + tick — state-flag dispatcher, anim notify A+B, cooked-data PAK load, APlayerController::execConsoleCommand (inline) + AActor::Tick, USequence::UpdateOp (vtable swap). **CME RTTI auto-discovery** (~270 events) and **UObject::ProcessEvent** vtable-swap deferred. | LANDED (manifest-driven 2026-06-05) — partial; cooked-data PAK load still not re-added (#989 — corrected finding: wrong function, see the seam survey) |
 | 4 | UI / Lua — CEGUI::DefaultLogger::logEvent (vtable swap) + lua_pcall, lua_call, lua_newstate (IAT swap). Console command already covered in Phase 3. | LANDED (manifest-driven 2026-06-05) |
 | 5 | Subsystem correlators — Bink tick (inline, in Phase-3 commit) + CreateThread, LoadLibraryW/A, GetForegroundWindow (IAT swap). **FMOD** runtime vtable traversal and **PropertyNode<T>** per-T enumeration deferred. | LANDED (manifest-driven 2026-06-05) — partial |
-| 6 | Crash + on-disk artifact shipping (SetUnhandledExceptionFilter IAT, MiniDumpWriteDump call, log/dump file tailers). IAT slots known; not yet implemented. | DEFERRED |
+| 6 | Crash + exit capture: `MiniDumpWriteDump`, `SetUnhandledExceptionFilter`, CRT `exit` and `ExitProcess` IAT detours, a chained top-level filter, a `MiniDumpNormal` dump + `.jsonl` sidecar in `Binaries/sessions/` shipped by the launcher bundle, urgent flush of `client.crash` / `client.exit`. Log/dump file tailers not done (the launcher already ships `sessions/**`). | LANDED 2026-09-28, not yet exercised by a real crash |
 | seam survey | Client↔server join key (`client.session.identity`, player entity id via `GameEntityManager`) + two new `ServerConnection` hooks (`forcedPosition`, `createBasePlayer`) + a ranked survey of further candidates (Mercury send-path, AoI enter/leave, `connect` IAT for server address, effect start/stop CME event, corrected cooked-data version-info signal) and three dead-end string anchors (`BWConnection` lifecycle, misattributed). | LANDED (join key + 2 hooks); rest catalogued, not implemented — [`client-telemetry-seam-survey.md`](../reverse-engineering/findings/client-telemetry-seam-survey.md) |
 
 ## CI

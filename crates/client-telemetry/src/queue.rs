@@ -85,25 +85,33 @@ impl Producer {
     /// `false` — never blocks. Returns `true` when the event made
     /// it into the ring.
     pub fn try_emit(&self, builder: EventBuilder) -> bool {
+        self.try_emit_seq(builder).is_some()
+    }
+
+    /// [`try_emit`](Self::try_emit), returning the `seq` the event was
+    /// stamped with, so a caller can wait for that event to ship
+    /// ([`crate::flush`]). `None` when it was dropped.
+    pub fn try_emit_seq(&self, builder: EventBuilder) -> Option<u64> {
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed);
         let event = ClientNativeEvent {
             ts_ms: now_ms(),
-            seq: self.seq.fetch_add(1, Ordering::Relaxed),
+            seq,
             target: builder.target,
             level: builder.level,
             fields: builder.fields,
         };
         match self.sender.try_send(event) {
-            Ok(()) => true,
+            Ok(()) => Some(seq),
             Err(TrySendError::Full(_)) => {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
-                false
+                None
             }
             Err(TrySendError::Disconnected(_)) => {
                 // Uploader thread crashed / quit. From the
                 // producer's perspective the event is dropped; we
                 // count it so the next health emit shows it.
                 self.dropped.fetch_add(1, Ordering::Relaxed);
-                false
+                None
             }
         }
     }

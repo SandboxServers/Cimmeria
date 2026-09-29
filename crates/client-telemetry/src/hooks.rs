@@ -81,7 +81,9 @@ pub fn install_all(producer: Producer) {
     cme_hooks::install(producer.clone());
     inline_hooks::install(producer.clone());
     iat_hooks::install(producer.clone());
-    vtable_hooks::install(producer);
+    vtable_hooks::install(producer.clone());
+    // Phase 6: crash filter + MiniDumpWriteDump / exit IAT detours.
+    crate::crash::install(&producer);
 }
 
 /// Convenience: emit a one-shot info event with this target +
