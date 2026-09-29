@@ -256,8 +256,24 @@ fn bootstrap_phase2() {
         session.session_id, session.telemetry.upload_endpoint
     ));
 
-    // Step 3 + 4: queue + global producer.
-    let (producer, consumer) = crate::queue::channel();
+    // Capture switches for the engine-layer log sinks and the governor:
+    // the session's `capture` block and `CIMMERIA_CLIENT_CAPTURE` each can
+    // turn them on.
+    let capture = session
+        .capture
+        .unwrap_or_default()
+        .merged(crate::capture::CaptureConfig::from_env());
+    crate::capture::init(capture);
+    crate::log::line(format_args!(
+        "capture switches: unfilter={} firehose={} raw={}",
+        capture.unfilter, capture.firehose, capture.raw
+    ));
+
+    // Step 3 + 4: queue + global producer, with the telemetry governor
+    // between the hooks and the ring (`raw` / `firehose` capture switches).
+    let governor = crate::governor::GovernorConfig::from_capture(capture);
+    crate::log::line(format_args!("telemetry governor: {}", governor.mode()));
+    let (producer, consumer) = crate::queue::governed_channel(governor);
     if PRODUCER.set(producer.clone()).is_err() {
         // Double-init shouldn't happen (the bootstrap-thread
         // guard above is single-shot), but if it does, leave the

@@ -41,6 +41,7 @@
 pub mod capture;
 pub mod events;
 pub mod fingerprint;
+pub mod governor;
 pub mod hooks;
 pub mod log;
 pub mod msvc_string;

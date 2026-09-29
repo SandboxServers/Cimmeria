@@ -14,7 +14,7 @@ use cimmeria_services::orchestrator::Orchestrator;
 use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
 
 use super::dto::{BundleResponse, ChunkResponse, IngestError};
-use super::replay::replay_ndjson;
+use super::session_budget::{replay_budgeted, EVENTS_PER_WINDOW, WINDOW_SECS};
 use super::{
     MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES, MAX_CHUNK_BYTES,
     MAX_CHUNK_DECOMPRESSED_BYTES,
@@ -50,26 +50,52 @@ pub(super) async fn upload_chunk(
         ));
     }
 
-    let counts = replay_ndjson(&claims, &ndjson).map_err(|e| IngestError::Ndjson {
-        line: e.line,
-        err: e.err,
-    })?;
-    let (accepted, parsed) = (counts.accepted, counts.parsed);
+    // The runaway guard: over the session's budget only priority events
+    // are replayed; the rest are counted and reported below, never dropped
+    // silently.
+    let now = chrono::Utc::now().timestamp();
+    let (counts, totals) =
+        replay_budgeted(&claims, &ndjson, now).map_err(|e| IngestError::Ndjson {
+            line: e.line,
+            err: e.err,
+        })?;
+    let (accepted, parsed, suppressed) = (counts.accepted, counts.parsed, counts.suppressed);
 
-    tracing::debug!(
-        target: "launcher.ingest",
-        session_id = %claims.sid,
-        install_id = %claims.sub,
-        session_kind = claims.session_kind(),
-        accepted,
-        parsed,
-        body_bytes = body.len(),
-        "upload-chunk accepted"
-    );
+    if suppressed > 0 {
+        tracing::warn!(
+            target: "launcher.ingest",
+            session_id = %claims.sid,
+            install_id = %claims.sub,
+            session_kind = claims.session_kind(),
+            accepted,
+            parsed,
+            suppressed,
+            session_accepted_total = totals.accepted_total,
+            session_suppressed_total = totals.suppressed_total,
+            budget_per_window = EVENTS_PER_WINDOW,
+            window_secs = WINDOW_SECS,
+            reason = "session_over_budget",
+            "upload-chunk over the session event budget; only warn/error and boot events replayed"
+        );
+    } else {
+        tracing::debug!(
+            target: "launcher.ingest",
+            session_id = %claims.sid,
+            install_id = %claims.sub,
+            session_kind = claims.session_kind(),
+            accepted,
+            parsed,
+            session_accepted_total = totals.accepted_total,
+            session_suppressed_total = totals.suppressed_total,
+            body_bytes = body.len(),
+            "upload-chunk accepted"
+        );
+    }
 
     Ok(Json(ChunkResponse {
         accepted,
         parsed_lines: parsed,
+        suppressed,
     }))
 }
 

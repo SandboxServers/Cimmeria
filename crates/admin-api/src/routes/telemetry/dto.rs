@@ -82,6 +82,10 @@ pub(super) struct ChunkResponse {
     /// M". Drift between the two is the signal for a parse-error
     /// regression on either side.
     pub parsed_lines: u64,
+    /// Lines parsed but not replayed because the session was over its
+    /// event budget (`session_budget`). The launcher and the DLL ignore
+    /// the body; the server's `launcher.ingest` warn is the report.
+    pub suppressed: u64,
 }
 
 #[derive(Debug, Serialize)]

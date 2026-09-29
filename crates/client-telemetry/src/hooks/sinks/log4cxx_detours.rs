@@ -286,7 +286,7 @@ mod tests {
         assert!(!unsafe { is_debug_enabled(l) });
         crate::capture::init(crate::capture::CaptureConfig {
             unfilter: true,
-            firehose: false,
+            ..crate::capture::CaptureConfig::default()
         });
         assert!(unsafe { is_debug_enabled(l) });
         crate::capture::init(crate::capture::CaptureConfig::default());
