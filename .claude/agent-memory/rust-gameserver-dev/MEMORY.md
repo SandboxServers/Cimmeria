@@ -63,6 +63,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [dll-boot-testhost-traps.md](dll-boot-testhost-traps.md) — sgw-testhost harness: console children hold a piped stdout (start32::run blocks), restage after DLL edits, derive site counts.
 - [cargo-artifact-hardlink-cp-trap.md](cargo-artifact-hardlink-cp-trap.md) — `cp` over a built DLL writes through the hardlink into deps/; `rm` first, `touch` a source to recover.
 - [injector-bitness-and-start32-helper.md](injector-bitness-and-start32-helper.md) — x64 launcher injects via the i686 sgw-start32 helper; the WOW64 resolver fails on suspended targets.
+- [client-unit-slots-and-actor-pose.md](client-unit-slots-and-actor-pose.md) — Lua units are slots (map at mgr+0x130), pin private slots 7700+; actor pose at +0xDC; worldToPixel only in PreRender.
 
 ## UE3 packages and navmesh
 
