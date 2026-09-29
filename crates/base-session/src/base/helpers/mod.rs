@@ -536,8 +536,9 @@ pub fn destroy_client_entities(
             "player session ended"
         );
 
-        // Remove from entity->addr reverse index
-        entity_to_addr.lock().unwrap().remove(&player_eid);
+        // Remove from entity->addr reverse index, and record the witness as
+        // departed so the cell's in-flight sends to it log at DEBUG.
+        unmap_departed_witness(entity_to_addr, player_eid);
 
         // The base plugins' teardown (#962 step 5): crafting's queued
         // inductions die with the session here, and nothing they would have
@@ -692,15 +693,12 @@ where
         let addr = match addr_opt {
             Some(a) => a,
             None => {
-                // entity gone from address map mid-send is a
-                // player-visible bug (witness sees stale state). warn! so
-                // ops can grep this; `entity_count_in_map` is the
-                // snapshot taken above.
-                tracing::warn!(
+                // DEBUG for a witness whose session just ended (the
+                // teardown race), WARN otherwise: `departed_witnesses`.
+                departed_witnesses::log_addr_miss(
                     witness_id,
-                    reason = "entity_to_addr_miss",
-                    entity_count_in_map = map_size,
-                    "AoI: no client addr for witness -- packet dropped"
+                    map_size,
+                    departed_witnesses::AddrMissPath::Unreliable,
                 );
                 return WitnessSendOutcome::AddrUnresolved;
             }
@@ -788,15 +786,12 @@ where
         let addr = match addr_opt {
             Some(a) => a,
             None => {
-                // Reliable path. Dropping a reliable AoI packet means
-                // the client never sees a state-change (entity create/
-                // destroy, method call) — the single biggest blind
-                // spot for the world-entry spawn-glitch class.
-                tracing::warn!(
+                // DEBUG for a witness whose session just ended (the
+                // teardown race), WARN otherwise: `departed_witnesses`.
+                departed_witnesses::log_addr_miss(
                     witness_id,
-                    reason = "entity_to_addr_miss",
-                    entity_count_in_map = map_size,
-                    "AoI reliable: no client addr for witness -- packet dropped"
+                    map_size,
+                    departed_witnesses::AddrMissPath::Reliable,
                 );
                 return WitnessSendOutcome::AddrUnresolved;
             }
@@ -897,15 +892,12 @@ pub async fn send_bundle_to_witness_reliable(
         let addr = match addr_opt {
             Some(a) => a,
             None => {
-                // Bundle path. Dropping a bundle drops a whole batch of
-                // AoI messages — usually worse than the single-message
-                // path. See unreliable/reliable variants above for the
-                // rationale on warn-level.
-                tracing::warn!(
+                // DEBUG for a witness whose session just ended (the
+                // teardown race), WARN otherwise: `departed_witnesses`.
+                departed_witnesses::log_addr_miss(
                     witness_id,
-                    reason = "entity_to_addr_miss",
-                    entity_count_in_map = map_size,
-                    "AoI bundle: no client addr for witness -- bundle dropped"
+                    map_size,
+                    departed_witnesses::AddrMissPath::Bundle,
                 );
                 return BundleSendOutcome::AddrUnresolved;
             }
@@ -1036,6 +1028,11 @@ pub async fn send_bundle_to_witness_reliable(
     }
 }
 
+mod departed_witnesses;
+pub use departed_witnesses::{
+    note_witness_departed, unmap_departed_witness, witness_recently_departed, DEPARTED_WITNESS_TTL,
+};
+
 mod witness_broadcast;
 pub use witness_broadcast::broadcast_to_witnesses;
 
@@ -1044,3 +1041,6 @@ mod tests;
 
 #[cfg(test)]
 mod disconnect_teardown;
+
+#[cfg(test)]
+mod departed_witnesses_tests;

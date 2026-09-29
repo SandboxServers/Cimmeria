@@ -31,6 +31,8 @@
 //!   columns, placement (the Gate Mail Clerk's spawn 490 included), the
 //!   crate's harmless ability set, the vendor lists, loot table 3 and the hub
 //!   dialogs.
+//! - [`live_db_debug_hub_stationary`]: live-DB guard that every spawn in the
+//!   stasis room is `is_stationary`, so none warns `spawn_off_mesh`.
 //! - [`live_db_mail_clerk`]: live-DB guards for the debug hub's Gate Mail
 //!   Clerk (social-systems SS-U3): template 390's role columns and dialog
 //!   60104.
@@ -88,6 +90,7 @@ mod live_db_crafting_hub;
 mod live_db_debug_auctioneer;
 mod live_db_debug_banker;
 mod live_db_debug_hub;
+mod live_db_debug_hub_stationary;
 mod live_db_debug_org_bankers;
 mod live_db_debug_registrars;
 mod live_db_deployables;

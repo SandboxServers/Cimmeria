@@ -126,8 +126,10 @@ pub(super) async fn handle_log_off(
             }
         }
 
-        // Remove entity→addr mapping
-        entity_to_addr.lock().unwrap().remove(&entity_id);
+        // Remove entity→addr mapping, recording the witness as departed:
+        // the cell's sends already queued for it (a tick's position relays)
+        // still arrive and must not WARN as a live-session drop.
+        cimmeria_base_session::base::helpers::unmap_departed_witness(entity_to_addr, entity_id);
 
         // The base plugins' logOff work (#962 step 5): crafting drops any
         // queued induction without consuming it.

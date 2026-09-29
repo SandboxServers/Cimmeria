@@ -128,8 +128,8 @@ mod live_db {
     /// 372: world 12, inside the stasis room, on its floor, clear of the
     /// respawner and of every other NPC in the room (the hub, the pets and
     /// crafting NPCs, the Storage Officer and each other), loading as a Team
-    /// and a Command Banker, and not respawning, holding or
-    /// aggression-overridden.
+    /// and a Command Banker, and not respawning or
+    /// aggression-overridden; they hold position by flag (`is_stationary`).
     #[tokio::test]
     async fn org_banker_spawns_sit_in_the_stasis_room_hub() {
         let pool = require_db_or_skip!();
@@ -207,7 +207,7 @@ mod live_db {
                 );
             }
             assert_eq!(s.respawn_secs, None);
-            assert!(!s.is_stationary);
+            assert!(s.is_stationary, "every hub spawn holds position");
             assert_eq!(s.aggression_override, None);
         }
     }

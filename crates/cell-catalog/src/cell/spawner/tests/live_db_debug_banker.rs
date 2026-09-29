@@ -121,7 +121,8 @@ mod live_db {
     /// Spawn 470 is the one placement of template 370: world 12, inside the
     /// stasis room, on its floor, clear of the respawner and of every other
     /// hub NPC and crafting station, loading as a personal Banker, and not a
-    /// respawning, holding or aggression-overridden mob.
+    /// respawning or aggression-overridden mob; it holds position by flag
+    /// (`is_stationary`).
     #[tokio::test]
     async fn banker_spawn_sits_in_the_stasis_room_hub() {
         let pool = require_db_or_skip!();
@@ -192,7 +193,7 @@ mod live_db {
             );
         }
         assert_eq!(s.respawn_secs, None);
-        assert!(!s.is_stationary);
+        assert!(s.is_stationary, "every hub spawn holds position");
         assert_eq!(s.aggression_override, None);
     }
 }
