@@ -87,8 +87,16 @@ pub(crate) enum UnpackFault {
     },
     /// `expandLength` failed (an unhandled length width or overflow).
     LengthExpandFailed,
-    /// The body straddles but no next packet exists.
-    BodyRunsOut { body_end: usize, packet_len: u16 },
+    /// The body straddles but no next packet exists. `declared_len` is
+    /// what the message's own length field says (read from the packet
+    /// bytes, not from the iterator, whose length fields are stale on an
+    /// error) and `body_end` where that puts the end, as a cursor in the
+    /// packet.
+    BodyRunsOut {
+        declared_len: Option<u32>,
+        body_end: usize,
+        packet_len: u16,
+    },
 }
 
 impl UnpackFault {
@@ -125,6 +133,11 @@ impl Exit {
     }
 }
 
+/// Lower-case hex of `b`.
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
 /// Map `processOrderedPacket`'s result to how the loop ended.
 pub(crate) fn exit_of(result: i32) -> Exit {
     match result {
@@ -150,6 +163,9 @@ pub(crate) struct BundleTrace {
     /// Payload offset the last unpacked message ended at (0 if none).
     pub consumed: usize,
     pub fault: Option<(usize, UnpackFault)>,
+    /// The bytes at the failing message (up to 24) and its element.
+    pub fault_bytes: Vec<u8>,
+    pub fault_element: Option<Element>,
 }
 
 impl BundleTrace {
@@ -170,6 +186,8 @@ impl BundleTrace {
             last: None,
             consumed: 0,
             fault: None,
+            fault_bytes: Vec::new(),
+            fault_element: None,
         }
     }
 
@@ -216,7 +234,20 @@ impl BundleTrace {
 
     /// Record one `unpack` call. `pre` is the iterator before the call,
     /// `post` after, `element` the message's interface element.
+    #[cfg(test)]
     pub(crate) fn on_unpack(&mut self, pre: IterState, post: Unpacked, element: Option<Element>) {
+        self.on_unpack_with_bytes(pre, post, element, None);
+    }
+
+    /// [`on_unpack`](Self::on_unpack) with the packet bytes at the message
+    /// (from its id byte on), which name the fault exactly.
+    pub(crate) fn on_unpack_with_bytes(
+        &mut self,
+        pre: IterState,
+        post: Unpacked,
+        element: Option<Element>,
+        raw: Option<&[u8]>,
+    ) {
         let Some((_, start)) = self.locate(pre.packet, pre.cursor) else {
             return;
         };
@@ -233,12 +264,19 @@ impl BundleTrace {
                     cursor: pre.cursor,
                 }
             } else {
+                // The iterator's own length fields are not written on an
+                // error, so the declared length comes from the packet.
+                let declared = element.zip(raw).and_then(|(e, r)| e.declared_len(r));
+                let header = element.and_then(|e| e.header_len()).unwrap_or(0);
                 UnpackFault::BodyRunsOut {
-                    body_end: usize::from(post.body_offset) + post.len as usize,
+                    declared_len: declared,
+                    body_end: usize::from(pre.cursor) + header + declared.unwrap_or(0) as usize,
                     packet_len: pre.packet_len,
                 }
             };
             self.fault = Some((start, fault));
+            self.fault_bytes = raw.map(<[u8]>::to_vec).unwrap_or_default();
+            self.fault_element = element;
             return;
         }
         let header = usize::from(post.body_offset).saturating_sub(usize::from(pre.cursor));
@@ -353,13 +391,23 @@ impl BundleTrace {
                     f.push(("header_bytes_in_packet", json!(fits)));
                 }
                 UnpackFault::BodyRunsOut {
+                    declared_len,
                     body_end,
                     packet_len,
                 } => {
+                    f.push(("declared_len", json!(declared_len)));
                     f.push(("body_end", json!(body_end)));
                     f.push(("packet_len", json!(packet_len)));
                 }
                 UnpackFault::LengthExpandFailed => {}
+            }
+            if !self.fault_bytes.is_empty() {
+                f.push(("abort_bytes", json!(hex(&self.fault_bytes))));
+                f.push(("abort_msg_id", json!(self.fault_bytes[0])));
+            }
+            if let Some(e) = self.fault_element {
+                f.push(("element_style", json!(e.style)));
+                f.push(("element_param", json!(e.param)));
             }
         } else if exit != Exit::Clean {
             f.push(("abort_offset", json!(self.consumed)));
@@ -380,9 +428,12 @@ impl BundleTrace {
         Some((idx, abs - self.prefix[idx]))
     }
 
-    /// The loop ran to the end of the chain and consumed all of it.
+    /// The loop ran to the end of the chain. The client's own result says
+    /// so: it is `0` only when the iterator reached the end, so a clean
+    /// result is happy even if no per-message trace was recorded (the
+    /// `unpack` hook may be disabled).
     pub(crate) fn is_happy(&self, result: i32) -> bool {
-        exit_of(result) == Exit::Clean && self.unconsumed() == 0
+        exit_of(result) == Exit::Clean
     }
 }
 
@@ -507,16 +558,74 @@ mod tests {
         assert_eq!(get("boundaries"), Some(json!([1400])));
     }
 
+    /// The client's own result decides: `0` means the iterator reached the
+    /// end, so the bundle is happy even when no per-message trace exists
+    /// (the `unpack` hook disabled), and any error result is not.
     #[test]
-    fn a_clean_bundle_is_happy_only_if_every_byte_was_consumed() {
+    fn the_clients_result_decides_whether_a_bundle_is_happy() {
         let c = chain(&[100]);
         let mut t = BundleTrace::new(c.clone());
         t.on_unpack(iter_at(&c, 0, 1), ok(0x80, 4, 97), Some(WORD));
         assert!(t.is_happy(0));
-        let mut short = BundleTrace::new(chain(&[100]));
-        short.on_unpack(iter_at(&c, 0, 1), ok(0x80, 4, 50), Some(WORD));
-        assert!(!short.is_happy(0), "50 bytes left over is not clean");
+        let untraced = BundleTrace::new(chain(&[100]));
+        assert!(untraced.is_happy(0), "no unpack trace, clean result");
         assert!(!t.is_happy(RESULT_UNKNOWN_MESSAGE_ID));
+        assert!(!t.is_happy(RESULT_CORRUPTED));
+    }
+
+    /// A normal small login-phase bundle must not be blamed on the message
+    /// loop: its unpack succeeded, so no fault is recorded and the summary
+    /// is clean.
+    #[test]
+    fn a_small_single_packet_bundle_that_unpacks_cleanly_has_no_fault() {
+        let c = chain(&[20]);
+        let mut t = BundleTrace::new(c.clone());
+        // 0x80, WORD_LENGTH, 17 body bytes: header 3 + body 17 = the whole
+        // 20-byte payload.
+        t.on_unpack_with_bytes(iter_at(&c, 0, 1), ok(0x80, 4, 17), Some(WORD), None);
+        assert!(t.fault.is_none());
+        assert_eq!((t.messages, t.consumed, t.total), (1, 20, 20));
+        let f = t.end_fields(0, Some(1), Some(0), None);
+        let get = |k: &str| f.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
+        assert_eq!(get("exit"), Some(json!("clean_end")));
+        assert_eq!(get("fault"), None);
+    }
+
+    /// A body whose declared length overruns a lone packet: the fault names
+    /// the declared length and where it ends, from the packet's own bytes
+    /// (the iterator's length fields are stale on an error), and carries the
+    /// raw bytes so the message can be read off the event.
+    #[test]
+    fn a_body_overrunning_a_lone_packet_reports_the_declared_length_and_bytes() {
+        let c = chain(&[10]);
+        let mut t = BundleTrace::new(c.clone());
+        let pre = iter_at(&c, 0, 1);
+        let post = Unpacked {
+            msg_id: 0x80,
+            flag: 0x20,
+            body_offset: 0, // stale on an error
+            len: 0,         // stale on an error
+            decoded_len: 300,
+        };
+        let raw = [0x80u8, 0x2c, 0x01, 1, 2, 3, 4, 5, 6, 7];
+        t.on_unpack_with_bytes(pre, post, Some(WORD), Some(&raw));
+        let (abs, fault) = t.fault.unwrap();
+        assert_eq!(abs, 0);
+        assert_eq!(
+            fault,
+            UnpackFault::BodyRunsOut {
+                declared_len: Some(300),
+                body_end: 1 + 3 + 300,
+                packet_len: 11
+            }
+        );
+        let f = t.end_fields(RESULT_CORRUPTED, Some(0), Some(1), None);
+        let get = |k: &str| f.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
+        assert_eq!(get("declared_len"), Some(json!(300)));
+        assert_eq!(get("abort_bytes"), Some(json!("802c0101020304050607")));
+        assert_eq!(get("abort_msg_id"), Some(json!(0x80)));
+        assert_eq!(get("element_style"), Some(json!(1)));
+        assert_eq!(get("element_param"), Some(json!(2)));
     }
 
     #[test]

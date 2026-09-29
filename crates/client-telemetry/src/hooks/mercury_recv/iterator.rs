@@ -108,6 +108,25 @@ impl Element {
         })
     }
 
+    /// The length the message declares, from `raw` (the bytes starting at
+    /// the message id): the element's fixed length, or the little-endian
+    /// inline length field after the id byte.
+    pub(crate) fn declared_len(&self, raw: &[u8]) -> Option<u32> {
+        match self.style {
+            0 => Some(self.param),
+            1 => {
+                let w = self.param as usize;
+                if !(1..=4).contains(&w) || raw.len() < 1 + w {
+                    return None;
+                }
+                let mut b = [0u8; 4];
+                b[..w].copy_from_slice(&raw[1..1 + w]);
+                Some(u32::from_le_bytes(b))
+            }
+            _ => None,
+        }
+    }
+
     /// Header bytes (`0x0158aa40`): message id plus the inline length.
     pub(crate) fn header_len(&self) -> Option<usize> {
         match self.style {
@@ -154,6 +173,14 @@ mod tests {
         assert_eq!(IterRaw::parse(&b[..0x20]), None);
         let e = Element::parse(&[0, 1, 0, 0, 2, 0, 0, 0]).unwrap();
         assert_eq!(e.header_len(), Some(3));
+    }
+
+    #[test]
+    fn the_declared_length_is_read_from_the_bytes_after_the_id() {
+        assert_eq!(WORD.declared_len(&[0x80, 0x2c, 0x01, 9, 9]), Some(0x012c));
+        assert_eq!(WORD.declared_len(&[0x80, 0x2c]), None, "field cut short");
+        assert_eq!(Element { style: 0, param: 8 }.declared_len(&[1]), Some(8));
+        assert_eq!(Element { style: 1, param: 9 }.declared_len(&[0; 12]), None);
     }
 
     #[test]

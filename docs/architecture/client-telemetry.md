@@ -314,3 +314,12 @@ To preserve "observe without changing behavior":
 - [`docs/operations/telemetry.md`](../operations/telemetry.md) — operator runbook (per-category controls, opt-out, crash-dump shipping — extends with client-side toggle in follow-up)
 - [`docs/technical/atrearl-loader.md`](../technical/atrearl-loader.md) — third-party RE reference (behavioural only — not code we use)
 - [`docs/architecture/live-research-lab.md`](live-research-lab.md) — the ADR for the `lab-bridge` inbound channel this DLL gains under the feature flag; [`docs/guides/live-research-lab.md`](../guides/live-research-lab.md) is its operating manual / rulebook
+
+### Mercury receive-path anomaly events (2026-09-29)
+
+| Event | Level | When |
+|---|---|---|
+| `client.mercury.request_misparse` | warn | `unpack` is about to parse a message as a request (iterator next-request offset == cursor) in a packet without the has-requests flag; the client's uninitialized iterator field, see [client-mercury-receive-path.md](../reverse-engineering/findings/client-mercury-receive-path.md#the-iterators-next-request-offset-is-never-initialized-confirmed-live-2026-09-29) |
+| `client.mercury.unpack_fault` | warn | Any other `unpack` error, with the client's decoded length and the raw bytes at the cursor |
+
+Hook switches: `CIMMERIA_CLIENT_HOOKS_DISABLE` leaves named inline hooks uninstalled; `CIMMERIA_CLIENT_HOOKS_ENABLE` installs default-off hooks. `mercury_process_ordered_packet` is default-off because sitting in its call path changes the client's behaviour.

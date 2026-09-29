@@ -171,6 +171,67 @@ unsafe fn install_inner(producer: Producer) {
     );
 }
 
+/// Environment variable naming inline hooks to leave uninstalled, so a hook
+/// that misbehaves in the lab can be switched off without a rebuild:
+/// `CIMMERIA_CLIENT_HOOKS_DISABLE=mercury_bundle_unpack,mercury_queue_ack`.
+/// Names are the `hook` values of `client.hooks.inline.installed`; a trailing
+/// `*` matches a prefix (`mercury_*`) and `all` disables every inline hook.
+/// Read once, at install.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub const DISABLE_ENV: &str = "CIMMERIA_CLIENT_HOOKS_DISABLE";
+
+/// Whether `name` is listed in the comma-separated `list`.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub(crate) fn is_listed(list: &str, name: &str) -> bool {
+    list.split(',').map(str::trim).any(|item| match item {
+        "" => false,
+        "all" => true,
+        _ => match item.strip_suffix('*') {
+            Some(prefix) => name.starts_with(prefix),
+            None => item == name,
+        },
+    })
+}
+
+/// Environment variable naming default-off hooks to install anyway
+/// (same list syntax as [`DISABLE_ENV`]).
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub const ENABLE_ENV: &str = "CIMMERIA_CLIENT_HOOKS_ENABLE";
+
+/// Hooks that are off unless [`ENABLE_ENV`] names them, because merely
+/// sitting in the call path changes what the client does.
+///
+/// `mercury_process_ordered_packet`: the client's `Bundle::iterator` copy
+/// constructor (`0x01578e90`) never initializes `+0x14`, the next-request
+/// offset, so `processOrderedPacket`'s iterator starts with whatever an
+/// earlier call left in that stack slot. With our detour's frame in
+/// between, that residue is our code's, and it was `1` (the first
+/// message's cursor): every message parsed as a request and every bundle
+/// aborted, so the client could not log in (live bisect, 2026-09-29).
+/// `unpack` runs inside that frame and reports the same faults, so the
+/// default build observes from there.
+pub(crate) const DEFAULT_OFF: &[&str] = &["mercury_process_ordered_packet"];
+
+/// Whether the hook `name` should be left uninstalled, given the two
+/// environment lists.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub(crate) fn skip_hook(name: &str, disable: Option<&str>, enable: Option<&str>) -> bool {
+    if disable.is_some_and(|l| is_listed(l, name)) {
+        return true;
+    }
+    DEFAULT_OFF.contains(&name) && !enable.is_some_and(|l| is_listed(l, name))
+}
+
+/// Whether the environment disables the hook `name`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+fn hook_disabled(name: &str) -> bool {
+    skip_hook(
+        name,
+        std::env::var(DISABLE_ENV).ok().as_deref(),
+        std::env::var(ENABLE_ENV).ok().as_deref(),
+    )
+}
+
 /// Shared CreateHook + EnableHook plumbing — same for every
 /// inline target. Reports `installed` on success and
 /// `create_failed` / `enable_failed` on failure with the hook name
@@ -183,6 +244,17 @@ unsafe fn install_one(
     detour: *mut c_void,
     trampoline_slot: &OnceLock<usize>,
 ) {
+    if hook_disabled(hook_name) {
+        super::emit_info(
+            producer,
+            "client.hooks.inline.disabled",
+            [
+                ("hook", serde_json::Value::String(hook_name.into())),
+                ("env", serde_json::Value::String(DISABLE_ENV.into())),
+            ],
+        );
+        return;
+    }
     let target = address as *mut c_void;
     let mut trampoline: *mut c_void = std::ptr::null_mut();
 
@@ -232,6 +304,40 @@ unsafe fn install_one(
 
 #[cfg(test)]
 mod tests {
+    use super::{is_listed, skip_hook};
+
+    /// `processOrderedPacket` stays off unless enabled by name (its frame
+    /// changes the client's uninitialized iterator field and broke login);
+    /// the disable list still wins, and other hooks are on by default.
+    #[test]
+    fn the_ordered_packet_hook_is_off_unless_enabled() {
+        let ordered = "mercury_process_ordered_packet";
+        assert!(skip_hook(ordered, None, None));
+        assert!(skip_hook(ordered, None, Some("mercury_bundle_unpack")));
+        assert!(!skip_hook(ordered, None, Some(ordered)));
+        assert!(!skip_hook(ordered, None, Some("mercury_*")));
+        assert!(skip_hook(ordered, Some(ordered), Some(ordered)));
+        assert!(!skip_hook("mercury_bundle_unpack", None, None));
+        assert!(skip_hook("mercury_bundle_unpack", Some("mercury_*"), None));
+    }
+
+    /// A hook that misbehaves in the lab is switched off by name, by
+    /// prefix, or all at once, and an empty or unrelated list leaves it on.
+    #[test]
+    fn the_disable_list_matches_names_prefixes_and_all() {
+        assert!(is_listed("mercury_bundle_unpack", "mercury_bundle_unpack"));
+        assert!(is_listed(
+            "entity_create, mercury_queue_ack",
+            "mercury_queue_ack"
+        ));
+        assert!(is_listed("mercury_*", "mercury_process_packet"));
+        assert!(is_listed("all", "anything"));
+        assert!(!is_listed("mercury_*", "entity_create"));
+        assert!(!is_listed("mercury_queue", "mercury_queue_ack"));
+        assert!(!is_listed("", "mercury_queue_ack"));
+        assert!(!is_listed(" , ", "mercury_queue_ack"));
+    }
+
     /// Pin the resolved addresses against the documented anchors.
     /// If a future RE pass moves any of them, this test trips and
     /// reminds us to update the docs + commit comment together.

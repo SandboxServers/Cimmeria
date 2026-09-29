@@ -1,0 +1,8 @@
+{
+  "exception_code": 3221225477,
+  "exception_address": 14410117,
+  "thread_id": 61060,
+  "ts_ms": 1790661106782,
+  "in_flight": false,
+  "minidump": "lab-minidump-1790661106782.dmp"
+}

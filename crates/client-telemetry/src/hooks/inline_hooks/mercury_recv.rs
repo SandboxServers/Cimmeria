@@ -39,7 +39,7 @@ use crate::hooks::mercury_recv::{
     report::{self, Report, WindowNote},
     tail::{self, flag, Gate, Tail},
     window::WindowState,
-    MAX_DATAGRAM,
+    Fields, MAX_DATAGRAM,
 };
 use crate::queue::Producer;
 
@@ -412,24 +412,130 @@ unsafe extern "thiscall-unwind" fn unpack_detour(
         return std::ptr::null_mut();
     };
     let original: UnpackFn = std::mem::transmute(t);
+    // Allocation-free look at the iterator the client is about to use.
+    let entry = guarded(|| IterEntry::read(this as u32)).flatten();
     let tracing = BUNDLE.try_with(|b| b.borrow().is_some()).unwrap_or(false);
     let pre = tracing
         .then(|| guarded(|| read_iter(this as u32)).flatten())
         .flatten();
     let result = original(this, element);
+    if let Some(e) = entry {
+        guarded(|| e.report(this as u32, element as u32));
+    }
     if let Some(pre) = pre {
         guarded(|| {
             let (Some(post), elem) = (read_iter(this as u32), read_element(element as u32)) else {
                 return;
             };
+            // On an error the iterator's length fields are stale; the
+            // message's own bytes name the fault.
+            let raw = (post.unpacked().flag == 0x20)
+                .then(|| {
+                    let s = pre.state();
+                    let left = usize::from(s.packet_len).saturating_sub(usize::from(s.cursor));
+                    LiveMem.bytes_at(
+                        s.packet
+                            .wrapping_add(packet::DATA)
+                            .wrapping_add(u32::from(s.cursor)),
+                        left.min(24),
+                    )
+                })
+                .flatten();
             let _ = BUNDLE.try_with(|b| {
                 if let Some(t) = b.borrow_mut().as_mut() {
-                    t.on_unpack(pre.state(), post.unpacked(), elem);
+                    t.on_unpack_with_bytes(pre.state(), post.unpacked(), elem, raw.as_deref());
                 }
             });
         });
     }
     result
+}
+
+/// The iterator fields `unpack` decides with, read before the call.
+///
+/// The client's `Bundle::iterator` copy constructor (`0x01578e90`) never
+/// initializes `+0x14`, the next-request offset, so it holds stack residue.
+/// When it equals the cursor, `unpack` treats an ordinary message as a
+/// request: it reads a 4-byte reply id and a 2-byte next-request offset
+/// out of the message body and misparses everything after it.
+#[derive(Clone, Copy)]
+struct IterEntry {
+    packet: u32,
+    packet_len: u16,
+    cursor: u16,
+    next_request: u16,
+    /// The packet's flags byte (payload byte 0); `0x01` = has requests.
+    packet_flags: u8,
+}
+
+impl IterEntry {
+    /// Fault-safe reads (`ReadProcessMemory`): a bad pointer is a `None`,
+    /// never an access violation inside the client.
+    fn read(it: u32) -> Option<Self> {
+        let raw = LiveMem.bytes_at(it, 0x16)?;
+        let u16_at = |o: usize| u16::from_le_bytes([raw[o], raw[o + 1]]);
+        let packet = u32::from_le_bytes(raw[0..4].try_into().ok()?);
+        let packet_flags = LiveMem.bytes_at(packet.wrapping_add(packet::DATA), 1)?[0];
+        Some(Self {
+            packet,
+            packet_len: u16_at(4),
+            cursor: u16_at(6),
+            next_request: u16_at(0x14),
+            packet_flags,
+        })
+    }
+
+    /// Takes the request path although the packet carries no requests.
+    fn is_request_misparse(&self) -> bool {
+        self.next_request == self.cursor && self.packet_flags & 0x01 == 0
+    }
+
+    /// Report a request misparse and any unpack fault, with the client's
+    /// own post-call numbers and the message's raw bytes.
+    fn report(&self, it: u32, element: u32) {
+        let post = read_iter(it);
+        let failed = post.map(|p| p.unpacked().flag == 0x20).unwrap_or(false);
+        let misparse = self.is_request_misparse();
+        if !misparse && !failed {
+            return;
+        }
+        let left = usize::from(self.packet_len).saturating_sub(usize::from(self.cursor));
+        let bytes = LiveMem
+            .bytes_at(
+                self.packet
+                    .wrapping_add(packet::DATA)
+                    .wrapping_add(u32::from(self.cursor)),
+                left.min(24),
+            )
+            .map(|b| b.iter().map(|x| format!("{x:02x}")).collect::<String>());
+        let elem = read_element(element);
+        let mut fields: Fields = vec![
+            ("cursor", serde_json::json!(self.cursor)),
+            ("packet_len", serde_json::json!(self.packet_len)),
+            ("next_request_offset", serde_json::json!(self.next_request)),
+            ("packet_flags", serde_json::json!(self.packet_flags)),
+            (
+                "request_path",
+                serde_json::json!(self.next_request == self.cursor),
+            ),
+            ("request_misparse", serde_json::json!(misparse)),
+            ("failed", serde_json::json!(failed)),
+            ("bytes", serde_json::json!(bytes)),
+            ("elem_style", serde_json::json!(elem.map(|e| e.style))),
+            ("elem_param", serde_json::json!(elem.map(|e| e.param))),
+        ];
+        if let Some(p) = post {
+            let u = p.unpacked();
+            fields.push(("msg_id", serde_json::json!(u.msg_id)));
+            fields.push(("decoded_len", serde_json::json!(u.decoded_len)));
+        }
+        let target = if misparse {
+            "client.mercury.request_misparse"
+        } else {
+            "client.mercury.unpack_fault"
+        };
+        emit(target, "warn", fields);
+    }
 }
 
 fn read_iter(it: u32) -> Option<IterRaw> {

@@ -209,3 +209,15 @@ Five inline hooks in `cimmeria-client-telemetry` (`inline_hooks/mercury_recv.rs`
 * The size of the interface table at `Nub+0xc` (an id at or above it goes through `_invalid_parameter_noinfo`, not a clean drop). Expected 256; not verified.
 * `0x0158cac0` (ACKs received from the server) and the piggyback branch were read only for their footer handling.
 * Whether any path enqueues a second `ClientIncomingMessage` for the same reliable stream out of order (the game-thread queue is FIFO; a fragmented bundle is queued at its last fragment, interleaved non-fragment packets earlier).
+
+## The iterator's next-request offset is never initialized (confirmed live, 2026-09-29)
+
+`Bundle::iterator`'s copy constructor (`0x01578e90`) copies `+0` (packet), `+4` (packet length), `+6` (cursor), `+8` and `+0xc`, and resets `+0x10` to `+0x24`, but never writes `+0x14`, the next-request offset. The constructor that reads it from the packet (`0x01579710`, `+0x14 = packet+0x30`) fills a temporary, and `0x0157a1b0` copies that temporary into `processOrderedPacket`'s stack iterator (`local_5c`) through the copy constructor. So the iterator the message loop uses starts with whatever an earlier call left in that stack slot.
+
+When that residue equals the cursor of a message, `unpack` takes the request path: it reads a 4-byte reply id and a 2-byte next-request offset out of the message body, then checks the body length against the wrong position, and either faults ("Not enough data") or misparses every later message in the bundle.
+
+**Live evidence.** With an inline hook on `processOrderedPacket` doing work around the original call, the residue was `1`, the first message's cursor. Every bundle aborted at its first message (`decoded_len` 8 in a 10-byte packet read as a request: reply id `0xaba8`, next-request offset `0x64`), the packet's own `+0x30` was 0, and the client could not log in. A bisect of eight detour variants isolated it to work done around the call (pass-through, pre-call reads only and a drop guard alone were all harmless). The hook is now off by default (`CIMMERIA_CLIENT_HOOKS_ENABLE` turns it on), and `unpack`, which runs inside that frame, reports the condition instead.
+
+**Detector.** `client.mercury.request_misparse` (warn): at `unpack` entry the next-request offset equals the cursor while the packet's flags byte has no `0x01` (has requests). `client.mercury.unpack_fault` (warn): any other `unpack` error. Both carry the cursor, packet length, next-request offset, packet flags, the element's length style and parameter, the client's decoded length and message id, and up to 24 raw bytes at the cursor.
+
+**Open question.** The same residue exists without any hook. Whether it ever matches a cursor in a stock client (which would make the client drop the rest of a bundle on its own) is not known; the detector above answers it from live data.
