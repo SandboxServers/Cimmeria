@@ -144,11 +144,11 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         sgw_player_base::CHAT_JOIN => {
-            chat::handle_chat_join(payload, addr);
+            chat::handle_chat_join(payload, addr, transport, connected).await;
         }
 
         sgw_player_base::CHAT_LEAVE => {
-            chat::handle_chat_leave(payload, addr);
+            chat::handle_chat_leave(payload, addr, transport, connected).await;
         }
 
         sgw_player_base::CHAT_SET_AFK => {

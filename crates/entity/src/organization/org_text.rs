@@ -48,9 +48,9 @@
 use std::fmt;
 
 use super::limits::{
-    MAX_CHAT_TEXT_UNITS, MAX_MAIL_BODY_UNITS, MAX_MAIL_RECIPIENT_UNITS, MAX_MAIL_SUBJECT_UNITS,
-    MAX_MOTD_UNITS, MAX_NAME_UNITS, MAX_NOTE_UNITS, MAX_OFFICER_NOTE_UNITS, MAX_RANK_NAME_UNITS,
-    MIN_NAME_UNITS,
+    MAX_CHANNEL_NAME_UNITS, MAX_CHAT_TEXT_UNITS, MAX_MAIL_BODY_UNITS, MAX_MAIL_RECIPIENT_UNITS,
+    MAX_MAIL_SUBJECT_UNITS, MAX_MOTD_UNITS, MAX_NAME_UNITS, MAX_NOTE_UNITS, MAX_OFFICER_NOTE_UNITS,
+    MAX_RANK_NAME_UNITS, MIN_NAME_UNITS,
 };
 
 /// Which organization text a string is.
@@ -79,6 +79,14 @@ pub enum TextField {
     /// server resolves it against `sgw_player` (D-SS13) and echoes it back
     /// in `FailedRecipients`, so it is bounded like any other text.
     MailRecipient,
+    /// A user chat channel name (`chatJoin`, social-systems #1039). Same
+    /// charset and normalisation as [`TextField::Name`] (ASCII letters,
+    /// digits, space, `'` `-` `.`, ends trimmed, internal whitespace
+    /// collapsed) so a channel name is exactly as forgiving as an
+    /// organization name; uniqueness across channels also folds on
+    /// [`name_key`]. Project policy, not recovered data: the legacy
+    /// `Chat.py::joinChannel` never validated a channel name at all.
+    ChannelName,
 }
 
 impl TextField {
@@ -86,7 +94,7 @@ impl TextField {
     /// cleared; a name or a rank name may not be blank.
     pub fn min_units(self) -> usize {
         match self {
-            TextField::Name => MIN_NAME_UNITS,
+            TextField::Name | TextField::ChannelName => MIN_NAME_UNITS,
             TextField::RankName | TextField::MailSubject | TextField::MailRecipient => 1,
             TextField::Motd
             | TextField::Note
@@ -108,6 +116,7 @@ impl TextField {
             TextField::MailSubject => MAX_MAIL_SUBJECT_UNITS,
             TextField::MailBody => MAX_MAIL_BODY_UNITS,
             TextField::MailRecipient => MAX_MAIL_RECIPIENT_UNITS,
+            TextField::ChannelName => MAX_CHANNEL_NAME_UNITS,
         }
     }
 
@@ -130,6 +139,7 @@ impl TextField {
             TextField::MailSubject => "mail_subject",
             TextField::MailBody => "mail_body",
             TextField::MailRecipient => "mail_recipient",
+            TextField::ChannelName => "channel_name",
         }
     }
 }
@@ -302,8 +312,9 @@ fn collapse_whitespace(text: &str) -> String {
 
 /// Validate `text` as `field` under D-ORG10.
 ///
-/// Returns the text to store: the normalised text for [`TextField::Name`]
-/// and [`TextField::RankName`], the input unchanged for every other field.
+/// Returns the text to store: the normalised text for [`TextField::Name`],
+/// [`TextField::ChannelName`] and [`TextField::RankName`], the input
+/// unchanged for every other field.
 pub fn validate(field: TextField, text: &str) -> Result<String, TextReject> {
     check_forbidden(field, text)?;
     if field == TextField::RankName {
@@ -311,7 +322,7 @@ pub fn validate(field: TextField, text: &str) -> Result<String, TextReject> {
         check_length(field, &name)?;
         return Ok(name);
     }
-    if field != TextField::Name {
+    if field != TextField::Name && field != TextField::ChannelName {
         check_length(field, text)?;
         return Ok(text.to_owned());
     }

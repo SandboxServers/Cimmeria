@@ -110,6 +110,28 @@ pub const MAX_RANK_NAME_UNITS: usize = 32;
 /// input limit; it may only go down.
 pub const MAX_CHAT_TEXT_UNITS: usize = 255;
 
+/// Longest user chat channel name (issue #1039). Project policy, not
+/// recovered data: the legacy `Chat.py` never bounded a channel name at
+/// all. Matches [`MAX_RANK_NAME_UNITS`]'s order of magnitude -- generous
+/// enough for the client's own default names ("channel-alliance", 16
+/// units) with room for a player-chosen one.
+pub const MAX_CHANNEL_NAME_UNITS: usize = 32;
+
+/// Most user channels one player may be a member of at once (issue #1039).
+/// Project policy: an unbounded per-player join count would let one client
+/// hold open every free wire channel id (see [`MAX_USER_CHANNELS`]) and
+/// starve every other player from ever creating one.
+pub const MAX_CHANNELS_PER_PLAYER: usize = 10;
+
+/// Most user channels that may exist on the server at once (issue #1039).
+/// The wire carries a channel's *display* id (`wire_id - CHAN_CHAT`) in a
+/// `UINT8` (`onChatJoined`, `chatLeave`), so the whole user-channel space
+/// tops out at 256 ids; this cap leaves headroom below that ceiling rather
+/// than running the allocator up to it. Freed ids (an emptied channel) are
+/// reused before a new one is minted, so this is a ceiling on channels
+/// live at once, not a lifetime count.
+pub const MAX_USER_CHANNELS: usize = 200;
+
 // Gate-mail text caps (social-systems D-SS12), in UTF-16 units like the
 // rest. Project policy, not recovered data; the subject cap matches the
 // `sgw_gate_mail.subject` column (`varchar(128)`).

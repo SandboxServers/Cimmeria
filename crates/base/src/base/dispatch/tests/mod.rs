@@ -19,6 +19,8 @@
 //! - [`chat_ignore_race`]: the cap and duplicate checks under the list lock.
 //! - [`chat_channel_mute`]: the channel allowlist and the GM mute (SS-C3).
 //! - [`communicator_unsupported`]: the 0xC6-0xCE feedback arms (SS-C3).
+//! - [`chat_user_channels`]: `chatJoin`/`chatLeave`/user-channel posts and
+//!   their disconnect cleanup (issue #1039).
 
 mod chat_channel_mute;
 mod chat_dnd_limit;
@@ -28,6 +30,7 @@ mod chat_ignore_race;
 mod chat_org_refusals;
 mod chat_speaker_flags;
 mod chat_squad_refusals;
+mod chat_user_channels;
 mod communicator_unsupported;
 mod crafting_teardown;
 mod duel_challenge;

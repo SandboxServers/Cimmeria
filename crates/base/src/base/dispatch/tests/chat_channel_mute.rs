@@ -10,9 +10,7 @@
 use std::time::{Duration, Instant};
 
 use super::super::chat::send_player_communication_at;
-use super::super::chat_gates::{
-    check_channel, SYSTEM_CHANNEL_TEXT, UNKNOWN_CHANNEL_TEXT, USER_CHANNEL_TEXT,
-};
+use super::super::chat_gates::{check_channel, SYSTEM_CHANNEL_TEXT, UNKNOWN_CHANNEL_TEXT};
 use super::super::*;
 use crate::base::mutes::{mute_table, muted_text, MuteEntry};
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
@@ -202,30 +200,40 @@ async fn chat_rejects_system_channel_at_base() {
 }
 
 /// CAT-L-03: an id `EChannel` does not name (7, the old Rust "server" id)
-/// and every user channel (12 and up; this server registers none) is
-/// refused at the base with feedback and never reaches the cell.
+/// is refused at the base with feedback and never reaches the cell. A user
+/// channel (12 and up) now passes this allowlist -- its refusal (not a
+/// member) is `post_to_user_channel`'s job, covered in
+/// `chat_user_channels.rs`, not this allowlist gate.
 #[tokio::test]
 async fn chat_rejects_unknown_channel_at_base() {
-    for (channel, reason, text) in [
-        (7u8, "unknown_channel", UNKNOWN_CHANNEL_TEXT),
-        (CHAN_CHAT, "user_channel", USER_CHANNEL_TEXT),
-        (255, "user_channel", USER_CHANNEL_TEXT),
-    ] {
-        let capture = LogCapture::install();
-        let mut h = Harness::new(0x7300_0311, 0);
-        h.speak(channel, "", "hello", Instant::now()).await;
+    let channel = 7u8;
+    let capture = LogCapture::install();
+    let mut h = Harness::new(0x7300_0311, 0);
+    h.speak(channel, "", "hello", Instant::now()).await;
 
-        assert!(
-            h.forwarded().is_empty(),
-            "channel {channel} reached the cell"
-        );
-        let event = capture
-            .find_event(Level::WARN, "refused at the base", reason)
-            .unwrap_or_else(|| panic!("channel {channel}: chat.channel_rejected {reason}"));
-        assert!(event.has_field("channel", &channel.to_string()));
-        assert_ids(&event, 0x7300_0311);
-        assert_eq!(h.feedback(), vec![text], "channel {channel}");
-    }
+    assert!(
+        h.forwarded().is_empty(),
+        "channel {channel} reached the cell"
+    );
+    let event = capture
+        .find_event(Level::WARN, "refused at the base", "unknown_channel")
+        .unwrap_or_else(|| panic!("channel {channel}: chat.channel_rejected unknown_channel"));
+    assert!(event.has_field("channel", &channel.to_string()));
+    assert_ids(&event, 0x7300_0311);
+    assert_eq!(
+        h.feedback(),
+        vec![UNKNOWN_CHANNEL_TEXT],
+        "channel {channel}"
+    );
+}
+
+/// A user channel id now passes the allowlist -- `check_channel` only
+/// checks the id's *shape*, never membership. Regression guard for
+/// reverting the `c if c >= CHAN_CHAT => Ok(())` arm.
+#[test]
+fn check_channel_allows_the_user_channel_range() {
+    assert!(check_channel(CHAN_CHAT).is_ok());
+    assert!(check_channel(255).is_ok());
 }
 
 /// The allowlist does not over-block: say, emote, yell and squad still
@@ -302,7 +310,12 @@ async fn muted_player_org_line_refused_before_org_chat() {
 #[test]
 fn allowlist_matches_the_tell_route() {
     let allowed: Vec<u8> = (0..=255u8).filter(|c| check_channel(*c).is_ok()).collect();
-    assert_eq!(allowed, vec![0, 1, 2, 3, 4, 5, 6, 10]);
+    // 0-6 and 10: say/emote/yell/team/squad/command/officer/tell.
+    // 12-255: every user channel id -- a shape check only, never
+    // membership (`post_to_user_channel` checks that downstream).
+    let mut expected: Vec<u8> = vec![0, 1, 2, 3, 4, 5, 6, 10];
+    expected.extend(CHAN_CHAT..=255u8);
+    assert_eq!(allowed, expected);
 }
 
 /// D-SS26 on the chat path, on the injected clock: a muted player's say

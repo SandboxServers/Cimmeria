@@ -46,6 +46,7 @@ pub mod rate_limit;
 pub mod session_identity;
 pub mod session_presence;
 pub mod tick_sync;
+pub mod user_channels;
 pub mod world_entry_chat;
 
 /// The world-entry leaf the methods crate needs below world entry: the
