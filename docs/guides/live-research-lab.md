@@ -205,7 +205,13 @@ Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
 |---|---|
 | `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. |
 | `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
-| `lab_login` | Autologin the lab account, enter the world. |
+| `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
+| `lab_characters` / `lab_create_character` / `lab_delete_character` / `lab_ensure_character_slot` | Character select: list, create, delete by name, keep free slots under the 8-character cap. |
+| `lab_play_character` / `lab_finish_dialog` / `lab_logout` | Enter the world (cutscene skipped), finish the open dialog with the green checkmark, `/logout` back to character select. |
+| `client_ui_state` | One read: visible top-level windows, open dialog (title, text, buttons), prompts, mission tracker, chat tail. |
+| `client_wait_for` | Poll a Lua boolean expression until it holds or times out (`met: false` on timeout). |
+| `client_entity_table` | Walk the client's BigWorld entity maps: per entity id, vtable, enter count, rendered, `isReady()`; limbo and pending enter counts. |
+| `lab_screenshot_region` / `lab_pixel_probe` | Crop of the capture as an image; count pixels in an RGB box (a nameplate colour, a HUD element). |
 | `lab_screenshot` | Window capture by PID → MCP image. |
 | `lab_crash_report` | Last minidump, last N commands, quarantined command. |
 | `lab_timeline` | Merged client+server window (above). |
@@ -229,7 +235,72 @@ The input tools press nothing through Lua: Lua only reads where a widget is and 
 - Mouse buttons are window messages, applied at CEGUI's cursor position, not at the message's coordinates. The cursor does not follow posted mouse moves or DirectInput motion, so the supervisor places it through CEGUI's own cursor and mirrors it into a virtual `GetCursorPos`.
 - The DirectInput keyboard is created but never read. The mouse is read while the viewport has it captured (mouse-look), and only while the game thinks it is focused: virtual focus answers `GetForegroundWindow`, `GetFocus`, `GetActiveWindow`, and lets a background `Acquire` succeed.
 - Launch skips the intro movies with Escape; on a new character Escape also skips the arrival cutscene, and dialogs are paged with Next to the green checkmark (`Dialog_DoneButton`).
-- `lab_client_start` refuses while any `SGW.exe` is running (two clients on one machine misbehave), and injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
+- `lab_client_start` refuses while an `SGW.exe` the lab does not own is running, and while its own instance's client runs. A second lab client is allowed only as a named instance ([Two clients](#two-clients-two-player-scenarios)). It injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
+
+## Two clients: two-player scenarios
+
+Trade, duels, squads and teams, mail between players, player-to-player visibility and chat need two players. Two clients on one workstation work when each has its own **lab instance**; without that they collide on the session file, the bridge port, the credentials, the crash markers and the logs (evidence and the client-side findings: [multi-client-lab.md](../reverse-engineering/findings/multi-client-lab.md)).
+
+**Setup.** Run one `cimmeria-lab` per client, each its own MCP server entry with its own environment. The default entry is the first player; the second adds `CIMMERIA_LAB_INSTANCE` and its own port:
+
+```json
+"cimmeria-lab-p2": {
+  "type": "stdio",
+  "command": "<CIMMERIA_ROOT>\\target\\debug\\cimmeria-lab.exe",
+  "env": {
+    "CIMMERIA_LAB_INSTANCE": "p2",
+    "CIMMERIA_LAB_BRIDGE_PORT": "8771",
+    "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
+    "CIMMERIA_LAB_START32": "...",
+    "CIMMERIA_LAB_PATCHES_DLL": "..."
+  }
+}
+```
+
+Its tools show up under the second server's name, so an agent addresses a player by the tool prefix. A named instance gets:
+
+| | Default instance | `CIMMERIA_LAB_INSTANCE=p2` |
+|---|---|---|
+| Session file | `sessions\current-session.json` | `sessions\instances\p2\current-session.json` (the DLL finds it through `CIMMERIA_LAB_SESSION_FILE`) |
+| Bridge port | 8770 | `CIMMERIA_LAB_BRIDGE_PORT` (give each instance its own; `CIMMERIA_LAB_BRIDGE` follows it by default) |
+| Credentials | `sessions\lab-account.json` | `sessions\lab-account.p2.json`, never the default file |
+| Crash marker, minidumps | `sessions\` | `sessions\instances\p2\` |
+| DLL logs | `cimmeria-client-*.log` | `cimmeria-client-*-p2.log` |
+
+`CIMMERIA_LAB_MAX_CLIENTS` caps the clients (default 2, ceiling 4). The start guard still refuses when an `SGW.exe` the lab does not own is running.
+
+**Two accounts.** A second login on the same account evicts the first client (`duplicate_login`), so the second instance needs its own account and `lab-account.p2.json`. Only `lab` exists today; a `lab2` seed is proposed in the finding and waits for an owner decision. Until it ships, a single-account run can still check everything that does not need two players online.
+
+**Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) for both instances: it answers `GetForegroundWindow` per process, so neither is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so do not type while a scenario runs. Both windows open at the same place and size; screenshots use `PrintWindow` per window, so an overlapped window still captures.
+
+**When to use `wireclient` instead.** A second player that only has to exist and answer (a duel partner, a body to be visible, a trade or squad counterpart driven with `cell_method`/`base_method`) needs no window at all: use `sparbot` or `GameSession` from `crates/wireclient` ([wireclient.md](../architecture/wireclient.md)). It has no throttling and no shared client cache, and needs its own account too. Use a second full client when the second player's UI is part of what is being tested.
+
+## Client flows
+
+The `lab_*` flow tools turn the scripts agents kept rewriting (log in, make a fresh character, play it, click through the intro dialog, log out) into single calls. Each is supervisor-side orchestration over the input tools above: every button press is a real click or key, and Lua only reads (visibility, widget text, the character list). The one Lua-driven step is picking a server row by name, because list rows are not named windows; the Select button is still clicked.
+
+A typical run on a fresh character:
+
+1. `lab_client_start`, then `lab_login` (ends at character select with the list).
+2. `lab_ensure_character_slot {protect: ["Labone"]}` (keeps a slot free; the lab account's character is always protected).
+3. `lab_create_character {first, last, alignment, archetype, gender}`.
+4. `lab_play_character {name: <last>}` (reports whether a dialog is open).
+5. `lab_finish_dialog`, then your probes (`client_ui_state`, `client_entity_table`, `lab_pixel_probe`).
+6. `lab_logout`.
+
+Every flow returns `elapsed_ms` and a `steps` list with per-step timings. A failure is an MCP error whose text names the flow, the step and the widget or condition, and whose `data` carries the steps completed so far and the client state at that moment (visible screens and any prompt text, so a bad password or a taken name reads as the client's own message).
+
+What the flows guard against:
+
+- **Deleting the wrong character.** Delete and Play act on the *selected* slot, so the flow checks the client's `CharSelectMod.selectedCharacterIndex` and name after the click, and confirms a delete only when the prompt text names the character.
+- **Escape opening the game menu.** `lab_play_character` presses Escape only while a movie plays or while the map loads under a cutscene (character select gone, no HUD yet), plus three presses once a new character's intro dialog is up (the arrival cutscene keeps playing under it). With `skip_cutscene: false` it never presses Escape.
+- **Closing a dialog the wrong way.** `lab_finish_dialog` pages with Next until Done (the green checkmark) shows and never uses the close X, which sends choice -1. `accept: true` presses Accept on an offer with no Done.
+
+Typing covers letters, digits, space and `-_/.`; a password with other characters is refused before anything is typed. Names in character creation must be letters only.
+
+`client_entity_table` reads the `GameEntityManager` singleton (VA `0x01EF244C` plus the ASLR slide) and walks its three `std::map`s with one memory read per tree node and one per entity. Hundreds of small reads once starved the watchdog's heartbeat and got a healthy client killed; the watchdog now forgives a missed heartbeat while other bridge calls are completing (`heartbeat::BUSY_GRACE_MS`), and a crash relaunch logs back in with `lab_login` and plays the `lab-account.json` character.
+
+Not yet proven on the live client (the prototype scripts these port were): the EULA path, the server-row selection by name, the `SelfStatusWin`/`MinimapWin` world-HUD test for a returning character (the prototype only played new characters, whose intro dialog marks the world as loaded), `client_ui_state`'s root-window and chat sections, and `isReady()` through the vtable.
 
 ## Trust, audit, and the colo
 
@@ -269,7 +340,11 @@ The lab is wired into `.mcp.json` alongside Ghidra and x64dbg — see
 vars, and [reverse-engineering-with-claude.md](reverse-engineering-with-claude.md)
 for where the lab sits in the RE workflow (the "ask the running game"
 path). Lab-account credentials live in
-`<install>/Binaries/sessions/lab-account.json`, gitignored.
+`<install>/Binaries/sessions/lab-account.json`, gitignored. `lab_login`
+types them with native key presses, which cover letters, digits, space and
+`-_/.` only: an account name or password with any other character (`!`,
+`@`, ...) fails `lab_login` and the post-crash relogin, so give the lab
+account a password inside that set.
 
 `lab_client_start` needs the i686 `sgw-start32.exe` helper beside
 `cimmeria-lab.exe` (or at `CIMMERIA_LAB_START32`). The supervisor is 64-bit

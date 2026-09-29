@@ -1,0 +1,48 @@
+[package]
+name = "cimmeria-base-crafting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Crafting as a base plugin for the Cimmeria server emulator: the crafting verbs, the induction engine, the crafting options and the login sync, registered with the base at startup"
+
+# Step 5 of the plugin migration in docs/architecture/plugin-architecture.md
+# (#962): the first base feature. A leaf: it depends on the base session layer
+# it builds on, and only the composition root (cimmeria-services, which lists
+# CraftingPlugin in the base plugin table) and test code depend on it. It must
+# never become a dependency of a base or cell crate: that would put it back
+# under the long rebuild tail the plugin model removes. It does not depend on
+# the cell track either, so a cell edit never rebuilds it and a base-track test
+# can install it without compiling the cell track.
+[dependencies]
+# `ConnectedClientState`, the witness sends, the outbox, the GM feedback
+# channel, the session identity, the inventory locks and the plugin API
+# (`base::plugin`).
+cimmeria-base-session = { workspace = true }
+# The Base<->Cell messages (the crafting payloads the envelope carries) and
+# the crafting client-method payloads.
+cimmeria-wire = { workspace = true }
+# The shared `CraftingCatalog`.
+cimmeria-cell-catalog = { workspace = true }
+cimmeria-resources = { workspace = true }
+cimmeria-entity = { workspace = true }
+cimmeria-mercury = { workspace = true }
+# The crafting counters and the persistence counters.
+cimmeria-observability = { workspace = true }
+tokio = { workspace = true }
+# The rolling verbs, behind the injectable `CraftRng` seam.
+rand = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the `TestTransport` re-export, from the
+# `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# `test_default_connected_client_state`.
+cimmeria-base-session = { workspace = true, features = ["test-support"] }
+# `testing::install` / `counter_total`: the crafting counter-emission tests.
+cimmeria-observability = { workspace = true, features = ["testing"] }

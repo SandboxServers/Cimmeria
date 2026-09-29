@@ -4,7 +4,7 @@
 //! completing in the new world.
 
 use super::*;
-use crate::base::crafting::session::{
+use cimmeria_base_crafting::base::crafting::session::{
     crafting_sessions, Completion, InductionEnv, InductionJob, JobFuture, JobOutcome, SubmitOutcome,
 };
 
@@ -34,6 +34,10 @@ async fn gate_travel_drops_the_crafting_queue() {
     let transport = make_socket().await;
     let addr: SocketAddr = "127.0.0.1:55711".parse().unwrap();
     let mut state = make_state();
+    state.plugins = cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .unwrap();
     state.player_entity_id = Some(ENTITY);
     let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(ENTITY, addr)])));

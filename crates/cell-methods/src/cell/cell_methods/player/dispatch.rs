@@ -309,7 +309,7 @@ mod tests {
 
     /// Shadow-arm regression guard. Dispatching index 95 through the outer
     /// router must reach the crafting submodule, which forwards exactly one
-    /// `CellToBaseMsg::Crafting` carrying `Spend { discipline_id }`. The
+    /// `CraftRequest` envelope carrying `Spend { discipline_id }`. The
     /// social submodule forwards no crafting request, so a 95 routed there
     /// (or anywhere else) leaves the channel empty and fails here.
     #[tokio::test]
@@ -334,8 +334,8 @@ mod tests {
         assert!(handled, "outer dispatch must handle method 95");
 
         match rx.try_recv() {
-            Ok(CellToBaseMsg::Crafting(request)) => assert_eq!(
-                request,
+            Ok(CellToBaseMsg::Plugin(msg)) if msg.is::<CraftRequest>() => assert_eq!(
+                msg.downcast::<CraftRequest>().unwrap(),
                 CraftRequest {
                     entity_id: 1,
                     player_id: 77,

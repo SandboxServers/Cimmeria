@@ -3,7 +3,7 @@
 
 use super::super::*;
 use crate::test_support::{test_default_connected_client_state, TestTransport};
-use cimmeria_base_session::base::crafting::session::{
+use cimmeria_base_crafting::base::crafting::session::{
     crafting_sessions, Completion, InductionEnv, InductionJob, JobFuture, JobOutcome, SubmitOutcome,
 };
 
@@ -33,6 +33,10 @@ async fn log_off_drops_the_crafting_queue() {
     let addr: SocketAddr = "127.0.0.1:54331".parse().unwrap();
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
     let mut state = test_default_connected_client_state();
+    state.plugins = cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .unwrap();
     state.player_entity_id = Some(ENTITY);
     state.active_player_id = Some(PLAYER_ID);
     let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));

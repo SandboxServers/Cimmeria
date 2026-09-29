@@ -1,48 +1,37 @@
-//! `useItem` on a crafting item (a Blueprint item or a Racial Paradigm
-//! Guide): the crafting subsystem decides and commits the use, and this
+//! `useItem` on an item a base plugin takes over (#962 step 5): a crafting
+//! item (a Blueprint item or a Racial Paradigm Guide), or a crafting item
+//! that is no longer this player's. The plugin (`cimmeria-base-crafting`)
+//! decides and commits the use through an [`ItemUseHookPoint`] hook; this
 //! module brings the client's inventory up to date afterwards.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_base_session::base::plugin::{
+    entity_plugins, BaseCtx, ItemUseCall, ItemUseHookPoint, ItemUseOutcome,
+};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::{send_full_inventory_update, send_on_remove_item};
-use crate::base::crafting::item_use::{handle_crafting_item_use, is_crafting_miss};
-use crate::base::crafting::request::CraftCtx;
-use crate::base::crafting::telemetry::account_id_of;
 use crate::base::outbox;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
-/// Whether a `useItem` whose instance is not this player's was a crafting
-/// item: one this player already used up, or another character's. Such a
-/// use goes to [`use_crafting_item`], whose transaction refuses it with the
-/// visible "no longer in your inventory" line.
-pub(super) async fn crafting_item_miss(
-    pool: &Arc<PgPool>,
-    entity_id: u32,
-    player_id: i32,
-    item_id: i32,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) -> bool {
-    let account_id = account_id_of(entity_id, connected, entity_to_addr);
-    is_crafting_miss(pool.as_ref(), account_id, entity_id, player_id, item_id).await
-}
-
-/// Use crafting item instance `item_id`. On a committed use the consumed
-/// instance leaves the client (`onRemoveItem` when its last one went, then
-/// the inventory update) and the cell is told it is gone; a refusal sends
-/// only the crafting refusal line, since nothing in the inventory changed.
+/// Offer `useItem` of instance `item_id` to the base plugins at `point`.
+/// On a consumed item the instance leaves the client (`onRemoveItem` when
+/// its last one went, then the inventory update) and the cell is told it is
+/// gone; a refusal sends nothing more, since the plugin already told the
+/// player and nothing in the inventory changed. Returns `false` when no
+/// plugin took the use, so the caller runs its own line.
 ///
-/// `OnItemUse` is deliberately not fired: the crafting use is the only
+/// `OnItemUse` is deliberately not fired: the plugin's use is the only
 /// consumer of these items, so a content chain cannot remove one a second
 /// time.
-pub(super) async fn use_crafting_item(
+pub(super) async fn offer_item_use(
+    point: ItemUseHookPoint,
     entity_id: u32,
     player_id: i32,
     item_id: i32,
@@ -52,16 +41,25 @@ pub(super) async fn use_crafting_item(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
-    let ctx = CraftCtx {
-        db_pool,
-        cell_tx,
-        transport,
-        connected,
-        entity_to_addr,
+) -> bool {
+    let plugins = entity_plugins(connected, entity_to_addr, entity_id);
+    let call = ItemUseCall {
+        entity_id,
+        player_id,
+        item_id,
+        pool,
+        ctx: BaseCtx {
+            db_pool,
+            cell_tx,
+            transport,
+            connected,
+            entity_to_addr,
+        },
     };
-    let Some(consumed) = handle_crafting_item_use(entity_id, player_id, item_id, &ctx).await else {
-        return;
+    let consumed = match plugins.run_item_use_hook(point, call).await {
+        ItemUseOutcome::NotHandled => return false,
+        ItemUseOutcome::Refused => return true,
+        ItemUseOutcome::Consumed(consumed) => consumed,
     };
     if consumed.removed_all {
         send_on_remove_item(entity_id, item_id, transport, connected, entity_to_addr).await;
@@ -78,4 +76,5 @@ pub(super) async fn use_crafting_item(
     if let (Some((outbox_id, payload)), Some(cell_tx)) = (consumed.outbox, cell_tx) {
         outbox::try_dispatch_now(pool.as_ref(), cell_tx, outbox_id, entity_id, payload).await;
     }
+    true
 }

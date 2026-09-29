@@ -20,7 +20,7 @@
 use tokio::sync::mpsc;
 
 use crate::cell::interactions::crafting_stations::stations_in_range;
-use crate::cell::messages::{CellToBaseMsg, CraftingStations, StationChangeCause};
+use crate::cell::messages::{CellToBaseMsg, CraftingStations, PluginMsg, StationChangeCause};
 use crate::cell::space_manager::SpaceManager;
 
 /// Why a player's station set moved from `previous` to `current`: the
@@ -80,7 +80,7 @@ pub(in crate::cell::service) async fn crafting_station_tick(
 
     for report in reports {
         let (entity_id, player_id) = (report.entity_id, report.player_id);
-        if let Err(e) = tx.send(CellToBaseMsg::CraftingStations(report)).await {
+        if let Err(e) = tx.send(CellToBaseMsg::Plugin(PluginMsg::new(report))).await {
             let account_id = space_mgr.player_identity(entity_id).account_id;
             tracing::warn!(
                 target: "crafting",

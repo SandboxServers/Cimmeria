@@ -1,5 +1,5 @@
 //! The Live Research Lab **supervisor**: owns the SGW.exe process for
-//! the session, drives autologin, watches the heartbeat, and recovers
+//! the session, drives the client flows, watches the heartbeat, and recovers
 //! from crashes (ADR §3.4, §6; issue #685).
 //!
 //! Layout (directory from day one — 4+ siblings per the file-org rule):
@@ -12,22 +12,27 @@
 //! - [`heartbeat`] — the staleness watchdog decision (pure, tested).
 //! - [`recovery`] — command journal (+ quarantine) and the 3-in-10-min
 //!   relaunch cap (pure, tested).
-//! - [`autologin`] — the Lua-driven login state machine (pure, tested);
-//!   [`autologin_bridge`] adapts it onto the async bridge.
+//! - [`input`] / [`keys`] — native input: clicks, key taps, typing.
+//! - [`flows`] — login, character select, play, dialog and logout flows
+//!   over the native input, plus UI reads (`client_ui_state`,
+//!   `client_wait_for`).
+//! - [`entity_table`] — the client's BigWorld entity maps.
 //! - [`screenshot`] — GDI window capture → PNG.
 //! - [`crash_report`] — assemble `lab_crash_report`.
 
-pub mod autologin;
-pub mod autologin_bridge;
 pub mod crash_report;
+pub mod entity_table;
+pub mod flows;
 pub mod heartbeat;
 pub mod input;
+pub mod instance;
 pub mod keys;
 pub mod process;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
 pub mod telemetry_session;
+mod watchdog;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -41,7 +46,7 @@ use crate::client::BridgeClient;
 use crate::timeline::client_events::HeartbeatSample;
 use crate::timeline::clock::ClockOffset;
 
-use autologin::LoginOutcome;
+use flows::login::LoginRequest;
 use heartbeat::{HeartbeatState, HeartbeatWatchdog};
 use recovery::{CommandJournal, PersistentHooks, RecoveryTracker};
 use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
@@ -55,8 +60,6 @@ const HEARTBEAT_STALE_AFTER: Duration = Duration::from_secs(8);
 const MAX_HEARTBEAT_FAILS: u32 = 5;
 /// Command-journal ring depth surfaced by `lab_crash_report`.
 const JOURNAL_CAP: usize = 64;
-/// Autologin poll budget.
-const AUTOLOGIN_MAX_POLLS: u32 = 120;
 /// Heartbeat-observation ring depth fed to `lab_timeline` as the client
 /// event source that exists today (ADR §5; the full #686 event ring
 /// plugs in later — see `timeline::client_events`).
@@ -86,6 +89,9 @@ pub struct SupervisorConfig {
     pub bind: String,
     /// Bridge port.
     pub port: u16,
+    /// The named lab instance this supervisor drives (`CIMMERIA_LAB_INSTANCE`),
+    /// or `None` for the default, single-client layout ([`instance`]).
+    pub instance: Option<String>,
     /// Where each launch mints its telemetry token, and an optional
     /// upload endpoint override ([`telemetry_session`]).
     pub telemetry: telemetry_session::TelemetryConfig,
@@ -129,6 +135,9 @@ impl SupervisorConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_BRIDGE_PORT),
+            // A bad name is reported by `main` before this runs; here it
+            // must not silently become the default instance.
+            instance: instance::from_env().ok().flatten(),
             telemetry: telemetry_session::TelemetryConfig::from_env(),
         }
     }
@@ -148,6 +157,8 @@ impl SupervisorConfig {
 pub enum LoginState {
     NotStarted,
     LoggingIn,
+    /// At character select (after `lab_login` or `lab_logout`).
+    CharSelect,
     InWorld,
     Failed,
     Crashed,
@@ -158,6 +169,7 @@ impl LoginState {
         match self {
             LoginState::NotStarted => "not_started",
             LoginState::LoggingIn => "logging_in",
+            LoginState::CharSelect => "character_select",
             LoginState::InWorld => "in_world",
             LoginState::Failed => "failed",
             LoginState::Crashed => "crashed",
@@ -333,9 +345,14 @@ impl Supervisor {
 
         let token = session_file::generate_token();
         let telemetry = telemetry_session::grant_for_launch(&self.config.telemetry).await;
-        let session =
+        let inst = self.config.instance.as_deref();
+        let mut session =
             session_file::build_session(&token, &self.config.bind, self.config.port, &telemetry);
-        session_file::write_session(&install_dir, &session)?;
+        if let Some(name) = inst {
+            session.tags.push(format!("instance:{name}"));
+        }
+        session_file::write_session_at(&instance::session_path(&install_dir, inst), &session)?;
+        let envs = instance::launch_env(&install_dir, inst);
 
         // Native launch runs on a blocking thread. SGW.exe lives in
         // `<install>/Binaries`, next to the `sessions/` dir the session file
@@ -343,10 +360,13 @@ impl Supervisor {
         let (bin2, dll2) = (install_dir.join("Binaries"), dll_path.clone());
         let patches = self.config.patches_dll.clone();
         let pid = tokio::task::spawn_blocking(move || {
-            process::launch(&bin2, &dll2, &helper, patches.as_deref())
+            process::launch(&bin2, &dll2, &helper, patches.as_deref(), &envs)
         })
         .await
         .map_err(|e| format!("launch task: {e}"))??;
+        if let Err(e) = instance::write_entry(&install_dir, inst, pid, self.config.port) {
+            tracing::warn!(error = %e, "could not record this client for its peers");
+        }
 
         // Point the bridge at the fresh per-launch token.
         let addr = format!("{}:{}", self.config.connect_host(), self.config.port);
@@ -376,14 +396,25 @@ impl Supervisor {
                 }
             }
         }
-        // Two clients on one machine misbehave, and a client the lab did not
-        // start (the launcher, a player) is not the lab's to stop.
-        let others = process::running_sgw_pids();
-        if !others.is_empty() {
-            return Err(format!(
-                "SGW.exe is already running (pid {others:?}) outside the lab; close it before                  starting a lab client"
-            ));
-        }
+        // A client the lab did not start (the launcher, a player) is not
+        // the lab's to stop or to share a machine with. Another lab
+        // instance's client is fine, up to the cap ([`instance::check_launch`]).
+        let running = process::running_sgw_pids();
+        let peers: Vec<_> = self
+            .config
+            .install_dir
+            .as_deref()
+            .map(|d| instance::read_peers(d, self.config.instance.as_deref()))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| process::is_alive(p.pid))
+            .collect();
+        instance::check_launch(
+            &running,
+            &peers,
+            self.config.port,
+            instance::max_clients_from_env(),
+        )?;
         let pid = self.launch_client(server_override).await?;
         self.spawn_watchdog(pid);
         let telemetry = self.state.lock().await.telemetry.clone();
@@ -404,6 +435,9 @@ impl Supervisor {
         match pid {
             Some(pid) => {
                 let _ = tokio::task::spawn_blocking(move || process::terminate(pid)).await;
+                if let Some(d) = self.config.install_dir.as_deref() {
+                    instance::remove_entry(d, self.config.instance.as_deref());
+                }
                 Ok(json!({ "stopped": true, "pid": pid }))
             }
             None => Ok(json!({ "stopped": false, "reason": "no client running" })),
@@ -470,60 +504,65 @@ impl Supervisor {
         }))
     }
 
-    /// `lab_login` — drive the Lua autologin state machine over the
-    /// bridge. See [`autologin_bridge`] for the live-capture caveat.
-    pub async fn login(&self, server_override: Option<String>) -> Result<Value, String> {
-        let install_dir = self
-            .config
-            .install_dir
-            .clone()
-            .ok_or("CIMMERIA_LAB_INSTALL_DIR is unset")?;
-        let mut creds = session_file::read_lab_account(&install_dir)?.into_creds();
-        if let Some(server) = server_override {
-            creds.server = server;
-        }
+    /// Record login progress for `lab_client_status`.
+    pub(crate) async fn set_login_state(&self, login: LoginState) {
+        self.state.lock().await.login = login;
+    }
 
-        {
-            let mut st = self.state.lock().await;
-            st.login = LoginState::LoggingIn;
+    /// After a crash relaunch: log in with the native flow (Escape skips
+    /// the intro movies) and play the lab account's character if it names
+    /// one. Best effort; a failure is logged and leaves the client at
+    /// whatever screen it reached.
+    async fn relogin_after_crash(&self) {
+        if let Err(e) = self.login_flow(LoginRequest::default()).await {
+            tracing::warn!(error = %e.summary(), "post-crash login failed");
+            return;
         }
+        let character = self
+            .lab_account()
+            .map(|a| a.character)
+            .filter(|c| !c.is_empty());
+        if let Some(name) = character {
+            if let Err(e) = self
+                .play_flow(&name, true, flows::world::DEFAULT_PLAY_TIMEOUT)
+                .await
+            {
+                tracing::warn!(error = %e.summary(), "post-crash play failed");
+            }
+        }
+    }
 
-        let bridge = self.bridge.clone();
-        let handle = tokio::runtime::Handle::current();
-        let outcome = tokio::task::spawn_blocking(move || {
-            let mut screen = autologin_bridge::BridgeScreen { bridge, handle };
-            autologin::run(&mut screen, &creds, AUTOLOGIN_MAX_POLLS)
-        })
-        .await
-        .map_err(|e| format!("autologin task: {e}"))?;
-
-        let mut st = self.state.lock().await;
-        match &outcome {
-            Ok(LoginOutcome::EnteredWorld) => st.login = LoginState::InWorld,
-            _ => st.login = LoginState::Failed,
-        }
-        match outcome {
-            Ok(o) => Ok(json!({ "outcome": format!("{o:?}"), "login_state": st.login.as_str() })),
-            Err(e) => Err(e),
-        }
+    /// This instance's credentials (`lab-account.json`, or
+    /// `lab-account.<instance>.json` for a named instance), if the file
+    /// exists and parses.
+    pub(crate) fn lab_account(&self) -> Option<session_file::LabAccount> {
+        let dir = self.config.install_dir.as_deref()?;
+        let path = instance::account_path(dir, self.config.instance.as_deref());
+        session_file::read_lab_account_at(&path).ok()
     }
 
     /// `lab_screenshot` — capture the client window as PNG bytes +
     /// base64, for the caller to wrap in an MCP image block.
     pub async fn screenshot(&self) -> Result<(String, u32, u32), String> {
-        let pid = {
-            let st = self.state.lock().await;
-            st.pid.ok_or("no client running")?
-        };
-        let captured = tokio::task::spawn_blocking(move || screenshot::capture_pid(pid))
-            .await
-            .map_err(|e| format!("screenshot task: {e}"))??;
+        let captured = self.capture().await?;
         let png = screenshot::encode_png(&captured)?;
         Ok((
             screenshot::png_to_base64(&png),
             captured.width,
             captured.height,
         ))
+    }
+
+    /// Capture the client window as RGBA (for screenshots, crops and
+    /// pixel probes).
+    pub async fn capture(&self) -> Result<screenshot::CapturedImage, String> {
+        let pid = {
+            let st = self.state.lock().await;
+            st.pid.ok_or("no client running")?
+        };
+        tokio::task::spawn_blocking(move || screenshot::capture_pid(pid))
+            .await
+            .map_err(|e| format!("screenshot task: {e}"))?
     }
 
     /// `lab_crash_report` — last minidump, last N commands, quarantined
@@ -534,7 +573,7 @@ impl Supervisor {
             .install_dir
             .clone()
             .ok_or("CIMMERIA_LAB_INSTALL_DIR is unset")?;
-        let dir = session_file::sessions_dir(&install_dir);
+        let dir = instance::instance_dir(&install_dir, self.config.instance.as_deref());
         let st = self.state.lock().await;
         Ok(crash_report::build_report(&st.journal, &dir, JOURNAL_CAP))
     }
@@ -556,90 +595,6 @@ impl Supervisor {
     pub async fn set_offset(&self, offset: ClockOffset) {
         let mut st = self.state.lock().await;
         st.clock_offset = Some(offset);
-    }
-
-    /// Spawn the background heartbeat watchdog for `pid`. It exits once
-    /// the current launch's pid changes (a restart), or after it handles
-    /// this launch's death.
-    fn spawn_watchdog(&self, pid: u32) {
-        let this = self.clone();
-        tokio::spawn(async move { this.watchdog_loop(pid).await });
-    }
-
-    async fn watchdog_loop(&self, my_pid: u32) {
-        let mut fails = 0u32;
-        loop {
-            tokio::time::sleep(WATCHDOG_POLL).await;
-
-            // Stop if this launch has been superseded.
-            {
-                let st = self.state.lock().await;
-                if st.pid != Some(my_pid) {
-                    return;
-                }
-            }
-
-            match self.bridge.heartbeat().await {
-                Ok(count) => {
-                    fails = 0;
-                    let stale = {
-                        let mut st = self.state.lock().await;
-                        let ts = now_ms();
-                        st.record_heartbeat(count, ts);
-                        st.watchdog.observe(count, ts)
-                    };
-                    if stale == HeartbeatState::Stale {
-                        tracing::warn!(pid = my_pid, "heartbeat stale; terminating hung client");
-                        self.handle_death(my_pid).await;
-                        return;
-                    }
-                }
-                Err(_) => {
-                    fails += 1;
-                    if !process::is_alive(my_pid) || fails >= MAX_HEARTBEAT_FAILS {
-                        tracing::warn!(pid = my_pid, fails, "client dead/unreachable");
-                        self.handle_death(my_pid).await;
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    /// A death/hang was detected: terminate (in case it's hung),
-    /// quarantine the in-flight command, record the crash, and — if
-    /// under the recovery cap — relaunch and re-autologin.
-    async fn handle_death(&self, dead_pid: u32) {
-        let _ = tokio::task::spawn_blocking(move || process::terminate(dead_pid)).await;
-
-        let may_relaunch = {
-            let mut st = self.state.lock().await;
-            st.journal.quarantine_in_flight();
-            st.recovery.record_crash(now_ms());
-            st.login = LoginState::Crashed;
-            st.pid = None;
-            st.recovery.should_relaunch(now_ms())
-        };
-
-        if !may_relaunch {
-            tracing::error!("recovery cap reached (3 crashes / 10 min); not relaunching");
-            return;
-        }
-
-        match self.launch_client(None).await {
-            Ok(new_pid) => {
-                tracing::info!(new_pid, "relaunched after crash; re-running autologin");
-                self.spawn_watchdog(new_pid);
-                if let Err(e) = self.login(None).await {
-                    tracing::warn!(error = %e, "post-crash autologin failed");
-                }
-                // Restore probes: re-apply persistent hooks (never writes
-                // or native calls — the quarantined in-flight command stays
-                // quarantined). ADR §6 "Restore probes".
-                self.reapply_persistent_hooks().await;
-            }
-            Err(e) => tracing::error!(error = %e, "relaunch after crash failed"),
-        }
     }
 }
 
@@ -665,6 +620,7 @@ mod tests {
             helper_path: None,
             bind: "0.0.0.0".into(),
             port: 8770,
+            instance: None,
             telemetry: Default::default(),
         };
         assert_eq!(c.connect_host(), "127.0.0.1");

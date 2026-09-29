@@ -38,9 +38,9 @@ struct Bucket {
 }
 
 impl Bucket {
-    fn full(now_ms: u64) -> Self {
+    fn full(now_ms: u64, burst: u32) -> Self {
         Self {
-            tokens_milli: u64::from(BURST) * MILLI,
+            tokens_milli: u64::from(burst) * MILLI,
             last_ms: now_ms,
             suppressed: 0,
         }
@@ -61,36 +61,85 @@ pub enum Decision {
 }
 
 /// The per-name token buckets.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NameThrottle {
     buckets: HashMap<String, Bucket>,
+    burst: u32,
+    rate_per_sec: u32,
+    max_names: usize,
+}
+
+impl Default for NameThrottle {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NameThrottle {
-    /// An empty table.
+    /// An empty table with the default limits ([`BURST`], [`RATE_PER_SEC`])
+    /// that tracks up to [`MAX_NAMES`] names.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_limits(BURST, RATE_PER_SEC)
+    }
+
+    /// An empty table with the default limits that tracks up to `max_names`
+    /// names before the overflow bucket takes over.
+    pub fn with_max_names(max_names: usize) -> Self {
+        Self {
+            max_names,
+            ..Self::new()
+        }
+    }
+
+    /// Number of buckets held (overflow included).
+    pub fn len(&self) -> usize {
+        self.buckets.len()
+    }
+
+    /// Whether no bucket is held.
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.buckets.is_empty()
+    }
+
+    /// Forget every bucket: each name starts again with a full burst.
+    pub fn clear(&mut self) {
+        self.buckets.clear();
+    }
+
+    /// An empty table with its own limits: `burst` events back to back, then
+    /// `rate_per_sec` sustained per name. A `burst` of 0 would never emit, so
+    /// it is raised to 1.
+    pub fn with_limits(burst: u32, rate_per_sec: u32) -> Self {
+        Self {
+            buckets: HashMap::new(),
+            burst: burst.max(1),
+            rate_per_sec,
+            max_names: MAX_NAMES,
+        }
     }
 
     /// Decide for one event named `name` at monotonic time `now_ms`.
     pub fn check(&mut self, name: &str, now_ms: u64) -> Decision {
-        let key = if self.buckets.contains_key(name) || self.buckets.len() < MAX_NAMES {
+        let key = if self.buckets.contains_key(name) || self.buckets.len() < self.max_names {
             name
         } else {
             OVERFLOW_NAME
         };
+        let burst = self.burst;
         let bucket = match self.buckets.get_mut(key) {
             Some(b) => b,
             None => self
                 .buckets
                 .entry(key.to_string())
-                .or_insert_with(|| Bucket::full(now_ms)),
+                .or_insert_with(|| Bucket::full(now_ms, burst)),
         };
 
         let elapsed = now_ms.saturating_sub(bucket.last_ms);
         bucket.last_ms = now_ms;
-        let cap = u64::from(BURST) * MILLI;
-        bucket.tokens_milli = (bucket.tokens_milli + elapsed * u64::from(RATE_PER_SEC)).min(cap);
+        let cap = u64::from(burst) * MILLI;
+        bucket.tokens_milli =
+            (bucket.tokens_milli + elapsed * u64::from(self.rate_per_sec)).min(cap);
 
         if bucket.tokens_milli >= MILLI {
             bucket.tokens_milli -= MILLI;
@@ -105,7 +154,7 @@ impl NameThrottle {
     /// Number of distinct buckets (overflow included).
     #[cfg(test)]
     fn bucket_count(&self) -> usize {
-        self.buckets.len()
+        self.len()
     }
 }
 
@@ -179,6 +228,23 @@ mod tests {
             n += 1;
         }
         assert_eq!(n, BURST);
+    }
+
+    /// The `firehose` switch swaps in bigger limits: a longer burst, and a
+    /// faster refill (`rate` tokens a second, so `1000 / rate` ms a token).
+    #[test]
+    fn custom_limits_change_the_burst_and_the_refill() {
+        let mut t = NameThrottle::with_limits(64, 64);
+        for _ in 0..64 {
+            assert!(emitted(t.check("x", 0)));
+        }
+        assert_eq!(t.check("x", 0), Decision::Suppress);
+        // 1000 / 64 = 15.6 ms: 16 ms refills one token.
+        assert_eq!(t.check("x", 16), Decision::Emit { suppressed: 1 });
+        // A zero burst would never emit; it is raised to one.
+        let mut t = NameThrottle::with_limits(0, 0);
+        assert!(emitted(t.check("x", 0)));
+        assert_eq!(t.check("x", 0), Decision::Suppress);
     }
 
     #[test]

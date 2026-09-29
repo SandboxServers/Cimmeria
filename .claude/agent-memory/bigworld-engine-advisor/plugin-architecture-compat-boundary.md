@@ -52,6 +52,15 @@ Confirmed as advisor for #962 (2026-09-28); canonical text is ADR §2 (C1-C8).
   `session_plugins(connected, addr)`; the cell-message loop takes it as an
   argument (`route_cell_message`; `handle_cell_message` became a
   test-support wrapper with an empty table so ~50 tests kept their calls).
+  Step 5 part B (crafting, `cimmeria-base-crafting`): base half only; a
+  combined cell+base crate would sit above `cell-world` (every cell edit
+  rebuilds 10k lines of crafting). Base-methods called crafting directly
+  (useItem, inventory resync, grant_xp ASP push) - those became hook points,
+  item use a value-returning one (first non-NotHandled wins). A missed
+  inline site surfaced only at compile: `playCharacter` reset
+  `crafting_options` - removing the field is the reliable way to find every
+  site. Session-carried registry means a hook site with no session runs
+  nothing (a documented edge, never a production path).
   Some `.rs` files have mixed CRLF/LF lines (`server/src/logging/filters.rs`
   filter string): a CRLF-normalizing replace misses them; use Edit there.
 

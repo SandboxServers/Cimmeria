@@ -19,6 +19,7 @@ use sqlx::PgPool;
 use super::send_full_inventory_update;
 use crate::mercury::build_player_entity_method_packet;
 use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
+use cimmeria_base_crafting::base::crafting::options::CraftingOptionsExt;
 
 // Crafting live-DB sentinels (`0x7000_Cxxx`): `0x7000_CD40..0x7000_CD42`.
 const ACCOUNT: i32 = 0x7000_CD40;
@@ -98,9 +99,13 @@ async fn live_db_a_tool_entering_and_leaving_the_crafting_bag_updates_the_option
     let transport: Arc<dyn Transport> = typed.clone();
     let addr: SocketAddr = "127.0.0.1:55760".parse().unwrap();
     let mut state = test_default_connected_client_state();
+    state.plugins = cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .unwrap();
     // The login send has happened, with no tool.
-    state.crafting_options.armed = true;
-    state.crafting_options.last_sent = Some(CraftingOptions::default());
+    state.crafting_options_mut().armed = true;
+    state.crafting_options_mut().last_sent = Some(CraftingOptions::default());
     let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(ENTITY, addr)])));
     let pool = Arc::new(pool);

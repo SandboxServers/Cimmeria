@@ -95,17 +95,6 @@ pub(super) struct DispatchCtx<'a> {
     pub plugins: &'a BasePlugins,
 }
 
-/// The crafting handlers' view of the dispatch context.
-fn craft_ctx<'a>(ctx: &DispatchCtx<'a>) -> crate::base::crafting::request::CraftCtx<'a> {
-    crate::base::crafting::request::CraftCtx {
-        db_pool: ctx.db_pool,
-        cell_tx: ctx.cell_tx,
-        transport: ctx.transport,
-        connected: ctx.connected,
-        entity_to_addr: ctx.entity_to_addr,
-    }
-}
-
 /// Handle a message from CellService with no base plugin installed: every
 /// `CellToBaseMsg::Plugin` envelope is dropped with the no-consumer WARN.
 ///
@@ -197,34 +186,12 @@ pub async fn route_cell_message(
         | CellToBaseMsg::ContainerLooted { .. }
         | CellToBaseMsg::GrantTrainingPoints { .. }
         | CellToBaseMsg::GmGrantAbility { .. }
-        | CellToBaseMsg::GrantExpertise { .. }
-        | CellToBaseMsg::GrantAppliedSciencePoints { .. }
         | CellToBaseMsg::ExecuteAuthoringSql { .. }
         | CellToBaseMsg::ConsoleSearch { .. }
         | CellToBaseMsg::GmSpawnNpc { .. }
         | CellToBaseMsg::StartMinigame { .. }
         | CellToBaseMsg::MinigameResult { .. } => progression_dispatch::route(msg, &ctx).await,
 
-        // Crafting (95-100): `base::crafting::request` routes the verbs, so
-        // later verbs never touch these arms.
-        CellToBaseMsg::Crafting(request) => {
-            crate::base::crafting::request::handle_craft_request(request, &craft_ctx(&ctx)).await
-        }
-        CellToBaseMsg::CraftingStations(report) => {
-            crate::base::crafting::options::handle_station_report(
-                report,
-                ctx.transport,
-                ctx.connected,
-                ctx.entity_to_addr,
-            )
-            .await
-        }
-        CellToBaseMsg::GmAllCraft(grant) => {
-            crate::base::crafting::allcraft::handle_gm_all_craft(grant, &craft_ctx(&ctx)).await
-        }
-        CellToBaseMsg::GmCraftGrant(grant) => {
-            crate::base::crafting::gm_grant::handle_gm_craft_grant(grant, &craft_ctx(&ctx)).await
-        }
         CellToBaseMsg::GmGiveAmmo(give) => {
             super::methods::inventory::ammo_gm_give::handle_gm_give_ammo(
                 give,
@@ -235,10 +202,6 @@ pub async fn route_cell_message(
             )
             .await
         }
-        CellToBaseMsg::RespecCraftOpen(open) => {
-            crate::base::crafting::respec::handle_respec_open(open, &craft_ctx(&ctx)).await
-        }
-
         CellToBaseMsg::ContactListCreate { .. }
         | CellToBaseMsg::ContactListDelete { .. }
         | CellToBaseMsg::ContactListRename { .. }
@@ -294,6 +257,9 @@ pub async fn route_cell_message(
         // A migrated feature's message (#962, plugin ADR §3.4): the base
         // plugin that consumes its payload type handles it; one nobody
         // consumes is dropped with a WARN (`reason = "no_consumer"`).
+        // Crafting's messages (the verbs 95-100, the station reports, the GM
+        // grants, the respec opener) arrive here since #962 step 5 and go to
+        // `cimmeria-base-crafting`.
         CellToBaseMsg::Plugin(msg) => {
             ctx.plugins
                 .dispatch_cell_message(

@@ -44,10 +44,7 @@ async fn say(mgr: &mut SpaceManager, speaker: u32, text: &str) -> Vec<CellToBase
 
 fn opens(msgs: &[CellToBaseMsg]) -> Vec<&RespecCraftOpen> {
     msgs.iter()
-        .filter_map(|m| match m {
-            CellToBaseMsg::RespecCraftOpen(o) => Some(o),
-            _ => None,
-        })
+        .filter_map(|m| m.plugin_payload::<RespecCraftOpen>())
         .collect()
 }
 

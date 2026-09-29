@@ -11,10 +11,11 @@
 
 use super::super::*;
 use super::one_session;
-use crate::base::crafting::feedback::feedback_text_args;
+use crate::cell::messages::PluginMsg;
 use crate::cell::messages::{CraftRequest, CraftVerb};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{LogCapture, TestTransport};
+use cimmeria_base_crafting::base::crafting::feedback::feedback_text_args;
 
 #[tokio::test]
 async fn crafting_request_is_logged_and_answered_with_feedback() {
@@ -24,8 +25,8 @@ async fn crafting_request_is_logged_and_answered_with_feedback() {
     let entity_id = 4250;
     let (addr, connected, entity_to_addr) = one_session(entity_id, false);
 
-    handle_cell_message(
-        CellToBaseMsg::Crafting(CraftRequest {
+    route_cell_message(
+        CellToBaseMsg::Plugin(PluginMsg::new(CraftRequest {
             entity_id,
             player_id: 4251,
             verb: CraftVerb::Alloy {
@@ -35,7 +36,7 @@ async fn crafting_request_is_logged_and_answered_with_feedback() {
             },
             // A station for alloying is in reach.
             allowed: 0x08,
-        }),
+        })),
         &transport,
         &connected,
         &entity_to_addr,
@@ -44,6 +45,7 @@ async fn crafting_request_is_logged_and_answered_with_feedback() {
         &None,
         "127.0.0.1",
         7777,
+        &super::crafting_plugins(),
     )
     .await;
 

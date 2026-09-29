@@ -11,7 +11,6 @@ use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
 use super::plugin_msg::PluginMsg;
 use crate::cell::vault::VaultAccess;
-use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft, GmCraftGrant, RespecCraftOpen};
 
 /// Messages sent from CellApp to BaseApp.
 #[derive(Debug)]
@@ -507,21 +506,6 @@ pub enum CellToBaseMsg {
         gm_feedback_to: Option<u32>,
     },
 
-    /// Grant crafting expertise in one discipline and persist to the database
-    /// (`gmGiveExpertise`). One-way sink, mirroring `GrantCash`: the cell has
-    /// already authorized the GM and resolved `player_id`; the base loads the
-    /// `CraftingState`, clamps the new expertise to `[0, 100]`, adds the
-    /// discipline to `discipline_ids` if absent, saves, and pushes
-    /// `onUpdateDiscipline` (method 136) to the client. `amount` is the
-    /// additive delta (validated `> 0` cell-side), `discipline_id` the target
-    /// discipline (validated `> 0` cell-side).
-    GrantExpertise {
-        entity_id: u32,
-        player_id: i32,
-        discipline_id: i32,
-        amount: i32,
-    },
-
     /// Grant training points and persist to the database
     /// (`gmGiveTrainingPoints`). The base adds `amount` to
     /// `sgw_player.training_points` in one guarded `UPDATE`, refreshes its
@@ -558,40 +542,8 @@ pub enum CellToBaseMsg {
         gm_player_id: i32,
     },
 
-    /// Grant applied-science points and persist to the database
-    /// (`gmGiveAppliedSciencePoints`). One-way sink, mirroring `GrantCash`:
-    /// the base loads the `CraftingState`, adds `amount` to
-    /// `applied_science_points`, and saves. `amount` is validated `> 0`
-    /// cell-side. There is no outbound applied-science-points client method in
-    /// the SGWPlayer method table, so the base persists only — the client
-    /// refreshes its ASP display on the next crafting-window open or relog.
-    GrantAppliedSciencePoints {
-        entity_id: u32,
-        player_id: i32,
-        amount: i32,
-    },
-
-    /// A crafting request from the client (methods 95-100), parsed and
-    /// station-gated by the cell. The base validates it against the
-    /// `CraftingCatalog` and the player's state, and answers every outcome,
-    /// rejections included, with visible feedback.
-    Crafting(CraftRequest),
-
-    /// The crafting stations in range of a player changed. The base
-    /// rebuilds `onUpdateCraftingOptions`.
-    CraftingStations(CraftingStations),
-
-    /// `.allcraft` for a player; see [`GmAllCraft`].
-    GmAllCraft(GmAllCraft),
-
-    /// `.craftkit` or `.learnblueprint` for a player; see [`GmCraftGrant`].
-    GmCraftGrant(GmCraftGrant),
-
     /// `.giveammo` for a player (ammo AM-06); see [`super::GmGiveAmmo`].
     GmGiveAmmo(super::GmGiveAmmo),
-
-    /// A player's `.respeccraft`; see [`RespecCraftOpen`].
-    RespecCraftOpen(RespecCraftOpen),
 
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol
@@ -906,5 +858,11 @@ pub enum CellToBaseMsg {
     /// A migrated feature's message (#962, plugin ADR §3.4): a feature-owned
     /// payload the base plugin registered for consumes. New feature
     /// messages go here instead of growing this enum. See `plugin_msg.rs`.
+    ///
+    /// Crafting's payloads travel here (#962 step 5): the verbs
+    /// (`crate::crafting::CraftRequest`), the station reports, the GM
+    /// grants (`.allcraft`, `.craftkit`, `.learnblueprint`,
+    /// `gmGiveExpertise`, `gmGiveAppliedSciencePoints`) and the respec
+    /// opener, consumed by `cimmeria-base-crafting`.
     Plugin(PluginMsg),
 }

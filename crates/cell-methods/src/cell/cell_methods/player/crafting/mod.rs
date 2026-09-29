@@ -2,9 +2,11 @@
 //! base.
 //!
 //! The cell parses every argument per `entities/defs/SGWPlayer.def:916-948`
-//! and forwards one `CellToBaseMsg::Crafting` per request ([`forward`]). The
-//! base owns the rules, the database and the feedback
-//! (`cimmeria-base-session`'s `base::crafting`). Campaign ledger:
+//! and forwards one [`CraftRequest`] per request ([`forward`]), in the
+//! `CellToBaseMsg::Plugin` envelope (#962 step 5). The base owns the rules,
+//! the database and the feedback (`cimmeria-base-crafting`, a base plugin).
+//!
+//! [`CraftRequest`]: crate::cell::messages::CraftRequest Campaign ledger:
 //! `docs/analysis/crafting/`.
 //!
 //! A request whose bytes do not parse is dropped with a WARN at target

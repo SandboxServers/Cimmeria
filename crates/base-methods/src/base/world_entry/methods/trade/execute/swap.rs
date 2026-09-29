@@ -10,7 +10,7 @@
 //! ## Lock order
 //!
 //! The shared inventory order
-//! (`crate::base::crafting::inventory_locks`): every advisory lock first,
+//! (`crate::base::inventory_locks`): every advisory lock first,
 //! then inventory rows, then `sgw_player` rows. For two players:
 //!
 //! 1. the lower `player_id`'s keys `(p, 0)`, `(p, 1)`, `(p, 15)`, then the
@@ -33,7 +33,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 
 use super::placement::{plan_destinations, reserve_slots, ItemMove, TRADEABLE_CONTAINERS};
 use super::{TradeAbort, TradeCommitted, TradeFinalBalances, TradeSide};
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct TradeItemRow {

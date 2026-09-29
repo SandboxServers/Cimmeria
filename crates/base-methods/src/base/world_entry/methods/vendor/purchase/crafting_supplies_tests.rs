@@ -12,11 +12,13 @@ use cimmeria_wire::cell::vault::VaultAccess;
 
 use super::tests::{cleanup, insert_account_and_player, make_state, INV_CRAFTING};
 use super::*;
-use crate::base::crafting::persistence::load_crafting_state;
-use crate::base::crafting::telemetry::JobIds;
-use crate::base::crafting::transaction::{run_craft_transaction, CraftTransaction};
 use crate::base::world_entry::methods::inventory::core::handle_use_inventory_item;
 use crate::test_support::require_db_or_skip;
+use cimmeria_base_crafting::base::crafting::persistence::load_crafting_state;
+use cimmeria_base_crafting::base::crafting::telemetry::JobIds;
+use cimmeria_base_crafting::base::crafting::transaction::{
+    run_craft_transaction, CraftTransaction,
+};
 
 const ACCOUNT_ID: i32 = 0x7000_CBA0;
 const PLAYER_ID: i32 = 0x7000_CBA1;
@@ -50,6 +52,16 @@ async fn held(pool: &PgPool) -> Vec<(i32, i32, i32, i32)> {
 
 async fn use_item(pool: &PgPool, item_id: i32) {
     let (transport, e2a, conn) = make_state(ACCOUNT_ID as u32);
+    // The crafting use is the crafting plugin's item-use hook (#962 step 5),
+    // which core reaches through the player's session: give the fixture's
+    // address one, with the plugin installed.
+    let addr = e2a.lock().unwrap()[&(ACCOUNT_ID as u32)];
+    let mut state = crate::test_support::test_default_connected_client_state();
+    state.plugins = cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .unwrap();
+    conn.lock().unwrap().insert(addr, state);
     handle_use_inventory_item(
         ACCOUNT_ID as u32,
         PLAYER_ID,

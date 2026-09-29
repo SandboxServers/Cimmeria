@@ -38,12 +38,23 @@
 //! time an envelope nobody consumes is dropped with a WARN
 //! (`reason = "no_consumer"`).
 //!
-//! Both lists are empty until the first base feature moves: this module is
-//! the core, and crafting is its first user.
+//! Crafting is the first user (`cimmeria-base-crafting`, #962 step 5): its
+//! seven cell-to-base payloads are the whole envelope list, and it registers
+//! no base method (its verbs 95-100 are cell methods), so the base-method
+//! list is still empty.
+//!
+//! Three hook kinds are seams the inventory and progression code in
+//! `cimmeria-base-methods` fire, so crafting could leave the session layer
+//! without those callers naming it: [`ItemUseHookPoint`] (a hook that returns
+//! what it did with a `useItem`), [`InventoryHookPoint`] (the inventory
+//! resync's rows) and [`ProgressionHookPoint`] (the applied-science total an
+//! XP grant earned).
 
 mod hook_points;
 mod registry;
 
+#[cfg(test)]
+mod seam_tests;
 #[cfg(test)]
 mod tests;
 
@@ -63,7 +74,10 @@ use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
 pub use crate::cell::messages::PluginMsg;
-pub use hook_points::{SessionHookPoint, SessionStateHookPoint, WorldEntryHookPoint};
+pub use hook_points::{
+    InventoryHookPoint, ItemUseHookPoint, ProgressionHookPoint, SessionHookPoint,
+    SessionStateHookPoint, WorldEntryHookPoint,
+};
 pub use registry::{BasePluginBuilder, BasePluginError, BasePlugins};
 
 /// Per-session feature state, keyed by type
@@ -81,9 +95,20 @@ pub type SessionExtensions = cimmeria_entity::cell_entity::EntityExtensions;
 pub const PLUGIN_OWNED_BASE_METHODS: &[u8] = &[];
 
 /// The payload types that travel in the `CellToBaseMsg::Plugin` envelope.
-/// Each must have exactly one consumer. Empty until a feature moves its
-/// variants into the envelope.
-pub const PLUGIN_CELL_MESSAGES: &[PluginMsgKind] = &[];
+/// Each must have exactly one consumer.
+///
+/// - Crafting (`cimmeria-base-crafting`, #962 step 5): the verbs 95-100,
+///   the station reports, `.allcraft`, `.craftkit` / `.learnblueprint`,
+///   `.respeccraft`, `gmGiveExpertise` and `gmGiveAppliedSciencePoints`.
+pub const PLUGIN_CELL_MESSAGES: &[PluginMsgKind] = &[
+    PluginMsgKind::of::<cimmeria_wire::crafting::CraftRequest>(),
+    PluginMsgKind::of::<cimmeria_wire::crafting::CraftingStations>(),
+    PluginMsgKind::of::<cimmeria_wire::crafting::GmAllCraft>(),
+    PluginMsgKind::of::<cimmeria_wire::crafting::GmCraftGrant>(),
+    PluginMsgKind::of::<cimmeria_wire::crafting::RespecCraftOpen>(),
+    PluginMsgKind::of::<cimmeria_wire::crafting::GmGrantExpertise>(),
+    PluginMsgKind::of::<cimmeria_wire::crafting::GmGrantAppliedSciencePoints>(),
+];
 
 /// A payload type the envelope carries, for the startup checks.
 #[derive(Clone, Copy)]
@@ -201,6 +226,78 @@ pub struct WorldEntryCall<'a> {
 /// A hook fired at a [`WorldEntryHookPoint`].
 pub type WorldEntryHook = for<'a> fn(WorldEntryCall<'a>) -> BoxFuture<'a, ()>;
 
+/// What an [`ItemUseHookPoint`] hook gets: one `useItem` of inventory
+/// instance `item_id`.
+#[derive(Clone, Copy)]
+pub struct ItemUseCall<'a> {
+    pub entity_id: u32,
+    pub player_id: i32,
+    pub item_id: i32,
+    /// The database pool `useItem` already resolved (it refuses without one).
+    pub pool: &'a Arc<PgPool>,
+    pub ctx: BaseCtx<'a>,
+}
+
+/// What an [`ItemUseHookPoint`] hook did with a `useItem`.
+#[derive(Debug)]
+pub enum ItemUseOutcome {
+    /// Not this plugin's item: the next plugin, then the core, decides.
+    NotHandled,
+    /// The plugin refused the use and told the player; nothing changed.
+    Refused,
+    /// The plugin consumed the item; the core brings the client's inventory
+    /// and the cell up to date.
+    Consumed(ItemConsumed),
+}
+
+/// An item a plugin consumed on `useItem`.
+#[derive(Debug)]
+pub struct ItemConsumed {
+    /// The instance is gone (its last one was used): the client needs
+    /// `onRemoveItem` as well as the inventory update.
+    pub removed_all: bool,
+    /// The cell notification for a removed instance, enqueued with the
+    /// commit, for the core to dispatch now.
+    pub outbox: Option<(i64, crate::base::outbox::CellOutboxPayload)>,
+}
+
+/// A hook fired at an [`ItemUseHookPoint`]. The first hook in table order
+/// that does not return [`ItemUseOutcome::NotHandled`] decides.
+pub type ItemUseHook = for<'a> fn(ItemUseCall<'a>) -> BoxFuture<'a, ItemUseOutcome>;
+
+/// What an [`InventoryHookPoint`] hook gets: the player's whole inventory as
+/// the resync just read it.
+#[derive(Clone, Copy)]
+pub struct InventoryCall<'a> {
+    pub entity_id: u32,
+    pub player_id: i32,
+    pub pool: &'a PgPool,
+    /// `(item_id, type_id, container_id)` per inventory row.
+    pub rows: &'a [(i32, i32, i32)],
+    pub transport: &'a Arc<dyn Transport>,
+    pub connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    pub entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
+}
+
+/// A hook fired at an [`InventoryHookPoint`].
+pub type InventoryHook = for<'a> fn(InventoryCall<'a>) -> BoxFuture<'a, ()>;
+
+/// What a [`ProgressionHookPoint`] hook gets: the applied-science total an
+/// XP grant left the player with.
+#[derive(Clone, Copy)]
+pub struct AppliedScienceCall<'a> {
+    pub entity_id: u32,
+    pub player_id: i32,
+    /// The new total, not the points earned.
+    pub total: i32,
+    pub transport: &'a Arc<dyn Transport>,
+    pub connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    pub entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
+}
+
+/// A hook fired at a [`ProgressionHookPoint`].
+pub type ProgressionHook = for<'a> fn(AppliedScienceCall<'a>) -> BoxFuture<'a, ()>;
+
 /// A feature that registers with the base at startup.
 pub trait BasePlugin: Send + Sync + 'static {
     /// Stable name for logs and startup errors (`"crafting"`).
@@ -224,4 +321,21 @@ pub fn session_plugins(
         .ok()
         .and_then(|clients| clients.get(&addr).map(|c| c.plugins.clone()))
         .unwrap_or_default()
+}
+
+/// [`session_plugins`] for the session playing player entity `entity_id`,
+/// for the hook sites that hold an entity id rather than an address.
+pub fn entity_plugins(
+    connected: &Mutex<HashMap<SocketAddr, ConnectedClientState>>,
+    entity_to_addr: &Mutex<HashMap<u32, SocketAddr>>,
+    entity_id: u32,
+) -> BasePlugins {
+    let addr = entity_to_addr
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&entity_id).copied());
+    match addr {
+        Some(addr) => session_plugins(connected, addr),
+        None => BasePlugins::empty(),
+    }
 }

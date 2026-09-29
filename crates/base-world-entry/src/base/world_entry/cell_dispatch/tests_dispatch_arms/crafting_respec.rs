@@ -5,10 +5,11 @@
 
 use super::super::*;
 use super::one_session;
-use crate::base::crafting::feedback::feedback_text_args;
+use crate::cell::messages::PluginMsg;
 use crate::cell::messages::RespecCraftOpen;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{LogCapture, TestTransport};
+use cimmeria_base_crafting::base::crafting::feedback::feedback_text_args;
 use cimmeria_mercury::encryption::EncryptionVersion;
 
 const ENTITY: u32 = 4312;
@@ -20,12 +21,12 @@ async fn respeccraft_open_is_routed_and_answered() {
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
     let (addr, connected, entity_to_addr) = one_session(ENTITY, false);
-    let open = CellToBaseMsg::RespecCraftOpen(RespecCraftOpen {
+    let open = CellToBaseMsg::Plugin(PluginMsg::new(RespecCraftOpen {
         entity_id: ENTITY,
         player_id: PLAYER_ID,
-    });
+    }));
 
-    handle_cell_message(
+    route_cell_message(
         open,
         &transport,
         &connected,
@@ -35,6 +36,7 @@ async fn respeccraft_open_is_routed_and_answered() {
         &None,
         "127.0.0.1",
         7777,
+        &super::crafting_plugins(),
     )
     .await;
 

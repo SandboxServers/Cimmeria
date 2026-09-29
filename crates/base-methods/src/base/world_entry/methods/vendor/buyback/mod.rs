@@ -12,7 +12,7 @@ use super::helpers::send_cash_changed_to_client;
 use super::purchase_helpers::normalize_item_quantities;
 use super::serializers::reserve_free_inventory_slots;
 use super::store::handle_open_vendor_store;
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::cell::messages::BaseToCellMsg;
 
 const INV_MAIN: i32 = 1;
@@ -78,7 +78,7 @@ pub async fn handle_buyback_vendor_items(
     };
 
     // Lock order is the shared inventory order
-    // (`crate::base::crafting::inventory_locks`): the advisory keys first
+    // (`crate::base::inventory_locks`): the advisory keys first
     // (the player-wide key 0, then the two bags this moves between, main and
     // buyback), then the buyback rows and the main-bag rows the slot pick
     // locks, then `sgw_player`. A trade, a crafting completion, a move or a

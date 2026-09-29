@@ -122,7 +122,7 @@ async fn live_db_a_purchase_waits_for_a_crafting_completion_instead_of_deadlocki
 /// for the main bag's key the use holds. Both succeed; nothing deadlocks.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn live_db_a_purchase_waits_for_a_crafting_item_use_instead_of_deadlocking() {
-    use crate::base::crafting::item_use::transaction::take_item_use_locks;
+    use cimmeria_base_crafting::base::crafting::item_use::transaction::take_item_use_locks;
 
     let pool = require_db_or_skip!();
     cleanup(&pool, USE_ENTITY_ID, USE_ACCOUNT_ID, USE_PLAYER_ID).await;

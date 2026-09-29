@@ -39,6 +39,7 @@ use std::time::Instant;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use crate::queue::Producer;
 
+use crate::hooks::entity_trace::Ctx;
 use crate::hooks::name_throttle::{Decision, NameThrottle};
 
 /// Entry of the CME event-registry lookup.
@@ -125,6 +126,28 @@ pub(crate) fn event_fields(
     Some(fields)
 }
 
+/// The fields of one `client.cme.event` raised while the network thread was
+/// dispatching an inbound method for `ctx.entity_id`: the plain fields plus
+/// `entity_id`, `type_id` (when known) and `msg_id`. Throttled per (event,
+/// entity) by the caller, so an entity's first sighting of an event is
+/// never lost behind another entity's flood of it.
+pub(crate) fn entity_event_fields(
+    name: &str,
+    truncated: bool,
+    decision: Decision,
+    ctx: &Ctx,
+) -> Option<Vec<(&'static str, serde_json::Value)>> {
+    let mut fields = event_fields(name, truncated, decision)?;
+    fields.push(("entity_id", serde_json::json!(ctx.entity_id)));
+    if let Some(t) = ctx.type_id {
+        fields.push(("type_id", serde_json::json!(t)));
+    }
+    if ctx.msg_id != 0 {
+        fields.push(("msg_id", serde_json::json!(ctx.msg_id)));
+    }
+    Some(fields)
+}
+
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) unsafe fn install_cme_event_factory(producer: &Producer) {
     super::install_one(
@@ -152,10 +175,27 @@ fn observe(name_obj: *const c_void) {
         Some(d) => (d.text, d.truncated),
         None => ("<unreadable>".to_string(), false),
     };
-    let Some(fields) = event_fields(&name, truncated, throttle(&name)) else {
+    let kind = kind_of(&name);
+    // An inbound server method the network thread is dispatching for an
+    // entity: tag it, and throttle per (event, entity) instead of per name.
+    let ctx = if kind == "net_in" {
+        crate::hooks::entity_trace::current_ctx()
+    } else {
+        None
+    };
+    let fields = match &ctx {
+        Some(c) => entity_event_fields(
+            &name,
+            truncated,
+            crate::hooks::entity_trace::throttle(&name, c.entity_id),
+            c,
+        ),
+        None => event_fields(&name, truncated, throttle(&name)),
+    };
+    let Some(fields) = fields else {
         return;
     };
-    let level = level_of(kind_of(&name));
+    let level = level_of(kind);
 
     #[cfg(feature = "lab-bridge")]
     crate::bridge::events::push(
@@ -190,6 +230,8 @@ unsafe extern "thiscall-unwind" fn cme_event_factory_detour(
     name: *const c_void,
 ) -> *mut c_void {
     let _ = std::panic::catch_unwind(|| observe(name));
+    // The first event proves the registry is populated: dump its catalog.
+    let _ = std::panic::catch_unwind(|| crate::hooks::cme_catalog::start_once(registry as usize));
 
     match CME_EVENT_FACTORY_TRAMPOLINE.get() {
         Some(t) => {
@@ -249,6 +291,47 @@ mod tests {
         assert!(f.contains(&("suppressed", serde_json::json!(7))));
         assert!(f.contains(&("truncated", serde_json::json!(true))));
         assert!(event_fields("x", false, Decision::Suppress).is_none());
+    }
+
+    /// A NetIn event created while dispatching for an entity carries the
+    /// entity id, the type when known, and the message id.
+    #[test]
+    fn entity_events_carry_the_entity() {
+        let ctx = Ctx {
+            entity_id: 4242,
+            type_id: Some(26),
+            msg_id: 0x5d,
+        };
+        let f = entity_event_fields(
+            "Event_NetIn_onStaticMeshNameUpdate",
+            false,
+            Decision::Emit { suppressed: 2 },
+            &ctx,
+        )
+        .unwrap();
+        for (k, v) in [
+            ("entity_id", serde_json::json!(4242)),
+            ("type_id", serde_json::json!(26)),
+            ("msg_id", serde_json::json!(0x5d)),
+            ("suppressed", serde_json::json!(2)),
+            ("kind", serde_json::json!("net_in")),
+        ] {
+            assert!(f.contains(&(k, v.clone())), "{k}={v} in {f:?}");
+        }
+        let bare = Ctx {
+            type_id: None,
+            msg_id: 0,
+            ..ctx
+        };
+        let f = entity_event_fields(
+            "Event_NetIn_x",
+            false,
+            Decision::Emit { suppressed: 0 },
+            &bare,
+        )
+        .unwrap();
+        assert!(!f.iter().any(|(k, _)| *k == "type_id" || *k == "msg_id"));
+        assert!(entity_event_fields("x", false, Decision::Suppress, &ctx).is_none());
     }
 
     /// The shared throttle lets a first-seen name through.

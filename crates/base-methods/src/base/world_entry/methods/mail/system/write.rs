@@ -13,7 +13,7 @@ use super::super::take::carried_bag;
 use super::{
     SystemEscrow, SystemItem, SystemMailError, SERVER_HELD_CONTAINERS, SYSTEM_SOURCE_CHARACTER_ID,
 };
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::cell::mail::codes::flags::MAIL_ARCHIVE;
 
 /// The `sgw_gate_mail` columns of a server-written mail.

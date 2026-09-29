@@ -102,10 +102,37 @@ fn an_error_from_the_original_unwinds_through_lua_pcall_detour() {
     ) -> i32 {
         panic!("error handler raised");
     }
+    let _serial = PCALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     ORIG_LUA_PCALL.store(throwing_lua_pcall as *const () as usize, Ordering::Release);
     let caught =
         std::panic::catch_unwind(|| unsafe { lua_pcall_detour(core::ptr::null_mut(), 0, 0, 0) });
     assert!(caught.is_err());
+}
+
+/// The two tests that swap `ORIG_LUA_PCALL` must not overlap.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static PCALL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// A failed `lua_pcall` returns the original's status unchanged and reports
+/// the error without touching the stack. `lua51.dll` is not loaded in the
+/// test process, so the message reader finds no exports and the event goes
+/// out message-less: the point is that nothing faults and nothing changes.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[test]
+fn a_failed_lua_pcall_returns_its_status_and_reports_safely() {
+    unsafe extern "C-unwind" fn failing_lua_pcall(
+        l: *mut c_void,
+        nargs: i32,
+        nres: i32,
+        errfunc: i32,
+    ) -> i32 {
+        assert_eq!((l as usize, nargs, nres, errfunc), (0x1234, 2, 3, 4));
+        2
+    }
+    let _serial = PCALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    ORIG_LUA_PCALL.store(failing_lua_pcall as *const () as usize, Ordering::Release);
+    let status = unsafe { lua_pcall_detour(0x1234 as *mut c_void, 2, 3, 4) };
+    assert_eq!(status, 2);
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]

@@ -7,7 +7,7 @@
 //!
 //! 1. `BEGIN` a single sqlx transaction.
 //! 2. Take both players' inventory advisory locks (the shared order in
-//!    `crate::base::crafting::inventory_locks`, lower `player_id` first).
+//!    `crate::base::inventory_locks`, lower `player_id` first).
 //! 3. `FOR UPDATE` lock every item row each player is offering, and
 //!    re-validate ownership, `bound` and the source bag (TOCTOU window
 //!    between cell snapshot and base commit).

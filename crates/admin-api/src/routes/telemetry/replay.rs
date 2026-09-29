@@ -49,8 +49,12 @@ pub struct ReplayError {
 pub struct ReplayCounts {
     /// Non-blank lines seen.
     pub parsed: u64,
-    /// Lines replayed. Equal to `parsed` on success.
+    /// Lines replayed. Equal to `parsed` unless the session budget
+    /// suppressed some (see `session_budget`).
     pub accepted: u64,
+    /// Lines parsed but not replayed because the session was over its
+    /// budget. Always 0 from [`replay_ndjson`].
+    pub suppressed: u64,
 }
 
 /// Replay every event in a decompressed upload chunk (NDJSON, one
@@ -59,18 +63,41 @@ pub struct ReplayCounts {
 /// Public so the server's ingest round-trip test can drive the exact path
 /// `/api/telemetry/upload-chunk` takes, past the HTTP and gzip layers.
 pub fn replay_ndjson(claims: &TokenClaims, ndjson: &str) -> Result<ReplayCounts, ReplayError> {
-    let mut counts = ReplayCounts::default();
+    replay_ndjson_gated(claims, ndjson, |_| true)
+}
+
+/// [`replay_ndjson`] with a gate: an event for which `admit` returns
+/// `false` is parsed and counted as suppressed but not replayed. A bad
+/// line refuses the whole chunk. The whole chunk is parsed before `admit`
+/// sees any event, so a refused chunk replays nothing and spends none of
+/// the session's budget: its retry is judged afresh.
+pub(super) fn replay_ndjson_gated(
+    claims: &TokenClaims,
+    ndjson: &str,
+    mut admit: impl FnMut(&TelemetryEvent) -> bool,
+) -> Result<ReplayCounts, ReplayError> {
+    let mut events = Vec::new();
     for (idx, line) in ndjson.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
-        counts.parsed += 1;
         let ev: TelemetryEvent = serde_json::from_str(line).map_err(|e| ReplayError {
             line: idx as u64 + 1,
             err: e.to_string(),
         })?;
-        replay_event(claims, ev);
-        counts.accepted += 1;
+        events.push(ev);
+    }
+    let mut counts = ReplayCounts {
+        parsed: events.len() as u64,
+        ..ReplayCounts::default()
+    };
+    for ev in events {
+        if admit(&ev) {
+            replay_event(claims, ev);
+            counts.accepted += 1;
+        } else {
+            counts.suppressed += 1;
+        }
     }
     Ok(counts)
 }
@@ -168,6 +195,12 @@ pub(super) struct LiftedFields {
     /// Whether the SGW.exe build fingerprint matched
     /// (`client.hooks.fingerprint`).
     pub fingerprint_usable: Option<bool>,
+    /// The target a governor rollup summarizes (`client.telemetry.rollup`).
+    pub rollup_target: Option<String>,
+    /// How many events that rollup summarizes. Lifted only alongside
+    /// `rollup_target`, so a generic `count` field is never mistaken for
+    /// one; `sum(rollup_count)` by `rollup_target` recovers the totals.
+    pub rollup_count: Option<i64>,
 }
 
 impl LiftedFields {
@@ -181,6 +214,8 @@ impl LiftedFields {
             level_name: text("level_name"),
             dll_version: text("dll_version"),
             fingerprint_usable: fields.get("usable").and_then(Value::as_bool),
+            rollup_target: text("rollup_target"),
+            rollup_count: text("rollup_target").and_then(|_| int("count")),
         }
     }
 }
@@ -219,6 +254,8 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
             level_name = lifted.level_name.as_deref(),
             dll_version = lifted.dll_version.as_deref(),
             fingerprint_usable = lifted.fingerprint_usable,
+            rollup_target = lifted.rollup_target.as_deref(),
+            rollup_count = lifted.rollup_count,
             fields = %fields_json,
             "{name}"
         ),
@@ -238,6 +275,8 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
             level_name = lifted.level_name.as_deref(),
             dll_version = lifted.dll_version.as_deref(),
             fingerprint_usable = lifted.fingerprint_usable,
+            rollup_target = lifted.rollup_target.as_deref(),
+            rollup_count = lifted.rollup_count,
             fields = %fields_json,
             "{name}"
         ),
@@ -257,6 +296,8 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
             level_name = lifted.level_name.as_deref(),
             dll_version = lifted.dll_version.as_deref(),
             fingerprint_usable = lifted.fingerprint_usable,
+            rollup_target = lifted.rollup_target.as_deref(),
+            rollup_count = lifted.rollup_count,
             fields = %fields_json,
             "{name}"
         ),
@@ -276,6 +317,8 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
             level_name = lifted.level_name.as_deref(),
             dll_version = lifted.dll_version.as_deref(),
             fingerprint_usable = lifted.fingerprint_usable,
+            rollup_target = lifted.rollup_target.as_deref(),
+            rollup_count = lifted.rollup_count,
             fields = %fields_json,
             "{name}"
         ),
@@ -296,6 +339,8 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
             level_name = lifted.level_name.as_deref(),
             dll_version = lifted.dll_version.as_deref(),
             fingerprint_usable = lifted.fingerprint_usable,
+            rollup_target = lifted.rollup_target.as_deref(),
+            rollup_count = lifted.rollup_count,
             fields = %fields_json,
             "{name}"
         ),

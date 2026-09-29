@@ -4,7 +4,7 @@
 //! `sgw_gate_mail_item`.
 //!
 //! Lock order is the shared inventory order
-//! (`crate::base::crafting::inventory_locks`): the sender's advisory locks,
+//! (`crate::base::inventory_locks`): the sender's advisory locks,
 //! then the item row, then the `sgw_player` rows. [`lock_source_item`] runs
 //! before `deliver` locks the player rows; the debit and the move run after.
 //! This path only takes from a bag, never fills a slot; it takes the keys
@@ -28,7 +28,7 @@ use super::attachment::{
     AttachmentRefusal, ItemRequest, ITEM_BOUND, ITEM_IN_BUYBACK, ITEM_IN_VAULT, ITEM_NOT_FOUND,
     ITEM_NOT_IN_MAIN_BAG, ITEM_QUANTITY_EXCEEDS_STACK, NOT_ENOUGH_CASH,
 };
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 
 /// The sender's item row, locked `FOR UPDATE`.
 #[derive(Debug, Clone, sqlx::FromRow)]
