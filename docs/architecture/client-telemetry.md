@@ -144,11 +144,56 @@ If either side renames a field, the symmetric test fails loudly.
 
 ## Service name routing
 
-Since 2026-09-29 the server runs a fourth OTLP log provider whose resource is `service.name = cimmeria-client` with `cimmeria.source = client` (`otel::client_resource`), and the log routing sends the ingest's `client.native` replays there and nowhere else (`otel::is_client_target`). Query `service.name = 'cimmeria-client'`; the DLL's event name is the `client_target` attribute and the log body. Each row also carries the session's `session_id`, `install_id`, `cimmeria.session_kind` (`lab` or `player`) and `lab`, plus `account_id`, `player_id`, `method_index`, `level_name`, `dll_version` and `fingerprint_usable` when the event's `fields` has them. The attribute table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
+Since 2026-09-29 the server runs a fourth OTLP log provider whose resource is `service.name = cimmeria-client` with `cimmeria.source = client` (`otel::client_resource`), and the log routing sends the ingest's `client.native` replays there and nowhere else (`otel::is_client_target`). Query `service.name = 'cimmeria-client'`; the DLL's event name is the `client_target` attribute and the log body. Each row also carries the session's `session_id`, `install_id`, `cimmeria.session_kind` (`lab` or `player`) and `lab`, plus `account_id`, `player_id`, `method_index`, `level_name`, `dll_version`, `fingerprint_usable`, and on a governor rollup `rollup_target` and `rollup_count`, when the event's `fields` has them. The attribute table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
 
 This replaces the old `service_name = "cimmeria-client"` event field, which was a stand-in for a real resource and left the rows inside `cimmeria-server`.
 
 **Production gap.** The normal **Launch SGW.exe** path injects only `cimmeria-client-patches`; the telemetry DLL is injected by the lab supervisor and by the unexposed `LaunchSgwWithClientTelemetry` worker command, and is not packaged with launcher releases. Until an owner decision puts it in front of players, `cimmeria-client` rows from players come from the launcher's tailed logs, and DLL rows come from lab sessions.
+
+## Volume control: the governor
+
+Added 2026-09-29. One lab client produced about 333,000 `client.native` rows an hour, and 86% of them were `client.engine.sequence_tick`. The hooks' own samplers (1 in 10, 1 in 1000) were not enough, and a burst of a hot stream could fill the 4096-slot upload ring and push out an entity-lifecycle event. The governor (`crates/client-telemetry/src/governor/`) sits between the hooks and that ring. `queue::governed_channel` builds it, and every `Producer::try_emit` passes through `Governor::admit` before it takes a slot.
+
+**Classification is one table.** `governor/classify.rs` decides a class for every event in three steps, and the first step that applies wins:
+
+1. Level `warn` or `error`: **must-keep**.
+2. Fields that report a failure (`ok: false`, `success: false`, `failed: true`, a non-null `error`, or `outcome`/`result` in `NON_HAPPY_OUTCOMES`): **must-keep**.
+3. The first matching row of `RULES`. If no row matches, the event is **budgeted**.
+
+| Class | Targets (rows in `RULES`) | What happens |
+|---|---|---|
+| Must-keep | `client.entity.*` (create, enter, entered_world, leave, destroyed, appearance_request, queue_replay); `client.mercury.error`, `.fragment*`, `.bundle*`, `client.dispatch.method_dropped`; `client.hooks.*`; `client.dll.*`, `client.session.*`, `client.cme.catalog*`; `client.lua.error`, `client.os.exception`, `client.ue3.assert*`/`fatal*`, `client.physx.error*`/`assert*`, `client.io.open_failed`, `client.engine.load_failed`/`hitch`/`level_stream_slow`; `client.telemetry.*` | Forwarded untouched: never throttled, collapsed or summarized |
+| Per-entity | `client.cme.event` (key `name`), `client.mercury.entity_method` and `entity_property` (key `msg_id`), `client.net.out` (key `method`) | The first 16 per (target, `entity_id`, key) are forwarded, and the rest go into the rollup. The table resets at every scene change, so each world entry gets a fresh 16. An event without `entity_id` is budgeted |
+| Hot | `client.engine.sequence_tick`, `actor_tick`, `tick`, `bink_tick`, `async_archive_serialize`, `static_load_object` (key `package_name`), `update_level_streaming`; `client.frame_tick`; `client.lua.pcall`, `client.lua.call`; `client.os.get_foreground_window` | Never forwarded one by one; always summarized |
+| Budgeted | everything else (`client.ui.cegui_log`, `client.mercury.packet_in`, `client.streaming.update`, ...) | Forwarded while the target is under its budget (burst 20, then 2 per second); the rest go into the rollup |
+
+Per-entity and budgeted events also **collapse**. An event identical to the previous event *on the same target* (same level, same fields) is held as a repeat. When a different event arrives on that target, or when the window closes, one repeat event goes out. It has the same target, level and fields, plus `repeat_count` (the repeats held, not counting the first event, which was forwarded), `repeat_first_ts_ms` and `repeat_last_ts_ms`. Must-keep events are never collapsed.
+
+**Rollups.** Every 10 seconds, at every scene change (an event whose `level_name` differs from the last one seen), and at shutdown, each target with absorbed events emits one `client.telemetry.rollup` event:
+
+| Field | Meaning |
+|---|---|
+| `rollup_target` | The target summarized |
+| `reason` | `hot_stream`, `over_budget` or `per_entity_overflow` |
+| `trigger` | `window`, `scene_change` or `shutdown` |
+| `count`, `rate_per_sec` | Exact count and count per second over the window |
+| `window_start_ms`, `window_end_ms`, `window_ms`, `first_ts_ms`, `last_ts_ms` | When |
+| `key_field`, `distinct_keys`, `distinct_keys_capped`, `top_keys`, `other_key_events`, `last_key` | Exact top 10 values of the key field, and the keyed events outside the top 10. Up to 256 distinct keys are tracked; `distinct_keys_capped` says there were more |
+| `numeric` | `{field: {n, min, max, sum}}` for up to 16 numeric fields |
+| `last_fields` | The last absorbed event's fields, as an exemplar (for a load freeze: what was loading last) |
+
+**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. If either has grown since the last report, the health event is `warn`.
+
+**Measured effect.** Replayed through the governor on the uploader's 2 s cadence, the hour measured above (333,263 events) comes out as 4,134 rows, a 98.8% cut. All 855 must-keep events come through unchanged (`governor/tests/volume.rs`).
+
+**What stays local, and full volume on purpose.** The lab bridge's ring is fed by `hooks::emit` before the producer, so `client_events_read` still sees the stream as the hooks raised it. The governor reads two capture switches from the same places as the engine-sink switches: the `capture` block of `current-session.json` and `CIMMERIA_CLIENT_CAPTURE`. Either source can turn a switch on.
+
+- `raw` forwards everything. Nothing is collapsed or summarized, but health events are still sent. Use it for a lab session that needs full volume on purpose.
+- `firehose` keeps the governor on with 16 times the budget and 4 times the per-entity K. Hot streams are still summarized.
+
+The local log records the mode at boot (`telemetry governor: governed`).
+
+**Server-side guard.** The ingest keeps per-session counters and a budget of 30,000 events per session per minute (`admin-api` `routes/telemetry/session_budget.rs`). A governed client sends fewer than 100 events a minute. Over the budget, only warn/error rows and the must-keep families above are replayed. The rest are counted, and every chunk that suppressed something logs a `launcher.ingest` warn with `reason = session_over_budget` and the session's totals. See [telemetry.md](../operations/telemetry.md#volume-control-and-the-runaway-guard).
 
 ## Gameplay seams: what the client accepted and what its UI complained about
 
