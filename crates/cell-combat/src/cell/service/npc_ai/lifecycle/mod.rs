@@ -147,7 +147,9 @@ pub(super) async fn npc_ai_submit(
     // ref-counted enter path on the NPC side — nothing ever calls
     // `set_state_flag(BSF_IN_COMBAT)` — so the counter entry does not
     // exist and `unset_state_flag` would `return false` without
-    // touching `state_field`. Matches the death paths.
+    // touching `state_field`. Matches the death paths. The bit is derived
+    // from `Fighting` (`combat_stance`), which this NPC just left, so the
+    // next AI tick's `sync_combat_stance` sends the witnesses the clear.
     npc.state_field &= !combat::BSF_IN_COMBAT;
     // Cosmetic: the fast-retry sweep already drops this NPC from
     // `pending_ai_retries` the moment it sees a non-Fighting state, so a

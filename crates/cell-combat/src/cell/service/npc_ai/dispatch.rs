@@ -192,6 +192,10 @@ pub async fn npc_ai_tick(
         {
             continue;
         }
+        // Combat stance: `BSF_InCombat` follows `Fighting`. A Fighting NPC
+        // is announced here or at the top of `npc_ai_fight`; an NPC that
+        // just left the fight (leash, submit, give-up) gets its clear here.
+        super::combat_stance::sync_combat_stance(npc_id, tx, space_mgr).await;
         // `.instrument()` (not `.entered()`) — the handler bodies await,
         // so a thread-local guard would silently fall off across runtime
         // thread switches.

@@ -267,6 +267,31 @@ async fn an_npc_attack_nobody_can_see_warns_no_witnesses() {
     assert!(warns[0].has_field("sequence_id", "15"), "{:?}", warns[0]);
 }
 
+/// The fifth seam (stance): the Ability_End resolves and reaches a witness,
+/// but the NPC never had its `BSF_InCombat` stance announced, so the client
+/// draws no muzzle flash, tracer or weapon sound (colo, 2026-09-29). A Fighting
+/// NPC is announced by `npc_ai::combat_stance` before it fires, so this row
+/// means the shot came from outside the Fighting pass.
+///
+/// Deleting the WARN arm in `sequence.rs` fails this.
+#[tokio::test]
+async fn an_npc_shot_before_its_stance_was_announced_warns() {
+    let mut mgr = scene();
+    arm_npc(&mut mgr, NPC, ABILITY, Some(EVENT_SET));
+    assert!(
+        !mgr.get_witnesses_of(NPC).is_empty(),
+        "fixture: a player sees the NPC, so the shot is visible"
+    );
+    let logs = LogCapture::install();
+
+    npc_fires(&mut mgr, NPC, ABILITY).await;
+
+    let warns = sequence_warns(&logs.all(), "stance_not_announced");
+    assert_eq!(warns.len(), 1, "{:#?}", logs.all());
+    assert!(warns[0].has_field("source_id", "2"), "{:?}", warns[0]);
+    assert!(warns[0].has_field("sequence_id", "15"), "{:?}", warns[0]);
+}
+
 /// Control: the WARN is for NPC attackers only. Most player abilities have
 /// no event set (1851 of 1886 seeded), and a player firing one must not
 /// WARN on every click.

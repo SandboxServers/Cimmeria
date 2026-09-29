@@ -25,6 +25,7 @@
 //! | `no_event_set` | its `event_set_id` is NULL, so nothing is looked up |
 //! | `no_end_sequence` | the event set has no Ability_End (1001) sequence |
 //! | `no_witnesses` | the NPC shot with nobody in AoI to see it |
+//! | `stance_not_announced` | the NPC shot before its `BSF_InCombat` stance reached its witnesses, so the client draws no muzzle flash, tracer or weapon sound |
 //!
 //! The throttle is keyed by ability id (`SpaceManager::ability_sequence_log`)
 //! because the first three are facts about the seed row that every NPC
@@ -263,6 +264,33 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         "onSequence broadcast: {}",
         phase.describe()
     );
+
+    // Witnesses can only draw the muzzle flash and tracer of a shot whose
+    // Source pawn is in its combat stance (`npc_ai::combat_stance`). A Fighting
+    // NPC is announced before it fires, so this row means an attack from
+    // outside the Fighting pass (content, a GM ability) or a regression.
+    if warns
+        && witness_count > 0
+        && space_mgr
+            .get_entity(entity_id)
+            .is_some_and(|e| !e.is_player && !crate::cell::service::npc_ai::stance_announced(e))
+    {
+        if let Some(suppressed) = admit_warn(space_mgr, ability_id, "stance_not_announced") {
+            tracing::warn!(
+                target: "abilities.sequence",
+                event = "ability_end",
+                outcome = "stance_not_announced",
+                source_id = entity_id,
+                target_id,
+                ability_id,
+                sequence_id,
+                witness_count,
+                suppressed,
+                "PlaySequence: NPC fired an Ability_End before its BSF_InCombat stance was \
+                 announced -- witnesses see no muzzle flash, tracer or weapon sound"
+            );
+        }
+    }
 
     if warns && witness_count == 0 && is_npc(space_mgr, entity_id) {
         if let Some(suppressed) = admit_warn(space_mgr, ability_id, "no_witnesses") {
