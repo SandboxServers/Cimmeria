@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_base_session::base::plugin;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -195,6 +196,16 @@ pub async fn handle_gate_travel(
         crate::base::crafting::session::DropReason::WorldChange,
         "gate_travel",
     );
+    // The session's base plugins leave the origin world here too (#962
+    // step 5), before the fail-closed check below.
+    let plugins = plugin::session_plugins(connected, addr);
+    plugins.run_session_hook(
+        plugin::SessionHookPoint::GateTravelBeforeActiveCharacterCheck,
+        plugin::SessionEvent {
+            entity_id,
+            cause: "gate_travel",
+        },
+    );
 
     // Fail closed BEFORE anything destructive. Gate travel without a known
     // active character can neither persist the destination (it would risk
@@ -249,6 +260,10 @@ pub async fn handle_gate_travel(
         .get_mut(&addr)
     {
         c.crafting_options.begin_world_entry();
+        plugins.run_session_state_hook(
+            plugin::SessionStateHookPoint::GateTravelBeforeCreateEntity,
+            c,
+        );
     }
 
     // Tell CellService to create the entity in the new space and await the

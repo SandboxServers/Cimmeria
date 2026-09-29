@@ -8,7 +8,13 @@
 //! It also builds the effect-script registry ([`effect_scripts`], #962 step
 //! 4) from `cimmeria-cell-effect-scripts`' table, for the same reason: the
 //! scripts crate stays a leaf only this crate names.
+//!
+//! And the base plugin table ([`base_plugin_table`], #962 step 5): the same
+//! shape on the base track. It is empty until the first base feature
+//! (crafting) moves; the orchestrator builds and checks it anyway, so the
+//! startup refusal is in place before anything depends on it.
 
+use cimmeria_base_session::base::plugin::{BasePlugin, BasePluginError, BasePlugins};
 use cimmeria_cell_duel::DuelPlugin;
 use cimmeria_cell_org::OrgPlugin;
 use cimmeria_cell_pets::PetsPlugin;
@@ -32,6 +38,21 @@ pub fn cell_plugin_table() -> [&'static dyn CellPlugin; 3] {
 /// has no handler.
 pub fn cell_plugins() -> Result<CellPlugins, PluginError> {
     let plugins = CellPlugins::build(&cell_plugin_table())?;
+    plugins.check_complete()?;
+    Ok(plugins)
+}
+
+/// Every base plugin, in hook-firing order. Empty: no base feature has
+/// moved yet (#962 step 5, ADR §4.5).
+pub fn base_plugin_table() -> [&'static dyn BasePlugin; 0] {
+    []
+}
+
+/// The built and checked base plugin registry the orchestrator installs on
+/// the base: `Err` when a registration is invalid, a plugin-owned base
+/// method has no handler, or an envelope payload type has no consumer.
+pub fn base_plugins() -> Result<BasePlugins, BasePluginError> {
+    let plugins = BasePlugins::build(&base_plugin_table())?;
     plugins.check_complete()?;
     Ok(plugins)
 }
@@ -117,6 +138,27 @@ mod tests {
             }
             other => panic!("a table without OrgPlugin must fail check_complete: {other:?}"),
         }
+    }
+
+    /// #962 step 5: the shipped base table builds and is complete, so the
+    /// orchestrator starts the base. While it is empty, every owned list is
+    /// empty too; the first base plugin changes both in one PR.
+    #[test]
+    fn the_default_base_table_builds_and_is_complete() {
+        use cimmeria_base_session::base::plugin::{
+            PLUGIN_CELL_MESSAGES, PLUGIN_OWNED_BASE_METHODS,
+        };
+
+        let plugins = base_plugins().expect("the shipped base plugin table must build");
+        assert!(plugins.plugin_names().is_empty());
+        assert_eq!(
+            plugins.base_method_indices().collect::<Vec<_>>(),
+            PLUGIN_OWNED_BASE_METHODS.to_vec()
+        );
+        assert_eq!(
+            plugins.cell_message_types().count(),
+            PLUGIN_CELL_MESSAGES.len()
+        );
     }
 
     /// #962 step 4: the shipped script table builds, so the orchestrator

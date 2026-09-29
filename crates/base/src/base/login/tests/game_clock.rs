@@ -65,6 +65,7 @@ async fn tick_sync_heartbeat_carries_the_server_wide_game_clock() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("Phase 3 handoff");

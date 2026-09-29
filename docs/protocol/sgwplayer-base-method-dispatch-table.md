@@ -2,7 +2,7 @@
 title: "SGWPlayer Exposed BaseMethod Dispatch Table"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-28
 ---
 
 # SGWPlayer Exposed BaseMethod Dispatch Table
@@ -12,7 +12,10 @@ Only methods with `<Exposed/>` in the .def file get a wire index.
 
 **Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): every `sgw_player_base` constant and
 the base-method constants in `cimmeria-wire::base` are checked against the
-flattened exposed BaseMethods.
+flattened exposed BaseMethods. So is `cimmeria_wire::base::names::base_method_name`,
+the index-to-name table the base plugin registry (#962 step 5,
+[plugin-architecture.md §4.5](../architecture/plugin-architecture.md#45-step-5-first-part-the-baseplugin-core))
+uses to refuse a registration for an index that is not in this table.
 
 ## Wire Encoding
 

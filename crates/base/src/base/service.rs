@@ -13,6 +13,8 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::{Transport, UdpTransport};
 
+use cimmeria_base_session::base::plugin::BasePlugins;
+
 use crate::auth::PendingLogin;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::minigame::SessionRegistry;
@@ -20,7 +22,7 @@ use crate::minigame::SessionRegistry;
 use super::world_entry::methods::mail::expiry as mail_expiry;
 use super::{
     archetype_name, black_market, connect_loop::run_connect_loop, outbox, resources::ResourceCache,
-    world_entry::handle_cell_message, BaseError, ConnectedClientState, OnlinePlayer,
+    world_entry::route_cell_message, BaseError, ConnectedClientState, OnlinePlayer,
 };
 
 /// BaseApp service -- manages persistent entity state and client connections.
@@ -63,6 +65,11 @@ pub struct BaseService {
     /// negotiation yet.
     enc_version: EncryptionVersion,
 
+    /// The base plugin table (#962 step 5), set by the orchestrator before
+    /// `start()`. Stamped on every session this service admits and handed
+    /// to the cell-message loop. Empty on a bare service.
+    plugins: BasePlugins,
+
     /// Test-only transport substitute for `start()`'s recv loop -- lets a
     /// services-layer chaos integration test spin up a real `BaseService`
     /// against a `LossyTransport` instead of a plain `UdpTransport`,
@@ -96,6 +103,7 @@ impl BaseService {
             minigame_external_host: config.base_external_host.clone(),
             minigame_external_port: config.minigame_port,
             enc_version: EncryptionVersion::from_config_u8(config.mercury_encryption_version),
+            plugins: BasePlugins::empty(),
             #[cfg(feature = "chaos-testing")]
             transport_override: None,
         }
@@ -141,6 +149,17 @@ impl BaseService {
             .collect()
     }
 
+    /// Install the base plugin table (#962 step 5). The orchestrator calls
+    /// this once, before `start()`; sessions admitted afterwards carry it.
+    pub fn set_plugins(&mut self, plugins: BasePlugins) {
+        self.plugins = plugins;
+    }
+
+    /// The installed base plugin table.
+    pub fn plugins(&self) -> &BasePlugins {
+        &self.plugins
+    }
+
     /// Wire in the `pending_logins` Arc from `AuthService`.
     pub fn set_pending_logins(
         &mut self,
@@ -167,6 +186,18 @@ impl BaseService {
     /// Start the Mercury UDP listener on `listener_addr`.
     pub async fn start(&mut self) -> Result<(), BaseError> {
         tracing::info!(addr = %self.listener_addr, "Starting base service UDP listener");
+
+        // The orchestrator refuses to start on an incomplete plugin table;
+        // a bare service (a test harness) starts anyway, but says what the
+        // client could call and nothing would answer.
+        if let Err(e) = self.plugins.check_complete() {
+            tracing::warn!(
+                target: "base.plugin",
+                reason = "plugin_table_incomplete",
+                error = %e,
+                "base service starting with an incomplete plugin table"
+            );
+        }
 
         // Chaos tests supply their own already-bound (possibly
         // `LossyTransport`-wrapped) transport via `set_transport_override`.
@@ -237,6 +268,8 @@ impl BaseService {
         let mg_registry_for_cell = Some(self.minigame_registry.clone());
         let mg_host_for_cell = self.minigame_external_host.clone();
         let mg_port_for_cell = self.minigame_external_port;
+        let plugins_for_cell = self.plugins.clone();
+        let plugins_for_loop = self.plugins.clone();
 
         tracing::trace!("Spawning base service UDP receive loop");
         let cell_tx_for_loop = cell_tx.clone();
@@ -256,6 +289,7 @@ impl BaseService {
                 entity_manager_for_loop,
                 entity_to_addr_for_loop,
                 enc_version,
+                plugins_for_loop,
             )
             .await;
             tracing::trace!("Base service UDP receive loop exited");
@@ -265,7 +299,7 @@ impl BaseService {
             tokio::spawn(async move {
                 tracing::debug!("Base service CellToBase message handler started");
                 while let Some(msg) = cell_rx.recv().await {
-                    handle_cell_message(
+                    route_cell_message(
                         msg,
                         &transport_for_cell,
                         &connected_for_cell,
@@ -275,6 +309,7 @@ impl BaseService {
                         &mg_registry_for_cell,
                         &mg_host_for_cell,
                         mg_port_for_cell,
+                        &plugins_for_cell,
                     )
                     .await;
                 }

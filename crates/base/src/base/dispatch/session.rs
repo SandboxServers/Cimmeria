@@ -12,6 +12,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::plugin::{SessionEvent, SessionHookPoint};
 use cimmeria_base_session::base::session_presence::{spawn_offline, EndedSession};
 
 use crate::cell::messages::BaseToCellMsg;
@@ -46,7 +47,7 @@ pub(super) async fn handle_log_off(
     } else {
         "logoff_character_select"
     };
-    let (entity_id, enc_version, ended) = {
+    let (entity_id, enc_version, ended, plugins) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
@@ -80,9 +81,9 @@ pub(super) async fn handle_log_off(
                         "held organization invites dropped on logOff"
                     );
                 }
-                (c.player_entity_id, c.enc_version, ended)
+                (c.player_entity_id, c.enc_version, ended, c.plugins.clone())
             }
-            None => (None, Default::default(), None),
+            None => (None, Default::default(), None, Default::default()),
         }
     };
 
@@ -133,6 +134,13 @@ pub(super) async fn handle_log_off(
             entity_id,
             cimmeria_base_session::base::crafting::session::DropReason::Logout,
             "log_off",
+        );
+        plugins.run_session_hook(
+            SessionHookPoint::LogOffAfterEntityUnmapped,
+            SessionEvent {
+                entity_id,
+                cause: "log_off",
+            },
         );
 
         // Every user chat channel this character was in loses it here, on

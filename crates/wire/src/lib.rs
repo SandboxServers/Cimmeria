@@ -50,6 +50,8 @@ pub mod base {
     }
     /// `sendDuelChallenge` (0xD9) and its decoder.
     pub mod duel;
+    /// The SGWPlayer exposed base-method names, by flattened index.
+    pub mod names;
     /// The organization base methods (0xCF-0xD2) and their decoders.
     pub mod organization;
 }

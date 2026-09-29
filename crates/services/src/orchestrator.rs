@@ -121,6 +121,20 @@ impl Orchestrator {
             ),
         }
 
+        // The base plugin table (#962 step 5), the same way: a table that
+        // does not build leaves the base's table empty. An empty table is
+        // complete only while nothing is plugin-owned, so `start_all`'s
+        // check below catches a missing base plugin either way.
+        match crate::plugins::base_plugins() {
+            Ok(plugins) => base.set_plugins(plugins),
+            Err(e) => tracing::error!(
+                target: "base.plugin",
+                reason = "plugin_table_invalid",
+                error = %e,
+                "the base plugin table does not build -- the server will refuse to start"
+            ),
+        }
+
         // Wire Base↔Cell inter-service channels
         let (base_to_cell_tx, base_to_cell_rx) = mpsc::channel::<BaseToCellMsg>(256);
         let (cell_to_base_tx, cell_to_base_rx) = mpsc::channel::<CellToBaseMsg>(256);
@@ -233,7 +247,14 @@ impl Orchestrator {
         })?;
         tracing::trace!("Auth service started successfully");
 
-        // 3. Start base service (wire in pending_logins from auth first)
+        // 3. Start base service (wire in pending_logins from auth first).
+        // Every plugin-owned base method and every envelope payload type
+        // must have a handler first (#962 step 5).
+        state.base.plugins().check_complete().map_err(|e| {
+            tracing::error!(target: "base.plugin", reason = "plugin_table_incomplete", error = %e,
+                "Base service refused to start: the base plugin table is incomplete");
+            OrchestratorError::BaseStartFailed(e.to_string())
+        })?;
         let pending_logins = state.auth.pending_logins_arc();
         state.base.set_pending_logins(pending_logins);
         tracing::trace!(addr = %state.base.listener_addr, "Starting base service");

@@ -280,6 +280,7 @@ async fn login_consumes_ticket_and_registers_connected_client_state() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("Phase 3 handoff");
@@ -370,6 +371,7 @@ async fn login_pushes_discord_player_login_event() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("Phase 3 handoff");
@@ -438,6 +440,7 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("Phase 3 handoff");
@@ -519,6 +522,7 @@ async fn login_with_unknown_ticket_does_not_register_state() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("Phase 3 with unknown ticket returns Ok and logs");
@@ -581,6 +585,7 @@ async fn second_login_for_same_account_evicts_first_session() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("first login");
@@ -606,6 +611,7 @@ async fn second_login_for_same_account_evicts_first_session() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("second login");
@@ -669,6 +675,7 @@ async fn login_from_different_ip_logs_ticket_ip_mismatch() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("Phase 3 with a valid-but-foreign-IP ticket returns Ok and logs");

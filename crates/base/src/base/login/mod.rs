@@ -8,6 +8,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::plugin::BasePlugins;
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
@@ -44,6 +45,7 @@ pub(crate) async fn handle_login(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
     enc_version: EncryptionVersion,
+    plugins: &BasePlugins,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let login = {
         let mut map = pending_logins
@@ -232,6 +234,10 @@ pub(crate) async fn handle_login(
                 pending_destination_ring_id: None,
                 channel: Mutex::new(channel),
                 crafting_options: Default::default(),
+                extensions: Default::default(),
+                // The service's plugin table (#962 step 5): hook sites
+                // read it off the session.
+                plugins: plugins.clone(),
             },
         );
         arcs

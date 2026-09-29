@@ -135,7 +135,9 @@ use crate::otel;
 /// rows name `pets.*` targets, which the `pets=debug` row exports; this row
 /// covers any untargeted row. No other crate's row is a prefix of it, and it
 /// is a prefix of none. `cell.plugin=info` exports the plugin table's
-/// startup rows (installed, incomplete, invalid).
+/// startup rows (installed, incomplete, invalid). `base.plugin=info` does the
+/// same for the base plugin table (#962 step 5), and carries the WARN for an
+/// envelope no base plugin consumes (`reason = "no_consumer"`).
 ///
 /// `cimmeria_cell_duel=debug` (#962 step 2) does the same for the duel plugin
 /// crate: the duel answer and forfeit (cell methods 102-103), the duel tick
@@ -304,6 +306,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 npc_ai=debug,\
                 pets=debug,\
                 cell.plugin=info,\
+                base.plugin=info,\
                 deployables=debug,\
                 cover=debug,\
                 spawner=debug,\
