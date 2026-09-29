@@ -39,11 +39,13 @@
 
 pub mod feedback;
 mod give;
+pub(crate) mod give_ammo;
 mod give_training_points;
 mod missions;
 mod organizations;
 mod physics;
 mod query;
+pub(crate) mod set_infinite_ammo;
 pub(crate) mod shout;
 mod spawn;
 mod stats;

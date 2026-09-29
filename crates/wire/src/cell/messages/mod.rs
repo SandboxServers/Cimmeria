@@ -26,6 +26,7 @@
 //! - `item_use` — `ConsumeItemForUse` and `ItemUseConsumed`, the native
 //!   consumable round trip (the base consumes, then the cell applies).
 
+mod ammo_gm_cell_to_base;
 mod bank_base_to_cell;
 mod bank_cell_to_base;
 mod base_to_cell;
@@ -46,6 +47,7 @@ pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
     RespecCraftOpen, StationChangeCause, StationSet,
 };
+pub use ammo_gm_cell_to_base::GmGiveAmmo;
 pub use bank_base_to_cell::BankBaseToCell;
 pub use bank_cell_to_base::{BankCellToBase, BankSubject, ExpandTrigger};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
