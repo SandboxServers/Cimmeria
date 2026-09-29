@@ -41,6 +41,12 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "StatBuff" => Some(&super::stat_buff::StatBuff),
         // Radioactive dart dose (ammo AM-11b).
         "RadiationDamage" => Some(&super::ammo_dart_tech::RadiationDamage),
+        // Antidote and Coagulant darts (ammo AM-11c): remove effects by category.
+        "RemoveEffects" => Some(&super::ammo_dart_support::RemoveEffects),
+        // EMP rounds' on-hit effect 9120 (ammo campaign AM-09).
+        "EmpDisrupt" => Some(&super::ammo_emp::EmpDisrupt),
+        // Dart_Tranquilizer's on-hit slow (ammo campaign AM-11a).
+        "MovementSlow" => Some(&super::ammo_dart_cc::MovementSlow),
         _ => None,
     }
 }

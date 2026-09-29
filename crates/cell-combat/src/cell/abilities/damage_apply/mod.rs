@@ -19,12 +19,13 @@ use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use cimmeria_cell_world::cell::duel;
-use cimmeria_cell_world::cell::effects::ammo_damage;
+use cimmeria_cell_world::cell::effects::{ammo_damage, ammo_explosive};
 
 use super::messaging::{
     flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
 };
 use super::rng::pseudo_random_seed;
+use ammo_splash::HitKind;
 
 /// Resolve damage from `entity_id` to `target_eid` for ability `ability_id`.
 ///
@@ -65,6 +66,34 @@ pub(super) async fn apply_damage_to_target(
     ability_def: &Option<AbilityDef>,
     effect_seq: u32,
     needs_ammo_stat_send: bool,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    apply_hit(
+        entity_id,
+        target_eid,
+        ability_id,
+        ability_def,
+        effect_seq,
+        needs_ammo_stat_send,
+        HitKind::Direct,
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+/// [`apply_damage_to_target`] for one [`HitKind`]. An explosive round's
+/// splash targets (AM-10, [`ammo_splash`]) come back through here as
+/// `HitKind::Splash`, which scales the damage and never splashes again.
+async fn apply_hit(
+    entity_id: u32,
+    target_eid: u32,
+    ability_id: i32,
+    ability_def: &Option<AbilityDef>,
+    effect_seq: u32,
+    needs_ammo_stat_send: bool,
+    kind: HitKind,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
@@ -168,9 +197,17 @@ pub(super) async fn apply_damage_to_target(
             s.damage_type(DT_PHYSICAL),
         )
     });
+    // A splash target (AM-10) runs no on-hit effect: that is what stops a
+    // splash from splashing again.
     let on_hit_effect_id = shot
-        .filter(|_| qr_result.result_code != RC_MISS)
+        .filter(|_| qr_result.result_code != RC_MISS && kind.is_direct())
         .and_then(|s| s.on_hit_effect_id(space_mgr));
+    let splash = on_hit_effect_id
+        .and_then(|id| space_mgr.effect_defs.get(&id))
+        .and_then(ammo_explosive::splash_of);
+    // Scales both damage components below: cover, then the ammo row, then
+    // a splash target's share.
+    let damage_scale = cover_scale * ammo_scale * kind.damage_scale();
 
     // Look up damage values from the ability's effect NVPs. When the
     // ability is known but exposes no positive HealthDamage (e.g. focus
@@ -214,6 +251,11 @@ pub(super) async fn apply_damage_to_target(
             script_effect_ids.push(eid);
         }
     }
+    // A splash target takes blast damage only, not the shot's own scripts
+    // (a bleed, a stun) a second time.
+    if !kind.is_direct() {
+        script_effect_ids.clear();
+    }
     // ── `entity_health_below` pre-hit sample ──
     //
     // This is the one seam every ability-driven health mutation passes
@@ -243,7 +285,7 @@ pub(super) async fn apply_damage_to_target(
     let (effect_results, _total_health_damage) = combat::calculate_damage_penetrating(
         &qr_result,
         health_base_damage,
-        cover_scale * ammo_scale,
+        damage_scale,
         penetration_mult,
         damage_type,
         HEALTH,
@@ -256,7 +298,7 @@ pub(super) async fn apply_damage_to_target(
         let _ = combat::calculate_damage_penetrating(
             &qr_result,
             focus_base_damage,
-            cover_scale * ammo_scale,
+            damage_scale,
             penetration_mult,
             damage_type,
             cimmeria_entity::stats::FOCUS,
@@ -546,8 +588,8 @@ pub(super) async fn apply_damage_to_target(
     // on the target. The initial pulse already fired (above, via NVP
     // damage or script dispatch); registration carries the remaining
     // pulses. See `cell::effects::pulsing::effect_pulse_tick` for the
-    // per-tick fire loop.
-    if let Some(def) = ability_def {
+    // per-tick fire loop. Not on a splash target (blast damage only).
+    if let Some(def) = ability_def.as_ref().filter(|_| kind.is_direct()) {
         let now = std::time::Instant::now();
         for eid in def.effect_ids.iter().copied().chain(on_hit_effect_id) {
             let effect_clone = match space_mgr.effect_defs.get(&eid) {
@@ -572,6 +614,24 @@ pub(super) async fn apply_damage_to_target(
     // the loser: a DoT registered above must not outlive the duel.
     if let Some(hit) = duel_clamp {
         duel::finish_clamped(tx, space_mgr, hit).await;
+    }
+
+    // ── Explosive splash (AM-10) ──
+    //
+    // After the target's own hit has fully resolved (its death, threat and
+    // effects), so the splash reads the settled world. `splash` is `None`
+    // for a splash target, which is the no-chaining guarantee.
+    if let Some(splash) = splash {
+        ammo_splash::apply_splash(
+            entity_id,
+            target_eid,
+            ability_id,
+            ability_def,
+            splash,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 }
 
@@ -603,14 +663,21 @@ fn clamp_source(path: &'static str, ability_id: i32) -> duel::ClampSource {
     }
 }
 
+mod ammo_splash;
 mod cover_roll;
 
 #[cfg(test)]
 mod aggro_cause_tests;
 #[cfg(test)]
+mod ammo_dart_cc_tests;
+#[cfg(test)]
 mod ammo_dart_tech_tests;
 #[cfg(test)]
+mod ammo_emp_tests;
+#[cfg(test)]
 mod ammo_incendiary_tests;
+#[cfg(test)]
+mod ammo_splash_tests;
 #[cfg(test)]
 mod ammo_tests;
 #[cfg(test)]

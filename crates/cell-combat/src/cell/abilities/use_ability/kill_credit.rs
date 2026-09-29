@@ -132,54 +132,56 @@ pub(super) async fn credit_single_target(
     // hit.
     events.pending_health_below(tx, space_mgr).await;
 
+    // Cone and splash kill credit: drain the per-attacker scratchpad that
+    // `handle_use_ability` filled with the cone secondaries and explosive
+    // splash targets (AM-10) that died. Drained on every cast, before any
+    // early return: a secondary can die while the primary survives, and a
+    // scratchpad left full would credit its kill to a later cast. The
+    // scratchpad lives on the caster (the pet, for a pet cast); the credit
+    // goes to the credited player.
+    let aoe_dead_ids: Vec<u32> = space_mgr
+        .get_entity_mut(entity_id)
+        .map(|att| std::mem::take(&mut att.last_aoe_deaths))
+        .unwrap_or_default();
+
     // Skip the death check when the ability was rejected pre-consume —
     // nothing was damaged, so nothing died. Also short-circuits the
     // common no-target paths (target_id == 0).
-    if !committed || !was_alive_before {
+    if !committed {
         return;
     }
 
+    // The primary's content-engine tag (the chain trigger key, e.g.
+    // "Hallway01_Guard") when this cast killed it. A tagless NPC just
+    // doesn't progress any chain.
     let target_eid = target_id as u32;
-    let just_died = space_mgr
-        .get_entity(target_eid)
-        .is_some_and(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0));
-    if !just_died {
+    let primary_tag = was_alive_before
+        .then(|| space_mgr.get_entity(target_eid))
+        .flatten()
+        .filter(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0))
+        .and_then(|t| t.tag.clone());
+    if primary_tag.is_none() && aoe_dead_ids.is_empty() {
         return;
     }
 
-    // Resolve the target's content-engine tag (the chain trigger key,
-    // e.g. "Hallway01_Guard") and the credited player (the mission-context
-    // key). Either being absent is benign — a tagless NPC just doesn't
-    // progress any chain; a killer that credits no player (a plain NPC,
-    // or a pet whose owner already left) skips with a warn so the
-    // unexpected case stays visible.
-    let tag = match space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone()) {
-        Some(t) => t,
-        None => return,
-    };
+    // A killer that credits no player (a plain NPC, or a pet whose owner
+    // already left) skips with a warn so the unexpected case stays visible.
     let Some((credited, player_id)) = credited_player(space_mgr, entity_id) else {
         tracing::warn!(
-            entity_id, npc_tag = %tag, reason = "no_credited_player",
+            entity_id, npc_tag = ?primary_tag, aoe_kills = aoe_dead_ids.len(),
+            reason = "no_credited_player",
             "handle_use_ability_with_kill_credit: killer credits no player — skipping EntityDeath event"
         );
         return;
     };
 
-    events
-        .entity_death(credited, player_id, &tag, tx, space_mgr)
-        .await;
+    if let Some(tag) = primary_tag {
+        events
+            .entity_death(credited, player_id, &tag, tx, space_mgr)
+            .await;
+    }
 
-    // Cone AoE kill credit: drain the per-attacker scratchpad that
-    // `handle_use_ability` populated with cone-secondary deaths and
-    // fire `entity_death` for each tagged kill. Matches the same
-    // discipline as `handle_use_ability_on_ground`. The scratchpad lives
-    // on the caster (the pet, for a pet cast); the credit goes to the
-    // credited player.
-    let cone_dead_ids: Vec<u32> = space_mgr
-        .get_entity_mut(entity_id)
-        .map(|att| std::mem::take(&mut att.last_aoe_deaths))
-        .unwrap_or_default();
-    for dead_eid in cone_dead_ids {
+    for dead_eid in aoe_dead_ids {
         let dead_tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
         if let Some(t) = dead_tag {
             events
@@ -211,6 +213,20 @@ pub async fn credit_ground_deaths(
     // before the death fan-out below; a killing blow is
     // suppressed inside `fire_health_below_for_hit`.
     events.pending_health_below(tx, space_mgr).await;
+
+    // Explosive splash kills (AM-10) around any of this cast's targets are
+    // on the caster's scratchpad, not in `deaths`: drain it here too, or
+    // they would be credited to the caster's next single-target cast.
+    let mut deaths = deaths;
+    let splash_deaths = space_mgr
+        .get_entity_mut(entity_id)
+        .map(|att| std::mem::take(&mut att.last_aoe_deaths))
+        .unwrap_or_default();
+    for d in splash_deaths {
+        if !deaths.contains(&d) {
+            deaths.push(d);
+        }
+    }
 
     if deaths.is_empty() {
         return;

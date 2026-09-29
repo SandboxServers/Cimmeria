@@ -293,7 +293,7 @@ pub(super) async fn fire_ground_cast_after_warmup(
 /// (`combat::area_candidates`), filtered by `combat::may_hit_in_area`: a
 /// player's AoE obeys `player_may_attack` (hostile NPCs and the duel
 /// partner, never a vendor, quest giver, neutral NPC or bystander player).
-fn collect_ground_targets(
+pub(super) fn collect_ground_targets(
     space_mgr: &SpaceManager,
     attacker_id: u32,
     attacker_space: cimmeria_common::SpaceId,
