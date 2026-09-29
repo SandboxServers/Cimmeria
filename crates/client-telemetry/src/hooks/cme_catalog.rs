@@ -34,6 +34,11 @@ const MAX_NAME_CHARS: usize = 128;
 /// thousand; a cycle must not spin forever).
 const MAX_NODES: usize = 20_000;
 
+/// Pointer steps (descents and climbs) before the walk gives up. An
+/// in-order walk takes about two per node; the inner descents and climbs
+/// count too, so a cycle there cannot spin the catalog thread forever.
+const MAX_STEPS: usize = 4 * MAX_NODES;
+
 const KEY_OFFSET: u32 = 0x0c;
 const FACTORY_OFFSET: u32 = 0x28;
 
@@ -84,9 +89,18 @@ pub(crate) fn walk(mem: &dyn Mem, map: u32) -> Option<Vec<Entry>> {
     if root == head {
         return Some(out);
     }
+    let mut steps = 0usize;
+    // One pointer step; `false` once the budget is spent.
+    let mut step = || {
+        steps += 1;
+        steps <= MAX_STEPS
+    };
     // In-order from the leftmost node.
     let mut node = root;
     loop {
+        if !step() {
+            return Some(out);
+        }
         let left = mem.u32_at(node)?;
         if left == head {
             break;
@@ -107,6 +121,9 @@ pub(crate) fn walk(mem: &dyn Mem, map: u32) -> Option<Vec<Entry>> {
         if right != head {
             node = right;
             loop {
+                if !step() {
+                    return Some(out);
+                }
                 match mem.u32_at(node) {
                     Some(l) if l != head => node = l,
                     _ => break,
@@ -115,6 +132,9 @@ pub(crate) fn walk(mem: &dyn Mem, map: u32) -> Option<Vec<Entry>> {
             continue;
         }
         loop {
+            if !step() {
+                return Some(out);
+            }
             let Some(parent) = mem.u32_at(node.wrapping_add(4)) else {
                 return Some(out);
             };
@@ -341,6 +361,15 @@ mod tests {
         m.set(0x3100 + 4, 0x3200);
         let entries = walk(&m, 0x1000).unwrap();
         assert!(entries.len() <= MAX_NODES);
+    }
+
+    /// A cycle inside a descent (a node that is its own left child) stops
+    /// at the step budget instead of spinning the catalog thread.
+    #[test]
+    fn a_left_self_loop_terminates() {
+        let mut m = tree();
+        m.set(0x3000, 0x3000); // a's left child is a
+        assert_eq!(walk(&m, 0x1000), Some(vec![]));
     }
 
     #[test]

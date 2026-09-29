@@ -88,8 +88,8 @@ pub(crate) fn throttle(key: &str) -> Decision {
     g.get_or_insert_with(NameThrottle::new).check(key, now_ms)
 }
 
-/// Report a failed call. `read` fetches the message; it is only called when
-/// the throttle lets the event through.
+/// Report a failed call. `read` fetches the message, which keys the
+/// throttle, so it runs on every failure; the throttle bounds the events.
 pub(crate) fn report_with(
     status: i32,
     nargs: i32,

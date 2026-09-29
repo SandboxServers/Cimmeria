@@ -30,7 +30,7 @@ use serde_json::json;
 use super::entity_lifecycle::guarded;
 use crate::hooks::entity_trace::{
     self as trace,
-    map::{LiveMem, Mem},
+    map::{self, LiveMem, Mem},
 };
 use crate::queue::Producer;
 
@@ -118,14 +118,16 @@ fn observe(entity: *mut c_void, method: *mut c_void) {
         MAX_NAME_CHARS,
     )
     .map(|d| d.text);
-    // A null entity means the local player, whose id is at manager+0x14.
+    // A null entity means the local player, whose id the manager holds.
     let manager = LiveMem.u32_at(ADDR_ENTITY_MANAGER as u32).unwrap_or(0);
-    let local_id = LiveMem.u32_at(manager.wrapping_add(0x14)).map(|v| v as i32);
+    let local_id = LiveMem
+        .u32_at(manager.wrapping_add(map::manager::LOCAL_PLAYER_ID))
+        .map(|v| v as i32);
     let (entity_id, to_local) = if entity.is_null() {
         (local_id, true)
     } else {
         let id = LiveMem
-            .u32_at((entity as u32).wrapping_add(0x0c))
+            .u32_at((entity as u32).wrapping_add(map::entity::ID))
             .map(|v| v as i32);
         (id, id.is_some() && id == local_id)
     };
