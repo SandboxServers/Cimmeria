@@ -170,7 +170,7 @@ emitted the event.
 
 Owner decision (2026-09-25, NA25): whatever the server writes to
 `logs/*.log` must also be available in SigNoz. The OTLP log signal is
-split across three providers, each its own SigNoz service, and every
+split across four providers, each its own SigNoz service, and every
 record lands in exactly one of them:
 
 | Level | `service.name` | Filter |
@@ -178,6 +178,38 @@ record lands in exactly one of them:
 | ERROR, WARN | `cimmeria-server` | `OTEL_FILTER` |
 | INFO, DEBUG | `cimmeria-server`, or `cimmeria-network` for the scopes `otel::is_network_noise_target` names | `OTEL_FILTER` |
 | TRACE | `cimmeria-trace` | derived, see below |
+| every level, client-side replays only | `cimmeria-client` | `otel::is_client_target` |
+
+**The client index (2026-09-29).** What the players' machines upload,
+replayed by the telemetry ingest (`/api/telemetry/upload-*`, see
+[dev-session-telemetry.md](dev-session-telemetry.md)), is data about the
+client, not the server, so it has a service of its own and the other three
+reject it at every level. The targets are `otel::CLIENT_TARGETS`:
+`client.native` (the injected `cimmeria-client-telemetry` DLL's events) and
+the game-log lines the launcher tails (`launcher.client_log`,
+`launcher.debug_log`, `launcher.session_meta`). The ingest's own account
+of an upload (`launcher.ingest`, `launcher.bundle`) and the mint rows stay
+in `cimmeria-server`; `launcher.key_dump` stays `off`. Client rows ship at
+every level the client sent, TRACE included: the DLL already throttled and
+paid for the upload, and a client WARN is not a server problem.
+
+The `cimmeria-client` resource carries `cimmeria.source = client`,
+`deployment.environment` and `cimmeria.deploy_env`, and names the
+ingesting server as `cimmeria.ingest_host` / `cimmeria.ingest_version`
+rather than `host.name` / `service.version`, which a reader would take for
+the player's machine. A resource is process-wide, so everything
+per-session is a record attribute instead:
+
+| Attribute | Meaning |
+|---|---|
+| `session_id`, `install_id` | The dev-session token's `sid` and `sub` claims |
+| `cimmeria.session_kind` | `lab` (a Live Research Lab session) or `player`, from the signed `kind` claim |
+| `lab` | `true` for a lab session |
+| `ts_ms`, `seq` | The uploader's clock and sequence number |
+| `client_target` | The DLL's event name (`client.lua.pcall`); also the log body |
+| `client_level` | The DLL's level string, kept when it is not one the server knows |
+| `account_id`, `player_id`, `method_index`, `level_name`, `dll_version`, `fingerprint_usable` | Lifted from the DLL's `fields` bag when the event carries them; absent otherwise, never `0` |
+| `fields` | The DLL's whole `fields` bag as JSON |
 
 `OTEL_FILTER` stays hand-written, because it is also the span filter and
 because putting a new scope's DEBUG rows in the primary view is a
@@ -223,7 +255,8 @@ nor SigNoz: `abilities` (effect dispatch, pulses, shields), `abilities.sequence`
 `movement.movement_type`, `movement.position_sample`, `movement.validation`,
 `player.journal`, `trade.atomic_swap`, `console.feedback`, `client.native`,
 `launcher.*` and `cimmeria_discord`. All are now named in `OTEL_FILTER` at
-DEBUG. `launcher.key_dump` is turned `off` beside `launcher=debug`: it
+DEBUG, except `client.native`, which moved to the `cimmeria-client` index
+(every level) in 2026-09. `launcher.key_dump` is turned `off` beside `launcher=debug`: it
 carries a client session key and must never leave the host. The one
 per-tick-per-entity row among them, `movement.movement_type`
 `outcome = "deduped"` (TRACE, once per NPC per 2 s AI tick), is sampled
@@ -241,7 +274,10 @@ cannot skip the scan.
 on recording layers and, for every directive of every file layer, fires a
 representative event at TRACE, DEBUG and INFO: an event the file keeps
 must reach exactly one OTLP index, or, for a firehose, none, with its
-sample reaching one. It also checks `server.log`'s targets, that no
+sample reaching one. `guard::client_replays_land_only_in_the_client_index`
+pins the client index, and `logging/client_index_tests.rs` drives a real
+ingest replay through the OTLP bridge into a recording exporter and checks
+the client resource and record attributes. It also checks `server.log`'s targets, that no
 target at any level reaches two indexes, and that the guard itself
 catches a file layer added without `OTEL_FILTER` coverage. Its
 `crate_rows` module guards the module-path rows themselves: every crate

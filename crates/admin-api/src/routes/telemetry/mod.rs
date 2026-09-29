@@ -34,14 +34,22 @@
 //!
 //! - [`dto`] — wire types (event enum, response/error types) and the
 //!   `IntoResponse` plumbing.
-//! - [`handlers`] — the two axum handlers plus the unzip / verify /
-//!   replay helpers they call.
+//! - [`handlers`] — the two axum handlers plus the unzip / verify
+//!   helpers they call.
+//! - [`replay`] — replaying each uploaded event through `tracing` with
+//!   the session's identity and kind; the client-side rows land in the
+//!   `cimmeria-client` SigNoz service.
 
 mod dto;
 mod handlers;
+mod replay;
 
 #[cfg(test)]
+mod replay_tests;
+#[cfg(test)]
 mod tests;
+
+pub use replay::{replay_ndjson, ReplayCounts, ReplayError};
 
 use std::sync::Arc;
 

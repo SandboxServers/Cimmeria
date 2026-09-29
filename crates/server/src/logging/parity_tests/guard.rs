@@ -10,8 +10,8 @@ use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 use super::{
-    event_meta, harness, parity_violations, sinks_for, LEVELS, OTLP_LOG_SINKS, OTLP_NETWORK,
-    OTLP_SERVER, OTLP_TRACE, SERVER_LOG,
+    event_meta, harness, parity_violations, sinks_for, LEVELS, OTLP_CLIENT, OTLP_LOG_SINKS,
+    OTLP_NETWORK, OTLP_SERVER, OTLP_TRACE, SERVER_LOG,
 };
 use crate::logging::filters::{
     directive_pairs, otel_trace_directives, FileLayer, FILE_LAYERS, OTEL_FILTER,
@@ -157,6 +157,40 @@ fn each_level_lands_in_its_index() {
     // The exporter's own transport never loops back.
     for lvl in LEVELS {
         assert!(otlp("hyper::proto", lvl).is_empty(), "hyper at {lvl}");
+    }
+}
+
+/// The telemetry ingest's client-side replays land in `cimmeria-client` at
+/// every level, and nowhere else: not WARN in `cimmeria-server`, not TRACE
+/// in `cimmeria-trace`. The ingest's own rows about an upload
+/// (`launcher.ingest`, `launcher.bundle`) stay server-side, and the key
+/// dump stays off everywhere.
+///
+/// Reverting the client exclusion in `routes_to_server` or `routes_to_trace`
+/// makes a client row reach two indexes and fails this.
+#[test]
+fn client_replays_land_only_in_the_client_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let otlp = |target: &str, lvl: Level| -> Vec<String> {
+        sinks_for(&dispatch, &hits, target, lvl)
+            .into_iter()
+            .filter(|s| s.starts_with("otlp:"))
+            .collect()
+    };
+    for target in crate::otel::CLIENT_TARGETS {
+        for lvl in LEVELS {
+            assert_eq!(otlp(target, lvl), [OTLP_CLIENT], "{target} at {lvl}");
+        }
+    }
+    assert_eq!(otlp("launcher.ingest", Level::DEBUG), [OTLP_SERVER]);
+    assert_eq!(otlp("launcher.bundle", Level::WARN), [OTLP_SERVER]);
+    // A sibling that only shares the prefix is not a client row.
+    assert_eq!(otlp("client.nativex", Level::WARN), [OTLP_SERVER]);
+    for lvl in LEVELS {
+        assert!(
+            otlp("launcher.key_dump", lvl).is_empty(),
+            "key_dump at {lvl}"
+        );
     }
 }
 

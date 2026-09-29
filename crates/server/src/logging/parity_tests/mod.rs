@@ -2,7 +2,7 @@
 //! exactly one log index.
 //!
 //! The harness installs the *production* filters — one per `FILE_LAYERS`
-//! row, `server.log`'s, and the three OTLP log filters — on recording layers,
+//! row, `server.log`'s, and the four OTLP log filters — on recording layers,
 //! then fires events at chosen targets and levels and reads back which sinks
 //! accepted each. Targets come from the directive tables themselves, so a new
 //! file row is tested the day it is added.
@@ -40,8 +40,8 @@ use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 use tracing_subscriber::{EnvFilter, Registry};
 
 use super::filters::{
-    directive_pairs, otel_network_log_filter, otel_server_log_filter, otel_trace_log_filter_for,
-    server_log_directives, FileLayer,
+    directive_pairs, otel_client_log_filter, otel_network_log_filter, otel_server_log_filter,
+    otel_trace_log_filter_for, server_log_directives, FileLayer,
 };
 
 mod base_track;
@@ -55,8 +55,9 @@ mod guard;
 pub(super) const OTLP_SERVER: &str = "otlp:cimmeria-server";
 pub(super) const OTLP_NETWORK: &str = "otlp:cimmeria-network";
 pub(super) const OTLP_TRACE: &str = "otlp:cimmeria-trace";
+pub(super) const OTLP_CLIENT: &str = "otlp:cimmeria-client";
 const SERVER_LOG: &str = "file:server.log";
-pub(super) const OTLP_LOG_SINKS: [&str; 3] = [OTLP_SERVER, OTLP_NETWORK, OTLP_TRACE];
+pub(super) const OTLP_LOG_SINKS: [&str; 4] = [OTLP_SERVER, OTLP_NETWORK, OTLP_TRACE, OTLP_CLIENT];
 const LEVELS: [Level; 5] = [
     Level::TRACE,
     Level::DEBUG,
@@ -114,7 +115,7 @@ fn recorder(sink: String, hits: &Hits) -> Recorder {
     }
 }
 
-/// Every file sink plus the three OTLP log sinks, with production filters.
+/// Every file sink plus the four OTLP log sinks, with production filters.
 /// `file_layers` is a parameter so the guard's self-test can add a row.
 pub(super) fn harness(file_layers: &[FileLayer]) -> (Dispatch, Hits) {
     let hits: Hits = Arc::default();
@@ -135,6 +136,9 @@ pub(super) fn harness(file_layers: &[FileLayer]) -> (Dispatch, Hits) {
     ));
     layers.push(Box::new(
         recorder(OTLP_TRACE.into(), &hits).with_filter(otel_trace_log_filter_for(file_layers)),
+    ));
+    layers.push(Box::new(
+        recorder(OTLP_CLIENT.into(), &hits).with_filter(otel_client_log_filter()),
     ));
     (
         Dispatch::new(tracing_subscriber::registry().with(layers)),
