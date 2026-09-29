@@ -36,6 +36,7 @@ fn emp_row(on_hit: Option<i32>) -> AmmoModifier {
         damage_type: Some(i32::from(DT_PHYSICAL)),
         on_hit_effect_id: on_hit,
         toggle_ability_id: 1445,
+        beneficial: false,
     }
 }
 

@@ -217,6 +217,7 @@ mod tests {
             damage_type: Some(i32::from(DT_PHYSICAL)),
             on_hit_effect_id: None,
             toggle_ability_id: 715,
+            beneficial: false,
         }
     }
 
@@ -366,6 +367,7 @@ mod tests {
                 damage_type: physical,
                 on_hit_effect_id: None,
                 toggle_ability_id: 715,
+                beneficial: false,
             })
         );
         assert_eq!(
@@ -377,6 +379,7 @@ mod tests {
                 damage_type: physical,
                 on_hit_effect_id: None,
                 toggle_ability_id: 719,
+                beneficial: false,
             })
         );
         let names: Vec<String> = sqlx::query_scalar(

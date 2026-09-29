@@ -198,8 +198,12 @@ async fn apply_hit(
         )
     });
     // A splash target (AM-10) runs no on-hit effect: that is what stops a
-    // splash from splashing again.
+    // splash from splashing again. A beneficial row's heal or cleanse never
+    // lands through this pipeline (AM-11d): the single-target fire sends a
+    // support shot down `use_ability::support_shot`, so a beneficial shot
+    // that reaches this function (an AoE or cone secondary) is at a hostile.
     let on_hit_effect_id = shot
+        .filter(|s| !s.modifier.beneficial)
         .filter(|_| qr_result.result_code != RC_MISS && kind.is_direct())
         .and_then(|s| s.on_hit_effect_id(space_mgr));
     let splash = on_hit_effect_id
@@ -678,6 +682,8 @@ mod ammo_emp_tests;
 mod ammo_incendiary_tests;
 #[cfg(test)]
 mod ammo_splash_tests;
+#[cfg(test)]
+mod ammo_support_tests;
 #[cfg(test)]
 mod ammo_tests;
 #[cfg(test)]

@@ -43,6 +43,8 @@ fn seeded_rows() -> Vec<AmmoModifier> {
             damage_type: None,
             on_hit_effect_id: Some(effect),
             toggle_ability_id: toggle,
+            // AM-11d: all four are beneficial, so they target allies.
+            beneficial: true,
         })
         .collect()
 }
@@ -361,6 +363,24 @@ async fn live_db_dart_support_seed_rows() {
         assert_eq!(catalog.modifier(row.ammo_type), Some(&row));
     }
     assert_eq!(catalog.modifier(DART_NANITES), None, "Nanites: no evidence");
+    // AM-11d: these four are the only beneficial rows. A damaging family
+    // flagged by mistake would let its shots land on allies.
+    let beneficial: Vec<String> = sqlx::query_scalar(
+        "SELECT ammo_type::text FROM resources.ammo_modifiers WHERE beneficial          ORDER BY ammo_type::text",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("beneficial rows query");
+    assert_eq!(
+        beneficial,
+        [
+            "Dart_Adrenaline",
+            "Dart_Antidote",
+            "Dart_Coagulant",
+            "Dart_Stim"
+        ],
+        "exactly the support darts are beneficial"
+    );
 
     let defs = crate::cell::spawner::load_effect_defs(&pool)
         .await

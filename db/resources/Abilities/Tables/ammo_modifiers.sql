@@ -15,6 +15,11 @@
 -- resources.effects / resources.abilities, whose seeds load after this
 -- table, and a family seed row is checked by its packet's live-DB test.
 --
+-- beneficial (AM-11d): the ammo helps its target (a heal or a cleanse) and
+-- never harms it. A player's shot with beneficial ammo loaded may land on an
+-- ally or on the shooter, and is refused at a hostile target. It is an
+-- explicit column so the server never infers it from a script name.
+--
 
 SET search_path = resources, pg_catalog;
 
@@ -26,6 +31,7 @@ CREATE TABLE ammo_modifiers (
     damage_type "EDamageType",
     on_hit_effect_id integer,
     toggle_ability_id integer NOT NULL,
+    beneficial boolean DEFAULT false NOT NULL,
     CONSTRAINT ammo_modifiers_pkey PRIMARY KEY (ammo_type),
     CONSTRAINT ammo_modifiers_mults_positive_chk CHECK (damage_mult > 0 AND penetration_mult > 0),
     CONSTRAINT ammo_modifiers_special_only_chk CHECK (

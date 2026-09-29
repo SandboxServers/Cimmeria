@@ -84,6 +84,7 @@ fn seeded_rows() -> Vec<AmmoModifier> {
         damage_type: Some(i32::from(DT_PHYSICAL)),
         on_hit_effect_id: Some(on_hit),
         toggle_ability_id: toggle,
+        beneficial: false,
     })
     .collect()
 }

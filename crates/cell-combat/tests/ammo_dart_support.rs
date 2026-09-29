@@ -1,6 +1,6 @@
-//! Beneficial darts through the whole shot (ammo campaign AM-11c, D-AM07):
-//! `handle_use_ability` fires a dart loaded with Stim, and the on-hit
-//! effect lands through the real pipeline.
+//! Beneficial darts through the whole shot (ammo campaign AM-11c, D-AM07,
+//! and AM-11d's ally targeting): `handle_use_ability` fires a dart loaded
+//! with Stim, and the on-hit effect lands on an ally, never on a hostile.
 //!
 //! This is an integration test, not a module under `damage_apply`, because
 //! AM-11c owns no file in this crate. It drives only public entry points:
@@ -95,6 +95,7 @@ fn world(ammo_type: i32, target_is_player: bool) -> SpaceManager {
             damage_type: None,
             on_hit_effect_id: Some(STIM_EFFECT),
             toggle_ability_id: 992,
+            beneficial: true,
         }],
         [(DART_STIM, 9010)],
     );
@@ -156,59 +157,48 @@ async fn fire(mgr: &mut SpaceManager) -> bool {
     handle_use_ability(1, SHOT, 2, &tx, mgr).await
 }
 
-/// Shots at entity 2 until one lands its on-hit effect (a roll can miss),
-/// at most 20. Returns whether each committed.
-async fn fire_until_focus(mgr: &mut SpaceManager) -> Vec<bool> {
-    let mut committed = Vec::new();
-    for _ in 0..20 {
-        committed.push(fire(mgr).await);
-        if pools(mgr).1 > 0 {
-            break;
-        }
-    }
-    committed
-}
-
-/// A Stim dart on a hostile NPC: the shot deals no damage and the on-hit
-/// HealFocus restores 10% of the target's Focus. The same volley with
-/// default darts takes health, so the zero is the Stim row's doing.
+/// A Stim dart on an ally (AM-11d): the shot deals no damage and the on-hit
+/// HealFocus restores 10% of the ally's Focus. The same shot at the ally
+/// with default darts is refused by the #444 gate, so the heal is the Stim
+/// row's doing.
 #[tokio::test]
-async fn a_stim_dart_heals_focus_and_deals_no_damage() {
-    let mut mgr = world(DART_STIM, false);
-    let committed = fire_until_focus(&mut mgr).await;
-    assert!(
-        committed.iter().all(|&c| c),
-        "every shot commits: {committed:?}"
-    );
+async fn a_stim_dart_heals_an_ally_and_deals_no_damage() {
+    let mut mgr = world(DART_STIM, true);
+    assert!(fire(&mut mgr).await, "a support shot at an ally commits");
     let (health, focus) = pools(&mgr);
     assert_eq!(health, TARGET_HEALTH, "a support dart deals no damage");
-    assert_eq!(focus, TARGET_FOCUS_MAX / 10, "one hit restores 10% Focus");
+    assert_eq!(focus, TARGET_FOCUS_MAX / 10, "one shot restores 10% Focus");
 
-    let mut control = world(DART_DEFAULT, false);
-    for _ in 0..20 {
-        assert!(fire(&mut control).await);
-    }
-    let (health, focus) = pools(&control);
-    assert!(health < TARGET_HEALTH, "default darts do damage");
-    assert_eq!(focus, 0, "default darts carry no on-hit heal");
+    let mut control = world(DART_DEFAULT, true);
+    assert!(
+        !fire(&mut control).await,
+        "default darts at an ally are refused"
+    );
+    assert_eq!(pools(&control), (TARGET_HEALTH, 0));
 }
 
-/// Today a player cannot shoot an ally: the #444 gate refuses the launch,
-/// so a Stim dart never reaches a friendly player and nothing changes on
-/// them. A friendly-target path is a follow-up (AM-11c worknote).
+/// A Stim dart never helps a hostile NPC (AM-11d): the launch is refused,
+/// so there is no damage, no heal and no ammo spent. The same shot with
+/// default darts commits, so the refusal is the beneficial row's doing.
 #[tokio::test]
-async fn a_stim_dart_cannot_target_an_ally_player() {
-    let mut mgr = world(DART_STIM, true);
-    assert!(
-        !fire(&mut mgr).await,
-        "the #444 gate refuses an ally target"
-    );
+async fn a_stim_dart_at_a_hostile_npc_does_nothing() {
+    let mut mgr = world(DART_STIM, false);
+    for _ in 0..5 {
+        assert!(
+            !fire(&mut mgr).await,
+            "a support shot at a hostile is refused"
+        );
+    }
     assert_eq!(pools(&mgr), (TARGET_HEALTH, 0));
-    // The same world with the ally made a hostile NPC commits, so the
-    // refusal above is the target rule and not a broken fixture.
-    let t = mgr.get_entity_mut(2).unwrap();
-    t.is_player = false;
-    t.player_id = None;
-    t.faction = HOSTILE_FACTION;
-    assert!(fire(&mut mgr).await);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().active_ammo(),
+        100,
+        "a refused support shot spends no ammo"
+    );
+
+    let mut control = world(DART_DEFAULT, false);
+    assert!(
+        fire(&mut control).await,
+        "default darts at a hostile commit"
+    );
 }

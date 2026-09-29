@@ -33,6 +33,11 @@ pub struct AmmoModifier {
     /// The toggle ability the numbers were reconstructed from. Provenance
     /// only (D-AM07): never launched by the server.
     pub toggle_ability_id: i32,
+    /// The ammo helps its target (a heal or a cleanse) and never harms it
+    /// (AM-11d). A player's shot with it loaded may land on an ally or on
+    /// the shooter and is refused at a hostile target. Explicit in the seed,
+    /// never inferred from the on-hit effect's script.
+    pub beneficial: bool,
 }
 
 /// The startup snapshot of both ammo tables.
@@ -99,7 +104,7 @@ pub async fn load_ammo_modifiers(pool: &PgPool) -> Result<HashMap<i32, AmmoModif
                 damage_mult, penetration_mult, \
                 (array_position(enum_range(NULL::resources.\"EDamageType\"), damage_type) - 1)::integer \
                     AS damage_type, \
-                on_hit_effect_id, toggle_ability_id \
+                on_hit_effect_id, toggle_ability_id, beneficial \
          FROM resources.ammo_modifiers",
     )
     .fetch_all(pool)
@@ -145,6 +150,7 @@ mod tests {
         damage_type: None,
         on_hit_effect_id: None,
         toggle_ability_id: 715,
+        beneficial: false,
     };
 
     #[test]

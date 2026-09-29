@@ -307,6 +307,7 @@ mod tests {
                     damage_type: Some(i32::from(DT_PHYSICAL)),
                     on_hit_effect_id: Some(effect),
                     toggle_ability_id: toggle,
+                    beneficial: false,
                 }),
                 "ammo type {ammo_type}"
             );

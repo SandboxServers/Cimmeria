@@ -41,6 +41,7 @@ fn rows() -> Vec<AmmoModifier> {
             damage_type: Some(i32::from(DT_PHYSICAL)),
             on_hit_effect_id: Some(DART_EMP_EFFECT_ID),
             toggle_ability_id: DART_EMP_TOGGLE_ABILITY,
+            beneficial: false,
         },
         AmmoModifier {
             ammo_type: DART_RADIOACTIVE,
@@ -49,6 +50,7 @@ fn rows() -> Vec<AmmoModifier> {
             damage_type: None,
             on_hit_effect_id: Some(DART_RADIOACTIVE_EFFECT_ID),
             toggle_ability_id: DART_RADIOACTIVE_TOGGLE_ABILITY,
+            beneficial: false,
         },
     ]
 }

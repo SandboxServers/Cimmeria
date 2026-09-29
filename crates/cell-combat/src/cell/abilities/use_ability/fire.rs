@@ -145,6 +145,26 @@ pub(in crate::cell::abilities) async fn fire_cast(
         return;
     }
 
+    // A support shot (beneficial ammo, AM-11d) runs only its on-hit effect,
+    // on an ally or the shooter, and never enters the damage pipeline, the
+    // channel cancel or the cone fan-out: no damage, threat or combat state.
+    if let Some(shot) =
+        super::support_shot::beneficial_shot(space_mgr, entity_id, ability_def.as_ref())
+    {
+        super::support_shot::fire_support(
+            entity_id,
+            target_id as u32,
+            ability_id,
+            shot,
+            needs_ammo_stat_send,
+            tx,
+            space_mgr,
+        )
+        .await;
+        maybe_trigger_auto_reload(entity_id, needs_ammo_stat_send, ability_id, tx, space_mgr).await;
+        return;
+    }
+
     // Phase J: cancel any channelled effects this attacker started
     // with a DIFFERENT ability. Same-ability re-fire keeps the channel
     // alive (it'll refresh via `register_active_effect`'s same-source

@@ -190,6 +190,14 @@ single-target abilities (heal/buff an ally) will need the inverse gate
 when that field is added — documented as a TODO at the guard. The flat
 `HOSTILE_FACTION` sentinel is the same PvP seam the cone module already
 flags for a future per-pair hostility model.
+Update 2026-09-28 (AM-11d): the first inverse gate exists, scoped to
+beneficial ammo. A weapon shot with an `ammo_modifiers` row marked
+`beneficial = true` may target an ally player or the shooter, and is
+refused at any hostile target. It runs only that row's on-hit heal or
+cleanse (no damage, threat, combat or duel state), and is re-checked at
+the warmup and at fire. The widening is keyed on the server's loaded ammo
+and seed column, never on anything the client sends, so a forged
+`useAbility` at an ally with ordinary ammo is still refused.
 
 **Severity**: High
 **Class**: Missing faction/hostility gate

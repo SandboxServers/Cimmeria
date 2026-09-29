@@ -11,13 +11,10 @@
 -- requires damage_mult > 0. Relaxing that CHECK to >= 0 is the clean
 -- follow-up.
 --
--- Today the only thing a dart can hit is a hostile target: a hostile NPC, or
--- a duel opponent. The #444 target gate in use_ability refuses a player's
--- single-target ability at an ally or at themselves. So a Stim dart on a
--- hostile NPC restores that NPC's Focus. That is the literal effect of the
--- ammo, and the targeting rules are left as they are. The worknote
--- (docs/analysis/ammo/worknotes/AM-11c.md) describes the friendly-target
--- path this still needs.
+-- All four rows are beneficial = true (AM-11d). With one loaded, a player's
+-- shot may land on an ally or on themselves, and it is refused at a hostile
+-- target (a hostile NPC or a duel opponent) with a feedback line, so a Stim
+-- dart never heals an enemy. See docs/analysis/ammo/worknotes/AM-11d.md.
 --
 -- Sources:
 --
@@ -67,7 +64,7 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9161, 9161, 'Re
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9162, 9162, 'RemoveCategories', 'Wound');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9163, 9163, 'HealPercentage', '10');
 
-INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id) VALUES ('Dart_Stim', 0.0001, 1.0, NULL, 9160, 992);
-INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id) VALUES ('Dart_Antidote', 0.0001, 1.0, NULL, 9161, 1228);
-INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id) VALUES ('Dart_Coagulant', 0.0001, 1.0, NULL, 9162, 3427);
-INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id) VALUES ('Dart_Adrenaline', 0.0001, 1.0, NULL, 9163, 1220);
+INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id, beneficial) VALUES ('Dart_Stim', 0.0001, 1.0, NULL, 9160, 992, true);
+INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id, beneficial) VALUES ('Dart_Antidote', 0.0001, 1.0, NULL, 9161, 1228, true);
+INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id, beneficial) VALUES ('Dart_Coagulant', 0.0001, 1.0, NULL, 9162, 3427, true);
+INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id, beneficial) VALUES ('Dart_Adrenaline', 0.0001, 1.0, NULL, 9163, 1220, true);

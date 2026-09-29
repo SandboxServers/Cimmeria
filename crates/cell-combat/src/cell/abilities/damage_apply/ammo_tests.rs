@@ -39,6 +39,7 @@ fn row(ammo_type: i32, damage_mult: f32, penetration_mult: f32, toggle: i32) -> 
         damage_type: Some(i32::from(DT_PHYSICAL)),
         on_hit_effect_id: None,
         toggle_ability_id: toggle,
+        beneficial: false,
     }
 }
 
