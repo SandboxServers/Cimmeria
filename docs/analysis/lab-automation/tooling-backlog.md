@@ -3,7 +3,7 @@
 > **Date**: 2026-09-28
 > **Audience**: whoever drives or extends the Live Research Lab, and the sessions working on `cimmeria-client-telemetry`, `cimmeria-lab` and `cimmeria-lab-mcp`
 > **Type**: analysis (gap report plus prioritized backlog)
-> **Status**: items C1 and C2 landed with this document; the rest are proposals
+> **Status**: items C1 and C2 landed with this document. C3 (Lua errors), C6 (outbound methods) and the entity part of C7 (create, enter, leave, destroy, appearance, per-entity CME ids, inbound message paths) plus a CME event catalog landed 2026-09-28 ([client-telemetry.md](../../architecture/client-telemetry.md#entity-lifecycle-inbound-and-outbound-messages-lua-errors-and-the-cme-catalog)); the rest are proposals
 > **Companion docs**: [live-research-lab.md](../../architecture/live-research-lab.md) (ADR), [client-telemetry.md](../../architecture/client-telemetry.md), [client-instrumentation-hookpoints.md](../../reverse-engineering/findings/client-instrumentation-hookpoints.md), [cme-event-signal.md](../../reverse-engineering/findings/cme-event-signal.md), [instrumentation-discipline.md](../../architecture/instrumentation-discipline.md)
 
 ## Goal

@@ -61,20 +61,52 @@ pub enum Decision {
 }
 
 /// The per-name token buckets.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NameThrottle {
     buckets: HashMap<String, Bucket>,
+    max_names: usize,
+}
+
+impl Default for NameThrottle {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NameThrottle {
-    /// An empty table.
+    /// An empty table that tracks up to [`MAX_NAMES`] names.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_max_names(MAX_NAMES)
+    }
+
+    /// An empty table that tracks up to `max_names` names before the
+    /// overflow bucket takes over.
+    pub fn with_max_names(max_names: usize) -> Self {
+        Self {
+            buckets: HashMap::new(),
+            max_names,
+        }
+    }
+
+    /// Number of buckets held (overflow included).
+    pub fn len(&self) -> usize {
+        self.buckets.len()
+    }
+
+    /// Whether no bucket is held.
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.buckets.is_empty()
+    }
+
+    /// Forget every bucket: each name starts again with a full burst.
+    pub fn clear(&mut self) {
+        self.buckets.clear();
     }
 
     /// Decide for one event named `name` at monotonic time `now_ms`.
     pub fn check(&mut self, name: &str, now_ms: u64) -> Decision {
-        let key = if self.buckets.contains_key(name) || self.buckets.len() < MAX_NAMES {
+        let key = if self.buckets.contains_key(name) || self.buckets.len() < self.max_names {
             name
         } else {
             OVERFLOW_NAME
@@ -105,7 +137,7 @@ impl NameThrottle {
     /// Number of distinct buckets (overflow included).
     #[cfg(test)]
     fn bucket_count(&self) -> usize {
-        self.buckets.len()
+        self.len()
     }
 }
 

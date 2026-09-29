@@ -23,11 +23,19 @@
 //! - [`console_command`] — `APlayerController::execConsoleCommand`.
 //! - [`cme_event_factory`] — the CME event-registry lookup: every event
 //!   the client creates by name, including each inbound entity method it
-//!   routed (2026-09-28).
+//!   routed (2026-09-28). An `Event_NetIn_*` created while the network
+//!   thread dispatches for an entity carries that entity's id.
+//! - [`entity_lifecycle`] — `enterAoI`, `createEntity`, `enterWorld`,
+//!   `leaveAoI`, destroy and the appearance request, each with the
+//!   manager's before/after view of the entity (`client.entity.*`).
+//! - [`entity_messages`] — inbound entity methods and properties, the
+//!   deferred-message queue and its replay (`client.mercury.entity_*`),
+//!   which also set the dispatch context the CME and drop events read.
+//! - [`net_out`] — the outgoing entity-method router (`client.net.out`).
 //!
 //! # What's installed
 //!
-//! 11 hooks. Every address below was re-checked against the QA
+//! 22 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -55,7 +63,18 @@
 //! | `APlayerController::execConsoleCommand` (`this, FFrame&, Result*`) | `0x00539850` | `client.input.console_command` | 1/1 |
 //! | `FFullScreenMovieBink::Tick` (vtbl slot 1) | `0x0050bbc0` | `client.engine.bink_tick` (with `delta_seconds` field) | 1/30 (~1/sec during cinematics) |
 //! | `EntityDescription_GetExposedClientMethodByIndex` (silent-drop oracle) | `0x01590f30` | `client.dispatch.method_dropped` (with `method_index` field) | 1/1 unsampled — drops are the finding |
-//! | CME event-registry lookup (`thiscall(registry, const std::string&)`) | `0x00a5c0f0` | `client.cme.event` (`event`, `kind`; `info` for `net_in`, else `debug`) | per-name token bucket: burst 8, 4/s, `suppressed` count on the next emit |
+//! | CME event-registry lookup (`thiscall(registry, const std::string&)`) | `0x00a5c0f0` | `client.cme.event` (`event`, `kind`, `entity_id` for `net_in`; `info` for `net_in`, else `debug`) | per-name token bucket: burst 8, 4/s, `suppressed` count on the next emit; `net_in` inside an entity dispatch: per (event, entity) |
+//! | `EntityManager::onEntityEnter` (`enterAoI`) | `0x00dd24f0` | `client.entity.enter` | per (event, entity) bucket |
+//! | `EntityManager::onEntityCreate` | `0x00dd2270` | `client.entity.create` | per (event, entity) bucket |
+//! | `EntityManager::enterWorld` | `0x00dd1d00` | `client.entity.entered_world` | per (event, entity) bucket |
+//! | `EntityManager::onEntityLeave` (`leaveAoI`) | `0x00dd2800` | `client.entity.leave` | per (event, entity) bucket |
+//! | entity destroy | `0x00dd1120` | `client.entity.destroyed` | per (event, entity) bucket |
+//! | `GameEntity` appearance request | `0x00e69150` | `client.entity.appearance_request` | per (event, entity) bucket |
+//! | appearance job scheduler | `0x00e998e0` | (marks the request as scheduled; no event) | - |
+//! | `EntityManager::onEntityMethod` | `0x00dd2b80` | `client.mercury.entity_method` (`debug` delivered, `info` queued) | per (event, entity) bucket |
+//! | `EntityManager::onEntityProperty` | `0x00dd29d0` | `client.mercury.entity_property` | per (event, entity) bucket |
+//! | queued-message replay | `0x00dd1e40` | `client.entity.queue_replay` | per (event, entity) bucket |
+//! | `RouteOutgoingEntityRpc` (`stdcall`, 4 args) | `0x00c6fc40` | `client.net.out` | per (method, entity) bucket |
 //!
 //! # Why MinHook
 //!
@@ -73,7 +92,15 @@ mod cme_event_factory;
 mod console_command;
 mod engine_frame;
 mod engine_loading;
+// The event family of a class name, shared with the catalog dump.
+pub(crate) use cme_event_factory::kind_of as event_kind;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod entity_lifecycle;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod entity_messages;
 mod mercury_dispatch;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod net_out;
 mod state_flags;
 
 use crate::queue::Producer;
@@ -125,11 +152,14 @@ unsafe fn install_inner(producer: Producer) {
     engine_frame::install_bink_tick(&producer);
     mercury_dispatch::install_entity_method_not_found(&producer);
     cme_event_factory::install_cme_event_factory(&producer);
+    entity_lifecycle::install_all(&producer);
+    entity_messages::install_all(&producer);
+    net_out::install_all(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(11))],
+        [("hook_count", serde_json::json!(22))],
     );
 }
 
@@ -233,6 +263,22 @@ mod tests {
             // CME event-registry lookup: `thiscall(registry, const
             // std::string&) -> event*`, `ret 4` (2026-09-28).
             assert_eq!(super::cme_event_factory::ADDR_CME_EVENT_FACTORY, 0x00a5c0f0);
+            // Entity lifecycle, message and outgoing-RPC anchors
+            // (findings/client-entity-lifecycle.md, 2026-09-28).
+            assert_eq!(super::entity_lifecycle::ADDR_ENTER_AOI, 0x00dd24f0);
+            assert_eq!(super::entity_lifecycle::ADDR_CREATE_ENTITY, 0x00dd2270);
+            assert_eq!(super::entity_lifecycle::ADDR_ENTER_WORLD, 0x00dd1d00);
+            assert_eq!(super::entity_lifecycle::ADDR_LEAVE_AOI, 0x00dd2800);
+            assert_eq!(super::entity_lifecycle::ADDR_DESTROY_ENTITY, 0x00dd1120);
+            assert_eq!(super::entity_lifecycle::ADDR_APPEARANCE_REQUEST, 0x00e69150);
+            assert_eq!(
+                super::entity_lifecycle::ADDR_APPEARANCE_SCHEDULE,
+                0x00e998e0
+            );
+            assert_eq!(super::entity_messages::ADDR_ENTITY_METHOD, 0x00dd2b80);
+            assert_eq!(super::entity_messages::ADDR_ENTITY_PROPERTY, 0x00dd29d0);
+            assert_eq!(super::entity_messages::ADDR_QUEUE_REPLAY, 0x00dd1e40);
+            assert_eq!(super::net_out::ADDR_ROUTE_OUTGOING_RPC, 0x00c6fc40);
         }
     }
     /// Every inline-hooked address is a fingerprinted site, so a build
@@ -252,6 +298,17 @@ mod tests {
             super::anim_notify::ADDR_ANIM_NOTIFY_B,
             super::console_command::ADDR_CONSOLE_COMMAND,
             super::cme_event_factory::ADDR_CME_EVENT_FACTORY,
+            super::entity_lifecycle::ADDR_ENTER_AOI,
+            super::entity_lifecycle::ADDR_CREATE_ENTITY,
+            super::entity_lifecycle::ADDR_ENTER_WORLD,
+            super::entity_lifecycle::ADDR_LEAVE_AOI,
+            super::entity_lifecycle::ADDR_DESTROY_ENTITY,
+            super::entity_lifecycle::ADDR_APPEARANCE_REQUEST,
+            super::entity_lifecycle::ADDR_APPEARANCE_SCHEDULE,
+            super::entity_messages::ADDR_ENTITY_METHOD,
+            super::entity_messages::ADDR_ENTITY_PROPERTY,
+            super::entity_messages::ADDR_QUEUE_REPLAY,
+            super::net_out::ADDR_ROUTE_OUTGOING_RPC,
         ];
         for addr in hooked {
             assert!(

@@ -1959,6 +1959,33 @@ Source: [findings/render-thread-options.md](findings/render-thread-options.md). 
 
 ---
 
+## Client entity lifecycle and telemetry anchors (2026-09-28)
+
+Source: [findings/client-entity-lifecycle.md](findings/client-entity-lifecycle.md). Argument counts are read from each function's `ret N`; the Ghidra names in the last column are the current ones, several of which are wrong or unnamed (`ret N` is the authority, not the decompiler's parameter list).
+
+| Address | Name | Signature / notes | Ghidra name today |
+|---------|------|-------------------|-------------------|
+| `0x00dd24f0` | `EntityManager::onEntityEnter` (`enterAoI`) | `thiscall(this, id, space, vehicle)`, `ret 0xc`. Bumps the enter count; enters the world for a cached entity only if it is the local player or client-only (`id > 0x3fffffff`) | `FUN_00dd24f0` |
+| `0x00dd2270` | `EntityManager::onEntityCreate` | `thiscall(this, id, type, space, vehicle, stream)`, `ret 0x14`. Enter count < 1 parks the entity in the cache map (`+0x24`); otherwise `enterWorld` | `BW_client_entity_manager_4` |
+| `0x00dd1d00` | `EntityManager::enterWorld` | `thiscall(this, entity, space, vehicle, flag)`, `ret 0x10`. Inserts into the world map (`+0x18`), requests the appearance | `EntityManager_enterWorld` |
+| `0x00dd2800` | `EntityManager::onEntityLeave` (`leaveAoI`) | `thiscall(this, id, cache_stamp)`, `ret 8`. **Not** `EnterAoI`: decrements the enter count | `BW_client_entity_manager_5` |
+| `0x00dd1120` | entity destroy | `thiscall(this, entity, arg)`, `ret 8`. Removes from the world and cache maps, `delete` through the vtable | `FUN_00dd1120` |
+| `0x00dd1fb0` | queue / pending purge | `fastcall(this)` + 1 stack arg; erases an id's queue (`+0x3c`) and pending record (`+0x30`) | `FUN_00dd1fb0` |
+| `0x00dd1e40` | queued-message replay | `thiscall(this, entity) -> bool`, `ret 4`. Drains `+0x3c` through `0x00c6f8f0`; callers `0x00dd2429`, `0x00dd26e1`, `0x00dd21d6` | `FUN_00dd1e40` |
+| `0x00dd2b80` | `EntityManager::onEntityMethod` | `thiscall(this, id, msg_id, stream)`, `ret 0xc`. World map or local player: dispatch; else queue | `FUN_00dd2b80` |
+| `0x00dd29d0` | `EntityManager::onEntityProperty` | `thiscall(this, id, msg_id, stream)`, `ret 0xc`. **Not** `LeaveAoI`: ignores a known entity's message, queues (`\|0x40`) for an unknown one | `FUN_00dd29d0` |
+| `0x00dd0f70` | `EntityManager::isInWorld` | `thiscall(this, entity) -> bool` (world map lookup) | `FUN_00dd0f70` |
+| `0x00e69150` | `GameEntity` appearance request | `thiscall(entity, const std::string* reason)`, `ret 4`. Exits: not ready / schedule / hold (`entity+0x32`) | `GameEntity__unknown_00e69150` |
+| `0x00e998e0` | appearance job scheduler | `thiscall(scheduler = GEM+0x98, entity)`, `ret 4` | `FUN_00e998e0` |
+| `0x00c6fc40` | `RouteOutgoingEntityRpc` | `stdcall(entity, desc, method, args)`, `ret 0x10`. `method+0`: name `std::string`, `+0x1c&3` route, `+0x44` msg id, `+0x48` sub-index | `CEGUI__unknown_00c6fc40` |
+| `0x01f11fc4` | CME event registry | `std::map<std::string, factory>`; node key at `+0x0c`, factory at `+0x28`; getter `0x0155f790` | - |
+| `0x0158ea90` | registry `find` | `thiscall(map, out_iter*, const std::string&)`, `ret 8` | `FUN_0158ea90` |
+| `0x00e9ba60` / `0x00e9b8d0` | entity allocator | called by `BW_client_entity_manager_7` (`0x00dd09e0`) | - |
+
+`lua51.dll` (wide build) exports used for error capture: `?lua_type@@YAHPAUlua_State@@H@Z`, `?lua_tolstring@@YAPB_WPAUlua_State@@HPAI@Z`.
+
+---
+
 ## Naming Conventions
 
 - Ghidra function names: `ClassName_methodName` (underscore separator)

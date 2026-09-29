@@ -155,6 +155,27 @@ pub unsafe fn read(obj: *const u8, width: Width, max_chars: usize) -> Option<Dec
     })
 }
 
+/// Like [`read`], but every read goes through `ReadProcessMemory`, so a
+/// dangling or garbage pointer yields `None` instead of an access
+/// violation. Use it for objects the detour does not own (a string reached
+/// through a pointer in a game structure, or an argument of a function
+/// whose callers were not all inspected).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub fn read_checked(obj: usize, width: Width, max_chars: usize) -> Option<Decoded> {
+    use cimmeria_client_hookgate::os::read_bytes;
+    let header: [u8; OBJECT_SIZE] = read_bytes(obj, OBJECT_SIZE)?.try_into().ok()?;
+    let (storage, truncated) = locate(&header, width, max_chars);
+    let bytes = match storage {
+        Storage::Invalid => return None,
+        Storage::Inline(b) => b,
+        Storage::Heap { ptr, len_bytes } => read_bytes(ptr as usize, len_bytes)?,
+    };
+    Some(Decoded {
+        text: decode_bytes(&bytes, width),
+        truncated,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +293,18 @@ mod tests {
         assert!(!got.truncated);
 
         assert!(unsafe { read(std::ptr::null(), Width::Narrow, 128) }.is_none());
+    }
+
+    /// The checked reader decodes a live object and refuses a wild pointer.
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn read_checked_decodes_and_refuses_wild_pointers() {
+        let inline = header(b"onDialog\0", None, 8, 15);
+        let got = read_checked(inline.as_ptr() as usize, Width::Narrow, 128).unwrap();
+        assert_eq!(got.text, "onDialog");
+        assert!(read_checked(0x10, Width::Narrow, 128).is_none());
+        // A heap pointer that points nowhere.
+        let bad = header(&[], Some(0x20), 20, 31);
+        assert!(read_checked(bad.as_ptr() as usize, Width::Narrow, 128).is_none());
     }
 }

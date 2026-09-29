@@ -151,6 +151,8 @@ Dumped from the true base, `0x019aaec4` (a parallel copy exists at `0x019ce980`,
 
 Re-deriving the two plate-comment slot numbers the 2026-05-16 audit disputed, from this true base: `0x00dd0c10` is index **2**, and `0x00dd0bb0` is index **5** — exactly what the original Appendix D plate comments said. **Both were correct.** The audit's "doubly wrong" / "systematic vtable slot numbering error" conclusion (Appendix E.4) is retracted; see the correction note added there in this PR.
 
+> **Correction (2026-09-28, [client-entity-lifecycle.md](client-entity-lifecycle.md)).** Two names in this document are wrong. Slot 4, `0x00dd2800`, is **`leaveAoI`** (it takes `id, cache_stamp` and decrements the enter count), not `EnterAoI`. And `0x00dd29d0` is **`onEntityProperty`**, not `LeaveAoI`: the deferred slot at `+0x3c` that §3 describes is the property (and method) queue keyed by entity id. The found / not-found behaviour recovered in §3 is right; only the function name is.
+
 ## 3. Leave-AoI Path A/B correction
 
 `docs/drafts/spec/entity-property-sync.md` §1.10 described `EntityManager_LeaveAoI @ 0x00dd29d0`'s branch on the primary-map lookup backwards. The decompile:
