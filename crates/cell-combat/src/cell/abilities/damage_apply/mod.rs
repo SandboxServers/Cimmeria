@@ -609,6 +609,8 @@ mod aggro_cause_tests;
 #[cfg(test)]
 mod ammo_incendiary_tests;
 #[cfg(test)]
+mod ammo_dart_tech_tests;
+#[cfg(test)]
 mod ammo_tests;
 #[cfg(test)]
 mod bleed_death_tests;

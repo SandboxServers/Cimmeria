@@ -120,6 +120,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [black-market-escrow-and-authority.md](black-market-escrow-and-authority.md) — listed items live in container 18 (exclude it from client reads); BM lock order.
 - [bm-settlement-mail-traps.md](bm-settlement-mail-traps.md) — BM-02b: status gate before any mail (writer mints every call); quarantine = status 4.
 - [deployable-pulse-and-seed-traps.md](deployable-pulse-and-seed-traps.md) — `apply_damage_to_target` registers every pulsing effect of its def; DeploymentBar flag is not a spawn marker; templates 200-409 taken.
+- [ammo-on-hit-effect-needs-a-script.md](ammo-on-hit-effect-needs-a-script.md) — ammo on-hit effects need a script_name or the hit pulse never fires; no Radioactive dart toggle exists.
 
 - [stored-target-lifetime-and-gm-view-check](stored-target-lifetime-and-gm-view-check.md) — #844 clears current_target_id; GM targets must be in view.
 - [cell-systems-index](cell-systems-index.md) — sub-index: grants and loot, per-session state, abilities and effects, NPC AI, missions, pets, crafting, black market, duels, respawn and re-create.

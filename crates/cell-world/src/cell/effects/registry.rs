@@ -39,6 +39,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "PetSummonSpeed" => Some(&super::pet_scripts::PetSummonSpeed),
         // Timed primary-attribute buffs: the consumable stimpacks.
         "StatBuff" => Some(&super::stat_buff::StatBuff),
+        // Radioactive dart dose (ammo AM-11b).
+        "RadiationDamage" => Some(&super::ammo_dart_tech::RadiationDamage),
         _ => None,
     }
 }
