@@ -31,6 +31,8 @@ struct RawDiscord {
     channels: HashMap<String, RawChannel>,
     #[serde(default)]
     events: HashMap<String, bool>,
+    #[serde(default)]
+    muted_accounts: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -92,6 +94,7 @@ impl RawConfig {
             avatar_url: self.discord.avatar_url,
             channels,
             events,
+            muted_accounts: self.discord.muted_accounts,
         })
     }
 }

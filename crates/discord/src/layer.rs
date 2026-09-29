@@ -205,6 +205,7 @@ mod tests {
             avatar_url: None,
             channels,
             events,
+            muted_accounts: Vec::new(),
         };
         Arc::new(ArcSwap::new(Arc::new(cfg)))
     }

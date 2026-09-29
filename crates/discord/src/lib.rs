@@ -36,6 +36,7 @@ pub mod config;
 pub mod embed;
 pub mod event;
 pub mod layer;
+pub mod mute;
 pub mod router;
 pub mod sender;
 
@@ -611,6 +612,7 @@ mod tests {
             avatar_url: None,
             channels,
             events,
+            muted_accounts: Vec::new(),
         }
     }
 

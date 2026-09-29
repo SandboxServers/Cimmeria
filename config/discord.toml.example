@@ -29,6 +29,10 @@ enabled = true
 # was configured on the webhook itself.
 username = "Cimmeria"
 # avatar_url = "https://example.com/avatar.png"
+# Accounts whose events never post: login names (any case) or numeric
+# account ids. Characters those accounts log in with are muted too, so a
+# lab or test account can play through content without flooding channels.
+# muted_accounts = ["lab"]
 
 # ─── Channels ──────────────────────────────────────────────────────────
 #

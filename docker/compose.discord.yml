@@ -61,6 +61,9 @@ services:
         [discord]
         enabled = true
         username = "Cimmeria (colo)"
+        # The live research lab's account plays scripted repros; keep them
+        # out of the channels.
+        muted_accounts = ["lab"]
 
         [discord.channels.lifecycle]
         url = "__DISCORD_LIFECYCLE_WEBHOOK__"

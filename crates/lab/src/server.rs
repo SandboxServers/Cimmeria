@@ -482,7 +482,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Type text into the focused edit box, one key press per character (Shift held for capitals). Letters, digits, space, - and _. Click the edit box first with client_ui_click."
+        description = "Type text into the focused edit box, one key press per character (Shift held for capitals). Letters, digits, space, - _ / and . (so slash commands and the GM console can be typed into chat). Click the edit box first with client_ui_click."
     )]
     async fn client_type_text(
         &self,

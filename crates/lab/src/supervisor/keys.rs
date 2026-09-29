@@ -82,6 +82,8 @@ pub fn named(name: &str) -> Option<Key> {
         "ctrl" | "control" | "lctrl" => Key::new(0x11, 0x1D, false),
         "alt" | "lalt" => Key::new(0x12, 0x38, false),
         "minus" => Key::new(0xBD, 0x0C, false),
+        "slash" => Key::new(0xBF, 0x35, false),
+        "period" => Key::new(0xBE, 0x34, false),
         "grave" | "tilde" => Key::new(0xC0, 0x29, false),
         "pageup" => Key::new(0x21, 0x49, true),
         "pagedown" => Key::new(0x22, 0x51, true),
@@ -104,7 +106,8 @@ pub struct TypeStep {
     pub shift: bool,
 }
 
-/// The key presses that type `text`. Letters, digits, space, `-` and `_`;
+/// The key presses that type `text`. Letters, digits, space, `-`, `_`, `/`
+/// (slash commands) and `.` (the GM console);
 /// anything else is refused rather than typed as something different.
 pub fn plan_text(text: &str) -> Result<Vec<TypeStep>, String> {
     text.chars()
@@ -120,6 +123,8 @@ pub fn plan_text(text: &str) -> Result<Vec<TypeStep>, String> {
                 ' ' => Ok(step(named("space").expect("space"), false)),
                 '-' => Ok(step(named("minus").expect("minus"), false)),
                 '_' => Ok(step(named("minus").expect("minus"), true)),
+                '/' => Ok(step(named("slash").expect("slash"), false)),
+                '.' => Ok(step(named("period").expect("period"), false)),
                 other => Err(format!("cannot type {other:?}")),
             }
         })
@@ -164,5 +169,7 @@ mod tests {
             vec![(b'A', true), (b'B', false), (0xBD, true), (b'1', false)]
         );
         assert!(plan_text("a!").unwrap_err().contains('!'));
+        let cmd = plan_text("/logout").unwrap();
+        assert_eq!((cmd[0].key.vk, cmd[0].shift), (0xBF, false));
     }
 }

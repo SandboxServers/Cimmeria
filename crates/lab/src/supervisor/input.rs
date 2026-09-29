@@ -49,15 +49,19 @@ impl Rect {
     }
 }
 
-/// Lua that returns `visible, left, top, right, bottom` for a named window
-/// (a global, as every named layout window is), or an error string.
+/// Lua that returns `visible, left, top, right, bottom` for a window, or
+/// `'missing'`. `window` is a Lua global (every named layout window is one),
+/// or `Parent/Child` for a child with no global of its own, such as a frame
+/// window's `Parent__auto_closebutton__`, found by `getChildRecursive`.
 pub fn widget_rect_chunk(window: &str) -> String {
+    let lookup = match window.split_once('/') {
+        Some((parent, child)) => format!(
+            "local p = _G[{parent:?}]              local w = p and p:getChildRecursive({child:?})"
+        ),
+        None => format!("local w = _G[{window:?}]"),
+    };
     format!(
-        "local w = _G[{name:?}] \
-         if not w then return 'missing' end \
-         local r = w:getUnclippedPixelRect() \
-         return tostring(w:isVisible()), r.left, r.top, r.right, r.bottom",
-        name = window
+        "{lookup}          if not w then return 'missing' end          local r = w:getUnclippedPixelRect()          return tostring(w:isVisible()), r.left, r.top, r.right, r.bottom"
     )
 }
 
@@ -341,6 +345,13 @@ mod tests {
         assert!(parse_widget_rect("X", &["missing".to_string()])
             .unwrap_err()
             .contains("no UI window"));
+    }
+
+    #[test]
+    fn widget_rect_chunk_resolves_parent_child_paths() {
+        let c = widget_rect_chunk("DialogWin/DialogWin__auto_closebutton__");
+        assert!(c.contains("_G[\"DialogWin\"]"));
+        assert!(c.contains("getChildRecursive(\"DialogWin__auto_closebutton__\")"));
     }
 
     #[test]

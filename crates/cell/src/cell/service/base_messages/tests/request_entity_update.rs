@@ -283,3 +283,52 @@ async fn request_entity_update_truncates_request_above_cap() {
         "a truncated, all-in-AoI request must still produce no cell\u{2192}base traffic"
     );
 }
+
+/// The acknowledgement names the entity the client just created. That id is
+/// the server-side proof that the client has an entity (the client sends the
+/// handshake for every NPC it creates), which a "server sent it but the
+/// client never showed it" investigation needs per entity, not as a count.
+#[tokio::test]
+async fn request_entity_update_acknowledgement_names_the_entity() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(w) = mgr.get_entity_mut(1) {
+        w.is_player = true;
+        w.witnesses.insert(EntityId(42));
+    }
+    mgr.create_entity(42, "Castle_CellBlock", [1.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let guard = LogCapture::install();
+
+    handle_base_message(
+        BaseToCellMsg::RequestEntityUpdate {
+            witness_id: 1,
+            entity_ids: vec![42],
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let row = guard
+        .all()
+        .into_iter()
+        .find(|r| {
+            r.message
+                .as_deref()
+                .is_some_and(|m| m.contains("RequestEntityUpdate acknowledged"))
+        })
+        .unwrap_or_else(|| panic!("no acknowledgement row; saw {:#?}", guard.all()));
+    assert!(row.has_field("entity_ids", "[42]"), "{row:?}");
+    assert!(row.has_field("known", "1"));
+}
