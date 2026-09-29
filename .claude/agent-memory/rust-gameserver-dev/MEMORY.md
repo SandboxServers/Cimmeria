@@ -57,6 +57,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
 - [lab-probe-traffic-starves-watchdog.md](lab-probe-traffic-starves-watchdog.md) — per-field mem_reads starved the lab heartbeat and killed a healthy client; keep bridge reads coarse.
+- [lab-event-store-and-ui-lua-hooks.md](lab-event-store-and-ui-lua-hooks.md) — events_read drains; read via the supervisor store; one UI Lua subscription per window per event.
 - [client-patch-send-natives-traps.md](client-patch-send-natives-traps.md) — startEntityMessage sends even offline; microseh masks the ABI; no cpcall around C-function args.
 - [telemetry-anchor-audit-and-hookgate.md](telemetry-anchor-audit-and-hookgate.md) — telemetry anchors never ran and 5 were wrong (IAT hint/name RVAs, COL-shifted vtable.
 - [cme-registry-is-a-factory-not-subscribe.md](cme-registry-is-a-factory-not-subscribe.md) — 0x00a5c0f0/0x00a5c150 are the CME event-factory map (create/count by std::string); the CME subscribe never worked.
