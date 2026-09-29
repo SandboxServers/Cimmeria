@@ -158,8 +158,9 @@ pub(super) async fn select_target(
     }
 }
 
-/// Take a player who just died off every NPC's threat list, at the moment of
-/// death (NA24, UAT-1 A).
+/// Take an entity that just died off every NPC's threat list, at the moment
+/// of death: a player (NA24, UAT-1 A) or, since NPC-vs-NPC combat (#1009),
+/// an NPC another NPC was fighting.
 ///
 /// Before this the drop waited for each NPC's next fight pass, up to two
 /// seconds later, and was decided by reading the target's HEALTH. A dead
@@ -174,8 +175,8 @@ pub(super) async fn select_target(
 /// leaves the NPC's combat set exactly as a pruned target does. An NPC whose
 /// list runs dry starts its walk home now, with the same `target_dead`
 /// trigger [`select_target`] would have written.
-pub(in crate::cell) async fn purge_dead_player_from_threat(
-    player_id: u32,
+pub(in crate::cell) async fn purge_dead_target_from_threat(
+    dead_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
@@ -185,9 +186,9 @@ pub(in crate::cell) async fn purge_dead_player_from_threat(
         .all_entity_ids()
         .into_iter()
         .filter(|&eid| {
-            space_mgr
-                .get_entity(eid)
-                .is_some_and(|e| !e.is_player && e.threat_list.contains_key(&player_id))
+            space_mgr.get_entity(eid).is_some_and(|e| {
+                eid != dead_id && !e.is_player && e.threat_list.contains_key(&dead_id)
+            })
         })
         .collect();
     for npc_id in holders {
@@ -195,14 +196,14 @@ pub(in crate::cell) async fn purge_dead_player_from_threat(
             target: "npc_ai",
             event = "target_dropped",
             npc_id,
-            target_id = player_id,
+            target_id = dead_id,
             why = Dropped::Dead.label(),
             "NPC AI: dropping threat target (target died)"
         );
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.leash.target_lost_since = None;
         }
-        super::leash::drop_threat_target(npc_id, player_id, tx, space_mgr).await;
+        super::leash::drop_threat_target(npc_id, dead_id, tx, space_mgr).await;
         let give_up = space_mgr
             .get_entity(npc_id)
             .is_some_and(|n| n.threat_list.is_empty() && n.ai_state() == AiState::Fighting);

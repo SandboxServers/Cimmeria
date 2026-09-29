@@ -48,7 +48,7 @@ fn set_player_health(mgr: &mut crate::cell::space_manager::SpaceManager, cur: i3
 /// exactly the window the old code left open -- then the retry sweep and a
 /// natural tick. The guard must not be fighting the respawned player.
 ///
-/// Revert proof: remove the `purge_dead_player_from_threat` call from
+/// Revert proof: remove the `purge_dead_target_from_threat` call from
 /// `abilities::death::resolve_death` and the player is still on the threat
 /// list after the death; the sweep's fight pass then sees a living target
 /// (HEALTH 100, `BSF_DEAD` cleared by the respawn) and keeps fighting it.

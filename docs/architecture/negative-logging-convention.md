@@ -566,6 +566,13 @@ withheld id) and `player_entity_id_is_withheld_from_reuse_until_the_cell_confirm
 intercepts the `DisconnectEntity` before replying, and proves a concurrent
 `EntityManager::create_entity` call does not receive the id under teardown).
 
+## NPC-vs-NPC target refusals and NPC-only kills (#1009)
+
+Two seams, both carrying both entities' ids and factions so a standoff can be debugged from SigNoz alone:
+
+- **A hostile NPC the Idle scan passed over.** `npc_ai.aggro_scan` at `debug!`, `event = "npc_candidate_rejected"`, Pattern D: at most one row per `(npc, target, reason)` per 10 s, with `suppressed = N`. Fields: `npc_id`, `tag`, `npc_faction`, `target_id`, `target_tag`, `target_faction`, `target_ai_state`, `reason` (`dead`, `target_evading`, `target_unavailable`, `out_of_vertical_band`, `out_of_radius`, `no_los`), `npc_to_target`, `dy`, `aggro_radius`. DEBUG because it is the normal state of a standoff whose sides stand just out of range. Only HOSTILE pairs are candidates: a same-faction neighbour is not a refusal and writes nothing, or every guard post would log a row per neighbour per tick. Written by `detectors::aggro_scan::report_npc_rejects` (`cimmeria-cell-world`). Guard: `service::tests::npc_ai::npc_vs_npc::a_hostile_npc_out_of_radius_is_refused_with_a_row` pins the level, the reason and both factions, and `friendly_rows_never_engage_and_log_nothing` pins the silence for non-hostile pairs.
+- **An NPC-only kill.** `loot.drop` at `info!`, `event = "skipped"`, `reason = "npc_only_kill"`: `target_eid`, `target_tag`, `target_faction`, `loot_table_id`, `attacker_id`, `attacker_tag`, `attacker_faction`. INFO like the death itself (low frequency, and it explains a corpse with no loot cursor). Guard: `abilities::death::npc_only_kill_tests::an_npc_only_kill_says_why_nothing_dropped`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

@@ -161,12 +161,17 @@ async fn seed_overrides_only_the_chain_armed_spawns() {
         (184, 20.0),
         (185, 20.0),
         (186, 20.0),
+        // The Castle standoff friendlies (NPC-vs-NPC, #1009, D-CP11): 30 u, the
+        // pistol's reach, so they open fire before a guard's radius sees them.
+        (187, 30.0),
+        (188, 30.0),
+        (189, 30.0),
     ]
     .into_iter()
     .map(|(t, r)| (t, r.to_bits()))
     .collect();
     assert_eq!(
         radii, expected,
-        "only the Castle population guard templates set aggro_radius (15 u inside,          20 u outside); update this test when another template tunes it"
+        "only the Castle population guard templates (15 u inside, 20 u outside) and the \n         standoff friendlies (30 u) set aggro_radius; update this test when another \n         template tunes it"
     );
 }

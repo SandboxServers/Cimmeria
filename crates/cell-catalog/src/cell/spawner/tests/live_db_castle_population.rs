@@ -10,8 +10,10 @@
 //! * a hostile placed so its aggro radius covers a respawner, the Armory ring
 //!   pad or a mission actor, so a player who respawns or stops to talk is shot
 //!   (and a guard that respawns every 120 s re-pulls a player mid-dialog);
-//! * a friendly standing inside a hostile's aggro radius. NPCs do not fight each
-//!   other yet, so it would stand idle beside a guard that is shooting the player;
+//! * a faction-1 friendly standing inside a hostile's aggro radius. Faction 1
+//!   never fights, so it would stand idle beside a guard that is shooting the
+//!   player (the `Castle_Standoff_*` rows fight since #1009 and are guarded the
+//!   other way round in `live_db_castle_standoff.rs`);
 //! * a friendly that can be attacked or turns hostile, or one whose `name_id`
 //!   resolves to an empty string and renders with no name (the Castle's own
 //!   Ogilvie moniker 8895 is exactly that);
@@ -31,7 +33,13 @@ mod live_db {
     /// The population's spawn id blocks.
     const FRIENDLY_SPAWNS: std::ops::RangeInclusive<i32> = 189..=212;
     const HOSTILE_SPAWNS: std::ops::RangeInclusive<i32> = 247..=282;
-    const FRIENDLY_TEMPLATES: [i32; 8] = [160, 174, 175, 176, 177, 178, 179, 180];
+    const FRIENDLY_TEMPLATES: [i32; 11] = [160, 174, 175, 176, 177, 178, 179, 180, 187, 188, 189];
+    /// The standoff rows (NPC-vs-NPC, #1009, D-CP11) on templates 187-189;
+    /// pinned in detail by `live_db_castle_standoff.rs`.
+    const STANDOFF_PREFIX: &str = "Castle_Standoff_";
+    /// Praxis: FRIENDLY to players (who react as 3), HOSTILE to faction 10 and
+    /// back, and not damageable by players (only faction 10 is).
+    const STANDOFF_FACTION: i32 = 3;
     const HOSTILE_TEMPLATES: [i32; 7] = [145, 181, 182, 183, 184, 185, 186];
 
     /// `(template_id, level, aggro_radius)` for the new guard templates: 181-183
@@ -88,6 +96,12 @@ mod live_db {
 
     fn is_hostile(r: &SpawnRecord) -> bool {
         r.faction == Some(10)
+    }
+
+    fn is_standoff(r: &SpawnRecord) -> bool {
+        r.tag
+            .as_deref()
+            .is_some_and(|t| t.starts_with(STANDOFF_PREFIX))
     }
 
     fn aggro_radius(r: &SpawnRecord) -> f32 {
@@ -182,11 +196,22 @@ mod live_db {
                 r.tag,
                 r.template_id
             );
-            assert_eq!(
-                r.respawn_secs, None,
-                "friendly spawn {} cannot die",
-                r.spawn_id
-            );
+            if is_standoff(r) {
+                assert_eq!(
+                    r.respawn_secs,
+                    Some(120),
+                    "standoff spawn {} ({:?}) fights and can die; it respawns on the \
+                     zone-wide 120 s like the guards it fights",
+                    r.spawn_id,
+                    r.tag
+                );
+            } else {
+                assert_eq!(
+                    r.respawn_secs, None,
+                    "friendly spawn {} cannot die",
+                    r.spawn_id
+                );
+            }
         }
         for r in &hostile {
             assert!(
@@ -235,7 +260,9 @@ mod live_db {
     /// Faction 1 is what makes a friendly safe twice over: the damage gates refuse
     /// any target that is not faction 10, and the Praxis row of the faction
     /// reaction table reads faction 1 as FRIENDLY. A hostile aggression override
-    /// would bypass the second. The name check reads `resources.texts.text`, not
+    /// would bypass the second. The `Castle_Standoff_*` rows are faction 3 since
+    /// NPC-vs-NPC combat (#1009, D-CP11): still not faction 10, and row 3 reads
+    /// 3 as FRIENDLY, so they are just as safe for players while fighting guards. The name check reads `resources.texts.text`, not
     /// just the id: Ogilvie's own Castle moniker (8895) exists and is empty, so an
     /// id-only check would pass a nameless Ogilvie.
     #[tokio::test]
@@ -246,10 +273,11 @@ mod live_db {
             .iter()
             .filter(|r| FRIENDLY_SPAWNS.contains(&r.spawn_id))
         {
+            let want = if is_standoff(r) { STANDOFF_FACTION } else { 1 };
             assert_eq!(
                 r.faction,
-                Some(1),
-                "friendly {:?} (spawn {}) must be faction 1; faction 10 makes it a \
+                Some(want),
+                "friendly {:?} (spawn {}) must be faction {want}; faction 10 makes it a \
                  target and other factions may read hostile to players",
                 r.tag,
                 r.spawn_id
@@ -435,15 +463,16 @@ mod live_db {
         }
     }
 
-    /// **Population guard**: every population friendly except the caged
-    /// prisoners stands at least [`FRIENDLY_CLEARANCE`] outside the aggro radius
-    /// of every World 8 hostile, patrol loops included.
+    /// **Population guard**: every faction-1 population friendly (all but the
+    /// caged prisoners and the standoff rows) stands at least
+    /// [`FRIENDLY_CLEARANCE`] outside the aggro radius of every World 8 hostile,
+    /// patrol loops included.
     ///
-    /// NPCs do not fight each other yet. The `Castle_Standoff_*` rows face hostile
-    /// ground from behind cover and read as a standoff only while they stay out of
-    /// range; inside it they would stand idle next to a guard that is shooting the
-    /// player. When NPC-vs-NPC combat lands, moving them into range is a
-    /// deliberate edit that updates this guard.
+    /// Faction 1 never fights (it is FRIENDLY in every row of the reaction
+    /// table), so one inside a guard's range would stand idle next to a guard
+    /// that is shooting the player. The `Castle_Standoff_*` rows are the
+    /// deliberate exception since NPC-vs-NPC combat (#1009): they are pinned the
+    /// other way round by [`castle_population_live_db_standoff_rows_have_a_hostile_in_reach`].
     #[tokio::test]
     async fn castle_population_live_db_friendlies_stand_outside_every_hostile_aggro_radius() {
         let pool = require_db_or_skip!();
@@ -457,17 +486,12 @@ mod live_db {
                     .as_deref()
                     .is_some_and(|t| t.starts_with(CAGED_PREFIX))
             })
+            .filter(|r| !is_standoff(r))
             .collect();
-        assert!(
-            friendlies
-                .iter()
-                .filter(|r| r
-                    .tag
-                    .as_deref()
-                    .is_some_and(|t| t.starts_with("Castle_Standoff_")))
-                .count()
-                >= 8,
-            "expected the eight Castle_Standoff_ rows (courtyard and Checkpoint Alpha)"
+        assert_eq!(
+            friendlies.len(),
+            12,
+            "24 friendlies minus the 4 caged prisoners and the 8 standoff rows"
         );
         for f in friendlies {
             for h in &hostiles {
@@ -478,7 +502,7 @@ mod live_db {
                             d >= need,
                             "friendly {:?} (spawn {}) is {d:.1} u from hostile {:?} \
                              (spawn {}, aggro {:.0} u); friendlies must stand {need:.1} u \
-                             or more away until NPCs can fight each other",
+                             or more away: faction 1 never fights back",
                             f.tag,
                             f.spawn_id,
                             h.tag,

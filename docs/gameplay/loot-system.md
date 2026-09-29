@@ -173,6 +173,8 @@ self.interactionFlags |= Atrea.enums.INT_NormalLoot
 
 When a mob dies, it immediately generates its loot and sets the `INT_NormalLoot` interaction flag on itself. This flag makes the mob appear as lootable to nearby players. The loot handler is the `Lootable` interaction interface, which `SGWMob` implements.
 
+**Rust: NPC-only kills roll nothing (#1009).** When the killer is a plain NPC (NPC-vs-NPC combat; not a player, not a pet), `abilities::death::apply_death_transition` skips the roll, so the corpse gets no loot and no loot cursor, and writes `loot.drop event=skipped reason=npc_only_kill` instead. See [combat-system.md, NPC-vs-NPC kills pay nobody](combat-system.md#npc-vs-npc-kills-pay-nobody-1009).
+
 ---
 
 ## Known Issues and TODOs

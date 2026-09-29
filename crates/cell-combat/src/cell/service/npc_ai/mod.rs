@@ -28,7 +28,9 @@
 //! - [`fight_target`] — the fight's target selection: prune dead, vanished
 //!   and lost targets (draining their combat state) and start the walk home
 //!   when nobody is left.
-//! - [`idle_aggro`] — the Idle auto-aggro scan that seeds Fighting.
+//! - [`idle_aggro`] — the Idle auto-aggro scan that seeds Fighting: players
+//!   and, since #1009, the NPCs its faction is HOSTILE to (a grid-bounded
+//!   NPC-vs-NPC scan).
 //! - [`aggro_gates`] — that scan's candidate gates (hostility, GM toggle,
 //!   vertical band, radius, line of sight) and reject reasons (NA13).
 //! - [`assist`] — same-room assist: a fresh engagement pulls hostile
@@ -111,7 +113,7 @@ pub use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 // logs the acquisition.
 pub(in crate::cell) use aggro_acquired::log_aggro_acquired;
 pub(in crate::cell) use assist::recruit_assisters;
-pub(in crate::cell) use fight_target::purge_dead_player_from_threat;
+pub(in crate::cell) use fight_target::purge_dead_target_from_threat;
 // Stopping and rerouting an NPC: the only writers of `nav_path` outside the
 // movement tick (NA10). The AI-state transition helper is the only way to
 // change `ai_state` (the field is private in the entity crate). Combat, the
@@ -182,6 +184,31 @@ pub fn choose_npc_ability_within_reach(
         target_dist,
         npc_attack_range,
     )
+}
+
+/// One NPC's Idle aggro scan on its own (#1009), for the NPC-vs-NPC gate
+/// tests, which need the target frozen in a state (Leashing, Submit) whose
+/// own handler would move it out of that state within the same tick.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub async fn npc_idle_aggro_scan_for_test(
+    npc_id: u32,
+    tx: &tokio::sync::mpsc::Sender<crate::cell::messages::CellToBaseMsg>,
+    space_mgr: &mut crate::cell::space_manager::SpaceManager,
+) -> bool {
+    idle_aggro::npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await
+}
+
+/// The NPC-vs-NPC scan's candidate set (#1009), for the CPU-budget guard in
+/// `service::tests::npc_ai::npc_vs_npc_budget`, which pins that it is a
+/// bounded grid query and not a sweep of the space.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn npc_scan_candidates_for_test(
+    space_mgr: &crate::cell::space_manager::SpaceManager,
+    npc_id: u32,
+) -> Vec<u32> {
+    idle_aggro::npc_scan_candidates(space_mgr, npc_id)
 }
 
 /// The dispatcher's admit filter, for `tests/npc_ai/zero_health_guard.rs`,

@@ -1,7 +1,7 @@
 # Castle Population Ledger
 
 > Type: reference and how-to. Audience: content authors, UAT testers and the Castle coordinator.
-> Updated: 2026-09-28 (packet CP01, seed only; loot tables added the same day on the owner's D-CP09 answer). Companions: [Castle rebuild ledger](../castle-rebuild/README.md) (missions 701-708 and the story actors this pass works around), [unified UAT guide, Castle population](../../guides/unified-uat.md#castle-population).
+> Updated: 2026-09-28 (packet CP01, seed only; loot tables added the same day on the owner's D-CP09 answer; the standoff moved into range by NPC-vs-NPC combat, #1009, D-CP11). Companions: [Castle rebuild ledger](../castle-rebuild/README.md) (missions 701-708 and the story actors this pass works around), [unified UAT guide, Castle population](../../guides/unified-uat.md#castle-population).
 
 ## Purpose
 
@@ -22,7 +22,7 @@ Taken from the shipped dialogs; the placements do not contradict them.
 
 | Table | Ids | Notes |
 |---|---|---|
-| `entity_templates` | 174-186 | 174-180 friendly, 181-186 hostile. 187-199 stay free. |
+| `entity_templates` | 174-189 | 174-180 friendly, 181-186 hostile, 187-189 the standoff friendlies that fight (#1009, D-CP11). 190-199 stay free. |
 | `spawnlist` | 189-212 (friendly), 247-282 (hostile) | Both blocks were unused gaps below the Harset block (300-399). |
 | `point_sets` | 2086-2093 | Type `Patrol`, shape `Path`, never loaded as client regions. |
 | `point_set_points` | 2413-2430 | Waypoints of 2086-2093. |
@@ -36,12 +36,13 @@ Taken from the shipped dialogs; the placements do not contradict them.
 | D-CP02 | New NID guard templates at levels 2, 3 and 4, in an inside variant (clone of 148) and an outside variant (clone of 146). Templates 145, 146 and 148 are not changed. | The Castle missions are levels 3-4 and every existing guard is level 1. Editing 146/148 would re-level every pre-existing Castle guard at once. |
 | D-CP03 | Guards reuse the shipped guard names: 7417 'NID Guard' inside, 7703 'Exterior NID Guard' outside. | Both monikers end in `_St_1-5`, their level band, so levels 2-4 fit the strings. `name_id` must be a shipped moniker; new ids cannot render. |
 | D-CP04 | Radii on the new guards: `aggro_radius` 15 inside and 20 outside, `assist_radius` 12. Each group is authored with its members within 12 u of a neighbour and at least 12 u from any other group. | Shooting one guard rallies its own post and nothing else; assist never chains. Interior posts sit in corridors where the default 18 u reaches through a doorway into the next room. The one deliberate exception is the Interrogation Block pair, which stands 5-6 u from Romney as his escort. |
-| D-CP05 | Friendlies are faction 1 with no ability set. | Faction 1 cannot be damaged and reads FRIENDLY to players. NPCs do not fight each other yet, so a friendly never needs a weapon ability. |
-| D-CP06 | Friendlies stand at least 5 u outside every hostile's aggro radius. `Castle_Standoff_*` rows face hostile ground from behind cover. The caged prisoners are the one exemption. | Inside range, a friendly would stand idle next to a guard shooting the player. When NPC-vs-NPC combat exists, search for the `Castle_Standoff_` tag prefix and move those rows into range deliberately. |
+| D-CP05 | Friendlies are faction 1 with no ability set, except the standoff rows (D-CP11). | Faction 1 cannot be damaged and reads FRIENDLY to players, and it never fights, so a friendly never needs a weapon ability. The standoff rows fight on the default Pistol Shot (the Jaffa on the staff set). |
+| D-CP06 | Faction-1 friendlies stand at least 5 u outside every hostile's aggro radius. The caged prisoners and, since D-CP11, the `Castle_Standoff_*` rows are the exemptions. | Faction 1 never fights (it is FRIENDLY in every row of the reaction table), so inside range it would stand idle next to a guard shooting the player. |
 | D-CP07 | No hostile's aggro radius, plus 3 u for where a player stands, reaches a respawner, the ring pad or a mission actor the player talks to or uses. Patrols are checked along the whole loop. | A player who respawns or stops to talk must not be shot, and with a 120 s respawn a mistake here recurs every two minutes. |
-| D-CP08 | Hostiles respawn after 120 s; friendlies have no timer. | 120 s is the zone-wide Castle value (CA05). Faction-1 friendlies can never die. |
+| D-CP08 | Hostiles and the standoff rows respawn after 120 s; the other friendlies have no timer. | 120 s is the zone-wide Castle value (CA05). Faction-1 friendlies can never die; the standoff rows can (D-CP11). |
 | D-CP09 | **Decided (owner, 2026-09-28).** Every Castle hostile template rolls a Castle loot table: 4 for rank-and-file guards, 5 for L4 guards and the named or officer mobs, 6 for the drones. No row is guaranteed, and only naquadah, the Health Slappack and three tier-1 crafting components drop. | Loot should be useful sometimes without power creep. Only items that do something on click may drop; see [Loot](#loot). |
 | D-CP10 | Ogilvie is named with moniker 7342 (`DN_NPC_MG_Ogilvie_Hebridan_PraxisContact` = 'Ogilvie'). | The Castle's own moniker 8895 (`DN_npc_int_Ogilvie_Castle`) ships an empty string and would render no name. |
+| D-CP11 | **NPC-vs-NPC (#1009), decided by the owner 2026-09-28.** The eight `Castle_Standoff_*` rows fight. They move to templates 187-189 (clones of 174, 178 and 160) with faction 3 (Praxis), level 4, `aggro_radius` 30 and `use_cover`, and take the zone's 120 s respawn. The courtyard group (Stanton and four marines) stands on the slope below the east barricade, 18-28 u from `Castle_PRU4`; the three Jaffa hold the foot of the north-east ramp below Checkpoint Alpha, 11-15 u from `Castle_NidGuard7`. The wounded Jaffa (212) stays in the Alpha room on template 160. | Faction 1 never fights, and faction 3 and 10 are mutually HOSTILE while 3 still reads FRIENDLY to players and cannot be damaged by them. A 30 u radius (the pistol's reach) lets the friendlies open fire before a guard's 18 u radius sees them. Level 4 matches the L2-L4 guards instead of the level-50 talk-only sentinel. The Alpha room is 25-30 u above every field hostile, outside any aggro band, so the Jaffa had to come down the ramp. New templates rather than edits: 160 is Harset's and the Alpha story actors' too. An NPC-only kill pays nothing (no loot, XP or mission credit), and credit is the killing blow's: a player who wounds a guard a friendly then finishes gets nothing (open question 4). |
 
 ## Templates
 
@@ -54,6 +55,9 @@ Taken from the shipped dialogs; the placements do not contradict them.
 | 178 | Castle_SgtStanton | Sgt. Stanton (7036) | 50 | mob | Armed; level 50 is the seed's talk-only sentinel |
 | 179 | Castle_Ogilvie | Ogilvie (7342) | 50 | mob | Unarmed |
 | 180 | Castle_OpCoreSoldierCorpse | Op-CORE Soldier (7552) | - | being | Mesh `CA-Props.CA-PrisonerCorpse00`, like template 14 |
+| 187 | Castle_OpCoreSoldier_Standoff | Op-CORE Soldier (7552) | 4 | mob | 174 with faction 3, aggro 30, `use_cover` (D-CP11); Pistol Shot 592 |
+| 188 | Castle_SgtStanton_Standoff | Sgt. Stanton (7036) | 4 | mob | 178 with faction 3, level 4, aggro 30, `use_cover` (D-CP11) |
+| 189 | Castle_PraxisJaffa_Standoff | Praxis Jaffa Guard (8917) | 4 | mob | 160 with faction 3, level 4, aggro 30, `use_cover` (D-CP11); ability set 4 (staff) |
 | 181 / 182 / 183 | NID Guard - Castle inside L2 / L3 / L4 | NID Guard (7417) | 2 / 3 / 4 | mob | Clone of 148; aggro 15, assist 12 |
 | 184 / 185 / 186 | NID Guard - Castle outside L2 / L3 / L4 | Exterior NID Guard (7703) | 2 / 3 / 4 | mob | Clone of 146; aggro 20, assist 12 |
 
@@ -96,14 +100,14 @@ Headings follow the seed convention: 0 faces +Z, pi/2 (1.570796) faces +X.
 | 201 | `Castle_Pop_Prisoner2` | 176 (Op-CORE Soldier, 4) | 284, 66.98, 1048 | valid, comp 250 |  |
 | 202 | `Castle_Pop_Prisoner3` | 176 (Op-CORE Soldier, 4) | 290, 66.98, 1050 | valid, comp 250 |  |
 | 203 | `Castle_Pop_Prisoner4` | 176 (Op-CORE Soldier, 4) | 236, 66.98, 1024 | valid, comp 250 |  |
-| 204 | `Castle_Standoff_SgtStanton` | 178 (Sgt. Stanton, 50) | 500, 28.18, 652 | valid, comp 250 |  |
-| 205 | `Castle_Standoff_Courtyard_Soldier1` | 174 (Op-CORE Soldier, 4) | 507.5, 28.18, 640 | valid, comp 250 |  |
-| 206 | `Castle_Standoff_Courtyard_Soldier2` | 174 (Op-CORE Soldier, 4) | 507.5, 28.18, 644.5 | valid, comp 250 |  |
-| 207 | `Castle_Standoff_Courtyard_Soldier3` | 174 (Op-CORE Soldier, 4) | 507.5, 28.18, 661.5 | valid, comp 250 |  |
-| 208 | `Castle_Standoff_Courtyard_Soldier4` | 174 (Op-CORE Soldier, 4) | 507, 28.18, 666 | valid, comp 250 |  |
-| 209 | `Castle_Standoff_Alpha_Jaffa1` | 160 (Praxis Jaffa Guard, 50) | 807, 55.06, 527 | valid, comp 116 |  |
-| 210 | `Castle_Standoff_Alpha_Jaffa2` | 160 (Praxis Jaffa Guard, 50) | 812, 55.02, 523.5 | valid, comp 116 |  |
-| 211 | `Castle_Standoff_Alpha_Jaffa3` | 160 (Praxis Jaffa Guard, 50) | 803, 56.36, 533 | valid, comp 116 |  |
+| 204 | `Castle_Standoff_SgtStanton` | 188 (Sgt. Stanton, 4) | 532, 25.97, 624 | valid, walkable from the courtyard | D-CP11: 28 u from `Castle_PRU4`, 120 s respawn |
+| 205 | `Castle_Standoff_Courtyard_Soldier1` | 187 (Op-CORE Soldier, 4) | 535, 24.54, 612 | valid, walkable from the courtyard | D-CP11: 20 u from `Castle_PRU4` |
+| 206 | `Castle_Standoff_Courtyard_Soldier2` | 187 (Op-CORE Soldier, 4) | 538, 23.34, 615 | valid, walkable from the courtyard | D-CP11: 18 u from `Castle_PRU4` |
+| 207 | `Castle_Standoff_Courtyard_Soldier3` | 187 (Op-CORE Soldier, 4) | 535, 24.61, 621 | valid, walkable from the courtyard | D-CP11: 24 u from `Castle_PRU4` |
+| 208 | `Castle_Standoff_Courtyard_Soldier4` | 187 (Op-CORE Soldier, 4) | 538, 26.26, 627 | valid, walkable from the courtyard | D-CP11: 26 u from `Castle_PRU4` |
+| 209 | `Castle_Standoff_Alpha_Jaffa1` | 189 (Praxis Jaffa Guard, 4) | 894, 29.09, 527 | valid, walkable from Checkpoint Alpha | D-CP11: 15 u from `Castle_NidGuard7` |
+| 210 | `Castle_Standoff_Alpha_Jaffa2` | 189 (Praxis Jaffa Guard, 4) | 894, 30.23, 536 | valid, walkable from Checkpoint Alpha | D-CP11: 13 u from `Castle_NidGuard7` |
+| 211 | `Castle_Standoff_Alpha_Jaffa3` | 189 (Praxis Jaffa Guard, 4) | 897, 29.44, 530 | valid, walkable from Checkpoint Alpha | D-CP11: 11 u from `Castle_NidGuard7` |
 | 212 | `Castle_Pop_Alpha_WoundedJaffa` | 160 (Praxis Jaffa Guard, 50) | 795, 56.26, 520 | valid, comp 116 |  |
 
 ### Hostiles (spawns 247-282)
@@ -171,10 +175,10 @@ A two-point set is walked as a back-and-forth line. Guard pairs use parallel set
 | 5 | Comms approach | Two guards in the antechamber the 704 escort walks through | 27 u or more from Zuritska's comms spot and the terminal |
 | 6 | Transition corridors (Comms level to Throne Room) | Posts of 2, 3 and 2 guards; a patrol pair | Zero spawns before; posts are 41 u or more apart |
 | 7 | Throne Room | Four guards (two L4, two L3) on the main floor between the pillars | 22 u or more from the Throne respawner and 36 u from the Access Panel |
-| 8 | Front Courtyard | Sgt. Stanton and four marines behind the east barricade, facing the field | 57 u or more from the nearest field hostile; the NE corner is avoided |
+| 8 | Front Courtyard | Sgt. Stanton and four marines on the slope below the east barricade, fighting `Castle_PRU4` (D-CP11) | 18-28 u from PRU4 and in its line of sight (castle.occ); no other field hostile within 30 u and 4 u of height; the NE corner is avoided |
 | 9 | Outdoor field, west | Three exterior guards (L4, L3, L2) round the rock, a PRU loop | 55 u or more from the pre-existing field guards, patrol loop included |
 | 10 | Muelbach's bunker | Two exterior guards on the approach, two interior guards in the room past her | 17 u or more from Muelbach |
-| 11 | Checkpoint Alpha | Three Praxis Jaffa (template 160) facing the north-east ramp the Bravo road climbs, one more at the back of the room | Far from every hostile (the field is 25-30 u lower) |
+| 11 | Checkpoint Alpha | Three standoff Praxis Jaffa (template 189) at the foot of the north-east ramp the Bravo road climbs, fighting `Castle_NidGuard7` (D-CP11); one more (template 160) at the back of the room | The room is 25-30 u above every field hostile, so the room itself stays quiet; the Jaffa are 11-15 u from NidGuard7, about 85 u from Marsh, Moh'katan and the DHD |
 
 "Wounded" (Armory, Checkpoint Alpha) is narrative only: there is no pose column and no per-spawn health, so the wounded marine is the unarmed template standing near the others, and the wounded Jaffa is a Jaffa at the back of the room.
 
@@ -203,7 +207,7 @@ The mission mobs on table 5 are safe to loot. Romney's badge (2135), the Control
 
 - **TODO (owner, in-client): the elevated cover cluster near (636, 34, 296).** `nav_inspect` puts walkable floor 10-21 m below that y, so the cover sits on a structure (a wall walk or battlement) nobody has identified. A guard perch there needs an in-client `.location` check first.
 - **TODO (owner, in-client): the Front Courtyard NE corner (508, 36, 672).** It failed the nav height check by 7.8 m. The courtyard marines stay at z 666 or below.
-- **Future: NPC-vs-NPC combat.** The `Castle_Standoff_*` rows and the caged prisoners are placed for a world where NPCs do not fight. When that lands, move the standoff rows into range on purpose and update the friendly-clearance guard.
+- **Done (#1009): NPC-vs-NPC combat.** The `Castle_Standoff_*` rows moved into range on purpose (D-CP11); the friendly-clearance guard exempts them and `live_db_castle_standoff.rs` pins them the other way round. The caged prisoners stay faction 1 behind their doors.
 - **CA15** (the optional infirmary and symbiote branches) can bind a dialog to `Castle_Ogilvie`; this pass leaves him ambient.
 
 ## Tests
@@ -217,7 +221,11 @@ The mission mobs on table 5 are safe to loot. Romney's badge (2135), the Control
 | `castle_population_live_db_guard_templates_are_levels_2_to_4_and_old_ones_unchanged` | Live-DB, new | 181-186 levels, radii, SMG kit and cover; 145/146/148 level, faction, name, radii and respawn unchanged (their loot table is the one deliberate change) |
 | `castle_live_db_hostile_loot_drops_sometimes_and_only_useful_items` (`live_db_castle_loot.rs`) | Live-DB, new | Every World 8 hostile template on its table 4-6; no row at probability 1; every consumable (an event-5 binding other than the 597 filler) has a working use path, an enabled `item_use` chain or the same native test `consumable_use::classify` applies, and every other item is a component a blueprint consumes; the unwired Stealth Boost 6206 must read as not working; stimpacks stop at Mark III; PRU salvage is components only; each table's empty rate inside 25-35 %, 15-20 % and 50-60 % |
 | `castle_population_live_db_hostile_aggro_clears_respawners_ring_pad_and_actors` | Live-DB, new | D-CP07 for every World 8 hostile, patrol loops included |
-| `castle_population_live_db_friendlies_stand_outside_every_hostile_aggro_radius` | Live-DB, new | D-CP06 |
+| `castle_population_live_db_friendlies_stand_outside_every_hostile_aggro_radius` | Live-DB, new | D-CP06 (faction-1 friendlies only since D-CP11) |
+| `castle_population_live_db_standoff_rows_have_a_hostile_in_reach` (`live_db_castle_standoff.rs`) | Live-DB, #1009 | D-CP11: the eight standoff rows on 187-189, faction 3, 30 u aggro, 120 s respawn, a faction-10 hostile inside each row's radius and height band |
+| `castle_population_live_db_standoff_templates_leave_their_sources_alone` (same file) | Live-DB, #1009 | 160, 174 and 178 keep faction 1 and their level; 187-189 are faction 3, level 4, `mob` |
+| `every_castle_standoff_row_engages_a_nid_guard` (`crates/cell/src/cell/service/tests/npc_ai/castle_standoff.rs`) | No-DB, #1009 | On the real castle.nav and castle.occ, with the World 8 mobs from the seed files, each standoff row's own scan engages a faction-10 NPC. Fails with the rows back at the barricade |
+| `live_db_castle_standoff_marine_and_guard_fight_to_a_death` (`crates/cell/src/cell/service/tests/npc_ai/live_db_npc_vs_npc.rs`) | Live-DB, #1009 | Templates 187 and 183 with the seeded abilities, effects and loot tables fight to a death through the real tick: damage both ways, no loot, no XP |
 
 ### Mutation proof (2026-09-28)
 
@@ -249,10 +257,11 @@ Moving waypoint 2424 to the Throne Room floor did **not** fail the patrol test: 
 1. ~~Should the new guards drop loot?~~ Decided: D-CP09 and [Loot](#loot).
 2. Should the outdoor guards keep the 'Exterior NID Guard' name, or show 'NID Guard' like the pre-existing field guards (template 146)?
 3. The two TODO spots above need an in-client look before anything is placed there.
+4. **Kill credit in the standoff (#1009).** Credit is the killing blow's: a player who wounds `Castle_PRU4` or `Castle_NidGuard7` and a friendly lands the last shot gets no XP, loot or kill credit, and that corpse drops nothing. Keep that, or credit the player who dealt the most damage (a per-contributor tally, new per-entity state and a change to every credit path)?
 
 ## UAT checklist
 
-Run on a build with this packet. A GM character can reach each zone with `.gotolocation Castle <x> <y> <z>` using the positions above. Use `.bug <note>` at any wrong spot. Canonical ids: CP1-CP18.
+Run on a build with this packet. A GM character can reach each zone with `.gotolocation Castle <x> <y> <z>` using the positions above. Use `.bug <note>` at any wrong spot. Canonical ids: CP1-CP20 (CP13, CP16, CP19 and CP20 changed or added by #1009).
 
 | # | Do | Expect | Notes |
 |---|---|---|---|
@@ -268,11 +277,13 @@ Run on a build with this packet. A GM character can reach each zone with `.gotol
 | CP10 | Escort Zuritska to the Communications room | Two guards in the antechamber before the room. In the room, at the terminal and while talking to Zuritska, nothing aggroes. | |
 | CP11 | Walk from the Comms level to the Throne Room | Guard posts in the cross-shaped room, at the corridor cover and in the east side room; a patrol pair in the big room before the Throne Room. | |
 | CP12 | Enter the Throne Room; use the Access Panel; die and respawn at the Throne checkpoint | Four guards on the floor between the pillars. The Access Panel and the respawn point are out of their reach. | |
-| CP13 | Go to the Front Courtyard | Sgt. Stanton and four marines behind the east barricade, facing the field. Nobody fights. | |
+| CP13 | Go to the Front Courtyard and look down the slope east of the barricade (`.gotolocation Castle 520 27 630`) | Sgt. Stanton and four marines on the slope, shooting at the drone `Castle_PRU4` about 20-28 u away, and the drone shooting back. | #1009, D-CP11 |
 | CP14 | Cross the west of the outdoor field | Three "Exterior NID Guard" by the rock (levels 4, 3, 2) and a drone circling it. | |
 | CP15 | Go to Muelbach's bunker | Two exterior guards on the approach; two guards in the room past Muelbach. | |
-| CP16 | Reach Checkpoint Alpha; die and respawn there | Three Praxis Jaffa facing the ramp you came up, one more at the back. Nothing shoots you on respawn. | |
+| CP16 | Reach Checkpoint Alpha; die and respawn there | One Praxis Jaffa at the back of the room. Nothing shoots you on respawn. The three standoff Jaffa are at the foot of the north-east ramp (CP19). | #1009, D-CP11 |
 | CP17 | Kill about ten ordinary Castle guards and loot each corpse | Roughly three in ten leave no loot cursor. The rest hold naquadah (5-20), sometimes a Health Slappack TC1 or a Focus Heal Consumable, occasionally an Integrated Circuit or a Protein Complex, rarely (about 1 in 17) a Mark III stimpack. Nothing is in every corpse. Use a looted slappack while hurt (+500 HP) and a stimpack (a timed attribute buff): each works on the first click. | A GM can farm one post and wait 120 s for respawns |
 | CP18 | Kill a few drones, a level-4 guard and Romney, Muelbach or a Bravo officer | Drones drop only an Integrated Circuit or a Wave Guide, and about half drop nothing. The veterans drop more often (about four in five), more naquadah, and a stimpack about 1 in 9. Killing Romney or a Bravo officer still grants the mission item exactly once, whatever the corpse holds. | Mission 703 / 708 must be on the right step for the grant |
+| CP19 | Walk to the foot of the north-east ramp below Checkpoint Alpha (`.gotolocation Castle 890 31 528`) and watch; then stand back until one side dies | Three Praxis Jaffa fighting `Castle_NidGuard7` with staff blasts; hits land on both sides: health bars drop on the target frame and hit effects play on the NPC being hit. The loser falls as a corpse; about 120 s later it respawns and the fight starts again once you are in view. Nobody attacks you, and right-clicking a Jaffa starts no attack. | #1009. Client rendering of an NPC hitting an NPC is unverified: report whether the hit effects and health bars show |
+| CP20 | In the courtyard fight (CP13), let a marine kill the drone; then shoot the next drone yourself and land the last shot | The corpse a marine killed has no loot cursor and you get no XP. The one you killed rolls loot (CP18) and pays XP as usual. | #1009: NPC-only kills pay nothing; credit is the last shot's (open question 4) |
 
 Things only a human can check: every placement looks sensible (nobody inside a wall, a locker or a table), the medic's female body and the soldiers' faces render, headings face where the notes say, and the level numbers show on the target frame.
