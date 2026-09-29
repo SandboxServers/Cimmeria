@@ -456,7 +456,16 @@ pub fn destroy_client_entities(
     db_pool: &Option<Arc<sqlx::PgPool>>,
     reason: &'static str,
 ) {
-    let (account_eid, player_eid, account_id, account_name, player_name, session_secs, ended) = {
+    let (
+        account_eid,
+        player_eid,
+        account_id,
+        account_name,
+        player_name,
+        session_secs,
+        ended,
+        plugins,
+    ) = {
         let mut clients = match connected.lock() {
             Ok(c) => c,
             Err(_) => return,
@@ -489,7 +498,9 @@ pub fn destroy_client_entities(
             _ => None,
         };
         crate::base::player_index::log_unlisted(addr, c, reason);
-        clients.remove(&addr);
+        // The session's plugin registry outlives the session for the
+        // disconnect hook below.
+        let plugins = clients.remove(&addr).map(|c| c.plugins).unwrap_or_default();
         (
             account_eid,
             player_eid,
@@ -498,6 +509,7 @@ pub fn destroy_client_entities(
             player_name,
             session_secs,
             ended,
+            plugins,
         )
     };
 
@@ -532,6 +544,13 @@ pub fn destroy_client_entities(
             player_eid,
             crate::base::crafting::session::DropReason::Logout,
             reason,
+        );
+        plugins.run_session_hook(
+            crate::base::plugin::SessionHookPoint::DisconnectAfterEntityUnmapped,
+            crate::base::plugin::SessionEvent {
+                entity_id: player_eid,
+                cause: reason,
+            },
         );
 
         // Every user chat channel this character was in loses it here too:

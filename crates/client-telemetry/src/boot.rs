@@ -280,6 +280,13 @@ fn bootstrap_phase2() {
         "host_exe",
         serde_json::Value::String(host_exe.display().to_string()),
     );
+    // The DLL's own build. The server lifts it into a `dll_version`
+    // attribute on the `cimmeria-client` row, so a SigNoz query can tell
+    // which DLL build a session ran.
+    builder = builder.field(
+        "dll_version",
+        serde_json::Value::String(env!("CARGO_PKG_VERSION").to_string()),
+    );
     let _ = producer.try_emit(builder);
 
     // Step 6: spawn the uploader thread. It owns the consumer

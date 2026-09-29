@@ -41,7 +41,9 @@ pub(crate) use cimmeria_base_session::base::world_entry::space_registry;
 
 // Public surface: the connect loop and `BaseService`, in `cimmeria-base`,
 // import these through `super::world_entry::handle_*`.
+#[cfg(any(test, feature = "test-support"))]
 pub use cell_dispatch::handle_cell_message;
+pub use cell_dispatch::route_cell_message;
 pub use enable_entities::handle_enable_entities;
 pub use map_loaded::handle_map_loaded;
 pub use play_character::handle_play_character;

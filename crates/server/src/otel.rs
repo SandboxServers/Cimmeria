@@ -4,7 +4,7 @@
 //!
 //! # SigNoz service split
 //!
-//! The OTLP log signal is split across **three** providers, each tagged
+//! The OTLP log signal is split across **four** providers, each tagged
 //! with its own `service.name` resource:
 //!
 //! - **`cimmeria-server`** — the high-signal index. Auth, content
@@ -20,9 +20,18 @@
 //!   log file, plus the custom-target TRACE rows and the 1-in-N samples of
 //!   the per-packet firehoses (NA25). The other two indexes never receive
 //!   TRACE, so no record is indexed twice.
+//! - **`cimmeria-client`** — what the players' machines sent: the injected
+//!   `cimmeria-client-telemetry` DLL's events (`client.native`) and the
+//!   game-log lines the launcher tails (`launcher.client_log`,
+//!   `launcher.debug_log`, `launcher.session_meta`), replayed by the
+//!   `/api/telemetry/upload-*` ingest. Every level, and only here: a
+//!   client-side warning is not a server problem, so it does not land in
+//!   `cimmeria-server`. The resource carries `cimmeria.source = client`
+//!   (see [`client_resource_attributes`]).
 //!
-//! Routing is by level plus [`is_network_noise_target`]; the filters and the
-//! routing table live in `crates/server/src/logging/filters.rs`.
+//! Routing is by level plus [`is_network_noise_target`] and
+//! [`is_client_target`]; the filters and the routing table live in
+//! `crates/server/src/logging/filters.rs`.
 //!
 //! # Architecture
 //!
@@ -51,11 +60,12 @@
 //! reaches SigNoz. Wiring the appender bridges those orphan events to
 //! the OTLP log signal so they show up in SigNoz's Logs view.
 //!
-//! Launcher logs land here too — the
+//! Launcher and client logs land here too — the
 //! `/api/telemetry/upload-{chunk,bundle}` endpoints (see
-//! [`cimmeria_admin_api::routes::telemetry`]) replay each launcher
+//! [`cimmeria_admin_api::routes::telemetry`]) replay each uploaded
 //! event through `tracing::*` so the OTLP layers ship them to the same
-//! SigNoz store as the server's own logs and Mercury packet events.
+//! SigNoz store as the server's own logs and Mercury packet events, the
+//! client-side ones under `cimmeria-client`.
 //!
 //! # Environment variables
 //!
@@ -114,6 +124,8 @@ pub struct OtelLayers {
     pub network_log: OtelLogLayer,
     /// `service.name = cimmeria-trace`.
     pub trace_log: OtelLogLayer,
+    /// `service.name = cimmeria-client`.
+    pub client_log: OtelLogLayer,
 }
 
 /// Default service name for the high-signal index (auth, content,
@@ -140,6 +152,25 @@ const NETWORK_SERVICE_NAME: &str = "cimmeria-network";
 /// only here. Query `service.name = 'cimmeria-trace'`.
 const TRACE_SERVICE_NAME: &str = "cimmeria-trace";
 
+/// Service name for what the players' machines uploaded: the injected
+/// client DLL's events and the launcher-tailed game logs. Query
+/// `service.name = 'cimmeria-client'`.
+pub const CLIENT_SERVICE_NAME: &str = "cimmeria-client";
+
+/// Tracing targets the telemetry ingest replays client-side data under.
+/// [`is_client_target`] matches each one and its dotted children.
+///
+/// `launcher.ingest`, `launcher.bundle` and the dev-session mint rows are
+/// deliberately absent: they are the server's own account of an upload
+/// (counts, refusals, caps), so they stay in `cimmeria-server`. And
+/// `launcher.key_dump` stays off everywhere (see `OTLP_EXCLUDED_TARGETS`).
+pub const CLIENT_TARGETS: &[&str] = &[
+    "client.native",
+    "launcher.client_log",
+    "launcher.debug_log",
+    "launcher.session_meta",
+];
+
 /// Git commit this binary was built from, or `"unknown"`. Set by
 /// `crates/server/build.rs`.
 pub const BUILD_SHA: &str = env!("CIMMERIA_BUILD_SHA");
@@ -162,6 +193,56 @@ fn identity_attributes(
         KeyValue::new("host.name", host_name.to_string()),
         KeyValue::new("service.version", version.to_string()),
     ]
+}
+
+/// Resource attributes for the `cimmeria-client` provider.
+///
+/// A resource is process-wide, so it can only say what is true of every
+/// client row this server ingests: where it came from and which server
+/// ingested it. Per-session facts (`session_id`, `session_kind`, the DLL
+/// build) ride on each log record instead; see the replay in
+/// `cimmeria_admin_api::routes::telemetry`.
+///
+/// `host.name` and `service.version` are deliberately *not* set: on a
+/// client row they would name the ingesting server and its build, which a
+/// reader would take for the player's machine and client build. The
+/// server's identity is kept under `cimmeria.ingest_host` and
+/// `cimmeria.ingest_version` instead.
+pub fn client_resource_attributes(
+    deploy_env: &str,
+    host_name: &str,
+    version: &str,
+) -> Vec<opentelemetry::KeyValue> {
+    use opentelemetry::KeyValue;
+    vec![
+        KeyValue::new("deployment.environment", deploy_env.to_string()),
+        KeyValue::new("cimmeria.deploy_env", deploy_env.to_string()),
+        KeyValue::new("cimmeria.source", "client"),
+        KeyValue::new("cimmeria.ingest_host", host_name.to_string()),
+        KeyValue::new("cimmeria.ingest_version", version.to_string()),
+    ]
+}
+
+/// The `cimmeria-client` resource: [`CLIENT_SERVICE_NAME`] plus
+/// [`client_resource_attributes`]. Public so the ingest round-trip test
+/// builds the same resource production does.
+pub fn client_resource(deploy_env: &str, host_name: &str, version: &str) -> Resource {
+    Resource::builder()
+        .with_service_name(CLIENT_SERVICE_NAME)
+        .with_attributes(client_resource_attributes(deploy_env, host_name, version))
+        .build()
+}
+
+/// True if `target` is client-side data replayed by the telemetry ingest,
+/// which lands in `cimmeria-client` and nowhere else. Matches each of
+/// [`CLIENT_TARGETS`] and its dotted children (`client.native.x`), never a
+/// sibling that merely shares the prefix (`client.nativex`).
+pub fn is_client_target(target: &str) -> bool {
+    CLIENT_TARGETS.iter().any(|t| {
+        target
+            .strip_prefix(t)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
+    })
 }
 
 /// This host's name, or `"unknown"` if the OS will not say.
@@ -272,6 +353,9 @@ pub fn init() -> Option<(OtelLayers, OtelGuard)> {
         .with_service_name(TRACE_SERVICE_NAME)
         .with_attributes(identity)
         .build();
+    // Client-side uploads get a fourth: they describe the players'
+    // machines, not this server, and the operator reads them apart.
+    let client_resource = client_resource(&deploy_env, &host, BUILD_SHA);
     // OTEL_RESOURCE_ATTRIBUTES is parsed by `opentelemetry_sdk` itself
     // when present, so we don't need to manually split-and-merge it
     // here — the SDK union-merges over our explicit Resource above.
@@ -343,10 +427,12 @@ pub fn init() -> Option<(OtelLayers, OtelGuard)> {
     let network_logger_provider =
         log_provider(&protocol, &endpoint, network_resource, "Network log")?;
     let trace_logger_provider = log_provider(&protocol, &endpoint, trace_resource, "Trace log")?;
+    let client_logger_provider = log_provider(&protocol, &endpoint, client_resource, "Client log")?;
 
     let log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
     let network_log_layer = OpenTelemetryTracingBridge::new(&network_logger_provider);
     let trace_log_layer = OpenTelemetryTracingBridge::new(&trace_logger_provider);
+    let client_log_layer = OpenTelemetryTracingBridge::new(&client_logger_provider);
 
     // ── Metrics exporter (counters + histograms) ──────────────────────
     //
@@ -407,12 +493,14 @@ pub fn init() -> Option<(OtelLayers, OtelGuard)> {
             server_log: log_layer,
             network_log: network_log_layer,
             trace_log: trace_log_layer,
+            client_log: client_log_layer,
         },
         OtelGuard {
             tracer_provider,
             logger_provider,
             network_logger_provider,
             trace_logger_provider,
+            client_logger_provider,
             meter_provider,
         },
     ))
@@ -469,6 +557,8 @@ pub struct OtelGuard {
     network_logger_provider: SdkLoggerProvider,
     /// Third logger provider, for the `cimmeria-trace` index.
     trace_logger_provider: SdkLoggerProvider,
+    /// Fourth logger provider, for the `cimmeria-client` index.
+    client_logger_provider: SdkLoggerProvider,
     /// `None` when the metric exporter failed to construct — traces +
     /// logs still flush on shutdown, metrics path was never wired so
     /// nothing to drain.
@@ -503,6 +593,9 @@ impl Drop for OtelGuard {
         }
         if let Err(e) = self.trace_logger_provider.shutdown() {
             eprintln!("[otel] Trace logger shutdown flush failed: {e}");
+        }
+        if let Err(e) = self.client_logger_provider.shutdown() {
+            eprintln!("[otel] Client logger shutdown flush failed: {e}");
         }
     }
 }

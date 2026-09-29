@@ -168,8 +168,8 @@ Two client events answer this without a probe (2026-09-28, see
 - `client.ui.cegui_log` at `error` carries the text of CEGUI errors,
   including `ScriptException`s from failed UI Lua binding calls.
 
-Both reach SigNoz (`service_name = 'cimmeria-client'`, the target in
-`client_target`) and, with the bridge, the local ring
+Both reach SigNoz (`service.name = 'cimmeria-client'` and
+`cimmeria.session_kind = 'lab'`, the event name in `client_target`) and, with the bridge, the local ring
 (`client_events_read`, kinds `cme.event` and `cegui.log`). Both are
 throttled per name: a hot name gets 8 in a burst then 4 a second, and the
 next event that gets through carries `suppressed`. The backlog of further
@@ -185,9 +185,9 @@ the Lua state is created, and it ships to SigNoz under your dev-session id.
 Query it:
 
 - **Signal:** Logs (or Traces).
-- **Filter:** `deploy.dev_session_id = <your session>` AND
-  `body CONTAINS 'client.lua.newstate'` (or the event name field, if your
-  build tags it as an attribute).
+- **Filter:** `service.name = 'cimmeria-client'` AND
+  `session_id = <your session>` AND `client_target = 'client.lua.newstate'`.
+  `lab_client_start` returns the session id under `telemetry.session_id`.
 - **Read:** the timestamp of the first `client.lua.newstate` relative to
   the login-screen render tells you whether the VM exists before or only
   after character select. If it fires at the login screen, Lua-driven
@@ -233,6 +233,18 @@ The input tools press nothing through Lua: Lua only reads where a widget is and 
 
 ## Trust, audit, and the colo
 
+- **Lab telemetry reaches SigNoz under a real token.** Each
+  `lab_client_start` mints a dev-session token from
+  `CIMMERIA_LAB_SERVER_URL` (default `http://127.0.0.1:8443`, the local
+  server's admin port) with `session_kind = lab`, and writes it and the
+  server's upload endpoint into `current-session.json`
+  (`CIMMERIA_LAB_UPLOAD_ENDPOINT` overrides the endpoint). The client's
+  events then land in `service.name = 'cimmeria-client'` tagged
+  `cimmeria.session_kind = 'lab'`. The start result's `telemetry` block
+  says whether the mint worked and, if not, why (a server without
+  `CIMMERIA_TELEMETRY_HMAC_SECRET` answers 500); the launch goes ahead
+  either way. The telemetry token is not the bridge token, which never
+  leaves the machine.
 - **Activation is double-gated.** The bridge code exists only in a
   telemetry DLL built `--features lab-bridge` (off by default), and even
   then starts only when `current-session.json` carries a `lab` block that

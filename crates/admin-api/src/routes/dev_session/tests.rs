@@ -13,7 +13,7 @@ use super::handlers::{
 use super::token::{decode_token, encode_token, env_lock, AuthError, TokenClaims};
 use super::SCOPE_TELEMETRY_WRITE;
 
-const NOW_UNIX: i64 = 1_700_000_000;
+pub(super) const NOW_UNIX: i64 = 1_700_000_000;
 
 /// 64 bytes of hex — `load_secret` reads this via the env var the
 /// handlers use, so the tests drive the real loader rather than a
@@ -21,7 +21,7 @@ const NOW_UNIX: i64 = 1_700_000_000;
 const TEST_SECRET_HEX: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90\
 a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
 
-struct EnvGuard {
+pub(super) struct EnvGuard {
     _lock: std::sync::MutexGuard<'static, ()>,
     prev_secret: Option<String>,
     prev_kill: Option<String>,
@@ -31,7 +31,7 @@ impl EnvGuard {
     /// Installs a usable HMAC secret and clears the kill switch, then
     /// restores both on drop — the env is process-wide and shared with
     /// the telemetry tests.
-    fn install() -> Self {
+    pub(super) fn install() -> Self {
         let lock = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev_secret = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
         let prev_kill = std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH").ok();
@@ -58,7 +58,7 @@ impl Drop for EnvGuard {
     }
 }
 
-fn policy(mint_per_ip: u32, mint_per_install: u32, refresh_per_ip: u32) -> QuotaPolicy {
+pub(super) fn policy(mint_per_ip: u32, mint_per_install: u32, refresh_per_ip: u32) -> QuotaPolicy {
     QuotaPolicy {
         window: Duration::from_secs(3_600),
         mint_per_ip,
@@ -69,7 +69,7 @@ fn policy(mint_per_ip: u32, mint_per_install: u32, refresh_per_ip: u32) -> Quota
     }
 }
 
-fn request(install_id: &str) -> DevSessionRequest {
+pub(super) fn request(install_id: &str) -> DevSessionRequest {
     DevSessionRequest {
         install_id: install_id.into(),
         machine_id: "machine-abc".into(),
@@ -77,18 +77,19 @@ fn request(install_id: &str) -> DevSessionRequest {
         git_sha: "0123456".into(),
         launcher_version: "0.1.0".into(),
         tags: Vec::new(),
+        session_kind: None,
     }
 }
 
-fn ip(s: &str) -> IpAddr {
+pub(super) fn ip(s: &str) -> IpAddr {
     s.parse().unwrap()
 }
 
-fn secret() -> Vec<u8> {
+pub(super) fn secret() -> Vec<u8> {
     super::token::load_secret().unwrap()
 }
 
-fn status(err: AuthError) -> axum::http::StatusCode {
+pub(super) fn status(err: AuthError) -> axum::http::StatusCode {
     err.into_response().status()
 }
 
@@ -285,6 +286,7 @@ fn token_minted_at(iat: i64, exp: i64) -> String {
         iat,
         exp,
         scope: vec![SCOPE_TELEMETRY_WRITE.into()],
+        kind: None,
     };
     encode_token(&claims, &secret()).unwrap()
 }

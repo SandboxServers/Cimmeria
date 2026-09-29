@@ -38,6 +38,8 @@
 //!   seams.
 //! - [`gm_broadcast_arm`]  — `Chat(GmBroadcast)` fans out to the online
 //!   index and logs the delivery.
+//! - [`plugin_envelope`]   — `Plugin` (#962 step 5): the envelope reaches
+//!   its base plugin consumer, or is dropped with the no-consumer WARN.
 //! - [`passthrough`]       — `SpaceData` / `MissionUpdate` / `MailRequest`
 //!   / `GrantXP` / `TeleportPlayer` routing (handler short-circuits on
 //!   no-pool / no-addr — pinned via `LogCapture`).
@@ -65,6 +67,7 @@ mod gm_broadcast_arm;
 mod gm_grant_arms;
 mod org_arms;
 mod passthrough;
+mod plugin_envelope;
 mod two_player_visibility;
 mod witness_broadcast;
 

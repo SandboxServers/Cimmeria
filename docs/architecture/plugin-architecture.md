@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # ADR: feature plugins over `CellEntity` and `SpaceManager` (no ECS)
 
-> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Step 2: duels (`cimmeria-cell-duel`), §4.2. Step 3: squads and org creation (`cimmeria-cell-org`), §4.3. Step 4: effect scripts (`cimmeria-cell-effect-scripts`, a registry move), §4.4. Amends [services-crate-split.md](services-crate-split.md).
+> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Step 2: duels (`cimmeria-cell-duel`), §4.2. Step 3: squads and org creation (`cimmeria-cell-org`), §4.3. Step 4: effect scripts (`cimmeria-cell-effect-scripts`, a registry move), §4.4. Step 5, first part: the `BasePlugin` core (no feature moved yet), §4.5. Amends [services-crate-split.md](services-crate-split.md).
 > **Type:** Architecture decision record
 > **Owner:** Server architecture
 > **Companion docs:** [services-crate-split.md](services-crate-split.md) (the layer split this builds on), [build-system.md](build-system.md) (the build lane and the rebuild measurements), [negative-logging-convention.md](negative-logging-convention.md) (the hook-miss logs), [scaling-analysis.md](scaling-analysis.md) (why the base/cell split buys us nothing), [../protocol/cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md) (the method indices plugins register against)
@@ -91,7 +91,7 @@ pub type EntityHook =
     for<'a> fn(u32, &'a mpsc::Sender<CellToBaseMsg>, &'a mut SpaceManager) -> BoxFuture<'a, ()>;
 ```
 
-The base track gets the same shape later (`BasePlugin`, a `BaseMethodCall` carrying the session context), when the first base feature moves (§3.7).
+The base track has the same shape (`BasePlugin`, `BasePluginBuilder`, `BasePlugins`, in `cimmeria-base-session`'s `base::plugin`; §4.5). A `BaseMethodCall` carries the flattened base-method index, the argument bytes and a `BaseCtx` (the transport, the session maps, the channel to the cell and the database pool, the same fields as crafting's `CraftCtx`). There is no base hub that every handler holds, as the cell has `SpaceManager`, so each session carries the registry it was admitted under (`ConnectedClientState::plugins`), and the cell-message loop gets it from the `BaseService`.
 
 ### 3.2 Registration order and determinism
 
@@ -143,7 +143,7 @@ pub struct PluginMsg {
 - Messages never leave the process, so `Box<dyn Any + Send>` costs one allocation and no serialization.
 - Exhaustiveness is replaced by a startup check (every payload type a plugin declares it sends has exactly one consumer) and a negative log (a `PluginMsg` with no consumer logs WARN with its `type_name` and is dropped).
 
-Existing variants stay until their feature migrates; a migrating feature moves its variants into the envelope at its close-out. The pets pilot needs no envelope: its three cell methods reply through the existing `EntityMethodCall` / `WitnessEntityMethod` variants. #962 estimated the envelope alone would let about 74% of recent `wire` and `entity` commits avoid a full rebuild, though those still rebuild 58-90%; it is worth doing, but it is not the main lever. Moving feature code out of the low crates is.
+The envelope landed with the `BasePlugin` core (§4.5): `CellToBaseMsg::Plugin(PluginMsg)` in `cimmeria-wire`, `BasePluginBuilder::on_cell_message::<T>(handler)`, and `PLUGIN_CELL_MESSAGES`, the declared payload types that `check_complete` requires one consumer each for. Existing variants stay until their feature migrates; a migrating feature moves its variants into the envelope at its close-out. The pets pilot needs no envelope: its three cell methods reply through the existing `EntityMethodCall` / `WitnessEntityMethod` variants. #962 estimated the envelope alone would let about 74% of recent `wire` and `entity` commits avoid a full rebuild, though those still rebuild 58-90%; it is worth doing, but it is not the main lever. Moving feature code out of the low crates is.
 
 ### 3.5 The extension map
 
@@ -166,7 +166,7 @@ pub extensions: EntityExtensions,
 - **Storage is a small `Vec`, scanned linearly.** An entity carries zero to a few extensions; an empty map allocates nothing and costs 24 bytes, against 8 for the `Option<Box<PetState>>` it replaces.
 - **The type lives with its lowest reader.** A feature crate that is a leaf owns its types. While lower crates still read a type (combat reads `PetState` for kill credit and the pet AI), it stays where they can see it (`cimmeria-entity`), and only the storage becomes generic. It moves up when its last lower reader does.
 - **Not replicated, not persisted.** Nothing in the map reaches the client or the database on its own; the feature's code sends and saves explicitly, as today (C4).
-- **The same type serves the base and the space.** `ConnectedClientState` gets an `extensions` field when the first base feature migrates. `SpaceManager::resources` (a `SpaceResources`, the same storage) holds space-wide feature state; the duel registry moved there in step 2 (§4.2), and the squad registry and the pending organization creations in step 3 (§4.3). A feature reads its resource through an extension trait on the map, called on the field (`mgr.resources.duels()`, `mgr.resources.squads()`), so the borrow stays on that one field. It stores the value on first write, so a manager with no feature installed reads an empty one. The pet registry follows when its feature moves.
+- **The same type serves the base and the space.** `ConnectedClientState::extensions` (`base::plugin::SessionExtensions`) holds per-session feature state since §4.5. `SpaceManager::resources` (a `SpaceResources`, the same storage) holds space-wide feature state; the duel registry moved there in step 2 (§4.2), and the squad registry and the pending organization creations in step 3 (§4.3). A feature reads its resource through an extension trait on the map, called on the field (`mgr.resources.duels()`, `mgr.resources.squads()`), so the borrow stays on that one field. It stores the value on first write, so a manager with no feature installed reads an empty one. The pet registry follows when its feature moves.
 
 ### 3.6 Hook seams and missing registrations
 
@@ -178,7 +178,10 @@ The test rule from #962: a missing registration must log a warning or fail the s
 | Duplicate, unknown or not-plugin-owned method index | fails `CellPlugins::build` | Unit tests per error |
 | Cell method dispatched with no handler at runtime | falls through to the router's existing WARN, `Unhandled cell method call` (#311) | Router test with an empty registry and a pet index |
 | Tick, entity and death hook points | are covered by the plugin's method registrations: a plugin is installed whole or not at all, and a missing plugin fails `check_complete` | The facade test that the default table passes `check_complete` |
-| `PluginMsg` with no consumer (when the envelope lands) | WARN with `type_name`, message dropped | Unit test on the consumer registry |
+| Plugin-owned base method, or a declared `PluginMsg` payload type | fails startup (`BasePlugins::check_complete`); a bare `BaseService::start` logs WARN (`base.plugin`, `plugin_table_incomplete`) | Unit tests on `BasePlugins` |
+| Duplicate, unknown or not-plugin-owned base-method index; a second or undeclared consumer | fails `BasePlugins::build` | Unit tests per error |
+| Base method dispatched with no handler at runtime | falls through to the static router's WARN, `Unhandled SGWPlayer base method` (#311) | `cimmeria-base`'s `dispatch::tests::plugin_routing` |
+| `PluginMsg` with no consumer at runtime | WARN at `base.plugin` with `reason = "no_consumer"` and `type_name`, message dropped | Unit test on the registry; the `Plugin` arm's dispatch test |
 
 The WARN rows follow [negative-logging-convention.md](negative-logging-convention.md): a `reason` field, the method index or type name, and a message that says what the player loses.
 
@@ -188,6 +191,8 @@ The WARN rows follow [negative-logging-convention.md](negative-logging-conventio
 core     cimmeria-entity        EntityExtensions on CellEntity (and, as SpaceResources, on SpaceManager)
          cimmeria-cell-world    cell::plugin (trait, builder, registry, hook points); SpaceManager holds the registry
          cimmeria-cell          the router consults the registry; the cell loop fires the tick hooks
+         cimmeria-base-session  base::plugin (BasePlugin, builder, registry, session hook points); ConnectedClientState::{extensions, plugins}
+         cimmeria-base          the base-method router consults the session's registry; the service holds the table
 systems  cell-combat, cell-content, cell-interactions, cell-methods, cell-console   (unchanged)
 leaves   cimmeria-cell-pets     PetsPlugin: the pet cell methods and the pet hooks
          cimmeria-cell-duel     DuelPlugin: the duel cell methods, the duel tick and the leave hooks
@@ -210,7 +215,7 @@ Features move at their campaign's close-out, never while a campaign coordinator 
 2. **Duels** (`cell-duel`; Social Systems closed 2026-09-27). **Done** (§4.2). The duel cell methods, the duel tick and the disconnect, travel and death paths became `DuelPlugin`, and the registry became a `SpaceManager` resource. The challenge, the end paths, the non-lethal clamp, the harm-gate inputs and the GM commands stay in `cell-world` until combat, the AoI enter path and the base-message handler get seams for them.
 3. **Squads and org creation** (`cell-org`; Organizations closed 2026-09-27). **Done** (§4.3). The OrganizationMember cell methods (8-19) and `onOrganizationCreation` (94), the squad disconnect, the registrar offer's end and the squad world-entry replay became `OrgPlugin`; the squad registry and the pending creations became `SpaceManager` resources, and `CellEntity::squad_id` an extension. The console-to-methods edge (`console/squad.rs`) is gone: the half the base-message handler and the console call (the base-forwarded squad invite and kick, the GM squad commands, the registrar reply and create result, and the squad fanout) moved from `cell-methods` down to `cell-interactions`, below both.
 4. **Effect scripts** (`cell-effect-scripts`). **Done** (§4.4). A registry move rather than a plugin: every `EffectScript` moved to the leaf with its tests, the static `match` in `effects/registry.rs` became the leaf's `EFFECT_SCRIPTS` table, and `cell-world` keeps the trait, dispatch and an `EffectScripts` registry type the composition root builds at startup and the cell installs on its `SpaceManager`. The passive pass, the pet-script name predicates, the stat-buff ledger and the ammo shot helpers stay in `cell-world`, because layers below the leaf call them. Changed [abilities-and-effects-system.md](abilities-and-effects-system.md) (decision 33) and the CLAUDE.md line on where scripts go.
-5. **The base features** (`base-crafting` after the crafting close-out CR-13, then bank, mail, chat, vendor with trade, inventory, progression). Brings in `BasePlugin`, `ConnectedClientState::extensions`, the `CellToBaseMsg` envelope, the session teardown moved up to `base`, and the unified `SessionCtx`.
+5. **The base features** (crafting after its close-out CR-13, then bank, mail, chat, vendor with trade, inventory, progression). **Core done** (§4.5): `BasePlugin`, `ConnectedClientState::extensions`, the `CellToBaseMsg` envelope and the session hook points landed with no feature moved. Crafting follows in a separate PR. Its verbs (95-100) are cell methods, not base methods (`SGWPlayer.def:916-948` is inside `<CellMethods>`), so it registers no base method: its base half consumes the envelope, owns the session state and the lifecycle hooks, and its cell half registers 95-100. The session teardown moved up to `base` and the unified `SessionCtx` come later: `BaseCtx` covers what the plugins need so far.
 6. **The console** as a plugin registered by the facade ([services-crate-split.md §6](services-crate-split.md#6-expected-build-impact), "later options").
 7. **NPC AI** last: the `npc_ai` / combat cycle has to break first.
 
@@ -376,20 +381,45 @@ An edit to what stayed (dispatch, the registry type, the passive pass, the ledge
 
 - A test that builds its own `SpaceManager` and dispatches a script now installs the registry first (one statement), because a bare manager has no scripts. Behind the move every manager saw the static table, so this restores what those tests ran against. The statement went into the shared fixtures, not the tests: `cell-combat`'s `damage_apply::tests::make_mgr_player_vs_npc`, `deployable::tests::deploy_mgr`, `use_ability::owner_pet::tests::world`, `use_ability::tests::support_shot::support_mgr` and the `ammo_dart_support` integration test's `world`; `cell-content`'s `consumable_use_tests::mgr`; `cimmeria-cell`'s `passive_abilities::fixture` and `npc_ai_cover_behaviour::seed_cover_stance_effects`; and `cimmeria-services`' `consumable_round_trip_tests::stage` (live-DB). One test installs it in its own body, `cimmeria-cell`'s `zero_health_guard::npc_killed_by_an_effect_bleed_does_not_shoot_back`, whose fixture (`make_ai_fixture`) many script-free tests share. Combat, content and `cimmeria-cell` re-export the installer as `test_support::install_effect_scripts`.
 - The script unit tests moved with their files, unchanged. Their fixture `make_mgr_with_target` now installs the registry; its world half moved to `cimmeria_cell_world::test_fixtures` (`make_mgr_with_target`, `effect_with_nvp`), where `cell-world`'s `ammo_damage` tests also read it.
-- `cell-world`'s `pets::tests::owner_buffs`: the six tests that dispatch a pet script or run the passive pass (`pet_stat_buff_toggles_for_a_toggled_ability`, `pet_stat_buff_is_timed_by_its_pulse_duration`, `pet_scripts_leave_a_non_pet_alone`, `pet_death_timer_dooms_the_pet`, `a_learned_passive_raises_speed_pet_and_unlearning_restores_it`, `the_passive_pass_runs_only_flagged_passive_scripts`) moved to the leaf as `cell::effects::pet_scripts::tests`, with the same assertions, on the shared pet world plus the registry. A test in `cell-world` cannot install the leaf's scripts (the leaf depends on it; §4.6). The owner-pet resolution and buff-ledger tests stayed.
+- `cell-world`'s `pets::tests::owner_buffs`: the six tests that dispatch a pet script or run the passive pass (`pet_stat_buff_toggles_for_a_toggled_ability`, `pet_stat_buff_is_timed_by_its_pulse_duration`, `pet_scripts_leave_a_non_pet_alone`, `pet_death_timer_dooms_the_pet`, `a_learned_passive_raises_speed_pet_and_unlearning_restores_it`, `the_passive_pass_runs_only_flagged_passive_scripts`) moved to the leaf as `cell::effects::pet_scripts::tests`, with the same assertions, on the shared pet world plus the registry. A test in `cell-world` cannot install the leaf's scripts (the leaf depends on it; §4.7). The owner-pet resolution and buff-ledger tests stayed.
 - `cell-world`'s `live_db_use_cover::cover_stance_effect_rows_name_their_scripts` moved to the leaf as `cover_stance::live_db_tests`, unchanged.
 - The old registry's `known_scripts_resolve` and `unknown_script_returns_none` moved to the leaf's `registry::tests`, reading the table (`registry::lookup`) instead of the `match`.
 - `cimmeria-server`'s `cell_track_lower` parity test used `cimmeria_cell_world::cell::effects::scripts` as a sample world target; the module is gone, so it now samples `cell::effects::passives`, with the same assertions.
 
 New tests: the registry type (`cell-world` `cell::effects::registry::tests`: lookup by exact name, order independence, the duplicate-id and empty-name build failures, the empty registry, and `unregistered`); the table (`cell-effect-scripts` `registry::tests`: every row builds and resolves to itself, and `install` makes dispatch find a script a bare manager misses); the missing-registration guard on the shipped data (`registry::live_db_tests::every_seeded_script_name_is_registered`); the facade's `the_effect_script_table_builds_and_names_every_script` and `a_duplicated_effect_script_row_fails_the_startup_build`; and the `cimmeria_cell_effect_scripts=debug` log row (`effect_scripts_crate_events_keep_their_index`).
 
-### 4.5 What gets better
+### 4.5 Step 5, first part: the `BasePlugin` core
+
+Step 5 is split in two PRs. This one adds the base-track plugin core with no feature moved, so the registry exists, is empty and has every startup check tested; the next moves crafting. The split follows from what crafting turned out to be: its verbs 95-100 are SGWPlayer **cell** methods (`entities/defs/SGWPlayer.def:916-948`, inside `<CellMethods>`; [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md)). The client sends them as `0x80 | index` to the cell, which parses them and forwards `CellToBaseMsg::Crafting` to the base. So crafting registers no base method; what its base half needs from the core is the envelope, per-session state and lifecycle hooks, and three upward seams from `cimmeria-base-methods` (item use, the tool refresh, the ASP push) that the crafting PR adds at their call sites.
+
+**Where the core lives.** `cimmeria-base-session` (`base::plugin`), the bottom of the base track. Every site that fires a base hook is in it or above it: the disconnect teardown (`helpers::destroy_client_entities`) is in base-session itself, gate travel and `onClientReady` are in `base-world-entry`, `logOff` and the base-method router are in `base`, and the item-use, tool-refresh and ASP seams crafting needs are in `base-methods`. It also defines `ConnectedClientState`, which carries the extension map and the registry.
+
+**What it registers.**
+
+- `base_method(index, handler)`: an SGWPlayer exposed base method by flattened index (the message id minus `0xC0`). `dispatch_sgw_player_base_method` asks the session's registry before its static arms. The entity-type gate (Account vs SGWPlayer) runs before the call, in `connect_loop`, so a plugin handler sits behind it like any arm. The base has no GM-gated base method today.
+- `on_cell_message::<T>(handler)`: the consumer of `CellToBaseMsg::Plugin` envelopes whose payload is a `T` (§3.4). The `Plugin` arm of the cell-message dispatcher (`route_cell_message`) routes it; the envelope keeps its FIFO position on the one channel (C6).
+- Session hooks, each at a crafting inline call's exact line:
+  - `SessionHookPoint::LogOffAfterEntityUnmapped` (`logOff`), `DisconnectAfterEntityUnmapped` (the teardown) and `GateTravelBeforeActiveCharacterCheck` (gate travel, before the fail-closed check): synchronous `fn(SessionEvent { entity_id, cause })`, where crafting drops the induction queue.
+  - `SessionStateHookPoint::GateTravelBeforeCreateEntity`: synchronous `fn(&mut ConnectedClientState)` under the connected-map lock, where crafting forgets the origin world's stations.
+  - `WorldEntryHookPoint::ClientReadyAfterOrgRestore`: async, with the entity, the character and a `BaseCtx`, where crafting's login sync runs.
+
+**The startup checks** mirror the cell's. `PLUGIN_OWNED_BASE_METHODS` (empty) lists the indices that left the static router and `PLUGIN_CELL_MESSAGES` (empty) the envelope's payload types. `BasePlugins::build` fails on `DuplicateBaseMethod`, `UnknownBaseMethod` (no name in `cimmeria-wire`'s new `base::names::base_method_name` table, which a def-conformance test checks against the flattened `.def`), `NotPluginOwned`, `DuplicateCellMessage` and `UndeclaredCellMessage`; `check_complete` fails on `MissingBaseMethods` and `MissingCellMessageConsumers`. The composition root builds the table (`services::plugins::base_plugins`, empty for now), the orchestrator hands it to the `BaseService` and refuses to start the base when it is incomplete (`plugin_table_incomplete`), and a bare `BaseService::start` logs the gap at WARN. While the production lists are empty, the tests validate against their own lists through `BasePlugins::build_with`.
+
+**How the registry reaches a hook site.** The `BaseService` holds the table, stamps it on every session at login (`ConnectedClientState::plugins`) and passes it to the cell-message loop. A site with the connected map and an address reads it with `session_plugins`, which clones the `Arc` and releases the lock before a hook runs. `route_cell_message` takes it as an argument; `handle_cell_message`, now test-only, runs with an empty table, so the fifty-odd dispatch tests kept their calls.
+
+**Behaviour.** Neutral: every registry is empty, so each new call is a no-op beside the inline call it will replace. The wire is unchanged; the `Plugin` variant is in-process only.
+
+**Tests changed beyond import paths.** None changed in behaviour. Mechanical edits: the six test-side `ConnectedClientState` literals gained `extensions` and `plugins`; the login tests pass `&BasePlugins::empty()` to `handle_login`, and the handshake test to `run_connect_loop`.
+
+New tests: the registry's checks, envelope routing and hook order (`cimmeria-base-session` `base::plugin::tests`, 16); the base-method router with and without a plugin, the static-router inversion guard and the `logOff` and teardown hooks (`cimmeria-base` `dispatch::tests::plugin_routing`); the two gate-travel hooks, including a refused transfer (`gate_travel::tests::plugin_hooks`), the world-entry hook (`client_ready::plugin_hook_tests`) and the `Plugin` arm (`tests_dispatch_arms::plugin_envelope`) in `cimmeria-base-world-entry`; the envelope type (`cimmeria-wire` `plugin_msg`); the name table and its def-conformance scan (`base_method_names_are_the_flattened_exposed_base_methods`); and the facade's `the_default_base_table_builds_and_is_complete`.
+
+### 4.6 What gets better
 
 - A feature edit rebuilds the feature, the facade and the binaries, not the cell track above the lowest crate it touches.
 - `CellEntity`, `SpaceManager`, the routers and the cell loop stop changing when a feature is added.
 - A missing registration is a startup failure, not a player ticket.
 
-### 4.6 What gets worse, and the mitigations
+### 4.7 What gets worse, and the mitigations
 
 - **Compile-time exhaustiveness.** The static `match` on method indices goes away. The startup assertion (§3.3) and the router's WARN replace it.
 - **Indirection.** A method call is a registry lookup and an `Arc` clone before the handler. That is noise against a `SpaceManager` lookup and an `mpsc` send.

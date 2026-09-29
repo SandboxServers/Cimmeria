@@ -12,7 +12,10 @@ use serde::{Deserialize, Serialize};
 use cimmeria_services::orchestrator::Orchestrator;
 
 use super::quota::{install_key, ip_key, validate_install_id, validate_metadata, WindowTable};
-use super::token::{encode_token, load_secret, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
+use super::token::{
+    encode_token, load_secret, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE, SESSION_KIND_LAB,
+    SESSION_KIND_PLAYER,
+};
 
 pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
 
@@ -59,6 +62,28 @@ pub struct DevSessionRequest {
     pub launcher_version: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// `"lab"` from the Live Research Lab supervisor; absent or
+    /// `"player"` from a player's launcher. Becomes the token's `kind`
+    /// claim, and every row the session uploads is tagged with it. Any
+    /// other value is refused with 400 so a typo cannot silently file lab
+    /// rows as player rows.
+    #[serde(default)]
+    pub session_kind: Option<String>,
+}
+
+/// The `kind` claim for a requested session kind: `None` for a player
+/// session (so the token is byte-identical to one minted before the claim
+/// existed), `Some("lab")` for a lab one.
+pub(super) fn kind_claim(requested: Option<&str>) -> Result<Option<String>, AuthError> {
+    match requested {
+        None => Ok(None),
+        Some(k) if k == SESSION_KIND_PLAYER => Ok(None),
+        Some(k) if k == SESSION_KIND_LAB => Ok(Some(SESSION_KIND_LAB.to_string())),
+        Some(_) => Err(AuthError::BadField {
+            field: "session_kind",
+            reason: "must be \"player\" or \"lab\"",
+        }),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -206,6 +231,7 @@ pub(super) fn mint_inner(
     ] {
         validate_metadata(value).map_err(|reason| AuthError::BadField { field, reason })?;
     }
+    let kind = kind_claim(req.session_kind.as_deref())?;
     tables.mint_install.check_and_record(
         install_key(&req.install_id),
         policy.mint_per_install,
@@ -223,12 +249,14 @@ pub(super) fn mint_inner(
         iat: now_unix,
         exp,
         scope: vec![SCOPE_TELEMETRY_WRITE.into()],
+        kind,
     };
     let token = encode_token(&claims, &secret)?;
     // install_id / machine_id stay at debug to avoid leaking
     // persistent fingerprints into info-level pipelines.
     tracing::info!(
         session_id = %session_id,
+        session_kind = claims.session_kind(),
         branch = %req.branch,
         git_sha = %req.git_sha,
         launcher_version = %req.launcher_version,
@@ -323,6 +351,8 @@ pub(super) fn refresh_inner(
         iat: claims.iat,
         exp: new_exp,
         scope: claims.scope,
+        // A refresh keeps the session's kind: a lab session stays lab.
+        kind: claims.kind,
     };
     let token = encode_token(&new_claims, &secret)?;
     tracing::info!(
@@ -362,6 +392,15 @@ fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
             reason = "dev_session_bad_request",
             "dev-session request refused: {err}"
         ),
+        // The operator's misconfiguration, not the caller's: every launcher
+        // and lab session is refused until it is fixed, and before this row
+        // the only trace of it was a 500 on the caller's side.
+        AuthError::SecretMissing | AuthError::SecretTooShort { .. } => tracing::error!(
+            route,
+            peer = %peer,
+            reason = "dev_session_secret_unusable",
+            "dev-session request refused: {err}"
+        ),
         _ => {}
     }
 }
@@ -373,9 +412,20 @@ pub(super) fn kill_switch_active() -> bool {
     )
 }
 
-fn upload_endpoint_env() -> String {
-    std::env::var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT")
-        .unwrap_or_else(|_| DEFAULT_UPLOAD_ENDPOINT.to_string())
+/// `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`, or the local default when it is
+/// unset **or blank**. `docker/compose.yml` passes it as
+/// `${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}`, which sets it to `""` when
+/// the operator's `.env` has no value; handing callers an empty endpoint
+/// would make every upload fail with a URL error instead.
+pub(super) fn upload_endpoint_env() -> String {
+    upload_endpoint_from(std::env::var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT").ok())
+}
+
+pub(super) fn upload_endpoint_from(value: Option<String>) -> String {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| DEFAULT_UPLOAD_ENDPOINT.to_string())
 }
 
 /// A malformed value falls back to the default rather than refusing

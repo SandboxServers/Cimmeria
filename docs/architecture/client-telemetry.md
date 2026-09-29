@@ -11,7 +11,7 @@ The per-anchor hook table lives in [`docs/reverse-engineering/findings/client-in
 
 ## Goal
 
-Give server-side debuggers a client-side view of every meaningful event happening inside `SGW.exe` — frame ticks, level streaming transitions, async I/O completions, CME EventSignal dispatches, log lines, crashes — without modifying game behavior. Output lands in SigNoz under filter `service_name = cimmeria-client` so an end-to-end SigNoz trace can include both server and client spans for the same session.
+Give server-side debuggers a client-side view of every meaningful event happening inside `SGW.exe` — frame ticks, level streaming transitions, async I/O completions, CME EventSignal dispatches, log lines, crashes — without modifying game behavior. Output lands in SigNoz as its own service, `service.name = cimmeria-client`, so an end-to-end SigNoz trace can include both server and client spans for the same session.
 
 The motivating use case: the cold-relog freeze investigation (2026-05-26). Server-side we can see Mercury sending N packets and getting N-3 ACKs back; what we can't see is whether the client's render thread is stuck on a disk read or which `.upk` is loading when frame ticks stop. Tier-1 hooks answer that.
 
@@ -65,10 +65,11 @@ SGW.exe + cimmeria-client-telemetry.dll
 admin-api / /api/telemetry/upload-chunk    (cimmeria-admin-api)
    - HMAC verify
    - deserialize TelemetryEvent::ClientNative
-   - replay through tracing layer with service_name="cimmeria-client"
+   - replay through tracing (target client.native)
+   - routed to the cimmeria-client log provider
         |
         v   OTLP gRPC
-SigNoz   (filter: service_name="cimmeria-client")
+SigNoz   (service.name = cimmeria-client)
 ```
 
 ## Stack picks
@@ -116,7 +117,7 @@ Seven techniques, applied per-tier per the [hookpoints anchor doc](../reverse-en
 
 ## Wire format
 
-The DLL ships events as NDJSON, one event per line, gzipped, POSTed to the launcher's existing `/api/telemetry/upload-chunk` endpoint. Authentication reuses the launcher's HMAC dev-session token — the launcher passes it to the DLL at injection time (mechanism: shared-memory section, deliberately deferred to first hook PR).
+The DLL ships events as NDJSON, one event per line, gzipped, POSTed to `/api/telemetry/upload-chunk`. It reads the token and the upload endpoint from `current-session.json` (written by the launcher or the lab supervisor). That file's `upload_endpoint` is the upload **base** (`…/api/telemetry`), as the dev-session mint returns it; the DLL appends `/upload-chunk` unless the value already ends with it (`uploader::chunk_url`). Before 2026-09-29 it posted to the base verbatim, so a launcher-written session never delivered a batch. `client.dll.attached` carries the DLL's `dll_version`.
 
 The event variant on both sides is `ClientNative`:
 
@@ -143,9 +144,11 @@ If either side renames a field, the symmetric test fails loudly.
 
 ## Service name routing
 
-SigNoz queries against this stream filter on `service_name="cimmeria-client"`. The replay layer in admin-api emits each `ClientNative` event with `service_name = "cimmeria-client"` as a structured tracing field; the OTLP exporter forwards it as a span attribute.
+Since 2026-09-29 the server runs a fourth OTLP log provider whose resource is `service.name = cimmeria-client` with `cimmeria.source = client` (`otel::client_resource`), and the log routing sends the ingest's `client.native` replays there and nowhere else (`otel::is_client_target`). Query `service.name = 'cimmeria-client'`; the DLL's event name is the `client_target` attribute and the log body. Each row also carries the session's `session_id`, `install_id`, `cimmeria.session_kind` (`lab` or `player`) and `lab`, plus `account_id`, `player_id`, `method_index`, `level_name`, `dll_version` and `fingerprint_usable` when the event's `fields` has them. The attribute table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
 
-**Caveat:** This is not the OpenTelemetry-spec `service.name` Resource attribute — that one is set once at server boot via `OTEL_SERVICE_NAME` and can't be overridden per-request. The tracing macro grammar in our version also doesn't accept dotted-string field keys (`"service.name"`), so we use the snake_case alias. Proper Resource-level override would require either a second `Resource` for the cimmeria-client events or a `tracing-attributes` shim that rewrites the field name on emit. Deferred — the data is the same; only the SigNoz query key differs.
+This replaces the old `service_name = "cimmeria-client"` event field, which was a stand-in for a real resource and left the rows inside `cimmeria-server`.
+
+**Production gap.** The normal **Launch SGW.exe** path injects only `cimmeria-client-patches`; the telemetry DLL is injected by the lab supervisor and by the unexposed `LaunchSgwWithClientTelemetry` worker command, and is not packaged with launcher releases. Until an owner decision puts it in front of players, `cimmeria-client` rows from players come from the launcher's tailed logs, and DLL rows come from lab sessions.
 
 ## Gameplay seams: what the client accepted and what its UI complained about
 

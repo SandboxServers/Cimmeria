@@ -287,7 +287,7 @@ mod tests {
             // six other sessions; a sentinel leaked by a failing assertion
             // below would otherwise sit in `resources.stargates` until
             // somebody noticed it in an unrelated test's output.
-            let _guard = SentinelCleanup(pool.clone());
+            let _guard = SentinelCleanup;
 
             let map = load_stargates(&pool).await.expect("load must succeed");
             let gate = map.get(&SENTINEL_GATE).expect("sentinel row must load");
@@ -296,14 +296,21 @@ mod tests {
         }
 
         /// Deletes [`SENTINEL_GATE`] on drop, including while unwinding.
-        struct SentinelCleanup(sqlx::PgPool);
+        ///
+        /// The delete runs on its own thread and runtime over a **fresh**
+        /// connection, never the test's pool. `#[tokio::test]` is a
+        /// current-thread runtime, and `drop` blocks that one thread on
+        /// `join()`. A pooled connection is driven by the test's runtime, so
+        /// reusing an idle one from the cleanup thread waited on a runtime
+        /// that could not run: the test hung until the CI job timed out
+        /// (#1033, 3.5 h on 2026-09-29).
+        struct SentinelCleanup;
 
         impl Drop for SentinelCleanup {
             fn drop(&mut self) {
-                let pool = self.0.clone();
-                // `Drop` is sync and the test's runtime may already be
-                // unwinding, so spin up a throwaway one-thread runtime rather
-                // than trying to re-enter the ambient one.
+                let Some(url) = crate::test_support::database_url() else {
+                    return;
+                };
                 std::thread::spawn(move || {
                     let rt = match tokio::runtime::Builder::new_current_thread()
                         .enable_all()
@@ -313,11 +320,16 @@ mod tests {
                         Err(_) => return,
                     };
                     rt.block_on(async {
+                        use sqlx::Connection;
+                        let Ok(mut conn) = sqlx::PgConnection::connect(&url).await else {
+                            return;
+                        };
                         let _ =
                             sqlx::query("DELETE FROM resources.stargates WHERE stargate_id = $1")
                                 .bind(SENTINEL_GATE)
-                                .execute(&pool)
+                                .execute(&mut conn)
                                 .await;
+                        let _ = conn.close().await;
                     });
                 })
                 .join()

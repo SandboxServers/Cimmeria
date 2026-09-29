@@ -42,6 +42,7 @@ pub mod org_cash;
 pub mod organization;
 pub mod outbox;
 pub mod player_index;
+pub mod plugin;
 pub mod rate_limit;
 pub mod session_identity;
 pub mod session_presence;
@@ -329,6 +330,19 @@ pub struct ConnectedClientState {
     /// `onUpdateCraftingOptions`, the options last sent, and an open
     /// crafting respec.
     pub crafting_options: crafting::options::CraftingSessionOptions,
+
+    /// Per-session feature state, one slot per feature type (#962, plugin
+    /// ADR §3.5). A base plugin keeps its session state here instead of
+    /// adding a field to this struct. Dies with the session; nothing in it
+    /// reaches the client or the database on its own.
+    pub extensions: plugin::SessionExtensions,
+
+    /// The base plugin registry this session was admitted under: the
+    /// service's table, stamped at login (`BaseService::set_plugins`). Hook
+    /// sites that hold the connected map read it through
+    /// [`plugin::session_plugins`]. Empty in a session built by a test that
+    /// installs no plugin.
+    pub plugins: plugin::BasePlugins,
 }
 
 impl ConnectedClientState {

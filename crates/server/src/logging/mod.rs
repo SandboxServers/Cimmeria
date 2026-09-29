@@ -18,6 +18,8 @@ use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntr
 use crate::otel;
 
 #[cfg(test)]
+mod client_index_tests;
+#[cfg(test)]
 mod deployables_target_tests;
 mod filters;
 #[cfg(test)]
@@ -30,8 +32,8 @@ mod stale_target_tests;
 mod target_scan_tests;
 
 use filters::{
-    otel_network_log_filter, otel_server_log_filter, otel_trace_log_filter, server_log_directives,
-    FILE_LAYERS, OTEL_FILTER, WIRE_FIREHOSE_MUTED,
+    otel_client_log_filter, otel_network_log_filter, otel_server_log_filter, otel_trace_log_filter,
+    server_log_directives, FILE_LAYERS, OTEL_FILTER, WIRE_FIREHOSE_MUTED,
 };
 
 // ── Logging ──────────────────────────────────────────────────────────────────
@@ -234,15 +236,17 @@ pub(crate) fn init_logging(
     // it's the load-bearing analytical surface here, so muting it would defeat
     // the purpose.
     //
-    // Spans go through `OTEL_FILTER`. Log records split across THREE providers
+    // Spans go through `OTEL_FILTER`. Log records split across FOUR providers
     // (see `otel::init` and the routing table in `filters`), each filter
-    // disjoint from the other two so a record lands in exactly one index:
+    // disjoint from the others so a record lands in exactly one index:
     //
     // - `cimmeria-server`: DEBUG and above, minus DEBUG/INFO from
     //   network-noise scopes. WARN+ from those scopes stays here.
     // - `cimmeria-network`: DEBUG/INFO from network-noise scopes.
     // - `cimmeria-trace`: every TRACE row a file layer keeps, plus the
     //   custom targets and the sampled firehose rows. NA25.
+    // - `cimmeria-client`: the telemetry ingest's client-side replays, at
+    //   every level; the other three reject them.
     if let Some(otel) = otel_layers {
         layers.push(Box::new(
             otel.trace.with_filter(EnvFilter::new(OTEL_FILTER)),
@@ -255,6 +259,9 @@ pub(crate) fn init_logging(
         ));
         layers.push(Box::new(
             otel.trace_log.with_filter(otel_trace_log_filter()),
+        ));
+        layers.push(Box::new(
+            otel.client_log.with_filter(otel_client_log_filter()),
         ));
     }
 

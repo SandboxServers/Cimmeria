@@ -6,9 +6,13 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::plugin;
 use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
+
+/// The message id of SGWPlayer base method 0 (`0xC0 | index`).
+pub(crate) const BASE_METHOD_ID: u8 = 0xC0;
 
 use super::feedback;
 use super::ConnectedClientState;
@@ -126,6 +130,34 @@ pub(crate) async fn dispatch_sgw_player_base_method(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // A plugin-owned base method (#962 step 5) goes to the plugin that
+    // registered it; every other index falls through to the static arms
+    // below. The registry is the one the session was admitted under. The
+    // entity-type gate (Account vs SGWPlayer) ran before this call, in
+    // `connect_loop`, so a plugin handler sits behind it like any arm.
+    if let Some(method_index) = msg_id.checked_sub(BASE_METHOD_ID) {
+        let plugins = plugin::session_plugins(connected, addr);
+        if let Some(handler) = plugins.base_method(method_index) {
+            handler(plugin::BaseMethodCall {
+                addr,
+                method_index,
+                args: payload,
+                player_name,
+                key,
+                entity_manager,
+                ctx: plugin::BaseCtx {
+                    db_pool,
+                    cell_tx,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                },
+            })
+            .await;
+            return Ok(());
+        }
+    }
+
     match msg_id {
         sgw_player_base::SEND_PLAYER_COMMUNICATION => {
             chat::handle_send_player_communication(

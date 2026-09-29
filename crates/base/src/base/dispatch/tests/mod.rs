@@ -7,6 +7,9 @@
 //! - [`chat_speaker_flags`]: `speaker_flags` GM/DND assembly, `CHAT_SET_DND`
 //!   set/clear/malformed handling, per-character DND reset, and `CHAT_SET_AFK`.
 //! - [`crafting_teardown`]: `logOff` drops the queued crafting inductions.
+//! - [`plugin_routing`]: the base plugin seams (#962 step 5): plugin-owned
+//!   base methods reach their plugin before the static arms, and `logOff` and
+//!   the disconnect teardown fire their session hooks.
 //! - [`organization`]: the 0xCF-0xD2 arm answers each call with
 //!   `onErrorCode` and a feedback line, and drops a malformed payload.
 //! - [`chat_flood_limit`]: the chat bucket and length cap before the cell
@@ -38,5 +41,6 @@ mod org_invite_logoff;
 mod org_logoff_presence;
 mod organization;
 mod player_index_logoff;
+mod plugin_routing;
 mod routing_logging;
 mod tell;

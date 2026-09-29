@@ -83,10 +83,27 @@ services:
       # explicit builder attribute beats OTEL_RESOURCE_ATTRIBUTES: without it
       # every colo row is tagged "dev".
       CIMMERIA_DEPLOY_ENV: "colo"
-      # Launcher telemetry: the secret that signs /api/auth/dev-session
-      # tokens. Put `CIMMERIA_TELEMETRY_HMAC_SECRET=<openssl rand -hex 64>`
-      # in /opt/cimmeria/.env; unset, every telemetry session is refused.
+      # Client telemetry (the launcher's uploads and the injected client
+      # DLL's events, which land in SigNoz as service.name=cimmeria-client).
+      # Both values come from /opt/cimmeria/.env; never commit them here.
+      #
+      # The secret that signs and verifies /api/auth/dev-session tokens:
+      #   CIMMERIA_TELEMETRY_HMAC_SECRET=<output of: openssl rand -hex 64>
+      # Unset or shorter than 32 bytes, every mint and upload is refused
+      # (500), and the server logs `dev_session_secret_unusable` at startup
+      # and on each refused request. The game itself is unaffected, which
+      # is why this is not a hard `:?` requirement.
       CIMMERIA_TELEMETRY_HMAC_SECRET: "${CIMMERIA_TELEMETRY_HMAC_SECRET:-}"
+      # The upload base the mint hands back to launchers and lab clients;
+      # they append /upload-chunk and /upload-bundle. Players' launchers
+      # refuse plain http to another machine, so this must be an https URL
+      # that reaches this container's port 8443, e.g. a Cloudflare Tunnel
+      # hostname (docs/operations/telemetry.md, "Enable client telemetry on
+      # the colo"):
+      #   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=https://<telemetry-host>/api/telemetry
+      # Blank falls back to http://localhost:8443/api/telemetry, which only
+      # a launcher on this host can use.
+      CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT: "${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}"
       OTEL_TRACES_SAMPLER: "always_on"
     # Intentionally NO `volumes:` for postgres data. The entrypoint
     # (`docker/entrypoint.sh`) reseeds /var/lib/postgresql/data from

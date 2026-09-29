@@ -13,7 +13,8 @@ use cimmeria_services::orchestrator::Orchestrator;
 
 use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
 
-use super::dto::{BundleResponse, ChunkResponse, ClientNativeEvent, IngestError, TelemetryEvent};
+use super::dto::{BundleResponse, ChunkResponse, IngestError};
+use super::replay::replay_ndjson;
 use super::{
     MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES, MAX_CHUNK_BYTES,
     MAX_CHUNK_DECOMPRESSED_BYTES,
@@ -49,25 +50,17 @@ pub(super) async fn upload_chunk(
         ));
     }
 
-    let mut parsed = 0u64;
-    let mut accepted = 0u64;
-    for (idx, line) in ndjson.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        parsed += 1;
-        let ev: TelemetryEvent = serde_json::from_str(line).map_err(|e| IngestError::Ndjson {
-            line: idx as u64 + 1,
-            err: e.to_string(),
-        })?;
-        replay_event(&claims, ev);
-        accepted += 1;
-    }
+    let counts = replay_ndjson(&claims, &ndjson).map_err(|e| IngestError::Ndjson {
+        line: e.line,
+        err: e.err,
+    })?;
+    let (accepted, parsed) = (counts.accepted, counts.parsed);
 
     tracing::debug!(
         target: "launcher.ingest",
         session_id = %claims.sid,
         install_id = %claims.sub,
+        session_kind = claims.session_kind(),
         accepted,
         parsed,
         body_bytes = body.len(),
@@ -242,6 +235,8 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
                 target: "launcher.client_log",
                 session_id = %claims.sid,
                 install_id = %claims.sub,
+                cimmeria.session_kind = claims.session_kind(),
+                lab = claims.is_lab(),
                 source = "bundle",
                 source_file = %path,
                 message = %line,
@@ -286,147 +281,4 @@ pub(super) fn verify_bearer(headers: &HeaderMap) -> Result<TokenClaims, IngestEr
         }));
     }
     Ok(claims)
-}
-
-fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
-    // Every event carries the launcher's session_id and install_id so
-    // SigNoz queries can slice by session or by player without
-    // joining across rows. Field naming matches the dev_session mint
-    // event so a session's mint + uploads correlate naturally.
-    match ev {
-        TelemetryEvent::ClientLog(e) => {
-            tracing::info!(
-                target: "launcher.client_log",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
-                ts_ms = e.ts_ms,
-                seq = e.seq,
-                source_file = %e.source_file,
-                level = %e.level,
-                category = %e.category,
-                packet_no = ?e.packet_no,
-                message = %e.message,
-            );
-        }
-        TelemetryEvent::DebugLog(e) => {
-            tracing::info!(
-                target: "launcher.debug_log",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
-                ts_ms = e.ts_ms,
-                seq = e.seq,
-                source_file = %e.source_file,
-                level = %e.level,
-                message = %e.message,
-            );
-        }
-        TelemetryEvent::KeyDump(e) => {
-            // KeyDump entries are encryption key material observed by
-            // the client. Useful for offline pcap decryption — but we
-            // intentionally do NOT log the key body at info; debug
-            // only, so the default sinks don't carry it to disk.
-            tracing::debug!(
-                target: "launcher.key_dump",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
-                ts_ms = e.ts_ms,
-                seq = e.seq,
-                source_file = %e.source_file,
-                key_b64 = %e.key_b64,
-            );
-        }
-        TelemetryEvent::SessionMeta(e) => {
-            tracing::info!(
-                target: "launcher.session_meta",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
-                ts_ms = e.ts_ms,
-                seq = e.seq,
-                kind = %e.kind,
-                fields = %serde_json::Value::Object(e.fields),
-            );
-        }
-        TelemetryEvent::ClientNative(e) => {
-            replay_client_native(claims, e);
-        }
-    }
-}
-
-/// Replay one injected-DLL event through `tracing`.
-///
-/// Routing differs from the other launcher event types:
-///
-/// - **Target is dynamic.** The DLL ships a `target` field
-///   (e.g. `"client.frame_tick"`); we forward it as-is so SigNoz
-///   queries can filter by hook category. We also pin a static
-///   prefix (`client.native`) in the macro so the bucket is always
-///   discoverable even when an event omits a more specific target.
-/// - **`service_name = cimmeria-client` field.** The tracing macro
-///   grammar in this version doesn't accept the dotted-string field
-///   key `"service.name"`, so we surface the routing hint as
-///   `service_name` (snake_case). SigNoz queries against this stream
-///   filter on `service_name="cimmeria-client"`. True OpenTelemetry-spec
-///   `service.name` Resource override would require either a second
-///   exporter `Resource` (per-request override isn't a thing at the
-///   OTLP layer) or a tracing-attributes shim that rewrites the
-///   field name on emit — deliberately deferred. The data is the
-///   same either way; only the SigNoz query key differs.
-/// - **`level` is honoured** if it matches one of `trace`/`debug`/
-///   `info`/`warn`/`error`; unknown values fall through to `info`
-///   so a typo in the DLL never silently drops an event.
-pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
-    let fields_json = serde_json::Value::Object(e.fields);
-    match e.level.as_str() {
-        "trace" => tracing::trace!(
-            target: "client.native",
-            service_name = "cimmeria-client",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = %e.target,
-            fields = %fields_json,
-        ),
-        "debug" => tracing::debug!(
-            target: "client.native",
-            service_name = "cimmeria-client",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = %e.target,
-            fields = %fields_json,
-        ),
-        "warn" => tracing::warn!(
-            target: "client.native",
-            service_name = "cimmeria-client",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = %e.target,
-            fields = %fields_json,
-        ),
-        "error" => tracing::error!(
-            target: "client.native",
-            service_name = "cimmeria-client",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = %e.target,
-            fields = %fields_json,
-        ),
-        // `info` and any unrecognised value
-        _ => tracing::info!(
-            target: "client.native",
-            service_name = "cimmeria-client",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = %e.target,
-            fields = %fields_json,
-        ),
-    }
 }

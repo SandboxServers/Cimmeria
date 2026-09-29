@@ -24,6 +24,7 @@ use super::*;
 
 mod crafting_options;
 mod crafting_queue;
+mod plugin_hooks;
 mod space_fallback;
 mod transfer;
 mod world_name;
@@ -102,6 +103,8 @@ pub(super) fn make_state() -> ConnectedClientState {
             "127.0.0.1:9999".parse().unwrap(),
         )),
         crafting_options: Default::default(),
+        extensions: Default::default(),
+        plugins: Default::default(),
     }
 }
 

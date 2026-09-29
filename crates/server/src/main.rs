@@ -24,8 +24,8 @@
 //! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
 //! | `MERCURY_ENCRYPTION_VERSION` | `1` | Mercury wire-encryption version applied to every session. `1` = legacy (only version unpatched clients understand), `2` = modernized. Server-wide; no per-client negotiation yet. Unknown values fall back to `1`. |
 //! | `RUST_LOG` | `info` | Log filter (e.g. `debug`, `cimmeria_services=trace`) |
-//! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session` and the launcher upload endpoints at `/api/telemetry/upload-{chunk,bundle}`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
-//! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload endpoint URL handed back to the launcher in the dev-session response. The default works when the launcher and server share a host; cross-host deployments MUST override (e.g. to a public LAN URL, or through the Cloudflare Tunnel). See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
+//! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the dev-session token mint at `/api/auth/dev-session` (launchers and lab supervisors) and the upload endpoints at `/api/telemetry/upload-{chunk,bundle}`, whose client-side rows land in SigNoz as `service.name = cimmeria-client`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset or shorter than 32 bytes ⇒ every mint and upload returns 500, logged as `dev_session_secret_unusable` at startup (WARN) and per request (ERROR). On the colo it comes from `/opt/cimmeria/.env` through `docker/compose.yml`. |
+//! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload **base** URL handed back in the dev-session response; callers append `/upload-chunk` and `/upload-bundle`. Unset or blank ⇒ the default, which works only when the caller shares the host. Players' launchers accept only `https://` to another machine, so a remote deployment sets an HTTPS URL (e.g. a Cloudflare Tunnel hostname). Logged once at startup. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
 //! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
 //! | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | Fixed window the dev-session mint/refresh quotas below are counted over. |
 //! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints allowed per peer address per window on `/api/auth/dev-session`; over quota returns 429 + `Retry-After`. `0` disables. Note that a whole team behind one NAT or reverse proxy shares one bucket — raise it there. |
@@ -204,6 +204,7 @@ async fn main() {
     let admin_listener = match tokio::net::TcpListener::bind(&admin_addr).await {
         Ok(listener) => {
             tracing::info!(addr = %admin_addr, "Admin API listening");
+            cimmeria_admin_api::routes::dev_session::log_boot_status();
             listener
         }
         Err(e) => {
