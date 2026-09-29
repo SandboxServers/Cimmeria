@@ -155,6 +155,14 @@ The launcher side is BM-06; the operator detail is in
   while the other DLL is mid-install could lose one of the two detours.
   The telemetry DLL and the lab bridge's dynamic hooks follow the same
   rule (`LockOutcome::permits_hooking`).
+- **A build that does not match fails at once.** Before waiting for
+  `lua51.dll`, the DLL reads every site once; any site that is neither
+  stock nor an `E9` jump (whether that jump may be chained is decided
+  later, under the lock) ends the boot with the same "nothing installed"
+  line the launcher parses. `crates/sgw-testhost`, a 32-bit stand-in for
+  `SGW.exe`, pins this: the DLL, injected through `sgw-start32`, logs
+  every site, installs nothing, and the host exits cleanly
+  (`client-dll-boot.yml`).
 - **The receive path is generic.** "A shelved client method, matched by name,
   decoded in Rust and forwarded to Lua" works for any method the telemetry
   DLL's drop oracle reports. A new feature adds its names, a codec in

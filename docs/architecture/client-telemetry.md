@@ -238,6 +238,13 @@ To preserve "observe without changing behavior":
 ## CI
 
 - `.github/workflows/client-telemetry-build.yml` — Windows-native CI for `i686-pc-windows-msvc`. fmt + clippy `-D warnings` + build (asserts `.dll` artifact lands) + nextest. Clippy and nextest each run twice, once with `--features lab-bridge`, because the bridge only compiles under that feature (#916).
+- `.github/workflows/client-dll-boot.yml` — boots the DLL without the game. `tools/testhost/stage.sh` builds `sgw-testhost.exe` (a 32-bit stand-in for `SGW.exe`), `sgw-start32.exe`, and both telemetry builds for i686. The tests in `crates/sgw-testhost/tests/dll_boot.rs` then inject the DLL through the helper and check four things:
+  - the attach line and the fingerprint verdict in the local log;
+  - that no hooks went in;
+  - a clean host exit;
+  - the upload of `client.dll.attached` and `client.hooks.fingerprint` to a mock endpoint, with the session token.
+
+  The lab build must bind the session's loopback port, refuse a wrong token, accept the right one, and answer a request. With no `Tick` hook in the host, that answer is the dispatch timeout.
 - Main `.github/workflows/test.yml` excludes the Windows-only cdylib from the Linux workspace check.
 - `crates/launcher/`'s existing CI continues to cover the injector module via its own pipeline.
 

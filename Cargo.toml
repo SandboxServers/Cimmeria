@@ -64,6 +64,7 @@ members = [
     "crates/patch-wire",
     "crates/client-patches",
     "crates/client-hookgate",
+    "crates/sgw-testhost",
 ]
 default-members = [
     "crates/common",

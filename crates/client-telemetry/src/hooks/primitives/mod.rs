@@ -64,7 +64,10 @@ pub enum HookError {
 }
 
 /// Minimum bytes overwritten by a relative-JMP detour:
-/// `E9 <rel32>` = 1 opcode byte + 4 displacement bytes.
+/// `E9 <rel32>` = 1 opcode byte + 4 displacement bytes. Only the x86
+/// inline-hook code uses it; the x86_64 build (host tests, and the DLL
+/// boot tests' dependency on this crate) compiles that code out.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 pub const JMP_REL32_LEN: usize = 5;
 
 // ─── Inline (JMP-trampoline) hook ───────────────────────────────

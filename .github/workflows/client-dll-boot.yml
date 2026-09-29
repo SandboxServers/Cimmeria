@@ -1,0 +1,79 @@
+name: client-dll-boot
+
+# Boots the injected client DLLs inside sgw-testhost, a 32-bit stand-in for
+# SGW.exe, without the game: each DLL is injected through the launcher's
+# sgw-start32 helper, must fail its fingerprint gate closed, and must let
+# the host exit cleanly. The telemetry DLL's upload reaches a mock
+# endpoint, and the lab bridge answers its handshake. See
+# crates/sgw-testhost/ and docs/architecture/client-telemetry.md.
+#
+# Path-filtered to the crates that make up that path.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/sgw-testhost/**'
+      - 'crates/client-telemetry/**'
+      - 'crates/client-patches/**'
+      - 'crates/client-hookgate/**'
+      - 'crates/client-launch/**'
+      - 'crates/start32/**'
+      - 'crates/patch-wire/**'
+      - 'tools/testhost/**'
+      - '.github/workflows/client-dll-boot.yml'
+  pull_request:
+    paths:
+      - 'crates/sgw-testhost/**'
+      - 'crates/client-telemetry/**'
+      - 'crates/client-patches/**'
+      - 'crates/client-hookgate/**'
+      - 'crates/client-launch/**'
+      - 'crates/start32/**'
+      - 'crates/patch-wire/**'
+      - 'tools/testhost/**'
+      - '.github/workflows/client-dll-boot.yml'
+
+concurrency:
+  group: client-dll-boot-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+permissions:
+  contents: read
+
+jobs:
+  boot:
+    name: DLL boot tests in sgw-testhost (i686 host, x86_64 caller)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: clippy
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: client-dll-boot-windows
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: cargo clippy (test host and its tests)
+        run: |
+          cargo clippy -p cimmeria-sgw-testhost --all-targets -- -D warnings
+          cargo clippy -p cimmeria-sgw-testhost --target i686-pc-windows-msvc --all-targets -- -D warnings
+      # i686: the test host, sgw-start32, both DLLs, and the lab-bridge
+      # telemetry build, into target/testhost.
+      - name: stage the i686 build
+        shell: bash
+        run: bash tools/testhost/stage.sh
+      # The tests run 64-bit, like the launcher, and drive the i686 helper.
+      # CIMMERIA_TESTHOST_REQUIRE turns a missing stage into a failure.
+      - name: cargo nextest run
+        env:
+          CIMMERIA_TESTHOST_REQUIRE: '1'
+        run: cargo nextest run --profile=ci -p cimmeria-sgw-testhost
