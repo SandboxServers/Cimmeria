@@ -2,8 +2,8 @@
 //!
 //! Side-loaded into `SGW.exe` by `sgw-launcher`'s injector
 //! ([`crates/launcher/src/inject.rs`]) at game start. Once attached,
-//! the DLL installs CME EventSignal subscribers, function hooks, and
-//! log tees that observe gameplay without modifying it; events flow
+//! the DLL installs function hooks and log tees that observe gameplay
+//! without modifying it; events flow
 //! through a lock-free MPMC ring to a separate uploader thread that
 //! POSTs them to cimmeria-server's `/api/telemetry/upload-chunk`
 //! endpoint, where they're replayed into `tracing` and shipped to
@@ -38,11 +38,11 @@
 // session loader, and uploader thread compile and run on Linux for
 // unit tests; only the Windows cdylib actually executes them inside
 // SGW.exe.
-pub mod cme;
 pub mod events;
 pub mod fingerprint;
 pub mod hooks;
 pub mod log;
+pub mod msvc_string;
 pub mod queue;
 pub mod session;
 pub mod uploader;

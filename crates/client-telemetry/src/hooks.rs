@@ -7,20 +7,23 @@
 //! # What gets hooked
 //!
 //! Anchors per the `client-instrumentation-hookpoints.md` and
-//! `client-instrumentation-entry-points.md` docs. Four techniques across
-//! Phases 2-5:
+//! `client-instrumentation-entry-points.md` docs. Three techniques:
 //!
-//! - **CME EventSignal subscribe** (no code patching) —
-//!   `cme_hooks.rs`. Currently: `Event_NetIn_onClientReady`,
-//!   `Event_NetIn_onClientMapLoad`. Phase 3a will add ~270 events
-//!   via RTTI auto-discovery.
-//! - **Inline JMP** (MinHook) — `inline_hooks/`. 10 hooks:
+//! - **Inline JMP** (MinHook) — `inline_hooks/`. 11 hooks:
 //!   FEngineLoop::Tick, FArchiveAsync::Serialize,
 //!   UWorld::UpdateLevelStreamingInner, UObject::StaticLoadObject,
 //!   GameBeing::onStateFieldUpdate, USGWAnimNotify::Notify A+B,
 //!   APlayerController::execConsoleCommand,
-//!   FFullScreenMovieBink::Tick, and the entity-method silent-drop
-//!   oracle (`client.dispatch.method_dropped`).
+//!   FFullScreenMovieBink::Tick, the entity-method silent-drop
+//!   oracle (`client.dispatch.method_dropped`), and the CME
+//!   event-registry lookup (`client.cme.event`), which names every
+//!   CME event the client creates, inbound server methods included.
+//!
+//! There is no CME subscriber install any more. The old one called
+//! `0x00a5c0f0` with a C string where it takes a `std::string`, and
+//! `0x00a5c150`, which is `count(name)` on the same map, as
+//! "subscribe": it could only ever fail (2026-09-28). The event-registry
+//! hook replaces the two events it was meant to produce.
 //! - **IAT swap** — `iat_hooks.rs`. 7 hooks: lua_pcall/call/newstate
 //!   + CreateThread + LoadLibraryW/A + GetForegroundWindow.
 //! - **Vtable swap** — `vtable_hooks.rs`. 3 hooks: CEGUI::DefaultLogger::
@@ -51,9 +54,14 @@
 use crate::events::ClientNativeEvent;
 use crate::queue::Producer;
 
-mod cme_hooks;
+// Pure helpers run only from the i686 CEGUI logger detour.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+mod cegui_log;
 mod iat_hooks;
 mod inline_hooks;
+// Used only by the i686 CME event-factory detour.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+mod name_throttle;
 // `pub(crate)` so the lab bridge's dynamic-hook installer
 // (`bridge::dynamic_hooks::native`, #686) can reuse the inline-hook
 // trampoline primitive without duplicating the protect/patch/flush dance.
@@ -78,7 +86,6 @@ pub use primitives::{replace_iat_slot, swap_vtable_slot, HookError};
 pub fn install_all(producer: Producer) {
     // Each install function is responsible for its own success/
     // failure event. Order doesn't matter — they're independent.
-    cme_hooks::install(producer.clone());
     inline_hooks::install(producer.clone());
     iat_hooks::install(producer.clone());
     vtable_hooks::install(producer);

@@ -19,6 +19,8 @@ pub mod autologin;
 pub mod autologin_bridge;
 pub mod crash_report;
 pub mod heartbeat;
+pub mod input;
+pub mod keys;
 pub mod process;
 pub mod recovery;
 pub mod screenshot;
@@ -71,6 +73,9 @@ pub struct SupervisorConfig {
     pub install_dir: Option<PathBuf>,
     /// Telemetry DLL (built with `--features lab-bridge`) to inject.
     pub dll_path: Option<PathBuf>,
+    /// `cimmeria-client-patches.dll`, injected before the bridge DLL as the
+    /// launcher does (`CIMMERIA_LAB_PATCHES_DLL`). Unset = bridge only.
+    pub patches_dll: Option<PathBuf>,
     /// The i686 `sgw-start32.exe` helper that does the injection (#985):
     /// `CIMMERIA_LAB_START32`, else beside this executable.
     pub helper_path: Option<PathBuf>,
@@ -106,9 +111,14 @@ impl SupervisorConfig {
                 .map(PathBuf::from),
             exe_dir.as_deref(),
         );
+        let patches_dll = std::env::var("CIMMERIA_LAB_PATCHES_DLL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from);
         Self {
             install_dir,
             dll_path,
+            patches_dll,
             helper_path,
             bind: std::env::var("CIMMERIA_LAB_BRIDGE_BIND")
                 .unwrap_or_else(|_| DEFAULT_BRIDGE_BIND.to_string()),
@@ -325,11 +335,16 @@ impl Supervisor {
         );
         session_file::write_session(&install_dir, &session)?;
 
-        // Native launch runs on a blocking thread.
-        let (install2, dll2) = (install_dir.clone(), dll_path.clone());
-        let pid = tokio::task::spawn_blocking(move || process::launch(&install2, &dll2, &helper))
-            .await
-            .map_err(|e| format!("launch task: {e}"))??;
+        // Native launch runs on a blocking thread. SGW.exe lives in
+        // `<install>/Binaries`, next to the `sessions/` dir the session file
+        // was just written to; the launcher starts it there too.
+        let (bin2, dll2) = (install_dir.join("Binaries"), dll_path.clone());
+        let patches = self.config.patches_dll.clone();
+        let pid = tokio::task::spawn_blocking(move || {
+            process::launch(&bin2, &dll2, &helper, patches.as_deref())
+        })
+        .await
+        .map_err(|e| format!("launch task: {e}"))??;
 
         // Point the bridge at the fresh per-launch token.
         let addr = format!("{}:{}", self.config.connect_host(), self.config.port);
@@ -357,6 +372,14 @@ impl Supervisor {
                     ));
                 }
             }
+        }
+        // Two clients on one machine misbehave, and a client the lab did not
+        // start (the launcher, a player) is not the lab's to stop.
+        let others = process::running_sgw_pids();
+        if !others.is_empty() {
+            return Err(format!(
+                "SGW.exe is already running (pid {others:?}) outside the lab; close it before                  starting a lab client"
+            ));
         }
         let pid = self.launch_client(server_override).await?;
         self.spawn_watchdog(pid);
@@ -631,6 +654,7 @@ mod tests {
         let c = SupervisorConfig {
             install_dir: None,
             dll_path: None,
+            patches_dll: None,
             helper_path: None,
             bind: "0.0.0.0".into(),
             port: 8770,

@@ -474,6 +474,12 @@ unsafe extern "stdcall-unwind" fn get_foreground_window_detour() -> *mut c_void 
         }
     });
 
+    // Lab virtual focus: report the game window as foreground so a lab
+    // client in the background keeps processing the injected input.
+    #[cfg(feature = "lab-bridge")]
+    if let Some(hwnd) = crate::bridge::input::virtual_focus_hwnd() {
+        return hwnd as *mut c_void;
+    }
     let orig_addr = ORIG_GET_FOREGROUND_WINDOW.load(Ordering::Acquire);
     if orig_addr == 0 {
         return std::ptr::null_mut();

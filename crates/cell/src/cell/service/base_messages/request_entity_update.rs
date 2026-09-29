@@ -79,6 +79,10 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
 
     let mut known = 0usize;
     let mut unknown = 0usize;
+    // Kept for the acknowledgement log: which entity the client just created
+    // is the evidence for "the client has it" in visibility investigations
+    // (a real message carries exactly one id).
+    let requested_ids = entity_ids.clone();
     for entity_id in entity_ids {
         let target_eid = EntityId(entity_id as i32);
         if witness.witnesses.contains(&target_eid) {
@@ -110,6 +114,7 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
         truncated,
         known,
         unknown,
+        entity_ids = ?requested_ids,
         account_id = identity.account_id,
         player_id = identity.player_id,
         "RequestEntityUpdate acknowledged"

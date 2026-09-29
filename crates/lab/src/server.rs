@@ -155,6 +155,74 @@ pub struct TimelineToolArgs {
     pub since_ms: Option<i64>,
 }
 
+/// Args for `client_input_key`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct InputKeyArgs {
+    /// Key name (`"W"`, `"Enter"`, `"Escape"`, `"F1"`, `"Space"`, `"1"`, ...).
+    pub key: String,
+    /// `"tap"` (default: press, hold, release), `"down"` or `"up"`.
+    #[serde(default)]
+    pub action: Option<String>,
+    /// How long a tap holds the key, in ms (default 80).
+    #[serde(default)]
+    pub hold_ms: Option<u64>,
+}
+
+/// Args for `client_input_mouse`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct InputMouseArgs {
+    /// Relative motion (DirectInput counts).
+    #[serde(default)]
+    pub dx: i32,
+    #[serde(default)]
+    pub dy: i32,
+    /// Wheel (120 per notch).
+    #[serde(default)]
+    pub wheel: i32,
+    /// Button index: 0 left, 1 right, 2 middle.
+    #[serde(default)]
+    pub button: Option<usize>,
+    /// `"click"` (default), `"down"` or `"up"`.
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub hold_ms: Option<u64>,
+}
+
+/// Args for `client_ui_click`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct UiClickArgs {
+    /// Named CEGUI window (a Lua global, e.g. `"Login_LoginButton"`).
+    pub window: String,
+    /// 0 left (default), 1 right.
+    #[serde(default)]
+    pub button: Option<usize>,
+}
+
+/// Args for `client_cursor_move`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CursorMoveArgs {
+    /// UI pixel x (the client area CEGUI uses).
+    pub x: i32,
+    /// UI pixel y.
+    pub y: i32,
+}
+
+/// Args for `client_type_text`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct TypeTextArgs {
+    /// Text to type into the focused edit box.
+    pub text: String,
+}
+
+/// Args for `client_input_focus`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct InputFocusArgs {
+    /// true: the game treats its window as foreground (input works while
+    /// it is in the background). false: normal focus.
+    pub on: bool,
+}
+
 /// The MCP server. Holds the shared supervisor (which owns the bridge
 /// client and the process lifecycle) and the timeline builder.
 #[derive(Clone)]
@@ -354,6 +422,95 @@ impl LabServer {
         Parameters(args): Parameters<ServerArg>,
     ) -> Result<CallToolResult, McpError> {
         self.wrap(self.supervisor.login(args.server).await)
+    }
+
+    // ---- Native input: DirectInput keys/buttons, window-message cursor/text
+
+    #[tool(
+        description = "Press, release, or tap a key as the window messages a real key press produces (WM_KEYDOWN/WM_KEYUP; the game translates them itself). Works while the client is in the background. Keys: letters, digits, Enter, Escape, Tab, Space, Backspace, arrows, F1-F12, Shift, Ctrl, Alt, Home/End/PageUp/PageDown/Insert/Delete."
+    )]
+    async fn client_input_key(
+        &self,
+        Parameters(a): Parameters<InputKeyArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let action = a.action.as_deref().unwrap_or("tap");
+        self.wrap(self.supervisor.input_key(&a.key, action, a.hold_ms).await)
+    }
+
+    #[tool(
+        description = "Relative mouse motion / wheel through the game's DirectInput mouse (mouse-look while the viewport has the mouse captured), and/or a mouse-button press, release or click (window messages) at the current UI cursor."
+    )]
+    async fn client_input_mouse(
+        &self,
+        Parameters(a): Parameters<InputMouseArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.wrap(
+            self.supervisor
+                .input_mouse(
+                    a.dx,
+                    a.dy,
+                    a.wheel,
+                    a.button,
+                    a.action.as_deref(),
+                    a.hold_ms,
+                )
+                .await,
+        )
+    }
+
+    #[tool(
+        description = "Click a named UI window like a player: read its on-screen rectangle, put the UI cursor on its centre (CEGUI cursor, mirrored into the virtual GetCursorPos), then click with real button messages. Refuses hidden or missing windows."
+    )]
+    async fn client_ui_click(
+        &self,
+        Parameters(a): Parameters<UiClickArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.wrap(
+            self.supervisor
+                .ui_click(&a.window, a.button.unwrap_or(0))
+                .await,
+        )
+    }
+
+    #[tool(description = "Place the UI cursor at (x, y) in UI pixels and confirm it is there.")]
+    async fn client_cursor_move(
+        &self,
+        Parameters(a): Parameters<CursorMoveArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let r = self.supervisor.move_cursor(a.x, a.y).await;
+        self.wrap(r.map(|(x, y)| json!({ "cursor": [x, y] })))
+    }
+
+    #[tool(
+        description = "Type text into the focused edit box, one key press per character (Shift held for capitals). Letters, digits, space, - _ / and . (so slash commands and the GM console can be typed into chat). Click the edit box first with client_ui_click."
+    )]
+    async fn client_type_text(
+        &self,
+        Parameters(a): Parameters<TypeTextArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.type_text(&a.text).await)
+    }
+
+    #[tool(
+        description = "Virtual focus on/off: while on, the game reports its window as the foreground window, so it keeps reading the lab's input while the desktop has focus elsewhere."
+    )]
+    async fn client_input_focus(
+        &self,
+        Parameters(a): Parameters<InputFocusArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.input_focus(a.on).await)
+    }
+
+    #[tool(
+        description = "Input hook status: DirectInput devices seen, GetDeviceState/GetDeviceData call counts, held keys/buttons, virtual focus."
+    )]
+    async fn client_input_status(&self) -> Result<CallToolResult, McpError> {
+        self.proxy("input_status", json!({})).await
+    }
+
+    #[tool(description = "Release every held key and mouse button.")]
+    async fn client_input_release(&self) -> Result<CallToolResult, McpError> {
+        self.proxy("input_release", json!({})).await
     }
 
     #[tool(description = "Capture the client's main window and return it as a PNG image.")]

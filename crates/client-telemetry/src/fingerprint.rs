@@ -102,46 +102,21 @@ pub const ANIM_NOTIFY_B: Site = code_site(
     ],
 );
 
-/// CME `EventSignal` system singleton getter, called by the subscriber
-/// install (`crate::cme::ADDR_GET_SYSTEM`).
-pub const CME_GET_SYSTEM: Site = code_site(
-    "CME GetSystem",
-    0x0155_f790,
-    &[
-        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0x0C, 0x0F, 0x79,
-    ],
-);
-
-/// CME signal lookup by name (`crate::cme::ADDR_LOOKUP_BY_NAME`).
-pub const CME_LOOKUP_BY_NAME: Site = code_site(
-    "CME EventSignal lookup by name",
+/// CME event-registry lookup, hooked for `client.cme.event`: `mov eax,
+/// [esp+4]; sub esp, 8; push ebx; push ebp; push esi; push edi`. It was
+/// fingerprinted before as "EventSignal lookup by name" for the removed
+/// CME subscriber install, together with `0x0155f790`, `0x00a5c150` and
+/// `0x00e04570`, which nothing calls any more.
+pub const CME_EVENT_FACTORY: Site = code_site(
+    "CME event registry lookup",
     0x00a5_c0f0,
     &[
         0x8B, 0x44, 0x24, 0x04, 0x83, 0xEC, 0x08, 0x53, 0x55, 0x56, 0x57, 0x8B,
     ],
 );
 
-/// CME `EventSignal` subscribe (`crate::cme::ADDR_SUBSCRIBE`).
-pub const CME_SUBSCRIBE: Site = code_site(
-    "CME EventSignal subscribe",
-    0x00a5_c150,
-    &[
-        0x8B, 0x44, 0x24, 0x04, 0x83, 0xEC, 0x08, 0x53, 0x56, 0x57, 0x8B, 0xF1,
-    ],
-);
-
-/// CME member-callback invoker the fake subscriber vtable points at
-/// (`crate::cme::ADDR_INVOKE_MEMBER_CALLBACK`).
-pub const CME_INVOKE_MEMBER_CALLBACK: Site = code_site(
-    "CME invoke member callback",
-    0x00e0_4570,
-    &[
-        0x8B, 0x54, 0x24, 0x04, 0x51, 0x8B, 0xC1, 0x8B, 0xCC, 0x89, 0x11, 0x8B,
-    ],
-);
-
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 14] = [
+pub const CODE_SITES: [Site; 11] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -152,10 +127,7 @@ pub const CODE_SITES: [Site; 14] = [
     STATE_FIELD_UPDATE,
     ANIM_NOTIFY_A,
     ANIM_NOTIFY_B,
-    CME_GET_SYSTEM,
-    CME_LOOKUP_BY_NAME,
-    CME_SUBSCRIBE,
-    CME_INVOKE_MEMBER_CALLBACK,
+    CME_EVENT_FACTORY,
 ];
 
 const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {

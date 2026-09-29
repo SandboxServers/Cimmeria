@@ -30,6 +30,9 @@ pub struct Config {
     /// Per-event-kind toggles. Every `EventKind` is keyed; missing TOML
     /// entries fall back to [`EventToggles::default`].
     pub events: EventToggles,
+    /// Accounts whose events never post (login names, any case, or numeric
+    /// account ids): the lab account, test accounts. See [`crate::mute`].
+    pub muted_accounts: Vec<String>,
 }
 
 impl std::fmt::Debug for Config {
@@ -40,6 +43,7 @@ impl std::fmt::Debug for Config {
             .field("avatar_url", &self.avatar_url)
             .field("channels", &self.channels)
             .field("events", &self.events)
+            .field("muted_accounts", &self.muted_accounts)
             .finish()
     }
 }
@@ -77,6 +81,7 @@ impl Config {
             avatar_url: None,
             channels: HashMap::new(),
             events: EventToggles::default(),
+            muted_accounts: Vec::new(),
         }
     }
 
@@ -205,6 +210,7 @@ rate_limit_per_min = 60
             avatar_url: None,
             channels: HashMap::new(),
             events: EventToggles::default(),
+            muted_accounts: Vec::new(),
         };
         assert!(cfg.events.server_startup, "default toggle is on");
         assert!(

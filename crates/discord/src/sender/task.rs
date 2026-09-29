@@ -59,6 +59,12 @@ async fn run_sender_task<S: DiscordSender>(
             continue;
         }
 
+        if crate::mute::is_muted(&cfg.muted_accounts, &event) {
+            // A lab or test account: never posted, counted as filtered.
+            stats.filtered.fetch_add(1, Ordering::Relaxed);
+            continue;
+        }
+
         let kind = event.kind();
         let channel = channel_for(kind);
         let Some(url) = cfg.webhook_url_for(kind) else {
@@ -187,6 +193,7 @@ mod tests {
             avatar_url: None,
             channels,
             events: toggles,
+            muted_accounts: Vec::new(),
         };
         Arc::new(ArcSwap::new(Arc::new(cfg)))
     }

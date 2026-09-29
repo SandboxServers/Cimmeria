@@ -9,7 +9,9 @@
 //! # Hook surface (this module)
 //!
 //! - **CEGUI::DefaultLogger::logEvent** (vtable slot 1 @ `0x01ac1bb0`)
-//!   — every UI log line (Phase 4). `0x01ac1ba8` is the RTTI locator
+//!   — every UI log line with its text (`client.ui.cegui_log`,
+//!   throttled per line for errors and per level otherwise; the text
+//!   was added 2026-09-28). `0x01ac1ba8` is the RTTI locator
 //!   pointer in front of the vtable, not slot 0; the old anchor
 //!   (`0x01ac1ba8 + 4`) swapped the destructor, which pops one stack
 //!   argument where this detour pops two.
@@ -209,11 +211,11 @@ unsafe fn install_one(
 ///   LoggingLevel level)` — vtable slot 1.
 ///
 /// Signature: `__thiscall fn(this, String const* message, int level)`.
-/// CEGUI's `String` is a custom class with a raw `wchar_t*` field
-/// at offset 0; we don't dereference it from the detour because
-/// CEGUI String semantics (refcount + grow buffer) are intricate
-/// and we'd rather not risk a refcount imbalance. The bare event
-/// is the load-bearing telemetry.
+/// In this client CEGUI's `String` is an MSVC `std::wstring` (its
+/// stream insert at `0x00477ff0` reads the size at `+0x14` and the
+/// characters through the `std::wstring` accessor `0x0046b250`), so
+/// [`super::cegui_log::observe`] copies the text out with the bounded
+/// reader in [`crate::msvc_string`]. It calls nothing on the string.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
 unsafe extern "thiscall-unwind" fn cegui_log_event_detour(
@@ -221,14 +223,7 @@ unsafe extern "thiscall-unwind" fn cegui_log_event_detour(
     message: *mut c_void,
     level: i32,
 ) {
-    let _ = std::panic::catch_unwind(|| {
-        if let Some(p) = crate::boot::producer() {
-            p.try_emit(
-                crate::events::ClientNativeEvent::builder("client.ui.cegui_log", "debug")
-                    .field("level", serde_json::json!(level)),
-            );
-        }
-    });
+    let _ = std::panic::catch_unwind(|| super::cegui_log::observe(message, level));
 
     let orig_addr = ORIG_CEGUI_LOG_EVENT.load(Ordering::Acquire);
     if orig_addr == 0 {

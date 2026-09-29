@@ -115,6 +115,10 @@ extra DB lookup happens at the Mercury login seam. Gameplay/world embeds also
 label the character on its own `Character` field rather than dropping a bare
 name into the description.
 
+## Muted accounts
+
+`[discord] muted_accounts = ["lab"]` keeps an account's events out of every channel: the live research lab's account, or a test account running scripted repros. Entries are login names (any case) or numeric account ids. An event is muted when it names the account (`account_id` / `account_name`, including an `account_id` field on a harvested warning), or when it names a character that account was seen with. Many events carry only the character name, so the characters are learned from the events that carry both, such as login and world entry. Muted events count as `filtered` in the sender stats. Code: [`crates/discord/src/mute/`](../../crates/discord/src/mute/mod.rs).
+
 ## Live reload
 
 The config file is watched via [`notify`](https://docs.rs/notify). On

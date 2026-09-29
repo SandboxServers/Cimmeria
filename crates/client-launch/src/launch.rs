@@ -152,16 +152,43 @@ pub fn launch_sgw_with_child(install_dir: &Path) -> Result<Child, LaunchError> {
     spawn(install_dir, "SGW.exe", false)
 }
 
+/// `Path::canonicalize` without the Windows verbatim prefix.
+///
+/// On Windows `canonicalize` returns `\\?\C:\...`. Windows does not
+/// normalize `..` inside a verbatim path, and SGW.exe finds its config as
+/// `..\SGWGame\Config\` relative to its working directory, so a verbatim
+/// cwd makes it fail at startup with "Failed to find default engine .ini
+/// file". A plain `C:\...` path names the same file.
+pub fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    Ok(strip_verbatim(path.canonicalize()?))
+}
+
+/// `\\?\C:\x` -> `C:\x` and `\\?\UNC\host\share` -> `\\host\share`;
+/// anything else is returned unchanged.
+pub fn strip_verbatim(path: PathBuf) -> PathBuf {
+    let Some(s) = path.to_str() else {
+        return path;
+    };
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
 /// `install_dir/SGW.exe`, canonicalized, refusing a target that
 /// resolves outside the install directory. Returns
-/// `(install dir, SGW.exe)`, both canonical.
+/// `(install dir, SGW.exe)`, both canonical and without the verbatim
+/// prefix (see [`canonical`]).
 pub fn checked_sgw_exe(install_dir: &Path) -> Result<(PathBuf, PathBuf), LaunchError> {
     let exe = install_dir.join("SGW.exe");
     if !exe.exists() {
         return Err(LaunchError::NotFound(exe));
     }
-    let canon_install = install_dir.canonicalize()?;
-    let canon_exe = exe.canonicalize()?;
+    let canon_install = canonical(install_dir)?;
+    let canon_exe = canonical(&exe)?;
     if !canon_exe.starts_with(&canon_install) {
         return Err(LaunchError::PathEscape {
             install_dir: canon_install,
@@ -212,8 +239,8 @@ fn spawn(install_dir: &Path, file: &str, via_cmd: bool) -> Result<Child, LaunchE
     // that resolves outside its declared root, which would otherwise
     // let an Atrea bat in an unexpected location run with the install
     // dir's cwd.
-    let canon_install = install_dir.canonicalize()?;
-    let canon_target = path.canonicalize()?;
+    let canon_install = canonical(install_dir)?;
+    let canon_target = canonical(&path)?;
     if !canon_target.starts_with(&canon_install) {
         return Err(LaunchError::PathEscape {
             install_dir: canon_install,
@@ -251,6 +278,40 @@ pub fn install_dir_writable(dir: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_verbatim_drops_the_prefix_from_disk_and_unc_paths_only() {
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"\\?\C:\SGW\Binaries")),
+            PathBuf::from(r"C:\SGW\Binaries")
+        );
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"\\?\UNC\host\share\SGW")),
+            PathBuf::from(r"\\host\share\SGW")
+        );
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"C:\SGW")),
+            PathBuf::from(r"C:\SGW")
+        );
+        // A verbatim non-disk path (a volume GUID) has no plain spelling.
+        let guid = PathBuf::from(r"\\?\Volume{0}\SGW");
+        assert_eq!(strip_verbatim(guid.clone()), guid);
+    }
+
+    /// Regression guard: SGW.exe started with a `\\?\` working directory
+    /// quits with "Failed to find default engine .ini file", because
+    /// `..\SGWGame\Config` does not resolve under a verbatim path. Reverting
+    /// `canonical` to a bare `canonicalize` fails this on Windows.
+    #[test]
+    fn checked_sgw_exe_returns_plain_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), "").unwrap();
+        let (install, exe) = checked_sgw_exe(dir.path()).unwrap();
+        for p in [&install, &exe] {
+            assert!(!p.to_string_lossy().starts_with(r"\\?\"), "{}", p.display());
+        }
+        assert!(exe.starts_with(&install));
+    }
 
     #[test]
     fn detect_finds_only_present_files() {
