@@ -8,7 +8,9 @@
 //! # Hook surface (this module)
 //!
 //! Phase 4 (Lua / scripted UI):
-//! - `lua_pcall` @ IAT `0x017F0228` — most common Lua dispatch
+//! - `lua_pcall` @ IAT `0x017F0228` — most common Lua dispatch; a
+//!   non-zero return reports the error string as `client.lua.error`
+//!   ([`lua_error`])
 //! - `lua_call`  @ IAT `0x017F0244` — unprotected Lua call
 //! - `lua_newstate` @ IAT `0x017F0288` — Lua state creation
 //!
@@ -74,6 +76,10 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod imports;
+// Only the i686 `lua_pcall` detour calls its reader; the pure parts are
+// unit-tested everywhere.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+mod lua_error;
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use imports::*;
@@ -316,7 +322,13 @@ unsafe extern "C-unwind" fn lua_pcall_detour(
     }
     let original: unsafe extern "C-unwind" fn(*mut c_void, i32, i32, i32) -> i32 =
         unsafe { std::mem::transmute(orig_addr) };
-    original(l, nargs, nresults, errfunc)
+    let status = original(l, nargs, nresults, errfunc);
+    if status != 0 {
+        // The error value is on top of the stack. Read it after the call
+        // has returned; the stack is left as the caller expects it.
+        let _ = std::panic::catch_unwind(|| lua_error::report(l, status, nargs));
+    }
+    status
 }
 
 /// `lua_call(lua_State* L, int nargs, int nresults) -> void`

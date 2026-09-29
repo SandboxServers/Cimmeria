@@ -115,8 +115,116 @@ pub const CME_EVENT_FACTORY: Site = code_site(
     ],
 );
 
+/// `EntityManager::onEntityEnter` (`enterAoI`): `mov eax, fs:[0]; push -1;
+/// push 0x017052ba`.
+pub const ENTER_AOI: Site = code_site(
+    "EntityManager::onEntityEnter",
+    0x00dd_24f0,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0xBA, 0x52, 0x70,
+    ],
+);
+
+/// `EntityManager::onEntityCreate`: `sub esp, 0x2c; cmp [0x01ef2224], 0;
+/// push ebx; push esi`.
+pub const CREATE_ENTITY: Site = code_site(
+    "EntityManager::onEntityCreate",
+    0x00dd_2270,
+    &[
+        0x83, 0xEC, 0x2C, 0x83, 0x3D, 0x24, 0x22, 0xEF, 0x01, 0x00, 0x53, 0x56,
+    ],
+);
+
+/// `EntityManager::enterWorld`: `mov eax, fs:[0]; push -1; push
+/// 0x01705296`.
+pub const ENTER_WORLD: Site = code_site(
+    "EntityManager::enterWorld",
+    0x00dd_1d00,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0x96, 0x52, 0x70,
+    ],
+);
+
+/// `EntityManager::onEntityLeave` (`leaveAoI`): `sub esp, 0xc; cmp
+/// [0x01ef2224], 0; push ebx; push ebp`.
+pub const LEAVE_AOI: Site = code_site(
+    "EntityManager::onEntityLeave",
+    0x00dd_2800,
+    &[
+        0x83, 0xEC, 0x0C, 0x83, 0x3D, 0x24, 0x22, 0xEF, 0x01, 0x00, 0x53, 0x55,
+    ],
+);
+
+/// Entity destroy: `cmp [0x01ef2224], 0; push ebx; push esi; push edi; mov
+/// ebx, ecx`.
+pub const DESTROY_ENTITY: Site = code_site(
+    "EntityManager entity destroy",
+    0x00dd_1120,
+    &[
+        0x83, 0x3D, 0x24, 0x22, 0xEF, 0x01, 0x00, 0x53, 0x56, 0x57, 0x8B, 0xD9,
+    ],
+);
+
+/// `GameEntity` appearance request: `mov eax, fs:[0]; push -1; push
+/// 0x0170de4f`.
+pub const APPEARANCE_REQUEST: Site = code_site(
+    "GameEntity appearance request",
+    0x00e6_9150,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0x4F, 0xDE, 0x70,
+    ],
+);
+
+/// Appearance job scheduler: `push -1; push 0x01710657; mov eax, fs:[0]`.
+pub const APPEARANCE_SCHEDULE: Site = code_site(
+    "Appearance job scheduler",
+    0x00e9_98e0,
+    &[
+        0x6A, 0xFF, 0x68, 0x57, 0x06, 0x71, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `EntityManager::onEntityMethod`: `push -1; push 0x017052e4; mov eax,
+/// fs:[0]`.
+pub const ENTITY_METHOD: Site = code_site(
+    "EntityManager::onEntityMethod",
+    0x00dd_2b80,
+    &[
+        0x6A, 0xFF, 0x68, 0xE4, 0x52, 0x70, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `EntityManager::onEntityProperty`: `push -1; push 0x017052cf; mov eax,
+/// fs:[0]`.
+pub const ENTITY_PROPERTY: Site = code_site(
+    "EntityManager::onEntityProperty",
+    0x00dd_29d0,
+    &[
+        0x6A, 0xFF, 0x68, 0xCF, 0x52, 0x70, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// Queued-message replay: `sub esp, 0x10; mov eax, [esp+0x14]; mov edx,
+/// [eax+0xc]; push ebx; push ebp`.
+pub const QUEUE_REPLAY: Site = code_site(
+    "EntityManager queued-message replay",
+    0x00dd_1e40,
+    &[
+        0x83, 0xEC, 0x10, 0x8B, 0x44, 0x24, 0x14, 0x8B, 0x50, 0x0C, 0x53, 0x55,
+    ],
+);
+
+/// `RouteOutgoingEntityRpc`: `push -1; push 0x016f50ea; mov eax, fs:[0]`.
+pub const ROUTE_OUTGOING_RPC: Site = code_site(
+    "RouteOutgoingEntityRpc",
+    0x00c6_fc40,
+    &[
+        0x6A, 0xFF, 0x68, 0xEA, 0x50, 0x6F, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 11] = [
+pub const CODE_SITES: [Site; 22] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -128,6 +236,17 @@ pub const CODE_SITES: [Site; 11] = [
     ANIM_NOTIFY_A,
     ANIM_NOTIFY_B,
     CME_EVENT_FACTORY,
+    ENTER_AOI,
+    CREATE_ENTITY,
+    ENTER_WORLD,
+    LEAVE_AOI,
+    DESTROY_ENTITY,
+    APPEARANCE_REQUEST,
+    APPEARANCE_SCHEDULE,
+    ENTITY_METHOD,
+    ENTITY_PROPERTY,
+    QUEUE_REPLAY,
+    ROUTE_OUTGOING_RPC,
 ];
 
 const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {

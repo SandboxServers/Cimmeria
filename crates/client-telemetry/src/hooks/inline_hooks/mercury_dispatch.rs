@@ -7,6 +7,26 @@
 //! string, not code, and the real function takes four stack
 //! arguments. Re-adding it is #989.
 
+use crate::hooks::entity_trace::{Ctx, Fields};
+
+/// The fields of `client.dispatch.method_dropped`: the method index, and the
+/// entity, type and message id when the drop happened inside a dispatch the
+/// entity detours tagged.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub(crate) fn dropped_fields(method_index: u32, ctx: Option<Ctx>) -> Fields {
+    let mut f: Fields = vec![("method_index", serde_json::json!(method_index))];
+    if let Some(c) = ctx {
+        f.push(("entity_id", serde_json::json!(c.entity_id)));
+        if let Some(t) = c.type_id {
+            f.push(("type_id", serde_json::json!(t)));
+        }
+        if c.msg_id != 0 {
+            f.push(("msg_id", serde_json::json!(c.msg_id)));
+        }
+    }
+    f
+}
+
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::ffi::c_void;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
@@ -99,12 +119,13 @@ unsafe extern "thiscall-unwind" fn entity_method_not_found_detour(
     method_index: u32,
 ) -> *mut c_void {
     let _ = std::panic::catch_unwind(|| {
-        if let Some(p) = crate::boot::producer() {
-            p.try_emit(
-                crate::events::ClientNativeEvent::builder("client.dispatch.method_dropped", "warn")
-                    .field("method_index", serde_json::json!(method_index)),
-            );
-        }
+        // The dispatch context (set by the `onEntityMethod` / queue-replay
+        // detours) names the entity the dropped method was for.
+        crate::hooks::emit::emit(
+            "client.dispatch.method_dropped",
+            "warn",
+            dropped_fields(method_index, crate::hooks::entity_trace::current_ctx()),
+        );
     });
 
     if let Some(t) = ENTITY_METHOD_NOT_FOUND_TRAMPOLINE.get() {
@@ -116,5 +137,27 @@ unsafe extern "thiscall-unwind" fn entity_method_not_found_detour(
         // "method not found" answer, which the drop site ignores
         // anyway.
         std::ptr::null_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_drop_names_the_entity_when_the_dispatch_is_tagged() {
+        let f = dropped_fields(
+            91,
+            Some(Ctx {
+                entity_id: 7,
+                type_id: Some(3),
+                msg_id: 0x3e,
+            }),
+        );
+        assert!(f.contains(&("method_index", serde_json::json!(91))));
+        assert!(f.contains(&("entity_id", serde_json::json!(7))));
+        assert!(f.contains(&("type_id", serde_json::json!(3))));
+        assert!(f.contains(&("msg_id", serde_json::json!(0x3e))));
+        assert_eq!(dropped_fields(91, None).len(), 1, "no context, no entity");
     }
 }
