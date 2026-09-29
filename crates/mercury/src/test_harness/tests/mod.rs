@@ -19,6 +19,7 @@ mod concurrent;
 mod encryption;
 mod encryption_kat;
 mod fragment;
+mod fragment_header_guard;
 mod handshake;
 mod kat_vectors;
 mod keepalive;

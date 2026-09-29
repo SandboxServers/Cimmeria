@@ -960,6 +960,12 @@ pub async fn send_bundle_to_witness_reliable(
 
     let num_messages = bundle.num_messages();
     let body_len = bundle.body_len();
+    // Fragment shape for the flush event: body bytes per packet and how many
+    // cuts were moved off a message header (the client aborts a bundle whose
+    // header straddles two packets).
+    let plan = bundle.fragment_plan();
+    let packet_bytes = format!("{:?}", plan.packet_sizes());
+    let header_guarded_cuts = plan.header_guarded_cuts;
 
     // Finalize through the session encrypt closure. Use FLAG_RELIABLE +
     // FLAG_ON_CHANNEL as base flags — the bundle adds FLAG_HAS_SEQUENCE,
@@ -980,6 +986,9 @@ pub async fn send_bundle_to_witness_reliable(
         messages = num_messages,
         body_bytes = body_len,
         packets = packets.len(),
+        fragmented = packets.len() > 1,
+        packet_bytes = %packet_bytes,
+        header_guarded_cuts,
         base_seq,
         "AoI bundle: flushed {num_messages} messages in {} packet(s)",
         packets.len()

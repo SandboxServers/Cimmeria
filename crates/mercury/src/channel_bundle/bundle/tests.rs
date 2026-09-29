@@ -583,3 +583,43 @@ fn append_entity_method_panics_on_payload_length_overflow() {
     let huge_args = vec![0u8; u16::MAX as usize - 3]; // 4 + (u16::MAX - 3) > u16::MAX
     bundle.append_entity_method(12, IDBASE_SGW_PLAYER, 1, &huge_args);
 }
+
+/// A bundle whose raw 1300-byte cut lands inside an entity-method header:
+/// `estimated_packet_count` (the seq reservation) must equal what `finalize`
+/// emits, and the client model must accept every fragment. The guard moves
+/// the cut back, which can add a packet, so `div_ceil` no longer predicts it.
+#[test]
+fn header_guarded_bundle_reservation_matches_finalize_and_client_accepts_it() {
+    use crate::client_model::unpack_plaintext_packets;
+
+    let mut bundle = ChannelBundle::new(true);
+    // First message is exactly FRAGMENT_BODY_SIZE - 1 bytes (3-byte header +
+    // 4-byte entity id + args), so the next header starts one byte before the
+    // raw cut.
+    bundle.append_entity_method(
+        5,
+        IDBASE_SGW_PLAYER,
+        1,
+        &vec![0x22; FRAGMENT_BODY_SIZE - 1 - 7],
+    );
+    // Fill so the raw cut lands inside a header at every later boundary too.
+    let mut expected_messages = 1usize;
+    while bundle.body_len() < FRAGMENT_BODY_SIZE * 6 {
+        bundle.append_entity_method(6, IDBASE_SGW_PLAYER, 1, &[0x33; 41]);
+        expected_messages += 1;
+    }
+    let estimated = bundle.estimated_packet_count();
+    let plan = bundle.fragment_plan();
+    assert!(
+        plan.header_guarded_cuts >= 1,
+        "fixture must exercise the guard"
+    );
+    assert_eq!(plan.ranges.len(), estimated);
+
+    let (packets, consumed) = bundle.finalize(FLAG_RELIABLE, 9, passthrough);
+    assert_eq!(packets.len(), estimated);
+    assert_eq!(consumed as usize, estimated);
+    let got = unpack_plaintext_packets(&packets);
+    assert_eq!(got.abort, None);
+    assert_eq!(got.messages.len(), expected_messages);
+}

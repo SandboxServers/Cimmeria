@@ -52,6 +52,12 @@ pub mod lossy_transport;
 #[cfg(any(test, feature = "test-harness"))]
 pub mod test_harness;
 
+/// Model of the SGW client's bundle iterator (header-in-one-packet rule),
+/// for tests that assert a server-built bundle survives the client's message
+/// loop.
+#[cfg(any(test, feature = "test-support", feature = "test-harness"))]
+pub mod client_model;
+
 /// Mercury protocol constants — these MUST match the C++ implementation exactly.
 ///
 /// Values are derived from reverse-engineering the original BigWorld Mercury

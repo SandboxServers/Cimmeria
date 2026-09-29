@@ -74,9 +74,11 @@ Adds raw data to bundle. `(this, void* data, size_t length)`. Copies data into c
 | 2 | 0x04 | `FLAG_HAS_ACKS` |
 | 3 | 0x08 | `FLAG_ON_CHANNEL` |
 | 4 | 0x10 | `FLAG_IS_RELIABLE` |
-| 5 | 0x20 | `FLAG_HAS_SEQUENCE_NUMBER` |
-| 6 | 0x40 | `FLAG_HAS_REQUESTS` |
-| 7 | 0x80 | `FLAG_IS_FRAGMENT` |
+| 5 | 0x20 | `FLAG_IS_FRAGMENT` |
+| 6 | 0x40 | `FLAG_HAS_SEQUENCE_NUMBER` |
+| 7 | 0x80 | rejected by the client (`received packet with bad flags`; the indexed-channel bit, unused in SGW) |
+
+> **Corrected 2026-09-29.** This table previously listed `0x20` as the sequence flag, `0x40` as "has requests" and `0x80` as the fragment flag. The client's receive code (`Nub::processFilteredPacket` @ `0x01580840`, `Nub::processPacket` @ `0x0157fd20`) tests fragment as `0x20`, sequence footer as `0x40` and rejects `0x80`; it also agrees with `crates/mercury/src/packet` and the flag table in [../../protocol/mercury-wire-format.md](../../protocol/mercury-wire-format.md). Request messages are signalled by `0x01` (a `firstRequestOffset` footer), not `0x40`.
 
 ---
 

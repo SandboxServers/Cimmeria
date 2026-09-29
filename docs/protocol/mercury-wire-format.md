@@ -448,6 +448,7 @@ Fragment 2:  [Header] [Messages...] [Fragment: index=2, total=3]
 - Maximum fragments per bundle: 64 (`Packet::MaxFragmentsPerBundle`)
 - Each fragment has `FLAG_FRAGMENTED` set and carries fragment begin/end sequence IDs
 - The receiver reassembles the bundle from fragments before processing messages
+- **Cut on message boundaries.** The SGW client requires a message header (id byte plus the `u16` length of a `WORD_LENGTH` message) to lie wholly inside one fragment; only a body may straddle. A header split across a fragment boundary makes the client discard every later message of the bundle (`Bundle::iterator::unpack` @ `0x01579830`, `Nub::processOrderedPacket` @ `0x0157c820`), silently and after all fragments were ACKed. The Rust encoder plans its cuts with `crate::packet::plan_fragments`. See [mercury-bundle.md](../architecture/mercury-bundle.md#fragment-cuts-and-message-headers) and [client-mercury-receive-path.md](../reverse-engineering/findings/client-mercury-receive-path.md).
 
 ### Reliability Model
 

@@ -72,6 +72,8 @@ pub(crate) use deferred_flush::{flush_deferred_aoi, flush_deferred_self_methods}
 mod tests;
 #[cfg(test)]
 mod tests_dispatch_arms;
+#[cfg(test)]
+mod tests_flush_fragmentation;
 
 /// Shared per-call context threaded to every family `route` fn.
 ///
