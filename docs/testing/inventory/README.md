@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 9,490 |
-| Files with tests | 1,589 |
+| Tests (`#[test]` / `#[tokio::test]`) | 9,535 |
+| Files with tests | 1,601 |
 | Gated in CI (every crate but CI's exclude list) | 8,335 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,518 |
-| Inventory threshold (5% of the tests) | 474 |
+| Inventory threshold (5% of the tests) | 477 |
 
 <!-- /gen:tests-totals -->
 
@@ -99,11 +99,11 @@ with no file in this directory yet.
 | `crates/base-session` | `cimmeria-base-session` | 400 | 71 | 185 | yes | none |
 | `crates/mercury` | `cimmeria-mercury` | 326 | 54 | 0 | yes | [mercury.md](mercury.md) |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 321 | 59 | 142 | yes | none |
+| `crates/lab` | `cimmeria-lab` | 307 | 63 | 0 | no | none |
 | `crates/launcher` | `sgw-launcher` | 293 | 39 | 0 | no | [launcher.md](launcher.md) |
 | `crates/wire` | `cimmeria-wire` | 293 | 52 | 0 | yes | none |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 273 | 43 | 8 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 271 | 24 | 0 | yes | [content-engine.md](content-engine.md) |
-| `crates/lab` | `cimmeria-lab` | 262 | 51 | 0 | no | none |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 200 | 33 | 0 | yes | none |
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 191 | 48 | 108 | yes | none |
 | `crates/base` | `cimmeria-base` | 181 | 31 | 10 | yes | none |
