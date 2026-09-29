@@ -17,6 +17,8 @@
 pub mod binding;
 pub mod combat_log;
 pub mod defeat;
+#[cfg(test)]
+mod flow_tests;
 pub mod hotbar;
 pub mod player;
 pub mod use_ability;

@@ -174,9 +174,6 @@ pub fn select_respawner_chunk(index: u32) -> String {
 impl Supervisor {
     pub async fn die_and_respawn_flow(&self, req: DieRequest) -> Result<Value, FlowError> {
         let mut run = FlowRun::new(self, "client_die_and_respawn");
-        self.input_focus(true)
-            .await
-            .map_err(|e| run.fail("focus", e))?;
         let before = self
             .player_state()
             .await
@@ -192,6 +189,9 @@ impl Supervisor {
                 return Err(run.fail("setup", "setup_health must be >= 0"));
             }
             let line = format!("/gmsethealth {h} 0");
+            self.input_focus(true)
+                .await
+                .map_err(|e| run.fail("focus", e))?;
             let t0 = Instant::now();
             run.key("open_chat", "Enter").await?;
             settle(400).await;
@@ -268,6 +268,9 @@ impl Supervisor {
                 })));
             }
             Respawn::Release => {
+                self.input_focus(true)
+                    .await
+                    .map_err(|e| run.fail("focus", e))?;
                 run.click("release", RELEASE_BUTTON).await?;
                 respawn_level = NativeLevel::RealInput.to_json();
             }

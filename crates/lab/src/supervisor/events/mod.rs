@@ -14,6 +14,10 @@
 //! drainer; `client_events_read` reads the store through its own cursor, so
 //! it still returns each event once without stealing from waits.
 
+#[cfg(test)]
+pub mod fake_bridge;
+#[cfg(test)]
+mod flow_tests;
 pub mod lua_rings;
 pub mod predicate;
 pub mod store;

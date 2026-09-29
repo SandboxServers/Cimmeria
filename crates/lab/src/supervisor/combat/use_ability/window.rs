@@ -81,6 +81,9 @@ impl Supervisor {
         index: u32,
         ability_id: i64,
     ) -> Result<(Value, NativeLevel), FlowError> {
+        self.input_focus(true)
+            .await
+            .map_err(|e| run.fail("focus", e))?;
         let was_open = run.visible("ability_window", ABILITY_WIN).await?;
         let mut open_level = NativeLevel::RealInput;
         let mut toggle: Option<(Binding, String)> = None;

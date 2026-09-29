@@ -124,6 +124,9 @@ impl Supervisor {
         b: &HotbarButton,
         press: Press,
     ) -> Result<Value, FlowError> {
+        self.input_focus(true)
+            .await
+            .map_err(|e| run.fail("focus", e))?;
         let key = if press == Press::Click {
             None
         } else {
@@ -172,9 +175,6 @@ impl Supervisor {
 
     pub async fn use_ability_flow(&self, req: UseAbilityRequest) -> Result<Value, FlowError> {
         let mut run = FlowRun::new(self, "client_use_ability");
-        self.input_focus(true)
-            .await
-            .map_err(|e| run.fail("focus", e))?;
         // Baseline pump: installs the combat/chat rings and fixes the seq
         // the outcome is read from.
         let pump = self
