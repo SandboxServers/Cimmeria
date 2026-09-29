@@ -7,8 +7,9 @@
 //! * `resources.ammo_item_types` maps exactly the fifteen bullet and dart
 //!   specials, each to an existing stackable reserve item that stays out of
 //!   the `WeaponDef` cache;
-//! * the Standard Pistol (27) and Standard SMG (25) families accept all five
-//!   bullet specials (D-AM10);
+//! * the Standard Pistol (27), Standard SMG (25) and High Capacity SMG (27)
+//!   families accept all five bullet specials (D-AM10 and its 2026-09-28
+//!   amendment);
 //! * the catalog loader reads both tables.
 mod live_db {
     use std::collections::BTreeMap;
@@ -121,7 +122,7 @@ mod live_db {
                                        AND 'Bullet_Default' = ANY (ammo_types) \
                                        AND array_length(ammo_types, 1) = 6) \
              FROM resources.items \
-             WHERE description IN ('Standard Pistol', 'Standard SMG') \
+             WHERE description IN ('Standard Pistol', 'Standard SMG', 'High Capacity SMG') \
              GROUP BY description ORDER BY description",
         )
         .bind(BULLET_SPECIALS.map(String::from).to_vec())
@@ -131,6 +132,7 @@ mod live_db {
         assert_eq!(
             rows,
             vec![
+                ("High Capacity SMG".to_string(), 27, 27),
                 ("Standard Pistol".to_string(), 27, 27),
                 ("Standard SMG".to_string(), 25, 25),
             ],
@@ -142,6 +144,12 @@ mod live_db {
         let pistol = defs.get(&3241).expect("SI 3 9mm Pistol in WeaponDef cache");
         for t in ammo_type::BULLET_ARMOR_PIERCING..=ammo_type::BULLET_EXPLOSIVE {
             assert!(pistol.allowed_ammo_types.contains(&t), "3241 lacks {t}");
+        }
+        // The Castle chest's SGHC 6 SMG takes the Hollow Point the same chest
+        // drops (D-AM10 amendment).
+        let hc_smg = defs.get(&3127).expect("SGHC 6 SMG in WeaponDef cache");
+        for t in ammo_type::BULLET_ARMOR_PIERCING..=ammo_type::BULLET_EXPLOSIVE {
+            assert!(hc_smg.allowed_ammo_types.contains(&t), "3127 lacks {t}");
         }
     }
 

@@ -72,3 +72,11 @@ The widening is visible, and it could not be otherwise: `player_load` and the in
 - **AM-05:** item ids come from `ammo_item_types`; loot rows can name 9000-9014 directly (seed data), and the seed guard above pins the mapping.
 - **AM-06:** `space_mgr.ammo_catalog.item_id_for(ammo_type)` maps `.gmgiveammo`'s `EAmmoType` to the item.
 - **AM-07:** the 15 definitions to push are ids 9000-9014; names, stack cap (500) and the placeholder icon are in `ammo_items.sql`.
+
+## D-AM10 amendment (2026-09-28)
+
+@Cadacious amended D-AM10: the **High Capacity SMG** family also accepts all five bullet special types. Without it the Hollow Point the Castle pre-Romney chest hands out does not fit the SGHC 6 SMG (3127) that same chest hands out.
+
+- **Ids (27, every `items.sql` row described 'High Capacity SMG', all `{Bullet_Default}` before):** 21, 3126, 3127, 3129, 3130, 3131, 3132, 3135, 3136, 3138, 3139, 3140, 3531, 4693, 4694, 4695, 4696, 4697, 4698, 4699, 4700, 4701, 4703, 4704, 4705, 4706, 4707 (SGHC 6, 6 AP, 7, X and Gauss SMG).
+- **Seed:** the family joins the `WHERE description IN (...)` list of `ammo_weapon_widening.sql`, the same UPDATE that widened Standard Pistol and Standard SMG.
+- **Guard:** `standard_pistol_and_smg_accept_every_bullet_special` now pins 27 + 25 + 27 ids and checks that the `WeaponDef` for 3127 carries the five types. With the family removed from the UPDATE, the guard fails; restored, it passes.
