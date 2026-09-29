@@ -8,6 +8,7 @@ use crate::client_paths::WipeReport;
 use crate::config::{ClientPatchesSettings, LauncherConfig};
 use crate::install::Progress;
 use crate::manifest::Manifest;
+use crate::self_update::LauncherRelease;
 use crate::telemetry::runner::SessionOutcome;
 
 #[derive(Debug, Clone)]
@@ -54,6 +55,11 @@ pub enum Command {
     /// blast radius (also nukes per-user settings, keybinds, screenshots
     /// if any) — UI must confirm-dialog gate this.
     WipeAllClientState,
+    /// Ask GitHub for a newer launcher release (once at startup, and on
+    /// "Check for updates").
+    CheckForUpdate,
+    /// Download, verify and swap in this release, then relaunch.
+    ApplyUpdate(LauncherRelease),
     Cancel,
 }
 
@@ -98,6 +104,8 @@ pub enum Event {
         bytes: usize,
     },
     UploadError(String),
+    /// Launcher self-update progress and results.
+    Update(super::UpdateEvent),
 }
 
 /// A `SGW.exe` launch: where the game is, the client-patches settings,

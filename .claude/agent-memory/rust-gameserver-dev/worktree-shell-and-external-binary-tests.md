@@ -83,6 +83,13 @@ worked. No error surfaced; only a follow-up `grep -c` showed the file was
 untouched. After any inline-heredoc edit, grep for a marker of the change
 before building on it, or use the scratchpad-script pattern from the start.
 
+Launcher self-update (2026-09-29): `cmd //c mklink //J ...` for the
+`external/` junction is refused ("runs cmd in a plain command"); the
+PowerShell tool's `New-Item -ItemType Junction -Path <wt>\external -Target
+<main>\external` works. Any Bash call that mentions `git` together with a
+`$TMP` path, a pipe into `sed`, or a second command is refused; run
+`git diff --stat` / `git status --short` as their own calls.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch

@@ -11,6 +11,7 @@
 
 mod client_changes_panel;
 mod telemetry_panel;
+mod update_banner;
 mod view;
 
 use std::path::{Path, PathBuf};
@@ -57,6 +58,8 @@ pub struct LauncherApp {
     /// Loaded once at app construction so each Launch+Telemetry click
     /// doesn't re-read install.json from disk.
     identity: Option<crate::identity::LauncherIdentity>,
+    /// Launcher self-update state (banner, offer, `min_launcher` gate).
+    update: update_banner::UpdateUi,
 }
 
 impl LauncherApp {
@@ -79,7 +82,7 @@ impl LauncherApp {
         let login_servers_text = crate::client_setup::login_servers::to_text(&config.login_servers);
         let identity =
             crate::identity::LauncherIdentity::load_or_mint(&crate::identity::identity_path()).ok();
-        Self {
+        let mut app = Self {
             config,
             install_path_text,
             login_servers_text,
@@ -95,7 +98,10 @@ impl LauncherApp {
             installing: false,
             confirm_wipe_all_open: false,
             identity,
-        }
+            update: update_banner::UpdateUi::new(crate::self_update::LauncherBuild::current()),
+        };
+        app.start_update_check();
+        app
     }
 
     /// Pull the latest text-buffer value into the persisted PathBuf so
@@ -145,6 +151,7 @@ impl LauncherApp {
                 Event::AdoptComplete => {
                     self.refresh_install_state();
                 }
+                Event::Update(u) => self.on_update_event(u, ctx),
                 Event::AdoptError(_)
                 | Event::Wiped { .. }
                 | Event::WipeError(_)
@@ -335,6 +342,7 @@ fn status_line_for(event: &Event) -> Option<String> {
             )
         }
         Event::TelemetrySessionError(e) => format!("Telemetry session error: {e}"),
+        Event::Update(u) => return update_banner::update_status_line(u),
         // Progress + manifest events drive other UI state, not the
         // status log. Returning None makes that explicit.
         Event::ManifestFetched(_) | Event::ManifestError(_) | Event::Progress(_) => return None,

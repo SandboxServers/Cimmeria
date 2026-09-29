@@ -1,0 +1,142 @@
+[
+  {
+    "url": "https://api.github.com/repos/SandboxServers/Cimmeria/releases/900",
+    "html_url": "https://github.com/SandboxServers/Cimmeria/releases/tag/content-current",
+    "id": 900,
+    "tag_name": "content-current",
+    "target_commitish": "main",
+    "name": "Content (current)",
+    "draft": false,
+    "prerelease": true,
+    "created_at": "2026-10-03T12:00:00Z",
+    "published_at": "2026-10-03T12:00:05Z",
+    "assets": [
+      {
+        "name": "manifest.json",
+        "size": 2048,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/content-current/manifest.json"
+      }
+    ]
+  },
+  {
+    "html_url": "https://github.com/SandboxServers/Cimmeria/releases/tag/launcher-20261003-ccccccc",
+    "id": 899,
+    "tag_name": "launcher-20261003-ccccccc",
+    "name": "Launcher launcher-20261003-ccccccc",
+    "draft": true,
+    "prerelease": false,
+    "created_at": "2026-10-03T10:00:00Z",
+    "published_at": null,
+    "assets": [
+      {
+        "name": "sgw-launcher-launcher-20261003-ccccccc.exe",
+        "size": 21000000,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261003-ccccccc/sgw-launcher-launcher-20261003-ccccccc.exe"
+      },
+      {
+        "name": "sgw-launcher-launcher-20261003-ccccccc.exe.sha256",
+        "size": 108,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261003-ccccccc/sgw-launcher-launcher-20261003-ccccccc.exe.sha256"
+      }
+    ]
+  },
+  {
+    "html_url": "https://github.com/SandboxServers/Cimmeria/releases/tag/launcher-20261003-ddddddd",
+    "id": 898,
+    "tag_name": "launcher-20261003-ddddddd",
+    "name": "Launcher launcher-20261003-ddddddd",
+    "draft": false,
+    "prerelease": true,
+    "created_at": "2026-10-03T09:00:00Z",
+    "published_at": "2026-10-03T09:00:03Z",
+    "assets": [
+      {
+        "name": "sgw-launcher-launcher-20261003-ddddddd.exe",
+        "size": 21000000,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261003-ddddddd/sgw-launcher-launcher-20261003-ddddddd.exe"
+      },
+      {
+        "name": "sgw-launcher-launcher-20261003-ddddddd.exe.sha256",
+        "size": 108,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261003-ddddddd/sgw-launcher-launcher-20261003-ddddddd.exe.sha256"
+      }
+    ]
+  },
+  {
+    "html_url": "https://github.com/SandboxServers/Cimmeria/releases/tag/v2026-10-02-1234567",
+    "id": 897,
+    "tag_name": "v2026-10-02-1234567",
+    "name": "Server v2026-10-02-1234567",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-10-02T20:00:00Z",
+    "published_at": "2026-10-02T20:00:02Z",
+    "assets": []
+  },
+  {
+    "html_url": "https://github.com/SandboxServers/Cimmeria/releases/tag/launcher-20261002-bbbbbbb",
+    "id": 896,
+    "tag_name": "launcher-20261002-bbbbbbb",
+    "name": "Launcher launcher-20261002-bbbbbbb",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-10-02T18:00:00Z",
+    "published_at": "2026-10-02T18:00:04Z",
+    "assets": [
+      {
+        "name": "client-patches-overlay.zip",
+        "size": 4096,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261002-bbbbbbb/client-patches-overlay.zip"
+      },
+      {
+        "name": "sgw-launcher-launcher-20261002-bbbbbbb.exe",
+        "size": 21000000,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261002-bbbbbbb/sgw-launcher-launcher-20261002-bbbbbbb.exe"
+      },
+      {
+        "name": "sgw-launcher-launcher-20261002-bbbbbbb.exe.sha256",
+        "size": 108,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261002-bbbbbbb/sgw-launcher-launcher-20261002-bbbbbbb.exe.sha256"
+      }
+    ]
+  },
+  {
+    "html_url": "https://github.com/SandboxServers/Cimmeria/releases/tag/launcher-20261002-aaaaaaa",
+    "id": 895,
+    "tag_name": "launcher-20261002-aaaaaaa",
+    "name": "Launcher launcher-20261002-aaaaaaa",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-10-02T09:00:00Z",
+    "published_at": "2026-10-02T09:00:04Z",
+    "assets": [
+      {
+        "name": "sgw-launcher-launcher-20261002-aaaaaaa.exe",
+        "size": 20900000,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261002-aaaaaaa/sgw-launcher-launcher-20261002-aaaaaaa.exe"
+      },
+      {
+        "name": "sgw-launcher-launcher-20261002-aaaaaaa.exe.sha256",
+        "size": 108,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261002-aaaaaaa/sgw-launcher-launcher-20261002-aaaaaaa.exe.sha256"
+      }
+    ]
+  },
+  {
+    "html_url": "https://github.com/SandboxServers/Cimmeria/releases/tag/launcher-20260929-f518b57",
+    "id": 890,
+    "tag_name": "launcher-20260929-f518b57",
+    "name": "Launcher launcher-20260929-f518b57",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-09-29T15:00:00Z",
+    "published_at": "2026-09-29T15:00:03Z",
+    "assets": [
+      {
+        "name": "sgw-launcher-launcher-20260929-f518b57.exe",
+        "size": 20800000,
+        "browser_download_url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20260929-f518b57/sgw-launcher-launcher-20260929-f518b57.exe"
+      }
+    ]
+  }
+]

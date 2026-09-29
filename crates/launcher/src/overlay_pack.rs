@@ -269,6 +269,7 @@ mod tests {
     fn manifest(patches: Vec<PatchEntry>) -> Manifest {
         Manifest {
             schema: 1,
+            min_launcher: None,
             seed: SeedEntry {
                 blob: "seed.zip".into(),
                 size: 1,

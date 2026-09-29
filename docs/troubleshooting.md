@@ -2,7 +2,7 @@
 title: Troubleshooting
 type: how-to
 audience: new contributors, operators
-last_updated: 2026-09-26
+last_updated: 2026-09-29
 companion_docs:
   - building.md
   - architecture/build-system.md
@@ -271,6 +271,16 @@ Full LAN-setup details in [`multiplayer.md`](multiplayer.md).
 **Root cause.** The launcher released on 2026-09-29 (`launcher-20260929-f518b57`) renamed the stock `Working\SGWGame\Content\UI\Startup\EULA\EULA.lua` to `eula.lua` while applying the `005-login-delay` patch, and the game looks that file up case-sensitively.
 
 **Fix.** Update the launcher: it renames the file back before every launch. By hand, rename `eula.lua` to `EULA.lua` in that folder. Details: [launcher guide troubleshooting](client/launcher-guide.md#the-game-shows-the-gate-backdrop-but-never-the-login-screen).
+
+---
+
+### The launcher's self-update fails, or the launcher is gone after "Update now"
+
+**Symptom.** The banner says `Launcher update failed: …`, or no launcher window comes back after **Update now**.
+
+**Root cause.** Usually a folder the launcher cannot write to (`C:\Program Files`), a damaged download (it is deleted), or antivirus quarantining the new, unsigned exe.
+
+**Fix.** Follow the message's advice, or download the release from the linked page by hand. If the launcher's own file is missing, rename `<launcher>.exe.old` beside it back. Details: [launcher guide troubleshooting](client/launcher-guide.md#launcher-update-failed-).
 
 ---
 

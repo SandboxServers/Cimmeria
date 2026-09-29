@@ -43,6 +43,7 @@ impl eframe::App for LauncherApp {
                 .auto_shrink(false)
                 .show(ui, |ui| {
                     ui.heading("Stargate Worlds Launcher");
+                    self.show_update_banner(ui);
                     ui.separator();
                     self.show_telemetry_prompt(ui);
                     self.show_config_panel(ui);
@@ -202,6 +203,9 @@ impl LauncherApp {
             ));
         }
         let installing = self.installing;
+        // The manifest's min_launcher says this launcher is too old; the
+        // update banner explains and offers the fix.
+        let blocked = self.launcher_blocked();
         // Probe writability of the install dir before we let the user
         // click Install / Update. Without this, picking `C:\Program Files\…`
         // without UAC produces an opaque mid-extract "Access denied" after
@@ -219,7 +223,7 @@ impl LauncherApp {
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(
-                    !installing && writable,
+                    !installing && writable && !blocked,
                     egui::Button::new("Install / Update"),
                 )
                 .clicked()
@@ -284,9 +288,13 @@ impl LauncherApp {
         // (`Working\Binaries` in a full install).
         let dir = crate::install_layout::binaries_dir(&self.config.install_path);
         let opts = self.launch_opts.clone();
+        let allowed = !self.launcher_blocked();
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(opts.sgw_present, egui::Button::new("Launch SGW.exe"))
+                .add_enabled(
+                    opts.sgw_present && allowed,
+                    egui::Button::new("Launch SGW.exe"),
+                )
                 .clicked()
                 && self.prepare_client_for_launch()
             {
@@ -307,7 +315,7 @@ impl LauncherApp {
             }
             if ui
                 .add_enabled(
-                    opts.atera_available(),
+                    opts.atera_available() && allowed,
                     egui::Button::new("Launch Atera Debug"),
                 )
                 .clicked()
@@ -319,8 +327,10 @@ impl LauncherApp {
             // available. Falls back to plain Launch Atera Debug
             // (legacy) when telemetry is opted out or identity load
             // failed.
-            let telemetry_ready =
-                opts.atera_available() && self.config.telemetry.opted_in && self.identity.is_some();
+            let telemetry_ready = allowed
+                && opts.atera_available()
+                && self.config.telemetry.opted_in
+                && self.identity.is_some();
             if ui
                 .add_enabled(telemetry_ready, egui::Button::new("Launch + Telemetry"))
                 .clicked()
