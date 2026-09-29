@@ -117,6 +117,10 @@ Pseudocode of [`crates/launcher/src/install.rs`](../../crates/launcher/src/insta
                DATA1-4.CAB), expand the cabinets into <install>/ with
                Windows' cabinet.dll; otherwise move the files across.
                Then delete .tmp-unpack/.
+       Every extracted file keeps the modified time the archive records
+       for it (the cabinets date the client 2009-06-30), the way the stock
+       installer does. See "Your ini file is outdated" under
+       Troubleshooting for why that matters.
        Hashing and unpacking run on a blocking thread.
      - state.seed_sha256 = manifest.seed.sha256
      - state.applied_patches = []   ← reseeding invalidates patch history
@@ -658,6 +662,36 @@ on disk.
 - For Atera-debug launches: confirm `AteraLoader.exe` and
   `AtreaGameDebug.bat` are both in the install dir alongside SGW.exe.
   These files are not shipped by the launcher.
+
+### "Your ini (..\SGWGame\Config\SGWEditor.ini) file is outdated"
+
+The game asks this on launch when a `Working\SGWGame\Config\Default*.ini`
+file's modified time differs from the one it recorded the last time it
+ran. Unreal Engine 3 builds your own settings files in
+`Documents\My Games\Firesky\SGWGame\Config\SGW*.ini` from the
+`Default*.ini` files, and keeps the timestamps of those in each file's
+`[INIVersion]` section. A different timestamp looks like a newer
+`Default*.ini`.
+
+Launchers released before this fix wrote every client file with the
+install time instead of the 2009-06-30 date in the installer cabinets.
+If you had run SGW on this PC before, from any install, the first launch
+after such an install shows this dialog. A launcher with the fix keeps
+the cabinets' dates, as the original installer does, so the dialog does
+not appear after a fresh install.
+
+- **Yes** (or **Yes to all**) is safe. The game rebuilds the
+  `SGW*.ini` files from the `Default*.ini` files and records the new
+  timestamps, so it does not ask again. It resets your settings in those
+  files (resolution, keys, audio) to the defaults.
+- **No** keeps your settings, and the game asks again on the next
+  launch.
+- To stop the dialog without losing settings, reinstall with a fixed
+  launcher: **Wipe → Client**, then **Install / Update**. The files get
+  their 2009 dates back and match what your `SGW*.ini` files recorded.
+  If you already answered **Yes** after an older launcher's install,
+  your `SGW*.ini` files recorded that install's dates instead, so the
+  first launch after the reinstall asks once more.
 
 ### Windows Defender or SmartScreen blocks the launcher
 

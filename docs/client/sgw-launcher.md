@@ -96,6 +96,25 @@ are 1 GiB volumes with files continued across them, which pure-Rust cab
 readers don't follow. The expansion fails if fewer files come out than
 the INF lists. Hashing and unpacking run under `spawn_blocking`.
 
+Extracted files keep the modified time the archive records, the way the
+stock installer and `expand.exe` do. Cabinet and zip entries carry an
+MS-DOS date/time in the builder's local time: `src/unpack/dos_time.rs`
+converts it with `DosDateTimeToFileTime` then `LocalFileTimeToFileTime`,
+the same calls as Windows' own extractors, and sets the modified and
+accessed times. An invalid stamp, or the zip crate's 1980-01-01
+"no time" placeholder, keeps the extraction time and never fails the
+install. UnRAR restores RAR entry times itself, and the move out of
+`.tmp-unpack/` is a rename, which keeps them. Files a patch set rebuilds
+by delta are the launcher's own output and keep their write time.
+
+This matters because Unreal Engine 3 stores each `Default*.ini`
+timestamp in the `[INIVersion]` section of the player's generated
+`Documents\My Games\Firesky\SGWGame\Config\SGW*.ini` and, when one
+differs, asks on launch whether to regenerate the "outdated" ini. The
+2009 cabinets date the client 2009-06-30, so a launcher that wrote
+install-time mtimes triggered that dialog for anyone who had run SGW
+before.
+
 On every install, `install_layout::place_bundled_cooked_data` renames
 `Working\SGWGame\Cache.en-US` (where the cabinets put the bundled PAKs)
 to `SourceCache.en-us`, the read-only tier the client reads through

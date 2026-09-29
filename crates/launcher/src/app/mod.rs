@@ -334,6 +334,16 @@ fn status_line_for(event: &Event) -> Option<String> {
     })
 }
 
+/// The download progress label, e.g. `seed: 1.27 GB / 3.85 GB`.
+/// [`human_bytes`] already carries the unit, so none is appended.
+fn download_progress_line(label: &str, downloaded: u64, total: u64) -> String {
+    format!(
+        "{label}: {} / {}",
+        human_bytes(downloaded),
+        human_bytes(total)
+    )
+}
+
 fn human_bytes(n: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut f = n as f64;
@@ -352,8 +362,8 @@ fn human_bytes(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        human_bytes, setup_status_lines, should_show_adopt_button, status_line_for,
-        MAX_STATUS_LINES,
+        download_progress_line, human_bytes, setup_status_lines, should_show_adopt_button,
+        status_line_for, MAX_STATUS_LINES,
     };
     use crate::client_setup::{AslrOutcome, SetupReport};
 
@@ -386,6 +396,21 @@ mod tests {
         assert_eq!(human_bytes(512), "512 B");
         assert_eq!(human_bytes(2048), "2.00 KB");
         assert_eq!(human_bytes(5 * 1024 * 1024), "5.00 MB");
+    }
+
+    // Bug shape: the line read "seed: 1.27 GB / 3.85 GB bytes", the unit
+    // printed twice.
+    #[test]
+    fn download_progress_line_prints_the_unit_once() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        assert_eq!(
+            download_progress_line("seed", GIB * 127 / 100, GIB * 385 / 100),
+            "seed: 1.27 GB / 3.85 GB"
+        );
+        assert_eq!(
+            download_progress_line("patch x", 10, 20),
+            "patch x: 10 B / 20 B"
+        );
     }
 
     // Drives the same drain-on-overflow shape that `push_status` uses, with

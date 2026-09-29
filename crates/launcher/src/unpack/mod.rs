@@ -16,6 +16,7 @@
 //! Everything here is blocking file I/O; callers run it on a blocking thread.
 
 mod cab_set;
+mod dos_time;
 #[cfg(windows)]
 mod fdi;
 mod rar;
@@ -232,6 +233,15 @@ mod tests {
             b"hello"
         );
         assert_eq!(std::fs::read(dest.join("top.txt")).unwrap(), b"x");
+        // The move from staging is a rename, so UnRAR's restored mtime
+        // survives into the install.
+        assert_eq!(
+            std::fs::metadata(dest.join("top.txt"))
+                .unwrap()
+                .modified()
+                .unwrap(),
+            super::test_fixtures::fixture_mtime()
+        );
         assert!(!dest.join(STAGING_DIR).exists());
     }
 
@@ -274,6 +284,15 @@ mod tests {
             sgw
         );
         assert!(dest.join("Common").join("res").join("a.def").is_file());
+        // End to end, the installed files carry the cabinet's date, not the
+        // install time (UE3's "ini file is outdated" dialog).
+        assert_eq!(
+            std::fs::metadata(dest.join("Common").join("res").join("a.def"))
+                .unwrap()
+                .modified()
+                .unwrap(),
+            super::test_fixtures::fixture_mtime()
+        );
         assert!(!dest.join("SetupQA.exe").exists());
         assert!(!dest.join("Data").exists());
         assert!(!dest.join(STAGING_DIR).exists());

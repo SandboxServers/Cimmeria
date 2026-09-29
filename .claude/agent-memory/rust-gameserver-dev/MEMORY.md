@@ -57,6 +57,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [lab-uat-runner-in-process-tool-calls.md](lab-uat-runner-in-process-tool-calls.md) — call rmcp tools by name in-process via the RequestContext extractor; chat marks before the action; capability table.
 
+## Launcher
+
+- [launcher-extracted-mtimes-and-ue3-ini-version.md](launcher-extracted-mtimes-and-ue3-ini-version.md) — extracted files must keep archive DOS times or UE3 flags Default*.ini outdated; zip 1980 placeholder; MakeCAB fixture.
+
 ## Injected client DLLs
 
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.

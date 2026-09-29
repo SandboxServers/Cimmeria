@@ -29,7 +29,7 @@ use windows_sys::Win32::Storage::Cabinets::{
 };
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HeapAlloc, HeapFree};
 
-use super::{safe_relative, UnpackError, UnpackSink};
+use super::{dos_time, safe_relative, UnpackError, UnpackSink};
 
 /// `_A_NAME_IS_UTF`: the entry name in `psz1` is UTF-8, not the ANSI
 /// code page.
@@ -276,9 +276,22 @@ unsafe extern "system" fn fdi_notify(
             COPY_FILE => copy_file(ctx, n),
             CLOSE_FILE_INFO => {
                 // SAFETY: the handle copy_file returned for this file.
-                drop(unsafe { Box::from_raw(n.hf as *mut File) });
+                let file = unsafe { Box::from_raw(n.hf as *mut File) };
+                let path = ctx.current.take();
+                // Stamp the cabinet's date/time before closing, as the
+                // stock installer and expand.exe do. UE3 compares the
+                // Default*.ini mtimes with the ones recorded in the
+                // player's generated SGW*.ini and asks to regenerate on a
+                // mismatch (see dos_time).
+                dos_time::apply(
+                    &file,
+                    n.date,
+                    n.time,
+                    path.as_deref().unwrap_or(Path::new("")),
+                );
+                drop(file);
                 ctx.done += 1;
-                if let Some(path) = ctx.current.take() {
+                if let Some(path) = path {
                     ctx.sink
                         .report("expanding cabinets", ctx.done, ctx.total, &path);
                 }
@@ -332,7 +345,9 @@ fn copy_file(ctx: &mut Ctx, n: &FDINOTIFICATION) -> isize {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_fixtures::{incompressible as payload, make_cab_set, sink};
+    use super::super::test_fixtures::{
+        fixture_mtime, incompressible as payload, make_cab_set, sink,
+    };
     use super::*;
 
     // The bug shape this guards: a file that starts in DATA1.CAB and ends
@@ -357,6 +372,36 @@ mod tests {
         for (name, data) in &files {
             let p = dest.join(name.replace('\\', "/"));
             assert_eq!(&std::fs::read(&p).unwrap(), data, "{name}");
+        }
+    }
+
+    // Bug shape: expanded files kept the extraction time instead of the
+    // cabinet's 2009-06-30 stamp, so UE3 saw every Default*.ini as newer
+    // than the one recorded in the player's SGW*.ini and showed the "ini
+    // file is outdated" dialog on launch. Covers a file continued across a
+    // cabinet boundary too: its stamp arrives with the last piece.
+    #[test]
+    fn expanded_files_keep_the_cabinet_date_and_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let cabs = dir.path().join("Data");
+        std::fs::create_dir_all(&cabs).unwrap();
+        let files = vec![
+            (
+                "Working\\SGWGame\\Config\\DefaultEditor.ini",
+                b"[Editor]\r\n".to_vec(),
+            ),
+            ("Working\\binaries\\SGW.exe", payload(4, 150_000)),
+        ];
+        let names = make_cab_set(&cabs, &files, 100_000);
+        assert!(names.len() >= 2, "set must span cabinets, got {names:?}");
+
+        let dest = dir.path().join("install");
+        let (sink, _rx) = sink();
+        expand_chain(&cabs, &names, &dest, files.len(), &sink).unwrap();
+        for (name, _) in &files {
+            let p = dest.join(name.replace('\\', "/"));
+            let modified = std::fs::metadata(&p).unwrap().modified().unwrap();
+            assert_eq!(modified, fixture_mtime(), "{name}");
         }
     }
 
