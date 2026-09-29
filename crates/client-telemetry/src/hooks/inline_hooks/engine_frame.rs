@@ -104,6 +104,10 @@ unsafe extern "thiscall-unwind" fn engine_tick_detour(this: *mut c_void) {
         }
     });
 
+    // Subscribe any CME signal the client had not created yet at install
+    // (main thread; free once everything is subscribed).
+    let _ = std::panic::catch_unwind(crate::hooks::cme_hooks::retry_pending);
+
     // Live Research Lab bridge: drain queued commands and dispatch
     // them here on the main thread before the original tick runs
     // (same ordering as the black-market patch's tick cave). No-op

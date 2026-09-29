@@ -18,6 +18,16 @@
 //! `world_entry.init_player_state` span makes the cold-relog freeze
 //! investigation actionable.
 //!
+//! ## Late signals
+//!
+//! The DLL installs its hooks about 200 ms after `SGW.exe` starts, before
+//! the client has created these signals: the first live run (2026-09-28)
+//! logged `signal_missing` for both, and they stayed unsubscribed for the
+//! whole session. A signal not found at install is retried from the
+//! `FEngineLoop::Tick` detour ([`retry_pending`]), on the main thread, every
+//! [`RETRY_EVERY_FRAMES`] frames, until it subscribes or
+//! [`RETRY_GIVE_UP_FRAMES`] frames have passed.
+//!
 //! ## Lifetime
 //!
 //! Each `CmeMemberCallback` is a `static` in `.data` (process-
@@ -29,6 +39,75 @@
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use crate::events::ClientNativeEvent;
 use crate::queue::Producer;
+
+use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+
+/// Frames between retries of a signal that was missing at install.
+pub const RETRY_EVERY_FRAMES: u32 = 30;
+/// Frames after which retrying stops (about 10 minutes at 60 fps).
+pub const RETRY_GIVE_UP_FRAMES: u32 = 36_000;
+
+/// Bit per hook still waiting for its signal (see [`HOOK_BITS`]).
+static PENDING: AtomicU8 = AtomicU8::new(0);
+/// Tick calls seen since install, while anything is pending.
+static FRAMES: AtomicU32 = AtomicU32::new(0);
+
+const MAP_LOAD_BIT: u8 = 1;
+const READY_BIT: u8 = 2;
+#[cfg(test)]
+const HOOK_BITS: [u8; 2] = [MAP_LOAD_BIT, READY_BIT];
+
+/// What the tick detour does on frame `frame` while signals are pending.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RetryStep {
+    Wait,
+    Retry,
+    GiveUp,
+}
+
+/// Retry cadence: every [`RETRY_EVERY_FRAMES`] frames, then give up once.
+pub fn retry_step(frame: u32) -> RetryStep {
+    if frame == RETRY_GIVE_UP_FRAMES {
+        RetryStep::GiveUp
+    } else if frame < RETRY_GIVE_UP_FRAMES && frame.is_multiple_of(RETRY_EVERY_FRAMES) {
+        RetryStep::Retry
+    } else {
+        RetryStep::Wait
+    }
+}
+
+/// Called from the `FEngineLoop::Tick` detour, on the main thread. Free
+/// when nothing is pending.
+pub fn retry_pending() {
+    if PENDING.load(Ordering::Relaxed) == 0 {
+        return;
+    }
+    let frame = FRAMES.fetch_add(1, Ordering::Relaxed) + 1;
+    match retry_step(frame) {
+        RetryStep::Wait => {}
+        RetryStep::Retry => {
+            #[cfg(all(target_os = "windows", target_arch = "x86"))]
+            unsafe {
+                retry_inner(frame);
+            }
+        }
+        RetryStep::GiveUp => {
+            #[cfg_attr(not(windows), allow(unused_variables))]
+            let still = PENDING.swap(0, Ordering::Relaxed);
+            #[cfg(windows)]
+            if let Some(p) = crate::boot::producer() {
+                super::emit_warn(
+                    p,
+                    "client.hooks.cme.gave_up",
+                    [
+                        ("pending_mask", serde_json::json!(still)),
+                        ("frames", serde_json::json!(frame)),
+                    ],
+                );
+            }
+        }
+    }
+}
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::ffi::c_void;
@@ -58,21 +137,16 @@ unsafe fn install_inner(producer: Producer) {
     // CmeMemberCallback objects point at it via `this_ptr`. Each
     // hook's static is constructed by `register_hook` below.
     let leaked: &'static Producer = Box::leak(Box::new(producer.clone()));
+    let _ = LEAKED.set(leaked);
 
-    register_hook(
-        leaked,
-        b"Event_NetIn_onClientMapLoad\0",
-        "client.network.on_client_map_load",
-        &MAP_LOAD_CB,
-        on_client_map_load_thunk,
-    );
-    register_hook(
-        leaked,
-        b"Event_NetIn_onClientReady\0",
-        "client.network.on_client_ready",
-        &READY_CB,
-        on_client_ready_thunk,
-    );
+    let mut pending = 0u8;
+    if !register_map_load(leaked, true, 0) {
+        pending |= MAP_LOAD_BIT;
+    }
+    if !register_ready(leaked, true, 0) {
+        pending |= READY_BIT;
+    }
+    PENDING.store(pending, Ordering::Relaxed);
 
     // Pair-completion event so SigNoz can pivot on whether the
     // CME subset of Phase 2 is fully wired.
@@ -83,6 +157,56 @@ unsafe fn install_inner(producer: Producer) {
     );
 }
 
+/// The producer the callbacks use, kept for [`retry_pending`].
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static LEAKED: std::sync::OnceLock<&'static Producer> = std::sync::OnceLock::new();
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn register_map_load(leaked: &'static Producer, first: bool, frame: u32) -> bool {
+    register_hook(
+        leaked,
+        b"Event_NetIn_onClientMapLoad\0",
+        "client.network.on_client_map_load",
+        &MAP_LOAD_CB,
+        on_client_map_load_thunk,
+        first,
+        frame,
+    )
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn register_ready(leaked: &'static Producer, first: bool, frame: u32) -> bool {
+    register_hook(
+        leaked,
+        b"Event_NetIn_onClientReady\0",
+        "client.network.on_client_ready",
+        &READY_CB,
+        on_client_ready_thunk,
+        first,
+        frame,
+    )
+}
+
+/// Retry every pending signal once. Main thread only (the tick detour).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn retry_inner(frame: u32) {
+    let Some(leaked) = LEAKED.get().copied() else {
+        return;
+    };
+    let pending = PENDING.load(Ordering::Relaxed);
+    let mut still = pending;
+    if pending & MAP_LOAD_BIT != 0 && register_map_load(leaked, false, frame) {
+        still &= !MAP_LOAD_BIT;
+    }
+    if pending & READY_BIT != 0 && register_ready(leaked, false, frame) {
+        still &= !READY_BIT;
+    }
+    PENDING.store(still, Ordering::Relaxed);
+}
+
+/// Look `signal_name` up and subscribe `callback`. Reports a miss only on
+/// the `first` attempt (retries are silent until they succeed), and the
+/// frame a late subscribe landed on.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 unsafe fn register_hook(
     leaked: &'static Producer,
@@ -90,9 +214,14 @@ unsafe fn register_hook(
     log_target: &'static str,
     callback: &'static CmeMemberCallback,
     _thunk: unsafe extern "thiscall" fn(*mut c_void, *mut c_void),
-) {
+    first: bool,
+    frame: u32,
+) -> bool {
     let signal = lookup_by_name(signal_name);
     if signal.is_null() {
+        if !first {
+            return false;
+        }
         super::emit_warn(
             leaked,
             "client.hooks.cme.signal_missing",
@@ -105,7 +234,7 @@ unsafe fn register_hook(
                 ),
             )],
         );
-        return;
+        return false;
     }
     subscribe(signal, callback);
     super::emit_info(
@@ -121,8 +250,10 @@ unsafe fn register_hook(
                 ),
             ),
             ("log_target", serde_json::Value::String(log_target.into())),
+            ("after_frames", serde_json::json!(frame)),
         ],
     );
+    true
 }
 
 // ─── Static vtables + callbacks ─────────────────────────────────
@@ -251,4 +382,36 @@ fn emit_session_identity(producer: &Producer) {
         ClientNativeEvent::builder("client.session.identity", "info")
             .field("player_entity_id", serde_json::json!(player_entity_id)),
     );
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn retries_on_the_cadence_then_gives_up_once() {
+        assert_eq!(retry_step(1), RetryStep::Wait);
+        assert_eq!(retry_step(RETRY_EVERY_FRAMES), RetryStep::Retry);
+        assert_eq!(retry_step(RETRY_EVERY_FRAMES + 1), RetryStep::Wait);
+        assert_eq!(retry_step(RETRY_GIVE_UP_FRAMES), RetryStep::GiveUp);
+        assert_eq!(
+            retry_step(RETRY_GIVE_UP_FRAMES + RETRY_EVERY_FRAMES),
+            RetryStep::Wait
+        );
+    }
+
+    #[test]
+    fn hook_bits_are_distinct() {
+        assert_eq!(HOOK_BITS[0] & HOOK_BITS[1], 0);
+    }
+
+    /// Nothing pending: the tick detour's call costs one load and does not
+    /// count frames.
+    #[test]
+    fn nothing_pending_is_a_no_op() {
+        PENDING.store(0, Ordering::Relaxed);
+        let before = FRAMES.load(Ordering::Relaxed);
+        retry_pending();
+        assert_eq!(FRAMES.load(Ordering::Relaxed), before);
+    }
 }
