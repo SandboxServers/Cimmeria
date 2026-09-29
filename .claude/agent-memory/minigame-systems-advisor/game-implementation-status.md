@@ -48,8 +48,9 @@ ConverseBasicHumanoid, CrystalGame, DHD, GoauldCrystals, Hack, Livewire.
 This **contradicts** `docs/reverse-engineering/findings/minigame-architecture.md:34`
 ("no SWF files exist for them"). The packages exist; what is unverified is
 whether the placeholder ones contain a real game or just a shell with a win
-button. Treat "placeholder SWF presents a usable win affordance" as an
-**untested assumption**, not a fact.
+button. **Resolved 2026-09-29:** the Hack/Activate/Analyze/Bypass/Converse
+GFX movies each have a `win_btn` that sends `victory` (see
+[[livewire-client-swf-facts]]).
 
 Audio evidence that the placeholder games were at least partly built:
 `docs/client/audio-voice-inventory.md:515` — `activateMG.fev` has 22 FMOD events

@@ -97,6 +97,8 @@ The server is the better-instrumented side, so these rank below the client work.
 | S6 | `server_wait_for` | Poll a predicate (mission step reached, entity within range, journal kind seen) with a timeout, on the server side. | M |
 | S7 | Chain ids on `content.execute_actions` | The span carries no chain id today, so "which chain fired" needs log text. | S |
 
+> The [Cellblock autoplay campaign](../cellblock-autoplay/work-packets.md) (2026-09-29) schedules S1-S4 (AP-13) and the other tools the full tutorial walkthrough needs.
+
 ## Suggested order
 
 1. C3 (Lua errors) and B1 (ring cursor): small, and they unblock everything that reads the client.

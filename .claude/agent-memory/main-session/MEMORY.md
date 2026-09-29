@@ -4,6 +4,7 @@ Project and reference facts that top-level sessions (not subagents) learned whil
 
 ## Open investigations
 
+- [project_cellblock_autoplay_campaign.md](project_cellblock_autoplay_campaign.md) — Cellblock autoplay campaign planned 2026-09-29 (docs/analysis/cellblock-autoplay/); nothing built; installed labd predates #1099-#1102
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often never rendered on a fresh character though the client creates it; SigNoz evidence, what is ruled out, dropped requestEntityUpdate (#838)
 - [project_enemy_combat_runtime_blockers.md](project_enemy_combat_runtime_blockers.md) — enemy-combat v3 handoff reviewed not imported; #819/#822 landed; MITIGATION 0/0, forced DT_PHYSICAL, EF_DONT_USE_QR, DoT death still block it
 
