@@ -41,6 +41,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "StatBuff" => Some(&super::stat_buff::StatBuff),
         // Radioactive dart dose (ammo AM-11b).
         "RadiationDamage" => Some(&super::ammo_dart_tech::RadiationDamage),
+        // Antidote and Coagulant darts (ammo AM-11c): remove effects by category.
+        "RemoveEffects" => Some(&super::ammo_dart_support::RemoveEffects),
         _ => None,
     }
 }
