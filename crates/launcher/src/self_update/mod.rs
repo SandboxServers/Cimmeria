@@ -7,6 +7,10 @@
 //!   optional `min_launcher` gate.
 //! - [`download`]: download beside the exe, verify size and SHA-256.
 //! - [`swap`]: rename-aside swap, rollback, relaunch, `.old` cleanup.
+//! - [`handoff`]: start the new exe, release the lock and exit (old
+//!   process); take the lock at startup, ending a stuck old launcher if
+//!   needed (new process).
+//! - [`old_process`]: find and end that stuck old launcher (Windows).
 //!
 //! Trust is HTTPS to GitHub plus the SHA-256 published in the same release,
 //! the same trust as downloading the exe by hand. Design notes:
@@ -17,6 +21,8 @@
 
 pub mod build_info;
 pub mod download;
+pub mod handoff;
+pub mod old_process;
 pub mod releases;
 pub mod swap;
 pub mod version;
@@ -135,8 +141,10 @@ impl ApplyError {
     }
 }
 
-/// Download, verify and swap in `release` for `exe`, then start it. On
-/// `Ok` the new launcher is running and this process should exit.
+/// Download, verify and swap in `release` for `exe`, then hand off to it
+/// ([`handoff::hand_off`]). With [`handoff::ProcessHooks`] a successful
+/// update never returns: this process exits as soon as the new launcher
+/// is running, without waiting for the window.
 pub async fn apply(
     http: &reqwest::Client,
     endpoints: &UpdateEndpoints,
@@ -144,8 +152,9 @@ pub async fn apply(
     release: &LauncherRelease,
     exe: &Path,
     progress: &tokio::sync::mpsc::UnboundedSender<crate::install::Progress>,
+    hooks: &mut (impl handoff::HandoffHooks + Send),
 ) -> Result<(), ApplyError> {
-    let result = apply_inner(http, endpoints, build, release, exe, progress).await;
+    let result = apply_inner(http, endpoints, build, release, exe, progress, hooks).await;
     if let Err(e) = &result {
         warn!(
             target: TARGET,
@@ -167,6 +176,7 @@ async fn apply_inner(
     release: &LauncherRelease,
     exe: &Path,
     progress: &tokio::sync::mpsc::UnboundedSender<crate::install::Progress>,
+    hooks: &mut (impl handoff::HandoffHooks + Send),
 ) -> Result<(), ApplyError> {
     let dir = exe.parent().unwrap_or(Path::new(".")).to_path_buf();
     if !crate::launch::install_dir_writable(&dir) {
@@ -202,30 +212,7 @@ async fn apply_inner(
     );
 
     let from = build.tag.clone().unwrap_or_default();
-    match swap::relaunch(exe, &from) {
-        Ok(child) => {
-            info!(
-                target: TARGET,
-                event = "update_relaunched",
-                pid = child.id(),
-                target_tag = %release.tag,
-                "new launcher started; this one exits"
-            );
-            Ok(())
-        }
-        Err(error) => {
-            let rolled_back = swap::roll_back(exe).is_ok();
-            warn!(
-                target: TARGET,
-                event = "update_rollback",
-                reason = "relaunch_failed",
-                rolled_back,
-                error = %error,
-                "new launcher would not start; rolling back"
-            );
-            Err(ApplyError::Relaunch { error, rolled_back })
-        }
-    }
+    handoff::hand_off(exe, &from, &release.tag, hooks)
 }
 
 /// Startup housekeeping after an update: delete `<exe>.old` in the

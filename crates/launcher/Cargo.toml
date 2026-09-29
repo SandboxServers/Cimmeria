@@ -93,6 +93,10 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Threading",
     "Win32_System_Memory",
     "Win32_System_Diagnostics_Debug",
+    # CreateToolhelp32Snapshot: find the old launcher (our parent) when a
+    # self-update relaunch finds it still holding launcher.lock
+    # (src/self_update/old_process.rs).
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",
     # FDICreate/FDICopy: expand the installer cabinet set (src/unpack/fdi.rs).
     "Win32_Storage_Cabinets",

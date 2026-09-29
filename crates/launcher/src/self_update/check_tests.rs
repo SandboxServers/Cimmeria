@@ -143,6 +143,23 @@ async fn a_redirect_off_the_allow_list_is_not_followed() {
     assert!(err.to_string().contains("does not trust"), "{err}");
 }
 
+/// Handoff hooks for an update that must fail before the handoff.
+#[cfg(windows)]
+struct NoHandoff;
+
+#[cfg(windows)]
+impl handoff::HandoffHooks for NoHandoff {
+    fn spawn(&mut self, _: &Path, _: &str, _: u32) -> std::io::Result<u32> {
+        panic!("a failed update never starts a new launcher")
+    }
+    fn release_lock(&mut self) -> bool {
+        panic!("a failed update keeps the lock")
+    }
+    fn exit(&mut self) {
+        panic!("a failed update keeps running")
+    }
+}
+
 // A download into a directory the launcher cannot write must stop before
 // any request, with the fallback reason the banner turns into a link.
 #[cfg(windows)]
@@ -169,9 +186,17 @@ async fn an_unwritable_directory_falls_back_to_the_release_page() {
         sha256: asset("x.exe.sha256"),
     };
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let err = apply(&http, &endpoints, &build_a(), &rel, &exe, &tx)
-        .await
-        .unwrap_err();
+    let err = apply(
+        &http,
+        &endpoints,
+        &build_a(),
+        &rel,
+        &exe,
+        &tx,
+        &mut NoHandoff,
+    )
+    .await
+    .unwrap_err();
     assert_eq!(err.reason(), "dir_not_writable", "{err}");
     assert!(server.received_requests().await.unwrap().is_empty());
 }

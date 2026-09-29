@@ -62,6 +62,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [launcher-state-key-and-egui-wake.md](launcher-state-key-and-egui-wake.md) — sgw_game patches are recorded as `<id>@sgw_game`; worker events must wake egui via EventSender.
 - [launcher-extracted-mtimes-and-ue3-ini-version.md](launcher-extracted-mtimes-and-ue3-ini-version.md) — extracted files must keep archive DOS times or UE3 flags Default*.ini outdated; zip 1980 placeholder; MakeCAB fixture.
+- [launcher-self-update-handoff-traps.md](launcher-self-update-handoff-traps.md) — viewport Close waits for a frame; handoff releases instance_lock + process::exit; relaunch kills stuck old exe only.
 
 ## Injected client DLLs
 

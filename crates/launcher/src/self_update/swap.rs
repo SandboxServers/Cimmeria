@@ -8,12 +8,13 @@
 //! 2. rename the running `<exe>` to `<exe>.old`;
 //! 3. rename the verified download to `<exe>`; if that fails, rename
 //!    `<exe>.old` back (rollback);
-//! 4. start `<exe>` with the same arguments and [`RELAUNCH_ENV`] set, and
-//!    let this process exit; if the start fails, undo 2 and 3.
+//! 4. start `<exe>` with the same arguments and [`RELAUNCH_ENV`] set,
+//!    release `launcher.lock` and exit; if the start fails, undo 2 and 3.
+//!    Step 4 is [`super::handoff::hand_off`].
 //!
 //! The new process waits for this one's `launcher.lock` (see
-//! [`acquire_lock`]) and deletes `<exe>.old` once this process is gone
-//! ([`remove_old_exe`]). The exe keeps whatever name the player gave it:
+//! [`super::handoff::acquire_startup_lock`]) and deletes `<exe>.old` once
+//! this process is gone ([`remove_old_exe`]). The exe keeps whatever name the player gave it:
 //! every path here comes from `std::env::current_exe`.
 
 use std::ffi::OsString;
@@ -101,14 +102,22 @@ pub fn roll_back(exe: &Path) -> std::io::Result<()> {
 }
 
 /// Step 4: start the new exe with this process's arguments.
-pub fn relaunch(exe: &Path, from_tag: &str) -> std::io::Result<std::process::Child> {
+pub fn relaunch(exe: &Path, from_tag: &str, old_pid: u32) -> std::io::Result<std::process::Child> {
+    relaunch_command(exe, from_tag, old_pid).spawn()
+}
+
+/// The command [`relaunch`] runs: this process's arguments, plus
+/// [`RELAUNCH_ENV`] and [`super::handoff::RELAUNCH_PID_ENV`].
+pub fn relaunch_command(exe: &Path, from_tag: &str, old_pid: u32) -> std::process::Command {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let mut cmd = std::process::Command::new(exe);
-    cmd.args(args).env(RELAUNCH_ENV, from_tag);
-    if let Some(dir) = exe.parent() {
+    cmd.args(args)
+        .env(RELAUNCH_ENV, from_tag)
+        .env(super::handoff::RELAUNCH_PID_ENV, old_pid.to_string());
+    if let Some(dir) = exe.parent().filter(|d| !d.as_os_str().is_empty()) {
         cmd.current_dir(dir);
     }
-    cmd.spawn()
+    cmd
 }
 
 /// What happened to `<exe>.old` at startup.
@@ -143,10 +152,9 @@ pub fn remove_old_exe(exe: &Path, attempts: u32, delay: Duration) -> OldCleanup 
     OldCleanup::StillLocked
 }
 
-/// Take the single-instance lock. A relaunched process waits up to `wait`
-/// for the launcher that started it to exit and release the lock; a
-/// normal start does not wait. `try_lock` returns true once the lock is
-/// held.
+/// Poll `try_lock` for up to `wait` (once when `wait` is zero). Returns
+/// true once the lock is held. The startup policy around it is
+/// [`super::handoff::acquire_startup_lock`].
 pub fn acquire_lock(mut try_lock: impl FnMut() -> bool, wait: Duration, poll: Duration) -> bool {
     let deadline = std::time::Instant::now() + wait;
     loop {
