@@ -163,6 +163,11 @@ State files:
   newer launcher applies it again in the right place. The
   client-patches UI overlay ships this way; see
   [`patch_dest.rs`](../../crates/launcher/src/patch_dest.rs).
+- `title` and `description` (optional) name the patch and say what it
+  changes, for the launcher's [Changes to your client](#changes-to-your-client)
+  list. They are signed with the rest of the manifest, and older
+  launchers ignore them. `cimmeria-patchset build` copies them from the
+  patch spec, and `pack-client-overlay` writes the overlay's.
 
 ---
 
@@ -191,6 +196,46 @@ nothing and would have broken the namespace the auth server's requests
 carry. No released launcher ran it; it was removed with its state field
 (`patched_host`, now ignored) and the `server_host` setting.
 
+## Changes to Your Client
+
+The launcher's **Changes to your client** section lists every way it
+makes the player's client differ from the stock 2009 install, whether
+the launcher downloaded that install or the player pointed it at their
+own copy. It is open by default until the launcher manages a client,
+so a player sees the list before **Install / Update** or **Adopt**.
+Nothing in it can be switched off except the two launch rows; the
+patches are what Cimmeria needs to play.
+
+The rows come from one pure function,
+[`client_changes.rs`](../../crates/launcher/src/client_changes.rs)::`list`,
+in four groups:
+
+| Group | Rows |
+|---|---|
+| Launcher setup | `LoginInternal.lua` login servers and ASLR off (both before every launch), `Cache.en-US` renamed to `SourceCache.en-us` (at install) |
+| Patched files | One row per manifest patch, in manifest order, **applied** or **applied on the next Install / Update** from `launcher-installed.json` |
+| Added when the game starts | The client-patches DLL (on, or off when **Load client patches** is off) and telemetry (off unless the player opted in) |
+| Sent by the server while you play | The server's cooked data in `Documents\My Games\Firesky\SGWGame\Cache.en-US` |
+
+A patch row uses the manifest's `title` and `description` when present,
+else the launcher's built-in text for the patches published before those
+fields existed (`builtin_description`), else its id with "no description
+yet". Every manifest patch gets a row, described or not. The test
+`builtin_catalog_matches_every_patch_spec` fails when a spec under
+`data/client-patches/` has no built-in text or its text differs from the
+spec's.
+
+### Telemetry is opt-in
+
+`telemetry.opted_in` defaults to `false`. Until the player answers it,
+a "Help us fix bugs? (optional)" prompt sits at the top of the window
+with **Turn on telemetry** and **No thanks**; either answer sets
+`telemetry.prompt_answered` and saves. The **Send telemetry (opt-in)**
+checkbox beside the launch buttons changes the choice later. Both write
+the status log line. The field used to be `enabled`, default `true`,
+and every launcher that saved its config wrote `"enabled": true`
+without asking; the rename means those configs load opted out.
+
 ## Patch Sets (`cimmeria-patchset`)
 
 A patch zip with a `cimmeria-patch.json` recipe rebuilds files from the
@@ -210,9 +255,9 @@ whose target already has the result. The shipped patches live in
 
 | Button | Enabled when | Action |
 |---|---|---|
-| **Launch SGW.exe** | `SGW.exe` exists | `SGW.exe` started suspended with `cwd = <install>`, the client-patches DLL injected, then resumed. A telemetry session follows when `telemetry.enabled` and the identity loaded |
+| **Launch SGW.exe** | `SGW.exe` exists | `SGW.exe` started suspended with `cwd = <install>`, the client-patches DLL injected, then resumed. A telemetry session follows when the player opted in (`telemetry.opted_in`) and the identity loaded |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
-| **Launch + Telemetry** | Atera available, `telemetry.enabled`, and identity loaded | Atera debug launch plus the telemetry pipeline |
+| **Launch + Telemetry** | Atera available, `telemetry.opted_in`, and identity loaded | Atera debug launch plus the telemetry pipeline |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
 
 The Atera batch files are **not** shipped by the launcher. Players who
@@ -237,7 +282,7 @@ SGW.exe** the launcher:
    The checkbox **Load client patches (restores the Black Market
    window)** under the launch buttons is `client_patches.enabled` in
    `launcher-config.json`. It is on by default, saved as soon as it
-   changes, and independent of `telemetry.enabled`.
+   changes, and independent of the telemetry opt-in.
 2. Finds the DLL ([`client_patches/dll_source.rs`](../../crates/launcher/src/client_patches/dll_source.rs)),
    in this order: `client_patches.dll_override` (a tester's own build);
    the copy embedded in release launchers, written to
@@ -429,7 +474,10 @@ crates/launcher/
     ├── main.rs                 # eframe entry, tokio runtime
     ├── app/
     │   ├── mod.rs              # eframe::App — state machine
-    │   └── view.rs             # panel rendering
+    │   ├── view.rs             # panel rendering
+    │   ├── telemetry_panel.rs  # telemetry opt-in prompt + checkbox
+    │   └── client_changes_panel.rs  # "Changes to your client" list
+    ├── client_changes.rs       # every deviation from the stock client
     ├── config.rs               # LauncherConfig (next to .exe)
     ├── manifest.rs             # Manifest schema + fetch + Ed25519 verify
     ├── install.rs              # seed + patches + client setup orchestration
@@ -448,6 +496,7 @@ crates/launcher/
     ├── patch_dest.rs           # where a patch extracts (install dir or SGWGame/)
     ├── bundled.rs              # writes the embedded i686 artifacts to disk
     ├── start32_helper.rs       # keeps sgw-start32.exe beside the launcher
+    ├── overlay_meta.rs         # UI overlay id prefix + list text (shared with the tool)
     ├── overlay_pack.rs         # UI overlay -> patch zip + entry (tests only here)
     ├── bin/
     │   └── pack-client-overlay.rs  # release tool around overlay_pack.rs

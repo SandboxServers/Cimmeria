@@ -28,6 +28,14 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 Applied to the stock client, the rebuilt files are byte-identical to a
 known-good QA client's.
 
+Each spec carries a `title` and `description` for the launcher's
+**Changes to your client** list. `cimmeria-patchset build` copies them
+into the manifest entry; they are not in the zip, so adding them to a
+published patch changes nothing a player downloads. The launcher keeps
+the same text as a fallback for manifests published without it
+(`builtin_description` in `crates/launcher/src/client_changes.rs`), and
+the test `builtin_catalog_matches_every_patch_spec` keeps the two in step.
+
 Not here, on purpose:
 
 - **The 2008 Agnos content** (`Maps\Agnos`, `Maps\Agnos_Library` and the

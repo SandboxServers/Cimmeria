@@ -91,11 +91,21 @@ fn default_client_patches_enabled() -> bool {
 /// (rarely-changing user choice); per-session runtime state lives in
 /// [`crate::state::TelemetryState`] so config-file rewrites don't
 /// fire on every tick.
+///
+/// Telemetry is opt-in: nothing is sent until the player ticks the box.
+/// The field was `enabled`, defaulting to true, and every launcher that
+/// saved its config wrote `"enabled": true` without the player choosing
+/// it. The new name means those old files load opted out; serde ignores
+/// the old key.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TelemetrySettings {
-    /// Opt-out switch. False ⇒ no token fetch, no tail, no upload.
-    #[serde(default = "default_telemetry_enabled")]
-    pub enabled: bool,
+    /// Opt-in switch. False ⇒ no token fetch, no tail, no upload.
+    #[serde(default)]
+    pub opted_in: bool,
+    /// True once the player answered the launcher's telemetry prompt,
+    /// either way, so it stops asking.
+    #[serde(default)]
+    pub prompt_answered: bool,
     /// Base URL of the cimmeria-server admin API where the telemetry
     /// auth handshake (`POST /auth/dev-session`) lives. Defaults to
     /// the local-dev admin port; ops override for production.
@@ -106,14 +116,11 @@ pub struct TelemetrySettings {
 impl Default for TelemetrySettings {
     fn default() -> Self {
         Self {
-            enabled: default_telemetry_enabled(),
+            opted_in: false,
+            prompt_answered: false,
             auth_url: default_telemetry_auth_url(),
         }
     }
-}
-
-fn default_telemetry_enabled() -> bool {
-    true
 }
 
 fn default_telemetry_auth_url() -> String {
@@ -207,7 +214,8 @@ mod tests {
             }],
             manifest_url: "Z".into(),
             telemetry: TelemetrySettings {
-                enabled: false,
+                opted_in: true,
+                prompt_answered: true,
                 auth_url: "http://test/api".into(),
             },
             client_patches: ClientPatchesSettings {
@@ -220,7 +228,8 @@ mod tests {
         assert_eq!(loaded.install_path, PathBuf::from("X"));
         assert_eq!(loaded.login_servers[0].name, "Y");
         assert_eq!(loaded.manifest_url, "Z");
-        assert!(!loaded.telemetry.enabled, "opt-out must roundtrip");
+        assert!(loaded.telemetry.opted_in, "the opt-in must roundtrip");
+        assert!(loaded.telemetry.prompt_answered);
         assert_eq!(loaded.client_patches, cfg.client_patches);
     }
 
@@ -239,10 +248,7 @@ mod tests {
         let cfg = LauncherConfig::load(&path).unwrap();
         assert!(cfg.client_patches.enabled);
         assert_eq!(cfg.client_patches.dll_override, None);
-        assert!(
-            !cfg.telemetry.enabled,
-            "the telemetry opt-out must not affect client patches"
-        );
+        assert!(!cfg.telemetry.opted_in);
     }
 
     /// The opt-out is independent of telemetry in the other direction too.
@@ -257,15 +263,15 @@ mod tests {
         .unwrap();
         let cfg = LauncherConfig::load(&path).unwrap();
         assert!(!cfg.client_patches.enabled);
-        assert!(cfg.telemetry.enabled);
+        assert!(!cfg.telemetry.opted_in);
     }
 
-    // New field on the same schema_version: legacy config files written
-    // before `telemetry` existed must load cleanly with the field
-    // defaulted to enabled=true. Adding `#[serde(default)]` makes this
-    // backwards-compatible without bumping CONFIG_SCHEMA_VERSION.
+    // Telemetry is opt-in. A config written before `telemetry` existed
+    // loads opted out, and so does one saved by an opt-out launcher,
+    // which wrote `"enabled": true` on the player's behalf: only an
+    // explicit `opted_in` turns it on.
     #[test]
-    fn load_legacy_config_without_telemetry_field_defaults_to_enabled() {
+    fn load_legacy_config_without_telemetry_field_is_opted_out() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("c.json");
         std::fs::write(
@@ -274,11 +280,25 @@ mod tests {
         )
         .unwrap();
         let cfg = LauncherConfig::load(&path).unwrap();
+        assert!(!cfg.telemetry.opted_in);
+        assert!(!cfg.telemetry.prompt_answered);
+    }
+
+    #[test]
+    fn a_saved_opt_out_era_enabled_flag_does_not_opt_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version":1,"install_path":"X","manifest_url":"Z","telemetry":{"enabled":true,"auth_url":"http://a/api"}}"#,
+        )
+        .unwrap();
+        let cfg = LauncherConfig::load(&path).unwrap();
         assert!(
-            cfg.telemetry.enabled,
-            "legacy config must default telemetry.enabled to true so an upgrade \
-             doesn't silently change behaviour"
+            !cfg.telemetry.opted_in,
+            "the old default-on flag must not count as consent"
         );
+        assert_eq!(cfg.telemetry.auth_url, "http://a/api");
     }
 
     // A config from a launcher that still had `server_host` loads, and gets
@@ -300,9 +320,10 @@ mod tests {
     }
 
     #[test]
-    fn telemetry_settings_default_is_enabled() {
+    fn telemetry_settings_default_is_opted_out() {
         let t = TelemetrySettings::default();
-        assert!(t.enabled);
+        assert!(!t.opted_in);
+        assert!(!t.prompt_answered);
     }
 
     #[test]

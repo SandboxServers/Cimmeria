@@ -76,6 +76,7 @@ Azure Blob SAS for log uploads) see
        (also done before every launch)
 6. Click "Launch SGW.exe" (or "Launch Atera Debug" / "Launch + Telemetry" /
    "Fix ASLR" if those files are present in the install directory).
+   Telemetry is off unless you turn it on.
 7. After playing, click "Upload Debug Logs" to zip+upload logs in one shot.
 ```
 
@@ -221,7 +222,7 @@ binaries directory (see [`crates/launcher/src/app/view.rs`](../../crates/launche
 |--------|------------|--------------|
 | **Launch SGW.exe** | `SGW.exe` exists | Starts `<binaries>/SGW.exe` (cwd = binaries dir) with the client patches loaded, unless you turned them off. With telemetry on, a telemetry session follows the game |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = binaries dir) |
-| **Launch + Telemetry** | Atera available **and** `telemetry.enabled` **and** launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
+| **Launch + Telemetry** | Atera available **and** you opted into telemetry **and** launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
 
 Under the buttons, **Load client patches (restores the Black Market
@@ -231,6 +232,22 @@ nothing to do with the telemetry setting. Turn it off only to rule the
 patches out when something misbehaves; the Black Market window will not
 open without them. The status log says on every launch when the patches
 were not loaded, and why. Atera debug launches never load them.
+
+Beside it, **Send telemetry (opt-in)** is off until you turn it on. On,
+the launcher uploads the client's log files while you play, with this
+install's random id, so crashes and bugs can be traced. The launcher
+also asks once, at the top of the window; either answer is remembered.
+
+### What the launcher changes in your client
+
+Stargate Worlds needs the stock 2009 client, and Cimmeria changes it.
+The **Changes to your client** section lists every change: the login
+servers and ASLR flag it sets before every launch, the folder it renames
+at install, each patch from the manifest and whether it is applied yet,
+what it adds to `SGW.exe` at launch, and what the server sends while you
+play. The same list applies whether the launcher downloaded the client
+or you adopted your own copy. Details are in
+[sgw-launcher.md](sgw-launcher.md#changes-to-your-client).
 
 The Atera files are **not** shipped by the launcher or any of its
 patches. Developers and modders drop the Atera tarball into the install
@@ -335,6 +352,13 @@ cargo run -p cimmeria-patchset -- build data/client-patches/<id>/patch.json \
   --out data/client-patches/<id>.zip \
   --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/<id>.zip
 ```
+
+Give the spec a `title` and a one- or two-sentence `description` of
+what the patch changes, in words a player understands; the tool copies
+both into the manifest entry, and the launcher shows them in its
+**Changes to your client** list. Add the same text to the launcher's
+`builtin_description` in `crates/launcher/src/client_changes.rs`: a
+test checks the two match.
 
 It prints the manifest entry. Each recipe op pins the SHA-256 of every
 source and of the result; the launcher refuses a source that isn't stock,

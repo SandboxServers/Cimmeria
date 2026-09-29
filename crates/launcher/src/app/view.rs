@@ -34,21 +34,32 @@ impl eframe::App for LauncherApp {
         // `show(&Context)` overload is gone — the panel is always nested in a
         // `Ui` now). Same signature, same semantics.
         egui::CentralPanel::default().show(ui, |ui| {
-            ui.heading("Stargate Worlds Launcher");
-            ui.separator();
-            self.show_config_panel(ui);
-            ui.separator();
-            self.show_manifest_summary(ui);
-            ui.separator();
-            self.show_install_panel(ui);
-            ui.separator();
-            self.show_launch_panel(ui);
-            ui.separator();
-            self.show_log_upload_panel(ui);
-            ui.separator();
-            self.show_client_state_panel(ui);
-            ui.separator();
-            self.show_status_log(ui);
+            // The page is taller than the default window once the
+            // "Changes to your client" list is open; scroll rather than
+            // cut off the panels below it.
+            egui::ScrollArea::vertical()
+                .id_salt("launcher-page")
+                .auto_shrink(false)
+                .show(ui, |ui| {
+                    ui.heading("Stargate Worlds Launcher");
+                    ui.separator();
+                    self.show_telemetry_prompt(ui);
+                    self.show_config_panel(ui);
+                    ui.separator();
+                    self.show_manifest_summary(ui);
+                    ui.separator();
+                    self.show_install_panel(ui);
+                    ui.separator();
+                    self.show_launch_panel(ui);
+                    ui.separator();
+                    self.show_client_changes(ui);
+                    ui.separator();
+                    self.show_log_upload_panel(ui);
+                    ui.separator();
+                    self.show_client_state_panel(ui);
+                    ui.separator();
+                    self.show_status_log(ui);
+                });
         });
         self.show_confirm_wipe_all_modal(&ctx);
     }
@@ -287,7 +298,7 @@ impl LauncherApp {
                 // in and the identity loaded; the client patches are
                 // independent of both.
                 let telemetry = match &self.identity {
-                    Some(id) if self.config.telemetry.enabled => {
+                    Some(id) if self.config.telemetry.opted_in => {
                         Some(build_telemetry_config(&self.config, id))
                     }
                     _ => None,
@@ -313,7 +324,7 @@ impl LauncherApp {
             // (legacy) when telemetry is opted out or identity load
             // failed.
             let telemetry_ready =
-                opts.atera_available() && self.config.telemetry.enabled && self.identity.is_some();
+                opts.atera_available() && self.config.telemetry.opted_in && self.identity.is_some();
             if ui
                 .add_enabled(telemetry_ready, egui::Button::new("Launch + Telemetry"))
                 .clicked()
@@ -339,6 +350,7 @@ impl LauncherApp {
             }
         });
         self.show_client_patches_toggle(ui);
+        self.show_telemetry_toggle(ui);
         if !opts.atera_available() {
             ui.label(
                 egui::RichText::new(

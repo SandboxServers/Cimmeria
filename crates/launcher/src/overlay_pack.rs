@@ -33,8 +33,7 @@ const NOT_SHIPPED: [&str; 2] = [LIST_FILE, "README.md"];
 /// Top-level directory of the overlay's own tests, which never ships.
 const TEST_DIR: &str = "test/";
 
-/// Patch id prefix for the Black Market UI overlay.
-pub const DEFAULT_ID_PREFIX: &str = "bm-ui-overlay";
+pub use crate::overlay_meta::{DEFAULT_ID_PREFIX, OVERLAY_DESCRIPTION, OVERLAY_TITLE};
 
 #[derive(Debug, Error)]
 pub enum PackError {
@@ -159,6 +158,8 @@ pub fn entry(packed: &Packed, blob_url: String, after: Option<String>) -> PatchE
         sha256: packed.sha256.clone(),
         after,
         root: PatchRoot::SgwGame,
+        title: Some(OVERLAY_TITLE.to_string()),
+        description: Some(OVERLAY_DESCRIPTION.to_string()),
     }
 }
 
@@ -285,6 +286,8 @@ mod tests {
             sha256: "h".into(),
             after: after.map(str::to_string),
             root: PatchRoot::InstallDir,
+            title: None,
+            description: None,
         }
     }
 
@@ -428,6 +431,9 @@ mod tests {
         let json = serde_json::to_value(&e).unwrap();
         assert_eq!(json["root"], "sgw_game");
         assert_eq!(json["id"], packed.id.as_str());
+        // The launcher's "Changes to your client" list reads these.
+        assert_eq!(json["title"], OVERLAY_TITLE);
+        assert_eq!(json["description"], OVERLAY_DESCRIPTION);
     }
 
     #[test]

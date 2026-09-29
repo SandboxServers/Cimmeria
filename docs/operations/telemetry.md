@@ -193,11 +193,15 @@ Every event ends up in one place: SigNoz / ClickHouse, indexed by:
 Retention is whatever the ClickHouse TTL says (see
 [signoz-deployment.md](signoz-deployment.md#retention)).
 
-## User opt-out
+## Player opt-in
 
-The launcher's TelemetrySettings config (`telemetry.enabled`,
-default `true`) controls whether the "Launch + Telemetry" button is
-enabled. When `false`:
+Telemetry is **opt-in**. The launcher's `TelemetrySettings`
+(`telemetry.opted_in` in `launcher-config.json`, default `false`) is
+off until the player turns it on, from the one-time "Help us fix
+bugs?" prompt or the **Send telemetry (opt-in)** checkbox beside the
+launch buttons. Both save at once. Launchers before this change
+wrote `"enabled": true` on the player's behalf; that key is ignored,
+so every existing install starts opted out. While it is off:
 
 - No `/api/auth/dev-session` POST fires.
 - No log tailing.

@@ -22,6 +22,8 @@
 #[allow(dead_code)]
 #[path = "../manifest.rs"]
 mod manifest;
+#[path = "../overlay_meta.rs"]
+mod overlay_meta;
 #[path = "../overlay_pack.rs"]
 mod overlay_pack;
 

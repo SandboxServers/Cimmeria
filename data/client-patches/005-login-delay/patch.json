@@ -1,5 +1,7 @@
 {
   "id": "005-login-delay",
+  "title": "Login screen delay",
+  "description": "Makes the login screen wait 19 seconds so the gate-dialing intro finishes first. Changes eula.lua.",
   "ops": [
     {"target": "Working/SGWGame/Content/UI/Startup/EULA/eula.lua", "sources": [{"path": "Working/SGWGame/Content/UI/Startup/EULA/eula.lua"}]}
   ]
