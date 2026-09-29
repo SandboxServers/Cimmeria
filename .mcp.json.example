@@ -19,6 +19,9 @@
     "                 plugin server started.",
     "  x64dbg       : Dynamic analysis via dariushoule/x64dbg-automate. Requires",
     "                 x96dbg.exe launched with the x64dbg-automate plugin loaded.",
+    "  cimmeria-lab-p2 : optional second lab client (named instance; its own port,",
+    "                 session file and lab-account.p2.json). See the two-clients",
+    "                 section of docs/guides/live-research-lab.md.",
     "  cimmeria-lab : Live Research Lab supervisor (stdio). Drives a running",
     "                 SGW.exe on this dev box: Lua eval, non-freezing hooks,",
     "                 screenshots, client UI flows, and the timeline. Windows",
@@ -75,6 +78,18 @@
         "CIMMERIA_LAB_SERVER_URL": "http://127.0.0.1:8443",
         "CIMMERIA_LAB_MCP_URL": "http://127.0.0.1:8444/mcp",
         "CIMMERIA_LAB_MCP_TOKEN": "REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN"
+      }
+    },
+    "cimmeria-lab-p2": {
+      "type": "stdio",
+      "command": "<CIMMERIA_ROOT>\\target\\debug\\cimmeria-lab.exe",
+      "env": {
+        "CIMMERIA_LAB_INSTANCE": "p2",
+        "CIMMERIA_LAB_BRIDGE_PORT": "8771",
+        "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
+        "CIMMERIA_LAB_START32": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\sgw-start32.exe",
+        "CIMMERIA_LAB_PATCHES_DLL": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\cimmeria_client_patches.dll",
+        "CIMMERIA_LAB_SERVER_URL": "http://127.0.0.1:8443"
       }
     },
     "lab-server": {

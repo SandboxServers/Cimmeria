@@ -227,6 +227,7 @@ mod tests {
             helper_path: None,
             bind: "127.0.0.1".into(),
             port: 8770,
+            instance: None,
             telemetry: Default::default(),
         };
         let bridge = Arc::new(BridgeClient::new("127.0.0.1:1", ""));

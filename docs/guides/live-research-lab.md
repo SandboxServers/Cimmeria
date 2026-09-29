@@ -235,7 +235,45 @@ The input tools press nothing through Lua: Lua only reads where a widget is and 
 - Mouse buttons are window messages, applied at CEGUI's cursor position, not at the message's coordinates. The cursor does not follow posted mouse moves or DirectInput motion, so the supervisor places it through CEGUI's own cursor and mirrors it into a virtual `GetCursorPos`.
 - The DirectInput keyboard is created but never read. The mouse is read while the viewport has it captured (mouse-look), and only while the game thinks it is focused: virtual focus answers `GetForegroundWindow`, `GetFocus`, `GetActiveWindow`, and lets a background `Acquire` succeed.
 - Launch skips the intro movies with Escape; on a new character Escape also skips the arrival cutscene, and dialogs are paged with Next to the green checkmark (`Dialog_DoneButton`).
-- `lab_client_start` refuses while any `SGW.exe` is running (two clients on one machine misbehave), and injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
+- `lab_client_start` refuses while an `SGW.exe` the lab does not own is running, and while its own instance's client runs. A second lab client is allowed only as a named instance ([Two clients](#two-clients-two-player-scenarios)). It injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
+
+## Two clients: two-player scenarios
+
+Trade, duels, squads and teams, mail between players, player-to-player visibility and chat need two players. Two clients on one workstation work when each has its own **lab instance**; without that they collide on the session file, the bridge port, the credentials, the crash markers and the logs (evidence and the client-side findings: [multi-client-lab.md](../reverse-engineering/findings/multi-client-lab.md)).
+
+**Setup.** Run one `cimmeria-lab` per client, each its own MCP server entry with its own environment. The default entry is the first player; the second adds `CIMMERIA_LAB_INSTANCE` and its own port:
+
+```json
+"cimmeria-lab-p2": {
+  "type": "stdio",
+  "command": "<CIMMERIA_ROOT>\\target\\debug\\cimmeria-lab.exe",
+  "env": {
+    "CIMMERIA_LAB_INSTANCE": "p2",
+    "CIMMERIA_LAB_BRIDGE_PORT": "8771",
+    "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
+    "CIMMERIA_LAB_START32": "...",
+    "CIMMERIA_LAB_PATCHES_DLL": "..."
+  }
+}
+```
+
+Its tools show up under the second server's name, so an agent addresses a player by the tool prefix. A named instance gets:
+
+| | Default instance | `CIMMERIA_LAB_INSTANCE=p2` |
+|---|---|---|
+| Session file | `sessions\current-session.json` | `sessions\instances\p2\current-session.json` (the DLL finds it through `CIMMERIA_LAB_SESSION_FILE`) |
+| Bridge port | 8770 | `CIMMERIA_LAB_BRIDGE_PORT` (give each instance its own; `CIMMERIA_LAB_BRIDGE` follows it by default) |
+| Credentials | `sessions\lab-account.json` | `sessions\lab-account.p2.json`, never the default file |
+| Crash marker, minidumps | `sessions\` | `sessions\instances\p2\` |
+| DLL logs | `cimmeria-client-*.log` | `cimmeria-client-*-p2.log` |
+
+`CIMMERIA_LAB_MAX_CLIENTS` caps the clients (default 2, ceiling 4). The start guard still refuses when an `SGW.exe` the lab does not own is running.
+
+**Two accounts.** A second login on the same account evicts the first client (`duplicate_login`), so the second instance needs its own account and `lab-account.p2.json`. Only `lab` exists today; a `lab2` seed is proposed in the finding and waits for an owner decision. Until it ships, a single-account run can still check everything that does not need two players online.
+
+**Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) for both instances: it answers `GetForegroundWindow` per process, so neither is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so do not type while a scenario runs. Both windows open at the same place and size; screenshots use `PrintWindow` per window, so an overlapped window still captures.
+
+**When to use `wireclient` instead.** A second player that only has to exist and answer (a duel partner, a body to be visible, a trade or squad counterpart driven with `cell_method`/`base_method`) needs no window at all: use `sparbot` or `GameSession` from `crates/wireclient` ([wireclient.md](../architecture/wireclient.md)). It has no throttling and no shared client cache, and needs its own account too. Use a second full client when the second player's UI is part of what is being tested.
 
 ## Client flows
 

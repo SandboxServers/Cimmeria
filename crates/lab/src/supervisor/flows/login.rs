@@ -13,7 +13,7 @@ use super::widgets::{
     LOGIN_PASSWORD_EDIT, LOGIN_WIN, PROMPT_TEXT, SERVER_SELECT_BUTTON, SERVER_SELECT_WIN,
 };
 use super::{settle, FlowError, FlowRun};
-use crate::supervisor::session_file::{self, LabAccount};
+use crate::supervisor::session_file::LabAccount;
 use crate::supervisor::{LoginState, Supervisor};
 
 /// How long the intro movies may take before the login screen shows.
@@ -137,11 +137,7 @@ impl Supervisor {
     /// character select.
     pub async fn login_flow(&self, req: LoginRequest) -> Result<Value, FlowError> {
         let mut run = FlowRun::new(self, "lab_login");
-        let file = self
-            .config
-            .install_dir
-            .as_ref()
-            .and_then(|d| session_file::read_lab_account(d).ok());
+        let file = self.lab_account();
         let creds = resolve_login(&req, file.as_ref()).map_err(|e| run.fail("credentials", e))?;
         self.set_login_state(LoginState::LoggingIn).await;
         let out = self.login_steps(&mut run, &creds).await;
