@@ -40,6 +40,7 @@ workspace-members = [
     "cimmeria-client-patches",
     "cimmeria-lab",
     "cimmeria-start32",
+    "cimmeria-sgw-testhost",
 ]
 
 # Keep them out of the generated dependency lines too. cimmeria-patch-wire is here as well,
@@ -54,6 +55,8 @@ workspace-members = [
 # server's whole dependency set into it. Their only dependencies are thiserror and
 # windows-sys (start32 also has winres at build time, kept out of the unified set by the
 # traversal exclude above).
+# cimmeria-sgw-testhost is the i686 stand-in for SGW.exe the DLL boot tests
+# inject into; its binary is std-only and its dev-dependencies are test-only.
 [final-excludes]
 workspace-members = [
     "cimmeria-app",
@@ -67,4 +70,5 @@ workspace-members = [
     "cimmeria-client-hookgate",
     "cimmeria-client-launch",
     "cimmeria-start32",
+    "cimmeria-sgw-testhost",
 ]

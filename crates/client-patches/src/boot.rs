@@ -5,15 +5,18 @@
 //! once the lock is released:
 //!
 //! 1. opens the log next to `SGW.exe`;
-//! 2. resolves the `lua51.dll` exports, waiting for the DLL if it is not
+//! 2. stops at once if any site's bytes differ from this build (a
+//!    different `SGW.exe`, or a process that is not the game at all);
+//! 3. resolves the `lua51.dll` exports, waiting for the DLL if it is not
 //!    loaded yet (it is a static import of `SGW.exe`, so it normally is);
-//! 3. takes the install lock it shares with the telemetry DLL, then runs
+//! 4. takes the install lock it shares with the telemetry DLL, then runs
 //!    the [fingerprint gate](crate::fingerprint) over every site,
 //!    accepting an earlier hook only from a loaded telemetry DLL;
-//! 4. hooks `FEngineLoop::Tick` (deliver), then the dispatcher and the drop
+//! 5. hooks `FEngineLoop::Tick` (deliver), then the dispatcher and the drop
 //!    callee (receive), stopping at the first failure;
-//! 5. releases the lock and exits. The hooks and statics live for the rest of the process; the
-//!    DLL is never unloaded, so `DLL_PROCESS_DETACH` does nothing.
+//! 6. releases the lock and exits. The hooks and statics live for the rest
+//!    of the process; the DLL is never unloaded, so `DLL_PROCESS_DETACH`
+//!    does nothing.
 //!
 //! Every failure is logged and leaves the game as it was: no hook is
 //! installed after a failed step, and the ones already in place only
@@ -100,6 +103,21 @@ fn bootstrap() {
             .map_or_else(|| "?".into(), |p| p.display().to_string())
     ));
 
+    // A build these addresses do not belong to fails here, before the Lua
+    // wait: nothing below could work, and in a process that never loads
+    // lua51.dll the wait alone takes 30 s. A site that is only "already
+    // hooked" is not decided yet: whether its jump may be chained depends
+    // on the owners listed under the lock below.
+    let early = fingerprint::check_all(&ProcessMemory, &[]);
+    if early
+        .iter()
+        .any(|(_, p)| matches!(p, Prologue::Mismatch { .. } | Prologue::Unreadable))
+    {
+        log_sites(&early);
+        log::line(NOT_THIS_BUILD);
+        return;
+    }
+
     let api = match wait_for_lua() {
         Ok(api) => api,
         Err(reason) => {
@@ -128,41 +146,8 @@ fn bootstrap() {
     }
 
     let hook_owners = hook_owner_ranges();
-    let mut usable = true;
-    for (site, prologue) in fingerprint::check_all(&ProcessMemory, &hook_owners) {
-        match &prologue {
-            Prologue::Stock => log::line(format_args!(
-                "{} at 0x{:08x}: stock",
-                site.name, site.address
-            )),
-            Prologue::Chained { jump_to } => log::line(format_args!(
-                "{} at 0x{:08x}: already hooked (jump to 0x{jump_to:08x}), chaining",
-                site.name, site.address
-            )),
-            Prologue::UnknownHook { jump_to } => log::line(format_args!(
-                "{} at 0x{:08x}: already hooked by a jump to 0x{jump_to:08x}, outside every \
-                 known hook owner; not chaining",
-                site.name, site.address
-            )),
-            Prologue::Mismatch { actual } => log::line(format_args!(
-                "{} at 0x{:08x}: expected {}, found {}",
-                site.name,
-                site.address,
-                hex(site.expected),
-                hex(actual)
-            )),
-            Prologue::Unreadable => log::line(format_args!(
-                "{} at 0x{:08x}: unreadable",
-                site.name, site.address
-            )),
-        }
-        usable &= prologue.is_usable();
-    }
-    if !usable {
-        log::line(
-            "a prologue does not match: a different SGW.exe build, or another patch \
-             at that address; nothing installed",
-        );
+    if !log_sites(&fingerprint::check_all(&ProcessMemory, &hook_owners)) {
+        log::line(NOT_THIS_BUILD);
         return;
     }
 
@@ -209,6 +194,45 @@ fn bootstrap() {
          CimmeriaBMNative is registered for sending once the UI Lua is up",
     );
     drop(lock);
+}
+
+/// The verdict logged when the build does not match. The launcher's log
+/// parser reads it (the lines are a contract, listed in the crate README).
+const NOT_THIS_BUILD: &str = "a prologue does not match: a different SGW.exe build, or another \
+                              patch at that address; nothing installed";
+
+/// Log one line per site, in the wording the launcher's parser reads, and
+/// return whether every site may be hooked.
+fn log_sites(results: &[(fingerprint::Site, Prologue)]) -> bool {
+    for (site, prologue) in results {
+        match prologue {
+            Prologue::Stock => log::line(format_args!(
+                "{} at 0x{:08x}: stock",
+                site.name, site.address
+            )),
+            Prologue::Chained { jump_to } => log::line(format_args!(
+                "{} at 0x{:08x}: already hooked (jump to 0x{jump_to:08x}), chaining",
+                site.name, site.address
+            )),
+            Prologue::UnknownHook { jump_to } => log::line(format_args!(
+                "{} at 0x{:08x}: already hooked by a jump to 0x{jump_to:08x}, outside every \
+                 known hook owner; not chaining",
+                site.name, site.address
+            )),
+            Prologue::Mismatch { actual } => log::line(format_args!(
+                "{} at 0x{:08x}: expected {}, found {}",
+                site.name,
+                site.address,
+                hex(site.expected),
+                hex(actual)
+            )),
+            Prologue::Unreadable => log::line(format_args!(
+                "{} at 0x{:08x}: unreadable",
+                site.name, site.address
+            )),
+        }
+    }
+    results.iter().all(|(_, p)| p.is_usable())
 }
 
 /// The image ranges of the other loaded [`fingerprint::HOOK_OWNER_MODULES`]: where an earlier

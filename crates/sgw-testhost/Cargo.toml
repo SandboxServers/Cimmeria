@@ -1,0 +1,34 @@
+[package]
+name = "cimmeria-sgw-testhost"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "A 32-bit stand-in for SGW.exe that the injected client DLLs can be loaded into without the game: it stays alive, runs a fake main loop, and has none of the game's code at the hook addresses. Its tests launch it through sgw-start32 with each DLL and check that every DLL boots, fails its fingerprint gate closed, reports why, and lets the process exit cleanly."
+
+# Built for i686-pc-windows-msvc (the DLLs are 32-bit) by
+# tools/testhost/stage.sh, together with the DLLs and the sgw-start32
+# helper; the tests then run on the host, 64-bit, the way the launcher
+# drives the helper. Off Windows the binary only prints a message and the
+# tests compile to nothing.
+#
+# Kept out of the workspace-hack (.config/hakari.toml), like the DLLs and
+# client-launch: its i686 build must not pull in the server's dependencies.
+[[bin]]
+name = "sgw-testhost"
+path = "src/main.rs"
+
+[dependencies]
+
+# Windows-only: the tests compile to nothing elsewhere. The two DLL crates
+# are here only for their portable fingerprint site lists, so a test's
+# expected number of site lines follows the DLL instead of a hard-coded
+# count; the DLLs under test are the staged i686 builds.
+[target.'cfg(windows)'.dev-dependencies]
+cimmeria-client-launch = { path = "../client-launch" }
+cimmeria-client-patches = { path = "../client-patches" }
+cimmeria-client-telemetry = { path = "../client-telemetry" }
+flate2 = { workspace = true }
+serde_json = { workspace = true }
+tempfile = "3"
+tiny_http = "0.12"

@@ -1596,6 +1596,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-sgw-testhost"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-client-launch",
+ "cimmeria-client-patches",
+ "cimmeria-client-telemetry",
+ "flate2",
+ "serde_json",
+ "tempfile",
+ "tiny_http",
+]
+
+[[package]]
 name = "cimmeria-spec-lint"
 version = "0.1.0"
 dependencies = [

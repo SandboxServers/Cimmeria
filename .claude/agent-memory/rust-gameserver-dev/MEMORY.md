@@ -58,6 +58,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [client-patch-send-natives-traps.md](client-patch-send-natives-traps.md) — startEntityMessage sends even offline; microseh masks the ABI; no cpcall around C-function args.
 - [telemetry-anchor-audit-and-hookgate.md](telemetry-anchor-audit-and-hookgate.md) — telemetry anchors never ran and 5 were wrong (IAT hint/name RVAs, COL-shifted vtable.
 - [cme-registry-is-a-factory-not-subscribe.md](cme-registry-is-a-factory-not-subscribe.md) — 0x00a5c0f0/0x00a5c150 are the CME event-factory map (create/count by std::string); the CME subscribe never worked.
+- [dll-boot-testhost-traps.md](dll-boot-testhost-traps.md) — sgw-testhost harness: console children hold a piped stdout (start32::run blocks), restage after DLL edits, derive site counts.
 - [injector-bitness-and-start32-helper.md](injector-bitness-and-start32-helper.md) — x64 launcher injects via the i686 sgw-start32 helper; the WOW64 resolver fails on suspended targets.
 
 ## UE3 packages and navmesh

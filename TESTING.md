@@ -424,6 +424,23 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
 
 The script runs `cargo nextest run --profile=ci-live-db --lib` once over every crate in its list, and passes extra arguments (a test-name filter, `--no-fail-fast`) through to nextest. It refuses to run without `DATABASE_URL`, because every live-DB test would skip and pass. Before the run it clones the database `DATABASE_URL` names into one database per slot of the `live-db` test group (`<db>_0` .. `<db>_<N-1>`, N from `.config/nextest.toml`); nothing may be connected to that template database while it is cloned. The `ci-live-db` profile then runs the tests whose name contains `live_db` up to N at a time, each on its own clone, and every other test in those crates in parallel beside them. Before, it ran all ~5,500 tests one at a time against one database. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready. With `DATABASE_URL` set to a database that can't be reached, the guards fail rather than skip, so a wrong port shows up as red instead of a false green.
 
+### Locally (injected client DLLs)
+
+The client DLLs (`cimmeria-client-telemetry`, `cimmeria-client-patches`) and their shared `cimmeria-client-hookgate` are 32-bit. Their hooks compile only for `i686-pc-windows-msvc`, so the workspace run above never checks them. Their unit tests run on that target (the crate READMEs list the commands; telemetry also runs with `--features lab-bridge`). Their own workflows are `client-telemetry-build.yml` and `client-patches-build.yml`.
+
+Boot tests, without the game, live in `crates/sgw-testhost`. `sgw-testhost.exe` is a 32-bit stand-in for `SGW.exe`. The tests inject each DLL into it through the launcher's `sgw-start32` helper and check four things:
+- the DLL boots;
+- its fingerprint gate fails closed and logs why;
+- the host exits cleanly;
+- the telemetry upload and the lab-bridge handshake work.
+
+```bash
+bash tools/build-lane/lane.sh bash tools/testhost/stage.sh     # i686 build into <target>/testhost
+bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-sgw-testhost
+```
+
+Without a staged build these tests skip. CI sets `CIMMERIA_TESTHOST_REQUIRE=1`, so they fail instead (`client-dll-boot.yml`). Restage after changing a DLL: the tests load the staged copies, not what cargo just built. The host must stay a GUI-subsystem executable, like `SGW.exe`. Windows copies a parent's standard handles into a console child, so a console host would keep `sgw-start32`'s stdout pipe open, and `start32::run` would only return when the host exits.
+
 ### CI (every PR)
 
 `.github/workflows/test.yml` defines its jobs behind a `changes` job, which skips them (reported as passed) when a PR changes only Markdown, `.claude/` or images under `docs/`; `docs/protocol/` always runs because tests read the dispatch tables. Four jobs gate merge: `fmt`, `clippy`, `build-and-test` (`cargo build --all-targets`, then the workspace nextest pass without a DB on the same artifacts), `test-live-db` (postgres:17.9 service container, nextest). Coverage runs as two `continue-on-error: true` jobs at the same time: `coverage-workspace` (`cargo llvm-cov` over the no-DB workspace pass) and `coverage-live-db` (the live-DB pass through `tools/test-live-db.sh --llvm-cov`). Each uploads its own report, Codecov merges the two (`after_n_builds: 2` in `codecov.yml`), and a coverage-tool flake never blocks a merge. Nextest's JUnit XML output from the `build-and-test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
