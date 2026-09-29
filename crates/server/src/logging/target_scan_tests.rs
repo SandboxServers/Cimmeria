@@ -89,6 +89,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "i686 launcher helper; runs beside SGW.exe, never inside the server; it prints one stdout line to the launcher and emits no tracing events",
     ),
     (
+        "sgw-testhost",
+        "32-bit stand-in for SGW.exe that the DLL boot tests inject into; a test fixture, never inside the server",
+    ),
+    (
         "patchset",
         "library linked into the launcher, plus an offline CLI; no tracing events reach the server",
     ),
