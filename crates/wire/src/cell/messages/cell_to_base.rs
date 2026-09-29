@@ -1,5 +1,6 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
+use super::ammo_reserve::AmmoReserveRequest;
 use super::bank_cell_to_base::BankCellToBase;
 use super::black_market_cell_to_base::BlackMarketCellToBase;
 use super::chat_cell_to_base::ChatCellToBase;
@@ -896,4 +897,8 @@ pub enum CellToBaseMsg {
     /// `BaseToCellMsg::ItemUseConsumed` only when the unit was taken. See
     /// `item_use.rs`.
     ConsumeItemForUse(ConsumeItemForUse),
+
+    /// Special-ammo reserve traffic (AM-02): a reload draw or a switch
+    /// return. See `ammo_reserve.rs`.
+    AmmoReserve(AmmoReserveRequest),
 }

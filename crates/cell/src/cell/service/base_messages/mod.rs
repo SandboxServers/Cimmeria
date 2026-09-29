@@ -494,6 +494,14 @@ pub(super) async fn handle_base_message(
             crate::cell::content::apply_consumed_item(consumed, tx, space_mgr).await;
         }
 
+        // The special-ammo reserve round trip (ammo campaign AM-02).
+        BaseToCellMsg::AmmoReserve(answer) => {
+            cimmeria_cell_combat::cell::cell_methods::player::world::reload_reserve::handle_reserve_answer(
+                answer, tx, space_mgr,
+            )
+            .await;
+        }
+
         BaseToCellMsg::RequestEntityUpdate {
             witness_id,
             entity_ids,

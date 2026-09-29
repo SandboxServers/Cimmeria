@@ -72,8 +72,16 @@ pub(in crate::cell::service) async fn reload_completion_tick(
             // empty (item removed mid-reload), clear the deadline and skip
             // the wire send rather than refilling nothing.
             let clip_size = entity.bandolier_items.get(&slot_id).map(|i| i.clip_size);
+            // A special-ammo reload (AM-02) loaded its drawn rounds when the
+            // base committed the draw; only a free reload refills here.
+            let deadline = entity.reload_complete_at.unwrap_or(now);
             let new_ammo = match clip_size {
-                Some(cs) => entity.set_slot_ammo(slot_id, cs),
+                Some(cs) => {
+                    let target = cimmeria_cell_combat::cell::cell_methods::player::world::reload_reserve::completion_target(
+                        entity, slot_id, deadline, cs,
+                    );
+                    entity.set_slot_ammo(slot_id, target)
+                }
                 None => None,
             };
             entity.reload_complete_at = None;

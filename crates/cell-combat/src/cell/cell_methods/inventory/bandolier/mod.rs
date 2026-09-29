@@ -14,3 +14,4 @@ mod switch_return;
 pub use active_slot::flush_dirty_bandolier_ammo;
 pub use active_slot::handle_request_active_slot_change;
 pub use ammo_change::handle_request_ammo_change;
+pub use switch_return::{begin_switch_return, handle_switch_returned, SwitchReturn};
