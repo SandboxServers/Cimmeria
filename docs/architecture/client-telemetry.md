@@ -170,7 +170,7 @@ Added 2026-09-29. One lab client produced about 333,000 `client.native` rows an 
 
 Per-entity and budgeted events also **collapse**. An event identical to the previous event *on the same target* (same level, same fields) is held as a repeat. When a different event arrives on that target, or when the window closes, one repeat event goes out. It has the same target, level and fields, plus `repeat_count` (the repeats held, not counting the first event, which was forwarded), `repeat_first_ts_ms` and `repeat_last_ts_ms`. Must-keep events are never collapsed.
 
-**Rollups.** Every 10 seconds, at every scene change (an event whose `level_name` differs from the last one seen), and at shutdown, each target with absorbed events emits one `client.telemetry.rollup` event:
+**Rollups.** Every 10 seconds, at every scene change (a `client.streaming.update` event whose `level_name` differs from the last one seen; `client.ui.cegui_log` reuses the field name for its log severity, so only the targets in `governor::SCENE_TARGETS` count), and at shutdown, each target with absorbed events emits one `client.telemetry.rollup` event per reason it was absorbed for (`client.cme.event` with and without an `entity_id` gives a `per_entity_overflow` and an `over_budget` rollup):
 
 | Field | Meaning |
 |---|---|
@@ -183,7 +183,9 @@ Per-entity and budgeted events also **collapse**. An event identical to the prev
 | `numeric` | `{field: {n, min, max, sum}}` for up to 16 numeric fields |
 | `last_fields` | The last absorbed event's fields, as an exemplar (for a load freeze: what was loading last) |
 
-**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. If either has grown since the last report, the health event is `warn`.
+**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. If either has grown since the last report, the health event is `warn`. `uncollapsed_events_total` counts events that arrived while the collapse table was full and so were not checked for repeats.
+
+**Shutdown flush: not wired yet.** The shutdown rollups and health event run only when the uploader's stop callback returns `true`. The DLL passes `|| false` today (`boot.rs`, pending the Phase 7 stop flag), so when `SGW.exe` exits, the last window's rollups and held repeats are lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, not for the tail of a session.
 
 **Measured effect.** Replayed through the governor on the uploader's 2 s cadence, the hour measured above (333,263 events) comes out as 4,134 rows, a 98.8% cut. All 855 must-keep events come through unchanged (`governor/tests/volume.rs`).
 
@@ -257,7 +259,7 @@ The client already logs through five paths and swallows failures at a dozen seam
 | `client.log4cxx.event` | IAT `Logger::forcedLog` (narrow `0x017f0160`, wide `0x017f0188`) | `logger`, `level`, `level_int`, `message`, `file`, `line`, `method`, `wide` | by level | per (logger, level, message shape): the lock trace collapses to one bucket |
 | `client.os.debug_string` | IAT `OutputDebugStringA` `0x017ef32c` / `W` `0x017ef230` | `message`, `api` | `info` | per message shape; skips what a known sink already reported |
 | `client.os.exception` | vectored exception handler | `code`, `code_name`, `address`, `module`, `rva`, `access`, `target`, `noncontinuable`, `thread_id` | `error` | per (code, site). Not C++ throws, not debugger plumbing, never stack overflow |
-| `client.hooks.capabilities` | once, after every install | `hook.<name>` = `installed` / `failed: <why>` / `skipped: <why>`, `installed`, `attempted`, `capture.unfilter`, `capture.firehose` | `warn` if any hook failed, else `info` | once |
+| `client.hooks.capabilities` | once, after every install | `hook.<name>` = `installed` / `failed: <why>` / `skipped: <why>`, `installed`, `attempted`, `capture.unfilter`, `capture.firehose`, `capture.raw` | `warn` if any hook failed, else `info` | once |
 
 ### Subsystem seams
 
@@ -283,10 +285,11 @@ Off by default. Read once at boot, from the optional top-level `capture` block o
 | Switch | Effect |
 |---|---|
 | `unfilter` | lifts the client's own thresholds so they and its own outputs see more: the BigWorld filter threshold (`impl[0x3c]`) is set very low, the four log4cxx `is*Enabled` checks answer `true`, the UE3 suppress flag (`0x1000`) is cleared on the categories that are logged. It changes what the client itself writes to `SGWDebugLog.log` and `OutputDebugString`: a lab and debug switch. |
-| `firehose` | raises every sink's rate limit from burst 8 / 4 per second to burst 64 / 64 per second, and lowers the hitch and slow-step thresholds. The limit still exists. |
+| `firehose` | raises every sink's rate limit from burst 8 / 4 per second to burst 64 / 64 per second, and lowers the hitch and slow-step thresholds. The limit still exists. It also widens the [telemetry governor](#volume-control-the-governor) (16 times the budget, 4 times the per-entity K). |
+| `raw` | turns the telemetry governor off for the upload path: every event is forwarded as raised (health events still go out). The sinks' own rate limits still apply. |
 
 ```json
-{ "install_id": "...", "telemetry": { "...": "..." }, "capture": { "unfilter": true, "firehose": false } }
+{ "install_id": "...", "telemetry": { "...": "..." }, "capture": { "unfilter": true, "firehose": false, "raw": false } }
 ```
 
 ### Budget

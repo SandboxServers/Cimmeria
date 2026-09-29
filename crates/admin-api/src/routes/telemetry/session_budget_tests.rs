@@ -56,6 +56,7 @@ fn sessions_have_separate_budgets() {
     assert_eq!(l.totals("runaway").unwrap().suppressed_total, 95);
 }
 
+/// With every window ended, the least recently seen session makes room.
 #[test]
 fn the_session_table_evicts_the_least_recently_seen() {
     let mut l = SessionLedger::new(5, 60, 3);
@@ -63,10 +64,30 @@ fn the_session_table_evicts_the_least_recently_seen() {
     l.admit("b", false, 2);
     l.admit("c", false, 3);
     l.admit("a", false, 4);
-    l.admit("d", false, 5);
+    l.admit("d", false, 70);
     assert_eq!(l.len(), 3);
-    assert!(l.totals("b").is_none(), "b was the least recently seen");
-    assert!(l.totals("a").is_some());
+    assert!(!l.tracks("b"), "b was the least recently seen");
+    assert!(l.tracks("a") && l.tracks("d"));
+}
+
+/// A full table of sessions inside their window evicts nobody: the
+/// newcomer shares the overflow entry, and a session that already spent
+/// its budget does not get a fresh one back.
+#[test]
+fn a_full_table_never_resets_a_live_sessions_budget() {
+    let mut l = SessionLedger::new(5, 60, 2);
+    for _ in 0..5 {
+        assert!(l.admit("a", false, 0));
+    }
+    assert!(!l.admit("a", false, 0), "a has spent its window");
+    l.admit("b", false, 1);
+    // Table full, both windows open: c goes to the overflow entry.
+    assert!(l.admit("c", false, 2));
+    assert!(l.tracks("a") && l.tracks("b") && !l.tracks("c"));
+    assert!(!l.admit("a", false, 3), "a's window is still spent");
+    let t = l.totals("a").unwrap();
+    assert_eq!((t.accepted_total, t.suppressed_total), (5, 2));
+    assert_eq!(l.totals("c").unwrap().accepted_total, 1);
 }
 
 #[test]

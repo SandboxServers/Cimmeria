@@ -15,8 +15,12 @@
 //! is counted as suppressed, and the handler logs every chunk that
 //! suppressed something at `warn` with the session's totals. Never silent.
 //!
-//! The table holds at most [`MAX_SESSIONS`] sessions; a new one evicts the
-//! least recently seen.
+//! The table holds at most [`MAX_SESSIONS`] sessions. A new session evicts
+//! the least recently seen session whose window has already ended, so an
+//! eviction never hands a session still inside its window a fresh budget
+//! when it comes back. When every tracked session is inside its window,
+//! the newcomer is counted against one shared [`OVERFLOW_SID`] entry
+//! instead: bounded, and it never resets anyone's allowance.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -34,6 +38,10 @@ pub(super) const EVENTS_PER_WINDOW: u64 = 30_000;
 
 /// Sessions tracked at once.
 pub(super) const MAX_SESSIONS: usize = 1024;
+
+/// The shared entry that counts sessions arriving while the table is full
+/// of sessions inside their window. Not a valid token `sid`.
+pub(super) const OVERFLOW_SID: &str = "<overflow>";
 
 /// One session's counters.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -79,23 +87,11 @@ impl SessionLedger {
     /// Decide for one event of session `sid` at `now_secs`: `true` means
     /// replay it. Priority events are always replayed (and counted).
     pub(super) fn admit(&mut self, sid: &str, priority: bool, now_secs: i64) -> bool {
-        if !self.sessions.contains_key(sid) && self.sessions.len() >= self.max_sessions {
-            if let Some(oldest) = self
-                .sessions
-                .iter()
-                .min_by_key(|(_, t)| t.last_seen)
-                .map(|(k, _)| k.clone())
-            {
-                self.sessions.remove(&oldest);
-            }
-        }
-        let t = self
-            .sessions
-            .entry(sid.to_string())
-            .or_insert(SessionTotals {
-                window_start: now_secs,
-                ..SessionTotals::default()
-            });
+        let key = self.slot_for(sid, now_secs);
+        let t = self.sessions.entry(key).or_insert(SessionTotals {
+            window_start: now_secs,
+            ..SessionTotals::default()
+        });
         t.last_seen = now_secs;
         if now_secs - t.window_start >= self.window_secs {
             t.window_start = now_secs;
@@ -111,15 +107,53 @@ impl SessionLedger {
         }
     }
 
-    /// The session's counters, if tracked.
-    pub(super) fn totals(&self, sid: &str) -> Option<SessionTotals> {
-        self.sessions.get(sid).copied()
+    /// Which entry counts `sid`: its own when tracked or when there is
+    /// room (evicting a session whose window has ended if needed), else
+    /// the shared overflow entry.
+    fn slot_for(&mut self, sid: &str, now_secs: i64) -> String {
+        if self.sessions.contains_key(sid) {
+            return sid.to_string();
+        }
+        // The overflow entry does not count against the cap.
+        let tracked = self.sessions.len() - usize::from(self.sessions.contains_key(OVERFLOW_SID));
+        if tracked < self.max_sessions {
+            return sid.to_string();
+        }
+        let window = self.window_secs;
+        let expired = self
+            .sessions
+            .iter()
+            .filter(|(k, t)| k.as_str() != OVERFLOW_SID && now_secs - t.window_start >= window)
+            .min_by_key(|(_, t)| t.last_seen)
+            .map(|(k, _)| k.clone());
+        match expired {
+            Some(oldest) => {
+                self.sessions.remove(&oldest);
+                sid.to_string()
+            }
+            None => OVERFLOW_SID.to_string(),
+        }
     }
 
-    /// Sessions tracked.
+    /// The counters that apply to `sid`: its own if tracked, else the
+    /// shared overflow entry's (if the session was counted there).
+    pub(super) fn totals(&self, sid: &str) -> Option<SessionTotals> {
+        self.sessions
+            .get(sid)
+            .or_else(|| self.sessions.get(OVERFLOW_SID))
+            .copied()
+    }
+
+    /// Sessions tracked (the overflow entry included).
     #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.sessions.len()
+    }
+
+    /// Whether `sid` has its own entry.
+    #[cfg(test)]
+    pub(super) fn tracks(&self, sid: &str) -> bool {
+        self.sessions.contains_key(sid)
     }
 }
 

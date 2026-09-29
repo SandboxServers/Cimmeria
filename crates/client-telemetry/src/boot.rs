@@ -256,11 +256,22 @@ fn bootstrap_phase2() {
         session.session_id, session.telemetry.upload_endpoint
     ));
 
+    // Capture switches for the engine-layer log sinks and the governor:
+    // the session's `capture` block and `CIMMERIA_CLIENT_CAPTURE` each can
+    // turn them on.
+    let capture = session
+        .capture
+        .unwrap_or_default()
+        .merged(crate::capture::CaptureConfig::from_env());
+    crate::capture::init(capture);
+    crate::log::line(format_args!(
+        "capture switches: unfilter={} firehose={} raw={}",
+        capture.unfilter, capture.firehose, capture.raw
+    ));
+
     // Step 3 + 4: queue + global producer, with the telemetry governor
     // between the hooks and the ring (`raw` / `firehose` capture switches).
-    let governor = crate::governor::GovernorConfig::from_switches(
-        crate::governor::Switches::for_host(&host_exe),
-    );
+    let governor = crate::governor::GovernorConfig::from_capture(capture);
     crate::log::line(format_args!("telemetry governor: {}", governor.mode()));
     let (producer, consumer) = crate::queue::governed_channel(governor);
     if PRODUCER.set(producer.clone()).is_err() {
@@ -269,18 +280,6 @@ fn bootstrap_phase2() {
         // first producer in place and quietly bail.
         return;
     }
-
-    // Capture switches for the engine-layer log sinks: the session's
-    // `capture` block and `CIMMERIA_CLIENT_CAPTURE` each can turn them on.
-    let capture = session
-        .capture
-        .unwrap_or_default()
-        .merged(crate::capture::CaptureConfig::from_env());
-    crate::capture::init(capture);
-    crate::log::line(format_args!(
-        "capture switches: unfilter={} firehose={}",
-        capture.unfilter, capture.firehose
-    ));
 
     // Step 5: first event — `client.dll.attached`. Carries the
     // identity fields the server-side replay uses to pivot

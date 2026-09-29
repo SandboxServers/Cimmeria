@@ -197,6 +197,26 @@ fn replay_ndjson_reports_the_first_bad_line() {
     assert!(matches!(err, ReplayError { line: 2, .. }), "{err:?}");
 }
 
+/// A chunk refused for a bad line replays nothing and never asks the gate,
+/// so it spends none of the session budget before its retry.
+#[test]
+fn a_refused_chunk_never_reaches_the_gate() {
+    let good =
+        r#"{"type":"client_native","ts_ms":1,"seq":1,"target":"client.lua.pcall","level":"warn"}"#;
+    let ndjson = format!("{good}\n{good}\n{{\"type\":\"nope\"}}\n");
+    let mut asked = 0;
+    let mut result = None;
+    let rows = capture(|| {
+        result = Some(replay_ndjson_gated(&claims(None), &ndjson, |_| {
+            asked += 1;
+            true
+        }))
+    });
+    assert!(matches!(result.unwrap(), Err(ReplayError { line: 3, .. })));
+    assert_eq!(asked, 0, "the gate saw events of a refused chunk");
+    assert!(rows.is_empty(), "a refused chunk replayed rows");
+}
+
 /// A governor rollup lifts its summarized target and count, so SigNoz can
 /// sum `rollup_count` by `rollup_target`; a plain `count` elsewhere is not
 /// mistaken for one.

@@ -104,7 +104,8 @@ pub enum Pattern {
 }
 
 impl Pattern {
-    fn matches(self, target: &str) -> bool {
+    /// Whether `target` is covered.
+    pub fn matches(self, target: &str) -> bool {
         match self {
             Pattern::Exact(p) => target == p,
             Pattern::Prefix(p) => target.starts_with(p),

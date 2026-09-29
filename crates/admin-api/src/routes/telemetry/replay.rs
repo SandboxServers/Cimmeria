@@ -68,22 +68,30 @@ pub fn replay_ndjson(claims: &TokenClaims, ndjson: &str) -> Result<ReplayCounts,
 
 /// [`replay_ndjson`] with a gate: an event for which `admit` returns
 /// `false` is parsed and counted as suppressed but not replayed. A bad
-/// line still refuses the whole chunk, exactly as before.
+/// line refuses the whole chunk. The whole chunk is parsed before `admit`
+/// sees any event, so a refused chunk replays nothing and spends none of
+/// the session's budget: its retry is judged afresh.
 pub(super) fn replay_ndjson_gated(
     claims: &TokenClaims,
     ndjson: &str,
     mut admit: impl FnMut(&TelemetryEvent) -> bool,
 ) -> Result<ReplayCounts, ReplayError> {
-    let mut counts = ReplayCounts::default();
+    let mut events = Vec::new();
     for (idx, line) in ndjson.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
-        counts.parsed += 1;
         let ev: TelemetryEvent = serde_json::from_str(line).map_err(|e| ReplayError {
             line: idx as u64 + 1,
             err: e.to_string(),
         })?;
+        events.push(ev);
+    }
+    let mut counts = ReplayCounts {
+        parsed: events.len() as u64,
+        ..ReplayCounts::default()
+    };
+    for ev in events {
         if admit(&ev) {
             replay_event(claims, ev);
             counts.accepted += 1;

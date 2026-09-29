@@ -151,7 +151,14 @@ fn no_rule_is_shadowed_by_an_earlier_one() {
             Pattern::Exact(t) => t.to_string(),
             Pattern::Prefix(p) => format!("{p}probe"),
         };
-        let hit = rule_for(&probe).expect("a row");
-        assert!(std::ptr::eq(hit, rule), "row {i} ({probe}) is shadowed");
+        // Compare by position, not address: `RULES` is a `const`, and two
+        // uses of a const slice need not share one allocation (the i686
+        // test build gave `rule_for` a different copy).
+        let hit = RULES
+            .iter()
+            .position(|r| r.pattern.matches(&probe))
+            .expect("a row");
+        assert_eq!(hit, i, "row {i} ({probe}) is shadowed by row {hit}");
+        assert!(rule_for(&probe).is_some());
     }
 }

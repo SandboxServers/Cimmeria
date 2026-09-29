@@ -12,8 +12,8 @@
 //! | [`Class::PerEntity`] | Identical repeats collapse; the first K per (target, entity, key) are forwarded; the rest go into the rollup. |
 //! | [`Class::Budgeted`] | Identical repeats collapse; forwarded while under the target's rate budget; the rest go into the rollup. |
 //!
-//! Every window ([`GovernorConfig::window_ms`], and at every scene change,
-//! and at shutdown) each non-empty rollup is emitted as one
+//! Every window ([`GovernorConfig::window_ms`], at every scene change (see
+//! [`SCENE_TARGETS`]), and at shutdown) each non-empty rollup is emitted as one
 //! `client.telemetry.rollup` event, and each collapsed run as one repeat
 //! event (see [`collapse`]). Every [`GovernorConfig::health_every_ms`] a
 //! `client.telemetry.health` event reports the totals, including the ring
@@ -32,7 +32,6 @@ pub mod budget;
 pub mod classify;
 pub mod collapse;
 pub mod rollup;
-pub mod switches;
 
 #[cfg(test)]
 mod tests;
@@ -43,11 +42,11 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
+use crate::capture::CaptureConfig;
 use crate::events::ClientNativeEvent;
 
 pub use classify::{classify, Class, KeepReason};
 pub use rollup::{RollupReason, ROLLUP_TARGET};
-pub use switches::Switches;
 
 use budget::Budget;
 use collapse::{Collapser, Observed};
@@ -56,11 +55,19 @@ use rollup::Rollup;
 /// Target of the periodic health event.
 pub const HEALTH_TARGET: &str = "client.telemetry.health";
 
-/// Rollup targets tracked before further targets share one overflow rollup.
+/// Rollups (one per target and reason) tracked before further targets
+/// share one overflow rollup per reason.
 pub const MAX_ROLLUP_TARGETS: usize = 256;
 
 /// The shared overflow rollup's target.
 pub const OVERFLOW_TARGET: &str = "<overflow>";
+
+/// Targets whose `level_name` names the persistent map, so a new value is a
+/// scene change. Only these count: other hooks reuse the field name for
+/// something else (`client.ui.cegui_log` puts the CEGUI log severity in
+/// it), and treating that as a map would close the window and reset the
+/// per-entity first K on every change of log level.
+pub const SCENE_TARGETS: &[&str] = &["client.streaming.update"];
 
 /// (target, entity, key) pairs tracked for the per-entity first K. When
 /// full the table restarts: a few extra events, never a lost first
@@ -98,8 +105,9 @@ impl Default for GovernorConfig {
 }
 
 impl GovernorConfig {
-    /// The configuration the capture switches ask for.
-    pub fn from_switches(s: Switches) -> Self {
+    /// The configuration the capture switches ask for (`raw`, `firehose`;
+    /// `unfilter` is the sinks' switch and does not affect the governor).
+    pub fn from_capture(s: CaptureConfig) -> Self {
         let base = Self::default();
         if s.firehose {
             Self {
@@ -168,7 +176,10 @@ pub struct Governor {
     collapser: Collapser,
     budget: Budget,
     entity_seen: HashMap<(String, i64, String), u32>,
-    rollups: BTreeMap<String, Rollup>,
+    /// Keyed by (target, reason): a target can be absorbed for more than
+    /// one reason (`client.cme.event` with and without an `entity_id`),
+    /// and each rollup reports exactly one.
+    rollups: BTreeMap<(String, &'static str), Rollup>,
     window_start_ms: Option<i64>,
     last_health_ms: Option<i64>,
     last_level_name: Option<String>,
@@ -215,7 +226,12 @@ impl Governor {
 
         // A new map closes the window, so rollups never mix two scenes, and
         // every entity gets a fresh first K for the new world entry.
-        if let Some(level) = ev.fields.get("level_name").and_then(Value::as_str) {
+        let scene = if SCENE_TARGETS.contains(&ev.target.as_str()) {
+            ev.fields.get("level_name").and_then(Value::as_str)
+        } else {
+            None
+        };
+        if let Some(level) = scene {
             if self.last_level_name.as_deref() != Some(level) {
                 if self.last_level_name.is_some() {
                     self.stats.scene_changes += 1;
@@ -338,17 +354,18 @@ impl Governor {
 
     fn roll_up(&mut self, ev: &ClientNativeEvent, reason: RollupReason, key: Option<&'static str>) {
         self.stats.rolled_up += 1;
-        if let Some(r) = self.rollups.get_mut(&ev.target) {
+        let id = (ev.target.clone(), reason.as_str());
+        if let Some(r) = self.rollups.get_mut(&id) {
             r.add(ev, None);
         } else if self.rollups.len() < MAX_ROLLUP_TARGETS {
             let mut r = Rollup::new(&ev.target, reason, key);
             r.add(ev, None);
-            self.rollups.insert(ev.target.clone(), r);
+            self.rollups.insert(id, r);
         } else {
             // Key the shared overflow rollup by the real target, so its top
-            // keys say which targets it absorbed.
+            // keys say which targets it absorbed (one per reason).
             self.rollups
-                .entry(OVERFLOW_TARGET.to_string())
+                .entry((OVERFLOW_TARGET.to_string(), reason.as_str()))
                 .or_insert_with(|| Rollup::new(OVERFLOW_TARGET, reason, None))
                 .add(ev, Some(&ev.target));
         }
@@ -391,7 +408,7 @@ impl Governor {
         f.insert("entity_table_resets".into(), json!(s.entity_table_resets));
         f.insert("scene_changes".into(), json!(s.scene_changes));
         f.insert(
-            "uncollapsed_targets".into(),
+            "uncollapsed_events_total".into(),
             json!(self.collapser.untracked()),
         );
         f.insert("ring_dropped_total".into(), json!(drops.ring_dropped));

@@ -198,3 +198,113 @@ fn over_budget_events_are_rolled_up_not_dropped() {
     assert_eq!(roll.fields["count"], json!(n - forwarded));
     assert_eq!(roll.fields["reason"], json!("over_budget"));
 }
+
+/// `client.ui.cegui_log` carries the CEGUI log severity in `level_name`.
+/// A change of severity is not a map change: it must not close the window.
+#[test]
+fn a_cegui_severity_change_is_not_a_scene_change() {
+    let mut g = governor();
+    let mut out = Vec::new();
+    for (i, sev) in ["errors", "warnings", "errors", "informative"]
+        .iter()
+        .enumerate()
+    {
+        out.extend(admit(
+            &mut g,
+            ev(
+                "client.ui.cegui_log",
+                "info",
+                i as i64,
+                &[("level_name", json!(sev)), ("i", json!(i))],
+            ),
+        ));
+        out.extend(admit(
+            &mut g,
+            ev("client.lua.pcall", "debug", i as i64, &[]),
+        ));
+    }
+    assert_eq!(rollups_for(&out, "client.lua.pcall").count(), 0);
+    assert_eq!(g.stats().scene_changes, 0);
+}
+
+/// One target absorbed for two reasons gives two rollups, each with its
+/// own reason and exact count.
+#[test]
+fn each_rollup_reports_the_reason_of_every_event_it_holds() {
+    let cfg = GovernorConfig::default();
+    let mut g = governor();
+    let target = "client.cme.event";
+    // Per-entity: one entity, one key, well past its first K.
+    for i in 0..40 {
+        admit(
+            &mut g,
+            ev(
+                target,
+                "info",
+                0,
+                &[
+                    ("entity_id", json!(7)),
+                    ("name", json!("Event_NetIn_x")),
+                    ("i", json!(i)),
+                ],
+            ),
+        );
+    }
+    // No entity id: budgeted, well past the burst.
+    for i in 0..100 {
+        admit(
+            &mut g,
+            ev(
+                target,
+                "info",
+                0,
+                &[("name", json!("Event_UI_y")), ("i", json!(i))],
+            ),
+        );
+    }
+    let mut out = Vec::new();
+    g.tick(cfg.window_ms, ExternalDrops::default(), &mut out);
+    let rolls: Vec<_> = rollups_for(&out, target).collect();
+    assert_eq!(rolls.len(), 2, "one rollup per reason");
+    let count_for = |reason: &str| {
+        rolls
+            .iter()
+            .find(|r| r.fields["reason"] == json!(reason))
+            .map(|r| r.fields["count"].clone())
+    };
+    assert_eq!(count_for("per_entity_overflow"), Some(json!(40 - 16)));
+    assert_eq!(
+        count_for("over_budget"),
+        Some(json!(100 - u64::from(cfg.budget_burst)))
+    );
+}
+
+#[test]
+fn the_capture_block_sets_the_governor_mode() {
+    use crate::capture::CaptureConfig;
+    let mode = |c: CaptureConfig| GovernorConfig::from_capture(c).mode();
+    assert_eq!(mode(CaptureConfig::default()), "governed");
+    // `unfilter` is the sinks' switch only.
+    assert_eq!(
+        mode(CaptureConfig {
+            unfilter: true,
+            ..CaptureConfig::default()
+        }),
+        "governed"
+    );
+    assert_eq!(
+        mode(CaptureConfig {
+            firehose: true,
+            ..CaptureConfig::default()
+        }),
+        "firehose"
+    );
+    assert_eq!(
+        mode(CaptureConfig {
+            raw: true,
+            firehose: true,
+            ..CaptureConfig::default()
+        }),
+        "raw"
+    );
+}

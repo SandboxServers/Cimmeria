@@ -367,8 +367,12 @@ service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
 
 with `suppressed`, `session_accepted_total`, `session_suppressed_total`,
 `budget_per_window` and `window_secs`. The per-chunk `debug` line carries
-the same session totals. The session table holds the 1,024 most recently
-seen sessions.
+the same session totals. The session table holds 1,024 sessions. A new
+session evicts the least recently seen one whose one-minute window has
+ended; if every tracked session is inside its window, the newcomer is
+counted in a shared `<overflow>` entry instead, so no live session ever
+gets its budget back early. A chunk refused for a malformed line spends
+no budget: the whole chunk is parsed before any event is counted.
 
 ## Player opt-in
 
