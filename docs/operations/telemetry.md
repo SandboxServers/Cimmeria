@@ -1,8 +1,14 @@
 # Dev-Session Telemetry — Operations
 
-Operator-facing runbook for the launcher telemetry pipeline:
-provisioning the shared secret, rotating it, enabling/disabling
-ingest, and reading the data downstream.
+Operator-facing runbook for the launcher and client telemetry pipeline:
+provisioning the shared secret, rotating it, enabling it on the colo,
+enabling/disabling ingest, and reading the data downstream.
+
+Everything the players' machines upload (the injected
+`cimmeria-client-telemetry` DLL's events and the game-log lines the
+launcher tails) lands in SigNoz as its own service,
+`service.name = cimmeria-client`. Lab sessions are tagged
+`cimmeria.session_kind = lab`.
 
 ## Architecture at a glance
 
@@ -129,6 +135,65 @@ Cloudflare Tunnel that exposes the SigNoz UI (see
 `ingress` rule to your `cloudflared` config pointing
 `signoz.<your-domain>/api/telemetry` at the admin-port backend.
 
+## Enable client telemetry on the colo
+
+Until both values below are set, the colo mints nothing: every launcher
+and lab session gets a 500 from `/api/auth/dev-session` and
+`cimmeria-client` stays empty. The server says so itself: at startup it
+logs `dev-session telemetry: every mint and upload will be refused`
+(WARN, `reason = dev_session_secret_unusable`), and each refused request
+logs the same reason at ERROR. When it is working, the startup line is
+`dev-session telemetry: mint and ingest enabled` with the
+`upload_endpoint` it hands out.
+
+1. **Generate the secret** on any machine: `openssl rand -hex 64`.
+2. **Give the admin port an HTTPS address.** Players' launchers refuse
+   plain `http://` to another machine, and `8443` on the colo is plain
+   HTTP. Add a Cloudflare Tunnel hostname (for example
+   `telemetry.<your-domain>`) to `/etc/cloudflared/config.yml` that sends
+   only the telemetry routes to `http://cimmeria:8443`, and give that
+   hostname **no** Cloudflare Access policy (the launcher cannot answer an
+   Access login; the routes carry their own HMAC token):
+
+   ```yaml
+   ingress:
+     - hostname: telemetry.<your-domain>
+       path: ^/api/(auth/dev-session|telemetry/)
+       service: http://cimmeria:8443
+     # ... the existing signoz.<your-domain> rule ...
+     - service: http_status:404
+   ```
+
+   Route DNS with `cloudflared tunnel route dns cimmeria-signoz
+   telemetry.<your-domain>`, and run the tunnel profile
+   (`--profile tunnel`). The `path` rule keeps the rest of the admin API,
+   which has no authentication (#439), off the public hostname.
+3. **Set both variables in `/opt/cimmeria/.env`** (the file
+   `docker compose` reads beside `compose.yml`; it is never committed):
+
+   ```bash
+   CIMMERIA_TELEMETRY_HMAC_SECRET=<the 128 hex chars from step 1>
+   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=https://telemetry.<your-domain>/api/telemetry
+   ```
+
+   `docker/compose.yml` passes both through as
+   `${VAR:-}`. A blank upload endpoint falls back to
+   `http://localhost:8443/api/telemetry`, which only a launcher on the
+   colo itself can reach.
+4. **Recreate the container** so it picks up the environment:
+   `docker compose -f compose.yml up -d cimmeria`.
+5. **Check it.** `docker logs cimmeria 2>&1 | grep "dev-session telemetry"`
+   shows the enabled line. From any machine,
+   `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://telemetry.<your-domain>/api/auth/dev-session`
+   returns `422` (the body is incomplete, so the route is reachable and
+   parsing), not `500` or a Cloudflare error page.
+6. **Point launchers at it.** Each player's `launcher-config.json` needs
+   `telemetry.auth_url = "https://telemetry.<your-domain>/api"` and the
+   telemetry opt-in; see [Player opt-in](#player-opt-in).
+
+The lab supervisor mints the same way against `CIMMERIA_LAB_SERVER_URL`;
+see [the lab guide](../guides/live-research-lab.md).
+
 ## Kill switch
 
 `CIMMERIA_TELEMETRY_KILL_SWITCH=1` on the cimmeria-server process →
@@ -202,20 +267,40 @@ expiring exactly at the deadline rather than a full 8 hours past it.
 
 ## Where the data lives
 
-Every event ends up in one place: SigNoz / ClickHouse, indexed by:
+Every uploaded event is replayed through the server's `tracing`
+subscriber and lands in SigNoz / ClickHouse. What the client sent goes to
+its own service; what the server says about the upload stays with the
+server:
 
-- `service.name = "cimmeria-server"` (the host that ingested it)
-- `target` distinguishes producers:
-  - `launcher.client_log` — parsed Atera client log lines
-  - `launcher.debug_log` — debug-channel launcher events
-  - `launcher.key_dump` — encryption key material (debug level — not
-    written to public sinks at info)
-  - `launcher.session_meta` — session boundaries and rotation events
-  - `launcher.bundle` — per-bundle metadata and per-line replay from
-    end-of-session zips
-  - `launcher.ingest` — server-side accept/reject counters
-- `session_id` — the launcher session UUID minted by dev-session
-- `install_id` — stable per-install identifier
+| `service.name` | Target (`scope_name`) | What it is |
+|---|---|---|
+| `cimmeria-client` | `client.native` | The injected DLL's events; the DLL's own event name is `client_target` and the log body |
+| `cimmeria-client` | `launcher.client_log` | Game log lines the launcher tailed, and the per-line replay of end-of-session bundles |
+| `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
+| `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events |
+| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk |
+| `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |
+| none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
+
+Every `cimmeria-client` row carries `session_id` and `install_id` (the
+token's claims), `cimmeria.session_kind` (`lab` or `player`) and `lab`
+(`true`/`false`), plus `ts_ms` and `seq`. `client.native` rows also carry
+`client_level`, the DLL's `fields` bag as JSON in `fields`, and, when the
+event has them, `account_id`, `player_id`, `method_index`, `level_name`,
+`dll_version` and `fingerprint_usable` as attributes of their own. The
+resource has `cimmeria.source = client`, `cimmeria.deploy_env` and the
+ingesting server as `cimmeria.ingest_host`. The full attribute table is in
+[observability.md](../architecture/observability.md#log-indexes-and-parity-with-the-log-files).
+
+Useful first queries:
+
+- `service.name = 'cimmeria-client' AND cimmeria.session_kind = 'lab'`: a
+  lab run, newest first.
+- `service.name = 'cimmeria-client' AND client_target = 'client.dll.attached'`:
+  one row per DLL start, with `dll_version`.
+- `service.name = 'cimmeria-client' AND client_target = 'client.hooks.fingerprint'`:
+  `fingerprint_usable = false` means the DLL met an SGW.exe build it does
+  not know and installed no hooks.
 
 Retention is whatever the ClickHouse TTL says (see
 [signoz-deployment.md](signoz-deployment.md#retention)).
@@ -248,10 +333,9 @@ so every existing install starts opted out. While it is off:
   truncated to 16 hex chars — the raw GUID never leaves the dev's
   machine.
 - KeyDump events carry encryption key material from the client. They
-  ship at **debug** level only — the default file sinks and admin
-  WebSocket drop them; only SigNoz (when configured for debug ingest)
-  retains them. Use this lever to keep raw keys off long-lived
-  on-disk storage.
+  are replayed at **debug** level only, so the default file sinks and
+  admin WebSocket drop them, and `launcher.key_dump` is `off` in every
+  OTLP filter, so SigNoz never receives them either.
 - Per-event PII redaction is explicitly out of scope (dev-only data;
   the developer is the device owner).
 
@@ -259,7 +343,7 @@ so every existing install starts opted out. While it is off:
 
 | Path | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session. |
+| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session, or a lab session with `"session_kind": "lab"` (any other value is a 400). |
 | `/api/auth/dev-session/refresh` | POST | bearer (own token), quota-limited | Extend an almost-expired token, up to the session cap. |
 | `/api/telemetry/upload-chunk` | POST | bearer | Streaming events (gzip(NDJSON)). |
 | `/api/telemetry/upload-bundle` | POST | bearer | End-of-session zip (multipart). |

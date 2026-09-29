@@ -1,5 +1,5 @@
 //! Filter directives for every log sink, and the routing of OTLP log records
-//! between the three SigNoz services.
+//! between the four SigNoz services.
 //!
 //! # The parity guarantee (NA25)
 //!
@@ -11,6 +11,12 @@
 //! | ERROR, WARN | `cimmeria-server` | [`OTEL_FILTER`] |
 //! | INFO, DEBUG | `cimmeria-server`, or `cimmeria-network` for [`otel::is_network_noise_target`] scopes | [`OTEL_FILTER`] |
 //! | TRACE | `cimmeria-trace` | [`otel_trace_directives`] |
+//! | every level, [`otel::is_client_target`] only | `cimmeria-client` | [`routes_to_client`] |
+//!
+//! The client rows are the telemetry ingest's replays of what the players'
+//! machines uploaded (`client.native`, `launcher.client_log`, ...). They
+//! reach no on-disk file except `server.log`, and the other three indexes
+//! reject them at every level, so each lands in `cimmeria-client` once.
 //!
 //! Deliberate exceptions, each pinned by `parity_tests`:
 //!
@@ -329,7 +335,6 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 bank=debug,\
                 ammo=debug,\
                 console.feedback=debug,\
-                client.native=debug,\
                 launcher=debug,\
                 launcher.key_dump=off,\
                 cimmeria_discord=debug,\
@@ -598,7 +603,9 @@ pub(crate) fn otel_trace_directives_for(file_layers: &[FileLayer]) -> String {
 pub(crate) fn routes_to_server(meta: &Metadata<'_>) -> bool {
     let level = *meta.level();
     // `Level` orders by verbosity: `<= DEBUG` is DEBUG or more severe.
-    level <= Level::DEBUG && (!otel::is_network_noise_target(meta.target()) || level <= Level::WARN)
+    level <= Level::DEBUG
+        && !otel::is_client_target(meta.target())
+        && (!otel::is_network_noise_target(meta.target()) || level <= Level::WARN)
 }
 
 /// `cimmeria-network`: INFO and DEBUG from network-noise scopes.
@@ -607,10 +614,18 @@ pub(crate) fn routes_to_network(meta: &Metadata<'_>) -> bool {
     level <= Level::DEBUG && level > Level::WARN && otel::is_network_noise_target(meta.target())
 }
 
-/// `cimmeria-trace`: TRACE only, from every scope. The other two indexes
-/// reject TRACE, so no record is indexed twice.
+/// `cimmeria-trace`: TRACE only, from every server scope. The other two
+/// server indexes reject TRACE, so no record is indexed twice.
 pub(crate) fn routes_to_trace(meta: &Metadata<'_>) -> bool {
-    *meta.level() == Level::TRACE
+    *meta.level() == Level::TRACE && !otel::is_client_target(meta.target())
+}
+
+/// `cimmeria-client`: the ingest's client-side replays, at every level the
+/// client chose to send. The client already throttled and paid the upload
+/// for a TRACE row, so dropping it here would only waste it; and a client
+/// WARN is not a server problem, so it does not go to `cimmeria-server`.
+pub(crate) fn routes_to_client(meta: &Metadata<'_>) -> bool {
+    otel::is_client_target(meta.target())
 }
 
 /// Filter for the `cimmeria-server` log layer.
@@ -626,6 +641,12 @@ pub(crate) fn otel_network_log_filter<S: Subscriber>() -> impl Filter<S> + Send 
 /// Filter for the `cimmeria-trace` log layer.
 pub(crate) fn otel_trace_log_filter<S: Subscriber>() -> impl Filter<S> + Send + Sync + 'static {
     EnvFilter::new(otel_trace_directives()).and(filter_fn(routes_to_trace))
+}
+
+/// Filter for the `cimmeria-client` log layer. No `EnvFilter`: the target
+/// list in [`otel::CLIENT_TARGETS`] is the whole rule, at every level.
+pub(crate) fn otel_client_log_filter<S: Subscriber>() -> impl Filter<S> + Send + Sync + 'static {
+    filter_fn(routes_to_client)
 }
 
 /// [`otel_trace_log_filter`] over an arbitrary file-layer table.

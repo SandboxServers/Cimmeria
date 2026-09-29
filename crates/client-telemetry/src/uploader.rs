@@ -89,7 +89,7 @@ impl UploaderConfig {
     /// for any zero-valued field.
     pub fn from_session(block: &crate::session::TelemetryBlock) -> Self {
         Self {
-            upload_endpoint: block.upload_endpoint.clone(),
+            upload_endpoint: chunk_url(&block.upload_endpoint),
             token: block.token.clone(),
             flush_interval: if block.flush_interval_ms == 0 {
                 Self::DEFAULT_FLUSH_INTERVAL
@@ -98,6 +98,24 @@ impl UploaderConfig {
             },
             max_batch: Self::DEFAULT_MAX_BATCH,
         }
+    }
+}
+
+/// The chunk URL for a session file's `upload_endpoint`.
+///
+/// The dev-session response, and so the launcher's `current-session.json`,
+/// carries the upload *base* (`https://host/api/telemetry`): the launcher
+/// appends `/upload-chunk` and `/upload-bundle` itself. The DLL used to
+/// POST to the value verbatim, so every batch from a launcher-written
+/// session went to the base path and was refused, and no DLL event ever
+/// reached the server. Accept both shapes: a value that already names the
+/// chunk route is used as is.
+pub fn chunk_url(endpoint: &str) -> String {
+    let base = endpoint.trim().trim_end_matches('/');
+    if base.ends_with("/upload-chunk") {
+        base.to_string()
+    } else {
+        format!("{base}/upload-chunk")
     }
 }
 
@@ -296,6 +314,10 @@ fn recv_timeout_raw(
 ) -> Result<ClientNativeEvent, RecvTimeoutError> {
     consumer.raw().recv_timeout(timeout)
 }
+
+#[cfg(test)]
+#[path = "uploader_endpoint_tests.rs"]
+mod endpoint_tests;
 
 #[cfg(test)]
 mod tests {

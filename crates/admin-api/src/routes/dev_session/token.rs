@@ -28,8 +28,15 @@ const MAX_TOKEN_LEN: usize = 4096;
 /// telemetry.
 pub const SCOPE_TELEMETRY_WRITE: &str = "telemetry.write";
 
-/// Wire format pinned: any field addition or rename is a breaking
-/// change for the Functions-side verifier.
+/// The value of [`TokenClaims::kind`] a lab supervisor's session carries.
+pub const SESSION_KIND_LAB: &str = "lab";
+/// What a session without a `kind` claim is: a player's launcher.
+pub const SESSION_KIND_PLAYER: &str = "player";
+
+/// Wire format pinned: any field rename is a breaking change for the
+/// Functions-side verifier. `kind` is the one optional addition, and it is
+/// omitted when absent, so a player token is byte-identical to one minted
+/// before it existed and an old token still decodes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TokenClaims {
     pub iss: String,
@@ -38,11 +45,28 @@ pub struct TokenClaims {
     pub iat: i64,
     pub exp: i64,
     pub scope: Vec<String>,
+    /// Session kind: `Some("lab")` for a Live Research Lab session, absent
+    /// for a player's launcher. Signed with the rest of the payload, so an
+    /// upload cannot relabel itself; minting is unauthenticated, so it is a
+    /// label for filtering, never a privilege.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 impl TokenClaims {
     pub fn has_scope(&self, wanted: &str) -> bool {
         self.scope.iter().any(|s| s == wanted)
+    }
+
+    /// The session kind every replayed row is tagged with:
+    /// [`SESSION_KIND_LAB`] or [`SESSION_KIND_PLAYER`].
+    pub fn session_kind(&self) -> &str {
+        self.kind.as_deref().unwrap_or(SESSION_KIND_PLAYER)
+    }
+
+    /// True for a Live Research Lab session.
+    pub fn is_lab(&self) -> bool {
+        self.session_kind() == SESSION_KIND_LAB
     }
 }
 
@@ -248,7 +272,37 @@ mod tests {
             iat: 1_700_000_000,
             exp: 1_700_028_800,
             scope: vec!["telemetry.write".into()],
+            kind: None,
         }
+    }
+
+    /// A player token carries no `kind` key at all, so its bytes are what
+    /// they were before the claim existed; a token minted before it decodes
+    /// as a player session. Reverting `skip_serializing_if` puts
+    /// `"kind":null` in every player payload and fails this.
+    #[test]
+    fn player_token_omits_kind_and_old_tokens_decode_as_player() {
+        let json = serde_json::to_string(&fake_claims()).unwrap();
+        assert!(!json.contains("kind"), "{json}");
+        let old = r#"{"iss":"cimmeria-server","sub":"i","sid":"s","iat":1,"exp":2,"scope":["telemetry.write"]}"#;
+        let claims: TokenClaims = serde_json::from_str(old).unwrap();
+        assert_eq!(claims.kind, None);
+        assert_eq!(claims.session_kind(), SESSION_KIND_PLAYER);
+        assert!(!claims.is_lab());
+    }
+
+    /// A lab claim survives the signed round trip, so the ingest can trust
+    /// it came from the mint.
+    #[test]
+    fn lab_kind_round_trips_through_the_signed_token() {
+        let claims = TokenClaims {
+            kind: Some(SESSION_KIND_LAB.into()),
+            ..fake_claims()
+        };
+        let token = encode_token(&claims, &test_secret()).unwrap();
+        let back = decode_token(&token, &test_secret()).unwrap();
+        assert!(back.is_lab());
+        assert_eq!(back.session_kind(), "lab");
     }
 
     // Roundtrip: encode → decode produces the same claims. Pins the

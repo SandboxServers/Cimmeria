@@ -57,6 +57,29 @@ fn is_network_noise_target_matches_explicit_wire_scopes() {
     assert!(is_network_noise_target("cimmeria_mercury::session"));
 }
 
+/// The `cimmeria-client` resource the telemetry runbook filters on:
+/// `cimmeria.source = client` plus the deploy env, and the ingesting
+/// server under `cimmeria.ingest_*` rather than `host.name` /
+/// `service.version`, which a reader would take for the player's machine.
+#[test]
+fn client_resource_attributes_mark_the_source_and_not_the_server_as_host() {
+    let attrs = client_resource_attributes("colo", "box-7", "0123abcd");
+    let get = |k: &str| {
+        attrs
+            .iter()
+            .find(|kv| kv.key.as_str() == k)
+            .map(|kv| kv.value.to_string())
+    };
+    assert_eq!(get("cimmeria.source").as_deref(), Some("client"));
+    assert_eq!(get("deployment.environment").as_deref(), Some("colo"));
+    assert_eq!(get("cimmeria.deploy_env").as_deref(), Some("colo"));
+    assert_eq!(get("cimmeria.ingest_host").as_deref(), Some("box-7"));
+    assert_eq!(get("cimmeria.ingest_version").as_deref(), Some("0123abcd"));
+    assert_eq!(get("host.name"), None);
+    assert_eq!(get("service.version"), None);
+    assert_eq!(CLIENT_SERVICE_NAME, "cimmeria-client");
+}
+
 /// The identity attributes the SigNoz runbook filters on. Fails if one
 /// is dropped or renamed (`cimmeria.deploy_env='colo'` is the first
 /// clause of every NPC-AI query in telemetry.md §3).

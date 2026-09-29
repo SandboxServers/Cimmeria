@@ -47,6 +47,8 @@ pub mod token;
 mod handlers;
 
 #[cfg(test)]
+mod session_kind_tests;
+#[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
@@ -62,6 +64,7 @@ pub use handlers::{
 };
 pub use token::{
     decode_token, encode_token, AuthError, TokenClaims, MIN_SECRET_BYTES, SCOPE_TELEMETRY_WRITE,
+    SESSION_KIND_LAB, SESSION_KIND_PLAYER,
 };
 
 pub(crate) use token::load_secret;
@@ -80,4 +83,25 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
         .route("/dev-session", post(mint))
         .route("/dev-session/refresh", post(refresh))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+}
+
+/// Say once, at startup, whether this server can mint and accept telemetry
+/// tokens, and where it tells callers to upload. Without it a missing
+/// `CIMMERIA_TELEMETRY_HMAC_SECRET` only ever showed as a 500 on the
+/// launcher's side and an empty `cimmeria-client` index here.
+pub fn log_boot_status() {
+    let upload_endpoint = handlers::upload_endpoint_env();
+    let kill_switch = handlers::kill_switch_active();
+    match load_secret() {
+        Ok(_) => tracing::info!(
+            upload_endpoint = %upload_endpoint,
+            kill_switch,
+            "dev-session telemetry: mint and ingest enabled"
+        ),
+        Err(e) => tracing::warn!(
+            upload_endpoint = %upload_endpoint,
+            reason = "dev_session_secret_unusable",
+            "dev-session telemetry: every mint and upload will be refused: {e}"
+        ),
+    }
 }
