@@ -15,6 +15,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [concurrent-claude-sessions.md](concurrent-claude-sessions.md) — other sessions on the repo: work in `.claude/worktrees/<slug>/`, junction `external/`.
 - [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha may not be an ancestor.
+- [shepherd-merge-traps.md](shepherd-merge-traps.md) — clean merges of main can duplicate a doc section or index line; const-slice ptr::eq fails on i686.
 - [rebase-keep-both-regex-drops-braces.md](rebase-keep-both-regex-drops-braces.md) — scripted "keep both" conflict fixes can drop a `}` mid-hunk; inspect + `cargo check` before `--continue`.
 - [resuming-a-dead-workers-wip.md](resuming-a-dead-workers-wip.md) — a `wip(...) unverified` commit may not compile; its tests encode the starting design; port hunks by hand.
 - [crate-split-extraction-traps.md](crate-split-extraction-traps.md) — moving code out of services: `pub(crate)` turns dead, `unreachable_pub` hits pub fields.
@@ -90,7 +91,6 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [tracing-span-fields-not-on-log-records](tracing-span-fields-not-on-log-records.md) — span fields are not flattened onto OTLP log records.
 - [client-telemetry-index-and-upload-traps](client-telemetry-index-and-upload-traps.md) — cimmeria-client routing; base-vs-chunk URL, blank `${VAR:-}` env; opted-in player launch mints the session before the game.
 - [client-telemetry-governor-classify-table](client-telemetry-governor-classify-table.md) — every DLL event passes the governor; new targets default to Budgeted; must-keep rows need a server priority prefix too.
-- [client-telemetry-index-and-upload-traps](client-telemetry-index-and-upload-traps.md) — cimmeria-client routing; base-vs-chunk URL, blank `${VAR:-}` env, DLL not in player launch.
 
 ## Testing patterns
 
