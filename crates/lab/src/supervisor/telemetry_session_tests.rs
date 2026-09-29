@@ -160,3 +160,84 @@ async fn a_refused_mint_is_reported_not_fatal() {
     assert!(why.contains("HMAC_SECRET"), "{why}");
     assert!(g.token.is_empty());
 }
+
+fn sample_mint(expires_at_ms: i64) -> MintResponse {
+    MintResponse {
+        session_id: "sid-cached".into(),
+        token: "cached.tok".into(),
+        expires_at_ms,
+        upload_endpoint: "http://127.0.0.1:8443/api/telemetry".into(),
+        chunk_max_bytes: 1 << 20,
+        flush_interval_ms: 2000,
+    }
+}
+
+/// **Relaunches reuse the token.** A cached mint for the same server with
+/// hours left is used without contacting the server at all (the config
+/// points at a closed port, so a mint attempt would fail).
+#[tokio::test]
+async fn a_valid_cached_token_is_reused_without_minting() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("lab-telemetry-grant.json");
+    let cfg = TelemetryConfig {
+        server_url: "http://127.0.0.1:9".into(),
+        upload_endpoint_override: None,
+    };
+    let cached = CachedMint {
+        server_url: cfg.server_url.clone(),
+        mint: sample_mint(now_ms() + 4 * 3600 * 1000),
+    };
+    std::fs::write(&cache, serde_json::to_vec(&cached).unwrap()).unwrap();
+    let g = grant_for_launch_cached(&cfg, &cache).await;
+    assert_eq!(g.unavailable, None);
+    assert_eq!(g.token, "cached.tok");
+    assert_eq!(g.session_id, "sid-cached");
+}
+
+/// A token about to expire, or minted by another server, is not reused.
+#[test]
+fn a_stale_or_foreign_cached_token_is_not_reused() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("g.json");
+    let cfg = TelemetryConfig {
+        server_url: "http://a:8443".into(),
+        upload_endpoint_override: None,
+    };
+    let now = 1_000_000_000;
+    let write = |server: &str, exp: i64| {
+        let c = CachedMint {
+            server_url: server.into(),
+            mint: sample_mint(exp),
+        };
+        std::fs::write(&cache, serde_json::to_vec(&c).unwrap()).unwrap();
+    };
+    write("http://a:8443", now + REUSE_MIN_REMAINING_MS - 1);
+    assert_eq!(cached_mint(&cache, &cfg, now), None);
+    write("http://b:8443", now + 4 * 3600 * 1000);
+    assert_eq!(cached_mint(&cache, &cfg, now), None);
+    write("http://a:8443", now + REUSE_MIN_REMAINING_MS);
+    assert!(cached_mint(&cache, &cfg, now).is_some());
+}
+
+/// A fresh mint is written to the cache for the next launch.
+#[tokio::test]
+async fn a_fresh_mint_is_cached_for_the_next_launch() {
+    let (base, server) = serve_once(
+        "200 OK",
+        r#"{"session_id":"sid-2","token":"n.t","expires_at_ms":99999999999999,"upload_endpoint":"http://127.0.0.1:8443/api/telemetry","chunk_max_bytes":1048576,"flush_interval_ms":2000}"#,
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("lab-telemetry-grant.json");
+    let cfg = TelemetryConfig {
+        server_url: base,
+        upload_endpoint_override: None,
+    };
+    let g = grant_for_launch_cached(&cfg, &cache).await;
+    server.await.unwrap();
+    assert_eq!(g.token, "n.t");
+    assert_eq!(
+        cached_mint(&cache, &cfg, now_ms()).map(|m| m.session_id),
+        Some("sid-2".into())
+    );
+}

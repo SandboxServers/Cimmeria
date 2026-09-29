@@ -315,7 +315,11 @@ Not yet proven on the live client (the prototype scripts these port were): the E
   says whether the mint worked and, if not, why (a server without
   `CIMMERIA_TELEMETRY_HMAC_SECRET` answers 500); the launch goes ahead
   either way. The telemetry token is not the bridge token, which never
-  leaves the machine.
+  leaves the machine. The minted token is cached next to the session file
+  (`lab-telemetry-grant.json`, one per lab instance) and reused while it
+  has at least 30 minutes left, so relaunches don't mint again: the server
+  allows 30 mints per install id per window, and a relaunch-heavy repro
+  campaign that minted every launch ran out and uploaded nothing.
 - **Activation is double-gated.** The bridge code exists only in a
   telemetry DLL built `--features lab-bridge` (off by default), and even
   then starts only when `current-session.json` carries a `lab` block that

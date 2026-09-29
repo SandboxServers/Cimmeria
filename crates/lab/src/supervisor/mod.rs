@@ -344,14 +344,19 @@ impl Supervisor {
             .ok_or("no sgw-start32.exe path (set CIMMERIA_LAB_START32)")?;
 
         let token = session_file::generate_token();
-        let telemetry = telemetry_session::grant_for_launch(&self.config.telemetry).await;
         let inst = self.config.instance.as_deref();
+        let session_path = instance::session_path(&install_dir, inst);
+        let telemetry = telemetry_session::grant_for_launch_cached(
+            &self.config.telemetry,
+            &session_path.with_file_name("lab-telemetry-grant.json"),
+        )
+        .await;
         let mut session =
             session_file::build_session(&token, &self.config.bind, self.config.port, &telemetry);
         if let Some(name) = inst {
             session.tags.push(format!("instance:{name}"));
         }
-        session_file::write_session_at(&instance::session_path(&install_dir, inst), &session)?;
+        session_file::write_session_at(&session_path, &session)?;
         let envs = instance::launch_env(&install_dir, inst);
 
         // Native launch runs on a blocking thread. SGW.exe lives in
