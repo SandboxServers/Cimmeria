@@ -88,6 +88,12 @@ pub struct DllSession {
     /// the `lab-bridge` feature.
     #[serde(default)]
     pub lab: Option<LabConfig>,
+    /// Optional capture switches for the engine-layer log sinks
+    /// (`unfilter`, `firehose`; see [`crate::capture`]). Absent = both off.
+    /// The `CIMMERIA_CLIENT_CAPTURE` environment variable can turn the same
+    /// switches on.
+    #[serde(default)]
+    pub capture: Option<crate::capture::CaptureConfig>,
 }
 
 /// The `lab` block of `current-session.json` — bind address, port,
@@ -460,6 +466,21 @@ mod tests {
         assert_eq!(lab.token, "abc123");
     }
 
+    /// The optional `capture` block turns the engine-layer sink switches on;
+    /// absent, both are off, and a session file from before the block existed
+    /// still parses.
+    #[test]
+    fn the_capture_block_is_optional() {
+        let base = r#""install_id":"i","machine_id":"m","session_id":"s",
+            "telemetry":{"enabled":true,"token":"t","upload_endpoint":"u"}"#;
+        let without: DllSession = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert_eq!(without.capture, None);
+        let with: DllSession =
+            serde_json::from_str(&format!(r#"{{{base},"capture":{{"unfilter":true}}}}"#)).unwrap();
+        let cfg = with.capture.expect("capture block");
+        assert!(cfg.unfilter && !cfg.firehose);
+    }
+
     /// Identity fields helper produces the canonical 3-entry bag
     /// that every DLL event should carry.
     #[test]
@@ -477,6 +498,7 @@ mod tests {
                 flush_interval_ms: 0,
             },
             lab: None,
+            capture: None,
         };
         let f = identity_fields(&s);
         assert_eq!(f.len(), 3);

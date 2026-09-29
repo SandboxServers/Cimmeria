@@ -110,6 +110,14 @@ use crate::queue::Producer;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) use engine_loading::read_utf16_bounded;
 
+// Whether the hooks the seams ride on are live (for the capabilities record).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(in crate::hooks) use engine_frame::tick_installed;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(in crate::hooks) use engine_loading::{
+    level_streaming_installed, static_load_object_installed,
+};
+
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::ffi::c_void;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
