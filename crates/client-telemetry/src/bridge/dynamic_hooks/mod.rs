@@ -325,6 +325,11 @@ mod tests {
     /// Off-target, install routes to the native stub and returns an
     /// INTERNAL_ERROR (patch unavailable) with the id echoed — but the
     /// registry rollback means no ghost entry is left behind.
+    // Off-target only: on the i686 DLL target (`windows` + `x86`) `native::patch`
+    // is the real MinHook install, not the erroring stub, so there is no
+    // rollback to observe. #991 started running these tests on i686 with
+    // `--features lab-bridge`, which is how this surfaced.
+    #[cfg(not(all(target_os = "windows", target_arch = "x86")))]
     #[test]
     fn install_offtarget_rolls_back_and_echoes_id() {
         // Use a distinctive address unlikely to collide with another test.
