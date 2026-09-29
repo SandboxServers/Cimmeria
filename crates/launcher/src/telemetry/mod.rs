@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod bundle;
 pub mod chunk;
+pub mod endpoint;
 pub mod events;
 pub mod patch_log;
 pub mod process_watch;
@@ -35,6 +36,8 @@ pub enum TelemetryError {
     Session(#[from] session::SessionError),
     #[error(transparent)]
     Queue(#[from] queue::QueueError),
+    #[error(transparent)]
+    Endpoint(#[from] endpoint::EndpointError),
 }
 
 /// Live telemetry session. Holds the auth token, the disk queue for
@@ -74,7 +77,11 @@ impl Telemetry {
         launcher_version: &str,
     ) -> Result<Self, TelemetryError> {
         let now_ms = chrono::Utc::now().timestamp_millis();
+        // Refuse before sending anything, and refuse an upload endpoint
+        // the server hands back that the same rule would refuse.
+        endpoint::check(auth_base_url)?;
         let resp = auth::fetch_dev_session(http, auth_base_url, &req).await?;
+        endpoint::check(&resp.upload_endpoint)?;
         let current = session::CurrentSession {
             schema_version: session::CURRENT_SESSION_SCHEMA,
             install_id: req.install_id.clone(),
@@ -197,6 +204,7 @@ impl Telemetry {
             return Ok(false);
         }
         let new_resp = auth::refresh_dev_session(http, &self.auth_base_url, &current_token).await?;
+        endpoint::check(&new_resp.upload_endpoint)?;
         self.issued_at_ms
             .store(now_ms, std::sync::atomic::Ordering::Relaxed);
         *self.session.write().await = new_resp;
@@ -394,7 +402,10 @@ mod tests {
             .await;
 
         let dir = tempfile::tempdir().unwrap();
-        let http = reqwest::Client::new();
+        // The client the worker uses. The launcher's shared https-only
+        // client failed exactly here against the default
+        // http://localhost auth URL.
+        let http = endpoint::client();
         let tel = Telemetry::start_session(
             &http,
             &server.uri(),
@@ -422,5 +433,76 @@ mod tests {
         .unwrap();
         let flushed = tel.flush(&http).await.unwrap();
         assert_eq!(flushed, 1);
+    }
+
+    fn request() -> DevSessionRequest {
+        DevSessionRequest {
+            install_id: "i".into(),
+            machine_id: "m".into(),
+            branch: "main".into(),
+            git_sha: "abc".into(),
+            launcher_version: "0.1.0".into(),
+            tags: vec![],
+        }
+    }
+
+    /// Plain http to another machine is refused before anything is sent
+    /// (the host does not resolve, so a request would fail differently).
+    #[tokio::test]
+    async fn start_session_refuses_plain_http_to_another_machine() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = Telemetry::start_session(
+            &endpoint::client(),
+            "http://telemetry.invalid:8443/api",
+            request(),
+            dir.path(),
+            "0.1.0",
+        )
+        .await
+        .err()
+        .expect("must refuse");
+        assert!(
+            matches!(
+                err,
+                TelemetryError::Endpoint(endpoint::EndpointError::InsecureRemote(_))
+            ),
+            "{err}"
+        );
+        assert!(!session::current_session_path(dir.path()).exists());
+    }
+
+    /// A server that hands back an unencrypted remote upload endpoint
+    /// gets no session: nothing would be uploaded there.
+    #[tokio::test]
+    async fn start_session_refuses_an_insecure_upload_endpoint() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth/dev-session"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "session_id": "sid-1",
+                "token": "tok",
+                "expires_at_ms": 1_700_028_800_000_i64,
+                "upload_endpoint": "http://uploads.example.org/api",
+                "chunk_max_bytes": 1_048_576,
+                "flush_interval_ms": 2_000,
+            })))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+        let err = Telemetry::start_session(
+            &endpoint::client(),
+            &server.uri(),
+            request(),
+            dir.path(),
+            "0.1.0",
+        )
+        .await
+        .err()
+        .expect("must refuse");
+        assert!(matches!(err, TelemetryError::Endpoint(_)), "{err}");
+        assert!(!session::current_session_path(dir.path()).exists());
     }
 }

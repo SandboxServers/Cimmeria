@@ -60,6 +60,8 @@ mod tests {
             sha256: "h".into(),
             after: None,
             root,
+            title: None,
+            description: None,
         }
     }
 

@@ -15,6 +15,13 @@ use crate::{io_err, sha256_hex, transform, PatchsetError, Result};
 #[serde(deny_unknown_fields)]
 pub struct Spec {
     pub id: String,
+    /// Short name for the launcher's "Changes to your client" list.
+    /// Printed into the manifest entry; not part of the zip.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// What the patch changes, in a sentence or two, for the same list.
+    #[serde(default)]
+    pub description: Option<String>,
     /// Files rebuilt from the stock client by delta.
     #[serde(default)]
     pub ops: Vec<SpecOp>,

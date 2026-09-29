@@ -1,5 +1,7 @@
 {
   "id": "003-cooked-data",
+  "title": "Merged cooked data",
+  "description": "Replaces three bundled data files (Kismet sequence events, Kismet set events and interaction sets) with versions that match the server's, and adds CookedBehaviorEvents.pak.",
   "ops": [
     {"target": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSeqEvent.pak", "sources": [{"path": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSeqEvent.pak"}]},
     {"target": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSetEvent.pak", "sources": [{"path": "Working/SGWGame/SourceCache.en-us/CookedDataKismetSetEvent.pak"}]},

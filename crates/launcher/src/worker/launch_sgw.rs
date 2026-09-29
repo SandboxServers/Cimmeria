@@ -68,7 +68,8 @@ enum HelperStart {
 impl Worker {
     pub(super) fn spawn_launch_sgw(&self, req: LaunchSgwRequest) {
         let events_tx = self.events_tx.clone();
-        let http = self.http.clone();
+        // Only the telemetry session below uses it.
+        let http = self.telemetry_http.clone();
         self.runtime.spawn(async move {
             let launched_at = SystemTime::now();
             let sgw_dir = sgw_dir(&req.install_dir);

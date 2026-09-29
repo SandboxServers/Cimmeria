@@ -178,6 +178,16 @@ pub struct PatchEntry {
     pub after: Option<String>,
     #[serde(default, skip_serializing_if = "PatchRoot::is_install_dir")]
     pub root: PatchRoot,
+    /// Short name for the launcher's "Changes to your client" list.
+    /// Optional: a patch without one is described from the launcher's
+    /// built-in catalog, or listed by id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// One or two sentences on what the patch changes in the client, for
+    /// the same list. Covered by the manifest signature like every other
+    /// field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// Where a patch zip's entries are extracted.
@@ -365,6 +375,8 @@ mod tests {
             sha256: format!("h-{id}"),
             after: after.map(|s| s.to_string()),
             root: PatchRoot::InstallDir,
+            title: None,
+            description: None,
         }
     }
 
@@ -377,6 +389,24 @@ mod tests {
             serde_json::from_str(r#"{"id":"a","blob":"b","size":1,"sha256":"h"}"#).unwrap();
         assert_eq!(p.root, PatchRoot::InstallDir);
         assert!(!serde_json::to_string(&p).unwrap().contains("root"));
+        assert_eq!(p.title, None);
+        assert_eq!(p.description, None);
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("title") && !json.contains("description"));
+    }
+
+    /// The "Changes to your client" list reads a patch's title and
+    /// description from the signed manifest.
+    #[test]
+    fn patch_title_and_description_round_trip() {
+        let p: PatchEntry = serde_json::from_str(
+            r#"{"id":"a","blob":"b","size":1,"sha256":"h","title":"T","description":"D"}"#,
+        )
+        .unwrap();
+        assert_eq!(p.title.as_deref(), Some("T"));
+        assert_eq!(p.description.as_deref(), Some("D"));
+        let back: PatchEntry = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
     }
 
     #[test]

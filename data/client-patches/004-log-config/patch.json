@@ -1,5 +1,7 @@
 {
   "id": "004-log-config",
+  "title": "Client debug log",
+  "description": "Adds SGWLogConfig.xml so SGW.exe writes SGWDebugLog.log, which \"Upload Debug Logs\" and telemetry read. Nothing is sent unless you use one of them.",
   "files": [
     {"path": "Working/Binaries/SGWLogConfig.xml", "from": "SGWLogConfig.xml"}
   ]

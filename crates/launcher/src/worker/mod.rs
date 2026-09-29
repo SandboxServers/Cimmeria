@@ -53,6 +53,10 @@ pub struct Worker {
     /// and log uploads. Connection pool persists across requests;
     /// `https_only(true)` defends against http:// downgrade.
     http: reqwest::Client,
+    /// Telemetry's own client: the default telemetry server is plain
+    /// http on this machine, which `http` refuses. Its address policy
+    /// is [`crate::telemetry::endpoint`].
+    telemetry_http: reqwest::Client,
 }
 
 impl Worker {
@@ -68,6 +72,7 @@ impl Worker {
             events_tx: tx,
             current_install_cancel: None,
             http,
+            telemetry_http: crate::telemetry::endpoint::client(),
         }
     }
 
@@ -111,7 +116,7 @@ impl Worker {
 
     fn spawn_launch_with_telemetry(&self, install_dir: PathBuf, cfg: LaunchTelemetryConfig) {
         let events_tx = self.events_tx.clone();
-        let http = self.http.clone();
+        let http = self.telemetry_http.clone();
         self.runtime.spawn(async move {
             let req = DevSessionRequest {
                 install_id: cfg.install_id,

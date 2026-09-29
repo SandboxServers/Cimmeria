@@ -65,7 +65,8 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 
 Two buttons run a session. **Launch + Telemetry** (the Atera debug
 path) is traced below. **Launch SGW.exe** runs one too when
-`telemetry.enabled` and the identity loaded
+the player opted in (`telemetry.opted_in`, off by default) and the
+identity loaded
 (`worker/launch_sgw.rs`): the game starts first, with the
 client-patches DLL injected, and the session follows it, so a failed
 auth handshake never delays play. That session also records the

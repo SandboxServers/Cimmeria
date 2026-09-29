@@ -66,6 +66,8 @@ fn fixture() -> Fixture {
 
     let spec = Spec {
         id: "t".into(),
+        title: None,
+        description: None,
         ops: vec![
             SpecOp {
                 target: "Working/SGWGame/UI/Dialog.lua".into(),
@@ -255,6 +257,8 @@ fn a_zip_without_a_recipe_is_a_plain_overlay() {
     let f = fixture();
     let spec = Spec {
         id: "o".into(),
+        title: None,
+        description: None,
         ops: vec![],
         files: f.spec.files.clone(),
     };
@@ -282,6 +286,8 @@ fn real_client_ring_maps() {
     };
     let spec = Spec {
         id: "ring".into(),
+        title: None,
+        description: None,
         ops: vec![SpecOp {
             target: format!("{m}/Castle_CellBlock-fffeffff.umap"),
             sources: vec![norm(format!("{m}/Castle_CellBlock-fffeffff.umap"))],

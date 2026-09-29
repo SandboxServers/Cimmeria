@@ -90,12 +90,19 @@ fn run(args: Args) -> Result<(), String> {
             for (target, delta, size) in &report.deltas {
                 eprintln!("  {target}: delta {delta} bytes for a {size}-byte file");
             }
-            let entry = serde_json::json!({
+            let mut entry = serde_json::json!({
                 "id": spec.id,
                 "blob": args.flag("blob-url").unwrap_or(out),
                 "size": report.zip.len(),
                 "sha256": sha256_hex(&report.zip),
             });
+            // Shown in the launcher's "Changes to your client" list.
+            if let Some(title) = &spec.title {
+                entry["title"] = title.clone().into();
+            }
+            if let Some(description) = &spec.description {
+                entry["description"] = description.clone().into();
+            }
             println!("{}", serde_json::to_string_pretty(&entry).unwrap());
         }
         "apply" => {

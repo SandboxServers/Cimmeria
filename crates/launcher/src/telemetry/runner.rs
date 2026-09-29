@@ -175,7 +175,7 @@ async fn tick_once(
         tailer.refresh(binaries_dir, |p| {
             p.file_name()
                 .and_then(|s| s.to_str())
-                .is_some_and(|n| n.starts_with("sgwdebuglog"))
+                .is_some_and(is_debug_log)
         });
     }
     let lines = tailer.tick();
@@ -206,11 +206,18 @@ async fn tick_once(
     enqueued
 }
 
+/// True for the client's BigWorld debug log. The client (and patch
+/// `004-log-config`) writes `SGWDebugLog.log`; the match ignores case,
+/// since a lowercase-only match never tailed it.
+fn is_debug_log(file_name: &str) -> bool {
+    file_name.to_ascii_lowercase().starts_with("sgwdebuglog")
+}
+
 /// Convert a [`TailedLine`] to a [`TelemetryEvent`]. `sgwdebuglog*`
 /// goes to `DebugLog`; everything else is treated as an Atera client
 /// log line and run through [`parse_client_log_line`].
 fn line_to_event(tl: TailedLine) -> TelemetryEvent {
-    if tl.source_file.starts_with("sgwdebuglog") {
+    if is_debug_log(&tl.source_file) {
         TelemetryEvent::DebugLog(DebugLogEvent {
             ts_ms: 0,
             seq: 0,
@@ -247,6 +254,21 @@ mod tests {
             TelemetryEvent::DebugLog(d) => assert_eq!(d.message, "anything"),
             other => panic!("expected DebugLog, got {other:?}"),
         }
+    }
+
+    /// The name the client actually writes. A lowercase-only match
+    /// skipped it, so no debug-log line was ever uploaded.
+    #[test]
+    fn the_clients_mixed_case_debug_log_is_a_debug_log() {
+        assert!(is_debug_log("SGWDebugLog.log"));
+        assert!(is_debug_log("sgwdebuglog.log.1"));
+        assert!(!is_debug_log("SGWLogConfig.xml"));
+        assert!(!is_debug_log("SGW.exe"));
+        let ev = line_to_event(TailedLine {
+            source_file: "SGWDebugLog.log".into(),
+            line: "2026-09-28 21:07:21,612 DEBUG common - about to call _runThread".into(),
+        });
+        assert!(matches!(ev, TelemetryEvent::DebugLog(_)), "{ev:?}");
     }
 
     #[test]

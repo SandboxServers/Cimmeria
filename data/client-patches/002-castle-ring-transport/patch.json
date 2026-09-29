@@ -1,5 +1,7 @@
 {
   "id": "002-castle-ring-transport",
+  "title": "Castle ring transport",
+  "description": "Adds the ring station on the CellBlock stasis-hall pad and the ring rig on the Armory pad, which mission 688 needs. Changes two Castle CellBlock map files.",
   "ops": [
     {
       "target": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffdfffc.umap",

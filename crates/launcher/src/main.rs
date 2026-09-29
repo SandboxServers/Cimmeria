@@ -2,6 +2,7 @@
 
 mod app;
 mod bundled;
+mod client_changes;
 mod client_patches;
 mod client_paths;
 mod client_setup;
@@ -11,6 +12,7 @@ mod install;
 mod install_layout;
 mod logs;
 mod manifest;
+mod overlay_meta;
 // The `pack-client-overlay` tool's logic; the launcher compiles it only to
 // run its tests next to the manifest types it shares.
 #[cfg(test)]

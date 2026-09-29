@@ -4,9 +4,13 @@
 //! construction + event-drain lifecycle, and the pure helper functions
 //! ([`status_line_for`], [`human_bytes`], [`should_show_adopt_button`])
 //! that are unit-tested without an egui frame. The panel rendering — the
-//! `eframe::App` impl and every `show_*` method — lives in
-//! [`view`](self::view).
+//! `eframe::App` impl and most `show_*` methods — lives in
+//! [`view`](self::view); the telemetry opt-in is in
+//! [`telemetry_panel`](self::telemetry_panel) and the "Changes to your
+//! client" list in [`client_changes_panel`](self::client_changes_panel).
 
+mod client_changes_panel;
+mod telemetry_panel;
 mod view;
 
 use std::path::{Path, PathBuf};
