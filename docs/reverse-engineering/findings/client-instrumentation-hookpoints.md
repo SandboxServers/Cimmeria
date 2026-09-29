@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: reference
 > **Audience**: engineers writing or reviewing `cimmeria-client-telemetry` hooks (issue #417)
-> **Last updated**: 2026-06-04
+> **Last updated**: 2026-09-28
 > **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. HIGH for Tier-3 through Tier-7 anchors after the 2026-06-04 upfront Ghidra pass that resolved every anchor to a function entry or IAT slot. HIGH for `AActor::Tick` (slot 88 @ `0x005e4200`) and `USequence::UpdateOp` (slot 84 @ `0x006c61c0`) after the second-pass vtable walk. MEDIUM for the 2 remaining deferred vtable-swap targets (`UObject::ProcessEvent` — vtable identified, 5 slots ruled out, ~35 remain to scan; `PropertyNode<T>` get/set — RTTI + COL identified but heavy templated specialization needs per-T enumeration).
 >
 > **See also**: [`client-instrumentation-entry-points.md`](client-instrumentation-entry-points.md) — the resolved Phase 3-6 manifest with all addresses + IAT slots + recommended detour signatures. Read that doc first if you're implementing a Phase 3-6 hook; this doc is the per-tier anchor catalog the manifest derives from.
@@ -77,12 +77,12 @@ The minimum hook set that turns "client froze somewhere during world entry" into
 | `Event_NetIn_onClientMapLoad` handler | TypedEmitInfo `0x01e4da90` | CME subscribe | `client.network.on_client_map_load` | CONFIRMED |
 | `Event_NetIn_onClientReady` handler | string `0x019c2828` ("onClientReady") | CME subscribe | `client.network.on_client_ready` | CONFIRMED (string at address is the bare `onClientReady` — the full `Event_NetIn_onClientReady` is the RTTI-derived signal name) |
 | `recvfrom` / `WSARecv` | `ws2_32.dll` IAT | IAT | `client.os.udp_recv` (sampled) | DEFERRED — IAT walker work |
-| `Mercury::Nub::handleMessage` | ~~`0x01b18be0`~~ (that is the log string `"Mercury::Nub::handleMessage: received the wrong kind of message!\n"`); the function that logs it starts at `0x0157bd30` and pops 4 stack args (`ret 0x10`) | Inline | `client.mercury.dispatch` | WRONG — hook removed 2026-09-27, re-resolution is #989 |
+| `Mercury_Nub_handleMessage` | ~~`0x01b18be0`~~ (that is the log string `"Mercury::Nub::handleMessage: received the wrong kind of message!\n"`); the function that logs it — and the real per-message dispatch gate (`*msg == -1` sentinel check) — starts at `0x0157bd30` and pops 4 stack args (`ret 0x10`) | Inline | `client.mercury.dispatch` | RE-RESOLVED 2026-09-28 (#989) and re-added — see the anchor correction below |
 | log4cxx appender tee | `log4cxx.dll` (config @ `SGWLogConfig.xml`) | Interpose | `client.log.<level>` | DEFERRED — appender install path TBD |
 
 **Anchor corrections from the issue body's original draft:**
 
-- `"Decrypted packet received"` — **does not exist** in the binary. `0x01b18be0`, once recorded here as the post-decrypt entry, is the log string `Mercury::Nub::handleMessage: received the wrong kind of message!`, not code. The function that logs it starts at `0x0157bd30` (`ret 0x10`); whether it is the post-decrypt entry is unconfirmed, and re-resolving the hook is #989.
+- `"Decrypted packet received"` — **does not exist** in the binary. `0x01b18be0`, once recorded here as the post-decrypt entry, is the log string `Mercury::Nub::handleMessage: received the wrong kind of message!`, not code. The function that logs it, `Mercury_Nub_handleMessage`, starts at `0x0157bd30` (`ret 0x10`, 4 stack args) — **re-resolved 2026-09-28 (#989)**. It IS the per-message dispatch gate: it checks `*msg == -1` (the sentinel byte) before falling through to the real handler-interface dispatch, so it fires once per inbound Mercury message regardless of type. Only 3 of its 4 stack arguments could be named from the decompile (`param_1` is dead — reassigned before ever being read; `param_2` is the message struct; `param_3` is a handler-interface pointer); the 4th is real (the `ret 0x10` is unambiguous) but nothing in the decompiled body touches it, so its purpose stays unresolved. The re-added hook declares and forwards all four regardless.
 - `0x019c2828` — the string at this address is `onClientReady` (bare), not `Event_NetIn_onClientReady`. The full event name comes from the RTTI descriptor; the bare string is the in-binary anchor.
 
 ## Tier 2 — Network protocol visibility (Phase 2)
@@ -93,9 +93,9 @@ The minimum hook set that turns "client froze somewhere during world entry" into
 | All `Event_NetOut_*` handlers | CME subscribe | ~150 classes | RTTI walk at DLL load |
 | `Event_Net_Connected` / `Event_Net_Disconnected` | CME subscribe | 2 | RTTI walk |
 | `Event_Cache_ElementReady` / `Event_Cache_ElementError` | CME subscribe | ~10 | RTTI walk |
-| `BWConnection::ConnectFailure` | Inline | 1 | String anchor `0x0180b9f4` |
-| `BWConnection::NotifyConnectionLost` | Inline | 1 | String anchor `0x0182d114` |
-| `BWConnection::ConnectionTimeout` | Inline | 1 | String anchor `0x018474ec` |
+| `BWConnection::ConnectFailure` | Inline | 1 | ~~String anchor `0x0180b9f4`~~ — **misattributed (2026-09-28)**: the string sits inside `0x0049ba90`, an ~860-line multi-purpose static-init-guarded function, not a focused connection-failure handler. See [`client-telemetry-seam-survey.md`](client-telemetry-seam-survey.md)'s "Dead ends" section. |
+| `BWConnection::NotifyConnectionLost` | Inline | 1 | ~~String anchor `0x0182d114`~~ — **misattributed (2026-09-28)**: the string sits inside `0x00511750`, a one-time class-name/RTTI registration-table builder. See the seam survey. |
+| `BWConnection::ConnectionTimeout` | Inline | 1 | ~~String anchor `0x018474ec`~~ — **misattributed (2026-09-28)**: the string sits inside `0x005dc280`, UE3's `UClass` property-registration function for `NetConnection`'s `Client` config category (`"ConnectionTimeout"` is a `UProperty` name, not an event). See the seam survey. |
 | Mercury Nub thread entry | Inline | 1 | RTTI `CME::Win32ThreadEx::ThreadEntry<Mercury::Nub::NetworkTask>` @ `0x01b18f78` |
 
 **Binary string counts** (validated via Ghidra `search_strings`):
@@ -123,7 +123,7 @@ Anchors from existing RE docs; per-anchor Ghidra revalidation deferred to implem
 | `Event_AppearanceJob_Completed` | RTTI `0x01e21c80` (5 subscribers: `SequenceManager`, `CharacterCreation`, `GameProxyPlayer`, `GameBeing`, `PortraitManager`) | CME subscribe (free piggyback on existing signal) | [`appearance-system.md`](appearance-system.md) |
 | `USGWAnimNotify_Event::Notify` | `0x00e974b0`, `0x00e97070` | Inline | [`animation-system.md`](animation-system.md) |
 | `onEffectResults` dispatch (16 result codes incl. `EFFECT_PULSE_BEGIN`/`END`) | CME via `Event_NetIn_*` | CME subscribe | [`effect-execution-model.md`](effect-execution-model.md) |
-| Cooked data category load (21 PAKs) | ~~`0x00420074`~~ is mid-function; the enclosing entry is `0x0041f620` (signature unresolved, #989) | Inline | [`cooked-data-pipeline.md`](cooked-data-pipeline.md) |
+| Cooked data category load (21 PAKs) | **CORRECTED 2026-09-28 (#989):** `0x00420074` turns out to be a real function entry after all — Ghidra names it and it decompiles cleanly — but it is the **one-time startup constructor** that builds all ~20 `LibCategory<LibCategoryKey<N,...>>` descriptors (`CookedDataKismetSetEvent.pak`, `CookedDataKismetSeqEvent.pak`, etc.), called once at launch, not a per-load runtime event. Hooking it would fire once and never again — not re-added. The real per-category runtime signal is `Event_NetIn_onVersionInfo` (CME-subscribable, per [`cooked-data-pipeline.md`](cooked-data-pipeline.md) Finding 4), but each of the ~20 categories has its own separately template-instantiated handler (e.g. `ServerSource_onVersionInfo_Handler_cat6` @ `0x00441630`), so full coverage needs the deferred CME RTTI auto-discovery scanner or per-category resolution of its own. The old `0x0041f620` "nearest padding" guess was also wrong — that address is an unrelated `LaunchMisc.cpp` engine-startup function (shader/config init), not connected to cooked data at all. | Inline (deferred — see correction) | [`cooked-data-pipeline.md`](cooked-data-pipeline.md), [`client-telemetry-seam-survey.md`](client-telemetry-seam-survey.md) |
 | `Event_NetIn_LootDisplay` + `DBInvItem` cache warm | `0x00d804f0`, `0x00e248f0` | CME subscribe | [`loot-generation.md`](loot-generation.md) |
 
 ## Tier 4 — Kismet, dispatcher, matinee (Phase 3 cont.)
@@ -183,6 +183,7 @@ To preserve "observe without changing behavior":
 ## Related docs
 
 - [`cme-event-signal.md`](cme-event-signal.md) — full CME emit pipeline, Pattern A vs Pattern B, MemberCallback layout
+- [`client-telemetry-seam-survey.md`](client-telemetry-seam-survey.md) — broader instrumentation seam survey (2026-09-28): ranks candidate hooks beyond this catalog, and records which string-anchored candidates from this doc turned out to be misattributed (same failure class as #989)
 - [`../address-map.md`](../address-map.md) — canonical address registry
 - [`../../technical/atrearl-loader.md`](../../technical/atrearl-loader.md) — third-party reference for what hook surfaces work in practice (not code we use)
 - [`../../technical/atrealoader-exe.md`](../../technical/atrealoader-exe.md) — third-party loader's behavior as RE reference

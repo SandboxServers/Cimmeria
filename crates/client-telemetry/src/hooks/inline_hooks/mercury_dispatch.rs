@@ -1,11 +1,30 @@
-//! Network-thread dispatch hook: the entity-method **silent-drop
+//! Network-thread dispatch hooks: `Mercury_Nub_handleMessage` (every
+//! inbound Mercury message) and the entity-method **silent-drop
 //! oracle** — the client-side half of the round-trip verification
 //! loop.
 //!
-//! The inbound-packet hook on `Mercury::Nub::handleMessage` that used
-//! to live here was removed: its address (`0x01b18be0`) is a log
-//! string, not code, and the real function takes four stack
-//! arguments. Re-adding it is #989.
+//! `Mercury_Nub_handleMessage` was re-resolved for #989. The old
+//! anchor, `0x01b18be0`, is the log string
+//! `"Mercury::Nub::handleMessage: received the wrong kind of
+//! message!\n"` that this function prints on a malformed message, not
+//! code. Ghidra's own decompile (headless pass, 2026-09-28) names the
+//! function `Mercury_Nub_handleMessage` and confirms the entry at
+//! `0x0157bd30`, an SEH-guarded `__thiscall` whose five exits are all
+//! `ret 0x10` — four stack dwords beyond the `this` in ECX. The
+//! decompiler could account for only three of them by name
+//! (`param_1`, reassigned before it is ever read, so it is dead on
+//! entry; `param_2`, the message struct; `param_3`, the handler
+//! interface): the fourth stack slot is real (the immediate `ret 0x10`
+//! is unambiguous) but nothing in the decompiled body touches it, so
+//! its purpose is unresolved. The detour below declares and forwards
+//! all four regardless — an unused stack slot must still be present
+//! and passed through untouched, or the trampoline's `ret 0x10`
+//! unbalances the caller's stack.
+//!
+//! The function gates on `*param_2 == -1` (its own sentinel check for
+//! "is this really one of our messages") before falling through to
+//! the real dispatch, so it is a legitimate per-inbound-message
+//! choke point, matching `client.mercury.dispatch`'s original intent.
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::ffi::c_void;
@@ -14,6 +33,83 @@ use std::sync::OnceLock;
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use crate::queue::Producer;
+
+use crate::hooks::sampling::SamplingCounter;
+
+/// `Mercury_Nub_handleMessage` — see the module docs. Resolved 2026-
+/// 09-28 for #989.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(super) const ADDR_MERCURY_DISPATCH: usize = 0x0157bd30;
+
+/// Trampoline pointer for `Mercury_Nub_handleMessage`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static MERCURY_DISPATCH_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+/// Fires once per inbound Mercury message. 1/20 keeps a busy session
+/// (tens of messages/sec) from dominating the wire budget while still
+/// showing the dispatch rate as a rough shape in SigNoz.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+static MERCURY_DISPATCH_SAMPLER: SamplingCounter = SamplingCounter::new(20);
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(super) unsafe fn install_mercury_dispatch(producer: &Producer) {
+    super::install_one(
+        producer,
+        "mercury_dispatch",
+        ADDR_MERCURY_DISPATCH,
+        mercury_dispatch_detour as *mut c_void,
+        &MERCURY_DISPATCH_TRAMPOLINE,
+    );
+}
+
+/// Detour for `Mercury_Nub_handleMessage(this, param_1, msg, iface,
+/// param_4)`. `param_1` and `param_4` are opaque stack slots the
+/// original never reads on entry (see module docs) — forwarded
+/// untouched, never dereferenced.
+///
+/// **Hot path discipline:** network thread, fires per inbound message.
+/// Sampled at 1/20. The only read is `*msg` (the sentinel byte the
+/// original itself reads unconditionally at entry, so this dereference
+/// is exactly as safe as the function's own first instruction) —
+/// guarded against a null `msg` regardless.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall-unwind" fn mercury_dispatch_detour(
+    this: *mut c_void,
+    param_1: u32,
+    msg: *mut c_void,
+    iface: *mut c_void,
+    param_4: u32,
+) {
+    let _ = std::panic::catch_unwind(|| {
+        if MERCURY_DISPATCH_SAMPLER.should_emit() {
+            if let Some(p) = crate::boot::producer() {
+                // SAFETY: `msg` is the same pointer the original
+                // function dereferences as its very first instruction
+                // (`cmp byte ptr [ebx], 0xff`) before any validation of
+                // its own — reading one byte here is no less safe than
+                // letting the trampoline run. Still null-checked
+                // because our detour runs before that instruction.
+                let sentinel_ok = (!msg.is_null()) && unsafe { *(msg as *const u8) } == 0xff;
+                p.try_emit(
+                    crate::events::ClientNativeEvent::builder("client.mercury.dispatch", "debug")
+                        .field("sentinel_ok", serde_json::json!(sentinel_ok)),
+                );
+            }
+        }
+    });
+
+    if let Some(t) = MERCURY_DISPATCH_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall-unwind" fn(
+            *mut c_void,
+            u32,
+            *mut c_void,
+            *mut c_void,
+            u32,
+        ) = unsafe { std::mem::transmute(*t) };
+        original(this, param_1, msg, iface, param_4);
+    }
+}
 
 /// The "method not found" callee on the silent-drop path of
 /// `Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`).

@@ -92,6 +92,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Ammo system AM-01 findings](ammo-system-am01.md) — **[PROMOTE → docs/reverse-engineering/findings/ammo-system.md DONE]** — no reserve exists in the client schema (`knownAmmoTypes` is a discovery flag, not a count); `getAmmoTypes`/`getCurrentAmmoType`/`requestAmmoChange` all hit the same live `SGWPlayer+0x8c → *+0x24` container cache as the bandolier active-slot map (not cooked data); toggle abilities 715/719 are independent of `requestAmmoChange`; `docs/**/*.md` CRLF claim does NOT hold for `docs/reverse-engineering/findings/` (verified LF in git HEAD) — check the sibling file before assuming.
 
+## Client telemetry seam survey (issue #989, 2026-09-28)
+
+- [Client telemetry seam survey](client-telemetry-seam-survey-2026-09-28.md) — **[PROMOTE → docs/reverse-engineering/findings/client-telemetry-seam-survey.md DONE]** — #989 Mercury dispatch resolved+re-added (`0x0157bd30`, 4 stack args, only 3 nameable); cooked-data PAK load correctly re-diagnosed as a wrong-purpose real function (one-time category-table ctor) and NOT re-added; join key = `g_EntityManager+0x08 -> ServerConnection+0x16c`; two new hooks (`forcedPosition`, `createBasePlayer` — the latter needs a post-hook read, pre-hook would double-consume a stream); three `BWConnection` lifecycle string anchors in the hookpoints catalog are misattributed (dead ends, documented so nobody re-investigates).
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.

@@ -10,13 +10,15 @@
 //! One submodule per hook family; each owns its target addresses,
 //! trampoline statics, samplers, install fns, and detours:
 //!
-//! - [`mercury_dispatch`] — the entity-method silent-drop oracle
-//!   (network thread).
+//! - [`mercury_dispatch`] — the entity-method silent-drop oracle and
+//!   `Mercury_Nub_handleMessage` (network thread).
 //! - [`engine_frame`] — per-frame drivers: `FEngineLoop::Tick` and
 //!   `FFullScreenMovieBink::Tick`.
 //! - [`engine_loading`] — asset/package loading + level streaming:
 //!   `FArchiveAsync::Serialize`, `UObject::StaticLoadObject`,
 //!   `UWorld::UpdateLevelStreamingInner`.
+//! - [`entity_lifecycle`] — `ServerConnection_forcedPosition` and
+//!   `ServerConnection_createBasePlayer` (main thread).
 //! - [`state_flags`] — `GameBeing::onStateFieldUpdate` (all 9
 //!   BSF_* flags via one dispatcher hook).
 //! - [`anim_notify`] — `USGWAnimNotify_Event::Notify` A + B.
@@ -24,14 +26,24 @@
 //!
 //! # What's installed
 //!
-//! 10 hooks. Every address below was re-checked against the QA
-//! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
-//! argument count) and is covered by the [fingerprint
-//! gate](crate::fingerprint), which installs none of them on a build
-//! whose bytes differ. Two earlier anchors were removed then:
-//! `Mercury::Nub::handleMessage` (`0x01b18be0` is a log string) and the
-//! cooked-data PAK load (`0x00420074` is mid-function). #989 tracks
-//! re-adding them.
+//! 13 hooks. Every address below was re-checked against the QA
+//! `SGW.exe` (function entry, `ret N` against the detour's argument
+//! count) and is covered by the [fingerprint gate](crate::fingerprint),
+//! which installs none of them on a build whose bytes differ. Two
+//! earlier anchors were removed on 2026-09-27: `Mercury::Nub::handleMessage`
+//! (`0x01b18be0` is a log string) and the cooked-data PAK load
+//! (`0x00420074` claimed mid-function). #989 re-resolved the first —
+//! `Mercury_Nub_handleMessage` at `0x0157bd30`, re-added below. The
+//! second turned out to be a real function entry after all, but the
+//! *wrong* one: `0x00420074` is the one-time startup constructor that
+//! builds the ~20 `LibCategory<LibCategoryKey<N,...>>` descriptors, not
+//! a per-load runtime event, so hooking it would fire once at launch
+//! and never again — it still isn't re-added. See
+//! `docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`
+//! for the corrected finding and the real per-category runtime signal
+//! (`Event_NetIn_onVersionInfo`, CME-subscribable but not yet cheaply
+//! hookable — needs the CME RTTI auto-discovery scanner or per-category
+//! resolution work of its own).
 //!
 //! Every detour, and the trampoline type it calls the original
 //! through, uses the `-unwind` ABI (`thiscall-unwind`, `C-unwind`).
@@ -52,6 +64,9 @@
 //! | `APlayerController::execConsoleCommand` (`this, FFrame&, Result*`) | `0x00539850` | `client.input.console_command` | 1/1 |
 //! | `FFullScreenMovieBink::Tick` (vtbl slot 1) | `0x0050bbc0` | `client.engine.bink_tick` (with `delta_seconds` field) | 1/30 (~1/sec during cinematics) |
 //! | `EntityDescription_GetExposedClientMethodByIndex` (silent-drop oracle) | `0x01590f30` | `client.dispatch.method_dropped` (with `method_index` field) | 1/1 unsampled — drops are the finding |
+//! | `Mercury_Nub_handleMessage` (4 stack args) | `0x0157bd30` | `client.mercury.dispatch` (with `sentinel_ok` field) | 1/20 (fires per inbound Mercury message) |
+//! | `ServerConnection_forcedPosition` | `0x00dd9ee0` | `client.movement.forced_position` (with `entity_id` field) | 1/1 unsampled — corrections are rare and are the finding |
+//! | `ServerConnection_createBasePlayer` | `0x00dddca0` | `client.entity.create_base_player` (with `entity_id` field) | 1/1 (fires once per world entry) |
 //!
 //! # Why MinHook
 //!
@@ -66,6 +81,7 @@ mod anim_notify;
 mod console_command;
 mod engine_frame;
 mod engine_loading;
+mod entity_lifecycle;
 mod mercury_dispatch;
 mod state_flags;
 
@@ -117,11 +133,14 @@ unsafe fn install_inner(producer: Producer) {
     console_command::install_console_command(&producer);
     engine_frame::install_bink_tick(&producer);
     mercury_dispatch::install_entity_method_not_found(&producer);
+    mercury_dispatch::install_mercury_dispatch(&producer);
+    entity_lifecycle::install_forced_position(&producer);
+    entity_lifecycle::install_create_base_player(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(10))],
+        [("hook_count", serde_json::json!(13))],
     );
 }
 
@@ -222,6 +241,11 @@ mod tests {
                 super::mercury_dispatch::ADDR_ENTITY_METHOD_NOT_FOUND,
                 0x01590f30
             );
+            // Re-resolved 2026-09-28 for #989.
+            assert_eq!(super::mercury_dispatch::ADDR_MERCURY_DISPATCH, 0x0157bd30);
+            // Seam survey, 2026-09-28.
+            assert_eq!(super::entity_lifecycle::ADDR_FORCED_POSITION, 0x00dd9ee0);
+            assert_eq!(super::entity_lifecycle::ADDR_CREATE_BASE_PLAYER, 0x00dddca0);
         }
     }
     /// Every inline-hooked address is a fingerprinted site, so a build
@@ -231,6 +255,9 @@ mod tests {
     fn every_hooked_address_is_fingerprinted() {
         let hooked = [
             super::mercury_dispatch::ADDR_ENTITY_METHOD_NOT_FOUND,
+            super::mercury_dispatch::ADDR_MERCURY_DISPATCH,
+            super::entity_lifecycle::ADDR_FORCED_POSITION,
+            super::entity_lifecycle::ADDR_CREATE_BASE_PLAYER,
             super::engine_frame::ADDR_FENGINE_LOOP_TICK,
             super::engine_frame::ADDR_BINK_TICK,
             super::engine_loading::ADDR_ARCHIVE_ASYNC_SERIALIZE,
