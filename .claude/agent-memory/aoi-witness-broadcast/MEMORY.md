@@ -10,3 +10,4 @@
 - [project_na39_channel_tx_window_ordering.md](project_na39_channel_tx_window_ordering.md) — NA39 (PR #830): real cross-task ordering bug found in Channel::register_sent_packet (mercury crate), not AoI layer; AoI/witness fanout itself cleared; post-#825 crate-split path map
 - [reference_witnesses_field_is_observers_own_aoi.md](reference_witnesses_field_is_observers_own_aoi.md) — `entity.witnesses` = what THAT entity sees (not who sees it); chat.rs bug fixed 2026-09-26, audit of other sites
 - [project_838_request_entity_update_fix.md](project_838_request_entity_update_fix.md) — 0x07 wire fix `[u32 entityId][N×cacheStamp]`, corrected GameEntityManager vtable base, Leave-AoI Path A/B fix, PR #390 recovery path retired (never ran in prod)
+- [project_838_fragment_header_straddle.md](project_838_fragment_header_straddle.md) — #838 fragment header-straddle root cause candidate (PR #1087), guard location, client model for tests
