@@ -83,6 +83,10 @@ services:
       # explicit builder attribute beats OTEL_RESOURCE_ATTRIBUTES: without it
       # every colo row is tagged "dev".
       CIMMERIA_DEPLOY_ENV: "colo"
+      # Launcher telemetry: the secret that signs /api/auth/dev-session
+      # tokens. Put `CIMMERIA_TELEMETRY_HMAC_SECRET=<openssl rand -hex 64>`
+      # in /opt/cimmeria/.env; unset, every telemetry session is refused.
+      CIMMERIA_TELEMETRY_HMAC_SECRET: "${CIMMERIA_TELEMETRY_HMAC_SECRET:-}"
       OTEL_TRACES_SAMPLER: "always_on"
     # Intentionally NO `volumes:` for postgres data. The entrypoint
     # (`docker/entrypoint.sh`) reseeds /var/lib/postgresql/data from

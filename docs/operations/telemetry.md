@@ -99,6 +99,22 @@ A remote server therefore needs TLS in front of its admin port, for
 example the Cloudflare Tunnel below; the colo's plain `8443` is not
 enough.
 
+**Sending your own telemetry to the colo, with SSH access.** Forward the
+colo's admin port to your machine, then launch with the default
+`telemetry.auth_url`:
+
+```bash
+ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30   -L 127.0.0.1:8443:127.0.0.1:8443 <colo host>
+```
+
+The launcher then talks to `http://localhost:8443/api`, which the rule
+above allows, and the colo's default `upload_endpoint`
+(`http://localhost:8443/api/telemetry`) resolves through the same tunnel.
+The colo needs `CIMMERIA_TELEMETRY_HMAC_SECRET` set (see
+[`docker/compose.yml`](../../docker/compose.yml)). This does not work
+with a local server also on port 8443. Players without SSH access need
+the HTTPS route.
+
 The dev-session mint hands the launcher a `upload_endpoint` URL.
 Default is `http://localhost:8443/api/telemetry` — fine when the
 launcher and the server share a host. For any other topology, set:
