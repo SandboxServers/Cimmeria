@@ -91,6 +91,25 @@ mod tests {
         assert_eq!(last, Some((2, 2)));
     }
 
+    // UnRAR restores the archived modified time itself; this pins it, so a
+    // RAR seed that is not an installer set (moved into place by rename)
+    // keeps the stamps UE3 compares Default*.ini files against.
+    #[test]
+    fn extracted_files_keep_the_archived_modified_time() {
+        use super::super::test_fixtures::fixture_mtime;
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("a.rar");
+        write_stored_rar4(&archive, &[("Config\\DefaultEngine.ini", b"[Engine]")]);
+        let out = dir.path().join("out");
+        let (sink, _rx) = sink();
+        extract(&archive, &out, &sink).unwrap();
+        let p = out.join("Config").join("DefaultEngine.ini");
+        assert_eq!(
+            std::fs::metadata(p).unwrap().modified().unwrap(),
+            fixture_mtime()
+        );
+    }
+
     // Bug shape: an entry named `..\x` must not be written above `dest`.
     #[test]
     fn rejects_entries_that_escape_the_destination() {

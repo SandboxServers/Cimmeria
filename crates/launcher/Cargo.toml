@@ -96,6 +96,10 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_LibraryLoader",
     # FDICreate/FDICopy: expand the installer cabinet set (src/unpack/fdi.rs).
     "Win32_Storage_Cabinets",
+    # DosDateTimeToFileTime + LocalFileTimeToFileTime: stamp extracted
+    # files with the archive's DOS date/time (src/unpack/dos_time.rs).
+    "Win32_Storage_FileSystem",
+    "Win32_System_WindowsProgramming",
 ] }
 
 [build-dependencies]

@@ -9,7 +9,8 @@ use std::time::Duration;
 use eframe::egui;
 
 use super::{
-    build_telemetry_config, human_bytes, path_is_empty, should_show_adopt_button, LauncherApp,
+    build_telemetry_config, download_progress_line, path_is_empty, should_show_adopt_button,
+    LauncherApp,
 };
 use crate::config::{ledger_path, LOG_UPLOAD_SAS_URL};
 use crate::install::Progress;
@@ -258,12 +259,7 @@ impl LauncherApp {
                 } else {
                     0.0
                 };
-                ui.label(format!(
-                    "{}: {} / {} bytes",
-                    label,
-                    human_bytes(*downloaded),
-                    human_bytes(*total)
-                ));
+                ui.label(download_progress_line(label, *downloaded, *total));
                 ui.add(egui::ProgressBar::new(pct).show_percentage());
             }
             Progress::Extracting {

@@ -24,6 +24,17 @@ pub(crate) fn sink() -> (UnpackSink, tokio::sync::mpsc::UnboundedReceiver<Progre
     )
 }
 
+/// 2009-06-30 12:00:00 as a DOS date: the date the 2009 client's
+/// cabinets stamp on every file. Both archive fixtures carry it.
+pub(crate) const FIXTURE_DOS_DATE: u16 = ((2009 - 1980) << 9) | (6 << 5) | 30;
+/// 12:00:00 as a DOS time.
+pub(crate) const FIXTURE_DOS_TIME: u16 = 12 << 11;
+
+/// The modified time an extracted fixture file must end up with.
+pub(crate) fn fixture_mtime() -> std::time::SystemTime {
+    super::dos_time::to_system_time(FIXTURE_DOS_DATE, FIXTURE_DOS_TIME).expect("valid stamp")
+}
+
 /// Poorly compressible bytes (xorshift), so a small `MaxDiskSize` really
 /// makes a cabinet set span several cabinets.
 #[cfg(windows)]
@@ -56,8 +67,8 @@ pub(crate) fn write_stored_rar4(path: &Path, entries: &[(&str, &[u8])]) {
     out.extend_from_slice(&head_crc(&main));
     out.extend_from_slice(&main);
 
-    // 2009-06-30 12:00:00 as a DOS date/time.
-    let dos_time: u32 = ((2009 - 1980) << 25) | (6 << 21) | (30 << 16) | (12 << 11);
+    // DOS date in the high half, time in the low half.
+    let dos_time: u32 = (u32::from(FIXTURE_DOS_DATE) << 16) | u32::from(FIXTURE_DOS_TIME);
     for (name, data) in entries {
         let name = name.as_bytes();
         let size = u32::try_from(data.len()).expect("fixture entries are small");
@@ -125,6 +136,14 @@ pub(crate) fn make_cab_set(
         let p = src.join(name.replace('\\', std::path::MAIN_SEPARATOR_STR));
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(&p, data).unwrap();
+        // MakeCAB stamps each file with its source mtime (as local time),
+        // so this gives every cabinet entry the fixture's DOS date/time.
+        std::fs::File::options()
+            .write(true)
+            .open(&p)
+            .unwrap()
+            .set_modified(fixture_mtime())
+            .unwrap();
         ddf.push_str(&format!("\"{}\" \"{}\"\r\n", p.display(), name));
     }
     let ddf_path = dir.join("DATA.DDF");

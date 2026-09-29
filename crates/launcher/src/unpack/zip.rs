@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::{UnpackError, UnpackSink};
+use super::{dos_time, UnpackError, UnpackSink};
 
 fn patchset_err(e: cimmeria_patchset::PatchsetError) -> UnpackError {
     UnpackError::Patchset(e.to_string())
@@ -55,6 +55,10 @@ pub(super) fn extract(zip_path: &Path, dest: &Path, sink: &UnpackSink) -> Result
             }
             let mut f = std::fs::File::create(&out)?;
             std::io::copy(&mut entry, &mut f)?;
+            // Keep the archived modified time, as Explorer and the stock
+            // installer do: UE3 treats a Default*.ini whose mtime changed
+            // as outdated (see dos_time).
+            dos_time::apply_zip(&f, entry.last_modified(), &out);
         }
         sink.report("unzipping", i + 1, total, &out);
     }
@@ -92,5 +96,39 @@ mod tests {
             std::fs::read_to_string(out.join("nested/deep.txt")).unwrap(),
             "deep"
         );
+    }
+
+    // Bug shape: unzipped files kept the extraction time, so a seed zip of
+    // the stock client made UE3 flag every Default*.ini as outdated. An
+    // entry with no recorded time (the zip crate's 1980-01-01 placeholder)
+    // keeps the extraction time rather than dating the file 1980.
+    #[test]
+    fn extract_keeps_the_archived_modified_time() {
+        use super::super::test_fixtures::{fixture_mtime, FIXTURE_DOS_DATE, FIXTURE_DOS_TIME};
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("a.zip");
+        {
+            use std::io::Write;
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut zw = ::zip::ZipWriter::new(f);
+            let stamped: ::zip::write::FileOptions<()> = ::zip::write::FileOptions::default()
+                .last_modified_time(
+                    ::zip::DateTime::try_from_msdos(FIXTURE_DOS_DATE, FIXTURE_DOS_TIME).unwrap(),
+                );
+            zw.start_file("Config/DefaultEngine.ini", stamped).unwrap();
+            zw.write_all(b"[Engine]").unwrap();
+            let unstamped: ::zip::write::FileOptions<()> =
+                ::zip::write::FileOptions::default().last_modified_time(::zip::DateTime::default());
+            zw.start_file("unstamped.txt", unstamped).unwrap();
+            zw.write_all(b"x").unwrap();
+            zw.finish().unwrap();
+        }
+        let out = dir.path().join("out");
+        let started = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        let (sink, _rx) = sink();
+        extract(&zip_path, &out, &sink).unwrap();
+        let mtime = |p: &str| std::fs::metadata(out.join(p)).unwrap().modified().unwrap();
+        assert_eq!(mtime("Config/DefaultEngine.ini"), fixture_mtime());
+        assert!(mtime("unstamped.txt") >= started);
     }
 }
