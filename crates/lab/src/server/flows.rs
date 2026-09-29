@@ -256,6 +256,13 @@ mod tests {
             "lab_pixel_probe",
             "client_ui_click",
             "lab_client_start",
+            "client_window_read",
+            "client_window_click",
+            "client_chat_log",
+            "client_inventory",
+            "client_player_state",
+            "client_item_action",
+            "client_drag_drop",
         ] {
             assert!(s.tool_router.has_route(name), "{name} is not routed");
         }

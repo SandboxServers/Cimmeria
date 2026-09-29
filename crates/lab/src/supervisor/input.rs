@@ -114,7 +114,7 @@ fn button_messages(button: usize) -> Result<(u32, u32, usize), String> {
     }
 }
 
-fn lparam_xy(x: i32, y: i32) -> isize {
+pub(super) fn lparam_xy(x: i32, y: i32) -> isize {
     (((y as u32 & 0xFFFF) << 16) | (x as u32 & 0xFFFF)) as isize
 }
 
@@ -140,7 +140,7 @@ fn parse_point(results: &[String]) -> Option<(i32, i32)> {
 }
 
 impl Supervisor {
-    async fn game_hwnd(&self) -> Result<isize, String> {
+    pub(super) async fn game_hwnd(&self) -> Result<isize, String> {
         let pid = {
             let st = self.state.lock().await;
             st.pid.ok_or("no client running")?
@@ -163,7 +163,12 @@ impl Supervisor {
             .await
     }
 
-    async fn post_key(&self, hwnd: isize, key: keys::Key, down: bool) -> Result<(), String> {
+    pub(super) async fn post_key(
+        &self,
+        hwnd: isize,
+        key: keys::Key,
+        down: bool,
+    ) -> Result<(), String> {
         let (msg, lparam) = if down {
             (WM_KEYDOWN, key.lparam_down())
         } else {
@@ -220,7 +225,7 @@ impl Supervisor {
         Ok(json!({ "button": button, "at": [at.0, at.1] }))
     }
 
-    async fn post_button(
+    pub(super) async fn post_button(
         &self,
         button: usize,
         action: &str,

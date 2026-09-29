@@ -225,6 +225,13 @@ Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
 | `client_input_key` / `client_type_text` | Key presses and typing as `WM_KEYDOWN`/`WM_KEYUP` (the game translates them; Shift is virtual). Types letters, digits, space, `-_/.`, so `/logout` and `.`-console lines work through chat. |
 | `client_input_mouse` | DirectInput relative motion (mouse-look) and button clicks at the UI cursor. |
 | `client_input_focus` / `client_input_status` / `client_input_release` | Virtual focus (the game keeps reading input in the background), hook counters, let go of everything. |
+| `client_window_read` | Read an open window: title, buttons with enabled state, text, list rows. `kind` adds the module's state for vault, trainer, crafting, pet, organization, mail, loot, DHD, dialog/blurb, greet, vendor, trade, character. See [UI readers and item tools](#ui-readers-and-item-tools). |
+| `client_window_click` | Click a named widget, the widget showing a text, or a list row, with a real click at its screen point. |
+| `client_chat_log` | Chat, feedback and Server Message lines with channel, speaker, colour and tabs, from the lab's chat ring through the event store, read through a named cursor. |
+| `client_inventory` | Every loaded container, the bandolier's ammo and cash; `snapshot` / `diff_against` for before-and-after checks. |
+| `client_player_state` | Position, world, level, experience, every stat, effects, the active weapon's ammo, the target. |
+| `client_item_action` | Use, equip, unequip (a right-click on the slot), double-click, Loot All, loot one row; slash-command fallback. |
+| `client_drag_drop` | A real drag between slots or onto a named window; `split` is the stock Ctrl-drag (one off the stack). Verified by an inventory diff. |
 | `client_entity_find` | Entities the client knows, by id, name, mob id (the client's template id), hostility or distance: name, level, hostility, rendered, targetable, position (client and server coordinates), distance, screen point. Read-only. See [World tools](#world-tools). |
 | `client_world_click` / `client_target` | Click an entity or world point in the 3D view with real input (camera turned onto it if needed, mouse-over checked for occluders), then report the target and windows it changed. `client_target` left-clicks and requires `Unit.Target` to become the entity. |
 | `client_move_to` | Walk to a point, an entity or through waypoints with `W` and mouse-look, closed loop on the player's position; stuck detection, arrival radius, timeout. |
@@ -398,6 +405,39 @@ These tools were written against the stock UI Lua and tested against a fake brid
 5. The Ability-window path: `getBindingKey('ToggleAbility', 1)` resolves (else the window opens through the N3 toggle), the tab click switches `AbilityMod.currentTab`, and the `Ability_Button<i>` click casts. Then `place: true`: the ability lands on the first empty visible button and stays there after a relog.
 6. `client_die_and_respawn`: `/gmsethealth 1 0` leaves the player alive (it does not kill), a lethal hit opens `PlayerDefeatWin` with the respawner list, Release respawns, and `respawn: auto` releases on the countdown.
 7. After an interface reload (anything that rebuilds the UI Lua state), the next pump reports `lua_epoch_changed` and combat capture resumes.
+
+## UI readers and item tools
+
+These tools serve automated UAT: read what the client shows, and act on items the way a player does. Readers use the stock UI's own Lua bindings (`getItemIDForSlot`, `getUnitStat`, `getEffectInfo`, `getLootInfo`, the CEGUI window tree); actions put the UI cursor on a widget's screen rectangle and send real button and key messages through the input path above. Container, stat and channel ids are read from the client's `Container`, `Stat` and `UIChannel` tables at run time, never hard-coded.
+
+**Native level.** Every result carries `native_level`, `native_tier` (the UAT matrix labels the world and combat tools use) and a `native_steps` list. The levels, most native first: `real_input` (N1, key and mouse messages), `slash_command` (N2, a line typed into chat, which the client parses and sends itself), `client_ui_lua` (N3, a call into the stock UI's Lua). The overall level is the least native step; `native_pass` is true only when every step was real input, so a UAT runner can refuse to count a pass that fell back. Readers report `native_tier: "read"` and `mode: "read"`. A failure is an MCP error naming the tool, the widget or step, and the elapsed time.
+
+| Tool | How it drives or reads | Fallback (reported) |
+|---|---|---|
+| `client_window_read` | Walks the window's subtree: name, type, visibility, enabled state, text, screen rectangle, list rows (Listbox and MultiColumnList, with selection). `kind` adds the module's state: loot items (`getLootInfo`), trainer abilities with id, cost and trainable (`TrainerMod`), mail headers, vendor stock (`getVendorItemInfo`), greet topics, crafting permission per craft type, vault items, pet, DHD active. | — |
+| `client_window_click` | Real click at a named widget, at the widget showing a text, or at a list row (the row's point comes from the list's `getItemAtPoint`, else from item heights), then reads the row's selection back. | Row not selected after the click: `setItemSelectState` (`client_ui_lua`). Scrolling a row into view is `ensureItemIsVisible` (`client_ui_lua`). |
+| `client_chat_log` | Pumps the lab's one chat capture, the `chat.line` ring (see [Abilities, combat and event waits](#abilities-combat-and-event-waits)), into the event store and reads it through its own cursor (`chat_log:<name>`), so it never takes lines from `client_wait_event`. Adds the channel name (`UIChannel`), speaker-flag names, and the colour and tabs the chat window uses for the channel. | — |
+| `client_inventory` | Every container the client has loaded, the bandolier's ammo per slot, cash. `snapshot` / `diff_against` give slot changes, per-item quantity deltas and the cash delta. | — |
+| `client_player_state` | Position, facing (`unitOrientation` is a 0..1 turn fraction; `heading_deg` too), world, level, experience, every stat, effects, the active weapon's ammo, the target. | — |
+| `client_item_action` | `use` / `equip` / `unequip` / `rightclick`: a right-click on the item's slot, which the stock UI turns into `contextSensitiveUseItem`. The inventory or character window is opened with its bound key (`getBindingKey`) and the right tab and the All filter are clicked first. `loot_all` clicks Loot All; `loot_slot` pages the loot window and double-clicks the row. | Window toggle unbound: the window's toggle handler (`client_ui_lua`). Slot beyond the 40 visible: the scrollbar (`client_ui_lua`). Slot cannot be put on screen: `/useitem`, `/equip`, `/lootitem` (`slash_command`). |
+| `client_drag_drop` | Button down on the source slot, the cursor walked to the target in steps (CEGUI cursor placement plus a posted `WM_MOUSEMOVE` with the button held), button up. `split` holds Ctrl: the stock inventory pulls one item off the stack on a Ctrl-drag; its Shift-drag split is an unimplemented `TODO`. Verified by an inventory diff: `drag_started`, `moved`, `snap_back`. | Posted motion does not start a drag: the motion is replayed through CEGUI's `injectMousePosition` (`client_ui_lua`). |
+
+Quirks to keep in mind:
+
+- The chat log only has lines shown after the chat ring was first installed (by any pump); read `client_ui_state`'s chat tail for older ones. Centre-screen splash text does not go through the chat handler and is not in the log.
+- Items in the Mission and Crafting tabs share `InventoryWin` with Main: a drag between two tabs of the same window is refused, because both ends cannot be on screen at once.
+- Vault slots can be read and dragged only while the vault window is open at a banker.
+
+**Not yet proven on the live client.** These tools were built and unit-tested against fixtures and a Lua 5.1 mock of the bindings (every reader chunk loads and runs under Lua 5.1), without a live client. The first live session should check:
+
+1. `client_chat_log`: a typed `/say` line appears once, with `channel: "Say"`, the chat window's colour and tab; a `/tell` error arrives as a `Feedback` line; the chat window still shows every line; a second `client_chat_log` with the same cursor returns nothing new, while `client_wait_event {kind: "chat.line"}` still sees the line.
+2. `client_window_read {kind: "loot"}` and `{kind: "trainer"}` at the debug hub's crate and trainer: items and abilities match the windows.
+3. `client_window_click` on a `Trainer_Choices` row: `method: "item_at_point"` and `selected: true` with no `fallback`.
+4. `client_item_action {action: "use"}` on a consumable: the inventory window opens with its bound key (`getBindingKey('ToggleInventory', 1)` returns a key), the right-click consumes one (diff `delta: -1`), `native_level: "real_input"`.
+5. `client_item_action {action: "equip"}` and `unequip`: the item moves between `Main` and its equipment container.
+6. `client_drag_drop` between two `Main` slots: `drag_started` true without `motion_injected` (if the drag only starts after injection, posted motion does not reach CEGUI); with `split: true`, one item moves (Ctrl reaches CEGUI's button state as 9).
+7. `client_item_action {action: "loot_all"}` on the loot crate: loot count drops to 0 and the items appear in the diff.
+8. `client_player_state`: `position` matches `unitPosition`, `stats.Health` and the active weapon's ammo match the HUD.
 
 ## Trust, audit, and the colo
 

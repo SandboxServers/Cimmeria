@@ -38,6 +38,7 @@ pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
 pub mod telemetry_session;
+pub mod ui;
 mod watchdog;
 pub mod world;
 

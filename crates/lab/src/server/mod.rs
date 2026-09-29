@@ -31,6 +31,7 @@ mod client_state;
 mod combat;
 mod flows;
 mod uat;
+mod ui;
 mod world;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -254,7 +255,8 @@ impl LabServer {
                 + Self::client_state_router()
                 + Self::world_router()
                 + Self::combat_router()
-                + Self::uat_router(),
+                + Self::uat_router()
+                + Self::ui_router(),
         }
     }
 
