@@ -18,7 +18,7 @@ The `SGWDuelMarker` entity is defined in `entities/defs/SGWDuelMarker.def` (pare
 
 ## Implementation Status
 
-Every part of a 1v1 duel is implemented: the challenge and the answer (SS-D1), the countdown and the engaged duel (SS-D2), and every end path (SS-D3), in the social-systems campaign ([ledger](../analysis/social-systems/README.md), [work packets](../analysis/social-systems/work-packets.md)). None of it has been run in the real client yet; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) steps 11-13 cover it. The duel state lives on the cell in `DuelRegistry` (`crates/cell-world/src/cell/duel/`), keyed by `player_id`.
+Every part of a 1v1 duel is implemented: the challenge and the answer (SS-D1), the countdown and the engaged duel (SS-D2), and every end path (SS-D3), in the social-systems campaign ([ledger](../analysis/social-systems/README.md), [work packets](../analysis/social-systems/work-packets.md)). None of it has been run in the real client yet; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) steps 11-13 cover it. The duel state lives on the cell in `DuelRegistry` (`crates/cell-world/src/cell/duel/`, a `SpaceManager` resource), keyed by `player_id`. Duels are a cell plugin ([plugin architecture](../architecture/plugin-architecture.md) §4.2): the answer, the forfeit and the tick are in `crates/cell-duel/`, registered by `DuelPlugin`; the challenge, the end paths and the harm gate's inputs stay in `cell-world`.
 
 | Method | Index | Handler |
 |--------|-------|---------|

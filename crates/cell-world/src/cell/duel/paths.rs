@@ -12,6 +12,7 @@
 //!
 //! Every end goes through [`end_engaged`].
 
+use super::DuelResources;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::stats::HEALTH;
@@ -25,8 +26,9 @@ use super::find_player;
 use super::outbound::{send_line, Recipient};
 use super::registry::{DuelId, DuelState};
 
-/// The player at `entity_id` is disconnecting. Called from
-/// `SpaceManager::disconnect_entity` before the entity is removed.
+/// The player at `entity_id` is disconnecting. The duel plugin calls this
+/// at `EntityHookPoint::BeforeDisconnectTeardown`, which
+/// `SpaceManager::disconnect_entity` fires before the entity is removed.
 pub async fn on_disconnect(
     tx: &mpsc::Sender<CellToBaseMsg>,
     mgr: &mut SpaceManager,
@@ -37,15 +39,16 @@ pub async fn on_disconnect(
 
 /// The player at `entity_id` is being teleported (in its space) or sent
 /// through gate travel. Every cell path that sends `TeleportPlayer` or
-/// `GateTravel` for a player calls this before the send
-/// (`every_travel_site_ends_the_duel` scans for it).
+/// `GateTravel` for a player fires `EntityHookPoint::BeforeTravelSend`
+/// before the send, where the duel plugin calls this
+/// (`every_travel_site_fires_the_travel_hook` scans for the hook).
 pub async fn on_travel(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, entity_id: u32) {
     leave(tx, mgr, entity_id, DefeatReason::Teleport, None).await;
 }
 
 /// The player at `entity_id` died, killed by `killer`: anyone but the duel
-/// partner, whose damage never kills (D-SS20). Called from the death
-/// resolver.
+/// partner, whose damage never kills (D-SS20). The duel plugin calls this
+/// at `DeathHookPoint::AfterPlayerThreatPurge` in the death resolver.
 pub async fn on_death(
     tx: &mpsc::Sender<CellToBaseMsg>,
     mgr: &mut SpaceManager,
@@ -69,7 +72,7 @@ async fn leave(
     else {
         return;
     };
-    if let Some(duel) = mgr.duels.duel_of(pid).copied() {
+    if let Some(duel) = mgr.resources.duels().duel_of(pid).copied() {
         if let (DuelState::Engaged { .. }, Some(entities)) = (duel.state, duel.engaged_entities) {
             // A different entity of the same player (a stale id) is not the
             // duelist; the sweep ends the duel if the engaged one is gone.
@@ -90,7 +93,7 @@ async fn leave(
             return;
         }
     }
-    let withdrawn = mgr.duels.withdraw(pid);
+    let withdrawn = mgr.resources.duels_mut().withdraw(pid);
     let pairs = withdrawn
         .challenges
         .iter()
@@ -184,7 +187,7 @@ pub fn clamp_partner_lethal(
         .get_entity(attacker_eid)
         .filter(|e| e.is_player)?
         .player_id?;
-    let duel = mgr.duels.duel_of(tpid).copied()?;
+    let duel = mgr.resources.duels().duel_of(tpid).copied()?;
     let (DuelState::Engaged { .. }, Some(entities)) = (duel.state, duel.engaged_entities) else {
         return None;
     };

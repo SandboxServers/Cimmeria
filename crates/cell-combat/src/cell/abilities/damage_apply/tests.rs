@@ -4,6 +4,7 @@
 use super::*;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx;
+use cimmeria_cell_world::cell::duel::DuelResources;
 use cimmeria_entity::abilities::EffectDef;
 
 /// Fixture: player attacker (id=1) and NPC target (id=2) in the SAME
@@ -577,13 +578,26 @@ async fn spectator_receives_effect_results_and_stat_update_from_pvp_hit() {
     // A player may hit a player only as the engaged duel partner: the harm
     // gate runs again at apply time (SS-D3).
     let now = std::time::Instant::now();
-    mgr.duels.open_challenge(100, 200, now).unwrap();
+    mgr.resources
+        .duels_mut()
+        .open_challenge(100, 200, now)
+        .unwrap();
     let space = mgr.get_entity_space_id(1).unwrap();
-    let p = mgr.duels.take_pending_for(200, now).unwrap();
-    let duel = mgr
-        .duels
-        .start_duel(&p, space, cimmeria_common::Vector3::new(0.0, 0.0, 0.0), now);
-    mgr.duels.engage(duel.duel_id, [1, 2], now).unwrap();
+    let p = mgr
+        .resources
+        .duels_mut()
+        .take_pending_for(200, now)
+        .unwrap();
+    let duel = mgr.resources.duels_mut().start_duel(
+        &p,
+        space,
+        cimmeria_common::Vector3::new(0.0, 0.0, 0.0),
+        now,
+    );
+    mgr.resources
+        .duels_mut()
+        .engage(duel.duel_id, [1, 2], now)
+        .unwrap();
 
     let ability = make_ability(7, vec![100]);
     mgr.ability_defs.insert(7, ability.clone());

@@ -1,0 +1,39 @@
+[package]
+name = "cimmeria-cell-duel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Duels as a cell plugin for the Cimmeria server emulator: the duel answer and forfeit (cell methods 102-103), the duel tick, and the disconnect, travel and death hooks, registered with the cell at startup"
+
+# Step 2 of the plugin migration in docs/architecture/plugin-architecture.md
+# (#962). A feature leaf: it depends on the cell systems it calls, and only the
+# composition root (cimmeria-services, which lists DuelPlugin in the plugin
+# table) and test code depend on it. It must never become a dependency of a
+# cell crate: that would put it back under the long rebuild tail the plugin
+# model removes.
+[dependencies]
+# SpaceManager, the plugin API (`cell::plugin`) and the duel world half
+# (`cell::duel`: the registry, the challenge, the end paths, the outbound
+# sends and the harm-gate inputs the lower crates still call).
+cimmeria-cell-world = { workspace = true }
+# The Base<->Cell message contract, the duel cell-method and client-method
+# indices and codecs.
+cimmeria-wire = { workspace = true }
+cimmeria-common = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager_with_player`).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# The chain engine the routing tests hand `dispatch_cell_method`'s plugin
+# lookup.
+cimmeria-content-engine = { workspace = true }
+cimmeria-entity = { workspace = true }

@@ -29,6 +29,7 @@
 //!   limit;
 //! - the GM `.duel_end` (SS-U2), with [`EndReason::GmAborted`].
 
+use super::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -166,7 +167,7 @@ pub async fn end_engaged(
     duel_id: DuelId,
     reason: EndReason,
 ) -> Option<Duel> {
-    let duel = mgr.duels.duel(duel_id).copied()?;
+    let duel = mgr.resources.duels().duel(duel_id).copied()?;
     let (DuelState::Engaged { .. }, Some(entities)) = (duel.state, duel.engaged_entities) else {
         return None;
     };
@@ -189,7 +190,7 @@ pub async fn end_engaged(
                 .account_id
                 .or_else(|| find_player(mgr, pid).and_then(|p| p.account_id))
         });
-    mgr.duels.end_duel(duel_id);
+    mgr.resources.duels_mut().end_duel(duel_id);
 
     let mut cleared = [false; 2];
     let mut effects_removed = [0usize; 2];
@@ -264,8 +265,8 @@ pub async fn end_engaged(
 /// 4. range (D-SS19): outside [`ARENA_RADIUS`] of the centre for
 ///    [`RANGE_GRACE`]. Leaving the arena starts the clock and warns the
 ///    duelist once; coming back clears it.
-pub(super) async fn sweep(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, now: Instant) {
-    for duel in mgr.duels.engaged() {
+pub async fn sweep(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, now: Instant) {
+    for duel in mgr.resources.duels().engaged() {
         let (DuelState::Engaged { until }, Some(entities)) = (duel.state, duel.engaged_entities)
         else {
             continue;
@@ -339,7 +340,9 @@ async fn range_loser(
         let to = Recipient::at(&p, pids[side], Some(pids[1 - side]));
         match (outside, since) {
             (true, None) => {
-                mgr.duels.set_out_of_range(duel.duel_id, side, Some(now));
+                mgr.resources
+                    .duels_mut()
+                    .set_out_of_range(duel.duel_id, side, Some(now));
                 tracing::debug!(
                     target: "duel",
                     event = "duel.out_of_range",
@@ -359,7 +362,9 @@ async fn range_loser(
                 loser = loser.or(Some(pids[side]));
             }
             (false, Some(since)) => {
-                mgr.duels.set_out_of_range(duel.duel_id, side, None);
+                mgr.resources
+                    .duels_mut()
+                    .set_out_of_range(duel.duel_id, side, None);
                 tracing::debug!(
                     target: "duel",
                     event = "duel.back_in_range",

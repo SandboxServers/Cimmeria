@@ -13,6 +13,7 @@
 //!   the clamp, death, disconnect, travel) come first in practice; the sweep
 //!   is what guarantees no duel stays engaged forever if one is missed.
 
+use super::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -25,7 +26,7 @@ use super::response::abort_both;
 
 /// Run the tick on the wall clock.
 pub async fn run(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager) {
-    if mgr.duels.is_idle() {
+    if mgr.resources.duels().is_idle() {
         return;
     }
     run_at(tx, mgr, Instant::now()).await;
@@ -33,7 +34,7 @@ pub async fn run(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager) {
 
 /// [`run`] on an explicit clock.
 pub async fn run_at(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, now: Instant) {
-    for pending in mgr.duels.expire_pending(now) {
+    for pending in mgr.resources.duels_mut().expire_pending(now) {
         let challenger = find_player(mgr, pending.challenger);
         tracing::debug!(
             target: "duel",
@@ -48,7 +49,7 @@ pub async fn run_at(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, no
         );
         abort_both(tx, mgr, &pending, "expired").await;
     }
-    for duel_id in mgr.duels.countdowns_due(now) {
+    for duel_id in mgr.resources.duels().countdowns_due(now) {
         super::engage::on_countdown_end(tx, mgr, duel_id, now).await;
     }
     super::end::sweep(tx, mgr, now).await;

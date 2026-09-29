@@ -7,6 +7,7 @@
 //! cooldown gate is the rate limiter; the eligibility filter
 //! short-circuits to empty when nobody is auto-cycling.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
@@ -125,7 +126,7 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // A player target is legal only as the caster's engaged duel
             // partner; anything else stops the loop (SS-D2).
             if let Some(t) = target.filter(|t| t.is_player) {
-                if !crate::cell::combat::player_may_attack(e, t, &space_mgr.duels) {
+                if !crate::cell::combat::player_may_attack(e, t, space_mgr.resources.duels()) {
                     pvp_stops.push((eid, t.player_id));
                     return Some((eid, ability_id, target_id, false));
                 }

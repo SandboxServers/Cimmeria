@@ -6,6 +6,7 @@
 //! challenge. The challenge is consumed on every path, so a replayed
 //! response finds nothing.
 
+use super::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -69,7 +70,9 @@ async fn respond(
         Err(e) => {
             // A forged or corrupted call: logged, not answered, and the
             // pending challenge (if any) is left for a well-formed answer.
-            let pending = id.player_id.and_then(|pid| mgr.duels.pending_for(pid));
+            let pending = id
+                .player_id
+                .and_then(|pid| mgr.resources.duels().pending_for(pid));
             tracing::warn!(
                 target: "duel",
                 event = "duel.response_malformed",
@@ -103,7 +106,11 @@ async fn respond(
     };
     let (responder_pid, responder) = responder;
 
-    let pending = match mgr.duels.take_pending_for(responder_pid, now) {
+    let pending = match mgr
+        .resources
+        .duels_mut()
+        .take_pending_for(responder_pid, now)
+    {
         Ok(p) => p,
         Err(ResponseRefusal::NoPending) => {
             tracing::debug!(
@@ -146,7 +153,7 @@ async fn respond(
 
     match response {
         DuelResponse::Decline => {
-            mgr.duels.decline(&pending, now);
+            mgr.resources.duels_mut().decline(&pending, now);
             tracing::debug!(
                 target: "duel",
                 event = "duel.declined",
@@ -165,7 +172,7 @@ async fn respond(
             let Some(challenger) = challenger else {
                 // The challenger logged off or left the space while the
                 // prompt was up. No duel; tell the responder.
-                mgr.duels.decline(&pending, now);
+                mgr.resources.duels_mut().decline(&pending, now);
                 tracing::debug!(
                     target: "duel",
                     event = "duel.accept_refused",
@@ -181,9 +188,10 @@ async fn respond(
                 return;
             };
             let centre = midpoint(challenger.position, responder.position);
-            let duel = mgr
-                .duels
-                .start_duel(&pending, responder.space_id, centre, now);
+            let duel =
+                mgr.resources
+                    .duels_mut()
+                    .start_duel(&pending, responder.space_id, centre, now);
             tracing::debug!(
                 target: "duel",
                 event = "duel.accepted",

@@ -3,6 +3,7 @@
 //! A (challenger, entity 10) and B (target, entity 20) duel; C (entity 30)
 //! is a bystander with both in AoI. The arena centre is (2.5, 0, 0).
 
+use crate::cell::duel::DuelResources;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
@@ -115,7 +116,7 @@ async fn forfeit_rejected_when_not_engaged() {
         vec![TEXT_FORFEIT_NOT_ENGAGED]
     );
     assert!(
-        mgr.duels.pending_for(B_PID).is_some(),
+        mgr.resources.duels().pending_for(B_PID).is_some(),
         "the challenge survives"
     );
 
@@ -127,7 +128,7 @@ async fn forfeit_rejected_when_not_engaged() {
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_FORFEIT_NOT_ENGAGED]);
     assert!(lines_to(&sent, B_EID).is_empty(), "B hears nothing");
     assert!(matches!(
-        mgr.duels.duel_of(A_PID).unwrap().state,
+        mgr.resources.duels().duel_of(A_PID).unwrap().state,
         DuelState::StartPending { .. }
     ));
 
@@ -138,7 +139,10 @@ async fn forfeit_rejected_when_not_engaged() {
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, C_EID), vec![TEXT_FORFEIT_NOT_ENGAGED]);
     assert_eq!(sent.len(), 1);
-    assert!(mgr.duels.can_harm(A_PID, B_PID), "the duel is untouched");
+    assert!(
+        mgr.resources.duels().can_harm(A_PID, B_PID),
+        "the duel is untouched"
+    );
 
     let refused: Vec<_> = capture
         .all()
@@ -177,7 +181,7 @@ async fn forfeit_ends_the_duel_with_the_caller_as_loser() {
         assert_eq!(own(&sent, me, PVP_FLAG), vec![build_pvp_flag(false)]);
         assert_eq!(own(&sent, me, DUEL_CLEAR).len(), 1);
     }
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
     assert_decided(&ended_row(&capture), "forfeit", 7, B_PID, A_PID);
 }
 
@@ -216,7 +220,7 @@ async fn disconnect_ends_duel_and_clears_both_flags() {
         "no line to a leaving client"
     );
     assert!(mgr.get_entity(A_EID).unwrap().threatened_mobs.is_empty());
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
     let row = ended_row(&capture);
     assert_decided(&row, "connection", 3, B_PID, A_PID);
     assert!(row.has_field("cleared", "true") && row.has_field("target_cleared", "true"));
@@ -241,7 +245,7 @@ async fn teleport_ends_duel() {
         assert_eq!(own(&sent, me, PVP_FLAG), vec![build_pvp_flag(false)]);
         assert_eq!(own(&sent, me, DUEL_CLEAR).len(), 1);
     }
-    assert!(!mgr.duels.is_busy(A_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID));
     assert_decided(&ended_row(&capture), "teleport", 5, A_PID, B_PID);
 
     // A bystander's travel touches nobody's duel.
@@ -312,13 +316,13 @@ async fn range_ends_duel() {
         drain(&mut rx).is_empty(),
         "the restarted clock has not run out"
     );
-    assert!(mgr.duels.can_harm(A_PID, B_PID));
+    assert!(mgr.resources.duels().can_harm(A_PID, B_PID));
 
     run_at(&tx, &mut mgr, t0 + Duration::from_secs(4) + RANGE_GRACE).await;
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_LOST_RANGE]);
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_WON]);
-    assert!(!mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(B_PID));
     assert_decided(&ended_row(&capture), "range", 4, B_PID, A_PID);
     let out = capture
         .all()
@@ -390,8 +394,8 @@ async fn leaving_withdraws_a_challenge_and_a_countdown() {
     let sent = drain_duel(&mut rx);
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ABORTED]);
     assert!(lines_to(&sent, B_EID).is_empty());
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
-    assert_eq!(mgr.duels.cooldown_count(), 0);
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
+    assert_eq!(mgr.resources.duels().cooldown_count(), 0);
 
     add_player(&mut mgr, B_EID, B_PID, 600, "Agnos", [5.0, 0.0, 0.0]);
     challenge(&mut mgr, &tx, A, B, t0).await;
@@ -401,7 +405,10 @@ async fn leaving_withdraws_a_challenge_and_a_countdown() {
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ABORTED]);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ABORTED]);
-    assert!(mgr.duels.is_idle(), "no duel, no challenge, no cooldown");
+    assert!(
+        mgr.resources.duels().is_idle(),
+        "no duel, no challenge, no cooldown"
+    );
     run_at(&tx, &mut mgr, t0 + COUNTDOWN).await;
     assert!(drain(&mut rx).is_empty(), "the countdown never engages");
 

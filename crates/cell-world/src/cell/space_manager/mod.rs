@@ -22,6 +22,10 @@ pub use gate_dial_state::PendingGateDial;
 pub use super::spawner::NavmeshMode;
 pub use queries::PlayerNameLookup;
 
+/// The type-keyed map behind [`SpaceManager::resources`]: the same storage as
+/// `CellEntity::extensions`, one value per type, for space-wide feature state.
+pub type SpaceResources = cimmeria_entity::cell_entity::EntityExtensions;
+
 mod aoi;
 mod authoring;
 mod client_move;
@@ -468,9 +472,6 @@ pub struct SpaceManager {
     /// already holds is the exclusive token. See
     /// `content::event_dispatch::step_activation`.
     pub step_region_replay: StepRegionReplayGuard,
-    /// Pending duel challenges, duels and their cooldowns, keyed by
-    /// `player_id` (SS-D1). See `cell::duel`.
-    pub duels: super::duel::DuelRegistry,
     /// Every squad on this cell and the pending squad invites (ORG-03,
     /// D-ORG03). Service-wide, not per space, so a member who gates to
     /// another world keeps their squad. Keyed by `player_id`, never entity
@@ -482,6 +483,12 @@ pub struct SpaceManager {
     /// Black Market sessions (BM-02): the auctioneer each player was sent
     /// to, keyed by `player_id`; see `cell::black_market`.
     pub black_market: super::black_market::BlackMarketSessions,
+    /// Space-wide feature state keyed by type (#962,
+    /// `docs/architecture/plugin-architecture.md` §3.5): one value per
+    /// feature type, so a feature adds no field here. The duel registry
+    /// (`cell::duel::DuelRegistry`, read through `cell::duel::DuelResources`)
+    /// lives here. Not replicated and not persisted.
+    pub resources: SpaceResources,
     /// The feature plugins' handlers and hooks (#962,
     /// `docs/architecture/plugin-architecture.md`). Empty until the cell
     /// service installs the plugin table; see `cell::plugin`.
@@ -549,12 +556,12 @@ impl SpaceManager {
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
             step_region_replay: StepRegionReplayGuard::default(),
-            duels: super::duel::DuelRegistry::default(),
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
             squads: super::squad::SquadRegistry::new(),
             org_creations: super::org_creation::PendingCreations::new(),
             black_market: super::black_market::BlackMarketSessions::new(),
+            resources: SpaceResources::new(),
             plugins: super::plugin::CellPlugins::empty(),
         }
     }

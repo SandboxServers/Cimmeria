@@ -1,6 +1,7 @@
 //! A challenge forwarded by the base: the cell-side checks (CAT-M-12) and
 //! the prompt to the target.
 
+use super::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -113,22 +114,24 @@ async fn challenge(
         return;
     }
 
-    let pending = match mgr
-        .duels
-        .open_challenge(req.player_id, req.target_player_id, now)
-    {
-        Ok(p) => p,
-        Err(refusal) => {
-            let text = match refusal {
-                ChallengeRefusal::SelfChallenge => TEXT_CHALLENGE_SELF,
-                ChallengeRefusal::ChallengerBusy => TEXT_ALREADY_IN_DUEL,
-                ChallengeRefusal::TargetBusy => TEXT_TARGET_BUSY,
-                ChallengeRefusal::PairCooldown => TEXT_PAIR_COOLDOWN,
-            };
-            refuse(&req, tx, refusal.reason(), text, Some(distance)).await;
-            return;
-        }
-    };
+    let pending =
+        match mgr
+            .resources
+            .duels_mut()
+            .open_challenge(req.player_id, req.target_player_id, now)
+        {
+            Ok(p) => p,
+            Err(refusal) => {
+                let text = match refusal {
+                    ChallengeRefusal::SelfChallenge => TEXT_CHALLENGE_SELF,
+                    ChallengeRefusal::ChallengerBusy => TEXT_ALREADY_IN_DUEL,
+                    ChallengeRefusal::TargetBusy => TEXT_TARGET_BUSY,
+                    ChallengeRefusal::PairCooldown => TEXT_PAIR_COOLDOWN,
+                };
+                refuse(&req, tx, refusal.reason(), text, Some(distance)).await;
+                return;
+            }
+        };
 
     let delivered = send_challenge_prompt(
         tx,
@@ -141,7 +144,9 @@ async fn challenge(
     if !delivered {
         // The target never saw the prompt: withdraw the challenge now rather
         // than leave both players busy until the 30 s expiry.
-        mgr.duels.cancel_pending(req.target_player_id);
+        mgr.resources
+            .duels_mut()
+            .cancel_pending(req.target_player_id);
         tracing::warn!(
             target: "duel",
             event = "duel.challenge_undelivered",

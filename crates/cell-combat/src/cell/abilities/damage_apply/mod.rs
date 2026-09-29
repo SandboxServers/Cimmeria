@@ -9,6 +9,7 @@
 //! to be flushed after the damage commits), AoE secondary targets get
 //! `false` (the primary already flushed).
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSICAL, RC_MISS};
@@ -589,7 +590,7 @@ fn player_hit_refusal(
     let (Some(a), Some(t)) = (space_mgr.get_entity(attacker), space_mgr.get_entity(target)) else {
         return None;
     };
-    (a.is_player && t.is_player && !combat::player_may_attack(a, t, &space_mgr.duels))
+    (a.is_player && t.is_player && !combat::player_may_attack(a, t, space_mgr.resources.duels()))
         .then_some("not_duel_opponent")
 }
 

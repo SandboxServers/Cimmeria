@@ -82,6 +82,8 @@ cimmeria-cell = { workspace = true }
 # root: `plugins::cell_plugins` lists it in the plugin table, and nothing below
 # the facade depends on it.
 cimmeria-cell-pets = { workspace = true }
+# Duels as a cell plugin (#962 step 2), in the plugin table beside pets.
+cimmeria-cell-duel = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }

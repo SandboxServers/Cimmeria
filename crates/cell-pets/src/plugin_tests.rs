@@ -5,7 +5,7 @@
 //! routing tests with this plugin installed live there.
 
 use cimmeria_cell_world::cell::plugin::{
-    CellMethodCall, CellPlugins, EntityHookPoint, TickStage, PLUGIN_OWNED_CELL_METHODS,
+    CellMethodCall, CellPlugins, EntityHookPoint, PluginError, TickStage, PLUGIN_OWNED_CELL_METHODS,
 };
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
@@ -21,17 +21,38 @@ fn pets() -> CellPlugins {
     CellPlugins::build(&[&PetsPlugin]).expect("PetsPlugin registers only valid indices")
 }
 
-/// The plugin owns exactly the plugin-owned cell methods, so the startup
-/// check passes with it and fails without it.
+/// The pet commands, the plugin-owned cell methods this plugin registers.
+const PET_METHODS: [u16; 3] = [88, 89, 90];
+
+/// The plugin owns exactly the pet commands: with it alone, the startup check
+/// names only the other plugins' methods (the duel plugin's 102-103, #962
+/// step 2) as missing, and without it the pet commands too.
 #[test]
 fn pets_plugin_covers_every_plugin_owned_cell_method() {
     let plugins = pets();
-    plugins.check_complete().unwrap();
     assert_eq!(
         plugins.cell_method_indices().collect::<Vec<_>>(),
+        PET_METHODS.to_vec()
+    );
+    let missing = |p: &CellPlugins| -> Vec<u16> {
+        match p.check_complete() {
+            Ok(()) => Vec::new(),
+            Err(PluginError::MissingCellMethods { missing }) => {
+                missing.iter().map(|(i, _)| *i).collect()
+            }
+            Err(other) => panic!("unexpected {other:?}"),
+        }
+    };
+    let others: Vec<u16> = PLUGIN_OWNED_CELL_METHODS
+        .iter()
+        .copied()
+        .filter(|i| !PET_METHODS.contains(i))
+        .collect();
+    assert_eq!(missing(&plugins), others);
+    assert_eq!(
+        missing(&CellPlugins::build(&[]).unwrap()),
         PLUGIN_OWNED_CELL_METHODS.to_vec()
     );
-    assert!(CellPlugins::build(&[]).unwrap().check_complete().is_err());
 }
 
 /// Each of 88, 89 and 90 reaches the pet command parser through the
@@ -46,7 +67,7 @@ async fn each_pet_cell_method_reaches_the_pet_command_parser() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
 
-    for &index in PLUGIN_OWNED_CELL_METHODS {
+    for index in PET_METHODS {
         let handler = plugins.cell_method(index).expect("registered");
         handler(CellMethodCall {
             entity_id: 1,

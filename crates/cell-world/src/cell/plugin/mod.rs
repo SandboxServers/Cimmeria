@@ -12,7 +12,9 @@
 //!   gate, before the static per-interface routers;
 //! - the cell loop fires [`TickStage`] hooks at the positions the features'
 //!   inline tick calls used to occupy;
-//! - the base-message handlers fire [`EntityHookPoint`] hooks.
+//! - the base-message handlers, `SpaceManager::disconnect_entity` and every
+//!   travel site fire [`EntityHookPoint`] hooks;
+//! - the death resolver fires [`DeathHookPoint`] hooks.
 //!
 //! A hook call site clones the registry's `Arc` first
 //! (`let plugins = space_mgr.plugins().clone();`), so the registry never
@@ -46,7 +48,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-pub use hook_points::{EntityHookPoint, TickStage};
+pub use hook_points::{DeathHookPoint, EntityHookPoint, TickStage};
 pub use registry::{CellPluginBuilder, CellPlugins, PluginError};
 
 /// The cell-method indices whose handlers are registered by plugins rather
@@ -56,10 +58,13 @@ pub use registry::{CellPluginBuilder, CellPlugins, PluginError};
 ///
 /// - 88-90: `petInvokeAbility`, `petAbilityToggle`, `petChangeStance`
 ///   (`cimmeria-cell-pets`).
+/// - 102-103: `sendDuelResponse`, `duelForfeit` (`cimmeria-cell-duel`).
 pub const PLUGIN_OWNED_CELL_METHODS: &[u16] = &[
     cimmeria_wire::cell::cell_methods::player::constants::PET_INVOKE_ABILITY,
     cimmeria_wire::cell::cell_methods::player::constants::PET_ABILITY_TOGGLE,
     cimmeria_wire::cell::cell_methods::player::constants::PET_CHANGE_STANCE,
+    cimmeria_wire::cell::cell_methods::player::constants::SEND_DUEL_RESPONSE,
+    cimmeria_wire::cell::cell_methods::player::constants::DUEL_FORFEIT,
 ];
 
 /// A boxed, `Send` future borrowing for `'a`.
@@ -88,6 +93,15 @@ pub type TickHook =
 pub type EntityHook =
     for<'a> fn(u32, &'a mpsc::Sender<CellToBaseMsg>, &'a mut SpaceManager) -> BoxFuture<'a, ()>;
 
+/// A hook fired for a killed entity (`victim`) and the entity whose damage
+/// killed it (`killer`) at its [`DeathHookPoint`].
+pub type DeathHook = for<'a> fn(
+    u32,
+    u32,
+    &'a mpsc::Sender<CellToBaseMsg>,
+    &'a mut SpaceManager,
+) -> BoxFuture<'a, ()>;
+
 /// A feature that registers with the cell at startup.
 pub trait CellPlugin: Send + Sync + 'static {
     /// Stable name for logs and startup errors (`"pets"`).
@@ -110,5 +124,35 @@ impl SpaceManager {
     /// its loop starts; tests call it on the managers they build.
     pub fn install_plugins(&mut self, plugins: CellPlugins) {
         self.plugins = plugins;
+    }
+
+    /// Fire every hook registered for `point` for `entity_id`, in table
+    /// order. Clones the registry first, so the hooks get this manager
+    /// mutably. For the call sites below `cimmeria-cell`, which hold a
+    /// `&mut SpaceManager` and nothing else of the plugin API.
+    pub async fn fire_entity_hook(
+        &mut self,
+        point: EntityHookPoint,
+        entity_id: u32,
+        tx: &mpsc::Sender<CellToBaseMsg>,
+    ) {
+        let plugins = self.plugins.clone();
+        plugins.run_entity_hook(point, entity_id, tx, self).await;
+    }
+
+    /// Fire every hook registered for `point` for `victim`, killed by
+    /// `killer`, in table order. Clones the registry first, like
+    /// [`fire_entity_hook`](Self::fire_entity_hook).
+    pub async fn fire_death_hook(
+        &mut self,
+        point: DeathHookPoint,
+        victim: u32,
+        killer: u32,
+        tx: &mpsc::Sender<CellToBaseMsg>,
+    ) {
+        let plugins = self.plugins.clone();
+        plugins
+            .run_death_hook(point, victim, killer, tx, self)
+            .await;
     }
 }

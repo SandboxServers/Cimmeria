@@ -19,5 +19,14 @@ Confirmed as advisor for #962 (2026-09-28); canonical text is ADR §2 (C1-C8).
   decode stays in core, GM gate runs before plugin lookup.
 - Pilot gotcha: tests in crates below a leaf plugin cannot install it; tests
   that drive a hook point move up or install the plugin via dev-dependency.
+- Step 2 (duels, `cimmeria-cell-duel`, 2026-09-28): a lower crate CAN fire a
+  hook (`SpaceManager::fire_entity_hook` / `fire_death_hook`), which is how the
+  13 travel sites and the combat death resolver stopped naming duels. A lower
+  crate can dev-depend on a leaf only if the leaf does not depend on it (cell-duel
+  depends on cell-world alone, so combat/console tests install it). Seams the
+  model still lacks: value-returning queries (harm gate, damage clamp) and
+  base-message handlers (`BaseToCellMsg::Duel`) - those parts stay in cell-world.
+  Space-wide feature state goes in `SpaceManager::resources` via an extension
+  trait called on the field, so borrows stay field-disjoint.
 
 Related: [[na38-client-orders-reliable-stream]], [[entity-def-and-pak-ground-truth]].

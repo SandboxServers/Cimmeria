@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # ADR: feature plugins over `CellEntity` and `SpaceManager` (no ECS)
 
-> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Amends [services-crate-split.md](services-crate-split.md).
+> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Step 2: duels (`cimmeria-cell-duel`), §4.2. Amends [services-crate-split.md](services-crate-split.md).
 > **Type:** Architecture decision record
 > **Owner:** Server architecture
 > **Companion docs:** [services-crate-split.md](services-crate-split.md) (the layer split this builds on), [build-system.md](build-system.md) (the build lane and the rebuild measurements), [negative-logging-convention.md](negative-logging-convention.md) (the hook-miss logs), [scaling-analysis.md](scaling-analysis.md) (why the base/cell split buys us nothing), [../protocol/cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md) (the method indices plugins register against)
@@ -166,7 +166,7 @@ pub extensions: EntityExtensions,
 - **Storage is a small `Vec`, scanned linearly.** An entity carries zero to a few extensions; an empty map allocates nothing and costs 24 bytes, against 8 for the `Option<Box<PetState>>` it replaces.
 - **The type lives with its lowest reader.** A feature crate that is a leaf owns its types. While lower crates still read a type (combat reads `PetState` for kill credit and the pet AI), it stays where they can see it (`cimmeria-entity`), and only the storage becomes generic. It moves up when its last lower reader does.
 - **Not replicated, not persisted.** Nothing in the map reaches the client or the database on its own; the feature's code sends and saves explicitly, as today (C4).
-- **The same type serves the base and the space.** `ConnectedClientState` gets an `extensions` field when the first base feature migrates, and `SpaceManager` gets a `resources` map for space-wide feature state (the pet, duel and squad registries) when their lower readers move.
+- **The same type serves the base and the space.** `ConnectedClientState` gets an `extensions` field when the first base feature migrates. `SpaceManager::resources` (a `SpaceResources`, the same storage) holds space-wide feature state; the duel registry moved there in step 2 (§4.2). A feature reads its resource through an extension trait on the map, called on the field (`mgr.resources.duels()`), so the borrow stays on that one field. It stores the value on first write, so a manager with no feature installed reads an empty one. The pet and squad registries follow when their features move.
 
 ### 3.6 Hook seams and missing registrations
 
@@ -177,7 +177,7 @@ The test rule from #962: a missing registration must log a warning or fail the s
 | Plugin-owned cell method | fails startup (`check_complete`); a bare `CellService::start` logs WARN with the missing indices | Unit test on `CellPlugins`; startup test in the facade |
 | Duplicate, unknown or not-plugin-owned method index | fails `CellPlugins::build` | Unit tests per error |
 | Cell method dispatched with no handler at runtime | falls through to the router's existing WARN, `Unhandled cell method call` (#311) | Router test with an empty registry and a pet index |
-| Tick and entity hook points | are covered by the plugin's method registrations: a plugin is installed whole or not at all, and a missing plugin fails `check_complete` | The facade test that the default table passes `check_complete` |
+| Tick, entity and death hook points | are covered by the plugin's method registrations: a plugin is installed whole or not at all, and a missing plugin fails `check_complete` | The facade test that the default table passes `check_complete` |
 | `PluginMsg` with no consumer (when the envelope lands) | WARN with `type_name`, message dropped | Unit test on the consumer registry |
 
 The WARN rows follow [negative-logging-convention.md](negative-logging-convention.md): a `reason` field, the method index or type name, and a message that says what the player loses.
@@ -185,11 +185,12 @@ The WARN rows follow [negative-logging-convention.md](negative-logging-conventio
 ### 3.7 Crate layout and rebuild fan-out
 
 ```text
-core     cimmeria-entity        EntityExtensions on CellEntity
+core     cimmeria-entity        EntityExtensions on CellEntity (and, as SpaceResources, on SpaceManager)
          cimmeria-cell-world    cell::plugin (trait, builder, registry, hook points); SpaceManager holds the registry
          cimmeria-cell          the router consults the registry; the cell loop fires the tick hooks
 systems  cell-combat, cell-content, cell-interactions, cell-methods, cell-console   (unchanged)
 leaves   cimmeria-cell-pets     PetsPlugin: the pet cell methods and the pet hooks
+         cimmeria-cell-duel     DuelPlugin: the duel cell methods, the duel tick and the leave hooks
 root     cimmeria-services      the plugin table; installs it on the CellService
 ```
 
@@ -197,14 +198,14 @@ A leaf depends on core and on the systems it calls; only the composition root (a
 
 The estimates in #962 for the full migration: a crafting edit rebuilds about 53k lines instead of about 135k; mail about 45k, org about 42k, bank or chat about 33k. The envelope and the `entity-types` split add a 15-20% cut on the `wire` and `entity` long tail.
 
-**Pilot measurement.** A pets edit went from 8 rebuilt crates to 7 in the workspace build, and from about 49k to about 14k production lines in the server build; see §4.1.
+**Pilot measurement.** A pets edit went from 8 rebuilt crates to 7 in the workspace build, and from about 49k to about 14k production lines in the server build; see §4.1. A duels edit went from 13 to 9 crates (three of them test binaries only) and from about 113k to about 10k production lines; see §4.2.
 
 ### 3.8 Migration order
 
 Features move at their campaign's close-out, never while a campaign coordinator has packets in flight on that code.
 
 1. **Pets (pilot).** The three pet cell methods (88-90), the pet tick hooks and the base-destroy hook become `PetsPlugin` in `cimmeria-cell-pets`; `CellEntity::pet` becomes an extension. The pet world half (the registry, spawn, teardown, owner hooks) stays in `cell-world`, and the pet AI and owner abilities stay in `cell-combat`, because combat, content, interactions and the console call them. They follow when those call sites go behind hooks (death credit, owner-path hooks).
-2. **Duels** (`cell-duel`; Social Systems closed 2026-09-27). The duel tick and `DuelRegistry` move; the registry becomes a `SpaceManager` resource.
+2. **Duels** (`cell-duel`; Social Systems closed 2026-09-27). **Done** (§4.2). The duel cell methods, the duel tick and the disconnect, travel and death paths became `DuelPlugin`, and the registry became a `SpaceManager` resource. The challenge, the end paths, the non-lethal clamp, the harm-gate inputs and the GM commands stay in `cell-world` until combat, the AoI enter path and the base-message handler get seams for them.
 3. **Squads and org creation** (`cell-org`; Organizations closed 2026-09-27). Also removes the console-to-methods edge (`console/squad.rs`).
 4. **Effect scripts** (`cell-effect-scripts`). A registry move rather than a plugin (the static table at `effects/registry.rs`); changes [abilities-and-effects-system.md](abilities-and-effects-system.md) and the CLAUDE.md line on where scripts go.
 5. **The base features** (`base-crafting` after the crafting close-out CR-13, then bank, mail, chat, vendor with trade, inventory, progression). Brings in `BasePlugin`, `ConnectedClientState::extensions`, the `CellToBaseMsg` envelope, the session teardown moved up to `base`, and the unified `SessionCtx`.
@@ -240,13 +241,62 @@ In production lines, the server build rebuilds about 49k lines before (cell-meth
 
 New tests: the registry's startup checks and hook order (`cell-world` `cell::plugin::tests`), the extension map (`cimmeria-entity`), the plugin's registrations (`cell-pets` `plugin_tests`), the router with and without the plugin (the missing-registration negative log), and the facade's default table (`services::plugins`).
 
-### 4.2 What gets better
+### 4.2 Step 2: duels
+
+Duels moved at the Social Systems close-out, with no packets in flight. The step added only what duels needed: four hook points (one of them of a new kind) and the `SpaceManager` resource map.
+
+**New hook points** (`cell::plugin::hook_points`). Each sits on the line the duel's inline call occupied:
+
+- `TickStage::AfterGateCrossing`: in the cell loop, after `gate_travel::crossing_tick` and before the auto-cycle tick. The duel tick runs here.
+- `EntityHookPoint::BeforeDisconnectTeardown`: in `SpaceManager::disconnect_entity`, after the vault, gate-dial and crossing-hold scrubs and before the pet and AoI teardown.
+- `EntityHookPoint::BeforeTravelSend`: at each of the 13 cell paths that send `TeleportPlayer` or `GateTravel` for a player (the GM travel commands, placement, the content teleport and gate actions, the ring transport, gate travel, respawn and the space transfer). The source scan that checked for `duel::on_travel(` at each site now checks for the hook (`every_travel_site_fires_the_travel_hook`).
+- `DeathHookPoint::AfterPlayerThreatPurge`: a new hook kind, `DeathHook`, which gets the victim and the killer (the duel's end row logs the killer). It fires in the death resolver for a player target, after the NPC threat purge and before the owner's pets leave.
+
+The travel and death call sites are in `cell-combat`, `cell-content`, `cell-interactions` and `cell-console`, below the plugin. They fire through two `SpaceManager` helpers, `fire_entity_hook` and `fire_death_hook`, which clone the registry first, as the cell loop does.
+
+What moved, and what did not:
+
+- **Moved to `cimmeria-cell-duel`:** the answer (`response`, cell method 102), the forfeit (`forfeit`, 103), the tick and the engage it runs (about 520 production lines, from `cimmeria-cell-world`), and `DuelPlugin`, which registers them and the three leave hooks. The duel tests moved with them (about 2.1k lines). That includes the tests of the challenge, the GM commands and the end paths, which drive the whole flow through the moved handlers; only the registry's own tests stay in `cell-world`.
+- **Now generic in core:** `SpaceManager::duels` is gone. The registry is a `SpaceManager` resource, read through `cell::duel::DuelResources` (`mgr.resources.duels()`, `duels_mut()`). The cell loop, `disconnect_entity`, the death resolver and the travel sites fire hook points and no longer name duels. Duels keep no per-entity state, so nothing went into `CellEntity::extensions`.
+- **Stayed in `cell-world`, and why:**
+  - `DuelRegistry` itself. The harm gate (`combat::player_may_attack` and `may_hit_in_area`, called by every hostility gate in `cell-combat` and by `cimmeria-cell`'s auto-cycle), `engaged_opponent_entity` (the area candidates and the pet's defend) and the AoI enter path's PvP-flag replay (`pvp_flag_on_enter`) read it. Moving them needs a query seam that returns a value, which the hook model does not have.
+  - The non-lethal clamp (`paths::clamp_partner_lethal`, `finish_clamped`), called in the middle of damage resolution in `cell-combat`. Moving it needs a combat hook seam with a return value.
+  - The challenge (`challenge`), because `cimmeria-cell`'s base-message handler calls it for `BaseToCellMsg::Duel`. There is no base-message seam until the §3.4 envelope lands (step 5).
+  - The GM `.duel_status` / `.duel_end` backends (`gm`), called by `cell-console`, and `send_player_line`, called by the auto-cycle.
+  - `end` and the leave paths (`paths::on_disconnect`, `on_travel`, `on_death`), which the plugin's hooks call, and the shared pieces the moved code builds on (`outbound`, `combat`, `limits`, `connected_player`, `find_player`), now `pub` so the plugin crate can reach them. `cimmeria-cell-duel`'s `cell::duel` re-exports the whole world module, so the moved code keeps its `super::…` paths.
+
+**Rebuild measurement** (2026-09-28, warm dev build through the build lane on the Dev Drive, two runs each). The edit adds one `pub const` to the duel answer (`duel/response.rs`), before in `cell-world` and after in `cell-duel`. Other agents kept the lane busy, so an `--exclusive` slot never came free; the runs used one slot (8 jobs), which makes the times noisier than §4.1's:
+
+| Command | Before: crates rebuilt | Before: time | After: crates rebuilt | After: time |
+|---|---|---|---|---|
+| `cargo build --workspace --all-targets` (CI exclusions) | 13: cell-world, cell-combat, cell-content, cell-interactions, cell-pets, cell-methods, cell-console, cell, services, admin-api, wireclient, lab-mcp, server | 15.4 s, 18.1 s | 9: cell-duel, services, cell-combat, cell-console and cell (test binaries only), admin-api, wireclient, lab-mcp, server | 5.8 s, 6.2 s |
+| `cargo build -p cimmeria-server` | 12: the same without wireclient | 13.8 s, 19.4 s | 5: cell-duel, services, admin-api, lab-mcp, server | 4.8 s, 4.6 s |
+
+In production lines, the server build rebuilds about 113k lines before (cell-world 25.1k, cell-combat 22.9k, cell-content 13.2k, cell-interactions 7.3k, cell-pets 1.3k, cell-methods 10.1k, cell-console 15.5k, cell 8.2k, services 1.4k, admin-api 4.5k, lab-mcp 1.2k, server 2.0k; `.rs` files under `src/`, test files excluded) and about 10k after (cell-duel 0.7k plus the facade and binaries), a 91% cut. The gain is larger than the pilot's because the moved code came from `cell-world`, the bottom of the cell track, not from `cell-methods`. Three test binaries still rebuild in the workspace build: `cell-combat`, `cell-console` and `cell` each have tests that install `DuelPlugin` or call the moved tick.
+
+An edit to the half that stayed (the registry, the end paths, the clamp) still rebuilds the cell track from `cell-world` up. That is the next lever: query and return-value seams for the harm gate and the clamp, and the base-message envelope for the challenge.
+
+**Tests changed beyond import paths.** Each is listed so a reviewer can check that none weakens a guard:
+
+- About 150 lines, in tests and in production code, rewrote `mgr.duels` to `mgr.resources.duels()` or `duels_mut()`, and added the `DuelResources` import. Mechanical, with no assertion changed.
+- The duel test fixture (`make_mgr` in `cell-duel`'s `cell::duel::tests`) installs `DuelPlugin`, because the disconnect end (`disconnect_ends_duel_and_clears_both_flags`, the end table's `Disconnect` row, `leaving_withdraws_a_challenge_and_a_countdown`) now runs through the plugin's hook.
+- `every_travel_site_ends_the_duel` became `every_travel_site_fires_the_travel_hook`: the scan counts `EntityHookPoint::BeforeTravelSend` instead of `duel::on_travel(` at each travel send, with the same sites, exemption and minimum.
+- `cimmeria-cell-combat`'s `third_party_kill_is_normal_death` installs `DuelPlugin` on its fixture manager (one statement), because the death end is now the plugin's hook.
+- `cimmeria-cell-methods`: `send_duel_response_routes_to_the_duel_handler` and `duel_forfeit_routes_to_the_duel_handler` pinned the static arms, which no longer exist. They moved to `cell-duel` as `send_duel_response_reaches_the_duel_handler` and `duel_forfeit_reaches_the_duel_handler`, through the registered handlers, with the same assertions. `plugin_owned_methods_are_not_routed_here` already covers every plugin-owned index; it now also asserts that 102 and 103 are on the list.
+- `cimmeria-cell`'s `plugin_owned_methods_route_to_the_installed_plugin` installs both plugins and also asserts that 102 and 103 reach the duel handlers; `a_missing_plugin_logs_unhandled_for_each_plugin_owned_method` also asserts that no duel handler ran.
+- `cell-world`'s plugin tests: the plugin-owned list is now 88-90 and 102-103, the complete registration registers both sets, and the missing-method error names the duel methods too.
+- `cimmeria-cell-console`'s SS-U2 test calls the moved tick at its new path (`cimmeria_cell_duel::cell::duel::tick::run_at`).
+- `cimmeria-cell-pets`' `pets_plugin_covers_every_plugin_owned_cell_method` and `each_pet_cell_method_reaches_the_pet_command_parser` assumed the plugin-owned list was the pet commands. They now name the three pet indices: pets alone leaves exactly the other plugins' methods (102-103) missing, and the routing loop drives 88-90 only.
+
+New tests: the facade's `a_table_without_the_duel_plugin_fails_the_startup_check` (the missing-registration test: a table without `DuelPlugin` fails `check_complete` naming 102 and 103, so the orchestrator refuses to start); `DuelPlugin`'s registrations (`cell-duel` `plugin_tests`); the tick stage and the travel and death hooks fired the way core fires them, with and without the plugin (`cell::duel::tests::hooks`); and the hook helpers and death hooks in core (`cell-world` `cell::plugin::tests`).
+
+### 4.3 What gets better
 
 - A feature edit rebuilds the feature, the facade and the binaries, not the cell track above the lowest crate it touches.
 - `CellEntity`, `SpaceManager`, the routers and the cell loop stop changing when a feature is added.
 - A missing registration is a startup failure, not a player ticket.
 
-### 4.3 What gets worse, and the mitigations
+### 4.4 What gets worse, and the mitigations
 
 - **Compile-time exhaustiveness.** The static `match` on method indices goes away. The startup assertion (§3.3) and the router's WARN replace it.
 - **Indirection.** A method call is a registry lookup and an `Arc` clone before the handler. That is noise against a `SpaceManager` lookup and an `mpsc` send.

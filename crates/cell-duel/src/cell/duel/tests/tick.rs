@@ -1,6 +1,7 @@
 //! The duel tick on an injected clock: expiry (D-SS18) and cooldown pruning.
 //! The countdown end is the engage, tested in `engage.rs`.
 
+use crate::cell::duel::DuelResources;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
@@ -34,21 +35,24 @@ async fn unanswered_challenge_expires_and_tells_both() {
     )
     .await;
     assert!(drain(&mut rx).is_empty());
-    assert!(mgr.duels.pending_for(B_PID).is_some());
+    assert!(mgr.resources.duels().pending_for(B_PID).is_some());
 
     run_at(&tx, &mut mgr, t0 + CHALLENGE_TIMEOUT).await;
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
-    assert!(mgr.duels.pending_for(B_PID).is_none());
+    assert!(mgr.resources.duels().pending_for(B_PID).is_none());
     assert!(capture
         .all()
         .iter()
         .any(|c| c.has_field("event", "duel.challenge_expired")
             && c.has_field("reason", "no_answer")));
     assert_eq!(
-        mgr.duels
-            .open_challenge(A_PID, B_PID, t0 + CHALLENGE_TIMEOUT + PAIR_COOLDOWN / 2),
+        mgr.resources.duels_mut().open_challenge(
+            A_PID,
+            B_PID,
+            t0 + CHALLENGE_TIMEOUT + PAIR_COOLDOWN / 2
+        ),
         Err(ChallengeRefusal::PairCooldown)
     );
 }
@@ -65,9 +69,9 @@ async fn wall_clock_tick_prunes_an_expired_cooldown() {
     challenge(&mut mgr, &tx, A, B, past).await;
     crate::cell::duel::response::handle_at(B_EID, &[0], &tx, &mut mgr, past).await;
     drain(&mut rx);
-    assert_eq!(mgr.duels.cooldown_count(), 1);
+    assert_eq!(mgr.resources.duels().cooldown_count(), 1);
 
     crate::cell::duel::tick::run(&tx, &mut mgr).await;
-    assert_eq!(mgr.duels.cooldown_count(), 0);
-    assert!(mgr.duels.is_idle());
+    assert_eq!(mgr.resources.duels().cooldown_count(), 0);
+    assert!(mgr.resources.duels().is_idle());
 }

@@ -25,6 +25,7 @@
 //! too.
 
 use cimmeria_cell_catalog::cell::respawner_fallback::nearest_valid_respawner_def;
+use cimmeria_cell_world::cell::plugin::EntityHookPoint;
 use cimmeria_entity::movement_validation::SpaceBounds;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
@@ -161,9 +162,11 @@ pub async fn handle_respawn(
             cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(entity, player_id, tx)
                 .await;
         }
-        // SS-D3: a gate travel ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
-        // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
-        cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
+        // SS-D3, #962: the travel hook. The duel plugin ends the traveller's duel
+        // (`EDUEL_DEFEAT_Teleport`) here; `every_travel_site_fires_the_travel_hook`.
+        space_mgr
+            .fire_entity_hook(EntityHookPoint::BeforeTravelSend, entity_id, tx)
+            .await;
         // Enqueue the transfer first and tear down only once it is sent,
         // the order gate travel and `gmGotoLocation` use: a closed base
         // channel must not leave the player (or its pet) removed cell-side

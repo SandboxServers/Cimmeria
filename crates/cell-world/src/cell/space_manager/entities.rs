@@ -428,7 +428,13 @@ impl SpaceManager {
         // `onDuelEntitiesClear` and combat pair are cleared and they hear
         // "You won the duel" now, not on the sweep's next tick. The open
         // trade is cancelled by the caller (`handle_disconnect_entity`).
-        crate::cell::duel::on_disconnect(tx, self, entity_id).await;
+        // The duel plugin does this at this hook point (#962).
+        self.fire_entity_hook(
+            crate::cell::plugin::EntityHookPoint::BeforeDisconnectTeardown,
+            entity_id,
+            tx,
+        )
+        .await;
         // Pets leave with their owner, visibly (`LeftAoI` to every witness),
         // before the owner's own AoI teardown below. The self-healing sweep
         // would get them a tick later; this makes the common path immediate.

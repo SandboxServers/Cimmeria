@@ -12,6 +12,7 @@
 //!   challenge in either direction, the countdown, or a fight), sends "Duel
 //!   aborted" (878) to both players, and starts no pair cooldown.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -113,7 +114,7 @@ pub(crate) fn status_line(mgr: &SpaceManager, subject: &Subject, now: Instant) -
         format!("{name} (player {player_id})")
     };
     let secs = |at: Instant| at.saturating_duration_since(now).as_secs();
-    match status(&mgr.duels, subject.player_id) {
+    match status(mgr.resources.duels(), subject.player_id) {
         DuelStatus::Idle => format!("{who} is not in a duel and has no duel challenge."),
         DuelStatus::InDuel(d) => {
             let opponent = d.opponent_of(subject.player_id).unwrap_or(d.target);

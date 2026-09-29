@@ -466,8 +466,15 @@ pub(super) async fn resolve_death(
         // SS-D3: a duelist killed by anyone else loses the duel (the
         // partner's damage never gets here: it is clamped at 1 HP, D-SS20).
         // The partner hears "You won the duel"; a challenge or countdown is
-        // withdrawn.
-        cimmeria_cell_world::cell::duel::on_death(tx, space_mgr, target_eid, attacker_id).await;
+        // withdrawn. The duel plugin does this at this hook point (#962).
+        space_mgr
+            .fire_death_hook(
+                cimmeria_cell_world::cell::plugin::DeathHookPoint::AfterPlayerThreatPurge,
+                target_eid,
+                attacker_id,
+                tx,
+            )
+            .await;
         // D-PT08: the owner's pets go with the owner's death, now rather than
         // on the next pet sweep. The owner sees them leave (its client stays).
         cimmeria_cell_world::cell::pets::on_owner_left(

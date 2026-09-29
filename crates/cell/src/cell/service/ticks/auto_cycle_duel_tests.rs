@@ -3,6 +3,7 @@
 //! Once the duel ends, the loop stops with a feedback line instead of
 //! re-firing into the #444 gate every tick.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use std::time::Instant;
 
 use cimmeria_common::Vector3;
@@ -66,13 +67,24 @@ fn duel_loop_mgr() -> SpaceManager {
         },
     );
     let now = Instant::now();
-    mgr.duels.open_challenge(A_PID, B_PID, now).unwrap();
+    mgr.resources
+        .duels_mut()
+        .open_challenge(A_PID, B_PID, now)
+        .unwrap();
     let space = mgr.get_entity_space_id(A).expect("A has a space");
-    let p = mgr.duels.take_pending_for(B_PID, now).unwrap();
+    let p = mgr
+        .resources
+        .duels_mut()
+        .take_pending_for(B_PID, now)
+        .unwrap();
     let duel = mgr
-        .duels
+        .resources
+        .duels_mut()
         .start_duel(&p, space, Vector3::new(2.5, 0.0, 0.0), now);
-    mgr.duels.engage(duel.duel_id, [A, B], now).unwrap();
+    mgr.resources
+        .duels_mut()
+        .engage(duel.duel_id, [A, B], now)
+        .unwrap();
     mgr
 }
 
@@ -103,8 +115,8 @@ async fn auto_cycle_on_the_partner_fires_during_the_duel_and_stops_after_it() {
 
     // The duel ends: the next tick clears the loop, un-lights the button,
     // and tells the player once, even mid-cooldown.
-    let duel_id = mgr.duels.duel_of(A_PID).unwrap().duel_id;
-    mgr.duels.end_duel(duel_id);
+    let duel_id = mgr.resources.duels().duel_of(A_PID).unwrap().duel_id;
+    mgr.resources.duels_mut().end_duel(duel_id);
     auto_cycle_tick(&tx, &mut mgr, &engine).await;
     let mut msgs = Vec::new();
     while let Ok(m) = rx.try_recv() {

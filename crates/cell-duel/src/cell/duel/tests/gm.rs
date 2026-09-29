@@ -1,5 +1,6 @@
 //! The GM abort and status read behind `.duel_end` / `.duel_status` (SS-U2).
 
+use crate::cell::duel::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -78,7 +79,7 @@ async fn gm_end_tells_both_and_clears_the_duel() {
     challenge(&mut mgr, &tx, A, B, t0).await;
     respond(B_EID, &[1], &tx, &mut mgr, t0).await;
     drain(&mut rx);
-    assert!(mgr.duels.duel_of(A_PID).is_some());
+    assert!(mgr.resources.duels().duel_of(A_PID).is_some());
 
     // C (entity 30, account 700) acts as the GM.
     let aborted = gm_end(&tx, &mut mgr, C_EID, A_PID).await.unwrap();
@@ -88,8 +89,11 @@ async fn gm_end_tells_both_and_clears_the_duel() {
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(sent.len(), 2);
-    assert!(mgr.duels.duel_of(A_PID).is_none() && mgr.duels.duel_of(B_PID).is_none());
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(
+        mgr.resources.duels().duel_of(A_PID).is_none()
+            && mgr.resources.duels().duel_of(B_PID).is_none()
+    );
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
 
     let row = capture
         .all()

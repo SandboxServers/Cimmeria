@@ -3,6 +3,7 @@
 //! Runs every 100 ms AoI tick from the cell message loop. It walks
 //! `SpaceManager::pending_casts`, so an idle cell pays one empty-set check.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use cimmeria_entity::cell_entity::PetState;
 use std::time::Instant;
 
@@ -159,7 +160,7 @@ async fn fire_time_refusal(
     // The launch's #444 target-validity rule, again (`player_may_attack`: a
     // hostile NPC or the engaged duel partner). Content can turn an NPC
     // friendly, and a duel can end, during the warmup.
-    if caster.is_player && !combat::player_may_attack(caster, target, &space_mgr.duels) {
+    if caster.is_player && !combat::player_may_attack(caster, target, space_mgr.resources.duels()) {
         return Some(InterruptReason::TargetLost);
     }
     // A pet casts on its owner's order (`petInvokeAbility`, pets PT-04),

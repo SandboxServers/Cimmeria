@@ -8,7 +8,8 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::cell::messages::CellToBaseMsg;
 use cimmeria_wire::cell::cell_methods::player::constants::{
-    PET_ABILITY_TOGGLE, PET_CHANGE_STANCE, PET_INVOKE_ABILITY, WHO,
+    DUEL_FORFEIT, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE, PET_INVOKE_ABILITY, SEND_DUEL_RESPONSE,
+    WHO,
 };
 
 fn mark<'a>(marker: u16, entity_id: u32, tx: &'a mpsc::Sender<CellToBaseMsg>) -> BoxFuture<'a, ()> {
@@ -42,6 +43,22 @@ fn destroy_hook<'a>(
 ) -> BoxFuture<'a, ()> {
     mark(4, entity_id, tx)
 }
+fn travel_hook<'a>(
+    entity_id: u32,
+    tx: &'a mpsc::Sender<CellToBaseMsg>,
+    _: &'a mut SpaceManager,
+) -> BoxFuture<'a, ()> {
+    mark(5, entity_id, tx)
+}
+/// Reports the killer as the marker and the victim as the entity.
+fn death_hook<'a>(
+    victim: u32,
+    killer: u32,
+    tx: &'a mpsc::Sender<CellToBaseMsg>,
+    _: &'a mut SpaceManager,
+) -> BoxFuture<'a, ()> {
+    mark(killer as u16, victim, tx)
+}
 
 /// A plugin that registers the given method indices and nothing else.
 struct Methods(&'static str, &'static [u16]);
@@ -56,21 +73,23 @@ impl CellPlugin for Methods {
     }
 }
 
-const ALL_OWNED: &[u16] = &[PET_INVOKE_ABILITY, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE];
+const PET_OWNED: &[u16] = &[PET_INVOKE_ABILITY, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE];
+const DUEL_OWNED: &[u16] = &[SEND_DUEL_RESPONSE, DUEL_FORFEIT];
 
 #[test]
-fn the_plugin_owned_list_is_the_pet_commands() {
-    assert_eq!(PLUGIN_OWNED_CELL_METHODS, &[88, 89, 90]);
+fn the_plugin_owned_list_is_the_pet_and_duel_commands() {
+    assert_eq!(PLUGIN_OWNED_CELL_METHODS, &[88, 89, 90, 102, 103]);
 }
 
 #[test]
 fn a_complete_registration_builds_and_resolves_each_index() {
-    let plugins = CellPlugins::build(&[&Methods("pets", ALL_OWNED)]).unwrap();
+    let plugins =
+        CellPlugins::build(&[&Methods("pets", PET_OWNED), &Methods("duel", DUEL_OWNED)]).unwrap();
     plugins.check_complete().unwrap();
-    assert_eq!(plugins.plugin_names(), &["pets"]);
+    assert_eq!(plugins.plugin_names(), &["pets", "duel"]);
     assert_eq!(
         plugins.cell_method_indices().collect::<Vec<_>>(),
-        vec![88, 89, 90]
+        vec![88, 89, 90, 102, 103]
     );
     assert!(plugins.cell_method(88).is_some());
     assert!(
@@ -80,7 +99,8 @@ fn a_complete_registration_builds_and_resolves_each_index() {
 }
 
 /// #962 test rule: a feature that never registers must fail the startup
-/// assertion, not silently no-op. An empty table leaves 88-90 unhandled.
+/// assertion, not silently no-op. An empty table leaves 88-90 and 102-103
+/// unhandled.
 #[test]
 fn a_missing_plugin_fails_check_complete_with_every_unhandled_index() {
     let err = CellPlugins::build(&[])
@@ -94,11 +114,13 @@ fn a_missing_plugin_fails_check_complete_with_every_unhandled_index() {
                 (88, "petInvokeAbility"),
                 (89, "petAbilityToggle"),
                 (90, "petChangeStance"),
+                (102, "sendDuelResponse"),
+                (103, "duelForfeit"),
             ]
         }
     );
     // A partial registration names only the gap.
-    let err = CellPlugins::build(&[&Methods("pets", &[88, 90])])
+    let err = CellPlugins::build(&[&Methods("pets", &[88, 90]), &Methods("duel", DUEL_OWNED)])
         .unwrap()
         .check_complete()
         .unwrap_err();
@@ -112,7 +134,7 @@ fn a_missing_plugin_fails_check_complete_with_every_unhandled_index() {
 
 #[test]
 fn two_plugins_claiming_one_index_fail_the_build() {
-    let err = CellPlugins::build(&[&Methods("pets", ALL_OWNED), &Methods("other", &[89])])
+    let err = CellPlugins::build(&[&Methods("pets", PET_OWNED), &Methods("other", &[89])])
         .err()
         .unwrap();
     assert_eq!(
@@ -239,6 +261,48 @@ async fn entity_hooks_get_the_entity_id() {
 fn space_manager_starts_empty_and_takes_the_installed_table() {
     let mut mgr = SpaceManager::new(1);
     assert!(mgr.plugins().plugin_names().is_empty());
-    mgr.install_plugins(CellPlugins::build(&[&Methods("pets", ALL_OWNED)]).unwrap());
+    mgr.install_plugins(CellPlugins::build(&[&Methods("pets", PET_OWNED)]).unwrap());
     assert_eq!(mgr.plugins().plugin_names(), &["pets"]);
+}
+
+struct Leave;
+impl CellPlugin for Leave {
+    fn name(&self) -> &'static str {
+        "leave"
+    }
+    fn build(&self, plugin: &mut CellPluginBuilder<'_>) {
+        plugin
+            .entity_hook(EntityHookPoint::BeforeTravelSend, travel_hook)
+            .death_hook(DeathHookPoint::AfterPlayerThreatPurge, death_hook);
+    }
+}
+
+/// `SpaceManager::fire_entity_hook`, the helper the travel sites below
+/// `cimmeria-cell` call, fires only the hooks at its point (the travel hook,
+/// not the base-destroy one), with the entity id.
+#[tokio::test]
+async fn fire_entity_hook_runs_the_installed_hooks_at_that_point() {
+    let mut mgr = SpaceManager::new(1);
+    mgr.install_plugins(CellPlugins::build(&[&Destroy, &Leave]).unwrap());
+    let (tx, mut rx) = mpsc::channel(8);
+    mgr.fire_entity_hook(EntityHookPoint::BeforeTravelSend, 7, &tx)
+        .await;
+    assert_eq!(drain_markers(&mut rx), vec![(5, 7)]);
+    mgr.fire_entity_hook(EntityHookPoint::BeforeDisconnectTeardown, 7, &tx)
+        .await;
+    assert!(
+        drain_markers(&mut rx).is_empty(),
+        "nothing subscribes there"
+    );
+}
+
+/// A death hook gets the victim and the killer, in that order.
+#[tokio::test]
+async fn death_hooks_get_the_victim_and_the_killer() {
+    let mut mgr = SpaceManager::new(1);
+    mgr.install_plugins(CellPlugins::build(&[&Leave]).unwrap());
+    let (tx, mut rx) = mpsc::channel(8);
+    mgr.fire_death_hook(DeathHookPoint::AfterPlayerThreatPurge, 42, 9, &tx)
+        .await;
+    assert_eq!(drain_markers(&mut rx), vec![(9, 42)]);
 }

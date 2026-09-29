@@ -20,7 +20,7 @@ use crate::cell::space_manager::SpaceManager;
 
 /// Add `opponent_eid` as a combat source of `eid`. Returns the new
 /// `state_field` when `BSF_InCombat` turned on, for the caller to send.
-pub(super) fn enter(mgr: &mut SpaceManager, eid: u32, opponent_eid: u32) -> Option<u32> {
+pub fn enter(mgr: &mut SpaceManager, eid: u32, opponent_eid: u32) -> Option<u32> {
     let player = mgr.get_entity_mut(eid)?;
     let was_empty = player.threatened_mobs.is_empty();
     if !player.threatened_mobs.insert(opponent_eid) {
@@ -42,7 +42,7 @@ pub(super) fn enter(mgr: &mut SpaceManager, eid: u32, opponent_eid: u32) -> Opti
 /// `state_field` when `BSF_InCombat` turned off (nothing else holds the
 /// player in combat). The holster waits for the out-of-combat timer, as it
 /// does after a mob fight.
-pub(super) fn exit(mgr: &mut SpaceManager, eid: u32, opponent_eid: u32) -> Option<u32> {
+pub fn exit(mgr: &mut SpaceManager, eid: u32, opponent_eid: u32) -> Option<u32> {
     let player = mgr.get_entity_mut(eid)?;
     if !player.threatened_mobs.remove(&opponent_eid) || !player.threatened_mobs.is_empty() {
         return None;

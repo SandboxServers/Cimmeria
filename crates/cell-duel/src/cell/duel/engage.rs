@@ -14,6 +14,7 @@
 //! other (`combat::player_may_attack`). If either duelist has gone, nothing
 //! is flagged and the duel is aborted with 878.
 
+use super::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -37,7 +38,7 @@ pub(super) async fn on_countdown_end(
     duel_id: DuelId,
     now: Instant,
 ) {
-    let Some(duel) = mgr.duels.duel(duel_id).copied() else {
+    let Some(duel) = mgr.resources.duels().duel(duel_id).copied() else {
         return;
     };
     let in_space = |p: &PlayerAt| p.space_id == duel.space_id;
@@ -49,7 +50,7 @@ pub(super) async fn on_countdown_end(
     };
 
     let entities = [challenger.entity_id, target.entity_id];
-    let Some(duel) = mgr.duels.engage(duel_id, entities, now) else {
+    let Some(duel) = mgr.resources.duels_mut().engage(duel_id, entities, now) else {
         return;
     };
     let mut witnesses = [0usize; 2];
@@ -95,7 +96,7 @@ async fn abort_countdown(
     challenger: Option<PlayerAt>,
     target: Option<PlayerAt>,
 ) {
-    mgr.duels.end_duel(duel.duel_id);
+    mgr.resources.duels_mut().end_duel(duel.duel_id);
     let gone = match (challenger.is_some(), target.is_some()) {
         (false, false) => "both",
         (false, true) => "challenger",

@@ -11,6 +11,7 @@
 //! launch parks it with the ground point, and the warmup tick fires the
 //! primary and the secondaries together (`fire_ground_cast_after_warmup`).
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use tokio::sync::mpsc;
 
 use super::super::combat;
@@ -311,7 +312,7 @@ fn collect_ground_targets(
             if combat::is_dead_state(npc.state_field) {
                 continue;
             }
-            if !combat::may_hit_in_area(attacker, npc, &space_mgr.duels) {
+            if !combat::may_hit_in_area(attacker, npc, space_mgr.resources.duels()) {
                 continue;
             }
             let dx = npc.position.x - ground[0];

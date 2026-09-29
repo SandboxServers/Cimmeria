@@ -323,6 +323,38 @@ fn cell_pets_crate_events_keep_their_index() {
     }
 }
 
+/// The duel answer, forfeit, tick and engage moved from `cimmeria-cell-world`
+/// to the `cimmeria-cell-duel` plugin crate (#962 step 2). Their rows name the
+/// `duel` target, but an untargeted row there takes the new module path,
+/// which `cimmeria_cell_world=debug` does not prefix-match; the crate's own
+/// row keeps DEBUG reaching SigNoz and INFO `server.log`.
+#[test]
+fn cell_duel_crate_events_keep_their_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in [
+        "cimmeria_cell_duel::plugin",
+        "cimmeria_cell_duel::cell::duel::response",
+        "cimmeria_cell_duel::cell::duel::tick",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
 /// The client-callable cell methods moved from
 /// `cimmeria_services::cell::cell_methods` to the `cimmeria-cell-methods` crate
 /// (services crate split, wave C5a), which changed the `module_path!()` of
@@ -516,6 +548,10 @@ fn cell_crate_events_keep_their_file_and_index() {
         (
             "cimmeria_cell_pets=debug,",
             "cimmeria_cell_pets::cell::cell_methods::player::pet",
+        ),
+        (
+            "cimmeria_cell_duel=debug,",
+            "cimmeria_cell_duel::cell::duel::response",
         ),
         (
             "cimmeria_cell_console=debug,",

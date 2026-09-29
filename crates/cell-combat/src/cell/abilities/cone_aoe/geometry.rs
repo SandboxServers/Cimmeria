@@ -4,6 +4,7 @@
 //! does the planar (X/Z) cone-containment scan against every entity the
 //! attacker may hit (hostile NPCs, and a duel partner).
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use cimmeria_entity::abilities::{EffectDef, TCM_AE_CONE};
 
 use super::super::super::combat;
@@ -85,7 +86,7 @@ pub fn collect_cone_targets(
         if combat::is_dead_state(npc.state_field) {
             continue;
         }
-        if !combat::may_hit_in_area(attacker, npc, &space_mgr.duels) {
+        if !combat::may_hit_in_area(attacker, npc, space_mgr.resources.duels()) {
             continue;
         }
         let ex = npc.position.x - apex[0];
