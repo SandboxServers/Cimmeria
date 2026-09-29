@@ -245,12 +245,17 @@ mod tests {
     }
 
     /// Off-target, a cdecl call with a supplied address routes to the
-    /// stub and echoes the id with a well-formed NATIVE_FAULT.
+    /// stub and echoes the id with a well-formed NATIVE_FAULT. On the i686
+    /// target the call is real, so the address must be a function this test
+    /// owns: a fixed address such as `0x600000` lands in the test binary's
+    /// own code, which moves with every build, and faulted CI with 0xc0000005.
     #[test]
     fn dispatch_routes_with_address_offtarget() {
+        extern "C" fn sink(_line: u32) {}
+        let addr = format!("{:#x}", sink as *const () as usize);
         let r = dispatch(
             json!(4),
-            &json!({ "line": "/who", "addr": "0x600000", "conv": "cdecl" }),
+            &json!({ "line": "/who", "addr": addr, "conv": "cdecl" }),
         );
         assert_eq!(r.id, json!(4));
         assert!(r.result.is_some() || r.error.is_some());

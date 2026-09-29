@@ -316,11 +316,18 @@ mod tests {
     /// Off-target the native write is a stub, so the dispatch lands on a
     /// well-formed NATIVE_FAULT error with the id echoed — pinning the
     /// routing + response shape end to end.
+    ///
+    /// On the i686 target the write is real, so the address must be memory
+    /// this test owns: `0x400000` is the test binary's own PE header.
     #[test]
     fn dispatch_echoes_id_and_shape_offtarget() {
-        let r = dispatch(json!(7), &json!({ "addr": "0x400000", "hex": "90" }));
+        let mut buf = vec![0u8; 16];
+        let addr = format!("{:#x}", buf.as_mut_ptr() as usize);
+        let r = dispatch(json!(7), &json!({ "addr": addr, "hex": "90" }));
         assert_eq!(r.id, json!(7));
         assert!(r.result.is_some() || r.error.is_some());
+        #[cfg(all(target_os = "windows", target_arch = "x86"))]
+        assert_eq!(std::hint::black_box(&buf)[0], 0x90, "{r:?}");
         // Bad params → INVALID_PARAMS.
         let bad = dispatch(json!(8), &json!({ "addr": "0x10" }));
         assert_eq!(bad.error.expect("error").code, INVALID_PARAMS);
