@@ -2,7 +2,7 @@
 title: "Address Map — Key Locations in SGW.exe"
 type: reference
 audience: contributors doing RE
-last_updated: 2026-05-27
+last_updated: 2026-09-28
 ---
 
 # Address Map — Key Locations in SGW.exe
@@ -26,7 +26,7 @@ Key virtual addresses, vtables, global variables, and important functions discov
 | `0x01ee1254` | `GEngine` | `UEngine*` | UE3 engine singleton (RVA `0x01AE1254`) |
 | `0x01ef134c` | `GEditor` | `UEditorEngine*` | Set when GIsEditor=1 (RVA `0x01AF134C`) |
 | `0x01ef2e74` | `GApp` | `void*` | Application pointer (RVA `0x01AF2E74`) |
-| `0x01eadbc0` | `FName::GNames` | `TArray<FNameEntry*>*` | Global name table (RVA `0x01ACADE0`; add image base `+0x400000` for note below) |
+| `0x01ecade0` | `FName::GNames` | `TArray<FNameEntry*>` (`Data` at `+0`, `Num` at `+4`) | Global name table (RVA `0x01ACADE0`). **Corrected 2026-09-28**: this row said `0x01eadbc0`, which does not match its own RVA. `FName::StaticInit` (`0x0049ba90`) zeroes `0x01ecade0` and the `FName -> string` routine (`0x0049b190`) indexes it. Entry layout in [findings/client-engine-sinks-and-seams.md](findings/client-engine-sinks-and-seams.md#fname-and-uobject-layout) |
 | `0x01edc69c` | `UObject::GObjObjects` | `TArray<UObject*>*` | Global object array (RVA `0x01ADC69C`) |
 | `0x01ead7ac` | `GIsEditor` | `UBOOL` | Editor mode flag |
 | `0x01ead7b0` | `GIsUCC` | `UBOOL` | Commandlet mode flag |
@@ -1956,6 +1956,40 @@ Source: [findings/render-thread-options.md](findings/render-thread-options.md). 
 | `DAT_01e6ea4c` | shadow depth buffer size | Static `0x400` (1024); never written |
 | `DAT_01db58f4` | `allowDynamicShadows` game-thread mirror | |
 | `DAT_01db5900` / `DAT_01db5904` / `DAT_01db5908` | `ppMotionBlur` / `ppDepthOfField` / `ppBloom` mirrors | Forced 0 when `postprocessing` is off |
+
+## Engine log sinks and subsystem seams (client-telemetry engine capture, 2026-09-28)
+
+Source: [findings/client-engine-sinks-and-seams.md](findings/client-engine-sinks-and-seams.md). Every row was read in Ghidra (decompile or disassembly) or from the PE import table of `SGW.exe` and the export tables of the client's own DLLs. Not yet seen from a live client.
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x00a36460` | `DebugMsgHelper::message` | BigWorld message choke point. `__thiscall(this, int* {component, priority}, const char* fmt, va_list)`, `ret 0xc`. Passes when `header[0] + impl[0x3c] <= header[1]`. Hook: `client.bw.message` |
+| `0x00a35210` | BigWorld `DEBUG_MSG`-family varargs wrapper | cdecl; 30 callers in `ServerConnection` / `EntityManager` / `Mercury::Nub` |
+| `0x00a351d0` | BigWorld assertion wrapper | cdecl; 14 callers; -> `0x00a36ac0` -> `0x00a36900` (formats, debugger box) -> `0x00a36650` -> `0x00a36460` |
+| `0x00a353b0` / `0x00a352f0` | default message output | `"<PRIORITY>: "` + `_vsnprintf` + `OutputDebugStringA` (+ stderr when `0x01ef0713`) |
+| `0x01922380` | priority-name table | `TRACE`, `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `HACK`, null |
+| `0x004ce0b0` | `FOutputDeviceRedirector::Serialize` (`GLog`) | vtable `0x01815188` slot 1; `__thiscall(this, const TCHAR*, EName)`, `ret 8`. Hook: `client.ue3.log` |
+| `0x004ce3a0` | `FOutputDeviceWindowsError::Serialize` (`GError`) | vtable `0x018150f8` slot 1; `ret 8`; ends the process. Hook: `client.ue3.fatal_error` |
+| `0x004cc9f0` | `FOutputDeviceDebug::Serialize` | skips names with flag `0x1000` and names `0x5a`, `0x314` |
+| `0x00486000` | UE3 `check()` reporter | `__cdecl(const char* expr, const char* file, int line)`; returns (survivable). Hook: `client.ue3.assert` |
+| `0x00c64680` | `log4cxx::UnrealAppender` name getter | its `append` maps a level to `debugf`/`warnf`, both compiled out |
+| `0x017f0160` / `0x017f0188` | IAT `log4cxx.dll` `Logger::forcedLog` (narrow / wide) | `__thiscall`, `ret 0xc`. Hook: `client.log4cxx.event` |
+| `0x017f017c` `0x017f01ac` `0x017f01c4` `0x017f01d8` | IAT `Logger::isError/Warn/Debug/InfoEnabled` | forced true by `unfilter` |
+| `0x017ef230` / `0x017ef32c` | IAT `OutputDebugStringW` / `OutputDebugStringA` | Hook: `client.os.debug_string` |
+| `0x00876970` | `UWorld::SpawnActor` | `__thiscall`, 11 stack args, `ret 0x2c`. Hook: `client.engine.spawn_actor` |
+| `0x00875290` | `UWorld::DestroyActor` | `__thiscall(this, AActor*, bNetForce, bShouldModifyLevel)`, `ret 0xc`. Hook: `client.engine.destroy_actor` |
+| `0x006e1640` | `AActor::execSpawn` | registration table `0x01db1c98` |
+| `0x0049f090` | `UObject::GetOutermost` | loops `eax = [eax+0x28]` (`Outer` at `+0x28`) |
+| `0x0049b190` | `FName -> string` | `Names[index] + 0x10`; `name_(number-1)` when the number is non-zero |
+| `0x018ad494` | `USeqAct_Interp` vtable | slot 84 `UpdateOp` `0x007b0940`; slot 85 `Activated` `0x007b06a0`; slot 86 `DeActivated` `0x007a6730`. Hook: `client.engine.matinee` |
+| `0x0054e9c0` | `UWorld::UpdateLevelStreamingInner` | `StreamingLevel + 0x44` `LoadedLevel`, `+ 0x60` bit 0 `bIsVisible`. `client.engine.level_visible` / `level_stream_slow` |
+| `0x004a8e10` | `UObject::StaticLoadObject` | `NULL` return reported as `client.engine.load_failed` |
+| `0x017effa4` / `0x017effa8` | IAT `binkw32.dll` `_BinkOpen@8` / `_BinkClose@4` | movies open from memory (`FUN_00509820`, flags `0x4004400`) |
+| `0x017f00a4` / `0x017f0080` / `0x017f0084` | IAT `fmod_event.dll` `Event::start` / `stop` / `getInfo` | `__stdcall` member, `this` first on the stack. Hook: `client.audio.event` |
+| `0x01839d94` | `FNxOutputStream` vtable | slot 0 `reportError` `0x0055c5e0` (`ret 0x10`), slot 1 `reportAssertViolation` `0x0055c5d0` (`mov eax, 2; ret 0xc`), slot 2 `print` `0x00af6810` (`RET 4`), slot 3 deleting dtor `0x0055c700`. Hook: `client.physx.error` / `assert` |
+| `0x017efd34` | IAT `PhysXLoader.dll` `NxCreatePhysicsSDK` | called from `FUN_005590c0` |
+| `0x017ef2a4` / `0x017ef2a8` | IAT `CreateFileA` / `CreateFileW` | Hook: `client.io.open_failed` |
+| `0x017effd8` | IAT `d3d9.dll` `Direct3DCreate9` | then `IDirect3D9` vtable 16 (`CreateDevice`), device vtable 3 (`TestCooperativeLevel`) and 16 (`Reset`). Hooks: `client.gfx.device_*` |
 
 ---
 

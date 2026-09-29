@@ -5,9 +5,10 @@
 //!
 //! `0x00486000` is `__cdecl(const char* expr, const char* file, int line)`.
 //! Every UE3 `check()`/`checkSlow()` in this build compiles to
-//! `if (!cond) FUN_00486000("cond", ".\\Src\\File.cpp", line)`: 30-odd call
-//! sites in `UnLevAct.cpp` alone (`"CurrentLevel"` at line 0x84,
-//! `"GWorld == this"` at 0x86, `"ThisActor->IsValid()"` at 0x1ad, ...). The
+//! `if (!cond) FUN_00486000("cond", ".\\Src\\File.cpp", line)`: call sites
+//! throughout `UnLevAct.cpp`, `UnWorld.cpp` and `UnObj.cpp` (`"CurrentLevel"`
+//! at `UnLevAct.cpp:0x84`, `"GWorld == this"` at 0x86, `"ThisActor->IsValid()"`
+//! at 0x1ad, `"StreamingLevel"` at `UnWorld.cpp:0x440`, ...). The
 //! function copies the two strings into `std::string`s, hands them to the
 //! assertion reporter (`0x00a5ab70` singleton, `0x00a5ad80`) and *returns*:
 //! a failed `check` in this client is reported, not fatal. That makes this

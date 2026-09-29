@@ -216,6 +216,27 @@ ssh cimmeria-server "systemctl unset-environment CIMMERIA_TELEMETRY_KILL_SWITCH 
 Only the literal value `1` enables the kill switch — `true`/`yes`/etc
 are treated as off (intentional crispness of contract).
 
+## Client engine-log capture switches
+
+The injected client DLL ships the engine layer's logs (BigWorld messages, UE3
+and log4cxx lines, debug strings, first-chance faults) as `client.bw.*`,
+`client.ue3.*`, `client.log4cxx.*` and `client.os.*` events, rate-limited per
+distinct message. Two switches change how much it captures. Both are off by
+default and are read once at boot:
+
+| Switch | Effect | When to use it |
+|---|---|---|
+| `unfilter` | lifts the client's own log thresholds (BigWorld filter, log4cxx `is*Enabled`, the UE3 suppress flag), so the client and the sinks see messages it normally drops. Also changes what the client writes to `SGWDebugLog.log` and `OutputDebugString`. | a debug or lab session chasing a silent client failure; not a player build |
+| `firehose` | raises the per-message rate limit from burst 8 / 4 per second to burst 64 / 64 per second, and lowers the hitch threshold to 100 ms | a short repro where dropped repeats matter |
+
+Turn them on with a top-level `capture` block in `current-session.json`
+(`"capture": { "unfilter": true }`), or for a hand-run client with the
+environment variable `CIMMERIA_CLIENT_CAPTURE=unfilter,firehose`. One event
+per session that installed hooks, `client.hooks.capabilities`, lists which
+hooks went in and which switches are on; the same line is in
+`cimmeria-client-telemetry.log` next to `SGW.exe`. Event catalog:
+[client-telemetry.md](../architecture/client-telemetry.md#engine-layer-log-sinks-and-subsystem-seams).
+
 ## Mint and refresh quotas
 
 Anyone who can route TCP to the admin port can mint a telemetry

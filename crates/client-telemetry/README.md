@@ -48,6 +48,14 @@ exercise the gated code and will give you a false green.
 - `log.rs` — `cimmeria-client-telemetry.log` next to `SGW.exe`.
 - `cme.rs` — CME `EventSignal` subscription + the `FakeVtable` static-subscriber shim.
 - `hooks/` — the hook techniques (CME subscribers, inline JMP, IAT replace, vtable swap).
+  - `hooks/sinks/` — the engine layer's log sinks: BigWorld messages, UE3 `GLog`
+    and `GError`, the UE3 `check()` reporter, log4cxx, `OutputDebugString`,
+    first-chance exceptions, and the boot-time capabilities record.
+  - `hooks/seams/` — engine subsystem seams that swallow failures: actor
+    spawn/destroy, Matinee, level streaming, Bink, FMOD, PhysX, file opens,
+    D3D9 device loss, frame hitches and memory.
+- `capture.rs` — the `unfilter` / `firehose` switches for the sinks (the
+  session's `capture` block and `CIMMERIA_CLIENT_CAPTURE`).
 - `queue.rs` / `uploader.rs` — the bounded event queue + batched uploader (host-testable).
 - `events.rs` — the typed event taxonomy shipped to the server.
 
