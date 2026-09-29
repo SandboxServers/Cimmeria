@@ -1,0 +1,61 @@
+# Unified UAT, section "Black market" (the `server` rows; no client patch).
+# Guide: docs/guides/unified-uat.md#black-market
+# Replies quoted below are the server's own strings
+# (crates/base-methods/.../black_market/gm/).
+
+schema = 1
+
+[section]
+id = "black-market"
+system = "Black market"
+guide = "docs/guides/unified-uat.md#black-market"
+ledger = "docs/analysis/black-market/uat.md"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "U0"
+title = ".bm_seed lists system auctions"
+expected = "\"Listed 8 Black Market auction(s) from the system seller: ids A to B.\""
+known_issues = ["Colo-wide listings: owner say-so (lab rule 6)"]
+step = [{ chat = ".bm_seed", label = "seed" }, { wait_ms = 2000 }]
+
+[[row.expect]]
+id = "listed"
+text = "the seed reply names the new ids"
+source = "chat"
+since = "seed"
+matches = 'Listed [0-9]+ Black Market auction\(s\) from the system seller: ids [0-9]+ to [0-9]+'
+
+[[row]]
+id = "U1"
+title = ".bm_list reads the active auctions"
+expected = "The newest auctions, each with its #id, seller, price and time left."
+step = [{ chat = ".bm_list", label = "list" }, { wait_ms = 2000 }]
+
+[[row.expect]]
+id = "listed"
+text = "the list ends in its count line, or says there are none"
+source = "chat"
+since = "list"
+matches = '[0-9]+ active auction\(s\), newest [0-9]+ shown\.|The Black Market has no active auctions\.'
+
+[[row.expect]]
+id = "gm-action-logged"
+text = "SigNoz records the GM read"
+source = "signoz"
+filter = "event = 'bm.gm_action' AND action = 'bm_list'"
+min_rows = 1
+
+[[row]]
+id = "U22"
+title = ".bm_expire on an id that does not exist"
+expected = "\"no auction has id 999999\""
+step = [{ chat = ".bm_expire 999999", label = "expire" }, { wait_ms = 2000 }]
+
+[[row.expect]]
+id = "refused"
+text = "the reply says no auction has that id"
+source = "chat"
+since = "expire"
+contains = "no auction has id 999999"

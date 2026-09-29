@@ -1,0 +1,152 @@
+# Unified UAT, section "Crafting" (rows the lab can drive today).
+# Guide: docs/guides/unified-uat.md#crafting (steps are the CR-14 numbers)
+# A fresh character per run: step 1 needs ASP 1 and step 2 reads "total 6".
+# The Lua reads name the stock UI's bindings (Content/UI/Core/*.lua); a
+# reader that errors leaves its clause UNVERIFIED, never PASS.
+
+schema = 1
+
+[section]
+id = "crafting"
+system = "Crafting"
+guide = "docs/guides/unified-uat.md#crafting"
+ledger = "docs/analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Scientist"
+gender = "female"
+first = "Uat"
+
+[[row]]
+id = "1"
+title = "Ctrl+J shows ASP 1 and four learnable roots"
+expected = "ASP reads 1. The four root disciplines (Biomedical, Electronic, Power Systems, Materials Engineering) are learnable."
+step = [
+  { tool = "client_input_focus", args = { on = true } },
+  { tool = "client_input_key", args = { key = "Ctrl", action = "down" } },
+  { tool = "client_input_key", args = { key = "J" }, label = "ctrl-j" },
+  { tool = "client_input_key", args = { key = "Ctrl", action = "up" } },
+  { wait_ms = 1500 },
+]
+teardown = [
+  { tool = "client_input_key", args = { key = "Ctrl", action = "down" }, optional = true },
+  { tool = "client_input_key", args = { key = "J" }, optional = true },
+  { tool = "client_input_key", args = { key = "Ctrl", action = "up" }, optional = true },
+]
+
+[[row.expect]]
+id = "sciences"
+text = "the client holds at least four applied sciences"
+source = "lua"
+chunk = "local t = getAppliedSciences() local n = 0 for _ in pairs(t) do n = n + 1 end return n"
+op = "gte"
+value = 4
+
+[[row.expect]]
+id = "asp-one"
+text = "ASP reads 1 and the four roots are learnable"
+source = "human"
+question = "In final.png, does the Applied Science window read 1 point, with Biomedical, Electronic, Power Systems and Materials Engineering learnable?"
+
+[[row]]
+id = "2"
+title = "/gmgiveappliedsciencepoints 5 adds live"
+expected = "\"gmGiveAppliedSciencePoints: +5 (total 6)\"; Ctrl+J reads 6 without a relog."
+step = [
+  { chat = "/gmgiveappliedsciencepoints 5", label = "give" },
+  { wait_ms = 1500 },
+]
+
+[[row.expect]]
+id = "reply"
+text = "the reply reads +5, total 6"
+source = "chat"
+since = "give"
+contains = "gmGiveAppliedSciencePoints: +5 (total 6)"
+
+[[row.expect]]
+id = "live"
+text = "the window reads 6 without a relog"
+source = "human"
+question = "Open Ctrl+J: does it read 6 applied-science points?"
+required = false
+
+[[row]]
+id = "3"
+title = "/gmgivexp raises level and ASP live"
+expected = "ASP rises by one per level gained, live."
+step = [
+  { chat = "/gmgivexp 20000", label = "xp" },
+  { wait_ms = 2500 },
+]
+
+[[row.expect]]
+id = "levelled"
+text = "the character is above level 1"
+source = "lua"
+chunk = "return unitLevel(Unit.Player)"
+op = "gt"
+value = 1
+
+[[row.expect]]
+id = "asp-rise"
+text = "SigNoz shows the crafting ASP grant for the level-up"
+source = "signoz"
+filter = "scope_name = 'crafting' AND body CONTAINS 'applied'"
+min_rows = 1
+required = false
+
+[[row]]
+id = "5"
+title = "Crafting state survives a relog"
+expected = "Disciplines, expertise, ASP and blueprints are all still there."
+relog = "same"
+step = [
+  { tool = "lab_logout", label = "logout" },
+  { tool = "lab_play_character", args = { name = "${character}" }, label = "relog" },
+  { wait_ms = 3000 },
+]
+
+[[row.expect]]
+id = "sciences-after"
+text = "the sciences are still there after the relog"
+source = "lua"
+chunk = "local t = getAppliedSciences() local n = 0 for _ in pairs(t) do n = n + 1 end return n"
+op = "gte"
+value = 4
+
+[[row.expect]]
+id = "state-same"
+text = "disciplines, expertise, ASP and blueprints match before the relog"
+source = "human"
+question = "Open Ctrl+J and J: are the disciplines, expertise, ASP (6 plus levels) and blueprints what they were before the relog?"
+
+[[row]]
+id = "19"
+title = ".allcraft grants everything to the selected player"
+expected = "\"allcraft [...]: N disciplines at 100, M blueprints, 5 paradigms at 7; craft anywhere is on until logout.\" Every page enables anywhere."
+notes = "Run after every other crafting row: from here on research is refused (step 20)."
+setup = [
+  # Select yourself (the guide: click your portrait). N3 in setup only.
+  { tool = "client_lua_eval", args = { chunk = "targetUnit(Unit.Player)" }, optional = true },
+]
+step = [
+  { chat = ".allcraft", label = "allcraft" },
+  { wait_ms = 2000 },
+]
+
+[[row.expect]]
+id = "summary"
+text = "the summary line names disciplines at 100 and craft-anywhere"
+source = "chat"
+since = "allcraft"
+matches = 'allcraft .*disciplines at 100.*craft anywhere is on until logout'
+
+[[row.expect]]
+id = "pages"
+text = "every crafting page enables away from a station"
+source = "human"
+question = "Open J away from any station: are all four pages enabled?"

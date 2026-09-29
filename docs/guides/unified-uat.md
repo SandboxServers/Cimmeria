@@ -50,6 +50,8 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
+**Automated runs.** Many rows can also be run by an agent through the live research lab: see [automated-uat.md](automated-uat.md). Its specs keep these step ids, and its results use the template below.
+
 **Status legend.** Each section, and some steps, carry one of these:
 
 | Status | Meaning |
@@ -963,6 +965,8 @@ Expected:      <what the step says should happen>
 After relog:   <same | fixed | worse | not tried>
 Known issue?:  <K-number or step note, if it matches one>
 ```
+
+An automated run ([automated-uat.md](automated-uat.md)) fills in the same block, with one extra `Automation:` line (the native level used and the evidence file). Its `Result:` can also read NEEDS_HUMAN, UNVERIFIED or NATIVE_SHORTFALL, each with its reason: none of those is a pass.
 
 For a whole session, a summary table works:
 

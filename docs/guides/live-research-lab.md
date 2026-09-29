@@ -293,6 +293,8 @@ Lab input goes through the client's hooked DirectInput, which never resets Windo
 
 ## Client flows
 
+To run whole unified-UAT rows (steps, checks, evidence and ledger text) rather than single flows, use `lab_uat_run`: [automated-uat.md](automated-uat.md).
+
 The `lab_*` flow tools turn the scripts agents kept rewriting (log in, make a fresh character, play it, click through the intro dialog, log out) into single calls. Each is supervisor-side orchestration over the input tools above: every button press is a real click or key, and Lua only reads (visibility, widget text, the character list). The one Lua-driven step is picking a server row by name, because list rows are not named windows; the Select button is still clicked.
 
 A typical run on a fresh character:

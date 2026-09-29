@@ -1,0 +1,173 @@
+# Unified UAT, section "Mail, chat and duels" (the solo rows).
+# Guide: docs/guides/unified-uat.md#mail-chat-and-duels
+# Replies quoted below are the server's own strings
+# (crates/base/src/base/dispatch/chat.rs, crates/base-methods/.../mail/gm/).
+
+schema = 1
+
+[section]
+id = "chat"
+system = "Mail, chat and duels"
+guide = "docs/guides/unified-uat.md#mail-chat-and-duels"
+ledger = "docs/analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "6"
+title = "GM mailbox readout and .mail_expire on a plain mail (solo half)"
+expected = "The plain mail is deleted; each time the command says which. (Solo: the COD and returned-mail halves need a second player.)"
+known_issues = ["Solo half only: COD return and the returned-mail quarantine need player B"]
+step = [
+  { chat = ".mail uatplain", label = "send" },
+  { capture = "chat", regex = 'Mail ([0-9]+) sent to', var = "mail_id" },
+  { chat = ".mailbox", label = "mailbox" },
+  { chat = ".mail_expire ${mail_id}", label = "expire" },
+]
+
+[[row.expect]]
+id = "sent"
+text = ".mail sends a test mail to yourself and names its id"
+source = "chat"
+since = "send"
+matches = 'Mail [0-9]+ sent to'
+
+[[row.expect]]
+id = "mailbox"
+text = ".mailbox reads the counts"
+source = "chat"
+since = "mailbox"
+matches = 'Mailbox of .*: [0-9]+ open of [0-9]+'
+
+[[row.expect]]
+id = "deleted"
+text = "the plain mail expires and is deleted, and the reply says so"
+source = "chat"
+since = "expire"
+matches = 'Mail [0-9]+ expired and was deleted'
+
+[[row.expect]]
+id = "mail-logged"
+text = "SigNoz records the GM expiry"
+source = "signoz"
+filter = "scope_name = 'mail' AND event = 'mail.gm_action' AND action = 'mail_expire'"
+min_rows = 1
+
+[[row]]
+id = "9a"
+title = "Say, emote and yell each show exactly once"
+expected = "Each line shows exactly once in A's own Info tab."
+known_issues = ["Regression guard for the speaker double-echo bug"]
+notes = "Uses distinctive words instead of the guide's hi/waves/hey so a count cannot pick up an unrelated line."
+step = [
+  { chat = "/say uatsayword", label = "say" },
+  { wait_ms = 1500 },
+  { chat = "/emote uatemoteword", label = "emote" },
+  { wait_ms = 1500 },
+  { chat = "/yell uatyellword", label = "yell" },
+  { wait_ms = 1500 },
+]
+
+[[row.expect]]
+id = "say-once"
+text = "/say shows once"
+source = "chat"
+since = "say"
+contains = "uatsayword"
+count = 1
+
+[[row.expect]]
+id = "emote-once"
+text = "/emote shows once"
+source = "chat"
+since = "emote"
+contains = "uatemoteword"
+count = 1
+
+[[row.expect]]
+id = "yell-once"
+text = "/yell shows once"
+source = "chat"
+since = "yell"
+contains = "uatyellword"
+count = 1
+
+[[row.expect]]
+id = "tab"
+text = "each lands in the Info tab with the right colour"
+source = "human"
+question = "In final.png, do the three lines sit in the Info tab, each in its channel's colour?"
+required = false
+
+[[row]]
+id = "9c"
+title = "Channel join and leave refusals"
+expected = "The repeat join is refused ('You are already in channel...'); the bad leave is refused ('You are not in that chat channel.'); the 11th join is refused (the per-player channel cap)."
+known_issues = ["Project-policy caps, not recovered numbers"]
+step = [
+  { chat = "/chatjoin uatroom", label = "join" },
+  { wait_ms = 1000 },
+  { chat = "/chatjoin uatroom", label = "rejoin" },
+  { wait_ms = 1000 },
+  { chat = "/chatleave uatnever", label = "badleave" },
+  { wait_ms = 1000 },
+  { chat = "/chatjoin uatroomb", label = "caps" },
+  { chat = "/chatjoin uatroomc" },
+  { chat = "/chatjoin uatroomd" },
+  { chat = "/chatjoin uatroome" },
+  { chat = "/chatjoin uatroomf" },
+  { chat = "/chatjoin uatroomg" },
+  { chat = "/chatjoin uatroomh" },
+  { chat = "/chatjoin uatroomi" },
+  { chat = "/chatjoin uatroomj" },
+  { chat = "/chatjoin uatroomk" },
+  { wait_ms = 1500 },
+]
+teardown = [
+  { chat = "/chatleave uatroom", optional = true },
+  { chat = "/chatleave uatroomb", optional = true },
+  { chat = "/chatleave uatroomc", optional = true },
+  { chat = "/chatleave uatroomd", optional = true },
+  { chat = "/chatleave uatroome", optional = true },
+  { chat = "/chatleave uatroomf", optional = true },
+  { chat = "/chatleave uatroomg", optional = true },
+  { chat = "/chatleave uatroomh", optional = true },
+  { chat = "/chatleave uatroomi", optional = true },
+  { chat = "/chatleave uatroomj", optional = true },
+  { chat = "/chatleave uatroomk", optional = true },
+]
+
+[[row.expect]]
+id = "rejoin-refused"
+text = "the repeat join is refused"
+source = "chat"
+since = "rejoin"
+contains = "You are already in channel"
+
+[[row.expect]]
+id = "badleave-refused"
+text = "the bad leave is refused"
+source = "chat"
+since = "badleave"
+contains = "You are not in that chat channel."
+
+[[row.expect]]
+id = "cap-refused"
+text = "a join past the per-player cap is refused"
+source = "chat"
+since = "caps"
+contains = "You are in too many chat channels already."
+
+[[row.expect]]
+id = "rejections-logged"
+text = "SigNoz records the three refusal reasons"
+source = "signoz"
+filter = "scope_name = 'chat' AND event IN ('chat.channel_join_rejected','chat.channel_leave_rejected')"
+min_rows = 3
+
+[[row]]
+id = "7-solo"
+title = "Tell yourself and an offline name (solo fallback)"
+expected = "Solo: \"You cannot send a tell to yourself.\"; offline: A is told."
+known_issues = ["Solo fallback of step 7"]
+blocked = "needs typing a tell to a name with the chat box's tell syntax; not mapped yet (matrix L11)"

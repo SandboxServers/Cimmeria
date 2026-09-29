@@ -1,0 +1,78 @@
+# Unified UAT, section "Consumables" (I1; the use rows wait on item actions).
+# Guide: docs/guides/unified-uat.md#consumables
+
+schema = 1
+
+[section]
+id = "consumables"
+system = "Consumables"
+guide = "docs/guides/unified-uat.md#consumables"
+ledger = "docs/guides/unified-uat.md#consumables"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "I1"
+title = "Grant three slappacks and drop health to 100"
+expected = "Three Health Slappacks in your bag; your health bar drops to 100."
+step = [
+  { chat = "/gmgiveitem 2893 3", label = "give" },
+  { wait_ms = 2000 },
+  { chat = "/gmsethealth 100 0", label = "health" },
+  { wait_ms = 2000 },
+]
+
+[[row.expect]]
+id = "slappacks"
+text = "the bags hold at least three Health Slappacks"
+source = "lua"
+chunk = """
+local n = 0
+for s = 0, getContainerSize(Container.Main) - 1 do
+  local name = getNameForSlot(Container.Main, s)
+  if name ~= nil and string.find(name, "Slappack") then n = n + getQuantityForSlot(Container.Main, s) end
+end
+return n"""
+op = "gte"
+value = 3
+
+[[row.expect]]
+id = "health-100"
+text = "the health bar reads 100"
+source = "human"
+question = "In final.png, does the player's health bar read 100?"
+
+[[row.expect]]
+id = "grant-logged"
+text = "SigNoz records the GM item grant"
+source = "signoz"
+filter = "body CONTAINS '2893'"
+min_rows = 1
+required = false
+
+[[row]]
+id = "I2"
+title = "Double-click a slappack"
+expected = "Health rises by 500 (or to full), and the stack shows 2."
+notes = "Waits on @item_action (matrix L9): BLOCKED, naming the tool, until it is routed. Run after I1."
+step = [
+  { tool = "@item_action", args = { type_id = 2893, action = "doubleclick" }, label = "use" },
+  { wait_ms = 2000 },
+]
+
+[[row.expect]]
+id = "stack-two"
+text = "the stack shows 2"
+source = "tool"
+tool = "@inventory"
+args = { type_id = 2893 }
+pointer = "/total"
+op = "eq"
+value = 2
+
+[[row.expect]]
+id = "healed"
+text = "SigNoz: the slappack healed"
+source = "signoz"
+filter = "event = 'consumable_used'"
+min_rows = 1

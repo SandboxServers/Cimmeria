@@ -1,0 +1,68 @@
+# Unified UAT, section "Castle Cellblock tutorial" (the arrival row).
+# Guide: docs/guides/unified-uat.md#castle-cellblock-tutorial
+# The row makes and deletes its own character, so it starts at character
+# select rather than using the section's character.
+
+schema = 1
+
+[section]
+id = "castle-cellblock"
+system = "Castle Cellblock tutorial"
+guide = "docs/guides/unified-uat.md#castle-cellblock-tutorial"
+ledger = "docs/analysis/castle-cellblock-rebuild/uat-guide.md"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "T01/T02"
+title = "A new character wakes to dialog 2982"
+expected = "Dialog 2982 (\"The last thing you remember...\"); mission 622 on step 2113; Frost's body searchable, the Guard's not yet."
+state = "char_select"
+anchor = false
+known_issues = ["K6", "K7"]
+setup = [
+  { tool = "lab_ensure_character_slot", args = { free_slots = 1, protect = ["${character}"] } },
+  { tool = "lab_create_character", args = { first = "Uat", last = "T${run_id}", alignment = "sgu", archetype = "Commando", gender = "male" } },
+]
+step = [
+  { tool = "lab_play_character", args = { name = "T${run_id}" }, label = "play" },
+  { wait_ms = 2000 },
+]
+teardown = [
+  { tool = "lab_finish_dialog", optional = true },
+  { tool = "lab_logout", optional = true },
+  { tool = "lab_delete_character", args = { name = "T${run_id}" }, optional = true },
+]
+
+[[row.expect]]
+id = "dialog-2982"
+text = "the arrival dialog is 2982"
+source = "tool"
+tool = "client_ui_state"
+pointer = "/dialog/text"
+op = "contains"
+value = "The last thing you remember"
+
+[[row.expect]]
+id = "mission-622"
+text = "the tracker shows the first mission"
+source = "tool"
+tool = "client_ui_state"
+pointer = "/mission_tracker"
+op = "len_gte"
+value = 1
+required = false
+
+[[row.expect]]
+id = "stasis-icon"
+text = "whether a Stasis Sickness icon appears (K7: none expected)"
+source = "human"
+question = "In final.png, is there a Stasis Sickness icon on the buff bar? (K7 says none is expected; record what you see.)"
+required = false
+
+[[row.expect]]
+id = "mission-logged"
+text = "SigNoz: mission 622 accepted on step 2113"
+source = "signoz"
+filter = "body CONTAINS '622' AND body CONTAINS '2113'"
+min_rows = 1

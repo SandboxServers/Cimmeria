@@ -1,0 +1,181 @@
+# Unified UAT, section "GM console command parity".
+# Guide: docs/guides/unified-uat.md#gm-console-command-parity
+# Format: docs/guides/automated-uat.md. Replies quoted below are the
+# server's own strings (crates/cell-console, crates/base-session).
+
+schema = 1
+
+[section]
+id = "gm-parity"
+system = "GM console command parity"
+guide = "docs/guides/unified-uat.md#gm-console-command-parity"
+ledger = "docs/analysis/legacy-command-parity/README.md#validation-and-uat-gates"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "M1-1"
+title = "Search and readout commands answer in chat"
+expected = "Each answers in chat; the search results name real items, missions and templates."
+required_native = "N1"
+known_issues = ["Derived"]
+step = [
+  { chat = ".help", label = "help" },
+  { chat = ".help searchitem", label = "help-searchitem" },
+  { chat = ".searchitem pistol", label = "searchitem" },
+  { chat = ".searchmission castle", label = "searchmission" },
+  { chat = ".searchtemplate guard", label = "searchtemplate" },
+  { chat = ".players", label = "players" },
+]
+
+[[row.expect]]
+id = "help-lists"
+text = ".help lists the console commands"
+source = "chat"
+since = "help"
+contains = ".gotolocation: "
+
+[[row.expect]]
+id = "help-detail"
+text = ".help searchitem prints its usage and arguments"
+source = "chat"
+since = "help-searchitem"
+matches = '^\s*\.searchitem: '
+
+[[row.expect]]
+id = "searchitem"
+text = ".searchitem names real items"
+source = "chat"
+since = "searchitem"
+matches = "searchitem 'pistol': [0-9]+ match"
+
+[[row.expect]]
+id = "searchitem-rows"
+text = "each item hit is `id: name`"
+source = "chat"
+since = "searchitem"
+matches = '^\s+[0-9]+: .*[Pp]istol'
+
+[[row.expect]]
+id = "searchmission"
+text = ".searchmission names real missions"
+source = "chat"
+since = "searchmission"
+matches = "searchmission 'castle': [0-9]+ match"
+
+[[row.expect]]
+id = "searchtemplate"
+text = ".searchtemplate names real templates"
+source = "chat"
+since = "searchtemplate"
+matches = "searchtemplate 'guard': [0-9]+ match"
+
+[[row.expect]]
+id = "players"
+text = ".players lists who is online, with their world"
+source = "chat"
+since = "players"
+contains = "Players online on this CellApp:"
+
+[[row.expect]]
+id = "players-self"
+text = "the list includes this character"
+source = "chat"
+since = "players"
+matches = ' - ${character} \('
+
+[[row.expect]]
+id = "feedback-logged"
+text = "every reply is logged as console.feedback"
+source = "signoz"
+filter = "scope_name = 'console.feedback'"
+min_rows = 6
+required = false
+
+[[row]]
+id = "M4-1b"
+title = ".gotolocation lands on each world's entry point"
+expected = "Each lands you where a player first arrives; the chat line ends in [stargate arrival], [story ring pad], [new-character start] or [respawner]. A world with no entry point replies 'has no known entry point -- give coordinates' and you stay put."
+required_native = "N1"
+known_issues = ["Derived (owner request 2026-09-27)"]
+notes = "Travels Harset, Castle, SGC_W1 and back to Castle_CellBlock last, so the lab character ends where it started."
+step = [
+  { chat = ".gotolocation Harset", label = "harset" },
+  { wait_ms = 20000 },
+  { chat = ".gotolocation Castle", label = "castle" },
+  { wait_ms = 20000 },
+  { chat = ".gotolocation sgc_w1", label = "sgc" },
+  { wait_ms = 20000 },
+  { chat = "/gmgotolocation Harset 0 0 0", label = "gm-harset" },
+  { wait_ms = 20000 },
+  { chat = ".gotolocation Castle_CellBlock", label = "cellblock" },
+  { wait_ms = 20000 },
+]
+
+[[row.expect]]
+id = "harset-suffix"
+text = "Harset: the reply names the arrival rule"
+source = "chat"
+since = "harset"
+matches = 'Moving entity .* to Harset \(.*\) \[(stargate arrival|story ring pad|new-character start|respawner)\]|Harset has no known entry point'
+
+[[row.expect]]
+id = "castle-ring-pad"
+text = "Castle lands on the Armory ring drop zone"
+source = "chat"
+since = "castle"
+matches = 'Moving entity .* to Castle \(.*\) \[story ring pad\]'
+
+[[row.expect]]
+id = "sgc-suffix"
+text = "SGC_W1: the reply names the arrival rule"
+source = "chat"
+since = "sgc"
+matches = 'Moving entity .* to (SGC_W1|sgc_w1) \(.*\) \[(stargate arrival|story ring pad|new-character start|respawner)\]|has no known entry point'
+
+[[row.expect]]
+id = "cellblock-start"
+text = "Castle_CellBlock lands on the new-character start"
+source = "chat"
+since = "cellblock"
+matches = 'Moving entity .* to Castle_CellBlock \(.*\) \[new-character start\]'
+
+[[row.expect]]
+id = "world-after"
+text = "the client ends in Castle_CellBlock (world 12)"
+source = "lua"
+chunk = "return getCurrentWorldID()"
+op = "eq"
+value = 12
+required = false
+
+[[row.expect]]
+id = "travel-logged"
+text = "the server logged each move"
+source = "signoz"
+filter = "scope_name = 'console.feedback' AND body CONTAINS 'Moving entity'"
+min_rows = 4
+
+[[row.evidence]]
+name = "after-castle"
+tool = "lab_screenshot"
+at = "castle"
+
+[[row]]
+id = "M1-2"
+title = "Readouts describe the selected player"
+expected = "Readouts describe the selected player, not you."
+players = 2
+known_issues = ["Derived"]
+step = [{ chat = ".info" }]
+[[row.expect]]
+id = "readout"
+text = "the readout names the selected player"
+source = "chat"
+contains = "Name ID"
+
+[[row]]
+id = "M1-4"
+title = "A non-GM is refused"
+expected = "\"is a GM command\"; nobody sees the text."
+blocked = "needs a non-GM lab account (matrix X2)"

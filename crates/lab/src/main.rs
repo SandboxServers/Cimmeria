@@ -37,6 +37,7 @@ mod client;
 mod server;
 mod supervisor;
 mod timeline;
+mod uat;
 
 use client::BridgeClient;
 use server::LabServer;

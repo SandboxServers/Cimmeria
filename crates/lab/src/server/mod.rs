@@ -30,6 +30,7 @@ use crate::timeline::{Timeline, TimelineArgs};
 mod client_state;
 mod combat;
 mod flows;
+mod uat;
 mod world;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -252,7 +253,8 @@ impl LabServer {
                 + Self::flows_router()
                 + Self::client_state_router()
                 + Self::world_router()
-                + Self::combat_router(),
+                + Self::combat_router()
+                + Self::uat_router(),
         }
     }
 
