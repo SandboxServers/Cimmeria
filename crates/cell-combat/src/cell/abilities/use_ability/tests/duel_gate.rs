@@ -17,6 +17,7 @@
 //! Player 1 (A) and player 2 (B) are the engaged pair, player 3 (C) is a
 //! bystander, NPC 4 is a hostile mob used as the AoE and cone primary.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use std::time::Instant;
 
 use cimmeria_common::Vector3;
@@ -68,14 +69,28 @@ pub(super) fn duel_mgr() -> SpaceManager {
 /// Put A and B in an engaged duel, straight through the registry.
 pub(super) fn engage(mgr: &mut SpaceManager) {
     let now = Instant::now();
-    mgr.duels.open_challenge(A_PID, B_PID, now).unwrap();
+    mgr.resources
+        .duels_mut()
+        .open_challenge(A_PID, B_PID, now)
+        .unwrap();
     let space = mgr.get_entity_space_id(A).expect("A has a space");
-    let p = mgr.duels.take_pending_for(B_PID, now).unwrap();
+    let p = mgr
+        .resources
+        .duels_mut()
+        .take_pending_for(B_PID, now)
+        .unwrap();
     let duel = mgr
-        .duels
+        .resources
+        .duels_mut()
         .start_duel(&p, space, Vector3::new(1.5, 0.0, 0.0), now);
-    mgr.duels.engage(duel.duel_id, [A, B], now).unwrap();
-    assert!(mgr.duels.can_harm(A_PID, B_PID) && mgr.duels.can_harm(B_PID, A_PID));
+    mgr.resources
+        .duels_mut()
+        .engage(duel.duel_id, [A, B], now)
+        .unwrap();
+    assert!(
+        mgr.resources.duels().can_harm(A_PID, B_PID)
+            && mgr.resources.duels().can_harm(B_PID, A_PID)
+    );
 }
 
 pub(super) fn health(mgr: &SpaceManager, eid: u32) -> i32 {
@@ -185,8 +200,8 @@ async fn bystander_untouchable_during_duel() {
     // has ended; the partner is a bystander again.
     mgr.get_entity_mut(B).unwrap().position = Vector3::new(3.0, 0.0, 0.0);
     assert!(handle_use_ability(A, WARMUP_ABILITY, B as i32, &tx, &mut mgr).await);
-    let duel_id = mgr.duels.duel_of(A_PID).unwrap().duel_id;
-    mgr.duels.end_duel(duel_id);
+    let duel_id = mgr.resources.duels().duel_of(A_PID).unwrap().duel_id;
+    mgr.resources.duels_mut().end_duel(duel_id);
     resolve_warmups(after_warmup(), &tx, &mut mgr, &NoContentEvents).await;
     assert_eq!(
         health(&mgr, B),
@@ -253,17 +268,31 @@ async fn duel_opponent_cannot_harm_partner_pet() {
 
     // A and B duel.
     let now = Instant::now();
-    mgr.duels.open_challenge(a_pid, b_pid, now).unwrap();
+    mgr.resources
+        .duels_mut()
+        .open_challenge(a_pid, b_pid, now)
+        .unwrap();
     let space = mgr.get_entity_space_id(A).expect("A has a space");
-    let p = mgr.duels.take_pending_for(b_pid, now).unwrap();
+    let p = mgr
+        .resources
+        .duels_mut()
+        .take_pending_for(b_pid, now)
+        .unwrap();
     let duel = mgr
-        .duels
+        .resources
+        .duels_mut()
         .start_duel(&p, space, Vector3::new(15.0, 0.0, 0.0), now);
-    mgr.duels.engage(duel.duel_id, [A, B], now).unwrap();
+    mgr.resources
+        .duels_mut()
+        .engage(duel.duel_id, [A, B], now)
+        .unwrap();
     let (attacker, pet_e) = (mgr.get_entity(A).unwrap(), mgr.get_entity(pet).unwrap());
-    assert!(!player_may_attack(attacker, pet_e, &mgr.duels), "the rule");
     assert!(
-        !may_hit_in_area(attacker, pet_e, &mgr.duels),
+        !player_may_attack(attacker, pet_e, mgr.resources.duels()),
+        "the rule"
+    );
+    assert!(
+        !may_hit_in_area(attacker, pet_e, mgr.resources.duels()),
         "the area rule"
     );
     assert!(!player_may_attack_pve(attacker, pet_e), "the no-duel rule");

@@ -8,6 +8,7 @@
 //!   tick does not fire once the first has ended the duel.
 //! - A third party's kill is a normal death and loses the duel.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use std::time::Instant;
 
 use cimmeria_entity::abilities::EffectDef;
@@ -132,7 +133,7 @@ async fn lethal_partner_hit_clamps_to_one_hp() {
         !sent.is_empty() && sent.iter().all(|&h| h == 1),
         "HEALTH sent: {sent:?}"
     );
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
     assert!(
         mgr.get_entity(B).unwrap().active_effects.is_empty(),
         "the DoT this hit registered is stripped by the end"
@@ -179,7 +180,7 @@ async fn no_loot_xp_or_corpse_after_a_clamped_end() {
     assert_no_death(&mgr, &msgs, &logs, B);
     assert_eq!(health(&mgr, B), 1);
     assert!(
-        !mgr.duels.can_harm(A_PID, B_PID),
+        !mgr.resources.duels().can_harm(A_PID, B_PID),
         "the ended duel no longer lets A hit B"
     );
     let b = mgr.get_entity(B).unwrap();
@@ -296,6 +297,11 @@ async fn second_cone_after_a_clamped_end_does_not_kill() {
 async fn third_party_kill_is_normal_death() {
     let logs = LogCapture::install();
     let mut mgr = duel_mgr();
+    // The death end is the duel plugin's death hook (#962).
+    mgr.install_plugins(
+        cimmeria_cell_world::cell::plugin::CellPlugins::build(&[&cimmeria_cell_duel::DuelPlugin])
+            .unwrap(),
+    );
     engage(&mut mgr);
     set_health(&mut mgr, B, 0);
     let (tx, mut rx) = mpsc::channel(1024);
@@ -306,7 +312,7 @@ async fn third_party_kill_is_normal_death() {
     assert!(msgs
         .iter()
         .any(|m| matches!(m, CellToBaseMsg::ContactListPresenceEvent { .. })));
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
     assert_health_end(&logs, B_PID);
     assert_eq!(health(&mgr, B), 0, "not clamped");
 }

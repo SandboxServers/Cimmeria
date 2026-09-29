@@ -55,7 +55,9 @@ pub async fn dispatch(
             //   - crafting:    SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING (95..=100)
             //   - trade:       TRADE_REQUEST..=TRADE_LOCK_STATE              (104..=107)
             //
-            // Everything else in the outer range routes to social.
+            // Everything else in the outer range routes to social, except
+            // the duel methods (102..=103), which the duel plugin owns
+            // (`cimmeria-cell-duel`, #962): social returns `false` for them.
             // Ordering invariants are pinned by the static assert above —
             // a renumber that violates them fails the build.
             if (SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING).contains(&method_index) {
@@ -123,10 +125,18 @@ mod tests {
         // Every plugin-owned index, not only the pet ones, so the next
         // feature to migrate is covered the day it joins the list.
         let owned = cimmeria_cell_world::cell::plugin::PLUGIN_OWNED_CELL_METHODS;
-        for &pet_method in [PET_INVOKE_ABILITY, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE].iter() {
+        for &plugin_method in [
+            PET_INVOKE_ABILITY,
+            PET_ABILITY_TOGGLE,
+            PET_CHANGE_STANCE,
+            SEND_DUEL_RESPONSE,
+            DUEL_FORFEIT,
+        ]
+        .iter()
+        {
             assert!(
-                owned.contains(&pet_method),
-                "{pet_method} must be plugin-owned"
+                owned.contains(&plugin_method),
+                "{plugin_method} must be plugin-owned"
             );
         }
         for &index in owned {

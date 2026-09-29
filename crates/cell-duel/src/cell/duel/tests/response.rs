@@ -1,5 +1,6 @@
 //! `sendDuelResponse` (CM 102, audit CAT-M-13) and the accept.
 
+use crate::cell::duel::DuelResources;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
@@ -37,7 +38,7 @@ async fn pending_a_to_b(
 ) {
     challenge(mgr, tx, A, B, t0).await;
     drain(rx);
-    assert!(mgr.duels.pending_for(B_PID).is_some());
+    assert!(mgr.resources.duels().pending_for(B_PID).is_some());
 }
 
 /// No challenge addressed to the caller: refused with a line, nothing
@@ -77,10 +78,10 @@ async fn response_without_challenge_rejected() {
         vec![TEXT_NO_PENDING_CHALLENGE.to_string()]
     );
     assert!(
-        mgr.duels.pending_for(B_PID).is_some(),
+        mgr.resources.duels().pending_for(B_PID).is_some(),
         "someone else's answer must not consume B's challenge"
     );
-    assert!(mgr.duels.duel_of(A_PID).is_none());
+    assert!(mgr.resources.duels().duel_of(A_PID).is_none());
 }
 
 /// The first answer consumes the challenge; a replayed accept finds
@@ -103,7 +104,7 @@ async fn response_replay_rejected() {
     );
     assert!(sent.iter().all(|s| s.entity_id == B_EID));
     assert!(
-        mgr.duels.duel_of(B_PID).is_none(),
+        mgr.resources.duels().duel_of(B_PID).is_none(),
         "a replayed accept must not start a duel"
     );
     assert!(response_refused(
@@ -132,7 +133,7 @@ async fn response_after_expiry_rejected() {
     )
     .await;
     assert!(
-        mgr.duels.duel_of(B_PID).is_some(),
+        mgr.resources.duels().duel_of(B_PID).is_some(),
         "just inside the window is accepted"
     );
 
@@ -142,8 +143,8 @@ async fn response_after_expiry_rejected() {
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
-    assert!(mgr.duels.duel_of(B_PID).is_none());
-    assert!(!mgr.duels.is_busy(B_PID));
+    assert!(mgr.resources.duels().duel_of(B_PID).is_none());
+    assert!(!mgr.resources.duels().is_busy(B_PID));
     assert!(response_refused(&capture, Level::DEBUG, "expired"));
 }
 
@@ -160,7 +161,7 @@ async fn decline_tells_both_sides() {
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(sent.len(), 2);
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
     assert!(capture
         .all()
         .iter()
@@ -205,9 +206,9 @@ async fn accept_starts_the_countdown_for_both() {
         );
     }
     assert_eq!(sent.len(), 4, "two lines and two countdowns: {sent:?}");
-    let duel = *mgr.duels.duel_of(A_PID).expect("A in the duel");
+    let duel = *mgr.resources.duels().duel_of(A_PID).expect("A in the duel");
     assert_eq!(
-        mgr.duels.duel_of(B_PID).map(|d| d.duel_id),
+        mgr.resources.duels().duel_of(B_PID).map(|d| d.duel_id),
         Some(duel.duel_id)
     );
     assert_eq!(
@@ -217,7 +218,7 @@ async fn accept_starts_the_countdown_for_both() {
         }
     );
     assert_eq!(duel.centre, Vector3::new(2.5, 0.0, 0.0));
-    assert!(!mgr.duels.can_harm(A_PID, B_PID));
+    assert!(!mgr.resources.duels().can_harm(A_PID, B_PID));
 }
 
 /// A malformed answer (not 0 or 1) is logged at WARN, not answered, and
@@ -232,7 +233,7 @@ async fn malformed_response_does_not_consume_the_challenge() {
     respond(B_EID, &[2], &tx, &mut mgr, t0).await;
     respond(B_EID, &[], &tx, &mut mgr, t0).await;
     assert!(drain(&mut rx).is_empty());
-    assert!(mgr.duels.pending_for(B_PID).is_some());
+    assert!(mgr.resources.duels().pending_for(B_PID).is_some());
     let ev = capture
         .find_event(Level::WARN, "did not decode", "unknown_response")
         .expect("malformed row");
@@ -259,7 +260,7 @@ async fn accept_after_the_challenger_left_aborts() {
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(sent.len(), 1);
-    assert!(mgr.duels.duel_of(B_PID).is_none());
+    assert!(mgr.resources.duels().duel_of(B_PID).is_none());
     assert!(capture
         .all()
         .iter()

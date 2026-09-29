@@ -3,6 +3,7 @@
 //! stored, and the `duel.challenge_refused` event with its `reason`
 //! (TESTING.md type 12).
 
+use crate::cell::duel::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -35,7 +36,7 @@ fn assert_refused(sent: &[Sent], mgr: &SpaceManager, text: &str) {
     assert_eq!(sent.len(), 1, "one line and nothing else: {sent:?}");
     assert_eq!(lines_to(sent, A_EID), vec![text.to_string()]);
     assert!(
-        mgr.duels.pending_for(B_PID).is_none(),
+        mgr.resources.duels().pending_for(B_PID).is_none(),
         "a refused challenge must not be stored"
     );
 }
@@ -65,7 +66,7 @@ async fn challenge_prompts_the_target_byte_exact() {
         vec![TEXT_CHALLENGE_SENT.to_string()]
     );
     assert_eq!(sent.len(), 2);
-    let p = mgr.duels.pending_for(B_PID).expect("stored");
+    let p = mgr.resources.duels().pending_for(B_PID).expect("stored");
     assert_eq!(p.challenger, A_PID);
     let ev = capture
         .all()
@@ -89,7 +90,7 @@ async fn challenge_rejects_self() {
         lines_to(&sent, A_EID),
         vec![TEXT_CHALLENGE_SELF.to_string()]
     );
-    assert!(!mgr.duels.is_busy(A_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID));
     assert!(refused(&capture, "self_challenge"));
 }
 
@@ -126,7 +127,7 @@ async fn challenge_rejects_out_of_range() {
     mgr.get_entity_mut(B_EID).unwrap().position.x = 20.0;
     challenge(&mut mgr, &tx, A, B, Instant::now()).await;
     assert!(
-        mgr.duels.pending_for(B_PID).is_some(),
+        mgr.resources.duels().pending_for(B_PID).is_some(),
         "exactly at range is allowed"
     );
 }
@@ -140,14 +141,14 @@ async fn challenge_rejects_when_target_busy() {
     let (tx, mut rx) = mpsc::channel(16);
     let t0 = Instant::now();
     challenge(&mut mgr, &tx, C, B, t0).await;
-    let c_challenge = *mgr.duels.pending_for(B_PID).unwrap();
+    let c_challenge = *mgr.resources.duels().pending_for(B_PID).unwrap();
     drain(&mut rx);
 
     challenge(&mut mgr, &tx, A, B, t0).await;
     let sent = drain(&mut rx);
     assert_eq!(sent.len(), 1);
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_TARGET_BUSY.to_string()]);
-    assert_eq!(mgr.duels.pending_for(B_PID), Some(&c_challenge));
+    assert_eq!(mgr.resources.duels().pending_for(B_PID), Some(&c_challenge));
     assert!(refused(&capture, "target_busy"));
 }
 
@@ -181,7 +182,7 @@ async fn challenge_rejects_during_pair_cooldown() {
     assert!(refused(&capture, "pair_cooldown"));
 
     challenge(&mut mgr, &tx, A, B, t0 + PAIR_COOLDOWN).await;
-    assert!(mgr.duels.pending_for(B_PID).is_some());
+    assert!(mgr.resources.duels().pending_for(B_PID).is_some());
 }
 
 /// The base resolved B, but B's entity is gone (or recycled to another

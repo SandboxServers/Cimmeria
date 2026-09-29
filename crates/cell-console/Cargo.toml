@@ -66,3 +66,7 @@ cimmeria-cell-catalog = { workspace = true }
 # The pet world fixtures (`watched_pet_world`, `assert_pet_fully_gone`) the
 # pets PT-02 travel call-site tests start from.
 cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# The duel tick (`cell::duel::tick::run_at`) the SS-U2 GM tests engage a duel
+# with. It moved to the duel plugin (#962); a dev-dependency only, since the
+# console never names a feature plugin.
+cimmeria-cell-duel = { workspace = true }

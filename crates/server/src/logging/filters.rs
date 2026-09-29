@@ -137,6 +137,12 @@ use crate::otel;
 /// is a prefix of none. `cell.plugin=info` exports the plugin table's
 /// startup rows (installed, incomplete, invalid).
 ///
+/// `cimmeria_cell_duel=debug` (#962 step 2) does the same for the duel plugin
+/// crate: the duel answer and forfeit (cell methods 102-103), the duel tick
+/// and engage, and `DuelPlugin`. Their rows name the `duel` target, which the
+/// `duel=debug` row exports; this row covers any untargeted row. No other
+/// crate's row is a prefix of it, and it is a prefix of none.
+///
 /// `cimmeria_cell::cell=debug` (wave C6) does the same for the cell service:
 /// `CellService`, the cell loop, the base-message handlers, the ticks and the
 /// cell-method router. Like `cimmeria_base::base` it names the crate's one
@@ -255,6 +261,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_interactions=debug,\
                 cimmeria_cell_methods=debug,\
                 cimmeria_cell_pets=debug,\
+                cimmeria_cell_duel=debug,\
                 cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\

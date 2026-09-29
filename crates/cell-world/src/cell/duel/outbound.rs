@@ -31,7 +31,7 @@ use super::PlayerAt;
 /// (instrumentation discipline rule 5): the recipient's entity, account and
 /// player, and the other duelist, if there is one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Recipient {
+pub struct Recipient {
     pub entity_id: u32,
     pub account_id: Option<u32>,
     pub player_id: i32,
@@ -41,7 +41,7 @@ pub(super) struct Recipient {
 
 impl Recipient {
     /// `player`, playing `player_id`, with `other` as the other duelist.
-    pub(super) fn at(player: &PlayerAt, player_id: i32, other: Option<i32>) -> Self {
+    pub fn at(player: &PlayerAt, player_id: i32, other: Option<i32>) -> Self {
         Recipient {
             entity_id: player.entity_id,
             account_id: player.account_id,
@@ -54,7 +54,7 @@ impl Recipient {
 /// Queue one `onPlayerCommunication("SYSTEM", 0, CHAN_FEEDBACK, text)` to
 /// the recipient's own client. `false` when it could not be queued (already
 /// logged as `duel.send_failed`).
-pub(super) async fn send_line(
+pub async fn send_line(
     tx: &mpsc::Sender<CellToBaseMsg>,
     to: Recipient,
     text: &str,
@@ -87,7 +87,7 @@ pub async fn send_player_line(
 /// Queue `onDuelChallenge(challenger, [])` [143] to the target: the client's
 /// Yes/No prompt. The squad list is empty, squad duels being refused.
 /// `false` when it could not be queued (already logged).
-pub(super) async fn send_challenge_prompt(
+pub async fn send_challenge_prompt(
     tx: &mpsc::Sender<CellToBaseMsg>,
     to: Recipient,
     challenger_entity_id: u32,
@@ -101,7 +101,7 @@ pub(super) async fn send_challenge_prompt(
 /// type 14 on their own entity, `total` seconds from now in the client's
 /// game clock. The client counts it down as splash numbers
 /// (`Event_UI_DuelTimerStart`, `Duel.lua`).
-pub(super) async fn send_countdown(
+pub async fn send_countdown(
     tx: &mpsc::Sender<CellToBaseMsg>,
     to: Recipient,
     total: f32,
@@ -114,7 +114,7 @@ pub(super) async fn send_countdown(
 
 /// Queue `onDuelEntitiesSet([a, b])` [151]: the two duelists' entity ids,
 /// never anything else.
-pub(super) async fn send_duel_entities_set(
+pub async fn send_duel_entities_set(
     tx: &mpsc::Sender<CellToBaseMsg>,
     to: Recipient,
     duelists: [u32; 2],
@@ -125,7 +125,7 @@ pub(super) async fn send_duel_entities_set(
 }
 
 /// Queue `onDuelEntitiesClear()` [153]: no arguments.
-pub(super) async fn send_duel_entities_clear(
+pub async fn send_duel_entities_clear(
     tx: &mpsc::Sender<CellToBaseMsg>,
     to: Recipient,
     duel_id: DuelId,
@@ -139,7 +139,7 @@ pub(super) async fn send_duel_entities_clear(
 /// entity. Presentation only: the harm gate reads the registry
 /// (D-SS23). A witness that arrives later gets the current value from the
 /// AoI enter path (`space_manager::aoi`). Returns the witness count.
-pub(super) async fn send_pvp_flag(
+pub async fn send_pvp_flag(
     tx: &mpsc::Sender<CellToBaseMsg>,
     mgr: &SpaceManager,
     to: Recipient,
@@ -153,7 +153,7 @@ pub(super) async fn send_pvp_flag(
 /// Send the recipient's new `state_field` (a `BSF_InCombat` flip) to their
 /// own client and their witnesses, as the mob-combat path does
 /// (`damage_apply`'s `send_entity_method_to_self_and_witnesses`).
-pub(super) async fn send_state_field(
+pub async fn send_state_field(
     tx: &mpsc::Sender<CellToBaseMsg>,
     mgr: &SpaceManager,
     to: Recipient,

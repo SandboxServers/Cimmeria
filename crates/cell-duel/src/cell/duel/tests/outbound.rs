@@ -2,6 +2,7 @@
 //! was for (instrumentation discipline rule 5). Simulated by dropping the
 //! receiver, so every `tx.send` fails.
 
+use crate::cell::duel::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -27,10 +28,10 @@ async fn undelivered_prompt_withdraws_the_challenge() {
         Instant::now(),
     )
     .await;
-    assert!(mgr.duels.pending_for(B_PID).is_none());
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
-    assert_eq!(mgr.duels.cooldown_count(), 0);
-    assert!(mgr.duels.is_idle());
+    assert!(mgr.resources.duels().pending_for(B_PID).is_none());
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
+    assert_eq!(mgr.resources.duels().cooldown_count(), 0);
+    assert!(mgr.resources.duels().is_idle());
     let ev = capture
         .find_event(Level::WARN, "challenge withdrawn", "prompt_not_queued")
         .expect("duel.challenge_undelivered");

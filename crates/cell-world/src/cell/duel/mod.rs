@@ -1,6 +1,30 @@
 //! Duels: the challenge, the answer and the countdown (SS-D1); the engage,
 //! the PvP flag and the harm gate (SS-D2); the end paths (SS-D3).
 //!
+//! # What lives here and what lives in the duel plugin
+//!
+//! Duels are a cell plugin (#962, `docs/architecture/plugin-architecture.md`
+//! §3.8 step 2): `cimmeria-cell-duel`'s `DuelPlugin` owns the two duel cell
+//! methods, the duel tick and the lifecycle hooks. This module keeps what
+//! the lower cell crates still call directly, and the registry they read:
+//!
+//! - [`DuelRegistry`], a `SpaceManager` resource ([`DuelResources`]);
+//! - [`challenge`], the base's forward (`BaseToCellMsg::Duel`), which
+//!   `cimmeria-cell`'s base-message handler calls: the plugin model has no
+//!   base-message seam yet (ADR §3.4, the envelope);
+//! - the harm gate's inputs (`combat::player_may_attack` in this crate reads
+//!   [`DuelRegistry::can_harm`]), [`engaged_opponent_entity`] and
+//!   [`pvp_flag_on_enter`] (the AoI enter path);
+//! - [`paths`]: the non-lethal clamp the damage resolvers in
+//!   `cimmeria-cell-combat` call, and the leave paths the plugin's
+//!   disconnect, travel and death hooks call;
+//! - [`end`] (every end goes through [`end::end_engaged`]), [`gm`] (the GM
+//!   `.duel_status` / `.duel_end` console commands in `cimmeria-cell-console`)
+//!   and the shared pieces the plugin builds on ([`outbound`], [`combat`],
+//!   [`limits`], [`connected_player`], [`find_player`]).
+//!
+//! # The flow
+//!
 //! The base receives `sendDuelChallenge` (0xD9), runs the rate limit, the
 //! online lookup and the Ignore check, and forwards the challenge as
 //! `BaseToCellMsg::Duel(DuelBaseToCell::Challenge)`. From there the cell
@@ -10,13 +34,13 @@
 //!    range (877, D-SS19), whether either side is busy (873, D-SS21) and the
 //!    per-pair cooldown, stores the challenge and sends the target
 //!    `onDuelChallenge` [143].
-//! 2. [`response::handle_at`] runs `sendDuelResponse` (CM 102): only the
-//!    challenge addressed to the caller counts, it is consumed on first use
-//!    and it expires after 30 s (D-SS18). Decline or expiry tells both
-//!    sides "Duel aborted" (878); accept starts the 5 s countdown, shown
-//!    on both clients as splash numbers (`onTimerUpdate` type 14).
-//! 3. [`tick::run_at`] expires unanswered challenges, engages duels whose
-//!    countdown has run out ([`engage`]) and runs the safety ends
+//! 2. The plugin's `response::handle_at` runs `sendDuelResponse` (CM 102):
+//!    only the challenge addressed to the caller counts, it is consumed on
+//!    first use and it expires after 30 s (D-SS18). Decline or expiry tells
+//!    both sides "Duel aborted" (878); accept starts the 5 s countdown,
+//!    shown on both clients as splash numbers (`onTimerUpdate` type 14).
+//! 3. The plugin's `tick::run_at` expires unanswered challenges, engages
+//!    duels whose countdown has run out and runs the safety ends
 //!    ([`end::sweep`]).
 //!
 //! [`gm`] serves the GM `.duel_status` and `.duel_end` console commands
@@ -36,25 +60,22 @@
 //! Every end of an engaged duel goes through [`end::end_engaged`]: the
 //! clear (flags, 153, partner effects, the combat pair), then 879 to the
 //! winner and a line to the loser, or 878 to both for an abort. The paths:
-//! forfeit (CM 103, [`forfeit`]); the non-lethal clamp on partner damage and
-//! death from anyone else, disconnect, and every teleport or gate travel
-//! ([`paths`]); range, a dead or departed duelist and the safety limit on
-//! the tick ([`end::sweep`]); and the GM `.duel_end`. A challenge or a
-//! countdown is withdrawn on the same leave paths.
+//! forfeit (CM 103, the plugin's `forfeit`); the non-lethal clamp on partner
+//! damage and death from anyone else, disconnect, and every teleport or gate
+//! travel ([`paths`], the last three through the plugin's hooks); range, a
+//! dead or departed duelist and the safety limit on the tick
+//! ([`end::sweep`]); and the GM `.duel_end`. A challenge or a countdown is
+//! withdrawn on the same leave paths.
 
 pub mod challenge;
-mod combat;
+pub mod combat;
 mod effects;
 pub mod end;
-mod engage;
-pub mod forfeit;
 pub mod gm;
 pub mod limits;
-mod outbound;
+pub mod outbound;
 pub mod paths;
 pub mod registry;
-pub mod response;
-pub mod tick;
 
 #[cfg(test)]
 mod tests;
@@ -72,11 +93,39 @@ pub use registry::{
 
 use cimmeria_common::Vector3;
 
-use super::space_manager::SpaceManager;
+use super::space_manager::{SpaceManager, SpaceResources};
+
+/// The duel registry as a `SpaceManager` resource (#962,
+/// `docs/architecture/plugin-architecture.md` §3.5): it lives in
+/// `SpaceManager::resources`, keyed by its type, not in a field of its own.
+/// Call these on the `resources` field (`mgr.resources.duels()`), not on the
+/// manager, so the borrow stays on that one field.
+pub trait DuelResources {
+    /// The registry. Empty (and nothing stored) until the first challenge.
+    fn duels(&self) -> &DuelRegistry;
+    /// The registry, mutably; stored empty on first use.
+    fn duels_mut(&mut self) -> &mut DuelRegistry;
+}
+
+impl DuelResources for SpaceResources {
+    fn duels(&self) -> &DuelRegistry {
+        static EMPTY: std::sync::LazyLock<DuelRegistry> =
+            std::sync::LazyLock::new(DuelRegistry::default);
+        self.get::<DuelRegistry>().unwrap_or(&EMPTY)
+    }
+
+    fn duels_mut(&mut self) -> &mut DuelRegistry {
+        if !self.contains::<DuelRegistry>() {
+            self.insert(DuelRegistry::default());
+        }
+        self.get_mut::<DuelRegistry>()
+            .expect("the duel registry was stored above")
+    }
+}
 
 /// A player's entity as the duel checks need it.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct PlayerAt {
+pub struct PlayerAt {
     pub entity_id: u32,
     pub space_id: u32,
     pub position: Vector3,
@@ -88,7 +137,7 @@ pub(crate) struct PlayerAt {
 /// The ids come from the base's session map, but the entity id may have
 /// been recycled or the player may be mid-teardown by the time the message
 /// is handled, so both must still agree.
-pub(crate) fn connected_player(
+pub fn connected_player(
     space_mgr: &SpaceManager,
     entity_id: u32,
     player_id: i32,
@@ -117,8 +166,8 @@ pub(crate) fn connected_player(
 /// opponent's entity released, and something else was given, is never
 /// returned (entity ids are recycled; the sweep ends such a duel next tick).
 pub fn engaged_opponent_entity(space_mgr: &SpaceManager, player_id: i32) -> Option<u32> {
-    let opponent = space_mgr.duels.engaged_opponent(player_id)?;
-    let duel = space_mgr.duels.duel_of(player_id)?;
+    let opponent = space_mgr.resources.duels().engaged_opponent(player_id)?;
+    let duel = space_mgr.resources.duels().duel_of(player_id)?;
     let entities = duel.engaged_entities?;
     let eid = if opponent == duel.challenger {
         entities[0]
@@ -161,7 +210,7 @@ pub fn pvp_flag_on_enter(
 /// The connected player entity playing `player_id` right now, if any. A
 /// linear scan over connected players: called once per duel event. The
 /// safety sweep, which runs every tick, uses [`connected_player`] instead.
-pub(crate) fn find_player(space_mgr: &SpaceManager, player_id: i32) -> Option<PlayerAt> {
+pub fn find_player(space_mgr: &SpaceManager, player_id: i32) -> Option<PlayerAt> {
     space_mgr.spaces.values().find_map(|space| {
         space.players.iter().find_map(|&eid| {
             let e = space.entities.get(&eid)?;

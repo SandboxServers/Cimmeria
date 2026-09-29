@@ -2,6 +2,7 @@
 //! no longer holds them or whose last pulse ran, and fire every pulse that
 //! is due.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -99,7 +100,7 @@ pub(in crate::cell::abilities) fn pulse_targets(
             let e = space_mgr.get_entity(eid)?;
             if e.space_id != object.space_id
                 || combat::is_dead_state(e.state_field)
-                || !combat::may_hit_in_area(owner, e, &space_mgr.duels)
+                || !combat::may_hit_in_area(owner, e, space_mgr.resources.duels())
             {
                 return None;
             }

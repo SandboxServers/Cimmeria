@@ -5,6 +5,7 @@
 //! from the start; D arrives mid-duel. `archetype_id` is set so the players
 //! are introducible and the AoI tick builds real witness sets.
 
+use crate::cell::duel::DuelResources;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
@@ -114,8 +115,14 @@ async fn engage_fans_the_pvp_flag_to_both_duelists_and_a_witness() {
         own(&sent, C_EID, DUEL_SET).is_empty(),
         "the bystander gets no 151"
     );
-    assert!(mgr.duels.can_harm(A_PID, B_PID) && mgr.duels.can_harm(B_PID, A_PID));
-    assert!(!mgr.duels.can_harm(A_PID, C_PID) && !mgr.duels.can_harm(C_PID, A_PID));
+    assert!(
+        mgr.resources.duels().can_harm(A_PID, B_PID)
+            && mgr.resources.duels().can_harm(B_PID, A_PID)
+    );
+    assert!(
+        !mgr.resources.duels().can_harm(A_PID, C_PID)
+            && !mgr.resources.duels().can_harm(C_PID, A_PID)
+    );
     let ev = capture
         .all()
         .into_iter()
@@ -182,7 +189,7 @@ async fn engaged_limit_ends_the_duel_and_clears_both_flags() {
     let engaged_at = engage(&mut mgr, &tx, &mut rx).await;
     drain(&mut rx);
     assert!(matches!(
-        mgr.duels.duel_of(A_PID).unwrap().state,
+        mgr.resources.duels().duel_of(A_PID).unwrap().state,
         DuelState::Engaged { .. }
     ));
 
@@ -221,9 +228,9 @@ async fn engaged_limit_ends_the_duel_and_clears_both_flags() {
         assert!(mgr.get_entity(me).unwrap().threatened_mobs.is_empty());
         assert_eq!(lines_to(&sent, me), vec![TEXT_DUEL_ABORTED.to_string()]);
     }
-    assert!(!mgr.duels.can_harm(A_PID, B_PID));
-    assert!(mgr.duels.is_idle() || mgr.duels.duel_of(A_PID).is_none());
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().can_harm(A_PID, B_PID));
+    assert!(mgr.resources.duels().is_idle() || mgr.resources.duels().duel_of(A_PID).is_none());
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
     assert!(capture
         .all()
         .iter()
@@ -251,7 +258,7 @@ async fn duelist_leaving_the_world_ends_the_duel() {
     assert_eq!(own(&sent, A_EID, DUEL_CLEAR).len(), 1);
     assert!(mgr.get_entity(A_EID).unwrap().threatened_mobs.is_empty());
     assert_eq!(lines_to(&sent, A_EID), vec![TEXT_DUEL_WON.to_string()]);
-    assert!(!mgr.duels.is_busy(A_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID));
     let ev = capture
         .all()
         .into_iter()
@@ -283,7 +290,7 @@ async fn countdown_end_with_a_duelist_gone_is_refused() {
     let sent = drain(&mut rx);
     assert_eq!(lines_to(&sent, B_EID), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert!(own(&sent, B_EID, PVP_FLAG).is_empty() && own(&sent, B_EID, DUEL_SET).is_empty());
-    assert!(!mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(B_PID));
     let ev = capture
         .all()
         .into_iter()
@@ -311,7 +318,7 @@ async fn gm_end_of_an_engaged_duel_clears_through_end_engaged() {
     let (tx, mut rx) = mpsc::channel(256);
     engage(&mut mgr, &tx, &mut rx).await;
     drain(&mut rx);
-    let duel_id = mgr.duels.duel_of(A_PID).unwrap().duel_id;
+    let duel_id = mgr.resources.duels().duel_of(A_PID).unwrap().duel_id;
 
     let ended = end_engaged(&tx, &mut mgr, duel_id, EndReason::GmAborted).await;
     assert_eq!(ended.map(|d| d.duel_id), Some(duel_id));
@@ -321,7 +328,7 @@ async fn gm_end_of_an_engaged_duel_clears_through_end_engaged() {
         assert_eq!(own(&sent, me, DUEL_CLEAR).len(), 1);
         assert!(mgr.get_entity(me).unwrap().threatened_mobs.is_empty());
     }
-    assert!(!mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID));
+    assert!(!mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID));
     assert!(capture
         .all()
         .iter()
@@ -350,7 +357,7 @@ async fn recycled_partner_entity_is_not_offered_as_the_partner() {
     mgr.spawn_npc(B_EID, "Agnos", [5.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     assert!(
-        mgr.duels.duel_of(A_PID).is_some(),
+        mgr.resources.duels().duel_of(A_PID).is_some(),
         "the sweep has not run yet"
     );
     assert_eq!(

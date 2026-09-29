@@ -69,6 +69,7 @@
 //! wrote `target.rotation` and pushed nothing). The realistic use of
 //! `.rotation` is posing an NPC, which works fully.
 
+use cimmeria_cell_world::cell::plugin::EntityHookPoint;
 use cimmeria_common::Vector3;
 use tokio::sync::mpsc;
 
@@ -315,9 +316,11 @@ async fn location(
         settle_npc(caller_id, target, tx, space_mgr).await;
 
         if is_player {
-            // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
-            // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
-            cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, target).await;
+            // SS-D3, #962: the travel hook. The duel plugin ends the traveller's duel
+            // (`EDUEL_DEFEAT_Teleport`) here; `every_travel_site_fires_the_travel_hook`.
+            space_mgr
+                .fire_entity_hook(EntityHookPoint::BeforeTravelSend, target, tx)
+                .await;
             if let Err(err) = tx
                 .send(CellToBaseMsg::TeleportPlayer {
                     entity_id: target,

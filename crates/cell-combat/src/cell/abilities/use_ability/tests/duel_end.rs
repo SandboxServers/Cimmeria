@@ -8,6 +8,7 @@
 //!   own combat bookkeeping runs (`pet::defend::sync_owner_combat` must not
 //!   treat the opponent as a stale mob).
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -50,13 +51,17 @@ pub(super) fn dueling_world() -> SpaceManager {
     let _ = mgr.compute_aoi_changes();
     let (a, b) = (pid(&mgr, A), pid(&mgr, B));
     let now = Instant::now();
-    mgr.duels.open_challenge(a, b, now).unwrap();
+    mgr.resources.duels_mut().open_challenge(a, b, now).unwrap();
     let space = mgr.get_entity_space_id(A).expect("A has a space");
-    let p = mgr.duels.take_pending_for(b, now).unwrap();
+    let p = mgr.resources.duels_mut().take_pending_for(b, now).unwrap();
     let duel = mgr
-        .duels
+        .resources
+        .duels_mut()
         .start_duel(&p, space, Vector3::new(2.5, 0.0, 0.0), now);
-    mgr.duels.engage(duel.duel_id, [A, B], now).unwrap();
+    mgr.resources
+        .duels_mut()
+        .engage(duel.duel_id, [A, B], now)
+        .unwrap();
     mgr
 }
 
@@ -115,7 +120,7 @@ async fn partner_dot_stops_when_the_duel_ends() {
     drain(&mut rx);
 
     // The end strips the partner's DoT, with the zero timer for its icon.
-    let duel_id = mgr.duels.duel_of(pid(&mgr, A)).unwrap().duel_id;
+    let duel_id = mgr.resources.duels().duel_of(pid(&mgr, A)).unwrap().duel_id;
     end_engaged(&tx, &mut mgr, duel_id, EndReason::GmAborted).await;
     let msgs = drain(&mut rx);
     let invokers: Vec<u32> = mgr

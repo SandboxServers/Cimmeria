@@ -6,6 +6,7 @@
 //! challenge still waiting, the countdown) is refused with "You cannot
 //! forfeit a duel until you are engaged in one" (880), and nothing changes.
 
+use super::DuelResources;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
@@ -48,7 +49,7 @@ async fn forfeit(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut Spa
         );
         return;
     };
-    let duel = mgr.duels.duel_of(pid).copied();
+    let duel = mgr.resources.duels().duel_of(pid).copied();
     let engaged = duel.filter(|d| {
         matches!(d.state, DuelState::Engaged { .. })
             && d.engaged_entities.is_some_and(|e| e.contains(&entity_id))
@@ -57,7 +58,7 @@ async fn forfeit(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut Spa
         let stage = match duel.map(|d| d.state) {
             Some(DuelState::StartPending { .. }) => "countdown",
             Some(DuelState::Engaged { .. }) => "engaged_elsewhere",
-            None if mgr.duels.is_busy(pid) => "challenge",
+            None if mgr.resources.duels().is_busy(pid) => "challenge",
             None => "none",
         };
         tracing::debug!(

@@ -7,8 +7,8 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use super::{
-    CellMethodHandler, CellPlugin, EntityHook, EntityHookPoint, TickHook, TickStage,
-    PLUGIN_OWNED_CELL_METHODS,
+    CellMethodHandler, CellPlugin, DeathHook, DeathHookPoint, EntityHook, EntityHookPoint,
+    TickHook, TickStage, PLUGIN_OWNED_CELL_METHODS,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -69,6 +69,12 @@ impl CellPluginBuilder<'_> {
         self.registry.entity_hooks.push((point, self.plugin, hook));
         self
     }
+
+    /// Run `hook` for a killed entity and its killer at `point`.
+    pub fn death_hook(&mut self, point: DeathHookPoint, hook: DeathHook) -> &mut Self {
+        self.registry.death_hooks.push((point, self.plugin, hook));
+        self
+    }
 }
 
 #[derive(Default)]
@@ -79,6 +85,7 @@ struct Registry {
     /// In registration (table) order; fired in that order per stage.
     ticks: Vec<(TickStage, &'static str, TickHook)>,
     entity_hooks: Vec<(EntityHookPoint, &'static str, EntityHook)>,
+    death_hooks: Vec<(DeathHookPoint, &'static str, DeathHook)>,
 }
 
 /// The validated plugin registry. Cheap to clone (one `Arc`).
@@ -195,6 +202,23 @@ impl CellPlugins {
             }
         }
     }
+
+    /// Fire every hook registered for `point` for `victim`, killed by
+    /// `killer`, in table order.
+    pub async fn run_death_hook(
+        &self,
+        point: DeathHookPoint,
+        victim: u32,
+        killer: u32,
+        tx: &mpsc::Sender<CellToBaseMsg>,
+        space_mgr: &mut SpaceManager,
+    ) {
+        for (p, _, hook) in &self.inner.death_hooks {
+            if *p == point {
+                hook(victim, killer, tx, space_mgr).await;
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for CellPlugins {
@@ -207,6 +231,7 @@ impl std::fmt::Debug for CellPlugins {
             )
             .field("ticks", &self.inner.ticks.len())
             .field("entity_hooks", &self.inner.entity_hooks.len())
+            .field("death_hooks", &self.inner.death_hooks.len())
             .finish()
     }
 }

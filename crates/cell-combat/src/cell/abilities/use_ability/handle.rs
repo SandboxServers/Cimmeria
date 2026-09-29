@@ -8,6 +8,7 @@
 //! space_manager access is delicate and a hand-rolled split here would just
 //! trade lines for `&mut` plumbing.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
@@ -265,7 +266,8 @@ pub async fn handle_use_ability(
                 // itself is `combat::player_may_attack`: a hostile NPC, or
                 // the attacker's engaged duel partner (SS-D2); pets obey the
                 // same function.
-                if entity.is_player && !combat::player_may_attack(entity, target, &space_mgr.duels)
+                if entity.is_player
+                    && !combat::player_may_attack(entity, target, space_mgr.resources.duels())
                 {
                     tracing::warn!(
                         entity_id,

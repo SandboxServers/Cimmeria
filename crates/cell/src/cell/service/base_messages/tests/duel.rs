@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::cell::messages::DuelBaseToCell;
+use cimmeria_cell_world::cell::duel::DuelResources;
 
 #[tokio::test]
 async fn duel_challenge_reaches_the_duel_registry() {
@@ -23,7 +24,7 @@ async fn duel_challenge_reaches_the_duel_registry() {
         target_entity_id: 20,
     });
     handle_base_message(msg, &tx, &mut mgr, &engine, &[]).await;
-    assert!(mgr.duels.pending_for(2000).is_some());
+    assert!(mgr.resources.duels().pending_for(2000).is_some());
     match rx.try_recv() {
         Ok(CellToBaseMsg::EntityMethodCall {
             entity_id,

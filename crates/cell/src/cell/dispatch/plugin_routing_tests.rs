@@ -3,6 +3,7 @@
 //! reaches the router's "Unhandled cell method call" WARN instead of any
 //! other handler (the negative log for a missing registration).
 
+use cimmeria_cell_duel::DuelPlugin;
 use cimmeria_cell_pets::PetsPlugin;
 use cimmeria_cell_world::cell::plugin::{CellPlugins, PLUGIN_OWNED_CELL_METHODS};
 use cimmeria_content_engine::chain::ChainEngine;
@@ -20,13 +21,15 @@ fn count(
     capture.all().into_iter().filter(|c| pred(c)).count()
 }
 
-/// With the pets plugin installed, 88-90 reach the pet command parser (the
-/// `malformed_args` refusal only it logs) and never the unhandled warn.
+/// With the pets and duel plugins installed, 88-90 reach the pet command
+/// parser (the `malformed_args` refusal only it logs), 102-103 reach the duel
+/// handlers (rows on the `duel` target, which only they log here), and none
+/// reaches the unhandled warn.
 #[tokio::test]
 async fn plugin_owned_methods_route_to_the_installed_plugin() {
     let capture = LogCapture::install();
     let mut mgr = make_space_manager_with_player(1);
-    mgr.install_plugins(CellPlugins::build(&[&PetsPlugin]).unwrap());
+    mgr.install_plugins(CellPlugins::build(&[&PetsPlugin, &DuelPlugin]).unwrap());
     let (tx, _rx) = mpsc::channel::<CellToBaseMsg>(8);
     let engine = ChainEngine::new();
 
@@ -40,6 +43,20 @@ async fn plugin_owned_methods_route_to_the_installed_plugin() {
             && c.has_field("reason", "malformed_args")
     });
     assert_eq!(malformed, 3, "captured: {:#?}", capture.all());
+    assert!(
+        count(&capture, |c| c.target == "duel"
+            && c.has_field("event", "duel.response_malformed"))
+            == 1,
+        "102 reaches the duel answer's decoder: {:#?}",
+        capture.all()
+    );
+    assert!(
+        count(&capture, |c| c.target == "duel"
+            && c.has_field("event", "duel.forfeit_refused"))
+            == 1,
+        "103 reaches the duel forfeit: {:#?}",
+        capture.all()
+    );
     assert!(
         capture
             .find_message(Level::WARN, "Unhandled cell method call")
@@ -75,6 +92,11 @@ async fn a_missing_plugin_logs_unhandled_for_each_plugin_owned_method() {
         count(&capture, |c| c.target == "pets.command"),
         0,
         "no pet handler may run without the plugin"
+    );
+    assert_eq!(
+        count(&capture, |c| c.target == "duel"),
+        0,
+        "no duel handler may run without the plugin"
     );
     assert!(
         rx.try_recv().is_err(),

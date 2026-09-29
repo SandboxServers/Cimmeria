@@ -6,6 +6,7 @@
 //! and write the GM's feedback; this file owns the registry and the sends
 //! to the duelists, like the other duel handlers.
 
+use super::DuelResources;
 use tokio::sync::mpsc;
 
 use cimmeria_wire::cell::client_methods::duel::TEXT_DUEL_ABORTED;
@@ -69,7 +70,8 @@ pub async fn gm_end(
     subject_player_id: i32,
 ) -> Option<GmAborted> {
     let engaged = mgr
-        .duels
+        .resources
+        .duels()
         .duel_of(subject_player_id)
         .filter(|d| matches!(d.state, DuelState::Engaged { .. }))
         .map(|d| d.duel_id);
@@ -80,7 +82,7 @@ pub async fn gm_end(
             return Some(aborted);
         }
     }
-    let aborted = mgr.duels.gm_abort(subject_player_id)?;
+    let aborted = mgr.resources.duels_mut().gm_abort(subject_player_id)?;
     log_gm_ended(mgr, gm_entity_id, subject_player_id, &aborted);
     let (challenger, target) = aborted.players();
     for (player_id, other) in [(challenger, target), (target, challenger)] {

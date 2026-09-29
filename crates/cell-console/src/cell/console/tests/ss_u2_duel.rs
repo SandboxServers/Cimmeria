@@ -1,6 +1,7 @@
 //! SS-U2: `.duel_status [name]` and `.duel_end <name>` through the console
 //! parser, the refusals (type 12), and the GM gate.
 
+use cimmeria_cell_world::cell::duel::DuelResources;
 use std::time::Instant;
 
 use cimmeria_common::Vector3;
@@ -48,9 +49,17 @@ fn fixture() -> (SpaceManager, u32) {
 /// Ana challenged Bo and Bo accepted: a duel in the countdown.
 fn start_duel(mgr: &mut SpaceManager) {
     let now = Instant::now();
-    let p = mgr.duels.open_challenge(ANA.1, BO.1, now).unwrap();
-    mgr.duels.take_pending_for(BO.1, now).unwrap();
-    mgr.duels
+    let p = mgr
+        .resources
+        .duels_mut()
+        .open_challenge(ANA.1, BO.1, now)
+        .unwrap();
+    mgr.resources
+        .duels_mut()
+        .take_pending_for(BO.1, now)
+        .unwrap();
+    mgr.resources
+        .duels_mut()
         .start_duel(&p, 1, Vector3::new(12.0, 0.0, 10.0), now);
 }
 
@@ -110,8 +119,11 @@ async fn duel_end_clears_both_entries_and_tells_both() {
         gm_lines[0].starts_with(".duel_end: ended duel #1 (countdown) between Ana and Bo"),
         "{gm_lines:?}"
     );
-    assert!(mgr.duels.duel_of(ANA.1).is_none() && mgr.duels.duel_of(BO.1).is_none());
-    assert!(!mgr.duels.is_busy(ANA.1) && !mgr.duels.is_busy(BO.1));
+    assert!(
+        mgr.resources.duels().duel_of(ANA.1).is_none()
+            && mgr.resources.duels().duel_of(BO.1).is_none()
+    );
+    assert!(!mgr.resources.duels().is_busy(ANA.1) && !mgr.resources.duels().is_busy(BO.1));
 
     let row = capture
         .all()
@@ -128,7 +140,8 @@ async fn duel_end_clears_both_entries_and_tells_both() {
 #[tokio::test]
 async fn duel_end_withdraws_a_pending_challenge() {
     let (mut mgr, gm) = fixture();
-    mgr.duels
+    mgr.resources
+        .duels_mut()
         .open_challenge(ANA.1, BO.1, Instant::now())
         .unwrap();
 
@@ -136,7 +149,10 @@ async fn duel_end_withdraws_a_pending_challenge() {
 
     assert_eq!(lines_to(&msgs, ANA.0), vec![TEXT_DUEL_ABORTED.to_string()]);
     assert_eq!(lines_to(&msgs, BO.0), vec![TEXT_DUEL_ABORTED.to_string()]);
-    assert!(mgr.duels.is_idle(), "no challenge and no cooldown left");
+    assert!(
+        mgr.resources.duels().is_idle(),
+        "no challenge and no cooldown left"
+    );
 }
 
 /// Type 12: a bare `.duel_end` reaches the command's own usage line and
@@ -162,7 +178,10 @@ async fn unknown_name_logs_target_not_found() {
         assert!(rejected(&capture, "target_not_found"), ".{cmd}");
         assert_eq!(msgs.len(), 1, ".{cmd}: only the GM's line: {msgs:?}");
         assert!(lines_to(&msgs, gm)[0].contains("no online player is named Nobody"));
-        assert!(mgr.duels.duel_of(ANA.1).is_some(), "the duel is untouched");
+        assert!(
+            mgr.resources.duels().duel_of(ANA.1).is_some(),
+            "the duel is untouched"
+        );
     }
 }
 
@@ -211,7 +230,7 @@ async fn duel_status_reports_self_and_a_named_duelist() {
         "{bo:?}"
     );
     assert!(
-        mgr.duels.duel_of(BO.1).is_some(),
+        mgr.resources.duels().duel_of(BO.1).is_some(),
         "a status read changes nothing"
     );
 }
@@ -235,7 +254,7 @@ async fn non_gm_duel_end_is_chat() {
         &ChainEngine::new(),
     )
     .await;
-    assert!(mgr.duels.duel_of(BO.1).is_some());
+    assert!(mgr.resources.duels().duel_of(BO.1).is_some());
 }
 
 /// `.help duel_end` shows the summary and the argument detail line.
@@ -275,15 +294,23 @@ async fn duel_end_on_an_engaged_duel_clears_through_end_engaged() {
     let _ = mgr.compute_aoi_changes();
     let (tx, mut rx) = mpsc::channel(256);
     let t0 = Instant::now();
-    let p = mgr.duels.open_challenge(ANA.1, BO.1, t0).unwrap();
-    mgr.duels.take_pending_for(BO.1, t0).unwrap();
+    let p = mgr
+        .resources
+        .duels_mut()
+        .open_challenge(ANA.1, BO.1, t0)
+        .unwrap();
+    mgr.resources
+        .duels_mut()
+        .take_pending_for(BO.1, t0)
+        .unwrap();
     let space_id = *mgr.entity_space.get(&ANA.0).unwrap();
-    mgr.duels
+    mgr.resources
+        .duels_mut()
         .start_duel(&p, space_id, Vector3::new(12.0, 0.0, 10.0), t0);
-    crate::cell::duel::tick::run_at(&tx, &mut mgr, t0 + COUNTDOWN).await;
+    cimmeria_cell_duel::cell::duel::tick::run_at(&tx, &mut mgr, t0 + COUNTDOWN).await;
     while rx.try_recv().is_ok() {}
     assert!(matches!(
-        mgr.duels.duel_of(ANA.1).unwrap().state,
+        mgr.resources.duels().duel_of(ANA.1).unwrap().state,
         DuelState::Engaged { .. }
     ));
 
@@ -306,8 +333,11 @@ async fn duel_end_on_an_engaged_duel_clears_through_end_engaged() {
             "878 once to {eid}"
         );
     }
-    assert!(mgr.duels.duel_of(ANA.1).is_none() && mgr.duels.duel_of(BO.1).is_none());
-    assert!(!mgr.duels.can_harm(ANA.1, BO.1));
+    assert!(
+        mgr.resources.duels().duel_of(ANA.1).is_none()
+            && mgr.resources.duels().duel_of(BO.1).is_none()
+    );
+    assert!(!mgr.resources.duels().can_harm(ANA.1, BO.1));
     let rows = capture.all();
     assert!(rows
         .iter()

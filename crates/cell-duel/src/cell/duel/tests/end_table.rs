@@ -1,6 +1,7 @@
 //! SS-D3: every end path clears the PvP flag (CAT-M-15), and every travel
-//! site calls the duel hook.
+//! site fires the travel hook.
 
+use crate::cell::duel::DuelResources;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
@@ -104,7 +105,7 @@ async fn take(
         }
         Path::EngagedLimit => run_at(tx, mgr, engaged_at + ENGAGED_LIMIT).await,
         Path::GmAborted => {
-            let id = mgr.duels.duel_of(A_PID).unwrap().duel_id;
+            let id = mgr.resources.duels().duel_of(A_PID).unwrap().duel_id;
             end_engaged(tx, mgr, id, EndReason::GmAborted).await;
         }
         Path::GoneWithoutHook => {
@@ -168,11 +169,11 @@ async fn every_end_path_clears_pvp_flag() {
             );
         }
         check(
-            !mgr.duels.is_busy(A_PID) && !mgr.duels.is_busy(B_PID),
+            !mgr.resources.duels().is_busy(A_PID) && !mgr.resources.duels().is_busy(B_PID),
             "the registry still holds a duelist",
         );
         check(
-            !mgr.duels.can_harm(A_PID, B_PID),
+            !mgr.resources.duels().can_harm(A_PID, B_PID),
             "the pair can still harm each other",
         );
         let rows: Vec<_> = capture
@@ -204,9 +205,10 @@ async fn harm_gate_requires_the_engaged_entities() {
     add_player(&mut mgr, 21, B_PID, 600, "Agnos", [6.0, 0.0, 0.0]);
 
     let a = mgr.get_entity(A_EID).unwrap();
-    let may =
-        |t: u32| crate::cell::combat::player_may_attack(a, mgr.get_entity(t).unwrap(), &mgr.duels);
-    assert!(mgr.duels.can_harm(A_PID, B_PID));
+    let may = |t: u32| {
+        crate::cell::combat::player_may_attack(a, mgr.get_entity(t).unwrap(), mgr.resources.duels())
+    };
+    assert!(mgr.resources.duels().can_harm(A_PID, B_PID));
     assert!(may(B_EID), "the engaged partner entity");
     assert!(
         !may(21),
@@ -214,18 +216,20 @@ async fn harm_gate_requires_the_engaged_entities() {
     );
     let b2 = mgr.get_entity(21).unwrap();
     assert!(
-        !crate::cell::combat::player_may_attack(b2, a, &mgr.duels),
+        !crate::cell::combat::player_may_attack(b2, a, mgr.resources.duels()),
         "nor may it attack"
     );
 }
 
-/// Every cell path that sends `TeleportPlayer` or `GateTravel` calls
-/// `duel::on_travel`, so a travelling duelist loses at once with
+/// Every cell path that sends `TeleportPlayer` or `GateTravel` fires the
+/// travel hook (`EntityHookPoint::BeforeTravelSend`), where the duel plugin
+/// runs `duel::on_travel`, so a travelling duelist loses at once with
 /// `EDUEL_DEFEAT_Teleport` instead of leaving the partner flagged until the
 /// sweep. The movement validator's snap-back is exempt: it puts a player
-/// back where it already was.
+/// back where it already was. (That the plugin subscribes to the hook is
+/// `plugin_tests::the_travel_hook_ends_an_engaged_duel`.)
 #[test]
-fn every_travel_site_ends_the_duel() {
+fn every_travel_site_fires_the_travel_hook() {
     const EXEMPT: &[&str] = &["cell/src/cell/service/base_messages/movement.rs"];
     let crates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut missing = Vec::new();
@@ -273,9 +277,9 @@ fn every_travel_site_ends_the_duel() {
                     continue;
                 }
                 seen += sends;
-                let hooks = code.matches("duel::on_travel(").count();
+                let hooks = code.matches("EntityHookPoint::BeforeTravelSend").count();
                 if hooks < sends {
-                    missing.push(format!("{rel}: {sends} travel sends, {hooks} duel hooks"));
+                    missing.push(format!("{rel}: {sends} travel sends, {hooks} travel hooks"));
                 }
             }
         }

@@ -5,12 +5,19 @@
 //! plugins subscribe to one hook point (they fire in this order), so the
 //! table is an explicit list, never link-time discovery.
 
+use cimmeria_cell_duel::DuelPlugin;
 use cimmeria_cell_pets::PetsPlugin;
 use cimmeria_cell_world::cell::plugin::{CellPlugin, CellPlugins, PluginError};
 
 /// Every cell plugin, in hook-firing order.
-pub fn cell_plugin_table() -> [&'static dyn CellPlugin; 1] {
-    [&PetsPlugin]
+///
+/// No two plugins share a hook point yet: pets use the owner-sweep and
+/// arrival stages and the base-destroy hook; duels use the gate-crossing
+/// stage and the disconnect, travel and death hooks. So the order reaches no
+/// wire output today; a plugin that joins a shared point must pin its order
+/// with a test (ADR §3.2).
+pub fn cell_plugin_table() -> [&'static dyn CellPlugin; 2] {
+    [&PetsPlugin, &DuelPlugin]
 }
 
 /// The built and checked plugin registry the orchestrator installs on the
@@ -34,10 +41,35 @@ mod tests {
     #[test]
     fn the_default_table_builds_and_is_complete() {
         let plugins = cell_plugins().expect("the shipped plugin table must build");
-        assert_eq!(plugins.plugin_names(), &["pets"]);
+        assert_eq!(plugins.plugin_names(), &["pets", "duel"]);
         assert_eq!(
             plugins.cell_method_indices().collect::<Vec<_>>(),
             PLUGIN_OWNED_CELL_METHODS.to_vec()
         );
+    }
+
+    /// #962 test rule, for step 2: a table missing `DuelPlugin` must not
+    /// start. `check_complete` names both duel methods, so the orchestrator
+    /// refuses to start the cell (`plugin_table_incomplete`) instead of
+    /// letting a duel answer or forfeit fall through to "Unhandled cell
+    /// method call".
+    #[test]
+    fn a_table_without_the_duel_plugin_fails_the_startup_check() {
+        use cimmeria_wire::cell::cell_methods::player::constants::{
+            DUEL_FORFEIT, SEND_DUEL_RESPONSE,
+        };
+
+        let plugins = CellPlugins::build(&[&PetsPlugin]).expect("pets alone still builds");
+        match plugins.check_complete() {
+            Err(PluginError::MissingCellMethods { missing }) => {
+                let indices: Vec<u16> = missing.iter().map(|(i, _)| *i).collect();
+                assert_eq!(indices, vec![SEND_DUEL_RESPONSE, DUEL_FORFEIT]);
+                assert_eq!(
+                    missing.iter().map(|(_, n)| *n).collect::<Vec<_>>(),
+                    vec!["sendDuelResponse", "duelForfeit"]
+                );
+            }
+            other => panic!("a table without DuelPlugin must fail check_complete: {other:?}"),
+        }
     }
 }

@@ -5,6 +5,7 @@
 //! `EnteredAoI` / `LeftAoI` / `EntityMoved` events are forwarded to the
 //! BaseService for client dispatch.
 
+use crate::cell::duel::DuelResources;
 use std::collections::{HashMap, HashSet};
 
 use cimmeria_common::EntityId;
@@ -168,7 +169,9 @@ impl SpaceManager {
         // into range mid-duel gets it here, after the create, or
         // their client would show the duelist unflagged until the
         // end. The flag is presentation only (D-SS23).
-        if let Some(msg) = crate::cell::duel::pvp_flag_on_enter(&self.duels, player_id, other) {
+        if let Some(msg) =
+            crate::cell::duel::pvp_flag_on_enter(self.resources.duels(), player_id, other)
+        {
             events.push(msg);
         }
 

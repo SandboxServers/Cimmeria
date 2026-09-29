@@ -53,6 +53,7 @@
 //! for `.goto`/`.summon`, a world's for `.gotolocation`) and which therefore
 //! have to cope with the cross-space leg.
 
+use cimmeria_cell_world::cell::plugin::EntityHookPoint;
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
@@ -160,9 +161,11 @@ async fn snap_in_current_space(
     space_mgr.note_authorized_teleport(entity);
 
     if is_player {
-        // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
-        // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
-        cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity).await;
+        // SS-D3, #962: the travel hook. The duel plugin ends the traveller's duel
+        // (`EDUEL_DEFEAT_Teleport`) here; `every_travel_site_fires_the_travel_hook`.
+        space_mgr
+            .fire_entity_hook(EntityHookPoint::BeforeTravelSend, entity, tx)
+            .await;
         if let Err(err) = tx
             .send(CellToBaseMsg::TeleportPlayer {
                 entity_id: entity,

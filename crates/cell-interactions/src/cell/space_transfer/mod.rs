@@ -54,6 +54,7 @@
 //! silently teleported or half-transferred. This matches P26's precedent of
 //! keeping NPC travel cell-side.
 
+use cimmeria_cell_world::cell::plugin::EntityHookPoint;
 use tokio::sync::mpsc;
 
 use super::messages::CellToBaseMsg;
@@ -406,9 +407,11 @@ async fn execute_transfer(
         }
     }
 
-    // SS-D3: a gate travel ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
-    // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
-    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
+    // SS-D3, #962: the travel hook. The duel plugin ends the traveller's duel
+    // (`EDUEL_DEFEAT_Teleport`) here; `every_travel_site_fires_the_travel_hook`.
+    space_mgr
+        .fire_entity_hook(EntityHookPoint::BeforeTravelSend, entity_id, tx)
+        .await;
     // ── Phase 3: enqueue, and only tear down once the send is confirmed. ──
     // A closed base channel must not leave the player removed cell-side with
     // no transfer in flight — that is the "un-spaced" state.
