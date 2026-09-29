@@ -840,6 +840,12 @@ Tests: `range.rs` (`use_weapon_range_takes_the_weapons_reach` and three more), `
 
 Telemetry: `ammo_damage_applied` (DEBUG, target `ammo`) per modified shot, and `ammo_on_hit_effect_missing` (WARN) when a row names an effect that is not loaded. Tests: `effects::ammo_damage::tests` (the resolution rules, and the live-DB seed guard `live_db_hp_ap_seed_rows`) and `damage_apply::ammo_tests` (the factors, default ammo unchanged, penetration against armour, the on-hit effect, the log row). Plan: [docs/analysis/ammo/work-packets.md](../analysis/ammo/work-packets.md).
 
+**Family rows (Wave 2).** One row per family packet, appended as each lands.
+
+| Family (packet) | Row | On-hit effect | Script | Stacking |
+|---|---|---|---|---|
+| Incendiary (AM-08, toggle 723) | 1.0 damage / 1.0 penetration, `DT_Energy` | 9110 Incendiary Burn: 4 pulses, 1 s apart, 15 Focus and 3 Health each; `EffectCategory` = `Burning` for AM-11c's cleanse | existing `RangedEnergyDamage`, no new script | decision 4: the same shooter refreshes, another shooter stacks |
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:
