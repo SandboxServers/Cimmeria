@@ -13,6 +13,7 @@ on:
       - 'crates/client-launch/**'
       - 'crates/start32/**'
       - 'crates/client-patches/**'
+      - 'crates/client-telemetry/**'
       - 'tools/launcher-release/**'
       - 'crates/patchset/**'
       - '.github/workflows/launcher-*.yml'
@@ -22,6 +23,7 @@ on:
       - 'crates/client-launch/**'
       - 'crates/start32/**'
       - 'crates/client-patches/**'
+      - 'crates/client-telemetry/**'
       - 'tools/launcher-release/**'
       - 'crates/patchset/**'
       - '.github/workflows/launcher-*.yml'
@@ -125,10 +127,11 @@ jobs:
 
   # launcher-release.yml has never run; its build must not be first tested at
   # release time. This job runs the same tools/launcher-release/build.sh
-  # stages, in release profile, minus publishing: the i686 DLL
-  # and helper, the 64-bit launcher embedding both, the artifact checks
-  # (bitness, the helper's manifest and version resource, both embedded), and
-  # the overlay pack.
+  # stages, in release profile, minus publishing: the i686 DLLs
+  # and helper, the 64-bit launcher embedding them, the artifact checks
+  # (bitness, the helper's manifest and version resource, the telemetry DLL
+  # is the player build without lab-bridge, all embedded), and the overlay
+  # pack.
   release-dry-run:
     name: release build dry run (Windows)
     runs-on: windows-latest
@@ -144,10 +147,10 @@ jobs:
         with:
           shared-key: launcher-release-dry-run
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: build the i686 DLL and helper
+      - name: build the i686 DLLs and helper
         shell: bash
         run: tools/launcher-release/build.sh i686
-      - name: build the 64-bit launcher, embedding both
+      - name: build the 64-bit launcher, embedding them
         shell: bash
         run: tools/launcher-release/build.sh launcher
       - name: verify the artifacts

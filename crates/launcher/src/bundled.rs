@@ -1,9 +1,10 @@
 //! 32-bit artifacts the launcher carries inside itself and writes to disk
-//! at launch: the `cimmeria-client-patches.dll` it injects, and the
-//! `sgw-start32.exe` helper that does the injecting. The release workflow
-//! builds each for i686 and embeds it (`build.rs`).
+//! at launch: the `cimmeria-client-patches.dll` it injects, the
+//! `cimmeria-client-telemetry.dll` it injects for players who opted in to
+//! telemetry, and the `sgw-start32.exe` helper that does the injecting.
+//! The release workflow builds each for i686 and embeds it (`build.rs`).
 //!
-//! - The DLL is loaded by the game for as long as it runs, so it goes to
+//! - A DLL is loaded by the game for as long as it runs, so it goes to
 //!   `<launcher dir>/<subdir>/<sha256 prefix>/` ([`find`]): a new launcher
 //!   writes a new directory rather than overwrite a DLL a running game
 //!   holds, and older directories are pruned once nothing holds them.

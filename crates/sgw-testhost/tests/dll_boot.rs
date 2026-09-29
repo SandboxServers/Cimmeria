@@ -160,6 +160,7 @@ fn telemetry_fails_closed_and_uploads_why() {
         .find(|e| e["target"] == "client.dll.attached")
         .expect("client.dll.attached uploaded");
     assert_eq!(attached["fields"]["session_id"], "s-testhost");
+    assert_eq!(attached["fields"]["dll_flavor"], "player");
     let gate = events
         .iter()
         .find(|e| e["target"] == "client.hooks.fingerprint")
@@ -168,6 +169,76 @@ fn telemetry_fails_closed_and_uploads_why() {
     assert_eq!(gate["fields"]["usable"], false);
     let tick = &gate["fields"]["site.FEngineLoop::Tick"];
     assert!(tick == "unreadable" || tick == "mismatch", "{gate}");
+}
+
+fn image_has_lab_marker(dll: &std::path::Path) -> bool {
+    let image = std::fs::read(dll).expect("read the staged DLL");
+    let marker = cimmeria_client_telemetry::LAB_BRIDGE_MARKER.as_bytes();
+    image.windows(marker.len()).any(|w| w == marker)
+}
+
+/// The image check the launcher and the release `verify` stage run on the
+/// telemetry DLL, against the real builds: the default (player) build is
+/// clean, and the lab-bridge build is caught, so the check can fail.
+#[test]
+fn only_the_lab_bridge_build_carries_the_lab_marker() {
+    let Some(stage) = Stage::find() else { return };
+    assert!(
+        !image_has_lab_marker(&stage.telemetry()),
+        "the default build carries the lab-bridge marker"
+    );
+    assert!(
+        image_has_lab_marker(&stage.telemetry_lab()),
+        "the lab-bridge build lacks the marker; the packaging check would pass it"
+    );
+}
+
+/// The build players get opens no command port, even when the session
+/// file carries a lab block: the bridge is not compiled in.
+#[test]
+fn the_player_build_ignores_a_lab_block_and_opens_no_port() {
+    let Some(stage) = Stage::find() else { return };
+    let upload = MockUpload::start();
+    let install = Install::new(&stage);
+    let port = free_port();
+    install.write_session(&session(
+        &upload.url,
+        TOKEN,
+        Some(serde_json::json!({ "bind": "127.0.0.1", "port": port, "token": "ab".repeat(32) })),
+    ));
+    let dll = install.add_dll(&stage.telemetry());
+    let run_ms = 6_000;
+    let host = install.launch(&[dll], run_ms);
+
+    // Once the session is loaded, the lab build would be listening.
+    let deadline = Instant::now() + Duration::from_secs(4);
+    while !messages(&install.log(TELEMETRY_LOG))
+        .iter()
+        .any(|l| l.starts_with("session ") && l.contains(" loaded;"))
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the DLL never loaded its session"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+    assert!(
+        std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_err(),
+        "the player build accepted a connection on the lab port"
+    );
+
+    let code = host.wait();
+    assert_clean_exit(&install, code, run_ms);
+    let log = install.log(TELEMETRY_LOG);
+    let m = messages(&log);
+    assert!(
+        m.iter()
+            .any(|l| l == cimmeria_client_telemetry::BUILD_MARKER),
+        "{log}"
+    );
+    assert!(!m.iter().any(|l| l.contains("lab bridge")), "{log}");
 }
 
 /// Without a session file the DLL logs why and stays inert.

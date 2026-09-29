@@ -319,7 +319,14 @@ Useful first queries:
 - `service.name = 'cimmeria-client' AND cimmeria.session_kind = 'lab'`: a
   lab run, newest first.
 - `service.name = 'cimmeria-client' AND client_target = 'client.dll.attached'`:
-  one row per DLL start, with `dll_version`.
+  one row per DLL start, with `dll_version` (and `dll_flavor`, `player`
+  or `lab-bridge`, inside `fields`). A `player` session must never show
+  `lab-bridge`.
+- `service.name = 'cimmeria-client' AND client_target = 'client.telemetry_dll.launch'`:
+  the launcher's record of whether an opted-in player's telemetry DLL
+  went in (`outcome` = `injected`, `unavailable` or `inject_failed`, in
+  `fields`). An `injected` row with no `client.dll.attached` row from the
+  same `session_id` means the DLL loaded but never read its session.
 - `service.name = 'cimmeria-client' AND client_target = 'client.hooks.fingerprint'`:
   `fingerprint_usable = false` means the DLL met an SGW.exe build it does
   not know and installed no hooks.
@@ -380,13 +387,26 @@ Telemetry is **opt-in**. The launcher's `TelemetrySettings`
 (`telemetry.opted_in` in `launcher-config.json`, default `false`) is
 off until the player turns it on, from the one-time "Help us fix
 bugs?" prompt or the **Send telemetry (opt-in)** checkbox beside the
-launch buttons. Both save at once. Launchers before this change
-wrote `"enabled": true` on the player's behalf; that key is ignored,
-so every existing install starts opted out. While it is off:
+launch buttons. Both save at once, and apply from the next launch.
+Launchers before this change wrote `"enabled": true` on the player's
+behalf; that key is ignored, so every existing install starts opted
+out.
+
+While it is on, **Launch SGW.exe** mints a player session before the
+game starts and injects the telemetry DLL after the client patches (owner
+decision 2026-09-29). Release launchers carry the DLL, the build without
+the `lab-bridge` feature, so no player's machine gets the lab's command
+port. If the DLL is missing, or is a `lab-bridge` build, the launcher
+says so in its status log and starts the game without it; play is never
+blocked. See [client-telemetry.md](../architecture/client-telemetry.md#who-gets-the-dll).
+
+While it is off:
 
 - No `/api/auth/dev-session` POST fires.
 - No log tailing.
 - No bundle upload.
+- The telemetry DLL is not injected; the launch injects the client
+  patches only.
 - The legacy "Launch Atera Debug" button still works (no
   instrumentation).
 
@@ -405,8 +425,11 @@ so every existing install starts opted out. While it is off:
   are replayed at **debug** level only, so the default file sinks and
   admin WebSocket drop them, and `launcher.key_dump` is `off` in every
   OTLP filter, so SigNoz never receives them either.
-- Per-event PII redaction is explicitly out of scope (dev-only data;
-  the developer is the device owner).
+- Per-event PII redaction is out of scope. The data is no longer
+  dev-only: opted-in players' telemetry DLL events carry the session's
+  install and machine ids, the interface (CEGUI) log text and the names
+  of the game messages the client handles. The opt-in prompt says what is sent; whether that
+  wording is enough for public players is an open owner question.
 
 ## Endpoints
 

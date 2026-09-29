@@ -214,7 +214,7 @@ in four groups:
 |---|---|
 | Launcher setup | `LoginInternal.lua` login servers and ASLR off (both before every launch), `Cache.en-US` renamed to `SourceCache.en-us` (at install) |
 | Patched files | One row per manifest patch, in manifest order, **applied** or **applied on the next Install / Update** from `launcher-installed.json` |
-| Added when the game starts | The client-patches DLL (on, or off when **Load client patches** is off) and telemetry (off unless the player opted in) |
+| Added when the game starts | The client-patches DLL (on, or off when **Load client patches** is off) and telemetry (off unless the player opted in; when on, it loads `cimmeria-client-telemetry.dll` too) |
 | Sent by the server while you play | The server's cooked data in `Documents\My Games\Firesky\SGWGame\Cache.en-US` |
 
 A patch row uses the manifest's `title` and `description` when present,
@@ -236,6 +236,22 @@ the status log line. The field used to be `enabled`, default `true`,
 and every launcher that saved its config wrote `"enabled": true`
 without asking; the rename means those configs load opted out.
 
+Opting in also loads the telemetry DLL into the game (owner decision
+2026-09-29). On **Launch SGW.exe** the launcher starts the telemetry
+session first (a handshake of at most 10 s that writes
+`current-session.json`, which the DLL reads as it boots), then starts
+`SGW.exe` with the client-patches DLL and, after it,
+`cimmeria-client-telemetry.dll`. Release launchers embed the player
+build of the DLL (no `lab-bridge` feature) and write it to
+`<launcher dir>/client-telemetry/<sha256 prefix>/`; a dev launcher uses
+one beside itself ([`client_telemetry_dll.rs`](../../crates/launcher/src/client_telemetry_dll.rs)).
+A `lab-bridge` build is refused. When the session cannot start, or the
+DLL is missing or refused, the status log says so (`In-game telemetry:
+unavailable: …`) and the game starts without it; if injecting both DLLs
+fails, the launcher retries with the client patches alone, then plainly.
+Opted out, the launch is the client-patches launch and nothing else. A
+change to the checkbox applies from the next launch.
+
 ## Patch Sets (`cimmeria-patchset`)
 
 A patch zip with a `cimmeria-patch.json` recipe rebuilds files from the
@@ -255,7 +271,7 @@ whose target already has the result. The shipped patches live in
 
 | Button | Enabled when | Action |
 |---|---|---|
-| **Launch SGW.exe** | `SGW.exe` exists | `SGW.exe` started suspended with `cwd = <install>`, the client-patches DLL injected, then resumed. A telemetry session follows when the player opted in (`telemetry.opted_in`) and the identity loaded |
+| **Launch SGW.exe** | `SGW.exe` exists | `SGW.exe` started suspended with `cwd = <install>`, the client-patches DLL injected, then resumed. When the player opted in (`telemetry.opted_in`) and the identity loaded, a telemetry session starts first, the telemetry DLL goes in after the client patches, and the session follows the game |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
 | **Launch + Telemetry** | Atera available, `telemetry.opted_in`, and identity loaded | Atera debug launch plus the telemetry pipeline |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
@@ -345,9 +361,8 @@ code-signing keys must be generated and kept on hardware (an HSM or a
 token), so they cannot be exported as a `.pfx`.
 
 **Order with the telemetry DLL.** Both DLLs MinHook `FEngineLoop::Tick`
-and the drop callee. When both go in (the unexposed
-`LaunchSgwWithClientTelemetry` command), the client-patches DLL goes
-first. It hooks straight away and normally finds the stock prologues;
+and the drop callee. When both go in (an opted-in **Launch SGW.exe**,
+and every lab launch), the client-patches DLL goes first. It hooks straight away and normally finds the stock prologues;
 the telemetry DLL reads its session file first, then chains on top.
 `injection_order` pins this order.
 
@@ -504,6 +519,7 @@ crates/launcher/
     │   ├── mod.rs
     │   ├── dll_source.rs       # override / embedded / beside-the-launcher DLL
     │   └── plan.rs             # inject decision + injection order
+    ├── client_telemetry_dll.rs # opted-in telemetry DLL: source + lab-build refusal
     ├── client_paths.rs         # install-dir path resolution
     ├── identity.rs             # stable per-install identity
     ├── logs.rs                 # log collection + zip + Azure PUT
@@ -523,7 +539,9 @@ crates/launcher/
     │   └── process_watch.rs    # game-exit detection
     └── worker/
         ├── mod.rs              # tokio worker
-        ├── launch_sgw.rs       # SGW.exe launch + client patches + telemetry
+        ├── launch_sgw.rs       # SGW.exe launch, DLL attempts and fallbacks
+        ├── launch_sgw_tests.rs # its tests (exact helper command lines)
+        ├── launch_telemetry.rs # opted-in session: start before the game, follow it
         └── messages.rs         # Command/Event channel types
 ```
 

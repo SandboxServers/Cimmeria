@@ -20,10 +20,14 @@ found 2026-09-29 while adding the `cimmeria-client` index:
    ERROR per request and a WARN at boot (`dev_session_secret_unusable`).
    Compose passes `${VAR:-}` → an EMPTY string env var: any env reader
    must treat blank as unset (`upload_endpoint_from`).
-4. **Players' normal launch never injects the telemetry DLL** and the
-   DLL is not packaged; only the lab and the dead-code
-   `LaunchSgwWithClientTelemetry` command inject it. Needs an owner
-   decision; not fixed.
+4. **Players' normal launch never injected the telemetry DLL** and it
+   was not packaged. Owner decision 2026-09-29: inject it only for
+   opted-in players. Now `worker/launch_telemetry.rs` mints the session
+   BEFORE the game (the DLL reads `current-session.json` once at boot,
+   never refreshes: 8 h token limit), `client_telemetry_dll.rs` resolves
+   the embedded/beside copy and refuses any image containing
+   `LAB_BRIDGE_MARKER` (also refused by launcher `build.rs` and
+   `build.sh verify`). The dead `LaunchSgwWithClientTelemetry` is gone.
 
 **Routing:** `otel::CLIENT_TARGETS` (`client.native`,
 `launcher.client_log|debug_log|session_meta`) go only to the fourth

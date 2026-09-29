@@ -1,36 +1,41 @@
 //! Launching `SGW.exe`: the always-injected client-patches DLL
-//! (Black Market plan D2, BM-06), the plain-launch fallback, and the
-//! telemetry session that follows the game when the player opted in.
+//! (Black Market plan D2, BM-06), the telemetry DLL when the player opted
+//! in to telemetry, and the fallbacks that keep the game starting when
+//! either cannot go in.
 //!
 //! The launcher is 64-bit and `SGW.exe` is 32-bit, so DLLs go in through
 //! the 32-bit `sgw-start32` helper (`cimmeria_client_launch::start32`): it
 //! starts the game suspended, injects, resumes, and hands back the pid,
 //! which the launcher then follows.
 //!
-//! Every launch tells the player what happened to the patches in the
-//! status log, including when they were skipped, so a missing Black
-//! Market window is never a silent mystery.
+//! An opted-in launch starts the telemetry session *before* the game
+//! ([`super::launch_telemetry`]): the telemetry DLL reads its upload token
+//! from `current-session.json` as it boots, so the file must be there
+//! first. Without the opt-in, nothing here changes from a launch without
+//! telemetry.
+//!
+//! Every launch tells the player what happened to each DLL in the status
+//! log, including when it was skipped, so a missing Black Market window
+//! or a silent telemetry session is never a mystery.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use cimmeria_client_launch::inject::RunningProcess;
 use cimmeria_client_launch::start32::{self, Request, Target};
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
-use super::{Event, LaunchSgwRequest, LaunchTelemetryConfig, Worker};
+use super::launch_telemetry::{follow_with_telemetry, start_player_session};
+use super::{Event, LaunchSgwRequest, Worker};
 use crate::client_patches::{decide, dll_source, injection_order, InjectDecision, PatchInjection};
+use crate::client_telemetry_dll::{self, DllOutcome, TelemetryDll};
 use crate::config::{exe_dir, ClientPatchesSettings};
 use crate::install_layout;
 use crate::launch::{checked_sgw_exe, launch_sgw_with_child, LaunchError};
 use crate::start32_helper;
-use crate::telemetry::auth::DevSessionRequest;
 use crate::telemetry::patch_log::PatchLogWatcher;
 use crate::telemetry::process_watch::{wait_for_exit, wait_for_running_exit, ExitWaiter};
-use crate::telemetry::runner::run_session;
-use crate::telemetry::Telemetry;
 
 /// The directory holding `SGW.exe`, which is also its working directory.
 ///
@@ -48,6 +53,9 @@ fn sgw_dir(install_dir: &Path) -> PathBuf {
 struct StartedGame {
     exit: Option<ExitWaiter>,
     injection: PatchInjection,
+    /// `None` when the telemetry DLL was never wanted (no opt-in, or no
+    /// session to give it a token).
+    telemetry_dll: Option<DllOutcome>,
 }
 
 /// How a launch through the helper went.
@@ -61,22 +69,36 @@ enum HelperStart {
     GameMissing(LaunchError),
     /// The DLLs could not go in (no helper, or the helper failed). The
     /// helper kills a suspended game whose injection failed, so the caller
-    /// can start it plainly.
+    /// can start it again.
     Failed(String),
 }
 
 impl Worker {
     pub(super) fn spawn_launch_sgw(&self, req: LaunchSgwRequest) {
         let events_tx = self.events_tx.clone();
-        // Only the telemetry session below uses it.
+        // Only the telemetry session uses it.
         let http = self.telemetry_http.clone();
         self.runtime.spawn(async move {
             let launched_at = SystemTime::now();
             let sgw_dir = sgw_dir(&req.install_dir);
-            let Some(game) = start_game(&sgw_dir, &req.client_patches, &events_tx) else {
+            // Opted in: session first, then the DLL that reads it.
+            let session = match req.telemetry {
+                Some(cfg) => {
+                    Some(start_player_session(&http, &req.install_dir, cfg, &events_tx).await)
+                }
+                None => None,
+            };
+            let telemetry_dll = match &session {
+                None => TelemetryDll::NotOptedIn,
+                Some(s) => {
+                    TelemetryDll::decide(s.started(), || client_telemetry_dll::resolve(&exe_dir()))
+                }
+            };
+            let Some(game) = start_game(&sgw_dir, &req.client_patches, &telemetry_dll, &events_tx)
+            else {
                 return;
             };
-            let Some(cfg) = req.telemetry else {
+            let Some(session) = session else {
                 return;
             };
             let Some(exit) = game.exit else {
@@ -88,42 +110,47 @@ impl Worker {
                 return;
             };
             let patch_log = PatchLogWatcher::new(&sgw_dir, launched_at, game.injection);
-            follow_with_telemetry(http, req.install_dir, cfg, exit, patch_log, &events_tx).await;
+            follow_with_telemetry(
+                http,
+                req.install_dir,
+                session,
+                &telemetry_dll,
+                game.telemetry_dll,
+                exit,
+                patch_log,
+                &events_tx,
+            )
+            .await;
         });
     }
+}
 
-    /// The unexposed "SGW.exe + telemetry DLL" launch (issue #417). The
-    /// client-patches DLL goes in first, per [`injection_order`], through
-    /// the same helper.
-    pub(super) fn spawn_launch_with_client_telemetry(
-        &self,
-        install_dir: PathBuf,
-        dll_path: PathBuf,
-        client_patches: ClientPatchesSettings,
-    ) {
-        let events_tx = self.events_tx.clone();
-        self.runtime.spawn(async move {
-            let decision = decide(&client_patches, || {
-                dll_source::resolve(&client_patches, &exe_dir())
-            });
-            let patches = match &decision {
-                InjectDecision::Inject(src) => Some(src.path().to_path_buf()),
-                _ => None,
-            };
-            report_skipped(&decision, &events_tx);
-            let dlls = injection_order(patches.as_deref(), Some(&dll_path));
-            match start_via_helper(&sgw_dir(&install_dir), &dlls) {
-                HelperStart::Started { pid, .. } => {
-                    let _ = events_tx.send(Event::Launched("SGW.exe (telemetry)".into(), pid));
-                }
-                HelperStart::GameMissing(e) => {
-                    let _ = events_tx.send(Event::LaunchError(e.to_string()));
-                }
-                HelperStart::Failed(why) => {
-                    let _ = events_tx.send(Event::LaunchError(why));
-                }
-            }
-        });
+/// The DLL sets to try, in order, until one starts the game; if all fail
+/// the game starts plainly. With both DLLs, the second try drops the
+/// telemetry DLL, so a telemetry failure never costs the player the
+/// client patches.
+fn launch_attempts(patches: Option<&Path>, telemetry: Option<&Path>) -> Vec<Vec<PathBuf>> {
+    let mut attempts = Vec::new();
+    let first = injection_order(patches, telemetry);
+    if !first.is_empty() {
+        attempts.push(first);
+    }
+    if let (Some(p), Some(_)) = (patches, telemetry) {
+        attempts.push(injection_order(Some(p), None));
+    }
+    attempts
+}
+
+/// The helper request for one attempt: start `exe` suspended in `dir`,
+/// inject `dlls` in order, resume. Pure so the command line is testable.
+fn helper_request(dir: PathBuf, exe: PathBuf, dlls: &[PathBuf]) -> Request {
+    Request {
+        target: Target::Spawn {
+            exe,
+            cwd: Some(dir),
+            args: Vec::new(),
+        },
+        dlls: dlls.to_vec(),
     }
 }
 
@@ -139,15 +166,7 @@ fn start_via_helper(sgw_dir: &Path, dlls: &[PathBuf]) -> HelperStart {
         Ok(h) => h,
         Err(e) => return HelperStart::Failed(e.to_string()),
     };
-    let request = Request {
-        target: Target::Spawn {
-            exe,
-            cwd: Some(dir),
-            args: Vec::new(),
-        },
-        dlls: dlls.to_vec(),
-    };
-    match start32::run(&helper, &request) {
+    match start32::run(&helper, &helper_request(dir, exe, dlls)) {
         Ok(pid) => {
             let exit = match RunningProcess::open(pid) {
                 Ok(process) => Some(Box::pin(wait_for_running_exit(process)) as ExitWaiter),
@@ -162,51 +181,78 @@ fn start_via_helper(sgw_dir: &Path, dlls: &[PathBuf]) -> HelperStart {
     }
 }
 
-/// Start `SGW.exe`, with the client-patches DLL unless the player opted
-/// out or it is unavailable. A failed injection falls back to a plain
-/// launch: the patches are never worth a game that will not start.
+/// Start `SGW.exe` with the client-patches DLL unless the player opted
+/// out or it is unavailable, and the telemetry DLL when `telemetry` says
+/// to. A failed injection falls back to fewer DLLs, then to a plain
+/// launch: neither DLL is worth a game that will not start.
 fn start_game(
-    install_dir: &Path,
+    sgw_dir: &Path,
     settings: &ClientPatchesSettings,
+    telemetry: &TelemetryDll,
     events_tx: &mpsc::UnboundedSender<Event>,
 ) -> Option<StartedGame> {
     let decision = decide(settings, || dll_source::resolve(settings, &exe_dir()));
     report_skipped(&decision, events_tx);
+    report_telemetry_skipped(telemetry, events_tx);
+    let patches = match &decision {
+        InjectDecision::Inject(src) => Some(src.path().to_path_buf()),
+        _ => None,
+    };
+    let tel = telemetry.path();
     let mut injection = match &decision {
         InjectDecision::Inject(_) => PatchInjection::Injected,
         InjectDecision::OptedOut => PatchInjection::OptedOut,
         InjectDecision::Unavailable(_) => PatchInjection::Unavailable,
     };
+    let mut tel_outcome = match telemetry {
+        TelemetryDll::Inject(_) => Some(DllOutcome::Injected),
+        TelemetryDll::Unavailable(_) => Some(DllOutcome::Unavailable),
+        TelemetryDll::NotOptedIn | TelemetryDll::NoSession(_) => None,
+    };
 
-    if let InjectDecision::Inject(src) = &decision {
-        let dll = src.path().to_path_buf();
-        match start_via_helper(install_dir, std::slice::from_ref(&dll)) {
+    for dlls in launch_attempts(patches.as_deref(), tel) {
+        let has_patches = patches.as_ref().is_some_and(|p| dlls.contains(p));
+        let has_tel = tel.is_some_and(|t| dlls.iter().any(|d| d == t));
+        match start_via_helper(sgw_dir, &dlls) {
             HelperStart::Started { pid, exit } => {
-                info!(pid, dll = %dll.display(), "SGW.exe launched with client patches");
-                let _ = events_tx.send(Event::Launched("SGW.exe with client patches".into(), pid));
-                return Some(StartedGame { exit, injection });
+                info!(pid, dlls = ?dlls, "SGW.exe launched with DLLs");
+                let _ = events_tx.send(Event::Launched(launched_label(has_patches, has_tel), pid));
+                return Some(StartedGame {
+                    exit,
+                    injection,
+                    telemetry_dll: tel_outcome,
+                });
             }
             HelperStart::GameMissing(e) => {
                 let _ = events_tx.send(Event::LaunchError(e.to_string()));
                 return None;
             }
             HelperStart::Failed(why) => {
-                warn!(reason = %why, dll = %dll.display(), "client-patches injection failed; launching without it");
-                let _ = events_tx.send(Event::ClientPatchesNote(format!(
-                    "not loaded ({why}); starting the game without them. \
-                     The Black Market window will not open."
-                )));
-                injection = PatchInjection::InjectFailed;
+                warn!(reason = %why, dlls = ?dlls, "DLL injection failed; retrying with fewer DLLs");
+                if has_tel {
+                    tel_outcome = Some(DllOutcome::InjectFailed);
+                    let _ = events_tx.send(Event::ClientTelemetryNote(format!(
+                        "not loaded ({why}); starting the game without in-game telemetry."
+                    )));
+                } else if has_patches {
+                    injection = PatchInjection::InjectFailed;
+                    let _ = events_tx.send(Event::ClientPatchesNote(format!(
+                        "not loaded ({why}); starting the game without them. \
+                         The Black Market window will not open."
+                    )));
+                }
             }
         }
     }
-
-    match launch_sgw_with_child(install_dir) {
+    // Here every attempt failed. The last one carried the patches alone
+    // whenever there were patches, so `injection` already says so.
+    match launch_sgw_with_child(sgw_dir) {
         Ok(child) => {
             let _ = events_tx.send(Event::Launched("SGW.exe".into(), child.id()));
             Some(StartedGame {
                 exit: Some(Box::pin(wait_for_exit(child))),
                 injection,
+                telemetry_dll: tel_outcome,
             })
         }
         Err(e) => {
@@ -214,6 +260,16 @@ fn start_game(
             None
         }
     }
+}
+
+fn launched_label(patches: bool, telemetry: bool) -> String {
+    match (patches, telemetry) {
+        (true, true) => "SGW.exe with client patches and telemetry",
+        (true, false) => "SGW.exe with client patches",
+        (false, true) => "SGW.exe with telemetry",
+        (false, false) => "SGW.exe",
+    }
+    .into()
 }
 
 /// Tell the player, and the launcher log, why the patches are not going in.
@@ -232,225 +288,18 @@ fn report_skipped(decision: &InjectDecision, events_tx: &mpsc::UnboundedSender<E
     let _ = events_tx.send(Event::ClientPatchesNote(note));
 }
 
-/// Run a telemetry session for an already-started game. The game is
-/// running whatever happens here: telemetry never blocks play.
-async fn follow_with_telemetry(
-    http: reqwest::Client,
-    install_dir: PathBuf,
-    cfg: LaunchTelemetryConfig,
-    exit: ExitWaiter,
-    patch_log: PatchLogWatcher,
-    events_tx: &mpsc::UnboundedSender<Event>,
-) {
-    let req = DevSessionRequest {
-        install_id: cfg.install_id,
-        machine_id: cfg.machine_id,
-        branch: cfg.branch,
-        git_sha: cfg.git_sha,
-        launcher_version: cfg.launcher_version.clone(),
-        tags: cfg.tags,
-    };
-    let telemetry = match Telemetry::start_session(
-        &http,
-        &cfg.auth_base_url,
-        req,
-        &install_dir,
-        &cfg.launcher_version,
-    )
-    .await
-    {
-        Ok(t) => Arc::new(t),
-        Err(e) => {
-            error!("telemetry session start failed: {e}");
-            let _ = events_tx.send(Event::TelemetrySessionError(format!(
-                "auth handshake failed: {e}"
-            )));
-            return;
-        }
-    };
-    match run_session(
-        telemetry,
-        Arc::new(http),
-        exit,
-        install_dir,
-        cfg.state_dir,
-        Some(patch_log),
-    )
-    .await
-    {
-        Ok(outcome) => {
-            let _ = events_tx.send(Event::TelemetrySessionComplete(outcome));
-        }
-        Err(e) => {
-            error!("telemetry session error: {e}");
-            let _ = events_tx.send(Event::TelemetrySessionError(e.to_string()));
-        }
+/// Tell the player why an opted-in launch goes without the telemetry DLL.
+/// A failed session start was already reported as a session error.
+fn report_telemetry_skipped(telemetry: &TelemetryDll, events_tx: &mpsc::UnboundedSender<Event>) {
+    if let TelemetryDll::Unavailable(why) = telemetry {
+        warn!(reason = %why, "client telemetry DLL unavailable; launching without it");
+        let _ = events_tx.send(Event::ClientTelemetryNote(format!(
+            "unavailable: {why}. The game starts without in-game telemetry; \
+             the launcher still uploads the client's logs."
+        )));
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::tests::{make_worker, recv_matching};
-    use super::super::Command;
-    use super::*;
-
-    fn opted_out() -> ClientPatchesSettings {
-        ClientPatchesSettings {
-            enabled: false,
-            dll_override: None,
-        }
-    }
-
-    /// With no SGW.exe the launch fails once, with the game's error, and
-    /// the opt-out still gets its status line first.
-    #[test]
-    fn launch_sgw_opted_out_reports_the_opt_out_then_the_missing_game() {
-        let dir = tempfile::tempdir().unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
-            install_dir: dir.path().to_path_buf(),
-            client_patches: opted_out(),
-            telemetry: None,
-        }));
-        let (note, err) = rt.block_on(async {
-            let note = recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::ClientPatchesNote(_))
-            })
-            .await;
-            let err = recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::Launched(..) | Event::LaunchError(_))
-            })
-            .await;
-            (note, err)
-        });
-        match note {
-            Event::ClientPatchesNote(n) => assert!(n.contains("launcher setting"), "{n}"),
-            other => panic!("expected ClientPatchesNote, got {other:?}"),
-        }
-        match err {
-            Event::LaunchError(msg) => assert!(msg.contains("SGW.exe"), "{msg}"),
-            other => panic!("expected LaunchError, got {other:?}"),
-        }
-    }
-
-    /// A configured DLL that is missing is reported, and the launch
-    /// carries on without it.
-    #[test]
-    fn launch_sgw_reports_a_missing_override_dll() {
-        let dir = tempfile::tempdir().unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
-            install_dir: dir.path().to_path_buf(),
-            client_patches: ClientPatchesSettings {
-                enabled: true,
-                dll_override: Some(dir.path().join("missing.dll")),
-            },
-            telemetry: None,
-        }));
-        let note = rt.block_on(recv_matching(&mut worker.events_rx, |e| {
-            matches!(e, Event::ClientPatchesNote(_))
-        }));
-        match note {
-            Event::ClientPatchesNote(n) => assert!(n.contains("missing.dll"), "{n}"),
-            other => panic!("expected ClientPatchesNote, got {other:?}"),
-        }
-    }
-
-    /// With an injectable DLL but no SGW.exe, the error is the game's,
-    /// reported once, and the patches are not blamed.
-    #[test]
-    fn launch_sgw_missing_game_is_not_blamed_on_the_patches() {
-        let dir = tempfile::tempdir().unwrap();
-        let dll = dir.path().join("p.dll");
-        std::fs::write(&dll, b"MZ").unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
-            install_dir: dir.path().to_path_buf(),
-            client_patches: ClientPatchesSettings {
-                enabled: true,
-                dll_override: Some(dll),
-            },
-            telemetry: None,
-        }));
-        let ev = rt.block_on(recv_matching(&mut worker.events_rx, |e| {
-            matches!(
-                e,
-                Event::Launched(..) | Event::LaunchError(_) | Event::ClientPatchesNote(_)
-            )
-        }));
-        match ev {
-            Event::LaunchError(msg) => assert!(msg.contains("SGW.exe"), "{msg}"),
-            other => panic!("expected only a LaunchError, got {other:?}"),
-        }
-    }
-
-    /// A build with the patches DLL but no `sgw-start32.exe` (a dev build:
-    /// nothing is embedded in tests and none sits beside the test binary)
-    /// says so, then still starts the game plainly.
-    #[cfg(windows)]
-    #[test]
-    fn launch_sgw_without_the_helper_reports_it_and_launches_plainly() {
-        let sys = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::copy(sys.join("HOSTNAME.EXE"), dir.path().join("SGW.exe")).unwrap();
-        let dll = dir.path().join("p.dll");
-        std::fs::write(&dll, b"MZ").unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
-            install_dir: dir.path().to_path_buf(),
-            client_patches: ClientPatchesSettings {
-                enabled: true,
-                dll_override: Some(dll),
-            },
-            telemetry: None,
-        }));
-        let (note, launched) = rt.block_on(async {
-            let note = recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::ClientPatchesNote(_))
-            })
-            .await;
-            let launched = recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::Launched(..) | Event::LaunchError(_))
-            })
-            .await;
-            (note, launched)
-        });
-        match note {
-            Event::ClientPatchesNote(n) => {
-                assert!(n.contains("sgw-start32.exe"), "{n}");
-                assert!(n.contains("not loaded"), "{n}");
-            }
-            other => panic!("expected ClientPatchesNote, got {other:?}"),
-        }
-        match launched {
-            Event::Launched(name, _) => assert_eq!(name, "SGW.exe"),
-            other => panic!("expected a plain launch, got {other:?}"),
-        }
-    }
-
-    /// Client-telemetry launch dispatches through the worker and surfaces
-    /// a `LaunchError` when there is no SGW.exe. Real injection isn't
-    /// testable from a unit test (it needs a Windows process and a real
-    /// DLL), so this pins the wiring, not the kernel call.
-    #[test]
-    fn launch_sgw_with_client_telemetry_routes_through_dispatch() {
-        let dir = tempfile::tempdir().unwrap();
-        let dll = tempfile::NamedTempFile::new().unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::LaunchSgwWithClientTelemetry {
-            install_dir: dir.path().to_path_buf(),
-            dll_path: dll.path().to_path_buf(),
-            client_patches: opted_out(),
-        });
-        let ev = rt.block_on(recv_matching(&mut worker.events_rx, |e| {
-            matches!(e, Event::Launched(_, _) | Event::LaunchError(_))
-        }));
-        match ev {
-            Event::LaunchError(msg) => assert!(
-                msg.contains("SGW.exe") || msg.to_lowercase().contains("not found"),
-                "LaunchError should reference the missing SGW.exe, got: {msg}"
-            ),
-            other => panic!("expected LaunchError, got {other:?}"),
-        }
-    }
-}
+#[path = "launch_sgw_tests.rs"]
+mod tests;
