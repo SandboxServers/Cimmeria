@@ -22,6 +22,7 @@ NPC-vs-NPC landed in #1009 (branch feat/1009-npc-vs-npc, 2026-09-28).
   deaths too. `death::npc_only_kill` = killer is a live non-pet NPC -> no loot roll; XP and
   `EntityDeath` were already refused for plain NPCs. Credit is killing-blow only (owner question
   open: per-contributor credit).
+- **Stale tick snapshot (fixed in #1009).** `npc_ai_tick` snapshots every NPC's state at the start; an NPC killed by an earlier NPC's turn used to run its stale Fighting handler as a corpse and go Dead -> Leashing. The loop now re-reads the state per turn and skips Dead / 0 HP. Any future "NPC A mutates NPC B during the tick" feature must respect this.
 - **Adjacent fix.** `npc_ai_idle_auto_aggro` now returns "NPC is Fighting"; it used to return
   "player just entered combat", so a patroller engaging an already-in-combat player was flipped
   back to Patrol by the dispatcher.

@@ -105,6 +105,10 @@ async fn live_db_castle_standoff_marine_and_guard_fight_to_a_death() {
     let (tx, mut rx) = mpsc::channel(65_536);
     let mut grants = 0usize;
     let mut dead = None;
+    // The lowest health each side reached. Measured every pass, because the
+    // survivor walks home and resets to full health (NA12) once the fight
+    // ends, which in this meshless space can be the same tick.
+    let (mut f_min, mut g_min) = (f0, g0);
     for _ in 0..400 {
         crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &events).await;
         for id in [FRIENDLY, GUARD] {
@@ -115,6 +119,8 @@ async fn live_db_castle_standoff_marine_and_guard_fight_to_a_death() {
             }
         }
         crate::cell::abilities::warmup_tick(&tx, &mut mgr, &events).await;
+        f_min = f_min.min(max_hp(&mgr, FRIENDLY).0);
+        g_min = g_min.min(max_hp(&mgr, GUARD).0);
         while let Ok(m) = rx.try_recv() {
             if matches!(m, CellToBaseMsg::GrantXP { .. }) {
                 grants += 1;
@@ -134,12 +140,13 @@ async fn live_db_castle_standoff_marine_and_guard_fight_to_a_death() {
         }
     }
 
-    let (f1, _) = max_hp(&mgr, FRIENDLY);
-    let (g1, _) = max_hp(&mgr, GUARD);
-    assert!(g1 < g0, "the friendly must damage the guard ({g0} -> {g1})");
     assert!(
-        f1 < f0,
-        "the guard must damage the friendly back ({f0} -> {f1})"
+        g_min < g0,
+        "the friendly must damage the guard ({g0} -> {g_min})"
+    );
+    assert!(
+        f_min < f0,
+        "the guard must damage the friendly back ({f0} -> {f_min})"
     );
     let dead = dead.expect("one of them must die within 400 passes");
     let corpse = mgr.get_entity(dead).unwrap();

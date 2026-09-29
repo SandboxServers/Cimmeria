@@ -421,3 +421,81 @@ async fn an_npc_only_kill_through_the_tick_pays_nothing() {
         );
     }
 }
+
+/// **Guard: a corpse gets no turn in the tick it died.** Two NPCs fight each
+/// other with a lethal shot, so whichever the tick visits first kills the
+/// other. The dead one must stay Dead: before #1009 the dispatcher ran every
+/// NPC with the state it had at the start of the tick, so the corpse got a
+/// Fighting turn, found its (cleared) threat list empty and walked home, from
+/// Dead to Leashing. Which of the two dies depends on the tick's order; the
+/// assertions hold for either.
+#[tokio::test]
+async fn an_npc_killed_by_another_npc_gets_no_turn_that_tick() {
+    use cimmeria_entity::abilities::EffectDef;
+
+    const EFFECT_ID: i32 = 0x7000_1012;
+    let mut mgr = pair(8.0);
+    seed_default_ability(&mut mgr, 0, 30);
+    let mut params = std::collections::HashMap::new();
+    params.insert("HealthDamage".to_string(), "9999".to_string());
+    mgr.effect_defs.insert(
+        EFFECT_ID,
+        EffectDef {
+            effect_id: EFFECT_ID,
+            ability_id: crate::cell::combat::NPC_DEFAULT_ABILITY,
+            params,
+            ..Default::default()
+        },
+    );
+    mgr.ability_defs
+        .get_mut(&crate::cell::combat::NPC_DEFAULT_ABILITY)
+        .unwrap()
+        .effect_ids = vec![EFFECT_ID];
+    for (me, them) in [(FRIENDLY, HOSTILE), (HOSTILE, FRIENDLY)] {
+        let e = mgr.get_entity_mut(me).unwrap();
+        e.threat_list.insert(them, 10.0);
+        crate::cell::service::npc_ai::force_ai_state(e, AiState::Fighting);
+    }
+
+    let (tx, _rx) = mpsc::channel(1024);
+    let events =
+        crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new());
+    // A miss is possible; shoot again until someone dies.
+    for _ in 0..20 {
+        crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &events).await;
+        let dead = [FRIENDLY, HOSTILE]
+            .into_iter()
+            .filter(|&id| {
+                mgr.get_entity(id)
+                    .unwrap()
+                    .stats
+                    .get(HEALTH)
+                    .is_some_and(|h| h.cur <= 0)
+            })
+            .count();
+        if dead > 0 {
+            break;
+        }
+        for id in [FRIENDLY, HOSTILE] {
+            let e = mgr.get_entity_mut(id).unwrap();
+            e.abilities = cimmeria_entity::abilities::AbilityManager::with_abilities(
+                &e.abilities.known_ability_ids(),
+            );
+        }
+    }
+
+    let states: Vec<(u32, AiState, i32)> = [FRIENDLY, HOSTILE]
+        .into_iter()
+        .map(|id| {
+            let e = mgr.get_entity(id).unwrap();
+            (id, e.ai_state(), e.stats.get(HEALTH).unwrap().cur)
+        })
+        .collect();
+    let corpses: Vec<_> = states.iter().filter(|(_, _, hp)| *hp <= 0).collect();
+    assert_eq!(corpses.len(), 1, "exactly one dies: {states:?}");
+    assert_eq!(
+        corpses[0].1,
+        AiState::Dead,
+        "the corpse must stay Dead, not take a turn: {states:?}"
+    );
+}

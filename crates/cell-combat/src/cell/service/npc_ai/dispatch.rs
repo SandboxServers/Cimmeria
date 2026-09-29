@@ -150,7 +150,34 @@ pub async fn npc_ai_tick(
 
     use tracing::Instrument;
 
-    for (npc_id, ai_state, _, has_patrol, has_wander) in npc_snapshot {
+    for (npc_id, snapshot_state, _, has_patrol, has_wander) in npc_snapshot {
+        // Re-read the state: an earlier NPC's turn this tick may have changed
+        // it. Since NPC-vs-NPC combat (#1009) an NPC is routinely killed, or
+        // shot out of Idle, by another NPC's turn in the same pass. Running
+        // the snapshot's handler on a corpse took it from Dead to Leashing
+        // (its cleared threat list read as "fight over"), and running the Idle
+        // handler on an NPC just shot into Fighting could let the patrol
+        // fall-through overwrite the fight. A corpse, or an NPC at 0 HEALTH,
+        // gets no turn; anything else runs the handler of the state it is in
+        // now. (Pets killing mobs in the AI tick had the same hazard.)
+        let Some(ai_state) = space_mgr.get_entity(npc_id).map(|e| e.ai_state()) else {
+            continue;
+        };
+        if matches!(ai_state, AiState::Dead | AiState::Spawning)
+            || npc_is_incapacitated(space_mgr, npc_id, now)
+        {
+            continue;
+        }
+        if ai_state != snapshot_state {
+            tracing::debug!(
+                target: "npc_ai",
+                event = "state_changed_mid_tick",
+                npc_id,
+                from = snapshot_state.label(),
+                to = ai_state.label(),
+                "NPC AI: state changed by an earlier turn this tick; running the current state"
+            );
+        }
         // An Idle NPC that is ticked only to look for NPC targets (#1009)
         // has nothing to do while no player watches it: its NPC scan is
         // witness-gated. Skipping the whole turn keeps a zone full of such
