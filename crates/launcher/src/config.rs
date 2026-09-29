@@ -22,7 +22,18 @@ pub const LOG_UPLOAD_SAS_URL: Option<&str> = option_env!("LAUNCHER_LOG_SAS_URL")
 /// Current persisted config-file schema. Bump when a breaking change to
 /// the on-disk shape lands; the load path then refuses to deserialise
 /// against the wrong schema rather than silently defaulting fields.
-pub const CONFIG_SCHEMA_VERSION: u32 = 1;
+///
+/// - 1: the first schema. A file without `schema_version` is schema 1.
+/// - 2: the default telemetry `auth_url` moved from the local admin API
+///   to the public server's login port; see [`LauncherConfig::load`].
+pub const CONFIG_SCHEMA_VERSION: u32 = 2;
+
+/// The schema a file without `schema_version` was written with.
+const FIRST_SCHEMA_VERSION: u32 = 1;
+
+/// The schema-1 default `telemetry.auth_url`: the admin API on the
+/// player's own machine, which a remote player never runs.
+const V1_DEFAULT_TELEMETRY_AUTH_URL: &str = "http://localhost:8443/api";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -40,10 +51,9 @@ pub enum ConfigError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LauncherConfig {
     /// Bumped on incompatible changes to this struct's on-disk shape.
-    /// Defaults to the current schema on legacy / missing field, which
-    /// is safe because adding `serde(default)` fields is always
-    /// backwards-compatible by construction.
-    #[serde(default = "default_schema_version")]
+    /// A missing field means schema 1, the schema files were written
+    /// with before the field existed, so they get schema 1's migrations.
+    #[serde(default = "first_schema_version")]
     pub schema_version: u32,
     pub install_path: PathBuf,
     /// Login servers written into the client's `LoginInternal.lua`; see
@@ -106,9 +116,12 @@ pub struct TelemetrySettings {
     /// either way, so it stops asking.
     #[serde(default)]
     pub prompt_answered: bool,
-    /// Base URL of the cimmeria-server admin API where the telemetry
-    /// auth handshake (`POST /auth/dev-session`) lives. Defaults to
-    /// the local-dev admin port; ops override for production.
+    /// Base URL where the telemetry auth handshake
+    /// (`POST /auth/dev-session`) lives. Defaults to the public server's
+    /// SOAP login port, which serves the telemetry routes (decision
+    /// @Cadacious, 2026-09-29); a local dev server sets
+    /// `http://localhost:8443/api` (the admin API) or
+    /// `http://localhost:8081/api`.
     #[serde(default = "default_telemetry_auth_url")]
     pub auth_url: String,
 }
@@ -123,12 +136,19 @@ impl Default for TelemetrySettings {
     }
 }
 
+/// The public server's login port, a host every player already reaches:
+/// it is in the default [`login servers`], so the plain-http endpoint
+/// policy accepts it.
+///
+/// [`login servers`]: crate::client_setup::login_servers::default_servers
+pub const DEFAULT_TELEMETRY_AUTH_URL: &str = "http://play.cimmeria.app:8081/api";
+
 fn default_telemetry_auth_url() -> String {
-    "http://localhost:8443/api".to_string()
+    DEFAULT_TELEMETRY_AUTH_URL.to_string()
 }
 
-fn default_schema_version() -> u32 {
-    CONFIG_SCHEMA_VERSION
+fn first_schema_version() -> u32 {
+    FIRST_SCHEMA_VERSION
 }
 
 impl Default for LauncherConfig {
@@ -145,16 +165,49 @@ impl Default for LauncherConfig {
 }
 
 impl LauncherConfig {
+    /// Read the config, migrating an older schema to the current one.
+    ///
+    /// A migrated config is written back straight away, so each
+    /// migration runs exactly once per file: a value the player sets
+    /// afterwards (say, `auth_url` back to `http://localhost:8443/api`
+    /// for a local dev server) is never migrated again. A failed
+    /// write-back is logged and the migrated config is still returned.
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let data = std::fs::read_to_string(path)?;
-        let cfg: LauncherConfig = serde_json::from_str(&data)?;
-        if cfg.schema_version != CONFIG_SCHEMA_VERSION {
+        let mut cfg: LauncherConfig = serde_json::from_str(&data)?;
+        if cfg.schema_version == CONFIG_SCHEMA_VERSION {
+            return Ok(cfg);
+        }
+        if cfg.schema_version != FIRST_SCHEMA_VERSION {
             return Err(ConfigError::UnsupportedSchema {
                 got: cfg.schema_version,
                 expected: CONFIG_SCHEMA_VERSION,
             });
         }
+        cfg.migrate_v1_to_v2();
+        if let Err(e) = cfg.save(path) {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "launcher config migrated in memory but not saved; it migrates again next start"
+            );
+        }
         Ok(cfg)
+    }
+
+    /// Schema 1 -> 2: move the old default telemetry `auth_url` (the local
+    /// admin API) to the new default (the public login port). Only the
+    /// exact old default string moves; any value the player chose stays.
+    fn migrate_v1_to_v2(&mut self) {
+        if self.telemetry.auth_url == V1_DEFAULT_TELEMETRY_AUTH_URL {
+            tracing::info!(
+                from = V1_DEFAULT_TELEMETRY_AUTH_URL,
+                to = DEFAULT_TELEMETRY_AUTH_URL,
+                "launcher config: telemetry auth_url moved to the new default"
+            );
+            self.telemetry.auth_url = default_telemetry_auth_url();
+        }
+        self.schema_version = 2;
     }
 
     pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
@@ -347,6 +400,94 @@ mod tests {
         assert_eq!(cfg.install_path, PathBuf::from("X"));
     }
 
+    fn write(dir: &tempfile::TempDir, json: &str) -> PathBuf {
+        let path = dir.path().join("c.json");
+        std::fs::write(&path, json).unwrap();
+        path
+    }
+
+    /// A schema-1 file that stored the old default auth URL moves to the
+    /// public login port, and the move is saved to disk.
+    #[test]
+    fn v1_config_with_the_old_default_auth_url_migrates_to_the_new_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            r#"{"schema_version":1,"install_path":"X","manifest_url":"Z","telemetry":{"opted_in":true,"auth_url":"http://localhost:8443/api"}}"#,
+        );
+        let cfg = LauncherConfig::load(&path).unwrap();
+        assert_eq!(cfg.schema_version, 2);
+        assert_eq!(cfg.telemetry.auth_url, DEFAULT_TELEMETRY_AUTH_URL);
+        assert!(cfg.telemetry.opted_in, "other settings survive");
+
+        let on_disk: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(on_disk["schema_version"], 2);
+        assert_eq!(on_disk["telemetry"]["auth_url"], DEFAULT_TELEMETRY_AUTH_URL);
+    }
+
+    /// Files from before `schema_version` existed are schema 1 and get
+    /// the same migration.
+    #[test]
+    fn a_config_without_schema_version_gets_the_v1_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            r#"{"install_path":"X","manifest_url":"Z","telemetry":{"auth_url":"http://localhost:8443/api"}}"#,
+        );
+        let cfg = LauncherConfig::load(&path).unwrap();
+        assert_eq!(cfg.telemetry.auth_url, DEFAULT_TELEMETRY_AUTH_URL);
+    }
+
+    /// Only the exact old default moves; a URL the player chose stays.
+    #[test]
+    fn v1_config_with_a_custom_auth_url_keeps_it() {
+        for custom in [
+            "http://localhost:8443/api/",
+            "http://127.0.0.1:8443/api",
+            "https://telemetry.example.org/api",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let json = serde_json::json!({
+                "schema_version": 1,
+                "install_path": "X",
+                "manifest_url": "Z",
+                "telemetry": { "auth_url": custom },
+            });
+            let path = write(&dir, &json.to_string());
+            let cfg = LauncherConfig::load(&path).unwrap();
+            assert_eq!(cfg.schema_version, 2);
+            assert_eq!(cfg.telemetry.auth_url, custom);
+        }
+    }
+
+    /// The migration runs once: a local dev who sets the old localhost URL
+    /// again after migrating keeps it on every later load.
+    #[test]
+    fn localhost_set_after_the_migration_sticks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            r#"{"schema_version":1,"install_path":"X","manifest_url":"Z","telemetry":{"auth_url":"http://localhost:8443/api"}}"#,
+        );
+        let mut cfg = LauncherConfig::load(&path).unwrap();
+        cfg.telemetry.auth_url = V1_DEFAULT_TELEMETRY_AUTH_URL.into();
+        cfg.save(&path).unwrap();
+
+        let reloaded = LauncherConfig::load(&path).unwrap();
+        assert_eq!(reloaded.telemetry.auth_url, V1_DEFAULT_TELEMETRY_AUTH_URL);
+        let again = LauncherConfig::load(&path).unwrap();
+        assert_eq!(again.telemetry.auth_url, V1_DEFAULT_TELEMETRY_AUTH_URL);
+    }
+
+    #[test]
+    fn a_fresh_config_uses_the_public_login_port() {
+        assert_eq!(
+            LauncherConfig::default().telemetry.auth_url,
+            "http://play.cimmeria.app:8081/api"
+        );
+    }
+
     // Future-schema configs should be rejected explicitly rather than
     // silently coerced (would otherwise erase fields not in the current
     // struct).
@@ -364,7 +505,7 @@ mod tests {
             err,
             ConfigError::UnsupportedSchema {
                 got: 99,
-                expected: 1
+                expected: CONFIG_SCHEMA_VERSION
             }
         ));
     }

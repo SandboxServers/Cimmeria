@@ -57,9 +57,11 @@ The server binds the admin API to **loopback by default** (`ADMIN_BIND` defaults
 unauthenticated administrative control (server stop, content rewrite, log/credential
 streaming via `/ws/logs`) to every host that can route to the port. Only set it wide
 together with the JWT work. Launcher telemetry (`POST /api/auth/dev-session`,
-`/api/telemetry/*`) shares this listener, so a launcher on another host cannot reach it
-under the loopback default; a cross-host telemetry deployment needs a wide `ADMIN_BIND`
-and accepts the unauthenticated-admin exposure until JWT lands.
+`/refresh`, `/api/telemetry/upload-{chunk,bundle}`) is served on this listener and, for
+launchers on other hosts, on the public SOAP login port (`LOGON_PORT`, 8081), which serves
+those four routes and nothing else from this API (`login_port_telemetry_router`,
+decision @Cadacious, 2026-09-29). A cross-host telemetry deployment therefore keeps the
+loopback `ADMIN_BIND`.
 
 Containers are different: a Docker published port forwards to the container's bridge
 address and cannot reach an in-container loopback bind, so the image sets
@@ -505,8 +507,8 @@ complete surface:
 | `GET /api/audit/logins` | `routes/audit.rs:52` — live |
 | `POST /api/auth/dev-session` | `routes/dev_session/mod.rs` — quota-limited; 429 + `Retry-After` over quota, 400 on a malformed `install_id` |
 | `POST /api/auth/dev-session/refresh` | `routes/dev_session/mod.rs` — quota-limited; 401 once the session passes its lifetime cap |
-| `POST /api/telemetry/upload-chunk` | `routes/telemetry/mod.rs:91-94` |
-| `POST /api/telemetry/upload-bundle` | `routes/telemetry/mod.rs:95-98` |
+| `POST /api/telemetry/upload-chunk` | `routes/telemetry/mod.rs` |
+| `POST /api/telemetry/upload-bundle` | `routes/telemetry/mod.rs` |
 | `GET /swagger-ui`, `GET /api-docs/openapi.json` | `crates/admin-api/src/lib.rs:117` |
 
 Note that `/api/editor/*` is an **HTTP** chain-editor persistence surface —

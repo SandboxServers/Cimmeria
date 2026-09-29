@@ -16,6 +16,7 @@ use tracing::{error, info, warn};
 use super::{Event, LaunchTelemetryConfig};
 use crate::client_telemetry_dll::{DllOutcome, TelemetryDll};
 use crate::telemetry::auth::DevSessionRequest;
+use crate::telemetry::endpoint::EndpointPolicy;
 use crate::telemetry::events::{ClientNativeEvent, TelemetryEvent};
 use crate::telemetry::patch_log::PatchLogWatcher;
 use crate::telemetry::process_watch::ExitWaiter;
@@ -67,6 +68,7 @@ pub(super) async fn start_player_session(
             req,
             install_dir,
             &cfg.launcher_version,
+            EndpointPolicy::from_login_servers(cfg.login_server_urls.iter().map(String::as_str)),
         ),
     )
     .await;

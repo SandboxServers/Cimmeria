@@ -56,6 +56,9 @@ pub struct Telemetry {
     pub machine_id: String,
     pub launcher_version: String,
     pub session_started_at_ms: i64,
+    /// Where uploads may go; re-applied to the endpoint a refresh hands
+    /// back.
+    endpoint_policy: endpoint::EndpointPolicy,
     /// ms-since-epoch when the current token was issued — feeds
     /// `should_refresh` so the policy works without remembering the
     /// TTL separately.
@@ -69,19 +72,23 @@ impl Telemetry {
     /// write `current-session.json`, return a live `Telemetry`
     /// handle. Callers feed events through [`Telemetry::enqueue`] and
     /// invoke [`Telemetry::flush`] on the flush cadence.
+    ///
+    /// `endpoint_policy` decides which plain-http addresses are allowed
+    /// (see [`endpoint`]); build it from the launcher's login servers.
     pub async fn start_session(
         http: &reqwest::Client,
         auth_base_url: &str,
         req: DevSessionRequest,
         install_dir: &std::path::Path,
         launcher_version: &str,
+        endpoint_policy: endpoint::EndpointPolicy,
     ) -> Result<Self, TelemetryError> {
         let now_ms = chrono::Utc::now().timestamp_millis();
         // Refuse before sending anything, and refuse an upload endpoint
         // the server hands back that the same rule would refuse.
-        endpoint::check(auth_base_url)?;
+        endpoint_policy.check(auth_base_url)?;
         let resp = auth::fetch_dev_session(http, auth_base_url, &req).await?;
-        endpoint::check(&resp.upload_endpoint)?;
+        endpoint_policy.check(&resp.upload_endpoint)?;
         let current = session::CurrentSession {
             schema_version: session::CURRENT_SESSION_SCHEMA,
             install_id: req.install_id.clone(),
@@ -109,6 +116,7 @@ impl Telemetry {
             machine_id: req.machine_id,
             launcher_version: launcher_version.to_string(),
             session_started_at_ms: now_ms,
+            endpoint_policy,
             issued_at_ms: std::sync::atomic::AtomicI64::new(now_ms),
             queue: DiskQueue::new(&exe_dir()),
             seq: Arc::new(Mutex::new(0)),
@@ -204,7 +212,7 @@ impl Telemetry {
             return Ok(false);
         }
         let new_resp = auth::refresh_dev_session(http, &self.auth_base_url, &current_token).await?;
-        endpoint::check(&new_resp.upload_endpoint)?;
+        self.endpoint_policy.check(&new_resp.upload_endpoint)?;
         self.issued_at_ms
             .store(now_ms, std::sync::atomic::Ordering::Relaxed);
         *self.session.write().await = new_resp;
@@ -419,6 +427,7 @@ mod tests {
             },
             dir.path(),
             "0.1.0",
+            endpoint::EndpointPolicy::default(),
         )
         .await
         .unwrap();
@@ -457,6 +466,7 @@ mod tests {
             request(),
             dir.path(),
             "0.1.0",
+            endpoint::EndpointPolicy::default(),
         )
         .await
         .err()
@@ -498,6 +508,7 @@ mod tests {
             request(),
             dir.path(),
             "0.1.0",
+            endpoint::EndpointPolicy::default(),
         )
         .await
         .err()

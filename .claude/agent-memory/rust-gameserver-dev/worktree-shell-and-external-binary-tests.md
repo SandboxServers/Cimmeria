@@ -76,6 +76,13 @@ clippy, build, nextest and the doctest as four separate `lane.sh` calls;
 `tools/build-lane/live-db-test.sh live_db` (plain call) runs the whole
 live-DB tier on the worktree's own database.
 
+Worse than a refusal (2026-09-29, telemetry-on-login-port): a
+`cd <worktree> && python - <<'EOF' ... EOF` edit returned "completed with no
+output" and **changed nothing**, while an identical call minutes earlier had
+worked. No error surfaced; only a follow-up `grep -c` showed the file was
+untouched. After any inline-heredoc edit, grep for a marker of the change
+before building on it, or use the scratchpad-script pattern from the start.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch

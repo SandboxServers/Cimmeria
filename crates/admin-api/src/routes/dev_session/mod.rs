@@ -51,13 +51,9 @@ mod session_kind_tests;
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
-
 use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
 use axum::Router;
-
-use cimmeria_services::orchestrator::Orchestrator;
 
 pub use handlers::{
     mint, refresh, DevSessionRequest, DevSessionResponse, RefreshRequest, TOKEN_TTL_SECONDS,
@@ -78,7 +74,11 @@ pub use token::env_lock;
 /// megabytes per request. A real mint body is a few hundred bytes.
 pub const MAX_BODY_BYTES: usize = 8 * 1024;
 
-pub fn routes() -> Router<Arc<Orchestrator>> {
+/// The handlers read no router state, so the routes fit any router: the
+/// admin API nests them under `/api/auth`, and
+/// [`crate::login_port_telemetry_router`] mounts them on the public SOAP
+/// login port.
+pub fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
     Router::new()
         .route("/dev-session", post(mint))
         .route("/dev-session/refresh", post(refresh))

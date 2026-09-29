@@ -266,6 +266,7 @@ fn telemetry_config(auth_base_url: String, state_dir: &Path) -> LaunchTelemetryC
         launcher_version: "0.1.0".into(),
         state_dir: state_dir.to_path_buf(),
         tags: vec![],
+        login_server_urls: vec![],
     }
 }
 

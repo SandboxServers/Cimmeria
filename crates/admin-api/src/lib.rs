@@ -8,9 +8,12 @@
 //! (replacing the original Qt-based ServerEd tool) and by any HTTP client
 //! for server administration.
 
+mod login_port;
 pub mod middleware;
 pub mod routes;
 pub mod ws;
+
+pub use login_port::login_port_telemetry_router;
 
 use std::sync::Arc;
 

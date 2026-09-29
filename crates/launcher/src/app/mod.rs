@@ -266,6 +266,7 @@ fn build_telemetry_config(
         launcher_version: identity.created_by_launcher_version.clone(),
         state_dir: crate::config::exe_dir(),
         tags: vec![],
+        login_server_urls: config.login_servers.iter().map(|s| s.url.clone()).collect(),
     }
 }
 

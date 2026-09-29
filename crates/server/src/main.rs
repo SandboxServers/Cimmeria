@@ -11,21 +11,21 @@
 //! |---|---|---|
 //! | `AUTH_HOST` | `0.0.0.0` | Auth service bind address |
 //! | `AUTH_PORT` | `13001` | Auth service port (BaseApp connections) |
-//! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login) |
+//! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login). Also serves the four launcher telemetry routes (`/api/auth/dev-session`, `/api/auth/dev-session/refresh`, `/api/telemetry/upload-{chunk,bundle}`) and nothing else from the admin API, so remote launchers need no config (decision @Cadacious, 2026-09-29). |
 //! | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | How often the background watcher polls the auth TLS cert/key file mtimes and hot-reloads the live config when either changes (e.g. a Let's Encrypt renewal), without restarting the server. `0` disables the watcher. Only active when the TLS listener is configured (cert + key paths set). |
 //! | `BASE_HOST` | `0.0.0.0` | BaseApp UDP bind address |
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
 //! | `CELL_PORT` | `50000` | CellApp port |
 //! | `ADMIN_PORT` | `8443` | Admin REST API port |
-//! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. The container image sets `0.0.0.0` because a published port cannot reach an in-container loopback bind; there the `-p` publish is the exposure control. Launcher telemetry (`/api/auth/dev-session`, `/api/telemetry/*`) shares this listener, so a launcher on another host needs a wide bind too. |
+//! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. The container image sets `0.0.0.0` because a published port cannot reach an in-container loopback bind; there the `-p` publish is the exposure control. Launcher telemetry (`/api/auth/dev-session`, `/api/telemetry/*`) is served here and on `LOGON_PORT`; remote launchers use `LOGON_PORT`, so this bind can stay narrow. |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string |
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
 //! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
 //! | `MERCURY_ENCRYPTION_VERSION` | `1` | Mercury wire-encryption version applied to every session. `1` = legacy (only version unpatched clients understand), `2` = modernized. Server-wide; no per-client negotiation yet. Unknown values fall back to `1`. |
 //! | `RUST_LOG` | `info` | Log filter (e.g. `debug`, `cimmeria_services=trace`) |
 //! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the dev-session token mint at `/api/auth/dev-session` (launchers and lab supervisors) and the upload endpoints at `/api/telemetry/upload-{chunk,bundle}`, whose client-side rows land in SigNoz as `service.name = cimmeria-client`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset or shorter than 32 bytes ⇒ every mint and upload returns 500, logged as `dev_session_secret_unusable` at startup (WARN) and per request (ERROR). On the colo it comes from `/opt/cimmeria/.env` through `docker/compose.yml`. |
-//! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload **base** URL handed back in the dev-session response; callers append `/upload-chunk` and `/upload-bundle`. Unset or blank ⇒ the default, which works only when the caller shares the host. Players' launchers accept only `https://` to another machine, so a remote deployment sets an HTTPS URL (e.g. a Cloudflare Tunnel hostname). Logged once at startup. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
+//! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload **base** URL handed back in the dev-session response; callers append `/upload-chunk` and `/upload-bundle`. Unset or blank ⇒ the default, which works only when the caller shares the host. Players' launchers accept `https://` anywhere and plain `http://` only to loopback or a login server's host and port, so a public deployment sets its login port, e.g. `http://play.cimmeria.app:8081/api/telemetry` (an HTTPS URL also works). Logged once at startup. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
 //! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
 //! | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | Fixed window the dev-session mint/refresh quotas below are counted over. |
 //! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints allowed per peer address per window on `/api/auth/dev-session`; over quota returns 429 + `Retry-After`. `0` disables. Note that a whole team behind one NAT or reverse proxy shares one bucket — raise it there. |
@@ -168,6 +168,17 @@ async fn main() {
     tracing::trace!("Creating orchestrator");
     let mut orch = Orchestrator::new(config);
     orch.set_login_event_channel(login_tx.clone(), login_buffer.clone());
+    // Launcher telemetry (dev-session mint/refresh + chunk/bundle upload)
+    // is also served on the public SOAP login port, so a remote player's
+    // launcher reaches it with no config and no secret. Decision
+    // (@Cadacious, 2026-09-29): plain HTTP there is acceptable, the game's
+    // own login already sends passwords over it. Only those four routes go
+    // on 8081; the rest of the admin API stays on its private listener.
+    orch.state()
+        .write()
+        .await
+        .auth
+        .set_public_routes(cimmeria_admin_api::login_port_telemetry_router());
     let orch = Arc::new(orch);
 
     tracing::trace!("Calling start_all");

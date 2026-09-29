@@ -37,7 +37,9 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
   synchronization (the prior Cimmeria-MCP write path required mirror
   copies of the secret in two repos; that's gone).
 - Minting needs no credential: the `sub` claim is the caller's own
-  `install_id`, so anyone who can reach the admin port can mint.
+  `install_id`, so anyone who can reach the admin port or the public
+  login port (see [Where the routes are served](#where-the-routes-are-served))
+  can mint.
   Account-bound auth is a v2 concern and needs a launcher-side
   handshake. What bounds the damage meanwhile is not authentication
   but three limits — see [Mint and refresh limits](#mint-and-refresh-limits).
@@ -86,6 +88,63 @@ went to the base path and was refused; it now appends `/upload-chunk`
 unless the value already ends with it (`uploader::chunk_url`). A blank
 `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` (compose passes `${VAR:-}`) falls
 back to the default instead of handing callers `""`.
+
+## Where the routes are served
+
+The four routes (`/api/auth/dev-session`, `/api/auth/dev-session/refresh`,
+`/api/telemetry/upload-chunk`, `/api/telemetry/upload-bundle`) are served
+on two listeners, at the same paths:
+
+- the admin API listener (`ADMIN_BIND:8443`), private and
+  unauthenticated (#439);
+- the public SOAP login listener (`LOGON_PORT`, 8081, and the auth TLS
+  listener when it is configured), always on.
+
+Decision (@Cadacious, 2026-09-29): a remote player's launcher must work
+with no config and no secret, and the login port is the one address every
+player already reaches. Plain HTTP there adds no exposure the game does
+not already have: the client's own SOAP login sends the password over
+plain HTTP on that port. No TLS or tunnel is required; a Cloudflare route
+in front of the admin port remains an option.
+
+Wiring: `cimmeria_admin_api::login_port_telemetry_router()` builds a
+stateless router holding only those four routes (with their body limits
+and the same per-request trace span as the admin router). The composition
+root (`crates/server/src/main.rs`) hands it to the auth service through
+`AuthService::set_public_routes` before `start_all`, and the auth service
+merges it next to `/SGWLogin/*`. The auth crate sits below the admin API
+in the crate graph, so it takes the router rather than building it. Both
+auth listeners serve with connect info, which the mint and refresh quotas
+need. Nothing else under `/api`, `/ws` or Swagger is served on the login
+port; `login_port_router_does_not_expose_admin_routes` pins that.
+
+A public server sets `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to its login
+port (`http://<host>:8081/api/telemetry`) so uploads go there too.
+
+## Launcher endpoint policy
+
+The launcher checks `telemetry.auth_url` before minting, and every
+`upload_endpoint` the server returns (at mint and at each refresh),
+against one rule (`crates/launcher/src/telemetry/endpoint.rs`,
+`EndpointPolicy`):
+
+- `https://` anywhere;
+- plain `http://` to loopback;
+- plain `http://` to the exact host and port of one of the launcher's
+  `http://` login servers.
+
+Anything else is refused before a byte is sent. The third case exists for
+the login-port mount above: the player already talks to that host and port
+in plaintext. Another port on the same host (the admin API's 8443) and
+look-alike hosts are refused, and an `https://` login server does not
+vouch for plain http to its host. The telemetry HTTP client never follows
+redirects, so a checked request cannot be bounced elsewhere.
+
+The default `auth_url` is `http://play.cimmeria.app:8081/api`, on the
+default login server. Launcher config schema 2 migrates a schema-1 file
+whose `auth_url` is exactly the old default (`http://localhost:8443/api`)
+to the new default once, and writes the file back; any other value is
+kept.
 
 ## Lab sessions
 
@@ -272,7 +331,9 @@ Behind a reverse proxy (a Cloudflare Tunnel, say) every request
 arrives from the proxy, so the per-IP quota degenerates to a global
 cap. No forwarded-for header is read: an unconditional read would let
 any caller set its own quota key. Operators fronting the admin port
-should raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` accordingly.
+should raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` accordingly. On the
+login port each launcher arrives from its own address, so the quota keys
+on the player.
 
 **Bounded refresh chain.** `refresh` preserves the original `iat` and
 refuses once the session passes `CIMMERIA_TELEMETRY_MAX_SESSION_SECS`
