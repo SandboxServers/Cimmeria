@@ -9,7 +9,8 @@ use std::io::Write;
 use crate::routes::dev_session::TokenClaims;
 
 use super::dto::{ClientNativeEvent, IngestError, TelemetryEvent};
-use super::handlers::{replay_client_native, verify_bearer};
+use super::handlers::verify_bearer;
+use super::replay::replay_client_native;
 
 fn gzip_lines(lines: &[&str]) -> Vec<u8> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
@@ -141,6 +142,7 @@ fn replay_client_native_tolerates_unknown_level() {
         iat: 0,
         exp: i64::MAX,
         scope: vec!["telemetry.write".into()],
+        kind: None,
     };
     let ev = ClientNativeEvent {
         ts_ms: 0,
@@ -177,6 +179,7 @@ fn verify_bearer_accepts_token_minted_by_dev_session() {
         iat: chrono::Utc::now().timestamp(),
         exp: chrono::Utc::now().timestamp() + 3600,
         scope: vec!["telemetry.write".into()],
+        kind: None,
     };
     let token = encode_token(&claims, &secret).unwrap();
 
@@ -218,6 +221,7 @@ fn verify_bearer_rejects_a_token_without_the_telemetry_write_scope() {
             iat: now,
             exp: now + 3600,
             scope,
+            kind: None,
         };
         let token = encode_token(&claims, &secret).unwrap();
         let mut headers = HeaderMap::new();

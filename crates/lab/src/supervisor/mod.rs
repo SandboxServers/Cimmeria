@@ -5,6 +5,8 @@
 //! Layout (directory from day one — 4+ siblings per the file-org rule):
 //! - [`session_file`] — write `current-session.json` + `lab` block +
 //!   fresh token; read `lab-account.json`.
+//! - [`telemetry_session`] — mint the launch's dev-session telemetry token
+//!   (`session_kind = lab`) so the client's events reach SigNoz.
 //! - [`process`] — native launch/inject/status/terminate + window
 //!   resolution by PID.
 //! - [`heartbeat`] — the staleness watchdog decision (pure, tested).
@@ -28,6 +30,7 @@ pub mod process;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
+pub mod telemetry_session;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -84,9 +87,9 @@ pub struct SupervisorConfig {
     pub bind: String,
     /// Bridge port.
     pub port: u16,
-    /// Telemetry upload endpoint written into the session file (uploads
-    /// are best-effort; a bad endpoint just fails silently).
-    pub upload_endpoint: String,
+    /// Where each launch mints its telemetry token, and an optional
+    /// upload endpoint override ([`telemetry_session`]).
+    pub telemetry: telemetry_session::TelemetryConfig,
 }
 
 impl SupervisorConfig {
@@ -127,8 +130,7 @@ impl SupervisorConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_BRIDGE_PORT),
-            upload_endpoint: std::env::var("CIMMERIA_LAB_UPLOAD_ENDPOINT")
-                .unwrap_or_else(|_| "http://127.0.0.1/api/telemetry/upload-chunk".to_string()),
+            telemetry: telemetry_session::TelemetryConfig::from_env(),
         }
     }
 
@@ -172,6 +174,8 @@ struct SupervisorState {
     pid: Option<u32>,
     started_at: Option<Instant>,
     token: Option<String>,
+    /// The last launch's telemetry grant, as `lab_client_start` reports it.
+    telemetry: Option<Value>,
     login: LoginState,
     watchdog: HeartbeatWatchdog,
     recovery: RecoveryTracker,
@@ -192,6 +196,7 @@ impl SupervisorState {
             pid: None,
             started_at: None,
             token: None,
+            telemetry: None,
             login: LoginState::NotStarted,
             watchdog: HeartbeatWatchdog::new(HEARTBEAT_STALE_AFTER),
             recovery: RecoveryTracker::new_default(),
@@ -331,12 +336,9 @@ impl Supervisor {
             .ok_or("no sgw-start32.exe path (set CIMMERIA_LAB_START32)")?;
 
         let token = session_file::generate_token();
-        let session = session_file::build_session(
-            &token,
-            &self.config.bind,
-            self.config.port,
-            &self.config.upload_endpoint,
-        );
+        let telemetry = telemetry_session::grant_for_launch(&self.config.telemetry).await;
+        let session =
+            session_file::build_session(&token, &self.config.bind, self.config.port, &telemetry);
         session_file::write_session(&install_dir, &session)?;
 
         // Native launch runs on a blocking thread. SGW.exe lives in
@@ -359,6 +361,7 @@ impl Supervisor {
             st.pid = Some(pid);
             st.started_at = Some(Instant::now());
             st.token = Some(token);
+            st.telemetry = Some(telemetry.status());
             st.login = LoginState::NotStarted;
             st.watchdog = HeartbeatWatchdog::new(HEARTBEAT_STALE_AFTER);
         }
@@ -387,7 +390,11 @@ impl Supervisor {
         }
         let pid = self.launch_client(server_override).await?;
         self.spawn_watchdog(pid);
-        Ok(json!({ "pid": pid, "bridge_port": self.config.port, "started": true }))
+        let telemetry = self.state.lock().await.telemetry.clone();
+        Ok(
+            json!({ "pid": pid, "bridge_port": self.config.port, "started": true,
+                   "telemetry": telemetry }),
+        )
     }
 
     /// `lab_client_stop` — terminate the client.
@@ -663,7 +670,7 @@ mod tests {
             helper_path: None,
             bind: "0.0.0.0".into(),
             port: 8770,
-            upload_endpoint: "e".into(),
+            telemetry: Default::default(),
         };
         assert_eq!(c.connect_host(), "127.0.0.1");
         let c2 = SupervisorConfig {

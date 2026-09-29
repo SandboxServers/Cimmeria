@@ -182,6 +182,17 @@ The overlay's `${CIMMERIA_WG_IP:?...}` / `${CIMMERIA_LAB_MCP_TOKEN:?...}` marker
 
 Every tool call on the endpoint emits one `lab.tool_call` audit event to SigNoz — that log line is the whole audit trail. On the colo, touch only the lab character and what it spawns unless the owner says otherwise in that session.
 
+## Optional: client telemetry
+
+Launchers that opted in, and lab sessions, upload the client's logs and the injected DLL's events to the colo's `/api/telemetry/*`, which replays them into SigNoz as `service.name = cimmeria-client` (lab rows tagged `cimmeria.session_kind = lab`). It is **off until two values are in `/opt/cimmeria/.env`**; `docker/compose.yml` passes them through with `${VAR:-}` and never holds them itself:
+
+```bash
+CIMMERIA_TELEMETRY_HMAC_SECRET=<openssl rand -hex 64>
+CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=https://telemetry.<your-domain>/api/telemetry
+```
+
+The upload endpoint must be HTTPS, because players' launchers refuse plain HTTP to another machine: route a Cloudflare Tunnel hostname limited to `^/api/(auth/dev-session|telemetry/)` at `http://cimmeria:8443`, with no Access policy on it. Then `docker compose -f compose.yml up -d cimmeria`, and check `docker logs cimmeria 2>&1 | grep "dev-session telemetry"` says `mint and ingest enabled`. A missing or short secret does not stop the game server; it logs `dev_session_secret_unusable` at startup instead. The full steps, the tunnel rule and the checks are in [telemetry.md → Enable client telemetry on the colo](telemetry.md#enable-client-telemetry-on-the-colo).
+
 ## Optional: watchtower notifications
 
 Watchtower itself can ping Discord / Slack / email / Matrix via [shoutrrr](https://containrrr.dev/watchtower/notifications/) every time it swaps a container. This is independent of the cimmeria-discord crate above — watchtower notifications announce *image swaps*, while cimmeria-discord notifications announce *server events*. Set `WATCHTOWER_NOTIFICATIONS` and `WATCHTOWER_NOTIFICATION_URL` in the compose file if you want both.

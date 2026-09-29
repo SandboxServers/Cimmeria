@@ -1,6 +1,6 @@
 # Dev-Session Telemetry — Architecture
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-29
 
 How the launcher streams a developer's session (Atera client log,
 BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
@@ -59,7 +59,45 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
 | `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
 | `crates/admin-api/src/routes/dev_session/` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify), quota tables. |
-| `crates/admin-api/src/routes/telemetry/` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` so the OTLP layer ships it to SigNoz. |
+| `crates/admin-api/src/routes/telemetry/` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` (`replay.rs`) so the OTLP layer ships it to SigNoz. The client-side rows go to the `cimmeria-client` service. |
+| `crates/client-telemetry/src/uploader.rs` | The injected DLL's own uploader: reads `current-session.json`, POSTs gzip(NDJSON) `client_native` batches to `<upload_endpoint>/upload-chunk`. |
+| `crates/lab/src/supervisor/telemetry_session.rs` | The Live Research Lab supervisor's mint: one lab session (`session_kind = "lab"`) per client launch, written into the session file the DLL reads. |
+
+## Where the rows land
+
+Everything a session uploads is replayed through `tracing`; the
+server's log routing (`crates/server/src/logging/filters.rs`) sends the
+client-side rows (`client.native`, `launcher.client_log`,
+`launcher.debug_log`, `launcher.session_meta`) to the SigNoz service
+`cimmeria-client` and nowhere else. Each row carries the token's
+`session_id` and `install_id`, `cimmeria.session_kind` (`lab` or
+`player`) and `lab`; `client.native` rows add the DLL's event name as
+`client_target` and a few keys lifted out of its `fields` bag. The full
+table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
+
+## The upload endpoint is a base
+
+`upload_endpoint` in the mint response, and so in
+`current-session.json`, is the upload **base**
+(`https://host/api/telemetry`, default `http://localhost:8443/api/telemetry`):
+the launcher appends `/upload-chunk` and `/upload-bundle`. The DLL used
+to POST to it verbatim, so every batch from a launcher-written session
+went to the base path and was refused; it now appends `/upload-chunk`
+unless the value already ends with it (`uploader::chunk_url`). A blank
+`CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` (compose passes `${VAR:-}`) falls
+back to the default instead of handing callers `""`.
+
+## Lab sessions
+
+The lab supervisor mints from `CIMMERIA_LAB_SERVER_URL` (default
+`http://127.0.0.1:8443`) with `session_kind = "lab"`, and writes the
+token, the server's `session_id` and the upload endpoint into the
+session file (`CIMMERIA_LAB_UPLOAD_ENDPOINT` overrides the endpoint).
+The lab bridge's own per-launch token stays in the `lab` block and never
+leaves the machine: the telemetry token is a different value. A failed
+mint does not stop the launch; the file then carries an empty token (the
+bridge still starts, because `telemetry.enabled` stays true) and
+`lab_client_start` reports why under `telemetry`.
 
 ## Session lifecycle
 
@@ -135,13 +173,18 @@ repro. The log lines this parses are listed in the client-patches
 ## Token format
 
 ```text
-payload = base64url(JSON {iss, sub, sid, iat, exp, scope})
+payload = base64url(JSON {iss, sub, sid, iat, exp, scope, kind?})
 sig     = base64url(HMAC-SHA256(secret, payload))
 token   = payload || "." || sig
 ```
 
 `iss` = `"cimmeria-server"`. `sub` = install_id. `sid` = session_id.
-`scope` = `["telemetry.write"]`.
+`scope` = `["telemetry.write"]`. `kind` = `"lab"` for a session minted
+with `"session_kind": "lab"`, and **absent** for a player's launcher, so
+a player token is byte-identical to one minted before the claim existed
+and older tokens still decode. It is signed, so an upload cannot relabel
+itself, but minting is open, so it is a filter label and never a
+privilege. A refresh keeps it. Any other requested kind is a 400.
 
 `iat` is the **original mint** time and survives every refresh, so
 `exp` − `iat` is 8 hours only on a freshly minted token and shrinks

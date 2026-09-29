@@ -2,15 +2,19 @@
 //! gitignored `lab-account.json` credentials.
 //!
 //! The supervisor owns the session file for a lab launch (ADR §3.4): it
-//! mints a fresh 32-byte token per launch and writes the `lab` block
-//! that is the run-time half of the bridge's double activation gate.
-//! The shape mirrors the launcher's `CurrentSession` plus the `lab`
-//! block the DLL's `LabConfig` reads
-//! (`crates/client-telemetry/src/session.rs`).
+//! mints a fresh 32-byte bridge token per launch and writes the `lab`
+//! block that is the run-time half of the bridge's double activation
+//! gate. The `telemetry` block carries a real dev-session token from the
+//! server ([`super::telemetry_session`]), which is a different token: the
+//! bridge token never leaves the machine. The shape mirrors the
+//! launcher's `CurrentSession` plus the `lab` block the DLL's `LabConfig`
+//! reads (`crates/client-telemetry/src/session.rs`).
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+use super::telemetry_session::{TelemetryGrant, LAB_INSTALL_ID};
 
 /// Bridge default port (mirrors the DLL's `default_lab_port`). 8770 —
 /// 8765 is claimed by the SigNoz MCP and the Atrea editor bridge.
@@ -103,34 +107,42 @@ pub fn read_lab_account(install_dir: &Path) -> Result<LabAccount, String> {
     serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
-/// Build the session object for a lab launch.
-pub fn build_session(token: &str, bind: &str, port: u16, upload_endpoint: &str) -> CurrentSession {
+/// Build the session object for a lab launch. `bridge_token` goes in the
+/// `lab` block only; the `telemetry` block is the server's grant.
+pub fn build_session(
+    bridge_token: &str,
+    bind: &str,
+    port: u16,
+    telemetry: &TelemetryGrant,
+) -> CurrentSession {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
     CurrentSession {
         schema_version: 1,
-        install_id: "cimmeria-lab".to_string(),
-        machine_id: "cimmeria-lab".to_string(),
-        // A per-launch session id so telemetry rows correlate to the run.
-        session_id: uuid::Uuid::new_v4().to_string(),
+        install_id: LAB_INSTALL_ID.to_string(),
+        machine_id: LAB_INSTALL_ID.to_string(),
+        // The server-minted session id, so the file and the SigNoz rows
+        // (`session_id`) name the same run.
+        session_id: telemetry.session_id.clone(),
         session_started_at_ms: now_ms,
         branch: "lab".to_string(),
         git_sha: "lab".to_string(),
         telemetry: TelemetryBlock {
-            // Must be true or the DLL parks before the bridge starts.
+            // Must be true or the DLL parks before the bridge starts, even
+            // when the mint failed and the token is empty.
             enabled: true,
-            token: token.to_string(),
-            upload_endpoint: upload_endpoint.to_string(),
-            expires_at_ms: 0,
-            chunk_max_bytes: 1 << 20,
-            flush_interval_ms: 2000,
+            token: telemetry.token.clone(),
+            upload_endpoint: telemetry.upload_endpoint.clone(),
+            expires_at_ms: telemetry.expires_at_ms,
+            chunk_max_bytes: telemetry.chunk_max_bytes,
+            flush_interval_ms: telemetry.flush_interval_ms,
         },
         lab: LabBlock {
             bind: bind.to_string(),
             port,
-            token: token.to_string(),
+            token: bridge_token.to_string(),
         },
         tags: vec!["lab".to_string()],
     }
@@ -150,7 +162,23 @@ pub fn write_session(install_dir: &Path, session: &CurrentSession) -> Result<Pat
 
 #[cfg(test)]
 mod tests {
+    use super::super::telemetry_session::{MintResponse, TelemetryConfig};
     use super::*;
+
+    /// A grant as the server's mint returns it.
+    fn minted() -> TelemetryGrant {
+        TelemetryGrant::minted(
+            MintResponse {
+                session_id: "sid-from-server".into(),
+                token: "payload.sig".into(),
+                expires_at_ms: 1_700_000_000_000,
+                upload_endpoint: "http://127.0.0.1:8443/api/telemetry".into(),
+                chunk_max_bytes: 1 << 20,
+                flush_interval_ms: 2000,
+            },
+            &TelemetryConfig::default(),
+        )
+    }
 
     #[test]
     fn token_is_64_lowercase_hex() {
@@ -178,17 +206,59 @@ mod tests {
             &"a".repeat(64),
             DEFAULT_BRIDGE_BIND,
             DEFAULT_BRIDGE_PORT,
-            "https://x/api",
+            &minted(),
         );
         assert!(s.telemetry.enabled, "must be true or the DLL parks");
         assert_eq!(s.lab.token, "a".repeat(64));
-        assert_eq!(s.lab.token, s.telemetry.token, "same per-launch token");
         assert_eq!(s.lab.port, 8770);
 
         let json = serde_json::to_string(&s).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["lab"]["token"], "a".repeat(64));
         assert_eq!(v["telemetry"]["enabled"], true);
+    }
+
+    /// The telemetry block is the server's grant: its token, its session
+    /// id and its upload endpoint, not the placeholder endpoint and random
+    /// token no server accepted. The bridge token stays in the `lab` block
+    /// only, so it never travels to the server in an upload header.
+    #[test]
+    fn built_session_writes_the_minted_token_and_endpoint() {
+        let bridge = "b".repeat(64);
+        let s = build_session(&bridge, DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT, &minted());
+        assert_eq!(s.telemetry.token, "payload.sig");
+        assert_eq!(
+            s.telemetry.upload_endpoint,
+            "http://127.0.0.1:8443/api/telemetry"
+        );
+        assert_eq!(s.telemetry.expires_at_ms, 1_700_000_000_000);
+        assert_eq!(s.session_id, "sid-from-server");
+        assert_ne!(
+            s.telemetry.token, bridge,
+            "bridge token must not be the upload token"
+        );
+        assert_eq!(s.lab.token, bridge);
+        assert_eq!(s.install_id, "cimmeria-lab");
+    }
+
+    /// A failed mint still writes `enabled: true` (or the DLL parks and
+    /// the bridge never starts), with an empty token the server refuses.
+    #[test]
+    fn a_failed_mint_keeps_the_bridge_reachable() {
+        let grant = TelemetryGrant::unavailable("down".into(), &TelemetryConfig::default());
+        let s = build_session(
+            &"c".repeat(64),
+            DEFAULT_BRIDGE_BIND,
+            DEFAULT_BRIDGE_PORT,
+            &grant,
+        );
+        assert!(s.telemetry.enabled);
+        assert!(s.telemetry.token.is_empty());
+        assert_eq!(s.lab.token, "c".repeat(64));
+        assert_eq!(
+            s.telemetry.upload_endpoint,
+            "http://127.0.0.1:8443/api/telemetry"
+        );
     }
 
     #[test]
@@ -215,7 +285,7 @@ mod tests {
             &"b".repeat(64),
             DEFAULT_BRIDGE_BIND,
             DEFAULT_BRIDGE_PORT,
-            "e",
+            &minted(),
         );
         let path = write_session(install, &s).unwrap();
         assert!(path.exists());

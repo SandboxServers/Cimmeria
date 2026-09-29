@@ -87,6 +87,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [observability-test-and-throttle-traps](observability-test-and-throttle-traps.md) — counters unobservable in tests.
 - [log-filter-parity-traps](log-filter-parity-traps.md) — `EnvFilter::new` drops a bad directive silently.
 - [tracing-span-fields-not-on-log-records](tracing-span-fields-not-on-log-records.md) — span fields are not flattened onto OTLP log records.
+- [client-telemetry-index-and-upload-traps](client-telemetry-index-and-upload-traps.md) — cimmeria-client routing; base-vs-chunk URL, blank `${VAR:-}` env, DLL not in player launch.
 
 ## Testing patterns
 
