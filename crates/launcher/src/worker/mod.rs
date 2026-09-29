@@ -26,6 +26,7 @@ use crate::logs::{blob_name_for, build_log_zip, compute_content_digest, upload_b
 use crate::manifest::{fetch_manifest, Manifest};
 use crate::state::UploadedLedger;
 use crate::telemetry::auth::DevSessionRequest;
+use crate::telemetry::endpoint::EndpointPolicy;
 use crate::telemetry::process_watch::wait_for_exit;
 use crate::telemetry::runner::run_session;
 use crate::telemetry::Telemetry;
@@ -128,6 +129,9 @@ impl Worker {
                 req,
                 &install_dir,
                 &cfg.launcher_version,
+                EndpointPolicy::from_login_servers(
+                    cfg.login_server_urls.iter().map(String::as_str),
+                ),
             )
             .await
             {

@@ -123,4 +123,7 @@ pub struct LaunchTelemetryConfig {
     pub launcher_version: String,
     pub state_dir: PathBuf,
     pub tags: Vec<String>,
+    /// The configured login servers' URLs. Telemetry may use plain http
+    /// to their host and port (see `telemetry::endpoint`).
+    pub login_server_urls: Vec<String>,
 }

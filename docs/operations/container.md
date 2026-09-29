@@ -94,7 +94,7 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `OTEL_RESOURCE_ATTRIBUTES` | (unset) | Comma-separated `k=v` resource attributes. |
 | `OTEL_TRACES_SAMPLER` | `always_on` | `always_on`, `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
 | `CIMMERIA_TELEMETRY_HMAC_SECRET` | (unset) | Secret for the launcher dev-session token mint. Unset ⇒ the endpoint returns 500. See [telemetry.md](telemetry.md). |
-| `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload URL handed back to the launcher. **Must** be overridden when the launcher and server are on different hosts. |
+| `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload URL handed back to the launcher. **Must** be overridden when the launcher and server are on different hosts; a public server uses its login port, e.g. `http://play.cimmeria.app:8081/api/telemetry`, which serves the telemetry routes too. |
 | `CIMMERIA_TELEMETRY_KILL_SWITCH` | (unset) | Set to the literal `1` to pause telemetry ingest. |
 | `DISCORD_CONFIG_TOML` | (unset) | Read by the entrypoint, not the server: when set, its contents are written to `/opt/cimmeria/config/discord.toml` (mode 0440) before the server starts. [`docker/compose.discord.yml`](../../docker/compose.discord.yml) sets it. Unset leaves any existing file alone. |
 | `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` | (unset) | Extra `Host` header values the lab MCP endpoint accepts, comma-separated, on top of `localhost`, `127.0.0.1` and `::1`. [`docker/compose.lab.yml`](../../docker/compose.lab.yml) sets it to `CIMMERIA_WG_IP`. |

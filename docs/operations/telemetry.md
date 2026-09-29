@@ -94,50 +94,60 @@ running cimmeria-server process env.
 
 ## Pointing the launcher at a non-localhost server
 
-The launcher sends telemetry only to `https://` addresses, or to plain
-`http://` on the player's own machine (`localhost`, `127.x`, `::1`). That
-applies to the auth URL in `launcher-config.json` (`telemetry.auth_url`,
-default `http://localhost:8443/api`) and to every `upload_endpoint` the
-server hands back. Anything else fails the session before a byte is sent,
-with "telemetry needs an https:// server address" in the status log
+The server serves the four telemetry routes (see [Endpoints](#endpoints))
+on two listeners: the admin API port (`8443`, private, no
+authentication) and the public SOAP login port (`LOGON_PORT`, `8081`),
+which every player's game client already reaches. Nothing else from the
+admin API is served on `8081`. Decision (@Cadacious, 2026-09-29): plain
+HTTP on the login port is acceptable, because the game's own login
+already sends the player's password over plain HTTP on that port.
+
+The launcher sends telemetry to:
+
+- any `https://` address;
+- plain `http://` on the player's own machine (`localhost`, `127.x`,
+  `::1`);
+- plain `http://` to the exact host and port of one of the launcher's
+  `http://` login servers (the list written into `LoginInternal.lua`; the
+  default is `http://play.cimmeria.app:8081`).
+
+That rule applies to `telemetry.auth_url` in `launcher-config.json`
+(default `http://play.cimmeria.app:8081/api`) and to every
+`upload_endpoint` the server hands back, including after a token
+refresh. Anything else fails the session before a byte is sent, with
+"telemetry needs an https:// server address" in the status log
 ([`telemetry/endpoint.rs`](../../crates/launcher/src/telemetry/endpoint.rs)).
-A remote server therefore needs TLS in front of its admin port, for
-example the Cloudflare Tunnel below; the colo's plain `8443` is not
-enough.
+Another port on a login server's host, such as `8443`, is still refused.
 
-**Sending your own telemetry to the colo, with SSH access.** Forward the
-colo's admin port to your machine, then launch with the default
-`telemetry.auth_url`:
+**Existing launcher configs.** Config schema 2 moved the default
+`auth_url`. A schema-1 `launcher-config.json` whose `auth_url` is exactly
+the old default, `http://localhost:8443/api`, is rewritten to the new
+default once, on the first start of the new launcher. Any other value is
+kept. A developer with a local server sets `http://localhost:8443/api`
+(or `http://localhost:8081/api`) again afterwards, and it sticks.
 
-```bash
-ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30   -L 127.0.0.1:8443:127.0.0.1:8443 <colo host>
-```
-
-The launcher then talks to `http://localhost:8443/api`, which the rule
-above allows, and the colo's default `upload_endpoint`
-(`http://localhost:8443/api/telemetry`) resolves through the same tunnel.
-The colo needs `CIMMERIA_TELEMETRY_HMAC_SECRET` set (see
-[`docker/compose.yml`](../../docker/compose.yml)). This does not work
-with a local server also on port 8443. Players without SSH access need
-the HTTPS route.
-
-The dev-session mint hands the launcher a `upload_endpoint` URL.
-Default is `http://localhost:8443/api/telemetry` — fine when the
-launcher and the server share a host. For any other topology, set:
+The dev-session mint hands the launcher an `upload_endpoint` URL from
+`CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`. The default,
+`http://localhost:8443/api/telemetry`, only works when the launcher and
+the server share a host. A public server sets it to its own login port:
 
 ```bash
-CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT="https://signoz.<your-domain>/api/telemetry"
+CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT="http://<public host>:8081/api/telemetry"
 ```
 
-on the cimmeria-server process. If you're routing through the
-Cloudflare Tunnel that exposes the SigNoz UI (see
-[signoz-remote-access.md](signoz-remote-access.md)), add another
-`ingress` rule to your `cloudflared` config pointing
-`signoz.<your-domain>/api/telemetry` at the admin-port backend.
+An HTTPS route (for example a Cloudflare Tunnel hostname, see step 2
+below) also works and is optional.
+
+**Sending your own telemetry to the colo over SSH** still works: forward
+the colo's admin port with
+`ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:8443:127.0.0.1:8443 <colo host>`
+and set `telemetry.auth_url` to `http://localhost:8443/api`. The colo's
+`upload_endpoint` then points at the login port, which the default login
+server list allows.
 
 ## Enable client telemetry on the colo
 
-Until both values below are set, the colo mints nothing: every launcher
+Until the secret below is set, the colo mints nothing: every launcher
 and lab session gets a 500 from `/api/auth/dev-session` and
 `cimmeria-client` stays empty. The server says so itself: at startup it
 logs `dev-session telemetry: every mint and upload will be refused`
@@ -147,9 +157,9 @@ logs the same reason at ERROR. When it is working, the startup line is
 `upload_endpoint` it hands out.
 
 1. **Generate the secret** on any machine: `openssl rand -hex 64`.
-2. **Give the admin port an HTTPS address.** Players' launchers refuse
-   plain `http://` to another machine, and `8443` on the colo is plain
-   HTTP. Add a Cloudflare Tunnel hostname (for example
+2. **Optional: an HTTPS route.** Not needed for players: launchers reach
+   the telemetry routes on the public login port. If you also want an
+   HTTPS address, add a Cloudflare Tunnel hostname (for example
    `telemetry.<your-domain>`) to `/etc/cloudflared/config.yml` that sends
    only the telemetry routes to `http://cimmeria:8443`, and give that
    hostname **no** Cloudflare Access policy (the launcher cannot answer an
@@ -173,23 +183,24 @@ logs the same reason at ERROR. When it is working, the startup line is
 
    ```bash
    CIMMERIA_TELEMETRY_HMAC_SECRET=<the 128 hex chars from step 1>
-   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=https://telemetry.<your-domain>/api/telemetry
+   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://play.cimmeria.app:8081/api/telemetry
    ```
 
-   `docker/compose.yml` passes both through as
-   `${VAR:-}`. A blank upload endpoint falls back to
-   `http://localhost:8443/api/telemetry`, which only a launcher on the
-   colo itself can reach.
+   With the step-2 route, the upload endpoint may be
+   `https://telemetry.<your-domain>/api/telemetry` instead.
+   `docker/compose.yml` passes both through as `${VAR:-}`. A blank upload
+   endpoint falls back to `http://localhost:8443/api/telemetry`, which
+   only a launcher on the colo itself can reach.
 4. **Recreate the container** so it picks up the environment:
    `docker compose -f compose.yml up -d cimmeria`.
 5. **Check it.** `docker logs cimmeria 2>&1 | grep "dev-session telemetry"`
    shows the enabled line. From any machine,
-   `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://telemetry.<your-domain>/api/auth/dev-session`
+   `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' http://play.cimmeria.app:8081/api/auth/dev-session`
    returns `422` (the body is incomplete, so the route is reachable and
-   parsing), not `500` or a Cloudflare error page.
-6. **Point launchers at it.** Each player's `launcher-config.json` needs
-   `telemetry.auth_url = "https://telemetry.<your-domain>/api"` and the
-   telemetry opt-in; see [Player opt-in](#player-opt-in).
+   parsing), not `404` or `500`.
+6. **Launchers need nothing.** A current launcher's default `auth_url`
+   and login server already point at the colo; the player only ticks the
+   telemetry opt-in (see [Player opt-in](#player-opt-in)).
 
 The lab supervisor mints the same way against `CIMMERIA_LAB_SERVER_URL`;
 see [the lab guide](../guides/live-research-lab.md).

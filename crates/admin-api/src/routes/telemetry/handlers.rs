@@ -1,15 +1,12 @@
 //! Axum handlers and the unzip / verify / replay helpers they call.
 
 use std::io::Read;
-use std::sync::Arc;
 
-use axum::extract::{Multipart, State};
+use axum::extract::Multipart;
 use axum::http::HeaderMap;
 use axum::Json;
 use bytes::Bytes;
 use flate2::read::GzDecoder;
-
-use cimmeria_services::orchestrator::Orchestrator;
 
 use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
 
@@ -21,7 +18,6 @@ use super::{
 };
 
 pub(super) async fn upload_chunk(
-    State(_orchestrator): State<Arc<Orchestrator>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<ChunkResponse>, IngestError> {
@@ -100,7 +96,6 @@ pub(super) async fn upload_chunk(
 }
 
 pub(super) async fn upload_bundle(
-    State(_orchestrator): State<Arc<Orchestrator>>,
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<BundleResponse>, IngestError> {

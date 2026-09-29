@@ -1,15 +1,12 @@
 //! `/api/auth/dev-session` mint and refresh handlers.
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use axum::extract::{ConnectInfo, State};
+use axum::extract::ConnectInfo;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-
-use cimmeria_services::orchestrator::Orchestrator;
 
 use super::quota::{install_key, ip_key, validate_install_id, validate_metadata, WindowTable};
 use super::token::{
@@ -23,8 +20,9 @@ pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
 /// localhost. For deployments where the launcher runs on a different
 /// host than the server, operators MUST set
 /// `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to the publicly-reachable
-/// URL (e.g. via the Cloudflare Tunnel that exposes the SigNoz UI,
-/// or directly via the LAN address).
+/// URL, normally the public login port, which serves the same routes
+/// (`http://<host>:8081/api/telemetry`, see
+/// [`crate::login_port_telemetry_router`]).
 ///
 /// Note: this points launcher uploads at cimmeria-server itself,
 /// which then replays the events through `tracing` so the OTLP layer
@@ -166,7 +164,6 @@ fn tables() -> &'static Tables {
 }
 
 pub async fn mint(
-    State(_orchestrator): State<Arc<Orchestrator>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(req): Json<DevSessionRequest>,
 ) -> Result<Json<DevSessionResponse>, AuthError> {
@@ -183,7 +180,6 @@ pub async fn mint(
 }
 
 pub async fn refresh(
-    State(_orchestrator): State<Arc<Orchestrator>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(req): Json<RefreshRequest>,
 ) -> Result<Json<DevSessionResponse>, AuthError> {

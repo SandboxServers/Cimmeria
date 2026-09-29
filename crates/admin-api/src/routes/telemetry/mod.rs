@@ -57,13 +57,9 @@ mod tests;
 
 pub use replay::{replay_ndjson, ReplayCounts, ReplayError};
 
-use std::sync::Arc;
-
 use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
 use axum::Router;
-
-use cimmeria_services::orchestrator::Orchestrator;
 
 use handlers::{upload_bundle, upload_chunk};
 
@@ -95,7 +91,10 @@ const MAX_CHUNK_DECOMPRESSED_BYTES: u64 = 256 * 1024 * 1024;
 /// expands to multiple GB).
 const MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES: u64 = 256 * 1024 * 1024;
 
-pub fn routes() -> Router<Arc<Orchestrator>> {
+/// Generic over the router state for the same reason as
+/// [`crate::routes::dev_session::routes`]: the handlers read none, so the
+/// public login port can mount them too.
+pub fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
     Router::new()
         // Both routes override axum's 2 MiB default body limit. Our
         // own size checks at the handler layer enforce the real cap;

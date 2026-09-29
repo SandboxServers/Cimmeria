@@ -95,12 +95,11 @@ services:
       # is why this is not a hard `:?` requirement.
       CIMMERIA_TELEMETRY_HMAC_SECRET: "${CIMMERIA_TELEMETRY_HMAC_SECRET:-}"
       # The upload base the mint hands back to launchers and lab clients;
-      # they append /upload-chunk and /upload-bundle. Players' launchers
-      # refuse plain http to another machine, so this must be an https URL
-      # that reaches this container's port 8443, e.g. a Cloudflare Tunnel
-      # hostname (docs/operations/telemetry.md, "Enable client telemetry on
-      # the colo"):
-      #   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=https://<telemetry-host>/api/telemetry
+      # they append /upload-chunk and /upload-bundle. The login port (8081)
+      # serves the telemetry routes too, and players' launchers accept plain
+      # http to a login server's host and port, so point it there
+      # (docs/operations/telemetry.md, "Enable client telemetry on the colo"):
+      #   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://play.cimmeria.app:8081/api/telemetry
       # Blank falls back to http://localhost:8443/api/telemetry, which only
       # a launcher on this host can use.
       CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT: "${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}"

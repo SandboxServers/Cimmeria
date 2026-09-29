@@ -57,6 +57,11 @@ pub struct AuthService {
     login_tx: Option<broadcast::Sender<LoginEvent>>,
     /// Login event ring buffer for WebSocket replay.
     login_buffer: Option<LoginEventBuffer>,
+    /// Extra routes served on the login listeners next to the SOAP pair.
+    /// The composition root passes the launcher telemetry routes here; the
+    /// auth crate cannot build them itself (they live in the admin API,
+    /// above it in the crate graph).
+    public_routes: Option<Router>,
 }
 
 impl AuthService {
@@ -84,7 +89,20 @@ impl AuthService {
             db_pool: None,
             login_tx: None,
             login_buffer: None,
+            public_routes: None,
         }
+    }
+
+    /// Serve `routes` on the login listeners (HTTP and, when configured,
+    /// TLS) alongside `/SGWLogin/*`. Must be called before [`start`].
+    ///
+    /// The router must be stateless and its paths must not overlap the
+    /// SOAP routes (axum panics on an overlap at `start`). Handlers can
+    /// extract `ConnectInfo<SocketAddr>`: both listeners serve with it.
+    ///
+    /// [`start`]: Self::start
+    pub fn set_public_routes(&mut self, routes: Router) {
+        self.public_routes = Some(routes);
     }
 
     /// Set the database connection pool for credential validation.
@@ -152,11 +170,15 @@ impl AuthService {
         // `Strict-Transport-Security` on every response. (Per RFC 6797 a UA
         // only *honours* it when received over HTTPS; stamping it on the HTTP
         // path too is harmless and simplifies the shared-Router wiring.)
-        let app = Router::new()
+        let mut app = Router::new()
             .route("/SGWLogin/UserAuth", post(handle_user_auth))
             .route("/SGWLogin/ServerSelection", post(handle_server_selection))
-            .layer(axum::middleware::from_fn(hsts_layer))
             .with_state(state);
+        if let Some(extra) = self.public_routes.clone() {
+            tracing::info!(addr = %self.logon_addr, "Login listener also serves extra public routes");
+            app = app.merge(extra);
+        }
+        let app = app.layer(axum::middleware::from_fn(hsts_layer));
 
         tracing::trace!(addr = %self.logon_addr, "Binding TCP listener for auth HTTP");
         let listener = TcpListener::bind(self.logon_addr).await.map_err(|e| {
@@ -354,5 +376,56 @@ mod tests {
         let mut svc = AuthService::new(&config);
         svc.start().await.unwrap();
         assert!(svc.is_running);
+    }
+
+    /// The composition root mounts launcher telemetry on the login port
+    /// through `set_public_routes`; the extra routes must answer next to
+    /// the SOAP routes, with connect info available to their handlers.
+    #[tokio::test]
+    async fn public_routes_are_served_on_the_login_listener() {
+        use axum::extract::ConnectInfo;
+        use axum::routing::post;
+
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let config = ServerConfig {
+            auth_host: "127.0.0.1".to_string(),
+            logon_port: port,
+            ..ServerConfig::default()
+        };
+        let mut svc = AuthService::new(&config);
+        svc.set_public_routes(Router::new().route(
+            "/api/telemetry/upload-chunk",
+            post(|ConnectInfo(peer): ConnectInfo<SocketAddr>| async move { peer.ip().to_string() }),
+        ));
+        svc.start().await.unwrap();
+
+        let client = reqwest::Client::new();
+        let base = format!("http://127.0.0.1:{port}");
+        let extra = client
+            .post(format!("{base}/api/telemetry/upload-chunk"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(extra.status(), 200);
+        assert_eq!(extra.text().await.unwrap(), "127.0.0.1");
+
+        // The SOAP route is still there (an empty body is a client error,
+        // not a missing route).
+        let soap = client
+            .post(format!("{base}/SGWLogin/UserAuth"))
+            .send()
+            .await
+            .unwrap();
+        assert_ne!(soap.status(), 404);
+
+        let absent = client
+            .post(format!("{base}/api/telemetry/nope"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(absent.status(), 404);
     }
 }

@@ -86,7 +86,7 @@ Four JSON files persist across runs:
 
 | File | Lives | Contents |
 |------|-------|----------|
-| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `login_servers` (`[{name, url}]`), `manifest_url`, and a `telemetry` object (`enabled`, `auth_url`). An old `server_host` field is ignored. |
+| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `login_servers` (`[{name, url}]`), `manifest_url`, and a `telemetry` object (`opted_in`, `prompt_answered`, `auth_url`; `auth_url` defaults to the public server's login port, `http://play.cimmeria.app:8081/api`). An old `server_host` field is ignored. Schema 2 moved that default: a schema-1 file whose `auth_url` is exactly the old `http://localhost:8443/api` is rewritten to the new default once. |
 | `<install>/launcher-installed.json` | in the game dir | `seed_sha256`, `applied_patches: ["001-dialog-portraits", …]`, `seed_adopted`. An old `patched_host` field is ignored. |
 | `<exe>/uploaded.json` | next to `launcher.exe` | `[{sha256, blob_name, uploaded_at}, …]` — log-upload dedupe ledger |
 | `<exe>/telemetry-state.json` | next to `launcher.exe` | per-session telemetry runtime state, kept separate from the config so config rewrites don't churn it |
@@ -239,7 +239,9 @@ small telemetry module (`cimmeria-client-telemetry.dll`) into the game
 after the client patches, which records in-game events such as the game
 messages the client handles and interface errors. Both go to the
 Cimmeria server with this install's random id, so crashes and bugs can
-be traced. The module changes nothing in the game. If the launcher
+be traced. Telemetry goes to the server's login port, the same address
+the game logs in to, so it needs no setup. The module changes nothing
+in the game. If the launcher
 cannot reach the telemetry server, or the module is missing, the status
 log says so and the game starts without it. The launcher also asks once,
 at the top of the window; either answer is remembered, and a change
