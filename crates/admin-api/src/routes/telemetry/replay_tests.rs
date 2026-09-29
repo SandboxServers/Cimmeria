@@ -16,7 +16,9 @@ use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 use crate::routes::dev_session::TokenClaims;
 
 use super::dto::ClientNativeEvent;
-use super::replay::{replay_client_native, replay_ndjson, LiftedFields, ReplayError};
+use super::replay::{
+    replay_client_native, replay_ndjson, replay_ndjson_gated, LiftedFields, ReplayError,
+};
 
 #[derive(Debug, Clone)]
 struct Row {
@@ -193,4 +195,73 @@ fn replay_ndjson_tags_every_event_type_with_the_session_kind() {
 fn replay_ndjson_reports_the_first_bad_line() {
     let err = replay_ndjson(&claims(None), "\n{\"type\":\"nope\"}\n").unwrap_err();
     assert!(matches!(err, ReplayError { line: 2, .. }), "{err:?}");
+}
+
+/// A chunk refused for a bad line replays nothing and never asks the gate,
+/// so it spends none of the session budget before its retry.
+#[test]
+fn a_refused_chunk_never_reaches_the_gate() {
+    let good =
+        r#"{"type":"client_native","ts_ms":1,"seq":1,"target":"client.lua.pcall","level":"warn"}"#;
+    let ndjson = format!("{good}\n{good}\n{{\"type\":\"nope\"}}\n");
+    let mut asked = 0;
+    let mut result = None;
+    let rows = capture(|| {
+        result = Some(replay_ndjson_gated(&claims(None), &ndjson, |_| {
+            asked += 1;
+            true
+        }))
+    });
+    assert!(matches!(result.unwrap(), Err(ReplayError { line: 3, .. })));
+    assert_eq!(asked, 0, "the gate saw events of a refused chunk");
+    assert!(rows.is_empty(), "a refused chunk replayed rows");
+}
+
+/// A governor rollup lifts its summarized target and count, so SigNoz can
+/// sum `rollup_count` by `rollup_target`; a plain `count` elsewhere is not
+/// mistaken for one.
+#[test]
+fn a_rollup_lifts_its_target_and_count() {
+    let mut e = native(
+        "info",
+        json!({ "rollup_target": "client.lua.pcall", "count": 2059, "reason": "hot_stream" }),
+    );
+    e.target = "client.telemetry.rollup".into();
+    let rows = capture(|| replay_client_native(&claims(Some("lab")), e));
+    assert_eq!(rows[0].fields["rollup_target"], "client.lua.pcall");
+    assert_eq!(rows[0].fields["rollup_count"], "2059");
+
+    let rows =
+        capture(|| replay_client_native(&claims(None), native("info", json!({ "count": 3 }))));
+    assert!(!rows[0].fields.contains_key("rollup_count"));
+}
+
+/// Events the session budget refuses are parsed and counted, never
+/// replayed; the rest replay in order.
+#[test]
+fn a_gated_replay_counts_what_it_suppresses() {
+    let line = |seq: u32, level: &str| {
+        format!(
+            r#"{{"type":"client_native","ts_ms":1,"seq":{seq},"target":"client.lua.pcall","level":"{level}"}}"#
+        )
+    };
+    let ndjson = [line(1, "debug"), line(2, "debug"), line(3, "warn")].join(
+        "
+",
+    );
+    let mut counts = None;
+    let rows = capture(|| {
+        counts = Some(replay_ndjson_gated(
+            &claims(None),
+            &ndjson,
+            |ev| matches!(ev, super::dto::TelemetryEvent::ClientNative(e) if e.level == "warn"),
+        ))
+    });
+    let counts = counts.unwrap().unwrap();
+    assert_eq!(
+        (counts.parsed, counts.accepted, counts.suppressed),
+        (3, 1, 2)
+    );
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].level, tracing::Level::WARN);
 }

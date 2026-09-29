@@ -299,7 +299,7 @@ server:
 | `cimmeria-client` | `launcher.client_log` | Game log lines the launcher tailed, and the per-line replay of end-of-session bundles |
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
 | `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events |
-| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk |
+| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events |
 | `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |
 | none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
 
@@ -308,7 +308,8 @@ token's claims), `cimmeria.session_kind` (`lab` or `player`) and `lab`
 (`true`/`false`), plus `ts_ms` and `seq`. `client.native` rows also carry
 `client_level`, the DLL's `fields` bag as JSON in `fields`, and, when the
 event has them, `account_id`, `player_id`, `method_index`, `level_name`,
-`dll_version` and `fingerprint_usable` as attributes of their own. The
+`dll_version`, `fingerprint_usable`, and on a governor rollup
+`rollup_target` and `rollup_count`, as attributes of their own. The
 resource has `cimmeria.source = client`, `cimmeria.deploy_env` and the
 ingesting server as `cimmeria.ingest_host`. The full attribute table is in
 [observability.md](../architecture/observability.md#log-indexes-and-parity-with-the-log-files).
@@ -325,6 +326,53 @@ Useful first queries:
 
 Retention is whatever the ClickHouse TTL says (see
 [signoz-deployment.md](signoz-deployment.md#retention)).
+
+## Volume control and the runaway guard
+
+The telemetry DLL summarizes high-rate streams before upload. The design is in
+[client-telemetry.md](../architecture/client-telemetry.md#volume-control-the-governor).
+In SigNoz this looks like:
+
+- **Rollups.** `client_target = 'client.telemetry.rollup'` rows replace the
+  hot streams (`client.engine.sequence_tick`, `client.lua.pcall`, ...) and
+  the overflow of busy ones. Each row has `rollup_target` and `rollup_count`
+  as attributes of their own. The exact per-target total over any range is
+  `sum(rollup_count)` grouped by `rollup_target`, plus the plain rows of
+  that target, plus their `repeat_count`.
+- **Repeats.** A row with `repeat_count` in its `fields` stands for that
+  many further identical events after the one before it.
+- **Health.** `client_target = 'client.telemetry.health'` arrives once a
+  minute per session. A `warn` health row means the DLL lost events: the
+  upload ring was full (`ring_dropped_total`) or batches were discarded after
+  failed POSTs (`upload_dropped_total`).
+
+To upload full volume from a lab session on purpose, add `"capture":
+{"raw": true}` to its `current-session.json`, or set
+`CIMMERIA_CLIENT_CAPTURE=raw` for SGW.exe. `firehose` widens the budgets
+but keeps summarizing the hot streams. The DLL's local log records which
+mode ran.
+
+On the server, `/api/telemetry/upload-chunk` counts events per session and
+allows 30,000 replayed events per session per minute. That is about 300
+times what a governed client sends, and enough for a `raw` lab session.
+Over the budget the chunk is still accepted, so the uploader does not
+retry it, but only warn/error rows, session metadata and the must-keep DLL
+families (boot, hooks, entity lifecycle, Mercury anomalies, governor
+reports) are replayed. Every chunk that suppressed something logs:
+
+```text
+service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
+  AND reason = 'session_over_budget'
+```
+
+with `suppressed`, `session_accepted_total`, `session_suppressed_total`,
+`budget_per_window` and `window_secs`. The per-chunk `debug` line carries
+the same session totals. The session table holds 1,024 sessions. A new
+session evicts the least recently seen one whose one-minute window has
+ended; if every tracked session is inside its window, the newcomer is
+counted in a shared `<overflow>` entry instead, so no live session ever
+gets its budget back early. A chunk refused for a malformed line spends
+no budget: the whole chunk is parsed before any event is counted.
 
 ## Player opt-in
 

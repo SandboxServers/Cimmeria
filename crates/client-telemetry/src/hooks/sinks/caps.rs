@@ -71,6 +71,7 @@ pub fn fields(recorded: &[(&'static str, Outcome)], config: CaptureConfig) -> Ve
     out.push(("attempted".into(), Value::from(recorded.len())));
     out.push(("capture.unfilter".into(), Value::Bool(config.unfilter)));
     out.push(("capture.firehose".into(), Value::Bool(config.firehose)));
+    out.push(("capture.raw".into(), Value::Bool(config.raw)));
     out
 }
 
@@ -134,10 +135,12 @@ mod tests {
             CaptureConfig {
                 unfilter: true,
                 firehose: true,
+                raw: true,
             },
         );
         assert!(f.contains(&("capture.unfilter".to_string(), Value::Bool(true))));
         assert!(f.contains(&("capture.firehose".to_string(), Value::Bool(true))));
+        assert!(f.contains(&("capture.raw".to_string(), Value::Bool(true))));
     }
 
     /// A failure makes the summary a warning; a skip does not (a hook whose

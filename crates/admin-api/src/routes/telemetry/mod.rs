@@ -39,13 +39,19 @@
 //! - [`replay`] — replaying each uploaded event through `tracing` with
 //!   the session's identity and kind; the client-side rows land in the
 //!   `cimmeria-client` SigNoz service.
+//! - [`session_budget`] — per-session accepted/suppressed totals and the
+//!   runaway-client guard (a per-minute event budget past which only
+//!   warn/error and boot events are replayed, reported at `warn`).
 
 mod dto;
 mod handlers;
 mod replay;
+mod session_budget;
 
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+mod session_budget_tests;
 #[cfg(test)]
 mod tests;
 
